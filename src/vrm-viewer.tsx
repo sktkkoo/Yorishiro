@@ -6,7 +6,7 @@
  * Spring bones updated via vrm.update(delta) each frame.
  */
 
-import { type VRM, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { type VRM, type VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
@@ -20,8 +20,8 @@ function setupRestPose(vrm: VRM): void {
   const humanoid = vrm.humanoid;
   if (!humanoid) return;
 
-  const set = (name: string, axis: "x" | "y" | "z", rad: number) => {
-    const bone = humanoid.getRawBoneNode(name as never);
+  const set = (name: VRMHumanBoneName, axis: "x" | "y" | "z", rad: number) => {
+    const bone = humanoid.getNormalizedBoneNode(name);
     if (bone) bone.rotation[axis] = rad;
   };
 
@@ -31,19 +31,17 @@ function setupRestPose(vrm: VRM): void {
   set("rightUpperArm", "x", 0.1);
   set("leftUpperArm", "x", 0.1);
 
-  // Wrists slightly straightened
+  // Lower arms slightly bent
   set("rightLowerArm", "z", -0.2);
   set("leftLowerArm", "z", 0.2);
-
-  humanoid.update();
 }
 
 export default function VrmViewer({ url }: VrmViewerProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!container) return;
 
     let alive = true;
     let animationId = 0;
@@ -56,6 +54,9 @@ export default function VrmViewer({ url }: VrmViewerProps) {
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 20);
     camera.position.set(0, 1.35, 1.1);
     camera.lookAt(0, 1.35, 0);
+
+    const canvas = document.createElement("canvas");
+    container.appendChild(canvas);
 
     const renderer = new THREE.WebGLRenderer({
       canvas,
@@ -75,23 +76,25 @@ export default function VrmViewer({ url }: VrmViewerProps) {
     // ── Resize ────────────────────────────────────────
 
     let needsResize = true;
+
     const resizeObserver = new ResizeObserver(() => {
       needsResize = true;
     });
-    resizeObserver.observe(canvas);
+    resizeObserver.observe(container);
 
     function handleResize() {
-      if (!needsResize) return;
+      if (!needsResize || !container) return;
       needsResize = false;
-      const parent = canvas?.parentElement;
-      if (!parent) return;
-      const w = parent.clientWidth;
-      const h = parent.clientHeight;
+      const w = container.clientWidth;
+      const h = container.clientHeight;
       if (w === 0 || h === 0) return;
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
     }
+
+    // Initial size
+    handleResize();
 
     // ── Load VRM ──────────────────────────────────────
 
@@ -107,12 +110,19 @@ export default function VrmViewer({ url }: VrmViewerProps) {
 
         vrm.scene.rotation.y = Math.PI;
         setupRestPose(vrm);
+
+        // Propagate normalized bone rotations to raw bones
+        vrm.humanoid?.update();
+
         scene.add(vrm.scene);
         currentVrm = vrm;
 
-        // Position camera based on head bone
-        const headBone = vrm.humanoid?.getRawBoneNode("head" as never);
-        const chestBone = vrm.humanoid?.getRawBoneNode("chest" as never);
+        // Force one update so world positions are ready for camera calc
+        vrm.update(0);
+
+        // Position camera based on head/chest bones
+        const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
+        const chestBone = vrm.humanoid?.getNormalizedBoneNode("chest");
         if (headBone && chestBone) {
           const headPos = new THREE.Vector3();
           const chestPos = new THREE.Vector3();
@@ -166,8 +176,9 @@ export default function VrmViewer({ url }: VrmViewerProps) {
         });
       }
       renderer.dispose();
+      canvas.remove();
     };
   }, [url]);
 
-  return <canvas ref={canvasRef} className="vrm-canvas" />;
+  return <div ref={containerRef} className="vrm-container" />;
 }
