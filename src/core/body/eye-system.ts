@@ -1,12 +1,15 @@
 /**
- * EyeSystem — idle gaze + gaze override for CharacterAPI.gaze().
+ * EyeSystem — state-dependent saccade/fixation + gaze override.
  *
- * Extracted from vrm-procedural.ts IdleEyeSystem, enhanced with:
- * - Override mode: gaze() call pauses idle and forces specific direction
- * - Override release: smoothly returns to idle
+ * Ported from old Charminal's EyeSystem with NLP eye-access cue patterns:
+ * - idle: random周囲注視 (2-5s interval)
+ * - thinking: upper gaze bias (0.8-1.8s interval, upper fixation 3-6s)
+ * - reading: downward gaze
+ * - writing: upper-right (visual construction)
+ * - running: forward focus
  *
- * Pure data logic — no VRM dependency. Body.update() applies the output
- * to vrm.lookAt.yaw / vrm.lookAt.pitch.
+ * Override mode: gaze() call pauses idle and forces specific direction.
+ * Pure data logic — no VRM dependency.
  */
 
 export interface EyeOutput {
@@ -24,15 +27,56 @@ interface EyeDir {
 const MAX_YAW = 30; // degrees
 const MAX_PITCH = 25;
 
-// ─── Idle gaze patterns ──────────────────────────────────
+// ─── State-dependent gaze patterns (NLP eye-access cues) ─
 
-const IDLE_PATTERNS: ReadonlyArray<EyeDir> = [
-  { up: 0, down: 0, left: 1.0, right: 0 },
-  { up: 0, down: 0, left: 0, right: 1.0 },
-  { up: 1.0, down: 0, left: 1.0, right: 0 },
-  { up: 1.0, down: 0, left: 0, right: 1.0 },
-  { up: 0, down: 0, left: 0, right: 0 }, // front
+/** Activity state for eye pattern selection. */
+export type EyeState = "idle" | "thinking" | "reading" | "writing" | "running";
+
+const THINKING_EYE: ReadonlyArray<EyeDir> = [
+  { up: 1.0, down: 0, left: 1.0, right: 0 }, // visual memory (upper-left)
+  { up: 1.0, down: 0, left: 0, right: 1.0 }, // visual construction (upper-right)
+  { up: 1.0, down: 0, left: 1.0, right: 0 }, // weight: upper-left ×2
+  { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×2
+  { up: 1.0, down: 0, left: 1.0, right: 0 }, // weight: upper-left ×3
+  { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×3
+  { up: 0, down: 0, left: 1.0, right: 0 }, // auditory memory (lateral-left)
+  { up: 0, down: 0, left: 0, right: 1.0 }, // auditory construction (lateral-right)
 ];
+
+const PATTERNS: Record<EyeState, ReadonlyArray<EyeDir>> = {
+  idle: [
+    { up: 0, down: 0, left: 1.0, right: 0 },
+    { up: 0, down: 0, left: 0, right: 1.0 },
+    { up: 1.0, down: 0, left: 1.0, right: 0 },
+    { up: 1.0, down: 0, left: 0, right: 1.0 },
+    { up: 0, down: 0, left: 0, right: 0 }, // front
+  ],
+  thinking: THINKING_EYE,
+  reading: [
+    { up: 0, down: 0.6, left: 1.0, right: 0 }, // lower-left
+    { up: 0, down: 0.6, left: 0, right: 1.0 }, // lower-right
+    { up: 0, down: 0.6, left: 1.0, right: 0 }, // weight: lower-left ×2
+  ],
+  writing: [
+    { up: 1.0, down: 0, left: 0, right: 1.0 }, // visual construction (upper-right)
+    { up: 0, down: 0, left: 0, right: 1.0 }, // auditory construction (lateral-right)
+    { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×2
+  ],
+  running: [
+    { up: 0, down: 0, left: 0, right: 0 }, // front
+    { up: 0, down: 0.5, left: 0, right: 0.8 }, // lower-right
+    { up: 0, down: 0, left: 0, right: 0 }, // weight: front ×2
+  ],
+};
+
+/** Fixation interval [min, max] seconds per state. */
+const INTERVALS: Record<EyeState, [number, number]> = {
+  idle: [2.0, 5.0],
+  thinking: [0.8, 1.8],
+  reading: [0.8, 1.8],
+  writing: [0.8, 1.8],
+  running: [0.8, 1.8],
+};
 
 // ─── Override ────────────────────────────────────────────
 
@@ -66,11 +110,26 @@ export class EyeSystem {
   private override: GazeOverride | null = null;
   private nextOverrideId = 0;
 
+  // ── Activity state ──
+  private _state: EyeState = "idle";
+
   /** Dependency injection for testability. */
   private readonly random: () => number;
 
   constructor(random?: () => number) {
     this.random = random ?? Math.random;
+  }
+
+  /** Set the activity state. Changes gaze patterns and saccade intervals. */
+  setState(state: EyeState): void {
+    if (state === this._state) return;
+    this._state = state;
+    // Force a saccade on next fixation check to adopt new pattern quickly
+    this.fixationTimer = Math.min(this.fixationTimer, 0.3);
+  }
+
+  get state(): EyeState {
+    return this._state;
   }
 
   update(delta: number): void {
@@ -85,27 +144,18 @@ export class EyeSystem {
     return this.getIdleOutput();
   }
 
-  /**
-   * Set a gaze override. Returns an ID to release it later.
-   * Replaces any previous override.
-   */
   setOverride(yaw: number, pitch: number): number {
     const id = ++this.nextOverrideId;
     this.override = { id, yaw, pitch };
     return id;
   }
 
-  /**
-   * Release an override by ID. Stale IDs (from replaced overrides)
-   * are silently ignored.
-   */
   releaseOverride(id: number): void {
     if (this.override?.id === id) {
       this.override = null;
     }
   }
 
-  /** Whether a gaze override is currently active. */
   get hasOverride(): boolean {
     return this.override !== null;
   }
@@ -129,7 +179,7 @@ export class EyeSystem {
       // Fixation timer → start saccade
       this.fixationTimer -= delta;
       if (this.fixationTimer <= 0) {
-        const patterns = IDLE_PATTERNS;
+        const patterns = PATTERNS[this._state];
         const picked = patterns[Math.floor(this.random() * patterns.length)];
 
         const dist = Math.hypot(
@@ -152,7 +202,14 @@ export class EyeSystem {
         this.target.right = picked.right;
 
         this.isSaccading = true;
-        this.fixationTimer = 2.0 + this.random() * 3.0;
+
+        // Thinking: upper gaze gets longer fixation (3-6s)
+        if (this._state === "thinking" && picked.up > 0.5) {
+          this.fixationTimer = 3.0 + this.random() * 3.0;
+        } else {
+          const [min, max] = INTERVALS[this._state];
+          this.fixationTimer = min + this.random() * (max - min);
+        }
       }
     } else {
       // Saccade phase: cubic ease-out
@@ -207,7 +264,6 @@ export function gazeTargetToAngles(target: GazeTargetLike, random?: () => number
     case "camera":
       return { yaw: 0, pitch: 0 };
     case "away": {
-      // Random direction, biased to the sides
       const sign = rng() > 0.5 ? 1 : -1;
       return {
         yaw: sign * (15 + rng() * 15),
@@ -215,7 +271,6 @@ export function gazeTargetToAngles(target: GazeTargetLike, random?: () => number
       };
     }
     case "point": {
-      // Convert direction vector to yaw/pitch
       const { x, z } = target.direction;
       const yaw = Math.atan2(x, z) * (180 / Math.PI);
       const pitch = Math.atan2(target.direction.y, Math.hypot(x, z)) * (180 / Math.PI);
@@ -225,10 +280,8 @@ export function gazeTargetToAngles(target: GazeTargetLike, random?: () => number
       };
     }
     case "screen-element":
-      // Approximate: look slightly down (terminal is below eye level)
       return { yaw: 0, pitch: -10 };
     case "text-region":
-      // Approximate: look toward the text region center
       return {
         yaw: (target.bounds.x + target.bounds.width / 2 - 0.5) * MAX_YAW * 2,
         pitch: -(target.bounds.y + target.bounds.height / 2 - 0.5) * MAX_PITCH * 2,

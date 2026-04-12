@@ -149,8 +149,12 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
           {
             label: "small-smile",
             handler: async (ctx: PersonaContext) => {
-              ctx.character.express({ kind: "mood", preset: "happy" }, 0.5);
+              const expr = ctx.character.express({ kind: "mood", preset: "happy" }, 0.3);
               ctx.character.play("anim:VRMA_small_nod");
+              // 表情を 2 秒後にフェードアウト
+              await ctx.time.after(2000);
+              if (ctx.signal.aborted) return;
+              expr.release(800);
             },
           },
         ],
@@ -232,8 +236,10 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
             weight: 2,
             label: "blink",
             handler: async (ctx: PersonaContext) => {
-              ctx.character.express({ kind: "eye", variant: "blink" }, 0.9);
-              await ctx.time.after(200);
+              const expr = ctx.character.express({ kind: "eye", variant: "blink" }, 0.6);
+              await ctx.time.after(150);
+              if (ctx.signal.aborted) return;
+              expr.release();
             },
           },
           {

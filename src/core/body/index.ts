@@ -29,13 +29,28 @@ import type { VRM } from "@pixiv/three-vrm";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
-import { EyeSystem, gazeTargetToAngles } from "./eye-system";
+import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
+import { ProceduralBones } from "./procedural-bones";
 
 // ─── Constants ───────────────────────────────────────────
 
 const BREATHING_AMPLITUDE = 0.005;
 const BREATHING_FREQUENCY = 0.8;
 const BLINK_EXPRESSION_NAME = "blink";
+
+// State-dependent expression targets (ported from old vrmExpressions.ts)
+const STATE_EXPRESSIONS: Record<EyeState, ReadonlyArray<[string, number]>> = {
+  idle: [["neutral", 1.0]],
+  thinking: [["neutral", 0.4]],
+  reading: [["neutral", 0.6]],
+  writing: [["neutral", 0.3]],
+  running: [["neutral", 0.3]],
+};
+
+// Gradual relaxed expression after 30s idle (ported from old BodySystem)
+const RELAXED_THRESHOLD_S = 30;
+const RELAXED_RAMP_S = 10;
+const RELAXED_MAX = 0.4; // cap to avoid sleepy-looking eyes
 
 // ─── Body ────────────────────────────────────────────────
 
@@ -45,9 +60,20 @@ export class Body {
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
   private readonly animationPlayer: AnimationPlayer;
+  private readonly proceduralBones: ProceduralBones;
 
   /** Blink system's slot ID in ExpressionManager. -1 when not active. */
   private blinkSlotId = -1;
+
+  /** State-dependent expression slot IDs. */
+  private stateExprSlots: number[] = [];
+
+  /** Idle elapsed time for gradual relaxed expression. */
+  private idleElapsedTime = 0;
+  private relaxedSlotId = -1;
+
+  /** State-driven animation (e.g., Typing during writing). */
+  private stateAnimStop: (() => Promise<void>) | null = null;
 
   /** Track all active expression handles for interrupt(). */
   private readonly activeExprHandles = new Set<BodyExpressionHandle>();
@@ -60,33 +86,79 @@ export class Body {
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.animationPlayer = new AnimationPlayer(vrm);
+    this.proceduralBones = new ProceduralBones();
+    this.proceduralBones.bindVrm(vrm);
+
+    // Set initial state expressions (idle: neutral 1.0)
+    this.applyStateExpressions("idle");
   }
 
   /**
    * Per-frame update. Call from the render loop.
    * Drives all subsystems and applies to VRM.
    */
+  /**
+   * Set the activity state. Affects eye patterns, head drift, and expressions.
+   * Called by Perception (via tool-activity events) or handler logic.
+   */
+  setState(state: EyeState): void {
+    const prevState = this.eyeSystem.state;
+    this.eyeSystem.setState(state);
+    this.proceduralBones.isThinking = state === "thinking";
+    this.applyStateExpressions(state);
+
+    // Reset idle relaxed timer when leaving idle
+    if (state !== "idle") {
+      this.idleElapsedTime = 0;
+      if (this.relaxedSlotId !== -1) {
+        this.expressions.removeSlot(this.relaxedSlotId);
+        this.relaxedSlotId = -1;
+      }
+    }
+
+    // State-driven animation: Typing during writing
+    if (state === "writing" && prevState !== "writing") {
+      // Stop previous state animation if any
+      this.stateAnimStop?.();
+      this.animationPlayer
+        .play("anim:Typing", { weight: 0.5, loop: true, fadeInMs: 500 })
+        .then((result) => {
+          this.stateAnimStop = result.stop;
+        })
+        .catch(() => {});
+    } else if (state !== "writing" && this.stateAnimStop) {
+      this.stateAnimStop();
+      this.stateAnimStop = null;
+    }
+  }
+
   update(delta: number, elapsed: number): void {
     // 1. Animation mixer
     this.animationPlayer.update(delta);
 
-    // 2. Blink
+    // 2. Procedural bone animation (spine sway, head drift, arm sway)
+    this.proceduralBones.update(delta, elapsed);
+
+    // 3. Blink
     const blinkValue = this.blinkSystem.update(delta);
     this.updateBlinkSlot(blinkValue);
 
-    // 3. Eye system
+    // 4. Eye system (state-dependent patterns)
     this.eyeSystem.update(delta);
 
-    // 4. Apply expressions to VRM
+    // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
+    this.updateRelaxed(delta);
+
+    // 6. Apply expressions to VRM
     this.applyExpressions();
 
-    // 5. Apply eye gaze to VRM
+    // 7. Apply eye gaze to VRM
     this.applyGaze();
 
-    // 6. Breathing
+    // 8. Breathing
     this.applyBreathing(elapsed);
 
-    // 7. VRM spring bones etc.
+    // 9. VRM spring bones etc.
     this.vrm.update(delta);
   }
 
@@ -250,6 +322,45 @@ export class Body {
   private applyBreathing(elapsed: number): void {
     this.vrm.scene.position.y = Math.sin(elapsed * BREATHING_FREQUENCY) * BREATHING_AMPLITUDE;
   }
+
+  /** Apply state-dependent base expression (neutral/happy/etc.). */
+  private applyStateExpressions(state: EyeState): void {
+    // Remove old state expression slots
+    for (const id of this.stateExprSlots) {
+      this.expressions.removeSlot(id);
+    }
+    this.stateExprSlots = [];
+
+    // Add new state expressions
+    const targets = STATE_EXPRESSIONS[state];
+    for (const [name, value] of targets) {
+      this.stateExprSlots.push(this.expressions.addSlot(name, value));
+    }
+  }
+
+  /** Gradual relaxed expression after idle threshold. */
+  private updateRelaxed(delta: number): void {
+    if (this.eyeSystem.state !== "idle") return;
+    this.idleElapsedTime += delta;
+
+    const relaxedValue = Math.min(
+      Math.max((this.idleElapsedTime - RELAXED_THRESHOLD_S) / RELAXED_RAMP_S, 0),
+      RELAXED_MAX,
+    );
+
+    if (relaxedValue > 0) {
+      if (this.relaxedSlotId === -1) {
+        this.relaxedSlotId = this.expressions.addSlot("relaxed", relaxedValue);
+      } else {
+        this.expressions.setWeight(this.relaxedSlotId, relaxedValue);
+      }
+      // Reduce neutral as relaxed increases
+      const neutralSlot = this.stateExprSlots[0];
+      if (neutralSlot !== undefined) {
+        this.expressions.setWeight(neutralSlot, 1.0 - relaxedValue);
+      }
+    }
+  }
 }
 
 // ─── Handle implementations ─────────────────────────────
@@ -348,4 +459,5 @@ export { AnimationPlayer } from "./animation-player";
 export { BlinkSystem } from "./blink-system";
 // Re-export subsystem types for testing
 export { ExpressionManager, expressionTargetToName } from "./expression-manager";
-export { EyeSystem, gazeTargetToAngles } from "./eye-system";
+export { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
+export { ProceduralBones } from "./procedural-bones";

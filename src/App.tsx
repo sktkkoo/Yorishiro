@@ -1,7 +1,7 @@
 import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import persona from "../bundled-packs/personas/charminal-default/persona";
-import type { Body } from "./core/body";
+import type { Body, EyeState } from "./core/body";
 import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import { Time } from "./core/time";
@@ -33,13 +33,7 @@ const builtInTriggers: ReadonlyArray<Trigger> = [
     match: (event) =>
       event.kind === "hook-signal" && event.signal.name === "stop" ? { reaction: "pleased" } : null,
   },
-  {
-    id: "builtin:prompt-to-acknowledging",
-    match: (event) =>
-      event.kind === "hook-signal" && event.signal.name === "user-prompt-submit"
-        ? { reaction: "acknowledging" }
-        : null,
-  },
+  // NOTE: prompt-to-acknowledging removed — 頷きモーションはプロンプト送信時に不要
   {
     id: "builtin:tool-to-contemplative",
     match: (event) =>
@@ -93,8 +87,11 @@ function App() {
 
   // ── Body ↔ PersonaRegistry wiring ──────────────────────────
 
+  const bodyRef = useRef<Body | null>(null);
+
   const handleBodyReady = useCallback(
     (body: Body | null) => {
+      bodyRef.current = body;
       if (body) {
         registry.setContextFactory(createRealPersonaContextFactory({ body, logBridge }));
       } else {
@@ -103,6 +100,47 @@ function App() {
     },
     [registry, logBridge],
   );
+
+  // ── Tool-activity → Body state wiring ─────────────────────
+
+  useEffect(() => {
+    const mapActivity = (activity: string): EyeState => {
+      switch (activity) {
+        case "reading":
+          return "reading";
+        case "writing":
+          return "writing";
+        case "running":
+          return "running";
+        case "none":
+          return "idle";
+        default:
+          return "idle";
+      }
+    };
+
+    // Listen for tool-activity events on the bus to drive Body.setState
+    const reg = runtimeRef.current?.bus.register(
+      {
+        id: "builtin:tool-activity-to-body-state",
+        match: (event) => {
+          if (event.kind === "tool-activity") {
+            bodyRef.current?.setState(mapActivity(event.activity));
+          }
+          if (event.kind === "hook-signal" && event.signal.name === "pre-tool-use") {
+            bodyRef.current?.setState("thinking");
+          }
+          if (event.kind === "hook-signal" && event.signal.name === "stop") {
+            bodyRef.current?.setState("idle");
+          }
+          return null; // never emit a reaction — side-effect only
+        },
+      },
+      () => {},
+      { type: "persona", packId: "__body-state__" },
+    );
+    return () => reg?.dispose();
+  }, []);
 
   // ── Hook-signal listener (global, independent of PTY lifecycle) ──
 
