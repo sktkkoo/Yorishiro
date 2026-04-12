@@ -118,21 +118,29 @@ export default function VrmViewer({ url }: VrmViewerProps) {
         scene.add(vrm.scene);
         currentVrm = vrm;
 
-        // Force one update so world positions are ready for camera calc
+        // Force world matrix update so bone world positions are accurate
+        vrm.scene.updateWorldMatrix(true, true);
         vrm.update(0);
 
-        // Position camera based on head/chest bones
+        // Position camera based on head/chest bones (旧 repo と同じ計算)
         const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
-        const chestBone = vrm.humanoid?.getNormalizedBoneNode("chest");
-        if (headBone && chestBone) {
-          const headPos = new THREE.Vector3();
-          const chestPos = new THREE.Vector3();
-          headBone.getWorldPosition(headPos);
-          chestBone.getWorldPosition(chestPos);
-          const targetY = headPos.y * 0.6 + chestPos.y * 0.4 - 0.1;
-          camera.position.set(0, targetY, 1.1);
-          camera.lookAt(0, targetY, 0);
-        }
+        const chestBone =
+          vrm.humanoid?.getNormalizedBoneNode("chest") ??
+          vrm.humanoid?.getNormalizedBoneNode("spine");
+
+        const headPos = new THREE.Vector3();
+        const chestPos = new THREE.Vector3();
+
+        if (headBone) headBone.getWorldPosition(headPos);
+        else headPos.set(0, 1.6, 0);
+
+        if (chestBone) chestBone.getWorldPosition(chestPos);
+        else chestPos.set(0, 1.2, 0);
+
+        // Midpoint: chin~mid-chest for bust-up framing, -0.1 to show arms
+        const targetY = headPos.y * 0.6 + chestPos.y * 0.4 - 0.1;
+        camera.position.set(0, targetY, 1.1);
+        camera.lookAt(0, targetY, 0);
       },
       undefined,
       (err) => {
