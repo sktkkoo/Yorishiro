@@ -239,6 +239,7 @@ impl PtyState {
             .map_err(|e| format!("PTY open failed: {}", e))?;
 
         let mut cmd = CommandBuilder::new(claude_binary);
+        cmd.arg("-c");
         cmd.env("PATH", crate::build_path_env());
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
