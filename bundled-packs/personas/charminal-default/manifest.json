@@ -1,0 +1,12 @@
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "charminal-default",
+  "name": "Charminal",
+  "type": "persona",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "author": "Charminal team",
+  "description": "Charminal のデフォルト persona。ターミナルで作業するユーザーの傍にいる、親しみやすく、しかし馴れ馴れしくない住人。",
+  "entry": "persona.ts",
+  "tags": ["default", "flagship", "ja"]
+}

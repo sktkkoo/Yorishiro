@@ -27,6 +27,6 @@
       "@charminal/sdk/*": ["./src/sdk/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "bundled-packs"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
