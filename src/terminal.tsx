@@ -122,19 +122,17 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
     const perceptionRef = perception;
 
     (async () => {
-      if (!alive) return;
-
       const { invoke, Channel } = await import("@tauri-apps/api/core");
       const { listen } = await import("@tauri-apps/api/event");
 
-      if (!alive) {
-        invoke("pty_kill");
-        return;
-      }
+      // StrictMode guard: if cleanup already ran while we awaited imports,
+      // bail out WITHOUT killing the PTY — a second render will attach to it.
+      if (!alive) return;
 
       // Channel for PTY output (raw binary)
       const onOutput = new Channel<ArrayBuffer>();
       onOutput.onmessage = (data: ArrayBuffer) => {
+        if (!alive) return;
         const bytes = new Uint8Array(data);
         term.write(bytes);
         const text = textDecoder.decode(bytes, { stream: true });
@@ -143,6 +141,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
 
       // Hook signal listener
       const unlistenHook = await listen<string>("hook-signal", (event) => {
+        if (!alive) return;
         perceptionRef?.onHookSignal(event.payload);
       });
       disposables.push(unlistenHook);
@@ -153,7 +152,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
       });
       disposables.push(unlistenExit);
 
-      // Try attach first (WebView HMR), then spawn
+      // Try attach first (WebView HMR / StrictMode re-mount), then spawn
       let attached = false;
       try {
         attached = await invoke<boolean>("pty_attach", {
@@ -165,6 +164,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
       }
 
       if (!attached) {
+        if (!alive) return;
         try {
           await invoke("pty_spawn", {
             cols: term.cols,
@@ -179,10 +179,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
         }
       }
 
-      if (!alive) {
-        invoke("pty_kill");
-        return;
-      }
+      if (!alive) return;
 
       // Forward input to PTY
       let writeQueue: Promise<void> = Promise.resolve();
@@ -219,10 +216,12 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
     })();
 
     return () => {
+      // Clean up JS-side only. Do NOT kill or detach the PTY here —
+      // StrictMode's double-render would race with the second mount's
+      // pty_attach/pty_spawn. The PTY survives across re-mounts;
+      // the next mount's pty_attach atomically swaps the channel.
       alive = false;
       for (const d of disposables) d();
-      // Detach (not kill) on unmount — PTY survives HMR
-      import("@tauri-apps/api/core").then(({ invoke }) => invoke("pty_detach"));
     };
   }, [ptyDeps, cwd, perception]);
 
