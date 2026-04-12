@@ -8,6 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "test": "vitest",
+    "test:run": "vitest run --passWithNoTests",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "fmt": "biome check --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
     "fmt:check": "biome check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "lint": "biome lint . && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
@@ -34,6 +37,7 @@
     "@vitejs/plugin-react": "^4.6.0",
     "lefthook": "^2.1.5",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.4"
   }
 }
