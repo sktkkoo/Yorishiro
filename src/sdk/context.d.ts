@@ -12,7 +12,7 @@
  * TypeScript のコンパイルエラーになる。
  */
 
-import type { ReactionEvent } from './reaction';
+import type { ReactionEvent } from "./reaction";
 
 // ─── PersonaContext ────────────────────────────────────────
 
@@ -91,9 +91,9 @@ export interface PersonaContext {
 
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
-  readonly terminal: TerminalAPI;    // observation only
+  readonly terminal: TerminalAPI; // observation only
   readonly charm: CharmAPI;
-  readonly signal: AbortSignal;      // 中断通知
+  readonly signal: AbortSignal; // 中断通知
 }
 
 // ─── HarnessContext ────────────────────────────────────────
@@ -110,7 +110,7 @@ export interface PersonaContext {
  */
 export interface HarnessContext {
   readonly event: ReactionEvent;
-  readonly persona: PersonaRef;  // 現在 active な persona への参照（読み取り専用）
+  readonly persona: PersonaRef; // 現在 active な persona への参照（読み取り専用）
   readonly time: Time;
 
   /**
@@ -242,11 +242,7 @@ export interface Time {
    * 確率的周期実行。「無操作時のイタズラ」パターン。
    * interval ごとにチェックし、probability で発火。
    */
-  probability(opts: {
-    interval: number;
-    probability: number;
-    action: () => void;
-  }): Cancellable;
+  probability(opts: { interval: number; probability: number; action: () => void }): Cancellable;
 
   /**
    * ジッター付き遅延（sleep）。
@@ -321,10 +317,10 @@ export interface AnimationHandle {
 }
 
 export type ExpressionTarget =
-  | { kind: 'mood'; preset: 'happy' | 'sad' | 'angry' | 'relaxed' | 'surprised' }
-  | { kind: 'eye'; variant: 'blink' | 'blinkL' | 'blinkR' | 'lookup' | 'lookdown' }
-  | { kind: 'lip'; phoneme: 'aa' | 'ih' | 'ou' | 'ee' | 'oh' }
-  | { kind: 'custom'; blendShapeName: string };
+  | { kind: "mood"; preset: "happy" | "sad" | "angry" | "relaxed" | "surprised" }
+  | { kind: "eye"; variant: "blink" | "blinkL" | "blinkR" | "lookup" | "lookdown" }
+  | { kind: "lip"; phoneme: "aa" | "ih" | "ou" | "ee" | "oh" }
+  | { kind: "custom"; blendShapeName: string };
 
 export interface ExpressionHandle {
   readonly target: ExpressionTarget;
@@ -335,11 +331,11 @@ export interface ExpressionHandle {
 }
 
 export type GazeTarget =
-  | { kind: 'point'; direction: Vec3 }
-  | { kind: 'screen-element'; selector: string }
-  | { kind: 'camera' }
-  | { kind: 'text-region'; bounds: Bounds }
-  | { kind: 'away' };
+  | { kind: "point"; direction: Vec3 }
+  | { kind: "screen-element"; selector: string }
+  | { kind: "camera" }
+  | { kind: "text-region"; bounds: Bounds }
+  | { kind: "away" };
 
 export interface GazeOptions {
   durationMs?: number;
@@ -353,7 +349,11 @@ export interface GazeHandle {
   release(): void;
 }
 
-export interface Vec3 { x: number; y: number; z: number }
+export interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 /**
  * 2 次元ベクトル。用途によって座標系が異なる点に注意。
@@ -362,8 +362,16 @@ export interface Vec3 { x: number; y: number; z: number }
  *   (0-1 範囲、左上原点)**。詳しくは `SpaceEffectRequest` の JSDoc を参照。
  * - その他の用途（e.g. offset、delta、velocity）は文脈依存。
  */
-export interface Vec2 { x: number; y: number }
-export interface Bounds { x: number; y: number; width: number; height: number }
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+export interface Bounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 // ─── VoiceAPI (persona only) ───────────────────────────────
 
@@ -426,13 +434,13 @@ export interface SpaceAPI {
  * 飛び込んでくる演出など）が、default は 0-1 の範囲で考えること。
  */
 export type SpaceEffectRequest =
-  | { kind: 'shake'; intensity: number; durationMs: number }
-  | { kind: 'flash'; color: string; durationMs: number }
-  | { kind: 'particles'; origin: Vec2; count: number; durationMs: number; colorScheme?: string }
-  | { kind: 'fireworks'; origin: Vec2; count: number; durationMs: number }
-  | { kind: 'text-physics'; origin: Vec2; force: number; gravity?: number }
-  | { kind: 'text-glitch'; durationMs: number; intensity?: number }
-  | { kind: string; [option: string]: unknown };  // user effect への拡張
+  | { kind: "shake"; intensity: number; durationMs: number }
+  | { kind: "flash"; color: string; durationMs: number }
+  | { kind: "particles"; origin: Vec2; count: number; durationMs: number; colorScheme?: string }
+  | { kind: "fireworks"; origin: Vec2; count: number; durationMs: number }
+  | { kind: "text-physics"; origin: Vec2; force: number; gravity?: number }
+  | { kind: "text-glitch"; durationMs: number; intensity?: number }
+  | { kind: string; [option: string]: unknown }; // user effect への拡張
 
 export interface SpaceEffectHandle {
   readonly kind: string;
@@ -478,7 +486,7 @@ export interface SpawnOptions extends ExecOptions {
 
 export interface ProcessHandle {
   readonly pid: number;
-  kill(signal?: 'SIGINT' | 'SIGTERM' | 'SIGKILL'): void;
+  kill(signal?: "SIGINT" | "SIGTERM" | "SIGKILL"): void;
   readonly completion: Promise<ExecResult>;
 }
 

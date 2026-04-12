@@ -5,8 +5,8 @@
  * scene/persona.ts では `satisfies PersonaDefinition` を使って export default する。
  */
 
-import type { PersonaContext } from './context';
-import type { Trigger, ReactionType } from './reaction';
+import type { PersonaContext } from "./context";
+import type { Trigger, ReactionType } from "./reaction";
 
 // ─── Persona handler ──────────────────────────────────────
 
@@ -37,17 +37,17 @@ export interface PersonaReactionSet {
 export interface LogReadingPolicy {
   /** いつログを読むか */
   readonly readWhen:
-    | { kind: 'never' }                            // 没頭型
-    | { kind: 'session-boundary' }                 // 内省型（区切りで振り返る）
-    | { kind: 'on-query' }                         // 尋ねられたときだけ
-    | { kind: 'periodic'; intervalMs: number }     // 周期的
-    | { kind: 'continuous' };                      // 自意識過剰型
+    | { kind: "never" } // 没頭型
+    | { kind: "session-boundary" } // 内省型（区切りで振り返る）
+    | { kind: "on-query" } // 尋ねられたときだけ
+    | { kind: "periodic"; intervalMs: number } // 周期的
+    | { kind: "continuous" }; // 自意識過剰型
 
   /** 読んだ内容をどう扱うか */
   readonly framing:
-    | 'own'         // 内省型・自意識過剰型：「自分が X した」
-    | 'distant'     // 解離型：「身体が X したらしい」
-    | 'absent';     // 没頭型：読むが使わない
+    | "own" // 内省型・自意識過剰型：「自分が X した」
+    | "distant" // 解離型：「身体が X したらしい」
+    | "absent"; // 没頭型：読むが使わない
 
   /** 読む量（直近 N 件） */
   readonly windowSize: number;

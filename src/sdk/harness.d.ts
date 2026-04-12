@@ -9,8 +9,8 @@
  * 抽象 reaction の emit（via custom trigger）だけ。
  */
 
-import type { HarnessContext } from './context';
-import type { Trigger, ReactionType } from './reaction';
+import type { HarnessContext } from "./context";
+import type { Trigger, ReactionType } from "./reaction";
 
 // ─── Harness automation ───────────────────────────────────
 

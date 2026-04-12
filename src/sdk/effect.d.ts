@@ -8,7 +8,7 @@
  * lifecycle が短く、memory も reaction も持たない。
  */
 
-import type { EffectContext } from './context';
+import type { EffectContext } from "./context";
 
 // ─── Effect runner ────────────────────────────────────────
 
@@ -60,7 +60,7 @@ export type EffectRunner<TOptions = unknown> = (
  */
 export interface EffectDefinition<TOptions = unknown> {
   readonly id: string;
-  readonly type: 'effect';
+  readonly type: "effect";
   /** effect の実行関数 */
   readonly run: EffectRunner<TOptions>;
   /**

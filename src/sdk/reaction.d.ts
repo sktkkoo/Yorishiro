@@ -15,16 +15,16 @@
  * これ以外の custom reaction も `ReactionType` として受け入れられる。
  */
 export type StandardReactionType =
-  | 'startled'        // 驚き、予期しない event
-  | 'contemplative'   // 思考中、考え込み
-  | 'pleased'         // 肯定的、嬉しい
-  | 'distressed'      // エラー、困った状況
-  | 'curious'         // 興味、何かに気づいた
-  | 'focused'         // 集中、作業中
-  | 'acknowledging'   // 了解、頷き
-  | 'idle-fidget'     // 待機中の小動作
-  | 'confused'        // 混乱、分からない
-  | 'bored';          // 退屈、何もなくて間が持たない
+  | "startled" // 驚き、予期しない event
+  | "contemplative" // 思考中、考え込み
+  | "pleased" // 肯定的、嬉しい
+  | "distressed" // エラー、困った状況
+  | "curious" // 興味、何かに気づいた
+  | "focused" // 集中、作業中
+  | "acknowledging" // 了解、頷き
+  | "idle-fidget" // 待機中の小動作
+  | "confused" // 混乱、分からない
+  | "bored"; // 退屈、何もなくて間が持たない
 
 /**
  * 反応タイプ。標準 vocabulary + 任意の custom 文字列。
@@ -68,57 +68,57 @@ export type DispatchEvent =
   | SyntheticEvent;
 
 export interface PtyOutputEvent {
-  readonly kind: 'pty-output';
+  readonly kind: "pty-output";
   /** PTY から流れてきた生 text（ANSI escape を含む可能性） */
   readonly text: string;
   readonly timestamp: number;
 }
 
 export interface HookSignalEvent {
-  readonly kind: 'hook-signal';
+  readonly kind: "hook-signal";
   readonly signal: HookSignal;
   readonly timestamp: number;
 }
 
 export interface HookSignal {
-  readonly name: 'pre-tool-use' | 'post-tool-use' | 'user-prompt-submit' | 'stop' | 'notification';
+  readonly name: "pre-tool-use" | "post-tool-use" | "user-prompt-submit" | "stop" | "notification";
   readonly payload?: unknown;
 }
 
 export interface UserInputEvent {
-  readonly kind: 'user-input';
+  readonly kind: "user-input";
   readonly text: string;
   readonly timestamp: number;
 }
 
 export interface IdleEvent {
-  readonly kind: 'idle';
+  readonly kind: "idle";
   /** idle に入ってからの経過時間 (ms) */
   readonly durationMs: number;
   readonly timestamp: number;
 }
 
 export interface ToolActivityEvent {
-  readonly kind: 'tool-activity';
-  readonly activity: 'reading' | 'writing' | 'running' | 'none';
+  readonly kind: "tool-activity";
+  readonly activity: "reading" | "writing" | "running" | "none";
   readonly timestamp: number;
 }
 
 export interface WindowEvent {
-  readonly kind: 'window';
-  readonly change: 'resize' | 'focus' | 'blur';
+  readonly kind: "window";
+  readonly change: "resize" | "focus" | "blur";
   readonly timestamp: number;
 }
 
 export interface SceneChangeEvent {
-  readonly kind: 'scene-change';
+  readonly kind: "scene-change";
   readonly fromId: string | null;
   readonly toId: string;
   readonly timestamp: number;
 }
 
 export interface CharmCommandEvent {
-  readonly kind: 'charm-command';
+  readonly kind: "charm-command";
   readonly command: string;
   readonly timestamp: number;
 }
@@ -163,7 +163,7 @@ export interface CharmCommandEvent {
  * 将来の改良余地。
  */
 export interface SyntheticEvent {
-  readonly kind: 'synthetic';
+  readonly kind: "synthetic";
   /**
    * 発行元のメタデータ。**runtime が `ctx.emitEvent` 呼び出し時に
    * 自動で埋める**（handler 側が指定する必要はない、できない）。
@@ -175,7 +175,7 @@ export interface SyntheticEvent {
    * pack の追跡・debugging・log attribution に使う。
    */
   readonly source: {
-    readonly type: 'harness' | 'persona';
+    readonly type: "harness" | "persona";
     readonly packId: string;
   };
   /**
