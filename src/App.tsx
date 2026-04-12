@@ -10,6 +10,7 @@ import Terminal from "./terminal";
 import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
+const VRM_STORAGE_KEY = "charminal:vrm";
 
 /**
  * Built-in triggers that map DispatchEvents to standard reactions.
@@ -44,6 +45,9 @@ const builtInTriggers: ReadonlyArray<Trigger> = [
 
 function App() {
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [vrmPath, setVrmPath] = useState<string | null>(() =>
+    localStorage.getItem(VRM_STORAGE_KEY),
+  );
 
   // ── Runtime stack (stable across re-renders) ────────────────
 
@@ -104,11 +108,47 @@ function App() {
     }
   }, []);
 
+  // ── VRM import ──────────────────────────────────────────────
+
+  const handleLoadVrm = useCallback(async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { invoke } = await import("@tauri-apps/api/core");
+      const selected = await open({
+        title: "VRM ファイルを選択",
+        filters: [{ name: "VRM", extensions: ["vrm"] }],
+      });
+      if (selected) {
+        const dest = await invoke<string>("import_vrm", { src: selected as string });
+        setVrmPath(dest);
+        localStorage.setItem(VRM_STORAGE_KEY, dest);
+      }
+    } catch {
+      // Dialog not available outside Tauri
+    }
+  }, []);
+
+  const vrmName = useMemo(
+    () =>
+      vrmPath
+        ? (vrmPath
+            .split("/")
+            .pop()
+            ?.replace(/\.vrm$/i, "") ?? null)
+        : null,
+    [vrmPath],
+  );
+
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
   return (
     <div className="app">
-      <Sidebar folderName={folderName} onPickFolder={handlePickFolder} />
+      <Sidebar
+        folderName={folderName}
+        onPickFolder={handlePickFolder}
+        vrmName={vrmName}
+        onLoadVrm={handleLoadVrm}
+      />
       <Terminal key={cwd ?? "__default__"} cwd={cwd} perception={perception} />
     </div>
   );

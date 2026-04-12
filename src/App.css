@@ -88,6 +88,48 @@ body,
   font-size: 12px;
 }
 
+.vrm-loaded {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #4dd9cf;
+}
+
+.vrm-loaded-icon {
+  font-size: 48px;
+  opacity: 0.6;
+}
+
+.vrm-loaded-name {
+  font-size: 12px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 12px;
+  background: #132030;
+  border: 1px solid #1a2a3a;
+  border-radius: 6px;
+  color: #a0b4c8;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.avatar-btn:hover {
+  background: #1a2a3a;
+  color: #4dd9cf;
+}
+
 /* ── Terminal ───────────────────────────────────────── */
 .terminal-container {
   flex: 1;
