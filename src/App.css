@@ -20,7 +20,8 @@ body,
 /* ── Layout ─────────────────────────────────────────── */
 .app {
   display: flex;
-  height: 100%;
+  height: 100vh;
+  width: 100vw;
 }
 
 /* ── Sidebar ────────────────────────────────────────── */
@@ -30,32 +31,36 @@ body,
   display: flex;
   flex-direction: column;
   background: #0a1118;
-  border-right: 1px solid #1a2a3a;
+  border-right: 1px solid rgba(59, 80, 104, 0.5);
   padding: 12px;
+  overflow: hidden;
 }
 
 .folder-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  background: #132030;
-  border: 1px solid #1a2a3a;
-  border-radius: 6px;
-  color: #a0b4c8;
+  margin-bottom: 8px;
+  background: #243447;
+  border: 1px solid rgba(59, 80, 104, 0.5);
+  border-radius: 8px;
+  color: #a8b8cc;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .folder-btn:hover {
-  background: #1a2a3a;
+  background: rgba(77, 217, 207, 0.1);
   color: #eceff4;
 }
 
 .folder-icon {
-  font-size: 14px;
+  flex-shrink: 0;
 }
 
 .folder-name {
@@ -64,11 +69,17 @@ body,
   white-space: nowrap;
 }
 
+/* ── Character area ─────────────────────────────────── */
 .charactor-container {
   flex: 1;
+  min-height: 0;
+  width: calc(100% + 24px);
+  margin: 0 -12px;
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, rgba(77, 217, 207, 0.06) 0%, transparent 70%);
 }
 
 .vrm-placeholder {
@@ -91,7 +102,6 @@ body,
 .vrm-container {
   width: 100%;
   height: 100%;
-  position: relative;
 }
 
 .vrm-container canvas {
@@ -108,6 +118,7 @@ body,
   font-size: 12px;
 }
 
+/* ── Avatar button ──────────────────────────────────── */
 .avatar-btn {
   display: flex;
   align-items: center;
@@ -115,18 +126,21 @@ body,
   gap: 6px;
   width: 100%;
   padding: 8px 12px;
-  background: #132030;
-  border: 1px solid #1a2a3a;
-  border-radius: 6px;
-  color: #a0b4c8;
+  margin-top: 8px;
+  background: #243447;
+  border: 1px solid rgba(59, 80, 104, 0.5);
+  border-radius: 8px;
+  color: #a8b8cc;
   font-size: 12px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s;
 }
 
 .avatar-btn:hover {
-  background: #1a2a3a;
-  color: #4dd9cf;
+  background: rgba(77, 217, 207, 0.1);
+  color: #eceff4;
 }
 
 /* ── Terminal ───────────────────────────────────────── */
@@ -135,7 +149,6 @@ body,
   overflow: hidden;
 }
 
-/* xterm.js fills parent */
 .terminal-container .xterm {
   height: 100%;
 }
