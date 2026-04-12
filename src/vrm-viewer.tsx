@@ -1,22 +1,37 @@
 /**
- * VrmViewer — minimal Three.js + @pixiv/three-vrm renderer.
+ * VrmViewer — Three.js + @pixiv/three-vrm renderer, delegating to Body primitive.
  *
- * Phase 3.5: static render only (no expressions, no animation playback).
- * Rest pose applied so the model isn't in T-pose.
- * Spring bones updated via vrm.update(delta) each frame.
+ * Responsibilities (renderer only):
+ * - Canvas, WebGLRenderer, Scene, Camera, Lighting
+ * - Resize handling via ResizeObserver
+ * - VRM loading via GLTFLoader + VRMLoaderPlugin
+ * - Camera auto-follow (head bone tracking)
+ *
+ * Body primitive owns all VRM manipulation:
+ * - Procedural animation (breathing, blink, idle eye)
+ * - Expression blending
+ * - VRMA clip playback
+ * - Gaze control
+ *
+ * Body instance is surfaced via onBodyReady callback so the
+ * runtime stack can wire it into PersonaContext.character.
  */
 
 import { type VRM, type VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-vrm";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { applyBreathing, BlinkSystem, IdleEyeSystem } from "./vrm-procedural";
+import { Body } from "./core/body";
 
 interface VrmViewerProps {
   readonly url: string;
+  readonly onBodyReady?: (body: Body | null) => void;
 }
 
-/** Lower arms from T-pose to a natural rest position. */
+/**
+ * Lower arms from T-pose to a natural rest position + relaxed finger curl.
+ * Ported from old Charminal's bodySystem.ts setupRestPose.
+ */
 function setupRestPose(vrm: VRM): void {
   const humanoid = vrm.humanoid;
   if (!humanoid) return;
@@ -26,7 +41,7 @@ function setupRestPose(vrm: VRM): void {
     if (bone) bone.rotation[axis] = rad;
   };
 
-  // Upper arms down
+  // Upper arms down from T-pose
   set("rightUpperArm", "z", -1.35);
   set("leftUpperArm", "z", 1.35);
   set("rightUpperArm", "x", 0.1);
@@ -35,9 +50,42 @@ function setupRestPose(vrm: VRM): void {
   // Lower arms slightly bent
   set("rightLowerArm", "z", -0.2);
   set("leftLowerArm", "z", 0.2);
+
+  // Straighten wrists — upper arm rotation causes slight upward bend
+  set("leftHand", "z", 0.2);
+  set("rightHand", "z", -0.2);
+
+  // Relaxed finger curl — proximal > intermediate > distal で自然なカーブ
+  const fingerCurl: ReadonlyArray<[string, number]> = [
+    ["IndexProximal", 0.25],
+    ["IndexIntermediate", 0.35],
+    ["IndexDistal", 0.2],
+    ["MiddleProximal", 0.3],
+    ["MiddleIntermediate", 0.4],
+    ["MiddleDistal", 0.25],
+    ["RingProximal", 0.35],
+    ["RingIntermediate", 0.45],
+    ["RingDistal", 0.25],
+    ["LittleProximal", 0.4],
+    ["LittleIntermediate", 0.5],
+    ["LittleDistal", 0.3],
+  ];
+  for (const [suffix, angle] of fingerCurl) {
+    set(`left${suffix}` as VRMHumanBoneName, "x", angle);
+    set(`right${suffix}` as VRMHumanBoneName, "x", angle);
+  }
+
+  // 親指 — 軸が異なる、軽く内側に畳む
+  for (const side of ["left", "right"] as const) {
+    const sign = side === "left" ? 1 : -1;
+    set(`${side}ThumbMetacarpal` as VRMHumanBoneName, "x", 0.2);
+    set(`${side}ThumbMetacarpal` as VRMHumanBoneName, "z", sign * 0.3);
+    set(`${side}ThumbProximal` as VRMHumanBoneName, "x", 0.15);
+    set(`${side}ThumbDistal` as VRMHumanBoneName, "x", 0.1);
+  }
 }
 
-export default function VrmViewer({ url }: VrmViewerProps) {
+export default function VrmViewer({ url, onBodyReady }: VrmViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,7 +94,7 @@ export default function VrmViewer({ url }: VrmViewerProps) {
 
     let alive = true;
     let animationId = 0;
-    let currentVrm: VRM | null = null;
+    let currentBody: Body | null = null;
     let trackHead: THREE.Object3D | null = null;
     const headWorldPos = new THREE.Vector3();
 
@@ -118,13 +166,16 @@ export default function VrmViewer({ url }: VrmViewerProps) {
         vrm.humanoid?.update();
 
         scene.add(vrm.scene);
-        currentVrm = vrm;
+
+        // Create Body primitive — owns all VRM manipulation
+        currentBody = new Body(vrm);
+        onBodyReady?.(currentBody);
 
         // Force world matrix update so bone world positions are accurate
         vrm.scene.updateWorldMatrix(true, true);
         vrm.update(0);
 
-        // Camera initial placement — head bone based (旧 repo の auto-follow 相当)
+        // Camera initial placement — head bone based
         const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
         trackHead = headBone ?? null;
 
@@ -142,11 +193,6 @@ export default function VrmViewer({ url }: VrmViewerProps) {
       },
     );
 
-    // ── Procedural subsystems ─────────────────────────
-
-    const blinkSystem = new BlinkSystem();
-    const eyeSystem = new IdleEyeSystem();
-
     // ── Render loop ───────────────────────────────────
 
     const clock = new THREE.Clock();
@@ -157,17 +203,12 @@ export default function VrmViewer({ url }: VrmViewerProps) {
       const delta = clock.getDelta();
       const elapsed = clock.getElapsedTime();
       handleResize();
-      if (currentVrm) {
-        // Procedural animation — handler 不要で常時動く生体運動
-        applyBreathing(currentVrm, elapsed);
-        blinkSystem.update(delta);
-        blinkSystem.apply(currentVrm);
-        eyeSystem.update(delta);
-        eyeSystem.apply(currentVrm);
 
-        currentVrm.update(delta);
+      if (currentBody) {
+        // Body drives all VRM subsystems (blink, eye, expressions, animation, breathing, spring bones)
+        currentBody.update(delta, elapsed);
 
-        // Camera auto-follow: smoothly track head bone Y (旧 repo CameraController 相当)
+        // Camera auto-follow: smoothly track head bone Y
         if (trackHead) {
           trackHead.getWorldPosition(headWorldPos);
           const desiredY = headWorldPos.y - 0.05;
@@ -179,30 +220,37 @@ export default function VrmViewer({ url }: VrmViewerProps) {
     }
     animationId = requestAnimationFrame(animate);
 
-    // ── Cleanup ───────────────────────────────────────
+    // ��─ Cleanup ───────────────────────────────────────
 
     return () => {
       alive = false;
       cancelAnimationFrame(animationId);
       resizeObserver.disconnect();
 
-      if (currentVrm) {
-        scene.remove(currentVrm.scene);
-        currentVrm.scene.traverse((obj) => {
-          if (obj instanceof THREE.Mesh) {
-            obj.geometry?.dispose();
-            if (Array.isArray(obj.material)) {
-              for (const mat of obj.material) mat.dispose();
-            } else {
-              obj.material?.dispose();
+      if (currentBody) {
+        currentBody.dispose();
+        onBodyReady?.(null);
+
+        // Remove VRM scene (Body doesn't own the scene graph)
+        const vrmScene = scene.children.find((c) => c.rotation.y === Math.PI);
+        if (vrmScene) {
+          scene.remove(vrmScene);
+          vrmScene.traverse((obj) => {
+            if (obj instanceof THREE.Mesh) {
+              obj.geometry?.dispose();
+              if (Array.isArray(obj.material)) {
+                for (const mat of obj.material) mat.dispose();
+              } else {
+                obj.material?.dispose();
+              }
             }
-          }
-        });
+          });
+        }
       }
       renderer.dispose();
       canvas.remove();
     };
-  }, [url]);
+  }, [url, onBodyReady]);
 
   return <div ref={containerRef} className="vrm-container" />;
 }

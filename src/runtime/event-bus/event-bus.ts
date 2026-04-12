@@ -180,6 +180,14 @@ export class EventBus {
       matched.push({ entry, reactionEvent });
     }
 
+    // DEBUG: event dispatch tracing (skip high-frequency pty-output/user-input)
+    if (event.kind !== "pty-output" && event.kind !== "user-input") {
+      console.log(
+        `[EventBus] ${event.kind} → matched=${matched.length}`,
+        matched.map((m) => m.reactionEvent.reaction),
+      );
+    }
+
     if (matched.length === 0) return;
 
     // Priority sort: stable descending by trigger.priority. Equal priority falls

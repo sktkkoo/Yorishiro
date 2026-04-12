@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import type { Body } from "./core/body";
 
 const VrmViewer = lazy(() => import("./vrm-viewer"));
 
@@ -7,9 +8,16 @@ interface SidebarProps {
   readonly onPickFolder: () => void;
   readonly vrmUrl: string | null;
   readonly onLoadVrm: () => void;
+  readonly onBodyReady?: (body: Body | null) => void;
 }
 
-export default function Sidebar({ folderName, onPickFolder, vrmUrl, onLoadVrm }: SidebarProps) {
+export default function Sidebar({
+  folderName,
+  onPickFolder,
+  vrmUrl,
+  onLoadVrm,
+  onBodyReady,
+}: SidebarProps) {
   return (
     <div className="sidebar">
       <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
@@ -20,7 +28,7 @@ export default function Sidebar({ folderName, onPickFolder, vrmUrl, onLoadVrm }:
       <div className="charactor-container">
         {vrmUrl ? (
           <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
-            <VrmViewer url={vrmUrl} />
+            <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} />
           </Suspense>
         ) : (
           <div className="vrm-placeholder">

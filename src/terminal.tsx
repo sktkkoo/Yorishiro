@@ -141,12 +141,7 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
         perceptionRef?.onPtyOutput(text);
       };
 
-      // Hook signal listener
-      const unlistenHook = await listen<string>("hook-signal", (event) => {
-        if (!alive) return;
-        perceptionRef?.onHookSignal(event.payload);
-      });
-      disposables.push(unlistenHook);
+      // NOTE: hook-signal listener is in App.tsx (global, survives hot-reload)
 
       // PTY exit listener
       const unlistenExit = await listen<{ code: number }>("pty-exit", (event) => {

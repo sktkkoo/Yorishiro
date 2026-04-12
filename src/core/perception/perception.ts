@@ -114,6 +114,7 @@ export class Perception {
    * Accepts the raw JSON string from the hook server.
    */
   onHookSignal(raw: string): void {
+    console.log("[Perception] hook →", raw.slice(0, 60), "disposed:", this.disposed); // DEBUG: hook chain
     if (this.disposed) return;
     this.lastActivityAt = this.time.now();
 

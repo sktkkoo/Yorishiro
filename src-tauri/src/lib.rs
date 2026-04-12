@@ -76,6 +76,12 @@ async fn pty_detach(state: State<'_, PtyState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Drain queued hook signals (polling fallback for when Tauri emit doesn't reach webview).
+#[tauri::command]
+async fn poll_hook_signals() -> Vec<String> {
+    pty::drain_hook_signals()
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
@@ -110,7 +116,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::new())
         .invoke_handler(tauri::generate_handler![
-            pty_spawn, pty_write, pty_resize, pty_kill, pty_attach, pty_detach, import_vrm
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill,
+            pty_attach,
+            pty_detach,
+            import_vrm,
+            poll_hook_signals
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());

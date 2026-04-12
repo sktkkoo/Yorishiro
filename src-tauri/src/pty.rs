@@ -6,6 +6,19 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter, Manager};
 
+/// Queue of hook signals for frontend polling (fallback when Tauri emit doesn't reach webview).
+static HOOK_SIGNAL_QUEUE: std::sync::LazyLock<Mutex<Vec<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Drain all queued hook signals. Called by the poll_hook_signals Tauri command.
+pub fn drain_hook_signals() -> Vec<String> {
+    if let Ok(mut q) = HOOK_SIGNAL_QUEUE.lock() {
+        q.drain(..).collect()
+    } else {
+        Vec::new()
+    }
+}
+
 /// Acquire a Mutex lock, recovering from poison (prior thread panic) instead of propagating.
 /// In a desktop app, cascading panics from poisoned locks are worse than proceeding with
 /// potentially inconsistent state — the PTY will be killed/respawned on next user action anyway.
@@ -79,16 +92,17 @@ impl RingBuffer {
 const HOOK_SERVER_PORT: u16 = 19001;
 
 fn build_hooks_json(port: u16) -> String {
-    let curl_simple = |body: &str| -> String {
+    // Each hook command: write to debug log AND curl the hook server
+    let hook_cmd = |body: &str| -> String {
         format!(
-            "curl -s -m 1 -X POST -d '{}' http://127.0.0.1:{}/hook",
-            body, port
+            "echo '$(date +%H:%M:%S) {}' >> /tmp/charminal-hook-test.log; curl -s -m 1 -X POST -d '{}' http://127.0.0.1:{}/hook",
+            body, body, port
         )
     };
-    let curl_stdin = |endpoint: &str| -> String {
+    let hook_cmd_stdin = |endpoint: &str, label: &str| -> String {
         format!(
-            "cat | curl -s -m 1 -X POST -d @- http://127.0.0.1:{}{}",
-            port, endpoint
+            "echo '$(date +%H:%M:%S) {}' >> /tmp/charminal-hook-test.log; cat | curl -s -m 1 -X POST -d @- http://127.0.0.1:{}{}",
+            label, port, endpoint
         )
     };
     format!(
@@ -112,16 +126,16 @@ fn build_hooks_json(port: u16) -> String {
     }}]
   }}
 }}"#,
-        curl_simple(r#"{\"event\":\"prompt\"}"#),
-        curl_stdin("/hook/pre-tool-use"),
-        curl_stdin("/hook/post-tool-failure"),
-        curl_simple(r#"{\"event\":\"stop\"}"#),
+        hook_cmd(r#"{\"event\":\"prompt\"}"#),
+        hook_cmd_stdin("/hook/pre-tool-use", "pre-tool-use"),
+        hook_cmd_stdin("/hook/post-tool-failure", "post-tool-failure"),
+        hook_cmd(r#"{\"event\":\"stop\"}"#),
     )
 }
 
 /// Start a minimal HTTP server that receives hook signals from Claude Code.
-/// Emits Tauri event "hook-signal" with the JSON body for each request.
-pub fn start_hook_server(app: AppHandle) {
+/// Pushes each signal into `HOOK_SIGNAL_QUEUE` for frontend polling.
+pub fn start_hook_server(_app: AppHandle) {
     std::thread::spawn(move || {
         let listener = match TcpListener::bind(format!("127.0.0.1:{}", HOOK_SERVER_PORT)) {
             Ok(l) => l,
@@ -172,7 +186,10 @@ pub fn start_hook_server(app: AppHandle) {
                         body.to_string()
                     };
 
-                    let _ = app.emit("hook-signal", final_body);
+                    // Push to polling queue — frontend drains via poll_hook_signals
+                    if let Ok(mut q) = HOOK_SIGNAL_QUEUE.lock() {
+                        q.push(final_body);
+                    }
                 }
             }
             let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";

@@ -1,10 +1,16 @@
 import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import persona from "../bundled-packs/personas/charminal-default/persona";
+import type { Body } from "./core/body";
+import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
-import { PersonaRegistry } from "./runtime/persona-registry";
+import {
+  createRealPersonaContextFactory,
+  createStubPersonaContextFactory,
+  PersonaRegistry,
+} from "./runtime/persona-registry";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
@@ -56,6 +62,7 @@ function App() {
     bus: EventBus;
     registry: PersonaRegistry;
     perception: Perception;
+    logBridge: LogBridge;
   } | null>(null);
 
   if (runtimeRef.current === null) {
@@ -65,6 +72,7 @@ function App() {
       error: (msg, meta) => console.error(`[charminal] ${msg}`, meta),
     };
     const bus = new EventBus({ time, logger });
+    const logBridge = new LogBridge({ time });
     const registry = new PersonaRegistry({ bus, time, logger });
     const perception = new Perception({ bus, time });
 
@@ -78,17 +86,60 @@ function App() {
     };
     registry.register(augmented);
 
-    runtimeRef.current = { time, bus, registry, perception };
+    runtimeRef.current = { time, bus, registry, perception, logBridge };
   }
 
-  const perception = runtimeRef.current.perception;
+  const { perception, registry, logBridge } = runtimeRef.current;
 
-  // Cleanup on unmount
+  // ── Body ↔ PersonaRegistry wiring ──────────────────────────
+
+  const handleBodyReady = useCallback(
+    (body: Body | null) => {
+      if (body) {
+        registry.setContextFactory(createRealPersonaContextFactory({ body, logBridge }));
+      } else {
+        registry.setContextFactory(createStubPersonaContextFactory());
+      }
+    },
+    [registry, logBridge],
+  );
+
+  // ── Hook-signal listener (global, independent of PTY lifecycle) ──
+
   useEffect(() => {
-    return () => {
-      runtimeRef.current?.perception.dispose();
+    let polling = true;
+    console.log("[App] starting hook-signal polling..."); // DEBUG: polling lifecycle
+
+    const poll = async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      console.log("[App] polling loop started"); // DEBUG: polling lifecycle
+      while (polling) {
+        try {
+          const signals = await invoke<string[]>("poll_hook_signals");
+          if (signals.length > 0) {
+            console.log("[App] polled signals:", signals); // DEBUG: hook delivery
+          }
+          for (const sig of signals) {
+            perception.onHookSignal(sig);
+          }
+        } catch (err) {
+          console.warn("[App] poll_hook_signals failed:", err); // DEBUG: polling error
+        }
+        await new Promise((r) => setTimeout(r, 200));
+      }
     };
-  }, []);
+    poll().catch((err) => {
+      console.error("[App] polling setup failed:", err); // DEBUG: polling error
+    });
+
+    return () => {
+      polling = false;
+    };
+  }, [perception]);
+
+  // NOTE: perception.dispose() is NOT called in useEffect cleanup.
+  // StrictMode runs cleanup even for [] deps, which would dispose the
+  // shared Perception instance. The idle timer is harmless to leave running.
 
   // ── Folder picker ─────────────────────────────────────────────
 
@@ -152,8 +203,14 @@ function App() {
         onPickFolder={handlePickFolder}
         vrmUrl={vrmUrl}
         onLoadVrm={handleLoadVrm}
+        onBodyReady={handleBodyReady}
       />
-      <Terminal key={cwd ?? "__default__"} cwd={cwd} perception={perception} />
+      <Terminal
+        key={cwd ?? "__default__"}
+        cwd={cwd}
+        systemPrompt={persona.thinking.systemPromptAddition}
+        perception={perception}
+      />
     </div>
   );
 }

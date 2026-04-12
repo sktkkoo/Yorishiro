@@ -122,7 +122,7 @@ const filterByCooldown = (
 export class PersonaRegistry {
   private readonly bus: EventBus;
   private readonly time: Time;
-  private readonly contextFactory: PersonaContextFactory;
+  private contextFactory: PersonaContextFactory;
   private readonly logger: EventBusLogger;
   private readonly random: () => number;
   private readonly personas = new Map<string, PersonaState>();
@@ -133,6 +133,14 @@ export class PersonaRegistry {
     this.contextFactory = deps.contextFactory ?? createStubPersonaContextFactory();
     this.logger = deps.logger ?? noopLogger;
     this.random = deps.random ?? Math.random;
+  }
+
+  /**
+   * Replace the context factory. Used when Body becomes available
+   * after initial construction (VRM loads asynchronously).
+   */
+  setContextFactory(factory: PersonaContextFactory): void {
+    this.contextFactory = factory;
   }
 
   register(def: PersonaDefinition): Registration {
@@ -176,6 +184,16 @@ export class PersonaRegistry {
 
   size(): number {
     return this.personas.size;
+  }
+
+  /** All registered persona IDs. Snapshot; order is insertion order. */
+  registeredIds(): string[] {
+    return [...this.personas.keys()];
+  }
+
+  /** Look up a persona definition by pack ID. */
+  getDefinition(packId: string): PersonaDefinition | undefined {
+    return this.personas.get(packId)?.def;
   }
 
   // ─── internals ────────────────────────────────────────────────────

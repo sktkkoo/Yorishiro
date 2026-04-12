@@ -6,6 +6,7 @@
  */
 
 export { PersonaRegistry, type PersonaRegistryDeps } from "./persona-registry";
+export { createRealPersonaContextFactory, type RealContextDeps } from "./real-context";
 export {
   createStubPersonaContextFactory,
   type PersonaContextFactory,

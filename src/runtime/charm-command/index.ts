@@ -1,9 +1,46 @@
 /**
- * CharmCommandDispatcher — /charm command の parser + dispatcher。人間と AI の両方が同じ command surface を使う
+ * CharmCommandDispatcher barrel + runtime integration adapter.
  *
- * Philosophy: docs/design-record/2026-04-11-design-exploration.md Section 4.4「Creator experience」+ 4.5「MCP 互換の形」
+ * Philosophy: docs/next/charm-command-ux.md
  * SDK surface: src/sdk/context.d.ts の CharmAPI（573）と CharmCommandEvent（reaction.d.ts 120）
- *
- * 本 skeleton は Phase 3.3(g.1) で配置。real 実装は post-MVP で TDD 予定。
  */
-export class CharmCommandDispatcher {}
+
+export {
+  CharmCommandDispatcher,
+  type CharmPersonaInfo,
+  type CharmRuntimeView,
+  type CommandEntry,
+  type CommandExecutor,
+  type ParsedCommand,
+} from "./charm-command";
+
+// ─── Runtime integration ──────────────────────────────────────
+
+import type { LogBridge } from "../../core/log-bridge";
+import type { Time } from "../../core/time";
+import type { PersonaRegistry } from "../persona-registry";
+import type { CharmRuntimeView } from "./charm-command";
+
+/**
+ * Wire real primitives into a {@link CharmRuntimeView}.
+ * Called once during app bootstrap.
+ */
+export function createRuntimeView(deps: {
+  readonly personaRegistry: PersonaRegistry;
+  readonly logBridge: LogBridge;
+  readonly time: Time;
+  readonly startedAt: number;
+}): CharmRuntimeView {
+  return {
+    personas: () => {
+      return deps.personaRegistry.registeredIds().map((id) => {
+        const def = deps.personaRegistry.getDefinition(id);
+        return { id, name: def?.name ?? id };
+      });
+    },
+    recentLog: (count) => deps.logBridge.tail(count),
+    logSize: () => deps.logBridge.size(),
+    now: () => deps.time.now(),
+    startedAt: deps.startedAt,
+  };
+}
