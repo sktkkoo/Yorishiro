@@ -10,6 +10,7 @@ import { type VRM, type VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-v
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { applyBreathing, BlinkSystem, IdleEyeSystem } from "./vrm-procedural";
 
 interface VrmViewerProps {
   readonly url: string;
@@ -139,6 +140,11 @@ export default function VrmViewer({ url }: VrmViewerProps) {
       },
     );
 
+    // ── Procedural subsystems ─────────────────────────
+
+    const blinkSystem = new BlinkSystem();
+    const eyeSystem = new IdleEyeSystem();
+
     // ── Render loop ───────────────────────────────────
 
     const clock = new THREE.Clock();
@@ -147,8 +153,16 @@ export default function VrmViewer({ url }: VrmViewerProps) {
       if (!alive) return;
       animationId = requestAnimationFrame(animate);
       const delta = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
       handleResize();
       if (currentVrm) {
+        // Procedural animation — handler 不要で常時動く生体運動
+        applyBreathing(currentVrm, elapsed);
+        blinkSystem.update(delta);
+        blinkSystem.apply(currentVrm);
+        eyeSystem.update(delta);
+        eyeSystem.apply(currentVrm);
+
         currentVrm.update(delta);
       }
       renderer.render(scene, camera);
