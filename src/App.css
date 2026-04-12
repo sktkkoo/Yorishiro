@@ -88,25 +88,20 @@ body,
   font-size: 12px;
 }
 
-.vrm-loaded {
+.vrm-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.vrm-loading {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  color: #4dd9cf;
-}
-
-.vrm-loaded-icon {
-  font-size: 48px;
-  opacity: 0.6;
-}
-
-.vrm-loaded-name {
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #3b5068;
   font-size: 12px;
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .avatar-btn {

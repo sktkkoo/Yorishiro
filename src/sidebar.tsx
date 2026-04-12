@@ -1,11 +1,15 @@
+import { lazy, Suspense } from "react";
+
+const VrmViewer = lazy(() => import("./vrm-viewer"));
+
 interface SidebarProps {
   readonly folderName: string;
   readonly onPickFolder: () => void;
-  readonly vrmName: string | null;
+  readonly vrmUrl: string | null;
   readonly onLoadVrm: () => void;
 }
 
-export default function Sidebar({ folderName, onPickFolder, vrmName, onLoadVrm }: SidebarProps) {
+export default function Sidebar({ folderName, onPickFolder, vrmUrl, onLoadVrm }: SidebarProps) {
   return (
     <div className="sidebar">
       <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
@@ -14,11 +18,10 @@ export default function Sidebar({ folderName, onPickFolder, vrmName, onLoadVrm }
       </button>
 
       <div className="charactor-container">
-        {vrmName ? (
-          <div className="vrm-loaded">
-            <span className="vrm-loaded-icon">🧍</span>
-            <p className="vrm-loaded-name">{vrmName}</p>
-          </div>
+        {vrmUrl ? (
+          <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+            <VrmViewer url={vrmUrl} />
+          </Suspense>
         ) : (
           <div className="vrm-placeholder">
             <span className="vrm-placeholder-icon">🤖</span>
@@ -28,9 +31,7 @@ export default function Sidebar({ folderName, onPickFolder, vrmName, onLoadVrm }
       </div>
 
       <button type="button" className="avatar-btn" onClick={onLoadVrm}>
-        <span className="avatar-btn-label">
-          {vrmName ? "アバターを変更" : "アバターを読み込む"}
-        </span>
+        <span className="avatar-btn-label">{vrmUrl ? "アバターを変更" : "アバターを読み込む"}</span>
       </button>
     </div>
   );

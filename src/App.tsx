@@ -128,16 +128,20 @@ function App() {
     }
   }, []);
 
-  const vrmName = useMemo(
-    () =>
-      vrmPath
-        ? (vrmPath
-            .split("/")
-            .pop()
-            ?.replace(/\.vrm$/i, "") ?? null)
-        : null,
-    [vrmPath],
-  );
+  const [vrmUrl, setVrmUrl] = useState<string | null>(null);
+
+  // Convert filesystem path to Tauri asset URL
+  useEffect(() => {
+    if (!vrmPath) {
+      setVrmUrl(null);
+      return;
+    }
+    import("@tauri-apps/api/core")
+      .then(({ convertFileSrc }) => {
+        setVrmUrl(convertFileSrc(vrmPath));
+      })
+      .catch(() => setVrmUrl(null));
+  }, [vrmPath]);
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
@@ -146,7 +150,7 @@ function App() {
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}
-        vrmName={vrmName}
+        vrmUrl={vrmUrl}
         onLoadVrm={handleLoadVrm}
       />
       <Terminal key={cwd ?? "__default__"} cwd={cwd} perception={perception} />
