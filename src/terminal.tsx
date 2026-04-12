@@ -92,6 +92,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
       if (!alive) return;
       fitAddon.fit();
       loadWebgl();
+
       setPtyDeps({ term, fitAddon, container });
 
       if (!isTauri) {
@@ -152,31 +153,19 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
       });
       disposables.push(unlistenExit);
 
-      // Try attach first (WebView HMR / StrictMode re-mount), then spawn
-      let attached = false;
+      // Spawn PTY — pty_spawn internally kills any existing session first
+
       try {
-        attached = await invoke<boolean>("pty_attach", {
+        await invoke("pty_spawn", {
+          cols: term.cols,
+          rows: term.rows,
           cwd,
           onOutput,
         });
-      } catch {
-        // pty_attach not available or failed
-      }
-
-      if (!attached) {
-        if (!alive) return;
-        try {
-          await invoke("pty_spawn", {
-            cols: term.cols,
-            rows: term.rows,
-            cwd,
-            onOutput,
-          });
-        } catch (err) {
-          term.write(`\x1b[31mFailed to start claude: ${err}\x1b[0m\r\n`);
-          term.write("\x1b[90mMake sure claude CLI is installed and in your PATH.\x1b[0m\r\n");
-          return;
-        }
+      } catch (err) {
+        term.write(`\x1b[31mFailed to start claude: ${err}\x1b[0m\r\n`);
+        term.write("\x1b[90mMake sure claude CLI is installed and in your PATH.\x1b[0m\r\n");
+        return;
       }
 
       if (!alive) return;
@@ -220,6 +209,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
       // StrictMode's double-render would race with the second mount's
       // pty_attach/pty_spawn. The PTY survives across re-mounts;
       // the next mount's pty_attach atomically swaps the channel.
+
       alive = false;
       for (const d of disposables) d();
     };
