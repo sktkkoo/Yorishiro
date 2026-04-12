@@ -36,10 +36,11 @@ async fn pty_spawn(
     cols: u16,
     rows: u16,
     cwd: Option<String>,
+    system_prompt: Option<String>,
     on_output: Channel,
 ) -> Result<(), String> {
     let claude_bin = find_claude_binary();
-    state.spawn(app, cols, rows, cwd, &claude_bin, on_output)
+    state.spawn(app, cols, rows, cwd, &claude_bin, system_prompt, on_output)
 }
 
 #[tauri::command]

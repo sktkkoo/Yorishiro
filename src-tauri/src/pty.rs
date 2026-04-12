@@ -213,6 +213,7 @@ impl PtyState {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
         app: AppHandle,
@@ -220,6 +221,7 @@ impl PtyState {
         rows: u16,
         cwd: Option<String>,
         claude_binary: &str,
+        system_prompt: Option<String>,
         on_output: Channel,
     ) -> Result<(), String> {
         // Kill existing PTY if any
@@ -252,6 +254,11 @@ impl PtyState {
             .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
         cmd.arg("--settings");
         cmd.arg(hooks_path.to_str().unwrap_or_default());
+
+        if let Some(ref prompt) = system_prompt {
+            cmd.arg("--append-system-prompt");
+            cmd.arg(prompt);
+        }
 
         if let Some(ref dir) = cwd {
             cmd.cwd(dir);

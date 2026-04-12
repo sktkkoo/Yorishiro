@@ -7,12 +7,13 @@ import type { Perception } from "./core/perception";
 
 interface TerminalProps {
   readonly cwd: string | null;
+  readonly systemPrompt: string | null;
   readonly perception: Perception | null;
 }
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-export default function Terminal({ cwd, perception }: TerminalProps) {
+export default function Terminal({ cwd, systemPrompt, perception }: TerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [ptyDeps, setPtyDeps] = useState<{
     term: XTerm;
@@ -160,6 +161,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
           cols: term.cols,
           rows: term.rows,
           cwd,
+          systemPrompt,
           onOutput,
         });
       } catch (err) {
@@ -213,7 +215,7 @@ export default function Terminal({ cwd, perception }: TerminalProps) {
       alive = false;
       for (const d of disposables) d();
     };
-  }, [ptyDeps, cwd, perception]);
+  }, [ptyDeps, cwd, systemPrompt, perception]);
 
   return <div ref={containerRef} className="terminal-container" />;
 }
