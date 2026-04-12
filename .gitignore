@@ -26,3 +26,7 @@ dist-ssr
 # Charminal-specific
 .charminal/cache/
 $DATA/
+
+# Binary assets (rights unconfirmed)
+bundled-packs/shared/animations/*.vrma
+bundled-packs/shared/voices/

@@ -1,50 +1,116 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import type { Trigger } from "@charminal/sdk";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import persona from "../bundled-packs/personas/charminal-default/persona";
+import { Perception } from "./core/perception";
+import { Time } from "./core/time";
+import { EventBus, type EventBusLogger } from "./runtime/event-bus";
+import { PersonaRegistry } from "./runtime/persona-registry";
+import Sidebar from "./sidebar";
+import Terminal from "./terminal";
 import "./App.css";
 
-function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+const CWD_STORAGE_KEY = "charminal:cwd";
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
+/**
+ * Built-in triggers that map DispatchEvents to standard reactions.
+ * The flagship persona has no custom triggers; these provide the
+ * minimal wiring for Phase 3.5.
+ */
+const builtInTriggers: ReadonlyArray<Trigger> = [
+  {
+    id: "builtin:idle-to-fidget",
+    match: (event) => (event.kind === "idle" ? { reaction: "idle-fidget" } : null),
+  },
+  {
+    id: "builtin:stop-to-pleased",
+    match: (event) =>
+      event.kind === "hook-signal" && event.signal.name === "stop" ? { reaction: "pleased" } : null,
+  },
+  {
+    id: "builtin:prompt-to-acknowledging",
+    match: (event) =>
+      event.kind === "hook-signal" && event.signal.name === "user-prompt-submit"
+        ? { reaction: "acknowledging" }
+        : null,
+  },
+  {
+    id: "builtin:tool-to-contemplative",
+    match: (event) =>
+      event.kind === "hook-signal" && event.signal.name === "pre-tool-use"
+        ? { reaction: "contemplative" }
+        : null,
+  },
+];
+
+function App() {
+  const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+
+  // ── Runtime stack (stable across re-renders) ────────────────
+
+  const runtimeRef = useRef<{
+    time: Time;
+    bus: EventBus;
+    registry: PersonaRegistry;
+    perception: Perception;
+  } | null>(null);
+
+  if (runtimeRef.current === null) {
+    const time = new Time();
+    const logger: EventBusLogger = {
+      warn: (msg, meta) => console.warn(`[charminal] ${msg}`, meta),
+      error: (msg, meta) => console.error(`[charminal] ${msg}`, meta),
+    };
+    const bus = new EventBus({ time, logger });
+    const registry = new PersonaRegistry({ bus, time, logger });
+    const perception = new Perception({ bus, time });
+
+    // Register flagship persona with built-in triggers
+    const augmented = {
+      ...persona,
+      reflex: {
+        ...persona.reflex,
+        customTriggers: builtInTriggers,
+      },
+    };
+    registry.register(augmented);
+
+    runtimeRef.current = { time, bus, registry, perception };
   }
 
+  const perception = runtimeRef.current.perception;
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      runtimeRef.current?.perception.dispose();
+    };
+  }, []);
+
+  // ── Folder picker ─────────────────────────────────────────────
+
+  const handlePickFolder = useCallback(async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        directory: true,
+        title: "プロジェクトフォルダを選択",
+      });
+      if (selected) {
+        setCwd(selected as string);
+        localStorage.setItem(CWD_STORAGE_KEY, selected as string);
+      }
+    } catch {
+      // Dialog not available outside Tauri
+    }
+  }, []);
+
+  const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
+
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank" rel="noopener">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank" rel="noopener">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank" rel="noopener">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    <div className="app">
+      <Sidebar folderName={folderName} onPickFolder={handlePickFolder} />
+      <Terminal key={cwd ?? "__default__"} cwd={cwd} perception={perception} />
+    </div>
   );
 }
 
