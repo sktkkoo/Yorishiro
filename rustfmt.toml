@@ -1,0 +1,8 @@
+# Charminal Rust formatting config.
+#
+# rustfmt's default settings implement the official Rust Style Guide
+# (https://doc.rust-lang.org/style-guide/). We intentionally keep overrides
+# to a minimum so contributors get the canonical formatting.
+
+edition = "2021"
+newline_style = "Unix"

@@ -1,0 +1,32 @@
+# Charminal git hooks — see https://lefthook.dev/configuration/
+#
+# Split strategy:
+#   - pre-commit: fast, staged-file-scoped fixes (biome + rustfmt).
+#     Auto-fixed files are re-staged so the commit stays self-consistent.
+#   - pre-push: full gate (biome check, cargo fmt --check, cargo clippy).
+#     Clippy runs on the whole crate, so it is too slow for pre-commit.
+#
+# Run `npm run prepare` (or `npx lefthook install`) after cloning to wire up
+# .git/hooks.
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: biome
+      glob: "*.{js,jsx,ts,tsx,json,jsonc,css}"
+      run: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      stage_fixed: true
+    - name: rustfmt
+      glob: "*.rs"
+      run: rustfmt --edition 2021 {staged_files}
+      stage_fixed: true
+
+pre-push:
+  parallel: false
+  jobs:
+    - name: biome-check
+      run: npx biome check .
+    - name: cargo-fmt
+      run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+    - name: cargo-clippy
+      run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
