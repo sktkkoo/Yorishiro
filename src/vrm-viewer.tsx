@@ -47,6 +47,8 @@ export default function VrmViewer({ url }: VrmViewerProps) {
     let alive = true;
     let animationId = 0;
     let currentVrm: VRM | null = null;
+    let trackHead: THREE.Object3D | null = null;
+    const headWorldPos = new THREE.Vector3();
 
     // ── Scene ─────────────────────────────────────────
 
@@ -122,23 +124,15 @@ export default function VrmViewer({ url }: VrmViewerProps) {
         vrm.scene.updateWorldMatrix(true, true);
         vrm.update(0);
 
-        // Position camera based on head/chest bones (旧 repo と同じ計算)
+        // Camera initial placement — head bone based (旧 repo の auto-follow 相当)
         const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
-        const chestBone =
-          vrm.humanoid?.getNormalizedBoneNode("chest") ??
-          vrm.humanoid?.getNormalizedBoneNode("spine");
+        trackHead = headBone ?? null;
 
         const headPos = new THREE.Vector3();
-        const chestPos = new THREE.Vector3();
-
         if (headBone) headBone.getWorldPosition(headPos);
         else headPos.set(0, 1.6, 0);
 
-        if (chestBone) chestBone.getWorldPosition(chestPos);
-        else chestPos.set(0, 1.2, 0);
-
-        // Midpoint: chin~mid-chest for bust-up framing, -0.1 to show arms
-        const targetY = headPos.y * 0.6 + chestPos.y * 0.4 - 0.1;
+        const targetY = headPos.y - 0.05;
         camera.position.set(0, targetY, 1.1);
         camera.lookAt(0, targetY, 0);
       },
@@ -172,6 +166,14 @@ export default function VrmViewer({ url }: VrmViewerProps) {
         eyeSystem.apply(currentVrm);
 
         currentVrm.update(delta);
+
+        // Camera auto-follow: smoothly track head bone Y (旧 repo CameraController 相当)
+        if (trackHead) {
+          trackHead.getWorldPosition(headWorldPos);
+          const desiredY = headWorldPos.y - 0.05;
+          camera.position.y += (desiredY - camera.position.y) * Math.min(1.5 * delta, 1);
+          camera.lookAt(0, camera.position.y, 0);
+        }
       }
       renderer.render(scene, camera);
     }
