@@ -20,28 +20,17 @@ const VRM_STORAGE_KEY = "charminal:vrm";
 
 /**
  * Built-in triggers that map DispatchEvents to standard reactions.
- * The flagship persona has no custom triggers; these provide the
- * minimal wiring for Phase 3.5.
+ *
+ * Currently empty — motion firing felt intrusive during ordinary
+ * Claude Code turns. Handler definitions remain in persona.ts so
+ * wiring can be restored by re-adding entries here:
+ *
+ *   - idle → idle-fidget
+ *   - hook-signal "stop" → pleased
+ *   - hook-signal "user-prompt-submit" → acknowledging
+ *   - hook-signal "pre-tool-use" → contemplative
  */
-const builtInTriggers: ReadonlyArray<Trigger> = [
-  {
-    id: "builtin:idle-to-fidget",
-    match: (event) => (event.kind === "idle" ? { reaction: "idle-fidget" } : null),
-  },
-  {
-    id: "builtin:stop-to-pleased",
-    match: (event) =>
-      event.kind === "hook-signal" && event.signal.name === "stop" ? { reaction: "pleased" } : null,
-  },
-  // NOTE: prompt-to-acknowledging removed — 頷きモーションはプロンプト送信時に不要
-  {
-    id: "builtin:tool-to-contemplative",
-    match: (event) =>
-      event.kind === "hook-signal" && event.signal.name === "pre-tool-use"
-        ? { reaction: "contemplative" }
-        : null,
-  },
-];
+const builtInTriggers: ReadonlyArray<Trigger> = [];
 
 function App() {
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
@@ -88,12 +77,18 @@ function App() {
   // ── Body ↔ PersonaRegistry wiring ──────────────────────────
 
   const bodyRef = useRef<Body | null>(null);
+  const greetedRef = useRef(false);
+  const inTurnRef = useRef(false);
 
   const handleBodyReady = useCallback(
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
         registry.setContextFactory(createRealPersonaContextFactory({ body, logBridge }));
+        if (!greetedRef.current) {
+          greetedRef.current = true;
+          body.createCharacterAPI().play("anim:VRMA_small_nod");
+        }
       } else {
         registry.setContextFactory(createStubPersonaContextFactory());
       }
@@ -104,6 +99,8 @@ function App() {
   // ── Tool-activity → Body state wiring ─────────────────────
 
   useEffect(() => {
+    // Claude のターン中、tool-activity "none" は idle ではなく thinking に戻す。
+    // ターン境界: user-prompt-submit で true、stop で false。
     const mapActivity = (activity: string): EyeState => {
       switch (activity) {
         case "reading":
@@ -113,9 +110,9 @@ function App() {
         case "running":
           return "running";
         case "none":
-          return "idle";
+          return inTurnRef.current ? "thinking" : "idle";
         default:
-          return "idle";
+          return inTurnRef.current ? "thinking" : "idle";
       }
     };
 
@@ -127,10 +124,15 @@ function App() {
           if (event.kind === "tool-activity") {
             bodyRef.current?.setState(mapActivity(event.activity));
           }
+          if (event.kind === "hook-signal" && event.signal.name === "user-prompt-submit") {
+            inTurnRef.current = true;
+            bodyRef.current?.setState("thinking");
+          }
           if (event.kind === "hook-signal" && event.signal.name === "pre-tool-use") {
             bodyRef.current?.setState("thinking");
           }
           if (event.kind === "hook-signal" && event.signal.name === "stop") {
+            inTurnRef.current = false;
             bodyRef.current?.setState("idle");
           }
           return null; // never emit a reaction — side-effect only

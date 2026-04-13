@@ -104,7 +104,10 @@ export class Body {
   setState(state: EyeState): void {
     const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);
-    this.proceduralBones.isThinking = state === "thinking";
+    // "thinking family": Claude のターン中は writing 以外ずっと頭を揺らす。
+    // writing を除外するのは Typing.vrma と procedural head drift がぶつかるため。
+    this.proceduralBones.isThinking =
+      state === "thinking" || state === "reading" || state === "running";
     this.applyStateExpressions(state);
 
     // Reset idle relaxed timer when leaving idle
