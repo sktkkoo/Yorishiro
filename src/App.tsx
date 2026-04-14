@@ -87,7 +87,11 @@ function App() {
         registry.setContextFactory(createRealPersonaContextFactory({ body, logBridge }));
         if (!greetedRef.current) {
           greetedRef.current = true;
-          body.createCharacterAPI().play("anim:VRMA_small_nod");
+          // Delay the greeting nod so it feels like a considered "hello"
+          // instead of a reflex the moment the VRM appears on screen.
+          setTimeout(() => {
+            bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod");
+          }, 3000);
         }
       } else {
         registry.setContextFactory(createStubPersonaContextFactory());

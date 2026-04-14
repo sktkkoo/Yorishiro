@@ -36,9 +36,19 @@ interface ActiveAnimation {
   readonly priority: number;
   readonly startedAt: number;
   readonly loop: boolean;
+  /** Fade duration applied when a non-looping action reaches its last frame. */
+  readonly autoFadeOutMs: number;
   completionResolve: (() => void) | null;
   completionReject: ((err: unknown) => void) | null;
 }
+
+/**
+ * Default auto-fadeOut for non-looping animations after completion.
+ * Non-loop actions with `clampWhenFinished = true` otherwise hold their final
+ * pose on bones that procedural-bones doesn't override (lower arms, hands,
+ * fingers, upperArm .y), leaving a visible residue until the next clip fires.
+ */
+const DEFAULT_AUTO_FADE_OUT_MS = 400;
 
 let nextAnimId = 1;
 
@@ -61,7 +71,27 @@ export class AnimationPlayer {
       for (const anim of this.active.values()) {
         if (anim.action === finishedAction) {
           anim.completionResolve?.();
-          this.active.delete(anim.id);
+          if (anim.loop) {
+            this.active.delete(anim.id);
+          } else {
+            // Auto fade-out so the final-frame pose doesn't linger on bones
+            // procedural-bones leaves alone (hands, fingers, upperArm.y, etc.).
+            const fadeSec = anim.autoFadeOutMs / 1000;
+            if (fadeSec > 0) {
+              anim.action.fadeOut(fadeSec);
+              setTimeout(() => {
+                // Only stop if this entry is still the active one; it may have
+                // been replaced or cancelled during the fade window.
+                if (this.active.get(anim.id) === anim) {
+                  anim.action.stop();
+                  this.active.delete(anim.id);
+                }
+              }, anim.autoFadeOutMs);
+            } else {
+              anim.action.stop();
+              this.active.delete(anim.id);
+            }
+          }
           break;
         }
       }
@@ -131,6 +161,7 @@ export class AnimationPlayer {
       priority: opts.priority ?? 0,
       startedAt: performance.now(),
       loop: opts.loop ?? false,
+      autoFadeOutMs: opts.fadeOutMs ?? DEFAULT_AUTO_FADE_OUT_MS,
       completionResolve: resolve,
       completionReject: reject,
     };
