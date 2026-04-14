@@ -40,7 +40,21 @@ async fn pty_spawn(
     on_output: Channel,
 ) -> Result<(), String> {
     let claude_bin = find_claude_binary();
-    state.spawn(app, cols, rows, cwd, &claude_bin, system_prompt, on_output)
+    let plugin_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .map(|p| p.join("resources").join("charminal-plugin"));
+    state.spawn(
+        app,
+        cols,
+        rows,
+        cwd,
+        &claude_bin,
+        system_prompt,
+        plugin_dir,
+        on_output,
+    )
 }
 
 #[tauri::command]

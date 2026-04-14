@@ -1,0 +1,5 @@
+{
+  "name": "charminal",
+  "version": "0.1.0",
+  "description": "Charminal built-in commands, loaded per-session via --plugin-dir."
+}

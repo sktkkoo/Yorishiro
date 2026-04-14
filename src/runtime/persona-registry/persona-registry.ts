@@ -186,16 +186,6 @@ export class PersonaRegistry {
     return this.personas.size;
   }
 
-  /** All registered persona IDs. Snapshot; order is insertion order. */
-  registeredIds(): string[] {
-    return [...this.personas.keys()];
-  }
-
-  /** Look up a persona definition by pack ID. */
-  getDefinition(packId: string): PersonaDefinition | undefined {
-    return this.personas.get(packId)?.def;
-  }
-
   // ─── internals ────────────────────────────────────────────────────
 
   private createWrapper(state: PersonaState): ReactionHandler {

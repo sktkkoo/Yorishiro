@@ -167,7 +167,7 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
 
       if (!alive) return;
 
-      // Forward input to PTY
+      // Forward input to PTY (unmodified)
       let writeQueue: Promise<void> = Promise.resolve();
       const onDataDisposable = term.onData((data) => {
         perceptionRef?.onUserInput(data);

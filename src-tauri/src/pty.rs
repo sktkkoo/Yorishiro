@@ -105,6 +105,11 @@ fn build_hooks_json(port: u16) -> String {
             label, port, endpoint
         )
     };
+    // UserPromptSubmit: just a generic prompt event for Perception.
+    // `/charm` is handled by Claude Code's own custom-command pipeline
+    // (bundled-packs/charminal-plugin/commands/charm.md loaded via --plugin-dir)
+    // so no special detection or blocking is needed here anymore.
+    let user_prompt_cmd = hook_cmd(r#"{\"event\":\"prompt\"}"#);
     format!(
         r#"{{
   "hooks": {{
@@ -126,7 +131,7 @@ fn build_hooks_json(port: u16) -> String {
     }}]
   }}
 }}"#,
-        hook_cmd(r#"{\"event\":\"prompt\"}"#),
+        user_prompt_cmd,
         hook_cmd_stdin("/hook/pre-tool-use", "pre-tool-use"),
         hook_cmd_stdin("/hook/post-tool-failure", "post-tool-failure"),
         hook_cmd(r#"{\"event\":\"stop\"}"#),
@@ -239,6 +244,7 @@ impl PtyState {
         cwd: Option<String>,
         claude_binary: &str,
         system_prompt: Option<String>,
+        plugin_dir: Option<std::path::PathBuf>,
         on_output: Channel,
     ) -> Result<(), String> {
         // Kill existing PTY if any
@@ -272,6 +278,20 @@ impl PtyState {
             .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
         cmd.arg("--settings");
         cmd.arg(hooks_path.to_str().unwrap_or_default());
+
+        // Load Charminal's bundled plugin dir (contains /charm skill).
+        // Session-scoped; does not touch ~/.claude or the user's cwd.
+        if let Some(ref dir) = plugin_dir {
+            if dir.exists() {
+                cmd.arg("--plugin-dir");
+                cmd.arg(dir.to_str().unwrap_or_default());
+            } else {
+                eprintln!(
+                    "[pty.spawn] plugin_dir does not exist, skipping: {}",
+                    dir.display()
+                );
+            }
+        }
 
         if let Some(ref prompt) = system_prompt {
             cmd.arg("--append-system-prompt");
