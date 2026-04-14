@@ -90,7 +90,12 @@ function App() {
           // Delay the greeting nod so it feels like a considered "hello"
           // instead of a reflex the moment the VRM appears on screen.
           setTimeout(() => {
-            bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod");
+            bodyRef.current?.createCharacterAPI().play("anim:VRMA_small_nod", {
+              fadeInMs: 1200,
+              fadeOutMs: 800,
+              weight: 0.8,
+              speed: 0.7,
+            });
           }, 3000);
         }
       } else {

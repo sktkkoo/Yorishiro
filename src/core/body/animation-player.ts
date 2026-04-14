@@ -138,7 +138,10 @@ export class AnimationPlayer {
     const action = this.mixer.clipAction(clip);
     const id = nextAnimId++;
 
-    // Configure action
+    // reset() calls stopFading()/stopWarping() internally, which clobbers any
+    // fadeIn scheduled before it. Reset first, then configure, then fade, then
+    // play — this keeps the fadeIn's weight ramp intact.
+    action.reset();
     action.setLoop(opts.loop ? THREE.LoopRepeat : THREE.LoopOnce, opts.loop ? Infinity : 1);
     action.clampWhenFinished = !opts.loop;
     action.setEffectiveWeight(opts.weight ?? 0.7);
@@ -150,7 +153,7 @@ export class AnimationPlayer {
       action.fadeIn(fadeInSec);
     }
 
-    action.reset().play();
+    action.play();
 
     const { promise: completion, resolve, reject } = createDeferred();
 
@@ -217,6 +220,20 @@ export class AnimationPlayer {
   /** Number of currently playing animations. */
   get activeCount(): number {
     return this.active.size;
+  }
+
+  /**
+   * Sum of effective weights across all active actions, clamped to [0, 1].
+   * Drives complementary blending with ProceduralBones: when VRMA weight rises,
+   * procedural fades back so it doesn't overwrite clip-controlled bones.
+   */
+  getTotalEffectiveWeight(): number {
+    let total = 0;
+    for (const anim of this.active.values()) {
+      total += anim.action.getEffectiveWeight();
+      if (total >= 1) return 1;
+    }
+    return total;
   }
 
   // ── Internals ─────────────────────────────────────────

@@ -140,7 +140,12 @@ export class Body {
     this.animationPlayer.update(delta);
 
     // 2. Procedural bone animation (spine sway, head drift, arm sway)
-    this.proceduralBones.update(delta, elapsed);
+    //    Complementary weight with VRMA: procedural fades as clips take over,
+    //    so procedural's direct rotation assignment doesn't fight clip motion.
+    //    (Ported from old Charminal AnimationSourceManager.update.)
+    const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
+    const proceduralWeight = Math.max(0, 1 - vrmaWeight);
+    this.proceduralBones.update(delta, elapsed, proceduralWeight);
 
     // 3. Blink
     const blinkValue = this.blinkSystem.update(delta);
