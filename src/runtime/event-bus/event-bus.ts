@@ -12,7 +12,7 @@
  *   5. PackSource は register() / emitSynthetic() の引数としてそのまま受け取り、
  *      verbatim で stamping する。binding は呼び出し側（g.4）の責務。
  *
- * Philosophy: docs/PRESENCE_HARNESS.md「Twin-trigger co-emission」+「Synthetic event」
+ * Philosophy: docs/philosophy/PRESENCE_HARNESS.md「Twin-trigger co-emission」+「Synthetic event」
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent / Trigger / TriggerMatch / ReactionEvent
  */
 

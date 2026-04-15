@@ -403,7 +403,7 @@ export default {
 
 - **mental model**：handler の中で得た「観察」を synthetic event として announce し、trigger match 経由で reaction に変換する。reaction の発生源はあくまで trigger 定義であり、handler はそこを素通りしない
 - **imperative な指示は出さない**：「直接 persona を悲しませる」のような書き方はしない。`observation → event → trigger → reaction` という一方向の flow を守る
-- **誠実さの原則との整合**：`INHABITED_INTERFACE_PHILOSOPHY.md` の「コンテキストの壁」と整合する。reaction は必ず perception（本物の event または合成された synthetic event）由来で、捏造された身振りは発生しない
+- **誠実さの原則との整合**：`docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md` の「コンテキストの壁」と整合する。reaction は必ず perception（本物の event または合成された synthetic event）由来で、捏造された身振りは発生しない
 - **型**：synthetic event は `kind: 'synthetic'`、`name: string`、`payload?: unknown` の形（具体的な型は `@charminal/sdk` の `SyntheticEvent`）
 - **scope**：`ctx.emitEvent` は **PersonaContext と HarnessContext の両方**にある。Effect Pack には無い（effect は reaction system の consumer で、event の発信源にはならない）
 

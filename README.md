@@ -4,7 +4,7 @@
 
 Charminal は、Claude Code を中で走らせながら、3D キャラクターがその横で一緒に時間を過ごすための小さなデスクトップアプリです。ユーザーが話しかけたときだけ反応する装置ではなく、入力が無い時間も含めて**そこに居る**ことを目指しています。
 
-この README は実装と開発のための案内です。プロダクトが何を考えているかについては [`docs/CHARMINAL.md`](docs/CHARMINAL.md) を読んでください。
+この README は実装と開発のための案内です。プロダクトが何を考えているかについては [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) を読んでください。
 
 ---
 
@@ -109,12 +109,20 @@ CHARMINAL_ASSETS_DIR=/path/to/assets npm run fetch-assets
 
 ## Documentation
 
-- [`docs/CHARMINAL.md`](docs/CHARMINAL.md) — プロダクトが何を考えているか（思想）
-- [`docs/INHABITED_INTERFACE_PHILOSOPHY.md`](docs/INHABITED_INTERFACE_PHILOSOPHY.md) — Inhabited Interface の原理
-- [`docs/PRESENCE_HARNESS.md`](docs/PRESENCE_HARNESS.md) — harness / persona の two-layer 設計
-- [`docs/design-record/`](docs/design-record/) — 設計判断の記録（revelation ログ）
+### Philosophy（公開 — 思想）
+
+- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — プロダクトが何を考えているか
+- [`docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md`](docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md) — Inhabited Interface の原理
+- [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — harness / persona の two-layer 設計
+
+### Development
+
 - [`CLAUDE.md`](CLAUDE.md) — 開発 convention（coding / workflow / critical constraints）
 - [`CREDITS.md`](CREDITS.md) — 使っている OSS と asset のクレジット
+
+### Design record（内部 — 別 repo）
+
+設計判断の revelations / dry-run results / phase plans / specs は別 repo `Charminal-design-record` で管理しています。本 repo の親ディレクトリに clone すると `../Charminal-design-record/` として参照できます。
 
 ---
 

@@ -4,7 +4,7 @@
  * a module-level Map — semantics match HMR as long as this wrapper module
  * itself is not reloaded.
  *
- * Philosophy: docs/design-record/specs/2026-04-15-hot-reload-and-ugc-hot-swap.md
+ * Philosophy: internal design-record specs/2026-04-15-hot-reload-and-ugc-hot-swap.md
  * section 5.1 (Phase 0a).
  */
 

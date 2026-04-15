@@ -6,7 +6,7 @@
  * `./hot-data` から直接 import する（barrel 経由では出さない — 土台で
  * あって service ではない、という意図を明示するため）。
  *
- * 詳細は `docs/design-record/2026-04-11-design-exploration.md` Section 4.3。
+ * 詳細は internal design-record: `2026-04-11-design-exploration.md` Section 4.3。
  */
 
 export { BodyScheduler } from "./body-scheduler";

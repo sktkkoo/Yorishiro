@@ -4,7 +4,7 @@ Pack 間で共有される asset の配置場所。
 
 初回起動時に Charminal がここからユーザーの `$DATA/shared/` にコピーする。
 Pack 内のコードは `'vrm:default'`、`'anim:VRMA_wave'`、`'voice:filler_ah'` のような
-shared ref で参照する（`docs/design-record/2026-04-11-design-exploration.md` Section 10.7）。
+shared ref で参照する（internal design-record `2026-04-11-design-exploration.md` Section 10.7）。
 
 ## Phase 3.5 で配置予定
 

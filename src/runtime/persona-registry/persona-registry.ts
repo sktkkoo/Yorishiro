@@ -14,7 +14,7 @@
  *      (source is bound at registration time and cannot be forged from the
  *      handler side).
  *
- * Philosophy: docs/INHABITED_INTERFACE_PHILOSOPHY.md「多人格の住人」
+ * Philosophy: docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md「多人格の住人」
  * SDK surface: src/sdk/persona.d.ts の PersonaDefinition + WeightedPersonaHandler
  */
 

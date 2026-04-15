@@ -1,7 +1,7 @@
 /**
  * Perception — PTY / hook / idle event を観察し DispatchEvent として EventBus に供給する event source。
  *
- * Philosophy: docs/PRESENCE_HARNESS.md「六要素 > 知覚」+「認識の境界」
+ * Philosophy: docs/philosophy/PRESENCE_HARNESS.md「六要素 > 知覚」+「認識の境界」
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent union
  *
  * Design:
