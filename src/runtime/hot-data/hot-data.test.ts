@@ -62,10 +62,21 @@ describe("getOrInit", () => {
       return "ok";
     });
 
+    // Indirect check: we prove no cache entry survives the throw by
+    // showing the next call re-invokes the factory. A direct probe of
+    // the store would be stronger if the implementation ever grows
+    // error-caching semantics.
     expect(() => getOrInit("flaky", factory)).toThrow("boom");
     const second = getOrInit("flaky", factory);
 
     expect(second).toBe("ok");
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-invokes factory when it returns undefined (documented contract)", () => {
+    const factory = vi.fn(() => undefined);
+    getOrInit("undef", factory);
+    getOrInit("undef", factory);
     expect(factory).toHaveBeenCalledTimes(2);
   });
 });
