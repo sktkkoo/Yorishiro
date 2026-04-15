@@ -27,6 +27,8 @@ dist-ssr
 .charminal/cache/
 $DATA/
 
-# Binary assets (rights unconfirmed)
+# Binary assets (rights unconfirmed / user-supplied)
 bundled-packs/shared/animations/*.vrma
 bundled-packs/shared/voices/
+public/animations/
+public/voice/
