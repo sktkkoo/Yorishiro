@@ -1,7 +1,8 @@
 /**
  * Vite HMR hot.data wrapper. Returns a singleton instance across module reloads
- * during dev. In production (no import.meta.hot), falls back to a module-level
- * Map — semantics match HMR as long as this wrapper module itself is not reloaded.
+ * during dev. In non-HMR environments (production build, vitest) falls back to
+ * a module-level Map — semantics match HMR as long as this wrapper module
+ * itself is not reloaded.
  *
  * Philosophy: docs/design-record/specs/2026-04-15-hot-reload-and-ugc-hot-swap.md
  * section 5.1 (Phase 0a).
@@ -51,7 +52,8 @@ export function _clearForTest(): void {
   fallbackStore.clear();
   const hotData = resolveHotData();
   if (hotData) {
-    // import.meta.hot.data is readonly per Vite's type, so clear by deleting keys.
+    // Vite types `data` itself as readonly; we mutate its properties (the
+    // sanctioned pattern), hence delete keys rather than reassign.
     for (const key of Object.keys(hotData)) {
       delete hotData[key];
     }

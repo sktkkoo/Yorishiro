@@ -79,4 +79,15 @@ describe("getOrInit", () => {
     getOrInit("undef", factory);
     expect(factory).toHaveBeenCalledTimes(2);
   });
+
+  it("_clearForTest resets state so factory is re-invoked after clearing", () => {
+    const factory = vi.fn(() => ({ marker: "seed" }));
+    getOrInit("seed", factory);
+    expect(factory).toHaveBeenCalledTimes(1);
+
+    _clearForTest();
+
+    getOrInit("seed", factory);
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
 });
