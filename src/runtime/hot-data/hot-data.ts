@@ -7,33 +7,30 @@
  * section 5.1 (Phase 0a).
  */
 
-type HotData = Record<string, unknown>;
-
-interface HotContext {
-  data: HotData;
-}
-
 const fallbackStore = new Map<string, unknown>();
 
-const resolveHot = (): HotContext | null => {
-  const meta = import.meta as ImportMeta & { hot?: HotContext };
-  return meta.hot ?? null;
+const resolveHotData = (): Record<string, unknown> | null => {
+  return (import.meta.hot?.data as Record<string, unknown> | undefined) ?? null;
 };
 
 /**
  * Get an existing instance associated with `key`, or create one via `factory`
  * and store it for subsequent calls. Across HMR module reloads the same instance
  * is returned (when Vite HMR is active).
+ *
+ * @remarks The factory must not return `undefined`. `undefined` is used as the
+ * sentinel for "not yet initialized"; a factory returning it will be re-invoked
+ * on every call. Return `null` instead if you need an absence value.
  */
 export function getOrInit<T>(key: string, factory: () => T): T {
-  const hot = resolveHot();
-  if (hot) {
-    const existing = hot.data[key];
+  const hotData = resolveHotData();
+  if (hotData) {
+    const existing = hotData[key];
     if (existing !== undefined) {
       return existing as T;
     }
     const created = factory();
-    hot.data[key] = created;
+    hotData[key] = created;
     return created;
   }
 
@@ -52,10 +49,11 @@ export function getOrInit<T>(key: string, factory: () => T): T {
  */
 export function _clearForTest(): void {
   fallbackStore.clear();
-  const hot = resolveHot();
-  if (hot) {
-    for (const key of Object.keys(hot.data)) {
-      delete hot.data[key];
+  const hotData = resolveHotData();
+  if (hotData) {
+    // import.meta.hot.data is readonly per Vite's type, so clear by deleting keys.
+    for (const key of Object.keys(hotData)) {
+      delete hotData[key];
     }
   }
 }
