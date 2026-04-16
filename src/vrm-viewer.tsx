@@ -22,10 +22,12 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Body } from "./core/body";
+import type { SubsystemLog } from "./core/dev-log";
 
 interface VrmViewerProps {
   readonly url: string;
   readonly onBodyReady?: (body: Body | null) => void;
+  readonly devLog?: SubsystemLog;
 }
 
 /**
@@ -85,7 +87,7 @@ function setupRestPose(vrm: VRM): void {
   }
 }
 
-export default function VrmViewer({ url, onBodyReady }: VrmViewerProps) {
+export default function VrmViewer({ url, onBodyReady, devLog }: VrmViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -168,7 +170,7 @@ export default function VrmViewer({ url, onBodyReady }: VrmViewerProps) {
         scene.add(vrm.scene);
 
         // Create Body primitive — owns all VRM manipulation
-        currentBody = new Body(vrm);
+        currentBody = new Body(vrm, devLog);
         onBodyReady?.(currentBody);
 
         // Force world matrix update so bone world positions are accurate
@@ -250,7 +252,7 @@ export default function VrmViewer({ url, onBodyReady }: VrmViewerProps) {
       renderer.dispose();
       canvas.remove();
     };
-  }, [url, onBodyReady]);
+  }, [url, onBodyReady, devLog]);
 
   return <div ref={containerRef} className="vrm-container" />;
 }

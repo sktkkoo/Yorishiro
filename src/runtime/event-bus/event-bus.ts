@@ -17,6 +17,7 @@
  */
 
 import type { DispatchEvent, ReactionEvent, SyntheticEvent, Trigger } from "@charminal/sdk";
+import type { SubsystemLog } from "../../core/dev-log";
 import type { Time } from "../../core/time";
 
 /** Dispatch chain depth ceiling (revelation 3.19 #1、MVP default)。 */
@@ -71,6 +72,11 @@ export interface EventBusDeps {
   readonly schedule?: (task: () => void) => void;
   /** Dispatch chain depth ceiling。Default 4 (MVP)。 */
   readonly maxDepth?: number;
+  /**
+   * Optional dev-log adapter for generation-time self-observation.
+   * See docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+   */
+  readonly devLog?: SubsystemLog;
 }
 
 export interface Registration {
@@ -116,6 +122,7 @@ export class EventBus {
   private readonly logger: EventBusLogger;
   private readonly schedule: (task: () => void) => void;
   private readonly maxDepth: number;
+  private readonly devLog?: SubsystemLog;
 
   private readonly entries = new Map<number, RegistryEntry>();
   private nextId = 0;
@@ -125,6 +132,7 @@ export class EventBus {
     this.logger = deps.logger ?? noopLogger;
     this.schedule = deps.schedule ?? defaultSchedule;
     this.maxDepth = deps.maxDepth ?? DEFAULT_MAX_DEPTH;
+    this.devLog = deps.devLog;
   }
 
   register(trigger: Trigger, handler: ReactionHandler, source: PackSource): Registration {
@@ -180,12 +188,12 @@ export class EventBus {
       matched.push({ entry, reactionEvent });
     }
 
-    // DEBUG: event dispatch tracing (skip high-frequency pty-output/user-input)
     if (event.kind !== "pty-output" && event.kind !== "user-input") {
-      console.log(
-        `[EventBus] ${event.kind} → matched=${matched.length}`,
-        matched.map((m) => m.reactionEvent.reaction),
-      );
+      this.devLog?.write({
+        phase: "dispatch",
+        note: `${event.kind} → matched=${matched.length}`,
+        data: matched.map((m) => m.reactionEvent.reaction),
+      });
     }
 
     if (matched.length === 0) return;

@@ -2,6 +2,7 @@ import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import persona from "../bundled-packs/personas/charminal-default/persona";
 import type { Body, EyeState } from "./core/body";
+import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import { Time } from "./core/time";
@@ -48,12 +49,29 @@ function App() {
       warn: (msg, meta) => console.warn(`[charminal] ${msg}`, meta),
       error: (msg, meta) => console.error(`[charminal] ${msg}`, meta),
     };
-    const bus = new EventBus({ time, logger });
+    // Generation-time 細い回路 — dev でのみ active、console に mirror して即時視認。
+    // Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+    const devLog = new DevLog({
+      time,
+      enabled: import.meta.env.DEV,
+      sink: (entry: DevLogEntry) => {
+        const tag = entry.phase ? `${entry.subsystem}:${entry.phase}` : entry.subsystem;
+        console.log(`[${tag}] ${entry.note ?? ""}`, entry.data ?? "");
+      },
+    });
+    const bus = new EventBus({
+      time,
+      logger,
+      devLog: createSubsystemLog(devLog, "EventBus"),
+    });
     const logBridge = new LogBridge({ time });
     const registry = new PersonaRegistry({ bus, time, logger });
-    const perception = new Perception({ bus, time });
+    const perception = new Perception({
+      bus,
+      time,
+      devLog: createSubsystemLog(devLog, "Perception"),
+    });
 
-    // Register flagship persona with built-in triggers
     const augmented = {
       ...persona,
       reflex: {
@@ -63,10 +81,12 @@ function App() {
     };
     registry.register(augmented);
 
-    return { time, bus, registry, perception, logBridge };
+    return { time, bus, registry, perception, logBridge, devLog };
   });
 
-  const { perception, registry, logBridge } = runtime;
+  const { perception, registry, logBridge, devLog } = runtime;
+
+  const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
   // ── Body ↔ PersonaRegistry wiring ──────────────────────────
 
@@ -165,34 +185,35 @@ function App() {
 
   useEffect(() => {
     let polling = true;
-    console.log("[App] starting hook-signal polling..."); // DEBUG: polling lifecycle
+    const appLog = createSubsystemLog(devLog, "App");
+    appLog.write({ phase: "polling", note: "starting hook-signal polling" });
 
     const poll = async () => {
       const { invoke } = await import("@tauri-apps/api/core");
-      console.log("[App] polling loop started"); // DEBUG: polling lifecycle
+      appLog.write({ phase: "polling", note: "loop started" });
       while (polling) {
         try {
           const signals = await invoke<string[]>("poll_hook_signals");
           if (signals.length > 0) {
-            console.log("[App] polled signals:", signals); // DEBUG: hook delivery
+            appLog.write({ phase: "polling", note: "polled signals", data: signals });
           }
           for (const sig of signals) {
             perception.onHookSignal(sig);
           }
         } catch (err) {
-          console.warn("[App] poll_hook_signals failed:", err); // DEBUG: polling error
+          console.warn("[App] poll_hook_signals failed:", err);
         }
         await new Promise((r) => setTimeout(r, 200));
       }
     };
     poll().catch((err) => {
-      console.error("[App] polling setup failed:", err); // DEBUG: polling error
+      console.error("[App] polling setup failed:", err);
     });
 
     return () => {
       polling = false;
     };
-  }, [perception]);
+  }, [perception, devLog]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
@@ -261,6 +282,7 @@ function App() {
         vrmUrl={vrmUrl}
         onLoadVrm={handleLoadVrm}
         onBodyReady={handleBodyReady}
+        bodyDevLog={bodyDevLog}
       />
       <Terminal
         key={cwd ?? "__default__"}

@@ -26,6 +26,7 @@ import type {
   PlayOptions,
 } from "@charminal/sdk";
 import type { VRM } from "@pixiv/three-vrm";
+import type { SubsystemLog } from "../dev-log";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
@@ -80,16 +81,15 @@ export class Body {
   /** Track all active gaze handles for interrupt(). */
   private readonly activeGazeHandles = new Set<BodyGazeHandle>();
 
-  constructor(vrm: VRM) {
+  constructor(vrm: VRM, devLog?: SubsystemLog) {
     this.vrm = vrm;
     this.expressions = new ExpressionManager();
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
-    this.animationPlayer = new AnimationPlayer(vrm);
+    this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
 
-    // Set initial state expressions (idle: neutral 1.0)
     this.applyStateExpressions("idle");
   }
 

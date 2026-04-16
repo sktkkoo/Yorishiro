@@ -15,6 +15,7 @@ import type { VRM } from "@pixiv/three-vrm";
 import { createVRMAnimationClip, VRMAnimationLoaderPlugin } from "@pixiv/three-vrm-animation";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import type { SubsystemLog } from "../dev-log";
 
 /**
  * Alias table: persona animation ref name → actual VRMA file name (without .vrma).
@@ -58,9 +59,11 @@ export class AnimationPlayer {
   private readonly loader: GLTFLoader;
   private readonly clipCache = new Map<string, THREE.AnimationClip>();
   private readonly active = new Map<number, ActiveAnimation>();
+  private readonly devLog?: SubsystemLog;
 
-  constructor(vrm: VRM) {
+  constructor(vrm: VRM, devLog?: SubsystemLog) {
     this.vrm = vrm;
+    this.devLog = devLog;
     this.mixer = new THREE.AnimationMixer(vrm.scene);
     this.loader = new GLTFLoader();
     this.loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
@@ -263,11 +266,15 @@ export class AnimationPlayer {
         return null;
       }
       const clip = createVRMAnimationClip(vrmAnimations[0], this.vrm);
-      // DEBUG: VRMA clip inspection
-      console.log(
-        `[AnimationPlayer] loaded ${ref}: ${clip.tracks.length} tracks, dur=${clip.duration.toFixed(2)}s`,
-        clip.tracks.map((t) => t.name),
-      );
+      this.devLog?.write({
+        phase: "load",
+        note: `loaded ${ref}`,
+        data: {
+          tracks: clip.tracks.length,
+          durationSec: clip.duration,
+          trackNames: clip.tracks.map((t) => t.name),
+        },
+      });
       stripRootMotion(clip);
       this.clipCache.set(ref, clip);
       return clip;

@@ -21,6 +21,7 @@ import type {
   UserInputEvent,
 } from "@charminal/sdk";
 import type { EventBus } from "../../runtime/event-bus";
+import type { SubsystemLog } from "../dev-log";
 import type { Time } from "../time";
 
 const DEFAULT_IDLE_THRESHOLD_MS = 30_000;
@@ -33,6 +34,11 @@ export interface PerceptionDeps {
   readonly idleThresholdMs?: number;
   /** Idle check interval. Default 5s. */
   readonly idleCheckIntervalMs?: number;
+  /**
+   * Optional dev-log adapter for generation-time self-observation.
+   * See docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+   */
+  readonly devLog?: SubsystemLog;
 }
 
 /**
@@ -81,6 +87,7 @@ export class Perception {
   private readonly bus: EventBus;
   private readonly time: Time;
   private readonly idleThresholdMs: number;
+  private readonly devLog?: SubsystemLog;
   private lastActivityAt: number;
   private idleTimer: Cancellable | null = null;
   private disposed = false;
@@ -89,6 +96,7 @@ export class Perception {
     this.bus = deps.bus;
     this.time = deps.time;
     this.idleThresholdMs = deps.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
+    this.devLog = deps.devLog;
     this.lastActivityAt = this.time.now();
 
     const interval = deps.idleCheckIntervalMs ?? DEFAULT_IDLE_CHECK_INTERVAL_MS;
@@ -114,7 +122,11 @@ export class Perception {
    * Accepts the raw JSON string from the hook server.
    */
   onHookSignal(raw: string): void {
-    console.log("[Perception] hook →", raw.slice(0, 60), "disposed:", this.disposed); // DEBUG: hook chain
+    this.devLog?.write({
+      phase: "hook",
+      note: raw.slice(0, 60),
+      data: { disposed: this.disposed },
+    });
     if (this.disposed) return;
     this.lastActivityAt = this.time.now();
 

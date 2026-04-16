@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { Body } from "./core/body";
+import type { SubsystemLog } from "./core/dev-log";
 
 const VrmViewer = lazy(() => import("./vrm-viewer"));
 
@@ -9,6 +10,7 @@ interface SidebarProps {
   readonly vrmUrl: string | null;
   readonly onLoadVrm: () => void;
   readonly onBodyReady?: (body: Body | null) => void;
+  readonly bodyDevLog?: SubsystemLog;
 }
 
 export default function Sidebar({
@@ -17,6 +19,7 @@ export default function Sidebar({
   vrmUrl,
   onLoadVrm,
   onBodyReady,
+  bodyDevLog,
 }: SidebarProps) {
   return (
     <div className="sidebar">
@@ -28,7 +31,7 @@ export default function Sidebar({
       <div className="charactor-container">
         {vrmUrl ? (
           <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
-            <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} />
+            <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
           </Suspense>
         ) : (
           <div className="vrm-placeholder">
