@@ -112,6 +112,13 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
 
   // ── PTY lifecycle ─────────────────────────────────────────────
 
+  // Hold the latest perception in a ref so HMR-replacing the prop doesn't
+  // tear down the PTY effect.
+  const perceptionRef = useRef(perception);
+  useEffect(() => {
+    perceptionRef.current = perception;
+  }, [perception]);
+
   useEffect(() => {
     if (!isTauri) return;
     if (!ptyDeps) return;
@@ -121,27 +128,22 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
     const disposables: (() => void)[] = [];
 
     const textDecoder = new TextDecoder("utf-8", { fatal: false });
-    const perceptionRef = perception;
 
     (async () => {
       const { invoke, Channel } = await import("@tauri-apps/api/core");
       const { listen } = await import("@tauri-apps/api/event");
 
-      // StrictMode guard: if cleanup already ran while we awaited imports,
-      // bail out WITHOUT killing the PTY — a second render will attach to it.
+      // StrictMode guard: cleanup may already have run.
       if (!alive) return;
 
-      // Channel for PTY output (raw binary)
       const onOutput = new Channel<ArrayBuffer>();
       onOutput.onmessage = (data: ArrayBuffer) => {
         if (!alive) return;
         const bytes = new Uint8Array(data);
         term.write(bytes);
         const text = textDecoder.decode(bytes, { stream: true });
-        perceptionRef?.onPtyOutput(text);
+        perceptionRef.current?.onPtyOutput(text);
       };
-
-      // NOTE: hook-signal listener is in App.tsx (global, survives hot-reload)
 
       // PTY exit listener
       const unlistenExit = await listen<{ code: number }>("pty-exit", (event) => {
@@ -149,20 +151,28 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
       });
       disposables.push(unlistenExit);
 
-      // Spawn PTY — pty_spawn internally kills any existing session first
-
+      // Try attaching to an existing PTY first; only spawn if none.
+      let attached = false;
       try {
-        await invoke("pty_spawn", {
-          cols: term.cols,
-          rows: term.rows,
-          cwd,
-          systemPrompt,
-          onOutput,
-        });
+        attached = await invoke<boolean>("pty_attach", { cwd, onOutput });
       } catch (err) {
-        term.write(`\x1b[31mFailed to start claude: ${err}\x1b[0m\r\n`);
-        term.write("\x1b[90mMake sure claude CLI is installed and in your PATH.\x1b[0m\r\n");
-        return;
+        console.warn("[terminal] pty_attach failed, falling back to spawn:", err);
+      }
+
+      if (!attached) {
+        try {
+          await invoke("pty_spawn", {
+            cols: term.cols,
+            rows: term.rows,
+            cwd,
+            systemPrompt,
+            onOutput,
+          });
+        } catch (err) {
+          term.write(`\x1b[31mFailed to start claude: ${err}\x1b[0m\r\n`);
+          term.write("\x1b[90mMake sure claude CLI is installed and in your PATH.\x1b[0m\r\n");
+          return;
+        }
       }
 
       if (!alive) return;
@@ -170,7 +180,7 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
       // Forward input to PTY (unmodified)
       let writeQueue: Promise<void> = Promise.resolve();
       const onDataDisposable = term.onData((data) => {
-        perceptionRef?.onUserInput(data);
+        perceptionRef.current?.onUserInput(data);
         writeQueue = writeQueue.then(async () => {
           try {
             await invoke("pty_write", { data });
@@ -202,15 +212,22 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
     })();
 
     return () => {
-      // Clean up JS-side only. Do NOT kill or detach the PTY here —
-      // StrictMode's double-render would race with the second mount's
-      // pty_attach/pty_spawn. The PTY survives across re-mounts;
-      // the next mount's pty_attach atomically swaps the channel.
-
       alive = false;
       for (const d of disposables) d();
+
+      // Detach the channel; the PTY itself stays alive in Rust state so
+      // the next mount (StrictMode double-render or HMR remount) can
+      // re-attach without losing scrollback.
+      void (async () => {
+        try {
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("pty_detach");
+        } catch {
+          // Detach is best-effort; nothing to do on failure.
+        }
+      })();
     };
-  }, [ptyDeps, cwd, systemPrompt, perception]);
+  }, [ptyDeps, cwd, systemPrompt]);
 
   return <div ref={containerRef} className="terminal-container" />;
 }
