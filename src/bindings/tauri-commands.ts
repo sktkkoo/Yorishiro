@@ -15,10 +15,10 @@
 
 import { type Channel, type InvokeArgs, invoke } from "@tauri-apps/api/core";
 
-// Tauri's invoke typing requires `Record<string, unknown>` compatible args.
-// Our typed arg interfaces (readonly, closed-shape) aren't index-signature
-// compatible, so we launder them through InvokeArgs once inside each wrapper.
-// Callers never see the cast.
+// Tauri の invoke() は引数に Record<string, unknown> 互換を求める。こちらの
+// typed args interface は readonly + closed-shape で index signature を持たず
+// そのままでは通らないため、wrapper 内で 1 回だけ InvokeArgs 経由で cast する。
+// 呼び出し側にはこの cast を露出しない。
 const call = <T>(cmd: string, args: object): Promise<T> =>
   invoke<T>(cmd, args as unknown as InvokeArgs);
 
@@ -32,14 +32,14 @@ export interface PtySpawnArgs {
   readonly onOutput: Channel<ArrayBuffer>;
 }
 
-/** Spawn the claude PTY. Kills any existing session first. */
+/** claude の PTY を起動する。既存セッションが残っていれば kill してから spawn する。 */
 export const ptySpawn = (args: PtySpawnArgs): Promise<void> => call("pty_spawn", args);
 
 export interface PtyWriteArgs {
   readonly data: string;
 }
 
-/** Forward user input bytes to the PTY's stdin. */
+/** ユーザー入力のバイト列を PTY の stdin に転送する。 */
 export const ptyWrite = (args: PtyWriteArgs): Promise<void> => call("pty_write", args);
 
 export interface PtyResizeArgs {
@@ -47,5 +47,5 @@ export interface PtyResizeArgs {
   readonly rows: number;
 }
 
-/** Propagate xterm size changes to the PTY master. */
+/** xterm 側の cols/rows 変化を PTY master に伝える。 */
 export const ptyResize = (args: PtyResizeArgs): Promise<void> => call("pty_resize", args);
