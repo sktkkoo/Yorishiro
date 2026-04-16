@@ -3,6 +3,19 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
+  "description": "Charminal — someone who lives in your terminal. A Tauri desktop app pairing Claude Code with a 3D VRM character that shares your workspace.",
+  "keywords": [
+    "tauri",
+    "react",
+    "three",
+    "vrm",
+    "claude-code",
+    "terminal",
+    "desktop-app",
+    "inhabited-interface"
+  ],
+  "author": "okktks <6031376+sktkkoo@users.noreply.github.com>",
+  "license": "UNLICENSED",
   "scripts": {
     "fetch-assets": "node scripts/fetch-assets.mjs",
     "predev": "node scripts/fetch-assets.mjs",
