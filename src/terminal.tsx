@@ -212,20 +212,16 @@ export default function Terminal({ cwd, systemPrompt, perception }: TerminalProp
     })();
 
     return () => {
+      // Clean up JS-side only. Do NOT call pty_detach here — StrictMode's
+      // double-render races the fire-and-forget detach against the second
+      // mount's pty_spawn, leaving output_channel = None after the new
+      // PTY is up (reader thread then drops all output into the ring
+      // buffer with no listener). The next mount's pty_attach atomically
+      // swaps the channel on the live PTY, which is the only lifecycle
+      // op we need here.
+
       alive = false;
       for (const d of disposables) d();
-
-      // Detach the channel; the PTY itself stays alive in Rust state so
-      // the next mount (StrictMode double-render or HMR remount) can
-      // re-attach without losing scrollback.
-      void (async () => {
-        try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("pty_detach");
-        } catch {
-          // Detach is best-effort; nothing to do on failure.
-        }
-      })();
     };
   }, [ptyDeps, cwd, systemPrompt]);
 
