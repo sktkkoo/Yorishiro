@@ -2,6 +2,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XTerm } from "@xterm/xterm";
+import { ptyResize, ptySpawn, ptyWrite } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
@@ -106,8 +107,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.perceptionRef.current?.onUserInput(data);
       writeQueue = writeQueue.then(async () => {
         try {
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("pty_write", { data });
+          await ptyWrite({ data });
         } catch {
           // PTY already closed — silent
         }
@@ -116,10 +116,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // xterm 側の cols/rows 変化を Rust に転送
     this.term.onResize(({ cols, rows }) => {
-      void (async () => {
-        const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("pty_resize", { cols, rows });
-      })();
+      void ptyResize({ cols, rows });
     });
   }
 
@@ -156,9 +153,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.currentParams = params;
 
     void (async () => {
-      const { invoke } = await import("@tauri-apps/api/core");
       try {
-        await invoke("pty_spawn", {
+        await ptySpawn({
           cols: this.term.cols,
           rows: this.term.rows,
           cwd: params.cwd,
