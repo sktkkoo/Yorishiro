@@ -15,6 +15,8 @@ export const KEYS = {
   APP_RUNTIME: "app:runtime",
   /** ModuleRegistry singleton (Phase 1). */
   MODULE_REGISTRY: "registry:module",
+  /** TerminalRuntime singleton (Phase 0b v2): xterm + PTY Channel の webview-lifetime 保持。 */
+  TERMINAL_RUNTIME: "terminal:runtime",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];
