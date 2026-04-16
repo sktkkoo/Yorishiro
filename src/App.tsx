@@ -7,6 +7,7 @@ import { Perception } from "./core/perception";
 import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
+import { getModuleRegistry } from "./runtime/module-registry";
 import {
   createRealPersonaContextFactory,
   createStubPersonaContextFactory,
@@ -118,32 +119,46 @@ function App() {
       }
     };
 
-    // Listen for tool-activity events on the bus to drive Body.setState
-    const reg = runtime.bus.register(
-      {
-        id: "builtin:tool-activity-to-body-state",
-        match: (event) => {
-          if (event.kind === "tool-activity") {
-            bodyRef.current?.setState(mapActivity(event.activity));
-          }
-          if (event.kind === "hook-signal" && event.signal.name === "user-prompt-submit") {
-            inTurnRef.current = true;
-            bodyRef.current?.setState("thinking");
-          }
-          if (event.kind === "hook-signal" && event.signal.name === "pre-tool-use") {
-            bodyRef.current?.setState("thinking");
-          }
-          if (event.kind === "hook-signal" && event.signal.name === "stop") {
-            inTurnRef.current = false;
-            bodyRef.current?.setState("idle");
-          }
-          return null; // never emit a reaction — side-effect only
-        },
+    const moduleRegistry = getModuleRegistry();
+    const trigger: Trigger = {
+      id: "builtin:tool-activity-to-body-state",
+      match: (event) => {
+        if (event.kind === "tool-activity") {
+          bodyRef.current?.setState(mapActivity(event.activity));
+        }
+        if (event.kind === "hook-signal" && event.signal.name === "user-prompt-submit") {
+          inTurnRef.current = true;
+          bodyRef.current?.setState("thinking");
+        }
+        if (event.kind === "hook-signal" && event.signal.name === "pre-tool-use") {
+          bodyRef.current?.setState("thinking");
+        }
+        if (event.kind === "hook-signal" && event.signal.name === "stop") {
+          inTurnRef.current = false;
+          bodyRef.current?.setState("idle");
+        }
+        return null; // never emit a reaction — side-effect only
       },
-      () => {},
-      { type: "persona", packId: "__body-state__" },
-    );
-    return () => reg?.dispose();
+    };
+
+    const handle = moduleRegistry.register("trigger-handler", {
+      id: trigger.id,
+      provenance: { source: "builtin" },
+      instance: trigger,
+    });
+
+    // EventBus dispatch を ModuleRegistry.list("trigger-handler") に切り替える本格
+    // refactor は別 plan。現状は EventBus 登録も並行で残し、provenance: "builtin"
+    // が明示されたことを Phase 1 の主たる成果とする。
+    const reg = runtime.bus.register(trigger, () => {}, {
+      type: "persona",
+      packId: "__body-state__",
+    });
+
+    return () => {
+      reg?.dispose();
+      handle.dispose();
+    };
   }, [runtime]);
 
   // ── Hook-signal listener (global, independent of PTY lifecycle) ──
