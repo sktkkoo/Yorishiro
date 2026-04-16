@@ -1,17 +1,16 @@
+import type { Trigger } from "@charminal/sdk";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "./keys";
 import { type AllowedKindFor, isAllowed, type ModuleKind, type Provenance } from "./provenance";
 
 /**
- * The instance type expected for each kind. Phase 1 stubs out concrete shapes
- * for procedural-module and animation-provider — real interfaces land in Phase 3.
- *
- * trigger-handler : minimal Trigger (just match + optional id) used by EventBus
- * procedural-module : Phase 3 ProceduralModule { bind, unbind, tick, dispose }
- * animation-provider : Phase 3 AnimationProvider (TBD shape)
+ * The instance type expected for each kind. Phase 1 reuses the SDK Trigger
+ * shape for trigger-handler so EventBus consumers can hand the same object
+ * to ModuleRegistry.register without widening or casts. procedural-module
+ * and animation-provider are stubs — concrete interfaces land in Phase 3.
  */
 export interface ModuleOf {
-  "trigger-handler": { readonly match: (event: unknown) => unknown };
+  "trigger-handler": Trigger;
   "procedural-module": { readonly id: string };
   "animation-provider": { readonly id: string };
 }

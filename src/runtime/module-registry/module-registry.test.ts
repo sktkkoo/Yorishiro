@@ -1,7 +1,10 @@
+import type { Trigger } from "@charminal/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { _clearForTest as _clearHotData } from "../hot-data/hot-data";
 import { type Disposable, getModuleRegistry, ModuleRegistry } from "./module-registry";
 import type { Provenance } from "./provenance";
+
+const makeTrigger = (id: string): Trigger => ({ id, match: () => null });
 
 describe("ModuleRegistry", () => {
   afterEach(() => {
@@ -13,7 +16,7 @@ describe("ModuleRegistry", () => {
     const dispose = registry.register("trigger-handler", {
       id: "t1",
       provenance: { source: "builtin" },
-      instance: { match: () => null },
+      instance: makeTrigger("t1"),
     });
 
     const list = registry.list("trigger-handler");
@@ -57,13 +60,13 @@ describe("ModuleRegistry", () => {
     registry.register("trigger-handler", {
       id: "dup",
       provenance: { source: "builtin" },
-      instance: { match: () => null },
+      instance: makeTrigger("dup"),
     });
     expect(() =>
       registry.register("trigger-handler", {
         id: "dup",
         provenance: { source: "builtin" },
-        instance: { match: () => null },
+        instance: makeTrigger("dup"),
       }),
     ).toThrow(/duplicate id/);
   });
@@ -73,7 +76,7 @@ describe("ModuleRegistry", () => {
     registry.register("trigger-handler", {
       id: "shared",
       provenance: { source: "builtin" },
-      instance: { match: () => null },
+      instance: makeTrigger("shared"),
     });
     expect(() =>
       registry.register("procedural-module", {
@@ -89,7 +92,7 @@ describe("ModuleRegistry", () => {
     const handle = registry.register("trigger-handler", {
       id: "t",
       provenance: { source: "builtin" },
-      instance: { match: () => null },
+      instance: makeTrigger("t"),
     });
     expect(registry.list("trigger-handler")).toHaveLength(1);
     handle.dispose();
@@ -98,8 +101,8 @@ describe("ModuleRegistry", () => {
 
   it("swap() replaces the instance and preserves id + provenance", () => {
     const registry = new ModuleRegistry();
-    const original = { match: () => null };
-    const replacement = { match: () => "replaced" as const };
+    const original = makeTrigger("t");
+    const replacement = makeTrigger("t");
 
     registry.register("trigger-handler", {
       id: "t",
@@ -116,7 +119,7 @@ describe("ModuleRegistry", () => {
 
   it("swap() on an unknown id throws", () => {
     const registry = new ModuleRegistry();
-    expect(() => registry.swap("trigger-handler", "missing", { match: () => null })).toThrow(
+    expect(() => registry.swap("trigger-handler", "missing", makeTrigger("missing"))).toThrow(
       /no entry to swap/,
     );
   });
