@@ -6,6 +6,7 @@ import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
+import { getOrInit } from "./runtime/hot-data";
 import {
   createRealPersonaContextFactory,
   createStubPersonaContextFactory,
@@ -38,17 +39,9 @@ function App() {
     localStorage.getItem(VRM_STORAGE_KEY),
   );
 
-  // ── Runtime stack (stable across re-renders) ────────────────
+  // ── Runtime stack (HMR-surviving singleton) ─────────────────
 
-  const runtimeRef = useRef<{
-    time: Time;
-    bus: EventBus;
-    registry: PersonaRegistry;
-    perception: Perception;
-    logBridge: LogBridge;
-  } | null>(null);
-
-  if (runtimeRef.current === null) {
+  const runtime = getOrInit("app:runtime", () => {
     const time = new Time();
     const logger: EventBusLogger = {
       warn: (msg, meta) => console.warn(`[charminal] ${msg}`, meta),
@@ -69,10 +62,10 @@ function App() {
     };
     registry.register(augmented);
 
-    runtimeRef.current = { time, bus, registry, perception, logBridge };
-  }
+    return { time, bus, registry, perception, logBridge };
+  });
 
-  const { perception, registry, logBridge } = runtimeRef.current;
+  const { perception, registry, logBridge } = runtime;
 
   // ── Body ↔ PersonaRegistry wiring ──────────────────────────
 
@@ -126,7 +119,7 @@ function App() {
     };
 
     // Listen for tool-activity events on the bus to drive Body.setState
-    const reg = runtimeRef.current?.bus.register(
+    const reg = runtime.bus.register(
       {
         id: "builtin:tool-activity-to-body-state",
         match: (event) => {
@@ -151,7 +144,7 @@ function App() {
       { type: "persona", packId: "__body-state__" },
     );
     return () => reg?.dispose();
-  }, []);
+  }, [runtime]);
 
   // ── Hook-signal listener (global, independent of PTY lifecycle) ──
 
