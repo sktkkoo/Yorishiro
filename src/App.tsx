@@ -15,7 +15,6 @@ import {
   createStubPersonaContextFactory,
   PersonaRegistry,
 } from "./runtime/persona-registry";
-import { getThreeRuntime } from "./runtime/three-runtime";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
@@ -282,18 +281,15 @@ function App() {
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
-  const appRef = useRef<HTMLDivElement>(null);
-
   // ── Screen-shake subscription ─────────────────────────────────
-  // canvas は body 直下（position: fixed）なので .app の transform では動かない。
-  // terminal + sidebar は .app 側の transform で動く。両方に同じ dx/dy を当てる。
+  // document.body に transform を当てることで #root（terminal + sidebar +
+  // character placeholder）と three-singleton-container（body 直下の
+  // position: fixed）の両方が同じ translate で動く。body の transform は
+  // fixed 子孫の containing block を作るため canvas も一緒にシフトする。
 
   useEffect(() => {
     return effectDispatcher.subscribe("screen-shake", (request) => {
       if (request.kind !== "screen-shake") return;
-      const app = appRef.current;
-      if (!app) return;
-      const runtime = getThreeRuntime();
       const start = performance.now();
       const tick = (now: number) => {
         const elapsed = now - start;
@@ -303,8 +299,7 @@ function App() {
           request.intensity,
           Math.random,
         );
-        app.style.transform = dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
-        runtime.setShakeOffset(dx, dy);
+        document.body.style.transform = dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
         if (dx === 0 && dy === 0) return;
         requestAnimationFrame(tick);
       };
@@ -313,7 +308,7 @@ function App() {
   }, [effectDispatcher]);
 
   return (
-    <div ref={appRef} className="app">
+    <div className="app">
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}
