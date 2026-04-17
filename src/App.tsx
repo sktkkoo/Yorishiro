@@ -1,11 +1,12 @@
 import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import persona from "../bundled-packs/personas/charminal-default/persona";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
-import { computeShakeOffset, EffectDispatcher } from "./core/space";
+import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
@@ -67,6 +68,17 @@ function App() {
     });
     const logBridge = new LogBridge({ time });
     const effectDispatcher = new EffectDispatcher();
+    // Effect Pack infrastructure. screen-shake は body に transform を当てる
+    // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
+    // 揺らす（body の transform は fixed 子孫の containing block を作る）。
+    const renderer = new Renderer({ shakeTarget: document.body });
+    const effectPackRunner = new EffectPackRunner({
+      dispatcher: effectDispatcher,
+      renderer,
+      time,
+    });
+    effectPackRunner.register(screenShakePack);
+
     const registry = new PersonaRegistry({ bus, time, logger });
     const perception = new Perception({
       bus,
@@ -281,31 +293,8 @@ function App() {
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
-  // ── Screen-shake subscription ─────────────────────────────────
-  // document.body に transform を当てることで #root（terminal + sidebar +
-  // character placeholder）と three-singleton-container（body 直下の
-  // position: fixed）の両方が同じ translate で動く。body の transform は
-  // fixed 子孫の containing block を作るため canvas も一緒にシフトする。
-
-  useEffect(() => {
-    return effectDispatcher.subscribe("screen-shake", (request) => {
-      if (request.kind !== "screen-shake") return;
-      const start = performance.now();
-      const tick = (now: number) => {
-        const elapsed = now - start;
-        const { dx, dy } = computeShakeOffset(
-          elapsed,
-          request.durationMs,
-          request.intensity,
-          Math.random,
-        );
-        document.body.style.transform = dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
-        if (dx === 0 && dy === 0) return;
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-  }, [effectDispatcher]);
+  // screen-shake は bundled-packs/effects/screen-shake を EffectPackRunner
+  // 経由で動かす（runtime singleton で register 済み）。この useEffect は不要。
 
   return (
     <div className="app">
