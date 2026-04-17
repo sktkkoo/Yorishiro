@@ -59,15 +59,16 @@ export default function VrmViewer({ url, onBodyReady, devLog, effectDispatcher }
   }, [devLog]);
 
   // ── Shake effect subscription ─────────────────────────────────
+  // NOTE: placeholderRef の transform では canvas は動かない — canvas は
+  // document.body 直下に居て placeholder の boundingRect に追従するだけの
+  // 別 DOM。shake は ThreeRuntime の canvasContainer 側に直接当てる。
 
   useEffect(() => {
     if (!effectDispatcher) return;
     return effectDispatcher.subscribe("shake", (request) => {
-      const el = placeholderRef.current;
-      if (!el) return;
       if (request.kind !== "shake") return;
+      const runtime = getThreeRuntime();
       const start = performance.now();
-      let rafId: number | null = null;
       const tick = (now: number) => {
         const elapsed = now - start;
         const { dx, dy } = computeShakeOffset(
@@ -76,18 +77,11 @@ export default function VrmViewer({ url, onBodyReady, devLog, effectDispatcher }
           request.intensity,
           Math.random,
         );
-        if (dx === 0 && dy === 0) {
-          el.style.transform = "";
-          rafId = null;
-          return;
-        }
-        el.style.transform = `translate(${dx}px, ${dy}px)`;
-        rafId = requestAnimationFrame(tick);
+        runtime.setShakeOffset(dx, dy);
+        if (dx === 0 && dy === 0) return;
+        requestAnimationFrame(tick);
       };
-      rafId = requestAnimationFrame(tick);
-      // NOTE: no explicit cleanup per request — the rAF loop self-terminates
-      // once computeShakeOffset returns {0,0} at elapsed >= durationMs.
-      void rafId;
+      requestAnimationFrame(tick);
     });
   }, [effectDispatcher]);
 

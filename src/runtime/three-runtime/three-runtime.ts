@@ -118,6 +118,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.canvasContainer.style.visibility = "hidden";
   }
 
+  setShakeOffset(dx: number, dy: number): void {
+    this.canvasContainer.style.transform =
+      dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
+  }
+
   setVrmUrl(url: string | null): void {
     if (url === this.currentUrl) return;
     this.currentUrl = url;

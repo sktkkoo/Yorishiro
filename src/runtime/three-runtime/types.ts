@@ -30,4 +30,11 @@ export interface ThreeRuntime {
   setBodyListener(listener: ((body: Body | null) => void) | null): void;
   /** dev-log を反映。null で暗黙 disable。次の VRM load 時から Body に渡される。 */
   setDevLog(devLog: SubsystemLog | null): void;
+  /**
+   * Shake 用の translate offset を canvasContainer に適用する。
+   * (0, 0) で解除。position: fixed の top/left と共存し、transform は独立に効く。
+   * 実装 note: canvas は placeholder の子ではないので、placeholder 側に transform
+   * しても動かない。canvasContainer 自身に当てる必要がある。
+   */
+  setShakeOffset(dx: number, dy: number): void;
 }
