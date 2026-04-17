@@ -1,0 +1,88 @@
+import type { EffectContext, EffectDefinition, RendererAPI } from "@charminal/sdk";
+import { describe, expect, it, vi } from "vitest";
+import { Time } from "../time";
+import { EffectDispatcher } from "./effect-dispatcher";
+import { EffectPackRunner } from "./effect-pack-runner";
+
+const makeRendererStub = (): RendererAPI => ({
+  addShakeFilter: vi.fn(() => ({ dispose: () => {} })),
+  addColorFilter: vi.fn(() => ({ dispose: () => {} })),
+  addParticles: vi.fn(() => ({ dispose: () => {}, completion: Promise.resolve() })),
+  drawOnCanvas: vi.fn(() => ({ dispose: () => {} })),
+});
+
+const makeSetup = () => {
+  const dispatcher = new EffectDispatcher();
+  const renderer = makeRendererStub();
+  const time = new Time();
+  const runner = new EffectPackRunner({ dispatcher, renderer, time });
+  return { dispatcher, renderer, time, runner };
+};
+
+describe("EffectPackRunner", () => {
+  it("invokes pack.run when dispatcher fires the pack's id", () => {
+    const { dispatcher, runner } = makeSetup();
+    const run = vi.fn(async () => {});
+    const pack: EffectDefinition = { id: "example-effect", type: "effect", run };
+    runner.register(pack);
+
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.5, durationMs: 200 });
+
+    expect(run).toHaveBeenCalledOnce();
+  });
+
+  it("passes the full request as options into pack.run", () => {
+    const { dispatcher, runner } = makeSetup();
+    const run = vi.fn(async () => {});
+    runner.register({ id: "example-effect", type: "effect", run });
+
+    const request = { kind: "example-effect", intensity: 0.3, durationMs: 150 };
+    dispatcher.dispatch(request);
+
+    expect(run).toHaveBeenCalledWith(expect.any(Object), request);
+  });
+
+  it("supplies a context with time / signal / renderer / audio", () => {
+    const { dispatcher, renderer, time, runner } = makeSetup();
+    let captured: EffectContext | null = null;
+    runner.register({
+      id: "example-effect",
+      type: "effect",
+      run: async (ctx) => {
+        captured = ctx;
+      },
+    });
+
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.2, durationMs: 100 });
+
+    expect(captured).not.toBeNull();
+    if (captured) {
+      const ctx: EffectContext = captured;
+      expect(ctx.time).toBe(time);
+      expect(ctx.renderer).toBe(renderer);
+      expect(ctx.signal).toBeInstanceOf(AbortSignal);
+      expect(ctx.audio).toBeDefined();
+    }
+  });
+
+  it("does not fire for unrelated kinds", () => {
+    const { dispatcher, runner } = makeSetup();
+    const run = vi.fn(async () => {});
+    runner.register({ id: "example-effect", type: "effect", run });
+
+    dispatcher.dispatch({ kind: "unrelated-effect", intensity: 0.5, durationMs: 200 });
+
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("unregister stops the pack from firing", () => {
+    const { dispatcher, runner } = makeSetup();
+    const run = vi.fn(async () => {});
+    const handle = runner.register({ id: "example-effect", type: "effect", run });
+
+    handle.dispose();
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.5, durationMs: 200 });
+
+    expect(run).not.toHaveBeenCalled();
+  });
+});

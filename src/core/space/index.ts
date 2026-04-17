@@ -8,6 +8,8 @@
  */
 
 export { EffectDispatcher, type EffectListener } from "./effect-dispatcher";
+export { EffectPackRunner, type EffectPackRunnerDeps } from "./effect-pack-runner";
+export { Renderer, type RendererDeps } from "./renderer";
 export { computeShakeOffset, type ShakeOffset } from "./shake";
 
 export class Space {}
