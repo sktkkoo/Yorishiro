@@ -19,6 +19,8 @@ export const KEYS = {
   TERMINAL_RUNTIME: "terminal:runtime",
   /** ThreeRuntime singleton (Phase 2): canvas + renderer + RAF + VRM + Body の webview-lifetime 保持。 */
   THREE_RUNTIME: "three:runtime",
+  /** VrmCache singleton (Phase 2.5): URL → ArrayBuffer の LRU。 */
+  VRM_CACHE: "vrm:cache",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];
