@@ -128,15 +128,24 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
       } satisfies Trigger,
     ],
     responses: {
-      // エラー検知時の反射。
-      // Commit 1（本コミット）では発火経路の疎通確認だけに絞り、motion / effect は
-      // 続く commits で段階的に積む（docs/philosophy/CHARMINAL.md「意識に先立つ反応」）。
+      // エラー検知時の反射。body が意識より先に動く（Presence 第二条件）。
+      // Philosophy: docs/philosophy/CHARMINAL.md「意識に先立つ反応」
       distressed: {
         handlers: [
           {
-            label: "error-noticed",
+            label: "error-recoil",
             handler: async (ctx: PersonaContext) => {
               ctx.log.write({ reaction: "distressed", note: "noticed an error" });
+
+              // 顔を顰める
+              const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
+              // 身体が一瞬引く
+              ctx.character.play("anim:VRMA_small_recoil", { fadeInMs: 80 });
+
+              // 2.5 秒後にゆっくり戻す
+              await ctx.time.after(2500);
+              if (ctx.signal.aborted) return;
+              expr.release(600);
             },
           },
         ],
