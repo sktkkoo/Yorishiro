@@ -141,6 +141,8 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
               const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
               // 身体が一瞬引く
               ctx.character.play("anim:VRMA_small_recoil", { fadeInMs: 80 });
+              // 画面が短く揺れる（物理の約束事をほんの一瞬だけ破る）
+              ctx.space.injectEffect({ kind: "shake", intensity: 0.35, durationMs: 500 });
 
               // 2.5 秒後にゆっくり戻す
               await ctx.time.after(2500);

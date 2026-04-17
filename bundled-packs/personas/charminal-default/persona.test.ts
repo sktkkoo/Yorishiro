@@ -55,9 +55,7 @@ describe("charminal-default persona triggers", () => {
       expect(handler).toBeDefined();
     });
 
-    it("frowns and plays a small recoil motion", async () => {
-      if (!handler) throw new Error("handler not registered");
-
+    const buildMockCtx = () => {
       const play = vi.fn<(ref: AnimationRef, opts?: PlayOptions) => AnimationHandle>(
         (animation) => ({
           animation,
@@ -78,14 +76,27 @@ describe("charminal-default persona triggers", () => {
           release: exprRelease,
         }),
       );
+      const injectEffect = vi.fn(() => ({
+        kind: "shake",
+        startedAt: 0,
+        completion: Promise.resolve(),
+        cancel: () => {},
+      }));
 
       const ctx = {
         character: { play, express, gaze: vi.fn(), interrupt: vi.fn() },
-        space: { injectEffect: vi.fn() },
+        space: { injectEffect },
         log: { write: vi.fn(), tail: vi.fn(() => []), read: vi.fn(() => []) },
         time: { after: vi.fn(() => Promise.resolve()) },
         signal: { aborted: false, addEventListener: vi.fn() } as unknown as AbortSignal,
       } as unknown as PersonaContext;
+
+      return { ctx, play, express, exprRelease, injectEffect };
+    };
+
+    it("frowns and plays a small recoil motion", async () => {
+      if (!handler) throw new Error("handler not registered");
+      const { ctx, play, express, exprRelease } = buildMockCtx();
 
       await handler(ctx);
 
@@ -95,6 +106,21 @@ describe("charminal-default persona triggers", () => {
         expect.objectContaining({ fadeInMs: expect.any(Number) }),
       );
       expect(exprRelease).toHaveBeenCalled();
+    });
+
+    it("injects a shake effect on the screen", async () => {
+      if (!handler) throw new Error("handler not registered");
+      const { ctx, injectEffect } = buildMockCtx();
+
+      await handler(ctx);
+
+      expect(injectEffect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "shake",
+          intensity: expect.any(Number),
+          durationMs: expect.any(Number),
+        }),
+      );
     });
   });
 });

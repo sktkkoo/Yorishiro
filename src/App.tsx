@@ -5,6 +5,7 @@ import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
+import { EffectDispatcher } from "./core/space";
 import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
@@ -65,6 +66,7 @@ function App() {
       devLog: createSubsystemLog(devLog, "EventBus"),
     });
     const logBridge = new LogBridge({ time });
+    const effectDispatcher = new EffectDispatcher();
     const registry = new PersonaRegistry({ bus, time, logger });
     const perception = new Perception({
       bus,
@@ -72,19 +74,22 @@ function App() {
       devLog: createSubsystemLog(devLog, "Perception"),
     });
 
+    // Merge built-in triggers with persona's own customTriggers. Previously
+    // this replaced the persona array entirely, silently dropping the
+    // persona's declared triggers.
     const augmented = {
       ...persona,
       reflex: {
         ...persona.reflex,
-        customTriggers: builtInTriggers,
+        customTriggers: [...builtInTriggers, ...(persona.reflex.customTriggers ?? [])],
       },
     };
     registry.register(augmented);
 
-    return { time, bus, registry, perception, logBridge, devLog };
+    return { time, bus, registry, perception, logBridge, devLog, effectDispatcher };
   });
 
-  const { perception, registry, logBridge, devLog } = runtime;
+  const { perception, registry, logBridge, devLog, effectDispatcher } = runtime;
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
@@ -98,7 +103,9 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
-        registry.setContextFactory(createRealPersonaContextFactory({ body, logBridge }));
+        registry.setContextFactory(
+          createRealPersonaContextFactory({ body, logBridge, effectDispatcher }),
+        );
         if (!greetedRef.current) {
           greetedRef.current = true;
           // Delay the greeting nod so it feels like a considered "hello"
@@ -116,7 +123,7 @@ function App() {
         registry.setContextFactory(createStubPersonaContextFactory());
       }
     },
-    [registry, logBridge],
+    [registry, logBridge, effectDispatcher],
   );
 
   // ── Tool-activity → Body state wiring ─────────────────────
@@ -283,6 +290,7 @@ function App() {
         onLoadVrm={handleLoadVrm}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
+        effectDispatcher={effectDispatcher}
       />
       <Terminal
         key={cwd ?? "__default__"}

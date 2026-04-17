@@ -31,6 +31,7 @@ import type {
 import type { Body } from "../../core/body";
 import type { LogBridge } from "../../core/log-bridge";
 import { createLogAPI } from "../../core/log-bridge";
+import type { EffectDispatcher } from "../../core/space";
 import type { PersonaContextFactory, PersonaContextInputs } from "./stub-context";
 
 export interface RealContextDeps {
@@ -38,6 +39,8 @@ export interface RealContextDeps {
   readonly body: Body;
   /** LogBridge instance for LogAPI. */
   readonly logBridge: LogBridge;
+  /** EffectDispatcher for SpaceAPI.injectEffect. */
+  readonly effectDispatcher: EffectDispatcher;
 }
 
 /**
@@ -46,6 +49,10 @@ export interface RealContextDeps {
  */
 export function createRealPersonaContextFactory(deps: RealContextDeps): PersonaContextFactory {
   const characterAPI = deps.body.createCharacterAPI();
+  const spaceAPI: SpaceAPI = {
+    injectEffect: (request: SpaceEffectRequest): SpaceEffectHandle =>
+      deps.effectDispatcher.dispatch(request),
+  };
 
   return (inputs: PersonaContextInputs): PersonaContext => ({
     event: inputs.event,
@@ -53,13 +60,11 @@ export function createRealPersonaContextFactory(deps: RealContextDeps): PersonaC
     time: inputs.time,
     emitEvent: inputs.emitEvent,
 
-    // Real implementations
     character: characterAPI,
     log: createLogAPI(deps.logBridge, inputs.persona.id),
+    space: spaceAPI,
 
-    // Stubbed for now (same as stub-context.ts)
     voice: createStubVoiceAPI(),
-    space: createStubSpaceAPI(),
     memory: createStubMemoryAPI(),
     terminal: createStubTerminalAPI(),
     charm: stubCharm,
@@ -79,15 +84,6 @@ const createStubVoiceAPI = (): VoiceAPI => ({
   say: (_text: string, _options?: SayOptions) => stubVoiceHandle(),
   play: (_clipRef: VoiceClipRef, _options?: VoicePlayOptions) => stubVoiceHandle(),
   silence: () => {},
-});
-
-const createStubSpaceAPI = (): SpaceAPI => ({
-  injectEffect: (request: SpaceEffectRequest): SpaceEffectHandle => ({
-    kind: request.kind,
-    startedAt: 0,
-    completion: Promise.resolve(),
-    cancel: () => {},
-  }),
 });
 
 const createStubMemoryScope = (): MemoryScope => {
