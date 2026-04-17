@@ -81,7 +81,13 @@ export interface HookSignalEvent {
 }
 
 export interface HookSignal {
-  readonly name: "pre-tool-use" | "post-tool-use" | "user-prompt-submit" | "stop" | "notification";
+  readonly name:
+    | "pre-tool-use"
+    | "post-tool-use"
+    | "post-tool-failure"
+    | "user-prompt-submit"
+    | "stop"
+    | "notification";
   readonly payload?: unknown;
 }
 

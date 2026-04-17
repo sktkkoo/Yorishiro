@@ -1,4 +1,4 @@
-import type { PersonaContext, PersonaDefinition } from "@charminal/sdk";
+import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@charminal/sdk";
 
 /**
  * Charminal の flagship persona。
@@ -114,30 +114,29 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
   // ─── 反射層：reaction handlers ─────────────────────
 
   reflex: {
+    customTriggers: [
+      // エラー検知 → distressed を発火する generic mapping。
+      // 身体表現（motion / expression / effect）は distressed handler 側で決める。
+      // Philosophy: docs/philosophy/CHARMINAL.md「意識に先立つ反応」
+      {
+        id: "charminal-default:error",
+        match(event: DispatchEvent) {
+          if (event.kind !== "hook-signal") return null;
+          if (event.signal.name !== "post-tool-failure") return null;
+          return { reaction: "distressed", payload: event.signal.payload };
+        },
+      } satisfies Trigger,
+    ],
     responses: {
-      // エラーを検知したら小さく表情を変える
+      // エラー検知時の反射。
+      // Commit 1（本コミット）では発火経路の疎通確認だけに絞り、motion / effect は
+      // 続く commits で段階的に積む（docs/philosophy/CHARMINAL.md「意識に先立つ反応」）。
       distressed: {
         handlers: [
           {
-            label: "brow-furrow",
+            label: "error-noticed",
             handler: async (ctx: PersonaContext) => {
-              // 表情を sad 側に寄せる（weight 0.4）
-              const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.4);
-
-              // 小さく頭を傾ける
-              ctx.character.play("anim:VRMA_head_tilt_down", { fadeInMs: 150 });
-
-              // 画面を弱く揺らす
-              ctx.space.injectEffect({
-                kind: "shake",
-                intensity: 0.2,
-                durationMs: 300,
-              });
-
-              // 2.5 秒後に表情を戻す
-              await ctx.time.after(2500);
-              if (ctx.signal.aborted) return;
-              expr.release(600);
+              ctx.log.write({ reaction: "distressed", note: "noticed an error" });
             },
           },
         ],

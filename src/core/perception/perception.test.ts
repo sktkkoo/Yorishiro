@@ -113,7 +113,7 @@ describe("Perception", () => {
       }
     });
 
-    it("maps post-tool-failure to post-tool-use", () => {
+    it("preserves post-tool-failure as a distinct signal with error payload", () => {
       const { perception, dispatched } = createStack();
 
       perception.onHookSignal('{"event":"post-tool-failure","tool_name":"Bash","error":"exit 1"}');
@@ -121,7 +121,7 @@ describe("Perception", () => {
       expect(dispatched).toHaveLength(1);
       const event = dispatched[0];
       if (event.kind === "hook-signal") {
-        expect(event.signal.name).toBe("post-tool-use");
+        expect(event.signal.name).toBe("post-tool-failure");
         expect((event.signal.payload as Record<string, unknown>).error).toBe("exit 1");
       }
     });
