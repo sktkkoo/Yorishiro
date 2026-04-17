@@ -116,7 +116,7 @@ describe("charminal-default persona triggers", () => {
       expect(play).not.toHaveBeenCalled();
     });
 
-    it("injects a shake effect on the screen", async () => {
+    it("injects a screen-shake effect that reaches the terminal too", async () => {
       if (!handler) throw new Error("handler not registered");
       const { ctx, injectEffect } = buildMockCtx();
 
@@ -124,7 +124,7 @@ describe("charminal-default persona triggers", () => {
 
       expect(injectEffect).toHaveBeenCalledWith(
         expect.objectContaining({
-          kind: "shake",
+          kind: "screen-shake",
           intensity: expect.any(Number),
           durationMs: expect.any(Number),
         }),

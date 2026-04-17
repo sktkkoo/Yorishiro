@@ -142,8 +142,10 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
 
               // 顔を顰める
               const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
-              // 画面が短く揺れる（物理の約束事をほんの一瞬だけ破る）
-              ctx.space.injectEffect({ kind: "shake", intensity: 0.35, durationMs: 500 });
+              // 画面全体（ターミナル含む）が短く揺れる。
+              // terminal の物理約束事を一瞬だけ破る — Charm 思想に近い強さ。
+              // 軽い揺れ（"shake" = character 範囲のみ）は別 kind として用意してある。
+              ctx.space.injectEffect({ kind: "screen-shake", intensity: 0.35, durationMs: 500 });
 
               // 2.5 秒後にゆっくり戻す
               await ctx.time.after(2500);

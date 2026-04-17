@@ -435,6 +435,7 @@ export interface SpaceAPI {
  */
 export type SpaceEffectRequest =
   | { kind: "shake"; intensity: number; durationMs: number }
+  | { kind: "screen-shake"; intensity: number; durationMs: number }
   | { kind: "flash"; color: string; durationMs: number }
   | { kind: "particles"; origin: Vec2; count: number; durationMs: number; colorScheme?: string }
   | { kind: "fireworks"; origin: Vec2; count: number; durationMs: number }
