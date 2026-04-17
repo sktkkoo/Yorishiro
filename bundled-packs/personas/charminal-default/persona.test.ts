@@ -94,18 +94,26 @@ describe("charminal-default persona triggers", () => {
       return { ctx, play, express, exprRelease, injectEffect };
     };
 
-    it("frowns and plays a small recoil motion", async () => {
+    it("frowns with sad expression 0.7 and releases it later", async () => {
       if (!handler) throw new Error("handler not registered");
-      const { ctx, play, express, exprRelease } = buildMockCtx();
+      const { ctx, express, exprRelease } = buildMockCtx();
 
       await handler(ctx);
 
       expect(express).toHaveBeenCalledWith({ kind: "mood", preset: "sad" }, 0.7);
-      expect(play).toHaveBeenCalledWith(
-        "anim:VRMA_small_recoil",
-        expect.objectContaining({ fadeInMs: expect.any(Number) }),
-      );
       expect(exprRelease).toHaveBeenCalled();
+    });
+
+    it("does not play a body animation — face + shake carry the reaction", async () => {
+      if (!handler) throw new Error("handler not registered");
+      const { ctx, play } = buildMockCtx();
+
+      await handler(ctx);
+
+      // See docs/philosophy/CHARMINAL.md「意識に先立つ反応」— the canonical
+      // example is a frown, and the old Charminal did not bind a VRMA to
+      // error either. Body continuity comes from procedural bones.
+      expect(play).not.toHaveBeenCalled();
     });
 
     it("injects a shake effect on the screen", async () => {

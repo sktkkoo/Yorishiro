@@ -128,19 +128,20 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
       } satisfies Trigger,
     ],
     responses: {
-      // エラー検知時の反射。body が意識より先に動く（Presence 第二条件）。
+      // エラー検知時の反射。philosophy の「意識に先立つ反応」は典型的には
+      // 「顔が顰められる」こととして語られており、body animation は必須ではない。
+      // 旧 Charminal でも error に VRMA は紐づけられていなかった。body の連続感は
+      // procedural bones（呼吸・head drift 等）が担う。
       // Philosophy: docs/philosophy/CHARMINAL.md「意識に先立つ反応」
       distressed: {
         handlers: [
           {
-            label: "error-recoil",
+            label: "frown-and-shake",
             handler: async (ctx: PersonaContext) => {
               ctx.log.write({ reaction: "distressed", note: "noticed an error" });
 
               // 顔を顰める
               const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
-              // 身体が一瞬引く
-              ctx.character.play("anim:VRMA_small_recoil", { fadeInMs: 80 });
               // 画面が短く揺れる（物理の約束事をほんの一瞬だけ破る）
               ctx.space.injectEffect({ kind: "shake", intensity: 0.35, durationMs: 500 });
 
