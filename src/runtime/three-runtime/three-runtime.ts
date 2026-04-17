@@ -5,6 +5,7 @@ import { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { getVrmCache } from "../vrm-cache";
 import type { ThreeRuntime } from "./types";
 
 /**
@@ -129,46 +130,60 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       return;
     }
 
-    this.loader.load(
-      url,
-      (gltf) => {
+    void (async () => {
+      try {
+        const buffer = await getVrmCache().getBytes(url);
         if (myToken !== this.loadToken) return;
-        const vrm = gltf.userData.vrm as VRM;
-        if (!vrm) {
-          console.warn("[three-runtime] GLTF did not contain VRM payload:", url);
-          return;
-        }
 
-        vrm.scene.rotation.y = Math.PI;
-        this.setupRestPose(vrm);
-        vrm.humanoid?.update();
+        await new Promise<void>((resolve, reject) => {
+          this.loader.parse(
+            buffer,
+            "",
+            (gltf) => {
+              if (myToken !== this.loadToken) {
+                resolve();
+                return;
+              }
+              const vrm = gltf.userData.vrm as VRM;
+              if (!vrm) {
+                console.warn("[three-runtime] GLTF did not contain VRM payload:", url);
+                resolve();
+                return;
+              }
 
-        this.scene.add(vrm.scene);
-        this.currentVrm = vrm;
-        this.currentBody = new Body(vrm, this.devLogRef.current ?? undefined);
+              vrm.scene.rotation.y = Math.PI;
+              this.setupRestPose(vrm);
+              vrm.humanoid?.update();
 
-        vrm.scene.updateWorldMatrix(true, true);
-        vrm.update(0);
+              this.scene.add(vrm.scene);
+              this.currentVrm = vrm;
+              this.currentBody = new Body(vrm, this.devLogRef.current ?? undefined);
 
-        const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
-        this.trackHead = headBone ?? null;
+              vrm.scene.updateWorldMatrix(true, true);
+              vrm.update(0);
 
-        const headPos = new THREE.Vector3();
-        if (headBone) headBone.getWorldPosition(headPos);
-        else headPos.set(0, 1.6, 0);
+              const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
+              this.trackHead = headBone ?? null;
 
-        const targetY = headPos.y - 0.05;
-        this.camera.position.set(0, targetY, 1.1);
-        this.camera.lookAt(0, targetY, 0);
+              const headPos = new THREE.Vector3();
+              if (headBone) headBone.getWorldPosition(headPos);
+              else headPos.set(0, 1.6, 0);
 
-        this.bodyListenerRef.current?.(this.currentBody);
-      },
-      undefined,
-      (err) => {
+              const targetY = headPos.y - 0.05;
+              this.camera.position.set(0, targetY, 1.1);
+              this.camera.lookAt(0, targetY, 0);
+
+              this.bodyListenerRef.current?.(this.currentBody);
+              resolve();
+            },
+            (err) => reject(err),
+          );
+        });
+      } catch (err) {
         if (myToken !== this.loadToken) return;
         console.error("[three-runtime] VRM load failed:", err);
-      },
-    );
+      }
+    })();
   }
 
   setBodyListener(listener: ((body: Body | null) => void) | null): void {
