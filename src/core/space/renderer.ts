@@ -13,8 +13,15 @@
  */
 
 import type { Disposable, ParticleConfig, ParticleHandle, RendererAPI } from "@charminal/sdk";
+import { computeShakeOffset } from "./shake";
 
-const SHAKE_MAX_PX = 20;
+/**
+ * Default decay duration for addShakeFilter. Effect packs that call
+ * time.after(≈500ms) before dispose get the old Charminal feel; shorter
+ * holds cut the decay off early, longer holds have a silent tail after
+ * decay completes.
+ */
+const DEFAULT_SHAKE_DECAY_MS = 500;
 
 export interface RendererDeps {
   /**
@@ -38,11 +45,17 @@ export class Renderer implements RendererAPI {
 
   addShakeFilter(intensity: number): Disposable {
     let disposed = false;
+    const start = performance.now();
     const tick = (): void => {
       if (disposed) return;
-      const dx = (this.random() - 0.5) * 2 * SHAKE_MAX_PX * intensity;
-      const dy = (this.random() - 0.5) * 2 * SHAKE_MAX_PX * intensity;
-      this.shakeTarget.style.transform = `translate(${dx}px, ${dy}px)`;
+      const elapsed = performance.now() - start;
+      const { dx, dy } = computeShakeOffset(
+        elapsed,
+        DEFAULT_SHAKE_DECAY_MS,
+        intensity,
+        this.random,
+      );
+      this.shakeTarget.style.transform = dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
