@@ -123,7 +123,26 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
         match(event: DispatchEvent) {
           if (event.kind !== "hook-signal") return null;
           if (event.signal.name !== "post-tool-failure") return null;
-          return { reaction: "distressed", payload: event.signal.payload };
+
+          // shake を抑止する benign な tool 一覧。
+          // Claude Code の PostToolUseFailure は exit !== 0 であれば発火するが、
+          // 下記 tool については「失敗」が通常操作の一部（no-match 等）であり、
+          // user にとってエラーとは感じられない。
+          //
+          // - Grep: ripgrep exit 1 = マッチなし。検索が空振りしただけ
+          // - Glob: ファイル列挙のみ。副作用なし、failure も benign
+          const payload = event.signal.payload;
+          const toolName =
+            payload !== null && typeof payload === "object" && "tool_name" in payload
+              ? (payload as { tool_name?: unknown }).tool_name
+              : undefined;
+
+          const BENIGN_TOOLS = new Set(["Grep", "Glob"]);
+          if (typeof toolName === "string" && BENIGN_TOOLS.has(toolName)) {
+            return null;
+          }
+
+          return { reaction: "distressed", payload };
         },
       } satisfies Trigger,
     ],

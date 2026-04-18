@@ -62,6 +62,33 @@ describe("charminal-default persona triggers", () => {
       const ptyEvent: DispatchEvent = { kind: "pty-output", text: "whatever", timestamp: 0 };
       expect(trigger.match(ptyEvent)).toBeNull();
     });
+
+    it("skips shake for Grep post-tool-failure (no-match は benign)", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      // ripgrep exit 1 = マッチなし。user にとってエラーではない。
+      expect(trigger.match(postToolFailure("Grep"))).toBeNull();
+    });
+
+    it("skips shake for Glob post-tool-failure", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      // ファイル列挙のみで副作用なし。failure も benign。
+      expect(trigger.match(postToolFailure("Glob"))).toBeNull();
+    });
+
+    it("fires shake for Bash post-tool-failure", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const match = trigger.match(postToolFailure("Bash"));
+      expect(match).not.toBeNull();
+      expect(match?.reaction).toBe("distressed");
+    });
+
+    it("fires shake for Read post-tool-failure (filter 対象外・user 判断に委ねる)", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      // Read の failure は legitimate な mistake の可能性もあるため抑止しない。
+      const match = trigger.match(postToolFailure("Read"));
+      expect(match).not.toBeNull();
+      expect(match?.reaction).toBe("distressed");
+    });
   });
 
   describe("distressed handler", () => {
