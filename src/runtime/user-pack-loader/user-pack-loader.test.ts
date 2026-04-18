@@ -309,6 +309,54 @@ describe("loadUserPacks", () => {
     expect(effectReg.disposedIds).toEqual(["hot"]);
   });
 
+  it("filters out entries whose id is in disabledPacks", async () => {
+    const effectPackRunner: EffectRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const personaRegistry: PersonaRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = { write: () => {} } as SubsystemLog;
+
+    const result = await loadUserPacks({
+      effectPackRunner,
+      personaRegistry,
+      packRegistry,
+      devLog,
+      disabledPacks: ["disabled-pack"],
+      fetchPackEntries: async () => [
+        {
+          id: "enabled-pack",
+          kind: "effect",
+          entryPath: "/fake/enabled/effect.js",
+        },
+        {
+          id: "disabled-pack",
+          kind: "effect",
+          entryPath: "/fake/disabled/effect.js",
+        },
+      ],
+      importModule: async (path) => {
+        if (path === "/fake/enabled/effect.js") {
+          return {
+            default: {
+              id: "enabled-pack",
+              type: "effect",
+              run: async () => {},
+            },
+          };
+        }
+        throw new Error(`unexpected import: ${path}`);
+      },
+    });
+
+    expect(result.loaded).toEqual([{ id: "enabled-pack", kind: "effect" }]);
+    expect(result.failed).toEqual([]);
+    expect(packRegistry.has("enabled-pack", "effect")).toBe(true);
+    expect(packRegistry.has("disabled-pack", "effect")).toBe(false);
+  });
+
   it("re-loading a persona uses packRegistry to sidestep duplicate-id throws", async () => {
     // pitfall #8: PersonaRegistry.register throws on duplicate id. The loader
     // must dispose the registry entry first so the real-world PersonaRegistry

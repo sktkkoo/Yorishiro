@@ -59,6 +59,11 @@ export interface LoadUserPacksDeps {
   readonly fetchPackEntries: () => Promise<ReadonlyArray<UserPackEntry>>;
   /** entryPath を asset URL に変換しつつ dynamic import する関数。 */
   readonly importModule: (entryPath: string) => Promise<unknown>;
+  /**
+   * config.json の disabledPacks。同 id の全 kind を skip する。
+   * 未指定なら空配列と同等（無効化無し）。
+   */
+  readonly disabledPacks?: ReadonlyArray<string>;
 }
 
 export interface LoadedPackInfo {
@@ -103,6 +108,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     packRegistry,
     fetchPackEntries,
     importModule,
+    disabledPacks,
   } = deps;
   const loaded: LoadedPackInfo[] = [];
   const failed: FailedPackInfo[] = [];
@@ -118,12 +124,23 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     });
     return { loaded, failed };
   }
+  const disabled = disabledPacks ?? [];
+  const filteredEntries =
+    disabled.length > 0 ? entries.filter((e) => !disabled.includes(e.id)) : entries;
+  if (filteredEntries.length !== entries.length) {
+    const skipped = entries.length - filteredEntries.length;
+    devLog.write({
+      phase: "list",
+      note: `filtered ${skipped} disabled pack entr${skipped === 1 ? "y" : "ies"}`,
+      data: { disabledPacks: [...disabled] },
+    });
+  }
   devLog.write({
     phase: "list",
-    note: `discovered ${entries.length} user pack entr${entries.length === 1 ? "y" : "ies"}`,
+    note: `discovered ${filteredEntries.length} user pack entr${filteredEntries.length === 1 ? "y" : "ies"}`,
   });
 
-  for (const entry of entries) {
+  for (const entry of filteredEntries) {
     if (!SUPPORTED_PACK_KINDS.has(entry.kind)) {
       devLog.write({
         phase: "register",
