@@ -29,7 +29,7 @@ export interface Layer {
   readonly id: string;
   readonly role?: LayerRole;
   readonly backgroundColor?: string;
-  readonly backgroundImage?: string;
+  readonly backgroundImage?: string; // CSS gradient or url(...)
   readonly blur?: number;
 }
 

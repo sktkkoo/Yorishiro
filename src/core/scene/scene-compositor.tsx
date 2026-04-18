@@ -10,7 +10,9 @@ import type { Layer, SceneSpec } from "./types";
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §5
  *
  * 責務:
- *   - scene.layers を stacking order で <div> として描画
+ *   - scene.layers を stacking order で <div> として描画。scene.layers の**先頭が一番奥**、
+ *     末尾が一番手前。各 layer は `position: absolute; inset: 0` で親を覆い、後続 sibling が
+ *     DOM 順で上に重なる。
  *   - per-layer の blur / backgroundColor / backgroundImage を inline style で apply
  *   - role="character" の layer に children を埋める（= VRM の slot）
  *
@@ -55,7 +57,7 @@ export function layerStyle(layer: Layer): CSSProperties {
   return style;
 }
 
-export function SceneCompositor({ scene, children }: SceneCompositorProps): JSX.Element {
+export function SceneCompositor({ scene, children }: SceneCompositorProps) {
   return (
     <div className="scene-compositor" style={containerStyle}>
       {scene.layers.map((layer) => (

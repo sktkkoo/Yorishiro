@@ -6,5 +6,5 @@
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md
  */
 
-export { layerStyle, SceneCompositor, type SceneCompositorProps } from "./scene-compositor";
+export { SceneCompositor, type SceneCompositorProps } from "./scene-compositor";
 export type { Layer, LayerRole, SceneSpec } from "./types";
