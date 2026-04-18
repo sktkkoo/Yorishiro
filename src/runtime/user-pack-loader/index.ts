@@ -27,3 +27,4 @@ export {
   type PersonaRegistrar,
   type UserPackEntry,
 } from "./user-pack-loader";
+export { type Disposable, UserPackRegistry } from "./user-pack-registry";
