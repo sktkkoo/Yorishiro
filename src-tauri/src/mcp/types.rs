@@ -1,9 +1,13 @@
 //! MCP tool の request / response DTO。Claude Code と TS runtime が双方
 //! 同じ shape を見る。
 //!
-//! `list_load_errors` 以外の tool は Task 14-16 で接続されるため、それまで
-//! DTO は tool ルーター経由で参照されない。pre-push の `-D warnings` を
-//! 通すため module ごと `allow(dead_code)` とする（Task 14-16 完了時に解除）。
+//! Task 16 で event channel が配線された時点で `list_load_errors` の戻り
+//! （`ListLoadErrorsResponse` + `LoadError`）は実際に参照される。残りの
+//! DTO（`PackStatus` / `ListPacksResponse` / `PackIdArg` / `SimpleOkResponse`）
+//! は「MCP 層が TS runtime に委譲する shape の宣言」として置いてあり、
+//! 実体は TS 側 `charminal-mcp/tool-handlers.ts` が持つ。Rust 内では
+//! 参照先を持たないので dead_code 警告が出る——共有 shape の document として
+//! 残すため module 単位で allow する。
 
 #![allow(dead_code)]
 

@@ -33,6 +33,7 @@ tokio-util = "0.7"
 axum = "0.8"
 rmcp = { version = "1.5", features = ["server", "transport-streamable-http-server", "macros"] }
 schemars = "1"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 pretty_assertions = "1"

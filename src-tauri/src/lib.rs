@@ -352,6 +352,16 @@ async fn user_init_script_path() -> Result<Option<String>, String> {
     }
 }
 
+/// MCP server が emit した `mcp:tool-request` を TS 側 handler が処理した
+/// 結果を受け取る。rmcp の tool handler が await していた oneshot channel に
+/// 値を流して round-trip を完結させる。
+///
+/// Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
+#[tauri::command]
+async fn mcp_tool_response(request_id: String, response: serde_json::Value) -> Result<(), String> {
+    mcp::server::resolve_pending_response(&request_id, response)
+}
+
 // ─── User layer file watcher (Phase 1-b) ────────────────────────────
 //
 // `~/.charminal/**` を recursive に監視し、debounced event を TS 層の Channel
@@ -623,7 +633,8 @@ pub fn run() {
             read_last_startup_report,
             user_init_script_path,
             watch_charminal_layer,
-            stat_file_mtime
+            stat_file_mtime,
+            mcp_tool_response
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());

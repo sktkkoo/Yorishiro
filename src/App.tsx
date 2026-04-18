@@ -132,6 +132,100 @@ function App() {
             await win.setTitle(`${current} (Safe Mode)`);
           }
         }
+
+        // Phase 1-c: MCP event channel wiring。Rust 側 MCP server が tool call を
+        // 受けると `mcp:tool-request` event を emit、TS 側で対応 handler を走らせ
+        // `mcp_tool_response` command で response を戻す。
+        // Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
+        try {
+          const { listen } = await import("@tauri-apps/api/event");
+          const { invoke } = await import("@tauri-apps/api/core");
+          const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
+          const { createListPacksHandler, createDisablePackHandler, createEnablePackHandler } =
+            await import("./runtime/charminal-mcp/tool-handlers");
+          const { readCharminalConfigText, writeCharminalConfigText, readLastStartupReport } =
+            await import("./runtime/user-pack-loader/charminal-io");
+          const { parseConfig, serializeConfig } = await import(
+            "./runtime/user-pack-loader/config"
+          );
+          type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
+          type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
+          type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
+
+          const readConfig = async (): Promise<CharminalConfig> =>
+            parseConfig(await readCharminalConfigText());
+          const writeConfig = async (next: CharminalConfig): Promise<void> =>
+            writeCharminalConfigText(serializeConfig(next));
+          const readLoadReport = async (): Promise<LoadReport | null> => {
+            const text = await readLastStartupReport();
+            if (text === "") return null;
+            try {
+              return JSON.parse(text) as LoadReport;
+            } catch {
+              return null;
+            }
+          };
+          const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
+            // 最小実装：list_user_packs を再実行して該当 id の存在確認だけ行う。
+            // 実 reload は file watcher が次回 file change event で拾う設計前提。
+            try {
+              const entries =
+                await invoke<Array<{ id: string; kind: string; entryPath: string }>>(
+                  "list_user_packs",
+                );
+              const match = entries.find((e) => e.id === id);
+              if (!match) return { ok: false, reason: "pack file not found" };
+              return { ok: true };
+            } catch (err) {
+              return {
+                ok: false,
+                reason: err instanceof Error ? err.message : String(err),
+              };
+            }
+          };
+
+          const handlers: ToolHandlerMap = {
+            "list-packs": createListPacksHandler({
+              readRegistry: () => packRegistry.listEntries(),
+              readConfig,
+              readLoadReport,
+            }),
+            "disable-pack": createDisablePackHandler({
+              readConfig,
+              writeConfig,
+              registry: packRegistry,
+            }),
+            "enable-pack": createEnablePackHandler({
+              readConfig,
+              writeConfig,
+              reloadPack,
+            }),
+          };
+
+          await listen<{ requestId: string; tool: string; request: unknown }>(
+            "mcp:tool-request",
+            async (event) => {
+              const result = await dispatchToolEvent(handlers, {
+                tool: event.payload.tool,
+                request: event.payload.request,
+              });
+              await invoke("mcp_tool_response", {
+                requestId: event.payload.requestId,
+                response: result,
+              });
+            },
+          );
+          appLog.write({
+            phase: "mcp-channel",
+            note: "mcp:tool-request listener attached",
+          });
+        } catch (err) {
+          appLog.write({
+            phase: "mcp-channel",
+            note: "failed to attach MCP event listener",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       })
       .catch((err: unknown) => {
         appLog.write({
