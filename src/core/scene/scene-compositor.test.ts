@@ -1,7 +1,7 @@
 // src/core/scene/scene-compositor.test.ts
 
 import { describe, expect, it } from "vitest";
-import { layerStyle } from "./scene-compositor";
+import { isVideoSrc, layerStyle } from "./scene-compositor";
 import type { Layer } from "./types";
 
 describe("layerStyle", () => {
@@ -57,5 +57,35 @@ describe("layerStyle", () => {
     expect(style.backgroundColor).toBe("#222");
     expect(style.backgroundImage).toBe("radial-gradient(circle, #fff, transparent)");
     expect(style.position).toBe("absolute");
+  });
+});
+
+describe("isVideoSrc", () => {
+  it("returns true for .webm", () => {
+    expect(isVideoSrc("/path/bg.webm")).toBe(true);
+  });
+  it("returns true for .mp4", () => {
+    expect(isVideoSrc("/path/bg.mp4")).toBe(true);
+  });
+  it("returns true for .mov", () => {
+    expect(isVideoSrc("/path/bg.mov")).toBe(true);
+  });
+  it("returns true for uppercase extension (.MP4)", () => {
+    expect(isVideoSrc("/path/BG.MP4")).toBe(true);
+  });
+  it("returns false for .jpg", () => {
+    expect(isVideoSrc("/path/bg.jpg")).toBe(false);
+  });
+  it("returns false for .png", () => {
+    expect(isVideoSrc("/path/bg.png")).toBe(false);
+  });
+  it("returns false for empty string", () => {
+    expect(isVideoSrc("")).toBe(false);
+  });
+  it("returns false for URL without extension", () => {
+    expect(isVideoSrc("/path/bg")).toBe(false);
+  });
+  it("returns false for URL with extension in query string", () => {
+    expect(isVideoSrc("/path/bg.jpg?v=1")).toBe(false);
   });
 });

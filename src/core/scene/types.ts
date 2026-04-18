@@ -21,6 +21,7 @@ export type LayerRole = "background" | "character" | "foreground";
  *
  * - `role`: compositor が特定の処理を効かせる対象
  *   （"character" role に children から VRM を差し込む）
+ * - `src`: layer content の asset path または URL（画像 / 動画）
  * - `backgroundColor` / `backgroundImage`: Phase 1 の stub 用。
  *   Phase 2 で `src: string`（asset path）に一本化する可能性あり
  * - `blur`: per-layer 独立の CSS filter blur 値（px）
@@ -28,6 +29,16 @@ export type LayerRole = "background" | "character" | "foreground";
 export interface Layer {
   readonly id: string;
   readonly role?: LayerRole;
+  /**
+   * layer content の asset path または URL。
+   * 拡張子から `<img>` / `<video>` を自動判定し、`object-fit: cover` で layer を満たす。
+   * 動画は autoplay + muted + loop + playsInline。§4.4 autonomous motion の
+   * 最も簡単な実装手段（loop 動画を layer に置く）。
+   *
+   * `backgroundColor` / `backgroundImage` と併用可能だが、通常はどちらか一方を使う。
+   * `character` role の layer では undefined（runtime が VRM を children から埋める）。
+   */
+  readonly src?: string;
   readonly backgroundColor?: string;
   readonly backgroundImage?: string; // CSS gradient or url(...)
   readonly blur?: number;

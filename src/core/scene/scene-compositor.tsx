@@ -14,12 +14,14 @@ import type { Layer, SceneSpec } from "./types";
  *     末尾が一番手前。各 layer は `position: absolute; inset: 0` で親を覆い、後続 sibling が
  *     DOM 順で上に重なる。
  *   - per-layer の blur / backgroundColor / backgroundImage を inline style で apply
+ *   - layer.src が set されていれば <img> or <video> を挿入（拡張子から判定）
  *   - role="character" の layer に children を埋める（= VRM の slot）
  *
  * 非責務:
  *   - VRM の生成 / lifecycle（ThreeRuntime singleton が所有）
  *   - pack の load / manifest parse（Phase 2）
  *   - ambient binding の評価（Phase 3）
+ *   - asset の load state / error handling（本 MVP は放置、必要なら Phase 2 で拾う）
  */
 export interface SceneCompositorProps {
   readonly scene: SceneSpec;
@@ -38,6 +40,23 @@ const layerBaseStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
 };
+
+const coverStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  objectPosition: "center",
+  display: "block",
+};
+
+/**
+ * 動画拡張子かを判定する pure 関数。
+ * .webm / .mp4 / .mov / .m4v / .ogv を動画とみなす（case-insensitive）。
+ * query string は reject（regex が $ でアンカーするため）。
+ */
+export function isVideoSrc(src: string): boolean {
+  return /\.(webm|mp4|mov|m4v|ogv)$/i.test(src);
+}
 
 /**
  * Layer -> inline style の pure 関数。test 対象。
@@ -62,6 +81,13 @@ export function SceneCompositor({ scene, children }: SceneCompositorProps) {
     <div className="scene-compositor" style={containerStyle}>
       {scene.layers.map((layer) => (
         <div key={layer.id} data-layer-id={layer.id} style={layerStyle(layer)}>
+          {layer.src !== undefined ? (
+            isVideoSrc(layer.src) ? (
+              <video src={layer.src} autoPlay muted loop playsInline style={coverStyle} />
+            ) : (
+              <img src={layer.src} alt="" style={coverStyle} />
+            )
+          ) : null}
           {layer.role === "character" ? children : null}
         </div>
       ))}

@@ -28,6 +28,8 @@ const VRM_STORAGE_KEY = "charminal:vrm";
 // Phase 1 stub scene。Phase 2 で pack manifest から生成する。
 // 控えめな default：実在感を削がない範囲の blur / gradient。数値は観察で
 // 調整する参考値で、派手さ方向には polish しない。
+// 画像 / 動画で感触評価したい場合は、layer に `src: "/path/to/file"` を設定
+// （`.mp4` 等の動画拡張子なら `<video autoplay muted loop>` として描画される）。
 // Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3 / §10.
 const stubScene: SceneSpec = {
   id: "charminal:phase-1-stub",
