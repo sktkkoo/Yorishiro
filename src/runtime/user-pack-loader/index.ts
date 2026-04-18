@@ -7,6 +7,7 @@
 
 export {
   type CharminalInitContext,
+  type EffectRequester,
   type LoadInitScriptDeps,
   type LoadInitScriptResult,
   loadInitScript,

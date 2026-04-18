@@ -107,6 +107,7 @@ function App() {
     void loadUserLayer({
       effectPackRunner,
       personaRegistry: registry,
+      effectDispatcher,
       userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
       initScriptLog: createSubsystemLog(devLog, "InitScript"),
     })

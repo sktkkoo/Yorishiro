@@ -11,27 +11,39 @@
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-a: 最小限の user pack load」
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
 /**
- * init.js の default 関数に渡される context。最小 API：
- * user は registerEffect / registerPersona で pack を Charminal に提出する。
+ * EffectDispatcher が満たす最小構造。dispatchEffect 経由で init.js が自発的に
+ * effect を発火できる——persona の reflex 経路とは別の、「user が押したから走る」
+ * 起動パス。philosophy「触れるものと、触れないもの」の user surface を広げる。
+ */
+export interface EffectRequester {
+  dispatch(request: SpaceEffectRequest): unknown;
+}
+
+/**
+ * init.js の default 関数に渡される context。
  *
- * 引数の shape は runtime で validator を通す（SDK と同じ contract）ので、
- * 型を外れた値を渡すと PackValidationError が synchronously throw される。
+ * - registerEffect / registerPersona: pack を Charminal に提出する。validator を
+ *   内部で通す契約なので、型を外れた値を渡すと synchronously throw する。
+ * - dispatchEffect: 既に register 済みの effect を 1 回走らせる。keyboard
+ *   shortcut や startup animation など、persona の reflex 外の発火経路で使う。
  */
 export interface CharminalInitContext {
   registerEffect(pack: EffectDefinition): void;
   registerPersona(pack: PersonaDefinition): void;
+  dispatchEffect(request: SpaceEffectRequest): void;
 }
 
 export interface LoadInitScriptDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly devLog: SubsystemLog;
+  readonly effectDispatcher: EffectRequester;
   /**
    * Tauri の user_init_script_path を叩いて init.js の absolute path を返す。
    * 見つからなければ null。
@@ -62,6 +74,9 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
   registerPersona(pack) {
     const validated = validatePersonaDefinition(pack);
     deps.personaRegistry.register(validated);
+  },
+  dispatchEffect(request) {
+    deps.effectDispatcher.dispatch(request);
   },
 });
 

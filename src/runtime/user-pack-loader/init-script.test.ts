@@ -6,11 +6,11 @@
  * 内部で通してから registrar に渡す。
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@charminal/sdk";
 import { describe, expect, it } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
-import { type CharminalInitContext, loadInitScript } from "./init-script";
+import { type CharminalInitContext, type EffectRequester, loadInitScript } from "./init-script";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
 // ─── fixtures ─────────────────────────────────────────────────────
@@ -72,6 +72,20 @@ const makeDevLog = (): DevLogFixture => {
   return { log, subsystem: createSubsystemLog(log, "InitScript") };
 };
 
+interface EffectRequesterFake extends EffectRequester {
+  readonly dispatched: SpaceEffectRequest[];
+}
+
+const makeEffectDispatcher = (): EffectRequesterFake => {
+  const dispatched: SpaceEffectRequest[] = [];
+  return {
+    dispatched,
+    dispatch(req) {
+      dispatched.push(req);
+    },
+  };
+};
+
 // ─── tests ────────────────────────────────────────────────────────
 
 describe("loadInitScript", () => {
@@ -84,6 +98,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => null,
       importModule: async () => ({}),
     });
@@ -108,6 +123,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => ({ default: userDefault }),
     });
@@ -132,6 +148,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => ({ default: userDefault }),
     });
@@ -153,6 +170,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => ({ default: userDefault }),
     });
@@ -175,6 +193,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => ({ default: userDefault }),
     });
@@ -193,6 +212,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => ({ default: { not: "a function" } }),
     });
@@ -210,6 +230,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => {
         throw new Error("import boom");
@@ -234,6 +255,7 @@ describe("loadInitScript", () => {
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
       devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
       fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
       importModule: async () => ({ default: userDefault }),
     });
@@ -241,5 +263,35 @@ describe("loadInitScript", () => {
     expect(result.ran).toBe(false);
     expect(effectReg.registered).toEqual([validEffectPack]);
     expect(personaReg.registered).toEqual([]);
+  });
+
+  it("ctx.dispatchEffect forwards requests to the effect dispatcher", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const dispatcher = makeEffectDispatcher();
+    const { subsystem } = makeDevLog();
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      ctx.dispatchEffect({
+        kind: "fireworks",
+        origin: { x: 0.5, y: 0.5 },
+        count: 60,
+        durationMs: 1200,
+      });
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: dispatcher,
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(dispatcher.dispatched).toEqual([
+      { kind: "fireworks", origin: { x: 0.5, y: 0.5 }, count: 60, durationMs: 1200 },
+    ]);
   });
 });

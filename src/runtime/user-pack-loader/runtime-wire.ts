@@ -10,7 +10,7 @@
  */
 
 import type { SubsystemLog } from "../../core/dev-log";
-import { type LoadInitScriptResult, loadInitScript } from "./init-script";
+import { type EffectRequester, type LoadInitScriptResult, loadInitScript } from "./init-script";
 import {
   type EffectRegistrar,
   type LoadUserPacksResult,
@@ -22,6 +22,7 @@ import {
 export interface LoadUserLayerDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
+  readonly effectDispatcher: EffectRequester;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
 }
@@ -58,6 +59,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   const init = await loadInitScript({
     effectPackRunner: deps.effectPackRunner,
     personaRegistry: deps.personaRegistry,
+    effectDispatcher: deps.effectDispatcher,
     devLog: deps.initScriptLog,
     fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
     importModule: async (path) => {
