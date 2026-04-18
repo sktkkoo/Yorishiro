@@ -32,6 +32,7 @@ bundled-packs/shared/animations/*.vrma
 bundled-packs/shared/voices/
 public/animations/
 public/voice/
+public/bg-test.*
 
 # Internal design record (lives in separate repo: ../Charminal-design-record/)
 docs/design-record/

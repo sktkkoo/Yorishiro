@@ -37,9 +37,8 @@ const stubScene: SceneSpec = {
     {
       id: "backdrop",
       role: "background",
-      backgroundImage:
-        "radial-gradient(ellipse at 50% 30%, rgba(120, 150, 200, 0.18) 0%, transparent 70%), linear-gradient(180deg, #232838 0%, #161a24 100%)",
-      blur: 6,
+      src: "/bg-test.mp4",
+      blur: 3,
     },
     {
       id: "vrm-slot",
