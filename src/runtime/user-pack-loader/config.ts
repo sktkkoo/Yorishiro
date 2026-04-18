@@ -9,6 +9,7 @@
  * - `disabledPacks: string[]`（optional）: rescue 用の flag 群
  * - `activePersonas: string[]`（optional）: 将来 persona activation 用
  * - `mcpPort: number`（optional）: MCP server の port override
+ * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.3
@@ -18,12 +19,15 @@ export interface CharminalConfig {
   readonly disabledPacks: ReadonlyArray<string>;
   readonly activePersonas: ReadonlyArray<string>;
   readonly mcpPort: number | null;
+  /** User が explicit に picks した scene pack の id。null / undefined なら bundled alphabetical default に fall through。 */
+  readonly activeScene: string | null;
 }
 
 export const EMPTY_CONFIG: CharminalConfig = {
   disabledPacks: [],
   activePersonas: [],
   mcpPort: null,
+  activeScene: null,
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -33,6 +37,10 @@ const toStringArray = (value: unknown): string[] => {
 
 const toPort = (value: unknown): number | null => {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+};
+
+const toActiveScene = (value: unknown): string | null => {
+  return typeof value === "string" && value !== "" ? value : null;
 };
 
 /**
@@ -53,6 +61,7 @@ export function parseConfig(text: string): CharminalConfig {
     disabledPacks: toStringArray(obj.disabledPacks),
     activePersonas: toStringArray(obj.activePersonas),
     mcpPort: toPort(obj.mcpPort),
+    activeScene: toActiveScene(obj.activeScene),
   };
 }
 
@@ -65,6 +74,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.disabledPacks.length > 0) out.disabledPacks = cfg.disabledPacks;
   if (cfg.activePersonas.length > 0) out.activePersonas = cfg.activePersonas;
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
+  if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
@@ -79,4 +89,11 @@ export function withDisabledPackRemoved(cfg: CharminalConfig, id: string): Charm
     ...cfg,
     disabledPacks: cfg.disabledPacks.filter((p) => p !== id),
   };
+}
+
+/**
+ * activeScene を id にセットした新しい config を返す。id が null ならクリア。
+ */
+export function withActiveSceneSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
+  return { ...cfg, activeScene: id };
 }

@@ -13,6 +13,7 @@ import {
   EMPTY_CONFIG,
   parseConfig,
   serializeConfig,
+  withActiveSceneSet,
   withDisabledPackAdded,
   withDisabledPackRemoved,
 } from "./config";
@@ -32,6 +33,7 @@ describe("parseConfig", () => {
       disabledPacks: ["a", "b"],
       activePersonas: [],
       mcpPort: null,
+      activeScene: null,
     });
   });
 
@@ -41,6 +43,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       activePersonas: ["charminal-default"],
       mcpPort: null,
+      activeScene: null,
     });
   });
 
@@ -50,6 +53,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       activePersonas: [],
       mcpPort: 12345,
+      activeScene: null,
     });
   });
 
@@ -64,6 +68,7 @@ describe("parseConfig", () => {
       disabledPacks: ["ok"],
       activePersonas: [],
       mcpPort: null,
+      activeScene: null,
     });
   });
 });
@@ -80,6 +85,7 @@ describe("serializeConfig", () => {
       disabledPacks: ["a"],
       activePersonas: [],
       mcpPort: null,
+      activeScene: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -89,6 +95,7 @@ describe("serializeConfig", () => {
       disabledPacks: [],
       activePersonas: [],
       mcpPort: 18743,
+      activeScene: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -98,6 +105,7 @@ describe("serializeConfig", () => {
       disabledPacks: ["a", "b"],
       activePersonas: ["p"],
       mcpPort: 18743,
+      activeScene: null,
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -120,6 +128,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       disabledPacks: ["a", "b"],
       activePersonas: [],
       mcpPort: null,
+      activeScene: null,
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -130,8 +139,55 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       disabledPacks: ["a"],
       activePersonas: [],
       mcpPort: null,
+      activeScene: null,
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);
+  });
+});
+
+describe("activeScene", () => {
+  it("parses string activeScene", () => {
+    const cfg = parseConfig('{"activeScene": "my-scene"}');
+    expect(cfg.activeScene).toBe("my-scene");
+  });
+
+  it("treats empty string activeScene as null", () => {
+    const cfg = parseConfig('{"activeScene": ""}');
+    expect(cfg.activeScene).toBeNull();
+  });
+
+  it("treats non-string activeScene as null", () => {
+    const cfg = parseConfig('{"activeScene": 42}');
+    expect(cfg.activeScene).toBeNull();
+  });
+
+  it("defaults to null when activeScene is absent", () => {
+    const cfg = parseConfig("{}");
+    expect(cfg.activeScene).toBeNull();
+  });
+
+  it("serializeConfig omits activeScene when null", () => {
+    const cfg = { ...EMPTY_CONFIG, activeScene: null };
+    expect(serializeConfig(cfg)).toBe("{}\n");
+  });
+
+  it("serializeConfig includes activeScene when set", () => {
+    const cfg = { ...EMPTY_CONFIG, activeScene: "my-scene" };
+    const parsed = JSON.parse(serializeConfig(cfg));
+    expect(parsed.activeScene).toBe("my-scene");
+  });
+});
+
+describe("withActiveSceneSet", () => {
+  it("sets activeScene to given id", () => {
+    const next = withActiveSceneSet(EMPTY_CONFIG, "my-scene");
+    expect(next.activeScene).toBe("my-scene");
+  });
+
+  it("clears activeScene when given null", () => {
+    const cfg = { ...EMPTY_CONFIG, activeScene: "existing" };
+    const next = withActiveSceneSet(cfg, null);
+    expect(next.activeScene).toBeNull();
   });
 });
