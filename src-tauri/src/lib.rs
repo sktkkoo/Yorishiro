@@ -1,3 +1,4 @@
+mod mcp;
 mod pty;
 
 use pty::{start_hook_server, PtyState};
@@ -322,7 +323,8 @@ async fn write_charminal_file_atomic(relative_path: String, content: String) -> 
 }
 
 /// `~/.charminal/last-startup.json` を読む実装本体。テスト用に home 引数化。
-fn read_last_startup_report_impl(home_root: &Path) -> Result<String, String> {
+/// MCP `list_load_errors` tool から crate 内参照するため pub(crate)。
+pub(crate) fn read_last_startup_report_impl(home_root: &Path) -> Result<String, String> {
     let path = home_root.join(".charminal").join("last-startup.json");
     if !path.exists() {
         return Ok(String::new());
@@ -625,6 +627,15 @@ pub fn run() {
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
+            let mcp_handle = app.handle().clone();
+            match mcp::spawn_server(mcp_handle) {
+                Ok(port) => {
+                    eprintln!("[charminal-mcp] listening on localhost:{}", port);
+                }
+                Err(err) => {
+                    eprintln!("[charminal-mcp] startup skipped: {}", err);
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
