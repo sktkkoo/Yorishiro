@@ -1,0 +1,118 @@
+/**
+ * Scene pack の asset path を絶対 URL に解決する Loader 層の helper。
+ *
+ * pack 作者は bundled / user どちらでも同じ書き方：
+ *   - `src: "./assets/foo.mp4"` (pack-relative)
+ *   - `src: "https://cdn.example.com/foo.mp4"` (絶対 URL)
+ *
+ * Loader がここで pack 出自に応じて変換：
+ *   - bundled: Vite の import.meta.glob で build 時に asset URL を取得
+ *   - user: Tauri の convertFileSrc で asset:// URL に
+ *
+ * Internal design-record: specs/2026-04-18-scene-pack-registry.md §5
+ */
+
+import type { Layer, SceneSpec } from "../../sdk/scene";
+
+/**
+ * Vite の import.meta.glob で bundled-packs/scenes/ 配下の asset を build 時に取得。
+ * eager: true で初期 chunk に URL を含める（asset 自体は lazy 配信される）。
+ *
+ * Glob pattern に漏れた拡張子の asset は undefined が返り、当該 layer は
+ * src を外して register される（§5.5 graceful degradation）。
+ */
+const BUNDLED_ASSETS = import.meta.glob(
+  "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif}",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+
+/**
+ * 絶対 URL（protocol 含み）かどうか判定。
+ * 対応 protocol: http / https / asset / data / blob / file
+ */
+export function isAbsoluteUrl(src: string): boolean {
+  return /^(https?|asset|data|blob|file):/i.test(src);
+}
+
+/**
+ * 相対 path の leading `./` を剥がして返す。
+ */
+export function normalizeRelativePath(src: string): string {
+  return src.replace(/^\.\//, "");
+}
+
+/**
+ * bundled pack の pack-relative path を絶対 URL に解決。見つからなければ null。
+ */
+export function resolveBundledAsset(packId: string, relativePath: string): string | null {
+  const clean = normalizeRelativePath(relativePath);
+  const key = `/bundled-packs/scenes/${packId}/${clean}`;
+  return BUNDLED_ASSETS[key] ?? null;
+}
+
+/**
+ * user pack の pack-relative path を絶対 URL (asset://) に解決。
+ * 実装は Tauri の convertFileSrc を dynamic import して使う。
+ */
+export async function resolveUserAsset(packDir: string, relativePath: string): Promise<string> {
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  const clean = normalizeRelativePath(relativePath);
+  const absolutePath = `${packDir}/${clean}`;
+  return convertFileSrc(absolutePath);
+}
+
+interface ResolveOptions {
+  readonly origin: "bundled" | "user";
+  readonly packId: string;
+  readonly packDir?: string;
+  readonly onMissing?: (layerId: string, src: string) => void;
+}
+
+async function resolveLayerAssets(layer: Layer, options: ResolveOptions): Promise<Layer> {
+  if (layer.src === undefined) return layer;
+  if (isAbsoluteUrl(layer.src)) return layer;
+
+  if (layer.src.startsWith("/")) {
+    // Vite public/ 扱い — bundled でも user でも通す
+    return layer;
+  }
+
+  try {
+    let resolved: string | null = null;
+    if (options.origin === "bundled") {
+      resolved = resolveBundledAsset(options.packId, layer.src);
+    } else {
+      if (options.packDir === undefined) {
+        options.onMissing?.(layer.id, layer.src);
+        return { ...layer, src: undefined };
+      }
+      resolved = await resolveUserAsset(options.packDir, layer.src);
+    }
+
+    if (resolved === null) {
+      options.onMissing?.(layer.id, layer.src);
+      return { ...layer, src: undefined };
+    }
+    return { ...layer, src: resolved };
+  } catch {
+    // convertFileSrc 等が unexpected throw したらここで吸収
+    options.onMissing?.(layer.id, layer.src);
+    return { ...layer, src: undefined };
+  }
+}
+
+/**
+ * SceneSpec の全 layer を walk し、src を絶対 URL に解決する。
+ * 解決失敗時は当該 layer の src を undefined に置き換える（graceful degradation）。
+ *
+ * onMissing: 解決失敗時に呼ばれる callback（dev-log 等に warning を出す用途）。
+ */
+export async function resolveSceneAssets(
+  scene: SceneSpec,
+  options: ResolveOptions,
+): Promise<SceneSpec> {
+  const resolvedLayers = await Promise.all(
+    scene.layers.map((layer) => resolveLayerAssets(layer, options)),
+  );
+  return { ...scene, layers: resolvedLayers };
+}
