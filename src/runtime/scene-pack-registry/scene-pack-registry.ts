@@ -32,6 +32,13 @@ export class ScenePackRegistryImpl implements ScenePackRegistryInterface {
   private readonly listeners = new Set<(scene: SceneSpec | null) => void>();
   private activeSceneId: string | null = null;
   /**
+   * activeSceneId が register 内の override 促進（"bundled を user が同 id で上書きした時に
+   * active を user 側に引き継ぐ"）経由で set されたか。`setActiveScene` 経由で set された
+   * 場合は false。これにより user entry が後で dispose された時、promotion 由来の id を
+   * 掃除して「別の user pack が同 id で来たら Design B に反して auto-select される」を防ぐ。
+   */
+  private activeSceneIdIsPromoted = false;
+  /**
    * 最後に fire した scene の reference。id ではなく reference 比較する。
    * 同 id で user が bundled を override した場合、id は同じでも scene object
    * が変わる — この時 listener は fire すべき（React Sidebar の state 更新が
@@ -57,6 +64,7 @@ export class ScenePackRegistryImpl implements ScenePackRegistryInterface {
         this.entries.set(entry.id, entry);
         if (existing.origin === "bundled" && this.activeSceneId === null) {
           this.activeSceneId = entry.id;
+          this.activeSceneIdIsPromoted = true;
         }
       } else {
         // incoming が bundled
@@ -78,6 +86,12 @@ export class ScenePackRegistryImpl implements ScenePackRegistryInterface {
       dispose: () => {
         if (this.entries.get(entry.id) === entry) {
           this.entries.delete(entry.id);
+          // promotion 由来で active に昇格した id が、その同じ entry の dispose で消えるなら
+          // activeSceneId を null に戻す（Design B の "user は auto-select されない" を守る）
+          if (this.activeSceneIdIsPromoted && this.activeSceneId === entry.id) {
+            this.activeSceneId = null;
+            this.activeSceneIdIsPromoted = false;
+          }
           this.reselect();
         }
       },
@@ -101,6 +115,7 @@ export class ScenePackRegistryImpl implements ScenePackRegistryInterface {
 
   setActiveScene(id: string | null): void {
     this.activeSceneId = id;
+    this.activeSceneIdIsPromoted = false;
     this.reselect();
   }
 
@@ -114,7 +129,7 @@ export class ScenePackRegistryImpl implements ScenePackRegistryInterface {
     // reference 比較：同 id でも scene object が違えば fire する
     if (scene === this.lastActiveScene) return;
     this.lastActiveScene = scene;
-    for (const listener of this.listeners) {
+    for (const listener of Array.from(this.listeners)) {
       listener(scene);
     }
   }

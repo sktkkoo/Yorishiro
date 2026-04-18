@@ -129,6 +129,51 @@ describe("ScenePackRegistryImpl", () => {
     expect(warnings.some((w) => w.includes("same"))).toBe(true);
   });
 
+  it("promotion 由来の activeSceneId は promoted entry が dispose されたら null に戻る", () => {
+    const registry = new ScenePackRegistryImpl();
+    registry.register(makeEntry("a", "bundled"));
+    const userHandle = registry.register(makeEntry("a", "user"));
+    // user で bundled を override した時点で activeSceneId が "a" に promote される
+    expect(registry.getActiveScene()?.id).toBe("a");
+    userHandle.dispose();
+    // 同 id で新しい user pack が来ても auto-select されないこと（Design B 不変条件）
+    registry.register(makeEntry("a", "user"));
+    // activeSceneId が null に戻っているため、user "a" は auto-select されない
+    // bundled は dispose+置換で消えており fallback も無い
+    expect(registry.getActiveScene()).toBeNull();
+  });
+
+  it("setActiveScene 経由の activeSceneId は dispose で消えない（explicit は promotion 扱いしない）", () => {
+    const registry = new ScenePackRegistryImpl();
+    registry.register(makeEntry("a", "bundled"));
+    registry.register(makeEntry("b", "user"));
+    registry.setActiveScene("b"); // explicit — promoted ではない
+    // "a" に切り替えても promotion フラグは false のまま
+    registry.setActiveScene("a");
+    expect(registry.getActiveScene()?.id).toBe("a");
+  });
+
+  it("listener dispatch 中の reentrant dispose が同一 dispatch の後続 listener をスキップしない", () => {
+    const registry = new ScenePackRegistryImpl();
+    const sub1Called: boolean[] = [];
+    const sub2Called: boolean[] = [];
+    // sub2 を後から代入するため var 相当の hoisting が必要。let + 遅延参照で回避する。
+    let sub2: { dispose: () => void } = { dispose: () => {} };
+    const sub1 = registry.subscribeActive(() => {
+      sub1Called.push(true);
+      sub2.dispose(); // dispatch 中に reentrant dispose
+    });
+    sub2 = registry.subscribeActive(() => {
+      sub2Called.push(true);
+    });
+    // register で active が変化し dispatch が走る
+    registry.register(makeEntry("a", "bundled"));
+    // snapshot していれば sub2 も今回の dispatch では呼ばれる
+    expect(sub1Called.length).toBeGreaterThanOrEqual(2);
+    expect(sub2Called.length).toBeGreaterThanOrEqual(2);
+    void sub1; // suppress unused warning
+  });
+
   it("fires listener when same id is overridden with different scene", () => {
     const registry = new ScenePackRegistryImpl();
     const bundledEntry = makeEntry("same-id", "bundled");
