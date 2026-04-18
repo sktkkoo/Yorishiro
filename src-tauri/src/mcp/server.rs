@@ -141,7 +141,11 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
     );
     let router = axum::Router::new().nest_service("/mcp", service);
 
-    tokio::spawn(async move {
+    // Tauri 2 の setup closure は tokio runtime context 内で動かないため、
+    // `tokio::spawn` を直接呼ぶと "no reactor running" panic になる。
+    // tauri の async_runtime::spawn は Tauri 本体の tokio runtime 上に task を
+    // 流すため、setup の外側からでも安全に呼べる。
+    tauri::async_runtime::spawn(async move {
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(l) => l,
             Err(e) => {
