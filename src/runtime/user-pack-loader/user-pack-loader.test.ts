@@ -6,9 +6,19 @@
  */
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
+
+// @tauri-apps/api/core は Tauri runtime なしでは動かないので stub する。
+// scene branch が convertFileSrc で manifest URL を構築するため必要。
+vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: (path: string) => `asset://localhost/${path}`,
+  invoke: vi.fn(),
+  Channel: vi.fn(),
+}));
+
+import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
 import {
   type EffectRegistrar,
   loadSingleUserPack,
@@ -96,6 +106,20 @@ const makeDevLog = (): DevLogFixture => {
   return { log, subsystem: createSubsystemLog(log, "UserPackLoader") };
 };
 
+function makeFakeScenePackRegistry(): ScenePackRegistry {
+  const entries: ScenePackEntry[] = [];
+  return {
+    register: (e) => {
+      entries.push(e);
+      return { dispose: () => {} };
+    },
+    getActiveScene: () => null,
+    subscribeActive: () => ({ dispose: () => {} }),
+    setActiveScene: () => {},
+    listEntries: () => entries,
+  };
+}
+
 // ─── tests ────────────────────────────────────────────────────────
 
 describe("loadUserPacks", () => {
@@ -115,6 +139,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -146,6 +171,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -172,6 +198,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -190,11 +217,13 @@ describe("loadUserPacks", () => {
     const effectReg = makeEffectRegistrar();
     const personaReg = makePersonaRegistrar();
     const { log, subsystem } = makeDevLog();
-    const entries: UserPackEntry[] = [{ id: "my-scene", kind: "scene", entryPath: "/p/scene.js" }];
+    // "voice" は現在 SUPPORTED_PACK_KINDS に含まれない kind
+    const entries: UserPackEntry[] = [{ id: "my-voice", kind: "voice", entryPath: "/p/voice.js" }];
 
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -203,7 +232,127 @@ describe("loadUserPacks", () => {
 
     expect(result.loaded).toEqual([]);
     expect(result.failed).toEqual([]);
-    expect(log.read().some((e) => (e.note ?? "").includes("scene"))).toBe(true);
+    expect(log.read().some((e) => (e.note ?? "").includes("voice"))).toBe(true);
+  });
+
+  it("loads scene pack via scenePackRegistry", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const fakeScenes: ScenePackEntry[] = [];
+    const fakeScenePackRegistry: ScenePackRegistry = {
+      register: (e) => {
+        fakeScenes.push(e);
+        return { dispose: () => {} };
+      },
+      getActiveScene: () => null,
+      subscribeActive: () => ({ dispose: () => {} }),
+      setActiveScene: () => {},
+      listEntries: () => fakeScenes,
+    };
+    const { log, subsystem } = makeDevLog();
+    const entries: UserPackEntry[] = [
+      { id: "my-scene", kind: "scene", entryPath: "/p/my-scene/scene.js" },
+    ];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          id: "my-scene",
+          type: "scene",
+          version: "0.1.0",
+          charminalVersion: "^0.1.0",
+          entry: "scene.js",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )) as typeof fetch;
+
+    try {
+      const result = await loadUserPacks({
+        effectPackRunner: effectReg,
+        personaRegistry: personaReg,
+        scenePackRegistry: fakeScenePackRegistry,
+        packRegistry: new UserPackRegistry(),
+        devLog: subsystem,
+        fetchPackEntries: async () => entries,
+        importModule: async () => ({
+          default: {
+            id: "my-scene",
+            type: "scene",
+            scene: { id: "my-scene", layers: [{ id: "bg", role: "background" }] },
+          },
+        }),
+      });
+
+      expect(result.loaded).toEqual([{ id: "my-scene", kind: "scene" }]);
+      expect(result.failed).toEqual([]);
+      expect(fakeScenes).toHaveLength(1);
+      expect(fakeScenes[0].origin).toBe("user");
+      expect(log.read().some((e) => (e.note ?? "").includes("registered scene"))).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("scene pack fails if default export type is not 'scene'", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    const entries: UserPackEntry[] = [
+      { id: "bad-scene", kind: "scene", entryPath: "/p/bad-scene/scene.js" },
+    ];
+
+    const result = await loadUserPacks({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
+      packRegistry: new UserPackRegistry(),
+      devLog: subsystem,
+      fetchPackEntries: async () => entries,
+      importModule: async () => ({
+        default: { id: "bad-scene", type: "effect", scene: {} },
+      }),
+    });
+
+    expect(result.loaded).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].error).toMatch(/type must be "scene"/);
+  });
+
+  it("scene pack fails if manifest.json is 404", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    const entries: UserPackEntry[] = [
+      { id: "no-manifest", kind: "scene", entryPath: "/p/no-manifest/scene.js" },
+    ];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("not found", { status: 404 })) as typeof fetch;
+
+    try {
+      const result = await loadUserPacks({
+        effectPackRunner: effectReg,
+        personaRegistry: personaReg,
+        scenePackRegistry: makeFakeScenePackRegistry(),
+        packRegistry: new UserPackRegistry(),
+        devLog: subsystem,
+        fetchPackEntries: async () => entries,
+        importModule: async () => ({
+          default: {
+            id: "no-manifest",
+            type: "scene",
+            scene: { id: "no-manifest", layers: [] },
+          },
+        }),
+      });
+
+      expect(result.loaded).toEqual([]);
+      expect(result.failed).toHaveLength(1);
+      expect(result.failed[0].error).toMatch(/manifest\.json not found/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("captures persona duplicate-id register throws as failed, not thrown", async () => {
@@ -216,6 +365,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -237,6 +387,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => {
@@ -263,6 +414,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -289,6 +441,7 @@ describe("loadUserPacks", () => {
     await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -301,6 +454,7 @@ describe("loadUserPacks", () => {
     await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -323,6 +477,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner,
       personaRegistry,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       disabledPacks: ["disabled-pack"],
@@ -380,6 +535,7 @@ describe("loadUserPacks", () => {
     await loadUserPacks({
       effectPackRunner,
       personaRegistry,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       fetchPackEntries: async () => [],
@@ -426,6 +582,7 @@ describe("loadUserPacks", () => {
     await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -435,6 +592,7 @@ describe("loadUserPacks", () => {
     const result = await loadUserPacks({
       effectPackRunner: effectReg,
       personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -468,6 +626,7 @@ describe("loadSingleUserPack", () => {
     const result = await loadSingleUserPack(baseEntry(), {
       effectPackRunner: runner,
       personaRegistry: persona,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => ({
@@ -488,6 +647,7 @@ describe("loadSingleUserPack", () => {
     const result = await loadSingleUserPack(baseEntry(), {
       effectPackRunner: runner,
       personaRegistry: persona,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => {
@@ -510,6 +670,7 @@ describe("loadSingleUserPack", () => {
     const result = await loadSingleUserPack(baseEntry({ kind: "unknown" }), {
       effectPackRunner: runner,
       personaRegistry: persona,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => ({ default: {} }),
@@ -543,6 +704,7 @@ describe("loadSingleUserPack", () => {
     await loadSingleUserPack(baseEntry({ id: "p", kind: "persona" }), {
       effectPackRunner: runner,
       personaRegistry: persona,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => personaModule,
@@ -553,6 +715,7 @@ describe("loadSingleUserPack", () => {
     const result = await loadSingleUserPack(baseEntry({ id: "p", kind: "persona" }), {
       effectPackRunner: runner,
       personaRegistry: persona,
+      scenePackRegistry: makeFakeScenePackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => personaModule,

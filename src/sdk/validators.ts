@@ -14,6 +14,7 @@
  */
 
 import type { EffectDefinition, PersonaDefinition } from "./index";
+import type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 
 /** Pack の shape 違反で throw される error。loader 側で catch して dev-log に流す想定。 */
 export class PackValidationError extends Error {
@@ -78,4 +79,60 @@ export function validatePersonaDefinition(pack: unknown): PersonaDefinition {
   }
 
   return pack as unknown as PersonaDefinition;
+}
+
+/**
+ * Scene pack の default export を shape 検証 + type narrow。
+ * manifest は別 validator (`validateScenePackManifest`) で扱う。
+ */
+export function validateScenePackDefinition(rawDef: unknown): ScenePackDefinition {
+  if (rawDef === null || typeof rawDef !== "object") {
+    throw new PackValidationError("scene pack default export must be an object");
+  }
+  const d = rawDef as Record<string, unknown>;
+  if (d.type !== "scene") {
+    throw new PackValidationError(`scene pack type must be "scene", got "${d.type}"`);
+  }
+  if (typeof d.id !== "string") {
+    throw new PackValidationError("scene pack must have string id");
+  }
+  if (typeof d.scene !== "object" || d.scene === null) {
+    throw new PackValidationError("scene pack must have scene SceneSpec");
+  }
+  return d as unknown as ScenePackDefinition;
+}
+
+/**
+ * Scene pack の manifest.json を shape 検証 + type narrow。
+ * user scene pack でも必須（Phase 2 の design 決定、memory:
+ * feedback_explicit_over_implicit_ugc）。
+ */
+export function validateScenePackManifest(raw: unknown, expectedId?: string): ScenePackManifest {
+  if (raw === null || typeof raw !== "object") {
+    throw new PackValidationError("manifest must be a JSON object");
+  }
+  const m = raw as Record<string, unknown>;
+  if (m.type !== "scene") {
+    throw new PackValidationError(`manifest type must be "scene", got "${m.type}"`);
+  }
+  if (typeof m.id !== "string") {
+    throw new PackValidationError("manifest must have string id");
+  }
+  if (expectedId !== undefined && m.id !== expectedId) {
+    throw new PackValidationError(
+      `manifest id "${m.id}" does not match directory id "${expectedId}"`,
+    );
+  }
+  if (typeof m.version !== "string") {
+    throw new PackValidationError("manifest must have string version");
+  }
+  if (typeof m.charminalVersion !== "string") {
+    throw new PackValidationError("manifest must have string charminalVersion");
+  }
+  if (typeof m.entry !== "string") {
+    throw new PackValidationError("manifest must have string entry");
+  }
+  // Design B: defaultActive field は schema から削除済。
+  // unknown field は tolerant に無視（user の古い manifest を壊さない）
+  return m as unknown as ScenePackManifest;
 }

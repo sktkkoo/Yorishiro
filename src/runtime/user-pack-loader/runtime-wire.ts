@@ -17,6 +17,7 @@
  */
 
 import type { SubsystemLog } from "../../core/dev-log";
+import type { ScenePackRegistry } from "../scene-pack-registry";
 import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
 import { parseConfig } from "./config";
 import { type EffectRequester, type LoadInitScriptResult, loadInitScript } from "./init-script";
@@ -34,6 +35,7 @@ import { type PackWatcherHandle, startPackWatcher } from "./watcher";
 export interface LoadUserLayerDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
+  readonly scenePackRegistry: ScenePackRegistry;
   readonly effectDispatcher: EffectRequester;
   readonly packRegistry: UserPackRegistry;
   readonly userPackLog: SubsystemLog;
@@ -89,6 +91,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     packs = await loadUserPacks({
       effectPackRunner: deps.effectPackRunner,
       personaRegistry: deps.personaRegistry,
+      scenePackRegistry: deps.scenePackRegistry,
       packRegistry: deps.packRegistry,
       devLog: deps.userPackLog,
       disabledPacks: config.disabledPacks,
@@ -127,6 +130,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   const watcher = await startPackWatcher({
     effectPackRunner: deps.effectPackRunner,
     personaRegistry: deps.personaRegistry,
+    scenePackRegistry: deps.scenePackRegistry,
     packRegistry: deps.packRegistry,
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
@@ -138,6 +142,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
 export interface ReloadSingleUserPackDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
+  readonly scenePackRegistry: ScenePackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly userPackLog: SubsystemLog;
 }
@@ -189,6 +194,7 @@ export async function reloadSingleUserPack(
   const result = await loadSingleUserPack(match, {
     effectPackRunner: deps.effectPackRunner,
     personaRegistry: deps.personaRegistry,
+    scenePackRegistry: deps.scenePackRegistry,
     packRegistry: deps.packRegistry,
     devLog: deps.userPackLog,
     importModule: async (path) => {

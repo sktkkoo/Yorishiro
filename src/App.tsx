@@ -17,6 +17,7 @@ import {
   createStubPersonaContextFactory,
   PersonaRegistry,
 } from "./runtime/persona-registry";
+import { getSceneRegistry } from "./runtime/scene-pack-registry";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
@@ -142,6 +143,7 @@ function App() {
     void loadUserLayer({
       effectPackRunner,
       personaRegistry: registry,
+      scenePackRegistry: getSceneRegistry(),
       effectDispatcher,
       packRegistry,
       userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
@@ -215,6 +217,7 @@ function App() {
             return reloadSingleUserPack(id, {
               effectPackRunner,
               personaRegistry: registry,
+              scenePackRegistry: getSceneRegistry(),
               packRegistry,
               userPackLog,
             });

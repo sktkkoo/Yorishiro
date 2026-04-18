@@ -19,11 +19,16 @@
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
+import type { ScenePackManifest } from "../../sdk/scene-pack";
 import {
   PackValidationError,
   validateEffectDefinition,
   validatePersonaDefinition,
+  validateScenePackDefinition,
+  validateScenePackManifest,
 } from "../../sdk/validators";
+import type { ScenePackRegistry } from "../scene-pack-registry";
+import { resolveSceneAssets } from "../scene-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
 import type { UserPackRegistry } from "./user-pack-registry";
@@ -48,6 +53,7 @@ export interface PersonaRegistrar {
 export interface LoadUserPacksDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
+  readonly scenePackRegistry: ScenePackRegistry;
   readonly devLog: SubsystemLog;
   /**
    * Hot-reload 用の idempotency 層。register 結果の Disposable をここに格納し、
@@ -105,6 +111,7 @@ export interface LoadUserPacksResult {
 export interface LoadSingleUserPackDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
+  readonly scenePackRegistry: ScenePackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
@@ -146,7 +153,14 @@ export async function loadSingleUserPack(
   entry: UserPackEntry,
   deps: LoadSingleUserPackDeps,
 ): Promise<LoadSingleResult> {
-  const { effectPackRunner, personaRegistry, packRegistry, devLog, importModule } = deps;
+  const {
+    effectPackRunner,
+    personaRegistry,
+    scenePackRegistry,
+    packRegistry,
+    devLog,
+    importModule,
+  } = deps;
 
   if (!SUPPORTED_PACK_KINDS.has(entry.kind)) {
     const error = `unsupported kind '${entry.kind}'`;
@@ -212,6 +226,61 @@ export async function loadSingleUserPack(
         return { status: "failed", id: entry.id, kind: entry.kind, error };
       }
     }
+    if (entry.kind === "scene") {
+      const scenePackDef = validateScenePackDefinition(def);
+
+      // packDir は entry.entryPath の scene.js を落としたもの（user は .js 強制）。
+      // 末尾スラッシュが付かないよう注意。
+      const packDir = entry.entryPath.replace(/\/scene\.js$/, "");
+
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      const manifestUrl = convertFileSrc(`${packDir}/manifest.json`);
+      let manifest: ScenePackManifest;
+      try {
+        const response = await fetch(manifestUrl);
+        if (!response.ok) {
+          throw new PackValidationError(
+            `manifest.json not found (HTTP ${response.status}) at ${packDir}/manifest.json`,
+          );
+        }
+        const rawManifest = (await response.json()) as unknown;
+        manifest = validateScenePackManifest(rawManifest, entry.id);
+      } catch (err) {
+        const error =
+          err instanceof PackValidationError
+            ? err.message
+            : `manifest.json read/parse failed: ${err instanceof Error ? err.message : String(err)}`;
+        devLog.write({
+          phase: "validate",
+          note: `scene "${entry.id}": ${error}`,
+        });
+        return { status: "failed", id: entry.id, kind: entry.kind, error };
+      }
+
+      const resolved = await resolveSceneAssets(scenePackDef.scene, {
+        origin: "user",
+        packId: entry.id,
+        packDir,
+        onMissing: (layerId, src) => {
+          devLog.write({
+            phase: "register",
+            note: `user scene "${entry.id}": asset missing for layer "${layerId}" (src="${src}")`,
+          });
+        },
+      });
+      if (packRegistry.has(entry.id, entry.kind)) {
+        packRegistry.dispose(entry.id, entry.kind);
+      }
+      const handle = scenePackRegistry.register({
+        id: entry.id,
+        manifest,
+        scene: resolved,
+        origin: "user",
+      });
+      packRegistry.register(entry.id, entry.kind, handle);
+      devLog.write({ phase: "register", note: `registered scene '${scenePackDef.id}'` });
+      return { status: "loaded", id: entry.id, kind: entry.kind };
+    }
     // SUPPORTED_PACK_KINDS に含まれるが分岐にない kind が来た場合の fallback。
     const error = `handler missing for kind '${entry.kind}'`;
     return { status: "failed", id: entry.id, kind: entry.kind, error };
@@ -242,6 +311,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
   const {
     effectPackRunner,
     personaRegistry,
+    scenePackRegistry,
     devLog,
     packRegistry,
     fetchPackEntries,
@@ -293,6 +363,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     const result = await loadSingleUserPack(entry, {
       effectPackRunner,
       personaRegistry,
+      scenePackRegistry,
       packRegistry,
       devLog,
       importModule,

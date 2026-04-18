@@ -12,7 +12,16 @@
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
-import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
+import type { ScenePackManifest } from "../../sdk/scene-pack";
+import {
+  PackValidationError,
+  validateEffectDefinition,
+  validatePersonaDefinition,
+  validateScenePackDefinition,
+  validateScenePackManifest,
+} from "../../sdk/validators";
+import type { ScenePackRegistry } from "../scene-pack-registry";
+import { resolveSceneAssets } from "../scene-pack-registry";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 import type { UserPackRegistry } from "./user-pack-registry";
 import { type CharminalLayerEvent, mapEventToAction, type WatcherAction } from "./watcher-logic";
@@ -20,6 +29,7 @@ import { type CharminalLayerEvent, mapEventToAction, type WatcherAction } from "
 export interface StartPackWatcherDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
+  readonly scenePackRegistry: ScenePackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
@@ -194,6 +204,54 @@ async function reloadPack(
       deps.userPackLog.write({
         phase: "reload",
         note: `re-registered persona '${pack.id}'`,
+      });
+    } else if (action.kind === "scene") {
+      const scenePackDef = validateScenePackDefinition(def);
+      const packDir = action.entryPath.replace(/\/scene\.js$/, "");
+      const manifestUrl = (await import("@tauri-apps/api/core")).convertFileSrc(
+        `${packDir}/manifest.json`,
+      );
+      let manifest: ScenePackManifest;
+      try {
+        const response = await fetch(manifestUrl);
+        if (!response.ok) {
+          throw new PackValidationError(`manifest.json not found (HTTP ${response.status})`);
+        }
+        manifest = validateScenePackManifest((await response.json()) as unknown, action.id);
+      } catch (err) {
+        const error =
+          err instanceof PackValidationError
+            ? err.message
+            : `manifest.json read/parse failed: ${errorMessage(err)}`;
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `scene "${action.id}": ${error}`,
+        });
+        return;
+      }
+
+      const resolved = await resolveSceneAssets(scenePackDef.scene, {
+        origin: "user",
+        packId: action.id,
+        packDir,
+        onMissing: (layerId, src) => {
+          deps.userPackLog.write({
+            phase: "reload",
+            note: `user scene "${action.id}": asset missing for layer "${layerId}" (src="${src}")`,
+          });
+        },
+      });
+      deps.packRegistry.dispose(action.id, action.kind);
+      const handle = deps.scenePackRegistry.register({
+        id: action.id,
+        manifest,
+        scene: resolved,
+        origin: "user",
+      });
+      deps.packRegistry.register(action.id, action.kind, handle);
+      deps.userPackLog.write({
+        phase: "reload",
+        note: `re-registered scene '${scenePackDef.id}'`,
       });
     }
   } catch (err) {
