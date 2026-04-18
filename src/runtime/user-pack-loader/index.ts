@@ -7,17 +7,35 @@
  */
 
 export {
+  fetchSafeModeFlag,
+  readCharminalConfigText,
+  readLastStartupReport,
+  writeCharminalConfigText,
+  writeLastStartupReport,
+} from "./charminal-io";
+export {
+  type CharminalConfig,
+  EMPTY_CONFIG,
+  parseConfig,
+  serializeConfig,
+  withDisabledPackAdded,
+  withDisabledPackRemoved,
+} from "./config";
+export { filterDisabledPacks } from "./disabled-list";
+export {
   type CharminalInitContext,
   type EffectRequester,
   type LoadInitScriptDeps,
   type LoadInitScriptResult,
   loadInitScript,
 } from "./init-script";
+export { buildLoadReport, type LoadReport, type LoadResultEntry } from "./load-report";
 export {
   type LoadUserLayerDeps,
   type LoadUserLayerResult,
   loadUserLayer,
 } from "./runtime-wire";
+export { isSafeMode } from "./safe-mode";
 export {
   type EffectRegistrar,
   type FailedPackInfo,
