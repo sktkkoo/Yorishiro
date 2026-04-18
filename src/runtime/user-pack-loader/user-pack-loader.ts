@@ -24,6 +24,8 @@ import {
   validateEffectDefinition,
   validatePersonaDefinition,
 } from "../../sdk/validators";
+import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
+import type { UserPackRegistry } from "./user-pack-registry";
 
 /** Rust 側 list_user_packs が返す entry 形（1 pack の 1 kind）。 */
 export interface UserPackEntry {
@@ -46,6 +48,13 @@ export interface LoadUserPacksDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly devLog: SubsystemLog;
+  /**
+   * Hot-reload 用の idempotency 層。register 結果の Disposable をここに格納し、
+   * 後続の load / watcher event で同 id+kind が再 register された際に旧登録を
+   * dispose する。Phase 1-b で pitfall #8 / #9 を受ける隔壁（design-record
+   * 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B2）。
+   */
+  readonly packRegistry: UserPackRegistry;
   /** ~/.charminal/ を ensure してから list_user_packs を呼ぶ関数。production は Tauri invoke で実装。 */
   readonly fetchPackEntries: () => Promise<ReadonlyArray<UserPackEntry>>;
   /** entryPath を asset URL に変換しつつ dynamic import する関数。 */
@@ -68,12 +77,6 @@ export interface LoadUserPacksResult {
   readonly failed: ReadonlyArray<FailedPackInfo>;
 }
 
-/**
- * Phase 1-a では effect と persona のみ register 先がある。voice / body /
- * scene は存在しないので skip + devLog に warn（design-record 「段階的に下ろす」）。
- */
-const SUPPORTED_KINDS = new Set<string>(["effect", "persona"]);
-
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const extractDefault = (mod: unknown): unknown => {
@@ -88,11 +91,19 @@ const extractDefault = (mod: unknown): unknown => {
  * 「姿の見えない pack が Charminal 本体を道連れにしない」は philosophy 側の要請
  * （docs/philosophy/CHARMINAL.md「壊さないこと」）と直結。
  *
- * TODO(phase-1-b): hot reload 導入時、register 結果の Disposable を保持して
- * 再 load 時に dispose する必要がある。現状は起動 1 回しか呼ばないので未対応。
+ * 起動後の再 load（watcher からの reload 経由）でも同じ path を通る。register
+ * 結果の Disposable は `packRegistry` に格納されるので、同 id+kind の前 entry
+ * は自動で dispose される。
  */
 export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPacksResult> {
-  const { effectPackRunner, personaRegistry, devLog, fetchPackEntries, importModule } = deps;
+  const {
+    effectPackRunner,
+    personaRegistry,
+    devLog,
+    packRegistry,
+    fetchPackEntries,
+    importModule,
+  } = deps;
   const loaded: LoadedPackInfo[] = [];
   const failed: FailedPackInfo[] = [];
 
@@ -113,7 +124,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
   });
 
   for (const entry of entries) {
-    if (!SUPPORTED_KINDS.has(entry.kind)) {
+    if (!SUPPORTED_PACK_KINDS.has(entry.kind)) {
       devLog.write({
         phase: "register",
         note: `skipping unsupported kind '${entry.kind}' for pack '${entry.id}'`,
@@ -150,13 +161,21 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     try {
       if (entry.kind === "effect") {
         const pack = validateEffectDefinition(def);
-        effectPackRunner.register(pack);
+        const handle = effectPackRunner.register(pack);
+        packRegistry.register(entry.id, entry.kind, handle);
         loaded.push({ id: entry.id, kind: entry.kind });
         devLog.write({ phase: "register", note: `registered effect '${pack.id}'` });
       } else if (entry.kind === "persona") {
         const pack = validatePersonaDefinition(def);
+        // PersonaRegistry は duplicate id で throw するので、loader 層では事前に
+        // 前登録を dispose しておく（pitfall #8）。hot reload で watcher が同 id
+        // を再投入する場合もこの経路を通る。
+        if (packRegistry.has(entry.id, entry.kind)) {
+          packRegistry.dispose(entry.id, entry.kind);
+        }
         try {
-          personaRegistry.register(pack);
+          const handle = personaRegistry.register(pack);
+          packRegistry.register(entry.id, entry.kind, handle);
           loaded.push({ id: entry.id, kind: entry.kind });
           devLog.write({ phase: "register", note: `registered persona '${pack.id}'` });
         } catch (regErr) {
