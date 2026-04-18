@@ -124,12 +124,22 @@ function App() {
         });
         // Phase 1-c: safe mode のときだけ window title に suffix を付ける。
         // user が env var で safe mode に入ったことを常時 visible にする。
+        // title 更新の失敗が後続の MCP listener 接続を道連れにしないよう
+        // 独立した try-catch で包む（philosophy: docs/philosophy/CHARMINAL.md「壊さないこと」）。
         if (safeMode) {
-          const { getCurrentWindow } = await import("@tauri-apps/api/window");
-          const win = getCurrentWindow();
-          const current = await win.title();
-          if (!current.endsWith(" (Safe Mode)")) {
-            await win.setTitle(`${current} (Safe Mode)`);
+          try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const win = getCurrentWindow();
+            const current = await win.title();
+            if (!current.endsWith(" (Safe Mode)")) {
+              await win.setTitle(`${current} (Safe Mode)`);
+            }
+          } catch (err) {
+            appLog.write({
+              phase: "safe-mode-title",
+              note: "failed to append Safe Mode suffix to window title",
+              data: { error: err instanceof Error ? err.message : String(err) },
+            });
           }
         }
 
