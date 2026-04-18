@@ -6,6 +6,7 @@ import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
+import type { SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
@@ -23,6 +24,34 @@ import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
+
+// Phase 1 stub scene。Phase 2 で pack manifest から生成する。
+// 控えめな default：実在感を削がない範囲の blur / gradient。spec §10 により
+// 数値は「観察で調整」前提の参考値。派手さ方向には polish しない（§2.3）。
+const stubScene: SceneSpec = {
+  id: "charminal:phase-1-stub",
+  layers: [
+    {
+      id: "backdrop",
+      role: "background",
+      backgroundImage:
+        "radial-gradient(ellipse at 50% 30%, rgba(120, 150, 200, 0.18) 0%, transparent 70%), linear-gradient(180deg, #232838 0%, #161a24 100%)",
+      blur: 6,
+    },
+    {
+      id: "vrm-slot",
+      role: "character",
+      blur: 0,
+    },
+    {
+      id: "fg-vignette",
+      role: "foreground",
+      backgroundImage:
+        "radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
+      blur: 0,
+    },
+  ],
+};
 
 /**
  * Built-in triggers that map DispatchEvents to standard reactions.
@@ -339,6 +368,7 @@ function App() {
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         effectDispatcher={effectDispatcher}
+        scene={stubScene}
       />
       <Terminal
         key={cwd ?? "__default__"}
