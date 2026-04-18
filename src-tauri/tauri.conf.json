@@ -37,7 +37,8 @@
     ],
     "resources": [
       "resources/charminal-plugin/.claude-plugin/plugin.json",
-      "resources/charminal-plugin/commands/charm.md"
+      "resources/charminal-plugin/commands/charm.md",
+      "resources/charminal-plugin/.mcp.json"
     ]
   }
 }
