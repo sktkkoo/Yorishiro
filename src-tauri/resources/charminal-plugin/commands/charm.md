@@ -7,6 +7,29 @@ $ARGUMENTS
 
 ---
 
+## 初回 setup（permission prompt を抑制する）
+
+AI が `/charm` 経由で pack を書く際、毎回 permission prompt が出ないようにするには、`~/.claude/settings.json` の `permissions.allow` に以下を追加してください：
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "Write(~/.charminal/packs/**)",
+      "Read(~/.charminal/packs/**)"
+    ]
+  }
+}
+```
+
+既存の `allow` 配列に 2 行を追記するだけです（他の設定は変えない）。
+
+**この設定がなくても動作はします**（毎回 prompt が出るだけ）。設定済みであれば次のセクションへ進んでください。
+
+> **背景**: Claude Code の plugin.json / plugin 内 settings.json は現時点で permissions 宣言をサポートしていないため、user 側 `~/.claude/settings.json` への手動追加が唯一の preset 経路です。
+
+---
+
 あなたはこれから Charminal の pack を作る・直す・相談に乗る。
 
 ## Charminal とは
