@@ -6,6 +6,12 @@
  */
 
 export {
+  type CharminalInitContext,
+  type LoadInitScriptDeps,
+  type LoadInitScriptResult,
+  loadInitScript,
+} from "./init-script";
+export {
   type EffectRegistrar,
   type FailedPackInfo,
   type LoadedPackInfo,
