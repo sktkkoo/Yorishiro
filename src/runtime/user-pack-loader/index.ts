@@ -1,5 +1,6 @@
 /**
- * User pack loader barrel. Phase 1-a の static load を public に露出する。
+ * User pack loader barrel. Phase 1-a の static load と Phase 1-b の hot reload
+ * を public に露出する。
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-18-user-layer-runtime.md
@@ -27,3 +28,12 @@ export {
   type PersonaRegistrar,
   type UserPackEntry,
 } from "./user-pack-loader";
+export { type Disposable, UserPackRegistry } from "./user-pack-registry";
+export { type PackWatcherHandle, startPackWatcher } from "./watcher";
+export {
+  type CharminalLayerEvent,
+  mapEventToAction,
+  type ParsedLayerPath,
+  parseLayerPath,
+  type WatcherAction,
+} from "./watcher-logic";

@@ -1,6 +1,10 @@
 mod pty;
 
 use pty::{start_hook_server, PtyState};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, UNIX_EPOCH};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
@@ -262,6 +266,225 @@ async fn user_init_script_path() -> Result<Option<String>, String> {
     }
 }
 
+// ─── User layer file watcher (Phase 1-b) ────────────────────────────
+//
+// `~/.charminal/**` を recursive に監視し、debounced event を TS 層の Channel
+// に流す。TS 側は event を受けて対応 pack を cache-bust + re-import + registry
+// 経由で replace する。hot reload の主動脈。
+//
+// Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+// Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b: File watcher + hot reload」
+
+/// TS 層に送る 1 event。`mtimeMs` は receiver が import URL の `?v=` に混ぜる
+/// cache-bust key になる（removed の場合は 0）。
+#[derive(Clone, serde::Serialize)]
+struct CharminalLayerEvent {
+    path: String,
+    kind: String,
+    #[serde(rename = "mtimeMs")]
+    mtime_ms: u64,
+}
+
+/// File 1 枚の pending event（最後に届いた kind が勝つ）。
+type PendingMap = Arc<Mutex<HashMap<PathBuf, notify::EventKind>>>;
+
+struct WatcherHandle {
+    /// Drop 時に OS watcher を畳む。
+    _watcher: notify::RecommendedWatcher,
+    /// Debouncer thread に停止を伝える。
+    stop_tx: std::sync::mpsc::Sender<()>,
+    /// Debouncer thread。`take()` 時に join してクリーンに畳む。
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for WatcherHandle {
+    fn drop(&mut self) {
+        let _ = self.stop_tx.send(());
+        if let Some(handle) = self.thread.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+pub struct WatcherState {
+    inner: Mutex<Option<WatcherHandle>>,
+}
+
+impl WatcherState {
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
+}
+
+impl Default for WatcherState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// notify の EventKind を TS 層の文字列に落とす。受け取る必要のない kind は None。
+fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
+    use notify::EventKind::{Create, Modify, Remove};
+    match kind {
+        Create(_) => Some("created"),
+        Modify(_) => Some("modified"),
+        Remove(_) => Some("removed"),
+        _ => None,
+    }
+}
+
+/// File の mtime を ms 単位で返す。読めない場合は 0（removed event の fallback）。
+fn path_mtime_ms(path: &Path) -> u64 {
+    let Ok(metadata) = std::fs::metadata(path) else {
+        return 0;
+    };
+    let Ok(modified) = metadata.modified() else {
+        return 0;
+    };
+    modified
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+/// 与えられた scope 内に `path` が収まることを確認し、mtime を ms で返す。
+/// 本関数は `stat_file_mtime` の pure 実装——cargo test で scope 挙動を verify
+/// するため tauri ランタイムから分離してある。
+fn stat_mtime_in_scope(path: &Path, scope: &Path) -> Result<u64, String> {
+    let canonical_scope = scope
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize scope: {}", e))?;
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|e| format!("File not found: {}", e))?;
+    if !canonical_path.starts_with(&canonical_scope) {
+        return Err("Path escapes scope".into());
+    }
+    let metadata = std::fs::metadata(&canonical_path).map_err(|e| format!("Stat failed: {}", e))?;
+    let modified = metadata
+        .modified()
+        .map_err(|e| format!("No mtime available: {}", e))?;
+    let since_epoch = modified
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("mtime before epoch: {}", e))?;
+    Ok(since_epoch.as_millis() as u64)
+}
+
+/// 指定 path の mtime を ms 単位で返す。`~/.charminal/` 外の path は拒否。
+///
+/// TS 層は watcher event で受け取った path を改めて stat することで、watcher の
+/// 届ける mtime が古い場合の fallback とする（import URL の cache-bust 用途）。
+#[tauri::command]
+async fn stat_file_mtime(path: String) -> Result<u64, String> {
+    let home = charminal_home_path()?;
+    stat_mtime_in_scope(&PathBuf::from(path), &home)
+}
+
+/// `~/.charminal/` 配下を watch し、debounced file event を Channel で TS 層に流す。
+///
+/// 二重呼び出し時は旧 watcher を drop で畳む。`debounce` は 150ms——macOS の
+/// fsevent は save 1 回で複数 event を吐くため、path ごとに last-wins で coalesce
+/// する。
+#[tauri::command]
+async fn watch_charminal_layer(
+    state: State<'_, WatcherState>,
+    on_event: Channel<CharminalLayerEvent>,
+) -> Result<(), String> {
+    use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
+
+    let home = charminal_home_path()?;
+    std::fs::create_dir_all(home.join("packs"))
+        .map_err(|e| format!("Failed to ensure ~/.charminal/packs: {}", e))?;
+
+    let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
+    let pending_cb = pending.clone();
+
+    let mut watcher = RecommendedWatcher::new(
+        move |res: notify::Result<Event>| match res {
+            Ok(event) => {
+                let mut guard = match pending_cb.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                for path in event.paths.iter() {
+                    guard.insert(path.clone(), event.kind);
+                }
+            }
+            Err(e) => {
+                eprintln!("[watch_charminal_layer] notify error: {}", e);
+            }
+        },
+        Config::default(),
+    )
+    .map_err(|e| format!("Failed to create watcher: {}", e))?;
+
+    watcher
+        .watch(&home, RecursiveMode::Recursive)
+        .map_err(|e| format!("Failed to watch {}: {}", home.display(), e))?;
+
+    let canonical_home = home
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize ~/.charminal/: {}", e))?;
+
+    let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
+    let pending_bg = pending.clone();
+    let channel = on_event;
+
+    let thread = std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(150));
+        if matches!(
+            stop_rx.try_recv(),
+            Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected)
+        ) {
+            break;
+        }
+        let drained: Vec<(PathBuf, notify::EventKind)> = {
+            let mut guard = match pending_bg.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            guard.drain().collect()
+        };
+        for (path, kind) in drained {
+            let Some(label) = layer_event_label(&kind) else {
+                continue;
+            };
+            // 削除済み path は canonicalize できないので非正規化 path を scope
+            // チェックする。上位 dir の存在を scope に対して相対比較するだけ。
+            let in_scope = path.canonicalize().map_or_else(
+                |_| path.starts_with(&canonical_home) || path.starts_with(&home),
+                |canonical| canonical.starts_with(&canonical_home),
+            );
+            if !in_scope {
+                continue;
+            }
+            let payload = CharminalLayerEvent {
+                path: path.to_string_lossy().to_string(),
+                kind: label.to_string(),
+                mtime_ms: path_mtime_ms(&path),
+            };
+            if let Err(e) = channel.send(payload) {
+                eprintln!("[watch_charminal_layer] channel send failed: {}", e);
+                break;
+            }
+        }
+    });
+
+    let mut guard = state
+        .inner
+        .lock()
+        .map_err(|e| format!("WatcherState poisoned: {}", e))?;
+    // 旧 handle は drop で watcher / thread が畳まれる。
+    *guard = Some(WatcherHandle {
+        _watcher: watcher,
+        stop_tx,
+        thread: Some(thread),
+    });
+    Ok(())
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
@@ -295,6 +518,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::new())
+        .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
             pty_write,
@@ -308,7 +532,9 @@ pub fn run() {
             ensure_charminal_dirs,
             list_user_packs,
             read_charminal_file,
-            user_init_script_path
+            user_init_script_path,
+            watch_charminal_layer,
+            stat_file_mtime
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
@@ -344,5 +570,100 @@ mod sdk_bundle_tests {
         assert!(bundle.contains("export interface EffectContext"));
         assert!(!bundle.contains("from \"./reaction\""));
         assert!(!bundle.contains("from \"./context\""));
+    }
+}
+
+#[cfg(test)]
+mod layer_scope_tests {
+    use super::{layer_event_label, stat_mtime_in_scope};
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-phase1b-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("create tmp dir");
+        tmp
+    }
+
+    #[test]
+    fn stat_mtime_in_scope_returns_positive_mtime_for_file_inside_scope() {
+        let root = fresh_dir("inside");
+        let file = root.join("hello.js");
+        fs::write(&file, "export default 1;\n").expect("write file");
+
+        let mtime = stat_mtime_in_scope(&file, &root).expect("stat ok");
+        assert!(mtime > 0, "expected mtime to be positive, got {}", mtime);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn stat_mtime_in_scope_rejects_file_outside_scope() {
+        let scope = fresh_dir("scope");
+        let sibling = fresh_dir("sibling");
+        let outside = sibling.join("outside.js");
+        fs::write(&outside, "x\n").expect("write file");
+
+        let result = stat_mtime_in_scope(&outside, &scope);
+        assert!(
+            result.is_err(),
+            "expected scope rejection, got {:?}",
+            result
+        );
+
+        let _ = fs::remove_dir_all(&scope);
+        let _ = fs::remove_dir_all(&sibling);
+    }
+
+    #[test]
+    fn stat_mtime_in_scope_rejects_nonexistent_file() {
+        let scope = fresh_dir("missing-file");
+        let phantom = scope.join("does-not-exist.js");
+
+        let result = stat_mtime_in_scope(&phantom, &scope);
+        assert!(
+            result.is_err(),
+            "expected error for missing file, got {:?}",
+            result
+        );
+
+        let _ = fs::remove_dir_all(&scope);
+    }
+
+    #[test]
+    fn layer_event_label_maps_create_modify_remove_and_ignores_the_rest() {
+        use notify::event::{
+            AccessKind, CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode,
+        };
+        use notify::EventKind;
+
+        assert_eq!(
+            layer_event_label(&EventKind::Create(CreateKind::File)),
+            Some("created"),
+        );
+        assert_eq!(
+            layer_event_label(&EventKind::Modify(ModifyKind::Data(DataChange::Any))),
+            Some("modified"),
+        );
+        assert_eq!(
+            layer_event_label(&EventKind::Modify(ModifyKind::Name(RenameMode::Any))),
+            Some("modified"),
+        );
+        assert_eq!(
+            layer_event_label(&EventKind::Remove(RemoveKind::File)),
+            Some("removed"),
+        );
+        assert_eq!(layer_event_label(&EventKind::Access(AccessKind::Any)), None,);
+        assert_eq!(layer_event_label(&EventKind::Any), None);
+        assert_eq!(layer_event_label(&EventKind::Other), None);
     }
 }
