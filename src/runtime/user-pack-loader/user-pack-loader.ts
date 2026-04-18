@@ -24,6 +24,7 @@ import {
   validateEffectDefinition,
   validatePersonaDefinition,
 } from "../../sdk/validators";
+import { buildLoadReport, type LoadReport } from "./load-report";
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
 import type { UserPackRegistry } from "./user-pack-registry";
 
@@ -64,6 +65,17 @@ export interface LoadUserPacksDeps {
    * 未指定なら空配列と同等（無効化無し）。
    */
   readonly disabledPacks?: ReadonlyArray<string>;
+  /**
+   * LoadReport を atomic に書き出す writer。未指定なら report write を skip
+   * （test でも production でも pure fn は呼ぶので build のみは行う）。
+   */
+  readonly writeLoadReport?: (
+    timestamp: string,
+    safeMode: boolean,
+    report: LoadReport,
+  ) => Promise<void>;
+  readonly timestamp?: string;
+  readonly safeMode?: boolean;
 }
 
 export interface LoadedPackInfo {
@@ -214,6 +226,25 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
         data: { error },
       });
       failed.push({ id: entry.id, kind: entry.kind, error });
+    }
+  }
+
+  if (deps.writeLoadReport !== undefined) {
+    const timestamp = deps.timestamp ?? new Date().toISOString();
+    const safeMode = deps.safeMode ?? false;
+    const report = buildLoadReport({
+      timestamp,
+      safeMode,
+      result: { loaded, failed },
+    });
+    try {
+      await deps.writeLoadReport(timestamp, safeMode, report);
+    } catch (err) {
+      devLog.write({
+        phase: "register",
+        note: "failed to write last-startup.json",
+        data: { error: errorMessage(err) },
+      });
     }
   }
 

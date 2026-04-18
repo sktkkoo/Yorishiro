@@ -357,6 +357,40 @@ describe("loadUserPacks", () => {
     expect(packRegistry.has("disabled-pack", "effect")).toBe(false);
   });
 
+  it("invokes writeLoadReport with the final load result", async () => {
+    const captured: Array<{ timestamp: string; safeMode: boolean }> = [];
+    const writeLoadReport = async (
+      timestamp: string,
+      safeMode: boolean,
+      _report: unknown,
+    ): Promise<void> => {
+      captured.push({ timestamp, safeMode });
+    };
+
+    const effectPackRunner: EffectRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const personaRegistry: PersonaRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = { write: () => {} } as SubsystemLog;
+
+    await loadUserPacks({
+      effectPackRunner,
+      personaRegistry,
+      packRegistry,
+      devLog,
+      fetchPackEntries: async () => [],
+      importModule: async () => ({ default: null }),
+      writeLoadReport,
+      timestamp: "2026-04-18T12:00:00.000Z",
+      safeMode: false,
+    });
+
+    expect(captured).toEqual([{ timestamp: "2026-04-18T12:00:00.000Z", safeMode: false }]);
+  });
+
   it("re-loading a persona uses packRegistry to sidestep duplicate-id throws", async () => {
     // pitfall #8: PersonaRegistry.register throws on duplicate id. The loader
     // must dispose the registry entry first so the real-world PersonaRegistry
