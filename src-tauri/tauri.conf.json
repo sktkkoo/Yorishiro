@@ -18,7 +18,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:",
+      "csp": "default-src 'self'; script-src 'self' asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost asset: https://asset.localhost; worker-src 'self' blob:",
       "assetProtocol": {
         "enable": true,
         "scope": ["$APPDATA/**", "$HOME/.charminal/**"]
