@@ -34,14 +34,19 @@ export {
   type LoadUserLayerDeps,
   type LoadUserLayerResult,
   loadUserLayer,
+  type ReloadSingleUserPackDeps,
+  reloadSingleUserPack,
 } from "./runtime-wire";
 export { isSafeMode } from "./safe-mode";
 export {
   type EffectRegistrar,
   type FailedPackInfo,
   type LoadedPackInfo,
+  type LoadSingleResult,
+  type LoadSingleUserPackDeps,
   type LoadUserPacksDeps,
   type LoadUserPacksResult,
+  loadSingleUserPack,
   loadUserPacks,
   type PersonaRegistrar,
   type UserPackEntry,

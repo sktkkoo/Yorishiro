@@ -148,6 +148,7 @@ function App() {
           const { parseConfig, serializeConfig } = await import(
             "./runtime/user-pack-loader/config"
           );
+          const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
           type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
           type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
           type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
@@ -165,23 +166,17 @@ function App() {
               return null;
             }
           };
+          // Task 21: config.json から id を除外するだけでなく、file system から
+          // 読み直して runtime registry に直接 register し直す経路。Task 16 の
+          // 「file 存在確認だけ」limitation の fix。
+          const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
           const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
-            // 最小実装：list_user_packs を再実行して該当 id の存在確認だけ行う。
-            // 実 reload は file watcher が次回 file change event で拾う設計前提。
-            try {
-              const entries =
-                await invoke<Array<{ id: string; kind: string; entryPath: string }>>(
-                  "list_user_packs",
-                );
-              const match = entries.find((e) => e.id === id);
-              if (!match) return { ok: false, reason: "pack file not found" };
-              return { ok: true };
-            } catch (err) {
-              return {
-                ok: false,
-                reason: err instanceof Error ? err.message : String(err),
-              };
-            }
+            return reloadSingleUserPack(id, {
+              effectPackRunner,
+              personaRegistry: registry,
+              packRegistry,
+              userPackLog,
+            });
           };
 
           const handlers: ToolHandlerMap = {

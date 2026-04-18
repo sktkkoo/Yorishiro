@@ -23,6 +23,7 @@ import { type EffectRequester, type LoadInitScriptResult, loadInitScript } from 
 import {
   type EffectRegistrar,
   type LoadUserPacksResult,
+  loadSingleUserPack,
   loadUserPacks,
   type PersonaRegistrar,
   type UserPackEntry,
@@ -132,4 +133,72 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   });
 
   return { packs, init, watcher, safeMode };
+}
+
+export interface ReloadSingleUserPackDeps {
+  readonly effectPackRunner: EffectRegistrar;
+  readonly personaRegistry: PersonaRegistrar;
+  readonly packRegistry: UserPackRegistry;
+  readonly userPackLog: SubsystemLog;
+}
+
+/**
+ * 単体 pack を file system から再 load する。enable_pack MCP tool や
+ * 将来の手動 reload 経路から呼ばれる。
+ *
+ * list_user_packs で該当 id を探し、見つかれば cache-bust import 経路を
+ * 通して register する。見つからなければ {ok: false, reason} を返す。
+ *
+ * Task 16 で reloadPack は file 存在確認しか行わない最小実装だったため、
+ * disable → enable の後に runtime registry に pack が戻らない limitation
+ * があった。Task 21 でこの helper を介して直接 register する経路を完成
+ * させた（`loadSingleUserPack` を共用）。
+ *
+ * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
+ */
+export async function reloadSingleUserPack(
+  id: string,
+  deps: ReloadSingleUserPackDeps,
+): Promise<{ ok: boolean; reason?: string }> {
+  const { invoke, convertFileSrc } = await import("@tauri-apps/api/core");
+
+  const buildCacheBustUrl = async (path: string): Promise<string> => {
+    const base = convertFileSrc(path);
+    try {
+      const mtime = await invoke<number>("stat_file_mtime", { path });
+      return `${base}?v=${mtime}`;
+    } catch {
+      return base;
+    }
+  };
+
+  let entries: UserPackEntry[];
+  try {
+    entries = await invoke<UserPackEntry[]>("list_user_packs");
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const match = entries.find((e) => e.id === id);
+  if (!match) {
+    return { ok: false, reason: "pack file not found" };
+  }
+
+  const result = await loadSingleUserPack(match, {
+    effectPackRunner: deps.effectPackRunner,
+    personaRegistry: deps.personaRegistry,
+    packRegistry: deps.packRegistry,
+    devLog: deps.userPackLog,
+    importModule: async (path) => {
+      const url = await buildCacheBustUrl(path);
+      return await import(/* @vite-ignore */ url);
+    },
+  });
+
+  if (result.status === "failed") {
+    return { ok: false, reason: result.error };
+  }
+  return { ok: true };
 }
