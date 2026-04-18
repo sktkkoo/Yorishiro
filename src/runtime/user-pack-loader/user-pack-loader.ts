@@ -233,6 +233,11 @@ export async function loadSingleUserPack(
       // 末尾スラッシュが付かないよう注意。
       const packDir = entry.entryPath.replace(/\/scene\.js$/, "");
 
+      // manifest.json は fetch + URL 形式で読む必要があるため、importModule では不十分
+      // （importModule は ES module だけ解決する）。ここだけ dep injection 原則から外れて
+      // convertFileSrc を dynamic import する。loadSingleUserPack は per-pack 1 回しか
+      // 呼ばれないので cost は module loader の cache hit 1 回分で収まる。
+      // 将来 LoadSingleUserPackDeps に resolveAssetUrl(absPath) を追加する reflow は可能。
       const { convertFileSrc } = await import("@tauri-apps/api/core");
       const manifestUrl = convertFileSrc(`${packDir}/manifest.json`);
       let manifest: ScenePackManifest;

@@ -208,9 +208,7 @@ async function reloadPack(
     } else if (action.kind === "scene") {
       const scenePackDef = validateScenePackDefinition(def);
       const packDir = action.entryPath.replace(/\/scene\.js$/, "");
-      const manifestUrl = (await import("@tauri-apps/api/core")).convertFileSrc(
-        `${packDir}/manifest.json`,
-      );
+      const manifestUrl = tauri.convertFileSrc(`${packDir}/manifest.json`);
       let manifest: ScenePackManifest;
       try {
         const response = await fetch(manifestUrl);
