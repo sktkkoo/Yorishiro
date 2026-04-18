@@ -71,4 +71,19 @@ export class UserPackRegistry {
   has(id: string, kind: string): boolean {
     return this.entries.has(keyFor(id, kind));
   }
+
+  /**
+   * 現在 register されている entry の snapshot を返す。副作用なし。
+   *
+   * MCP `list_packs` tool が runtime state を問い合わせるときに使う。
+   */
+  listEntries(): Array<{ id: string; kind: string }> {
+    return Array.from(this.entries.keys()).map((key) => {
+      const separatorIndex = key.indexOf(":");
+      return {
+        id: key.slice(separatorIndex + 1),
+        kind: key.slice(0, separatorIndex),
+      };
+    });
+  }
 }
