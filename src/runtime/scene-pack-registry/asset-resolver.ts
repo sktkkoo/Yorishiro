@@ -22,7 +22,7 @@ import type { Layer, SceneSpec } from "../../sdk/scene";
  * src を外して register される（§5.5 graceful degradation）。
  */
 const BUNDLED_ASSETS = import.meta.glob(
-  "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif}",
+  "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif,svg}",
   { eager: true, query: "?url", import: "default" },
 ) as Record<string, string>;
 
