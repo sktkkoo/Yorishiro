@@ -20,10 +20,10 @@ import type {
   EffectAudioAPI,
   EffectContext,
   EffectDefinition,
+  RendererAPI,
 } from "@charminal/sdk";
 import type { Time } from "../time";
 import type { EffectDispatcher } from "./effect-dispatcher";
-import type { Renderer } from "./renderer";
 
 const stubAudio: EffectAudioAPI = {
   play: async (_ref: string, _options?: AudioPlayOptions): Promise<void> => {},
@@ -31,14 +31,19 @@ const stubAudio: EffectAudioAPI = {
 
 export interface EffectPackRunnerDeps {
   readonly dispatcher: EffectDispatcher;
-  readonly renderer: Renderer;
+  /**
+   * EffectContext.renderer にそのまま供給される SDK 側 interface。
+   * production では `Renderer` class instance、test では RendererAPI stub が来る。
+   * runner は RendererAPI より強い保証を必要としないので interface で受ける。
+   */
+  readonly renderer: RendererAPI;
   readonly time: Time;
   readonly audio?: EffectAudioAPI;
 }
 
 export class EffectPackRunner {
   private readonly dispatcher: EffectDispatcher;
-  private readonly renderer: Renderer;
+  private readonly renderer: RendererAPI;
   private readonly time: Time;
   private readonly audio: EffectAudioAPI;
 
@@ -49,17 +54,24 @@ export class EffectPackRunner {
     this.audio = deps.audio ?? stubAudio;
   }
 
-  register(pack: EffectDefinition): Disposable {
+  /**
+   * pack 側 author が TOptions を特定の request shape として宣言している前提で、
+   * dispatcher から届く SpaceEffectRequest をそのまま options として渡す。
+   * 型の橋渡しは `EffectDefinition<TOptions>` という「契約」で担保し、runtime
+   * では構造チェックを通さない——型を narrow する責務は pack author 側。
+   */
+  register<TOptions = unknown>(pack: EffectDefinition<TOptions>): Disposable {
     const unsub = this.dispatcher.subscribe(pack.id, (request) => {
       const controller = new AbortController();
-      const ctx: EffectContext = {
-        options: request,
+      const options = request as unknown as TOptions;
+      const ctx: EffectContext<TOptions> = {
+        options,
         time: this.time,
         signal: controller.signal,
         renderer: this.renderer,
         audio: this.audio,
       };
-      void pack.run(ctx, request).catch((err) => {
+      void pack.run(ctx, options).catch((err) => {
         console.warn(`[EffectPackRunner] pack ${pack.id} threw`, err);
       });
     });
