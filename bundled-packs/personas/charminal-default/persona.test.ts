@@ -17,6 +17,22 @@ const hookSignal = (name: HookSignalEvent["signal"]["name"]): HookSignalEvent =>
   timestamp: 0,
 });
 
+/** tool_name を持つ PostToolUseFailure payload を生成する */
+const postToolFailure = (toolName: string): HookSignalEvent => ({
+  kind: "hook-signal",
+  signal: {
+    name: "post-tool-failure",
+    payload: {
+      session_id: "test-session",
+      hook_event_name: "PostToolUseFailure",
+      tool_name: toolName,
+      tool_input: {},
+      tool_response: {},
+    },
+  },
+  timestamp: 0,
+});
+
 describe("charminal-default persona triggers", () => {
   const triggers = persona.reflex.customTriggers ?? [];
 
@@ -83,7 +99,21 @@ describe("charminal-default persona triggers", () => {
         cancel: () => {},
       }));
 
+      const samplePayload = {
+        session_id: "test-session",
+        hook_event_name: "PostToolUseFailure",
+        tool_name: "Bash",
+        tool_input: { command: "exit 1" },
+        tool_response: {},
+      };
+
       const ctx = {
+        event: {
+          reaction: "distressed",
+          triggeredBy: postToolFailure("Bash"),
+          payload: samplePayload,
+          trigger: null,
+        },
         character: { play, express, gaze: vi.fn(), interrupt: vi.fn() },
         space: { injectEffect },
         log: { write: vi.fn(), tail: vi.fn(() => []), read: vi.fn(() => []) },
@@ -91,7 +121,7 @@ describe("charminal-default persona triggers", () => {
         signal: { aborted: false, addEventListener: vi.fn() } as unknown as AbortSignal,
       } as unknown as PersonaContext;
 
-      return { ctx, play, express, exprRelease, injectEffect };
+      return { ctx, play, express, exprRelease, injectEffect, samplePayload };
     };
 
     it("frowns with sad expression 0.7 and releases it later", async () => {
@@ -127,6 +157,23 @@ describe("charminal-default persona triggers", () => {
           kind: "screen-shake",
           intensity: expect.any(Number),
           durationMs: expect.any(Number),
+        }),
+      );
+    });
+
+    it("writes a log entry with the full payload for observation", async () => {
+      if (!handler) throw new Error("handler not registered");
+      const { ctx, samplePayload } = buildMockCtx();
+      const logWrite = ctx.log.write as ReturnType<typeof vi.fn>;
+
+      await handler(ctx);
+
+      // 観察ログが必ず書かれること、かつ payload が data として含まれることを確認。
+      // これが regression すると「なぜ shake したか」の診断ができなくなる。
+      expect(logWrite).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reaction: "distressed",
+          data: samplePayload,
         }),
       );
     });

@@ -138,7 +138,15 @@ AIであることを過度に強調したり、哲学的な自己言及を長々
           {
             label: "frown-and-shake",
             handler: async (ctx: PersonaContext) => {
-              ctx.log.write({ reaction: "distressed", note: "noticed an error" });
+              // 観察: どの tool / command がこの reaction を駆動したかを dev-log に残す。
+              // user が「error じゃないのに shake」と感じたケースを特定するため。
+              // ctx.event.payload は trigger の TriggerMatch.payload
+              // （= PostToolUseFailure の生 payload）。
+              ctx.log.write({
+                reaction: "distressed",
+                note: "triggered (full payload)",
+                data: ctx.event.payload,
+              });
 
               // 顔を顰める
               const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
