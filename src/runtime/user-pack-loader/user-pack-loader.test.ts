@@ -318,7 +318,7 @@ describe("loadUserPacks", () => {
       register: () => ({ dispose: () => {} }),
     };
     const packRegistry = new UserPackRegistry();
-    const devLog = { write: () => {} } as SubsystemLog;
+    const devLog = makeDevLog().subsystem;
 
     const result = await loadUserPacks({
       effectPackRunner,
@@ -375,7 +375,7 @@ describe("loadUserPacks", () => {
       register: () => ({ dispose: () => {} }),
     };
     const packRegistry = new UserPackRegistry();
-    const devLog = { write: () => {} } as SubsystemLog;
+    const devLog = makeDevLog().subsystem;
 
     await loadUserPacks({
       effectPackRunner,
@@ -463,7 +463,7 @@ describe("loadSingleUserPack", () => {
       register: () => ({ dispose: () => {} }),
     };
     const packRegistry = new UserPackRegistry();
-    const devLog = { write: () => {} } as SubsystemLog;
+    const devLog = makeDevLog().subsystem;
 
     const result = await loadSingleUserPack(baseEntry(), {
       effectPackRunner: runner,
@@ -483,7 +483,7 @@ describe("loadSingleUserPack", () => {
     const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
     const persona: PersonaRegistrar = { register: () => ({ dispose: () => {} }) };
     const packRegistry = new UserPackRegistry();
-    const devLog = { write: () => {} } as SubsystemLog;
+    const devLog = makeDevLog().subsystem;
 
     const result = await loadSingleUserPack(baseEntry(), {
       effectPackRunner: runner,
@@ -505,7 +505,7 @@ describe("loadSingleUserPack", () => {
     const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
     const persona: PersonaRegistrar = { register: () => ({ dispose: () => {} }) };
     const packRegistry = new UserPackRegistry();
-    const devLog = { write: () => {} } as SubsystemLog;
+    const devLog = makeDevLog().subsystem;
 
     const result = await loadSingleUserPack(baseEntry({ kind: "unknown" }), {
       effectPackRunner: runner,
@@ -528,7 +528,7 @@ describe("loadSingleUserPack", () => {
       },
     };
     const packRegistry = new UserPackRegistry();
-    const devLog = { write: () => {} } as SubsystemLog;
+    const devLog = makeDevLog().subsystem;
 
     const personaModule = {
       default: {

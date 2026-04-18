@@ -80,7 +80,7 @@ describe("list_packs handler", () => {
       readLoadReport: async () => report,
     });
 
-    const result = (await handler({})) as { packs: Array<{ status: string }> };
+    const result = (await handler({})) as unknown as { packs: Array<{ status: string }> };
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0].status).toBe("loaded");
   });
@@ -155,7 +155,7 @@ describe("enable_pack handler", () => {
     const result = await handler({ id: "target" });
     expect(result).toEqual({ ok: true });
     expect(reloadCalled).toBe("target");
-    expect(writtenConfig?.disabledPacks).toEqual(["a", "b"]);
+    expect(writtenConfig).toEqual({ disabledPacks: ["a", "b"] });
   });
 
   it("returns ok:false when reloadPack reports file not found", async () => {
