@@ -96,6 +96,117 @@ async fn poll_hook_signals() -> Vec<String> {
     pty::drain_hook_signals()
 }
 
+// ─── Charminal home dir (~/.charminal/) ─────────────────────────────
+//
+// User が自分で pack を置く場所。Phase 1-a では以下の convention：
+//
+//   ~/.charminal/
+//   ├── init.js                         # 起動時 entry (~= init.el)
+//   ├── packs/
+//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene}
+//   ├── config.json                     # 将来の宣言的設定
+//   └── sdk.d.ts                        # Charminal が ship する IDE 用 type hint
+//
+// Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+// Internal design-record: 2026-04-18-user-layer-runtime.md
+
+const PACK_KINDS: &[&str] = &["effect", "persona", "voice", "body", "scene"];
+
+fn charminal_home_path() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
+    Ok(std::path::PathBuf::from(home).join(".charminal"))
+}
+
+/// user pack の entry を記述する。TS 側 loader に JSON で渡す。
+#[derive(serde::Serialize)]
+struct UserPackEntry {
+    id: String,
+    kind: String,
+    #[serde(rename = "entryPath")]
+    entry_path: String,
+}
+
+/// Absolute path to ~/.charminal/. Does not create it.
+#[tauri::command]
+async fn charminal_home_dir() -> Result<String, String> {
+    Ok(charminal_home_path()?.to_string_lossy().to_string())
+}
+
+/// Create ~/.charminal/ and ~/.charminal/packs/ if missing. Idempotent.
+#[tauri::command]
+async fn ensure_charminal_dirs() -> Result<(), String> {
+    let home = charminal_home_path()?;
+    std::fs::create_dir_all(home.join("packs"))
+        .map_err(|e| format!("Failed to create ~/.charminal/packs: {}", e))?;
+    Ok(())
+}
+
+/// Scan ~/.charminal/packs/ and return discovered packs.
+///
+/// Convention: ~/.charminal/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
+/// Multiple kind files in one pack directory produce multiple entries.
+/// Missing directory returns empty vec (not an error).
+#[tauri::command]
+async fn list_user_packs() -> Result<Vec<UserPackEntry>, String> {
+    let packs_dir = charminal_home_path()?.join("packs");
+    if !packs_dir.exists() {
+        return Ok(Vec::new());
+    }
+    let mut entries = Vec::new();
+    let read =
+        std::fs::read_dir(&packs_dir).map_err(|e| format!("Failed to read packs dir: {}", e))?;
+    for pack_dir_entry in read.flatten() {
+        let pack_dir = pack_dir_entry.path();
+        if !pack_dir.is_dir() {
+            continue;
+        }
+        let id = pack_dir_entry.file_name().to_string_lossy().to_string();
+        if id.starts_with('.') {
+            continue;
+        }
+        for kind in PACK_KINDS {
+            let entry_file = pack_dir.join(format!("{}.js", kind));
+            if entry_file.is_file() {
+                entries.push(UserPackEntry {
+                    id: id.clone(),
+                    kind: (*kind).to_string(),
+                    entry_path: entry_file.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+    Ok(entries)
+}
+
+/// Read a text file from inside ~/.charminal/. Rejects paths outside the scope.
+#[tauri::command]
+async fn read_charminal_file(relative_path: String) -> Result<String, String> {
+    let home = charminal_home_path()?;
+    let full = home.join(&relative_path);
+    let canonical_home = home
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize home: {}", e))?;
+    let canonical_full = full
+        .canonicalize()
+        .map_err(|e| format!("File not found: {}", e))?;
+    if !canonical_full.starts_with(&canonical_home) {
+        return Err("Path escapes ~/.charminal/".into());
+    }
+    std::fs::read_to_string(&canonical_full).map_err(|e| format!("Read failed: {}", e))
+}
+
+/// `~/.charminal/init.js` があればパスを返す、なければ None。
+/// 起動時に user's init.el 相当として load する対象。
+#[tauri::command]
+async fn user_init_script_path() -> Result<Option<String>, String> {
+    let init_path = charminal_home_path()?.join("init.js");
+    if init_path.is_file() {
+        Ok(Some(init_path.to_string_lossy().to_string()))
+    } else {
+        Ok(None)
+    }
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
@@ -137,7 +248,12 @@ pub fn run() {
             pty_attach,
             pty_detach,
             import_vrm,
-            poll_hook_signals
+            poll_hook_signals,
+            charminal_home_dir,
+            ensure_charminal_dirs,
+            list_user_packs,
+            read_charminal_file,
+            user_init_script_path
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
