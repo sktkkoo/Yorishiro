@@ -1,0 +1,45 @@
+/**
+ * Bundled reference scene pack「静かな部屋」。
+ *
+ * Charminal の reference scene：整った polish を控えめな方向で示す手本
+ * （memory: feedback_charminal_presence_over_spectacle.md）。gradient のみ
+ * で構成し、動画素材は同梱しない（user が各自の素材で差し替える土台）。
+ *
+ * layer 構成：
+ *   - backdrop: ほんのりした青灰色の gradient + 光の中心。blur なし（gradient
+ *     に blur は視覚的に効かない）
+ *   - vrm-slot: VRM 本体、blur なし（character は鮮明）
+ *   - fg-vignette: 四隅だけ暗くする vignette、blur なし
+ *
+ * Philosophy: docs/philosophy/CHARMINAL.md「住まうということ」
+ * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
+ */
+
+import type { ScenePackDefinition } from "@charminal/sdk";
+
+export default {
+  id: "quiet-room",
+  type: "scene",
+  scene: {
+    id: "quiet-room",
+    layers: [
+      {
+        id: "backdrop",
+        role: "background",
+        backgroundImage:
+          "radial-gradient(ellipse at 50% 30%, rgba(120, 150, 200, 0.18) 0%, transparent 70%), linear-gradient(180deg, #232838 0%, #161a24 100%)",
+      },
+      {
+        id: "vrm-slot",
+        role: "character",
+        blur: 0,
+      },
+      {
+        id: "fg-vignette",
+        role: "foreground",
+        backgroundImage:
+          "radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
+      },
+    ],
+  },
+} satisfies ScenePackDefinition;
