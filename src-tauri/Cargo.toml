@@ -25,6 +25,15 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.8"
 notify = { version = "8.2.0", default-features = false, features = ["macos_fsevent"] }
+# MCP server: rmcp 1.5.0 + streamable-http-server（SSE の後継）+ axum で
+# localhost に bind する。spike 結果は internal design-record
+# 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5 / 4.6。
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+axum = "0.8"
+rmcp = { version = "1.5", features = ["server", "transport-streamable-http-server", "macros"] }
+schemars = "1"
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 pretty_assertions = "1"

@@ -1,3 +1,4 @@
+mod mcp;
 mod pty;
 
 use pty::{start_hook_server, PtyState};
@@ -254,6 +255,91 @@ async fn read_charminal_file(relative_path: String) -> Result<String, String> {
     std::fs::read_to_string(&canonical_full).map_err(|e| format!("Read failed: {}", e))
 }
 
+// ─── Phase 1-c: safe-mode / atomic write / load-report ─────────────
+//
+// user pack layer の rescue 経路。design-record 2026-04-18-phase-1c-rescue-and-mcp.md
+// Section 4.1 / 4.2 / 4.3 を参照。
+
+/// env var の値（`Option<&str>`）から safe-mode bool を判定する pure helper。
+/// test で env を直接触らないよう引数化する。
+fn is_safe_mode_value(value: Option<&str>) -> bool {
+    value == Some("1")
+}
+
+/// CHARMINAL_SAFE_MODE env var を読み、`'1'` のときのみ true を返す。
+/// TS 側 runtime-wire が起動時に invoke する。
+#[tauri::command]
+async fn is_safe_mode() -> Result<bool, String> {
+    let raw = std::env::var("CHARMINAL_SAFE_MODE").ok();
+    Ok(is_safe_mode_value(raw.as_deref()))
+}
+
+/// `~/.charminal/<relative>` に atomic に text を書き出す実装本体。
+/// テスト用に home を引数化する。
+fn write_charminal_file_atomic_impl(
+    relative_path: &str,
+    content: &str,
+    home_root: &Path,
+) -> Result<(), String> {
+    let charminal = home_root.join(".charminal");
+    std::fs::create_dir_all(&charminal)
+        .map_err(|e| format!("Failed to ensure ~/.charminal: {}", e))?;
+
+    let target = charminal.join(relative_path);
+
+    // path traversal 対策：target の親が canonical な charminal の中にあることを確認。
+    // target 自体はまだ存在しない可能性があるので、親 dir を canonicalize する。
+    let parent = target
+        .parent()
+        .ok_or_else(|| "target has no parent".to_string())?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("Failed to ensure parent: {}", e))?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize parent: {}", e))?;
+    let canonical_charminal = charminal
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize home: {}", e))?;
+    if !canonical_parent.starts_with(&canonical_charminal) {
+        return Err("Path escapes ~/.charminal/".into());
+    }
+
+    // .tmp に書いて rename で atomic に差し替える。同一 filesystem 内なので
+    // rename は POSIX / APFS で atomic。
+    let tmp = target.with_extension(format!(
+        "{}.tmp",
+        target.extension().and_then(|s| s.to_str()).unwrap_or("tmp")
+    ));
+    std::fs::write(&tmp, content).map_err(|e| format!("Failed to write tmp: {}", e))?;
+    std::fs::rename(&tmp, &target).map_err(|e| format!("Failed to rename: {}", e))?;
+    Ok(())
+}
+
+/// ~/.charminal/<relative> に atomic に text を書く。
+/// TS 側から config.json / last-startup.json の write に使う。
+#[tauri::command]
+async fn write_charminal_file_atomic(relative_path: String, content: String) -> Result<(), String> {
+    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
+    write_charminal_file_atomic_impl(&relative_path, &content, Path::new(&home))
+}
+
+/// `~/.charminal/last-startup.json` を読む実装本体。テスト用に home 引数化。
+/// MCP `list_load_errors` tool から crate 内参照するため pub(crate)。
+pub(crate) fn read_last_startup_report_impl(home_root: &Path) -> Result<String, String> {
+    let path = home_root.join(".charminal").join("last-startup.json");
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))
+}
+
+/// `~/.charminal/last-startup.json` を読む。不在 → 空文字列。
+/// MCP `list_load_errors` と TS 側 debug から使う。
+#[tauri::command]
+async fn read_last_startup_report() -> Result<String, String> {
+    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
+    read_last_startup_report_impl(Path::new(&home))
+}
+
 /// `~/.charminal/init.js` があればパスを返す、なければ None。
 /// 起動時に user's init.el 相当として load する対象。
 #[tauri::command]
@@ -264,6 +350,16 @@ async fn user_init_script_path() -> Result<Option<String>, String> {
     } else {
         Ok(None)
     }
+}
+
+/// MCP server が emit した `mcp:tool-request` を TS 側 handler が処理した
+/// 結果を受け取る。rmcp の tool handler が await していた oneshot channel に
+/// 値を流して round-trip を完結させる。
+///
+/// Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
+#[tauri::command]
+async fn mcp_tool_response(request_id: String, response: serde_json::Value) -> Result<(), String> {
+    mcp::server::resolve_pending_response(&request_id, response)
 }
 
 // ─── User layer file watcher (Phase 1-b) ────────────────────────────
@@ -532,12 +628,25 @@ pub fn run() {
             ensure_charminal_dirs,
             list_user_packs,
             read_charminal_file,
+            is_safe_mode,
+            write_charminal_file_atomic,
+            read_last_startup_report,
             user_init_script_path,
             watch_charminal_layer,
-            stat_file_mtime
+            stat_file_mtime,
+            mcp_tool_response
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
+            let mcp_handle = app.handle().clone();
+            match mcp::spawn_server(mcp_handle) {
+                Ok(port) => {
+                    eprintln!("[charminal-mcp] listening on localhost:{}", port);
+                }
+                Err(err) => {
+                    eprintln!("[charminal-mcp] startup skipped: {}", err);
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -575,7 +684,10 @@ mod sdk_bundle_tests {
 
 #[cfg(test)]
 mod layer_scope_tests {
-    use super::{layer_event_label, stat_mtime_in_scope};
+    use super::{
+        is_safe_mode_value, layer_event_label, read_last_startup_report_impl, stat_mtime_in_scope,
+        write_charminal_file_atomic_impl,
+    };
     use std::fs;
     use std::path::PathBuf;
 
@@ -665,5 +777,62 @@ mod layer_scope_tests {
         assert_eq!(layer_event_label(&EventKind::Access(AccessKind::Any)), None,);
         assert_eq!(layer_event_label(&EventKind::Any), None);
         assert_eq!(layer_event_label(&EventKind::Other), None);
+    }
+
+    // ─── Phase 1-c: safe-mode / atomic write / load-report ────────
+
+    #[test]
+    fn detect_safe_mode_reads_charminal_safe_mode_env_var() {
+        // 子スレッドで env var を設定して判定。test 並列実行で global 状態を
+        // 汚さないよう、判定 helper 関数は env var 値を引数として受ける形にする。
+        assert!(is_safe_mode_value(Some("1")));
+        assert!(!is_safe_mode_value(Some("0")));
+        assert!(!is_safe_mode_value(Some("")));
+        assert!(!is_safe_mode_value(Some("true")));
+        assert!(!is_safe_mode_value(None));
+    }
+
+    #[test]
+    fn write_charminal_file_atomic_writes_file_and_rejects_path_traversal() {
+        let tmp_home = fresh_dir("atomic-write");
+        std::env::set_var("HOME", &tmp_home);
+
+        // valid path inside ~/.charminal/ should succeed
+        let result =
+            write_charminal_file_atomic_impl("last-startup.json", "{\"ok\":true}", &tmp_home);
+        assert!(result.is_ok(), "expected ok, got {:?}", result);
+
+        let written =
+            std::fs::read_to_string(tmp_home.join(".charminal").join("last-startup.json"))
+                .expect("read written file");
+        assert_eq!(written, "{\"ok\":true}");
+
+        // path traversal must be rejected
+        let bad = write_charminal_file_atomic_impl("../escape.txt", "nope", &tmp_home);
+        assert!(bad.is_err(), "expected traversal rejection, got {:?}", bad);
+
+        let _ = std::fs::remove_dir_all(&tmp_home);
+    }
+
+    #[test]
+    fn read_last_startup_report_returns_empty_string_when_file_missing() {
+        let tmp_home = fresh_dir("missing-report");
+        let result = read_last_startup_report_impl(&tmp_home);
+        assert_eq!(result.unwrap(), "");
+        let _ = std::fs::remove_dir_all(&tmp_home);
+    }
+
+    #[test]
+    fn read_last_startup_report_returns_file_contents_when_present() {
+        let tmp_home = fresh_dir("present-report");
+        let charminal = tmp_home.join(".charminal");
+        std::fs::create_dir_all(&charminal).expect("mkdir");
+        std::fs::write(charminal.join("last-startup.json"), "{\"saved\":true}")
+            .expect("write fixture");
+
+        let result = read_last_startup_report_impl(&tmp_home);
+        assert_eq!(result.unwrap(), "{\"saved\":true}");
+
+        let _ = std::fs::remove_dir_all(&tmp_home);
     }
 }

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "charminal": {
+      "type": "http",
+      "url": "http://localhost:18743/mcp"
+    }
+  }
+}

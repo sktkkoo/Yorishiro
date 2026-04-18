@@ -11,6 +11,7 @@ import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-lo
 import { Time } from "../../core/time";
 import {
   type EffectRegistrar,
+  loadSingleUserPack,
   loadUserPacks,
   type PersonaRegistrar,
   type UserPackEntry,
@@ -309,6 +310,88 @@ describe("loadUserPacks", () => {
     expect(effectReg.disposedIds).toEqual(["hot"]);
   });
 
+  it("filters out entries whose id is in disabledPacks", async () => {
+    const effectPackRunner: EffectRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const personaRegistry: PersonaRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const result = await loadUserPacks({
+      effectPackRunner,
+      personaRegistry,
+      packRegistry,
+      devLog,
+      disabledPacks: ["disabled-pack"],
+      fetchPackEntries: async () => [
+        {
+          id: "enabled-pack",
+          kind: "effect",
+          entryPath: "/fake/enabled/effect.js",
+        },
+        {
+          id: "disabled-pack",
+          kind: "effect",
+          entryPath: "/fake/disabled/effect.js",
+        },
+      ],
+      importModule: async (path) => {
+        if (path === "/fake/enabled/effect.js") {
+          return {
+            default: {
+              id: "enabled-pack",
+              type: "effect",
+              run: async () => {},
+            },
+          };
+        }
+        throw new Error(`unexpected import: ${path}`);
+      },
+    });
+
+    expect(result.loaded).toEqual([{ id: "enabled-pack", kind: "effect" }]);
+    expect(result.failed).toEqual([]);
+    expect(packRegistry.has("enabled-pack", "effect")).toBe(true);
+    expect(packRegistry.has("disabled-pack", "effect")).toBe(false);
+  });
+
+  it("invokes writeLoadReport with the final load result", async () => {
+    const captured: Array<{ timestamp: string; safeMode: boolean }> = [];
+    const writeLoadReport = async (
+      timestamp: string,
+      safeMode: boolean,
+      _report: unknown,
+    ): Promise<void> => {
+      captured.push({ timestamp, safeMode });
+    };
+
+    const effectPackRunner: EffectRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const personaRegistry: PersonaRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    await loadUserPacks({
+      effectPackRunner,
+      personaRegistry,
+      packRegistry,
+      devLog,
+      fetchPackEntries: async () => [],
+      importModule: async () => ({ default: null }),
+      writeLoadReport,
+      timestamp: "2026-04-18T12:00:00.000Z",
+      safeMode: false,
+    });
+
+    expect(captured).toEqual([{ timestamp: "2026-04-18T12:00:00.000Z", safeMode: false }]);
+  });
+
   it("re-loading a persona uses packRegistry to sidestep duplicate-id throws", async () => {
     // pitfall #8: PersonaRegistry.register throws on duplicate id. The loader
     // must dispose the registry entry first so the real-world PersonaRegistry
@@ -361,5 +444,122 @@ describe("loadUserPacks", () => {
     expect(personaReg.registered).toHaveLength(2);
     expect(result.loaded).toEqual([{ id: "dup", kind: "persona" }]);
     expect(result.failed).toEqual([]);
+  });
+});
+
+describe("loadSingleUserPack", () => {
+  const baseEntry = (overrides: Partial<UserPackEntry> = {}): UserPackEntry => ({
+    id: "solo",
+    kind: "effect",
+    entryPath: "/fake/solo/effect.js",
+    ...overrides,
+  });
+
+  it("registers an effect pack and returns loaded info", async () => {
+    const runner: EffectRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const persona: PersonaRegistrar = {
+      register: () => ({ dispose: () => {} }),
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const result = await loadSingleUserPack(baseEntry(), {
+      effectPackRunner: runner,
+      personaRegistry: persona,
+      packRegistry,
+      devLog,
+      importModule: async () => ({
+        default: { id: "solo", type: "effect", run: async () => {} },
+      }),
+    });
+
+    expect(result.status).toBe("loaded");
+    expect(packRegistry.has("solo", "effect")).toBe(true);
+  });
+
+  it("returns failed when importModule throws", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const persona: PersonaRegistrar = { register: () => ({ dispose: () => {} }) };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const result = await loadSingleUserPack(baseEntry(), {
+      effectPackRunner: runner,
+      personaRegistry: persona,
+      packRegistry,
+      devLog,
+      importModule: async () => {
+        throw new Error("network down");
+      },
+    });
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.error).toContain("network down");
+    }
+  });
+
+  it("returns failed for unsupported kind", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const persona: PersonaRegistrar = { register: () => ({ dispose: () => {} }) };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const result = await loadSingleUserPack(baseEntry({ kind: "unknown" }), {
+      effectPackRunner: runner,
+      personaRegistry: persona,
+      packRegistry,
+      devLog,
+      importModule: async () => ({ default: {} }),
+    });
+
+    expect(result.status).toBe("failed");
+  });
+
+  it("replaces existing persona registration via dispose+register", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    let personaRegisterCount = 0;
+    const persona: PersonaRegistrar = {
+      register: () => {
+        personaRegisterCount++;
+        return { dispose: () => {} };
+      },
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const personaModule = {
+      default: {
+        id: "p",
+        name: "P",
+        thinking: { systemPromptAddition: "" },
+        reflex: { responses: {} },
+      },
+    };
+
+    // 1 回目
+    await loadSingleUserPack(baseEntry({ id: "p", kind: "persona" }), {
+      effectPackRunner: runner,
+      personaRegistry: persona,
+      packRegistry,
+      devLog,
+      importModule: async () => personaModule,
+    });
+
+    // 2 回目（disable→enable を模擬。persona は duplicate throw なので本来 failed だが
+    // packRegistry.has → dispose 経路で救われるはず）
+    const result = await loadSingleUserPack(baseEntry({ id: "p", kind: "persona" }), {
+      effectPackRunner: runner,
+      personaRegistry: persona,
+      packRegistry,
+      devLog,
+      importModule: async () => personaModule,
+    });
+
+    expect(result.status).toBe("loaded");
+    expect(personaRegisterCount).toBe(2);
+    expect(packRegistry.has("p", "persona")).toBe(true);
   });
 });

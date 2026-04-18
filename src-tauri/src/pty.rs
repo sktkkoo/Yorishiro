@@ -285,6 +285,16 @@ impl PtyState {
             if dir.exists() {
                 cmd.arg("--plugin-dir");
                 cmd.arg(dir.to_str().unwrap_or_default());
+
+                // Claude Code plugin の .mcp.json は auto-discover されないため、
+                // --mcp-config で明示的に load させる。これで Charminal が立てる
+                // MCP server (localhost:18743) を AI が tool として認識できる。
+                // Phase 1-c で追加（design-record 2026-04-18-phase-1c-rescue-and-mcp.md）。
+                let mcp_config = dir.join(".mcp.json");
+                if mcp_config.is_file() {
+                    cmd.arg("--mcp-config");
+                    cmd.arg(mcp_config.to_str().unwrap_or_default());
+                }
             } else {
                 eprintln!(
                     "[pty.spawn] plugin_dir does not exist, skipping: {}",

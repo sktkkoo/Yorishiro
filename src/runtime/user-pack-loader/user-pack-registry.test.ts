@@ -121,4 +121,36 @@ describe("UserPackRegistry", () => {
     expect(() => reg.disposeAll()).not.toThrow();
     expect(clean.disposed).toBe(true);
   });
+
+  it("listEntries() returns an empty array for a fresh registry", () => {
+    const reg = new UserPackRegistry();
+    expect(reg.listEntries()).toEqual([]);
+  });
+
+  it("listEntries() returns {id, kind} for each registered entry", () => {
+    const reg = new UserPackRegistry();
+    reg.register("shake", "effect", makeDisposable());
+    reg.register("charminal-default", "persona", makeDisposable());
+    reg.register("shake", "persona", makeDisposable());
+
+    const entries = reg.listEntries();
+    expect(entries).toHaveLength(3);
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        { id: "shake", kind: "effect" },
+        { id: "charminal-default", kind: "persona" },
+        { id: "shake", kind: "persona" },
+      ]),
+    );
+  });
+
+  it("listEntries() reflects dispose() and disposeAll() removals", () => {
+    const reg = new UserPackRegistry();
+    reg.register("a", "effect", makeDisposable());
+    reg.register("b", "effect", makeDisposable());
+    reg.dispose("a", "effect");
+    expect(reg.listEntries()).toEqual([{ id: "b", kind: "effect" }]);
+    reg.disposeAll();
+    expect(reg.listEntries()).toEqual([]);
+  });
 });

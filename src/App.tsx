@@ -147,12 +147,111 @@ function App() {
       userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
       initScriptLog: createSubsystemLog(devLog, "InitScript"),
     })
-      .then(({ packs, init }) => {
+      .then(async ({ packs, init, safeMode }) => {
         appLog.write({
           phase: "user-layer",
           note: `user-layer ready (packs loaded=${packs.loaded.length} failed=${packs.failed.length}; init ran=${init.ran})`,
           data: { packs, init },
         });
+        // Phase 1-c: safe mode のときだけ window title に suffix を付ける。
+        // user が env var で safe mode に入ったことを常時 visible にする。
+        if (safeMode) {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const win = getCurrentWindow();
+          const current = await win.title();
+          if (!current.endsWith(" (Safe Mode)")) {
+            await win.setTitle(`${current} (Safe Mode)`);
+          }
+        }
+
+        // Phase 1-c: MCP event channel wiring。Rust 側 MCP server が tool call を
+        // 受けると `mcp:tool-request` event を emit、TS 側で対応 handler を走らせ
+        // `mcp_tool_response` command で response を戻す。
+        // Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
+        try {
+          const { listen } = await import("@tauri-apps/api/event");
+          const { invoke } = await import("@tauri-apps/api/core");
+          const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
+          const { createListPacksHandler, createDisablePackHandler, createEnablePackHandler } =
+            await import("./runtime/charminal-mcp/tool-handlers");
+          const { readCharminalConfigText, writeCharminalConfigText, readLastStartupReport } =
+            await import("./runtime/user-pack-loader/charminal-io");
+          const { parseConfig, serializeConfig } = await import(
+            "./runtime/user-pack-loader/config"
+          );
+          const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
+          type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
+          type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
+          type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
+
+          const readConfig = async (): Promise<CharminalConfig> =>
+            parseConfig(await readCharminalConfigText());
+          const writeConfig = async (next: CharminalConfig): Promise<void> =>
+            writeCharminalConfigText(serializeConfig(next));
+          const readLoadReport = async (): Promise<LoadReport | null> => {
+            const text = await readLastStartupReport();
+            if (text === "") return null;
+            try {
+              return JSON.parse(text) as LoadReport;
+            } catch {
+              return null;
+            }
+          };
+          // Task 21: config.json から id を除外するだけでなく、file system から
+          // 読み直して runtime registry に直接 register し直す経路。Task 16 の
+          // 「file 存在確認だけ」limitation の fix。
+          const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
+          const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
+            return reloadSingleUserPack(id, {
+              effectPackRunner,
+              personaRegistry: registry,
+              packRegistry,
+              userPackLog,
+            });
+          };
+
+          const handlers: ToolHandlerMap = {
+            "list-packs": createListPacksHandler({
+              readRegistry: () => packRegistry.listEntries(),
+              readConfig,
+              readLoadReport,
+            }),
+            "disable-pack": createDisablePackHandler({
+              readConfig,
+              writeConfig,
+              registry: packRegistry,
+            }),
+            "enable-pack": createEnablePackHandler({
+              readConfig,
+              writeConfig,
+              reloadPack,
+            }),
+          };
+
+          await listen<{ requestId: string; tool: string; request: unknown }>(
+            "mcp:tool-request",
+            async (event) => {
+              const result = await dispatchToolEvent(handlers, {
+                tool: event.payload.tool,
+                request: event.payload.request,
+              });
+              await invoke("mcp_tool_response", {
+                requestId: event.payload.requestId,
+                response: result,
+              });
+            },
+          );
+          appLog.write({
+            phase: "mcp-channel",
+            note: "mcp:tool-request listener attached",
+          });
+        } catch (err) {
+          appLog.write({
+            phase: "mcp-channel",
+            note: "failed to attach MCP event listener",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       })
       .catch((err: unknown) => {
         appLog.write({

@@ -24,6 +24,7 @@ import {
   validateEffectDefinition,
   validatePersonaDefinition,
 } from "../../sdk/validators";
+import { buildLoadReport, type LoadReport } from "./load-report";
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
 import type { UserPackRegistry } from "./user-pack-registry";
 
@@ -59,6 +60,22 @@ export interface LoadUserPacksDeps {
   readonly fetchPackEntries: () => Promise<ReadonlyArray<UserPackEntry>>;
   /** entryPath を asset URL に変換しつつ dynamic import する関数。 */
   readonly importModule: (entryPath: string) => Promise<unknown>;
+  /**
+   * config.json の disabledPacks。同 id の全 kind を skip する。
+   * 未指定なら空配列と同等（無効化無し）。
+   */
+  readonly disabledPacks?: ReadonlyArray<string>;
+  /**
+   * LoadReport を atomic に書き出す writer。未指定なら report write を skip
+   * （test でも production でも pure fn は呼ぶので build のみは行う）。
+   */
+  readonly writeLoadReport?: (
+    timestamp: string,
+    safeMode: boolean,
+    report: LoadReport,
+  ) => Promise<void>;
+  readonly timestamp?: string;
+  readonly safeMode?: boolean;
 }
 
 export interface LoadedPackInfo {
@@ -77,12 +94,138 @@ export interface LoadUserPacksResult {
   readonly failed: ReadonlyArray<FailedPackInfo>;
 }
 
+/**
+ * `loadSingleUserPack` の依存。`loadUserPacks` が持つ list / disabled / report
+ * といった「集合の面倒を見る」責務は含まず、単体 entry を import → validate →
+ * register するのに必要なものだけを受け取る。
+ *
+ * Task 21: enable_pack から直接 re-register する経路を完成させるために、
+ * loop body を helper として抽出した。
+ */
+export interface LoadSingleUserPackDeps {
+  readonly effectPackRunner: EffectRegistrar;
+  readonly personaRegistry: PersonaRegistrar;
+  readonly packRegistry: UserPackRegistry;
+  readonly devLog: SubsystemLog;
+  readonly importModule: (entryPath: string) => Promise<unknown>;
+}
+
+/**
+ * 単体 pack の load 結果。`loadUserPacks` が loaded / failed 配列に振り分ける
+ * ときはこの status で分岐する。
+ */
+export type LoadSingleResult =
+  | { readonly status: "loaded"; readonly id: string; readonly kind: string }
+  | {
+      readonly status: "failed";
+      readonly id: string;
+      readonly kind: string;
+      readonly error: string;
+    };
+
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 const extractDefault = (mod: unknown): unknown => {
   if (mod === null || typeof mod !== "object") return undefined;
   return (mod as { default?: unknown }).default;
 };
+
+/**
+ * 単体 pack を import → validate → register する per-entry load logic。
+ *
+ * `loadUserPacks` の loop body をそのまま抽出したもの。dev-log への書き出し、
+ * packRegistry 経由の dispose-then-register（pitfall #8 の隔壁）もここで行う。
+ *
+ * enable_pack MCP tool は `reloadSingleUserPack` 経由でこの helper を呼び、
+ * config.json から id を除外したあとに runtime registry へ直接 register
+ * し直す（Task 16 で flag した limitation を Task 21 で fix）。
+ *
+ * Internal design-record: 2026-04-18-user-layer-runtime.md Section B2
+ */
+export async function loadSingleUserPack(
+  entry: UserPackEntry,
+  deps: LoadSingleUserPackDeps,
+): Promise<LoadSingleResult> {
+  const { effectPackRunner, personaRegistry, packRegistry, devLog, importModule } = deps;
+
+  if (!SUPPORTED_PACK_KINDS.has(entry.kind)) {
+    const error = `unsupported kind '${entry.kind}'`;
+    devLog.write({
+      phase: "register",
+      note: `skipping unsupported kind '${entry.kind}' for pack '${entry.id}'`,
+    });
+    return { status: "failed", id: entry.id, kind: entry.kind, error };
+  }
+
+  let mod: unknown;
+  try {
+    mod = await importModule(entry.entryPath);
+  } catch (err) {
+    const error = errorMessage(err);
+    devLog.write({
+      phase: "import",
+      note: `dynamic import failed for '${entry.id}' (${entry.kind})`,
+      data: { entryPath: entry.entryPath, error },
+    });
+    return { status: "failed", id: entry.id, kind: entry.kind, error };
+  }
+
+  const def = extractDefault(mod);
+  if (def === undefined) {
+    const error = "module has no default export";
+    devLog.write({
+      phase: "import",
+      note: `${error} for '${entry.id}' (${entry.kind})`,
+      data: { entryPath: entry.entryPath },
+    });
+    return { status: "failed", id: entry.id, kind: entry.kind, error };
+  }
+
+  try {
+    if (entry.kind === "effect") {
+      const pack = validateEffectDefinition(def);
+      const handle = effectPackRunner.register(pack);
+      packRegistry.register(entry.id, entry.kind, handle);
+      devLog.write({ phase: "register", note: `registered effect '${pack.id}'` });
+      return { status: "loaded", id: entry.id, kind: entry.kind };
+    }
+    if (entry.kind === "persona") {
+      const pack = validatePersonaDefinition(def);
+      // PersonaRegistry は duplicate id で throw するので、loader 層では事前に
+      // 前登録を dispose しておく（pitfall #8）。hot reload / enable_pack で
+      // 同 id を再投入する場合もこの経路を通る。
+      if (packRegistry.has(entry.id, entry.kind)) {
+        packRegistry.dispose(entry.id, entry.kind);
+      }
+      try {
+        const handle = personaRegistry.register(pack);
+        packRegistry.register(entry.id, entry.kind, handle);
+        devLog.write({ phase: "register", note: `registered persona '${pack.id}'` });
+        return { status: "loaded", id: entry.id, kind: entry.kind };
+      } catch (regErr) {
+        const error = errorMessage(regErr);
+        devLog.write({
+          phase: "register",
+          note: `persona register failed for '${pack.id}'`,
+          data: { error },
+        });
+        return { status: "failed", id: entry.id, kind: entry.kind, error };
+      }
+    }
+    // SUPPORTED_PACK_KINDS に含まれるが分岐にない kind が来た場合の fallback。
+    const error = `handler missing for kind '${entry.kind}'`;
+    return { status: "failed", id: entry.id, kind: entry.kind, error };
+  } catch (err) {
+    const error = errorMessage(err);
+    const phase = err instanceof PackValidationError ? "validate" : "register";
+    devLog.write({
+      phase,
+      note: `${phase} failed for '${entry.id}' (${entry.kind})`,
+      data: { error },
+    });
+    return { status: "failed", id: entry.id, kind: entry.kind, error };
+  }
+}
 
 /**
  * Phase 1-a 段階の static loader。起動時に 1 回呼ぶ。
@@ -103,6 +246,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     packRegistry,
     fetchPackEntries,
     importModule,
+    disabledPacks,
   } = deps;
   const loaded: LoadedPackInfo[] = [];
   const failed: FailedPackInfo[] = [];
@@ -118,12 +262,26 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     });
     return { loaded, failed };
   }
+  const disabled = disabledPacks ?? [];
+  const filteredEntries =
+    disabled.length > 0 ? entries.filter((e) => !disabled.includes(e.id)) : entries;
+  if (filteredEntries.length !== entries.length) {
+    const skipped = entries.length - filteredEntries.length;
+    devLog.write({
+      phase: "list",
+      note: `filtered ${skipped} disabled pack entr${skipped === 1 ? "y" : "ies"}`,
+      data: { disabledPacks: [...disabled] },
+    });
+  }
   devLog.write({
     phase: "list",
-    note: `discovered ${entries.length} user pack entr${entries.length === 1 ? "y" : "ies"}`,
+    note: `discovered ${filteredEntries.length} user pack entr${filteredEntries.length === 1 ? "y" : "ies"}`,
   });
 
-  for (const entry of entries) {
+  for (const entry of filteredEntries) {
+    // Unsupported kind は failed にも loaded にも入れず「skipped」扱いにする
+    // （Phase 1-a から続く既存 behaviour）。loadSingleUserPack は同 case で
+    // failed を返すので、ここでは helper を通さず skip する。
     if (!SUPPORTED_PACK_KINDS.has(entry.kind)) {
       devLog.write({
         phase: "register",
@@ -132,71 +290,36 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
       continue;
     }
 
-    let mod: unknown;
-    try {
-      mod = await importModule(entry.entryPath);
-    } catch (err) {
-      const error = errorMessage(err);
-      devLog.write({
-        phase: "import",
-        note: `dynamic import failed for '${entry.id}' (${entry.kind})`,
-        data: { entryPath: entry.entryPath, error },
-      });
-      failed.push({ id: entry.id, kind: entry.kind, error });
-      continue;
+    const result = await loadSingleUserPack(entry, {
+      effectPackRunner,
+      personaRegistry,
+      packRegistry,
+      devLog,
+      importModule,
+    });
+    if (result.status === "loaded") {
+      loaded.push({ id: result.id, kind: result.kind });
+    } else {
+      failed.push({ id: result.id, kind: result.kind, error: result.error });
     }
+  }
 
-    const def = extractDefault(mod);
-    if (def === undefined) {
-      const error = "module has no default export";
-      devLog.write({
-        phase: "import",
-        note: `${error} for '${entry.id}' (${entry.kind})`,
-        data: { entryPath: entry.entryPath },
-      });
-      failed.push({ id: entry.id, kind: entry.kind, error });
-      continue;
-    }
-
+  if (deps.writeLoadReport !== undefined) {
+    const timestamp = deps.timestamp ?? new Date().toISOString();
+    const safeMode = deps.safeMode ?? false;
+    const report = buildLoadReport({
+      timestamp,
+      safeMode,
+      result: { loaded, failed },
+    });
     try {
-      if (entry.kind === "effect") {
-        const pack = validateEffectDefinition(def);
-        const handle = effectPackRunner.register(pack);
-        packRegistry.register(entry.id, entry.kind, handle);
-        loaded.push({ id: entry.id, kind: entry.kind });
-        devLog.write({ phase: "register", note: `registered effect '${pack.id}'` });
-      } else if (entry.kind === "persona") {
-        const pack = validatePersonaDefinition(def);
-        // PersonaRegistry は duplicate id で throw するので、loader 層では事前に
-        // 前登録を dispose しておく（pitfall #8）。hot reload で watcher が同 id
-        // を再投入する場合もこの経路を通る。
-        if (packRegistry.has(entry.id, entry.kind)) {
-          packRegistry.dispose(entry.id, entry.kind);
-        }
-        try {
-          const handle = personaRegistry.register(pack);
-          packRegistry.register(entry.id, entry.kind, handle);
-          loaded.push({ id: entry.id, kind: entry.kind });
-          devLog.write({ phase: "register", note: `registered persona '${pack.id}'` });
-        } catch (regErr) {
-          const error = errorMessage(regErr);
-          devLog.write({
-            phase: "register",
-            note: `persona register failed for '${pack.id}'`,
-            data: { error },
-          });
-          failed.push({ id: entry.id, kind: entry.kind, error });
-        }
-      }
+      await deps.writeLoadReport(timestamp, safeMode, report);
     } catch (err) {
-      const error = errorMessage(err);
-      const phase = err instanceof PackValidationError ? "validate" : "register";
       devLog.write({
-        phase,
-        note: `${phase} failed for '${entry.id}' (${entry.kind})`,
-        data: { error },
+        phase: "register",
+        note: "failed to write last-startup.json",
+        data: { error: errorMessage(err) },
       });
-      failed.push({ id: entry.id, kind: entry.kind, error });
     }
   }
 
