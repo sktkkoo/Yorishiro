@@ -116,12 +116,22 @@ function App() {
       userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
       initScriptLog: createSubsystemLog(devLog, "InitScript"),
     })
-      .then(({ packs, init }) => {
+      .then(async ({ packs, init, safeMode }) => {
         appLog.write({
           phase: "user-layer",
           note: `user-layer ready (packs loaded=${packs.loaded.length} failed=${packs.failed.length}; init ran=${init.ran})`,
           data: { packs, init },
         });
+        // Phase 1-c: safe mode のときだけ window title に suffix を付ける。
+        // user が env var で safe mode に入ったことを常時 visible にする。
+        if (safeMode) {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const win = getCurrentWindow();
+          const current = await win.title();
+          if (!current.endsWith(" (Safe Mode)")) {
+            await win.setTitle(`${current} (Safe Mode)`);
+          }
+        }
       })
       .catch((err: unknown) => {
         appLog.write({
