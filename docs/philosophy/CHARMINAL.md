@@ -222,29 +222,23 @@ Charminal のキャラクターは、この二つの意味での Charm を引き
 
 ## 触れるものと、触れないもの
 
-Charminal は生きた系であるべきだ、と思想として引き受けた。住人は動いたまま書き換えられ、user と AI がその書き換えを一緒に行う——このループが住人を育てる。
+Charminal は生きた系であるべきだ、と引き受けた。住人は動いたまま書き換えられ、user と AI がその書き換えを一緒に行う。
 
-でも、系の全てを生きた系にしていいわけではない。全部が常に書き換え可能だと、住人を抱える足場そのものが揺れて、住人の連続性が保てなくなる。**系の核は固くなければならない**。固い核の上で、表層だけが生きている——この二層構造が、Charminal が Charminal として安定していることと、user が Charminal を育てられることを、同時に成立させる。
+でも系の全てを生きた系にしていいわけではない。住人を抱える足場そのものが揺れたら、住人の連続性は保てない。**系の核は固く、表層だけが生きている**——この二層構造が、住人が住人でいることと、user が住人を育てられることを、同時に成立させる。
 
-では、どこを固くして、どこを生きた系にするか。ここは Emacs の系譜が参考になる。
-
-Emacs は C で書かれた小さな核と、elisp で書かれた大きな表層でできている。C の部分は editor loop、display 基盤、elisp interpreter そのもの——「エディタをエディタたらしめる仕組み」の層で、user は触らない。一方 elisp の部分はほぼ全て——mode、コマンド、keybinding、font-lock——が user の手で動作中に書き換えられる。Emacs が長く愛されているのは、**エディタの挙動の 9 割以上が elisp で、そこが全部 user のものだから**だと思う。C を固くしたのは妥協ではなく、そこが基盤だから触らせるべきではなかった、ということ。
+どこを固く、どこを生きた系にするかは、Emacs が参考になる。Emacs は C で書かれた小さな核と、elisp で書かれた大きな表層でできている。C は editor loop と interpreter の基盤——user は触らない。elisp はほぼ全て——mode、コマンド、keybinding——user が動作中に書き換えられる。Emacs が長く愛されているのは、**エディタの挙動の 9 割以上が elisp で、そこが全部 user のもの**だからだと思う。C を固くしたのは妥協ではなく、そこが基盤だから触らせるべきではなかった、ということ。
 
 Charminal はこの構造をそのまま借りる。
 
-固い核は、Rust で書かれた IO 層（PTY / hooks / FS）と、TypeScript で書かれた runtime / SDK / core primitive の層。EventBus、PersonaRegistry、LogBridge、EffectDispatcher、Renderer——住人を住人たらしめる足場の部品たちが、ここにある。ここは compile されて固められ、Charminal の動作中に書き換わらない。
+固い核は Rust の IO 層と、TypeScript の runtime / SDK / core primitive。EventBus、PersonaRegistry、LogBridge、EffectDispatcher、Renderer——住人を住人たらしめる足場の部品たち。compile されて固められ、動作中に書き換わらない。
 
-生きた系の対象は、pack layer。user のホームディレクトリに置かれた `~/.charminal/packs/` 以下に、persona pack、effect pack、voice pack、body pack、scene pack が並ぶ。user が書き、動いているまま Charminal が拾い、その場で effective になる。AI も書き換えに加わる——user が `/charm` コマンドで AI に指示を出し、AI が pack ファイルを書き、Charminal の file watcher が拾って live に register する。**user と AI が一緒に住人を書いている**状態が、ここで成立する。
+生きた表層は `~/.charminal/packs/` 以下の pack layer——persona、effect、voice、body、scene。user が書けば Charminal が拾って live に反映する。AI も書き換えに加わる——user が `/charm` で AI に指示、AI が pack ファイルを書き、file watcher が拾って register する。**user と AI が一緒に住人を書いている**状態が、ここで成立する。
 
-Charminal で user が触れるのは、この pack layer と、それを宣言的に束ねる config、そして `/charm` を介した AI との対話。これ以外の core は触らない。触らないのは禁じているからではなく、そこは住人を抱える仕組みだから、触っても住人のためにならない、という意味である。
+user が触れるのは pack layer と、config、`/charm` 経由の AI との対話。これ以外は触らない。禁じているのではなく、そこは住人を抱える仕組みだから、触っても住人のためにならない、という意味である。
 
-どの挙動を pack layer に置くかは、軽くない設計判断になる。思想の指針は Inhabited Interface 側に書いてある——住人の身体、空間、反応、記憶は生きた系の対象、ランタイムは核。でも実装上の境界はグラデーションで、どこまでを pack に factor out するかは、本格開発の過程で決まっていく。
+**user が触れる面積の広さと、core の安定性は、反比例関係にある**。どこまでを pack に factor out するかはグラデーションで、設計の時点で一発では決まらず、実装と使用の中で少しずつ収束していく。現状は反応と effect が pack、身体・空間・表情・記憶はまだ runtime に hardcode——本格開発で順次下ろしていく。下ろすほど、user が住人を育てられる面積が広がる。
 
-現在の Charminal は、反応層（persona の handler と trigger）と effect 層（画面・音の演出）が pack になっている。身体の procedural な動き（瞬き、視線、呼吸）、空間の lighting、表情の preset、記憶の保持方針——これらはまだ runtime に hardcode で、本格開発の中で順次 pack layer に下ろしていく。下ろすほど、user が住人を育てられる面積が広がる。
-
-ひとつ注意しておきたい。**user が触れる面積の広さと、core の安定性は、反比例関係にある**。全部を pack にすれば、runtime が毎回 pack の shape に振り回されて、住人が住人らしくいられなくなる。何も pack にしなければ、user は住人を育てられず、自己生成 loop が成立しない。Charminal が探しているのは、この二つの間のバランスで、それは設計の時点で一発で決まるものではなく、実装と使用の中で少しずつ揺らぎながら収束していくものだと思う。
-
-核と表層を分けること自体は古い問題で、Smalltalk も Lisp Machine も Emacs も、それぞれの答えを出してきた。Charminal もその系譜にいる。違うのは、**書き換える主体に AI が加わっている**こと。Charminal 越しに話しかけた相手（Claude Code）が、pack ファイルを書き、Charminal がそれを live で取り込む——この三角関係が、自己生成 loop を成立させる。Emacs ユーザーが elisp を書きながらエディタを育てていったように、Charminal のユーザーは AI と対話しながら住人を育てていく。核の上に、生きた住環境が乗っている。
+核と表層を分ける問題は古く、Smalltalk も Lisp Machine も Emacs もそれぞれ答えを出してきた。Charminal の違いは、**書き換える主体に AI が加わっている**こと。Emacs ユーザーが elisp を書きながらエディタを育てていったように、Charminal のユーザーは AI と対話しながら住人を育てていく。
 
 ---
 
