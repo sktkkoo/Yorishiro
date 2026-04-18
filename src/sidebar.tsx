@@ -14,7 +14,7 @@ interface SidebarProps {
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
   readonly effectDispatcher?: EffectDispatcher;
-  readonly scene: SceneSpec;
+  readonly scene: SceneSpec | null;
 }
 
 export default function Sidebar({
@@ -35,23 +35,39 @@ export default function Sidebar({
       </button>
 
       <div className="charactor-container">
-        <SceneCompositor scene={scene}>
-          {vrmUrl ? (
-            <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
-              <VrmViewer
-                url={vrmUrl}
-                onBodyReady={onBodyReady}
-                devLog={bodyDevLog}
-                effectDispatcher={effectDispatcher}
-              />
-            </Suspense>
-          ) : (
-            <div className="vrm-placeholder">
-              <span className="vrm-placeholder-icon">🤖</span>
-              <p className="vrm-placeholder-text">VRM 未読み込み</p>
-            </div>
-          )}
-        </SceneCompositor>
+        {scene !== null ? (
+          <SceneCompositor scene={scene}>
+            {vrmUrl ? (
+              <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+                <VrmViewer
+                  url={vrmUrl}
+                  onBodyReady={onBodyReady}
+                  devLog={bodyDevLog}
+                  effectDispatcher={effectDispatcher}
+                />
+              </Suspense>
+            ) : (
+              <div className="vrm-placeholder">
+                <span className="vrm-placeholder-icon">🤖</span>
+                <p className="vrm-placeholder-text">VRM 未読み込み</p>
+              </div>
+            )}
+          </SceneCompositor>
+        ) : vrmUrl ? (
+          <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+            <VrmViewer
+              url={vrmUrl}
+              onBodyReady={onBodyReady}
+              devLog={bodyDevLog}
+              effectDispatcher={effectDispatcher}
+            />
+          </Suspense>
+        ) : (
+          <div className="vrm-placeholder">
+            <span className="vrm-placeholder-icon">🤖</span>
+            <p className="vrm-placeholder-text">VRM 未読み込み</p>
+          </div>
+        )}
       </div>
 
       <button type="button" className="avatar-btn" onClick={onLoadVrm}>

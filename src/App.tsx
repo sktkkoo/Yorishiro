@@ -2,6 +2,8 @@ import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import persona from "../bundled-packs/personas/charminal-default/persona";
+import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
+import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { LogBridge } from "./core/log-bridge";
@@ -17,44 +19,21 @@ import {
   createStubPersonaContextFactory,
   PersonaRegistry,
 } from "./runtime/persona-registry";
-import { getSceneRegistry } from "./runtime/scene-pack-registry";
+import {
+  getSceneRegistry,
+  resolveSceneAssets,
+  type ScenePackRegistry,
+} from "./runtime/scene-pack-registry";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
+import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
+import { parseConfig } from "./runtime/user-pack-loader/config";
+import type { ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
-
-// Phase 1 stub scene。Phase 2 で pack manifest から生成する。
-// 控えめな default：実在感を削がない範囲の blur / gradient。数値は観察で
-// 調整する参考値で、派手さ方向には polish しない。
-// 画像 / 動画で感触評価したい場合は、layer に `src: "/path/to/file"` を設定
-// （`.mp4` 等の動画拡張子なら `<video autoplay muted loop>` として描画される）。
-// Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3 / §10.
-const stubScene: SceneSpec = {
-  id: "charminal:phase-1-stub",
-  layers: [
-    {
-      id: "backdrop",
-      role: "background",
-      src: "/bg-test.mp4",
-      blur: 3,
-    },
-    {
-      id: "vrm-slot",
-      role: "character",
-      blur: 0,
-    },
-    {
-      id: "fg-vignette",
-      role: "foreground",
-      backgroundImage:
-        "radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
-      blur: 0,
-    },
-  ],
-};
 
 /**
  * Built-in triggers that map DispatchEvents to standard reactions.
@@ -119,6 +98,9 @@ function App() {
       devLog: createSubsystemLog(devLog, "Perception"),
     });
 
+    // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
+    const scenePackRegistry: ScenePackRegistry = getSceneRegistry();
+
     // Merge built-in triggers with persona's own customTriggers. Previously
     // this replaced the persona array entirely, silently dropping the
     // persona's declared triggers.
@@ -131,19 +113,58 @@ function App() {
     };
     registry.register(augmented);
 
+    // Bundled quiet-room scene pack を register し、config.activeScene を反映する。
+    // fire-and-forget IIFE — try/catch で silent fail を防ぐ
+    // （memory: feedback_dev_verification_not_enough.md）。
+    const appLog = createSubsystemLog(devLog, "App");
+    void (async () => {
+      try {
+        const resolved = await resolveSceneAssets(quietRoomPack.scene, {
+          origin: "bundled",
+          packId: quietRoomPack.id,
+          onMissing: (layerId, src) => {
+            appLog.write({
+              phase: "register",
+              note: `bundled scene "${quietRoomPack.id}": asset missing for layer "${layerId}" (src="${src}")`,
+            });
+          },
+        });
+        scenePackRegistry.register({
+          id: quietRoomPack.id,
+          manifest: quietRoomManifest as ScenePackManifest,
+          scene: resolved,
+          origin: "bundled",
+        });
+        appLog.write({
+          phase: "register",
+          note: `registered bundled scene '${quietRoomPack.id}'`,
+        });
+
+        // config.json から user の activeScene 選択を読み、Registry に反映。
+        const configText = await readCharminalConfigText();
+        const config = parseConfig(configText);
+        scenePackRegistry.setActiveScene(config.activeScene);
+      } catch (err) {
+        appLog.write({
+          phase: "register",
+          note: "bundled scene register / config read failed",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    })();
+
     // User layer (~/.charminal/packs/ + init.js) を bundled pack の後に load し、
     // hot-reload watcher を張る。singleton factory の中から fire-and-forget で
     // 起動する——runtime singleton は HMR をまたいで 1 回しか動かないので、
     // 多重 load にはならない。
     // 失敗しても Charminal 本体を落とさない（philosophy「壊さないこと」）。
-    const appLog = createSubsystemLog(devLog, "App");
     const packRegistry = new UserPackRegistry({
       log: createSubsystemLog(devLog, "UserPackRegistry"),
     });
     void loadUserLayer({
       effectPackRunner,
       personaRegistry: registry,
-      scenePackRegistry: getSceneRegistry(),
+      scenePackRegistry,
       effectDispatcher,
       packRegistry,
       userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
@@ -217,7 +238,7 @@ function App() {
             return reloadSingleUserPack(id, {
               effectPackRunner,
               personaRegistry: registry,
-              scenePackRegistry: getSceneRegistry(),
+              scenePackRegistry,
               packRegistry,
               userPackLog,
             });
@@ -274,10 +295,29 @@ function App() {
         });
       });
 
-    return { time, bus, registry, perception, logBridge, devLog, effectDispatcher };
+    return {
+      time,
+      bus,
+      registry,
+      perception,
+      logBridge,
+      devLog,
+      effectDispatcher,
+      scenePackRegistry,
+    };
   });
 
-  const { perception, registry, logBridge, devLog, effectDispatcher } = runtime;
+  const { perception, registry, logBridge, devLog, effectDispatcher, scenePackRegistry } = runtime;
+
+  // active scene を Registry から subscribe して React state に流す。
+  // `setActiveSceneState` と命名してメソッド名 `setActiveScene` との衝突を避ける。
+  const [activeScene, setActiveSceneState] = useState<SceneSpec | null>(() =>
+    scenePackRegistry.getActiveScene(),
+  );
+  useEffect(() => {
+    const sub = scenePackRegistry.subscribeActive((scene) => setActiveSceneState(scene));
+    return () => sub.dispose();
+  }, [scenePackRegistry]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
@@ -482,7 +522,7 @@ function App() {
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         effectDispatcher={effectDispatcher}
-        scene={stubScene}
+        scene={activeScene}
       />
       <Terminal
         key={cwd ?? "__default__"}
