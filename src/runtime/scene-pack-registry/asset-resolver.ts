@@ -68,14 +68,32 @@ export async function resolveUserAsset(packDir: string, relativePath: string): P
   return convertFileSrc(absolutePath);
 }
 
-interface ResolveOptions {
+export interface ResolveOptions {
   readonly origin: "bundled" | "user";
   readonly packId: string;
   readonly packDir?: string;
   readonly onMissing?: (layerId: string, src: string) => void;
 }
 
-async function resolveLayerAssets(layer: Layer, options: ResolveOptions): Promise<Layer> {
+/**
+ * layer asset 解決に使う resolver 関数の注入インターフェース。
+ * テストで fake resolver を差し込むために使う。
+ */
+export interface LayerResolvers {
+  readonly resolveBundled: (packId: string, relativePath: string) => string | null;
+  readonly resolveUser: (packDir: string, relativePath: string) => Promise<string>;
+}
+
+/**
+ * 1 つの layer の src を絶対 URL に解決する純粋 walker。
+ * resolver は外から注入するためテスト可能。
+ * 解決失敗時は src を undefined に置き換える（graceful degradation）。
+ */
+export async function resolveLayerAssetWith(
+  layer: Layer,
+  options: ResolveOptions,
+  resolvers: LayerResolvers,
+): Promise<Layer> {
   if (layer.src === undefined) return layer;
   if (isAbsoluteUrl(layer.src)) return layer;
 
@@ -87,13 +105,13 @@ async function resolveLayerAssets(layer: Layer, options: ResolveOptions): Promis
   try {
     let resolved: string | null = null;
     if (options.origin === "bundled") {
-      resolved = resolveBundledAsset(options.packId, layer.src);
+      resolved = resolvers.resolveBundled(options.packId, layer.src);
     } else {
       if (options.packDir === undefined) {
         options.onMissing?.(layer.id, layer.src);
         return { ...layer, src: undefined };
       }
-      resolved = await resolveUserAsset(options.packDir, layer.src);
+      resolved = await resolvers.resolveUser(options.packDir, layer.src);
     }
 
     if (resolved === null) {
@@ -108,6 +126,12 @@ async function resolveLayerAssets(layer: Layer, options: ResolveOptions): Promis
   }
 }
 
+/** production で使うデフォルト resolver */
+const DEFAULT_RESOLVERS: LayerResolvers = {
+  resolveBundled: resolveBundledAsset,
+  resolveUser: resolveUserAsset,
+};
+
 /**
  * SceneSpec の全 layer を walk し、src を絶対 URL に解決する。
  * 解決失敗時は当該 layer の src を undefined に置き換える（graceful degradation）。
@@ -119,7 +143,7 @@ export async function resolveSceneAssets(
   options: ResolveOptions,
 ): Promise<SceneSpec> {
   const resolvedLayers = await Promise.all(
-    scene.layers.map((layer) => resolveLayerAssets(layer, options)),
+    scene.layers.map((layer) => resolveLayerAssetWith(layer, options, DEFAULT_RESOLVERS)),
   );
   return { ...scene, layers: resolvedLayers };
 }
