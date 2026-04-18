@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAbsoluteUrl, normalizeRelativePath } from "./asset-resolver";
+import { isAbsoluteUrl, normalizeRelativePath, resolveBundledAsset } from "./asset-resolver";
 
 describe("isAbsoluteUrl", () => {
   it("returns true for https://", () => {
@@ -46,5 +46,31 @@ describe("normalizeRelativePath", () => {
 
   it("returns empty string for empty input", () => {
     expect(normalizeRelativePath("")).toBe("");
+  });
+});
+
+describe("resolveBundledAsset — path escape guard", () => {
+  // bundled asset map はテスト環境で空なので "not found" は null で自然に返るが、
+  // guard が早期 null を返すことを明示的に確認する（将来の refactor で guard を
+  // 削除できないようにするため）。
+
+  it("packId に / を含む場合は null を返す", () => {
+    expect(resolveBundledAsset("foo/bar", "video.mp4")).toBeNull();
+  });
+
+  it("packId に .. を含む場合は null を返す", () => {
+    expect(resolveBundledAsset("../evil", "video.mp4")).toBeNull();
+  });
+
+  it("relativePath が ../ で始まる場合は null を返す", () => {
+    expect(resolveBundledAsset("valid-pack", "../other.mp4")).toBeNull();
+  });
+
+  it("relativePath に /../ を含む場合は null を返す", () => {
+    expect(resolveBundledAsset("valid-pack", "a/../b.mp4")).toBeNull();
+  });
+
+  it("正常な packId / path の場合は throw せず null を返す（map が空のため）", () => {
+    expect(resolveBundledAsset("my-pack", "./assets/bg.mp4")).toBeNull();
   });
 });

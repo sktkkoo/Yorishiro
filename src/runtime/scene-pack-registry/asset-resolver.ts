@@ -43,9 +43,16 @@ export function normalizeRelativePath(src: string): string {
 
 /**
  * bundled pack の pack-relative path を絶対 URL に解決。見つからなければ null。
+ *
+ * Defense-in-depth: packId / relativePath に path escape を含んでいたら null を即返す。
+ * bundled-packs/scenes/<packId>/<clean> の外に抜ける key を作らせない。
  */
 export function resolveBundledAsset(packId: string, relativePath: string): string | null {
+  // packId に path separator / traversal を含む場合は拒否
+  if (packId.includes("/") || packId.includes("..")) return null;
   const clean = normalizeRelativePath(relativePath);
+  // 正規化後も traversal が残る場合は拒否
+  if (clean.startsWith("../") || clean.includes("/../")) return null;
   const key = `/bundled-packs/scenes/${packId}/${clean}`;
   return BUNDLED_ASSETS[key] ?? null;
 }
