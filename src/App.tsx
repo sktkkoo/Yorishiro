@@ -16,6 +16,7 @@ import {
   createStubPersonaContextFactory,
   PersonaRegistry,
 } from "./runtime/persona-registry";
+import { loadUserLayer } from "./runtime/user-pack-loader";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
@@ -97,6 +98,32 @@ function App() {
       },
     };
     registry.register(augmented);
+
+    // User layer (~/.charminal/packs/ + init.js) を bundled pack の後に load。
+    // 同期の factory の中から fire-and-forget で起動する——runtime singleton は
+    // HMR をまたいで 1 回しか動かないので、多重 load にはならない。
+    // 失敗しても Charminal 本体を落とさない（philosophy「壊さないこと」）。
+    const appLog = createSubsystemLog(devLog, "App");
+    void loadUserLayer({
+      effectPackRunner,
+      personaRegistry: registry,
+      userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+      initScriptLog: createSubsystemLog(devLog, "InitScript"),
+    })
+      .then(({ packs, init }) => {
+        appLog.write({
+          phase: "user-layer",
+          note: `user-layer ready (packs loaded=${packs.loaded.length} failed=${packs.failed.length}; init ran=${init.ran})`,
+          data: { packs, init },
+        });
+      })
+      .catch((err: unknown) => {
+        appLog.write({
+          phase: "user-layer",
+          note: "user-layer bootstrap crashed",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      });
 
     return { time, bus, registry, perception, logBridge, devLog, effectDispatcher };
   });

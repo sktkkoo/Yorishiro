@@ -12,6 +12,11 @@ export {
   loadInitScript,
 } from "./init-script";
 export {
+  type LoadUserLayerDeps,
+  type LoadUserLayerResult,
+  loadUserLayer,
+} from "./runtime-wire";
+export {
   type EffectRegistrar,
   type FailedPackInfo,
   type LoadedPackInfo,
