@@ -26,8 +26,9 @@ const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
 
 // Phase 1 stub scene。Phase 2 で pack manifest から生成する。
-// 控えめな default：実在感を削がない範囲の blur / gradient。spec §10 により
-// 数値は「観察で調整」前提の参考値。派手さ方向には polish しない（§2.3）。
+// 控えめな default：実在感を削がない範囲の blur / gradient。数値は観察で
+// 調整する参考値で、派手さ方向には polish しない。
+// Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3 / §10.
 const stubScene: SceneSpec = {
   id: "charminal:phase-1-stub",
   layers: [
