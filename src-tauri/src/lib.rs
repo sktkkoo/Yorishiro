@@ -132,12 +132,67 @@ async fn charminal_home_dir() -> Result<String, String> {
     Ok(charminal_home_path()?.to_string_lossy().to_string())
 }
 
-/// Create ~/.charminal/ and ~/.charminal/packs/ if missing. Idempotent.
+/// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
+///
+/// Phase 1-a では ensure_charminal_dirs() のたびに ~/.charminal/sdk.d.ts を
+/// 上書きする（user は編集しない前提）。ファイル間の `import type { ... }
+/// from "./..."` と `export * from "./..."` は single-file bundle では解決
+/// できないので emit 時に drop する。
+const SDK_DTS_PARTS: &[(&str, &str)] = &[
+    ("reaction.d.ts", include_str!("../../src/sdk/reaction.d.ts")),
+    ("context.d.ts", include_str!("../../src/sdk/context.d.ts")),
+    ("persona.d.ts", include_str!("../../src/sdk/persona.d.ts")),
+    ("harness.d.ts", include_str!("../../src/sdk/harness.d.ts")),
+    ("effect.d.ts", include_str!("../../src/sdk/effect.d.ts")),
+    ("index.d.ts", include_str!("../../src/sdk/index.d.ts")),
+];
+
+/// Detect `import ... from "./..."` and `export ... from "./..."` lines.
+/// Relative cross-file module references become unresolvable once all parts
+/// are flattened into a single d.ts, so they get stripped.
+fn is_cross_file_module_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    if !(trimmed.starts_with("import") || trimmed.starts_with("export")) {
+        return false;
+    }
+    trimmed.contains("from \"./") || trimmed.contains("from './")
+}
+
+fn build_bundled_sdk_dts() -> String {
+    let mut out = String::from(
+        "/**\n\
+         * Charminal SDK type hints — auto-bundled from src/sdk/*.d.ts at build time.\n\
+         *\n\
+         * Charminal overwrites this file on every startup; do not edit it directly.\n\
+         * Pack sources can reference these types for IDE hints even when written in\n\
+         * plain JavaScript (via JSDoc `@typedef` / `@type` annotations).\n\
+         */\n\n",
+    );
+    for (name, src) in SDK_DTS_PARTS {
+        out.push_str(&format!("// ---- {} ----\n\n", name));
+        for line in src.lines() {
+            if is_cross_file_module_line(line) {
+                continue;
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+        out.push('\n');
+    }
+    out
+}
+
+/// Create ~/.charminal/ + ~/.charminal/packs/ and refresh sdk.d.ts. Idempotent.
+///
+/// sdk.d.ts は user の IDE が「Charminal SDK の shape」を知るためのヒント
+/// ファイル。毎起動で overwrite する（user は編集対象ではない）。
 #[tauri::command]
 async fn ensure_charminal_dirs() -> Result<(), String> {
     let home = charminal_home_path()?;
     std::fs::create_dir_all(home.join("packs"))
         .map_err(|e| format!("Failed to create ~/.charminal/packs: {}", e))?;
+    std::fs::write(home.join("sdk.d.ts"), build_bundled_sdk_dts())
+        .map_err(|e| format!("Failed to write ~/.charminal/sdk.d.ts: {}", e))?;
     Ok(())
 }
 
@@ -261,4 +316,33 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod sdk_bundle_tests {
+    use super::{build_bundled_sdk_dts, is_cross_file_module_line};
+
+    #[test]
+    fn drops_relative_import_and_export_lines() {
+        assert!(is_cross_file_module_line(
+            "import type { EffectContext } from \"./context\";"
+        ));
+        assert!(is_cross_file_module_line("export * from \"./reaction\";"));
+        assert!(!is_cross_file_module_line(
+            "import type { X } from \"some-package\";"
+        ));
+        assert!(!is_cross_file_module_line(
+            "export type ReactionType = StandardReactionType | (string & {});"
+        ));
+    }
+
+    #[test]
+    fn bundle_contains_key_types_and_omits_cross_refs() {
+        let bundle = build_bundled_sdk_dts();
+        assert!(bundle.contains("export interface EffectDefinition"));
+        assert!(bundle.contains("export interface PersonaDefinition"));
+        assert!(bundle.contains("export interface EffectContext"));
+        assert!(!bundle.contains("from \"./reaction\""));
+        assert!(!bundle.contains("from \"./context\""));
+    }
 }
