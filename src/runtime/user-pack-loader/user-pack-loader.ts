@@ -19,17 +19,14 @@
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
-import type { ScenePackManifest } from "../../sdk/scene-pack";
 import {
   PackValidationError,
   validateEffectDefinition,
   validatePersonaDefinition,
-  validateScenePackDefinition,
-  validateScenePackManifest,
 } from "../../sdk/validators";
 import type { ScenePackRegistry } from "../scene-pack-registry";
-import { resolveSceneAssets } from "../scene-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
+import { registerScenePack } from "./scene-pack-integration";
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
 import type { UserPackRegistry } from "./user-pack-registry";
 
@@ -227,63 +224,22 @@ export async function loadSingleUserPack(
       }
     }
     if (entry.kind === "scene") {
-      const scenePackDef = validateScenePackDefinition(def);
-
-      // packDir は entry.entryPath の scene.js を落としたもの（user は .js 強制）。
-      // 末尾スラッシュが付かないよう注意。
-      const packDir = entry.entryPath.replace(/\/scene\.js$/, "");
-
-      // manifest.json は fetch + URL 形式で読む必要があるため、importModule では不十分
-      // （importModule は ES module だけ解決する）。ここだけ dep injection 原則から外れて
-      // convertFileSrc を dynamic import する。loadSingleUserPack は per-pack 1 回しか
-      // 呼ばれないので cost は module loader の cache hit 1 回分で収まる。
-      // 将来 LoadSingleUserPackDeps に resolveAssetUrl(absPath) を追加する reflow は可能。
+      // convertFileSrc は dep injection 原則に沿って @tauri-apps/api/core から取得する。
+      // registerScenePack helper に注入することで、helper 自体は Tauri 非依存のまま保つ。
       const { convertFileSrc } = await import("@tauri-apps/api/core");
-      const manifestUrl = convertFileSrc(`${packDir}/manifest.json`);
-      let manifest: ScenePackManifest;
-      try {
-        const response = await fetch(manifestUrl);
-        if (!response.ok) {
-          throw new PackValidationError(
-            `manifest.json not found (HTTP ${response.status}) at ${packDir}/manifest.json`,
-          );
-        }
-        const rawManifest = (await response.json()) as unknown;
-        manifest = validateScenePackManifest(rawManifest, entry.id);
-      } catch (err) {
-        const error =
-          err instanceof PackValidationError
-            ? err.message
-            : `manifest.json read/parse failed: ${err instanceof Error ? err.message : String(err)}`;
-        devLog.write({
-          phase: "validate",
-          note: `scene "${entry.id}": ${error}`,
-        });
-        return { status: "failed", id: entry.id, kind: entry.kind, error };
-      }
-
-      const resolved = await resolveSceneAssets(scenePackDef.scene, {
-        origin: "user",
-        packId: entry.id,
-        packDir,
-        onMissing: (layerId, src) => {
-          devLog.write({
-            phase: "register",
-            note: `user scene "${entry.id}": asset missing for layer "${layerId}" (src="${src}")`,
-          });
-        },
-      });
-      if (packRegistry.has(entry.id, entry.kind)) {
-        packRegistry.dispose(entry.id, entry.kind);
-      }
-      const handle = scenePackRegistry.register({
+      const sceneResult = await registerScenePack({
         id: entry.id,
-        manifest,
-        scene: resolved,
-        origin: "user",
+        entryPath: entry.entryPath,
+        def,
+        packRegistry,
+        scenePackRegistry,
+        devLog,
+        convertFileSrc,
+        logPhase: { manifestError: "validate", register: "register" },
       });
-      packRegistry.register(entry.id, entry.kind, handle);
-      devLog.write({ phase: "register", note: `registered scene '${scenePackDef.id}'` });
+      if (sceneResult.status === "failed") {
+        return { status: "failed", id: entry.id, kind: entry.kind, error: sceneResult.error };
+      }
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
     // SUPPORTED_PACK_KINDS に含まれるが分岐にない kind が来た場合の fallback。
