@@ -203,6 +203,57 @@ pub fn start_hook_server(_app: AppHandle) {
     });
 }
 
+// ─── Session detection ──────────────────────────────────────────
+
+/// Encode a resolved cwd into the project-dir name used by Claude Code.
+///
+/// Empirically, Claude Code stores per-project session state at
+/// `~/.claude/projects/<encoded>/` where `<encoded>` is the canonicalized
+/// cwd with `/` replaced by `-` (verified by inspecting actual entries —
+/// e.g. a session opened at `/tmp/x` on macOS becomes `-private-tmp-x`,
+/// confirming both symlink resolution and `/`→`-` substitution).
+///
+/// Returns `None` if the path can't be expressed as UTF-8. Windows uses
+/// `\` and may also encode `:`; not handled here. The caller treats `None`
+/// as "no session" — degraded but safe.
+fn encode_project_dir_name(resolved: &std::path::Path) -> Option<String> {
+    resolved.to_str().map(|s| s.replace('/', "-"))
+}
+
+/// True if Claude Code has an existing session for `cwd` that `-c` can resume.
+///
+/// Returns `false` on any error (missing HOME, can't canonicalize, non-UTF-8
+/// path, etc.). The caller uses this to decide whether to pass `-c` to claude;
+/// false → start fresh, which never errors.
+fn has_existing_claude_session(cwd: Option<&str>) -> bool {
+    let raw = match cwd {
+        Some(c) => std::path::PathBuf::from(c),
+        None => match std::env::current_dir() {
+            Ok(p) => p,
+            Err(_) => return false,
+        },
+    };
+
+    // Claude Code resolves symlinks before deriving the project dir name.
+    let Ok(resolved) = std::fs::canonicalize(&raw) else {
+        return false;
+    };
+
+    let Some(encoded) = encode_project_dir_name(&resolved) else {
+        return false;
+    };
+
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+
+    std::path::PathBuf::from(home)
+        .join(".claude")
+        .join("projects")
+        .join(encoded)
+        .is_dir()
+}
+
 // ─── PTY state ──────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Clone)]
@@ -262,7 +313,11 @@ impl PtyState {
             .map_err(|e| format!("PTY open failed: {}", e))?;
 
         let mut cmd = CommandBuilder::new(claude_binary);
-        cmd.arg("-c");
+        // `-c` resumes the prior session for this cwd; passing it when none
+        // exists makes claude exit with an error. Skip it for fresh dirs.
+        if has_existing_claude_session(cwd.as_deref()) {
+            cmd.arg("-c");
+        }
         cmd.env("PATH", crate::build_path_env());
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -514,6 +569,58 @@ mod tests {
         rb.write(b"data");
         rb.clear();
         assert!(rb.read().is_empty());
+    }
+
+    #[test]
+    fn encode_project_dir_name_basic() {
+        assert_eq!(
+            encode_project_dir_name(std::path::Path::new("/Users/foo/Charminal")),
+            Some("-Users-foo-Charminal".to_string())
+        );
+    }
+
+    #[test]
+    fn encode_project_dir_name_preserves_dots() {
+        // Claude Code does not escape `.`; verified against actual entries.
+        assert_eq!(
+            encode_project_dir_name(std::path::Path::new("/Users/foo/.config/app")),
+            Some("-Users-foo-.config-app".to_string())
+        );
+    }
+
+    #[test]
+    fn encode_project_dir_name_root() {
+        assert_eq!(
+            encode_project_dir_name(std::path::Path::new("/")),
+            Some("-".to_string())
+        );
+    }
+
+    #[test]
+    fn has_existing_claude_session_false_for_nonexistent_cwd() {
+        // canonicalize fails on a path that doesn't exist → safe default.
+        assert!(!has_existing_claude_session(Some(
+            "/charminal/definitely/not/a/real/path/xyz"
+        )));
+    }
+
+    #[test]
+    fn has_existing_claude_session_false_for_unrelated_tmp_dir() {
+        // A freshly-created tempdir has no Claude Code session, so even
+        // though canonicalize succeeds, the lookup must return false.
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-session-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&tmp).expect("create tempdir");
+        let path_str = tmp.to_str().expect("tmp path utf8").to_string();
+        let result = has_existing_claude_session(Some(&path_str));
+        let _ = std::fs::remove_dir(&tmp);
+        assert!(!result, "fresh tempdir should not have a Claude session");
     }
 
     #[test]
