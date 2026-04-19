@@ -96,11 +96,10 @@ export default {
 
     const gravity = options.gravity ?? GRAVITY;
 
-    // origin.y は正規化座標 (0-1)。affected 行は origin 付近の下側を対象にする。
-    // 全行のうち origin.y に最も近い行を中心に、下方向に AFFECTED_ROWS 行を取る。
-    const originRow = Math.floor(options.origin.y * cellData.rows);
-    const cutoffRow = Math.max(0, originRow - Math.floor(AFFECTED_ROWS / 2));
-    const maxAffectedRow = Math.min(cellData.rows - 1, cutoffRow + AFFECTED_ROWS - 1);
+    // 常にターミナル下端から AFFECTED_ROWS 行を対象にする（旧実装と同じ）。
+    // origin は将来的にカスケードの起点として使う余地を残すが、行選択には影響しない。
+    const cutoffRow = Math.max(0, cellData.rows - AFFECTED_ROWS);
+    const maxAffectedRow = cellData.rows - 1;
     const affectedCells = cellData.cells.filter(
       (c) => c.row >= cutoffRow && c.row <= maxAffectedRow,
     );
