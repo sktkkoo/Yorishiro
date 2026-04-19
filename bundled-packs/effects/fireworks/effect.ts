@@ -1,23 +1,28 @@
 /**
- * fireworks — 1 burst の花火 bundled Effect Pack。
+ * fireworks — 1 発の花火 bundled Effect Pack（rise → burst の 2 段階）。
  *
- * `ctx.renderer.drawOnCanvas` で overlay canvas を acquire し、particle array を
- * `requestAnimationFrame` loop で animate、`durationMs` 後に canvas を dispose する。
+ * `ctx.renderer.drawOnCanvas` で overlay canvas を acquire し、以下 2 phase を
+ * `requestAnimationFrame` loop で animate、`durationMs` 後に canvas を dispose する：
+ *
+ * 1. **rise**: 画面下から origin へ rocket が上昇（ease-out で減速しながら apex へ）。
+ *    trail（過去 N 位置）を薄く引いて動きを見せる
+ * 2. **burst**: apex に到達した時点で particles を全方向に emit、gravity / drag /
+ *    lifetime で落下しながら fade
  *
  * 連発は呼び出し側（persona / init.js）が `injectEffect` を複数回刻む責務。
- * この pack は 1 origin からの 1 burst に集中する。
+ * この pack は 1 origin からの 1 発に集中する。
  *
  * ## 肌触り parameter（帰納的に調整する領域）
  *
- * gravity / drag / initial speed / maxLife / particle radius は `~/.charminal/init.js`
- * の生 DOM 実装で観測した値を起点にしている。CLAUDE.md の「感触 parameter は
- * 帰納的に」方針に従い、spec に固定値を書かず、観察→微調整の loop で固める。
+ * RISE_MS / START_Y_OFFSET / TRAIL_LEN / gravity / drag / speed / maxLife / radius
+ * は spec に固定せず、観察→微調整の loop で固める（CLAUDE.md「感触 parameter は
+ * 帰納的に」）。
  *
- * ## 色は random
+ * ## 色は coherent family
  *
- * options に色 field は持たず、粒ごとに生成時 `Math.random()` で hue を決める。
- * 将来、呼び出し側が色を指定したくなったら `hue?` / `hueRange?` を
- * 非破壊追加する余地を残してある。
+ * 1 発ごとに base hue を random で決め、rocket と burst 粒はその ±15° の幅で
+ * 揺らぐ。真っ赤な花火 / 真っ青な花火のような「1 色家族」感が出る。options に
+ * 色 field は持たないが、将来 `hue?` / `hueRange?` を非破壊追加する余地は残す。
  */
 
 import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
@@ -38,16 +43,33 @@ interface Particle {
   hue: number;
 }
 
+interface TrailPoint {
+  x: number;
+  y: number;
+}
+
 /** 肌触り parameter の既定値。実装中の観察で微調整可能。 */
 const GRAVITY = 0.06;
 const DRAG = 0.99;
 const PARTICLE_RADIUS = 2;
+/** rise phase の所要時間（ms）。画面下から apex まで。 */
+const RISE_MS = 550;
+/** rocket の start 位置を origin y から画面下へどれだけ外すか（px）。 */
+const START_Y_OFFSET = 30;
+/** rocket trail の保持フレーム数。古いほど薄くなる。 */
+const TRAIL_LEN = 10;
+/** rocket head の半径（px）。particle より少し太め。 */
+const ROCKET_RADIUS = 2.5;
+/** burst 粒 hue の family 幅（±この値を base hue にオフセット）。 */
+const HUE_JITTER = 15;
+
+/** ease-out cubic: t=0→0, t=1→1、終端で滑らかに減速する。 */
+const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
 
 export default {
   id: "fireworks",
   type: "effect",
   run: async (ctx: EffectContext<FireworksOptions>, options: FireworksOptions): Promise<void> => {
-    const particles: Particle[] = [];
     let rafId: number | null = null;
 
     const handle = ctx.renderer.drawOnCanvas((g) => {
@@ -60,31 +82,59 @@ export default {
       const dpr = g.getTransform().a || 1;
       const W = g.canvas.width / dpr;
       const H = g.canvas.height / dpr;
-      const cx = options.origin.x * W;
-      const cy = options.origin.y * H;
+      const targetX = options.origin.x * W;
+      const targetY = options.origin.y * H;
+      const startY = H + START_Y_OFFSET;
 
-      // 全方向に emit。初期速度と hue は粒ごとに random。
-      for (let i = 0; i < options.count; i++) {
-        const angle = (i / options.count) * Math.PI * 2 + Math.random() * 0.08;
-        const speed = 2.2 + Math.random() * 2.8;
-        particles.push({
-          x: cx,
-          y: cy,
-          vx: Math.cos(angle) * speed,
-          vy: Math.sin(angle) * speed,
-          life: 0,
-          maxLife: 70 + Math.random() * 40,
-          hue: Math.random() * 360,
-        });
-      }
+      // 1 発ごとに base hue を決める（rocket と burst 粒で共有）。
+      const baseHue = Math.random() * 360;
 
-      const tick = (): void => {
-        if (ctx.signal.aborted) {
-          rafId = null;
-          return;
+      const trail: TrailPoint[] = [];
+      const particles: Particle[] = [];
+      let burstStarted = false;
+      const startTime = performance.now();
+
+      const spawnBurst = (): void => {
+        for (let i = 0; i < options.count; i++) {
+          const angle = (i / options.count) * Math.PI * 2 + Math.random() * 0.08;
+          const speed = 2.2 + Math.random() * 2.8;
+          particles.push({
+            x: targetX,
+            y: targetY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 0,
+            maxLife: 70 + Math.random() * 40,
+            hue: baseHue + (Math.random() * 2 - 1) * HUE_JITTER,
+          });
         }
-        g.clearRect(0, 0, W, H);
+      };
 
+      const drawRise = (elapsed: number): void => {
+        const t = Math.min(1, elapsed / RISE_MS);
+        const ry = startY + (targetY - startY) * easeOutCubic(t);
+
+        // trail を最新位置で更新。古いほど薄く描く。
+        trail.push({ x: targetX, y: ry });
+        if (trail.length > TRAIL_LEN) trail.shift();
+        for (let i = 0; i < trail.length; i++) {
+          const alpha = ((i + 1) / trail.length) * 0.6;
+          const tp = trail[i];
+          if (tp === undefined) continue;
+          g.beginPath();
+          g.arc(tp.x, tp.y, PARTICLE_RADIUS, 0, Math.PI * 2);
+          g.fillStyle = `hsla(${baseHue}, 90%, 70%, ${alpha})`;
+          g.fill();
+        }
+
+        // rocket head（trail の先端、最も明るく）。
+        g.beginPath();
+        g.arc(targetX, ry, ROCKET_RADIUS, 0, Math.PI * 2);
+        g.fillStyle = `hsla(${baseHue}, 100%, 82%, 1)`;
+        g.fill();
+      };
+
+      const drawBurst = (): void => {
         for (const p of particles) {
           p.x += p.vx;
           p.y += p.vy;
@@ -99,6 +149,25 @@ export default {
           g.arc(p.x, p.y, PARTICLE_RADIUS, 0, Math.PI * 2);
           g.fillStyle = `hsla(${p.hue}, 90%, 62%, ${t})`;
           g.fill();
+        }
+      };
+
+      const tick = (): void => {
+        if (ctx.signal.aborted) {
+          rafId = null;
+          return;
+        }
+        g.clearRect(0, 0, W, H);
+
+        const elapsed = performance.now() - startTime;
+        if (elapsed < RISE_MS) {
+          drawRise(elapsed);
+        } else {
+          if (!burstStarted) {
+            spawnBurst();
+            burstStarted = true;
+          }
+          drawBurst();
         }
 
         rafId = requestAnimationFrame(tick);
