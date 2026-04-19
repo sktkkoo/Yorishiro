@@ -1,16 +1,15 @@
 /**
  * PersonaRegistry barrel — runtime persona subsystem の public API。
  *
- * Phase 3.3(g.4) の旧 EventBus-bridge PersonaRegistry と、
- * persona single-active plan の新 PersonaRegistryImpl の両方を export する。
- * App.tsx は Task 8 で新 registry を使うよう切り替える。
+ * persona の state 管理（active 選択 / subscribeActive / single-active override）の
+ * primitive を export する。reflex dispatch（EventBus への trigger 配線）は
+ * src/runtime/persona-reflex/ の PersonaReflexDispatcher に分離した
+ * （internal design-record: 2026-04-19-persona-registry-unification.md）。
  *
  * Philosophy: docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md「多人格の住人」
  * SDK surface: src/sdk/persona.d.ts の PersonaDefinition + src/sdk/context.d.ts の PersonaContext
  */
 
-export { PersonaRegistry, type PersonaRegistryDeps } from "./persona-registry";
-// single-active registry（persona single-active plan）
 export {
   getPersonaRegistry,
   PersonaRegistryImpl,
