@@ -67,16 +67,32 @@ describe("fireworks effect", () => {
     expect(drawOnCanvas).toHaveBeenCalledOnce();
   });
 
-  it("schedules its lifetime with time.after(durationMs)", async () => {
+  it("extends a short durationMs so the burst is not cut mid-animation", async () => {
     const { ctx, after } = createMockCtx({});
 
     await fireworks.run(ctx, {
       origin: { x: 0.5, y: 0.3 },
       count: 20,
-      durationMs: 1000,
+      durationMs: 1000, // rise だけで使い切る値
     });
 
-    expect(after).toHaveBeenCalledWith(1000);
+    expect(after).toHaveBeenCalledOnce();
+    const arg = after.mock.calls[0][0] as number;
+    // 具体値は「感触 parameter」として動かすため bound のみ検証。
+    // rise(≈2000ms) + burst tail は少なくとも 3500ms は必要、という下限だけ守る。
+    expect(arg).toBeGreaterThanOrEqual(3500);
+  });
+
+  it("respects a large durationMs when the caller asks to linger longer than the natural span", async () => {
+    const { ctx, after } = createMockCtx({});
+
+    await fireworks.run(ctx, {
+      origin: { x: 0.5, y: 0.3 },
+      count: 20,
+      durationMs: 20_000,
+    });
+
+    expect(after).toHaveBeenCalledWith(20_000);
   });
 
   it("disposes the canvas handle after the requested duration", async () => {

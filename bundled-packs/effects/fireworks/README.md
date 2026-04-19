@@ -34,7 +34,7 @@ ctx.dispatchEffect({
 |---|---|---|
 | `origin` | `Vec2` | 粒の emit 起点。正規化座標 (0-1) |
 | `count` | `number` | 粒の数 |
-| `durationMs` | `number` | canvas を保持する時間 |
+| `durationMs` | `number` | canvas を保持する **最低** 時間 hint。rise + burst が自然に終わるまでは pack 側で延長するので、短めに指定しても burst が途中で切れない |
 
 各粒の hue は生成時に `Math.random` で決まる。色指定の option は持たない
 （将来 `hue?` を非破壊追加する余地あり）。

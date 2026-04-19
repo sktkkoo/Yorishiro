@@ -379,7 +379,12 @@ export default (ctx) => {
         e.stopImmediatePropagation();
         ctx.dispatchEffect({
           kind: "fireworks",
-          origin: { x: 0.5, y: 0.3 },
+          // 連打しても同じ位置に重ならないよう origin を散らす。
+          // 端に寄りすぎると rocket / burst が画面外に切れるので内側に収める。
+          origin: {
+            x: 0.2 + Math.random() * 0.6, // 画面幅の 20–80%
+            y: 0.2 + Math.random() * 0.3, // 画面高の 20–50%（上 1/3 あたり）
+          },
           count: 12,
           durationMs: 2000,
         });
