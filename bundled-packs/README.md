@@ -52,8 +52,14 @@ bundled-packs/
 ### effects/fireworks
 - **Entry**: `effect.ts`
 - **Files**: `manifest.json`, `README.md`
-- **役割**: 1 burst の花火を overlay canvas に打ち上げる。`ctx.space.injectEffect({ kind: "fireworks", origin, count, durationMs })` で persona / init.js から呼ばれる。連発は呼び出し側が時差で複数回叩く責務
+- **役割**: 1 burst の花火を overlay canvas に打ち上げる。`ctx.space.injectEffect({ kind: "fireworks", origin, count, durationMs })` で persona / init.js から呼ばれる。連発は `fireworks-volley` か呼び出し側で時差 dispatch
 - 詳細：`bundled-packs/effects/fireworks/README.md`
+
+### effects/fireworks-volley
+- **Entry**: `effect.ts`
+- **Files**: `manifest.json`, `README.md`
+- **役割**: 連発花火。`fireworks` pack を内部で n 回呼び、各発の位置を random 範囲内で散らし + 発射間隔に jitter を入れる。`ctx.dispatchEffect({ kind: "fireworks-volley" })` だけで default の 3 連発が走るので、init.js の雛形はこの 1 行で済む
+- 詳細：`bundled-packs/effects/fireworks-volley/README.md`
 
 ---
 

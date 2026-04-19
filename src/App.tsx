@@ -1,6 +1,7 @@
 import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
+import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import charminalDefaultManifest from "../bundled-packs/personas/charminal-default/manifest.json";
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
@@ -83,6 +84,7 @@ function App() {
     });
     effectPackRunner.register(screenShakePack);
     effectPackRunner.register(fireworksPack);
+    effectPackRunner.register(fireworksVolleyPack);
 
     const perception = new Perception({
       bus,

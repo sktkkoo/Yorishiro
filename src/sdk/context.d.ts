@@ -442,6 +442,15 @@ export type SpaceEffectRequest =
   | { kind: "flash"; color: string; durationMs: number }
   | { kind: "particles"; origin: Vec2; count: number; durationMs: number; colorScheme?: string }
   | { kind: "fireworks"; origin: Vec2; count: number; durationMs: number }
+  | {
+      kind: "fireworks-volley";
+      count?: number;
+      originRange?: { x: [number, number]; y: [number, number] };
+      delayStepMs?: number;
+      delayJitterMs?: number;
+      burstCount?: number;
+      burstDurationMs?: number;
+    }
   | { kind: "text-physics"; origin: Vec2; force: number; gravity?: number }
   | { kind: "text-glitch"; durationMs: number; intensity?: number }
   | { kind: string; [option: string]: unknown }; // user effect への拡張
