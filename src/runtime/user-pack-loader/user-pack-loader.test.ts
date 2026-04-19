@@ -725,4 +725,198 @@ describe("loadSingleUserPack", () => {
     expect(personaRegisterCount).toBe(2);
     expect(packRegistry.has("p", "persona")).toBe(true);
   });
+
+  // ─── persona.md inject テスト ─────────────────────────────────────
+
+  it("injects persona.md when thinking is not set in persona.js", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const registered: PersonaDefinition[] = [];
+    const persona: PersonaRegistrar = {
+      register: (def) => {
+        registered.push(def);
+        return { dispose: () => {} };
+      },
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("私はテスト住人。\n", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      })) as typeof fetch;
+
+    try {
+      const result = await loadSingleUserPack(
+        { id: "md-persona", kind: "persona", entryPath: "/fake/md-persona/persona.js" },
+        {
+          effectPackRunner: runner,
+          personaRegistry: persona,
+          scenePackRegistry: makeFakeScenePackRegistry(),
+          packRegistry,
+          devLog,
+          importModule: async () => ({
+            default: {
+              id: "md-persona",
+              name: "MD 住人",
+              // thinking なし — loader が persona.md から inject する
+              reflex: { responses: {} },
+              world: { body: "", voice: "", space: "" },
+              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
+            },
+          }),
+        },
+      );
+
+      expect(result.status).toBe("loaded");
+      expect(registered).toHaveLength(1);
+      expect(registered[0].thinking?.systemPromptAddition).toBe("私はテスト住人。");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("prefers explicit thinking.systemPromptAddition in persona.js over persona.md", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const registered: PersonaDefinition[] = [];
+    const persona: PersonaRegistrar = {
+      register: (def) => {
+        registered.push(def);
+        return { dispose: () => {} };
+      },
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("md の内容（無視される）", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      })) as typeof fetch;
+
+    try {
+      const result = await loadSingleUserPack(
+        { id: "explicit-persona", kind: "persona", entryPath: "/fake/explicit-persona/persona.js" },
+        {
+          effectPackRunner: runner,
+          personaRegistry: persona,
+          scenePackRegistry: makeFakeScenePackRegistry(),
+          packRegistry,
+          devLog,
+          importModule: async () => ({
+            default: {
+              id: "explicit-persona",
+              name: "明示住人",
+              thinking: { systemPromptAddition: "js で明示したプロンプト" },
+              reflex: { responses: {} },
+              world: { body: "", voice: "", space: "" },
+              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
+            },
+          }),
+        },
+      );
+
+      expect(result.status).toBe("loaded");
+      expect(registered[0].thinking?.systemPromptAddition).toBe("js で明示したプロンプト");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("loads persona without md (404) when thinking is set in .js", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const registered: PersonaDefinition[] = [];
+    const persona: PersonaRegistrar = {
+      register: (def) => {
+        registered.push(def);
+        return { dispose: () => {} };
+      },
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("not found", { status: 404 })) as typeof fetch;
+
+    try {
+      const result = await loadSingleUserPack(
+        { id: "no-md-persona", kind: "persona", entryPath: "/fake/no-md-persona/persona.js" },
+        {
+          effectPackRunner: runner,
+          personaRegistry: persona,
+          scenePackRegistry: makeFakeScenePackRegistry(),
+          packRegistry,
+          devLog,
+          importModule: async () => ({
+            default: {
+              id: "no-md-persona",
+              name: "MD 無し住人",
+              thinking: { systemPromptAddition: "js 側のプロンプト" },
+              reflex: { responses: {} },
+              world: { body: "", voice: "", space: "" },
+              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
+            },
+          }),
+        },
+      );
+
+      expect(result.status).toBe("loaded");
+      // 404 は no-op、.js の thinking がそのまま使われる
+      expect(registered[0].thinking?.systemPromptAddition).toBe("js 側のプロンプト");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("loads persona with neither thinking in .js nor persona.md", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const registered: PersonaDefinition[] = [];
+    const persona: PersonaRegistrar = {
+      register: (def) => {
+        registered.push(def);
+        return { dispose: () => {} };
+      },
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response("not found", { status: 404 })) as typeof fetch;
+
+    try {
+      const result = await loadSingleUserPack(
+        {
+          id: "bare-persona",
+          kind: "persona",
+          entryPath: "/fake/bare-persona/persona.js",
+        },
+        {
+          effectPackRunner: runner,
+          personaRegistry: persona,
+          scenePackRegistry: makeFakeScenePackRegistry(),
+          packRegistry,
+          devLog,
+          importModule: async () => ({
+            default: {
+              id: "bare-persona",
+              name: "素の住人",
+              // thinking なし、md も 404 → systemPromptAddition は undefined のまま
+              reflex: { responses: {} },
+              world: { body: "", voice: "", space: "" },
+              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
+            },
+          }),
+        },
+      );
+
+      // load 自体は成功する（prompt 無しは valid な state）
+      expect(result.status).toBe("loaded");
+      expect(registered).toHaveLength(1);
+      expect(registered[0].thinking?.systemPromptAddition).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

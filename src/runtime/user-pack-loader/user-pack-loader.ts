@@ -26,6 +26,7 @@ import {
 } from "../../sdk/validators";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
+import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
 import type { UserPackRegistry } from "./user-pack-registry";
@@ -201,7 +202,31 @@ export async function loadSingleUserPack(
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
     if (entry.kind === "persona") {
-      const pack = validatePersonaDefinition(def);
+      const personaDef = validatePersonaDefinition(def);
+
+      // persona.md を fetch して thinking.systemPromptAddition に inject する。
+      // .js 側で明示している場合は injectPersonaPrompt が no-op を返す。
+      // 404 / fetch 失敗は「md 無し」として扱い load は継続する。
+      const packDir = entry.entryPath.replace(/\/persona\.js$/, "");
+      const { convertFileSrc } = await import("@tauri-apps/api/core");
+      const mdUrl = convertFileSrc(`${packDir}/persona.md`);
+      let mdText = "";
+      try {
+        const response = await fetch(mdUrl);
+        if (response.ok) {
+          mdText = await response.text();
+        }
+        // 404 = md 無し = OK（.js で thinking 明示している前提）
+      } catch (err) {
+        devLog.write({
+          phase: "validate",
+          note: `persona "${entry.id}": persona.md fetch failed (${
+            err instanceof Error ? err.message : String(err)
+          })`,
+        });
+      }
+      const injected = injectPersonaPrompt(personaDef, mdText);
+
       // PersonaRegistry は duplicate id で throw するので、loader 層では事前に
       // 前登録を dispose しておく（pitfall #8）。hot reload / enable_pack で
       // 同 id を再投入する場合もこの経路を通る。
@@ -209,15 +234,15 @@ export async function loadSingleUserPack(
         packRegistry.dispose(entry.id, entry.kind);
       }
       try {
-        const handle = personaRegistry.register(pack);
+        const handle = personaRegistry.register(injected);
         packRegistry.register(entry.id, entry.kind, handle);
-        devLog.write({ phase: "register", note: `registered persona '${pack.id}'` });
+        devLog.write({ phase: "register", note: `registered persona '${injected.id}'` });
         return { status: "loaded", id: entry.id, kind: entry.kind };
       } catch (regErr) {
         const error = errorMessage(regErr);
         devLog.write({
           phase: "register",
-          note: `persona register failed for '${pack.id}'`,
+          note: `persona register failed for '${injected.id}'`,
           data: { error },
         });
         return { status: "failed", id: entry.id, kind: entry.kind, error };
