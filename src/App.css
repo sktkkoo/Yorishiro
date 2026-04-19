@@ -147,6 +147,11 @@ body,
 .terminal-container {
   flex: 1;
   overflow: hidden;
+  /* 左右に余白を入れて window 端に文字が張り付かないようにする。
+     box-sizing: border-box と flex:1 の組み合わせで、余白は外形幅を
+     増やさず xterm の内容領域だけ内側に詰める。FitAddon は clientWidth
+     から padding を差し引いて cols を算出するので整合する。 */
+  padding: 0 20px;
 }
 
 .terminal-container .xterm {
