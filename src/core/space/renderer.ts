@@ -8,7 +8,7 @@
  * filter primitive を dispense する。SDK の規約上 addShakeFilter 等は
  * Disposable を返し、Effect が明示的に dispose するまで効果を継続する。
  *
- * 本バージョンは addShakeFilter / drawOnCanvas を実装。addColorFilter /
+ * 本バージョンは addShakeFilter / addCssFilter / drawOnCanvas を実装。
  * addParticles は Effect Pack 需要に応じて順次追加。
  */
 
@@ -122,6 +122,9 @@ export class Renderer implements RendererAPI {
   private readonly canvasMountOverride: HTMLElement | undefined;
   private readonly terminalCellExtractor: (() => TerminalCellData | null) | undefined;
 
+  /** 現在適用中の CSS filter 値の集合。space-separated で join して style.filter に書く。 */
+  private readonly cssFilters = new Set<string>();
+
   constructor(deps: RendererDeps) {
     this.shakeTarget = deps.shakeTarget;
     this.random = deps.random ?? Math.random;
@@ -160,8 +163,23 @@ export class Renderer implements RendererAPI {
     };
   }
 
-  addColorFilter(_color: string, _opacity: number): Disposable {
-    throw new Error("Renderer.addColorFilter: not yet implemented");
+  addCssFilter(filter: string): Disposable {
+    this.cssFilters.add(filter);
+    this.applyCssFilters();
+    let disposed = false;
+    return {
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        this.cssFilters.delete(filter);
+        this.applyCssFilters();
+      },
+    };
+  }
+
+  /** cssFilters の内容を shakeTarget.style.filter に反映する。 */
+  private applyCssFilters(): void {
+    this.shakeTarget.style.filter = this.cssFilters.size > 0 ? [...this.cssFilters].join(" ") : "";
   }
 
   addParticles(_config: ParticleConfig): ParticleHandle {

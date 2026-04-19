@@ -40,7 +40,7 @@ function createMockCtx(overrides: {
     signal: new AbortController().signal,
     renderer: {
       addShakeFilter: vi.fn(),
-      addColorFilter: vi.fn(),
+      addCssFilter: vi.fn(),
       addParticles: vi.fn(),
       drawOnCanvas,
     },

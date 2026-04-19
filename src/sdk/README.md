@@ -499,7 +499,7 @@ export default {
 | `ctx.renderer.addParticles` | パーティクル |
 | `ctx.renderer.drawOnCanvas` | 直接描画 |
 | `ctx.renderer.addShakeFilter` | 画面揺れ |
-| `ctx.renderer.addColorFilter` | 色フィルタ |
+| `ctx.renderer.addCssFilter` | CSS filter（grayscale / blur / sepia 等） |
 | `ctx.audio.play` | 効果音再生 |
 
 **⚠️ 使えない API**（型レベルで存在しない）：

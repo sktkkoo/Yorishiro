@@ -453,6 +453,7 @@ export type SpaceEffectRequest =
     }
   | { kind: "text-physics"; origin: Vec2; force: number; gravity?: number }
   | { kind: "text-glitch"; durationMs: number; intensity?: number }
+  | { kind: "desaturate"; durationMs: number; intensity?: number }
   | { kind: string; [option: string]: unknown }; // user effect への拡張
 
 export interface SpaceEffectHandle {
@@ -604,8 +605,9 @@ export interface RendererAPI {
   addDomLayer(setup: (container: HTMLDivElement) => void): Disposable;
   /** 画面振動フィルタを追加 */
   addShakeFilter(intensity: number): Disposable;
-  /** 色フィルタを overlay */
-  addColorFilter(color: string, opacity: number): Disposable;
+  /** CSS filter を画面全体に適用（grayscale / blur / sepia / brightness 等）。
+   *  複数同時に呼べる（filter 値は space-separated で合成される）。 */
+  addCssFilter(filter: string): Disposable;
   /** xterm.js の visible cells を読み取る（TextPhysics 用）。未接続なら null */
   queryTerminalCells(): TerminalCellData | null;
 }

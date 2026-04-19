@@ -15,21 +15,21 @@ effect の rendering primitive は **種類別に複数並列** で持つ（filt
 
 | 種類 | 例 | primitive | 現状 |
 |---|---|---|---|
-| Filter | shake, flash | `addShakeFilter` / `addColorFilter` | shake のみ実装 |
+| Filter | shake, flash, desaturate | `addShakeFilter` / `addCssFilter` | 両方実装済み |
 | Particle（宣言） | sparkle, snow | `addParticles` | 未実装、**今は足さない** |
 | Canvas 2D | fireworks, brush art | `drawOnCanvas` | 未実装、**次に足す** |
 | DOM manipulation | TextPhysics, text-glitch | `addDomLayer` | 未実装、TextPhysics 着手時 |
 | Three.js scene | shader mesh, 3D object | `addThreeLayer` | 未実装、Three.js effect 着手時 |
 | Three.js postprocess | bloom, blur | `addThreePostPass` | 未実装、postprocessing 着手時 |
 
-`addShakeFilter` / `addColorFilter` / `addParticles` / `drawOnCanvas` は `RendererAPI` に既に型宣言がある（`src/sdk/context.d.ts:587-598`）が、実装は `addShakeFilter` のみ。`addDomLayer` / `addThreeLayer` / `addThreePostPass` は本決定で将来足す primitive として新規提案。
+`addShakeFilter` / `addCssFilter` / `addParticles` / `drawOnCanvas` は `RendererAPI` に既に型宣言がある（`src/sdk/context.d.ts:587-598`）が、実装は `addShakeFilter` のみ。`addDomLayer` / `addThreeLayer` / `addThreePostPass` は本決定で将来足す primitive として新規提案。
 
 ### 追加順序（推薦）
 
 1. **drawOnCanvas** — fireworks などの 2D 描画 effect を動かすため。init.js の生 DOM 描画コードをそのまま移植できる
 2. **addDomLayer / addThreeLayer** — TextPhysics / shader effect に着手する時に個別に足す
 3. **addParticles** — particle 系 effect が複数になって「重複が辛い / 肌触りが不統一」が見えたら抽象化（帰納）
-4. **addThreePostPass / addColorFilter** — 具体的 need が出た時
+4. **addThreePostPass / addCssFilter** — 具体的 need が出た時
 
 ### 「生 DOM を pack に渡さない」の本当の意味
 

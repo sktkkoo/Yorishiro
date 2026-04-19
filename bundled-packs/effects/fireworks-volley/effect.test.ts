@@ -27,7 +27,7 @@ interface FireworksVolleyOptions {
 
 const makeRendererStub = (): RendererAPI => ({
   addShakeFilter: vi.fn(() => ({ dispose: () => {} })),
-  addColorFilter: vi.fn(() => ({ dispose: () => {} })),
+  addCssFilter: vi.fn(() => ({ dispose: () => {} })),
   addParticles: vi.fn(() => ({ dispose: () => {}, completion: Promise.resolve() })),
   drawOnCanvas: vi.fn(() => ({ dispose: () => {} })),
   addDomLayer: vi.fn(() => ({ dispose: () => {} })),

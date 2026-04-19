@@ -70,7 +70,7 @@ function createMockCtx(overrides: {
       addDomLayer,
       queryTerminalCells,
       addShakeFilter: vi.fn(),
-      addColorFilter: vi.fn(),
+      addCssFilter: vi.fn(),
       addParticles: vi.fn(),
       drawOnCanvas: vi.fn(),
     },

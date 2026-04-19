@@ -55,6 +55,12 @@ bundled-packs/
 - **役割**: 1 burst の花火を overlay canvas に打ち上げる。`ctx.space.injectEffect({ kind: "fireworks", origin, count, durationMs })` で persona / init.js から呼ばれる。連発は `fireworks-volley` か呼び出し側で時差 dispatch
 - 詳細：`bundled-packs/effects/fireworks/README.md`
 
+### effects/desaturate
+- **Entry**: `effect.ts`
+- **Files**: `manifest.json`, `README.md`
+- **役割**: 画面全体を grayscale 化する CSS filter effect。`ctx.space.injectEffect({ kind: "desaturate", durationMs, intensity? })` で persona / init.js から呼ばれる。idle 時やエラー時の「沈黙」「停滞」表現
+- 詳細：`bundled-packs/effects/desaturate/README.md`
+
 ### effects/text-physics
 - **Entry**: `effect.ts`
 - **Files**: `manifest.json`, `README.md`

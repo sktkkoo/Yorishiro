@@ -1,5 +1,6 @@
 import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
@@ -91,6 +92,7 @@ function App() {
     effectPackRunner.register(fireworksPack);
     effectPackRunner.register(fireworksVolleyPack);
     effectPackRunner.register(textPhysicsPack);
+    effectPackRunner.register(desaturatePack);
 
     const perception = new Perception({
       bus,

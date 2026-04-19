@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Renderer, type RendererDomFactories } from "./renderer";
 
-// Minimal shake target — only the `.style.transform` string is written/read.
+// Minimal shake target — `.style.transform` と `.style.filter` を読み書きする。
 interface FakeTarget {
-  style: { transform: string };
+  style: { transform: string; filter: string };
 }
 
-const makeTarget = (): FakeTarget => ({ style: { transform: "" } });
+const makeTarget = (): FakeTarget => ({ style: { transform: "", filter: "" } });
 
 describe("Renderer.addShakeFilter", () => {
   beforeEach(() => {
@@ -51,6 +51,49 @@ describe("Renderer.addShakeFilter", () => {
     expect(target.style.transform).toBe("");
     // Sanity check: the first tick had set a non-empty transform
     expect(afterFirstTick).not.toBe("");
+  });
+});
+
+// ─── addCssFilter ────────────────────────────────────────────
+
+describe("Renderer.addCssFilter", () => {
+  it("filter を shakeTarget の style.filter に適用する", () => {
+    const target = makeTarget();
+    const renderer = new Renderer({ shakeTarget: target as unknown as HTMLElement });
+    const handle = renderer.addCssFilter("grayscale(100%)");
+    expect(target.style.filter).toBe("grayscale(100%)");
+    handle.dispose();
+  });
+
+  it("dispose で filter がクリアされる", () => {
+    const target = makeTarget();
+    const renderer = new Renderer({ shakeTarget: target as unknown as HTMLElement });
+    const handle = renderer.addCssFilter("blur(2px)");
+    handle.dispose();
+    expect(target.style.filter).toBe("");
+  });
+
+  it("複数 filter を同時に適用できる（1 つ dispose → 残りだけ残る）", () => {
+    const target = makeTarget();
+    const renderer = new Renderer({ shakeTarget: target as unknown as HTMLElement });
+    const h1 = renderer.addCssFilter("grayscale(100%)");
+    const h2 = renderer.addCssFilter("blur(2px)");
+    expect(target.style.filter).toBe("grayscale(100%) blur(2px)");
+    h1.dispose();
+    expect(target.style.filter).toBe("blur(2px)");
+    h2.dispose();
+    expect(target.style.filter).toBe("");
+  });
+
+  it("dispose は冪等：2 回呼んでも例外なし", () => {
+    const target = makeTarget();
+    const renderer = new Renderer({ shakeTarget: target as unknown as HTMLElement });
+    const handle = renderer.addCssFilter("sepia(50%)");
+    expect(() => {
+      handle.dispose();
+      handle.dispose();
+    }).not.toThrow();
+    expect(target.style.filter).toBe("");
   });
 });
 

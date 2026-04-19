@@ -18,7 +18,7 @@ describe("screen-shake effect", () => {
       signal: { aborted: false } as unknown as AbortSignal,
       renderer: {
         addShakeFilter,
-        addColorFilter: vi.fn(),
+        addCssFilter: vi.fn(),
         addParticles: vi.fn(),
         drawOnCanvas: vi.fn(),
       },
@@ -40,7 +40,7 @@ describe("screen-shake effect", () => {
       signal: { aborted: false } as unknown as AbortSignal,
       renderer: {
         addShakeFilter: vi.fn(() => ({ dispose })),
-        addColorFilter: vi.fn(),
+        addCssFilter: vi.fn(),
         addParticles: vi.fn(),
         drawOnCanvas: vi.fn(),
       },
@@ -61,7 +61,7 @@ describe("screen-shake effect", () => {
       signal: { aborted: false } as unknown as AbortSignal,
       renderer: {
         addShakeFilter: vi.fn(() => ({ dispose })),
-        addColorFilter: vi.fn(),
+        addCssFilter: vi.fn(),
         addParticles: vi.fn(),
         drawOnCanvas: vi.fn(),
       },
