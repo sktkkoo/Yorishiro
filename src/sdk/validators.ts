@@ -68,7 +68,10 @@ export function validatePersonaDefinition(pack: unknown): PersonaDefinition {
   const ctx = "PersonaDefinition";
   requireField(pack, "id", (v) => typeof v === "string", "a string", ctx);
   requireField(pack, "name", (v) => typeof v === "string", "a string", ctx);
-  requireField(pack, "thinking", isObject, "an object", ctx);
+  // thinking は optional — loader が persona.md から inject することがある
+  if (pack.thinking !== undefined) {
+    requireField(pack, "thinking", isObject, "an object", ctx);
+  }
   requireField(pack, "reflex", isObject, "an object", ctx);
 
   const reflex = pack.reflex as Record<string, unknown>;

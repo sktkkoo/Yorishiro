@@ -67,10 +67,20 @@ describe("validatePersonaDefinition", () => {
     ).toThrow(/name/);
   });
 
-  it("rejects missing or non-object thinking / reflex", () => {
+  it("accepts missing thinking (loader が後から inject する)", () => {
+    // thinking は optional — persona.md から loader が inject することがある
     expect(() =>
       validatePersonaDefinition({ id: "a", name: "A", reflex: { responses: {} } }),
+    ).not.toThrow();
+  });
+
+  it("rejects non-object thinking when present", () => {
+    expect(() =>
+      validatePersonaDefinition({ id: "a", name: "A", thinking: "bad", reflex: { responses: {} } }),
     ).toThrow(/thinking/);
+  });
+
+  it("rejects missing reflex", () => {
     expect(() => validatePersonaDefinition({ id: "a", name: "A", thinking: {} })).toThrow(/reflex/);
   });
 
