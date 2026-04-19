@@ -9,6 +9,8 @@ const makeRendererStub = (): RendererAPI => ({
   addColorFilter: vi.fn(() => ({ dispose: () => {} })),
   addParticles: vi.fn(() => ({ dispose: () => {}, completion: Promise.resolve() })),
   drawOnCanvas: vi.fn(() => ({ dispose: () => {} })),
+  addDomLayer: vi.fn(() => ({ dispose: () => {} })),
+  queryTerminalCells: vi.fn(() => null),
 });
 
 const makeSetup = () => {

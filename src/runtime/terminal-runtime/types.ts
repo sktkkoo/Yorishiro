@@ -1,3 +1,4 @@
+import type { TerminalCellData } from "@charminal/sdk";
 import type { Perception } from "../../core/perception";
 
 /**
@@ -52,4 +53,11 @@ export interface TerminalRuntime {
    * 経由で参照される。null を渡すことは通常ないが、許容（warn log を出す）。
    */
   setPerception(perception: Perception | null): void;
+
+  /**
+   * xterm.js の visible 行からセルデータを抽出する（observation only）。
+   * TextPhysics 等の effect が overlay 上に文字を複製するために使う。
+   * xterm が未 open なら null を返す。
+   */
+  extractVisibleCells(): TerminalCellData | null;
 }

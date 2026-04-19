@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
+import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
 import charminalDefaultManifest from "../bundled-packs/personas/charminal-default/manifest.json";
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
 import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
@@ -29,6 +30,7 @@ import {
   resolveSceneAssets,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
+import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
 import { parseConfig } from "./runtime/user-pack-loader/config";
@@ -76,7 +78,10 @@ function App() {
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
     // 揺らす（body の transform は fixed 子孫の containing block を作る）。
-    const renderer = new Renderer({ shakeTarget: document.body });
+    const renderer = new Renderer({
+      shakeTarget: document.body,
+      terminalCellExtractor: () => getTerminalRuntime().extractVisibleCells(),
+    });
     const effectPackRunner = new EffectPackRunner({
       dispatcher: effectDispatcher,
       renderer,
@@ -85,6 +90,7 @@ function App() {
     effectPackRunner.register(screenShakePack);
     effectPackRunner.register(fireworksPack);
     effectPackRunner.register(fireworksVolleyPack);
+    effectPackRunner.register(textPhysicsPack);
 
     const perception = new Perception({
       bus,

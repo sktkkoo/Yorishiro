@@ -12,7 +12,13 @@
  * addParticles は Effect Pack 需要に応じて順次追加。
  */
 
-import type { Disposable, ParticleConfig, ParticleHandle, RendererAPI } from "@charminal/sdk";
+import type {
+  Disposable,
+  ParticleConfig,
+  ParticleHandle,
+  RendererAPI,
+  TerminalCellData,
+} from "@charminal/sdk";
 import { computeShakeOffset } from "./shake";
 
 /**
@@ -22,11 +28,11 @@ import { computeShakeOffset } from "./shake";
 const DEFAULT_SHAKE_DECAY_MS = 500;
 
 /**
- * drawOnCanvas が作る canvas に当てる fixed overlay の z-index。
+ * drawOnCanvas / addDomLayer が作る overlay の z-index。
  * terminal / VRM より前面に出る必要があり、かつ system UI とは
  * 重ならない桁で揃えた。
  */
-const CANVAS_OVERLAY_Z_INDEX = 9999;
+const OVERLAY_Z_INDEX = 9999;
 
 /**
  * drawOnCanvas が作る canvas に当てる固定 style。全画面 overlay で
@@ -38,7 +44,18 @@ const CANVAS_OVERLAY_STYLES: Readonly<Record<string, string>> = {
   width: "100vw",
   height: "100vh",
   pointerEvents: "none",
-  zIndex: String(CANVAS_OVERLAY_Z_INDEX),
+  zIndex: String(OVERLAY_Z_INDEX),
+};
+
+/**
+ * addDomLayer が作る div に当てる固定 style。drawOnCanvas と同じ
+ * overlay 原則（全画面 fixed / pointer 透過 / z-index 9999）。
+ */
+const DOM_OVERLAY_STYLES: Readonly<Record<string, string>> = {
+  position: "fixed",
+  inset: "0",
+  pointerEvents: "none",
+  zIndex: String(OVERLAY_Z_INDEX),
 };
 
 /**
@@ -50,6 +67,8 @@ const CANVAS_OVERLAY_STYLES: Readonly<Record<string, string>> = {
 export interface RendererDomFactories {
   /** canvas element を生成する。default は document.createElement。 */
   readonly createCanvas: () => HTMLCanvasElement;
+  /** div element を生成する。default は document.createElement。 */
+  readonly createDiv: () => HTMLDivElement;
   /** HiDPI 解像度の基準 window 幅を返す。 */
   readonly getWindowWidth: () => number;
   /** HiDPI 解像度の基準 window 高さを返す。 */
@@ -79,11 +98,17 @@ export interface RendererDeps {
    * document / window）。test から全要素を差し替えるための seam。
    */
   readonly dom?: RendererDomFactories;
+  /**
+   * xterm.js の visible cells を抽出する関数。production では
+   * TerminalView が提供する。未設定なら queryTerminalCells() は null を返す。
+   */
+  readonly terminalCellExtractor?: () => TerminalCellData | null;
 }
 
 /** production default の DOM factory。globalThis.document / window を直接使う。 */
 const defaultDomFactories = (): RendererDomFactories => ({
   createCanvas: () => document.createElement("canvas"),
+  createDiv: () => document.createElement("div"),
   getWindowWidth: () => window.innerWidth,
   getWindowHeight: () => window.innerHeight,
   getDevicePixelRatio: () => window.devicePixelRatio,
@@ -95,12 +120,14 @@ export class Renderer implements RendererAPI {
   private readonly random: () => number;
   private readonly dom: RendererDomFactories;
   private readonly canvasMountOverride: HTMLElement | undefined;
+  private readonly terminalCellExtractor: (() => TerminalCellData | null) | undefined;
 
   constructor(deps: RendererDeps) {
     this.shakeTarget = deps.shakeTarget;
     this.random = deps.random ?? Math.random;
     this.dom = deps.dom ?? defaultDomFactories();
     this.canvasMountOverride = deps.canvasMount;
+    this.terminalCellExtractor = deps.terminalCellExtractor;
   }
 
   /** canvasMount の解決。指定されていなければ factory の default を返す。 */
@@ -184,5 +211,41 @@ export class Renderer implements RendererAPI {
     draw(ctx);
 
     return disposable;
+  }
+
+  /**
+   * 画面全面 overlay の div を生成し、setup callback を 1 回だけ呼ぶ。
+   * pack は container 内で自由に DOM 操作可能。
+   * Disposable.dispose で div を DOM から remove する。冪等実装。
+   */
+  addDomLayer(setup: (container: HTMLDivElement) => void): Disposable {
+    const div = this.dom.createDiv();
+
+    // overlay style を一括適用。drawOnCanvas と同じ原則。
+    Object.assign(div.style, DOM_OVERLAY_STYLES);
+
+    const mount = this.resolveCanvasMount();
+    mount.appendChild(div);
+
+    let disposed = false;
+
+    setup(div);
+
+    return {
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        div.remove();
+      },
+    };
+  }
+
+  /**
+   * xterm.js の visible cells を読み取る。TextPhysics 等の effect が
+   * ターミナルの文字を overlay 上に複製して物理演算を適用するために使う。
+   * terminalCellExtractor が未設定なら null を返す。
+   */
+  queryTerminalCells(): TerminalCellData | null {
+    return this.terminalCellExtractor?.() ?? null;
   }
 }

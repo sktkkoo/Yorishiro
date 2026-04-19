@@ -1,3 +1,4 @@
+import type { TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -183,6 +184,86 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       );
     }
     this.perceptionRef.current = perception;
+  }
+
+  extractVisibleCells(): TerminalCellData | null {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return null;
+
+    const rect = this.xtermContainer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    const cellWidth = rect.width / this.term.cols;
+    const cellHeight = rect.height / this.term.rows;
+
+    const DEFAULT_FG = "#eceff4";
+    const ANSI_COLORS: Record<number, string> = {
+      0: "#0f1923",
+      1: "#ff6b8a",
+      2: "#4dd9cf",
+      3: "#f0c674",
+      4: "#81a2be",
+      5: "#b294bb",
+      6: "#39c5bb",
+      7: "#eceff4",
+      8: "#3b5068",
+      9: "#ff8da5",
+      10: "#6eded6",
+      11: "#f5d6a0",
+      12: "#a8c8e0",
+      13: "#c9aed0",
+      14: "#7eeee6",
+      15: "#ffffff",
+    };
+
+    const cells: Array<{
+      char: string;
+      x: number;
+      y: number;
+      row: number;
+      col: number;
+      fgColor: string;
+    }> = [];
+
+    for (let row = 0; row < this.term.rows; row++) {
+      const line = buffer.getLine(buffer.viewportY + row);
+      if (!line) continue;
+      for (let col = 0; col < this.term.cols; col++) {
+        const cell = line.getCell(col);
+        if (!cell) continue;
+        const ch = cell.getChars();
+        if (!ch || ch === " ") continue;
+
+        let fgColor = DEFAULT_FG;
+        if (!cell.isFgDefault()) {
+          const idx = cell.getFgColor();
+          fgColor = ANSI_COLORS[idx] ?? DEFAULT_FG;
+        }
+
+        cells.push({
+          char: ch,
+          x: col * cellWidth,
+          y: row * cellHeight,
+          row,
+          col,
+          fgColor,
+        });
+      }
+    }
+
+    return {
+      cells,
+      cellWidth,
+      cellHeight,
+      terminalRect: {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+      },
+      cols: this.term.cols,
+      rows: this.term.rows,
+    };
   }
 
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {

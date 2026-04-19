@@ -600,10 +600,42 @@ export interface RendererAPI {
   addParticles(config: ParticleConfig): ParticleHandle;
   /** Canvas に直接描画 */
   drawOnCanvas(draw: (ctx: CanvasRenderingContext2D) => void): Disposable;
+  /** DOM overlay layer を追加。container 内で自由に DOM 操作可能 */
+  addDomLayer(setup: (container: HTMLDivElement) => void): Disposable;
   /** 画面振動フィルタを追加 */
   addShakeFilter(intensity: number): Disposable;
   /** 色フィルタを overlay */
   addColorFilter(color: string, opacity: number): Disposable;
+  /** xterm.js の visible cells を読み取る（TextPhysics 用）。未接続なら null */
+  queryTerminalCells(): TerminalCellData | null;
+}
+
+/**
+ * ターミナルの visible 行のセルデータ。TextPhysics 等の effect が
+ * ターミナルの文字を overlay 上に複製して物理演算を適用するために使う。
+ * Renderer.queryTerminalCells() から取得する。
+ */
+export interface TerminalCellData {
+  readonly cells: ReadonlyArray<{
+    readonly char: string;
+    /** terminal left からの pixel offset */
+    readonly x: number;
+    /** terminal top からの pixel offset */
+    readonly y: number;
+    readonly row: number;
+    readonly col: number;
+    readonly fgColor: string;
+  }>;
+  readonly cellWidth: number;
+  readonly cellHeight: number;
+  readonly terminalRect: {
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly cols: number;
+  readonly rows: number;
 }
 
 export interface ParticleConfig {

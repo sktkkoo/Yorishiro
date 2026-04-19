@@ -30,6 +30,8 @@ const makeRendererStub = (): RendererAPI => ({
   addColorFilter: vi.fn(() => ({ dispose: () => {} })),
   addParticles: vi.fn(() => ({ dispose: () => {}, completion: Promise.resolve() })),
   drawOnCanvas: vi.fn(() => ({ dispose: () => {} })),
+  addDomLayer: vi.fn(() => ({ dispose: () => {} })),
+  queryTerminalCells: vi.fn(() => null),
 });
 
 /** fake time：after(ms) が即 resolve する。count は呼び出し回数。 */

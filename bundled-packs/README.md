@@ -55,6 +55,12 @@ bundled-packs/
 - **役割**: 1 burst の花火を overlay canvas に打ち上げる。`ctx.space.injectEffect({ kind: "fireworks", origin, count, durationMs })` で persona / init.js から呼ばれる。連発は `fireworks-volley` か呼び出し側で時差 dispatch
 - 詳細：`bundled-packs/effects/fireworks/README.md`
 
+### effects/text-physics
+- **Entry**: `effect.ts`
+- **Files**: `manifest.json`, `README.md`
+- **役割**: ターミナルの文字が重力で崩壊し、元の位置に復元するエフェクト。`addDomLayer` + `queryTerminalCells` で DOM ベース描画。4 phase: hold → cascade → rest → restore
+- 詳細：`bundled-packs/effects/text-physics/README.md`
+
 ### effects/fireworks-volley
 - **Entry**: `effect.ts`
 - **Files**: `manifest.json`, `README.md`

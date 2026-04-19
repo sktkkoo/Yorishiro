@@ -67,8 +67,15 @@ interface FakeCanvasLike {
   readonly remove: ReturnType<typeof vi.fn>;
 }
 
+/** addDomLayer が生成する fake div。canvas と同じ remove / style を持つ。 */
+interface FakeDivLike {
+  readonly style: Record<string, string>;
+  readonly parentElements: FakeMountLike[];
+  readonly remove: ReturnType<typeof vi.fn>;
+}
+
 interface FakeMountLike {
-  readonly children: FakeCanvasLike[];
+  readonly children: Array<FakeCanvasLike | FakeDivLike>;
   readonly appendChild: ReturnType<typeof vi.fn>;
 }
 
@@ -95,13 +102,29 @@ const makeFakeCanvas = (ctx: CanvasRenderingContext2D | null): FakeCanvasLike =>
   return canvas;
 };
 
+const makeFakeDiv = (): FakeDivLike => {
+  const div: FakeDivLike = {
+    style: {},
+    parentElements: [],
+    remove: vi.fn(function remove(this: unknown): void {
+      const d = div;
+      const parent = d.parentElements.pop();
+      if (parent) {
+        const idx = parent.children.indexOf(d);
+        if (idx >= 0) parent.children.splice(idx, 1);
+      }
+    }),
+  };
+  return div;
+};
+
 const makeFakeMount = (): FakeMountLike => {
   const mount: FakeMountLike = {
     children: [],
-    appendChild: vi.fn((canvas: FakeCanvasLike) => {
-      mount.children.push(canvas);
-      canvas.parentElements.push(mount);
-      return canvas;
+    appendChild: vi.fn((child: FakeCanvasLike | FakeDivLike) => {
+      mount.children.push(child);
+      child.parentElements.push(mount);
+      return child;
     }),
   };
   return mount;
@@ -110,6 +133,7 @@ const makeFakeMount = (): FakeMountLike => {
 interface DomHarness {
   readonly dom: RendererDomFactories;
   readonly canvases: FakeCanvasLike[];
+  readonly divs: FakeDivLike[];
   ctx: CanvasRenderingContext2D | null;
   dpr: number;
   width: number;
@@ -125,6 +149,7 @@ const makeDomHarness = (overrides?: {
 }): DomHarness => {
   const harness: DomHarness = {
     canvases: [],
+    divs: [],
     ctx: overrides?.ctx === undefined ? makeFakeContext() : overrides.ctx,
     dpr: overrides?.dpr ?? 1,
     width: overrides?.width ?? 1024,
@@ -134,6 +159,11 @@ const makeDomHarness = (overrides?: {
         const canvas = makeFakeCanvas(harness.ctx);
         harness.canvases.push(canvas);
         return canvas as unknown as HTMLCanvasElement;
+      },
+      createDiv: () => {
+        const div = makeFakeDiv();
+        harness.divs.push(div);
+        return div as unknown as HTMLDivElement;
       },
       getWindowWidth: () => harness.width,
       getWindowHeight: () => harness.height,
@@ -279,5 +309,130 @@ describe("Renderer.drawOnCanvas", () => {
     expect(canvas?.style.pointerEvents).toBe("none");
     expect(canvas?.style.zIndex).toBe("9999");
     handle.dispose();
+  });
+});
+
+// ─── addDomLayer ──────────────────────────────────────────
+
+describe("Renderer.addDomLayer", () => {
+  const makeRenderer = (harness: DomHarness, canvasMount?: HTMLElement): Renderer =>
+    new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+      canvasMount,
+      dom: harness.dom,
+    });
+
+  it("canvasMount に渡した element に div を append する", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.addDomLayer(() => {});
+    expect(mount.appendChild).toHaveBeenCalledTimes(1);
+    expect(mount.children.length).toBe(1);
+    expect(mount.children[0]).toBe(harness.divs[0]);
+    handle.dispose();
+  });
+
+  it("setup callback が 1 回だけ呼ばれる", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const setup = vi.fn();
+    const handle = renderer.addDomLayer(setup);
+    expect(setup).toHaveBeenCalledTimes(1);
+    // setup に渡されるのは生成された div
+    expect(setup).toHaveBeenCalledWith(harness.divs[0]);
+    handle.dispose();
+  });
+
+  it("dispose で div が parent から remove される", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.addDomLayer(() => {});
+    const div = harness.divs[0];
+    expect(mount.children).toContain(div);
+    handle.dispose();
+    expect(div?.remove).toHaveBeenCalledTimes(1);
+    expect(mount.children).not.toContain(div);
+  });
+
+  it("dispose は冪等：2 回呼んでも例外なし、div.remove は 1 回だけ発生する", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.addDomLayer(() => {});
+    const div = harness.divs[0];
+    expect(() => {
+      handle.dispose();
+      handle.dispose();
+    }).not.toThrow();
+    expect(div?.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("overlay の fixed style（position / inset / pointer-events / z-index）が div に適用される", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.addDomLayer(() => {});
+    const div = harness.divs[0];
+    expect(div?.style.position).toBe("fixed");
+    expect(div?.style.inset).toBe("0");
+    expect(div?.style.pointerEvents).toBe("none");
+    expect(div?.style.zIndex).toBe("9999");
+    handle.dispose();
+  });
+
+  it("canvasMount を省略すると dom.getDefaultCanvasMount() の返り値が使われる", () => {
+    const fakeDefaultMount = makeFakeMount();
+    const harness = makeDomHarness({
+      defaultCanvasMount: fakeDefaultMount as unknown as HTMLElement,
+    });
+    const renderer = makeRenderer(harness); // canvasMount 省略
+    const handle = renderer.addDomLayer(() => {});
+    expect(fakeDefaultMount.appendChild).toHaveBeenCalledTimes(1);
+    expect(fakeDefaultMount.children.length).toBe(1);
+    handle.dispose();
+  });
+});
+
+// ─── queryTerminalCells ───────────────────────────────────
+
+describe("Renderer.queryTerminalCells", () => {
+  it("terminalCellExtractor が設定されている場合、その返り値を委譲する", () => {
+    const cellData = {
+      cells: [{ char: "A", x: 0, y: 0, row: 0, col: 0, fgColor: "#fff" }],
+      cellWidth: 8,
+      cellHeight: 16,
+      terminalRect: { left: 0, top: 0, width: 800, height: 600 },
+      cols: 80,
+      rows: 24,
+    };
+    const extractor = vi.fn(() => cellData);
+    const renderer = new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+      terminalCellExtractor: extractor,
+    });
+    const result = renderer.queryTerminalCells();
+    expect(extractor).toHaveBeenCalledTimes(1);
+    expect(result).toBe(cellData);
+  });
+
+  it("terminalCellExtractor が未設定の場合、null を返す", () => {
+    const renderer = new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+    });
+    const result = renderer.queryTerminalCells();
+    expect(result).toBeNull();
+  });
+
+  it("terminalCellExtractor が null を返した場合、null を返す", () => {
+    const extractor = vi.fn(() => null);
+    const renderer = new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+      terminalCellExtractor: extractor,
+    });
+    const result = renderer.queryTerminalCells();
+    expect(result).toBeNull();
   });
 });
