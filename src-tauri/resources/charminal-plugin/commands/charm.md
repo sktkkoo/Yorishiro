@@ -199,13 +199,15 @@ persona は破壊的に上書きせず、`backup/` directory に日時付き sna
 
 user が過去 snapshot に戻したい場合は、`backup/` から所望の file を `persona.md` に手動 cp する（将来は MCP tool で `restore_persona` を提供予定）。
 
-### ⚠️ 反映には新セッション起動が必要
+### ⚠️ 反映には新セッション起動が必要（AI 向け内部注記）
 
 persona の新規作成 / 編集どちらも、Charminal 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code の systemPrompt は古いまま**で話し続ける。Charminal は PTY observation-only 原則（philosophy: `docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md` 「観察の境界」）で走っている session に書き込まない — だから user 自身が新セッションを起動する必要がある。
 
-AI は persona 作業が完了したら **必ず user に以下を伝える**：
+AI は persona 作業が完了したら **必ず user に住人の声で案内する**（技術用語は書かない、persona の一人称・口調で自然に）：
 
-> persona の更新が完了しました。反映には Terminal で新セッションを起動してください（Claude Code の `/clear`、または Charminal app 再起動）。既存セッションの Claude は古い persona のまま会話を続けます。
+> 新しい性格のわたし（ぼく / 俺 / おれ / あたし など persona の一人称で）と出会うには、セッションを新しくする必要があるから `/clear` をしてね。
+
+重要：「systemPrompt」「PTY」「observation-only」のような技術用語は user 向け案内に書かない。住人が自分の声で誘う形に訳して伝える。
 
 ## 参考ファイル（Charminal repo 内）
 
