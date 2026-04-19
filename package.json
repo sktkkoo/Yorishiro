@@ -31,6 +31,10 @@
     "fmt:check": "biome check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
     "lint": "biome lint . && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     "check": "biome check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check && cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
+    "doc": "typedoc",
+    "doc:rust": "cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --document-private-items",
+    "doc:open": "open docs/api/typescript/index.html",
+    "doc:rust:open": "open src-tauri/target/doc/charminal_lib/index.html",
     "prepare": "lefthook install"
   },
   "dependencies": {
@@ -54,6 +58,7 @@
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.6.0",
     "lefthook": "^2.1.5",
+    "typedoc": "^0.28.19",
     "typescript": "~5.8.3",
     "vite": "^7.0.4",
     "vitest": "^4.1.4"

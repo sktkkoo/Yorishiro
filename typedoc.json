@@ -1,0 +1,18 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/sdk/index.d.ts"],
+  "out": "docs/api/typescript",
+  "tsconfig": "tsconfig.json",
+  "readme": "src/sdk/README.md",
+  "name": "@charminal/sdk",
+  "includeVersion": true,
+  "excludePrivate": false,
+  "excludeProtected": false,
+  "excludeInternal": false,
+  "skipErrorChecking": true,
+  "navigationLinks": {
+    "Philosophy": "../../philosophy/CHARMINAL.md",
+    "Decisions": "../../decisions/README.md"
+  },
+  "disableSources": true
+}

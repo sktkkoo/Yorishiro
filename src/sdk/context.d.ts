@@ -8,8 +8,11 @@
  *   - HarnessContext は character/voice/space を持たない
  *   - EffectContext は最小 API のみ
  *
- * これにより scene 作者（AI）が誤って境界を越える code を書くと
+ * これにより pack 作者（AI）が誤って境界を越える code を書くと
  * TypeScript のコンパイルエラーになる。
+ *
+ * Scene Pack は declarative（handler 無し）なので context 型を持たない。
+ * Scene の宣言型は `./scene-pack.d.ts` の `ScenePackDefinition` を参照。
  */
 
 import type { ReactionEvent } from "./reaction";

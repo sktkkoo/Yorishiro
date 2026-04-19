@@ -36,3 +36,6 @@ public/bg-test.*
 
 # Internal design record (lives in separate repo: ../Charminal-design-record/)
 docs/design-record/
+
+# Generated API docs (typedoc / cargo doc output)
+docs/api/

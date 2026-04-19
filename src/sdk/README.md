@@ -4,21 +4,23 @@
 
 ---
 
-## UGC の三軸
+## UGC の Pack 種別（4 種類）
 
-Charminal の UGC は 3 種類の Pack に分かれる。**どれを書きたいかで import する型が変わる**。
+Charminal の UGC は 4 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / harness / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）。
 
-| Pack type | 責務 | 主な context API | 主な制約 |
-|---|---|---|---|
-| **Persona Pack** | character identity と反応 | character / voice / space | system API は持たない |
-| **Harness Pack** | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
-| **Effect Pack** | rendering 実装 | renderer / audio | 最小 API のみ、lifecycle 短い |
+| Pack type | 性格 | 責務 | 主な context API | 主な制約 |
+|---|---|---|---|---|
+| **Persona Pack** | runtime-active | character identity と反応 | character / voice / space | system API は持たない |
+| **Harness Pack** | runtime-active | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
+| **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
+| **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
 
 **迷ったら**：
 
 - 「キャラを反応させたい」→ Persona Pack
 - 「コマンドを実行したり通知を出したりしたい」→ Harness Pack
 - 「パーティクルや画面効果を描きたい」→ Effect Pack
+- 「背景・前景の layer 構成を変えて居場所を作りたい」→ Scene Pack
 
 ---
 
@@ -520,6 +522,128 @@ Charminal 本体に同梱されている effect（persona から `ctx.space.inje
 | `text-glitch` | テキストグリッチ | `durationMs`, `intensity` |
 
 user Effect Pack も同じ API で呼ばれる（`kind` に pack id を指定）。
+
+---
+
+## Scene Pack の書き方
+
+scene は **declarative**（runtime handler を持たない）。pack の宣言が **そのまま画面を規定し続ける** 存在で、event-driven な persona / harness / effect とは性格が根本的に違う。
+
+### ファイル構造
+
+**bundled**（kind-first layout）：
+
+```
+bundled-packs/scenes/<pack-id>/
+├── manifest.json
+├── scene.ts               # TS entry（必須）
+├── tsconfig.json
+└── README.md
+```
+
+**user**（flat layout、`.js` 強制）：
+
+```
+~/.charminal/packs/<pack-id>/
+├── manifest.json
+└── scene.js               # user が TS から transpile した JS
+```
+
+> bundled と user で layout が**意図的に非対称**：bundled は本体の一部として種類別、user は flat。混同しない。詳細は `bundled-packs/README.md` および memory `feedback_user_pack_layout`。
+
+### manifest.json
+
+```json
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "my-scene",
+  "name": "わたしの場所",
+  "type": "scene",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "description": "...",
+  "entry": "scene.ts"
+}
+```
+
+`type` は必ず `"scene"`。`id` は directory 名と一致させる。
+
+> **`defaultActive` field は採用しない**。Scene の active 選択は pack 自己申告ではなく、`~/.charminal/config.json` の `activeScene` で **user が global に picks** する（memory: `feedback_single_active_config_picks`、`feedback_explicit_over_implicit_ugc`）。
+
+### scene.ts（or scene.js）
+
+```typescript
+import type { ScenePackDefinition } from '@charminal/sdk';
+
+export default {
+  id: 'my-scene',
+  type: 'scene',
+  scene: {
+    id: 'my-scene',
+    layers: [
+      // layer は先頭が一番奥、末尾が一番手前
+      {
+        id: 'backdrop',
+        role: 'background',
+        backgroundImage: 'linear-gradient(180deg, #232838 0%, #161a24 100%)',
+      },
+      {
+        id: 'vrm-slot',
+        role: 'character',
+        blur: 0,
+      },
+      {
+        id: 'fg-vignette',
+        role: 'foreground',
+        backgroundImage: 'radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0,0,0,0.35) 100%)',
+      },
+    ],
+  },
+} satisfies ScenePackDefinition;
+```
+
+### Layer の field
+
+| field | 役割 | 備考 |
+|---|---|---|
+| `id` | layer 識別子 | DOM の `data-layer-id` attribute |
+| `role` | compositor の特殊扱い | `'background'` / `'character'` / `'foreground'` のいずれか、または省略 |
+| `src` | 画像 / 動画 path | 拡張子から `<img>` / `<video>` 自動判定。`object-fit: cover` |
+| `backgroundColor` | CSS background-color | 単色 |
+| `backgroundImage` | CSS background-image | gradient や `url(...)` |
+| `blur` | CSS `filter: blur(Xpx)` | per-layer 独立。`0` で「ぼかさない」を明示 |
+
+`role` を持つ layer は **0 or 1 枚**：
+- `'character'`: VRM slot（compositor が runtime から VRM canvas を差し込む。**通常 src/backgroundColor/backgroundImage は undefined**）
+- `'background'`: 住人の奥（Phase 2 で Auto Color Correct の光源候補）
+- `'foreground'`: 住人の手前（vignette、窓枠など）
+
+`role` を持たない layer は粒子・haze・overlay などに自由に追加可能。
+
+### Active 選択の流れ
+
+1. user が複数の scene pack を install / write
+2. `~/.charminal/config.json` の `activeScene` field に id を書く（user が picks）
+3. Charminal が起動・hot reload 時に config を読み、ScenePackRegistry が active 1 つを選ぶ
+4. config が空 / null なら bundled `quiet-room` に fallback
+
+```json
+// ~/.charminal/config.json
+{
+  "activeScene": "my-scene"
+}
+```
+
+### Scene Pack には Context API が無い
+
+- persona / harness / effect は handler を持ち、それぞれ Context API（`PersonaContext` / `HarnessContext` / `EffectContext`）で runtime にアクセスする
+- **scene は handler を持たない**（pure data）。よって scene 用の `SceneContext` 型は存在しない、追加もしない
+- 動的に変えたい場合は **新しい scene pack に切り替える**（config で `activeScene` を書き換え → hot reload）
+
+### Bundled scene の参考
+
+- `bundled-packs/scenes/quiet-room/` — flagship reference（gradient のみ、3 層構成）
+- 詳細な data model 解説：[`src/core/scene/README.md`](../core/scene/README.md)
 
 ---
 

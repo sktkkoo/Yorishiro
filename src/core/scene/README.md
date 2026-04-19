@@ -255,4 +255,4 @@ user は設定で ambient 全体を on/off できる。
 
 - Philosophy: `docs/philosophy/CHARMINAL.md`「住まうということ」「触れるものと、触れないもの」「Presence が立ち上がる三つの条件」
 - Spec: `specs/2026-04-18-scene-pack-compositor-design.md`（外部 repo `Charminal-design-record`）
-- 既存の類似 SDK: `src/sdk/README.md`（Persona / Harness / Effect pack の書き方）
+- SDK guide: `src/sdk/README.md` — 4 種類の Pack（Persona / Harness / Effect / Scene）の書き方を集約。Scene Pack section は manifest / scene.ts shape / active 選択の流れを扱う
