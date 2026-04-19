@@ -20,3 +20,4 @@ export * from "./harness";
 export * from "./effect";
 export type { Layer, LayerRole, SceneSpec } from "./scene";
 export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
+export type { PersonaPackManifest } from "./persona-pack";

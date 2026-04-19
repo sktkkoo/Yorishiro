@@ -15,6 +15,8 @@ export const KEYS = {
   APP_RUNTIME: "app:runtime",
   /** ModuleRegistry singleton (Phase 1). */
   MODULE_REGISTRY: "registry:module",
+  /** PersonaRegistry singleton (persona single-active plan): 登録済み persona と active state。 */
+  PERSONA_REGISTRY: "persona:registry",
   /** ScenePackRegistry singleton (Phase 2 scene-pack-loader): 登録済み scene pack と active state。 */
   SCENE_PACK_REGISTRY: "scene-pack:registry",
   /** TerminalRuntime singleton (Phase 0b v2): xterm + PTY Channel の webview-lifetime 保持。 */
