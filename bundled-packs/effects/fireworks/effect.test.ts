@@ -37,7 +37,7 @@ function createMockCtx(overrides: {
   const ctx = {
     options: { origin: { x: 0.5, y: 0.3 }, count: 20, durationMs: 1000 },
     time: { after },
-    signal: { aborted: false } as unknown as AbortSignal,
+    signal: new AbortController().signal,
     renderer: {
       addShakeFilter: vi.fn(),
       addColorFilter: vi.fn(),

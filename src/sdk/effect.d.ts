@@ -86,4 +86,16 @@ export interface EffectDefinition<TOptions = unknown> {
    * TODO(sdk): `unknown` を具体的な `JsonSchema` 型へ narrow する。
    */
   readonly optionSchema?: unknown;
+  /**
+   * 同 id の dispatch が続けて来たとき、前の実行を abort して最新だけ残す。
+   * false（default）だと過去の dispatch と並行して走る。
+   *
+   * fireworks / text-physics のように 1 発が長く尾を引く effect で true にする。
+   * screen-shake のような短命 effect は false のままで良い。
+   *
+   * singleton pack が abort される際、前の run に渡した ctx.signal が abort される。
+   * pack 側では signal の 'abort' event で即 cleanup（RAF cancel + handle.dispose）
+   * することで、新しい dispatch が clean な状態で走れるようにする。
+   */
+  readonly singleton?: boolean;
 }

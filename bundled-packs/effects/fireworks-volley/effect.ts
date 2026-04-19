@@ -58,6 +58,7 @@ const randomInRange = (min: number, max: number): number => min + Math.random() 
 export default {
   id: "fireworks-volley",
   type: "effect",
+  singleton: true,
   run: async (
     ctx: EffectContext<FireworksVolleyOptions>,
     options: FireworksVolleyOptions,

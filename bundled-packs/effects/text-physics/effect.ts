@@ -87,6 +87,7 @@ const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
 export default {
   id: "text-physics",
   type: "effect",
+  singleton: true,
   run: async (
     ctx: EffectContext<TextPhysicsOptions>,
     options: TextPhysicsOptions,
@@ -302,6 +303,18 @@ export default {
       rafId = requestAnimationFrame(tick);
     });
 
+    // signal abort 時に即座に RAF cancel + handle.dispose する。
+    // singleton: true なので、同 id の新規 dispatch で前の signal が abort される。
+    // handle.dispose() は冪等なので finally と二重呼びになっても安全。
+    const cleanup = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      handle.dispose();
+    };
+    ctx.signal.addEventListener("abort", cleanup, { once: true });
+
     try {
       // 全 phase を合計した最大所要時間で待つ。
       // cascade は最大 CASCADE_TIMEOUT_MS で打ち切られるので、
@@ -309,11 +322,8 @@ export default {
       const totalMs = HOLD_MS + CASCADE_TIMEOUT_MS + REST_MS + RESTORE_MS;
       await ctx.time.after(totalMs);
     } finally {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      handle.dispose();
+      ctx.signal.removeEventListener("abort", cleanup);
+      cleanup();
     }
   },
 } satisfies EffectDefinition<TextPhysicsOptions>;

@@ -61,8 +61,18 @@ export class EffectPackRunner {
    * では構造チェックを通さない——型を narrow する責務は pack author 側。
    */
   register<TOptions = unknown>(pack: EffectDefinition<TOptions>): Disposable {
+    /** singleton pack の場合、直前の実行を abort するために保持する */
+    let current: AbortController | null = null;
+
     const unsub = this.dispatcher.subscribe(pack.id, (request) => {
+      // singleton: 前の実行が残っていれば abort して差し替え
+      if (pack.singleton && current) {
+        current.abort();
+      }
       const controller = new AbortController();
+      if (pack.singleton) {
+        current = controller;
+      }
       const options = request as unknown as TOptions;
       const ctx: EffectContext<TOptions> = {
         options,

@@ -65,7 +65,7 @@ function createMockCtx(overrides: {
   const ctx = {
     options: { origin: { x: 0.5, y: 0.5 }, force: 100 },
     time: { after },
-    signal: { aborted: false } as unknown as AbortSignal,
+    signal: new AbortController().signal,
     renderer: {
       addDomLayer,
       queryTerminalCells,

@@ -90,6 +90,7 @@ const easeOutQuad = (t: number): number => 1 - (1 - t) ** 2;
 export default {
   id: "fireworks",
   type: "effect",
+  singleton: true,
   run: async (ctx: EffectContext<FireworksOptions>, options: FireworksOptions): Promise<void> => {
     let rafId: number | null = null;
 
@@ -216,17 +217,26 @@ export default {
       rafId = requestAnimationFrame(tick);
     });
 
+    // signal abort 時に即座に RAF cancel + handle.dispose する。
+    // singleton: true なので、同 id の新規 dispatch で前の signal が abort される。
+    // handle.dispose() は冪等なので finally と二重呼びになっても安全。
+    const cleanup = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      handle.dispose();
+    };
+    ctx.signal.addEventListener("abort", cleanup, { once: true });
+
     try {
       // durationMs は「呼び出し側が canvas を保持したい最低時間」の hint。
       // rise + burst fade の自然終了時間を下回る場合は pack 側で延長する
       // （burst が途中で切れないように）。
       await ctx.time.after(Math.max(options.durationMs, MIN_EFFECT_MS));
     } finally {
-      if (rafId !== null) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      handle.dispose();
+      ctx.signal.removeEventListener("abort", cleanup);
+      cleanup();
     }
   },
 } satisfies EffectDefinition<FireworksOptions>;

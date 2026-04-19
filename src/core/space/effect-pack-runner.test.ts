@@ -87,4 +87,77 @@ describe("EffectPackRunner", () => {
 
     expect(run).not.toHaveBeenCalled();
   });
+
+  // ── singleton semantics ──────────────────────────────────
+
+  it("singleton pack は 2 回 dispatch で前の ctx.signal が aborted になる", () => {
+    const { dispatcher, runner } = makeSetup();
+    const signals: AbortSignal[] = [];
+    const run = vi.fn(async (ctx: EffectContext) => {
+      signals.push(ctx.signal);
+    });
+    const pack: EffectDefinition = {
+      id: "example-effect",
+      type: "effect",
+      singleton: true,
+      run,
+    };
+    runner.register(pack);
+
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.5, durationMs: 200 });
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.8, durationMs: 300 });
+
+    expect(run).toHaveBeenCalledTimes(2);
+    // 1 回目の signal は abort 済み
+    expect(signals[0].aborted).toBe(true);
+    // 2 回目（最新）の signal はまだ生きている
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it("non-singleton pack は 2 回 dispatch しても前の signal が aborted にならない", () => {
+    const { dispatcher, runner } = makeSetup();
+    const signals: AbortSignal[] = [];
+    const run = vi.fn(async (ctx: EffectContext) => {
+      signals.push(ctx.signal);
+    });
+    const pack: EffectDefinition = {
+      id: "example-effect",
+      type: "effect",
+      run,
+    };
+    runner.register(pack);
+
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.5, durationMs: 200 });
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.8, durationMs: 300 });
+
+    expect(run).toHaveBeenCalledTimes(2);
+    // singleton でなければ両方とも abort されない
+    expect(signals[0].aborted).toBe(false);
+    expect(signals[1].aborted).toBe(false);
+  });
+
+  it("singleton pack の dispose 後は前の controller が abort されない", () => {
+    const { dispatcher, runner } = makeSetup();
+    const signals: AbortSignal[] = [];
+    const run = vi.fn(async (ctx: EffectContext) => {
+      signals.push(ctx.signal);
+    });
+    const pack: EffectDefinition = {
+      id: "example-effect",
+      type: "effect",
+      singleton: true,
+      run,
+    };
+    const handle = runner.register(pack);
+
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.5, durationMs: 200 });
+    handle.dispose();
+
+    // dispose 後に dispatch しても run は呼ばれず、
+    // 前の signal も勝手に abort されない（subscription が切れているため）
+    dispatcher.dispatch({ kind: "example-effect", intensity: 0.8, durationMs: 300 });
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(signals[0].aborted).toBe(false);
+  });
 });
