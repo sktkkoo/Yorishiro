@@ -54,24 +54,29 @@ interface Particle {
 const GRAVITY = 0.05;
 const DRAG = 0.985;
 const PARTICLE_RADIUS = 2;
-/** rocket head の半径（px）。burst 粒より少し太め。 */
-const ROCKET_RADIUS = 2.5;
+/** rocket head の半径（px）。burst 粒より太め。 */
+const ROCKET_RADIUS = 3;
 /** rise phase の基準所要時間（ms）。実際は ±RISE_JITTER_MS 揺らぐ。 */
 const RISE_MS = 900;
 const RISE_JITTER_MS = 100;
 /** rocket の start 位置を origin y から画面下へどれだけ外すか（px）。 */
 const START_Y_OFFSET = 30;
-/** rise 中の左右揺らぎのサイクル数（片道で何回振る）。 */
-const WOBBLE_CYCLES = 2;
+/** rise 中の左右揺らぎのサイクル数（片道で何回振る）。少ないほど 1 sway が大きく見える。 */
+const WOBBLE_CYCLES = 1.5;
 /** 左右揺らぎの最大振幅（px）、t=0 で最大、apex で 0 に収束。 */
-const WOBBLE_AMPLITUDE = 16;
+const WOBBLE_AMPLITUDE = 28;
 /** 毎フレーム既存描画を減衰させる割合。大きいほど trail が短い。 */
 const FADE_ALPHA = 0.12;
 /** burst 粒 hue の family 幅（±この値を base hue にオフセット）。 */
 const HUE_JITTER = 15;
 
-/** ease-out cubic: t=0→0, t=1→1、終端で滑らかに減速する。 */
-const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+/**
+ * ease-out quad: 1 - (1-t)² = 2t - t²。
+ * 一定重力下の投射運動（初速で打ち上げ、重力で減速、apex で v=0）の
+ * y 成分と完全一致する curve。`easeOutCubic` は v0 が 3×avg で stop が
+ * 急すぎて「物理的に不自然」に見える — quad は v0=2×avg で自然な減速。
+ */
+const easeOutQuad = (t: number): number => 1 - (1 - t) ** 2;
 
 export default {
   id: "fireworks",
@@ -101,6 +106,10 @@ export default {
       const particles: Particle[] = [];
       let burstStarted = false;
       const startTime = performance.now();
+      // 前フレームの rocket 位置。streak（線分）で尾を引くために保持する。
+      // 初回 frame は prev === current なので線は描画されない。
+      let prevRx = targetX;
+      let prevRy = startY;
 
       const spawnBurst = (): void => {
         for (let i = 0; i < options.count; i++) {
@@ -128,7 +137,7 @@ export default {
 
       const drawRise = (elapsed: number): void => {
         const t = Math.min(1, elapsed / actualRiseMs);
-        const ry = startY + (targetY - startY) * easeOutCubic(t);
+        const ry = startY + (targetY - startY) * easeOutQuad(t);
         // wobble: sin で左右に振り、apex（t=1）へ向けて cos(t·π/2) で 0 に収束。
         const wobble =
           wobbleDir *
@@ -137,10 +146,24 @@ export default {
           Math.cos((t * Math.PI) / 2);
         const rx = targetX + wobble;
 
+        // prev → current の線分で streak を描く。fade-based 残像と
+        // 組み合わさって、揺れながら登る軌跡が光の尾として残る。
+        g.beginPath();
+        g.moveTo(prevRx, prevRy);
+        g.lineTo(rx, ry);
+        g.strokeStyle = `hsla(${baseHue}, 95%, 78%, 0.92)`;
+        g.lineWidth = ROCKET_RADIUS * 0.85;
+        g.lineCap = "round";
+        g.stroke();
+
+        // rocket head（熱源の core）。streak より彩度 / 明度を高く。
         g.beginPath();
         g.arc(rx, ry, ROCKET_RADIUS, 0, Math.PI * 2);
-        g.fillStyle = `hsla(${baseHue}, 100%, 82%, 1)`;
+        g.fillStyle = `hsla(${baseHue}, 100%, 86%, 1)`;
         g.fill();
+
+        prevRx = rx;
+        prevRy = ry;
       };
 
       const drawBurst = (): void => {
