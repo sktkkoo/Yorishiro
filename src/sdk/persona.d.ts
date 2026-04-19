@@ -68,7 +68,7 @@ export interface LogReadingPolicy {
  * export default {
  *   id: 'my-persona',
  *   name: 'わたし',
- *   thinking: { systemPromptAddition: '...' },
+ *   thinking: { systemPromptAddition: '...' }, // optional — persona.md から loader が inject することもある
  *   reflex: { responses: {} },
  *   world: { body: 'vrm:default', voice: 'voice:default', space: 'space:default' },
  *   logReading: { readWhen: { kind: 'session-boundary' }, framing: 'own', windowSize: 10 },
@@ -83,12 +83,17 @@ export interface PersonaDefinition {
 
   // ─── 思考層への影響（一次）────
 
-  readonly thinking: {
+  /**
+   * optional。loader が persona.md から systemPromptAddition を inject することがある。
+   * thinking 自体が省略された場合、loader は persona.md の内容を使って補完する。
+   */
+  readonly thinking?: {
     /**
      * Claude Code の system prompt に追記される文字列。
+     * optional — loader が persona.md から inject することがある。
      * この persona の「人格」を定義する最も強い部分。
      */
-    readonly systemPromptAddition: string;
+    readonly systemPromptAddition?: string;
   };
 
   // ─── 反射層への影響（二次、構造的）────
