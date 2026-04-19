@@ -11,7 +11,8 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | Module | 責務 | Entry | 備考 |
 |---|---|---|---|
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
-| `persona-registry/` | Persona lifecycle — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
+| `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
+| `persona-reflex/` | Active persona の reflex（customTriggers + responses）を EventBus に bridge | `persona-reflex-dispatcher.ts` | [decisions/motion-effect-trigger-axes.md](../../docs/decisions/motion-effect-trigger-axes.md) |
 | `body-scheduler/` | 複数 persona の motion 衝突解決 | `index.ts` | **skeleton**, post-MVP |
 | `hot-data/` | HMR-aware singleton store（Vite reload を生き残る） | `hot-data.ts` | foundational |
 | `module-registry/` | Typed registry of swappable runtime modules（VRM loader / audio player ...） | `module-registry.ts` + `keys.ts` | foundational、HMR で hot-data 経由 survive |
@@ -28,6 +29,8 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 
 ```
 core/ ◄─── event-bus/, persona-registry/, body-scheduler/
+
+persona-reflex/  ◄─── event-bus/, persona-registry/  （subscribeActive で active persona の trigger を bus に attach）
 
 hot-data/  ◄─── module-registry/  ◄─── core/body/, three-runtime/, ...
 (foundational)   (foundational)
@@ -69,7 +72,7 @@ const renderer = getOrInit(KEYS.threeRenderer, () => createRenderer());
 
 ## Index export 方針
 
-`runtime/index.ts` は **EventBus / PersonaRegistry / BodyScheduler のみ** export。`hot-data` / `module-registry` は **direct import 推奨**（barrel export しない）。foundational なものに引きずられて他がバンドルされるのを避ける。
+`runtime/index.ts` は **EventBus / PersonaRegistryImpl / PersonaReflexDispatcher / BodyScheduler のみ** export。`hot-data` / `module-registry` は **direct import 推奨**（barrel export しない）。foundational なものに引きずられて他がバンドルされるのを避ける。
 
 ---
 
