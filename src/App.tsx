@@ -46,6 +46,15 @@ const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
 
 function App() {
+  // ── State placement rule ────────────────────────────────────
+  // 5 種類の置き場が混在する。**何を入れるかで決める**：
+  //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
+  //   useRef          : render を起こさない mutable cell（bodyRef, greetedRef, inTurnRef）
+  //   useMemo         : derive が安いが ref-stable に保ちたい view-side compute（bodyDevLog, folderName）
+  //   hot-data        : HMR 越しに 1 instance のみ生かしたい runtime singleton（runtime stack 全体、各 registry）
+  //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
+  // 詳細: src/runtime/README.md §HMR と singleton
+
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
@@ -138,30 +147,26 @@ function App() {
       logger,
     });
 
-    // config の primaryPersona 反映は async（file 読み込み）。
-    // この時点で bundled は既に register 済なので、getActivePersona() は
-    // fallback で bundled を返す。primaryPersona が user pack を指していて、
-    // その pack が後から user-pack-loader 経由で register された場合、Registry の
-    // reselect で primary が自動切替され、Terminal systemPrompt が次セッションから
-    // 反映される（PTY observation-only 原則で既存 session は書き換えない）。
-    void (async () => {
-      try {
-        const configText = await readCharminalConfigText();
-        const config = parseConfig(configText);
-        personaRegistry.setPrimaryPersona(config.primaryPersona);
-      } catch (err) {
-        appLog.write({
-          phase: "register",
-          note: "config read for primaryPersona failed",
-          data: { error: err instanceof Error ? err.message : String(err) },
-        });
-      }
-    })();
+    // ── User layer 準備 (bootstrap) ───────────────────────────────────────
+    // 旧来は 3 つの fire-and-forget IIFE で並行実行していたが、互いに strict な
+    // 順序依存（bundled scene → config 反映 → user pack load）があり race で
+    // 隠れバグを生みやすかった。1 つの async bootstrap に集約し、step ごとに
+    // 独立した try/catch + appLog で片方の失敗が他方を巻き込まない構造に。
+    // 読者は「Terminal が mount するまでに何が起きるか」をこの関数の上から下に
+    // 追えば把握できる。
 
-    // Bundled quiet-room scene pack を register し、config.activeScene を反映する。
-    // fire-and-forget IIFE — try/catch で silent fail を防ぐ
-    // （memory: feedback_dev_verification_not_enough.md）。
-    void (async () => {
+    const packRegistry = new UserPackRegistry({
+      log: createSubsystemLog(devLog, "UserPackRegistry"),
+    });
+    // userLayerReady は Terminal mount を gate する Promise。
+    // **Step 3 完了直後** に resolve する（systemPrompt の race / 多重 spawn 回避）。
+    let userLayerReadyResolve!: () => void;
+    const userLayerReady = new Promise<void>((resolve) => {
+      userLayerReadyResolve = resolve;
+    });
+
+    async function bootstrap(): Promise<void> {
+      // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
       try {
         const resolved = await resolveSceneAssets(quietRoomPack.scene, {
           origin: "bundled",
@@ -183,178 +188,184 @@ function App() {
           phase: "register",
           note: `registered bundled scene '${quietRoomPack.id}'`,
         });
+      } catch (err) {
+        appLog.write({
+          phase: "register",
+          note: "bundled scene register failed",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
 
-        // config.json から user の activeScene 選択を読み、Registry に反映。
+      // ─ Step 2: config を一度だけ読んで primaryPersona と activeScene を反映 ─
+      // 旧設計は IIFE 2 つで個別に config を読んでいたが、同じ file を 2 度 parse
+      // していた。1 回読み + 両 registry に流す。失敗しても次 step は続行
+      // （bundled fallback で動く）。
+      try {
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
+        personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
       } catch (err) {
         appLog.write({
           phase: "register",
-          note: "bundled scene register / config read failed",
+          note: "config read for primaryPersona / activeScene failed",
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }
-    })();
 
-    // User layer (~/.charminal/packs/ + init.js) を bundled pack の後に load し、
-    // hot-reload watcher を張る。singleton factory の中から fire-and-forget で
-    // 起動する——runtime singleton は HMR をまたいで 1 回しか動かないので、
-    // 多重 load にはならない。
-    // 失敗しても Charminal 本体を落とさない（philosophy「壊さないこと」）。
-    const packRegistry = new UserPackRegistry({
-      log: createSubsystemLog(devLog, "UserPackRegistry"),
-    });
-    // user layer load 完了を external consumer に signal するための Promise。
-    // Terminal の Claude Code spawn はこの promise が resolve するまで待つ
-    // （user pack の persona が register 済になってから primaryPersona 確定で
-    //  spawn されるため、systemPrompt の race / 多重 spawn を回避）。
-    let userLayerReadyResolve!: () => void;
-    const userLayerReady = new Promise<void>((resolve) => {
-      userLayerReadyResolve = resolve;
-    });
-
-    void loadUserLayer({
-      effectPackRunner,
-      // Task 8 で bundled persona 登録を new registry に移行。
-      // Task 6/7 bridge: user pack load / watcher には single-active PersonaRegistry を渡す。
-      personaRegistry: getPersonaRegistry(),
-      scenePackRegistry,
-      effectDispatcher,
-      packRegistry,
-      userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
-      initScriptLog: createSubsystemLog(devLog, "InitScript"),
-    })
-      .then(async ({ packs, init, safeMode }) => {
+      // ─ Step 3: user layer load（user pack register、init.js 実行）─
+      // user pack の persona が register された時点で、primaryPersona が指している id に
+      // active が切り替わる（PersonaRegistry の reselect 経由）。失敗しても Terminal は
+      // bundled fallback で動かす（philosophy「壊さないこと」）。
+      let safeMode = false;
+      try {
+        const result = await loadUserLayer({
+          effectPackRunner,
+          personaRegistry,
+          scenePackRegistry,
+          effectDispatcher,
+          packRegistry,
+          userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+          initScriptLog: createSubsystemLog(devLog, "InitScript"),
+        });
+        safeMode = result.safeMode;
         appLog.write({
           phase: "user-layer",
-          note: `user-layer ready (packs loaded=${packs.loaded.length} failed=${packs.failed.length}; init ran=${init.ran})`,
-          data: { packs, init },
+          note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
+          data: { packs: result.packs, init: result.init },
         });
-        // user pack の register / primaryPersona 反映が済んだので、
-        // Terminal の Claude Code spawn を解禁する。
-        userLayerReadyResolve();
-        // Phase 1-c: safe mode のときだけ window title に suffix を付ける。
-        // user が env var で safe mode に入ったことを常時 visible にする。
-        // title 更新の失敗が後続の MCP listener 接続を道連れにしないよう
-        // 独立した try-catch で包む（philosophy: docs/philosophy/CHARMINAL.md「壊さないこと」）。
-        if (safeMode) {
-          try {
-            const { getCurrentWindow } = await import("@tauri-apps/api/window");
-            const win = getCurrentWindow();
-            const current = await win.title();
-            if (!current.endsWith(" (Safe Mode)")) {
-              await win.setTitle(`${current} (Safe Mode)`);
-            }
-          } catch (err) {
-            appLog.write({
-              phase: "safe-mode-title",
-              note: "failed to append Safe Mode suffix to window title",
-              data: { error: err instanceof Error ? err.message : String(err) },
-            });
-          }
-        }
-
-        // Phase 1-c: MCP event channel wiring。Rust 側 MCP server が tool call を
-        // 受けると `mcp:tool-request` event を emit、TS 側で対応 handler を走らせ
-        // `mcp_tool_response` command で response を戻す。
-        // Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
-        try {
-          const { listen } = await import("@tauri-apps/api/event");
-          const { invoke } = await import("@tauri-apps/api/core");
-          const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
-          const { createListPacksHandler, createDisablePackHandler, createEnablePackHandler } =
-            await import("./runtime/charminal-mcp/tool-handlers");
-          const { readCharminalConfigText, writeCharminalConfigText, readLastStartupReport } =
-            await import("./runtime/user-pack-loader/charminal-io");
-          const { parseConfig, serializeConfig } = await import(
-            "./runtime/user-pack-loader/config"
-          );
-          const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
-          type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
-          type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
-          type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
-
-          const readConfig = async (): Promise<CharminalConfig> =>
-            parseConfig(await readCharminalConfigText());
-          const writeConfig = async (next: CharminalConfig): Promise<void> =>
-            writeCharminalConfigText(serializeConfig(next));
-          const readLoadReport = async (): Promise<LoadReport | null> => {
-            const text = await readLastStartupReport();
-            if (text === "") return null;
-            try {
-              return JSON.parse(text) as LoadReport;
-            } catch {
-              return null;
-            }
-          };
-          // Task 21: config.json から id を除外するだけでなく、file system から
-          // 読み直して runtime registry に直接 register し直す経路。Task 16 の
-          // 「file 存在確認だけ」limitation の fix。
-          const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
-          const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
-            return reloadSingleUserPack(id, {
-              effectPackRunner,
-              // Task 6/7 bridge: single-active PersonaRegistry を渡す。
-              personaRegistry: getPersonaRegistry(),
-              scenePackRegistry,
-              packRegistry,
-              userPackLog,
-            });
-          };
-
-          const handlers: ToolHandlerMap = {
-            "list-packs": createListPacksHandler({
-              readRegistry: () => packRegistry.listEntries(),
-              readConfig,
-              readLoadReport,
-            }),
-            "disable-pack": createDisablePackHandler({
-              readConfig,
-              writeConfig,
-              registry: packRegistry,
-            }),
-            "enable-pack": createEnablePackHandler({
-              readConfig,
-              writeConfig,
-              reloadPack,
-            }),
-          };
-
-          await listen<{ requestId: string; tool: string; request: unknown }>(
-            "mcp:tool-request",
-            async (event) => {
-              const result = await dispatchToolEvent(handlers, {
-                tool: event.payload.tool,
-                request: event.payload.request,
-              });
-              await invoke("mcp_tool_response", {
-                requestId: event.payload.requestId,
-                response: result,
-              });
-            },
-          );
-          appLog.write({
-            phase: "mcp-channel",
-            note: "mcp:tool-request listener attached",
-          });
-        } catch (err) {
-          appLog.write({
-            phase: "mcp-channel",
-            note: "failed to attach MCP event listener",
-            data: { error: err instanceof Error ? err.message : String(err) },
-          });
-        }
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         appLog.write({
           phase: "user-layer",
           note: "user-layer bootstrap crashed",
           data: { error: err instanceof Error ? err.message : String(err) },
         });
-        // crash 時も Terminal を塞がない（bundled で fallback 起動させる）。
-        userLayerReadyResolve();
+      }
+
+      // ★ Terminal mount 解禁。primaryPersona は確定済（bundled fallback or user pack
+      //   register 済）、systemPrompt の race は起きない。以下 step は Terminal とは
+      //   独立に走るので、失敗しても Terminal の表示は止まらない。
+      userLayerReadyResolve();
+
+      // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
+      // user が env var で safe mode に入ったことを常時 visible にする。
+      if (safeMode) {
+        try {
+          const { getCurrentWindow } = await import("@tauri-apps/api/window");
+          const win = getCurrentWindow();
+          const current = await win.title();
+          if (!current.endsWith(" (Safe Mode)")) {
+            await win.setTitle(`${current} (Safe Mode)`);
+          }
+        } catch (err) {
+          appLog.write({
+            phase: "safe-mode-title",
+            note: "failed to append Safe Mode suffix to window title",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      }
+
+      // ─ Step 5: MCP event channel wiring ─
+      // Rust 側 MCP server が tool call を受けると `mcp:tool-request` event を emit、
+      // TS 側で対応 handler を走らせ `mcp_tool_response` command で response を戻す。
+      // Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        const { invoke } = await import("@tauri-apps/api/core");
+        const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
+        const { createListPacksHandler, createDisablePackHandler, createEnablePackHandler } =
+          await import("./runtime/charminal-mcp/tool-handlers");
+        const { writeCharminalConfigText, readLastStartupReport } = await import(
+          "./runtime/user-pack-loader/charminal-io"
+        );
+        const { serializeConfig } = await import("./runtime/user-pack-loader/config");
+        const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
+        type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
+        type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
+        type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
+
+        const readConfig = async (): Promise<CharminalConfig> =>
+          parseConfig(await readCharminalConfigText());
+        const writeConfig = async (next: CharminalConfig): Promise<void> =>
+          writeCharminalConfigText(serializeConfig(next));
+        const readLoadReport = async (): Promise<LoadReport | null> => {
+          const text = await readLastStartupReport();
+          if (text === "") return null;
+          try {
+            return JSON.parse(text) as LoadReport;
+          } catch {
+            return null;
+          }
+        };
+        // disable/enable で fs から読み直して runtime registry に register し直す経路。
+        const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
+        const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
+          return reloadSingleUserPack(id, {
+            effectPackRunner,
+            personaRegistry,
+            scenePackRegistry,
+            packRegistry,
+            userPackLog,
+          });
+        };
+
+        const handlers: ToolHandlerMap = {
+          "list-packs": createListPacksHandler({
+            readRegistry: () => packRegistry.listEntries(),
+            readConfig,
+            readLoadReport,
+          }),
+          "disable-pack": createDisablePackHandler({
+            readConfig,
+            writeConfig,
+            registry: packRegistry,
+          }),
+          "enable-pack": createEnablePackHandler({
+            readConfig,
+            writeConfig,
+            reloadPack,
+          }),
+        };
+
+        await listen<{ requestId: string; tool: string; request: unknown }>(
+          "mcp:tool-request",
+          async (event) => {
+            const result = await dispatchToolEvent(handlers, {
+              tool: event.payload.tool,
+              request: event.payload.request,
+            });
+            await invoke("mcp_tool_response", {
+              requestId: event.payload.requestId,
+              response: result,
+            });
+          },
+        );
+        appLog.write({
+          phase: "mcp-channel",
+          note: "mcp:tool-request listener attached",
+        });
+      } catch (err) {
+        appLog.write({
+          phase: "mcp-channel",
+          note: "failed to attach MCP event listener",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    }
+
+    // bootstrap を fire-and-forget で起動。runtime singleton は HMR 越しに 1 度しか
+    // 動かないので多重 load にはならない。各 step は独自に try/catch を持つので
+    // この catch は現実には走らないが、念のため userLayerReady を解放しておく
+    // （Promise が permanently pending になって Terminal が永遠に mount されないのを防ぐ）。
+    void bootstrap().catch((err: unknown) => {
+      appLog.write({
+        phase: "bootstrap",
+        note: "bootstrap crashed (unexpected)",
+        data: { error: err instanceof Error ? err.message : String(err) },
       });
+      userLayerReadyResolve();
+    });
 
     return {
       time,
