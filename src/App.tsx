@@ -15,12 +15,12 @@ import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
+import { PersonaReflexDispatcher } from "./runtime/persona-reflex";
 import type { PersonaEntry } from "./runtime/persona-registry";
 import {
   createRealPersonaContextFactory,
   createStubPersonaContextFactory,
   getPersonaRegistry,
-  PersonaRegistry,
 } from "./runtime/persona-registry";
 import {
   getSceneRegistry,
@@ -39,20 +39,6 @@ import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
-
-/**
- * Built-in triggers that map DispatchEvents to standard reactions.
- *
- * Currently empty — motion firing felt intrusive during ordinary
- * Claude Code turns. Handler definitions remain in persona.ts so
- * wiring can be restored by re-adding entries here:
- *
- *   - idle → idle-fidget
- *   - hook-signal "stop" → pleased
- *   - hook-signal "user-prompt-submit" → acknowledging
- *   - hook-signal "pre-tool-use" → contemplative
- */
-const builtInTriggers: ReadonlyArray<Trigger> = [];
 
 function App() {
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
@@ -96,7 +82,6 @@ function App() {
     });
     effectPackRunner.register(screenShakePack);
 
-    const registry = new PersonaRegistry({ bus, time, logger });
     const perception = new Perception({
       bus,
       time,
@@ -106,22 +91,8 @@ function App() {
     // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
     const scenePackRegistry: ScenePackRegistry = getSceneRegistry();
 
-    // ── EventBus-bridge（old PersonaRegistry）への bundled persona 登録 ──────
-    // old PersonaRegistry は reflex dispatch 専用（EventBus trigger → reaction）。
-    // state management（active persona / subscribeActive）は new PersonaRegistryImpl が担う。
-    // option β: 責務分離を明示して両者を共存させる（Task 8 Step 4）。
-    // old 側への register は EventBus 配線のためだけ — Terminal systemPrompt には影響しない。
-    const augmented = {
-      ...charminalDefaultPack,
-      reflex: {
-        ...charminalDefaultPack.reflex,
-        customTriggers: [...builtInTriggers, ...(charminalDefaultPack.reflex.customTriggers ?? [])],
-      },
-    };
-    registry.register(augmented);
-
-    // ── new PersonaRegistryImpl への bundled persona 登録 ────────────────────
-    // new registry は state management 専用（active persona / subscribeActive）。
+    // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
+    // PersonaRegistryImpl は state management（active persona / subscribeActive）。
     // bundled charminal-default を sync register する。ここを async にすると
     // 初期 render で getActivePersona() が null を返し、Terminal が systemPrompt=null
     // で spawn → async 完了後に再 spawn、という race が起きる。
@@ -139,6 +110,20 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled persona '${charminalDefaultPack.id}'`,
+    });
+
+    // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
+    // active persona の reflex（customTriggers + responses）を EventBus に bridge する。
+    // subscribeActive は登録時に現 active を同期 fire するので、bundled persona の
+    // triggers が dispatcher 構築と同時に bus に attach される。user pack が後から
+    // register された場合も、subscribeActive 経由で dispatcher が反応し trigger を
+    // 付け替える（user pack の reflex がここで初めて動くようになる）。
+    // Internal design-record: 2026-04-19-persona-registry-unification.md
+    const dispatcher = new PersonaReflexDispatcher({
+      bus,
+      time,
+      registry: personaRegistry,
+      logger,
     });
 
     // config の primaryPersona 反映は async（file 読み込み）。
@@ -362,7 +347,7 @@ function App() {
     return {
       time,
       bus,
-      registry,
+      dispatcher,
       perception,
       logBridge,
       devLog,
@@ -374,7 +359,7 @@ function App() {
 
   const {
     perception,
-    registry,
+    dispatcher,
     logBridge,
     devLog,
     effectDispatcher,
@@ -422,7 +407,7 @@ function App() {
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
-  // ── Body ↔ PersonaRegistry wiring ──────────────────────────
+  // ── Body ↔ PersonaReflexDispatcher wiring ──────────────────
 
   const bodyRef = useRef<Body | null>(null);
   const greetedRef = useRef(false);
@@ -432,7 +417,7 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
-        registry.setContextFactory(
+        dispatcher.setContextFactory(
           createRealPersonaContextFactory({ body, logBridge, effectDispatcher }),
         );
         if (!greetedRef.current) {
@@ -449,10 +434,10 @@ function App() {
           }, 3000);
         }
       } else {
-        registry.setContextFactory(createStubPersonaContextFactory());
+        dispatcher.setContextFactory(createStubPersonaContextFactory());
       }
     },
-    [registry, logBridge, effectDispatcher],
+    [dispatcher, logBridge, effectDispatcher],
   );
 
   // ── Tool-activity → Body state wiring ─────────────────────
