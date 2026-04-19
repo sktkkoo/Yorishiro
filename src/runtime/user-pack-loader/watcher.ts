@@ -14,6 +14,7 @@ import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
 import type { ScenePackRegistry } from "../scene-pack-registry";
+import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 import type { UserPackRegistry } from "./user-pack-registry";
@@ -190,13 +191,33 @@ async function reloadPack(
         note: `re-registered effect '${pack.id}'`,
       });
     } else if (action.kind === "persona") {
-      const pack: PersonaDefinition = validatePersonaDefinition(def);
+      const personaDef: PersonaDefinition = validatePersonaDefinition(def);
+
+      // persona.md を再 fetch して inject する。hot reload 時に persona.md を
+      // user が編集しても反映されるよう、毎回 fetch し直す。
+      // watcher では tauri.convertFileSrc が注入済みなので直接使う。
+      const packDir = action.entryPath.replace(/\/persona\.js$/, "");
+      const mdUrl = tauri.convertFileSrc(`${packDir}/persona.md`);
+      let mdText = "";
+      try {
+        const response = await fetch(mdUrl);
+        if (response.ok) {
+          mdText = await response.text();
+        }
+      } catch (err) {
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `persona "${action.id}": persona.md fetch failed (${errorMessage(err)})`,
+        });
+      }
+      const injected = injectPersonaPrompt(personaDef, mdText);
+
       deps.packRegistry.dispose(action.id, action.kind);
-      const handle = deps.personaRegistry.register(pack);
+      const handle = deps.personaRegistry.register(injected);
       deps.packRegistry.register(action.id, action.kind, handle);
       deps.userPackLog.write({
         phase: "reload",
-        note: `re-registered persona '${pack.id}'`,
+        note: `re-registered persona '${injected.id}'`,
       });
     } else if (action.kind === "scene") {
       const sceneResult = await registerScenePack({
