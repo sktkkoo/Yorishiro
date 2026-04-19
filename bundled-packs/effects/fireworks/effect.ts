@@ -78,8 +78,6 @@ const WOBBLE_AMPLITUDE = 6;
 const FADE_ALPHA = 0.12;
 /** burst 粒 hue の family 幅（±この値を base hue にオフセット）。 */
 const HUE_JITTER = 15;
-/** burst の横方向への広がり倍率。1.0 で真円（peony）、>1 で横長楕円（horsetail 寄り）。 */
-const HORIZONTAL_STRETCH = 1.8;
 
 /**
  * ease-out quad: 1 - (1-t)² = 2t - t²。
@@ -129,9 +127,7 @@ export default {
           particles.push({
             x: targetX,
             y: targetY,
-            // vx を HORIZONTAL_STRETCH 倍することで elliptical（横長）な
-            // 広がりにする。vy はそのまま、gravity で自然に落下する。
-            vx: Math.cos(angle) * speed * HORIZONTAL_STRETCH,
+            vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             life: 0,
             maxLife: 80 + Math.random() * 50,
