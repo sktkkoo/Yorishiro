@@ -27,13 +27,15 @@ interface FireworksOptions {
  * screen-shake の test pattern と同じ構造。
  */
 function createMockCtx(overrides: {
-  after?: () => Promise<void>;
+  after?: (ms: number) => Promise<void>;
   drawOnCanvasReturn?: { dispose: ReturnType<typeof vi.fn> };
   drawOnCanvas?: ReturnType<typeof vi.fn>;
 }) {
   const dispose = overrides.drawOnCanvasReturn?.dispose ?? vi.fn();
   const drawOnCanvas = overrides.drawOnCanvas ?? vi.fn(() => ({ dispose }));
-  const after = vi.fn(overrides.after ?? (() => Promise.resolve()));
+  // explicit type で (ms: number) signature を渡し、after.mock.calls[0][0] が
+  // number として推論されるようにする。
+  const after = vi.fn<(ms: number) => Promise<void>>(overrides.after ?? (() => Promise.resolve()));
   const ctx = {
     options: { origin: { x: 0.5, y: 0.3 }, count: 20, durationMs: 1000 },
     time: { after },
@@ -77,7 +79,7 @@ describe("fireworks effect", () => {
     });
 
     expect(after).toHaveBeenCalledOnce();
-    const arg = after.mock.calls[0][0] as number;
+    const arg = after.mock.calls[0][0];
     // 具体値は「感触 parameter」として動かすため bound のみ検証。
     // rise(≈2000ms) + burst tail は少なくとも 3500ms は必要、という下限だけ守る。
     expect(arg).toBeGreaterThanOrEqual(3500);
