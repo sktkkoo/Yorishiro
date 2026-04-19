@@ -56,6 +56,21 @@ export default {
           return { reaction: "distressed", payload };
         },
       } satisfies Trigger,
+
+      // git push 成功 → celebrate を発火。PTY output から push 成功を示す
+      // パターン（ブランチ更新 / 新規ブランチ / 新規タグ）を検知する。
+      {
+        id: "charminal-default:git-push-success",
+        match(event: DispatchEvent) {
+          if (event.kind !== "pty-output") return null;
+          // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape strip に ESC 制御文字が必要
+          const plain = event.text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+          if (/\w+\.{2,3}\w+\s+\S+\s+->\s+\S+/.test(plain) || /\[new (branch|tag)\]/.test(plain)) {
+            return { reaction: "celebrate" };
+          }
+          return null;
+        },
+      } satisfies Trigger,
     ],
     responses: {
       // エラー検知時の反射。philosophy の「意識に先立つ反応」は典型的には
@@ -89,6 +104,22 @@ export default {
               await ctx.time.after(2500);
               if (ctx.signal.aborted) return;
               expr.release(600);
+            },
+          },
+        ],
+      },
+
+      // git push 成功時の祝福。花火 + 嬉しそうな表情。
+      celebrate: {
+        handlers: [
+          {
+            label: "fireworks-and-smile",
+            handler: async (ctx: PersonaContext) => {
+              const expr = ctx.character.express({ kind: "mood", preset: "happy" }, 0.6);
+              ctx.space.injectEffect({ kind: "fireworks-volley" });
+              await ctx.time.after(4000);
+              if (ctx.signal.aborted) return;
+              expr.release(800);
             },
           },
         ],

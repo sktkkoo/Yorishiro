@@ -7,6 +7,7 @@ import type {
   HookSignalEvent,
   PersonaContext,
   PlayOptions,
+  PtyOutputEvent,
 } from "@charminal/sdk";
 import { describe, expect, it, vi } from "vitest";
 import persona from "./persona";
@@ -88,6 +89,59 @@ describe("charminal-default persona triggers", () => {
       const match = trigger.match(postToolFailure("Read"));
       expect(match).not.toBeNull();
       expect(match?.reaction).toBe("distressed");
+    });
+  });
+
+  describe("git-push-success → celebrate trigger", () => {
+    const trigger = triggers.find((t) => t.id === "charminal-default:git-push-success");
+
+    it("is registered in customTriggers", () => {
+      expect(trigger).toBeDefined();
+    });
+
+    const ptyOutput = (text: string): PtyOutputEvent => ({
+      kind: "pty-output",
+      text,
+      timestamp: 0,
+    });
+
+    it("matches branch update pattern (abc123..def456 main -> main)", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const match = trigger.match(ptyOutput("   abc1234..def5678  main -> main\n"));
+      expect(match).not.toBeNull();
+      expect(match?.reaction).toBe("celebrate");
+    });
+
+    it("matches force push pattern (abc123...def456 main -> main)", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const match = trigger.match(ptyOutput("   abc1234...def5678  main -> main\n"));
+      expect(match).not.toBeNull();
+      expect(match?.reaction).toBe("celebrate");
+    });
+
+    it("matches [new branch] pattern", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const match = trigger.match(ptyOutput(" * [new branch]      feat/foo -> feat/foo\n"));
+      expect(match).not.toBeNull();
+      expect(match?.reaction).toBe("celebrate");
+    });
+
+    it("matches [new tag] pattern", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const match = trigger.match(ptyOutput(" * [new tag]         v1.0.0 -> v1.0.0\n"));
+      expect(match).not.toBeNull();
+      expect(match?.reaction).toBe("celebrate");
+    });
+
+    it("does not match unrelated pty output", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      expect(trigger.match(ptyOutput("npm test\n"))).toBeNull();
+      expect(trigger.match(ptyOutput("Compiling charminal v0.0.1\n"))).toBeNull();
+    });
+
+    it("does not match hook-signal events", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      expect(trigger.match(hookSignal("post-tool-use"))).toBeNull();
     });
   });
 
