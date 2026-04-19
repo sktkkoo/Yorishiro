@@ -49,6 +49,12 @@ bundled-packs/
 - **役割**: built-in DOM shake on error。`ctx.space.injectEffect({ kind: "screen-shake" })` で persona から呼ばれる
 - 詳細：`bundled-packs/effects/screen-shake/`
 
+### effects/fireworks
+- **Entry**: `effect.ts`
+- **Files**: `manifest.json`, `README.md`
+- **役割**: 1 burst の花火を overlay canvas に打ち上げる。`ctx.space.injectEffect({ kind: "fireworks", origin, count, durationMs })` で persona / init.js から呼ばれる。連発は呼び出し側が時差で複数回叩く責務
+- 詳細：`bundled-packs/effects/fireworks/README.md`
+
 ---
 
 ## shared/ — 共有 asset

@@ -8,20 +8,57 @@
  * filter primitive を dispense する。SDK の規約上 addShakeFilter 等は
  * Disposable を返し、Effect が明示的に dispose するまで効果を継続する。
  *
- * 本バージョンは addShakeFilter のみ実装。他の primitive (addParticles /
- * addColorFilter / drawOnCanvas) は Effect Pack 需要に応じて順次追加。
+ * 本バージョンは addShakeFilter / drawOnCanvas を実装。addColorFilter /
+ * addParticles は Effect Pack 需要に応じて順次追加。
  */
 
 import type { Disposable, ParticleConfig, ParticleHandle, RendererAPI } from "@charminal/sdk";
 import { computeShakeOffset } from "./shake";
 
 /**
- * Default decay duration for addShakeFilter. Effect packs that call
- * time.after(≈500ms) before dispose get the old Charminal feel; shorter
- * holds cut the decay off early, longer holds have a silent tail after
- * decay completes.
+ * addShakeFilter の default 減衰時間。Effect pack 側で dispose 前に
+ * time.after(≈500ms) を挟むと旧 Charminal 相当の感触になる。
  */
 const DEFAULT_SHAKE_DECAY_MS = 500;
+
+/**
+ * drawOnCanvas が作る canvas に当てる fixed overlay の z-index。
+ * terminal / VRM より前面に出る必要があり、かつ system UI とは
+ * 重ならない桁で揃えた。
+ */
+const CANVAS_OVERLAY_Z_INDEX = 9999;
+
+/**
+ * drawOnCanvas が作る canvas に当てる固定 style。全画面 overlay で
+ * pointer イベントを透過させる。
+ */
+const CANVAS_OVERLAY_STYLES: Readonly<Record<string, string>> = {
+  position: "fixed",
+  inset: "0",
+  width: "100vw",
+  height: "100vh",
+  pointerEvents: "none",
+  zIndex: String(CANVAS_OVERLAY_Z_INDEX),
+};
+
+/**
+ * DOM 依存を注入するための factory。test で document / window を
+ * 触れない環境（node runner）でも renderer を駆動できるようにする
+ * seam。production は default factory が `document` / `window` を直接
+ * 参照する。詳細は `docs/decisions/effect-rendering-primitives.md`。
+ */
+export interface RendererDomFactories {
+  /** canvas element を生成する。default は document.createElement。 */
+  readonly createCanvas: () => HTMLCanvasElement;
+  /** HiDPI 解像度の基準 window 幅を返す。 */
+  readonly getWindowWidth: () => number;
+  /** HiDPI 解像度の基準 window 高さを返す。 */
+  readonly getWindowHeight: () => number;
+  /** 実 pixel 密度。 */
+  readonly getDevicePixelRatio: () => number;
+  /** canvasMount を省略した時の default mount element。default は document.body。 */
+  readonly getDefaultCanvasMount: () => HTMLElement;
+}
 
 export interface RendererDeps {
   /**
@@ -30,17 +67,45 @@ export interface RendererDeps {
    * 作るため、terminal + canvas が同時にシフトする）。test では stub。
    */
   readonly shakeTarget: HTMLElement;
+  /**
+   * drawOnCanvas が生成した canvas を append する element。
+   * production では document.body。省略時は document.body を使う。
+   */
+  readonly canvasMount?: HTMLElement;
   /** 乱数源。default Math.random。 */
   readonly random?: () => number;
+  /**
+   * DOM factory の注入口。production では undefined（default は
+   * document / window）。test から全要素を差し替えるための seam。
+   */
+  readonly dom?: RendererDomFactories;
 }
+
+/** production default の DOM factory。globalThis.document / window を直接使う。 */
+const defaultDomFactories = (): RendererDomFactories => ({
+  createCanvas: () => document.createElement("canvas"),
+  getWindowWidth: () => window.innerWidth,
+  getWindowHeight: () => window.innerHeight,
+  getDevicePixelRatio: () => window.devicePixelRatio,
+  getDefaultCanvasMount: () => document.body,
+});
 
 export class Renderer implements RendererAPI {
   private readonly shakeTarget: HTMLElement;
   private readonly random: () => number;
+  private readonly dom: RendererDomFactories;
+  private readonly canvasMountOverride: HTMLElement | undefined;
 
   constructor(deps: RendererDeps) {
     this.shakeTarget = deps.shakeTarget;
     this.random = deps.random ?? Math.random;
+    this.dom = deps.dom ?? defaultDomFactories();
+    this.canvasMountOverride = deps.canvasMount;
+  }
+
+  /** canvasMount の解決。指定されていなければ factory の default を返す。 */
+  private resolveCanvasMount(): HTMLElement {
+    return this.canvasMountOverride ?? this.dom.getDefaultCanvasMount();
   }
 
   addShakeFilter(intensity: number): Disposable {
@@ -76,7 +141,48 @@ export class Renderer implements RendererAPI {
     throw new Error("Renderer.addParticles: not yet implemented");
   }
 
-  drawOnCanvas(_draw: (ctx: CanvasRenderingContext2D) => void): Disposable {
-    throw new Error("Renderer.drawOnCanvas: not yet implemented");
+  /**
+   * 画面全面 overlay の canvas を生成し、2D context を 1 回だけ
+   * draw callback に渡す。runtime 側で毎フレーム再呼出しはしない
+   * （pack は closure で ctx を保持し自前 RAF loop を回す想定）。
+   * Disposable.dispose で canvas を DOM から remove する。2 回以上
+   * 呼ばれても安全な冪等実装。
+   */
+  drawOnCanvas(draw: (ctx: CanvasRenderingContext2D) => void): Disposable {
+    const canvas = this.dom.createCanvas();
+
+    // overlay style を一括適用。CSSStyleDeclaration は indexed accessor を
+    // 持ち、camelCase key で書ける（kebab は runtime で変換される）。
+    Object.assign(canvas.style, CANVAS_OVERLAY_STYLES);
+
+    // HiDPI: backing store は 実 pixel で確保し、ctx.scale(dpr, dpr)
+    // で論理座標を window 単位に揃える。
+    const dpr = this.dom.getDevicePixelRatio();
+    canvas.width = this.dom.getWindowWidth() * dpr;
+    canvas.height = this.dom.getWindowHeight() * dpr;
+
+    const mount = this.resolveCanvasMount();
+    mount.appendChild(canvas);
+
+    let disposed = false;
+    const disposable: Disposable = {
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        canvas.remove();
+      },
+    };
+
+    const ctx = canvas.getContext("2d");
+    if (ctx === null) {
+      // getContext が null を返す環境（test / headless 等）では
+      // draw を呼ばず、cleanup だけ担保する。
+      return disposable;
+    }
+
+    ctx.scale(dpr, dpr);
+    draw(ctx);
+
+    return disposable;
   }
 }
