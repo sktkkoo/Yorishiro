@@ -2,7 +2,9 @@
  * fireworks — 1 発の花火 bundled Effect Pack（rise → burst の 2 段階）。
  *
  * `ctx.renderer.drawOnCanvas` で overlay canvas を acquire し、以下 2 phase を
- * `requestAnimationFrame` loop で animate、`durationMs` 後に canvas を dispose する：
+ * `requestAnimationFrame` loop で animate、`max(durationMs, MIN_EFFECT_MS)`
+ * 経過後に canvas を dispose する。`durationMs` が短すぎて burst が途中で
+ * 切れないよう、pack 側で natural 終了時間を保証する：
  *
  * 1. **rise**: 画面下から origin へ rocket が左右に揺れながら上昇。
  *    `sin × cos(t·π/2)` で apex では wobble 0 に収束、direction と phase は
@@ -57,18 +59,27 @@ const PARTICLE_RADIUS = 2;
 /** rocket head の半径（px）。burst 粒より太め。 */
 const ROCKET_RADIUS = 3;
 /** rise phase の基準所要時間（ms）。実際は ±RISE_JITTER_MS 揺らぐ。 */
-const RISE_MS = 900;
+const RISE_MS = 2000;
 const RISE_JITTER_MS = 100;
+/** burst 後の粒が自然に fade しきるまでの buffer（ms）。maxLife 上限 ≈ 130 frame
+ *  ≈ 60fps で 2167ms、余裕を見て 2500ms。呼び出し側の durationMs が短くても
+ *  pack 側でこの時間まで canvas を保つ。 */
+const BURST_FADE_TAIL_MS = 2500;
+/** 1 発が natural に演じ終わるまでの最低所要時間。options.durationMs がこれを
+ *  下回る場合、pack が延長して burst が途中で切れないようにする。 */
+const MIN_EFFECT_MS = RISE_MS + RISE_JITTER_MS + BURST_FADE_TAIL_MS;
 /** rocket の start 位置を origin y から画面下へどれだけ外すか（px）。 */
 const START_Y_OFFSET = 30;
 /** rise 中の左右揺らぎのサイクル数（片道で何回振る）。少ないほど 1 sway が大きく見える。 */
-const WOBBLE_CYCLES = 1.5;
+const WOBBLE_CYCLES = 5;
 /** 左右揺らぎの最大振幅（px）、t=0 で最大、apex で 0 に収束。 */
-const WOBBLE_AMPLITUDE = 28;
+const WOBBLE_AMPLITUDE = 6;
 /** 毎フレーム既存描画を減衰させる割合。大きいほど trail が短い。 */
 const FADE_ALPHA = 0.12;
 /** burst 粒 hue の family 幅（±この値を base hue にオフセット）。 */
 const HUE_JITTER = 15;
+/** burst の横方向への広がり倍率。1.0 で真円（peony）、>1 で横長楕円（horsetail 寄り）。 */
+const HORIZONTAL_STRETCH = 1.8;
 
 /**
  * ease-out quad: 1 - (1-t)² = 2t - t²。
@@ -118,7 +129,9 @@ export default {
           particles.push({
             x: targetX,
             y: targetY,
-            vx: Math.cos(angle) * speed,
+            // vx を HORIZONTAL_STRETCH 倍することで elliptical（横長）な
+            // 広がりにする。vy はそのまま、gravity で自然に落下する。
+            vx: Math.cos(angle) * speed * HORIZONTAL_STRETCH,
             vy: Math.sin(angle) * speed,
             life: 0,
             maxLife: 80 + Math.random() * 50,
@@ -208,7 +221,10 @@ export default {
     });
 
     try {
-      await ctx.time.after(options.durationMs);
+      // durationMs は「呼び出し側が canvas を保持したい最低時間」の hint。
+      // rise + burst fade の自然終了時間を下回る場合は pack 側で延長する
+      // （burst が途中で切れないように）。
+      await ctx.time.after(Math.max(options.durationMs, MIN_EFFECT_MS));
     } finally {
       if (rafId !== null) {
         cancelAnimationFrame(rafId);
