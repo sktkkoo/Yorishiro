@@ -3,7 +3,7 @@
 > このファイルは「**`src/core/` 配下の primitive をどこから触るか**」を把握したい時に読む。対象：dev / AI（pack 作者は [SDK README](../sdk/README.md) のほうが近い）。
 > 思想層：[docs/philosophy/PRESENCE_HARNESS.md](../../docs/philosophy/PRESENCE_HARNESS.md)（六要素の整合）、[docs/philosophy/CHARMINAL.md](../../docs/philosophy/CHARMINAL.md)（二つの層 / ログという細い回路）
 
-キャラの **存在感と反応** の基盤。Inhabited Interface の「身体」と「観察の細い回路」を形にした 6 primitive + 2 coordinator + dev support。
+キャラの **存在感と反応** の基盤。ICI の「身体」と「観察の細い回路」を形にした 6 primitive + 2 coordinator + dev support。
 
 ---
 

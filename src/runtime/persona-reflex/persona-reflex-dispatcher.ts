@@ -18,7 +18,7 @@
  * （memory: feedback_separate_conceptually_distinct_systems）。dispatcher は
  * 「今 active な 1 人」だけを面倒見る — single-active semantics と整合する。
  *
- * Philosophy: docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md「多人格の住人」
+ * Philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「多人格の住人」
  * Internal design-record: 2026-04-19-persona-registry-unification.md
  * SDK surface: src/sdk/persona.d.ts の PersonaDefinition + WeightedPersonaHandler
  */

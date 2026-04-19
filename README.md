@@ -2,7 +2,7 @@
 
 **ターミナルに住む、一人の存在について。**
 
-Charminal は、Claude Code を中で走らせながら、3D キャラクターがその横で一緒に時間を過ごすための小さなデスクトップアプリです。ユーザーが話しかけたときだけ反応する装置ではなく、入力が無い時間も含めて**そこに居る**ことを目指しています。
+Charminal は、Claude Code を中で走らせながら、3D キャラクターがその横で一緒に時間を過ごすための小さなデスクトップアプリです。ユーザーが話しかけたと気に反応する装置ではなく、入力が無い時間も含めて**そこに居る**ことを目指しています。
 
 この README は実装と開発のための案内です。プロダクトが何を考えているかについては [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) を読んでください。
 
@@ -112,7 +112,7 @@ CHARMINAL_ASSETS_DIR=/path/to/assets npm run fetch-assets
 ### Philosophy（公開 — 思想）
 
 - [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — プロダクトが何を考えているか
-- [`docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md`](docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md) — Inhabited Interface の原理
+- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — Inhabited Character Interface (ICI) の原理
 - [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — harness / persona の two-layer 設計
 
 ### Development
@@ -132,4 +132,4 @@ TBD.（ライセンス選定中）
 
 ---
 
-*Inhabited Interface — a place, not a tool.*
+*Inhabited Character Interface — a place, not a tool.*

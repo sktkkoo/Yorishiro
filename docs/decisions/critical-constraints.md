@@ -19,7 +19,7 @@
 
 ### Why
 
-- **観察するが干渉しない** という Inhabited Interface 原則の最も strict な形（[docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md「観察の境界」](../philosophy/INHABITED_INTERFACE_PHILOSOPHY.md)）
+- **観察するが干渉しない** という ICI 原則の最も strict な形（[docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「観察の境界」](../philosophy/INHABITED_CHARACTER_INTERFACE.md)）
 - もし persona が PTY に書き込めると、Claude の judgment を構造的に hack できてしまう（user consent UI を挟んでも本質的に同じ）
 - consent-as-whitewashing を **architecture の段階で禁止** することが、誠実さを守る唯一の方法
 
@@ -32,7 +32,7 @@
 ### Reference
 
 - design-record: `2026-04-11-design-exploration.md` revelation 3.13
-- philosophy: [docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md](../philosophy/INHABITED_INTERFACE_PHILOSOPHY.md)「観察の境界」
+- philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md)「観察の境界」
 - source: `src/core/perception/perception.ts`（read のみ、write API なし）
 
 ---

@@ -96,7 +96,7 @@ VRMA アニメーションと voice WAV は third-party 由来で **git repo に
 - 配置先: 外部 `../Charminal-assets/voices/` → build 時に `bundled-packs/shared/voices/` へ copy（同 `.gitignore`）
 - カテゴリ: `acknowledge/` / `working/` / `thinking/` / `longwork/` / `done/` / `error/`
 - **出所**: [VOICEVOX](https://voicevox.hiho.jp/) で録音した開発用 sample
-- **配布方針**: ⚠️ **現状の voice WAV は配布バンドルに含めません**。VOICEVOX の利用規約上、配布に適さないため。release ビルドの前に、配布可能な voice 群（自前録音 / 配布許諾済み素材）に差し替える予定です
+- **配布方針**: ⚠️ **現状の voice WAV は配布バンドルに含めません**。VOICEVOX の利用規約上、配布に適さないため。release ビルドの前に、配布可能な voice 群（配布許諾済み素材）に差し替える予定です
 
 ### Fonts / icons
 

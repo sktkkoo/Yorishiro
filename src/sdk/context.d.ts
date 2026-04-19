@@ -253,7 +253,7 @@ export interface Time {
    *
    * ⚠️ 過剰使用注意。default で使うべきではない。
    * narrow な「連続追従 anti-pattern」への対処としてのみ使う。
-   * 詳細は docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md「独立した時間の適用範囲」参照。
+   * 詳細は docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「独立した時間の適用範囲」参照。
    */
   afterJitter(min: number, max: number): Promise<void>;
 }

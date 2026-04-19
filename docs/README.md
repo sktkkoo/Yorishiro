@@ -59,12 +59,12 @@ User-private memory (auto-recall, 個人ローカル)
 | 入口 | 階層 | 主題 |
 |---|---|---|
 | [`philosophy/PRESENCE_HARNESS.md`](philosophy/PRESENCE_HARNESS.md) | 最抽象 | 「AI が呼び出されるものから、共に居る存在へ」の領域定義 |
-| [`philosophy/INHABITED_INTERFACE_PHILOSOPHY.md`](philosophy/INHABITED_INTERFACE_PHILOSOPHY.md) | 中層 | 「UI は道具ではなく場所、AI は住人」という立場 |
+| [`philosophy/INHABITED_CHARACTER_INTERFACE.md`](philosophy/INHABITED_CHARACTER_INTERFACE.md) | 中層 | 「UI は道具ではなく場所、AI は住人」という立場 |
 | [`philosophy/CHARMINAL.md`](philosophy/CHARMINAL.md) | 最具体 | 「ターミナル + VRM + ログ回路」での具体実装 |
 
 ```
 PRESENCE_HARNESS.md
-  └─ INHABITED_INTERFACE_PHILOSOPHY.md
+  └─ INHABITED_CHARACTER_INTERFACE.md
        └─ CHARMINAL.md
 ```
 

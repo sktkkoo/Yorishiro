@@ -3,7 +3,7 @@
  * ring buffer に蓄え、user と developer-Claude が事後に参照できるようにする。
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」+
- *             docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md「自己生成 loop」
+ *             docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「自己生成 loop」
  *
  * Runtime の LogBridge（意識層 ↔ 反射層を繋ぐ細い回路）の sibling。temporal layer が
  * 違うだけで構造は同型：書き手と読み手の間に時間差があり、観察は事後に起きる。

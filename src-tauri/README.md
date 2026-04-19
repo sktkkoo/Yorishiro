@@ -94,6 +94,6 @@ npm run doc:rust   # cargo doc --no-deps --document-private-items
 
 ## 関連 doc
 
-- 思想（IO 境界の哲学）：[docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md](../docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md)「観察の境界」
+- 思想（IO 境界の哲学）：[docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../docs/philosophy/INHABITED_CHARACTER_INTERFACE.md)「観察の境界」
 - 制約：[docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md) §1 PTY observation only
 - 内部設計記録（別 repo）：`../Charminal-design-record/2026-04-17-pty-connection-reference.md`、`2026-04-18-phase-1c-rescue-and-mcp.md`
