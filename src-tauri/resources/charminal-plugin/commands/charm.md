@@ -166,7 +166,7 @@ persona は **single-active**（2026-04-19 single-active plan）— 同時に 1 
    - `~/.charminal/packs/<id>/persona.md` を bundled template の内容で初期化し、user 要望に合わせて編集
    - `~/.charminal/packs/<id>/persona.js` を minimal shape で作成（下記）
 5. 切り替える場合は `~/.charminal/config.json` の `primaryPersona` を新 id に更新（user に編集してもらう or /charm が書く）
-6. Terminal を新セッションで起動すると新 persona の声が反映される（既存 session は古い prompt のまま）
+6. **完了後、user に以下の案内を出す**（下記「反映には新セッション起動が必要」参照）
 
 **minimal persona.js の shape:**
 
@@ -194,9 +194,18 @@ persona は破壊的に上書きせず、`backup/` directory に日時付き sna
      - macOS QuickTime 画面収録 convention（space と dot を含む）
    - 内容: 現 `persona.md` をそのまま copy
 4. 新内容で `persona.md` を上書き
-5. Charminal watcher が hot reload、persona が更新される
+5. Charminal watcher が hot reload、PersonaRegistry に反映される（reflex 層の反応も新 persona のものに切替）
+6. **完了後、user に以下の案内を出す**（下記「反映には新セッション起動が必要」参照）
 
 user が過去 snapshot に戻したい場合は、`backup/` から所望の file を `persona.md` に手動 cp する（将来は MCP tool で `restore_persona` を提供予定）。
+
+### ⚠️ 反映には新セッション起動が必要
+
+persona の新規作成 / 編集どちらも、Charminal 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code の systemPrompt は古いまま**で話し続ける。Charminal は PTY observation-only 原則（philosophy: `docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md` 「観察の境界」）で走っている session に書き込まない — だから user 自身が新セッションを起動する必要がある。
+
+AI は persona 作業が完了したら **必ず user に以下を伝える**：
+
+> persona の更新が完了しました。反映には Terminal で新セッションを起動してください（Claude Code の `/clear`、または Charminal app 再起動）。既存セッションの Claude は古い persona のまま会話を続けます。
 
 ## 参考ファイル（Charminal repo 内）
 
