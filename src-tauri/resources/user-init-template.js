@@ -8,13 +8,14 @@
  *   ctx.registerPersona(def)   : PersonaDefinition を inline で登録
  *   ctx.dispatchEffect(request): 登録済み effect を 1 回走らせる
  *
- * 初期雛形として Cmd+Shift+F に bundled "fireworks-volley" effect pack の
- * 発射を仕込んでいる。連発 / 位置散らし / 間隔 jitter は pack 側で処理
- * されるので、ここでは 1 行 dispatch するだけ。不要なら下の keydown
- * listener ごと削除して良い。
+ * 初期雛形として以下の keyboard shortcut を仕込んでいる：
  *
- * option を調整したい場合（本数・位置範囲・間隔など）は
- * `bundled-packs/effects/fireworks-volley/README.md` の options 表を参照。
+ *   - Cmd+Shift+F: fireworks-volley（連発花火）
+ *   - Cmd+Shift+T: text-physics（文字崩壊 + 復元）
+ *   - Cmd+Shift+D: desaturate（モノクロ/カラー トグル）
+ *
+ * 不要なら keydown listener ごと削除して良い。option を調整したい場合は
+ * 各 effect pack の README.md を参照。
  *
  * keyboard shortcut API は pack SDK に無いので window の keydown を直接
  * subscribe するのが唯一の手段。使い方の相談は `/charm` から AI と対話する
@@ -27,14 +28,32 @@
  * が上書きすることはないので、自由に編集して良い。
  */
 
+let desaturated = false;
+
 export default (ctx) => {
   window.addEventListener(
     "keydown",
     (e) => {
-      if (!(e.metaKey && e.shiftKey && e.code === "KeyF")) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      ctx.dispatchEffect({ kind: "fireworks-volley" });
+      if (e.metaKey && e.shiftKey && e.code === "KeyF") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        ctx.dispatchEffect({ kind: "fireworks-volley" });
+      }
+      if (e.metaKey && e.shiftKey && e.code === "KeyT") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        ctx.dispatchEffect({
+          kind: "text-physics",
+          origin: { x: 0.5, y: 0.7 },
+          force: 100,
+        });
+      }
+      if (e.metaKey && e.shiftKey && e.code === "KeyD") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        desaturated = !desaturated;
+        ctx.dispatchEffect({ kind: "desaturate", durationMs: desaturated ? 86400000 : 1 });
+      }
     },
     { capture: true },
   );
