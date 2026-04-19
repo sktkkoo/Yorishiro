@@ -122,33 +122,40 @@ function App() {
 
     // ── new PersonaRegistryImpl への bundled persona 登録 ────────────────────
     // new registry は state management 専用（active persona / subscribeActive）。
-    // bundled charminal-default を register し、config.primaryPersona で active を設定する。
-    // fire-and-forget IIFE — try/catch で silent fail を防ぐ
+    // bundled charminal-default を sync register する。ここを async にすると
+    // 初期 render で getActivePersona() が null を返し、Terminal が systemPrompt=null
+    // で spawn → async 完了後に再 spawn、という race が起きる。
+    // bundled pack は static import 済なので register は同期で確定する。
+    // config.primaryPersona 反映だけ async（file I/O を伴うため）。
     // （memory: feedback_dev_verification_not_enough.md）。
-    // appLog はこの下の scene 登録ブロックとも共有するため先に宣言する。
     const appLog = createSubsystemLog(devLog, "App");
+    const personaRegistry = getPersonaRegistry();
+    personaRegistry.register({
+      id: charminalDefaultPack.id,
+      manifest: charminalDefaultManifest as PersonaPackManifest,
+      persona: charminalDefaultPack,
+      origin: "bundled",
+    } satisfies PersonaEntry);
+    appLog.write({
+      phase: "register",
+      note: `registered bundled persona '${charminalDefaultPack.id}'`,
+    });
+
+    // config の primaryPersona 反映は async（file 読み込み）。
+    // この時点で bundled は既に register 済なので、getActivePersona() は
+    // fallback で bundled を返す。primaryPersona が user pack を指していて、
+    // その pack が後から user-pack-loader 経由で register された場合、Registry の
+    // reselect で primary が自動切替され、Terminal systemPrompt が次セッションから
+    // 反映される（PTY observation-only 原則で既存 session は書き換えない）。
     void (async () => {
       try {
-        const personaRegistry = getPersonaRegistry();
-        personaRegistry.register({
-          id: charminalDefaultPack.id,
-          manifest: charminalDefaultManifest as PersonaPackManifest,
-          persona: charminalDefaultPack,
-          origin: "bundled",
-        } satisfies PersonaEntry);
-        appLog.write({
-          phase: "register",
-          note: `registered bundled persona '${charminalDefaultPack.id}'`,
-        });
-
-        // config の primaryPersona を反映
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
         personaRegistry.setPrimaryPersona(config.primaryPersona);
       } catch (err) {
         appLog.write({
           phase: "register",
-          note: "bundled persona register / config read failed",
+          note: "config read for primaryPersona failed",
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }
