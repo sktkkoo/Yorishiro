@@ -4,25 +4,32 @@
  * `ctx.renderer.drawOnCanvas` で overlay canvas を acquire し、以下 2 phase を
  * `requestAnimationFrame` loop で animate、`durationMs` 後に canvas を dispose する：
  *
- * 1. **rise**: 画面下から origin へ rocket が上昇（ease-out で減速しながら apex へ）。
- *    trail（過去 N 位置）を薄く引いて動きを見せる
+ * 1. **rise**: 画面下から origin へ rocket が左右に揺れながら上昇。
+ *    `sin × cos(t·π/2)` で apex では wobble 0 に収束、direction と phase は
+ *    1 発ごとに random。rise 時間自体にも ±50ms の jitter が入る
  * 2. **burst**: apex に到達した時点で particles を全方向に emit、gravity / drag /
  *    lifetime で落下しながら fade
  *
- * 連発は呼び出し側（persona / init.js）が `injectEffect` を複数回刻む責務。
- * この pack は 1 origin からの 1 発に集中する。
+ * ## 尾引き（motion trail）
  *
- * ## 肌触り parameter（帰納的に調整する領域）
- *
- * RISE_MS / START_Y_OFFSET / TRAIL_LEN / gravity / drag / speed / maxLife / radius
- * は spec に固定せず、観察→微調整の loop で固める（CLAUDE.md「感触 parameter は
- * 帰納的に」）。
+ * 毎フレーム canvas を `clearRect` で消すのではなく、
+ * `globalCompositeOperation = "destination-out"` で微弱に fade（既存 alpha を
+ * `1 - FADE_ALPHA` 倍に減衰）する。結果、rocket の軌道と burst 粒の動きが
+ * 自然な motion blur として尾を引く。
  *
  * ## 色は coherent family
  *
  * 1 発ごとに base hue を random で決め、rocket と burst 粒はその ±15° の幅で
- * 揺らぐ。真っ赤な花火 / 真っ青な花火のような「1 色家族」感が出る。options に
- * 色 field は持たないが、将来 `hue?` / `hueRange?` を非破壊追加する余地は残す。
+ * 揺らぐ。真っ赤な花火 / 真っ青な花火のような「1 色家族」感。
+ *
+ * ## 肌触り parameter（帰納的に調整する領域）
+ *
+ * RISE_MS / WOBBLE_* / FADE_ALPHA / GRAVITY / DRAG / speed / maxLife / radius
+ * は spec に固定せず、観察→微調整の loop で固める（CLAUDE.md「感触 parameter
+ * は帰納的に」）。
+ *
+ * 連発は呼び出し側（persona / init.js）が `injectEffect` を複数回刻む責務。
+ * この pack は 1 origin からの 1 発に集中する。
  */
 
 import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
@@ -43,23 +50,23 @@ interface Particle {
   hue: number;
 }
 
-interface TrailPoint {
-  x: number;
-  y: number;
-}
-
 /** 肌触り parameter の既定値。実装中の観察で微調整可能。 */
-const GRAVITY = 0.06;
-const DRAG = 0.99;
+const GRAVITY = 0.05;
+const DRAG = 0.985;
 const PARTICLE_RADIUS = 2;
-/** rise phase の所要時間（ms）。画面下から apex まで。 */
-const RISE_MS = 550;
+/** rocket head の半径（px）。burst 粒より少し太め。 */
+const ROCKET_RADIUS = 2.5;
+/** rise phase の基準所要時間（ms）。実際は ±RISE_JITTER_MS 揺らぐ。 */
+const RISE_MS = 900;
+const RISE_JITTER_MS = 100;
 /** rocket の start 位置を origin y から画面下へどれだけ外すか（px）。 */
 const START_Y_OFFSET = 30;
-/** rocket trail の保持フレーム数。古いほど薄くなる。 */
-const TRAIL_LEN = 10;
-/** rocket head の半径（px）。particle より少し太め。 */
-const ROCKET_RADIUS = 2.5;
+/** rise 中の左右揺らぎのサイクル数（片道で何回振る）。 */
+const WOBBLE_CYCLES = 2;
+/** 左右揺らぎの最大振幅（px）、t=0 で最大、apex で 0 に収束。 */
+const WOBBLE_AMPLITUDE = 16;
+/** 毎フレーム既存描画を減衰させる割合。大きいほど trail が短い。 */
+const FADE_ALPHA = 0.12;
 /** burst 粒 hue の family 幅（±この値を base hue にオフセット）。 */
 const HUE_JITTER = 15;
 
@@ -86,10 +93,11 @@ export default {
       const targetY = options.origin.y * H;
       const startY = H + START_Y_OFFSET;
 
-      // 1 発ごとに base hue を決める（rocket と burst 粒で共有）。
+      // 1 発ごとの色と動きの揺らぎ。
       const baseHue = Math.random() * 360;
+      const wobbleDir = Math.random() < 0.5 ? 1 : -1;
+      const actualRiseMs = RISE_MS + (Math.random() * 2 - 1) * RISE_JITTER_MS;
 
-      const trail: TrailPoint[] = [];
       const particles: Particle[] = [];
       let burstStarted = false;
       const startTime = performance.now();
@@ -97,39 +105,40 @@ export default {
       const spawnBurst = (): void => {
         for (let i = 0; i < options.count; i++) {
           const angle = (i / options.count) * Math.PI * 2 + Math.random() * 0.08;
-          const speed = 2.2 + Math.random() * 2.8;
+          const speed = 2.0 + Math.random() * 2.6;
           particles.push({
             x: targetX,
             y: targetY,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
             life: 0,
-            maxLife: 70 + Math.random() * 40,
+            maxLife: 80 + Math.random() * 50,
             hue: baseHue + (Math.random() * 2 - 1) * HUE_JITTER,
           });
         }
       };
 
+      /** 既存描画を一定割合だけ透明化。clearRect の代わりに使うと trail になる。 */
+      const fadeCanvas = (): void => {
+        g.globalCompositeOperation = "destination-out";
+        g.fillStyle = `rgba(0,0,0,${FADE_ALPHA})`;
+        g.fillRect(0, 0, W, H);
+        g.globalCompositeOperation = "source-over";
+      };
+
       const drawRise = (elapsed: number): void => {
-        const t = Math.min(1, elapsed / RISE_MS);
+        const t = Math.min(1, elapsed / actualRiseMs);
         const ry = startY + (targetY - startY) * easeOutCubic(t);
+        // wobble: sin で左右に振り、apex（t=1）へ向けて cos(t·π/2) で 0 に収束。
+        const wobble =
+          wobbleDir *
+          Math.sin(t * Math.PI * 2 * WOBBLE_CYCLES) *
+          WOBBLE_AMPLITUDE *
+          Math.cos((t * Math.PI) / 2);
+        const rx = targetX + wobble;
 
-        // trail を最新位置で更新。古いほど薄く描く。
-        trail.push({ x: targetX, y: ry });
-        if (trail.length > TRAIL_LEN) trail.shift();
-        for (let i = 0; i < trail.length; i++) {
-          const alpha = ((i + 1) / trail.length) * 0.6;
-          const tp = trail[i];
-          if (tp === undefined) continue;
-          g.beginPath();
-          g.arc(tp.x, tp.y, PARTICLE_RADIUS, 0, Math.PI * 2);
-          g.fillStyle = `hsla(${baseHue}, 90%, 70%, ${alpha})`;
-          g.fill();
-        }
-
-        // rocket head（trail の先端、最も明るく）。
         g.beginPath();
-        g.arc(targetX, ry, ROCKET_RADIUS, 0, Math.PI * 2);
+        g.arc(rx, ry, ROCKET_RADIUS, 0, Math.PI * 2);
         g.fillStyle = `hsla(${baseHue}, 100%, 82%, 1)`;
         g.fill();
       };
@@ -157,10 +166,10 @@ export default {
           rafId = null;
           return;
         }
-        g.clearRect(0, 0, W, H);
+        fadeCanvas();
 
         const elapsed = performance.now() - startTime;
-        if (elapsed < RISE_MS) {
+        if (elapsed < actualRiseMs) {
           drawRise(elapsed);
         } else {
           if (!burstStarted) {
