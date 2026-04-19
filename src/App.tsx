@@ -208,6 +208,15 @@ function App() {
     const packRegistry = new UserPackRegistry({
       log: createSubsystemLog(devLog, "UserPackRegistry"),
     });
+    // user layer load 完了を external consumer に signal するための Promise。
+    // Terminal の Claude Code spawn はこの promise が resolve するまで待つ
+    // （user pack の persona が register 済になってから primaryPersona 確定で
+    //  spawn されるため、systemPrompt の race / 多重 spawn を回避）。
+    let userLayerReadyResolve!: () => void;
+    const userLayerReady = new Promise<void>((resolve) => {
+      userLayerReadyResolve = resolve;
+    });
+
     void loadUserLayer({
       effectPackRunner,
       // Task 8 で bundled persona 登録を new registry に移行。
@@ -225,6 +234,9 @@ function App() {
           note: `user-layer ready (packs loaded=${packs.loaded.length} failed=${packs.failed.length}; init ran=${init.ran})`,
           data: { packs, init },
         });
+        // user pack の register / primaryPersona 反映が済んだので、
+        // Terminal の Claude Code spawn を解禁する。
+        userLayerReadyResolve();
         // Phase 1-c: safe mode のときだけ window title に suffix を付ける。
         // user が env var で safe mode に入ったことを常時 visible にする。
         // title 更新の失敗が後続の MCP listener 接続を道連れにしないよう
@@ -343,6 +355,8 @@ function App() {
           note: "user-layer bootstrap crashed",
           data: { error: err instanceof Error ? err.message : String(err) },
         });
+        // crash 時も Terminal を塞がない（bundled で fallback 起動させる）。
+        userLayerReadyResolve();
       });
 
     return {
@@ -354,10 +368,33 @@ function App() {
       devLog,
       effectDispatcher,
       scenePackRegistry,
+      userLayerReady,
     };
   });
 
-  const { perception, registry, logBridge, devLog, effectDispatcher, scenePackRegistry } = runtime;
+  const {
+    perception,
+    registry,
+    logBridge,
+    devLog,
+    effectDispatcher,
+    scenePackRegistry,
+    userLayerReady,
+  } = runtime;
+
+  // user layer load（bundled + user pack 登録、primaryPersona 反映）完了を待ってから
+  // Terminal を mount する。これで Claude Code の PTY spawn は確定した primaryPersona の
+  // systemPrompt で 1 回だけ走る（多重 spawn / null systemPrompt race を回避）。
+  const [isUserLayerReady, setIsUserLayerReady] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    userLayerReady.then(() => {
+      if (!cancelled) setIsUserLayerReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userLayerReady]);
 
   // active scene を Registry から subscribe して React state に流す。
   // `setActiveSceneState` と命名してメソッド名 `setActiveScene` との衝突を避ける。
@@ -588,12 +625,14 @@ function App() {
         effectDispatcher={effectDispatcher}
         scene={activeScene}
       />
-      <Terminal
-        key={cwd ?? "__default__"}
-        cwd={cwd}
-        systemPrompt={primaryPersona?.thinking?.systemPromptAddition ?? null}
-        perception={perception}
-      />
+      {isUserLayerReady && (
+        <Terminal
+          key={cwd ?? "__default__"}
+          cwd={cwd}
+          systemPrompt={primaryPersona?.thinking?.systemPromptAddition ?? null}
+          perception={perception}
+        />
+      )}
     </div>
   );
 }
