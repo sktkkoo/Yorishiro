@@ -34,6 +34,7 @@ src-tauri/src/
 | `mcp/tools.rs` | Rust-native (`list_load_errors`) と TS-delegated 3 tool の宣言 | 3 tool は実装が TS、Rust は schema 宣言と forwarding のみ |
 | User layer commands (`lib.rs`) | `~/.charminal/` の watch / atomic write / pack scan / safe mode | TS が file 操作を呼び出すための typed API |
 | SDK bundling (`lib.rs`) | `~/.charminal/sdk.d.ts` の startup 時生成 | user pack 開発時の IDE hint |
+| Init script seeding (`lib.rs`) | `~/.charminal/init.js` を初回だけ template から生成、既存は touch しない | 起動時 hook / keyboard shortcut を書く user layer を barrier なく用意 |
 
 ---
 

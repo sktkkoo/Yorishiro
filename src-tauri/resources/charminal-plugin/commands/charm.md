@@ -346,6 +346,8 @@ effect は **最小 API**：`ctx.character` / `ctx.voice` / `ctx.space.injectEff
 
 `~/.charminal/init.js` は Emacs の `init.el` 相当の layer。**pack type ではない** — 起動時に 1 回だけ走る生の JS script で、pack を inline で register したり、keyboard shortcut を仕掛けたり、reflex 外の発火経路を開いたりできる。
 
+**初回起動時に雛形が `~/.charminal/init.js` として自動で配置される**（空の `export default (ctx) => { ... }`）。Charminal が再度上書きすることはないので、自由に編集して良い。消した場合は次回起動で再生成される（user が残した内容は保護、存在しないときだけ seed）。
+
 ### いつ init.js を使うか
 
 - **keyboard shortcut** を仕掛けたい（pack SDK には shortcut API が無い。window の keydown を直接 subscribe するのが唯一の手段）

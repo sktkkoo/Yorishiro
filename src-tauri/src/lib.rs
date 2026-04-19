@@ -192,10 +192,30 @@ fn build_bundled_sdk_dts() -> String {
     out
 }
 
+/// ~/.charminal/init.js が無いときに seed する雛形。
+///
+/// sdk.d.ts とは違い、init.js は user の編集対象なので「**存在しないとき
+/// だけ** 書く」。user が編集した内容を Charminal が上書きすることは無い。
+/// 詳細: docs/decisions/user-init-script-seed.md
+const USER_INIT_TEMPLATE: &str = include_str!("../resources/user-init-template.js");
+
+/// `~/.charminal/init.js` が無ければ template を write する。既存 file には
+/// 絶対触れない（user が消したものを復活させず、編集も保護する）。test が
+/// env var を触らずに済むよう home を引数化している。
+fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
+    let path = home.join("init.js");
+    if path.exists() {
+        return Ok(());
+    }
+    std::fs::write(&path, USER_INIT_TEMPLATE)
+        .map_err(|e| format!("Failed to seed ~/.charminal/init.js: {}", e))
+}
+
 /// Create ~/.charminal/ + ~/.charminal/packs/ and refresh sdk.d.ts. Idempotent.
 ///
 /// sdk.d.ts は user の IDE が「Charminal SDK の shape」を知るためのヒント
 /// ファイル。毎起動で overwrite する（user は編集対象ではない）。
+/// init.js は逆に、無ければ雛形を seed するが存在すれば触らない。
 #[tauri::command]
 async fn ensure_charminal_dirs() -> Result<(), String> {
     let home = charminal_home_path()?;
@@ -203,6 +223,7 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
         .map_err(|e| format!("Failed to create ~/.charminal/packs: {}", e))?;
     std::fs::write(home.join("sdk.d.ts"), build_bundled_sdk_dts())
         .map_err(|e| format!("Failed to write ~/.charminal/sdk.d.ts: {}", e))?;
+    seed_user_init_script_impl(&home)?;
     Ok(())
 }
 
@@ -839,5 +860,53 @@ mod layer_scope_tests {
         assert_eq!(result.unwrap(), "{\"saved\":true}");
 
         let _ = std::fs::remove_dir_all(&tmp_home);
+    }
+}
+
+#[cfg(test)]
+mod user_init_seed_tests {
+    use super::{seed_user_init_script_impl, USER_INIT_TEMPLATE};
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_home(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-init-seed-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("create tmp home");
+        tmp
+    }
+
+    #[test]
+    fn seeds_template_when_init_js_missing() {
+        let home = fresh_home("missing");
+
+        seed_user_init_script_impl(&home).expect("seed ok");
+
+        let written = fs::read_to_string(home.join("init.js")).expect("read seeded file");
+        assert_eq!(written, USER_INIT_TEMPLATE);
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn preserves_existing_init_js_content() {
+        let home = fresh_home("existing");
+        let existing = "// user's handcrafted init — don't touch\n";
+        fs::write(home.join("init.js"), existing).expect("write fixture");
+
+        seed_user_init_script_impl(&home).expect("seed ok");
+
+        let after = fs::read_to_string(home.join("init.js")).expect("read");
+        assert_eq!(after, existing);
+
+        let _ = fs::remove_dir_all(&home);
     }
 }
