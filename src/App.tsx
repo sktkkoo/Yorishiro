@@ -1,7 +1,8 @@
 import type { Trigger } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
-import persona from "../bundled-packs/personas/charminal-default/persona";
+import charminalDefaultManifest from "../bundled-packs/personas/charminal-default/manifest.json";
+import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
 import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
 import type { Body, EyeState } from "./core/body";
@@ -14,6 +15,7 @@ import { Time } from "./core/time";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
+import type { PersonaEntry } from "./runtime/persona-registry";
 import {
   createRealPersonaContextFactory,
   createStubPersonaContextFactory,
@@ -28,6 +30,8 @@ import {
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
 import { parseConfig } from "./runtime/user-pack-loader/config";
+import type { PersonaDefinition } from "./sdk/persona";
+import type { PersonaPackManifest } from "./sdk/persona-pack";
 import type { ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
@@ -102,22 +106,57 @@ function App() {
     // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
     const scenePackRegistry: ScenePackRegistry = getSceneRegistry();
 
-    // Merge built-in triggers with persona's own customTriggers. Previously
-    // this replaced the persona array entirely, silently dropping the
-    // persona's declared triggers.
+    // ── EventBus-bridge（old PersonaRegistry）への bundled persona 登録 ──────
+    // old PersonaRegistry は reflex dispatch 専用（EventBus trigger → reaction）。
+    // state management（active persona / subscribeActive）は new PersonaRegistryImpl が担う。
+    // option β: 責務分離を明示して両者を共存させる（Task 8 Step 4）。
+    // old 側への register は EventBus 配線のためだけ — Terminal systemPrompt には影響しない。
     const augmented = {
-      ...persona,
+      ...charminalDefaultPack,
       reflex: {
-        ...persona.reflex,
-        customTriggers: [...builtInTriggers, ...(persona.reflex.customTriggers ?? [])],
+        ...charminalDefaultPack.reflex,
+        customTriggers: [...builtInTriggers, ...(charminalDefaultPack.reflex.customTriggers ?? [])],
       },
     };
     registry.register(augmented);
 
+    // ── new PersonaRegistryImpl への bundled persona 登録 ────────────────────
+    // new registry は state management 専用（active persona / subscribeActive）。
+    // bundled charminal-default を register し、config.primaryPersona で active を設定する。
+    // fire-and-forget IIFE — try/catch で silent fail を防ぐ
+    // （memory: feedback_dev_verification_not_enough.md）。
+    // appLog はこの下の scene 登録ブロックとも共有するため先に宣言する。
+    const appLog = createSubsystemLog(devLog, "App");
+    void (async () => {
+      try {
+        const personaRegistry = getPersonaRegistry();
+        personaRegistry.register({
+          id: charminalDefaultPack.id,
+          manifest: charminalDefaultManifest as PersonaPackManifest,
+          persona: charminalDefaultPack,
+          origin: "bundled",
+        } satisfies PersonaEntry);
+        appLog.write({
+          phase: "register",
+          note: `registered bundled persona '${charminalDefaultPack.id}'`,
+        });
+
+        // config の primaryPersona を反映
+        const configText = await readCharminalConfigText();
+        const config = parseConfig(configText);
+        personaRegistry.setPrimaryPersona(config.primaryPersona);
+      } catch (err) {
+        appLog.write({
+          phase: "register",
+          note: "bundled persona register / config read failed",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+    })();
+
     // Bundled quiet-room scene pack を register し、config.activeScene を反映する。
     // fire-and-forget IIFE — try/catch で silent fail を防ぐ
     // （memory: feedback_dev_verification_not_enough.md）。
-    const appLog = createSubsystemLog(devLog, "App");
     void (async () => {
       try {
         const resolved = await resolveSceneAssets(quietRoomPack.scene, {
@@ -322,6 +361,20 @@ function App() {
     const sub = scenePackRegistry.subscribeActive((scene) => setActiveSceneState(scene));
     return () => sub.dispose();
   }, [scenePackRegistry]);
+
+  // ── active persona を PersonaRegistryImpl から subscribe ────────────────
+  // bundled charminal-default は runtime factory 内で register 済み。
+  // config.primaryPersona が切り替わった場合、次の Terminal セッションから反映される。
+  // 既存 PTY session への注入は PTY observation-only 原則で行わない
+  // （philosophy: docs/philosophy/INHABITED_INTERFACE_PHILOSOPHY.md 「観察の境界」）。
+  const personaRegistry = getPersonaRegistry();
+  const [primaryPersona, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
+    personaRegistry.getActivePersona(),
+  );
+  useEffect(() => {
+    const sub = personaRegistry.subscribeActive(setPrimaryPersonaState);
+    return () => sub.dispose();
+  }, [personaRegistry]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
@@ -531,7 +584,7 @@ function App() {
       <Terminal
         key={cwd ?? "__default__"}
         cwd={cwd}
-        systemPrompt={persona.thinking.systemPromptAddition}
+        systemPrompt={primaryPersona?.thinking?.systemPromptAddition ?? null}
         perception={perception}
       />
     </div>
