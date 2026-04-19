@@ -17,13 +17,14 @@
  * isolation だけ検証する。
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import type { EffectDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   PackValidationError,
   validateEffectDefinition,
   validatePersonaDefinition,
 } from "../../sdk/validators";
+import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
 import { injectPersonaPrompt } from "./persona-md-injection";
@@ -43,9 +44,13 @@ export interface EffectRegistrar {
   register(pack: EffectDefinition): { readonly dispose: () => void };
 }
 
-/** PersonaRegistry が満たす最小構造。 */
+/**
+ * PersonaRegistry が満たす最小構造。
+ * persona single-active plan の PersonaRegistryInterface.register と同じ shape。
+ * origin は loader が "user" で固定する。
+ */
 export interface PersonaRegistrar {
-  register(def: PersonaDefinition): { readonly dispose: () => void };
+  register(entry: PersonaEntry): { readonly dispose: () => void };
 }
 
 export interface LoadUserPacksDeps {
@@ -227,14 +232,26 @@ export async function loadSingleUserPack(
       }
       const injected = injectPersonaPrompt(personaDef, mdText);
 
-      // PersonaRegistry は duplicate id で throw するので、loader 層では事前に
-      // 前登録を dispose しておく（pitfall #8）。hot reload / enable_pack で
-      // 同 id を再投入する場合もこの経路を通る。
+      // PersonaRegistryImpl は user-over-bundled / user-over-user 衝突を
+      // register 内で解決する。packRegistry 経由の dispose は
+      // 「hot reload で同 id を再投入する場合の隔壁」として残す（pitfall #8）。
       if (packRegistry.has(entry.id, entry.kind)) {
         packRegistry.dispose(entry.id, entry.kind);
       }
       try {
-        const handle = personaRegistry.register(injected);
+        const personaEntry: PersonaEntry = {
+          id: injected.id,
+          manifest: {
+            id: injected.id,
+            type: "persona",
+            version: "0.0.0",
+            charminalVersion: "*",
+            entry: "persona.js",
+          },
+          persona: injected,
+          origin: "user",
+        };
+        const handle = personaRegistry.register(personaEntry);
         packRegistry.register(entry.id, entry.kind, handle);
         devLog.write({ phase: "register", note: `registered persona '${injected.id}'` });
         return { status: "loaded", id: entry.id, kind: entry.kind };

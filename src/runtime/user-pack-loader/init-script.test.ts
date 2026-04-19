@@ -10,6 +10,7 @@ import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@c
 import { describe, expect, it } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
+import type { PersonaEntry } from "../persona-registry";
 import { type CharminalInitContext, type EffectRequester, loadInitScript } from "./init-script";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
@@ -48,15 +49,15 @@ const makeEffectRegistrar = (): EffectRegistrarFake => {
 };
 
 interface PersonaRegistrarFake extends PersonaRegistrar {
-  readonly registered: PersonaDefinition[];
+  readonly registered: PersonaEntry[];
 }
 
 const makePersonaRegistrar = (): PersonaRegistrarFake => {
-  const registered: PersonaDefinition[] = [];
+  const registered: PersonaEntry[] = [];
   return {
     registered,
-    register(def) {
-      registered.push(def);
+    register(entry) {
+      registered.push(entry);
       return { dispose: () => {} };
     },
   };
@@ -131,7 +132,9 @@ describe("loadInitScript", () => {
     expect(result.ran).toBe(true);
     expect(result.error).toBeUndefined();
     expect(effectReg.registered).toEqual([validEffectPack]);
-    expect(personaReg.registered).toEqual([validPersonaPack]);
+    expect(personaReg.registered).toHaveLength(1);
+    expect(personaReg.registered[0].persona).toMatchObject(validPersonaPack);
+    expect(personaReg.registered[0].origin).toBe("user");
   });
 
   it("awaits async default() before returning", async () => {

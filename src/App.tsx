@@ -17,6 +17,7 @@ import { getModuleRegistry } from "./runtime/module-registry";
 import {
   createRealPersonaContextFactory,
   createStubPersonaContextFactory,
+  getPersonaRegistry,
   PersonaRegistry,
 } from "./runtime/persona-registry";
 import {
@@ -163,7 +164,9 @@ function App() {
     });
     void loadUserLayer({
       effectPackRunner,
-      personaRegistry: registry,
+      // Task 8 で bundled persona 登録を new registry に移行。
+      // Task 6/7 bridge: user pack load / watcher には single-active PersonaRegistry を渡す。
+      personaRegistry: getPersonaRegistry(),
       scenePackRegistry,
       effectDispatcher,
       packRegistry,
@@ -237,7 +240,8 @@ function App() {
           const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
             return reloadSingleUserPack(id, {
               effectPackRunner,
-              personaRegistry: registry,
+              // Task 6/7 bridge: single-active PersonaRegistry を渡す。
+              personaRegistry: getPersonaRegistry(),
               scenePackRegistry,
               packRegistry,
               userPackLog,

@@ -14,6 +14,7 @@
 import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
+import type { PersonaEntry } from "../persona-registry";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
 /**
@@ -73,7 +74,19 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
   },
   registerPersona(pack) {
     const validated = validatePersonaDefinition(pack);
-    deps.personaRegistry.register(validated);
+    const entry: PersonaEntry = {
+      id: validated.id,
+      manifest: {
+        id: validated.id,
+        type: "persona",
+        version: "0.0.0",
+        charminalVersion: "*",
+        entry: "persona.js",
+      },
+      persona: validated,
+      origin: "user",
+    };
+    deps.personaRegistry.register(entry);
   },
   dispatchEffect(request) {
     deps.effectDispatcher.dispatch(request);

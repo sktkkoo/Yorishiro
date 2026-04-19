@@ -13,6 +13,7 @@
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
+import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
@@ -212,8 +213,20 @@ async function reloadPack(
       }
       const injected = injectPersonaPrompt(personaDef, mdText);
 
+      const personaEntry: PersonaEntry = {
+        id: injected.id,
+        manifest: {
+          id: injected.id,
+          type: "persona",
+          version: "0.0.0",
+          charminalVersion: "*",
+          entry: "persona.js",
+        },
+        persona: injected,
+        origin: "user",
+      };
       deps.packRegistry.dispose(action.id, action.kind);
-      const handle = deps.personaRegistry.register(injected);
+      const handle = deps.personaRegistry.register(personaEntry);
       deps.packRegistry.register(action.id, action.kind, handle);
       deps.userPackLog.write({
         phase: "reload",

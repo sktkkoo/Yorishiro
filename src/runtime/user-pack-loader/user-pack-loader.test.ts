@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: vi.fn(),
 }));
 
+import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
 import {
   type EffectRegistrar,
@@ -70,26 +71,26 @@ const makeEffectRegistrar = (): EffectRegistrarFake => {
 };
 
 interface PersonaRegistrarFake extends PersonaRegistrar {
-  readonly registered: PersonaDefinition[];
+  readonly registered: PersonaEntry[];
   readonly disposedIds: string[];
 }
 
 const makePersonaRegistrar = (
   opts: { rejectIds?: ReadonlySet<string> } = {},
 ): PersonaRegistrarFake => {
-  const registered: PersonaDefinition[] = [];
+  const registered: PersonaEntry[] = [];
   const disposedIds: string[] = [];
   return {
     registered,
     disposedIds,
-    register(def) {
-      if (opts.rejectIds?.has(def.id)) {
-        throw new Error(`PersonaRegistry: packId already registered: ${def.id}`);
+    register(entry) {
+      if (opts.rejectIds?.has(entry.id)) {
+        throw new Error(`PersonaRegistry: packId already registered: ${entry.id}`);
       }
-      registered.push(def);
+      registered.push(entry);
       return {
         dispose: () => {
-          disposedIds.push(def.id);
+          disposedIds.push(entry.id);
         },
       };
     },
@@ -147,7 +148,9 @@ describe("loadUserPacks", () => {
     });
 
     expect(effectReg.registered).toEqual([validEffectPack]);
-    expect(personaReg.registered).toEqual([validPersonaPack]);
+    expect(personaReg.registered).toHaveLength(1);
+    expect(personaReg.registered[0].persona).toMatchObject(validPersonaPack);
+    expect(personaReg.registered[0].origin).toBe("user");
     expect(result.loaded).toEqual([
       { id: "user-flash", kind: "effect" },
       { id: "user-persona", kind: "persona" },
@@ -559,17 +562,17 @@ describe("loadUserPacks", () => {
     // rejection because the fake's rejectIds only fires if called twice in
     // succession without dispose.
     const seen = new Set<string>();
-    const personaReg: PersonaRegistrar & { registered: PersonaDefinition[] } = {
+    const personaReg: PersonaRegistrar & { registered: PersonaEntry[] } = {
       registered: [],
-      register(def) {
-        if (seen.has(def.id)) {
-          throw new Error(`PersonaRegistry: packId already registered: ${def.id}`);
+      register(entry) {
+        if (seen.has(entry.id)) {
+          throw new Error(`PersonaRegistry: packId already registered: ${entry.id}`);
         }
-        seen.add(def.id);
-        personaReg.registered.push(def);
+        seen.add(entry.id);
+        personaReg.registered.push(entry);
         return {
           dispose: () => {
-            seen.delete(def.id);
+            seen.delete(entry.id);
           },
         };
       },
@@ -730,10 +733,10 @@ describe("loadSingleUserPack", () => {
 
   it("injects persona.md when thinking is not set in persona.js", async () => {
     const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
-    const registered: PersonaDefinition[] = [];
+    const registered: PersonaEntry[] = [];
     const persona: PersonaRegistrar = {
-      register: (def) => {
-        registered.push(def);
+      register: (entry) => {
+        registered.push(entry);
         return { dispose: () => {} };
       },
     };
@@ -771,7 +774,8 @@ describe("loadSingleUserPack", () => {
 
       expect(result.status).toBe("loaded");
       expect(registered).toHaveLength(1);
-      expect(registered[0].thinking?.systemPromptAddition).toBe("私はテスト住人。");
+      expect(registered[0].persona.thinking?.systemPromptAddition).toBe("私はテスト住人。");
+      expect(registered[0].origin).toBe("user");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -779,10 +783,10 @@ describe("loadSingleUserPack", () => {
 
   it("prefers explicit thinking.systemPromptAddition in persona.js over persona.md", async () => {
     const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
-    const registered: PersonaDefinition[] = [];
+    const registered: PersonaEntry[] = [];
     const persona: PersonaRegistrar = {
-      register: (def) => {
-        registered.push(def);
+      register: (entry) => {
+        registered.push(entry);
         return { dispose: () => {} };
       },
     };
@@ -819,7 +823,7 @@ describe("loadSingleUserPack", () => {
       );
 
       expect(result.status).toBe("loaded");
-      expect(registered[0].thinking?.systemPromptAddition).toBe("js で明示したプロンプト");
+      expect(registered[0].persona.thinking?.systemPromptAddition).toBe("js で明示したプロンプト");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -827,10 +831,10 @@ describe("loadSingleUserPack", () => {
 
   it("loads persona without md (404) when thinking is set in .js", async () => {
     const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
-    const registered: PersonaDefinition[] = [];
+    const registered: PersonaEntry[] = [];
     const persona: PersonaRegistrar = {
-      register: (def) => {
-        registered.push(def);
+      register: (entry) => {
+        registered.push(entry);
         return { dispose: () => {} };
       },
     };
@@ -864,7 +868,7 @@ describe("loadSingleUserPack", () => {
 
       expect(result.status).toBe("loaded");
       // 404 は no-op、.js の thinking がそのまま使われる
-      expect(registered[0].thinking?.systemPromptAddition).toBe("js 側のプロンプト");
+      expect(registered[0].persona.thinking?.systemPromptAddition).toBe("js 側のプロンプト");
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -872,10 +876,10 @@ describe("loadSingleUserPack", () => {
 
   it("loads persona with neither thinking in .js nor persona.md", async () => {
     const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
-    const registered: PersonaDefinition[] = [];
+    const registered: PersonaEntry[] = [];
     const persona: PersonaRegistrar = {
-      register: (def) => {
-        registered.push(def);
+      register: (entry) => {
+        registered.push(entry);
         return { dispose: () => {} };
       },
     };
@@ -914,7 +918,7 @@ describe("loadSingleUserPack", () => {
       // load 自体は成功する（prompt 無しは valid な state）
       expect(result.status).toBe("loaded");
       expect(registered).toHaveLength(1);
-      expect(registered[0].thinking?.systemPromptAddition).toBeUndefined();
+      expect(registered[0].persona.thinking?.systemPromptAddition).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
     }
