@@ -125,11 +125,19 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeObserver = null;
 
     const syncRect = () => {
+      // placeholder の外形 rect（padding 込み）から、computed padding を
+      // 差し引いた content box に xterm を配置する。これで
+      // .terminal-container { padding: ... } が自然に効く。
       const rect = container.getBoundingClientRect();
-      this.xtermContainer.style.top = `${rect.top}px`;
-      this.xtermContainer.style.left = `${rect.left}px`;
-      this.xtermContainer.style.width = `${rect.width}px`;
-      this.xtermContainer.style.height = `${rect.height}px`;
+      const cs = getComputedStyle(container);
+      const padLeft = parseFloat(cs.paddingLeft) || 0;
+      const padTop = parseFloat(cs.paddingTop) || 0;
+      const padRight = parseFloat(cs.paddingRight) || 0;
+      const padBottom = parseFloat(cs.paddingBottom) || 0;
+      this.xtermContainer.style.top = `${rect.top + padTop}px`;
+      this.xtermContainer.style.left = `${rect.left + padLeft}px`;
+      this.xtermContainer.style.width = `${rect.width - padLeft - padRight}px`;
+      this.xtermContainer.style.height = `${rect.height - padTop - padBottom}px`;
       this.xtermContainer.style.visibility = "visible";
       requestAnimationFrame(() => this.fitAddon.fit());
     };
