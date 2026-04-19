@@ -68,17 +68,26 @@ export function validatePersonaDefinition(pack: unknown): PersonaDefinition {
   const ctx = "PersonaDefinition";
   requireField(pack, "id", (v) => typeof v === "string", "a string", ctx);
   requireField(pack, "name", (v) => typeof v === "string", "a string", ctx);
-  // thinking は optional — loader が persona.md から inject することがある
+  // thinking / reflex / world / logReading は全て optional。
+  // loader が persona.md から thinking を inject する経路、および minimal persona.js
+  // （id + name だけ書いて他を省略）の経路のどちらもサポートするため。
   if (pack.thinking !== undefined) {
     requireField(pack, "thinking", isObject, "an object", ctx);
   }
-  requireField(pack, "reflex", isObject, "an object", ctx);
-
-  const reflex = pack.reflex as Record<string, unknown>;
-  if (!isObject(reflex.responses)) {
-    throw new PackValidationError(
-      `${ctx}: field 'reflex.responses' must be an object (got ${typeof reflex.responses})`,
-    );
+  if (pack.reflex !== undefined) {
+    requireField(pack, "reflex", isObject, "an object", ctx);
+    const reflex = pack.reflex as Record<string, unknown>;
+    if (!isObject(reflex.responses)) {
+      throw new PackValidationError(
+        `${ctx}: field 'reflex.responses' must be an object (got ${typeof reflex.responses})`,
+      );
+    }
+  }
+  if (pack.world !== undefined) {
+    requireField(pack, "world", isObject, "an object", ctx);
+  }
+  if (pack.logReading !== undefined) {
+    requireField(pack, "logReading", isObject, "an object", ctx);
   }
 
   return pack as unknown as PersonaDefinition;

@@ -41,7 +41,7 @@ interface MakePersonaOverrides {
   id?: string;
   name?: string;
   customTriggers?: ReadonlyArray<Trigger>;
-  responses?: PersonaDefinition["reflex"]["responses"];
+  responses?: NonNullable<PersonaDefinition["reflex"]>["responses"];
 }
 
 const makePersona = (overrides: MakePersonaOverrides = {}): PersonaDefinition => ({

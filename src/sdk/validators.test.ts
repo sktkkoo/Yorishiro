@@ -80,14 +80,24 @@ describe("validatePersonaDefinition", () => {
     ).toThrow(/thinking/);
   });
 
-  it("rejects missing reflex", () => {
-    expect(() => validatePersonaDefinition({ id: "a", name: "A", thinking: {} })).toThrow(/reflex/);
+  it("accepts missing reflex (minimal persona.js)", () => {
+    // reflex は optional — minimal persona pack（id + name のみ）を accept する
+    expect(() => validatePersonaDefinition({ id: "a", name: "A", thinking: {} })).not.toThrow();
   });
 
-  it("rejects reflex without responses object", () => {
+  it("rejects reflex without responses object when reflex is present", () => {
     expect(() =>
       validatePersonaDefinition({ id: "a", name: "A", thinking: {}, reflex: {} }),
     ).toThrow(/responses/);
+  });
+
+  it("accepts missing world and logReading", () => {
+    // minimal persona は id + name のみで validator を通過する
+    expect(() => validatePersonaDefinition({ id: "a", name: "A" })).not.toThrow();
+  });
+
+  it("rejects non-object world when present", () => {
+    expect(() => validatePersonaDefinition({ id: "a", name: "A", world: "bad" })).toThrow(/world/);
   });
 });
 

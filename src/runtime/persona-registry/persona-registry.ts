@@ -159,7 +159,8 @@ export class PersonaRegistry {
     this.personas.set(def.id, state);
 
     const wrapper = this.createWrapper(state);
-    const triggers = def.reflex.customTriggers ?? [];
+    // reflex は optional — minimal persona では省略される。その場合 triggers は空。
+    const triggers = def.reflex?.customTriggers ?? [];
     for (const trigger of triggers) {
       const reg = this.bus.register(trigger, wrapper, source);
       state.registrations.push(reg);
@@ -197,6 +198,8 @@ export class PersonaRegistry {
   private runWrapper(state: PersonaState, event: ReactionEvent, depth: number): void {
     try {
       const { def, source } = state;
+      // reflex が無い persona（minimal pack）は reaction を持たないので早期 return
+      if (def.reflex === undefined) return;
       const set = def.reflex.responses[event.reaction];
       if (set === undefined) {
         this.logger.warn("PersonaRegistry: no response entry for reaction", {

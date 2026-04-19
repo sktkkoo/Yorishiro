@@ -98,7 +98,11 @@ export interface PersonaDefinition {
 
   // ─── 反射層への影響（二次、構造的）────
 
-  readonly reflex: {
+  /**
+   * optional — minimal persona pack では省略可（bundled charminal-default の
+   * reflex が fallback として有効）。省略時は反応 handler を持たない。
+   */
+  readonly reflex?: {
     /** この persona 独自の custom trigger（任意） */
     readonly customTriggers?: ReadonlyArray<Trigger>;
 
@@ -112,7 +116,10 @@ export interface PersonaDefinition {
 
   // ─── 世界の選択（三次）────
 
-  readonly world: {
+  /**
+   * optional — minimal persona pack では省略可（既存 world 設定が維持される）。
+   */
+  readonly world?: {
     /** 身体 VRM の ref。'vrm:default' など shared ref か、local ref */
     readonly body: string;
     /** 声の ref */
@@ -123,5 +130,6 @@ export interface PersonaDefinition {
 
   // ─── 第四の軸：ログ参照ポリシー ────
 
-  readonly logReading: LogReadingPolicy;
+  /** optional — minimal persona pack では省略可（既存 policy が維持される）。 */
+  readonly logReading?: LogReadingPolicy;
 }
