@@ -18,5 +18,4 @@ export {
   ScenePackRegistryImpl,
   type ScenePackRegistryOptions,
 } from "./scene-pack-registry";
-export { computeActive } from "./select-active";
 export type { Disposable, PackOrigin, ScenePackEntry, ScenePackRegistry } from "./types";

@@ -16,7 +16,6 @@ export {
   type PersonaRegistryImplOptions,
 } from "./persona-registry-impl";
 export { createRealPersonaContextFactory, type RealContextDeps } from "./real-context";
-export { computeActivePersona } from "./select-active";
 export {
   createStubPersonaContextFactory,
   type PersonaContextFactory,
