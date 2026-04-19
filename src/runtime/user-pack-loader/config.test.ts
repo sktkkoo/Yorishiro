@@ -4,7 +4,7 @@
  * Tauri invoke を介した file I/O は test しない（stub できる value が無く、
  * production 側の dev-log で目視確認する——runtime-wire と同じ方針）。
  *
- * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.3
+ * Internal design-record: 2026-04-19-persona-single-active.md（activePersonas → primaryPersona 差し替え）
  */
 
 import { describe, expect, it } from "vitest";
@@ -16,6 +16,7 @@ import {
   withActiveSceneSet,
   withDisabledPackAdded,
   withDisabledPackRemoved,
+  withPrimaryPersonaSet,
 } from "./config";
 
 describe("parseConfig", () => {
@@ -31,17 +32,47 @@ describe("parseConfig", () => {
     const json = JSON.stringify({ disabledPacks: ["a", "b"] });
     expect(parseConfig(json)).toEqual({
       disabledPacks: ["a", "b"],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: null,
       activeScene: null,
     });
   });
 
-  it("reads activePersonas array", () => {
+  it("reads primaryPersona string", () => {
+    const json = JSON.stringify({ primaryPersona: "charminal-default" });
+    expect(parseConfig(json)).toEqual({
+      disabledPacks: [],
+      primaryPersona: "charminal-default",
+      mcpPort: null,
+      activeScene: null,
+    });
+  });
+
+  it("treats empty string primaryPersona as null", () => {
+    const json = JSON.stringify({ primaryPersona: "" });
+    expect(parseConfig(json)).toEqual({
+      disabledPacks: [],
+      primaryPersona: null,
+      mcpPort: null,
+      activeScene: null,
+    });
+  });
+
+  it("treats non-string primaryPersona as null", () => {
+    const json = JSON.stringify({ primaryPersona: 42 });
+    expect(parseConfig(json)).toEqual({
+      disabledPacks: [],
+      primaryPersona: null,
+      mcpPort: null,
+      activeScene: null,
+    });
+  });
+
+  it("silently ignores legacy activePersonas field", () => {
     const json = JSON.stringify({ activePersonas: ["charminal-default"] });
     expect(parseConfig(json)).toEqual({
       disabledPacks: [],
-      activePersonas: ["charminal-default"],
+      primaryPersona: null,
       mcpPort: null,
       activeScene: null,
     });
@@ -51,7 +82,7 @@ describe("parseConfig", () => {
     const json = JSON.stringify({ mcpPort: 12345 });
     expect(parseConfig(json)).toEqual({
       disabledPacks: [],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: 12345,
       activeScene: null,
     });
@@ -66,7 +97,7 @@ describe("parseConfig", () => {
     });
     expect(parseConfig(json)).toEqual({
       disabledPacks: ["ok"],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: null,
       activeScene: null,
     });
@@ -74,7 +105,7 @@ describe("parseConfig", () => {
 });
 
 describe("serializeConfig", () => {
-  it("omits empty arrays and null port for minimal JSON", () => {
+  it("omits empty arrays and null fields for minimal JSON", () => {
     const cfg: CharminalConfig = EMPTY_CONFIG;
     const text = serializeConfig(cfg);
     expect(JSON.parse(text)).toEqual({});
@@ -83,17 +114,32 @@ describe("serializeConfig", () => {
   it("writes disabledPacks when non-empty", () => {
     const cfg: CharminalConfig = {
       disabledPacks: ["a"],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: null,
       activeScene: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
 
+  it("writes primaryPersona when set", () => {
+    const cfg: CharminalConfig = {
+      disabledPacks: [],
+      primaryPersona: "my-persona",
+      mcpPort: null,
+      activeScene: null,
+    };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
+  });
+
+  it("omits primaryPersona when null", () => {
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG, primaryPersona: null };
+    expect(serializeConfig(cfg)).toBe("{}\n");
+  });
+
   it("writes mcpPort when set", () => {
     const cfg: CharminalConfig = {
       disabledPacks: [],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: 18743,
       activeScene: null,
     };
@@ -103,7 +149,7 @@ describe("serializeConfig", () => {
   it("round-trips a populated config", () => {
     const cfg: CharminalConfig = {
       disabledPacks: ["a", "b"],
-      activePersonas: ["p"],
+      primaryPersona: "my-persona",
       mcpPort: 18743,
       activeScene: null,
     };
@@ -126,7 +172,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
   it("removes an id from disabledPacks", () => {
     const base: CharminalConfig = {
       disabledPacks: ["a", "b"],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: null,
       activeScene: null,
     };
@@ -137,7 +183,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
   it("is idempotent — removing an absent id is a no-op", () => {
     const base: CharminalConfig = {
       disabledPacks: ["a"],
-      activePersonas: [],
+      primaryPersona: null,
       mcpPort: null,
       activeScene: null,
     };
@@ -189,5 +235,18 @@ describe("withActiveSceneSet", () => {
     const cfg = { ...EMPTY_CONFIG, activeScene: "existing" };
     const next = withActiveSceneSet(cfg, null);
     expect(next.activeScene).toBeNull();
+  });
+});
+
+describe("withPrimaryPersonaSet", () => {
+  it("sets primaryPersona to given id", () => {
+    const next = withPrimaryPersonaSet(EMPTY_CONFIG, "my-persona");
+    expect(next.primaryPersona).toBe("my-persona");
+  });
+
+  it("clears primaryPersona when given null", () => {
+    const cfg = { ...EMPTY_CONFIG, primaryPersona: "existing" };
+    const next = withPrimaryPersonaSet(cfg, null);
+    expect(next.primaryPersona).toBeNull();
   });
 });
