@@ -1,8 +1,9 @@
 # src-tauri/ — Rust IO layer overview
 
-Charminal の **IO 境界層**。PTY / file system / hooks / MCP server。**設計判断は持たず、TypeScript 側 (`src/`) に委ねる**。Rust 側は OS との接続と資源 lifecycle のみ。
+> このファイルは「**Rust 側のどこに何があるか**」を 1 画面で把握したい時に読む。対象：dev / AI。
+> 上位 navigation は [docs/README.md](../docs/README.md)。
 
-> 上位 navigation は [docs/INDEX.md](../docs/INDEX.md)。本 README は src-tauri/ 直下の architecture 把握用。
+Charminal の **IO 境界層**。PTY / file system / hooks / MCP server。**設計判断は持たず、TypeScript 側 (`src/`) に委ねる**。Rust 側は OS との接続と資源 lifecycle のみ。
 
 ---
 

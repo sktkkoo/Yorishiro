@@ -1,8 +1,9 @@
 # src/ — TypeScript layer overview
 
-Charminal の **canonical runtime**。意識層 (Claude Code) との接続、反射層 (primitives)、UI、pack 管理、SDK 公開を担う。Rust 側は IO のみ、設計判断はすべてこちら。
+> このファイルは「**TS 側のどこに何があるか**」を 1 画面で把握したい時に読む。対象：dev / AI。
+> 上位 navigation は [docs/README.md](../docs/README.md)。
 
-> 上位 navigation は [docs/INDEX.md](../docs/INDEX.md)。本 README は src/ 直下の architecture 把握用。
+Charminal の **canonical runtime**。意識層 (Claude Code) との接続、反射層 (primitives)、UI、pack 管理、SDK 公開を担う。Rust 側は IO のみ、設計判断はすべてこちら。
 
 ---
 

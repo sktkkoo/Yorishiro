@@ -1,5 +1,7 @@
 # Critical Constraints — 設計上破ってはいけない line
 
+> このファイルは「**設計判断で line を踏みそうな時 / 新しい API を生やす前**」に読む。対象：dev / AI。
+
 **Status**: active
 **Last updated**: 2026-04-19
 

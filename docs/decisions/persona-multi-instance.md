@@ -1,5 +1,7 @@
 # Persona の multi-instance 運用
 
+> このファイルは「**persona の active 数 / 切り替え / 並行運用で設計判断する**」時に読む。対象：dev / AI / pack 作者。
+
 **Status**: superseded（旧設計を MVP 実装段階で修正） / active（現行：single-active）
 **Last updated**: 2026-04-19
 

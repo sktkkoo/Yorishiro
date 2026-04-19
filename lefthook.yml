@@ -3,8 +3,11 @@
 # Split strategy:
 #   - pre-commit: fast, staged-file-scoped fixes (biome + rustfmt).
 #     Auto-fixed files are re-staged so the commit stays self-consistent.
-#   - pre-push: full gate (biome check, cargo fmt --check, cargo clippy).
+#   - pre-push: full gate (biome check, cargo fmt --check, cargo clippy,
+#     typedoc validation).
 #     Clippy runs on the whole crate, so it is too slow for pre-commit.
+#   - post-commit: regenerate local API doc HTML so docs/api/typescript/ stays
+#     fresh against HEAD (artifact is gitignored, this is purely local).
 #
 # Run `npm run prepare` (or `npx lefthook install`) after cloning to wire up
 # .git/hooks.
@@ -30,3 +33,15 @@ pre-push:
       run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
     - name: cargo-clippy
       run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings
+    - name: typedoc-validate
+      # SDK の .d.ts に typedoc が読めない error を含む commit を push できなくする。
+      # --emit none で artifact 出さず構文 / 型解決のみ確認。
+      run: npx typedoc --emit none
+
+post-commit:
+  parallel: false
+  jobs:
+    - name: typedoc-regen
+      # ローカルに常に最新の API doc HTML を持つ。出力先 docs/api/typescript/ は
+      # gitignore 済み。失敗しても commit は既に終わっているので影響なし。
+      run: npm run doc

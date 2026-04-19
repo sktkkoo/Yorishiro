@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: Use after a code change to walk the Charminal doc-drift cheat sheet. Identifies which README / decisions / INDEX entries need updating based on what changed in src/, src-tauri/, bundled-packs/, or design intent. Skip auto-generated doc (typedoc/cargo doc).
+description: Use after a code change to walk the Charminal doc-drift cheat sheet. Identifies which README / decisions entries need updating based on what changed in src/, src-tauri/, bundled-packs/, or design intent. Skip auto-generated doc (typedoc/cargo doc).
 ---
 
 # sync-docs — doc drift 検出と修正
@@ -38,12 +38,12 @@ git status -s
 
 - [ ] `src/<top-level>/` 配下に新 directory を追加した？
   - YES → 当該 cluster README（[`src/core/README.md`](../../../src/core/README.md) / [`src/runtime/README.md`](../../../src/runtime/README.md)）の Sub-module 一覧に行を追加
-  - YES → [`docs/INDEX.md`](../../../docs/INDEX.md) §2.2 TypeScript top-level の table に追加（top-level 直下なら）
+  - YES → [`docs/README.md`](../../../docs/README.md) §3.2 TypeScript top-level の table に追加（top-level 直下なら）
   - YES → 必要なら新 directory に短い `README.md` を置く（責務 / entry / 依存の 3 行）
 
 - [ ] `src-tauri/src/` に新 module を追加した？
   - YES → [`src-tauri/README.md`](../../../src-tauri/README.md) Module map に追加
-  - YES → [`docs/INDEX.md`](../../../docs/INDEX.md) §2.3 Rust top-level に追加
+  - YES → [`docs/README.md`](../../../docs/README.md) §3.3 Rust top-level に追加
   - YES → 新しい `#[tauri::command]` を export したなら src-tauri/README.md の command 一覧にも追加
 
 - [ ] `bundled-packs/` 配下に pack を追加 / 削除した？
@@ -113,4 +113,4 @@ skill 実行後、user に向けて以下を報告：
 - 「念のため全 README を update する」→ NO。drift 源を増やす。touch しない doc は touch しない
 - 「typedoc 出力を手で書き直す」→ NO。生成物。手で書いたら次の `npm run doc` で消える
 - 「decisions/ entry を新規作成しないで既存 entry に詰め込む」→ topic 軸で引けなくなる。新しい topic は新規 file
-- 「`docs/INDEX.md` に code の中身を書く」→ INDEX は pointer のみ。中身を書くと drift 源
+- 「`docs/README.md` に code の中身を書く」→ README は navigation only（pointer のみ）。中身を書くと drift 源
