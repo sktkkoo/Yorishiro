@@ -1,4 +1,4 @@
-import type { Trigger } from "@charminal/sdk";
+import type { Disposable, Trigger, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
@@ -9,6 +9,8 @@ import charminalDefaultManifest from "../bundled-packs/personas/charminal-defaul
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
 import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
+import minimalBadgeManifest from "../bundled-packs/ui/minimal-badge/manifest.json";
+import minimalBadgePack from "../bundled-packs/ui/minimal-badge/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { LogBridge } from "./core/log-bridge";
@@ -16,6 +18,7 @@ import { Perception } from "./core/perception";
 import type { SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
+import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
@@ -32,6 +35,7 @@ import {
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
 import { parseConfig } from "./runtime/user-pack-loader/config";
@@ -112,6 +116,10 @@ function App() {
     // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
     const scenePackRegistry: ScenePackRegistry = getSceneRegistry();
 
+    // UI pack registry — HMR singleton（KEYS.UI_PACK_REGISTRY で共有）。
+    // bundled minimal-badge を sync register（static import 済なので同期で確定）。
+    const uiPackRegistry = getUiRegistry();
+
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
     // PersonaRegistryImpl は state management（active persona / subscribeActive）。
     // bundled charminal-default を sync register する。ここを async にすると
@@ -131,6 +139,21 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled persona '${charminalDefaultPack.id}'`,
+    });
+
+    // bundled minimal-badge UI pack を sync register（bundled persona と同じ扱い）。
+    uiPackRegistry.register({
+      id: minimalBadgePack.id,
+      origin: "bundled",
+      manifest: minimalBadgeManifest as UiPackManifest,
+      pack: {
+        layout: minimalBadgePack.layout,
+        mount: minimalBadgePack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${minimalBadgePack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
@@ -205,6 +228,7 @@ function App() {
         const config = parseConfig(configText);
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
+        uiPackRegistry.setActiveUi(config.activeUi);
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -376,6 +400,7 @@ function App() {
       devLog,
       effectDispatcher,
       scenePackRegistry,
+      uiPackRegistry,
       userLayerReady,
     };
   });
@@ -387,6 +412,8 @@ function App() {
     devLog,
     effectDispatcher,
     scenePackRegistry,
+    uiPackRegistry,
+    time,
     userLayerReady,
   } = runtime;
 
@@ -427,6 +454,144 @@ function App() {
     const sub = personaRegistry.subscribeActive(setPrimaryPersonaState);
     return () => sub.dispose();
   }, [personaRegistry]);
+
+  // ── UI pack: subscribe + mount / dispose lifecycle ────────────────────
+  // active UI pack が切り替わるたびに前の pack を teardown（dispose + container remove +
+  // layout reset）してから新しい pack の layout を apply、container を body 直下に挿入、
+  // mount を呼ぶ。Terminal / Sidebar / charactor-container が DOM に生えるまでは
+  // subscribe 自体を遅延させる（querySelector が null を返す事故の回避）。
+  //
+  // container は React tree 外（document.body 直下）：pack が描画する overlay を
+  // Charminal 本体の layout と独立にするため。pointer-events: none で default 透過し、
+  // pack 側で auto を明示した要素だけがクリックを受ける。
+  useEffect(() => {
+    // Terminal が mount されるまでは subscribe しない（空振り事故防止）。
+    // bundled register は factory 内の同期 code なので、ここに到達した時点で registry は既に埋まっている。
+    if (!isUserLayerReady) return;
+
+    let currentDisposable: Disposable | null = null;
+    let currentContainer: HTMLDivElement | null = null;
+    let currentAbort: AbortController | null = null;
+
+    const getLayoutTargets = (): LayoutTargets | null => {
+      const terminal = document.querySelector<HTMLElement>(".terminal-container");
+      const sidebar = document.querySelector<HTMLElement>(".sidebar");
+      const character = document.querySelector<HTMLElement>(".charactor-container");
+      if (!terminal || !sidebar || !character) return null;
+      return {
+        root: document.documentElement,
+        terminal,
+        sidebar,
+        character,
+      };
+    };
+
+    const buildUiContext = (signal: AbortSignal, targets: LayoutTargets): UiContext => ({
+      space: {
+        injectEffect: (request) => effectDispatcher.dispatch(request),
+      },
+      // Plan 1 では character は最小 stub（Plan 2 で実機接続）。
+      // SDK 型の全 field を満たす（GazeHandle は target / active / release 3 field 必須）。
+      character: {
+        express: () => ({
+          target: { kind: "mood", preset: "relaxed" },
+          requestedIntensity: 0,
+          effectiveWeight: 0,
+          setIntensity: () => {},
+          release: () => {},
+        }),
+        play: () => ({
+          animation: "anim:noop",
+          startedAt: 0,
+          setWeight: () => {},
+          stop: () => Promise.resolve(),
+          cancel: () => {},
+          completion: Promise.resolve(),
+        }),
+        gaze: () => ({
+          target: { kind: "away" },
+          active: false,
+          release: () => {},
+        }),
+        interrupt: () => {},
+      },
+      time,
+      log: createSubsystemLog(devLog, "UiPack"),
+      signal,
+      layout: {
+        update: (layout: UiLayout) => {
+          resetLayout(targets);
+          applyLayout(layout, targets);
+        },
+      },
+    });
+
+    const activateEntry = (entry: UiPackEntry | null) => {
+      // 前の UI pack を cleanup
+      if (currentAbort) currentAbort.abort();
+      currentAbort = null;
+      if (currentDisposable) currentDisposable.dispose();
+      currentDisposable = null;
+      if (currentContainer) {
+        currentContainer.remove();
+        currentContainer = null;
+      }
+      const prevTargets = getLayoutTargets();
+      if (prevTargets) resetLayout(prevTargets);
+
+      if (!entry) return;
+
+      const targets = getLayoutTargets();
+      if (!targets) {
+        devLog.write({
+          subsystem: "UiPack",
+          phase: "mount",
+          note: `deferred mount of "${entry.id}" (DOM targets missing)`,
+        });
+        return;
+      }
+
+      applyLayout(entry.pack.layout, targets);
+      const container = document.createElement("div");
+      container.className = "ui-pack-container";
+      container.style.position = "fixed";
+      container.style.inset = "0";
+      container.style.pointerEvents = "none";
+      container.style.zIndex = "50";
+      document.body.appendChild(container);
+
+      const abort = new AbortController();
+      currentAbort = abort;
+      currentContainer = container;
+
+      const ctx = buildUiContext(abort.signal, targets);
+      try {
+        currentDisposable = entry.pack.mount(ctx, container);
+      } catch (err) {
+        devLog.write({
+          subsystem: "UiPack",
+          phase: "mount",
+          note: `mount failed for "${entry.id}"`,
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+        container.remove();
+        currentContainer = null;
+        abort.abort();
+        currentAbort = null;
+      }
+    };
+
+    const sub = uiPackRegistry.subscribeActive(activateEntry);
+
+    return () => {
+      sub.dispose();
+      if (currentAbort) currentAbort.abort();
+      if (currentDisposable) currentDisposable.dispose();
+      if (currentContainer) currentContainer.remove();
+      const targets = getLayoutTargets();
+      if (targets) resetLayout(targets);
+    };
+  }, [uiPackRegistry, effectDispatcher, time, devLog, isUserLayerReady]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
