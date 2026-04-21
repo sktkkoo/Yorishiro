@@ -23,6 +23,16 @@ describe("parseLayerPath", () => {
       id: "my-persona",
       kind: "persona",
     });
+    expect(parseLayerPath(`${HOME}/packs/my-ui/ui.tsx`, HOME)).toEqual({
+      type: "pack",
+      id: "my-ui",
+      kind: "ui",
+    });
+    expect(parseLayerPath(`${HOME}/packs/my-ui/ui.js`, HOME)).toEqual({
+      type: "pack",
+      id: "my-ui",
+      kind: "ui",
+    });
   });
 
   it("recognizes init.js at the root", () => {
@@ -41,6 +51,9 @@ describe("parseLayerPath", () => {
 
   it("ignores non-.js files", () => {
     expect(parseLayerPath(`${HOME}/packs/my-effect/effect.ts`, HOME)).toEqual({ type: "ignore" });
+    expect(parseLayerPath(`${HOME}/packs/my-effect/effect.tsx`, HOME)).toEqual({
+      type: "ignore",
+    });
     expect(parseLayerPath(`${HOME}/packs/my-effect/README.md`, HOME)).toEqual({ type: "ignore" });
   });
 
@@ -80,6 +93,21 @@ describe("mapEventToAction", () => {
       kind: "effect",
       entryPath: `${HOME}/packs/my-effect/effect.js`,
       mtimeMs: 1700000000000,
+    });
+  });
+
+  it("maps a modified ui.tsx file to reload-pack", () => {
+    expect(
+      mapEventToAction(
+        { path: `${HOME}/packs/my-ui/ui.tsx`, kind: "modified", mtimeMs: 1700000000001 },
+        HOME,
+      ),
+    ).toEqual({
+      type: "reload-pack",
+      id: "my-ui",
+      kind: "ui",
+      entryPath: `${HOME}/packs/my-ui/ui.tsx`,
+      mtimeMs: 1700000000001,
     });
   });
 

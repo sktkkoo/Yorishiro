@@ -3,6 +3,7 @@
  *
  * Tauri invoke / dynamic import の impure 部分を持たないので、そのまま vitest
  * で検証できる。`~/.charminal/packs/<id>/<kind>.js` convention の parse と、
+ * Plan 4 `~/.charminal/packs/<id>/ui.tsx` の parse、
  * file event → 何をすべきかの mapping に責任を限定する。
  *
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
@@ -42,6 +43,7 @@ const stripTrailingSlash = (p: string): string => (p.endsWith("/") ? p.slice(0, 
 
 /**
  * `/Users/x/.charminal/packs/my-id/effect.js` → { type: "pack", id, kind }
+ * `/Users/x/.charminal/packs/my-ui/ui.tsx` → { type: "pack", id, kind: "ui" }
  * `/Users/x/.charminal/init.js` → { type: "init" }
  * その他 → { type: "ignore" }
  *
@@ -72,12 +74,12 @@ export function parseLayerPath(absPath: string, charminalHome: string): ParsedLa
   if (id === "" || id.startsWith(".")) {
     return { type: "ignore" };
   }
-  if (!filename.endsWith(".js")) {
-    return { type: "ignore" };
-  }
-  const kind = filename.slice(0, -".js".length);
-  if (kind === "ui") {
-    // Plan 4 MVP supports startup load for user UI packs only. Hot reload is a follow-up.
+  const kind = filename.endsWith(".js")
+    ? filename.slice(0, -".js".length)
+    : filename === "ui.tsx"
+      ? "ui"
+      : null;
+  if (kind === null) {
     return { type: "ignore" };
   }
   if (!SUPPORTED_PACK_KINDS.has(kind)) {

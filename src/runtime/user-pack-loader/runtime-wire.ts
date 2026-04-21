@@ -139,6 +139,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     effectPackRunner: deps.effectPackRunner,
     personaRegistry: deps.personaRegistry,
     scenePackRegistry: deps.scenePackRegistry,
+    uiPackRegistry: deps.uiPackRegistry,
     packRegistry: deps.packRegistry,
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
