@@ -59,7 +59,7 @@ function App() {
   //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
   // 詳細: src/runtime/README.md §HMR と singleton
 
-  const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
@@ -744,13 +744,17 @@ function App() {
         title: "プロジェクトフォルダを選択",
       });
       if (selected) {
-        setCwd(selected as string);
-        localStorage.setItem(CWD_STORAGE_KEY, selected as string);
+        const nextCwd = selected as string;
+        if (nextCwd === cwd) return;
+        localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
+        // Workspace 切替は runtime singleton 群を一度作り直す。
+        // PTY / xterm / perception の寿命が絡むため、差分更新より WebView reload の方が安定する。
+        window.location.reload();
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, []);
+  }, [cwd]);
 
   // ── VRM import ──────────────────────────────────────────────
 
