@@ -104,7 +104,7 @@ describe("validatePersonaDefinition", () => {
 
 describe("validateUiPackDefinition", () => {
   const validUi = {
-    id: "test-ui",
+    id: "sample-ui",
     type: "ui",
     layout: {},
     mount: () => ({ dispose: () => {} }),

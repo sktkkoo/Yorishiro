@@ -47,15 +47,15 @@ describe("UiStateStore", () => {
     const cameraListener = vi.fn();
     const badgeListener = vi.fn();
     store.subscribe("camera-panel", "shared", cameraListener);
-    store.subscribe("minimal-badge", "shared", badgeListener);
+    store.subscribe("secondary-ui", "shared", badgeListener);
     cameraListener.mockClear();
     badgeListener.mockClear();
 
     store.set("camera-panel", "shared", "camera");
-    store.set("minimal-badge", "shared", "badge");
+    store.set("secondary-ui", "shared", "badge");
 
     expect(store.get("camera-panel", "shared")).toBe("camera");
-    expect(store.get("minimal-badge", "shared")).toBe("badge");
+    expect(store.get("secondary-ui", "shared")).toBe("badge");
     expect(cameraListener).toHaveBeenCalledWith("camera");
     expect(badgeListener).toHaveBeenCalledWith("badge");
   });

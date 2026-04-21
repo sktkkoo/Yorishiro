@@ -254,8 +254,8 @@ describe("withActiveSceneSet", () => {
 
 describe("activeUi", () => {
   it("reads activeUi from config", () => {
-    const config = parseConfig('{"activeUi": "minimal-badge"}');
-    expect(config.activeUi).toBe("minimal-badge");
+    const config = parseConfig('{"activeUi": "camera-lighting-panel"}');
+    expect(config.activeUi).toBe("camera-lighting-panel");
   });
 
   it("activeUi defaults to null for empty config", () => {
@@ -275,8 +275,8 @@ describe("activeUi", () => {
   });
 
   it("withActiveUiSet updates the field", () => {
-    const updated = withActiveUiSet(EMPTY_CONFIG, "minimal-badge");
-    expect(updated.activeUi).toBe("minimal-badge");
+    const updated = withActiveUiSet(EMPTY_CONFIG, "camera-lighting-panel");
+    expect(updated.activeUi).toBe("camera-lighting-panel");
   });
 });
 

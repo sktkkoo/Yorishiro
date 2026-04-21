@@ -21,8 +21,6 @@ import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json"
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
 import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
 import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
-import minimalBadgeManifest from "../bundled-packs/ui/minimal-badge/manifest.json";
-import minimalBadgePack from "../bundled-packs/ui/minimal-badge/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
@@ -140,7 +138,6 @@ function App() {
     const scenePackRegistry: ScenePackRegistry = getSceneRegistry();
 
     // UI pack registry — HMR singleton（KEYS.UI_PACK_REGISTRY で共有）。
-    // bundled minimal-badge を sync register（static import 済なので同期で確定）。
     const uiPackRegistry = getUiRegistry();
     const claimState = getClaimState();
     const uiState = getUiStateStore();
@@ -179,21 +176,6 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
-    });
-
-    // bundled minimal-badge UI pack を sync register（bundled persona と同じ扱い）。
-    uiPackRegistry.register({
-      id: minimalBadgePack.id,
-      origin: "bundled",
-      manifest: minimalBadgeManifest as UiPackManifest,
-      pack: {
-        layout: minimalBadgePack.layout,
-        mount: minimalBadgePack.mount,
-      },
-    });
-    appLog.write({
-      phase: "register",
-      note: `registered bundled UI pack '${minimalBadgePack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────

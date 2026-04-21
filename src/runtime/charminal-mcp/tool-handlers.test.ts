@@ -196,7 +196,7 @@ describe("ui_state handlers", () => {
     const state = createUiStateStore();
     state.set("camera-lighting-panel", "camera.x", 1);
     state.set("camera-lighting-panel", "lighting.color", "#ff8800");
-    state.set("minimal-badge", "camera.x", 99);
+    state.set("secondary-ui", "camera.x", 99);
 
     const get = createGetUiStateHandler({
       state,
@@ -247,10 +247,10 @@ describe("ui_state handlers", () => {
     const set = createSetUiStateHandler(deps);
     const get = createGetUiStateHandler(deps);
 
-    await set({ packId: "minimal-badge", key: "visible", value: true });
+    await set({ packId: "secondary-ui", key: "visible", value: true });
 
-    await expect(get({ packId: "minimal-badge", key: "visible" })).resolves.toEqual({
-      packId: "minimal-badge",
+    await expect(get({ packId: "secondary-ui", key: "visible" })).resolves.toEqual({
+      packId: "secondary-ui",
       key: "visible",
       value: true,
     });
