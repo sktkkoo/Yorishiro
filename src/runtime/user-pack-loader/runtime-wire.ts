@@ -128,6 +128,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
         personaRegistry: deps.personaRegistry,
         effectDispatcher: deps.effectDispatcher,
         devLog: deps.initScriptLog,
+        setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
         fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
         importModule: async (path) => {
           const url = await buildCacheBustUrl(path);

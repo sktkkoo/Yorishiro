@@ -22,10 +22,10 @@ const entry = (id: string, origin: "bundled" | "user" = "bundled"): UiPackEntry 
 });
 
 describe("UiPackRegistry", () => {
-  it("register した bundled が fallback で active になる", () => {
+  it("register した bundled は null 選択時には active にならない", () => {
     const reg = createUiPackRegistry();
     reg.register(entry("my-ui"));
-    expect(reg.getActiveUi()?.id).toBe("my-ui");
+    expect(reg.getActiveUi()).toBeNull();
   });
 
   it("setActiveUi で active を切り替えられる", () => {
@@ -36,14 +36,13 @@ describe("UiPackRegistry", () => {
     expect(reg.getActiveUi()?.id).toBe("ui-b");
   });
 
-  it("setActiveUi(null) で fallback に戻る", () => {
+  it("setActiveUi(null) で UI pack なしに戻る", () => {
     const reg = createUiPackRegistry();
     reg.register(entry("ui-a"));
     reg.register(entry("ui-b"));
     reg.setActiveUi("ui-b");
     reg.setActiveUi(null);
-    // alphabetical 先頭 = ui-a
-    expect(reg.getActiveUi()?.id).toBe("ui-a");
+    expect(reg.getActiveUi()).toBeNull();
   });
 
   it("subscribeActive が active 変更を通知する", () => {
@@ -53,6 +52,8 @@ describe("UiPackRegistry", () => {
     // 初期 null で同期 fire
     expect(listener).toHaveBeenCalledWith(null);
     reg.register(entry("my-ui"));
+    expect(listener).not.toHaveBeenCalledWith(expect.objectContaining({ id: "my-ui" }));
+    reg.setActiveUi("my-ui");
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({ id: "my-ui" }));
   });
 
@@ -60,6 +61,8 @@ describe("UiPackRegistry", () => {
     const reg = createUiPackRegistry();
     reg.register(entry("same-id", "bundled"));
     reg.register(entry("same-id", "user"));
+    expect(reg.getActiveUi()).toBeNull();
+    reg.setActiveUi("same-id");
     expect(reg.getActiveUi()?.origin).toBe("user");
   });
 

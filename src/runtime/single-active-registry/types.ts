@@ -41,6 +41,11 @@ export interface SingleActiveRegistryOptions<TEntry extends SingleActiveEntry, T
   /** カスタム warning sink。default は `console.warn`。 */
   readonly warn?: (msg: string) => void;
   /**
+   * active id が null のとき bundled fallback を選ばず、明示的に null を返す。
+   * UI pack の「default = UI pack なし」のような domain で使う。default `false`。
+   */
+  readonly nullMeansNoActive?: boolean;
+  /**
    * 異なる id の bundled が複数 register された時に warning を出すか。
    * dev mistake 検出に使う（同梱 pack を増やす際の名前衝突警告）。default `false`。
    */
