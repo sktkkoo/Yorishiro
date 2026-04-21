@@ -14,6 +14,8 @@ import type * as THREE from "three";
 import type { DirectionalLight } from "three";
 
 const PANEL_HEIGHT = "clamp(260px, 32vh, 340px)";
+const DEFAULT_TARGET_X = 0;
+const DEFAULT_TARGET_Z = 0;
 
 function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
   let found: DirectionalLight | null = null;
@@ -34,6 +36,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [fov, setFov] = useState(() => ctx.three.camera.fov);
   const [intensity, setIntensity] = useState(0.8);
   const [color, setColor] = useState("#ffffff");
+  const [targetLock, setTargetLock] = useState(true);
 
   useEffect(() => {
     if (tracking) {
@@ -52,9 +55,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   useEffect(() => {
     if (!tracking) {
       ctx.three.camera.position.set(camX, camY, camZ);
-      ctx.three.camera.lookAt(0, camY, 0);
+      if (targetLock) {
+        ctx.three.camera.lookAt(DEFAULT_TARGET_X, camY, DEFAULT_TARGET_Z);
+      }
     }
-  }, [tracking, camX, camY, camZ, ctx]);
+  }, [tracking, targetLock, camX, camY, camZ, ctx]);
 
   useEffect(() => {
     ctx.three.camera.fov = fov;
@@ -115,6 +120,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             onChange={(e) => setTracking(e.target.checked)}
           />{" "}
           Tracking
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={targetLock}
+            disabled={tracking}
+            onChange={(e) => setTargetLock(e.target.checked)}
+          />{" "}
+          Look at character
         </label>
         <label>
           X: {camX.toFixed(2)}
