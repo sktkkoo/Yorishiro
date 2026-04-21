@@ -9,9 +9,9 @@
  * layout spec で固定要素（terminal / sidebar / character）の配置を宣言し、
  * mount で container 内に自由に React component を描画する。
  *
- * ⚠️ UiContext は Plan 3 完了まで unstable。現在の shape（space / character /
- * time / log / signal / layout）は Plan 2 で three / claim が追加され、
- * Plan 3 で state が追加される予定。early adopter の pack 作者は追従を想定すること。
+ * UiContext は Plan 3 で three / claim / state を追加済み。Plan 4 の
+ * user UI pack .tsx transpile までは読み込み経路が限定的なため、early adopter
+ * の pack 作者は小さな追加変更への追従を想定すること。
  *
  * Internal design-record: specs/2026-04-21-ui-pack-design.md
  */
@@ -68,9 +68,7 @@ export interface UiPackManifest {
 }
 
 /**
- * UI pack の mount context（Plan 2 時点の shape）。
- *
- * ⚠️ unstable: Plan 3 で state が追加される。
+ * UI pack の mount context（Plan 3 時点の shape）。
  *
  * - space: existing SpaceAPI（injectEffect 等）を再利用
  * - character: existing CharacterAPI（express / play / gaze）を再利用
