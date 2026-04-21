@@ -10,6 +10,7 @@
  * - `primaryPersona: string | null`（optional）: user が explicit に picks した persona pack の id
  * - `mcpPort: number`（optional）: MCP server の port override
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
+ * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
@@ -25,6 +26,8 @@ export interface CharminalConfig {
   readonly mcpPort: number | null;
   /** User が explicit に picks した scene pack の id。null / undefined なら bundled alphabetical default に fall through。 */
   readonly activeScene: string | null;
+  /** User が explicit に picks した UI pack の id。null なら UI pack なし。 */
+  readonly activeUi: string | null;
 }
 
 export const EMPTY_CONFIG: CharminalConfig = {
@@ -32,6 +35,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   primaryPersona: null,
   mcpPort: null,
   activeScene: null,
+  activeUi: null,
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -68,6 +72,7 @@ export function parseConfig(text: string): CharminalConfig {
     primaryPersona: toNullableString(obj.primaryPersona),
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
+    activeUi: toNullableString(obj.activeUi),
   };
 }
 
@@ -81,6 +86,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.primaryPersona !== null) out.primaryPersona = cfg.primaryPersona;
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
+  if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
@@ -102,6 +108,14 @@ export function withDisabledPackRemoved(cfg: CharminalConfig, id: string): Charm
  */
 export function withActiveSceneSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
   return { ...cfg, activeScene: id };
+}
+
+/**
+ * activeUi を id にセットした新しい config を返す。id が null ならクリア。
+ * withActiveSceneSet と対称。
+ */
+export function withActiveUiSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
+  return { ...cfg, activeUi: id };
 }
 
 /**

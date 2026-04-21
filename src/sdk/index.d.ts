@@ -21,3 +21,10 @@ export * from "./effect";
 export type { Layer, LayerRole, SceneSpec } from "./scene";
 export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
+export type {
+  UiPackDefinition,
+  UiPackManifest,
+  UiLayout,
+  UiContext,
+  UiLayoutAPI,
+} from "./ui-pack";

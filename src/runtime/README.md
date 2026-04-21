@@ -21,6 +21,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `three-runtime/` | Webview lifetime singleton — Three.js canvas / RAF / VRM model | `three-runtime.ts` | |
 | `vrm-cache/` | URL → ArrayBuffer LRU cache（VRM blob） | `vrm-cache.ts` | |
 | `scene-pack-registry/` | Scene pack の manifest / asset resolution | `scene-pack-registry.ts` + `asset-resolver.ts` | single-active（config picks） |
+| `ui-pack-registry/` | UI pack の single-active 管理 + config.activeUi 反映 | `ui-pack-registry.ts` | SingleActiveRegistry extend |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
 
@@ -51,6 +52,7 @@ terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) と
 |---|---|---|---|
 | `persona-registry/` | single-active | user > bundled、user dispose で promotion 自動取消 | [persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `scene-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeScene` で user picks |
+| `ui-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeUi` で user picks。設計詳細は internal design-record: `2026-04-21-ui-pack-single-active.md` |
 | Effect (event-driven) | 複数並行 | bundled-over-user の挙動は未確定 | 整理されていない領域、care |
 
 **設計原則**：「scene と effect はどちらも pack だが、動作 model が違うので別 concept として独立に扱う」。表面的類似で統合しない（[memory: feedback_separate_conceptually_distinct_systems](../../.claude/projects/-Users-user-Charminal/memory/feedback_separate_conceptually_distinct_systems.md)）。

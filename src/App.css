@@ -1,3 +1,7 @@
+:root {
+  --sidebar-width: 280px;
+}
+
 /* ── Reset ──────────────────────────────────────────── */
 *,
 *::before,
@@ -26,8 +30,8 @@ body,
 
 /* ── Sidebar ────────────────────────────────────────── */
 .sidebar {
-  width: 280px;
-  min-width: 280px;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   background: #0a1118;
