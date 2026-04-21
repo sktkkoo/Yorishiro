@@ -80,7 +80,7 @@ bundled-packs/
 
 UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
-- **camera-lighting-panel** — Plan 2 reference。camera tracking toggle / position X/Y/Z / FOV / directional light intensity / color を panel から操作。`ctx.three` と `ctx.claim.camera()` 機構の実例。
+- **camera-lighting-panel** — Plan 2/3 reference。camera tracking toggle / position X/Y/Z / FOV / directional light intensity / color を panel から操作。`ctx.three` / `ctx.claim.camera()` / `ctx.state` 機構の実例。
 - **minimal-badge** — Plan 1 の実機確認用 dummy。右上バッジ 1 つ、クリックで screen-shake 発火。
 
 ---

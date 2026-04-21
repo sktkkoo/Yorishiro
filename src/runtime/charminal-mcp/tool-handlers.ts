@@ -7,6 +7,7 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
  */
 
+import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
   withDisabledPackAdded,
@@ -128,5 +129,58 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
     const next = withDisabledPackRemoved(current, id);
     await deps.writeConfig(next);
     return await deps.reloadPack(id);
+  };
+}
+
+function requestRecord(request: unknown): Record<string, unknown> {
+  return typeof request === "object" && request !== null
+    ? (request as Record<string, unknown>)
+    : {};
+}
+
+export interface GetUiStateDeps {
+  readonly state: UiStateStore;
+}
+
+export type GetUiStateResponse =
+  | { readonly key: string; readonly value: unknown }
+  | { readonly state: Record<string, unknown> };
+
+export function createGetUiStateHandler(deps: GetUiStateDeps) {
+  return async (request: unknown): Promise<GetUiStateResponse> => {
+    const key = requestRecord(request).key;
+    if (key === undefined || key === null) {
+      return { state: deps.state.entries() };
+    }
+    if (typeof key !== "string" || key === "") {
+      throw new Error("key must be a non-empty string");
+    }
+    return { key, value: deps.state.get(key) ?? null };
+  };
+}
+
+export interface SetUiStateDeps {
+  readonly state: UiStateStore;
+}
+
+export interface SetUiStateResponse {
+  readonly ok: true;
+  readonly key: string;
+  readonly value: unknown;
+}
+
+export function createSetUiStateHandler(deps: SetUiStateDeps) {
+  return async (request: unknown): Promise<SetUiStateResponse> => {
+    const record = requestRecord(request);
+    const key = record.key;
+    if (typeof key !== "string" || key === "") {
+      throw new Error("key must be a non-empty string");
+    }
+    if (!("value" in record)) {
+      throw new Error("missing value");
+    }
+    const value = record.value;
+    deps.state.set(key, value);
+    return { ok: true, key, value };
   };
 }

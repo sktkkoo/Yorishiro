@@ -6,13 +6,16 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 import {
   createDisablePackHandler,
   createEnablePackHandler,
+  createGetUiStateHandler,
   createListPacksHandler,
+  createSetUiStateHandler,
 } from "./tool-handlers";
 
 describe("list_packs handler", () => {
@@ -166,5 +169,63 @@ describe("enable_pack handler", () => {
     });
     const result = await handler({ id: "ghost" });
     expect(result).toEqual({ ok: false, reason: "pack file not found" });
+  });
+});
+
+describe("ui_state handlers", () => {
+  it("sets and gets a single UI state key", async () => {
+    const state = createUiStateStore();
+    const set = createSetUiStateHandler({ state });
+    const get = createGetUiStateHandler({ state });
+
+    await expect(set({ key: "camera.x", value: 1.5 })).resolves.toEqual({
+      ok: true,
+      key: "camera.x",
+      value: 1.5,
+    });
+    await expect(get({ key: "camera.x" })).resolves.toEqual({
+      key: "camera.x",
+      value: 1.5,
+    });
+  });
+
+  it("returns the full UI state snapshot when key is omitted", async () => {
+    const state = createUiStateStore();
+    state.set("camera.x", 1);
+    state.set("lighting.color", "#ff8800");
+
+    const get = createGetUiStateHandler({ state });
+    await expect(get({})).resolves.toEqual({
+      state: {
+        "camera.x": 1,
+        "lighting.color": "#ff8800",
+      },
+    });
+  });
+
+  it("rejects empty keys", async () => {
+    const state = createUiStateStore();
+    const set = createSetUiStateHandler({ state });
+    const get = createGetUiStateHandler({ state });
+
+    await expect(set({ key: "", value: 1 })).rejects.toThrow("key must be a non-empty string");
+    await expect(get({ key: "" })).rejects.toThrow("key must be a non-empty string");
+  });
+
+  it("requires value for set_ui_state but allows null", async () => {
+    const state = createUiStateStore();
+    const set = createSetUiStateHandler({ state });
+    const get = createGetUiStateHandler({ state });
+
+    await expect(set({ key: "camera.x" })).rejects.toThrow("missing value");
+    await expect(set({ key: "camera.x", value: null })).resolves.toEqual({
+      ok: true,
+      key: "camera.x",
+      value: null,
+    });
+    await expect(get({ key: "camera.x" })).resolves.toEqual({
+      key: "camera.x",
+      value: null,
+    });
   });
 });

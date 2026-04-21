@@ -1,5 +1,5 @@
 //! MCP tool ハンドラ。`list_load_errors` は file read のみで Rust 内で完結、
-//! 他 3 tool（`list_packs` / `disable_pack` / `enable_pack`）は TS runtime への
+//! その他の tool は TS runtime への
 //! event channel round-trip を経由する。
 //!
 //! rmcp 1.5.0 の `#[tool_router]` + `#[tool_handler]` macro pattern に乗せる。
@@ -36,6 +36,22 @@ pub struct ListPacksRequest {}
 /// `list_load_errors` の引数。同上、空の object。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListLoadErrorsRequest {}
+
+/// `get_ui_state` の引数。key 省略時は full snapshot を返す。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetUiStateRequest {
+    /// Optional UI state key. Omit to retrieve all keys.
+    pub key: Option<String>,
+}
+
+/// `set_ui_state` の引数。value は JSON value として TS runtime に渡す。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetUiStateRequest {
+    /// Target UI state key.
+    pub key: String,
+    /// JSON value to store.
+    pub value: Value,
+}
 
 #[derive(Clone)]
 pub struct Charminal {
@@ -105,6 +121,37 @@ impl Charminal {
         let response = emit_tool_event(&self.app_handle, "enable-pack", json!({ "id": req.id }))
             .await
             .map_err(|e| McpError::internal_error(e, None))?;
+        unwrap_ts_response(response)
+    }
+
+    /// get_ui_state: TS runtime に委譲。key ありなら `{ key, value }`、
+    /// key なしなら `{ state }` を返す。
+    #[tool(
+        description = "Read UI pack state. Pass key to read one value, or omit key for all state."
+    )]
+    async fn get_ui_state(
+        &self,
+        Parameters(req): Parameters<GetUiStateRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let response = emit_tool_event(&self.app_handle, "get-ui-state", json!({ "key": req.key }))
+            .await
+            .map_err(|e| McpError::internal_error(e, None))?;
+        unwrap_ts_response(response)
+    }
+
+    /// set_ui_state: TS runtime に委譲。UI pack の ctx.state subscribers に通知する。
+    #[tool(description = "Set one UI pack state value by key")]
+    async fn set_ui_state(
+        &self,
+        Parameters(req): Parameters<SetUiStateRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let response = emit_tool_event(
+            &self.app_handle,
+            "set-ui-state",
+            json!({ "key": req.key, "value": req.value }),
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(response)
     }
 }

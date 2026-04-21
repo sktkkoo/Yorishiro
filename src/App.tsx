@@ -48,6 +48,7 @@ import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getThreeRuntime } from "./runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
+import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
 import { parseConfig } from "./runtime/user-pack-loader/config";
@@ -132,6 +133,7 @@ function App() {
     // bundled minimal-badge を sync register（static import 済なので同期で確定）。
     const uiPackRegistry = getUiRegistry();
     const claimState = getClaimState();
+    const uiState = getUiStateStore();
 
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
     // PersonaRegistryImpl は state management（active persona / subscribeActive）。
@@ -326,8 +328,13 @@ function App() {
         const { listen } = await import("@tauri-apps/api/event");
         const { invoke } = await import("@tauri-apps/api/core");
         const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
-        const { createListPacksHandler, createDisablePackHandler, createEnablePackHandler } =
-          await import("./runtime/charminal-mcp/tool-handlers");
+        const {
+          createListPacksHandler,
+          createDisablePackHandler,
+          createEnablePackHandler,
+          createGetUiStateHandler,
+          createSetUiStateHandler,
+        } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
         );
@@ -377,6 +384,12 @@ function App() {
             readConfig,
             writeConfig,
             reloadPack,
+          }),
+          "get-ui-state": createGetUiStateHandler({
+            state: uiState,
+          }),
+          "set-ui-state": createSetUiStateHandler({
+            state: uiState,
           }),
         };
 
@@ -430,6 +443,7 @@ function App() {
       scenePackRegistry,
       uiPackRegistry,
       claimState,
+      uiState,
       userLayerReady,
     };
   });
@@ -443,6 +457,7 @@ function App() {
     scenePackRegistry,
     uiPackRegistry,
     claimState,
+    uiState,
     time,
     userLayerReady,
   } = runtime;
@@ -569,6 +584,7 @@ function App() {
         },
         three,
         claim,
+        state: uiState,
         time,
         log: createSubsystemLog(devLog, "UiPack"),
         signal,
@@ -649,7 +665,7 @@ function App() {
       if (targets) resetLayout(targets);
       claimState.releaseAll();
     };
-  }, [uiPackRegistry, effectDispatcher, time, devLog, claimState, isUserLayerReady]);
+  }, [uiPackRegistry, effectDispatcher, time, devLog, claimState, uiState, isUserLayerReady]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 

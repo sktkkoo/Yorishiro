@@ -50,3 +50,14 @@ pub struct SimpleOkResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UiStateValueResponse {
+    pub key: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct UiStateSnapshotResponse {
+    pub state: serde_json::Map<String, serde_json::Value>,
+}

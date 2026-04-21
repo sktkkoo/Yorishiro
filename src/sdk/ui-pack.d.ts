@@ -76,6 +76,7 @@ export interface UiPackManifest {
  * - character: existing CharacterAPI（express / play / gaze）を再利用
  * - three: Three.js オブジェクトを直接操作（camera / scene / renderer / vrm）
  * - claim: 本体の自動処理を一時 suspend（camera tracking / expression / animation）
+ * - state: MCP bridge と共有する key-value state
  * - layout: runtime で layout を変更する API
  * - signal: pack deactivate 時に fire する AbortSignal
  */
@@ -84,6 +85,7 @@ export interface UiContext {
   readonly character: CharacterAPI;
   readonly three: UiThreeAPI;
   readonly claim: UiClaimAPI;
+  readonly state: UiStateAPI;
   readonly time: Time;
   readonly log: LogAPI;
   readonly signal: AbortSignal;
@@ -123,6 +125,18 @@ export interface UiClaimAPI {
   camera(): Disposable;
   expression(): Disposable;
   animation(): Disposable;
+}
+
+/**
+ * UI pack と Claude Code（MCP）をつなぐ key-value state。
+ *
+ * value は JSON serializable な値を推奨する。runtime は unknown として保持し、
+ * MCP 経由では JSON として read/write される。
+ */
+export interface UiStateAPI {
+  get(key: string): unknown;
+  set(key: string, value: unknown): void;
+  subscribe(key: string, listener: (value: unknown) => void): Disposable;
 }
 
 export interface UiLayoutAPI {

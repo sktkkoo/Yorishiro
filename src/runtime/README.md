@@ -23,6 +23,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `scene-pack-registry/` | Scene pack の manifest / asset resolution | `scene-pack-registry.ts` + `asset-resolver.ts` | single-active（config picks） |
 | `ui-claim-state/` | UI pack が本体自動処理を一時 suspend するための token ベース state holder | `ui-claim-state.ts` | claim/release、three-runtime と body が毎フレーム参照 |
 | `ui-pack-registry/` | UI pack の single-active 管理 + config.activeUi 反映 | `ui-pack-registry.ts` | SingleActiveRegistry extend |
+| `ui-state-store/` | UI pack と MCP bridge が共有する key-value state | `ui-state-store.ts` | `ctx.state` と `get_ui_state` / `set_ui_state` が参照 |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
 

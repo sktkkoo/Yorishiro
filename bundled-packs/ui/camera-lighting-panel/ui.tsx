@@ -16,6 +16,31 @@ import type { DirectionalLight } from "three";
 const PANEL_HEIGHT = "clamp(260px, 32vh, 340px)";
 const DEFAULT_TARGET_X = 0;
 const DEFAULT_TARGET_Z = 0;
+const STATE_KEYS = {
+  tracking: "camera.tracking",
+  targetLock: "camera.lookAtCharacter",
+  camX: "camera.x",
+  camY: "camera.y",
+  camZ: "camera.z",
+  fov: "camera.fov",
+  intensity: "lighting.intensity",
+  color: "lighting.color",
+} as const;
+
+function numberState(ctx: UiContext, key: string, fallback: number): number {
+  const value = ctx.state.get(key);
+  return typeof value === "number" ? value : fallback;
+}
+
+function booleanState(ctx: UiContext, key: string, fallback: boolean): boolean {
+  const value = ctx.state.get(key);
+  return typeof value === "boolean" ? value : fallback;
+}
+
+function stringState(ctx: UiContext, key: string, fallback: string): string {
+  const value = ctx.state.get(key);
+  return typeof value === "string" ? value : fallback;
+}
 
 function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
   let found: DirectionalLight | null = null;
@@ -29,14 +54,66 @@ function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
 
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const cameraClaimRef = useRef<Disposable | null>(null);
-  const [tracking, setTracking] = useState(true);
-  const [camX, setCamX] = useState(() => ctx.three.camera.position.x);
-  const [camY, setCamY] = useState(() => ctx.three.camera.position.y);
-  const [camZ, setCamZ] = useState(() => ctx.three.camera.position.z);
-  const [fov, setFov] = useState(() => ctx.three.camera.fov);
-  const [intensity, setIntensity] = useState(0.8);
-  const [color, setColor] = useState("#ffffff");
-  const [targetLock, setTargetLock] = useState(true);
+  const [tracking, setTracking] = useState(() => booleanState(ctx, STATE_KEYS.tracking, true));
+  const [camX, setCamX] = useState(() =>
+    numberState(ctx, STATE_KEYS.camX, ctx.three.camera.position.x),
+  );
+  const [camY, setCamY] = useState(() =>
+    numberState(ctx, STATE_KEYS.camY, ctx.three.camera.position.y),
+  );
+  const [camZ, setCamZ] = useState(() =>
+    numberState(ctx, STATE_KEYS.camZ, ctx.three.camera.position.z),
+  );
+  const [fov, setFov] = useState(() => numberState(ctx, STATE_KEYS.fov, ctx.three.camera.fov));
+  const [intensity, setIntensity] = useState(() => numberState(ctx, STATE_KEYS.intensity, 0.8));
+  const [color, setColor] = useState(() => stringState(ctx, STATE_KEYS.color, "#ffffff"));
+  const [targetLock, setTargetLock] = useState(() =>
+    booleanState(ctx, STATE_KEYS.targetLock, true),
+  );
+
+  useEffect(() => {
+    const subs = [
+      ctx.state.subscribe(STATE_KEYS.tracking, (value) => {
+        if (typeof value === "boolean") setTracking(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.targetLock, (value) => {
+        if (typeof value === "boolean") setTargetLock(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.camX, (value) => {
+        if (typeof value === "number") setCamX(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.camY, (value) => {
+        if (typeof value === "number") setCamY(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.camZ, (value) => {
+        if (typeof value === "number") setCamZ(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.fov, (value) => {
+        if (typeof value === "number") setFov(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.intensity, (value) => {
+        if (typeof value === "number") setIntensity(value);
+      }),
+      ctx.state.subscribe(STATE_KEYS.color, (value) => {
+        if (typeof value === "string") setColor(value);
+      }),
+    ];
+
+    return () => {
+      for (const sub of subs) sub.dispose();
+    };
+  }, [ctx]);
+
+  useEffect(() => {
+    ctx.state.set(STATE_KEYS.tracking, tracking);
+    ctx.state.set(STATE_KEYS.targetLock, targetLock);
+    ctx.state.set(STATE_KEYS.camX, camX);
+    ctx.state.set(STATE_KEYS.camY, camY);
+    ctx.state.set(STATE_KEYS.camZ, camZ);
+    ctx.state.set(STATE_KEYS.fov, fov);
+    ctx.state.set(STATE_KEYS.intensity, intensity);
+    ctx.state.set(STATE_KEYS.color, color);
+  }, [tracking, targetLock, camX, camY, camZ, fov, intensity, color, ctx]);
 
   useEffect(() => {
     if (tracking) {
