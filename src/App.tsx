@@ -806,7 +806,6 @@ function App() {
       />
       {isUserLayerReady && (
         <Terminal
-          key={cwd ?? "__default__"}
           agent={terminalAgent}
           cwd={cwd}
           systemPrompt={primaryPersona?.thinking?.systemPromptAddition ?? null}

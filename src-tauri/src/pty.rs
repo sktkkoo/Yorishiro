@@ -394,10 +394,6 @@ impl PtyState {
                 }
             }
             AgentKind::Codex => {
-                if let Some(ref dir) = cwd {
-                    cmd.arg("--cd");
-                    cmd.arg(dir);
-                }
                 if let Some(ref prompt) = system_prompt {
                     cmd.arg("-c");
                     cmd.arg(format!(
@@ -409,6 +405,11 @@ impl PtyState {
         }
 
         if let Some(ref dir) = cwd {
+            let metadata =
+                std::fs::metadata(dir).map_err(|e| format!("Workspace not accessible: {}", e))?;
+            if !metadata.is_dir() {
+                return Err(format!("Workspace is not a directory: {}", dir));
+            }
             cmd.cwd(dir);
         }
 
