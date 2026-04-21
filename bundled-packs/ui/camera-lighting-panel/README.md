@@ -23,7 +23,7 @@ UI pack の `ctx.three` 直接操作、`ctx.claim`、`ctx.state` 機構の refer
 
 ## state keys
 
-MCP `get_ui_state` / `set_ui_state` から以下の key を読み書きできる。
+MCP `get_ui_state` / `set_ui_state` から以下の key を読み書きできる。state は UI pack ごとに scope されるため、packId 省略時は active UI pack（通常 `camera-lighting-panel`）の値を読む。
 
 - `camera.tracking`
 - `camera.lookAtCharacter`

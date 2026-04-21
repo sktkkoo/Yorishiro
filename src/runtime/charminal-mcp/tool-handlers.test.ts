@@ -175,15 +175,18 @@ describe("enable_pack handler", () => {
 describe("ui_state handlers", () => {
   it("sets and gets a single UI state key", async () => {
     const state = createUiStateStore();
-    const set = createSetUiStateHandler({ state });
-    const get = createGetUiStateHandler({ state });
+    const deps = { state, getActiveUiId: () => "camera-lighting-panel" };
+    const set = createSetUiStateHandler(deps);
+    const get = createGetUiStateHandler(deps);
 
     await expect(set({ key: "camera.x", value: 1.5 })).resolves.toEqual({
       ok: true,
+      packId: "camera-lighting-panel",
       key: "camera.x",
       value: 1.5,
     });
     await expect(get({ key: "camera.x" })).resolves.toEqual({
+      packId: "camera-lighting-panel",
       key: "camera.x",
       value: 1.5,
     });
@@ -191,11 +194,16 @@ describe("ui_state handlers", () => {
 
   it("returns the full UI state snapshot when key is omitted", async () => {
     const state = createUiStateStore();
-    state.set("camera.x", 1);
-    state.set("lighting.color", "#ff8800");
+    state.set("camera-lighting-panel", "camera.x", 1);
+    state.set("camera-lighting-panel", "lighting.color", "#ff8800");
+    state.set("minimal-badge", "camera.x", 99);
 
-    const get = createGetUiStateHandler({ state });
+    const get = createGetUiStateHandler({
+      state,
+      getActiveUiId: () => "camera-lighting-panel",
+    });
     await expect(get({})).resolves.toEqual({
+      packId: "camera-lighting-panel",
       state: {
         "camera.x": 1,
         "lighting.color": "#ff8800",
@@ -205,8 +213,9 @@ describe("ui_state handlers", () => {
 
   it("rejects empty keys", async () => {
     const state = createUiStateStore();
-    const set = createSetUiStateHandler({ state });
-    const get = createGetUiStateHandler({ state });
+    const deps = { state, getActiveUiId: () => "camera-lighting-panel" };
+    const set = createSetUiStateHandler(deps);
+    const get = createGetUiStateHandler(deps);
 
     await expect(set({ key: "", value: 1 })).rejects.toThrow("key must be a non-empty string");
     await expect(get({ key: "" })).rejects.toThrow("key must be a non-empty string");
@@ -214,18 +223,51 @@ describe("ui_state handlers", () => {
 
   it("requires value for set_ui_state but allows null", async () => {
     const state = createUiStateStore();
-    const set = createSetUiStateHandler({ state });
-    const get = createGetUiStateHandler({ state });
+    const deps = { state, getActiveUiId: () => "camera-lighting-panel" };
+    const set = createSetUiStateHandler(deps);
+    const get = createGetUiStateHandler(deps);
 
     await expect(set({ key: "camera.x" })).rejects.toThrow("missing value");
     await expect(set({ key: "camera.x", value: null })).resolves.toEqual({
       ok: true,
+      packId: "camera-lighting-panel",
       key: "camera.x",
       value: null,
     });
     await expect(get({ key: "camera.x" })).resolves.toEqual({
+      packId: "camera-lighting-panel",
       key: "camera.x",
       value: null,
     });
+  });
+
+  it("can target a non-active UI pack explicitly", async () => {
+    const state = createUiStateStore();
+    const deps = { state, getActiveUiId: () => "camera-lighting-panel" };
+    const set = createSetUiStateHandler(deps);
+    const get = createGetUiStateHandler(deps);
+
+    await set({ packId: "minimal-badge", key: "visible", value: true });
+
+    await expect(get({ packId: "minimal-badge", key: "visible" })).resolves.toEqual({
+      packId: "minimal-badge",
+      key: "visible",
+      value: true,
+    });
+    await expect(get({ key: "visible" })).resolves.toEqual({
+      packId: "camera-lighting-panel",
+      key: "visible",
+      value: null,
+    });
+  });
+
+  it("requires an active UI pack when packId is omitted", async () => {
+    const state = createUiStateStore();
+    const deps = { state, getActiveUiId: () => null };
+    const set = createSetUiStateHandler(deps);
+    const get = createGetUiStateHandler(deps);
+
+    await expect(set({ key: "camera.x", value: 1 })).rejects.toThrow("no active UI pack");
+    await expect(get({ key: "camera.x" })).rejects.toThrow("no active UI pack");
   });
 });

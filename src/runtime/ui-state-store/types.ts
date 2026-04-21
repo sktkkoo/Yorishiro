@@ -8,8 +8,8 @@
 import type { Disposable } from "@charminal/sdk";
 
 export interface UiStateStore {
-  get(key: string): unknown;
-  set(key: string, value: unknown): void;
-  subscribe(key: string, listener: (value: unknown) => void): Disposable;
-  entries(): Record<string, unknown>;
+  get(packId: string, key: string): unknown;
+  set(packId: string, key: string, value: unknown): void;
+  subscribe(packId: string, key: string, listener: (value: unknown) => void): Disposable;
+  entries(packId: string): Record<string, unknown>;
 }

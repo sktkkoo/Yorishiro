@@ -3,46 +3,69 @@ import { KEYS } from "../module-registry/keys";
 import type { UiStateStore } from "./types";
 
 class UiStateStoreImpl implements UiStateStore {
-  private readonly values = new Map<string, unknown>();
-  private readonly listeners = new Map<string, Set<(value: unknown) => void>>();
+  private readonly values = new Map<string, Map<string, unknown>>();
+  private readonly listeners = new Map<string, Map<string, Set<(value: unknown) => void>>>();
 
-  get(key: string): unknown {
-    return this.values.get(key);
+  get(packId: string, key: string): unknown {
+    return this.values.get(packId)?.get(key);
   }
 
-  set(key: string, value: unknown): void {
-    const previous = this.values.get(key);
+  set(packId: string, key: string, value: unknown): void {
+    const values = this.valuesFor(packId);
+    const previous = values.get(key);
     if (Object.is(previous, value)) return;
 
-    this.values.set(key, value);
-    const listeners = this.listeners.get(key);
+    values.set(key, value);
+    const listeners = this.listeners.get(packId)?.get(key);
     if (!listeners) return;
     for (const listener of Array.from(listeners)) {
       listener(value);
     }
   }
 
-  subscribe(key: string, listener: (value: unknown) => void) {
-    let listeners = this.listeners.get(key);
+  subscribe(packId: string, key: string, listener: (value: unknown) => void) {
+    const packListeners = this.listenersFor(packId);
+    let listeners = packListeners.get(key);
     if (!listeners) {
       listeners = new Set();
-      this.listeners.set(key, listeners);
+      packListeners.set(key, listeners);
     }
     listeners.add(listener);
-    listener(this.get(key));
+    listener(this.get(packId, key));
 
     return {
       dispose: () => {
         listeners.delete(listener);
         if (listeners.size === 0) {
-          this.listeners.delete(key);
+          packListeners.delete(key);
+          if (packListeners.size === 0) {
+            this.listeners.delete(packId);
+          }
         }
       },
     };
   }
 
-  entries(): Record<string, unknown> {
-    return Object.fromEntries(this.values);
+  entries(packId: string): Record<string, unknown> {
+    return Object.fromEntries(this.values.get(packId) ?? []);
+  }
+
+  private valuesFor(packId: string): Map<string, unknown> {
+    let values = this.values.get(packId);
+    if (!values) {
+      values = new Map();
+      this.values.set(packId, values);
+    }
+    return values;
+  }
+
+  private listenersFor(packId: string): Map<string, Set<(value: unknown) => void>> {
+    let listeners = this.listeners.get(packId);
+    if (!listeners) {
+      listeners = new Map();
+      this.listeners.set(packId, listeners);
+    }
+    return listeners;
   }
 }
 

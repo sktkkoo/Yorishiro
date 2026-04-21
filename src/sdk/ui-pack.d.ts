@@ -130,6 +130,10 @@ export interface UiClaimAPI {
 /**
  * UI pack と Claude Code（MCP）をつなぐ key-value state。
  *
+ * この API は active UI pack ごとに scope される。pack A の `camera.x` と
+ * pack B の `camera.x` は別値として保持される。MCP からは packId 省略時に
+ * active UI pack の state を read/write する。
+ *
  * value は JSON serializable な値を推奨する。runtime は unknown として保持し、
  * MCP 経由では JSON として read/write される。
  */

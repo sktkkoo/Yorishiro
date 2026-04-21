@@ -387,9 +387,11 @@ function App() {
           }),
           "get-ui-state": createGetUiStateHandler({
             state: uiState,
+            getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
           }),
           "set-ui-state": createSetUiStateHandler({
             state: uiState,
+            getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
           }),
         };
 
@@ -531,7 +533,11 @@ function App() {
       };
     };
 
-    const buildUiContext = (signal: AbortSignal, targets: LayoutTargets): UiContext => {
+    const buildUiContext = (
+      packId: string,
+      signal: AbortSignal,
+      targets: LayoutTargets,
+    ): UiContext => {
       const threeRuntime = getThreeRuntime();
       const three: UiThreeAPI = {
         get camera() {
@@ -551,6 +557,11 @@ function App() {
         camera: () => claimState.claim("camera"),
         expression: () => claimState.claim("expression"),
         animation: () => claimState.claim("animation"),
+      };
+      const state: UiContext["state"] = {
+        get: (key) => uiState.get(packId, key),
+        set: (key, value) => uiState.set(packId, key, value),
+        subscribe: (key, listener) => uiState.subscribe(packId, key, listener),
       };
 
       return {
@@ -584,7 +595,7 @@ function App() {
         },
         three,
         claim,
-        state: uiState,
+        state,
         time,
         log: createSubsystemLog(devLog, "UiPack"),
         signal,
@@ -636,7 +647,7 @@ function App() {
       currentAbort = abort;
       currentContainer = container;
 
-      const ctx = buildUiContext(abort.signal, targets);
+      const ctx = buildUiContext(entry.id, abort.signal, targets);
       try {
         currentDisposable = entry.pack.mount(ctx, container);
       } catch (err) {
