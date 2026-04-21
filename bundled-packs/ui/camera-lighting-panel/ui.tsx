@@ -13,6 +13,8 @@ import ReactDOM from "react-dom/client";
 import type * as THREE from "three";
 import type { DirectionalLight } from "three";
 
+const PANEL_HEIGHT = "clamp(260px, 32vh, 340px)";
+
 function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
   let found: DirectionalLight | null = null;
   scene.traverse((obj) => {
@@ -95,8 +97,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         top: 0,
         left: "var(--sidebar-width)",
         width: "calc(100% - var(--sidebar-width))",
-        height: "20vh",
-        minHeight: "180px",
+        height: PANEL_HEIGHT,
         padding: "12px",
         display: "grid",
         gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
@@ -193,7 +194,14 @@ export default {
   id: "camera-lighting-panel",
   type: "ui",
   layout: {
-    terminal: { position: "bottom" },
+    terminal: {
+      position: {
+        top: PANEL_HEIGHT,
+        left: "var(--sidebar-width)",
+        width: "calc(100% - var(--sidebar-width))",
+        height: `calc(100% - ${PANEL_HEIGHT})`,
+      },
+    },
   },
   mount(ctx, container) {
     const root = ReactDOM.createRoot(container);
