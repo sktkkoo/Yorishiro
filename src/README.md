@@ -3,7 +3,7 @@
 > このファイルは「**TS 側のどこに何があるか**」を 1 画面で把握したい時に読む。対象：dev / AI。
 > 上位 navigation は [docs/README.md](../docs/README.md)。
 
-Charminal の **canonical runtime**。意識層 (Claude Code) との接続、反射層 (primitives)、UI、pack 管理、SDK 公開を担う。Rust 側は IO のみ、設計判断はすべてこちら。
+Charminal の **canonical runtime**。意識層 (Claude Code / Codex) との接続、反射層 (primitives)、UI、pack 管理、SDK 公開を担う。Rust 側は IO のみ、設計判断はすべてこちら。
 
 ---
 
@@ -65,7 +65,7 @@ hot-data       module-registry
 2. **DevLog** → EventBus に attach（development logging）
 3. **Perception** → EventBus に subscribe（環境観察開始）
 4. **PersonaRegistry** → EventBus に subscribe（active persona の reaction dispatch）
-5. **TerminalRuntime** mount → xterm instance + PTY 接続
+5. **TerminalRuntime** mount → xterm instance + terminal agent params + PTY 接続
 6. **ThreeRuntime** mount → Three.js canvas + VRM loader
 7. **EffectDispatcher** + **EffectPackRunner** → screen-shake などの effect register
 8. **BodyScheduler** — skeleton のまま（post-MVP）

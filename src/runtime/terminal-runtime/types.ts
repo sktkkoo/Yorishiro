@@ -1,5 +1,6 @@
 import type { TerminalCellData } from "@charminal/sdk";
 import type { Perception } from "../../core/perception";
+import type { TerminalAgent } from "../user-pack-loader/config";
 
 /**
  * PTY 接続パラメータ。差分検出に使う。null 値は「まだ決まっていない」を表す。
@@ -7,6 +8,7 @@ import type { Perception } from "../../core/perception";
  * 決める（FitAddon が container サイズから算出）。
  */
 export interface PtyParams {
+  readonly agent: TerminalAgent;
   readonly cwd: string | null;
   readonly systemPrompt: string | null;
 }

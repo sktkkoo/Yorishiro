@@ -25,6 +25,7 @@ const call = <T>(cmd: string, args: object): Promise<T> =>
 // ─── PTY ────────────────────────────────────────────────────────
 
 export interface PtySpawnArgs {
+  readonly agent: "claude" | "codex";
   readonly cols: number;
   readonly rows: number;
   readonly cwd: string | null;
@@ -32,7 +33,7 @@ export interface PtySpawnArgs {
   readonly onOutput: Channel<ArrayBuffer>;
 }
 
-/** claude の PTY を起動する。既存セッションが残っていれば kill してから spawn する。 */
+/** coding agent の PTY を起動する。既存セッションが残っていれば kill してから spawn する。 */
 export const ptySpawn = (args: PtySpawnArgs): Promise<void> => call("pty_spawn", args);
 
 export interface PtyWriteArgs {

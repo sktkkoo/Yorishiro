@@ -164,6 +164,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     void (async () => {
       try {
         await ptySpawn({
+          agent: params.agent,
           cols: this.term.cols,
           rows: this.term.rows,
           cwd: params.cwd,
@@ -171,8 +172,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           onOutput: this.channel,
         });
       } catch (err) {
-        this.term.write(`\x1b[31mFailed to start claude: ${err}\x1b[0m\r\n`);
-        this.term.write("\x1b[90mMake sure claude CLI is installed and in your PATH.\x1b[0m\r\n");
+        this.term.write(`\x1b[31mFailed to start ${params.agent}: ${err}\x1b[0m\r\n`);
+        this.term.write(
+          `\x1b[90mMake sure ${params.agent} CLI is installed and in your PATH.\x1b[0m\r\n`,
+        );
       }
     })();
   }

@@ -1,5 +1,5 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -90,6 +90,13 @@ impl RingBuffer {
 // ─── Hook server ────────────────────────────────────────────────
 
 const HOOK_SERVER_PORT: u16 = 19001;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentKind {
+    Claude,
+    Codex,
+}
 
 fn build_hooks_json(port: u16) -> String {
     // Each hook command: write to debug log AND curl the hook server
@@ -254,6 +261,23 @@ fn has_existing_claude_session(cwd: Option<&str>) -> bool {
         .is_dir()
 }
 
+fn toml_basic_string(value: &str) -> String {
+    let mut out = String::from("\"");
+    for ch in value.chars() {
+        match ch {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if c.is_control() => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 // ─── PTY state ──────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Clone)]
@@ -293,7 +317,8 @@ impl PtyState {
         cols: u16,
         rows: u16,
         cwd: Option<String>,
-        claude_binary: &str,
+        agent: AgentKind,
+        agent_binary: &str,
         system_prompt: Option<String>,
         plugin_dir: Option<std::path::PathBuf>,
         on_output: Channel,
@@ -312,12 +337,7 @@ impl PtyState {
             })
             .map_err(|e| format!("PTY open failed: {}", e))?;
 
-        let mut cmd = CommandBuilder::new(claude_binary);
-        // `-c` resumes the prior session for this cwd; passing it when none
-        // exists makes claude exit with an error. Skip it for fresh dirs.
-        if has_existing_claude_session(cwd.as_deref()) {
-            cmd.arg("-c");
-        }
+        let mut cmd = CommandBuilder::new(agent_binary);
         cmd.env("PATH", crate::build_path_env());
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -325,42 +345,67 @@ impl PtyState {
         let lang = std::env::var("LANG").unwrap_or_else(|_| "ja_JP.UTF-8".to_string());
         cmd.env("LANG", lang);
 
-        // Write hooks settings to temp file and pass to Claude Code
-        let hooks_json = build_hooks_json(HOOK_SERVER_PORT);
-        let hooks_path =
-            std::env::temp_dir().join(format!("charminal-hooks-{}.json", std::process::id()));
-        std::fs::write(&hooks_path, &hooks_json)
-            .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
-        cmd.arg("--settings");
-        cmd.arg(hooks_path.to_str().unwrap_or_default());
-
-        // Load Charminal's bundled plugin dir (contains /charm skill).
-        // Session-scoped; does not touch ~/.claude or the user's cwd.
-        if let Some(ref dir) = plugin_dir {
-            if dir.exists() {
-                cmd.arg("--plugin-dir");
-                cmd.arg(dir.to_str().unwrap_or_default());
-
-                // Claude Code plugin の .mcp.json は auto-discover されないため、
-                // --mcp-config で明示的に load させる。これで Charminal が立てる
-                // MCP server (localhost:18743) を AI が tool として認識できる。
-                // Phase 1-c で追加（design-record 2026-04-18-phase-1c-rescue-and-mcp.md）。
-                let mcp_config = dir.join(".mcp.json");
-                if mcp_config.is_file() {
-                    cmd.arg("--mcp-config");
-                    cmd.arg(mcp_config.to_str().unwrap_or_default());
+        let mut hooks_path_to_cleanup: Option<std::path::PathBuf> = None;
+        match agent {
+            AgentKind::Claude => {
+                // `-c` resumes the prior session for this cwd; passing it when none
+                // exists makes claude exit with an error. Skip it for fresh dirs.
+                if has_existing_claude_session(cwd.as_deref()) {
+                    cmd.arg("-c");
                 }
-            } else {
-                eprintln!(
-                    "[pty.spawn] plugin_dir does not exist, skipping: {}",
-                    dir.display()
-                );
-            }
-        }
 
-        if let Some(ref prompt) = system_prompt {
-            cmd.arg("--append-system-prompt");
-            cmd.arg(prompt);
+                // Write hooks settings to temp file and pass to Claude Code.
+                let hooks_json = build_hooks_json(HOOK_SERVER_PORT);
+                let hooks_path = std::env::temp_dir()
+                    .join(format!("charminal-hooks-{}.json", std::process::id()));
+                std::fs::write(&hooks_path, &hooks_json)
+                    .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
+                cmd.arg("--settings");
+                cmd.arg(hooks_path.to_str().unwrap_or_default());
+                hooks_path_to_cleanup = Some(hooks_path);
+
+                // Load Charminal's bundled plugin dir (contains /charm skill).
+                // Session-scoped; does not touch ~/.claude or the user's cwd.
+                if let Some(ref dir) = plugin_dir {
+                    if dir.exists() {
+                        cmd.arg("--plugin-dir");
+                        cmd.arg(dir.to_str().unwrap_or_default());
+
+                        // Claude Code plugin の .mcp.json は auto-discover されないため、
+                        // --mcp-config で明示的に load させる。これで Charminal が立てる
+                        // MCP server (localhost:18743) を AI が tool として認識できる。
+                        // Phase 1-c で追加（design-record 2026-04-18-phase-1c-rescue-and-mcp.md）。
+                        let mcp_config = dir.join(".mcp.json");
+                        if mcp_config.is_file() {
+                            cmd.arg("--mcp-config");
+                            cmd.arg(mcp_config.to_str().unwrap_or_default());
+                        }
+                    } else {
+                        eprintln!(
+                            "[pty.spawn] plugin_dir does not exist, skipping: {}",
+                            dir.display()
+                        );
+                    }
+                }
+
+                if let Some(ref prompt) = system_prompt {
+                    cmd.arg("--append-system-prompt");
+                    cmd.arg(prompt);
+                }
+            }
+            AgentKind::Codex => {
+                if let Some(ref dir) = cwd {
+                    cmd.arg("--cd");
+                    cmd.arg(dir);
+                }
+                if let Some(ref prompt) = system_prompt {
+                    cmd.arg("-c");
+                    cmd.arg(format!(
+                        "developer_instructions={}",
+                        toml_basic_string(prompt)
+                    ));
+                }
+            }
         }
 
         if let Some(ref dir) = cwd {
@@ -370,7 +415,7 @@ impl PtyState {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn claude: {}", e))?;
+            .map_err(|e| format!("Failed to spawn {:?}: {}", agent, e))?;
         drop(pair.slave);
 
         let reader = pair
@@ -389,7 +434,7 @@ impl PtyState {
 
         *lock_or_recover(&self.output_channel) = Some(on_output);
         *lock_or_recover(&self.spawned_cwd) = cwd;
-        *lock_or_recover(&self.hooks_path) = Some(hooks_path);
+        *lock_or_recover(&self.hooks_path) = hooks_path_to_cleanup;
         lock_or_recover(&self.ring_buffer).clear();
 
         // Spawn reader thread
@@ -621,6 +666,14 @@ mod tests {
         let result = has_existing_claude_session(Some(&path_str));
         let _ = std::fs::remove_dir(&tmp);
         assert!(!result, "fresh tempdir should not have a Claude session");
+    }
+
+    #[test]
+    fn toml_basic_string_escapes_prompt_for_codex_config() {
+        assert_eq!(
+            toml_basic_string("a \"quote\"\npath\\tail"),
+            "\"a \\\"quote\\\"\\npath\\\\tail\""
+        );
     }
 
     #[test]

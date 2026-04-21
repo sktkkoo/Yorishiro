@@ -38,7 +38,7 @@ import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
-import { parseConfig } from "./runtime/user-pack-loader/config";
+import { parseConfig, type TerminalAgent } from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
 import type { ScenePackManifest } from "./sdk/scene-pack";
@@ -183,8 +183,8 @@ function App() {
     });
     // userLayerReady は Terminal mount を gate する Promise。
     // **Step 3 完了直後** に resolve する（systemPrompt の race / 多重 spawn 回避）。
-    let userLayerReadyResolve!: () => void;
-    const userLayerReady = new Promise<void>((resolve) => {
+    let userLayerReadyResolve!: (terminalAgent: TerminalAgent) => void;
+    const userLayerReady = new Promise<TerminalAgent>((resolve) => {
       userLayerReadyResolve = resolve;
     });
 
@@ -223,9 +223,11 @@ function App() {
       // 旧設計は IIFE 2 つで個別に config を読んでいたが、同じ file を 2 度 parse
       // していた。1 回読み + 両 registry に流す。失敗しても次 step は続行
       // （bundled fallback で動く）。
+      let terminalAgent: TerminalAgent = "claude";
       try {
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
+        terminalAgent = config.terminalAgent;
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
@@ -269,7 +271,7 @@ function App() {
       // ★ Terminal mount 解禁。primaryPersona は確定済（bundled fallback or user pack
       //   register 済）、systemPrompt の race は起きない。以下 step は Terminal とは
       //   独立に走るので、失敗しても Terminal の表示は止まらない。
-      userLayerReadyResolve();
+      userLayerReadyResolve(terminalAgent);
 
       // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
@@ -388,7 +390,7 @@ function App() {
         note: "bootstrap crashed (unexpected)",
         data: { error: err instanceof Error ? err.message : String(err) },
       });
-      userLayerReadyResolve();
+      userLayerReadyResolve("claude");
     });
 
     return {
@@ -418,13 +420,17 @@ function App() {
   } = runtime;
 
   // user layer load（bundled + user pack 登録、primaryPersona 反映）完了を待ってから
-  // Terminal を mount する。これで Claude Code の PTY spawn は確定した primaryPersona の
-  // systemPrompt で 1 回だけ走る（多重 spawn / null systemPrompt race を回避）。
+  // Terminal を mount する。これで coding agent の PTY spawn は確定した primaryPersona の
+  // prompt overlay で 1 回だけ走る（多重 spawn / null prompt race を回避）。
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
+  const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   useEffect(() => {
     let cancelled = false;
-    userLayerReady.then(() => {
-      if (!cancelled) setIsUserLayerReady(true);
+    userLayerReady.then((agent) => {
+      if (!cancelled) {
+        setTerminalAgent(agent);
+        setIsUserLayerReady(true);
+      }
     });
     return () => {
       cancelled = true;
@@ -801,6 +807,7 @@ function App() {
       {isUserLayerReady && (
         <Terminal
           key={cwd ?? "__default__"}
+          agent={terminalAgent}
           cwd={cwd}
           systemPrompt={primaryPersona?.thinking?.systemPromptAddition ?? null}
           perception={perception}

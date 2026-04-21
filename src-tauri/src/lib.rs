@@ -1,7 +1,7 @@
 mod mcp;
 mod pty;
 
-use pty::{start_hook_server, PtyState};
+use pty::{start_hook_server, AgentKind, PtyState};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -9,20 +9,24 @@ use std::time::{Duration, UNIX_EPOCH};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
-fn find_claude_binary() -> String {
+fn find_agent_binary(agent: AgentKind) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
+    let binary_name = match agent {
+        AgentKind::Claude => "claude",
+        AgentKind::Codex => "codex",
+    };
     let candidates = [
-        format!("{}/.local/bin/claude", home),
-        format!("{}/.cargo/bin/claude", home),
-        "/usr/local/bin/claude".to_string(),
-        "/opt/homebrew/bin/claude".to_string(),
+        format!("{}/.local/bin/{}", home, binary_name),
+        format!("{}/.cargo/bin/{}", home, binary_name),
+        format!("/usr/local/bin/{}", binary_name),
+        format!("/opt/homebrew/bin/{}", binary_name),
     ];
     for path in &candidates {
         if std::path::Path::new(path).exists() {
             return path.clone();
         }
     }
-    "claude".to_string()
+    binary_name.to_string()
 }
 
 fn build_path_env() -> String {
@@ -35,16 +39,18 @@ fn build_path_env() -> String {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn pty_spawn(
     app: AppHandle,
     state: State<'_, PtyState>,
+    agent: AgentKind,
     cols: u16,
     rows: u16,
     cwd: Option<String>,
     system_prompt: Option<String>,
     on_output: Channel,
 ) -> Result<(), String> {
-    let claude_bin = find_claude_binary();
+    let agent_bin = find_agent_binary(agent);
     let plugin_dir = app
         .path()
         .resource_dir()
@@ -55,7 +61,8 @@ async fn pty_spawn(
         cols,
         rows,
         cwd,
-        &claude_bin,
+        agent,
+        &agent_bin,
         system_prompt,
         plugin_dir,
         on_output,

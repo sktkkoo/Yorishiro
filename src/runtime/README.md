@@ -17,7 +17,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `body-scheduler/` | 複数 persona の motion 衝突解決 | `index.ts` | **skeleton**, post-MVP |
 | `hot-data/` | HMR-aware singleton store（Vite reload を生き残る） | `hot-data.ts` | foundational |
 | `module-registry/` | Typed registry of swappable runtime modules（VRM loader / audio player ...） | `module-registry.ts` + `keys.ts` | foundational、HMR で hot-data 経由 survive |
-| `terminal-runtime/` | Webview lifetime singleton — xterm + PTY channel + perception ref | `terminal-runtime.ts` | |
+| `terminal-runtime/` | Webview lifetime singleton — xterm + PTY channel + terminal agent params + perception ref | `terminal-runtime.ts` | |
 | `three-runtime/` | Webview lifetime singleton — Three.js canvas / RAF / VRM model | `three-runtime.ts` | |
 | `vrm-cache/` | URL → ArrayBuffer LRU cache（VRM blob） | `vrm-cache.ts` | |
 | `scene-pack-registry/` | Scene pack の manifest / asset resolution | `scene-pack-registry.ts` + `asset-resolver.ts` | single-active（config picks） |
@@ -41,6 +41,8 @@ user-pack-loader/  ◄─── persona-registry/, scene-pack-registry/
 
 terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) との singleton wrapper
 ```
+
+`terminalAgent` は `user-pack-loader/config.ts` で parse し、`App.tsx` の user-layer bootstrap 完了後に `terminal-runtime/` へ渡す。これにより primaryPersona の prompt overlay と agent 選択が同じ gate で確定し、null prompt race / 多重 spawn を避ける。
 
 ---
 
@@ -82,5 +84,7 @@ const renderer = getOrInit(KEYS.threeRenderer, () => createRenderer());
 ## 関連 doc
 
 - API（pack 作者向け）：[../sdk/README.md](../sdk/README.md)
+- User config：[docs/configuration.md](../../docs/configuration.md)
 - 制約：[docs/decisions/critical-constraints.md](../../docs/decisions/critical-constraints.md) §3 Synthetic event、§4 Twin-trigger
+- Terminal agent：[docs/decisions/codex-terminal-agent.md](../../docs/decisions/codex-terminal-agent.md)
 - 内部設計記録：`../Charminal-design-record/2026-04-19-core-mcp-pack-layers.md` (core / pack / MCP の層構造)

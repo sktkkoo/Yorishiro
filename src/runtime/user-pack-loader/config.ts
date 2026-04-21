@@ -11,6 +11,7 @@
  * - `mcpPort: number`（optional）: MCP server の port override
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
+ * - `terminalAgent: "claude" | "codex"`（optional）: Terminal で自動起動する coding agent
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
@@ -28,7 +29,11 @@ export interface CharminalConfig {
   readonly activeScene: string | null;
   /** User が explicit に picks した UI pack の id。null なら UI pack なし。 */
   readonly activeUi: string | null;
+  /** Terminal で自動起動する coding agent。未指定なら Claude Code。 */
+  readonly terminalAgent: TerminalAgent;
 }
+
+export type TerminalAgent = "claude" | "codex";
 
 export const EMPTY_CONFIG: CharminalConfig = {
   disabledPacks: [],
@@ -36,6 +41,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   mcpPort: null,
   activeScene: null,
   activeUi: null,
+  terminalAgent: "claude",
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -49,6 +55,10 @@ const toPort = (value: unknown): number | null => {
 
 const toNullableString = (value: unknown): string | null => {
   return typeof value === "string" && value !== "" ? value : null;
+};
+
+const toTerminalAgent = (value: unknown): TerminalAgent => {
+  return value === "codex" ? "codex" : "claude";
 };
 
 /**
@@ -73,6 +83,7 @@ export function parseConfig(text: string): CharminalConfig {
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
     activeUi: toNullableString(obj.activeUi),
+    terminalAgent: toTerminalAgent(obj.terminalAgent),
   };
 }
 
@@ -87,6 +98,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
+  if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 

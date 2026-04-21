@@ -16,6 +16,7 @@
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
 | 過去に「なぜそう決めたか」を引きたい | [`decisions/README.md`](decisions/README.md) |
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
+| `~/.charminal/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
 | Build / lint / test の動かし方を知りたい | [project root `CLAUDE.md`](../CLAUDE.md) §Linting & formatting |
 | 自動生成された API doc を見たい | `npm run doc && open docs/api/typescript/index.html` |
 
@@ -99,7 +100,7 @@ Source code 内で参照するときは：
 | Module | 責務 | 詳細 |
 |---|---|---|
 | `lib.rs` / `main.rs` | Tauri app entry / command 登録 / setup hook | [../src-tauri/README.md](../src-tauri/README.md) |
-| `pty.rs` | PTY lifecycle / ring buffer / hook server (port 19001) | 同上 |
+| `pty.rs` | PTY lifecycle / ring buffer / terminal agent launch（Claude Code / Codex）/ hook server (port 19001) | 同上 |
 | `mcp/` | MCP 1.5 server (port 18743 default) / 4 tools (list_load_errors / list_packs / enable_pack / disable_pack) | 同上 |
 | User layer commands | `~/.charminal/` の watch / atomic write / pack scan | 同上 |
 
