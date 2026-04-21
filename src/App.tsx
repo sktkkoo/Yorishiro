@@ -7,7 +7,9 @@ import type {
   UiPackManifest,
   UiThreeAPI,
 } from "@charminal/sdk";
+import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as ReactJsxRuntime from "react/jsx-runtime";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
@@ -23,7 +25,7 @@ import minimalBadgeManifest from "../bundled-packs/ui/minimal-badge/manifest.jso
 import minimalBadgePack from "../bundled-packs/ui/minimal-badge/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
-import { LogBridge } from "./core/log-bridge";
+import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import type { SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
@@ -61,6 +63,14 @@ import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
+
+declare global {
+  var __CHARMINAL_REACT__: typeof React | undefined;
+  var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+}
+
+globalThis.__CHARMINAL_REACT__ = React;
+globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 
 function App() {
   // ── State placement rule ────────────────────────────────────
@@ -277,6 +287,7 @@ function App() {
           effectPackRunner,
           personaRegistry,
           scenePackRegistry,
+          uiPackRegistry,
           effectDispatcher,
           packRegistry,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
@@ -364,6 +375,7 @@ function App() {
             effectPackRunner,
             personaRegistry,
             scenePackRegistry,
+            uiPackRegistry,
             packRegistry,
             userPackLog,
           });
@@ -597,7 +609,7 @@ function App() {
         claim,
         state,
         time,
-        log: createSubsystemLog(devLog, "UiPack"),
+        log: createLogAPI(logBridge, packId),
         signal,
         layout: {
           update: (layout: UiLayout) => {
@@ -676,7 +688,16 @@ function App() {
       if (targets) resetLayout(targets);
       claimState.releaseAll();
     };
-  }, [uiPackRegistry, effectDispatcher, time, devLog, claimState, uiState, isUserLayerReady]);
+  }, [
+    uiPackRegistry,
+    effectDispatcher,
+    time,
+    devLog,
+    claimState,
+    uiState,
+    isUserLayerReady,
+    logBridge,
+  ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
