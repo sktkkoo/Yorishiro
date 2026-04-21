@@ -1,7 +1,7 @@
 # bundled-packs/ — 同梱 pack と shared assets
 
 > このファイルは「**同梱 pack に何があるか・どう扱うか**（layout / immutability / fork stance）」を確認したい時に読む。対象：dev / AI / pack 作者。
-> Pack を書く方法は [../src/sdk/README.md](../src/sdk/README.md)。Pack 種別（persona / harness / effect / scene の 4 種）の整理は同 doc 冒頭。
+> Pack を書く方法は [../src/sdk/README.md](../src/sdk/README.md)。Pack 種別（persona / harness / effect / scene / ui の 5 種）の整理は同 doc 冒頭。
 
 Charminal に同梱される **standard pack** と **shared assets**。pack 作者向けの reference implementation でもある。
 
@@ -19,6 +19,8 @@ bundled-packs/
 │   └── quiet-room/          — Phase 1 default scene (3 layer)
 ├── effects/
 │   └── screen-shake/        — DOM shake on error
+├── ui/
+│   └── minimal-badge/       — Plan 1 実機確認用 dummy UI pack
 └── shared/                  — 共有 asset library
     ├── animations/          — VRMA
     ├── voices/              — voice category 別
@@ -72,6 +74,12 @@ bundled-packs/
 - **Files**: `manifest.json`, `README.md`
 - **役割**: 連発花火。`fireworks` pack を内部で n 回呼び、各発の位置を random 範囲内で散らし + 発射間隔に jitter を入れる。`ctx.dispatchEffect({ kind: "fireworks-volley" })` だけで default の 3 連発が走るので、init.js の雛形はこの 1 行で済む
 - 詳細：`bundled-packs/effects/fireworks-volley/README.md`
+
+## ui/
+
+UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は [`docs/decisions/ui-pack-single-active.md`](../docs/decisions/ui-pack-single-active.md) 参照。
+
+- **minimal-badge** — Plan 1 の実機確認用 dummy。右上バッジ 1 つ、クリックで screen-shake 発火。
 
 ---
 

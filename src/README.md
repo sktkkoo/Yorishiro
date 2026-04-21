@@ -20,6 +20,20 @@ Charminal の **canonical runtime**。意識層 (Claude Code) との接続、反
 
 その他直下の UI component（`sidebar.tsx`, `terminal.tsx`, `vrm-viewer.tsx`）は App.tsx から直接 import。
 
+### core/ 主要 sub-module（抜粋）
+
+| Sub-module | 責務 |
+|---|---|
+| `core/ui-layout/` | UI pack の layout spec を HTMLElement style に適用する engine |
+| （他 sub-module は [core/README.md](core/README.md) 参照） | — |
+
+### runtime/ 主要 sub-module（抜粋）
+
+| Sub-module | 責務 |
+|---|---|
+| `runtime/ui-pack-registry/` | single-active な UI pack の registry（config.activeUi 反映） |
+| （他 sub-module は [runtime/README.md](runtime/README.md) 参照） | — |
+
 ---
 
 ## 依存関係（高水位）
