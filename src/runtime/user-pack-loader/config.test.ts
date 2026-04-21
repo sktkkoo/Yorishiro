@@ -14,6 +14,7 @@ import {
   parseConfig,
   serializeConfig,
   withActiveSceneSet,
+  withActiveUiSet,
   withDisabledPackAdded,
   withDisabledPackRemoved,
   withPrimaryPersonaSet,
@@ -35,6 +36,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     });
   });
 
@@ -45,6 +47,7 @@ describe("parseConfig", () => {
       primaryPersona: "charminal-default",
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     });
   });
 
@@ -55,6 +58,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     });
   });
 
@@ -65,6 +69,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     });
   });
 
@@ -75,6 +80,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     });
   });
 
@@ -85,6 +91,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: 12345,
       activeScene: null,
+      activeUi: null,
     });
   });
 
@@ -100,6 +107,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     });
   });
 });
@@ -117,6 +125,7 @@ describe("serializeConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -127,6 +136,7 @@ describe("serializeConfig", () => {
       primaryPersona: "my-persona",
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -142,6 +152,7 @@ describe("serializeConfig", () => {
       primaryPersona: null,
       mcpPort: 18743,
       activeScene: null,
+      activeUi: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -152,6 +163,7 @@ describe("serializeConfig", () => {
       primaryPersona: "my-persona",
       mcpPort: 18743,
       activeScene: null,
+      activeUi: null,
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -175,6 +187,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -186,6 +199,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      activeUi: null,
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);
@@ -235,6 +249,34 @@ describe("withActiveSceneSet", () => {
     const cfg = { ...EMPTY_CONFIG, activeScene: "existing" };
     const next = withActiveSceneSet(cfg, null);
     expect(next.activeScene).toBeNull();
+  });
+});
+
+describe("activeUi", () => {
+  it("reads activeUi from config", () => {
+    const config = parseConfig('{"activeUi": "minimal-badge"}');
+    expect(config.activeUi).toBe("minimal-badge");
+  });
+
+  it("activeUi defaults to null for empty config", () => {
+    const config = parseConfig("");
+    expect(config.activeUi).toBeNull();
+  });
+
+  it("activeUi defaults to null for missing field", () => {
+    const config = parseConfig('{"primaryPersona": "test"}');
+    expect(config.activeUi).toBeNull();
+  });
+
+  it("serializeConfig includes activeUi when set", () => {
+    const config = { ...EMPTY_CONFIG, activeUi: "my-ui" };
+    const text = serializeConfig(config);
+    expect(JSON.parse(text).activeUi).toBe("my-ui");
+  });
+
+  it("withActiveUiSet updates the field", () => {
+    const updated = withActiveUiSet(EMPTY_CONFIG, "minimal-badge");
+    expect(updated.activeUi).toBe("minimal-badge");
   });
 });
 
