@@ -73,6 +73,16 @@ describe("applyLayout", () => {
     expect(targets.terminal.style.display).toBe("none");
   });
 
+  it("terminal position=bottom で下 40% 配置 shortcut", () => {
+    const targets = makeTargets();
+    applyLayout({ terminal: { position: "bottom" } }, targets);
+    expect(targets.terminal.style.position).toBe("fixed");
+    expect(targets.terminal.style.top).toBe("60%");
+    expect(targets.terminal.style.left).toBe("var(--sidebar-width)");
+    expect(targets.terminal.style.width).toBe("calc(100% - var(--sidebar-width))");
+    expect(targets.terminal.style.height).toBe("40%");
+  });
+
   it("sidebar fullscreen で width:100vw", () => {
     const targets = makeTargets();
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);

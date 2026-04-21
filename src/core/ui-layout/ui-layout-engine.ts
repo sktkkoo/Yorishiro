@@ -62,6 +62,13 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
     const t = layout.terminal;
     if (t.position === "hidden") {
       targets.terminal.style.display = "none";
+    } else if (t.position === "bottom") {
+      // 画面下 40%、sidebar 右側に配置する shortcut。camera-lighting-panel 等で使う
+      targets.terminal.style.position = "fixed";
+      targets.terminal.style.top = "60%";
+      targets.terminal.style.left = "var(--sidebar-width)";
+      targets.terminal.style.width = "calc(100% - var(--sidebar-width))";
+      targets.terminal.style.height = "40%";
     } else if (typeof t.position === "object") {
       targets.terminal.style.position = "fixed";
       targets.terminal.style.top = t.position.top;

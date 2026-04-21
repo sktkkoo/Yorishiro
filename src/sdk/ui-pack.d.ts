@@ -36,9 +36,10 @@ export interface UiLayout {
     readonly transparent?: boolean;
   };
   readonly terminal?: {
-    /** "default" = flex:1、"hidden" = display:none、object = 絶対配置 */
+    /** "default" = flex:1、"bottom" = 画面下 40% に配置、"hidden" = display:none、object = 絶対配置 */
     readonly position?:
       | "default"
+      | "bottom"
       | "hidden"
       | {
           readonly top: string;
@@ -84,8 +85,11 @@ export interface UiContext {
 }
 
 export interface UiLayoutAPI {
-  /** 現在の layout を full-replace する（reset → apply）。差分適用ではない。 */
-  update(layout: UiLayout): void;
+  /**
+   * layout を full-replace する（reset → apply）。差分適用ではない：
+   * 引数 `full` は「今適用したい layout の完全な形」であり、前回 apply した値は残らない。
+   */
+  update(full: UiLayout): void;
 }
 
 /**
