@@ -24,7 +24,7 @@ export class UiPackRegistryImpl
     super({
       extractValue: (entry) => entry,
       label: "UiPackRegistry",
-      warnOnMultipleBundled: true,
+      warnOnMultipleBundled: false,
     });
   }
 

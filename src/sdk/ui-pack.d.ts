@@ -16,6 +16,8 @@
  * Internal design-record: specs/2026-04-21-ui-pack-design.md
  */
 
+import type { VRM } from "@pixiv/three-vrm";
+import type * as THREE from "three";
 import type { CharacterAPI, Disposable, LogAPI, SpaceAPI, Time } from "./context";
 
 /**
@@ -66,22 +68,61 @@ export interface UiPackManifest {
 }
 
 /**
- * UI pack の mount context（Plan 1 時点の shape）。
+ * UI pack の mount context（Plan 2 時点の shape）。
  *
- * ⚠️ unstable: Plan 2 で three / claim、Plan 3 で state が追加される。
+ * ⚠️ unstable: Plan 3 で state が追加される。
  *
  * - space: existing SpaceAPI（injectEffect 等）を再利用
  * - character: existing CharacterAPI（express / play / gaze）を再利用
+ * - three: Three.js オブジェクトを直接操作（camera / scene / renderer / vrm）
+ * - claim: 本体の自動処理を一時 suspend（camera tracking / expression / animation）
  * - layout: runtime で layout を変更する API
  * - signal: pack deactivate 時に fire する AbortSignal
  */
 export interface UiContext {
   readonly space: SpaceAPI;
   readonly character: CharacterAPI;
+  readonly three: UiThreeAPI;
+  readonly claim: UiClaimAPI;
   readonly time: Time;
   readonly log: LogAPI;
   readonly signal: AbortSignal;
   readonly layout: UiLayoutAPI;
+}
+
+/**
+ * Three.js オブジェクトへの live 参照。pack は `.position.set(...)` のように
+ * 直接 mutate してよい。ただし「本体の自動処理と衝突するもの」（camera tracking、
+ * 呼吸、表情）は `ctx.claim.xxx()` で本体の更新を止めてから触ること。
+ *
+ * vrm は load 前は null、load 後に非 null。現状 vrm 入れ替えは想定しない。
+ */
+export interface UiThreeAPI {
+  readonly camera: THREE.PerspectiveCamera;
+  readonly scene: THREE.Scene;
+  readonly renderer: THREE.WebGLRenderer;
+  readonly vrm: VRM | null;
+}
+
+/**
+ * 本体の自動処理を suspend する claim API。
+ *
+ * 各 method は Disposable を返し、dispose で release する。UI pack が
+ * deactivate される（signal abort）と、pack 内の Disposable は一斉に
+ * dispose される責務を pack 作者が持つ。万が一漏れても App.tsx の
+ * cleanup path で強制 release される（safety net）。
+ *
+ * 対象：
+ *   - camera: ThreeRuntime の head tracking（`camera.position.y` 追従 + `lookAt`）
+ *   - expression: Body の express slot 解決 + VRM expressionManager への反映
+ *   - animation: Body の animationPlayer.update + proceduralBones.update（呼吸 / head drift / VRMA）
+ *
+ * ※ lighting は Plan 2 時点では hard-code のため claim 対象外。scene 経由で直接操作する。
+ */
+export interface UiClaimAPI {
+  camera(): Disposable;
+  expression(): Disposable;
+  animation(): Disposable;
 }
 
 export interface UiLayoutAPI {

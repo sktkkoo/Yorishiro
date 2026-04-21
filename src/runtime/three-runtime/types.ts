@@ -1,3 +1,5 @@
+import type { VRM } from "@pixiv/three-vrm";
+import type * as THREE from "three";
 import type { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
 
@@ -37,4 +39,10 @@ export interface ThreeRuntime {
    * しても動かない。canvasContainer 自身に当てる必要がある。
    */
   setShakeOffset(dx: number, dy: number): void;
+  /** UI pack 等が直接操作するための getter。 */
+  getCamera(): THREE.PerspectiveCamera;
+  getScene(): THREE.Scene;
+  getRenderer(): THREE.WebGLRenderer;
+  /** VRM 未 load なら null。load 後に非 null。 */
+  getVrm(): VRM | null;
 }

@@ -1,4 +1,12 @@
-import type { Disposable, Trigger, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
+import type {
+  Disposable,
+  Trigger,
+  UiClaimAPI,
+  UiContext,
+  UiLayout,
+  UiPackManifest,
+  UiThreeAPI,
+} from "@charminal/sdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
@@ -9,6 +17,8 @@ import charminalDefaultManifest from "../bundled-packs/personas/charminal-defaul
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
 import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
+import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
+import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import minimalBadgeManifest from "../bundled-packs/ui/minimal-badge/manifest.json";
 import minimalBadgePack from "../bundled-packs/ui/minimal-badge/ui";
 import type { Body, EyeState } from "./core/body";
@@ -35,6 +45,8 @@ import {
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { getThreeRuntime } from "./runtime/three-runtime";
+import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
@@ -119,6 +131,7 @@ function App() {
     // UI pack registry — HMR singleton（KEYS.UI_PACK_REGISTRY で共有）。
     // bundled minimal-badge を sync register（static import 済なので同期で確定）。
     const uiPackRegistry = getUiRegistry();
+    const claimState = getClaimState();
 
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
     // PersonaRegistryImpl は state management（active persona / subscribeActive）。
@@ -139,6 +152,21 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled persona '${charminalDefaultPack.id}'`,
+    });
+
+    // bundled camera-lighting-panel UI pack（Plan 2 reference）。
+    uiPackRegistry.register({
+      id: cameraLightingPanelPack.id,
+      origin: "bundled",
+      manifest: cameraLightingPanelManifest as UiPackManifest,
+      pack: {
+        layout: cameraLightingPanelPack.layout,
+        mount: cameraLightingPanelPack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
     });
 
     // bundled minimal-badge UI pack を sync register（bundled persona と同じ扱い）。
@@ -401,6 +429,7 @@ function App() {
       effectDispatcher,
       scenePackRegistry,
       uiPackRegistry,
+      claimState,
       userLayerReady,
     };
   });
@@ -413,6 +442,7 @@ function App() {
     effectDispatcher,
     scenePackRegistry,
     uiPackRegistry,
+    claimState,
     time,
     userLayerReady,
   } = runtime;
@@ -486,45 +516,70 @@ function App() {
       };
     };
 
-    const buildUiContext = (signal: AbortSignal, targets: LayoutTargets): UiContext => ({
-      space: {
-        injectEffect: (request) => effectDispatcher.dispatch(request),
-      },
-      // Plan 1 では character は最小 stub（Plan 2 で実機接続）。
-      // SDK 型の全 field を満たす（GazeHandle は target / active / release 3 field 必須）。
-      character: {
-        express: () => ({
-          target: { kind: "mood", preset: "relaxed" },
-          requestedIntensity: 0,
-          effectiveWeight: 0,
-          setIntensity: () => {},
-          release: () => {},
-        }),
-        play: () => ({
-          animation: "anim:noop",
-          startedAt: 0,
-          setWeight: () => {},
-          stop: () => Promise.resolve(),
-          cancel: () => {},
-          completion: Promise.resolve(),
-        }),
-        gaze: () => ({
-          target: { kind: "away" },
-          active: false,
-          release: () => {},
-        }),
-        interrupt: () => {},
-      },
-      time,
-      log: createSubsystemLog(devLog, "UiPack"),
-      signal,
-      layout: {
-        update: (layout: UiLayout) => {
-          resetLayout(targets);
-          applyLayout(layout, targets);
+    const buildUiContext = (signal: AbortSignal, targets: LayoutTargets): UiContext => {
+      const threeRuntime = getThreeRuntime();
+      const three: UiThreeAPI = {
+        get camera() {
+          return threeRuntime.getCamera();
         },
-      },
-    });
+        get scene() {
+          return threeRuntime.getScene();
+        },
+        get renderer() {
+          return threeRuntime.getRenderer();
+        },
+        get vrm() {
+          return threeRuntime.getVrm();
+        },
+      };
+      const claim: UiClaimAPI = {
+        camera: () => claimState.claim("camera"),
+        expression: () => claimState.claim("expression"),
+        animation: () => claimState.claim("animation"),
+      };
+
+      return {
+        space: {
+          injectEffect: (request) => effectDispatcher.dispatch(request),
+        },
+        // character は最小 stub（character の実接続は別 plan）。
+        // SDK 型の全 field を満たす（GazeHandle は target / active / release 3 field 必須）。
+        character: {
+          express: () => ({
+            target: { kind: "mood", preset: "relaxed" },
+            requestedIntensity: 0,
+            effectiveWeight: 0,
+            setIntensity: () => {},
+            release: () => {},
+          }),
+          play: () => ({
+            animation: "anim:noop",
+            startedAt: 0,
+            setWeight: () => {},
+            stop: () => Promise.resolve(),
+            cancel: () => {},
+            completion: Promise.resolve(),
+          }),
+          gaze: () => ({
+            target: { kind: "away" },
+            active: false,
+            release: () => {},
+          }),
+          interrupt: () => {},
+        },
+        three,
+        claim,
+        time,
+        log: createSubsystemLog(devLog, "UiPack"),
+        signal,
+        layout: {
+          update: (layout: UiLayout) => {
+            resetLayout(targets);
+            applyLayout(layout, targets);
+          },
+        },
+      };
+    };
 
     const activateEntry = (entry: UiPackEntry | null) => {
       // 前の UI pack を cleanup
@@ -538,6 +593,7 @@ function App() {
       }
       const prevTargets = getLayoutTargets();
       if (prevTargets) resetLayout(prevTargets);
+      claimState.releaseAll();
 
       if (!entry) return;
 
@@ -578,6 +634,7 @@ function App() {
         currentContainer = null;
         abort.abort();
         currentAbort = null;
+        claimState.releaseAll();
       }
     };
 
@@ -590,8 +647,9 @@ function App() {
       if (currentContainer) currentContainer.remove();
       const targets = getLayoutTargets();
       if (targets) resetLayout(targets);
+      claimState.releaseAll();
     };
-  }, [uiPackRegistry, effectDispatcher, time, devLog, isUserLayerReady]);
+  }, [uiPackRegistry, effectDispatcher, time, devLog, claimState, isUserLayerReady]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 
