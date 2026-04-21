@@ -13,7 +13,7 @@
  * 落ちる場所を明示的にするための safety net。
  */
 
-import type { EffectDefinition, PersonaDefinition } from "./index";
+import type { EffectDefinition, PersonaDefinition, UiPackDefinition } from "./index";
 import type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 
 /** Pack の shape 違反で throw される error。loader 側で catch して dev-log に流す想定。 */
@@ -55,6 +55,22 @@ export function validateEffectDefinition(pack: unknown): EffectDefinition {
   requireField(pack, "type", (v) => v === "effect", '"effect"', ctx);
   requireField(pack, "run", (v) => typeof v === "function", "a function", ctx);
   return pack as unknown as EffectDefinition;
+}
+
+/**
+ * Validate a UiPackDefinition shape. Returns the same value on success, throws
+ * PackValidationError otherwise.
+ */
+export function validateUiPackDefinition(pack: unknown): UiPackDefinition {
+  if (!isObject(pack)) {
+    throw new PackValidationError(`UiPackDefinition must be an object (got ${typeof pack})`);
+  }
+  const ctx = "UiPackDefinition";
+  requireField(pack, "id", (v) => typeof v === "string", "a string", ctx);
+  requireField(pack, "type", (v) => v === "ui", '"ui"', ctx);
+  requireField(pack, "layout", isObject, "an object", ctx);
+  requireField(pack, "mount", (v) => typeof v === "function", "a function", ctx);
+  return pack as unknown as UiPackDefinition;
 }
 
 /**

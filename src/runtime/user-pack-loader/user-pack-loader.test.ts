@@ -20,6 +20,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
+import type { UiPackEntry, UiPackRegistry } from "../ui-pack-registry";
 import {
   type EffectRegistrar,
   loadSingleUserPack,
@@ -45,6 +46,13 @@ const validPersonaPack = {
   world: { body: "", voice: "", space: "" },
   logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
 } as unknown as PersonaDefinition;
+
+const validUiPack = {
+  id: "user-ui",
+  type: "ui",
+  layout: {},
+  mount: () => ({ dispose: () => {} }),
+};
 
 // ─── fakes ────────────────────────────────────────────────────────
 
@@ -117,6 +125,21 @@ function makeFakeScenePackRegistry(): ScenePackRegistry {
     getActiveScene: () => null,
     subscribeActive: () => ({ dispose: () => {} }),
     setActiveScene: () => {},
+    listEntries: () => entries,
+  };
+}
+
+function makeFakeUiPackRegistry(): UiPackRegistry & { readonly entries: UiPackEntry[] } {
+  const entries: UiPackEntry[] = [];
+  return {
+    entries,
+    register: (entry) => {
+      entries.push(entry);
+      return { dispose: () => {} };
+    },
+    getActiveUi: () => null,
+    setActiveUi: () => {},
+    subscribeActive: () => ({ dispose: () => {} }),
     listEntries: () => entries,
   };
 }
@@ -295,6 +318,36 @@ describe("loadUserPacks", () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it("loads ui pack via uiPackRegistry", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const uiRegistry = makeFakeUiPackRegistry();
+    const { subsystem } = makeDevLog();
+    const entries: UserPackEntry[] = [
+      { id: "user-ui", kind: "ui", entryPath: "/p/user-ui/ui.tsx" },
+    ];
+
+    const result = await loadUserPacks({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
+      uiPackRegistry: uiRegistry,
+      devLog: subsystem,
+      packRegistry: new UserPackRegistry(),
+      fetchPackEntries: async () => entries,
+      importModule: async () => ({ default: validUiPack }),
+    });
+
+    expect(result.loaded).toEqual([{ id: "user-ui", kind: "ui" }]);
+    expect(result.failed).toEqual([]);
+    expect(uiRegistry.entries).toHaveLength(1);
+    expect(uiRegistry.entries[0]).toMatchObject({
+      id: "user-ui",
+      origin: "user",
+      manifest: { id: "user-ui", type: "ui", entry: "ui.tsx" },
+    });
   });
 
   it("scene pack fails if default export type is not 'scene'", async () => {

@@ -1,12 +1,11 @@
 /**
  * User pack loader — Phase 1-a の static load。
  *
- * 起動時に一度だけ ~/.charminal/packs/ を scan し、見つかった `.js` を dynamic
+ * 起動時に一度だけ ~/.charminal/packs/ を scan し、見つかった entry を dynamic
  * import → validator で shape を確認 → 対応する registrar に register する。
  *
- * Path A + BYOC 方針なので、user の TS → JS transpile は Charminal 側では行わ
- * ない。loader が見るのは `.js` のみ（Rust の list_user_packs が返す entryPath
- * もすべて絶対パスの `.js`）。
+ * effect / persona / scene は Path A + BYOC 方針の `.js` entry。UI pack は
+ * Plan 4 MVP で `ui.tsx` を runtime transpile できる。
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-18-user-layer-runtime.md Section 「結論: Path A + BYOC」
@@ -23,9 +22,11 @@ import {
   PackValidationError,
   validateEffectDefinition,
   validatePersonaDefinition,
+  validateUiPackDefinition,
 } from "../../sdk/validators";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
+import type { UiPackRegistry } from "../ui-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
@@ -57,6 +58,7 @@ export interface LoadUserPacksDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
+  readonly uiPackRegistry?: UiPackRegistry;
   readonly devLog: SubsystemLog;
   /**
    * Hot-reload 用の idempotency 層。register 結果の Disposable をここに格納し、
@@ -115,6 +117,7 @@ export interface LoadSingleUserPackDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
+  readonly uiPackRegistry?: UiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
@@ -160,6 +163,7 @@ export async function loadSingleUserPack(
     effectPackRunner,
     personaRegistry,
     scenePackRegistry,
+    uiPackRegistry,
     packRegistry,
     devLog,
     importModule,
@@ -284,6 +288,30 @@ export async function loadSingleUserPack(
       }
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
+    if (entry.kind === "ui") {
+      if (uiPackRegistry === undefined) {
+        throw new Error("UiPackRegistry is required to register UI packs");
+      }
+      const pack = validateUiPackDefinition(def);
+      const handle = uiPackRegistry.register({
+        id: pack.id,
+        manifest: {
+          id: pack.id,
+          type: "ui",
+          version: "0.0.0",
+          charminalVersion: "*",
+          entry: entry.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+        },
+        origin: "user",
+        pack: {
+          layout: pack.layout,
+          mount: pack.mount,
+        },
+      });
+      packRegistry.register(entry.id, entry.kind, handle);
+      devLog.write({ phase: "register", note: `registered ui '${pack.id}'` });
+      return { status: "loaded", id: entry.id, kind: entry.kind };
+    }
     // SUPPORTED_PACK_KINDS に含まれるが分岐にない kind が来た場合の fallback。
     const error = `handler missing for kind '${entry.kind}'`;
     return { status: "failed", id: entry.id, kind: entry.kind, error };
@@ -315,6 +343,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     effectPackRunner,
     personaRegistry,
     scenePackRegistry,
+    uiPackRegistry,
     devLog,
     packRegistry,
     fetchPackEntries,
@@ -367,6 +396,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
       effectPackRunner,
       personaRegistry,
       scenePackRegistry,
+      uiPackRegistry,
       packRegistry,
       devLog,
       importModule,

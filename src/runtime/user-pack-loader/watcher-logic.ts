@@ -76,6 +76,10 @@ export function parseLayerPath(absPath: string, charminalHome: string): ParsedLa
     return { type: "ignore" };
   }
   const kind = filename.slice(0, -".js".length);
+  if (kind === "ui") {
+    // Plan 4 MVP supports startup load for user UI packs only. Hot reload is a follow-up.
+    return { type: "ignore" };
+  }
   if (!SUPPORTED_PACK_KINDS.has(kind)) {
     return { type: "ignore" };
   }
