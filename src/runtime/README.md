@@ -52,7 +52,7 @@ terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) と
 |---|---|---|---|
 | `persona-registry/` | single-active | user > bundled、user dispose で promotion 自動取消 | [persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `scene-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeScene` で user picks |
-| `ui-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeUi` で user picks。[ui-pack-single-active.md](../../docs/decisions/ui-pack-single-active.md) |
+| `ui-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeUi` で user picks。設計詳細は internal design-record: `2026-04-21-ui-pack-single-active.md` |
 | Effect (event-driven) | 複数並行 | bundled-over-user の挙動は未確定 | 整理されていない領域、care |
 
 **設計原則**：「scene と effect はどちらも pack だが、動作 model が違うので別 concept として独立に扱う」。表面的類似で統合しない（[memory: feedback_separate_conceptually_distinct_systems](../../.claude/projects/-Users-user-Charminal/memory/feedback_separate_conceptually_distinct_systems.md)）。

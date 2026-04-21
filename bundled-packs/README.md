@@ -77,7 +77,7 @@ bundled-packs/
 
 ## ui/
 
-UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は [`docs/decisions/ui-pack-single-active.md`](../docs/decisions/ui-pack-single-active.md) 参照。
+UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
 - **minimal-badge** — Plan 1 の実機確認用 dummy。右上バッジ 1 つ、クリックで screen-shake 発火。
 
