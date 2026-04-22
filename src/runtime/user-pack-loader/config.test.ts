@@ -37,6 +37,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
   });
 
@@ -48,6 +49,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
   });
 
@@ -59,6 +61,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
   });
 
@@ -70,6 +73,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
   });
 
@@ -81,6 +85,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
   });
 
@@ -92,6 +97,7 @@ describe("parseConfig", () => {
       mcpPort: 12345,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
   });
 
@@ -108,7 +114,18 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     });
+  });
+
+  it("reads codex terminalAgent", () => {
+    const config = parseConfig('{"terminalAgent": "codex"}');
+    expect(config.terminalAgent).toBe("codex");
+  });
+
+  it("defaults unknown terminalAgent to claude", () => {
+    const config = parseConfig('{"terminalAgent": "unknown"}');
+    expect(config.terminalAgent).toBe("claude");
   });
 });
 
@@ -126,6 +143,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -137,6 +155,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -153,6 +172,7 @@ describe("serializeConfig", () => {
       mcpPort: 18743,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -164,8 +184,14 @@ describe("serializeConfig", () => {
       mcpPort: 18743,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "codex",
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
+  });
+
+  it("writes terminalAgent only when codex is selected", () => {
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ terminalAgent: "codex" });
   });
 });
 
@@ -188,6 +214,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -200,6 +227,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      terminalAgent: "claude",
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);
