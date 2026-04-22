@@ -40,6 +40,7 @@ export interface LoadUserLayerDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
   readonly effectDispatcher: EffectRequester;
+  readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
@@ -134,6 +135,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
         personaRegistry: deps.personaRegistry,
         personaDefaults: deps.personaDefaults,
         effectDispatcher: deps.effectDispatcher,
+        emitEvent: deps.emitEvent,
         devLog: deps.initScriptLog,
         setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
         fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),

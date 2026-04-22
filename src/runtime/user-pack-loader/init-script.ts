@@ -34,12 +34,14 @@ export interface EffectRequester {
  *   内部で通す契約なので、型を外れた値を渡すと synchronously throw する。
  * - dispatchEffect: 既に register 済みの effect を 1 回走らせる。keyboard
  *   shortcut や startup animation など、persona の reflex 外の発火経路で使う。
+ * - emitEvent: persona / harness trigger loop に synthetic event を流す。
  * - setActiveUi: keyboard shortcut などから active UI pack を切り替える。
  */
 export interface CharminalInitContext {
   registerEffect(pack: EffectDefinition): void;
   registerPersona(pack: PersonaDefinition): void;
   dispatchEffect(request: SpaceEffectRequest): void;
+  emitEvent(name: string, payload?: unknown): void;
   setActiveUi(id: string | null): void;
 }
 
@@ -49,6 +51,7 @@ export interface LoadInitScriptDeps {
   readonly devLog: SubsystemLog;
   readonly effectDispatcher: EffectRequester;
   readonly personaDefaults?: PersonaDefinition;
+  readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly setActiveUi?: (id: string | null) => void;
   /**
    * Tauri の user_init_script_path を叩いて init.js の absolute path を返す。
@@ -96,6 +99,12 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
   },
   dispatchEffect(request) {
     deps.effectDispatcher.dispatch(request);
+  },
+  emitEvent(name, payload) {
+    if (deps.emitEvent === undefined) {
+      throw new Error("emitEvent is not available in this runtime");
+    }
+    deps.emitEvent(name, payload);
   },
   setActiveUi(id) {
     if (deps.setActiveUi === undefined) {

@@ -276,6 +276,9 @@ function App() {
           scenePackRegistry,
           uiPackRegistry,
           effectDispatcher,
+          emitEvent: (name, payload) => {
+            bus.emitSynthetic({ type: "harness", packId: "user-init" }, name, payload, 0);
+          },
           packRegistry,
           personaDefaults: charminalDefaultPack,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),

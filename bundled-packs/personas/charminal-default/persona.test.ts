@@ -177,6 +177,44 @@ describe("charminal-default persona triggers", () => {
     });
   });
 
+  describe("synthetic shortcut → mischievous-shoot trigger", () => {
+    const trigger = triggers.find((t) => t.id === "charminal-default:shortcut-shoot");
+
+    it("is registered in customTriggers", () => {
+      expect(trigger).toBeDefined();
+    });
+
+    it("matches the explicit shoot event from init.js", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const payload = { source: "shortcut" };
+
+      const match = trigger.match({
+        kind: "synthetic",
+        source: { type: "harness", packId: "user-init" },
+        name: "charminal-default:shoot",
+        payload,
+        timestamp: 1000,
+      });
+
+      expect(match).toEqual({
+        reaction: "mischievous-shoot",
+        payload,
+      });
+    });
+
+    it("does not match unrelated synthetic events", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      expect(
+        trigger.match({
+          kind: "synthetic",
+          source: { type: "harness", packId: "user-init" },
+          name: "other:shoot",
+          timestamp: 1000,
+        }),
+      ).toBeNull();
+    });
+  });
+
   describe("distressed handler", () => {
     const handler = persona.reflex.responses.distressed?.handlers[0]?.handler;
 

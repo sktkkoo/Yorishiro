@@ -6,6 +6,7 @@ const SHOOT_IDLE_PROBABILITY = 0.3;
 const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
 const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
+const SHOOT_SYNTHETIC_EVENT = "charminal-default:shoot";
 
 /**
  * Charminal の flagship persona。
@@ -90,6 +91,20 @@ export default {
           return {
             reaction: "mischievous-shoot",
             payload: { durationMs: event.durationMs },
+          };
+        },
+      } satisfies Trigger,
+
+      // User shortcuts can announce an explicit shoot request through init.js.
+      // The motion/effect timeline still lives in the response handler below.
+      {
+        id: "charminal-default:shortcut-shoot",
+        match(event: DispatchEvent) {
+          if (event.kind !== "synthetic") return null;
+          if (event.name !== SHOOT_SYNTHETIC_EVENT) return null;
+          return {
+            reaction: "mischievous-shoot",
+            payload: event.payload,
           };
         },
       } satisfies Trigger,
