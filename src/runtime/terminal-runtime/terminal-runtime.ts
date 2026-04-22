@@ -271,7 +271,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {
     if (a === null) return false;
-    return a.cwd === b.cwd && a.systemPrompt === b.systemPrompt;
+    return a.agent === b.agent && a.cwd === b.cwd && a.systemPrompt === b.systemPrompt;
   }
 }
 
