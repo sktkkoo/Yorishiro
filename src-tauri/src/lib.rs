@@ -115,14 +115,15 @@ async fn poll_hook_signals() -> Vec<String> {
 //   ~/.charminal/
 //   ├── init.js                         # 起動時 entry (~= init.el)
 //   ├── packs/
-//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene}
+//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui}
+//   │       <pack-id>/ui.tsx            # Plan 4 MVP: user UI pack source
 //   ├── config.json                     # 将来の宣言的設定
 //   └── sdk.d.ts                        # Charminal が ship する IDE 用 type hint
 //
 // Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
 // Internal design-record: 2026-04-18-user-layer-runtime.md
 
-const PACK_KINDS: &[&str] = &["effect", "persona", "voice", "body", "scene"];
+const PACK_KINDS: &[&str] = &["effect", "persona", "voice", "body", "scene", "ui"];
 
 fn charminal_home_path() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
@@ -161,6 +162,7 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
         "scene-pack.d.ts",
         include_str!("../../src/sdk/scene-pack.d.ts"),
     ),
+    ("ui-pack.d.ts", include_str!("../../src/sdk/ui-pack.d.ts")),
     ("index.d.ts", include_str!("../../src/sdk/index.d.ts")),
 ];
 
@@ -237,17 +239,36 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
 /// Scan ~/.charminal/packs/ and return discovered packs.
 ///
 /// Convention: ~/.charminal/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
+/// UI packs also support ~/.charminal/packs/<id>/ui.tsx in Plan 4 MVP.
 /// Multiple kind files in one pack directory produce multiple entries.
 /// Missing directory returns empty vec (not an error).
 #[tauri::command]
 async fn list_user_packs() -> Result<Vec<UserPackEntry>, String> {
     let packs_dir = charminal_home_path()?.join("packs");
+    discover_user_pack_entries(&packs_dir)
+}
+
+fn entry_file_for_kind(pack_dir: &Path, kind: &str) -> Option<PathBuf> {
+    let js_entry = pack_dir.join(format!("{}.js", kind));
+    if js_entry.is_file() {
+        return Some(js_entry);
+    }
+    if kind == "ui" {
+        let tsx_entry = pack_dir.join("ui.tsx");
+        if tsx_entry.is_file() {
+            return Some(tsx_entry);
+        }
+    }
+    None
+}
+
+fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, String> {
     if !packs_dir.exists() {
         return Ok(Vec::new());
     }
     let mut entries = Vec::new();
     let read =
-        std::fs::read_dir(&packs_dir).map_err(|e| format!("Failed to read packs dir: {}", e))?;
+        std::fs::read_dir(packs_dir).map_err(|e| format!("Failed to read packs dir: {}", e))?;
     for pack_dir_entry in read.flatten() {
         let pack_dir = pack_dir_entry.path();
         if !pack_dir.is_dir() {
@@ -258,8 +279,7 @@ async fn list_user_packs() -> Result<Vec<UserPackEntry>, String> {
             continue;
         }
         for kind in PACK_KINDS {
-            let entry_file = pack_dir.join(format!("{}.js", kind));
-            if entry_file.is_file() {
+            if let Some(entry_file) = entry_file_for_kind(&pack_dir, kind) {
                 entries.push(UserPackEntry {
                     id: id.clone(),
                     kind: (*kind).to_string(),
@@ -710,8 +730,65 @@ mod sdk_bundle_tests {
         assert!(bundle.contains("export interface EffectDefinition"));
         assert!(bundle.contains("export interface PersonaDefinition"));
         assert!(bundle.contains("export interface EffectContext"));
+        assert!(bundle.contains("export interface UiPackDefinition"));
         assert!(!bundle.contains("from \"./reaction\""));
         assert!(!bundle.contains("from \"./context\""));
+    }
+}
+
+#[cfg(test)]
+mod user_pack_discovery_tests {
+    use super::discover_user_pack_entries;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_packs_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-pack-discovery-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("create tmp dir");
+        tmp
+    }
+
+    #[test]
+    fn discovers_ui_tsx_when_ui_js_is_absent() {
+        let packs = fresh_packs_dir("ui-tsx");
+        let pack_dir = packs.join("my-ui");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("ui.tsx"), "export default {};\n").expect("write ui.tsx");
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "my-ui");
+        assert_eq!(entries[0].kind, "ui");
+        assert!(entries[0].entry_path.ends_with("/my-ui/ui.tsx"));
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn prefers_ui_js_over_ui_tsx_for_compatibility() {
+        let packs = fresh_packs_dir("ui-js-precedence");
+        let pack_dir = packs.join("my-ui");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("ui.js"), "export default {};\n").expect("write ui.js");
+        fs::write(pack_dir.join("ui.tsx"), "export default {};\n").expect("write ui.tsx");
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "ui");
+        assert!(entries[0].entry_path.ends_with("/my-ui/ui.js"));
+
+        let _ = fs::remove_dir_all(&packs);
     }
 }
 

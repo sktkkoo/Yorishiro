@@ -1,5 +1,16 @@
-import type { Disposable, Trigger, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
+import type {
+  Disposable,
+  Trigger,
+  UiClaimAPI,
+  UiContext,
+  UiLayout,
+  UiPackManifest,
+  UiThreeAPI,
+} from "@charminal/sdk";
+import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as ReactJsxRuntime from "react/jsx-runtime";
+import * as ReactDomClient from "react-dom/client";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
@@ -9,11 +20,11 @@ import charminalDefaultManifest from "../bundled-packs/personas/charminal-defaul
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
 import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
-import minimalBadgeManifest from "../bundled-packs/ui/minimal-badge/manifest.json";
-import minimalBadgePack from "../bundled-packs/ui/minimal-badge/ui";
+import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
+import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
-import { LogBridge } from "./core/log-bridge";
+import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import type { SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
@@ -35,7 +46,10 @@ import {
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { getThreeRuntime } from "./runtime/three-runtime";
+import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
+import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
 import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
 import { parseConfig, type TerminalAgent } from "./runtime/user-pack-loader/config";
@@ -48,6 +62,16 @@ import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
+
+declare global {
+  var __CHARMINAL_REACT__: typeof React | undefined;
+  var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
+  var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+}
+
+globalThis.__CHARMINAL_REACT__ = React;
+globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
+globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 
 function App() {
   // ── State placement rule ────────────────────────────────────
@@ -117,8 +141,9 @@ function App() {
     const scenePackRegistry: ScenePackRegistry = getSceneRegistry();
 
     // UI pack registry — HMR singleton（KEYS.UI_PACK_REGISTRY で共有）。
-    // bundled minimal-badge を sync register（static import 済なので同期で確定）。
     const uiPackRegistry = getUiRegistry();
+    const claimState = getClaimState();
+    const uiState = getUiStateStore();
 
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
     // PersonaRegistryImpl は state management（active persona / subscribeActive）。
@@ -141,19 +166,19 @@ function App() {
       note: `registered bundled persona '${charminalDefaultPack.id}'`,
     });
 
-    // bundled minimal-badge UI pack を sync register（bundled persona と同じ扱い）。
+    // bundled camera-lighting-panel UI pack（Plan 2 reference）。
     uiPackRegistry.register({
-      id: minimalBadgePack.id,
+      id: cameraLightingPanelPack.id,
       origin: "bundled",
-      manifest: minimalBadgeManifest as UiPackManifest,
+      manifest: cameraLightingPanelManifest as UiPackManifest,
       pack: {
-        layout: minimalBadgePack.layout,
-        mount: minimalBadgePack.mount,
+        layout: cameraLightingPanelPack.layout,
+        mount: cameraLightingPanelPack.mount,
       },
     });
     appLog.write({
       phase: "register",
-      note: `registered bundled UI pack '${minimalBadgePack.id}'`,
+      note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
@@ -249,6 +274,7 @@ function App() {
           effectPackRunner,
           personaRegistry,
           scenePackRegistry,
+          uiPackRegistry,
           effectDispatcher,
           packRegistry,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
@@ -300,8 +326,13 @@ function App() {
         const { listen } = await import("@tauri-apps/api/event");
         const { invoke } = await import("@tauri-apps/api/core");
         const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
-        const { createListPacksHandler, createDisablePackHandler, createEnablePackHandler } =
-          await import("./runtime/charminal-mcp/tool-handlers");
+        const {
+          createListPacksHandler,
+          createDisablePackHandler,
+          createEnablePackHandler,
+          createGetUiStateHandler,
+          createSetUiStateHandler,
+        } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
         );
@@ -331,6 +362,7 @@ function App() {
             effectPackRunner,
             personaRegistry,
             scenePackRegistry,
+            uiPackRegistry,
             packRegistry,
             userPackLog,
           });
@@ -351,6 +383,14 @@ function App() {
             readConfig,
             writeConfig,
             reloadPack,
+          }),
+          "get-ui-state": createGetUiStateHandler({
+            state: uiState,
+            getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
+          }),
+          "set-ui-state": createSetUiStateHandler({
+            state: uiState,
+            getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
           }),
         };
 
@@ -403,6 +443,8 @@ function App() {
       effectDispatcher,
       scenePackRegistry,
       uiPackRegistry,
+      claimState,
+      uiState,
       userLayerReady,
     };
   });
@@ -415,6 +457,8 @@ function App() {
     effectDispatcher,
     scenePackRegistry,
     uiPackRegistry,
+    claimState,
+    uiState,
     time,
     userLayerReady,
   } = runtime;
@@ -492,45 +536,80 @@ function App() {
       };
     };
 
-    const buildUiContext = (signal: AbortSignal, targets: LayoutTargets): UiContext => ({
-      space: {
-        injectEffect: (request) => effectDispatcher.dispatch(request),
-      },
-      // Plan 1 では character は最小 stub（Plan 2 で実機接続）。
-      // SDK 型の全 field を満たす（GazeHandle は target / active / release 3 field 必須）。
-      character: {
-        express: () => ({
-          target: { kind: "mood", preset: "relaxed" },
-          requestedIntensity: 0,
-          effectiveWeight: 0,
-          setIntensity: () => {},
-          release: () => {},
-        }),
-        play: () => ({
-          animation: "anim:noop",
-          startedAt: 0,
-          setWeight: () => {},
-          stop: () => Promise.resolve(),
-          cancel: () => {},
-          completion: Promise.resolve(),
-        }),
-        gaze: () => ({
-          target: { kind: "away" },
-          active: false,
-          release: () => {},
-        }),
-        interrupt: () => {},
-      },
-      time,
-      log: createSubsystemLog(devLog, "UiPack"),
-      signal,
-      layout: {
-        update: (layout: UiLayout) => {
-          resetLayout(targets);
-          applyLayout(layout, targets);
+    const buildUiContext = (
+      packId: string,
+      signal: AbortSignal,
+      targets: LayoutTargets,
+    ): UiContext => {
+      const threeRuntime = getThreeRuntime();
+      const three: UiThreeAPI = {
+        get camera() {
+          return threeRuntime.getCamera();
         },
-      },
-    });
+        get scene() {
+          return threeRuntime.getScene();
+        },
+        get renderer() {
+          return threeRuntime.getRenderer();
+        },
+        get vrm() {
+          return threeRuntime.getVrm();
+        },
+      };
+      const claim: UiClaimAPI = {
+        camera: () => claimState.claim("camera"),
+        expression: () => claimState.claim("expression"),
+        animation: () => claimState.claim("animation"),
+      };
+      const state: UiContext["state"] = {
+        get: (key) => uiState.get(packId, key),
+        set: (key, value) => uiState.set(packId, key, value),
+        subscribe: (key, listener) => uiState.subscribe(packId, key, listener),
+      };
+
+      return {
+        space: {
+          injectEffect: (request) => effectDispatcher.dispatch(request),
+        },
+        // character は最小 stub（character の実接続は別 plan）。
+        // SDK 型の全 field を満たす（GazeHandle は target / active / release 3 field 必須）。
+        character: {
+          express: () => ({
+            target: { kind: "mood", preset: "relaxed" },
+            requestedIntensity: 0,
+            effectiveWeight: 0,
+            setIntensity: () => {},
+            release: () => {},
+          }),
+          play: () => ({
+            animation: "anim:noop",
+            startedAt: 0,
+            setWeight: () => {},
+            stop: () => Promise.resolve(),
+            cancel: () => {},
+            completion: Promise.resolve(),
+          }),
+          gaze: () => ({
+            target: { kind: "away" },
+            active: false,
+            release: () => {},
+          }),
+          interrupt: () => {},
+        },
+        three,
+        claim,
+        state,
+        time,
+        log: createLogAPI(logBridge, packId),
+        signal,
+        layout: {
+          update: (layout: UiLayout) => {
+            resetLayout(targets);
+            applyLayout(layout, targets);
+          },
+        },
+      };
+    };
 
     const activateEntry = (entry: UiPackEntry | null) => {
       // 前の UI pack を cleanup
@@ -544,6 +623,7 @@ function App() {
       }
       const prevTargets = getLayoutTargets();
       if (prevTargets) resetLayout(prevTargets);
+      claimState.releaseAll();
 
       if (!entry) return;
 
@@ -570,7 +650,7 @@ function App() {
       currentAbort = abort;
       currentContainer = container;
 
-      const ctx = buildUiContext(abort.signal, targets);
+      const ctx = buildUiContext(entry.id, abort.signal, targets);
       try {
         currentDisposable = entry.pack.mount(ctx, container);
       } catch (err) {
@@ -584,6 +664,7 @@ function App() {
         currentContainer = null;
         abort.abort();
         currentAbort = null;
+        claimState.releaseAll();
       }
     };
 
@@ -596,8 +677,18 @@ function App() {
       if (currentContainer) currentContainer.remove();
       const targets = getLayoutTargets();
       if (targets) resetLayout(targets);
+      claimState.releaseAll();
     };
-  }, [uiPackRegistry, effectDispatcher, time, devLog, isUserLayerReady]);
+  }, [
+    uiPackRegistry,
+    effectDispatcher,
+    time,
+    devLog,
+    claimState,
+    uiState,
+    isUserLayerReady,
+    logBridge,
+  ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
 

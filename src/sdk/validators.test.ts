@@ -3,6 +3,7 @@ import {
   PackValidationError,
   validateEffectDefinition,
   validatePersonaDefinition,
+  validateUiPackDefinition,
 } from "./validators";
 
 describe("validateEffectDefinition", () => {
@@ -98,6 +99,36 @@ describe("validatePersonaDefinition", () => {
 
   it("rejects non-object world when present", () => {
     expect(() => validatePersonaDefinition({ id: "a", name: "A", world: "bad" })).toThrow(/world/);
+  });
+});
+
+describe("validateUiPackDefinition", () => {
+  const validUi = {
+    id: "sample-ui",
+    type: "ui",
+    layout: {},
+    mount: () => ({ dispose: () => {} }),
+  };
+
+  it("returns the value when shape is valid", () => {
+    expect(validateUiPackDefinition(validUi)).toBe(validUi);
+  });
+
+  it("rejects non-object inputs", () => {
+    expect(() => validateUiPackDefinition(null)).toThrow(PackValidationError);
+  });
+
+  it("rejects missing or wrong top-level fields", () => {
+    expect(() => validateUiPackDefinition({ type: "ui", layout: {}, mount: () => {} })).toThrow(
+      /id/,
+    );
+    expect(() =>
+      validateUiPackDefinition({ id: "x", type: "effect", layout: {}, mount: () => {} }),
+    ).toThrow(/type/);
+    expect(() => validateUiPackDefinition({ id: "x", type: "ui", mount: () => {} })).toThrow(
+      /layout/,
+    );
+    expect(() => validateUiPackDefinition({ id: "x", type: "ui", layout: {} })).toThrow(/mount/);
   });
 });
 

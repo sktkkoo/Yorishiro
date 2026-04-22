@@ -12,9 +12,14 @@
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
-import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
+import {
+  validateEffectDefinition,
+  validatePersonaDefinition,
+  validateUiPackDefinition,
+} from "../../sdk/validators";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
+import type { UiPackRegistry } from "../ui-pack-registry";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
@@ -25,6 +30,7 @@ export interface StartPackWatcherDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
+  readonly uiPackRegistry: UiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
@@ -154,11 +160,19 @@ async function reloadPack(
     }
   }
 
-  const url = `${tauri.convertFileSrc(action.entryPath)}?v=${cacheKey}`;
-
   let mod: unknown;
   try {
-    mod = await import(/* @vite-ignore */ url);
+    if (action.entryPath.endsWith(".tsx")) {
+      const { importUiTsxEntry } = await import("./tsx-transpiler");
+      mod = await importUiTsxEntry(
+        action.entryPath,
+        { convertFileSrc: tauri.convertFileSrc },
+        { cacheKey },
+      );
+    } else {
+      const url = `${tauri.convertFileSrc(action.entryPath)}?v=${cacheKey}`;
+      mod = await import(/* @vite-ignore */ url);
+    }
   } catch (err) {
     deps.userPackLog.write({
       phase: "reload",
@@ -247,6 +261,29 @@ async function reloadPack(
         // エラーは registerScenePack 内で devLog に書き出し済み。
         return;
       }
+    } else if (action.kind === "ui") {
+      const pack = validateUiPackDefinition(def);
+      deps.packRegistry.dispose(action.id, action.kind);
+      const handle = deps.uiPackRegistry.register({
+        id: pack.id,
+        manifest: {
+          id: pack.id,
+          type: "ui",
+          version: "0.0.0",
+          charminalVersion: "*",
+          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+        },
+        origin: "user",
+        pack: {
+          layout: pack.layout,
+          mount: pack.mount,
+        },
+      });
+      deps.packRegistry.register(action.id, action.kind, handle);
+      deps.userPackLog.write({
+        phase: "reload",
+        note: `re-registered ui '${pack.id}'`,
+      });
     }
   } catch (err) {
     deps.userPackLog.write({

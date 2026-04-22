@@ -5,6 +5,7 @@ import { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { type ClaimState, getClaimState } from "../ui-claim-state";
 import { getVrmCache } from "../vrm-cache";
 import type { ThreeRuntime } from "./types";
 
@@ -28,6 +29,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly canvasContainer: HTMLDivElement;
   private readonly clock: THREE.Clock;
   private readonly loader: GLTFLoader;
+  private readonly claimState: ClaimState;
 
   private readonly bodyListenerRef: {
     current: ((body: Body | null) => void) | null;
@@ -45,6 +47,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private needsResize = true;
 
   constructor() {
+    this.claimState = getClaimState();
+
     // ── Canvas container (document.body 直下、singleton-owned) ─────
     this.canvasContainer = document.createElement("div");
     this.canvasContainer.className = "three-singleton-container";
@@ -162,7 +166,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
               this.scene.add(vrm.scene);
               this.currentVrm = vrm;
-              this.currentBody = new Body(vrm, this.devLogRef.current ?? undefined);
+              this.currentBody = new Body(
+                vrm,
+                this.devLogRef.current ?? undefined,
+                this.claimState,
+              );
 
               vrm.scene.updateWorldMatrix(true, true);
               vrm.update(0);
@@ -202,6 +210,22 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.devLogRef.current = devLog;
   }
 
+  getCamera(): THREE.PerspectiveCamera {
+    return this.camera;
+  }
+
+  getScene(): THREE.Scene {
+    return this.scene;
+  }
+
+  getRenderer(): THREE.WebGLRenderer {
+    return this.renderer;
+  }
+
+  getVrm(): VRM | null {
+    return this.currentVrm;
+  }
+
   // ─── private methods ────────────────────────────────────────────
 
   private startRenderLoop(): void {
@@ -216,7 +240,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       if (this.currentBody) {
         this.currentBody.update(delta, elapsed);
 
-        if (this.trackHead) {
+        if (this.trackHead && !this.claimState.isClaimed("camera")) {
           this.trackHead.getWorldPosition(this.headWorldPos);
           const desiredY = this.headWorldPos.y - 0.05;
           this.camera.position.y += (desiredY - this.camera.position.y) * Math.min(1.5 * delta, 1);

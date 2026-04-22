@@ -297,4 +297,31 @@ describe("loadInitScript", () => {
       { kind: "fireworks", origin: { x: 0.5, y: 0.5 }, count: 60, durationMs: 1200 },
     ]);
   });
+
+  it("ctx.setActiveUi forwards the selected UI pack id", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const selected: Array<string | null> = [];
+    const { subsystem } = makeDevLog();
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      ctx.setActiveUi("camera-lighting-panel");
+      ctx.setActiveUi(null);
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      setActiveUi: (id) => {
+        selected.push(id);
+      },
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(selected).toEqual(["camera-lighting-panel", null]);
+  });
 });

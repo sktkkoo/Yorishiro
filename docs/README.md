@@ -111,7 +111,7 @@ Source code 内で参照するときは：
 | `bundled-packs/personas/charminal-default/` | persona | flagship reference implementation |
 | `bundled-packs/scenes/quiet-room/` | scene | Phase 1 default scene（3 layer composition） |
 | `bundled-packs/effects/screen-shake/` | effect | DOM shake on error |
-| `bundled-packs/ui/minimal-badge/` | ui | Plan 1 実機確認用 dummy UI pack |
+| `bundled-packs/ui/camera-lighting-panel/` | ui | camera / lighting reference UI pack |
 | `bundled-packs/shared/` | shared assets | animations / voices / bodies |
 
 詳細は [../bundled-packs/README.md](../bundled-packs/README.md)。

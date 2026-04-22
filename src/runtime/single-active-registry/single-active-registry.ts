@@ -46,11 +46,13 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
   private lastActive: TValue | null = null;
   private readonly extractValue: (entry: TEntry) => TValue;
   private readonly warn: (msg: string) => void;
+  private readonly nullMeansNoActive: boolean;
   private readonly warnOnMultipleBundled: boolean;
 
   constructor(opts: SingleActiveRegistryOptions<TEntry, TValue>) {
     this.extractValue = opts.extractValue;
     this.warn = opts.warn ?? ((msg) => console.warn(`[${opts.label}] ${msg}`));
+    this.nullMeansNoActive = opts.nullMeansNoActive ?? false;
     this.warnOnMultipleBundled = opts.warnOnMultipleBundled ?? false;
   }
 
@@ -65,7 +67,7 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
         // computeActive は bundled 以外を auto-select しないため、置換後に
         // activeId が null だと user entry が選ばれなくなる。
         this.entries.set(entry.id, entry);
-        if (existing.origin === "bundled" && this.activeId === null) {
+        if (existing.origin === "bundled" && this.activeId === null && !this.nullMeansNoActive) {
           this.activeId = entry.id;
           this.activeIdIsPromoted = true;
         }
@@ -155,8 +157,9 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
    *
    * Priority:
    *   1. activeId が entries に hit → それ
-   *   2. 無ければ bundled tier の alphabetical 先頭（fresh install fallback）
-   *   3. bundled なし → null
+   *   2. activeId が null かつ nullMeansNoActive=true → null
+   *   3. 無ければ bundled tier の alphabetical 先頭（fresh install fallback）
+   *   4. bundled なし → null
    *
    * user tier を自動選択しない。pack 自己申告の `defaultActive` も使わない
    * （Design B: docs/decisions/single-active-config-picks.md）。
@@ -165,6 +168,9 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
     if (this.activeId !== null) {
       const hit = this.entries.get(this.activeId);
       if (hit !== undefined) return hit;
+    }
+    if (this.activeId === null && this.nullMeansNoActive) {
+      return null;
     }
     const bundled = Array.from(this.entries.values())
       .filter((e) => e.origin === "bundled")

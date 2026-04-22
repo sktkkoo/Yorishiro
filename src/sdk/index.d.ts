@@ -27,4 +27,7 @@ export type {
   UiLayout,
   UiContext,
   UiLayoutAPI,
+  UiThreeAPI,
+  UiClaimAPI,
+  UiStateAPI,
 } from "./ui-pack";

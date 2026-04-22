@@ -18,6 +18,7 @@
 
 import type { SubsystemLog } from "../../core/dev-log";
 import type { ScenePackRegistry } from "../scene-pack-registry";
+import type { UiPackRegistry } from "../ui-pack-registry";
 import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
 import { parseConfig } from "./config";
 import { type EffectRequester, type LoadInitScriptResult, loadInitScript } from "./init-script";
@@ -36,6 +37,7 @@ export interface LoadUserLayerDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
+  readonly uiPackRegistry: UiPackRegistry;
   readonly effectDispatcher: EffectRequester;
   readonly packRegistry: UserPackRegistry;
   readonly userPackLog: SubsystemLog;
@@ -83,6 +85,17 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       return base;
     }
   };
+  const importUserPackModule = async (entryPath: string): Promise<unknown> => {
+    if (entryPath.endsWith(".tsx")) {
+      const { importUiTsxEntry } = await import("./tsx-transpiler");
+      const cacheKey = await invoke<number>("stat_file_mtime", { path: entryPath }).catch(
+        () => undefined,
+      );
+      return importUiTsxEntry(entryPath, { convertFileSrc }, { cacheKey });
+    }
+    const url = await buildCacheBustUrl(entryPath);
+    return await import(/* @vite-ignore */ url);
+  };
 
   let packs: LoadUserPacksResult;
   if (safeMode) {
@@ -92,6 +105,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       effectPackRunner: deps.effectPackRunner,
       personaRegistry: deps.personaRegistry,
       scenePackRegistry: deps.scenePackRegistry,
+      uiPackRegistry: deps.uiPackRegistry,
       packRegistry: deps.packRegistry,
       devLog: deps.userPackLog,
       disabledPacks: config.disabledPacks,
@@ -99,10 +113,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
         await invoke("ensure_charminal_dirs");
         return invoke<UserPackEntry[]>("list_user_packs");
       },
-      importModule: async (entryPath) => {
-        const url = await buildCacheBustUrl(entryPath);
-        return await import(/* @vite-ignore */ url);
-      },
+      importModule: importUserPackModule,
       writeLoadReport: async (_timestamp, _safeMode, report) => {
         await writeLastStartupReport(`${JSON.stringify(report, null, 2)}\n`);
       },
@@ -120,6 +131,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
         personaRegistry: deps.personaRegistry,
         effectDispatcher: deps.effectDispatcher,
         devLog: deps.initScriptLog,
+        setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
         fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
         importModule: async (path) => {
           const url = await buildCacheBustUrl(path);
@@ -131,6 +143,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     effectPackRunner: deps.effectPackRunner,
     personaRegistry: deps.personaRegistry,
     scenePackRegistry: deps.scenePackRegistry,
+    uiPackRegistry: deps.uiPackRegistry,
     packRegistry: deps.packRegistry,
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
@@ -143,6 +156,7 @@ export interface ReloadSingleUserPackDeps {
   readonly effectPackRunner: EffectRegistrar;
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
+  readonly uiPackRegistry: UiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly userPackLog: SubsystemLog;
 }
@@ -176,6 +190,17 @@ export async function reloadSingleUserPack(
       return base;
     }
   };
+  const importUserPackModule = async (entryPath: string): Promise<unknown> => {
+    if (entryPath.endsWith(".tsx")) {
+      const { importUiTsxEntry } = await import("./tsx-transpiler");
+      const cacheKey = await invoke<number>("stat_file_mtime", { path: entryPath }).catch(
+        () => undefined,
+      );
+      return importUiTsxEntry(entryPath, { convertFileSrc }, { cacheKey });
+    }
+    const url = await buildCacheBustUrl(entryPath);
+    return await import(/* @vite-ignore */ url);
+  };
 
   let entries: UserPackEntry[];
   try {
@@ -195,12 +220,10 @@ export async function reloadSingleUserPack(
     effectPackRunner: deps.effectPackRunner,
     personaRegistry: deps.personaRegistry,
     scenePackRegistry: deps.scenePackRegistry,
+    uiPackRegistry: deps.uiPackRegistry,
     packRegistry: deps.packRegistry,
     devLog: deps.userPackLog,
-    importModule: async (path) => {
-      const url = await buildCacheBustUrl(path);
-      return await import(/* @vite-ignore */ url);
-    },
+    importModule: importUserPackModule,
   });
 
   if (result.status === "failed") {

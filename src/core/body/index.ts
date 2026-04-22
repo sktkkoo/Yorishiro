@@ -26,6 +26,7 @@ import type {
   PlayOptions,
 } from "@charminal/sdk";
 import type { VRM } from "@pixiv/three-vrm";
+import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
@@ -62,12 +63,14 @@ export class Body {
   private readonly eyeSystem: EyeSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
+  private readonly claimState: ClaimState;
 
   /** Blink system's slot ID in ExpressionManager. -1 when not active. */
   private blinkSlotId = -1;
 
   /** State-dependent expression slot IDs. */
   private stateExprSlots: number[] = [];
+  private stateExprState: EyeState | null = null;
 
   /** Idle elapsed time for gradual relaxed expression. */
   private idleElapsedTime = 0;
@@ -81,8 +84,9 @@ export class Body {
   /** Track all active gaze handles for interrupt(). */
   private readonly activeGazeHandles = new Set<BodyGazeHandle>();
 
-  constructor(vrm: VRM, devLog?: SubsystemLog) {
+  constructor(vrm: VRM, devLog?: SubsystemLog, claimState?: ClaimState) {
     this.vrm = vrm;
+    this.claimState = claimState ?? getClaimState();
     this.expressions = new ExpressionManager();
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
@@ -108,10 +112,12 @@ export class Body {
     // writing を除外するのは Typing.vrma と procedural head drift がぶつかるため。
     this.proceduralBones.isThinking =
       state === "thinking" || state === "reading" || state === "running";
-    this.applyStateExpressions(state);
+    if (!this.claimState.isClaimed("expression")) {
+      this.applyStateExpressions(state);
+    }
 
     // Reset idle relaxed timer when leaving idle
-    if (state !== "idle") {
+    if (state !== "idle" && !this.claimState.isClaimed("expression")) {
       this.idleElapsedTime = 0;
       if (this.relaxedSlotId !== -1) {
         this.expressions.removeSlot(this.relaxedSlotId);
@@ -136,8 +142,13 @@ export class Body {
   }
 
   update(delta: number, elapsed: number): void {
+    const animationClaimed = this.claimState.isClaimed("animation");
+    const expressionClaimed = this.claimState.isClaimed("expression");
+
     // 1. Animation mixer
-    this.animationPlayer.update(delta);
+    if (!animationClaimed) {
+      this.animationPlayer.update(delta);
+    }
 
     // 2. Procedural bone animation (spine sway, head drift, arm sway)
     //    Complementary weight with VRMA: procedural fades as clips take over,
@@ -145,26 +156,44 @@ export class Body {
     //    (Ported from old Charminal AnimationSourceManager.update.)
     const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
     const proceduralWeight = Math.max(0, 1 - vrmaWeight);
-    this.proceduralBones.update(delta, elapsed, proceduralWeight);
+    if (!animationClaimed) {
+      this.proceduralBones.update(delta, elapsed, proceduralWeight);
+    }
 
     // 3. Blink
     const blinkValue = this.blinkSystem.update(delta);
-    this.updateBlinkSlot(blinkValue);
+    if (!expressionClaimed) {
+      if (this.eyeSystem.state !== "idle" && this.relaxedSlotId !== -1) {
+        this.idleElapsedTime = 0;
+        this.expressions.removeSlot(this.relaxedSlotId);
+        this.relaxedSlotId = -1;
+      }
+      if (this.stateExprState !== this.eyeSystem.state) {
+        this.applyStateExpressions(this.eyeSystem.state);
+      }
+      this.updateBlinkSlot(blinkValue);
+    }
 
     // 4. Eye system (state-dependent patterns)
     this.eyeSystem.update(delta);
 
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
-    this.updateRelaxed(delta);
+    if (!expressionClaimed) {
+      this.updateRelaxed(delta);
+    }
 
     // 6. Apply expressions to VRM
-    this.applyExpressions();
+    if (!expressionClaimed) {
+      this.applyExpressions();
+    }
 
     // 7. Apply eye gaze to VRM
     this.applyGaze();
 
     // 8. Breathing
-    this.applyBreathing(elapsed);
+    if (!animationClaimed) {
+      this.applyBreathing(elapsed);
+    }
 
     // 9. VRM spring bones etc.
     this.vrm.update(delta);
@@ -338,6 +367,7 @@ export class Body {
       this.expressions.removeSlot(id);
     }
     this.stateExprSlots = [];
+    this.stateExprState = state;
 
     // Add new state expressions
     const targets = STATE_EXPRESSIONS[state];

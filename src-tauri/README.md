@@ -17,7 +17,7 @@ src-tauri/src/
 └── mcp/
     ├── mod.rs     — re-exports (4 lines)
     ├── server.rs  — MCP HTTP server (port 18743 default) / spawn / round-trip
-    ├── tools.rs   — 4 tool 実装 (list_load_errors / list_packs / enable_pack / disable_pack)
+    ├── tools.rs   — MCP tool 実装 (list_load_errors / list_packs / enable_pack / disable_pack / get_ui_state / set_ui_state)
     └── types.rs   — DTO 定義（TS と shared shape の document 役割）
 ```
 
@@ -31,7 +31,7 @@ src-tauri/src/
 |---|---|---|
 | `pty.rs` | PTY spawn / I/O / resize / kill / replay (HMR 越し) / terminal agent launch / hook server | TS 側 perception primitive が PTY output を **read のみ** で受け取る。Claude / Codex の起動引数差分だけ Rust 側で吸収 |
 | `mcp/server.rs` | MCP server の listen / round-trip dispatch | TS handler に request 投げて response を待つ async bridge |
-| `mcp/tools.rs` | Rust-native (`list_load_errors`) と TS-delegated 3 tool の宣言 | 3 tool は実装が TS、Rust は schema 宣言と forwarding のみ |
+| `mcp/tools.rs` | Rust-native (`list_load_errors`) と TS-delegated tools の宣言 | TS-delegated tool は実装が TS、Rust は schema 宣言と forwarding のみ |
 | User layer commands (`lib.rs`) | `~/.charminal/` の watch / atomic write / pack scan / safe mode | TS が file 操作を呼び出すための typed API |
 | SDK bundling (`lib.rs`) | `~/.charminal/sdk.d.ts` の startup 時生成 | user pack 開発時の IDE hint |
 | Init script seeding (`lib.rs`) | `~/.charminal/init.js` を初回だけ template から生成、既存は touch しない | 起動時 hook / keyboard shortcut を書く user layer を barrier なく用意 |

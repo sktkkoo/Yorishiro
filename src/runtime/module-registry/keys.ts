@@ -21,8 +21,12 @@ export const KEYS = {
   SCENE_PACK_REGISTRY: "scene-pack:registry",
   /** TerminalRuntime singleton (Phase 0b v2): xterm + PTY Channel の webview-lifetime 保持。 */
   TERMINAL_RUNTIME: "terminal:runtime",
+  /** ClaimState singleton (ui-pack plan 2): UI pack が本体自動処理を一時 suspend する状態。 */
+  UI_CLAIM_STATE: "ui-claim:state",
   /** UiPackRegistry singleton (ui-pack plan): 登録済み UI pack と active state。 */
   UI_PACK_REGISTRY: "ui-pack:registry",
+  /** UiStateStore singleton (ui-pack plan 3): UI pack と MCP が共有する key-value state。 */
+  UI_STATE_STORE: "ui-state:store",
   /** ThreeRuntime singleton (Phase 2): canvas + renderer + RAF + VRM + Body の webview-lifetime 保持。 */
   THREE_RUNTIME: "three:runtime",
   /** VrmCache singleton (Phase 2.5): URL → ArrayBuffer の LRU。 */

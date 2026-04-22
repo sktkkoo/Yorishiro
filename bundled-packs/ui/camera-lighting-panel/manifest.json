@@ -1,0 +1,10 @@
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "camera-lighting-panel",
+  "name": "Camera & Lighting Panel",
+  "type": "ui",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "description": "カメラ位置・FOV・照明の強度と色を slider/toggle/color picker で操作する reference UI pack。",
+  "entry": "ui.tsx"
+}
