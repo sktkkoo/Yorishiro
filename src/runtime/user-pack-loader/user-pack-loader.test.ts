@@ -976,4 +976,72 @@ describe("loadSingleUserPack", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it("fills missing persona axes from bundled defaults for minimal persona packs", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const registered: PersonaEntry[] = [];
+    const persona: PersonaRegistrar = {
+      register: (entry) => {
+        registered.push(entry);
+        return { dispose: () => {} };
+      },
+    };
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+    const defaults = {
+      id: "charminal-default",
+      name: "Charminal",
+      reflex: {
+        customTriggers: [
+          {
+            id: "default:idle-shoot",
+            match: () => null,
+          },
+        ],
+        responses: {
+          "mischievous-shoot": { handlers: [{ handler: async () => {} }] },
+        },
+      },
+      world: { body: "vrm:default", voice: "voice:default", space: "space:default" },
+      logReading: { readWhen: { kind: "session-boundary" }, framing: "own", windowSize: 10 },
+    } satisfies PersonaDefinition;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response("私は最小住人。", { status: 200 })) as typeof fetch;
+
+    try {
+      const result = await loadSingleUserPack(
+        {
+          id: "minimal-persona",
+          kind: "persona",
+          entryPath: "/fake/minimal-persona/persona.js",
+        },
+        {
+          effectPackRunner: runner,
+          personaRegistry: persona,
+          scenePackRegistry: makeFakeScenePackRegistry(),
+          packRegistry,
+          personaDefaults: defaults,
+          devLog,
+          importModule: async () => ({
+            default: {
+              id: "minimal-persona",
+              name: "最小住人",
+            },
+          }),
+        },
+      );
+
+      expect(result.status).toBe("loaded");
+      expect(registered).toHaveLength(1);
+      expect(registered[0].persona.id).toBe("minimal-persona");
+      expect(registered[0].persona.thinking?.systemPromptAddition).toBe("私は最小住人。");
+      expect(registered[0].persona.reflex).toBe(defaults.reflex);
+      expect(registered[0].persona.world).toBe(defaults.world);
+      expect(registered[0].persona.logReading).toBe(defaults.logReading);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

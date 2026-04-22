@@ -298,6 +298,32 @@ describe("loadInitScript", () => {
     ]);
   });
 
+  it("ctx.emitEvent forwards synthetic events to the runtime hook", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const emitted: Array<{ name: string; payload?: unknown }> = [];
+    const { subsystem } = makeDevLog();
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      ctx.emitEvent("charminal-default:shoot", { source: "shortcut" });
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      emitEvent: (name, payload) => {
+        emitted.push({ name, payload });
+      },
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(emitted).toEqual([{ name: "charminal-default:shoot", payload: { source: "shortcut" } }]);
+  });
+
   it("ctx.setActiveUi forwards the selected UI pack id", async () => {
     const effectReg = makeEffectRegistrar();
     const personaReg = makePersonaRegistrar();

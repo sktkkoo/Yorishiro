@@ -15,6 +15,7 @@ import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@c
 import type { SubsystemLog } from "../../core/dev-log";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
 import type { PersonaEntry } from "../persona-registry";
+import { applyPersonaDefaults } from "./persona-defaults";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
 /**
@@ -33,12 +34,14 @@ export interface EffectRequester {
  *   内部で通す契約なので、型を外れた値を渡すと synchronously throw する。
  * - dispatchEffect: 既に register 済みの effect を 1 回走らせる。keyboard
  *   shortcut や startup animation など、persona の reflex 外の発火経路で使う。
+ * - emitEvent: persona / harness trigger loop に synthetic event を流す。
  * - setActiveUi: keyboard shortcut などから active UI pack を切り替える。
  */
 export interface CharminalInitContext {
   registerEffect(pack: EffectDefinition): void;
   registerPersona(pack: PersonaDefinition): void;
   dispatchEffect(request: SpaceEffectRequest): void;
+  emitEvent(name: string, payload?: unknown): void;
   setActiveUi(id: string | null): void;
 }
 
@@ -47,6 +50,8 @@ export interface LoadInitScriptDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly devLog: SubsystemLog;
   readonly effectDispatcher: EffectRequester;
+  readonly personaDefaults?: PersonaDefinition;
+  readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly setActiveUi?: (id: string | null) => void;
   /**
    * Tauri の user_init_script_path を叩いて init.js の absolute path を返す。
@@ -77,22 +82,29 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
   },
   registerPersona(pack) {
     const validated = validatePersonaDefinition(pack);
+    const withDefaults = applyPersonaDefaults(validated, deps.personaDefaults);
     const entry: PersonaEntry = {
-      id: validated.id,
+      id: withDefaults.id,
       manifest: {
-        id: validated.id,
+        id: withDefaults.id,
         type: "persona",
         version: "0.0.0",
         charminalVersion: "*",
         entry: "persona.js",
       },
-      persona: validated,
+      persona: withDefaults,
       origin: "user",
     };
     deps.personaRegistry.register(entry);
   },
   dispatchEffect(request) {
     deps.effectDispatcher.dispatch(request);
+  },
+  emitEvent(name, payload) {
+    if (deps.emitEvent === undefined) {
+      throw new Error("emitEvent is not available in this runtime");
+    }
+    deps.emitEvent(name, payload);
   },
   setActiveUi(id) {
     if (deps.setActiveUi === undefined) {

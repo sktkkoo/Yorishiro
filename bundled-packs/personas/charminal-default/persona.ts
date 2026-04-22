@@ -1,6 +1,43 @@
 import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@charminal/sdk";
 import systemPromptAddition from "./persona.md?raw";
 
+const SHOOT_IDLE_THRESHOLD_MS = 90_000;
+const SHOOT_IDLE_PROBABILITY = 0.3;
+const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
+const SHOOT_TEXT_PHYSICS_FORCE = 100;
+const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
+const SHOOT_CAMERA_HOLD_MS = 8000;
+const SHOOT_CAMERA_MOVE_KIND = "camera-move";
+const SHOOT_SYNTHETIC_EVENT = "charminal-default:shoot";
+const SHOOT_REACTION = "mischievous-shoot";
+const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
+
+const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
+  ctx.log.write({
+    reaction: ctx.event.reaction,
+    note: "gun fire motion with timed text-physics",
+    data: ctx.event.payload,
+  });
+
+  ctx.character.interrupt(SHOOT_REACTION);
+  ctx.character.play("anim:VRMA_gun_fire", {
+    fadeInMs: 300,
+    fadeOutMs: 300,
+    weight: 1,
+    priority: 10,
+  });
+  ctx.space.injectEffect({ kind: SHOOT_CAMERA_MOVE_KIND, holdMs: SHOOT_CAMERA_HOLD_MS });
+
+  await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
+  if (ctx.signal.aborted) return;
+
+  ctx.space.injectEffect({
+    kind: "text-physics",
+    origin: SHOOT_TEXT_PHYSICS_ORIGIN,
+    force: SHOOT_TEXT_PHYSICS_FORCE,
+  });
+};
+
 /**
  * Charminal の flagship persona。
  *
@@ -71,6 +108,36 @@ export default {
           return null;
         },
       } satisfies Trigger,
+
+      // 旧 Charminal の shoot sequence 相当：
+      // idle が長く続いた時だけ、低確率で mischievous-shoot を発火する。
+      // 実際の motion/effect 同期は response handler 側で 1 つの timeline として扱う。
+      {
+        id: "charminal-default:idle-shoot",
+        match(event: DispatchEvent) {
+          if (event.kind !== "idle") return null;
+          if (event.durationMs < SHOOT_IDLE_THRESHOLD_MS) return null;
+          if (Math.random() >= SHOOT_IDLE_PROBABILITY) return null;
+          return {
+            reaction: "mischievous-shoot",
+            payload: { durationMs: event.durationMs },
+          };
+        },
+      } satisfies Trigger,
+
+      // User shortcuts can announce an explicit shoot request through init.js.
+      // The motion/effect timeline still lives in the response handler below.
+      {
+        id: "charminal-default:shortcut-shoot",
+        match(event: DispatchEvent) {
+          if (event.kind !== "synthetic") return null;
+          if (event.name !== SHOOT_SYNTHETIC_EVENT) return null;
+          return {
+            reaction: SHOOT_SHORTCUT_REACTION,
+            payload: event.payload,
+          };
+        },
+      } satisfies Trigger,
     ],
     responses: {
       // エラー検知時の反射。philosophy の「意識に先立つ反応」は典型的には
@@ -98,7 +165,11 @@ export default {
               // 画面全体（ターミナル含む）が短く揺れる。
               // terminal の物理約束事を一瞬だけ破る — Charm 思想に近い強さ。
               // 軽い揺れ（"shake" = character 範囲のみ）は別 kind として用意してある。
-              ctx.space.injectEffect({ kind: "screen-shake", intensity: 0.35, durationMs: 500 });
+              ctx.space.injectEffect({
+                kind: "screen-shake",
+                intensity: 0.35,
+                durationMs: 500,
+              });
 
               // 2.5 秒後にゆっくり戻す
               await ctx.time.after(2500);
@@ -201,6 +272,27 @@ export default {
         ],
       },
 
+      // Effect Pack は passive rendering unit
+      // なので、銃撃 motion と TextPhysics の tightly-synchronized timeline は
+      // persona handler が持つ。
+      [SHOOT_REACTION]: {
+        handlers: [
+          {
+            label: "gun-fire-text-physics",
+            cooldownMs: 180000,
+            handler: runShootTimeline,
+          },
+        ],
+      },
+      [SHOOT_SHORTCUT_REACTION]: {
+        handlers: [
+          {
+            label: "gun-fire-text-physics-shortcut",
+            handler: runShootTimeline,
+          },
+        ],
+      },
+
       // アイドル時の無意識動作（複数候補から確率的に選ばれる）
       "idle-fidget": {
         handlers: [
@@ -208,7 +300,10 @@ export default {
             weight: 3,
             label: "look-around",
             handler: async (ctx: PersonaContext) => {
-              const gaze = ctx.character.gaze({ kind: "screen-element", selector: ".terminal" });
+              const gaze = ctx.character.gaze({
+                kind: "screen-element",
+                selector: ".terminal",
+              });
               await ctx.time.after(1500);
               if (ctx.signal.aborted) return;
               gaze.release();

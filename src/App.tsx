@@ -11,6 +11,7 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
+import cameraMovePack from "../bundled-packs/effects/camera-move/effect";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
@@ -113,12 +114,32 @@ function App() {
     });
     const logBridge = new LogBridge({ time });
     const effectDispatcher = new EffectDispatcher();
+    const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
     // 揺らす（body の transform は fixed 子孫の containing block を作る）。
     const renderer = new Renderer({
       shakeTarget: document.body,
       terminalCellExtractor: () => getTerminalRuntime().extractVisibleCells(),
+      camera: {
+        claim: () => claimState.claim("camera"),
+        getState: () => {
+          const camera = getThreeRuntime().getCamera();
+          return {
+            x: camera.position.x,
+            y: camera.position.y,
+            z: camera.position.z,
+            fov: camera.fov,
+          };
+        },
+        applyState: (state, lookAt) => {
+          const camera = getThreeRuntime().getCamera();
+          camera.position.set(state.x, state.y, state.z);
+          camera.fov = state.fov;
+          camera.updateProjectionMatrix();
+          camera.lookAt(lookAt?.x ?? 0, lookAt?.y ?? state.y, lookAt?.z ?? 0);
+        },
+      },
     });
     const effectPackRunner = new EffectPackRunner({
       dispatcher: effectDispatcher,
@@ -130,6 +151,7 @@ function App() {
     effectPackRunner.register(fireworksVolleyPack);
     effectPackRunner.register(textPhysicsPack);
     effectPackRunner.register(desaturatePack);
+    effectPackRunner.register(cameraMovePack);
 
     const perception = new Perception({
       bus,
@@ -142,7 +164,6 @@ function App() {
 
     // UI pack registry — HMR singleton（KEYS.UI_PACK_REGISTRY で共有）。
     const uiPackRegistry = getUiRegistry();
-    const claimState = getClaimState();
     const uiState = getUiStateStore();
 
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
@@ -276,7 +297,11 @@ function App() {
           scenePackRegistry,
           uiPackRegistry,
           effectDispatcher,
+          emitEvent: (name, payload) => {
+            bus.emitSynthetic({ type: "harness", packId: "user-init" }, name, payload, 0);
+          },
           packRegistry,
+          personaDefaults: charminalDefaultPack,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
           initScriptLog: createSubsystemLog(devLog, "InitScript"),
         });

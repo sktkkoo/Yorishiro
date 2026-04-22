@@ -1,0 +1,8 @@
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "camera-move",
+  "type": "effect",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "entry": "effect.ts"
+}

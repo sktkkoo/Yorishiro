@@ -13,11 +13,13 @@
  */
 
 import type {
+  CameraMoveConfig,
   Disposable,
   ParticleConfig,
   ParticleHandle,
   RendererAPI,
   TerminalCellData,
+  Vec3,
 } from "@charminal/sdk";
 import { computeShakeOffset } from "./shake";
 
@@ -79,6 +81,19 @@ export interface RendererDomFactories {
   readonly getDefaultCanvasMount: () => HTMLElement;
 }
 
+interface CameraState {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly fov: number;
+}
+
+export interface RendererCameraController {
+  readonly claim?: () => Disposable;
+  readonly getState: () => CameraState;
+  readonly applyState: (state: CameraState, lookAt?: Vec3) => void;
+}
+
 export interface RendererDeps {
   /**
    * addShakeFilter が transform を書き込む対象。production では
@@ -103,6 +118,8 @@ export interface RendererDeps {
    * TerminalView が提供する。未設定なら queryTerminalCells() は null を返す。
    */
   readonly terminalCellExtractor?: () => TerminalCellData | null;
+  /** camera-move effect 用。未指定なら addCameraMove は no-op handle を返す。 */
+  readonly camera?: RendererCameraController;
 }
 
 /** production default の DOM factory。globalThis.document / window を直接使う。 */
@@ -121,6 +138,7 @@ export class Renderer implements RendererAPI {
   private readonly dom: RendererDomFactories;
   private readonly canvasMountOverride: HTMLElement | undefined;
   private readonly terminalCellExtractor: (() => TerminalCellData | null) | undefined;
+  private readonly camera: RendererCameraController | undefined;
 
   /** 現在適用中の CSS filter 値の集合。space-separated で join して style.filter に書く。 */
   private readonly cssFilters = new Set<string>();
@@ -131,6 +149,7 @@ export class Renderer implements RendererAPI {
     this.dom = deps.dom ?? defaultDomFactories();
     this.canvasMountOverride = deps.canvasMount;
     this.terminalCellExtractor = deps.terminalCellExtractor;
+    this.camera = deps.camera;
   }
 
   /** canvasMount の解決。指定されていなければ factory の default を返す。 */
@@ -184,6 +203,64 @@ export class Renderer implements RendererAPI {
 
   addParticles(_config: ParticleConfig): ParticleHandle {
     throw new Error("Renderer.addParticles: not yet implemented");
+  }
+
+  addCameraMove(config: CameraMoveConfig): Disposable {
+    const camera = this.camera;
+    if (!camera) {
+      return { dispose: () => {} };
+    }
+
+    const durationMs = Math.max(0, config.durationMs);
+    const holdMs = Math.max(0, config.holdMs ?? 0);
+    const restoreMs = Math.max(0, config.restoreMs ?? durationMs);
+    const totalMs = durationMs + holdMs + restoreMs;
+    const start = camera.getState();
+    const target: CameraState = {
+      x: start.x + (config.offset?.x ?? 0),
+      y: start.y + (config.offset?.y ?? 0),
+      z: start.z + (config.offset?.z ?? 0),
+      fov: start.fov + (config.fovOffset ?? 0),
+    };
+    const claim = camera.claim?.() ?? null;
+
+    let disposed = false;
+    let startedAt: number | null = null;
+
+    const finish = (): void => {
+      if (disposed) return;
+      disposed = true;
+      camera.applyState(start, config.lookAt);
+      claim?.dispose();
+    };
+
+    const tick = (now: number): void => {
+      if (disposed) return;
+      startedAt ??= now;
+      const elapsed = now - startedAt;
+
+      if (elapsed >= totalMs) {
+        finish();
+        return;
+      }
+
+      let frame: CameraState;
+      if (elapsed <= durationMs) {
+        frame = interpolateCamera(start, target, progress(elapsed, durationMs));
+      } else if (elapsed <= durationMs + holdMs) {
+        frame = target;
+      } else {
+        const restoreElapsed = elapsed - durationMs - holdMs;
+        frame = interpolateCamera(target, start, progress(restoreElapsed, restoreMs));
+      }
+
+      camera.applyState(frame, config.lookAt);
+      requestAnimationFrame(tick);
+    };
+
+    requestAnimationFrame(tick);
+
+    return { dispose: finish };
   }
 
   /**
@@ -266,4 +343,20 @@ export class Renderer implements RendererAPI {
   queryTerminalCells(): TerminalCellData | null {
     return this.terminalCellExtractor?.() ?? null;
   }
+}
+
+function progress(elapsedMs: number, durationMs: number): number {
+  if (durationMs <= 0) return 1;
+  return easeOutCubic(Math.max(0, Math.min(1, elapsedMs / durationMs)));
+}
+
+const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
+
+function interpolateCamera(from: CameraState, to: CameraState, t: number): CameraState {
+  return {
+    x: from.x + (to.x - from.x) * t,
+    y: from.y + (to.y - from.y) * t,
+    z: from.z + (to.z - from.z) * t,
+    fov: from.fov + (to.fov - from.fov) * t,
+  };
 }

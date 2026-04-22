@@ -452,6 +452,15 @@ export type SpaceEffectRequest =
       burstDurationMs?: number;
     }
   | { kind: "text-physics"; origin: Vec2; force: number; gravity?: number }
+  | {
+      kind: "camera-move";
+      durationMs?: number;
+      holdMs?: number;
+      restoreMs?: number;
+      offset?: Partial<Vec3>;
+      fovOffset?: number;
+      lookAt?: Vec3;
+    }
   | { kind: "text-glitch"; durationMs: number; intensity?: number }
   | { kind: "desaturate"; durationMs: number; intensity?: number }
   | { kind: string; [option: string]: unknown }; // user effect への拡張
@@ -599,6 +608,8 @@ export type CharmAPI = (command: string) => Promise<void>;
 export interface RendererAPI {
   /** パーティクル system を追加 */
   addParticles(config: ParticleConfig): ParticleHandle;
+  /** Three.js camera を一時的に動かし、完了後に元の状態へ戻す */
+  addCameraMove(config: CameraMoveConfig): Disposable;
   /** Canvas に直接描画 */
   drawOnCanvas(draw: (ctx: CanvasRenderingContext2D) => void): Disposable;
   /** DOM overlay layer を追加。container 内で自由に DOM 操作可能 */
@@ -610,6 +621,21 @@ export interface RendererAPI {
   addCssFilter(filter: string): Disposable;
   /** xterm.js の visible cells を読み取る（TextPhysics 用）。未接続なら null */
   queryTerminalCells(): TerminalCellData | null;
+}
+
+export interface CameraMoveConfig {
+  /** move-out にかける時間（ms） */
+  readonly durationMs: number;
+  /** target 位置で保持する時間（ms）。default 0 */
+  readonly holdMs?: number;
+  /** 元の camera state に戻す時間（ms）。default は durationMs */
+  readonly restoreMs?: number;
+  /** 現在位置からの相対移動量。zoom out は通常 `{ z: positive }` */
+  readonly offset?: Partial<Vec3>;
+  /** 現在 FOV からの相対変化量。positive で広角化 = zoom out */
+  readonly fovOffset?: number;
+  /** 指定時は各 frame でこの点を見る。未指定時は runtime default target を使う */
+  readonly lookAt?: Vec3;
 }
 
 /**

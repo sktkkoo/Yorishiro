@@ -17,6 +17,7 @@
  */
 
 import type { SubsystemLog } from "../../core/dev-log";
+import type { PersonaDefinition } from "../../sdk/persona";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
@@ -39,7 +40,9 @@ export interface LoadUserLayerDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
   readonly effectDispatcher: EffectRequester;
+  readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly packRegistry: UserPackRegistry;
+  readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
 }
@@ -107,6 +110,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       scenePackRegistry: deps.scenePackRegistry,
       uiPackRegistry: deps.uiPackRegistry,
       packRegistry: deps.packRegistry,
+      personaDefaults: deps.personaDefaults,
       devLog: deps.userPackLog,
       disabledPacks: config.disabledPacks,
       fetchPackEntries: async () => {
@@ -129,7 +133,9 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     : await loadInitScript({
         effectPackRunner: deps.effectPackRunner,
         personaRegistry: deps.personaRegistry,
+        personaDefaults: deps.personaDefaults,
         effectDispatcher: deps.effectDispatcher,
+        emitEvent: deps.emitEvent,
         devLog: deps.initScriptLog,
         setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
         fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
@@ -145,6 +151,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     scenePackRegistry: deps.scenePackRegistry,
     uiPackRegistry: deps.uiPackRegistry,
     packRegistry: deps.packRegistry,
+    personaDefaults: deps.personaDefaults,
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
   });
@@ -158,6 +165,7 @@ export interface ReloadSingleUserPackDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
   readonly packRegistry: UserPackRegistry;
+  readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
 }
 
@@ -222,6 +230,7 @@ export async function reloadSingleUserPack(
     scenePackRegistry: deps.scenePackRegistry,
     uiPackRegistry: deps.uiPackRegistry,
     packRegistry: deps.packRegistry,
+    personaDefaults: deps.personaDefaults,
     devLog: deps.userPackLog,
     importModule: importUserPackModule,
   });
