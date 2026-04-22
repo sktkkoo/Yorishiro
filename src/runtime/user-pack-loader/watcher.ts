@@ -20,6 +20,7 @@ import {
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
@@ -32,6 +33,7 @@ export interface StartPackWatcherDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
   readonly packRegistry: UserPackRegistry;
+  readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
 }
@@ -225,7 +227,10 @@ async function reloadPack(
           note: `persona "${action.id}": persona.md fetch failed (${errorMessage(err)})`,
         });
       }
-      const injected = injectPersonaPrompt(personaDef, mdText);
+      const injected = applyPersonaDefaults(
+        injectPersonaPrompt(personaDef, mdText),
+        deps.personaDefaults,
+      );
 
       const personaEntry: PersonaEntry = {
         id: injected.id,

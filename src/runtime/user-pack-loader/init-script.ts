@@ -15,6 +15,7 @@ import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@c
 import type { SubsystemLog } from "../../core/dev-log";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
 import type { PersonaEntry } from "../persona-registry";
+import { applyPersonaDefaults } from "./persona-defaults";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
 /**
@@ -47,6 +48,7 @@ export interface LoadInitScriptDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly devLog: SubsystemLog;
   readonly effectDispatcher: EffectRequester;
+  readonly personaDefaults?: PersonaDefinition;
   readonly setActiveUi?: (id: string | null) => void;
   /**
    * Tauri の user_init_script_path を叩いて init.js の absolute path を返す。
@@ -77,16 +79,17 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
   },
   registerPersona(pack) {
     const validated = validatePersonaDefinition(pack);
+    const withDefaults = applyPersonaDefaults(validated, deps.personaDefaults);
     const entry: PersonaEntry = {
-      id: validated.id,
+      id: withDefaults.id,
       manifest: {
-        id: validated.id,
+        id: withDefaults.id,
         type: "persona",
         version: "0.0.0",
         charminalVersion: "*",
         entry: "persona.js",
       },
-      persona: validated,
+      persona: withDefaults,
       origin: "user",
     };
     deps.personaRegistry.register(entry);

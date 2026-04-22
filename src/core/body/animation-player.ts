@@ -27,6 +27,7 @@ const ANIM_ALIAS: Record<string, string> = {
   VRMA_small_recoil: "Angry",
   VRMA_idle_sway: "Idle",
   VRMA_still: "VRMA_01",
+  VRMA_gun_fire: "VRMA_04",
 };
 
 /** Resolved animation action with metadata. */

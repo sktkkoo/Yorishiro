@@ -9,7 +9,7 @@ import type {
   PlayOptions,
   PtyOutputEvent,
 } from "@charminal/sdk";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import persona from "./persona";
 
 const hookSignal = (name: HookSignalEvent["signal"]["name"]): HookSignalEvent => ({
@@ -36,6 +36,10 @@ const postToolFailure = (toolName: string): HookSignalEvent => ({
 
 describe("charminal-default persona triggers", () => {
   const triggers = persona.reflex.customTriggers ?? [];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   describe("error → distressed trigger", () => {
     const trigger = triggers.find((t) => t.id === "charminal-default:error");
@@ -142,6 +146,34 @@ describe("charminal-default persona triggers", () => {
     it("does not match hook-signal events", () => {
       if (!trigger) throw new Error("trigger not registered");
       expect(trigger.match(hookSignal("post-tool-use"))).toBeNull();
+    });
+  });
+
+  describe("idle → mischievous-shoot trigger", () => {
+    const trigger = triggers.find((t) => t.id === "charminal-default:idle-shoot");
+
+    it("is registered in customTriggers", () => {
+      expect(trigger).toBeDefined();
+    });
+
+    it("matches idle >= 90s when probability passes", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      vi.spyOn(Math, "random").mockReturnValue(0.29);
+
+      const match = trigger.match({ kind: "idle", durationMs: 90_000, timestamp: 1000 });
+
+      expect(match).toEqual({
+        reaction: "mischievous-shoot",
+        payload: { durationMs: 90_000 },
+      });
+    });
+
+    it("does not match short idle or failed probability", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      vi.spyOn(Math, "random").mockReturnValue(0.3);
+
+      expect(trigger.match({ kind: "idle", durationMs: 89_999, timestamp: 1000 })).toBeNull();
+      expect(trigger.match({ kind: "idle", durationMs: 90_000, timestamp: 1000 })).toBeNull();
     });
   });
 
@@ -257,6 +289,97 @@ describe("charminal-default persona triggers", () => {
           data: samplePayload,
         }),
       );
+    });
+  });
+
+  describe("mischievous-shoot handler", () => {
+    const handler = persona.reflex.responses["mischievous-shoot"]?.handlers[0]?.handler;
+
+    it("is registered", () => {
+      expect(handler).toBeDefined();
+    });
+
+    it("plays gun-fire animation, waits 1500ms, then injects text-physics", async () => {
+      if (!handler) throw new Error("handler not registered");
+      const play = vi.fn<(ref: AnimationRef, opts?: PlayOptions) => AnimationHandle>(
+        (animation) => ({
+          animation,
+          startedAt: 0,
+          setWeight: () => {},
+          stop: () => Promise.resolve(),
+          cancel: () => {},
+          completion: Promise.resolve(),
+        }),
+      );
+      const interrupt = vi.fn<(reason?: string) => void>();
+      const injectEffect = vi.fn(() => ({
+        kind: "text-physics",
+        startedAt: 0,
+        completion: Promise.resolve(),
+        cancel: () => {},
+      }));
+      const after = vi.fn(() => Promise.resolve());
+
+      const ctx = {
+        event: {
+          reaction: "mischievous-shoot",
+          triggeredBy: { kind: "idle", durationMs: 90_000, timestamp: 1000 },
+          payload: { durationMs: 90_000 },
+          trigger: null,
+        },
+        character: { play, express: vi.fn(), gaze: vi.fn(), interrupt },
+        space: { injectEffect },
+        log: { write: vi.fn(), tail: vi.fn(() => []), read: vi.fn(() => []) },
+        time: { after },
+        signal: { aborted: false, addEventListener: vi.fn() } as unknown as AbortSignal,
+      } as unknown as PersonaContext;
+
+      await handler(ctx);
+
+      expect(interrupt).toHaveBeenCalledWith("mischievous-shoot");
+      expect(play).toHaveBeenCalledWith("anim:VRMA_gun_fire", {
+        fadeInMs: 300,
+        fadeOutMs: 300,
+        weight: 1,
+        priority: 10,
+      });
+      expect(after).toHaveBeenCalledWith(1500);
+      expect(injectEffect).toHaveBeenCalledWith({
+        kind: "text-physics",
+        origin: { x: 0.5, y: 0.7 },
+        force: 100,
+      });
+      expect(play.mock.invocationCallOrder[0]).toBeLessThan(after.mock.invocationCallOrder[0]);
+      expect(after.mock.invocationCallOrder[0]).toBeLessThan(
+        injectEffect.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("does not inject text-physics after abort during the timing wait", async () => {
+      if (!handler) throw new Error("handler not registered");
+      const injectEffect = vi.fn();
+      const signal = { aborted: false, addEventListener: vi.fn() } as unknown as AbortSignal;
+      const after = vi.fn(async () => {
+        (signal as { aborted: boolean }).aborted = true;
+      });
+
+      const ctx = {
+        event: {
+          reaction: "mischievous-shoot",
+          triggeredBy: { kind: "idle", durationMs: 90_000, timestamp: 1000 },
+          payload: { durationMs: 90_000 },
+          trigger: null,
+        },
+        character: { play: vi.fn(), express: vi.fn(), gaze: vi.fn(), interrupt: vi.fn() },
+        space: { injectEffect },
+        log: { write: vi.fn(), tail: vi.fn(() => []), read: vi.fn(() => []) },
+        time: { after },
+        signal,
+      } as unknown as PersonaContext;
+
+      await handler(ctx);
+
+      expect(injectEffect).not.toHaveBeenCalled();
     });
   });
 });

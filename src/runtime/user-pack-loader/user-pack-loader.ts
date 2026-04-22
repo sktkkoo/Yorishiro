@@ -16,7 +16,7 @@
  * isolation だけ検証する。
  */
 
-import type { EffectDefinition } from "@charminal/sdk";
+import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   PackValidationError,
@@ -28,6 +28,7 @@ import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
+import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
@@ -67,6 +68,7 @@ export interface LoadUserPacksDeps {
    * 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B2）。
    */
   readonly packRegistry: UserPackRegistry;
+  readonly personaDefaults?: PersonaDefinition;
   /** ~/.charminal/ を ensure してから list_user_packs を呼ぶ関数。production は Tauri invoke で実装。 */
   readonly fetchPackEntries: () => Promise<ReadonlyArray<UserPackEntry>>;
   /** entryPath を asset URL に変換しつつ dynamic import する関数。 */
@@ -121,6 +123,7 @@ export interface LoadSingleUserPackDeps {
   readonly packRegistry: UserPackRegistry;
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
+  readonly personaDefaults?: PersonaDefinition;
 }
 
 /**
@@ -165,6 +168,7 @@ export async function loadSingleUserPack(
     scenePackRegistry,
     uiPackRegistry,
     packRegistry,
+    personaDefaults,
     devLog,
     importModule,
   } = deps;
@@ -234,7 +238,10 @@ export async function loadSingleUserPack(
           })`,
         });
       }
-      const injected = injectPersonaPrompt(personaDef, mdText);
+      const injected = applyPersonaDefaults(
+        injectPersonaPrompt(personaDef, mdText),
+        personaDefaults,
+      );
 
       // PersonaRegistryImpl は user-over-bundled / user-over-user 衝突を
       // register 内で解決する。packRegistry 経由の dispose は
@@ -346,6 +353,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     uiPackRegistry,
     devLog,
     packRegistry,
+    personaDefaults,
     fetchPackEntries,
     importModule,
     disabledPacks,
@@ -398,6 +406,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
       scenePackRegistry,
       uiPackRegistry,
       packRegistry,
+      personaDefaults,
       devLog,
       importModule,
     });

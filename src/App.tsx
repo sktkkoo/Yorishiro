@@ -277,6 +277,7 @@ function App() {
           uiPackRegistry,
           effectDispatcher,
           packRegistry,
+          personaDefaults: charminalDefaultPack,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
           initScriptLog: createSubsystemLog(devLog, "InitScript"),
         });
