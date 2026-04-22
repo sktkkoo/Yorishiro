@@ -177,7 +177,7 @@ describe("charminal-default persona triggers", () => {
     });
   });
 
-  describe("synthetic shortcut → mischievous-shoot trigger", () => {
+  describe("synthetic shortcut → mischievous-shoot-shortcut trigger", () => {
     const trigger = triggers.find((t) => t.id === "charminal-default:shortcut-shoot");
 
     it("is registered in customTriggers", () => {
@@ -197,7 +197,7 @@ describe("charminal-default persona triggers", () => {
       });
 
       expect(match).toEqual({
-        reaction: "mischievous-shoot",
+        reaction: "mischievous-shoot-shortcut",
         payload,
       });
     });
@@ -418,6 +418,17 @@ describe("charminal-default persona triggers", () => {
       await handler(ctx);
 
       expect(injectEffect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("mischievous-shoot-shortcut handler", () => {
+    const handler = persona.reflex.responses["mischievous-shoot-shortcut"]?.handlers[0];
+
+    it("reuses the shoot timeline without cooldown so explicit shortcuts can repeat", () => {
+      expect(handler?.handler).toBe(
+        persona.reflex.responses["mischievous-shoot"]?.handlers[0]?.handler,
+      );
+      expect(handler?.cooldownMs).toBeUndefined();
     });
   });
 });

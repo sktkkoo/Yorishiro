@@ -7,6 +7,33 @@ const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
 const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
 const SHOOT_SYNTHETIC_EVENT = "charminal-default:shoot";
+const SHOOT_REACTION = "mischievous-shoot";
+const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
+
+const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
+  ctx.log.write({
+    reaction: ctx.event.reaction,
+    note: "gun fire motion with timed text-physics",
+    data: ctx.event.payload,
+  });
+
+  ctx.character.interrupt(SHOOT_REACTION);
+  ctx.character.play("anim:VRMA_gun_fire", {
+    fadeInMs: 300,
+    fadeOutMs: 300,
+    weight: 1,
+    priority: 10,
+  });
+
+  await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
+  if (ctx.signal.aborted) return;
+
+  ctx.space.injectEffect({
+    kind: "text-physics",
+    origin: SHOOT_TEXT_PHYSICS_ORIGIN,
+    force: SHOOT_TEXT_PHYSICS_FORCE,
+  });
+};
 
 /**
  * Charminal の flagship persona。
@@ -103,7 +130,7 @@ export default {
           if (event.kind !== "synthetic") return null;
           if (event.name !== SHOOT_SYNTHETIC_EVENT) return null;
           return {
-            reaction: "mischievous-shoot",
+            reaction: SHOOT_SHORTCUT_REACTION,
             payload: event.payload,
           };
         },
@@ -245,35 +272,20 @@ export default {
       // Effect Pack は passive rendering unit
       // なので、銃撃 motion と TextPhysics の tightly-synchronized timeline は
       // persona handler が持つ。
-      "mischievous-shoot": {
+      [SHOOT_REACTION]: {
         handlers: [
           {
             label: "gun-fire-text-physics",
             cooldownMs: 180000,
-            handler: async (ctx: PersonaContext) => {
-              ctx.log.write({
-                reaction: "mischievous-shoot",
-                note: "gun fire motion with timed text-physics",
-                data: ctx.event.payload,
-              });
-
-              ctx.character.interrupt("mischievous-shoot");
-              ctx.character.play("anim:VRMA_gun_fire", {
-                fadeInMs: 300,
-                fadeOutMs: 300,
-                weight: 1,
-                priority: 10,
-              });
-
-              await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
-              if (ctx.signal.aborted) return;
-
-              ctx.space.injectEffect({
-                kind: "text-physics",
-                origin: SHOOT_TEXT_PHYSICS_ORIGIN,
-                force: SHOOT_TEXT_PHYSICS_FORCE,
-              });
-            },
+            handler: runShootTimeline,
+          },
+        ],
+      },
+      [SHOOT_SHORTCUT_REACTION]: {
+        handlers: [
+          {
+            label: "gun-fire-text-physics-shortcut",
+            handler: runShootTimeline,
           },
         ],
       },
