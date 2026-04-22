@@ -261,6 +261,86 @@ fn has_existing_claude_session(cwd: Option<&str>) -> bool {
         .is_dir()
 }
 
+fn codex_session_file_matches_cwd(path: &std::path::Path, resolved_cwd: &std::path::Path) -> bool {
+    let Ok(file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut reader = std::io::BufReader::new(file);
+    let mut first_line = String::new();
+    if std::io::BufRead::read_line(&mut reader, &mut first_line).is_err() {
+        return false;
+    }
+
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&first_line) else {
+        return false;
+    };
+    let Some(cwd) = value
+        .get("payload")
+        .and_then(|payload| payload.get("cwd"))
+        .and_then(|cwd| cwd.as_str())
+    else {
+        return false;
+    };
+
+    std::fs::canonicalize(cwd)
+        .map(|session_cwd| session_cwd == resolved_cwd)
+        .unwrap_or(false)
+}
+
+fn has_existing_codex_session_in(
+    sessions_dir: &std::path::Path,
+    resolved_cwd: &std::path::Path,
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(sessions_dir) else {
+        return false;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if has_existing_codex_session_in(&path, resolved_cwd) {
+                return true;
+            }
+        } else if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl")
+            && codex_session_file_matches_cwd(&path, resolved_cwd)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// True if Codex has an existing session for `cwd` that `resume --last` can use.
+///
+/// Codex stores JSONL rollouts under `~/.codex/sessions/YYYY/MM/DD/`. The first
+/// line is `session_meta`, including `payload.cwd`; matching that keeps a fresh
+/// workspace from failing on `codex resume --last`.
+fn has_existing_codex_session(cwd: Option<&str>) -> bool {
+    let raw = match cwd {
+        Some(c) => std::path::PathBuf::from(c),
+        None => match std::env::current_dir() {
+            Ok(p) => p,
+            Err(_) => return false,
+        },
+    };
+
+    let Ok(resolved) = std::fs::canonicalize(&raw) else {
+        return false;
+    };
+
+    let Some(home) = std::env::var_os("HOME") else {
+        return false;
+    };
+
+    has_existing_codex_session_in(
+        &std::path::PathBuf::from(home)
+            .join(".codex")
+            .join("sessions"),
+        &resolved,
+    )
+}
+
 fn toml_basic_string(value: &str) -> String {
     let mut out = String::from("\"");
     for ch in value.chars() {
@@ -394,6 +474,13 @@ impl PtyState {
                 }
             }
             AgentKind::Codex => {
+                // `resume --last` continues the prior session for this cwd; passing it
+                // when none exists makes Codex exit with an error. Skip it for fresh dirs.
+                if has_existing_codex_session(cwd.as_deref()) {
+                    cmd.arg("resume");
+                    cmd.arg("--last");
+                }
+
                 if let Some(ref prompt) = system_prompt {
                     cmd.arg("-c");
                     cmd.arg(format!(
@@ -667,6 +754,72 @@ mod tests {
         let result = has_existing_claude_session(Some(&path_str));
         let _ = std::fs::remove_dir(&tmp);
         assert!(!result, "fresh tempdir should not have a Claude session");
+    }
+
+    #[test]
+    fn codex_session_file_matches_cwd_from_session_meta() {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-codex-session-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let workspace = tmp.join("workspace");
+        let session = tmp.join("session.jsonl");
+        std::fs::create_dir_all(&workspace).expect("create workspace");
+        std::fs::write(
+            &session,
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n",
+                workspace.to_str().expect("workspace path utf8")
+            ),
+        )
+        .expect("write session");
+
+        let resolved = std::fs::canonicalize(&workspace).expect("canonicalize workspace");
+        assert!(codex_session_file_matches_cwd(&session, &resolved));
+
+        let _ = std::fs::remove_file(&session);
+        let _ = std::fs::remove_dir(&workspace);
+        let _ = std::fs::remove_dir(&tmp);
+    }
+
+    #[test]
+    fn has_existing_codex_session_in_finds_nested_jsonl_for_cwd() {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-codex-session-tree-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let sessions_dir = tmp.join("sessions");
+        let nested = sessions_dir.join("2026").join("04").join("23");
+        let workspace = tmp.join("workspace");
+        std::fs::create_dir_all(&nested).expect("create nested sessions dir");
+        std::fs::create_dir_all(&workspace).expect("create workspace");
+        std::fs::write(
+            nested.join("rollout.jsonl"),
+            format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n",
+                workspace.to_str().expect("workspace path utf8")
+            ),
+        )
+        .expect("write session");
+
+        let resolved = std::fs::canonicalize(&workspace).expect("canonicalize workspace");
+        assert!(has_existing_codex_session_in(&sessions_dir, &resolved));
+
+        let _ = std::fs::remove_file(nested.join("rollout.jsonl"));
+        let _ = std::fs::remove_dir(&nested);
+        let _ = std::fs::remove_dir(sessions_dir.join("2026").join("04"));
+        let _ = std::fs::remove_dir(sessions_dir.join("2026"));
+        let _ = std::fs::remove_dir(&sessions_dir);
+        let _ = std::fs::remove_dir(&workspace);
+        let _ = std::fs::remove_dir(&tmp);
     }
 
     #[test]
