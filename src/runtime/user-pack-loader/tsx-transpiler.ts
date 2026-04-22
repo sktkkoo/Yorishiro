@@ -2,25 +2,31 @@
  * UI pack TSX transpiler — Plan 4 MVP.
  *
  * This intentionally supports only a single `ui.tsx` entry file. Relative
- * imports, persistent `.build` output, and watcher hot reload are follow-up
- * work once the core user UI pack path is proven.
+ * imports and persistent `.build` output are follow-up work once the core
+ * user UI pack path is proven.
  */
 
 import * as esbuild from "esbuild-wasm";
 import esbuildWasmUrl from "esbuild-wasm/esbuild.wasm?url";
 import type * as React from "react";
 import type * as ReactJsxRuntime from "react/jsx-runtime";
+import type * as ReactDomClient from "react-dom/client";
 
 const HOST_NAMESPACE = "charminal-host";
 const UNSUPPORTED_NAMESPACE = "charminal-unsupported";
 
 declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
+  var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
   var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
 }
 
 export interface TsxTranspilerDeps {
   readonly convertFileSrc: (filePath: string, protocol?: string) => string;
+}
+
+export interface TsxTranspilerOptions {
+  readonly cacheKey?: string | number;
 }
 
 let initializePromise: Promise<void> | null = null;
@@ -37,9 +43,24 @@ function ensureEsbuildInitialized(): Promise<void> {
   return initializePromise;
 }
 
-async function readEntrySource(entryPath: string, deps: TsxTranspilerDeps): Promise<string> {
+export function buildTsxEntryUrl(
+  entryPath: string,
+  deps: TsxTranspilerDeps,
+  options: TsxTranspilerOptions = {},
+): string {
   const url = deps.convertFileSrc(entryPath);
-  const response = await fetch(url);
+  if (options.cacheKey === undefined) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${encodeURIComponent(String(options.cacheKey))}`;
+}
+
+async function readEntrySource(
+  entryPath: string,
+  deps: TsxTranspilerDeps,
+  options: TsxTranspilerOptions = {},
+): Promise<string> {
+  const url = buildTsxEntryUrl(entryPath, deps, options);
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) {
     throw new Error(`failed to read TSX entry (${response.status} ${response.statusText})`);
   }
@@ -83,6 +104,13 @@ export const useSyncExternalStore = React.useSyncExternalStore;
 export const useTransition = React.useTransition;
 `;
 
+const reactDomClientShim = `
+const ReactDomClient = globalThis.__CHARMINAL_REACT_DOM_CLIENT__;
+if (!ReactDomClient) throw new Error("Charminal React DOM client host bridge is not initialized");
+export const createRoot = ReactDomClient.createRoot;
+export const hydrateRoot = ReactDomClient.hydrateRoot;
+`;
+
 const jsxRuntimeShim = `
 const Runtime = globalThis.__CHARMINAL_REACT_JSX_RUNTIME__;
 if (!Runtime) throw new Error("Charminal React JSX runtime bridge is not initialized");
@@ -99,10 +127,13 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
   return {
     name: "charminal-ui-pack-plan4-mvp",
     setup(build) {
-      build.onResolve({ filter: /^(react|react\/jsx-runtime|@charminal\/sdk)$/ }, (args) => ({
-        path: args.path,
-        namespace: HOST_NAMESPACE,
-      }));
+      build.onResolve(
+        { filter: /^(react|react-dom\/client|react\/jsx-runtime|@charminal\/sdk)$/ },
+        (args) => ({
+          path: args.path,
+          namespace: HOST_NAMESPACE,
+        }),
+      );
       build.onResolve({ filter: /^\.{1,2}\// }, (args) => ({
         path: args.path,
         namespace: UNSUPPORTED_NAMESPACE,
@@ -120,6 +151,9 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
         if (args.path === "react/jsx-runtime") {
           return { contents: jsxRuntimeShim, loader: "js" };
         }
+        if (args.path === "react-dom/client") {
+          return { contents: reactDomClientShim, loader: "js" };
+        }
         return { contents: sdkShim, loader: "js" };
       });
       build.onLoad({ filter: /.*/, namespace: UNSUPPORTED_NAMESPACE }, (args) => ({
@@ -132,9 +166,10 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
 export async function transpileUiTsxEntry(
   entryPath: string,
   deps: TsxTranspilerDeps,
+  options: TsxTranspilerOptions = {},
 ): Promise<string> {
   await ensureEsbuildInitialized();
-  const source = await readEntrySource(entryPath, deps);
+  const source = await readEntrySource(entryPath, deps, options);
   const result = await esbuild.build({
     bundle: true,
     format: "esm",
@@ -162,8 +197,9 @@ export async function transpileUiTsxEntry(
 export async function importUiTsxEntry(
   entryPath: string,
   deps: TsxTranspilerDeps,
+  options: TsxTranspilerOptions = {},
 ): Promise<unknown> {
-  const code = await transpileUiTsxEntry(entryPath, deps);
+  const code = await transpileUiTsxEntry(entryPath, deps, options);
   const url = URL.createObjectURL(new Blob([code], { type: "text/javascript" }));
   try {
     return await import(/* @vite-ignore */ url);

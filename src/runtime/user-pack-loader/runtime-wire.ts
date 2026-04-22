@@ -88,7 +88,10 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   const importUserPackModule = async (entryPath: string): Promise<unknown> => {
     if (entryPath.endsWith(".tsx")) {
       const { importUiTsxEntry } = await import("./tsx-transpiler");
-      return importUiTsxEntry(entryPath, { convertFileSrc });
+      const cacheKey = await invoke<number>("stat_file_mtime", { path: entryPath }).catch(
+        () => undefined,
+      );
+      return importUiTsxEntry(entryPath, { convertFileSrc }, { cacheKey });
     }
     const url = await buildCacheBustUrl(entryPath);
     return await import(/* @vite-ignore */ url);
@@ -190,7 +193,10 @@ export async function reloadSingleUserPack(
   const importUserPackModule = async (entryPath: string): Promise<unknown> => {
     if (entryPath.endsWith(".tsx")) {
       const { importUiTsxEntry } = await import("./tsx-transpiler");
-      return importUiTsxEntry(entryPath, { convertFileSrc });
+      const cacheKey = await invoke<number>("stat_file_mtime", { path: entryPath }).catch(
+        () => undefined,
+      );
+      return importUiTsxEntry(entryPath, { convertFileSrc }, { cacheKey });
     }
     const url = await buildCacheBustUrl(entryPath);
     return await import(/* @vite-ignore */ url);

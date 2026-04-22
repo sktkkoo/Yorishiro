@@ -164,7 +164,11 @@ async function reloadPack(
   try {
     if (action.entryPath.endsWith(".tsx")) {
       const { importUiTsxEntry } = await import("./tsx-transpiler");
-      mod = await importUiTsxEntry(action.entryPath, { convertFileSrc: tauri.convertFileSrc });
+      mod = await importUiTsxEntry(
+        action.entryPath,
+        { convertFileSrc: tauri.convertFileSrc },
+        { cacheKey },
+      );
     } else {
       const url = `${tauri.convertFileSrc(action.entryPath)}?v=${cacheKey}`;
       mod = await import(/* @vite-ignore */ url);

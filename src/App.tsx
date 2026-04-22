@@ -10,6 +10,7 @@ import type {
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
+import * as ReactDomClient from "react-dom/client";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
@@ -64,10 +65,12 @@ const VRM_STORAGE_KEY = "charminal:vrm";
 
 declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
+  var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
   var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
 }
 
 globalThis.__CHARMINAL_REACT__ = React;
+globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 
 function App() {
