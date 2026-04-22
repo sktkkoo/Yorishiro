@@ -18,7 +18,7 @@ Charminal の flagship persona。dry-run の pattern として、他の persona 
 | `pleased` | 軽く微笑み、頷く |
 | `contemplative` | idle sway を loop で流し、視線をそらす |
 | `acknowledging` | 小さく頷く |
-| `mischievous-shoot` | 銃を撃つ VRMA に合わせて 1500ms 後に `text-physics` を発火 |
+| `mischievous-shoot` | 銃を撃つ VRMA に合わせて camera zoom-out を約 8 秒保持し、1500ms 後に `text-physics` を発火 |
 | `idle-fidget` | 3 種類の候補から確率的に選ばれる：look-around / blink / subtle-stretch |
 
 ## ログ参照ポリシー

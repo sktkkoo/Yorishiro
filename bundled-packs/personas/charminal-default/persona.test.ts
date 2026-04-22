@@ -338,7 +338,7 @@ describe("charminal-default persona triggers", () => {
       expect(handler).toBeDefined();
     });
 
-    it("plays gun-fire animation, zooms out the camera, waits 1500ms, then injects text-physics", async () => {
+    it("plays gun-fire animation, zooms out the camera, holds it, waits 1500ms, then injects text-physics", async () => {
       if (!handler) throw new Error("handler not registered");
       const play = vi.fn<(ref: AnimationRef, opts?: PlayOptions) => AnimationHandle>(
         (animation) => ({
@@ -384,6 +384,7 @@ describe("charminal-default persona triggers", () => {
       });
       expect(injectEffect).toHaveBeenNthCalledWith(1, {
         kind: "camera-move",
+        holdMs: 8000,
       });
       expect(after).toHaveBeenCalledWith(1500);
       expect(injectEffect).toHaveBeenNthCalledWith(2, {
@@ -424,6 +425,7 @@ describe("charminal-default persona triggers", () => {
       expect(injectEffect).toHaveBeenCalledOnce();
       expect(injectEffect).toHaveBeenCalledWith({
         kind: "camera-move",
+        holdMs: 8000,
       });
     });
   });

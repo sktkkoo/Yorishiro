@@ -6,6 +6,7 @@ const SHOOT_IDLE_PROBABILITY = 0.3;
 const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
 const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
+const SHOOT_CAMERA_HOLD_MS = 8000;
 const SHOOT_CAMERA_MOVE_KIND = "camera-move";
 const SHOOT_SYNTHETIC_EVENT = "charminal-default:shoot";
 const SHOOT_REACTION = "mischievous-shoot";
@@ -25,7 +26,7 @@ const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
     weight: 1,
     priority: 10,
   });
-  ctx.space.injectEffect({ kind: SHOOT_CAMERA_MOVE_KIND });
+  ctx.space.injectEffect({ kind: SHOOT_CAMERA_MOVE_KIND, holdMs: SHOOT_CAMERA_HOLD_MS });
 
   await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
   if (ctx.signal.aborted) return;
