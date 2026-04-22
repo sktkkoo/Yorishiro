@@ -8,6 +8,7 @@ import type {
   PersonaContext,
   PlayOptions,
   PtyOutputEvent,
+  WeightedPersonaHandler,
 } from "@charminal/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import persona from "./persona";
@@ -337,7 +338,7 @@ describe("charminal-default persona triggers", () => {
       expect(handler).toBeDefined();
     });
 
-    it("plays gun-fire animation, waits 1500ms, then injects text-physics", async () => {
+    it("plays gun-fire animation, zooms out the camera, waits 1500ms, then injects text-physics", async () => {
       if (!handler) throw new Error("handler not registered");
       const play = vi.fn<(ref: AnimationRef, opts?: PlayOptions) => AnimationHandle>(
         (animation) => ({
@@ -381,15 +382,18 @@ describe("charminal-default persona triggers", () => {
         weight: 1,
         priority: 10,
       });
+      expect(injectEffect).toHaveBeenNthCalledWith(1, {
+        kind: "camera-move",
+      });
       expect(after).toHaveBeenCalledWith(1500);
-      expect(injectEffect).toHaveBeenCalledWith({
+      expect(injectEffect).toHaveBeenNthCalledWith(2, {
         kind: "text-physics",
         origin: { x: 0.5, y: 0.7 },
         force: 100,
       });
       expect(play.mock.invocationCallOrder[0]).toBeLessThan(after.mock.invocationCallOrder[0]);
       expect(after.mock.invocationCallOrder[0]).toBeLessThan(
-        injectEffect.mock.invocationCallOrder[0],
+        injectEffect.mock.invocationCallOrder[1],
       );
     });
 
@@ -417,12 +421,17 @@ describe("charminal-default persona triggers", () => {
 
       await handler(ctx);
 
-      expect(injectEffect).not.toHaveBeenCalled();
+      expect(injectEffect).toHaveBeenCalledOnce();
+      expect(injectEffect).toHaveBeenCalledWith({
+        kind: "camera-move",
+      });
     });
   });
 
   describe("mischievous-shoot-shortcut handler", () => {
-    const handler = persona.reflex.responses["mischievous-shoot-shortcut"]?.handlers[0];
+    const handler = persona.reflex.responses["mischievous-shoot-shortcut"]?.handlers[0] as
+      | WeightedPersonaHandler
+      | undefined;
 
     it("reuses the shoot timeline without cooldown so explicit shortcuts can repeat", () => {
       expect(handler?.handler).toBe(

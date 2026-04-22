@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Renderer, type RendererDomFactories } from "./renderer";
+import { Renderer, type RendererCameraController, type RendererDomFactories } from "./renderer";
 
 // Minimal shake target — `.style.transform` と `.style.filter` を読み書きする。
 interface FakeTarget {
@@ -477,5 +477,145 @@ describe("Renderer.queryTerminalCells", () => {
     });
     const result = renderer.queryTerminalCells();
     expect(result).toBeNull();
+  });
+});
+
+// ─── addCameraMove ────────────────────────────────────────
+
+type CameraSnapshot = Parameters<RendererCameraController["applyState"]>[0];
+
+const makeFrameQueue = () => {
+  const frames: FrameRequestCallback[] = [];
+  const requestAnimationFrame = vi.fn((cb: FrameRequestCallback): number => {
+    frames.push(cb);
+    return frames.length;
+  });
+  vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
+  return {
+    frames,
+    requestAnimationFrame,
+    runNextFrame: (now: number) => {
+      frames.shift()?.(now);
+    },
+  };
+};
+
+const makeCameraController = (initial?: Partial<CameraSnapshot>) => {
+  let state: CameraSnapshot = {
+    x: initial?.x ?? 0,
+    y: initial?.y ?? 1.35,
+    z: initial?.z ?? 1.1,
+    fov: initial?.fov ?? 35,
+  };
+  const applied: CameraSnapshot[] = [];
+  const claimHandle = { dispose: vi.fn() };
+  const claim = vi.fn(() => claimHandle);
+  const controller: RendererCameraController = {
+    claim,
+    getState: vi.fn(() => state),
+    applyState: vi.fn((next) => {
+      state = { ...next };
+      applied.push(state);
+    }),
+  };
+  return { controller, applied, claim, claimHandle };
+};
+
+const expectCameraStateCloseTo = (
+  actual: CameraSnapshot | undefined,
+  expected: CameraSnapshot,
+): void => {
+  expect(actual).toBeDefined();
+  if (!actual) return;
+  expect(actual.x).toBeCloseTo(expected.x);
+  expect(actual.y).toBeCloseTo(expected.y);
+  expect(actual.z).toBeCloseTo(expected.z);
+  expect(actual.fov).toBeCloseTo(expected.fov);
+};
+
+describe("Renderer.addCameraMove", () => {
+  it("camera controller がない場合は no-op handle を返す", () => {
+    const { requestAnimationFrame } = makeFrameQueue();
+    const renderer = new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+    });
+
+    const handle = renderer.addCameraMove({ durationMs: 100, offset: { z: 0.3 } });
+
+    expect(typeof handle.dispose).toBe("function");
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    expect(() => handle.dispose()).not.toThrow();
+  });
+
+  it("現在の camera state から target へ動かし、完了時に元へ戻す", () => {
+    const frames = makeFrameQueue();
+    const { controller, applied, claim, claimHandle } = makeCameraController();
+    const renderer = new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+      camera: controller,
+    });
+
+    renderer.addCameraMove({
+      durationMs: 100,
+      holdMs: 50,
+      restoreMs: 100,
+      offset: { z: 0.3 },
+      fovOffset: 4,
+    });
+
+    frames.runNextFrame(0);
+    frames.runNextFrame(100);
+    expectCameraStateCloseTo(applied[applied.length - 1], {
+      x: 0,
+      y: 1.35,
+      z: 1.4,
+      fov: 39,
+    });
+
+    frames.runNextFrame(150);
+    expectCameraStateCloseTo(applied[applied.length - 1], {
+      x: 0,
+      y: 1.35,
+      z: 1.4,
+      fov: 39,
+    });
+
+    frames.runNextFrame(250);
+    expectCameraStateCloseTo(applied[applied.length - 1], {
+      x: 0,
+      y: 1.35,
+      z: 1.1,
+      fov: 35,
+    });
+    expect(claim).toHaveBeenCalledOnce();
+    expect(claimHandle.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("dispose で即座に元の camera state へ戻し claim を解放する", () => {
+    const frames = makeFrameQueue();
+    const { controller, applied, claimHandle } = makeCameraController();
+    const renderer = new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+      camera: controller,
+    });
+    const handle = renderer.addCameraMove({
+      durationMs: 100,
+      holdMs: 0,
+      restoreMs: 100,
+      offset: { z: 0.3 },
+      fovOffset: 4,
+    });
+
+    frames.runNextFrame(0);
+    handle.dispose();
+    handle.dispose();
+
+    expectCameraStateCloseTo(applied[applied.length - 1], {
+      x: 0,
+      y: 1.35,
+      z: 1.1,
+      fov: 35,
+    });
+    expect(claimHandle.dispose).toHaveBeenCalledOnce();
   });
 });
