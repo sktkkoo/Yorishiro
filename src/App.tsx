@@ -5,6 +5,8 @@ import type {
   UiContext,
   UiLayout,
   UiPackManifest,
+  UiSceneLayerPatch,
+  UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
 import * as React from "react";
@@ -27,7 +29,7 @@ import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
-import type { SceneSpec } from "./core/scene";
+import type { Layer, LayerRole, SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
@@ -63,6 +65,142 @@ import "./App.css";
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
+
+type SceneLayerOverride = {
+  readonly target: UiSceneLayerTarget;
+  readonly patch: UiSceneLayerPatch;
+};
+
+type MutableLayer = {
+  id: string;
+  role?: LayerRole;
+  src?: string;
+  mediaType?: "image" | "video";
+  backgroundColor?: string;
+  backgroundImage?: string;
+  blur?: number;
+};
+
+function sceneLayerTargetKey(target: UiSceneLayerTarget): string | null {
+  if (typeof target.role === "string") return `role:${target.role}`;
+  if (typeof target.id === "string" && target.id.length > 0) return `id:${target.id}`;
+  return null;
+}
+
+function sceneLayerMatchesTarget(layer: Layer, target: UiSceneLayerTarget): boolean {
+  if (target.role !== undefined) return layer.role === target.role;
+  if (target.id !== undefined) return layer.id === target.id;
+  return false;
+}
+
+function applySceneLayerPatch(layer: Layer, patch: UiSceneLayerPatch): Layer {
+  const next: MutableLayer = { ...layer };
+  if ("src" in patch) {
+    if (patch.src === null) {
+      delete next.src;
+    } else if (patch.src !== undefined) {
+      next.src = patch.src;
+    }
+  }
+  if ("mediaType" in patch) {
+    if (patch.mediaType === null) {
+      delete next.mediaType;
+    } else if (patch.mediaType !== undefined) {
+      next.mediaType = patch.mediaType;
+    }
+  }
+  if ("backgroundColor" in patch) {
+    if (patch.backgroundColor === null) {
+      delete next.backgroundColor;
+    } else if (patch.backgroundColor !== undefined) {
+      next.backgroundColor = patch.backgroundColor;
+    }
+  }
+  if ("backgroundImage" in patch) {
+    if (patch.backgroundImage === null) {
+      delete next.backgroundImage;
+    } else if (patch.backgroundImage !== undefined) {
+      next.backgroundImage = patch.backgroundImage;
+    }
+  }
+  if ("blur" in patch) {
+    if (patch.blur === null) {
+      delete next.blur;
+    } else if (patch.blur !== undefined) {
+      next.blur = patch.blur;
+    }
+  }
+  return next;
+}
+
+function createSceneLayerForTarget(target: UiSceneLayerTarget): Layer | null {
+  if (target.role === "background") return { id: "ui-background", role: "background" };
+  if (target.role === "foreground") return { id: "ui-foreground", role: "foreground" };
+  if (target.id !== undefined && target.id.length > 0) return { id: target.id };
+  return null;
+}
+
+function insertSceneLayer(layers: ReadonlyArray<Layer>, layer: Layer): ReadonlyArray<Layer> {
+  if (layer.role === "background") {
+    const characterIndex = layers.findIndex((candidate) => candidate.role === "character");
+    if (characterIndex >= 0) {
+      return [...layers.slice(0, characterIndex), layer, ...layers.slice(characterIndex)];
+    }
+    return [layer, ...layers];
+  }
+  return [...layers, layer];
+}
+
+function applySceneLayerOverride(scene: SceneSpec, override: SceneLayerOverride): SceneSpec {
+  let found = false;
+  const layers = scene.layers.map((layer) => {
+    if (!sceneLayerMatchesTarget(layer, override.target)) return layer;
+    found = true;
+    return applySceneLayerPatch(layer, override.patch);
+  });
+  if (found) return { ...scene, layers };
+
+  const created = createSceneLayerForTarget(override.target);
+  if (created === null) return scene;
+  return {
+    ...scene,
+    layers: insertSceneLayer(layers, applySceneLayerPatch(created, override.patch)),
+  };
+}
+
+function applySceneLayerOverrides(
+  scene: SceneSpec | null,
+  overrides: ReadonlyArray<SceneLayerOverride>,
+): SceneSpec | null {
+  if (scene === null || overrides.length === 0) return scene;
+  return overrides.reduce((next, override) => applySceneLayerOverride(next, override), scene);
+}
+
+function upsertSceneLayerOverride(
+  overrides: ReadonlyArray<SceneLayerOverride>,
+  target: UiSceneLayerTarget,
+  patch: UiSceneLayerPatch,
+): ReadonlyArray<SceneLayerOverride> {
+  const key = sceneLayerTargetKey(target);
+  if (key === null) return overrides;
+  const next = [...overrides];
+  const index = next.findIndex((override) => sceneLayerTargetKey(override.target) === key);
+  if (index >= 0) {
+    next[index] = { target, patch: { ...next[index].patch, ...patch } };
+  } else {
+    next.push({ target, patch });
+  }
+  return next;
+}
+
+function removeSceneLayerOverride(
+  overrides: ReadonlyArray<SceneLayerOverride>,
+  target: UiSceneLayerTarget,
+): ReadonlyArray<SceneLayerOverride> {
+  const key = sceneLayerTargetKey(target);
+  if (key === null) return overrides;
+  return overrides.filter((override) => sceneLayerTargetKey(override.target) !== key);
+}
 
 declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
@@ -515,6 +653,22 @@ function App() {
     const sub = scenePackRegistry.subscribeActive((scene) => setActiveSceneState(scene));
     return () => sub.dispose();
   }, [scenePackRegistry]);
+  const [sceneLayerOverrides, setSceneLayerOverrides] = useState<ReadonlyArray<SceneLayerOverride>>(
+    [],
+  );
+  const renderedScene = useMemo(
+    () => applySceneLayerOverrides(activeScene, sceneLayerOverrides),
+    [activeScene, sceneLayerOverrides],
+  );
+  const renderedSceneRef = useRef<SceneSpec | null>(renderedScene);
+  const sceneListenersRef = useRef(new Set<(scene: SceneSpec | null) => void>());
+
+  useEffect(() => {
+    renderedSceneRef.current = renderedScene;
+    for (const listener of Array.from(sceneListenersRef.current)) {
+      listener(renderedScene);
+    }
+  }, [renderedScene]);
 
   // ── active persona を PersonaRegistryImpl から subscribe ────────────────
   // bundled charminal-default は runtime factory 内で register 済み。
@@ -591,6 +745,35 @@ function App() {
         set: (key, value) => uiState.set(packId, key, value),
         subscribe: (key, listener) => uiState.subscribe(packId, key, listener),
       };
+      const scene: UiContext["scene"] = {
+        get: () => renderedSceneRef.current,
+        subscribe: (listener) => {
+          sceneListenersRef.current.add(listener);
+          listener(renderedSceneRef.current);
+          return {
+            dispose: () => {
+              sceneListenersRef.current.delete(listener);
+            },
+          };
+        },
+        updateLayer: (target, patch) => {
+          if (sceneLayerTargetKey(target) === null) {
+            devLog.write({
+              subsystem: "UiPack",
+              phase: "scene",
+              note: `ignored invalid scene layer target from "${packId}"`,
+            });
+            return;
+          }
+          setSceneLayerOverrides((prev) => upsertSceneLayerOverride(prev, target, patch));
+        },
+        resetLayer: (target) => {
+          setSceneLayerOverrides((prev) => removeSceneLayerOverride(prev, target));
+        },
+        resetAll: () => {
+          setSceneLayerOverrides([]);
+        },
+      };
 
       return {
         space: {
@@ -623,6 +806,7 @@ function App() {
         },
         three,
         claim,
+        scene,
         state,
         time,
         log: createLogAPI(logBridge, packId),
@@ -649,6 +833,7 @@ function App() {
       const prevTargets = getLayoutTargets();
       if (prevTargets) resetLayout(prevTargets);
       claimState.releaseAll();
+      setSceneLayerOverrides([]);
 
       if (!entry) return;
 
@@ -703,6 +888,7 @@ function App() {
       const targets = getLayoutTargets();
       if (targets) resetLayout(targets);
       claimState.releaseAll();
+      setSceneLayerOverrides([]);
     };
   }, [
     uiPackRegistry,
@@ -922,7 +1108,7 @@ function App() {
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         effectDispatcher={effectDispatcher}
-        scene={activeScene}
+        scene={renderedScene}
       />
       {isUserLayerReady && (
         <Terminal

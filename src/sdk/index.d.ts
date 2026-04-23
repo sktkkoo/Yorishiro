@@ -29,5 +29,8 @@ export type {
   UiLayoutAPI,
   UiThreeAPI,
   UiClaimAPI,
+  UiSceneAPI,
+  UiSceneLayerPatch,
+  UiSceneLayerTarget,
   UiStateAPI,
 } from "./ui-pack";

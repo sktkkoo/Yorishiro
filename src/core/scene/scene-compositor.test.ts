@@ -1,7 +1,7 @@
 // src/core/scene/scene-compositor.test.ts
 
 import { describe, expect, it } from "vitest";
-import { isVideoSrc, layerStyle } from "./scene-compositor";
+import { isVideoLayer, isVideoSrc, layerStyle } from "./scene-compositor";
 import type { Layer } from "./types";
 
 describe("layerStyle", () => {
@@ -73,6 +73,9 @@ describe("isVideoSrc", () => {
   it("returns true for uppercase extension (.MP4)", () => {
     expect(isVideoSrc("/path/BG.MP4")).toBe(true);
   });
+  it("returns true for data video URLs", () => {
+    expect(isVideoSrc("data:video/mp4;base64,AAAA")).toBe(true);
+  });
   it("returns false for .jpg", () => {
     expect(isVideoSrc("/path/bg.jpg")).toBe(false);
   });
@@ -87,5 +90,21 @@ describe("isVideoSrc", () => {
   });
   it("returns false for URL with extension in query string", () => {
     expect(isVideoSrc("/path/bg.jpg?v=1")).toBe(false);
+  });
+});
+
+describe("isVideoLayer", () => {
+  it("uses explicit video mediaType for blob URLs", () => {
+    expect(isVideoLayer({ id: "bg", src: "blob:http://localhost/video", mediaType: "video" })).toBe(
+      true,
+    );
+  });
+
+  it("uses explicit image mediaType even when src has video extension", () => {
+    expect(isVideoLayer({ id: "bg", src: "/path/bg.mp4", mediaType: "image" })).toBe(false);
+  });
+
+  it("falls back to src extension when mediaType is omitted", () => {
+    expect(isVideoLayer({ id: "bg", src: "/path/bg.webm" })).toBe(true);
   });
 });

@@ -2,7 +2,7 @@
 
 ## 役割
 
-UI pack の `ctx.three` 直接操作、`ctx.claim`、`ctx.state` 機構の reference implementation。slider / toggle / color picker で Three.js の camera と directional light を runtime で操作し、値を MCP から read/write できるようにする。
+UI pack の `ctx.three` 直接操作、`ctx.claim`、`ctx.scene`、`ctx.state` 機構の reference implementation。slider / toggle / color picker / file picker で Three.js の camera、directional light、active scene layer を runtime で操作し、値を MCP から read/write できるようにする。
 
 ## 起動と切り替え
 
@@ -19,6 +19,7 @@ Charminal の default UI は UI pack なし。`~/.charminal/config.json` の `ac
 
 - Camera: Tracking toggle、Look at character toggle、X / Y / Z slider、FOV slider
 - Lighting: DirectionalLight intensity slider、color picker
+- Scene: background / foreground の media picker、blur slider
 
 ## claim 挙動
 
@@ -40,3 +41,11 @@ MCP `get_ui_state` / `set_ui_state` から以下の key を読み書きできる
 - `camera.fov`
 - `lighting.intensity`
 - `lighting.color`
+- `scene.background.blur`
+- `scene.background.src`
+- `scene.background.mediaType`
+- `scene.background.name`
+- `scene.foreground.blur`
+- `scene.foreground.src`
+- `scene.foreground.mediaType`
+- `scene.foreground.name`
