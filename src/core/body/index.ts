@@ -33,7 +33,7 @@ import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
-import { IdleSquintSystem } from "./idle-squint-system";
+import { EyelidExpressionController } from "./eyelid-expression-controller";
 import { ProceduralBones } from "./procedural-bones";
 
 // ─── Constants ───────────────────────────────────────────
@@ -63,15 +63,12 @@ export class Body {
   private readonly expressions: ExpressionManager;
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
-  private readonly idleSquintSystem: IdleSquintSystem;
+  private readonly eyelids: EyelidExpressionController;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
   private readonly claimState: ClaimState;
   private readonly devLog?: SubsystemLog;
-
-  /** Blink system's slot ID in ExpressionManager. -1 when not active. */
-  private blinkSlotId = -1;
 
   /** State-dependent expression slot IDs. */
   private stateExprSlots: number[] = [];
@@ -81,8 +78,6 @@ export class Body {
   private idleElapsedTime = 0;
   private relaxedValue = 0;
   private relaxedSlotId = -1;
-  private idleSquintSlotId = -1;
-  private idleSquintBlinkSuppressed = false;
 
   /** State-driven animation (e.g., Typing during writing). */
   private stateAnimStop: (() => Promise<void>) | null = null;
@@ -103,7 +98,7 @@ export class Body {
     this.expressions = new ExpressionManager();
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
-    this.idleSquintSystem = new IdleSquintSystem();
+    this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
     this.cursorAttention = new CursorAttentionSystem(undefined, (event) => {
       this.devLog?.write({
         phase: "cursor-attention",
@@ -152,7 +147,7 @@ export class Body {
         this.expressions.removeSlot(this.relaxedSlotId);
         this.relaxedSlotId = -1;
       }
-      this.clearIdleSquintSlot();
+      this.eyelids.clearIdleSquint();
     }
 
     // State-driven animation: Typing during writing
@@ -209,7 +204,6 @@ export class Body {
       if (this.stateExprState !== this.eyeSystem.state) {
         this.applyStateExpressions(this.eyeSystem.state);
       }
-      this.updateBlinkSlot(blinkValue);
     }
 
     // 4. Eye system (state-dependent patterns)
@@ -218,9 +212,14 @@ export class Body {
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
       this.updateRelaxed(delta);
-      this.updateIdleSquint(delta);
+      this.eyelids.update(blinkValue, delta, {
+        idle: this.eyeSystem.state === "idle",
+        explicitBlinkActive: this.hasActiveExplicitBlink(),
+        relaxedValue: this.relaxedValue,
+        neutralSlotId: this.stateExprSlots[0],
+      });
     } else {
-      this.clearIdleSquintSlot();
+      this.eyelids.clearIdleSquint();
     }
 
     // 6. Apply expressions to VRM
@@ -330,17 +329,17 @@ export class Body {
     const expressionName = expressionTargetToName(target);
     const slotId = this.expressions.addSlot(expressionName, intensity);
 
-    // If handler is driving blink, suppress auto-blink
-    if (expressionName === BLINK_EXPRESSION_NAME) {
-      this.blinkSystem.suppress();
-    }
+    const blinkSuppressionToken =
+      expressionName === BLINK_EXPRESSION_NAME ? this.blinkSystem.suppress() : null;
 
     const handle = new BodyExpressionHandle(
       target,
+      expressionName,
       intensity,
       slotId,
       this.expressions,
       this.blinkSystem,
+      blinkSuppressionToken,
       this.activeExprHandles,
     );
     this.activeExprHandles.add(handle);
@@ -374,19 +373,6 @@ export class Body {
   }
 
   // ─── Internal apply methods ───────────────────────────
-
-  private updateBlinkSlot(blinkValue: number): void {
-    if (blinkValue > 0) {
-      if (this.blinkSlotId === -1) {
-        this.blinkSlotId = this.expressions.addSlot(BLINK_EXPRESSION_NAME, blinkValue);
-      } else {
-        this.expressions.setWeight(this.blinkSlotId, blinkValue);
-      }
-    } else if (this.blinkSlotId !== -1) {
-      this.expressions.removeSlot(this.blinkSlotId);
-      this.blinkSlotId = -1;
-    }
-  }
 
   private applyExpressions(): void {
     const resolved = this.expressions.getResolved();
@@ -505,47 +491,13 @@ export class Body {
       this.expressions.removeSlot(this.relaxedSlotId);
       this.relaxedSlotId = -1;
     }
-
-    this.updateIdleNeutralWeight(0);
   }
 
-  private updateIdleSquint(delta: number): void {
-    const squintValue = this.idleSquintSystem.update(delta, this.eyeSystem.state === "idle");
-
-    if (squintValue > 0) {
-      if (!this.idleSquintBlinkSuppressed) {
-        this.blinkSystem.suppress();
-        this.idleSquintBlinkSuppressed = true;
-      }
-      this.updateBlinkSlot(0);
-      if (this.idleSquintSlotId === -1) {
-        this.idleSquintSlotId = this.expressions.addSlot(BLINK_EXPRESSION_NAME, squintValue);
-      } else {
-        this.expressions.setWeight(this.idleSquintSlotId, squintValue);
-      }
-      this.updateIdleNeutralWeight(squintValue);
-    } else {
-      this.clearIdleSquintSlot();
+  private hasActiveExplicitBlink(): boolean {
+    for (const handle of this.activeExprHandles) {
+      if (handle.expressionName === BLINK_EXPRESSION_NAME) return true;
     }
-  }
-
-  private clearIdleSquintSlot(): void {
-    if (this.idleSquintSlotId !== -1) {
-      this.expressions.removeSlot(this.idleSquintSlotId);
-      this.idleSquintSlotId = -1;
-      this.updateIdleNeutralWeight(0);
-    }
-    if (this.idleSquintBlinkSuppressed) {
-      this.blinkSystem.resume();
-      this.idleSquintBlinkSuppressed = false;
-    }
-  }
-
-  private updateIdleNeutralWeight(extraEyeWeight: number): void {
-    if (this.eyeSystem.state !== "idle") return;
-    const neutralSlot = this.stateExprSlots[0];
-    if (neutralSlot === undefined) return;
-    this.expressions.setWeight(neutralSlot, Math.max(0, 1.0 - this.relaxedValue - extraEyeWeight));
+    return false;
   }
 }
 
@@ -553,26 +505,32 @@ export class Body {
 
 class BodyExpressionHandle implements ExpressionHandle {
   readonly target: ExpressionTarget;
+  readonly expressionName: string;
   readonly requestedIntensity: number;
   private readonly slotId: number;
   private readonly manager: ExpressionManager;
   private readonly blinkSystem: BlinkSystem;
+  private readonly blinkSuppressionToken: number | null;
   private readonly registry: Set<BodyExpressionHandle>;
   private released = false;
 
   constructor(
     target: ExpressionTarget,
+    expressionName: string,
     intensity: number,
     slotId: number,
     manager: ExpressionManager,
     blinkSystem: BlinkSystem,
+    blinkSuppressionToken: number | null,
     registry: Set<BodyExpressionHandle>,
   ) {
     this.target = target;
+    this.expressionName = expressionName;
     this.requestedIntensity = intensity;
     this.slotId = slotId;
     this.manager = manager;
     this.blinkSystem = blinkSystem;
+    this.blinkSuppressionToken = blinkSuppressionToken;
     this.registry = registry;
   }
 
@@ -597,9 +555,8 @@ class BodyExpressionHandle implements ExpressionHandle {
     this.manager.removeSlot(this.slotId);
     this.registry.delete(this);
 
-    // Resume auto-blink if handler was driving blink
-    if (expressionTargetToName(this.target) === BLINK_EXPRESSION_NAME) {
-      this.blinkSystem.resume();
+    if (this.blinkSuppressionToken !== null) {
+      this.blinkSystem.resume(this.blinkSuppressionToken);
     }
   }
 }
@@ -646,5 +603,6 @@ export { BlinkSystem } from "./blink-system";
 // Re-export subsystem types for testing
 export { ExpressionManager, expressionTargetToName } from "./expression-manager";
 export { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
+export { EyelidExpressionController } from "./eyelid-expression-controller";
 export { IdleSquintSystem } from "./idle-squint-system";
 export { ProceduralBones } from "./procedural-bones";

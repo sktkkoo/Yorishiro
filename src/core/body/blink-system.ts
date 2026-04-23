@@ -15,8 +15,9 @@ export class BlinkSystem {
   private phase: 0 | 1 | 2 = 0; // 0=idle, 1=closing, 2=opening
   private blinkValue = 0;
 
-  /** When true, auto-blink is suppressed (e.g., handler-driven blink). */
-  private suppressed = false;
+  /** Active suppression tokens (e.g., handler-driven blink, idle squint). */
+  private readonly suppressions = new Set<number>();
+  private nextSuppressionToken = 0;
 
   private readonly random: () => number;
 
@@ -27,7 +28,7 @@ export class BlinkSystem {
 
   /** Advance the blink state machine. Returns the current blink value [0, 1]. */
   update(delta: number): number {
-    if (this.suppressed) return 0;
+    if (this.isSuppressed) return 0;
 
     this.timer -= delta;
     if (this.timer <= 0 && !this.active) {
@@ -56,20 +57,26 @@ export class BlinkSystem {
 
   /** Current blink value [0, 1]. */
   get value(): number {
-    return this.suppressed ? 0 : this.blinkValue;
+    return this.isSuppressed ? 0 : this.blinkValue;
   }
 
-  /** Suppress auto-blink (when handler is driving blink expression). */
-  suppress(): void {
-    this.suppressed = true;
+  get isSuppressed(): boolean {
+    return this.suppressions.size > 0;
+  }
+
+  /** Suppress auto-blink. The returned token must be released with resume(). */
+  suppress(): number {
+    const token = ++this.nextSuppressionToken;
+    this.suppressions.add(token);
     this.blinkValue = 0;
     this.active = false;
     this.phase = 0;
+    return token;
   }
 
   /** Resume auto-blink after suppression. */
-  resume(): void {
-    this.suppressed = false;
+  resume(token: number): void {
+    if (!this.suppressions.delete(token) || this.isSuppressed) return;
     this.timer = 2.0 + this.random() * 2.0; // shorter wait after resume
   }
 }

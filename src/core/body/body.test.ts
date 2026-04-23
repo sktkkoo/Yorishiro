@@ -10,6 +10,7 @@ import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
+import { EyelidExpressionController } from "./eyelid-expression-controller";
 import { IdleSquintSystem } from "./idle-squint-system";
 
 // ─── ExpressionManager ───────────────────────────────────
@@ -380,6 +381,60 @@ describe("IdleSquintSystem", () => {
   });
 });
 
+// ─── EyelidExpressionController ─────────────────────────
+
+describe("EyelidExpressionController", () => {
+  it("applies idle squint as blink while reducing neutral budget", () => {
+    const expressions = new ExpressionManager();
+    const blink = new BlinkSystem(() => 0);
+    const squint = new IdleSquintSystem(() => 0);
+    const eyelids = new EyelidExpressionController(expressions, blink, squint);
+    const neutralSlot = expressions.addSlot("neutral", 1);
+
+    eyelids.update(0, 6.1, {
+      idle: true,
+      explicitBlinkActive: false,
+      relaxedValue: 0,
+      neutralSlotId: neutralSlot,
+    });
+    eyelids.update(0, 0.3, {
+      idle: true,
+      explicitBlinkActive: false,
+      relaxedValue: 0,
+      neutralSlotId: neutralSlot,
+    });
+
+    const resolved = expressions.getResolved();
+    expect(resolved.get("blink")).toBeCloseTo(0.1);
+    expect(expressions.getRequestedWeight(neutralSlot)).toBeCloseTo(0.9);
+    expect(blink.isSuppressed).toBe(true);
+  });
+
+  it("does not start idle squint while an explicit blink is active", () => {
+    const expressions = new ExpressionManager();
+    const blink = new BlinkSystem(() => 0);
+    const squint = new IdleSquintSystem(() => 0);
+    const eyelids = new EyelidExpressionController(expressions, blink, squint);
+    const neutralSlot = expressions.addSlot("neutral", 1);
+
+    eyelids.update(0, 6.1, {
+      idle: true,
+      explicitBlinkActive: true,
+      relaxedValue: 0,
+      neutralSlotId: neutralSlot,
+    });
+    eyelids.update(0, 0.3, {
+      idle: true,
+      explicitBlinkActive: true,
+      relaxedValue: 0,
+      neutralSlotId: neutralSlot,
+    });
+
+    expect(expressions.getResolved().get("blink")).toBeUndefined();
+    expect(blink.isSuppressed).toBe(false);
+  });
+});
+
 // ─── gazeTargetToAngles ──────────────────────────────────
 
 describe("gazeTargetToAngles", () => {
@@ -450,14 +505,28 @@ describe("BlinkSystem", () => {
 
   it("resume after suppress restarts blink cycle", () => {
     const blink = new BlinkSystem(() => 0);
-    blink.suppress();
-    blink.resume();
+    const token = blink.suppress();
+    blink.resume(token);
     let maxValue = 0;
     for (let i = 0; i < 600; i++) {
       const v = blink.update(1 / 60);
       if (v > maxValue) maxValue = v;
     }
     expect(maxValue).toBe(1.0);
+  });
+
+  it("keeps blink suppressed until every suppression token is released", () => {
+    const blink = new BlinkSystem(() => 0);
+    const tokenA = blink.suppress();
+    const tokenB = blink.suppress();
+
+    blink.resume(tokenA);
+    expect(blink.isSuppressed).toBe(true);
+    for (let i = 0; i < 600; i++) blink.update(1 / 60);
+    expect(blink.value).toBe(0);
+
+    blink.resume(tokenB);
+    expect(blink.isSuppressed).toBe(false);
   });
 
   it("values stay in [0, 1] range", () => {
