@@ -177,10 +177,14 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         if (typeof value === "string") setForegroundSrc(value);
       }),
       ctx.state.subscribe(STATE_KEYS.backgroundMediaType, (value) => {
-        if (value === "image" || value === "video") setBackgroundMediaType(value);
+        if (value === "image" || value === "video" || value === null) {
+          setBackgroundMediaType(value);
+        }
       }),
       ctx.state.subscribe(STATE_KEYS.foregroundMediaType, (value) => {
-        if (value === "image" || value === "video") setForegroundMediaType(value);
+        if (value === "image" || value === "video" || value === null) {
+          setForegroundMediaType(value);
+        }
       }),
       ctx.state.subscribe(STATE_KEYS.backgroundName, (value) => {
         if (typeof value === "string") setBackgroundName(value);
