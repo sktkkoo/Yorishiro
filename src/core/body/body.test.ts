@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { BlinkSystem } from "./blink-system";
+import { CursorAttentionSystem } from "./cursor-attention";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
 
@@ -221,6 +222,105 @@ describe("EyeSystem", () => {
 
     eye.releaseOverride(id);
     expect(eye.hasOverride).toBe(false);
+  });
+
+  it("ambient offset nudges idle and override gaze", () => {
+    const eye = new EyeSystem(() => 0.5);
+    eye.setAmbientOffset(8, 6);
+    eye.update(1);
+    const ambient = eye.getOutput();
+    expect(ambient.yaw).toBeGreaterThan(0);
+    expect(ambient.pitch).toBeGreaterThan(0);
+
+    const id = eye.setOverride(2, -3);
+    eye.update(1);
+    expect(eye.getOutput()).toEqual({ yaw: 10, pitch: 3 });
+
+    eye.releaseOverride(id);
+    expect(eye.getOutput().yaw).toBeGreaterThan(0);
+  });
+});
+
+// ─── CursorAttentionSystem ──────────────────────────────
+
+describe("CursorAttentionSystem", () => {
+  it("starts an episode after a randomized 8-15s delay", () => {
+    const attention = new CursorAttentionSystem(() => 0);
+
+    attention.update(7.9);
+    expect(attention.isActive).toBe(false);
+
+    attention.update(0.2);
+    expect(attention.isActive).toBe(true);
+    expect(attention.getOutput().mode).toBe("eyes");
+  });
+
+  it("briefly follows the pointer with a delayed, subtle output", () => {
+    const values = [0, 0.5, 0.9];
+    const attention = new CursorAttentionSystem(() => values.shift() ?? 0.5);
+
+    attention.update(8);
+    attention.setPointerPositionFromHead(1000, 0, 500, 500, 1000, 1000);
+    attention.update(1 / 60);
+
+    const out = attention.getOutput();
+    expect(out.mode).toBe("both");
+    expect(out.eyeYawDeg).toBeGreaterThan(0);
+    expect(out.eyeYawDeg).toBeLessThan(72);
+    expect(out.headYawRad).toBeGreaterThan(0);
+    expect(out.headPitchRad).toBeGreaterThan(0);
+  });
+
+  it("computes pointer direction from the projected head position", () => {
+    const values = [0, 0.5, 0.9];
+    const attention = new CursorAttentionSystem(() => values.shift() ?? 0.5);
+
+    attention.update(8);
+    attention.setPointerPositionFromHead(700, 300, 500, 500, 1000, 1000);
+    attention.update(1);
+
+    const snapshot = attention.getDebugSnapshot();
+    expect(snapshot.targetX).toBeGreaterThan(0);
+    expect(snapshot.targetY).toBeGreaterThan(0);
+
+    const out = attention.getOutput();
+    expect(out.eyeYawDeg).toBeGreaterThan(0);
+    expect(out.eyePitchDeg).toBeLessThan(0);
+    expect(out.headYawRad).toBeGreaterThan(0);
+    expect(out.headPitchRad).toBeGreaterThan(0);
+  });
+
+  it("applies eye output from the current target without lag", () => {
+    const values = [0, 0.5, 0];
+    const attention = new CursorAttentionSystem(() => values.shift() ?? 0.5);
+
+    attention.update(8);
+    attention.update(0.3);
+    attention.setPointerPositionFromHead(850, 500, 500, 500, 1000, 1000);
+
+    const out = attention.getOutput();
+    const snapshot = attention.getDebugSnapshot();
+    expect(snapshot.targetX).toBe(1);
+    expect(snapshot.lagX).toBeLessThan(1);
+    expect(out.eyeYawDeg).toBeCloseTo(45);
+  });
+
+  it("logs start and end events with duration and next delay", () => {
+    const events: unknown[] = [];
+    const values = [0, 0, 0.49, 1];
+    const attention = new CursorAttentionSystem(
+      () => values.shift() ?? 0,
+      (event) => events.push(event),
+    );
+
+    attention.update(8);
+    expect(events).toEqual([{ kind: "start", mode: "eyes", durationS: 1, nextDelayS: null }]);
+
+    attention.update(1.1);
+    expect(events).toEqual([
+      { kind: "start", mode: "eyes", durationS: 1, nextDelayS: null },
+      { kind: "end", mode: "eyes", durationS: 1, nextDelayS: 15 },
+    ]);
   });
 });
 

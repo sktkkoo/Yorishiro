@@ -26,6 +26,15 @@ interface EyeDir {
 
 const MAX_YAW = 30; // degrees
 const MAX_PITCH = 25;
+const OUTPUT_MAX_YAW = 45;
+const OUTPUT_MAX_PITCH = 30;
+const EYE_MAX_YAW_DEG = 45;
+const EYE_MAX_PITCH_DEG = 30;
+const AMBIENT_SACCADE_SPEED = 1 / 0.06;
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
 
 // ─── State-dependent gaze patterns (NLP eye-access cues) ─
 
@@ -110,6 +119,12 @@ export class EyeSystem {
   private override: GazeOverride | null = null;
   private nextOverrideId = 0;
 
+  // ── Ambient attention offset ──
+  private ambientYaw = 0;
+  private ambientPitch = 0;
+  private ambientYawTarget = 0;
+  private ambientPitchTarget = 0;
+
   // ── Activity state ──
   private _state: EyeState = "idle";
 
@@ -133,15 +148,23 @@ export class EyeSystem {
   }
 
   update(delta: number): void {
+    this.updateAmbient(delta);
     if (this.override) return; // idle paused during override
     this.updateIdle(delta);
   }
 
   getOutput(): EyeOutput {
     if (this.override) {
-      return { yaw: this.override.yaw, pitch: this.override.pitch };
+      return {
+        yaw: clamp(this.override.yaw + this.ambientYaw, -OUTPUT_MAX_YAW, OUTPUT_MAX_YAW),
+        pitch: clamp(this.override.pitch + this.ambientPitch, -OUTPUT_MAX_PITCH, OUTPUT_MAX_PITCH),
+      };
     }
-    return this.getIdleOutput();
+    const idle = this.getIdleOutput();
+    return {
+      yaw: clamp(idle.yaw + this.ambientYaw, -OUTPUT_MAX_YAW, OUTPUT_MAX_YAW),
+      pitch: clamp(idle.pitch + this.ambientPitch, -OUTPUT_MAX_PITCH, OUTPUT_MAX_PITCH),
+    };
   }
 
   setOverride(yaw: number, pitch: number): number {
@@ -160,7 +183,18 @@ export class EyeSystem {
     return this.override !== null;
   }
 
+  setAmbientOffset(yaw: number, pitch: number): void {
+    this.ambientYawTarget = clamp(yaw, -EYE_MAX_YAW_DEG, EYE_MAX_YAW_DEG);
+    this.ambientPitchTarget = clamp(pitch, -EYE_MAX_PITCH_DEG, EYE_MAX_PITCH_DEG);
+  }
+
   // ── Idle internals ────────────────────────────────────
+
+  private updateAmbient(delta: number): void {
+    const t = Math.min(AMBIENT_SACCADE_SPEED * delta, 1.0);
+    this.ambientYaw += (this.ambientYawTarget - this.ambientYaw) * t;
+    this.ambientPitch += (this.ambientPitchTarget - this.ambientPitch) * t;
+  }
 
   private updateIdle(delta: number): void {
     if (!this.isSaccading) {

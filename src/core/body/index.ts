@@ -30,6 +30,7 @@ import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
+import { CursorAttentionSystem } from "./cursor-attention";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { ProceduralBones } from "./procedural-bones";
@@ -61,9 +62,11 @@ export class Body {
   private readonly expressions: ExpressionManager;
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
+  private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
   private readonly claimState: ClaimState;
+  private readonly devLog?: SubsystemLog;
 
   /** Blink system's slot ID in ExpressionManager. -1 when not active. */
   private blinkSlotId = -1;
@@ -83,13 +86,31 @@ export class Body {
   private readonly activeExprHandles = new Set<BodyExpressionHandle>();
   /** Track all active gaze handles for interrupt(). */
   private readonly activeGazeHandles = new Set<BodyGazeHandle>();
+  private cursorAttentionLogTimer = 0;
+  private pointerClientX: number | null = null;
+  private pointerClientY: number | null = null;
 
   constructor(vrm: VRM, devLog?: SubsystemLog, claimState?: ClaimState) {
     this.vrm = vrm;
+    this.devLog = devLog;
     this.claimState = claimState ?? getClaimState();
     this.expressions = new ExpressionManager();
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
+    this.cursorAttention = new CursorAttentionSystem(undefined, (event) => {
+      this.devLog?.write({
+        phase: "cursor-attention",
+        note:
+          event.kind === "start"
+            ? `cursor attention start: ${event.mode}`
+            : `cursor attention end: ${event.mode}`,
+        data: {
+          mode: event.mode,
+          durationS: Number(event.durationS.toFixed(2)),
+          nextDelayS: event.nextDelayS === null ? null : Number(event.nextDelayS.toFixed(2)),
+        },
+      });
+    });
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
@@ -144,6 +165,14 @@ export class Body {
   update(delta: number, elapsed: number): void {
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
+    this.cursorAttention.update(delta);
+    const cursorAttention = this.cursorAttention.getOutput();
+    this.proceduralBones.setHeadLookAtOffset(
+      cursorAttention.headYawRad,
+      cursorAttention.headPitchRad,
+    );
+    this.eyeSystem.setAmbientOffset(cursorAttention.eyeYawDeg, cursorAttention.eyePitchDeg);
+    this.logCursorAttentionSample(delta, cursorAttention);
 
     // 1. Animation mixer
     if (!animationClaimed) {
@@ -217,6 +246,28 @@ export class Body {
     this.animationPlayer.stopAll();
     this.activeExprHandles.clear();
     this.activeGazeHandles.clear();
+  }
+
+  setPointerClientPosition(clientX: number, clientY: number): void {
+    this.pointerClientX = clientX;
+    this.pointerClientY = clientY;
+  }
+
+  setCursorAttentionHeadReference(
+    headClientX: number,
+    headClientY: number,
+    width: number,
+    height: number,
+  ): void {
+    if (this.pointerClientX === null || this.pointerClientY === null) return;
+    this.cursorAttention.setPointerPositionFromHead(
+      this.pointerClientX,
+      this.pointerClientY,
+      headClientX,
+      headClientY,
+      width,
+      height,
+    );
   }
 
   // ─── CharacterAPI implementations ─────────────────────
@@ -336,6 +387,8 @@ export class Body {
     exprMgr.setValue("blink", 0);
     exprMgr.setValue("blinkLeft", 0);
     exprMgr.setValue("blinkRight", 0);
+    exprMgr.setValue("lookLeft", 0);
+    exprMgr.setValue("lookRight", 0);
     exprMgr.setValue("lookUp", 0);
     exprMgr.setValue("lookDown", 0);
     exprMgr.setValue("aa", 0);
@@ -354,10 +407,49 @@ export class Body {
     const output = this.eyeSystem.getOutput();
     this.vrm.lookAt.yaw = output.yaw;
     this.vrm.lookAt.pitch = output.pitch;
+    this.vrm.lookAt.applier.applyYawPitch(output.yaw, output.pitch);
   }
 
   private applyBreathing(elapsed: number): void {
     this.vrm.scene.position.y = Math.sin(elapsed * BREATHING_FREQUENCY) * BREATHING_AMPLITUDE;
+  }
+
+  private logCursorAttentionSample(
+    delta: number,
+    output: {
+      readonly mode: "eyes" | "both" | null;
+      readonly headYawRad: number;
+      readonly headPitchRad: number;
+      readonly eyeYawDeg: number;
+      readonly eyePitchDeg: number;
+    },
+  ): void {
+    if (!this.cursorAttention.isActive) {
+      this.cursorAttentionLogTimer = 0;
+      return;
+    }
+    this.cursorAttentionLogTimer -= delta;
+    if (this.cursorAttentionLogTimer > 0) return;
+    this.cursorAttentionLogTimer = 0.5;
+
+    const snapshot = this.cursorAttention.getDebugSnapshot();
+    this.devLog?.write({
+      phase: "cursor-attention",
+      note: "cursor attention sample",
+      data: {
+        mode: output.mode,
+        targetX: Number(snapshot.targetX.toFixed(2)),
+        targetY: Number(snapshot.targetY.toFixed(2)),
+        lagX: Number(snapshot.lagX.toFixed(2)),
+        lagY: Number(snapshot.lagY.toFixed(2)),
+        strength: Number(snapshot.strength.toFixed(2)),
+        headYawDeg: Number(((output.headYawRad * 180) / Math.PI).toFixed(1)),
+        headPitchDeg: Number(((output.headPitchRad * 180) / Math.PI).toFixed(1)),
+        eyeYawDeg: Number(output.eyeYawDeg.toFixed(1)),
+        eyePitchDeg: Number(output.eyePitchDeg.toFixed(1)),
+        remainingS: Number(snapshot.remainingS.toFixed(2)),
+      },
+    });
   }
 
   /** Apply state-dependent base expression (neutral/happy/etc.). */

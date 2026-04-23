@@ -36,6 +36,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   } = { current: null };
   private readonly devLogRef: { current: SubsystemLog | null } = { current: null };
   private readonly headWorldPos = new THREE.Vector3();
+  private readonly headScreenPos = new THREE.Vector3();
+  private readonly pointerClientPos = new THREE.Vector2(Number.NaN, Number.NaN);
 
   private currentUrl: string | null = null;
   private currentVrm: VRM | null = null;
@@ -91,6 +93,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.loader.register((parser) => new VRMLoaderPlugin(parser));
 
     // ── RAF loop 開始（webview-lifetime、1 本だけ）──────────────────
+    this.bindPointerTracking();
     this.startRenderLoop();
   }
 
@@ -238,6 +241,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       this.handleResize();
 
       if (this.currentBody) {
+        this.updateBodyPointerReference();
         this.currentBody.update(delta, elapsed);
 
         if (this.trackHead && !this.claimState.isClaimed("camera")) {
@@ -262,6 +266,39 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  private bindPointerTracking(): void {
+    const onPointerMove = (event: PointerEvent | MouseEvent) => {
+      this.pointerClientPos.set(event.clientX, event.clientY);
+      this.currentBody?.setPointerClientPosition(event.clientX, event.clientY);
+    };
+    const options = { capture: true, passive: true };
+    window.addEventListener("pointermove", onPointerMove, options);
+    window.addEventListener("mousemove", onPointerMove, options);
+    document.addEventListener("pointermove", onPointerMove, options);
+    document.addEventListener("mousemove", onPointerMove, options);
+  }
+
+  private updateBodyPointerReference(): void {
+    if (!this.currentBody || !this.trackHead || !this.currentPlaceholder) return;
+    if (!Number.isFinite(this.pointerClientPos.x) || !Number.isFinite(this.pointerClientPos.y)) {
+      return;
+    }
+
+    this.trackHead.getWorldPosition(this.headWorldPos);
+    this.headScreenPos.copy(this.headWorldPos).project(this.camera);
+    const rect = this.currentPlaceholder.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+
+    const headClientX = rect.left + ((this.headScreenPos.x + 1) / 2) * rect.width;
+    const headClientY = rect.top + ((1 - this.headScreenPos.y) / 2) * rect.height;
+    this.currentBody.setCursorAttentionHeadReference(
+      headClientX,
+      headClientY,
+      rect.width,
+      rect.height,
+    );
   }
 
   private disposeCurrentVrm(): void {

@@ -17,6 +17,7 @@ import type * as THREE from "three";
 const HEAD_DRIFT_AMP_Z = 0.04; // lateral tilt (radians)
 const HEAD_DRIFT_AMP_Y = 0.05; // yaw rotation (radians)
 const HEAD_DRIFT_SPEED = 1.2; // lerp speed (units/sec)
+const HEAD_LOOK_AT_SPEED = 2.2;
 
 // Rest pose base values for arms (must match setupRestPose in vrm-viewer.tsx)
 const LEFT_ARM_BASE_Z = 1.35;
@@ -44,6 +45,12 @@ export class ProceduralBones {
   private headDriftCurrentZ = 0;
   private headDriftCurrentY = 0;
   private headDriftTimer = 1.5 + Math.random() * 2.0;
+  private headLookAtTargetX = 0;
+  private headLookAtTargetY = 0;
+  private headLookAtCurrentX = 0;
+  private headLookAtCurrentY = 0;
+  private headLookAtAppliedX = 0;
+  private headLookAtAppliedY = 0;
 
   /** When true, head drift amplitude increases ×2.8 and interval shortens. */
   isThinking = false;
@@ -63,16 +70,20 @@ export class ProceduralBones {
     this.rightUpperArm = h.getNormalizedBoneNode("rightUpperArm");
   }
 
+  setHeadLookAtOffset(yawRad: number, pitchRad: number): void {
+    this.headLookAtTargetY = yawRad;
+    this.headLookAtTargetX = pitchRad;
+  }
+
   /**
    * Per-frame update. Applies bone rotations directly.
    * `weight` is used to blend with VRMA animations (1.0 = full procedural).
    */
   update(delta: number, elapsed: number, weight = 1.0): void {
-    if (weight < 0.001) return;
     const w = weight;
 
     // ── Spine sway ──────────────────────────────────────
-    if (this.spineBone) {
+    if (this.spineBone && w >= 0.001) {
       this.spineBone.rotation.z = Math.sin(elapsed * 0.6) * 0.015 * w;
       this.spineBone.rotation.x = Math.sin(elapsed * 0.4) * 0.008 * w;
     }
@@ -101,17 +112,37 @@ export class ProceduralBones {
         HEAD_DRIFT_SPEED,
         delta,
       );
-      this.headBone.rotation.z = this.headDriftCurrentZ * w;
-      this.headBone.rotation.y = this.headDriftCurrentY * w;
+      this.headLookAtCurrentX = lerpDelta(
+        this.headLookAtCurrentX,
+        this.headLookAtTargetX,
+        HEAD_LOOK_AT_SPEED,
+        delta,
+      );
+      this.headLookAtCurrentY = lerpDelta(
+        this.headLookAtCurrentY,
+        this.headLookAtTargetY,
+        HEAD_LOOK_AT_SPEED,
+        delta,
+      );
+      this.headBone.rotation.x -= this.headLookAtAppliedX;
+      this.headBone.rotation.y -= this.headLookAtAppliedY;
+      if (w >= 0.001) {
+        this.headBone.rotation.z = this.headDriftCurrentZ * w;
+        this.headBone.rotation.y = this.headDriftCurrentY * w;
+      }
+      this.headBone.rotation.x += this.headLookAtCurrentX;
+      this.headBone.rotation.y += this.headLookAtCurrentY;
+      this.headLookAtAppliedX = this.headLookAtCurrentX;
+      this.headLookAtAppliedY = this.headLookAtCurrentY;
     }
 
     // ── Arm micro-sway ──────────────────────────────────
     // Rest pose base + small sine offset (phase-shifted per arm)
-    if (this.leftUpperArm) {
+    if (this.leftUpperArm && w >= 0.001) {
       this.leftUpperArm.rotation.z = LEFT_ARM_BASE_Z + Math.sin(elapsed * 0.5 + 1.2) * 0.02 * w;
       this.leftUpperArm.rotation.x = LEFT_ARM_BASE_X + Math.sin(elapsed * 0.35) * 0.015 * w;
     }
-    if (this.rightUpperArm) {
+    if (this.rightUpperArm && w >= 0.001) {
       this.rightUpperArm.rotation.z = RIGHT_ARM_BASE_Z + Math.sin(elapsed * 0.5 + 2.4) * 0.02 * w;
       this.rightUpperArm.rotation.x = RIGHT_ARM_BASE_X + Math.sin(elapsed * 0.35 + 1.8) * 0.015 * w;
     }
