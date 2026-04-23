@@ -55,7 +55,12 @@ const coverStyle: CSSProperties = {
  * query string は reject（regex が $ でアンカーするため）。
  */
 export function isVideoSrc(src: string): boolean {
-  return /\.(webm|mp4|mov|m4v|ogv)$/i.test(src);
+  return /^data:video\//i.test(src) || /\.(webm|mp4|mov|m4v|ogv)$/i.test(src);
+}
+
+export function isVideoLayer(layer: Layer): boolean {
+  if (layer.mediaType !== undefined) return layer.mediaType === "video";
+  return layer.src !== undefined && isVideoSrc(layer.src);
 }
 
 /**
@@ -82,7 +87,7 @@ export function SceneCompositor({ scene, children }: SceneCompositorProps) {
       {scene.layers.map((layer) => (
         <div key={layer.id} data-layer-id={layer.id} style={layerStyle(layer)}>
           {layer.src !== undefined ? (
-            isVideoSrc(layer.src) ? (
+            isVideoLayer(layer) ? (
               <video src={layer.src} autoPlay muted loop playsInline style={coverStyle} />
             ) : (
               <img src={layer.src} alt="" style={coverStyle} />

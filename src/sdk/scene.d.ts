@@ -31,6 +31,7 @@ export interface Layer {
   readonly id: string;
   readonly role?: LayerRole;
   readonly src?: string;
+  readonly mediaType?: "image" | "video";
   readonly backgroundColor?: string;
   readonly backgroundImage?: string;
   readonly blur?: number;

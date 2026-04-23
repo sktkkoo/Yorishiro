@@ -19,6 +19,7 @@
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
 import type { CharacterAPI, Disposable, LogAPI, SpaceAPI, Time } from "./context";
+import type { LayerRole, SceneSpec } from "./scene";
 
 /**
  * Charminal の layout を UI pack がどう変えるかの宣言。
@@ -74,6 +75,7 @@ export interface UiPackManifest {
  * - character: existing CharacterAPI（express / play / gaze）を再利用
  * - three: Three.js オブジェクトを直接操作（camera / scene / renderer / vrm）
  * - claim: 本体の自動処理を一時 suspend（camera tracking / expression / animation）
+ * - scene: active scene pack の layer surface を一時的に調整
  * - state: MCP bridge と共有する key-value state
  * - layout: runtime で layout を変更する API
  * - signal: pack deactivate 時に fire する AbortSignal
@@ -83,6 +85,7 @@ export interface UiContext {
   readonly character: CharacterAPI;
   readonly three: UiThreeAPI;
   readonly claim: UiClaimAPI;
+  readonly scene: UiSceneAPI;
   readonly state: UiStateAPI;
   readonly time: Time;
   readonly log: LogAPI;
@@ -123,6 +126,27 @@ export interface UiClaimAPI {
   camera(): Disposable;
   expression(): Disposable;
   animation(): Disposable;
+}
+
+export interface UiSceneLayerTarget {
+  readonly role?: LayerRole;
+  readonly id?: string;
+}
+
+export interface UiSceneLayerPatch {
+  readonly src?: string | null;
+  readonly mediaType?: "image" | "video" | null;
+  readonly backgroundColor?: string | null;
+  readonly backgroundImage?: string | null;
+  readonly blur?: number | null;
+}
+
+export interface UiSceneAPI {
+  get(): SceneSpec | null;
+  subscribe(listener: (scene: SceneSpec | null) => void): Disposable;
+  updateLayer(target: UiSceneLayerTarget, patch: UiSceneLayerPatch): void;
+  resetLayer(target: UiSceneLayerTarget): void;
+  resetAll(): void;
 }
 
 /**
