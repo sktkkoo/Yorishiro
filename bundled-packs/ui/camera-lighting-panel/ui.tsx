@@ -68,6 +68,19 @@ function revokeObjectUrl(url: string): void {
   if (url.startsWith("blob:")) URL.revokeObjectURL(url);
 }
 
+function clearVolatileMediaState(
+  ctx: UiContext,
+  srcKey: string,
+  mediaTypeKey: string,
+  nameKey: string,
+  src: string,
+): void {
+  if (!src.startsWith("blob:")) return;
+  ctx.state.set(srcKey, "");
+  ctx.state.set(mediaTypeKey, null);
+  ctx.state.set(nameKey, "");
+}
+
 function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
   let found: DirectionalLight | null = null;
   scene.traverse((obj) => {
@@ -289,10 +302,26 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   useEffect(() => {
     return () => {
-      revokeObjectUrl(backgroundSrcRef.current);
-      revokeObjectUrl(foregroundSrcRef.current);
+      const background = backgroundSrcRef.current;
+      const foreground = foregroundSrcRef.current;
+      revokeObjectUrl(background);
+      revokeObjectUrl(foreground);
+      clearVolatileMediaState(
+        ctx,
+        STATE_KEYS.backgroundSrc,
+        STATE_KEYS.backgroundMediaType,
+        STATE_KEYS.backgroundName,
+        background,
+      );
+      clearVolatileMediaState(
+        ctx,
+        STATE_KEYS.foregroundSrc,
+        STATE_KEYS.foregroundMediaType,
+        STATE_KEYS.foregroundName,
+        foreground,
+      );
     };
-  }, []);
+  }, [ctx]);
 
   const setLayerMedia = (role: "background" | "foreground", file: File) => {
     const url = URL.createObjectURL(file);

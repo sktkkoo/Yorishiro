@@ -833,6 +833,7 @@ function App() {
       const prevTargets = getLayoutTargets();
       if (prevTargets) resetLayout(prevTargets);
       claimState.releaseAll();
+      setSceneLayerOverrides([]);
 
       if (!entry) return;
 
@@ -887,6 +888,7 @@ function App() {
       const targets = getLayoutTargets();
       if (targets) resetLayout(targets);
       claimState.releaseAll();
+      setSceneLayerOverrides([]);
     };
   }, [
     uiPackRegistry,
