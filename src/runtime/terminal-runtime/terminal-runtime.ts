@@ -9,7 +9,7 @@ import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import type { PtyParams, TerminalCursorClientPosition, TerminalRuntime } from "./types";
 
-const TYPING_CURSOR_ACTIVE_MS = 900;
+const TYPING_CURSOR_ACTIVE_MS = 2000;
 
 /**
  * TerminalRuntime implementation. See types.ts for the contract.
