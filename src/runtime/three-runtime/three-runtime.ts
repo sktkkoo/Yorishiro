@@ -5,6 +5,7 @@ import { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { getTerminalRuntime } from "../terminal-runtime";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
 import { getVrmCache } from "../vrm-cache";
 import type { ThreeRuntime } from "./types";
@@ -282,7 +283,10 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
   private updateBodyPointerReference(): void {
     if (!this.currentBody || !this.trackHead || !this.currentPlaceholder) return;
-    if (!Number.isFinite(this.pointerClientPos.x) || !Number.isFinite(this.pointerClientPos.y)) {
+    const terminalCursor = getTerminalRuntime().getInputCursorClientPosition();
+    const targetClientX = terminalCursor?.clientX ?? this.pointerClientPos.x;
+    const targetClientY = terminalCursor?.clientY ?? this.pointerClientPos.y;
+    if (!Number.isFinite(targetClientX) || !Number.isFinite(targetClientY)) {
       return;
     }
 
@@ -293,6 +297,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
     const headClientX = rect.left + ((this.headScreenPos.x + 1) / 2) * rect.width;
     const headClientY = rect.top + ((1 - this.headScreenPos.y) / 2) * rect.height;
+    this.currentBody.setCursorAttentionTargetSource(terminalCursor === null ? "mouse" : "input");
+    this.currentBody.setPointerClientPosition(targetClientX, targetClientY);
     this.currentBody.setCursorAttentionHeadReference(
       headClientX,
       headClientY,

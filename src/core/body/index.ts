@@ -89,6 +89,7 @@ export class Body {
   private cursorAttentionLogTimer = 0;
   private pointerClientX: number | null = null;
   private pointerClientY: number | null = null;
+  private cursorAttentionTargetSource: "mouse" | "input" = "mouse";
 
   constructor(vrm: VRM, devLog?: SubsystemLog, claimState?: ClaimState) {
     this.vrm = vrm;
@@ -251,6 +252,10 @@ export class Body {
   setPointerClientPosition(clientX: number, clientY: number): void {
     this.pointerClientX = clientX;
     this.pointerClientY = clientY;
+  }
+
+  setCursorAttentionTargetSource(source: "mouse" | "input"): void {
+    this.cursorAttentionTargetSource = source;
   }
 
   setCursorAttentionHeadReference(
@@ -438,6 +443,7 @@ export class Body {
       note: "cursor attention sample",
       data: {
         mode: output.mode,
+        targetSource: this.cursorAttentionTargetSource,
         targetX: Number(snapshot.targetX.toFixed(2)),
         targetY: Number(snapshot.targetY.toFixed(2)),
         lagX: Number(snapshot.lagX.toFixed(2)),

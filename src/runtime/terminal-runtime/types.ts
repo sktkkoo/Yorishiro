@@ -13,6 +13,11 @@ export interface PtyParams {
   readonly systemPrompt: string | null;
 }
 
+export interface TerminalCursorClientPosition {
+  readonly clientX: number;
+  readonly clientY: number;
+}
+
 /**
  * TerminalRuntime の public interface。terminal.tsx が参照するのはこの型だけ。
  *
@@ -55,6 +60,12 @@ export interface TerminalRuntime {
    * 経由で参照される。null を渡すことは通常ないが、許容（warn log を出す）。
    */
   setPerception(perception: Perception | null): void;
+
+  /**
+   * User が最近キー入力している間だけ、xterm の入力カーソル中心を
+   * viewport client 座標で返す。入力中でない / terminal が hidden なら null。
+   */
+  getInputCursorClientPosition(): TerminalCursorClientPosition | null;
 
   /**
    * xterm.js の visible 行からセルデータを抽出する（observation only）。

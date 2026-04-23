@@ -7,7 +7,9 @@ import { ptyResize, ptySpawn, ptyWrite } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
-import type { PtyParams, TerminalRuntime } from "./types";
+import type { PtyParams, TerminalCursorClientPosition, TerminalRuntime } from "./types";
+
+const TYPING_CURSOR_ACTIVE_MS = 900;
 
 /**
  * TerminalRuntime implementation. See types.ts for the contract.
@@ -30,6 +32,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private currentParams: PtyParams | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private lastUserInputAt = -Infinity;
 
   constructor() {
     this.term = new XTerm({
@@ -105,6 +108,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     // ユーザー入力を PTY に流す
     let writeQueue: Promise<void> = Promise.resolve();
     this.term.onData((data) => {
+      this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
       writeQueue = writeQueue.then(async () => {
         try {
@@ -187,6 +191,26 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       );
     }
     this.perceptionRef.current = perception;
+  }
+
+  getInputCursorClientPosition(): TerminalCursorClientPosition | null {
+    if (performance.now() - this.lastUserInputAt > TYPING_CURSOR_ACTIVE_MS) return null;
+
+    const buffer = this.term.buffer.active;
+    if (!buffer) return null;
+
+    const rect = this.xtermContainer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    const cellWidth = rect.width / this.term.cols;
+    const cellHeight = rect.height / this.term.rows;
+    const col = Math.max(0, Math.min(this.term.cols - 1, buffer.cursorX));
+    const row = Math.max(0, Math.min(this.term.rows - 1, buffer.cursorY));
+
+    return {
+      clientX: rect.left + (col + 0.5) * cellWidth,
+      clientY: rect.top + (row + 0.5) * cellHeight,
+    };
   }
 
   extractVisibleCells(): TerminalCellData | null {
