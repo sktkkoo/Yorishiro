@@ -38,8 +38,8 @@ const FADE_S = 0.25;
 
 const HEAD_MAX_YAW_RAD = 0.22;
 const HEAD_MAX_PITCH_RAD = 0.14;
-const EYE_MAX_YAW_DEG = 45;
-const EYE_MAX_PITCH_DEG = 30;
+const EYE_MAX_YAW_DEG = 56;
+const EYE_MAX_PITCH_DEG = 26;
 const POINTER_RANGE_RATIO_X = 0.35;
 const POINTER_RANGE_RATIO_Y = 0.45;
 

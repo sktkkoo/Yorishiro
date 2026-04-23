@@ -302,7 +302,7 @@ describe("CursorAttentionSystem", () => {
     const snapshot = attention.getDebugSnapshot();
     expect(snapshot.targetX).toBe(1);
     expect(snapshot.lagX).toBeLessThan(1);
-    expect(out.eyeYawDeg).toBeCloseTo(45);
+    expect(out.eyeYawDeg).toBeCloseTo(56);
   });
 
   it("logs start and end events with duration and next delay", () => {

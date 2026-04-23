@@ -17,7 +17,7 @@ import type * as THREE from "three";
 const HEAD_DRIFT_AMP_Z = 0.04; // lateral tilt (radians)
 const HEAD_DRIFT_AMP_Y = 0.05; // yaw rotation (radians)
 const HEAD_DRIFT_SPEED = 1.2; // lerp speed (units/sec)
-const HEAD_LOOK_AT_SPEED = 2.2;
+const HEAD_LOOK_AT_SPEED = 1.2;
 
 // Rest pose base values for arms (must match setupRestPose in vrm-viewer.tsx)
 const LEFT_ARM_BASE_Z = 1.35;

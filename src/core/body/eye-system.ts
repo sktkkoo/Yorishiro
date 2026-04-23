@@ -26,10 +26,10 @@ interface EyeDir {
 
 const MAX_YAW = 30; // degrees
 const MAX_PITCH = 25;
-const OUTPUT_MAX_YAW = 45;
-const OUTPUT_MAX_PITCH = 30;
-const EYE_MAX_YAW_DEG = 45;
-const EYE_MAX_PITCH_DEG = 30;
+const OUTPUT_MAX_YAW = 56;
+const OUTPUT_MAX_PITCH = 26;
+const EYE_MAX_YAW_DEG = 56;
+const EYE_MAX_PITCH_DEG = 26;
 const AMBIENT_SACCADE_SPEED = 1 / 0.06;
 
 function clamp(value: number, min: number, max: number): number {
