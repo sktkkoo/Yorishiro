@@ -33,6 +33,7 @@ import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
+import { IdleSquintSystem } from "./idle-squint-system";
 import { ProceduralBones } from "./procedural-bones";
 
 // ─── Constants ───────────────────────────────────────────
@@ -62,6 +63,7 @@ export class Body {
   private readonly expressions: ExpressionManager;
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
+  private readonly idleSquintSystem: IdleSquintSystem;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -77,7 +79,10 @@ export class Body {
 
   /** Idle elapsed time for gradual relaxed expression. */
   private idleElapsedTime = 0;
+  private relaxedValue = 0;
   private relaxedSlotId = -1;
+  private idleSquintSlotId = -1;
+  private idleSquintBlinkSuppressed = false;
 
   /** State-driven animation (e.g., Typing during writing). */
   private stateAnimStop: (() => Promise<void>) | null = null;
@@ -98,6 +103,7 @@ export class Body {
     this.expressions = new ExpressionManager();
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
+    this.idleSquintSystem = new IdleSquintSystem();
     this.cursorAttention = new CursorAttentionSystem(undefined, (event) => {
       this.devLog?.write({
         phase: "cursor-attention",
@@ -141,10 +147,12 @@ export class Body {
     // Reset idle relaxed timer when leaving idle
     if (state !== "idle" && !this.claimState.isClaimed("expression")) {
       this.idleElapsedTime = 0;
+      this.relaxedValue = 0;
       if (this.relaxedSlotId !== -1) {
         this.expressions.removeSlot(this.relaxedSlotId);
         this.relaxedSlotId = -1;
       }
+      this.clearIdleSquintSlot();
     }
 
     // State-driven animation: Typing during writing
@@ -210,6 +218,9 @@ export class Body {
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
       this.updateRelaxed(delta);
+      this.updateIdleSquint(delta);
+    } else {
+      this.clearIdleSquintSlot();
     }
 
     // 6. Apply expressions to VRM
@@ -479,23 +490,62 @@ export class Body {
     if (this.eyeSystem.state !== "idle") return;
     this.idleElapsedTime += delta;
 
-    const relaxedValue = Math.min(
+    this.relaxedValue = Math.min(
       Math.max((this.idleElapsedTime - RELAXED_THRESHOLD_S) / RELAXED_RAMP_S, 0),
       RELAXED_MAX,
     );
 
-    if (relaxedValue > 0) {
+    if (this.relaxedValue > 0) {
       if (this.relaxedSlotId === -1) {
-        this.relaxedSlotId = this.expressions.addSlot("relaxed", relaxedValue);
+        this.relaxedSlotId = this.expressions.addSlot("relaxed", this.relaxedValue);
       } else {
-        this.expressions.setWeight(this.relaxedSlotId, relaxedValue);
+        this.expressions.setWeight(this.relaxedSlotId, this.relaxedValue);
       }
-      // Reduce neutral as relaxed increases
-      const neutralSlot = this.stateExprSlots[0];
-      if (neutralSlot !== undefined) {
-        this.expressions.setWeight(neutralSlot, 1.0 - relaxedValue);
-      }
+    } else if (this.relaxedSlotId !== -1) {
+      this.expressions.removeSlot(this.relaxedSlotId);
+      this.relaxedSlotId = -1;
     }
+
+    this.updateIdleNeutralWeight(0);
+  }
+
+  private updateIdleSquint(delta: number): void {
+    const squintValue = this.idleSquintSystem.update(delta, this.eyeSystem.state === "idle");
+
+    if (squintValue > 0) {
+      if (!this.idleSquintBlinkSuppressed) {
+        this.blinkSystem.suppress();
+        this.idleSquintBlinkSuppressed = true;
+      }
+      this.updateBlinkSlot(0);
+      if (this.idleSquintSlotId === -1) {
+        this.idleSquintSlotId = this.expressions.addSlot(BLINK_EXPRESSION_NAME, squintValue);
+      } else {
+        this.expressions.setWeight(this.idleSquintSlotId, squintValue);
+      }
+      this.updateIdleNeutralWeight(squintValue);
+    } else {
+      this.clearIdleSquintSlot();
+    }
+  }
+
+  private clearIdleSquintSlot(): void {
+    if (this.idleSquintSlotId !== -1) {
+      this.expressions.removeSlot(this.idleSquintSlotId);
+      this.idleSquintSlotId = -1;
+      this.updateIdleNeutralWeight(0);
+    }
+    if (this.idleSquintBlinkSuppressed) {
+      this.blinkSystem.resume();
+      this.idleSquintBlinkSuppressed = false;
+    }
+  }
+
+  private updateIdleNeutralWeight(extraEyeWeight: number): void {
+    if (this.eyeSystem.state !== "idle") return;
+    const neutralSlot = this.stateExprSlots[0];
+    if (neutralSlot === undefined) return;
+    this.expressions.setWeight(neutralSlot, Math.max(0, 1.0 - this.relaxedValue - extraEyeWeight));
   }
 }
 
@@ -596,4 +646,5 @@ export { BlinkSystem } from "./blink-system";
 // Re-export subsystem types for testing
 export { ExpressionManager, expressionTargetToName } from "./expression-manager";
 export { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
+export { IdleSquintSystem } from "./idle-squint-system";
 export { ProceduralBones } from "./procedural-bones";

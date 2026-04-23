@@ -10,6 +10,7 @@ import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import { ExpressionManager, expressionTargetToName } from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
+import { IdleSquintSystem } from "./idle-squint-system";
 
 // ─── ExpressionManager ───────────────────────────────────
 
@@ -321,6 +322,61 @@ describe("CursorAttentionSystem", () => {
       { kind: "start", mode: "eyes", durationS: 1, nextDelayS: null },
       { kind: "end", mode: "eyes", durationS: 1, nextDelayS: 15 },
     ]);
+  });
+});
+
+// ─── IdleSquintSystem ───────────────────────────────────
+
+describe("IdleSquintSystem", () => {
+  it("starts a subtle squint after a randomized idle delay", () => {
+    const squint = new IdleSquintSystem(() => 1);
+
+    expect(squint.update(17.9, true)).toBe(0);
+    expect(squint.isActive).toBe(false);
+
+    expect(squint.update(0.2, true)).toBe(0);
+    expect(squint.isActive).toBe(true);
+
+    const value = squint.update(0.11, true);
+    expect(value).toBeGreaterThan(0);
+    expect(value).toBeLessThanOrEqual(0.3);
+  });
+
+  it("randomizes each episode strength between 0.1 and 0.3", () => {
+    const values = [0, 0, 0, 0, 0, 1];
+    const squint = new IdleSquintSystem(() => values.shift() ?? 0);
+
+    squint.update(6.1, true);
+    squint.update(0.3, true);
+    expect(squint.value).toBeCloseTo(0.1);
+
+    squint.update(0.5, true);
+    squint.update(6.1, true);
+    squint.update(0.3, true);
+    expect(squint.value).toBeCloseTo(0.3);
+  });
+
+  it("clears immediately when idle is disabled", () => {
+    const squint = new IdleSquintSystem(() => 0);
+
+    squint.update(6.1, true);
+    squint.update(0.2, true);
+    expect(squint.value).toBeGreaterThan(0);
+
+    expect(squint.update(0.1, false)).toBe(0);
+    expect(squint.value).toBe(0);
+    expect(squint.isActive).toBe(false);
+  });
+
+  it("fades out and schedules another episode after duration", () => {
+    const squint = new IdleSquintSystem(() => 0);
+
+    squint.update(6.1, true);
+    squint.update(0.3, true);
+    expect(squint.value).toBeGreaterThan(0);
+
+    expect(squint.update(0.5, true)).toBe(0);
+    expect(squint.isActive).toBe(false);
   });
 });
 
