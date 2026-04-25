@@ -1,16 +1,20 @@
 /**
  * Input cursor attention producer。
  *
- * PTY data event を trigger に caret 位置を読み、stateful に管理:
+ * rAF loop で毎 frame caret 位置を poll し、stateful に管理:
  * - rect が取れた: input-cursor:typing として emit (priority=3)
  * - rect 不在 (null) かつ前回 active: null clear
  * - rect 不在 かつ前回 inactive: 何もしない
+ *
+ * v1 と同様に getInputCursorClientPosition を rAF 毎に呼ぶことで、
+ * user 入力時に lastUserInputAt が更新されたことを自然に拾う
+ * （subscribePtyData は agent 出力でしか発火しないため使わない）。
  *
  * Enter keydown を listen し、focused 要素が <button> / <a> / [role=button] なら
  * input-cursor:activate、それ以外は input-cursor:sent を priority=5 で emit する。
  * どちらも 600ms 後に null clear する短いパルス設計（Enter は単発 event のため、
  * resolver maxAge 任せの定常監視原則と分けて producer 側で短い ttl を持つ例外）。
- * dispose で pulse timer も cancel する。
+ * dispose で rAF cancel + pulse timer cancel を両方行う。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
@@ -34,13 +38,14 @@ const ACTIVATABLE_TAGS = new Set(["BUTTON", "A"]);
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
-  readonly terminal: Pick<TerminalRuntime, "subscribePtyData" | "getInputCursorClientPosition">;
+  readonly terminal: Pick<TerminalRuntime, "getInputCursorClientPosition">;
 }
 
 export function startInputCursorAttentionProducer(opts: StartOptions): Disposable {
   const { attention, terminal } = opts;
   let typingActive = false;
   let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+  let rafId: number | null = null;
 
   const cancelPulseTimer = (): void => {
     if (pulseTimer !== null) {
@@ -75,7 +80,13 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
     typingActive = true;
   };
 
-  const ptySub = terminal.subscribePtyData(updateTyping);
+  // rAF loop で毎 frame caret 位置を poll する（v1 同様）。
+  // subscribePtyData は agent 出力でのみ発火するため user 入力を拾えない。
+  const tick = (): void => {
+    updateTyping();
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "Enter") return;
@@ -126,7 +137,7 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
 
   return {
     dispose: () => {
-      ptySub.dispose();
+      if (rafId !== null) cancelAnimationFrame(rafId);
       window.removeEventListener("keydown", onKeyDown, true);
       cancelPulseTimer();
     },

@@ -16,121 +16,153 @@ function makeFakeAttention() {
 function makeFakeTerminal(
   cursor: ReturnType<TerminalRuntime["getInputCursorClientPosition"]> | null,
 ) {
-  let listener: (() => void) | null = null;
-  const subscribePtyData = vi.fn((l: () => void) => {
-    listener = l;
-    return {
-      dispose: () => {
-        listener = null;
-      },
-    };
-  });
   const getInputCursorClientPosition = vi.fn(() => cursor);
-  const fake = {
-    subscribePtyData,
-    getInputCursorClientPosition,
-    emitPtyData() {
-      if (listener) listener();
-    },
-  };
+  const fake = { getInputCursorClientPosition };
   return fake as unknown as TerminalRuntime & typeof fake;
 }
 
+// rAF stub ヘルパー：mockImplementation の closure への代入を
+// オブジェクトプロパティ経由にすることで TypeScript CFA の never 収束を回避する。
+function makeRafStub() {
+  const state: { cb: ((t: DOMHighResTimeStamp) => void) | null } = { cb: null };
+  const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
+    state.cb = cb;
+    return 1;
+  });
+  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
+  const tick = (t = performance.now()): void => {
+    state.cb?.(t);
+  };
+  const restore = (): void => {
+    rafSpy.mockRestore();
+    vi.mocked(globalThis.cancelAnimationFrame).mockRestore?.();
+  };
+  return { rafSpy, tick, restore };
+}
+
 describe("startInputCursorAttentionProducer", () => {
-  it("emits input-cursor:typing target on pty data when caret is visible", () => {
-    const attention = makeFakeAttention();
-    const terminal = makeFakeTerminal({
-      clientX: 50,
-      clientY: 100,
-      cellWidth: 8,
-      cellHeight: 16,
-    });
-    const dispose = startInputCursorAttentionProducer({
-      attention,
-      terminal,
-    });
+  it("getInputCursorClientPosition は rAF 毎に呼ばれる", () => {
+    // requestAnimationFrame をスタブし、手動で tick を制御する
+    const { rafSpy, tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const dispose = startInputCursorAttentionProducer({ attention, terminal });
 
-    terminal.emitPtyData();
+      // 起動直後に 1 回 rAF が登録されている
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+      expect(terminal.getInputCursorClientPosition).not.toHaveBeenCalled();
 
-    const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:typing");
-    expect(call).toBeDefined();
-    expect(call?.[1]).toMatchObject({
-      kind: "input-cursor",
-      source: "input-cursor:typing",
-      priority: 3,
-      reason: "typing",
-    });
-    expect(call?.[1].rect).toMatchObject({ x: 50, y: 100, width: 8, height: 16 });
-    dispose.dispose();
+      // 1 frame 進める
+      tick();
+      expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(1);
+
+      // 2 frame 目
+      tick();
+      expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(2);
+
+      dispose.dispose();
+    } finally {
+      restore();
+    }
   });
 
-  it("does not emit when caret position is null on first scan (virgin state)", () => {
-    const attention = makeFakeAttention();
-    const terminal = makeFakeTerminal(null);
-    const dispose = startInputCursorAttentionProducer({
-      attention,
-      terminal,
-    });
+  it("rAF tick で caret が visible なら input-cursor:typing を emit する", () => {
+    const { tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const dispose = startInputCursorAttentionProducer({ attention, terminal });
 
-    terminal.emitPtyData();
+      tick();
 
-    expect(attention.setSourceTarget).not.toHaveBeenCalled();
-    dispose.dispose();
+      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:typing");
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({
+        kind: "input-cursor",
+        source: "input-cursor:typing",
+        priority: 3,
+        reason: "typing",
+      });
+      expect(call?.[1].rect).toMatchObject({ x: 50, y: 100, width: 8, height: 16 });
+      dispose.dispose();
+    } finally {
+      restore();
+    }
   });
 
-  it("clears with null when caret was previously visible but now absent", () => {
-    const attention = makeFakeAttention();
-    let cursor: {
-      clientX: number;
-      clientY: number;
-      cellWidth: number;
-      cellHeight: number;
-    } | null = { clientX: 50, clientY: 100, cellWidth: 8, cellHeight: 16 };
-    let listener: (() => void) | null = null;
-    const terminal = {
-      subscribePtyData: vi.fn((l: () => void) => {
-        listener = l;
-        return {
-          dispose: () => {
-            listener = null;
-          },
-        };
-      }),
-      getInputCursorClientPosition: vi.fn(() => cursor),
-    };
-    const dispose = startInputCursorAttentionProducer({
-      attention,
-      terminal,
-    });
+  it("caret が null のとき最初の scan では emit しない (virgin state)", () => {
+    const { tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal(null);
+      const dispose = startInputCursorAttentionProducer({ attention, terminal });
 
-    (listener as (() => void) | null)?.();
-    // first scan: emitted typing target
+      tick();
 
-    cursor = null;
-    (listener as (() => void) | null)?.();
-    // second scan: previously active → null clear
-
-    const nullCall = attention.setSourceTarget.mock.calls.find(
-      (c) => c[0] === "input-cursor:typing" && c[1] === null,
-    );
-    expect(nullCall).toBeDefined();
-    dispose.dispose();
+      expect(attention.setSourceTarget).not.toHaveBeenCalled();
+      dispose.dispose();
+    } finally {
+      restore();
+    }
   });
 
-  it("dispose unsubscribes from pty data listener", () => {
-    const attention = makeFakeAttention();
-    const ptyDispose = vi.fn();
-    const terminal = {
-      subscribePtyData: vi.fn(() => ({ dispose: ptyDispose })),
-      getInputCursorClientPosition: vi.fn(() => null),
-    };
-    const handle = startInputCursorAttentionProducer({
-      attention,
-      terminal,
-    });
+  it("caret が visible → null に変化したとき null clear を emit する", () => {
+    const { tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      let cursor: {
+        clientX: number;
+        clientY: number;
+        cellWidth: number;
+        cellHeight: number;
+      } | null = { clientX: 50, clientY: 100, cellWidth: 8, cellHeight: 16 };
+      const terminal = {
+        getInputCursorClientPosition: vi.fn(() => cursor),
+      };
+      const dispose = startInputCursorAttentionProducer({ attention, terminal });
 
-    handle.dispose();
-    expect(ptyDispose).toHaveBeenCalled();
+      // 1 frame 目: caret visible → typing emit
+      tick();
+
+      cursor = null;
+      // 2 frame 目: caret absent → null clear
+      tick();
+
+      const nullCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:typing" && c[1] === null,
+      );
+      expect(nullCall).toBeDefined();
+      dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("dispose で rAF がキャンセルされる", () => {
+    const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 42);
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal(null);
+      const handle = startInputCursorAttentionProducer({ attention, terminal });
+
+      handle.dispose();
+      expect(cancelSpy).toHaveBeenCalledWith(42);
+    } finally {
+      cancelSpy.mockRestore();
+      vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
+    }
   });
 });
 
