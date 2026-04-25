@@ -18,6 +18,13 @@ export * from "./context";
 export * from "./persona";
 export * from "./harness";
 export * from "./effect";
+export type {
+  AttentionAPI,
+  AttentionRect,
+  AttentionSnapshot,
+  AttentionTarget,
+  AttentionTargetKind,
+} from "./attention";
 export type { Layer, LayerRole, SceneSpec } from "./scene";
 export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
