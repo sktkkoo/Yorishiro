@@ -13,6 +13,8 @@
 export const KEYS = {
   /** App.tsx runtime singleton (Phase 0b): time / bus / registry / perception / logBridge. */
   APP_RUNTIME: "app:runtime",
+  /** AttentionRuntime singleton: source ごとの AttentionTarget を集約し、resolver で 1 本に絞った snapshot を publish する。 */
+  ATTENTION_RUNTIME: "attention:runtime",
   /** ModuleRegistry singleton (Phase 1). */
   MODULE_REGISTRY: "registry:module",
   /** PersonaRegistry singleton (persona single-active plan): 登録済み persona と active state。 */
