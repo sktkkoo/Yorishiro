@@ -11,7 +11,7 @@
  * Internal design-record: specs/2026-04-25-scene-ambient-audio-design.md §4.5
  */
 
-import type { Howl } from "howler";
+import { Howl } from "howler";
 
 export interface ResolvedSound {
   readonly url: string;
@@ -27,6 +27,43 @@ interface ActiveEntry {
 
 export class AmbientAudioRuntime {
   private readonly active = new Map<string, ActiveEntry>();
+
+  /**
+   * Diff-based mix update。
+   * - 旧 active のうち新 mix に無い → fade out → unload (scheduled)
+   * - 旧 active のうち新 mix に有り volume 変更 → fade
+   * - 旧 active のうち新 mix に有り volume 同じ → 何もしない (再生位置保持)
+   * - 新 mix のうち旧 active に無い → 新 Howl を作って play + fade in from 0
+   */
+  setMix(sounds: ReadonlyArray<ResolvedSound>): void {
+    const incoming = new Map<string, number>();
+    for (const s of sounds) incoming.set(s.url, s.volume);
+
+    // 削除
+    for (const [url, entry] of this.active) {
+      if (!incoming.has(url)) {
+        entry.howl.fade(entry.volume, 0, CROSSFADE_MS);
+        const howl = entry.howl;
+        setTimeout(() => howl.unload(), CROSSFADE_MS);
+        this.active.delete(url);
+      }
+    }
+
+    // 追加 / 更新
+    for (const [url, volume] of incoming) {
+      const existing = this.active.get(url);
+      if (existing === undefined) {
+        const howl = new Howl({ src: [url], volume: 0, loop: true });
+        howl.play();
+        howl.fade(0, volume, CROSSFADE_MS);
+        this.active.set(url, { howl, volume });
+      } else if (existing.volume !== volume) {
+        existing.howl.fade(existing.volume, volume, CROSSFADE_MS);
+        this.active.set(url, { howl: existing.howl, volume });
+      }
+      // volume 同じ → 何もしない
+    }
+  }
 
   /** 旧 mix を全て fade out → unload。Scene null / app 終了時に呼ぶ。 */
   stopAll(): void {
