@@ -34,6 +34,7 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
@@ -355,6 +356,16 @@ function App() {
       logger,
     });
 
+    // ── Bundled ambient-UI pack 登録（attention-aura）────────────────────────
+    // bootstrap より前に register しておくことで、Step 2 の config 読み込み後に
+    // registry.enable() を呼んでも「unknown id」警告が出ない。
+    const ambientUiRegistry = getAmbientUiPackRegistry();
+    registerBundledAttentionAura({ registry: ambientUiRegistry });
+    appLog.write({
+      phase: "register",
+      note: "registered bundled ambient-UI pack 'attention-aura'",
+    });
+
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
     // 旧来は 3 つの fire-and-forget IIFE で並行実行していたが、互いに strict な
     // 順序依存（bundled scene → config 反映 → user pack load）があり race で
@@ -416,6 +427,9 @@ function App() {
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
+        for (const id of config.activeAmbientUi) {
+          getAmbientUiPackRegistry().enable(id);
+        }
       } catch (err) {
         appLog.write({
           phase: "register",
