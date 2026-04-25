@@ -25,12 +25,38 @@ interface ActiveEntry {
   readonly volume: number;
 }
 
+interface FadingOutEntry {
+  readonly howl: Howl;
+  readonly timer: ReturnType<typeof setTimeout>;
+  readonly fromVolume: number;
+}
+
 export class AmbientAudioRuntime {
   private readonly active = new Map<string, ActiveEntry>();
+  private readonly fadingOut = new Map<string, FadingOutEntry>();
+
+  /**
+   * Active から外れる sound を fade out して unload を schedule。
+   * 再 add に備えて fadingOut Map に保留しておく。
+   */
+  private startFadeOut(url: string, entry: ActiveEntry): void {
+    entry.howl.fade(entry.volume, 0, CROSSFADE_MS);
+    const timer = setTimeout(() => {
+      entry.howl.unload();
+      this.fadingOut.delete(url);
+    }, CROSSFADE_MS);
+    this.fadingOut.set(url, {
+      howl: entry.howl,
+      timer,
+      fromVolume: entry.volume,
+    });
+    this.active.delete(url);
+  }
 
   /**
    * Diff-based mix update。
    * - 旧 active のうち新 mix に無い → fade out → unload (scheduled)
+   * - 旧 active のうち新 mix に有り、fadingOut 中 → resurrect (timer cancel + fade up)
    * - 旧 active のうち新 mix に有り volume 変更 → fade
    * - 旧 active のうち新 mix に有り volume 同じ → 何もしない (再生位置保持)
    * - 新 mix のうち旧 active に無い → 新 Howl を作って play + fade in from 0
@@ -39,41 +65,46 @@ export class AmbientAudioRuntime {
     const incoming = new Map<string, number>();
     for (const s of sounds) incoming.set(s.url, s.volume);
 
-    // 削除
+    // 削除 (active から fadingOut へ移送)
     for (const [url, entry] of this.active) {
       if (!incoming.has(url)) {
-        entry.howl.fade(entry.volume, 0, CROSSFADE_MS);
-        const howl = entry.howl;
-        setTimeout(() => howl.unload(), CROSSFADE_MS);
-        this.active.delete(url);
+        this.startFadeOut(url, entry);
       }
     }
 
     // 追加 / 更新
     for (const [url, volume] of incoming) {
+      const reviving = this.fadingOut.get(url);
+      if (reviving !== undefined) {
+        // Fadeout 途中だった同 URL を resurrect — timer を cancel し
+        // 既存 Howl の今の volume から target まで fade up し直す
+        clearTimeout(reviving.timer);
+        this.fadingOut.delete(url);
+        reviving.howl.fade(reviving.fromVolume, volume, CROSSFADE_MS);
+        this.active.set(url, { howl: reviving.howl, volume });
+        continue;
+      }
       const existing = this.active.get(url);
       if (existing === undefined) {
         const howl = new Howl({ src: [url], volume: 0, loop: true });
         howl.play();
         howl.fade(0, volume, CROSSFADE_MS);
         this.active.set(url, { howl, volume });
-      } else if (existing.volume !== volume) {
-        existing.howl.fade(existing.volume, volume, CROSSFADE_MS);
-        this.active.set(url, { howl: existing.howl, volume });
+        continue;
       }
-      // volume 同じ → 何もしない
+      if (existing.volume === volume) {
+        // 同 URL + 同 volume → 再生位置を保持するため触らない
+        continue;
+      }
+      existing.howl.fade(existing.volume, volume, CROSSFADE_MS);
+      this.active.set(url, { howl: existing.howl, volume });
     }
   }
 
   /** 旧 mix を全て fade out → unload。Scene null / app 終了時に呼ぶ。 */
   stopAll(): void {
     for (const [url, entry] of this.active) {
-      entry.howl.fade(entry.volume, 0, CROSSFADE_MS);
-      // fade 完了後に unload するのが理想だが、Howl の fade end callback は型が薄い。
-      // setTimeout で代替 (CROSSFADE_MS 後に unload)。
-      const howl = entry.howl;
-      setTimeout(() => howl.unload(), CROSSFADE_MS);
-      this.active.delete(url);
+      this.startFadeOut(url, entry);
     }
   }
 }

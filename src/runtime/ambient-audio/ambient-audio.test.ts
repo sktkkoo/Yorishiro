@@ -125,4 +125,63 @@ describe("AmbientAudioRuntime", () => {
     if (wind === undefined) throw new Error("/wind.mp3 の Howl が作られていない");
     expect(wind.fade).toHaveBeenCalledWith(0, 0.4, 500);
   });
+
+  it("setMix: re-adding a sound during fadeout reuses the same Howl (no overlap)", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMix([{ url: "/rain.mp3", volume: 0.5 }]);
+    expect(createdHowls).toHaveLength(1);
+    const [first] = createdHowls;
+    if (first === undefined) throw new Error("Howl が作られていない");
+    first.fade.mockClear();
+
+    // 削除 → fadeout 開始
+    runtime.setMix([]);
+    expect(first.fade).toHaveBeenCalledWith(0.5, 0, 500);
+    first.fade.mockClear();
+
+    // Crossfade 完了前に再 add
+    runtime.setMix([{ url: "/rain.mp3", volume: 0.5 }]);
+
+    // 新規 Howl は作られない (resurrect)
+    expect(createdHowls).toHaveLength(1);
+    // 既存 Howl が fromVolume (0.5) → target (0.5) で fade up し直す
+    expect(first.fade).toHaveBeenCalledWith(0.5, 0.5, 500);
+  });
+
+  it("setMix: re-adding with different target volume resurrects to new volume", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMix([{ url: "/rain.mp3", volume: 0.5 }]);
+    const [first] = createdHowls;
+    if (first === undefined) throw new Error("Howl が作られていない");
+
+    runtime.setMix([]);
+    first.fade.mockClear();
+
+    runtime.setMix([{ url: "/rain.mp3", volume: 0.9 }]);
+
+    expect(createdHowls).toHaveLength(1);
+    expect(first.fade).toHaveBeenCalledWith(0.5, 0.9, 500);
+  });
+
+  it("setMix: removed sound that completes fadeout is gone (unload called, fadingOut cleared)", async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = new AmbientAudioRuntime();
+      runtime.setMix([{ url: "/rain.mp3", volume: 0.5 }]);
+      const [first] = createdHowls;
+      if (first === undefined) throw new Error("Howl が作られていない");
+
+      runtime.setMix([]);
+      expect(first.unload).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(500);
+      expect(first.unload).toHaveBeenCalledTimes(1);
+
+      // Now re-add: should create a new Howl, NOT resurrect
+      runtime.setMix([{ url: "/rain.mp3", volume: 0.5 }]);
+      expect(createdHowls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
