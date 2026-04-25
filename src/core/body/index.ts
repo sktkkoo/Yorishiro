@@ -17,7 +17,9 @@
 import type {
   AnimationHandle,
   AnimationRef,
+  AttentionSnapshot,
   CharacterAPI,
+  Disposable,
   ExpressionHandle,
   ExpressionTarget,
   GazeHandle,
@@ -26,6 +28,7 @@ import type {
   PlayOptions,
 } from "@charminal/sdk";
 import type { VRM } from "@pixiv/three-vrm";
+import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
 import { AnimationPlayer } from "./animation-player";
@@ -87,9 +90,15 @@ export class Body {
   /** Track all active gaze handles for interrupt(). */
   private readonly activeGazeHandles = new Set<BodyGazeHandle>();
   private cursorAttentionLogTimer = 0;
-  private pointerClientX: number | null = null;
-  private pointerClientY: number | null = null;
-  private cursorAttentionTargetSource: "mouse" | "input" = "mouse";
+
+  /** attention.subscribe の解除トークン。initAttention / disposeAttention で管理。 */
+  private attentionSub: Disposable | null = null;
+
+  /** VRM head の screen 座標（three-runtime が毎 frame setHeadClientReference で更新）。 */
+  private headClientX = 0;
+  private headClientY = 0;
+  private viewportWidth = 0;
+  private viewportHeight = 0;
 
   constructor(vrm: VRM, devLog?: SubsystemLog, claimState?: ClaimState) {
     this.vrm = vrm;
@@ -254,35 +263,59 @@ export class Body {
 
   /** Dispose all resources. */
   dispose(): void {
+    this.disposeAttention();
     this.animationPlayer.stopAll();
     this.activeExprHandles.clear();
     this.activeGazeHandles.clear();
   }
 
-  setPointerClientPosition(clientX: number, clientY: number): void {
-    this.pointerClientX = clientX;
-    this.pointerClientY = clientY;
-  }
-
-  setCursorAttentionTargetSource(source: "mouse" | "input"): void {
-    this.cursorAttentionTargetSource = source;
-  }
-
-  setCursorAttentionHeadReference(
+  /**
+   * VRM head の screen 座標と viewport サイズを毎 frame 更新する。
+   * three-runtime の render loop から呼ばれる。attention subscriber が
+   * setPointerPositionFromHead を呼ぶ際の基準点として使用する。
+   */
+  setHeadClientReference(
     headClientX: number,
     headClientY: number,
     width: number,
     height: number,
   ): void {
-    if (this.pointerClientX === null || this.pointerClientY === null) return;
-    this.cursorAttention.setPointerPositionFromHead(
-      this.pointerClientX,
-      this.pointerClientY,
-      headClientX,
-      headClientY,
-      width,
-      height,
-    );
+    this.headClientX = headClientX;
+    this.headClientY = headClientY;
+    this.viewportWidth = width;
+    this.viewportHeight = height;
+  }
+
+  /**
+   * attention runtime の subscribe を開始する。
+   * snapshot.target が存在する場合、その rect 中心を CursorAttentionSystem に
+   * 供給することで Body の視線が「現在の attention target」を追う。
+   * idempotent（2 回呼んでも 2 本張らない）。
+   */
+  initAttention(): void {
+    if (this.attentionSub !== null) return;
+    const attention = getAttentionRuntime();
+    this.attentionSub = attention.subscribe((snapshot: AttentionSnapshot) => {
+      if (snapshot.target === null) return;
+      const cx = snapshot.target.rect.x + snapshot.target.rect.width / 2;
+      const cy = snapshot.target.rect.y + snapshot.target.rect.height / 2;
+      this.cursorAttention.setPointerPositionFromHead(
+        cx,
+        cy,
+        this.headClientX,
+        this.headClientY,
+        this.viewportWidth,
+        this.viewportHeight,
+      );
+    });
+  }
+
+  /** attention subscription を解除する。dispose() 内からも呼ばれる。 */
+  disposeAttention(): void {
+    if (this.attentionSub !== null) {
+      this.attentionSub.dispose();
+      this.attentionSub = null;
+    }
   }
 
   // ─── CharacterAPI implementations ─────────────────────
@@ -440,7 +473,6 @@ export class Body {
       note: "cursor attention sample",
       data: {
         mode: output.mode,
-        targetSource: this.cursorAttentionTargetSource,
         targetX: Number(snapshot.targetX.toFixed(2)),
         targetY: Number(snapshot.targetY.toFixed(2)),
         lagX: Number(snapshot.lagX.toFixed(2)),

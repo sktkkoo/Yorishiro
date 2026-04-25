@@ -940,6 +940,7 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
+        body.initAttention();
         dispatcher.setContextFactory(
           createRealPersonaContextFactory({ body, logBridge, effectDispatcher }),
         );
