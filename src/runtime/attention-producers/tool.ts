@@ -29,6 +29,9 @@ interface StartOptions {
 export function startToolAttentionProducer(opts: StartOptions): Disposable {
   const { attention, subscribeHookSignal, getCurrentLineRect } = opts;
 
+  let runningActive = false;
+  let diagnosticActive = false;
+
   const sub = subscribeHookSignal((event) => {
     if (event.name === "pre-tool-use") {
       const rect = getCurrentLineRect();
@@ -42,6 +45,7 @@ export function startToolAttentionProducer(opts: StartOptions): Disposable {
         timestamp: performance.now(),
         reason: "tool-running",
       });
+      runningActive = true;
     } else if (event.name === "post-tool-failure") {
       const rect = getCurrentLineRect();
       if (rect === null) return;
@@ -54,9 +58,16 @@ export function startToolAttentionProducer(opts: StartOptions): Disposable {
         timestamp: performance.now(),
         reason: "diagnostic",
       });
+      diagnosticActive = true;
     } else if (event.name === "stop") {
-      attention.setSourceTarget("tool-running", null);
-      attention.setSourceTarget("tool-diagnostic", null);
+      if (runningActive) {
+        attention.setSourceTarget("tool-running", null);
+        runningActive = false;
+      }
+      if (diagnosticActive) {
+        attention.setSourceTarget("tool-diagnostic", null);
+        diagnosticActive = false;
+      }
     }
   });
 

@@ -4,32 +4,26 @@ import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
 import { startToolAttentionProducer } from "./tool";
 
-interface FakeAttention {
-  readonly setSourceTarget: ReturnType<typeof vi.fn>;
-  readonly get: ReturnType<typeof vi.fn>;
-  readonly subscribe: ReturnType<typeof vi.fn>;
+function makeFakeAttention() {
+  const setSourceTarget = vi.fn();
+  const get = vi.fn(() => ({ target: null }));
+  const subscribe = vi.fn(() => ({ dispose: () => {} }));
+  const fake = { setSourceTarget, get, subscribe };
+  return fake as unknown as AttentionRuntime & typeof fake;
 }
 
-function makeFakeAttention(): FakeAttention {
-  return {
-    setSourceTarget: vi.fn(),
-    get: vi.fn(() => ({ target: null })),
-    subscribe: vi.fn(() => ({ dispose: () => {} })),
-  };
-}
+type SubscribeHookSignal = Parameters<typeof startToolAttentionProducer>[0]["subscribeHookSignal"];
 
-interface FakeHookSignal {
-  readonly subscribeHookSignal: ReturnType<typeof vi.fn>;
-  emit(event: { name: string }): void;
-}
-
-function makeFakeHookSignal(): FakeHookSignal {
+function makeFakeHookSignal() {
   let handler: ((event: { name: string }) => void) | null = null;
+  const subscribeHookSignalFn = vi.fn((h: (event: { name: string }) => void) => {
+    handler = h;
+    return { dispose: vi.fn() };
+  });
+  const subscribeHookSignal = subscribeHookSignalFn as unknown as SubscribeHookSignal &
+    typeof subscribeHookSignalFn;
   return {
-    subscribeHookSignal: vi.fn((h: (event: { name: string }) => void) => {
-      handler = h;
-      return { dispose: vi.fn() };
-    }),
+    subscribeHookSignal,
     emit(event: { name: string }) {
       if (handler) handler(event);
     },
@@ -43,10 +37,8 @@ describe("startToolAttentionProducer", () => {
     const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 50, width: 200, height: 16 }));
 
     const dispose = startToolAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      subscribeHookSignal: hookSignal.subscribeHookSignal as unknown as Parameters<
-        typeof startToolAttentionProducer
-      >[0]["subscribeHookSignal"],
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
       getCurrentLineRect,
     });
 
@@ -69,10 +61,8 @@ describe("startToolAttentionProducer", () => {
     const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 70, width: 200, height: 16 }));
 
     const dispose = startToolAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      subscribeHookSignal: hookSignal.subscribeHookSignal as unknown as Parameters<
-        typeof startToolAttentionProducer
-      >[0]["subscribeHookSignal"],
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
       getCurrentLineRect,
     });
 
@@ -88,19 +78,22 @@ describe("startToolAttentionProducer", () => {
     dispose.dispose();
   });
 
-  it("clears tool-running and tool-diagnostic on stop signal", () => {
+  it("clears tool-running and tool-diagnostic on stop signal when previously active", () => {
     const attention = makeFakeAttention();
     const hookSignal = makeFakeHookSignal();
-    const getCurrentLineRect = vi.fn(() => null);
+    const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 70, width: 200, height: 16 }));
 
     const dispose = startToolAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      subscribeHookSignal: hookSignal.subscribeHookSignal as unknown as Parameters<
-        typeof startToolAttentionProducer
-      >[0]["subscribeHookSignal"],
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
       getCurrentLineRect,
     });
 
+    // 先に両 source を active にする
+    hookSignal.emit({ name: "pre-tool-use" });
+    hookSignal.emit({ name: "post-tool-failure" });
+
+    // それから stop で両 clear
     hookSignal.emit({ name: "stop" });
 
     const runningClear = attention.setSourceTarget.mock.calls.find(
@@ -114,15 +107,33 @@ describe("startToolAttentionProducer", () => {
     dispose.dispose();
   });
 
+  it("does not clear on stop signal when never previously active (stateful)", () => {
+    const attention = makeFakeAttention();
+    const hookSignal = makeFakeHookSignal();
+    const getCurrentLineRect = vi.fn(() => null);
+
+    const dispose = startToolAttentionProducer({
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
+      getCurrentLineRect,
+    });
+
+    hookSignal.emit({ name: "stop" });
+
+    // virgin state: stop で setSourceTarget(null) は呼ばれない
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
+    dispose.dispose();
+  });
+
   it("dispose unsubscribes from hook signal", () => {
     const attention = makeFakeAttention();
     const handlerDispose = vi.fn();
-    const subscribeHookSignal = vi.fn(() => ({ dispose: handlerDispose }));
+    const subscribeHookSignalFn = vi.fn(() => ({ dispose: handlerDispose }));
+    const subscribeHookSignal = subscribeHookSignalFn as unknown as SubscribeHookSignal &
+      typeof subscribeHookSignalFn;
     const handle = startToolAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      subscribeHookSignal: subscribeHookSignal as unknown as Parameters<
-        typeof startToolAttentionProducer
-      >[0]["subscribeHookSignal"],
+      attention,
+      subscribeHookSignal,
       getCurrentLineRect: () => null,
     });
 

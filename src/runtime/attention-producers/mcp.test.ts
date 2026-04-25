@@ -5,18 +5,12 @@ import type { AttentionRuntime } from "../attention-runtime/types";
 import type { ListenFactory } from "./mcp";
 import { startMcpAttentionProducer } from "./mcp";
 
-interface FakeAttention {
-  readonly setSourceTarget: ReturnType<typeof vi.fn>;
-  readonly get: ReturnType<typeof vi.fn>;
-  readonly subscribe: ReturnType<typeof vi.fn>;
-}
-
-function makeFakeAttention(): FakeAttention {
-  return {
-    setSourceTarget: vi.fn(),
-    get: vi.fn(() => ({ target: null })),
-    subscribe: vi.fn(() => ({ dispose: () => {} })),
-  };
+function makeFakeAttention() {
+  const setSourceTarget = vi.fn();
+  const get = vi.fn(() => ({ target: null }));
+  const subscribe = vi.fn(() => ({ dispose: () => {} }));
+  const fake = { setSourceTarget, get, subscribe };
+  return fake as unknown as AttentionRuntime & typeof fake;
 }
 
 /** listen factory の fake。handler を外部から呼び出せるよう ref で保持する。 */
@@ -24,10 +18,11 @@ function makeFakeListen() {
   let capturedHandler: ((payload: { tool: string }) => void) | null = null;
   const disposeInner = vi.fn();
 
-  const listen = ((_name: string, h: (payload: { tool: string }) => void) => {
+  const listenFn = (_name: string, h: (payload: { tool: string }) => void) => {
     capturedHandler = h;
     return { dispose: disposeInner };
-  }) as unknown as ListenFactory;
+  };
+  const listen = listenFn as unknown as ListenFactory & typeof listenFn;
 
   return {
     listen,
@@ -43,7 +38,7 @@ describe("startMcpAttentionProducer", () => {
     const attention = makeFakeAttention();
     const { listen, emit } = makeFakeListen();
     const dispose = startMcpAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
       listen,
     });
 
@@ -64,7 +59,7 @@ describe("startMcpAttentionProducer", () => {
     const attention = makeFakeAttention();
     const { listen, emit } = makeFakeListen();
     const dispose = startMcpAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
       listen,
     });
 
@@ -85,7 +80,7 @@ describe("startMcpAttentionProducer", () => {
     const attention = makeFakeAttention();
     const { listen, disposeInner } = makeFakeListen();
     const handle = startMcpAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
       listen,
     });
 

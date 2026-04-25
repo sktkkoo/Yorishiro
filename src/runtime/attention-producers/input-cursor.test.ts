@@ -5,44 +5,35 @@ import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalRuntime } from "../terminal-runtime/types";
 import { startInputCursorAttentionProducer } from "./input-cursor";
 
-interface FakeAttention {
-  readonly setSourceTarget: ReturnType<typeof vi.fn>;
-  readonly get: ReturnType<typeof vi.fn>;
-  readonly subscribe: ReturnType<typeof vi.fn>;
-}
-
-function makeFakeAttention(): FakeAttention {
-  return {
-    setSourceTarget: vi.fn(),
-    get: vi.fn(() => ({ target: null })),
-    subscribe: vi.fn(() => ({ dispose: () => {} })),
-  };
-}
-
-interface FakeTerminal {
-  readonly subscribePtyData: ReturnType<typeof vi.fn>;
-  readonly getInputCursorClientPosition: ReturnType<typeof vi.fn>;
-  emitPtyData(): void;
+function makeFakeAttention() {
+  const setSourceTarget = vi.fn();
+  const get = vi.fn(() => ({ target: null }));
+  const subscribe = vi.fn(() => ({ dispose: () => {} }));
+  const fake = { setSourceTarget, get, subscribe };
+  return fake as unknown as AttentionRuntime & typeof fake;
 }
 
 function makeFakeTerminal(
   cursor: ReturnType<TerminalRuntime["getInputCursorClientPosition"]> | null,
-): FakeTerminal {
+) {
   let listener: (() => void) | null = null;
-  return {
-    subscribePtyData: vi.fn((l: () => void) => {
-      listener = l;
-      return {
-        dispose: () => {
-          listener = null;
-        },
-      };
-    }),
-    getInputCursorClientPosition: vi.fn(() => cursor),
+  const subscribePtyData = vi.fn((l: () => void) => {
+    listener = l;
+    return {
+      dispose: () => {
+        listener = null;
+      },
+    };
+  });
+  const getInputCursorClientPosition = vi.fn(() => cursor);
+  const fake = {
+    subscribePtyData,
+    getInputCursorClientPosition,
     emitPtyData() {
       if (listener) listener();
     },
   };
+  return fake as unknown as TerminalRuntime & typeof fake;
 }
 
 describe("startInputCursorAttentionProducer", () => {
@@ -55,8 +46,8 @@ describe("startInputCursorAttentionProducer", () => {
       cellHeight: 16,
     });
     const dispose = startInputCursorAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -77,8 +68,8 @@ describe("startInputCursorAttentionProducer", () => {
     const attention = makeFakeAttention();
     const terminal = makeFakeTerminal(null);
     const dispose = startInputCursorAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -108,8 +99,8 @@ describe("startInputCursorAttentionProducer", () => {
       getInputCursorClientPosition: vi.fn(() => cursor),
     };
     const dispose = startInputCursorAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     (listener as (() => void) | null)?.();
@@ -134,8 +125,8 @@ describe("startInputCursorAttentionProducer", () => {
       getInputCursorClientPosition: vi.fn(() => null),
     };
     const handle = startInputCursorAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     handle.dispose();

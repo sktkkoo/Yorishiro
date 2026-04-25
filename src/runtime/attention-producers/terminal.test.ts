@@ -3,47 +3,37 @@ import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalRuntime } from "../terminal-runtime/types";
 import { startTerminalAttentionProducer } from "./terminal";
 
-interface FakeAttention {
-  readonly setSourceTarget: ReturnType<typeof vi.fn>;
-  readonly get: ReturnType<typeof vi.fn>;
-  readonly subscribe: ReturnType<typeof vi.fn>;
-}
-
-function makeFakeAttention(): FakeAttention {
-  return {
-    setSourceTarget: vi.fn(),
-    get: vi.fn(() => ({ target: null })),
-    subscribe: vi.fn(() => ({ dispose: () => {} })),
-  };
-}
-
-interface FakeTerminal {
-  readonly subscribePtyData: ReturnType<typeof vi.fn>;
-  readonly subscribeViewportScroll: ReturnType<typeof vi.fn>;
-  readonly getViewportLineRects: ReturnType<typeof vi.fn>;
-  emitPtyData(): void;
+function makeFakeAttention() {
+  const setSourceTarget = vi.fn();
+  const get = vi.fn(() => ({ target: null }));
+  const subscribe = vi.fn(() => ({ dispose: () => {} }));
+  const fake = { setSourceTarget, get, subscribe };
+  return fake as unknown as AttentionRuntime & typeof fake;
 }
 
 function makeFakeTerminal(
   lines: Array<{ text: string; rect: { x: number; y: number; width: number; height: number } }>,
-): FakeTerminal &
-  Pick<TerminalRuntime, "subscribePtyData" | "subscribeViewportScroll" | "getViewportLineRects"> {
+) {
   let ptyListener: (() => void) | null = null;
-  return {
-    subscribePtyData: vi.fn((listener: () => void) => {
-      ptyListener = listener;
-      return {
-        dispose: () => {
-          ptyListener = null;
-        },
-      };
-    }),
-    subscribeViewportScroll: vi.fn(() => ({ dispose: () => {} })),
-    getViewportLineRects: vi.fn(() => lines),
+  const subscribePtyData = vi.fn((listener: () => void) => {
+    ptyListener = listener;
+    return {
+      dispose: () => {
+        ptyListener = null;
+      },
+    };
+  });
+  const subscribeViewportScroll = vi.fn(() => ({ dispose: () => {} }));
+  const getViewportLineRects = vi.fn(() => lines);
+  const fake = {
+    subscribePtyData,
+    subscribeViewportScroll,
+    getViewportLineRects,
     emitPtyData() {
       if (ptyListener) ptyListener();
     },
   };
+  return fake as unknown as TerminalRuntime & typeof fake;
 }
 
 describe("startTerminalAttentionProducer", () => {
@@ -53,8 +43,8 @@ describe("startTerminalAttentionProducer", () => {
       { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
     ]);
     const dispose = startTerminalAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -77,8 +67,8 @@ describe("startTerminalAttentionProducer", () => {
       { text: "src/App.tsx:12", rect: { x: 10, y: 80, width: 200, height: 16 } },
     ]);
     const dispose = startTerminalAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -102,8 +92,8 @@ describe("startTerminalAttentionProducer", () => {
       { text: "Listening on port 1430", rect: { x: 10, y: 60, width: 200, height: 16 } },
     ]);
     const dispose = startTerminalAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -119,8 +109,8 @@ describe("startTerminalAttentionProducer", () => {
       { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
     ]);
     const dispose = startTerminalAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -144,8 +134,8 @@ describe("startTerminalAttentionProducer", () => {
     }> = [{ text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } }];
     const terminal = makeFakeTerminal(lines);
     const dispose = startTerminalAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     terminal.emitPtyData();
@@ -174,8 +164,8 @@ describe("startTerminalAttentionProducer", () => {
       getViewportLineRects: vi.fn(() => []),
     };
     const handle = startTerminalAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
-      terminal: terminal as unknown as TerminalRuntime,
+      attention,
+      terminal,
     });
 
     handle.dispose();

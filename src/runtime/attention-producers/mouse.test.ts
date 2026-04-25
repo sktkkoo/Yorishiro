@@ -4,25 +4,19 @@ import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
 import { startMouseAttentionProducer } from "./mouse";
 
-interface FakeAttention {
-  readonly setSourceTarget: ReturnType<typeof vi.fn>;
-  readonly get: ReturnType<typeof vi.fn>;
-  readonly subscribe: ReturnType<typeof vi.fn>;
-}
-
-function makeFakeAttention(): FakeAttention {
-  return {
-    setSourceTarget: vi.fn(),
-    get: vi.fn(() => ({ target: null })),
-    subscribe: vi.fn(() => ({ dispose: () => {} })),
-  };
+function makeFakeAttention() {
+  const setSourceTarget = vi.fn();
+  const get = vi.fn(() => ({ target: null }));
+  const subscribe = vi.fn(() => ({ dispose: () => {} }));
+  const fake = { setSourceTarget, get, subscribe };
+  return fake as unknown as AttentionRuntime & typeof fake;
 }
 
 describe("startMouseAttentionProducer", () => {
   it("emits mouse target with click coordinates for non-interactive target", () => {
     const attention = makeFakeAttention();
     const dispose = startMouseAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
     });
 
     const event = new MouseEvent("click", { clientX: 100, clientY: 200, bubbles: true });
@@ -52,7 +46,7 @@ describe("startMouseAttentionProducer", () => {
     // 通った形跡 (kind=mouse / priority=4)」だけを assert する。
 
     const dispose = startMouseAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
     });
 
     button.dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: 75, clientY: 75 }));
@@ -70,7 +64,7 @@ describe("startMouseAttentionProducer", () => {
   it("uses fallback rect when click event has no Element target", () => {
     const attention = makeFakeAttention();
     const dispose = startMouseAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
     });
 
     const event = new MouseEvent("click", { clientX: 5, clientY: 5, bubbles: true });
@@ -86,7 +80,7 @@ describe("startMouseAttentionProducer", () => {
   it("dispose removes the click listener (no further emits)", () => {
     const attention = makeFakeAttention();
     const handle = startMouseAttentionProducer({
-      attention: attention as unknown as AttentionRuntime,
+      attention,
     });
 
     handle.dispose();
