@@ -19,6 +19,11 @@ export * from "./persona";
 export * from "./harness";
 export * from "./effect";
 export type {
+  AmbientUiContext,
+  AmbientUiPackDefinition,
+  AmbientUiPackManifest,
+} from "./ambient-ui-pack";
+export type {
   AttentionAPI,
   AttentionRect,
   AttentionSnapshot,
