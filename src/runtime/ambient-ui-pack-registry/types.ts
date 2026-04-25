@@ -22,7 +22,11 @@ export interface AmbientUiPackEntry {
 }
 
 export interface AmbientUiPackRegistry {
-  /** entry を登録する。同 id の origin 違いは "user-over-bundled" で override。 */
+  /**
+   * entry を登録する。同 id の origin 違いは "user-over-bundled" で
+   * override する semantic。同 id 同 origin の重複登録は同様に replace
+   * (旧 entry は dispose せず entries map から落ちる、active 集合 membership は維持)。
+   */
   register(entry: AmbientUiPackEntry): Disposable;
 
   /** 登録されている全 entry を返す（順序は registration 順）。 */
@@ -39,7 +43,8 @@ export interface AmbientUiPackRegistry {
 
   /**
    * active 集合の変化を購読。listener は subscribe 時に最新集合で
-   * 即時 fire（immediate-fire pattern）。
+   * 即時 fire（immediate-fire pattern）。listener は同期的に呼ばれる。
+   * dispose 後は listener が呼ばれないことが保証される。
    */
   subscribeActiveSet(listener: (ids: ReadonlyArray<string>) => void): Disposable;
 }
