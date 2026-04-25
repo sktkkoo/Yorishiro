@@ -1,3 +1,4 @@
+import { Howl } from "howler";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AmbientAudioRuntime } from "./ambient-audio";
 
@@ -161,6 +162,18 @@ describe("AmbientAudioRuntime", () => {
 
     expect(createdHowls).toHaveLength(1);
     expect(first.fade).toHaveBeenCalledWith(0.5, 0.9, 500);
+  });
+
+  it("setMix: configures Howl with html5: false (Web Audio mode)", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMix([{ url: "/a.mp3", volume: 0.5 }]);
+    expect(Howl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        src: ["/a.mp3"],
+        loop: true,
+        html5: false,
+      }),
+    );
   });
 
   it("setMix: removed sound that completes fadeout is gone (unload called, fadingOut cleared)", async () => {

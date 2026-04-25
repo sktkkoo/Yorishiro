@@ -86,7 +86,17 @@ export class AmbientAudioRuntime {
       }
       const existing = this.active.get(url);
       if (existing === undefined) {
-        const howl = new Howl({ src: [url], volume: 0, loop: true });
+        const howl = new Howl({
+          src: [url],
+          volume: 0,
+          loop: true,
+          html5: false,
+          // load 失敗時は console.warn + active から外す
+          onloaderror: (_id, err) => {
+            console.warn(`[ambient-audio] Failed to load '${url}':`, err);
+            this.active.delete(url);
+          },
+        });
         howl.play();
         howl.fade(0, volume, CROSSFADE_MS);
         this.active.set(url, { howl, volume });
