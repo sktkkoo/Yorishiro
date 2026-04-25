@@ -138,6 +138,22 @@ export default {
           };
         },
       } satisfies Trigger,
+
+      // 設定画面 UI pack が config write 等に失敗した時に流す synthetic event。
+      // user-visible feedback の主役は persona の distressed reaction（顔を顰める + screen-shake）。
+      // 詳細 reason は dev log / console.error に残るが、user 画面には出さない。
+      // Internal design-record: specs/2026-04-25-settings-screen-design.md §5
+      {
+        id: "charminal-default:settings-write-failed",
+        match(event: DispatchEvent) {
+          if (event.kind !== "synthetic") return null;
+          if (event.name !== "charminal-settings:write-failed") return null;
+          return {
+            reaction: "distressed",
+            payload: event.payload,
+          };
+        },
+      } satisfies Trigger,
     ],
     responses: {
       // エラー検知時の反射。philosophy の「意識に先立つ反応」は典型的には
