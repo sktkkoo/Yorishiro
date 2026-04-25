@@ -1,4 +1,4 @@
-import type { TerminalCellData } from "@charminal/sdk";
+import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -33,6 +33,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private currentParams: PtyParams | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private lastUserInputAt = -Infinity;
+  private readonly ptyDataListeners = new Set<() => void>();
 
   constructor() {
     this.term = new XTerm({
@@ -93,6 +94,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.channel.onmessage = (data: ArrayBuffer) => {
       const bytes = new Uint8Array(data);
       this.term.write(bytes);
+      this.notifyPtyDataListeners();
       const text = this.textDecoder.decode(bytes, { stream: true });
       this.perceptionRef.current?.onPtyOutput(text);
     };
@@ -291,6 +293,21 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       cols: this.term.cols,
       rows: this.term.rows,
     };
+  }
+
+  subscribePtyData(listener: () => void): Disposable {
+    this.ptyDataListeners.add(listener);
+    return {
+      dispose: () => {
+        this.ptyDataListeners.delete(listener);
+      },
+    };
+  }
+
+  private notifyPtyDataListeners(): void {
+    for (const listener of Array.from(this.ptyDataListeners)) {
+      listener();
+    }
   }
 
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {

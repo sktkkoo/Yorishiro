@@ -1,4 +1,4 @@
-import type { TerminalCellData } from "@charminal/sdk";
+import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import type { Perception } from "../../core/perception";
 import type { TerminalAgent } from "../user-pack-loader/config";
 
@@ -73,4 +73,11 @@ export interface TerminalRuntime {
    * xterm が未 open なら null を返す。
    */
   extractVisibleCells(): TerminalCellData | null;
+
+  /**
+   * PTY からの出力 (data event) ごとに listener を呼ぶ。listener には
+   * 何も引数を渡さない (dirty flag 用途)。実際の data 内容は xterm buffer 経由で
+   * 取得する。dispose で listener を外す。
+   */
+  subscribePtyData(listener: () => void): Disposable;
 }
