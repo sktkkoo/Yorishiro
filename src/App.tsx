@@ -1121,6 +1121,15 @@ function App() {
           perception={perception}
         />
       )}
+      <div
+        id="ambient-layer"
+        aria-hidden="true"
+        style={{
+          position: "fixed",
+          inset: 0,
+          pointerEvents: "none",
+        }}
+      />
     </div>
   );
 }
