@@ -133,3 +133,121 @@ describe("startInputCursorAttentionProducer", () => {
     expect(ptyDispose).toHaveBeenCalled();
   });
 });
+
+describe("input-cursor producer (sent / activate)", () => {
+  it("emits input-cursor:sent on Enter keydown when no interactive element is focused", () => {
+    vi.useFakeTimers();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+      });
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({
+        kind: "input-cursor",
+        source: "input-cursor:sent",
+        priority: 5,
+        reason: "sent",
+      });
+
+      // 600ms 後に null clear
+      vi.advanceTimersByTime(700);
+      const clearCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:sent" && c[1] === null,
+      );
+      expect(clearCall).toBeDefined();
+      dispose.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("emits input-cursor:activate when Enter pressed on a focused button", () => {
+    vi.useFakeTimers();
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = () =>
+      ({
+        x: 10,
+        y: 20,
+        left: 10,
+        top: 20,
+        right: 110,
+        bottom: 70,
+        width: 100,
+        height: 50,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    try {
+      const button = document.createElement("button");
+      document.body.appendChild(button);
+      button.focus();
+
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal(null);
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+      });
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
+      const call = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:activate",
+      );
+      expect(call).toBeDefined();
+      expect(call?.[1]).toMatchObject({
+        source: "input-cursor:activate",
+        priority: 5,
+        reason: "activate",
+      });
+
+      vi.advanceTimersByTime(700);
+      const clearCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:activate" && c[1] === null,
+      );
+      expect(clearCall).toBeDefined();
+
+      button.remove();
+      dispose.dispose();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      vi.useRealTimers();
+    }
+  });
+
+  it("dispose cancels pending sent/activate cleanup timers", () => {
+    vi.useFakeTimers();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const handle = startInputCursorAttentionProducer({ attention, terminal });
+
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      handle.dispose();
+
+      const beforeAdvance = attention.setSourceTarget.mock.calls.length;
+      vi.advanceTimersByTime(700);
+      const afterAdvance = attention.setSourceTarget.mock.calls.length;
+      // dispose 後は timer が cancel されるので新たな clear は呼ばれない
+      expect(afterAdvance).toBe(beforeAdvance);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

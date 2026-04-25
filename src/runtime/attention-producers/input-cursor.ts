@@ -1,23 +1,33 @@
 /**
  * Input cursor attention producer。
  *
- * v2 MVP では typing 中の caret rect だけを emit (priority=3、reason="typing")。
- * Enter による submit / button activate の分岐は Phase 1c で aura 体験を
- * 確認してから tune する。
- *
  * PTY data event を trigger に caret 位置を読み、stateful に管理:
- * - rect が取れた: input-cursor:typing として emit
+ * - rect が取れた: input-cursor:typing として emit (priority=3)
  * - rect 不在 (null) かつ前回 active: null clear
  * - rect 不在 かつ前回 inactive: 何もしない
+ *
+ * Enter keydown を listen し、focused 要素が <button> / <a> / [role=button] なら
+ * input-cursor:activate、それ以外は input-cursor:sent を priority=5 で emit する。
+ * どちらも 600ms 後に null clear する短いパルス設計（Enter は単発 event のため、
+ * resolver maxAge 任せの定常監視原則と分けて producer 側で短い ttl を持つ例外）。
+ * dispose で pulse timer も cancel する。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalRuntime } from "../terminal-runtime/types";
 import type { Disposable } from "./types";
 
-const SOURCE = "input-cursor:typing";
+const SOURCE_TYPING = "input-cursor:typing";
+const SOURCE_SENT = "input-cursor:sent";
+const SOURCE_ACTIVATE = "input-cursor:activate";
 const PRIORITY_TYPING = 3;
+const PRIORITY_SENT_ACTIVATE = 5;
 const CONFIDENCE = 1;
+// Enter は単発 event のため、resolver maxAge 任せの定常監視原則と異なり、
+// producer 側で 600ms 後に null clear する短いパルス設計。
+const PULSE_CLEAR_MS = 600;
+
+const ACTIVATABLE_TAGS = new Set(["BUTTON", "A"]);
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
@@ -26,20 +36,28 @@ interface StartOptions {
 
 export function startInputCursorAttentionProducer(opts: StartOptions): Disposable {
   const { attention, terminal } = opts;
-  let active = false;
+  let typingActive = false;
+  let pulseTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const update = (): void => {
+  const cancelPulseTimer = (): void => {
+    if (pulseTimer !== null) {
+      clearTimeout(pulseTimer);
+      pulseTimer = null;
+    }
+  };
+
+  const updateTyping = (): void => {
     const cursor = terminal.getInputCursorClientPosition();
     if (cursor === null) {
-      if (active) {
-        attention.setSourceTarget(SOURCE, null);
-        active = false;
+      if (typingActive) {
+        attention.setSourceTarget(SOURCE_TYPING, null);
+        typingActive = false;
       }
       return;
     }
-    attention.setSourceTarget(SOURCE, {
+    attention.setSourceTarget(SOURCE_TYPING, {
       kind: "input-cursor",
-      source: SOURCE,
+      source: SOURCE_TYPING,
       rect: {
         x: cursor.clientX,
         y: cursor.clientY,
@@ -51,14 +69,63 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
       timestamp: performance.now(),
       reason: "typing",
     });
-    active = true;
+    typingActive = true;
   };
 
-  const sub = terminal.subscribePtyData(update);
+  const ptySub = terminal.subscribePtyData(updateTyping);
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== "Enter") return;
+    const focused = document.activeElement;
+    let source: string;
+    let rect: { x: number; y: number; width: number; height: number };
+    let reason: string;
+
+    if (
+      focused instanceof HTMLElement &&
+      (ACTIVATABLE_TAGS.has(focused.tagName) || focused.getAttribute("role") === "button")
+    ) {
+      const r = focused.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) return; // jsdom 等で rect 0 はスキップ
+      source = SOURCE_ACTIVATE;
+      rect = { x: r.left, y: r.top, width: r.width, height: r.height };
+      reason = "activate";
+    } else {
+      const cursor = terminal.getInputCursorClientPosition();
+      if (cursor === null) return;
+      source = SOURCE_SENT;
+      rect = {
+        x: cursor.clientX,
+        y: cursor.clientY,
+        width: cursor.cellWidth,
+        height: cursor.cellHeight,
+      };
+      reason = "sent";
+    }
+
+    cancelPulseTimer();
+    attention.setSourceTarget(source, {
+      kind: "input-cursor",
+      source,
+      rect,
+      confidence: CONFIDENCE,
+      priority: PRIORITY_SENT_ACTIVATE,
+      timestamp: performance.now(),
+      reason,
+    });
+    pulseTimer = setTimeout(() => {
+      attention.setSourceTarget(source, null);
+      pulseTimer = null;
+    }, PULSE_CLEAR_MS);
+  };
+
+  window.addEventListener("keydown", onKeyDown, true);
 
   return {
     dispose: () => {
-      sub.dispose();
+      ptySub.dispose();
+      window.removeEventListener("keydown", onKeyDown, true);
+      cancelPulseTimer();
     },
   };
 }
