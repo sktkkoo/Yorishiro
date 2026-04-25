@@ -25,6 +25,8 @@ import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json"
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
 import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
 import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
+import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
+import charminalSettingsPack from "../bundled-packs/ui/charminal-settings/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
@@ -345,6 +347,21 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
+    });
+
+    // bundled charminal-settings UI pack。
+    uiPackRegistry.register({
+      id: charminalSettingsPack.id,
+      origin: "bundled",
+      manifest: charminalSettingsManifest as UiPackManifest,
+      pack: {
+        layout: charminalSettingsPack.layout,
+        mount: charminalSettingsPack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${charminalSettingsPack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
@@ -1158,6 +1175,18 @@ function App() {
     }
   }, [applyVrmPath]);
 
+  // ── Settings ─────────────────────────────────────────────
+
+  const handleOpenSettings = useCallback(() => {
+    const uiPackRegistry = getUiRegistry();
+    const uiState = getUiStateStore();
+    const current = uiPackRegistry.getActiveUi()?.id ?? null;
+    // 自分自身を保存しない（settings 中に再度開くことは無いはずだが防御）
+    const previousId = current === "charminal-settings" ? null : current;
+    uiState.set("charminal-settings", "previous-active-ui", previousId);
+    uiPackRegistry.setActiveUi("charminal-settings");
+  }, []);
+
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 
   // Convert filesystem path to Tauri asset URL
@@ -1175,6 +1204,41 @@ function App() {
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
+  // ── Settings: close-requested listener ─────────────────────
+
+  useEffect(() => {
+    const onCloseRequested = (event: Event) => {
+      const detail = (event as CustomEvent<{ target: string | null }>).detail;
+      const uiPackRegistry = getUiRegistry();
+      const target = detail?.target ?? null;
+      if (target === null) {
+        uiPackRegistry.setActiveUi(null);
+        return;
+      }
+      const exists = uiPackRegistry.listEntries().some((e) => e.id === target);
+      uiPackRegistry.setActiveUi(exists ? target : null);
+    };
+    window.addEventListener("charminal-settings:close-requested", onCloseRequested);
+    return () => {
+      window.removeEventListener("charminal-settings:close-requested", onCloseRequested);
+    };
+  }, []);
+
+  // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        window.location.reload();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+    };
+  }, []);
+
   // screen-shake は bundled-packs/effects/screen-shake を EffectPackRunner
   // 経由で動かす（runtime singleton で register 済み）。この useEffect は不要。
 
@@ -1185,7 +1249,7 @@ function App() {
         onPickFolder={handlePickFolder}
         vrmUrl={vrmUrl}
         onLoadVrm={handleLoadVrm}
-        onOpenSettings={() => {}}
+        onOpenSettings={handleOpenSettings}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         effectDispatcher={effectDispatcher}
