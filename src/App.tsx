@@ -38,6 +38,7 @@ import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import {
   startDevAttentionProducer,
   startInputCursorAttentionProducer,
+  startMcpAttentionProducer,
   startMouseAttentionProducer,
   startTerminalAttentionProducer,
 } from "./runtime/attention-producers";
@@ -1186,6 +1187,52 @@ function App() {
 
     return () => {
       for (const d of disposables) d.dispose();
+    };
+  }, []);
+
+  // mcp attention producer を起動する。
+  // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。
+  // dynamic import は非同期のため、他 producer の起動を妨げないよう独立した useEffect に分離。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
+  useEffect(() => {
+    const attention = getAttentionRuntime();
+    let disposed = false;
+    let producerDisposable: Disposable | null = null;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+
+      const listenFactory = <P,>(eventName: string, handler: (payload: P) => void): Disposable => {
+        let unlisten: (() => void) | null = null;
+        let cancelled = false;
+        void listen<P>(eventName, (event) => handler(event.payload)).then((fn) => {
+          if (cancelled) {
+            fn();
+          } else {
+            unlisten = fn;
+          }
+        });
+        return {
+          dispose: () => {
+            cancelled = true;
+            if (unlisten !== null) {
+              unlisten();
+              unlisten = null;
+            }
+          },
+        };
+      };
+
+      if (disposed) return;
+      producerDisposable = startMcpAttentionProducer({ attention, listen: listenFactory });
+    })();
+
+    return () => {
+      disposed = true;
+      if (producerDisposable !== null) {
+        producerDisposable.dispose();
+        producerDisposable = null;
+      }
     };
   }, []);
 
