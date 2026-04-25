@@ -18,6 +18,7 @@
 
 import type { SubsystemLog } from "../../core/dev-log";
 import type { PersonaDefinition } from "../../sdk/persona";
+import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
@@ -39,6 +40,7 @@ export interface LoadUserLayerDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
+  readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly effectDispatcher: EffectRequester;
   readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly packRegistry: UserPackRegistry;
@@ -109,6 +111,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       personaRegistry: deps.personaRegistry,
       scenePackRegistry: deps.scenePackRegistry,
       uiPackRegistry: deps.uiPackRegistry,
+      ambientUiPackRegistry: deps.ambientUiPackRegistry,
       packRegistry: deps.packRegistry,
       personaDefaults: deps.personaDefaults,
       devLog: deps.userPackLog,
@@ -150,6 +153,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     personaRegistry: deps.personaRegistry,
     scenePackRegistry: deps.scenePackRegistry,
     uiPackRegistry: deps.uiPackRegistry,
+    ambientUiPackRegistry: deps.ambientUiPackRegistry,
     packRegistry: deps.packRegistry,
     personaDefaults: deps.personaDefaults,
     userPackLog: deps.userPackLog,
@@ -164,6 +168,7 @@ export interface ReloadSingleUserPackDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
+  readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
@@ -229,6 +234,7 @@ export async function reloadSingleUserPack(
     personaRegistry: deps.personaRegistry,
     scenePackRegistry: deps.scenePackRegistry,
     uiPackRegistry: deps.uiPackRegistry,
+    ambientUiPackRegistry: deps.ambientUiPackRegistry,
     packRegistry: deps.packRegistry,
     personaDefaults: deps.personaDefaults,
     devLog: deps.userPackLog,

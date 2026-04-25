@@ -18,6 +18,7 @@ vi.mock("@tauri-apps/api/core", () => ({
   Channel: vi.fn(),
 }));
 
+import type { AmbientUiPackEntry, AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackEntry, UiPackRegistry } from "../ui-pack-registry";
@@ -51,6 +52,12 @@ const validUiPack = {
   id: "user-ui",
   type: "ui",
   layout: {},
+  mount: () => ({ dispose: () => {} }),
+};
+
+const validAmbientUiPack = {
+  id: "user-ambient",
+  type: "ambient-ui",
   mount: () => ({ dispose: () => {} }),
 };
 
@@ -141,6 +148,30 @@ function makeFakeUiPackRegistry(): UiPackRegistry & { readonly entries: UiPackEn
     setActiveUi: () => {},
     subscribeActive: () => ({ dispose: () => {} }),
     listEntries: () => entries,
+  };
+}
+
+function makeFakeAmbientUiPackRegistry(): AmbientUiPackRegistry & {
+  readonly entries: AmbientUiPackEntry[];
+} {
+  const entries: AmbientUiPackEntry[] = [];
+  const activeSet: string[] = [];
+  return {
+    entries,
+    register: (entry) => {
+      entries.push(entry);
+      return { dispose: () => {} };
+    },
+    listEntries: () => entries,
+    enable: (id) => {
+      if (!activeSet.includes(id)) activeSet.push(id);
+    },
+    disable: (id) => {
+      const idx = activeSet.indexOf(id);
+      if (idx !== -1) activeSet.splice(idx, 1);
+    },
+    getActiveSet: () => activeSet,
+    subscribeActiveSet: () => ({ dispose: () => {} }),
   };
 }
 
@@ -348,6 +379,69 @@ describe("loadUserPacks", () => {
       origin: "user",
       manifest: { id: "user-ui", type: "ui", entry: "ui.tsx" },
     });
+  });
+
+  it("registers an ambient-ui pack into ambientUiPackRegistry", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const uiRegistry = makeFakeUiPackRegistry();
+    const ambientUiRegistry = makeFakeAmbientUiPackRegistry();
+    const { subsystem } = makeDevLog();
+    const entries: UserPackEntry[] = [
+      { id: "user-ambient", kind: "ambient-ui", entryPath: "/p/user-ambient/ui.js" },
+    ];
+
+    const result = await loadUserPacks({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
+      uiPackRegistry: uiRegistry,
+      ambientUiPackRegistry: ambientUiRegistry,
+      devLog: subsystem,
+      packRegistry: new UserPackRegistry(),
+      fetchPackEntries: async () => entries,
+      importModule: async () => ({ default: validAmbientUiPack }),
+    });
+
+    expect(result.loaded).toEqual([{ id: "user-ambient", kind: "ambient-ui" }]);
+    expect(result.failed).toEqual([]);
+    expect(ambientUiRegistry.entries).toHaveLength(1);
+    expect(ambientUiRegistry.entries[0]).toMatchObject({
+      id: "user-ambient",
+      origin: "user",
+      manifest: { id: "user-ambient", type: "ambient-ui", entry: "ui.js" },
+    });
+  });
+
+  it("does not register an ambient-ui pack into uiPackRegistry (no double-register)", async () => {
+    // v1 critical（全 user UI pack が attention UI registry に二重登録される）の不在を assert する。
+    // ambient-ui kind は ambientUiPackRegistry のみ、uiPackRegistry は 0 件のまま。
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const uiRegistry = makeFakeUiPackRegistry();
+    const ambientUiRegistry = makeFakeAmbientUiPackRegistry();
+    const { subsystem } = makeDevLog();
+    const entries: UserPackEntry[] = [
+      { id: "user-ambient", kind: "ambient-ui", entryPath: "/p/user-ambient/ui.js" },
+    ];
+
+    await loadUserPacks({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      scenePackRegistry: makeFakeScenePackRegistry(),
+      uiPackRegistry: uiRegistry,
+      ambientUiPackRegistry: ambientUiRegistry,
+      devLog: subsystem,
+      packRegistry: new UserPackRegistry(),
+      fetchPackEntries: async () => entries,
+      importModule: async () => ({ default: validAmbientUiPack }),
+    });
+
+    // uiPackRegistry には一切触れていないことを確認（v1 二重登録の不在）
+    expect(uiRegistry.entries).toHaveLength(0);
+    // ambientUiPackRegistry には正しく 1 件登録されている
+    expect(ambientUiRegistry.entries).toHaveLength(1);
+    expect(ambientUiRegistry.entries[0].id).toBe("user-ambient");
   });
 
   it("scene pack fails if default export type is not 'scene'", async () => {

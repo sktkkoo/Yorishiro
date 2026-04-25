@@ -33,6 +33,7 @@ import type { Layer, LayerRole, SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
+import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
@@ -434,6 +435,7 @@ function App() {
           personaRegistry,
           scenePackRegistry,
           uiPackRegistry,
+          ambientUiPackRegistry: getAmbientUiPackRegistry(),
           effectDispatcher,
           emitEvent: (name, payload) => {
             bus.emitSynthetic({ type: "harness", packId: "user-init" }, name, payload, 0);
@@ -526,6 +528,7 @@ function App() {
             personaRegistry,
             scenePackRegistry,
             uiPackRegistry,
+            ambientUiPackRegistry: getAmbientUiPackRegistry(),
             packRegistry,
             userPackLog,
           });

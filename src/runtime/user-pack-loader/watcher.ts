@@ -10,13 +10,19 @@
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import type {
+  AmbientUiContext,
+  Disposable,
+  EffectDefinition,
+  PersonaDefinition,
+} from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
 } from "../../sdk/validators";
+import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
@@ -32,6 +38,7 @@ export interface StartPackWatcherDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
+  readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
@@ -288,6 +295,46 @@ async function reloadPack(
       deps.userPackLog.write({
         phase: "reload",
         note: `re-registered ui '${pack.id}'`,
+      });
+    } else if (action.kind === "ambient-ui") {
+      // SDK 側に validator が無いので最低限の shape check をここで行う。
+      // "ui" 分岐とは独立した registry に閉じ、uiPackRegistry を触らない（v1 critical の不再発）。
+      if (
+        !def ||
+        typeof def !== "object" ||
+        (def as { type?: unknown }).type !== "ambient-ui" ||
+        typeof (def as { id?: unknown }).id !== "string" ||
+        typeof (def as { mount?: unknown }).mount !== "function"
+      ) {
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `invalid ambient-ui pack definition for '${action.id}'`,
+          data: { entryPath: action.entryPath },
+        });
+        return;
+      }
+      const pack = def as {
+        readonly type: "ambient-ui";
+        readonly id: string;
+        readonly mount: (ctx: AmbientUiContext, container: HTMLDivElement) => Disposable;
+      };
+      deps.packRegistry.dispose(action.id, action.kind);
+      const handle = deps.ambientUiPackRegistry.register({
+        id: pack.id,
+        origin: "user",
+        manifest: {
+          id: pack.id,
+          type: "ambient-ui",
+          version: "0.0.0",
+          charminalVersion: "*",
+          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+        },
+        pack: { mount: pack.mount },
+      });
+      deps.packRegistry.register(action.id, action.kind, handle);
+      deps.userPackLog.write({
+        phase: "reload",
+        note: `re-registered ambient-ui '${pack.id}'`,
       });
     }
   } catch (err) {
