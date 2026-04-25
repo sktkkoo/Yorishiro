@@ -11,6 +11,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 
 | Module | 責務 | Entry | 備考 |
 |---|---|---|---|
+| `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
 | `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `persona-reflex/` | Active persona の reflex（customTriggers + responses）を EventBus に bridge | `persona-reflex-dispatcher.ts` | [decisions/motion-effect-trigger-axes.md](../../docs/decisions/motion-effect-trigger-axes.md) |
