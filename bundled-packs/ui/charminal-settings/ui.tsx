@@ -61,6 +61,7 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
+  const [agent, setAgent] = useState<"claude" | "codex">("claude");
   const personas = ctx.app.listPersonas();
   const scenes = ctx.app.listScenes();
 
@@ -70,6 +71,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       if (aborted) return;
       setPersona(cur.primaryPersona);
       setScene(cur.activeScene);
+      setAgent(cur.terminalAgent);
     });
     return () => {
       aborted = true;
@@ -95,6 +97,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setActiveScene(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "activeScene",
+    });
+  };
+
+  const onAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value as "claude" | "codex";
+    void applyConfigUpdate({
+      next,
+      prev: agent,
+      setLocal: setAgent,
+      write: (v) => ctx.app.setTerminalAgent(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "terminalAgent",
     });
   };
 
@@ -178,6 +192,25 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             </select>
           </Field>
         </Section>
+        <Section title="ターミナル">
+          <Field label="Coding agent">
+            <select value={agent} onChange={onAgentChange} style={selectStyle}>
+              <option value="claude">Claude Code</option>
+              <option value="codex">Codex</option>
+            </select>
+          </Field>
+        </Section>
+        <div
+          style={{
+            marginTop: "-20px",
+            marginBottom: "28px",
+            marginLeft: "112px",
+            fontSize: "11px",
+            opacity: 0.5,
+          }}
+        >
+          ※ 次の terminal 起動から反映
+        </div>
       </main>
       <footer
         style={{
