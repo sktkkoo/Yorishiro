@@ -16,6 +16,10 @@ export interface PtyParams {
 export interface TerminalCursorClientPosition {
   readonly clientX: number;
   readonly clientY: number;
+  /** xterm 1 セルの幅（px）。attention rect の width 算出に使う。 */
+  readonly cellWidth: number;
+  /** xterm 1 セルの高さ（px）。attention rect の height 算出に使う。 */
+  readonly cellHeight: number;
 }
 
 /**

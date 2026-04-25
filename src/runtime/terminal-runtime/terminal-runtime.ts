@@ -225,6 +225,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return {
       clientX: rect.left + (col + 0.5) * cellWidth,
       clientY: rect.top + (row + 0.5) * cellHeight,
+      cellWidth,
+      cellHeight,
     };
   }
 
