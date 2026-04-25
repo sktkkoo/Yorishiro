@@ -33,6 +33,7 @@ import type { Layer, LayerRole, SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
+import { initAmbientAudio } from "./runtime/ambient-audio";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
@@ -394,6 +395,13 @@ function App() {
         appLog.write({
           phase: "register",
           note: `registered bundled scene '${quietRoomPack.id}'`,
+        });
+        // Ambient audio engine：subscribeActive で active scene の `ambient` 宣言を再生する。
+        // register 時の resolveSceneAssets で URL は解決済みなので、engine は origin を知らずに済む。
+        const _ambientAudio = initAmbientAudio(scenePackRegistry);
+        appLog.write({
+          phase: "register",
+          note: "initialized AmbientAudioRuntime",
         });
       } catch (err) {
         appLog.write({
