@@ -46,7 +46,7 @@ describe("buildSharedSoundMap", () => {
         "/bundled-packs/shared/sounds/rain.mp3": "/__a/rain.mp3",
         "/bundled-packs/shared/sounds/rain.wav": "/__a/rain.wav",
       }),
-    ).toThrow(/Duplicate shared sound name 'rain'/);
+    ).toThrow(/Duplicate shared sound name 'rain'.*rain\.wav.*rain\.mp3/);
   });
 
   it("throws on duplicate stem within the same namespace", () => {
@@ -55,6 +55,6 @@ describe("buildSharedSoundMap", () => {
         "/bundled-packs/shared/sounds/lofi/cafe.mp3": "/__a/c.mp3",
         "/bundled-packs/shared/sounds/lofi/cafe.wav": "/__a/c.wav",
       }),
-    ).toThrow(/Duplicate shared sound name 'lofi\/cafe'/);
+    ).toThrow(/Duplicate shared sound name 'lofi\/cafe'.*lofi\/cafe\.wav.*lofi\/cafe\.mp3/);
   });
 });

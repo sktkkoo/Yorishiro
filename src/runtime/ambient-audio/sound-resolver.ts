@@ -31,17 +31,19 @@ export function pathToStem(path: string): string {
  * Pure 関数 (glob は import.meta.glob result を inject)。
  * Module init 時に 1 回呼ばれて SHARED_SOUNDS が確定する。
  */
-export function buildSharedSoundMap(glob: Record<string, string>): Map<string, string> {
+export function buildSharedSoundMap(glob: Record<string, string>): ReadonlyMap<string, string> {
   const map = new Map<string, string>();
+  const sources = new Map<string, string>(); // stem → first path (for error messages)
   for (const [path, url] of Object.entries(glob)) {
     const stem = pathToStem(path);
-    const existing = map.get(stem);
-    if (existing !== undefined) {
+    const existingPath = sources.get(stem);
+    if (existingPath !== undefined) {
       throw new Error(
-        `Duplicate shared sound name '${stem}': both '${path}' and existing entry. ` +
+        `Duplicate shared sound name '${stem}': '${path}' collides with '${existingPath}'. ` +
           `Shared sound names must be unique across extensions and namespaces.`,
       );
     }
+    sources.set(stem, path);
     map.set(stem, url);
   }
   return map;
