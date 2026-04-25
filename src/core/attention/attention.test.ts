@@ -17,7 +17,10 @@ function target(
 describe("resolveAttentionTarget", () => {
   it("picks the highest priority fresh target", () => {
     const picked = resolveAttentionTarget(
-      [target({ kind: "focused-dom", priority: 2 }), target({ kind: "input-cursor", priority: 5 })],
+      [
+        target({ kind: "terminal-region", priority: 2 }),
+        target({ kind: "input-cursor", priority: 5 }),
+      ],
       { now: 1200 },
     );
 
@@ -27,7 +30,7 @@ describe("resolveAttentionTarget", () => {
   it("uses confidence as a tie breaker", () => {
     const picked = resolveAttentionTarget(
       [
-        target({ kind: "focused-dom", priority: 2, confidence: 0.4 }),
+        target({ kind: "terminal-region", priority: 2, confidence: 0.4 }),
         target({ kind: "mouse", priority: 2, confidence: 0.8 }),
       ],
       { now: 1200 },
@@ -40,7 +43,11 @@ describe("resolveAttentionTarget", () => {
     const picked = resolveAttentionTarget(
       [
         target({ kind: "mouse", priority: 10, timestamp: 0 }),
-        target({ kind: "focused-dom", priority: 9, rect: { x: 0, y: 0, width: 0, height: 10 } }),
+        target({
+          kind: "terminal-region",
+          priority: 9,
+          rect: { x: 0, y: 0, width: 0, height: 10 },
+        }),
         target({ kind: "input-cursor", priority: 5 }),
       ],
       { now: 2000 },

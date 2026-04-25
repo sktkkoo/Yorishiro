@@ -8,7 +8,7 @@ describe("AttentionRuntime", () => {
     const sub = runtime.subscribe((snapshot) => snapshots.push(snapshot));
 
     runtime.setSourceTarget("focus", {
-      kind: "focused-dom",
+      kind: "terminal-region",
       source: "focus",
       rect: { x: 10, y: 20, width: 30, height: 40 },
       priority: 2,
@@ -17,7 +17,7 @@ describe("AttentionRuntime", () => {
     });
 
     expect(snapshots).toHaveLength(2);
-    expect(runtime.getSnapshot().target?.kind).toBe("focused-dom");
+    expect(runtime.getSnapshot().target?.kind).toBe("terminal-region");
 
     sub.dispose();
     runtime.setSourceTarget("focus", null);
@@ -29,7 +29,7 @@ describe("AttentionRuntime", () => {
     const now = performance.now();
 
     runtime.setSourceTarget("focus", {
-      kind: "focused-dom",
+      kind: "terminal-region",
       source: "focus",
       rect: { x: 10, y: 20, width: 30, height: 40 },
       priority: 2,

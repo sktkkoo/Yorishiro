@@ -8,7 +8,6 @@ export interface AttentionResolverOptions {
 const DEFAULT_MAX_AGE_MS: Record<AttentionTarget["kind"], number> = {
   mouse: 800,
   "input-cursor": 2000,
-  "focused-dom": Number.POSITIVE_INFINITY,
   "terminal-region": 2000,
   "mcp-ui": 2000,
 };

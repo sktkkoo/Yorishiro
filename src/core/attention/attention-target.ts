@@ -1,9 +1,4 @@
-export type AttentionTargetKind =
-  | "mouse"
-  | "input-cursor"
-  | "focused-dom"
-  | "terminal-region"
-  | "mcp-ui";
+export type AttentionTargetKind = "mouse" | "input-cursor" | "terminal-region" | "mcp-ui";
 
 export interface AttentionRect {
   readonly x: number;
