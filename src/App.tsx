@@ -41,6 +41,7 @@ import {
   startMcpAttentionProducer,
   startMouseAttentionProducer,
   startTerminalAttentionProducer,
+  startToolAttentionProducer,
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
@@ -1184,6 +1185,39 @@ function App() {
     disposables.push(startMouseAttentionProducer({ attention }));
     disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
     disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
+
+    // EventBus hook-signal → tool producer adapter。
+    // Trigger は hook-signal event を全通過させ（match は常に non-null）、
+    // ReactionHandler 側で signal.name を取り出して startToolAttentionProducer に渡す。
+    // source は builtin 識別子で固定（pack ではないため packId は "__tool-attention__"）。
+    const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
+      const trigger = {
+        id: "builtin:hook-signal-to-tool-attention",
+        match: (event: import("@charminal/sdk").DispatchEvent) => {
+          if (event.kind === "hook-signal") {
+            return { reaction: "__noop__" as import("@charminal/sdk").ReactionType };
+          }
+          return null;
+        },
+      };
+      const reg = runtime.bus.register(
+        trigger,
+        (reactionEvent) => {
+          const dispatched = reactionEvent.triggeredBy;
+          if (dispatched.kind === "hook-signal") {
+            handler({ name: dispatched.signal.name });
+          }
+        },
+        { type: "persona", packId: "__tool-attention__" },
+      );
+      return { dispose: () => reg.dispose() };
+    };
+
+    const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
+
+    disposables.push(
+      startToolAttentionProducer({ attention, subscribeHookSignal, getCurrentLineRect }),
+    );
 
     return () => {
       for (const d of disposables) d.dispose();
