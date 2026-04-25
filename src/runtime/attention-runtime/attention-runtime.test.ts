@@ -17,7 +17,7 @@ describe("AttentionRuntime", () => {
     });
 
     expect(snapshots).toHaveLength(2);
-    expect(runtime.getSnapshot().target?.kind).toBe("terminal-region");
+    expect(runtime.get().target?.kind).toBe("terminal-region");
 
     sub.dispose();
     runtime.setSourceTarget("focus", null);
@@ -45,6 +45,6 @@ describe("AttentionRuntime", () => {
       timestamp: now,
     });
 
-    expect(runtime.getSnapshot().target?.source).toBe("cursor");
+    expect(runtime.get().target?.source).toBe("cursor");
   });
 });

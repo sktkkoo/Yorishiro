@@ -21,7 +21,7 @@ class AttentionRuntimeImpl implements AttentionRuntime {
     this.publish();
   }
 
-  getSnapshot(): AttentionSnapshot {
+  get(): AttentionSnapshot {
     return this.snapshot;
   }
 

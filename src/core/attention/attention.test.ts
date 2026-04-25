@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { AttentionTarget } from ".";
 import { resolveAttentionTarget } from "./attention-resolver";
-import type { AttentionTarget } from "./attention-target";
 
 function target(
   partial: Partial<AttentionTarget> & Pick<AttentionTarget, "kind" | "priority">,
