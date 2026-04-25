@@ -395,7 +395,6 @@ const settingsPack: UiPackDefinition = {
   type: "ui",
   layout: {
     sidebar: {},
-    terminal: { position: "hidden" },
     character: { visible: true },
   },
   mount(ctx, container): Disposable {

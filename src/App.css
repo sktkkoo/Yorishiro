@@ -147,22 +147,23 @@ body,
 }
 
 .settings-btn {
-  background: rgba(255, 255, 255, 0.06);
+  background: transparent;
   color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  opacity: 0.7;
+  border: none;
   border-radius: 4px;
   cursor: pointer;
-  padding: 6px 10px;
+  padding: 4px 6px;
   font: inherit;
-  min-width: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .settings-btn:hover {
   background: rgba(77, 217, 207, 0.12);
-  border-color: rgba(77, 217, 207, 0.3);
+  opacity: 1;
 }
 
 .avatar-btn-cta {
