@@ -28,6 +28,8 @@ export class AmbientUiPackRegistryImpl implements AmbientUiPackRegistry {
     this.entries.set(entry.id, entry);
     return {
       dispose: () => {
+        const current = this.entries.get(entry.id);
+        if (current !== entry) return; // stale handle: override 後の entry を守る
         this.entries.delete(entry.id);
         if (this.activeSet.delete(entry.id)) {
           this.publish();

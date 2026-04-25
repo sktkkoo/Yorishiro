@@ -61,12 +61,13 @@ describe("AmbientUiPackRegistry", () => {
   it("enable on unknown id is a no-op (warn only)", () => {
     const registry = createAmbientUiPackRegistry();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-
-    registry.enable("nonexistent");
-    expect(registry.getActiveSet()).toEqual([]);
-    expect(warn).toHaveBeenCalled();
-
-    warn.mockRestore();
+    try {
+      registry.enable("nonexistent");
+      expect(registry.getActiveSet()).toEqual([]);
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("subscribeActiveSet fires immediately and on change", () => {
@@ -98,5 +99,19 @@ describe("AmbientUiPackRegistry", () => {
     handle.dispose();
     expect(registry.listEntries()).toEqual([]);
     expect(registry.getActiveSet()).toEqual([]);
+  });
+
+  it("stale dispose handle does not delete an overridden entry (identity guard)", () => {
+    const registry = createAmbientUiPackRegistry();
+    const bundledHandle = registry.register(entry({ id: "attention-aura", origin: "bundled" }));
+    registry.enable("attention-aura");
+    registry.register(entry({ id: "attention-aura", origin: "user" }));
+
+    // stale bundled handle dispose: override 後の entry には触らない
+    bundledHandle.dispose();
+
+    expect(registry.listEntries()).toHaveLength(1);
+    expect(registry.listEntries()[0].origin).toBe("user");
+    expect(registry.getActiveSet()).toEqual(["attention-aura"]);
   });
 });
