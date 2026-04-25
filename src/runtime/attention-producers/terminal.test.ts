@@ -108,16 +108,59 @@ describe("startTerminalAttentionProducer", () => {
 
     terminal.emitPtyData();
 
-    // recent-output line のみの場合、何も新規 emit しない
-    // ただし diagnostic / file-link 不在で source を null にする呼び出しはあり得る
-    const diagnosticEmissions = attention.setSourceTarget.mock.calls.filter(
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
+    dispose.dispose();
+  });
+
+  it("emits both terminal:diagnostic and terminal:file-link in parallel when viewport contains both", () => {
+    const attention = makeFakeAttention();
+    const terminal = makeFakeTerminal([
+      { text: "src/App.tsx:12", rect: { x: 10, y: 50, width: 200, height: 16 } },
+      { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
+    ]);
+    const dispose = startTerminalAttentionProducer({
+      attention: attention as unknown as AttentionRuntime,
+      terminal: terminal as unknown as TerminalRuntime,
+    });
+
+    terminal.emitPtyData();
+
+    const diagnosticCall = attention.setSourceTarget.mock.calls.find(
       (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
     );
-    const fileLinkEmissions = attention.setSourceTarget.mock.calls.filter(
+    const fileLinkCall = attention.setSourceTarget.mock.calls.find(
       (c) => c[0] === "terminal:file-link" && c[1] !== null,
     );
-    expect(diagnosticEmissions).toHaveLength(0);
-    expect(fileLinkEmissions).toHaveLength(0);
+    expect(diagnosticCall).toBeDefined();
+    expect(fileLinkCall).toBeDefined();
+    dispose.dispose();
+  });
+
+  it("clears terminal:diagnostic with null when a previous diagnostic line is no longer present", () => {
+    const attention = makeFakeAttention();
+    const lines: Array<{
+      text: string;
+      rect: { x: number; y: number; width: number; height: number };
+    }> = [{ text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } }];
+    const terminal = makeFakeTerminal(lines);
+    const dispose = startTerminalAttentionProducer({
+      attention: attention as unknown as AttentionRuntime,
+      terminal: terminal as unknown as TerminalRuntime,
+    });
+
+    terminal.emitPtyData();
+    // first scan: diagnostic emitted
+
+    // viewport が変わって diagnostic が消えた状態を simulate
+    lines.length = 0;
+    lines.push({ text: "OK", rect: { x: 10, y: 100, width: 200, height: 16 } });
+    terminal.emitPtyData();
+
+    // second scan: 前回 active だった diagnostic を null で clear
+    const nullCall = attention.setSourceTarget.mock.calls.find(
+      (c) => c[0] === "terminal:diagnostic" && c[1] === null,
+    );
+    expect(nullCall).toBeDefined();
     dispose.dispose();
   });
 

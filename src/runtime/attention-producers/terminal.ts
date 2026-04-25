@@ -17,6 +17,8 @@ import type { Disposable } from "./types";
 
 const PRIORITY_DIAGNOSTIC = 8;
 const PRIORITY_FILE_LINK = 5;
+// 意味分類は heuristic (regex ベース) のため確度は中程度。kind 内で
+// priority 軸が支配的なため confidence は tie break 時のみ効く。
 const CONFIDENCE = 0.7;
 
 interface StartOptions {
@@ -29,30 +31,33 @@ interface StartOptions {
 
 export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   const { attention, terminal } = opts;
+  const activeSources = new Set<string>();
 
   const scan = (): void => {
     const lines = terminal.getViewportLineRects();
-    let diagnosticEmitted = false;
-    let fileLinkEmitted = false;
+    const nowActive = new Set<string>();
 
     for (const line of lines) {
       const reason = classifyTerminalOutputAttentionReason(line.text);
-      if (reason === "diagnostic" && !diagnosticEmitted) {
+      if (reason === "diagnostic" && !nowActive.has("terminal:diagnostic")) {
         emit(attention, "terminal:diagnostic", line, PRIORITY_DIAGNOSTIC, "diagnostic");
-        diagnosticEmitted = true;
-      } else if (reason === "file-link" && !fileLinkEmitted) {
+        nowActive.add("terminal:diagnostic");
+      } else if (reason === "file-link" && !nowActive.has("terminal:file-link")) {
         emit(attention, "terminal:file-link", line, PRIORITY_FILE_LINK, "file-link");
-        fileLinkEmitted = true;
+        nowActive.add("terminal:file-link");
       }
-      if (diagnosticEmitted && fileLinkEmitted) break;
+      if (nowActive.size === 2) break;
     }
 
-    if (!diagnosticEmitted) {
-      attention.setSourceTarget("terminal:diagnostic", null);
+    // 前回 active だが今回 emit しなかった source は null で clear
+    for (const source of activeSources) {
+      if (!nowActive.has(source)) {
+        attention.setSourceTarget(source, null);
+      }
     }
-    if (!fileLinkEmitted) {
-      attention.setSourceTarget("terminal:file-link", null);
-    }
+
+    activeSources.clear();
+    for (const source of nowActive) activeSources.add(source);
   };
 
   const ptySub = terminal.subscribePtyData(scan);
