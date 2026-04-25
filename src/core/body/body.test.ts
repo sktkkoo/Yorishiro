@@ -389,6 +389,62 @@ describe("CursorAttentionSystem", () => {
     expect(out.eyeYawDeg).toBeCloseTo(56);
   });
 
+  // ─── ambientGate ─────────────────────────────────────────
+
+  it("ambientGate が true を返す場合: ambient タイマー発火で episode が開始する", () => {
+    // random=0 → delay=8s、duration=1s
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      undefined,
+      () => true,
+    );
+
+    attention.update(8.1);
+    expect(attention.isActive).toBe(true);
+  });
+
+  it("ambientGate が false を返す場合: ambient タイマー発火で episode をスキップしタイマーをリセット", () => {
+    // random=0 → delay=8s
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      undefined,
+      () => false,
+    );
+
+    attention.update(8.1);
+    // episode はスキップされる
+    expect(attention.isActive).toBe(false);
+
+    // タイマーが再セットされているため、さらに 8 秒待っても gate=false なら再スキップ
+    attention.update(8.1);
+    expect(attention.isActive).toBe(false);
+  });
+
+  it("ambientGate が undefined の場合: 後方互換で episode が開始する", () => {
+    // gate 未指定 → 従来通り動作
+    const attention = new CursorAttentionSystem(() => 0);
+
+    attention.update(8.1);
+    expect(attention.isActive).toBe(true);
+  });
+
+  it("triggerCursorAttention は gate=false でも episode を開始する（ゲート無視）", () => {
+    // ambient gate は常に false だが、直接 trigger は通る
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      undefined,
+      () => false,
+    );
+
+    // ambient では発火しない
+    attention.update(8.1);
+    expect(attention.isActive).toBe(false);
+
+    // 直接 trigger → gate を無視して即時 episode 開始
+    attention.triggerCursorAttention();
+    expect(attention.isActive).toBe(true);
+  });
+
   it("logs start and end events with duration and next delay", () => {
     const events: unknown[] = [];
     const values = [0, 0, 0.49, 1];

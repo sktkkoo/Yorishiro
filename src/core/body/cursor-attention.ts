@@ -70,10 +70,21 @@ export class CursorAttentionSystem {
 
   private readonly random: () => number;
   private readonly onEvent?: (event: CursorAttentionEvent) => void;
+  /**
+   * ambient cycle の発火条件を外部から注入できるゲート関数。
+   * undefined の場合は常に true（後方互換）。
+   * triggerCursorAttention（外部からの即時 episode）はこのゲートを参照しない。
+   */
+  private readonly ambientGate?: () => boolean;
 
-  constructor(random?: () => number, onEvent?: (event: CursorAttentionEvent) => void) {
+  constructor(
+    random?: () => number,
+    onEvent?: (event: CursorAttentionEvent) => void,
+    ambientGate?: () => boolean,
+  ) {
     this.random = random ?? Math.random;
     this.onEvent = onEvent;
+    this.ambientGate = ambientGate;
     this.nextTimer = this.pickNextDelay();
   }
 
@@ -107,7 +118,13 @@ export class CursorAttentionSystem {
     if (this.mode === null) {
       this.nextTimer -= delta;
       if (this.nextTimer <= 0) {
-        this.startEpisode();
+        if (this.ambientGate === undefined || this.ambientGate()) {
+          // ゲートが許可（または未設定）→ episode 開始
+          this.startEpisode();
+        } else {
+          // ゲートが拒否 → episode をスキップして次サイクルまでタイマーをリセット
+          this.nextTimer = this.pickNextDelay();
+        }
       }
       return;
     }

@@ -111,20 +111,24 @@ export class Body {
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
-    this.cursorAttention = new CursorAttentionSystem(undefined, (event) => {
-      this.devLog?.write({
-        phase: "cursor-attention",
-        note:
-          event.kind === "start"
-            ? `cursor attention start: ${event.mode}`
-            : `cursor attention end: ${event.mode}`,
-        data: {
-          mode: event.mode,
-          durationS: Number(event.durationS.toFixed(2)),
-          nextDelayS: event.nextDelayS === null ? null : Number(event.nextDelayS.toFixed(2)),
-        },
-      });
-    });
+    this.cursorAttention = new CursorAttentionSystem(
+      /* random */ undefined,
+      /* onEvent */ (event) => {
+        this.devLog?.write({
+          phase: "gaze",
+          note:
+            event.kind === "start"
+              ? `gaze episode start: ${event.mode}`
+              : `gaze episode end: ${event.mode}`,
+          data: {
+            mode: event.mode,
+            durationS: Number(event.durationS.toFixed(2)),
+            nextDelayS: event.nextDelayS === null ? null : Number(event.nextDelayS.toFixed(2)),
+          },
+        });
+      },
+      /* ambientGate */ () => getAttentionRuntime().get().target !== null,
+    );
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
@@ -490,8 +494,8 @@ export class Body {
 
     const snapshot = this.cursorAttention.getDebugSnapshot();
     this.devLog?.write({
-      phase: "cursor-attention",
-      note: "cursor attention sample",
+      phase: "gaze",
+      note: "gaze sample",
       data: {
         mode: output.mode,
         targetX: Number(snapshot.targetX.toFixed(2)),
