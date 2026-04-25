@@ -1,47 +1,114 @@
 # Semantic-priority attention
 
 **Status**: active
-**Last updated**: 2026-04-25
+**Last updated**: 2026-04-26
 **Related**: `docs/decisions/critical-constraints.md`、`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`「観察の境界」
 
-## 結論
+---
 
-Attention runtime に流れ込む target は、**意味を持った観察対象** に限定する。
+## 結論（v2 の実態）
 
-具体的に attention を emit する semantic (Phase 1b producer 6 種):
+v2 attention runtime は **「v1 UX を v2 architecture で担保する」** 設計に収束した。
 
-- `terminal:diagnostic` (priority 8): エラー / 警告行 (最も強い)
-- `terminal:file-link` (priority 5): file path 言及行
-- `tool-running` (priority 6) / `tool-diagnostic` (priority 8): ツール実行 / 失敗
-- `mcp-tool-request` (priority 6): MCP tool request 到着
-- `mouse` (priority 4): user の click (interactive target なら element rect)
-- `input-cursor:typing` (priority 3) / `:sent` / `:activate` (priority 5): 入力 caret / Enter pulse
+- **Architecture (v2)**: producer / attention-runtime / resolver / ambient-ui pack の責務分離。`setSourceTarget` による source ごとの管理。priority / confidence / TTL による resolver。
+- **UX baseline**: source set / priority / rect 戦略 / aura visual は **v1 reference に揃える**（後述「v1 を真とした理由」参照）。
+- **意図的な v1 からの逸脱**: 以下 4 点のみ（後述「v2 の intentional deviation」参照）。
 
-**emit しない**もの (= 意味を持たない観察対象):
+---
 
-- `recent-output`: PTY に何か出力された (内容問わず)
-- `focused-dom`: DOM focus が動いた (ユーザー操作と意味の対応が薄い)
-- `cursor-position`: マウスが動いた (click でない単なる移動)
+## v1 を真とした理由
 
-## なぜ
+Phase 1b / 1c のリライトでは、source set を「設計上の改善機会」として捉え、`focused-dom` や `mouse` をノイズとして削減した。結果として Phase 1d 配線直後に v1 UX のリグレッションが発覚し、7 本の fix commit（5ebfd0d〜c0ecb23）で v1 に戻した。
 
-- 「Charminal は実在感を主、演出を従」(`feedback_charminal_presence_over_spectacle.md`)。住人は **観察者** であり、ノイズに反応する観察者は実在感を弱める
-- recent-output / focused-dom / cursor-position に反応する設計は v1 で試した結果、aura が「常に何かに視線を向けている」状態になり、**「視線の意味」が薄くなった** (3 観点 review 集約: `2026-04-25-attention-aura-v2-design.md`「v1 で何が壊れていたか」)
-- 意味判定は producer 側に置く (`auraVisualForTarget` / `Aura` component は kind / reason を受けて style を返すだけ)。runtime / aura 自体に意味判定を入れると **責務が滲む**
+v1 は実 usage を通じて磨かれた基準値であった。Phase 1b / 1c の「意味希薄として cut」という判断は、事前の設計上の推論であり、**実際の UI 体験では valid でなかった**。v2 の価値は「source set の再発明」にあるのではなく、**producer / runtime / resolver の責務分離と型安全な architecture** にある。source set の意味的な再評価は v2 delivery 後に実 usage を見てから行う。
+
+---
+
+## v2 の intentional deviation（v1 との差分）
+
+以下 4 点だけが v2 での意図的な変更。それ以外は v1 と同一。
+
+### 1. `recent-output` を emit しない（v1 からの継続 cut）
+
+v1 では PTY に何か出力されると priority 1 で emit していた。v2 ではこれを **完全に削除**（Phase 1b 時点から）。
+
+- 理由: 「PTY output が来た」は内容問わず発火するため **意味が薄い**。住人が向けるべき視線を稀釈する。
+- v1 での priority 1（最弱）という設定自体が「他に見るものがない時だけ」という意味だったが、それは「emit しない」で十分表現できる。
+
+### 2. `sent` / `activate` reason の追加（input-cursor の拡張）
+
+v1 にはなかった **Enter キーの短いパルス**（600ms transient）を v2 で追加。
+
+- `input-cursor:sent`: terminal で Enter → 「あなたが送信した」という acknowledgment。xterm cursor cell rect。
+- `input-cursor:activate`: button / link にフォーカスして Enter → 「あなたが起動した」という acknowledgment。activeElement rect。
+- priority=5 / confidence=1.0。600ms 後に producer 側で null clear（resolver maxAge に任せない例外的設計）。
+
+### 3. terminal-region aura を transient 化（commit c0ecb23 — A2+B2 spec）
+
+v1 では diagnostic / file-link 行が viewport にある間は **継続して** emit していた。v2 では **新規行検出 + 3 秒 pulse** に変更。
+
+- 理由: diagnostic aura が永続化すると「typing が見える時間」がなくなり、入力時の存在感が消える。「新しい何かが現れた」という瞬間にだけ反応することで attention の意味を保ちつつ、3 秒後には typing（priority 5）が見える。
+- 実装: 前 frame の行テキスト Set と比較し、新規行のみ emit + `setTimeout(3000)` で null clear（commit c0ecb23）。
+
+### 4. typing priority を 3 → 5 に引き上げ（commit c0ecb23 — B2 spec）
+
+v1 では typing は priority 2 相当の低優先だった。v2 では priority 5 に引き上げ。
+
+- 理由: transient 化（A2）と pair。diagnostic が 3 秒で消えた後、priority 5 の typing が見えるようにするための調整。terminal:file-link / focused-dom とも同じ 5 になるため、これら同 priority 間は confidence で tie-break される（typing は confidence=1.0 で最も強い）。
+
+---
+
+## 現在の attention source 一覧（10 source）
+
+各値は producer ファイルの実装値（コメントや定数から読み取った実測値）。
+
+| source | kind | priority | confidence | reason | rect 戦略 | clear 方式 |
+|---|---|---|---|---|---|---|
+| cursor-attention (mouse) | mouse | 9 | 0.9 | cursor-attention:mouse-click | interactive 要素は要素 rect、それ以外はポインタ座標 ±10px の 20×20 halo | pointerdown で 1〜3 秒 active window を開き、満了で null clear |
+| terminal:diagnostic | terminal-region | 8 | 0.7 | diagnostic | 検出行の rect | 新規行検出時 emit + 3000ms pulse (commit c0ecb23) |
+| terminal:file-link | terminal-region | 5 | 0.7 | file-link | 検出行の rect | 新規行検出時 emit + 3000ms pulse (commit c0ecb23) |
+| tool-diagnostic | terminal-region | 6 | 0.8 | diagnostic | 最終 viewport 行 rect ±6px expand | resolver TTL（hook signal stop / 次の tool-activity none で clear） |
+| tool-activity | terminal-region | 4 | 0.72 | tool-reading / tool-writing / tool-running | 最終 viewport 行 rect ±6px expand | tool-activity none / stop hook で clear |
+| mcp-tool-request | mcp-ui | 4 | 0.72 | tool-writing (set-ui-state) / tool-reading (その他) | `.ui-pack-container:not(.ambient)` または `.sidebar` ±8px expand | 1200ms timeout で手動 clear |
+| focused-dom | focused-dom | 5 | 0.7 | focus | activeElement bounding rect ±10px expand | rAF poll で focus 変化を検出し null clear |
+| input-cursor:typing | input-cursor | 5 | 1.0 | typing | xterm cursor cell rect（拡張なし） | rAF poll（lastUserInputAt gate）+ TTL 2000ms |
+| input-cursor:sent | input-cursor | 5 | 1.0 | sent | xterm cursor cell rect | Enter keydown → 600ms pulse |
+| input-cursor:activate | input-cursor | 5 | 1.0 | activate | activeElement bounding rect | Enter keydown（button/a にフォーカス時）→ 600ms pulse |
+
+**emit しない source（設計的に削除済み）:**
+
+| source | v1 での挙動 | 削除理由 |
+|---|---|---|
+| `recent-output` | PTY output が来るたびに priority 1 で emit | 内容問わず発火するため意味が薄い。視線の稀釈になる |
+| `cursor-position` | マウス移動ごとに emit | click でない単なる移動は意味を持たない（mouse producer は click + active window に限定） |
+
+---
 
 ## 適用ガイド
 
-- 新 producer を足すとき: 「このイベントは住人が **見る価値** があるか」を最初に問う。「ある」と即答できないなら emit しない
-- priority 設計: 高い priority は「意味が強い (= 住人が反応すべき)」、低い priority は「意味が弱い (= 他に強い target が無い時だけ出る)」。recent-output 系の弱い意味は priority 1-2 ではなく **emit しない**
-- `priority` は 1-10 の整数で resolver が比較するだけ。設計時は kind 間の相対順序を意識し、同 kind 内の細分割で 0.x を使うような設計はしない (整数で抑える)
+- **新 producer を足すとき**: 「このイベントは住人が**見る価値**があるか」を最初に問う。即答できないなら emit しない。v1 で tested でない source は慎重に扱う。
+- **priority 設計**: 高い priority = 「意味が強い（住人が反応すべき）」。同 kind 内の tie-break は confidence で行う。整数に抑え、0.x の細分割はしない。
+- **transient vs 定常**: 「新しい何かが現れた瞬間」に反応し「既にそこにある状態」を持続監視しない設計（terminal-region の A2 transient）は、attention の過飽和を防ぐ基本パターン。継続 emit が必要かを毎回問う。
+- **producer の clear 責任**: TTL / pulse / event-driven clear の 3 パターン。どれを選ぶかは source の性質による（Enter は単発 event なので producer 側で 600ms pulse を持つ例外）。
+
+---
 
 ## Reference
 
-- 内部 design-record: `../Charminal-design-record/2026-04-25-attention-aura-v2-design.md`「v2 の根幹原則」section
+- fix commits: 5ebfd0d (aura visual) / 032700c (mouse active window) / 5581df1 (body triggerCursorAttention) / d0d9ba5 (input-cursor rAF) / fed792c (terminal rAF + bottom-first) / 1560b85 (focused-dom + tool/mcp v1 parity) / c714c27 (ambient-layer z-index) / c0ecb23 (terminal transient + typing priority 5)
+- producer 実装: `src/runtime/attention-producers/`（mouse.ts / terminal.ts / input-cursor.ts / tool.ts / mcp.ts / focused-dom.ts）
+- 内部 design-record: `2026-04-25-attention-aura-v2-design.md`「v2 の根幹原則」「v1 で何が壊れていたか」
+- Philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`「観察の境界」
 - Memory: `feedback_charminal_presence_over_spectacle.md`、`feedback_interaction_is_presence.md`
-- Phase 1b producer 実装: `src/runtime/attention-producers/`
 
 ## 関連 critical constraints
 
-- 「Ambient-ui pack に attention の write 権限を渡さない」(`docs/decisions/critical-constraints.md`)
-- 「Producer が emit する target には reason field を埋め、aura はそれを style に map する」(`auraVisualForTarget` の責務分離)
+- 「Ambient-ui pack に attention の write 権限を渡さない」(`docs/decisions/critical-constraints.md` §6)
+- 「Producer が emit する target には reason field を埋め、aura はそれを style に map する」（`auraVisualForTarget` の責務分離）
+
+---
+
+## 改訂履歴
+
+- 2026-04-26: 全面書き直し。Phase 1d 後の 7 本 fix commit（5ebfd0d〜c0ecb23）により v2 は「v1 UX を v2 architecture で担保」する設計に収束したため、「mouse / focused-dom は意味希薄として cut」という旧記述を撤回し実態に合わせた。v2 の intentional deviation 4 点・source テーブル（10 source）・「v1 を真とした理由」section を追加。
+- 2026-04-25: 初版作成（Phase 1d-10。旧記述の誤りが後に判明し本日付で全面改訂）。

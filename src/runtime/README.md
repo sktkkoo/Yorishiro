@@ -26,7 +26,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `ui-state-store/` | UI pack と MCP bridge が共有する pack-scoped key-value state | `ui-state-store.ts` | `ctx.state` と `get_ui_state` / `set_ui_state` が参照。packId ごとに分離 |
 | `attention-runtime/` | source ごとの AttentionTarget を集約し、resolver で 1 本に絞った AttentionSnapshot を publish する | `attention-runtime.ts` | Phase 1a で新設 |
 | `ambient-ui-pack-registry/` | ambient-ui pack の登録と active 集合（multi-active）を管理。enable / disable / getActiveSet | `ambient-ui-pack-registry.ts` | Phase 1a で新設 |
-| `attention-producers/` | runtime event を AttentionTarget に変換する 6 module（terminal / mouse / input-cursor / mcp / tool / dev）。各 producer は `start*Producer` 関数が Disposable を返す。**Phase 1d で App.tsx 配線済** | `index.ts` | Phase 1b で新設 |
+| `attention-producers/` | runtime event を AttentionTarget に変換する 7 module（terminal / mouse / input-cursor / mcp / tool / dev / focused-dom）。各 producer は `start*Producer` 関数が Disposable を返す。Phase 1d で App.tsx 配線、debug fix（commits 5ebfd0d〜c0ecb23）で v1 UX に揃え（各 producer の rect / priority / 駆動方式が v1 reference に整合） | `index.ts` | Phase 1b で新設 |
 | `bundled-attention-aura/` | bundled `attention-aura` ambient-ui pack の register helper。Phase 1d で App.tsx boot path から呼ぶ | `index.ts` | Phase 1c で新設 |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
