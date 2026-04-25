@@ -73,7 +73,11 @@ export interface ResolveOptions {
   readonly origin: "bundled" | "user";
   readonly packId: string;
   readonly packDir?: string;
-  readonly onMissing?: (layerId: string, src: string) => void;
+  /**
+   * Resolution failure callback。`assetKey` は layer の場合は layer.id、
+   * ambient の場合は文字列 `"ambient"` (集約識別子)。
+   */
+  readonly onMissing?: (assetKey: string, src: string) => void;
 }
 
 /**
@@ -184,6 +188,10 @@ async function resolveAmbientSound(
 
   if (isAbsoluteUrl(ambient.src)) return ambient;
 
+  // NOTE: bundled / user の pack-relative branch は unit test の coverage 外。
+  // resolveBundledAsset / resolveUserAsset の挙動は asset-resolver の layer 系
+  // test (resolveLayerAssetWith) で injection 経由で検証済み。end-to-end 検証は
+  // Task 15 の dev verification (実 scene + 実 sound file) に委ねる。
   try {
     let resolved: string | null = null;
     if (options.origin === "bundled") {

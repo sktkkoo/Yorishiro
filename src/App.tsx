@@ -378,10 +378,10 @@ function App() {
         const resolved = await resolveSceneAssets(quietRoomPack.scene, {
           origin: "bundled",
           packId: quietRoomPack.id,
-          onMissing: (layerId, src) => {
+          onMissing: (assetKey, src) => {
             appLog.write({
               phase: "register",
-              note: `bundled scene "${quietRoomPack.id}": asset missing for layer "${layerId}" (src="${src}")`,
+              note: `bundled scene "${quietRoomPack.id}": asset missing for layer "${assetKey}" (src="${src}")`,
             });
           },
         });

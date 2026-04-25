@@ -136,10 +136,10 @@ export async function registerScenePack(ctx: SceneRegisterContext): Promise<Scen
     origin: "user",
     packId: ctx.id,
     packDir,
-    onMissing: (layerId, src) => {
+    onMissing: (assetKey, src) => {
       ctx.devLog.write({
         phase: ctx.logPhase.register,
-        note: `user scene "${ctx.id}": asset missing for layer "${layerId}" (src="${src}")`,
+        note: `user scene "${ctx.id}": asset missing for layer "${assetKey}" (src="${src}")`,
       });
     },
   });
