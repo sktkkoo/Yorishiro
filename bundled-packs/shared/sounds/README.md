@@ -26,6 +26,14 @@ Scene Pack の `ambient` 宣言から `'sound:<name>'` で参照する shared li
 
 dev / CI / production build どのフェーズでも即時に発覚します。エラーメッセージには衝突する両方のファイルパスが含まれます。
 
+## Credits / Licenses
+
+同梱音源とその出典 / license。新しい音源を追加するときは必ずこの table に行を追加すること。
+
+| File | Source | License |
+|---|---|---|
+| `calming-rain.mp3` | [Pixabay](https://pixabay.com/) | [Pixabay Content License](https://pixabay.com/service/license-summary/) (帰属不要・商用 OK) |
+
 ## 関連
 
 - 仕様: `Charminal-design-record/specs/2026-04-25-scene-ambient-audio-design.md`
