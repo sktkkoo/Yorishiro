@@ -26,6 +26,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `ui-state-store/` | UI pack と MCP bridge が共有する pack-scoped key-value state | `ui-state-store.ts` | `ctx.state` と `get_ui_state` / `set_ui_state` が参照。packId ごとに分離 |
 | `attention-runtime/` | source ごとの AttentionTarget を集約し、resolver で 1 本に絞った AttentionSnapshot を publish する | `attention-runtime.ts` | Phase 1a で新設 |
 | `ambient-ui-pack-registry/` | ambient-ui pack の登録と active 集合（multi-active）を管理。enable / disable / getActiveSet | `ambient-ui-pack-registry.ts` | Phase 1a で新設 |
+| `attention-producers/` | runtime event を AttentionTarget に変換する 6 module（terminal / mouse / input-cursor / mcp / tool / dev）。各 producer は `start*Producer` 関数が Disposable を返す。App.tsx 配線は Phase 1d | `index.ts` | Phase 1b で新設 |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
 
