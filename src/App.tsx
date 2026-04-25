@@ -1,4 +1,5 @@
 import type {
+  AmbientUiContext,
   Disposable,
   Trigger,
   UiClaimAPI,
@@ -34,6 +35,7 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
@@ -1109,6 +1111,58 @@ function App() {
       })
       .catch(() => setVrmUrl(null));
   }, [vrmPath]);
+
+  // ambient-ui packs を #ambient-layer に mount/unmount する。
+  // subscribeActiveSet で active set の変化を購読し、差分調整（reconcile）する。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons + DOM are stable
+  useEffect(() => {
+    const ambientUiRegistry = getAmbientUiPackRegistry();
+    const attention = getAttentionRuntime();
+    const ambientLayer = document.getElementById("ambient-layer");
+    if (ambientLayer === null) return;
+
+    type Mounted = { container: HTMLDivElement; disposable: Disposable };
+    const mounted = new Map<string, Mounted>();
+
+    const reconcile = (activeIds: ReadonlyArray<string>): void => {
+      const activeSet = new Set(activeIds);
+
+      for (const [id, entry] of mounted) {
+        if (!activeSet.has(id)) {
+          entry.disposable.dispose();
+          entry.container.remove();
+          mounted.delete(id);
+        }
+      }
+
+      for (const id of activeIds) {
+        if (mounted.has(id)) continue;
+        const packEntry = ambientUiRegistry.listEntries().find((e) => e.id === id);
+        if (packEntry === undefined) continue;
+
+        const container = document.createElement("div");
+        container.className = "ambient-ui-container";
+        container.dataset.packId = id;
+        ambientLayer.appendChild(container);
+
+        const ctx: AmbientUiContext = { attention };
+        const disposable = packEntry.pack.mount(ctx, container);
+        mounted.set(id, { container, disposable });
+      }
+    };
+
+    const sub = ambientUiRegistry.subscribeActiveSet(reconcile);
+    reconcile(ambientUiRegistry.getActiveSet());
+
+    return () => {
+      sub.dispose();
+      for (const [, entry] of mounted) {
+        entry.disposable.dispose();
+        entry.container.remove();
+      }
+      mounted.clear();
+    };
+  }, []);
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
