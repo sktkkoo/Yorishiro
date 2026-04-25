@@ -101,7 +101,7 @@ describe("initAmbientAudio", () => {
     const howlMock = Howl as unknown as {
       mock: { results: Array<{ value: { fade: ReturnType<typeof vi.fn> } }> };
     };
-    const lastResult = howlMock.mock.results.at(-1);
+    const lastResult = howlMock.mock.results[howlMock.mock.results.length - 1];
     if (lastResult === undefined) throw new Error("Howl が作られていない");
     const last = lastResult.value;
     expect(last.fade).toHaveBeenCalledWith(0, 1.0, 500);

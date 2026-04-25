@@ -398,7 +398,7 @@ function App() {
         });
         // Ambient audio engine：subscribeActive で active scene の `ambient` 宣言を再生する。
         // register 時の resolveSceneAssets で URL は解決済みなので、engine は origin を知らずに済む。
-        const _ambientAudio = initAmbientAudio(scenePackRegistry);
+        initAmbientAudio(scenePackRegistry);
         appLog.write({
           phase: "register",
           note: "initialized AmbientAudioRuntime",
