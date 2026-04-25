@@ -122,31 +122,6 @@ body,
   font-size: 12px;
 }
 
-/* ── Avatar button ──────────────────────────────────── */
-.avatar-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  padding: 8px 12px;
-  margin-top: 8px;
-  background: #243447;
-  border: 1px solid rgba(59, 80, 104, 0.5);
-  border-radius: 8px;
-  color: #a8b8cc;
-  font-size: 12px;
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-
-.avatar-btn:hover {
-  background: rgba(77, 217, 207, 0.1);
-  color: #eceff4;
-}
-
 /* ── Terminal ───────────────────────────────────────── */
 .terminal-container {
   flex: 1;
