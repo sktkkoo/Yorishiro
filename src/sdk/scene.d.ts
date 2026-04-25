@@ -38,11 +38,11 @@ export interface Layer {
 }
 
 /**
- * Ambient sound declaration for a scene. Looped 常時再生される atmospheric layer。
+ * Scene の ambient sound 宣言。常時 loop で鳴る atmospheric layer。
  *
  * - `src`: `'sound:<name>'` / `'sound:<namespace>/<name>'` (shared library)
  *          または `'./assets/<file>'` (pack-local)
- *          または絶対 URL (`https://...` / `asset://...`)
+ *          または絶対 URL (`https://...`)
  * - `volume`: 0..1。default 1.0
  *
  * Internal design-record: specs/2026-04-25-scene-ambient-audio-design.md §4.1
