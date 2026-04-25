@@ -80,4 +80,10 @@ export interface TerminalRuntime {
    * 取得する。dispose で listener を外す。
    */
   subscribePtyData(listener: () => void): Disposable;
+
+  /**
+   * xterm container の viewport scroll が発生したときに listener を呼ぶ。
+   * 引数なし (rect 再計算の trigger 用途)。dispose で listener を外す。
+   */
+  subscribeViewportScroll(listener: () => void): Disposable;
 }

@@ -34,6 +34,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private resizeObserver: ResizeObserver | null = null;
   private lastUserInputAt = -Infinity;
   private readonly ptyDataListeners = new Set<() => void>();
+  private readonly scrollListeners = new Set<() => void>();
 
   constructor() {
     this.term = new XTerm({
@@ -119,6 +120,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           // PTY already closed — silent
         }
       });
+    });
+
+    // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
+    this.term.onScroll(() => {
+      for (const listener of Array.from(this.scrollListeners)) {
+        listener();
+      }
     });
 
     // xterm 側の cols/rows 変化を Rust に転送
@@ -300,6 +308,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return {
       dispose: () => {
         this.ptyDataListeners.delete(listener);
+      },
+    };
+  }
+
+  subscribeViewportScroll(listener: () => void): Disposable {
+    this.scrollListeners.add(listener);
+    return {
+      dispose: () => {
+        this.scrollListeners.delete(listener);
       },
     };
   }
