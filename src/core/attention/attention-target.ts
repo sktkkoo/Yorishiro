@@ -1,25 +1,20 @@
-export type AttentionTargetKind = "mouse" | "input-cursor" | "terminal-region" | "mcp-ui";
+/**
+ * AttentionTarget の utility 関数群。
+ *
+ * 型本体（AttentionRect / AttentionTarget / AttentionSnapshot /
+ * AttentionTargetKind）は SDK 側 (`src/sdk/attention.d.ts`) を canonical source
+ * とする。core はここから re-import するだけ。v1 にあった二重定義（core 側と
+ * SDK 側で field 単位重複）の解消。
+ */
 
-export interface AttentionRect {
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-}
+import type { AttentionRect } from "@charminal/sdk";
 
-export interface AttentionTarget {
-  readonly kind: AttentionTargetKind;
-  readonly source: string;
-  readonly rect: AttentionRect;
-  readonly confidence: number;
-  readonly priority: number;
-  readonly timestamp: number;
-  readonly reason?: string;
-}
-
-export interface AttentionSnapshot {
-  readonly target: AttentionTarget | null;
-}
+export type {
+  AttentionRect,
+  AttentionSnapshot,
+  AttentionTarget,
+  AttentionTargetKind,
+} from "@charminal/sdk";
 
 export function isValidAttentionRect(rect: AttentionRect): boolean {
   return (
