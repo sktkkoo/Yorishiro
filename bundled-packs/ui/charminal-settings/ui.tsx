@@ -59,6 +59,10 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
 }
 
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
+  const [vrmName, setVrmName] = useState<string>(() => {
+    const stored = localStorage.getItem("charminal:vrm");
+    return stored ? (stored.split("/").pop() ?? stored) : "";
+  });
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
   const [agent, setAgent] = useState<"claude" | "codex">("claude");
@@ -110,6 +114,25 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "terminalAgent",
     });
+  };
+
+  const onPickVrm = async () => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { invoke } = await import("@tauri-apps/api/core");
+      const selected = await open({
+        title: "VRM ファイルを選択",
+        filters: [{ name: "VRM", extensions: ["vrm"] }],
+      });
+      if (!selected) return;
+      const dest = await invoke<string>("import_vrm", { src: selected as string });
+      ctx.app.setVrm(dest);
+      setVrmName(dest.split("/").pop() ?? dest);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error("[charminal-settings] vrm load failed:", reason);
+      ctx.emitEvent("charminal-settings:write-failed", { field: "vrm", reason });
+    }
   };
 
   const onClose = () => {
@@ -170,7 +193,41 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       </header>
       <main style={{ flex: 1, padding: "20px", overflowY: "auto" }}>
         <Section title="キャラクター">
-          {/* VRM picker は Task 10 で追加 */}
+          <Field label="VRM body">
+            <div style={{ display: "flex", gap: "8px" }}>
+              <div
+                style={{
+                  flex: 1,
+                  background: "rgba(255,255,255,0.04)",
+                  padding: "6px 10px",
+                  borderRadius: "4px",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  opacity: 0.85,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={vrmName}
+              >
+                {vrmName || "（未読み込み）"}
+              </div>
+              <button
+                type="button"
+                onClick={onPickVrm}
+                style={{
+                  background: "rgba(255,255,255,0.08)",
+                  color: "inherit",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  borderRadius: "4px",
+                  padding: "6px 12px",
+                  cursor: "pointer",
+                  font: "inherit",
+                }}
+              >
+                変更...
+              </button>
+            </div>
+          </Field>
           <Field label="Persona">
             <select value={persona ?? ""} onChange={onPersonaChange} style={selectStyle}>
               <option value="">（選択しない）</option>
