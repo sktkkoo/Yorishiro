@@ -22,10 +22,10 @@ import type {
   Disposable,
 } from "@charminal/sdk";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import type { AuraView } from "./lerp";
-import { auraVisualForTarget } from "./visual";
+import { type AuraView, fadeOutOpacity, isConverged, lerpView } from "./lerp";
+import { type AuraVisualStyle, auraVisualForTarget, targetOpacity } from "./visual";
 
 const LERP_SPEED = 10;
 const FADE_OUT_DURATION_S = 3.2;
@@ -36,23 +36,92 @@ interface AuraComponentProps {
 }
 
 function Aura({ ctx }: AuraComponentProps): React.JSX.Element | null {
-  // _setView は Task 5 の RAF loop で使う（skeleton 段階では未呼び出し）
-  const [view, _setView] = useState<AuraView>({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
-  const [target, setTarget] = useState<AttentionTarget | null>(() => ctx.attention.get().target);
+  const [view, setView] = useState<AuraView>({ x: 0, y: 0, width: 0, height: 0, opacity: 0 });
+  const targetRef = useRef<AttentionTarget | null>(ctx.attention.get().target);
+  const fadeStateRef = useRef<{ startOpacity: number; elapsedS: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number>(0);
 
-  // subscribe / unsubscribe
+  // RAF tick
+  const tick = (now: number): void => {
+    const delta = Math.max(0, Math.min(0.05, (now - lastTimeRef.current) / 1000));
+    lastTimeRef.current = now;
+    const t = Math.min(1, LERP_SPEED * delta);
+    const target = targetRef.current;
+
+    setView((current) => {
+      let nextTargetView: AuraView;
+      if (target === null) {
+        // fade-out
+        let fade = fadeStateRef.current;
+        if (fade === null) {
+          fade = { startOpacity: current.opacity, elapsedS: 0 };
+          fadeStateRef.current = fade;
+        }
+        const updated = { startOpacity: fade.startOpacity, elapsedS: fade.elapsedS + delta };
+        fadeStateRef.current = updated;
+        const opacity = fadeOutOpacity(updated, FADE_OUT_DURATION_S);
+        nextTargetView = { ...current, opacity };
+      } else {
+        fadeStateRef.current = null;
+        const desiredOpacity = targetOpacity(target);
+        nextTargetView = {
+          x: target.rect.x,
+          y: target.rect.y,
+          width: target.rect.width,
+          height: target.rect.height,
+          opacity: desiredOpacity,
+        };
+      }
+      const next = lerpView(current, nextTargetView, t);
+
+      // 収束したら RAF を pause + null 状態なら opacity を強制 0 に
+      if (isConverged(next, nextTargetView)) {
+        if (rafRef.current !== null) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+        if (target === null) {
+          fadeStateRef.current = null;
+          return { ...nextTargetView, opacity: 0 };
+        }
+        return nextTargetView;
+      }
+
+      // RAF 継続
+      rafRef.current = requestAnimationFrame(tick);
+      return next;
+    });
+  };
+
+  const startRaf = (): void => {
+    if (rafRef.current !== null) return;
+    lastTimeRef.current = performance.now();
+    rafRef.current = requestAnimationFrame(tick);
+  };
+
+  // subscribe / unsubscribe + RAF 起動 trigger
+  // biome-ignore lint/correctness/useExhaustiveDependencies: startRaf/tick は ref のみ参照する安定関数。再生成不要
   useEffect(() => {
     const sub = ctx.attention.subscribe((snapshot) => {
-      setTarget(snapshot.target);
+      targetRef.current = snapshot.target;
+      // target 変化で RAF を必ず再起動 (止まってたら起動)
+      startRaf();
     });
-    return () => sub.dispose();
+    return () => {
+      sub.dispose();
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
   }, [ctx]);
 
-  if (view.opacity <= HIDE_OPACITY && target === null) return null;
+  if (view.opacity <= HIDE_OPACITY && targetRef.current === null) return null;
 
-  const visual = auraVisualForTarget({
-    kind: target?.kind ?? "mouse",
-    reason: target?.reason,
+  const visual: AuraVisualStyle = auraVisualForTarget({
+    kind: targetRef.current?.kind ?? "mouse",
+    reason: targetRef.current?.reason,
     width: view.width,
     height: view.height,
   });
@@ -60,6 +129,7 @@ function Aura({ ctx }: AuraComponentProps): React.JSX.Element | null {
   return (
     <div
       aria-hidden="true"
+      data-testid="attention-aura-overlay"
       style={{
         position: "fixed",
         left: view.x,
@@ -72,7 +142,6 @@ function Aura({ ctx }: AuraComponentProps): React.JSX.Element | null {
         background: visual.background,
         boxShadow: visual.boxShadow,
         transition: "opacity 220ms linear",
-        // transform: translate3d で GPU layer 化 (Task 5 で実装)
         transform: "translateZ(0)",
         zIndex: 100,
       }}
