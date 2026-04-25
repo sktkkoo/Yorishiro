@@ -25,6 +25,7 @@ export type {
   UiPackDefinition,
   UiPackManifest,
   UiLayout,
+  UiAppAPI,
   UiContext,
   UiLayoutAPI,
   UiThreeAPI,

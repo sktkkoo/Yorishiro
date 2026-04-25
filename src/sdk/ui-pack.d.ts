@@ -69,6 +69,18 @@ export interface UiPackManifest {
 }
 
 /**
+ * UI pack から App-level state を変更するための API namespace。
+ * 将来 app-level の他 state を expose する余地を残すため namespace を切る。
+ */
+export interface UiAppAPI {
+  /**
+   * VRM body を切り替える。localStorage 永続化と App-level vrmPath state への
+   * 反映を行う。`null` で VRM 未読み込み状態に戻す。
+   */
+  setVrm(path: string | null): void;
+}
+
+/**
  * UI pack の mount context（Plan 3 時点の shape）。
  *
  * - space: existing SpaceAPI（injectEffect 等）を再利用
@@ -78,6 +90,7 @@ export interface UiPackManifest {
  * - scene: active scene pack の layer surface を一時的に調整
  * - state: MCP bridge と共有する key-value state
  * - layout: runtime で layout を変更する API
+ * - app: App-level state への bridge（VRM 切替など）
  * - signal: pack deactivate 時に fire する AbortSignal
  */
 export interface UiContext {
@@ -91,6 +104,13 @@ export interface UiContext {
   readonly log: LogAPI;
   readonly signal: AbortSignal;
   readonly layout: UiLayoutAPI;
+  /** App-level state への bridge（VRM 切替など）。 */
+  readonly app: UiAppAPI;
+  /**
+   * persona / harness の trigger に synthetic event を流す。
+   * `CharminalInitContext.emitEvent` と同 shape。
+   */
+  emitEvent(name: string, payload?: unknown): void;
 }
 
 /**
