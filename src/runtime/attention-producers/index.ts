@@ -6,6 +6,7 @@
  */
 
 export { startDevAttentionProducer } from "./dev";
+export { startFocusedDomAttentionProducer } from "./focused-dom";
 export { startInputCursorAttentionProducer } from "./input-cursor";
 export { startMcpAttentionProducer } from "./mcp";
 export { startMouseAttentionProducer } from "./mouse";

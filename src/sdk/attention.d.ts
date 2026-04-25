@@ -19,8 +19,13 @@
 
 import type { Disposable } from "./context";
 
-/** kind の列挙（v2 で focused-dom を削除した 4 種）。 */
-export type AttentionTargetKind = "mouse" | "input-cursor" | "terminal-region" | "mcp-ui";
+/** kind の列挙。v1 の 5 種を復元（focused-dom を含む）。 */
+export type AttentionTargetKind =
+  | "mouse"
+  | "input-cursor"
+  | "terminal-region"
+  | "mcp-ui"
+  | "focused-dom";
 
 /** 画面上の矩形。getBoundingClientRect 形式（top-left origin、px）。 */
 export interface AttentionRect {

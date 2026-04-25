@@ -15,8 +15,7 @@
  *   (decision: docs/decisions/semantic-priority-attention.md)
  * - sent / activate (input-cursor): v2 で新規追加した reason。
  *   pulse 系の visual を新規定義。
- * - focused-dom: SDK の AttentionTargetKind に未追加 (B6/B7 で producer 復元予定)。
- *   AuraVisualInput では string として受け取れるよう拡張した kind を使用。
+ * - focused-dom: SDK AttentionTargetKind に追加済み、producer も復元済み（B6）。
  */
 
 import type { AttentionTarget, AttentionTargetKind } from "@charminal/sdk";
@@ -27,13 +26,6 @@ const TARGET_BASE_OPACITY: Record<AttentionTargetKind, number> = {
   "input-cursor": 0.42,
   "terminal-region": 0.38,
   "mcp-ui": 0.4,
-};
-
-/**
- * focused-dom は SDK v2 では未定義 (B6/B7 で復元予定) のため、
- * 別 map で保持して targetOpacity から参照する。
- */
-const EXTENDED_BASE_OPACITY: Record<string, number> = {
   "focused-dom": 0.32,
 };
 
@@ -55,15 +47,13 @@ function reasonBoost(reason: string | undefined): number {
 
 export function targetOpacity(target: AttentionTarget | null): number {
   if (target === null) return 0;
-  const base = TARGET_BASE_OPACITY[target.kind] ?? EXTENDED_BASE_OPACITY[target.kind] ?? 0.36;
+  const base = TARGET_BASE_OPACITY[target.kind] ?? 0.36;
   const confidence = Math.max(0, Math.min(1, target.confidence));
   return base * reasonBoost(target.reason) * confidence;
 }
 
 /**
  * auraVisualForTarget に渡す入力。
- * kind は SDK の AttentionTargetKind を基本とするが、将来の focused-dom 等を
- * 受け取れるよう string に広げている。
  */
 export interface AuraVisualInput {
   readonly kind: AttentionTargetKind | string;
@@ -131,7 +121,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     };
   }
 
-  // ── focused-dom (B6/B7 で producer 復元予定) ─────────────────────────────────
+  // ── focused-dom ──────────────────────────────────────────────────────────────
 
   if (input.kind === "focused-dom") {
     return {

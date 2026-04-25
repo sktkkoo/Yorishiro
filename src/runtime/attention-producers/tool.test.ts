@@ -13,6 +13,9 @@ function makeFakeAttention() {
 }
 
 type SubscribeHookSignal = Parameters<typeof startToolAttentionProducer>[0]["subscribeHookSignal"];
+type SubscribeToolActivity = Parameters<
+  typeof startToolAttentionProducer
+>[0]["subscribeToolActivity"];
 
 function makeFakeHookSignal() {
   let handler: ((event: { name: string }) => void) | null = null;
@@ -30,39 +33,126 @@ function makeFakeHookSignal() {
   };
 }
 
+function makeFakeToolActivity() {
+  let handler: ((event: { activity: string; timestamp: number }) => void) | null = null;
+  const subscribeToolActivityFn = vi.fn(
+    (h: (event: { activity: string; timestamp: number }) => void) => {
+      handler = h;
+      return { dispose: vi.fn() };
+    },
+  );
+  const subscribeToolActivity = subscribeToolActivityFn as unknown as SubscribeToolActivity &
+    typeof subscribeToolActivityFn;
+  return {
+    subscribeToolActivity,
+    emit(event: { activity: string; timestamp: number }) {
+      if (handler) handler(event);
+    },
+  };
+}
+
 describe("startToolAttentionProducer", () => {
-  it("emits tool-running on pre-tool-use signal with rect from getter", () => {
+  it("tool-activity reading → tool-activity source を priority 4 で emit する", () => {
     const attention = makeFakeAttention();
     const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
     const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 50, width: 200, height: 16 }));
 
     const dispose = startToolAttentionProducer({
       attention,
       subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
       getCurrentLineRect,
     });
 
-    hookSignal.emit({ name: "pre-tool-use" });
+    toolActivity.emit({ activity: "reading", timestamp: 1000 });
 
-    const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "tool-running");
+    const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "tool-activity");
     expect(call).toBeDefined();
     expect(call?.[1]).toMatchObject({
       kind: "terminal-region",
-      source: "tool-running",
-      priority: 6,
-      reason: "tool-running",
+      source: "tool-activity",
+      priority: 4,
+      confidence: 0.72,
+      reason: "tool-reading",
     });
     dispose.dispose();
   });
 
-  it("emits tool-diagnostic on post-tool-failure signal", () => {
+  it("tool-activity writing → reason: tool-writing", () => {
     const attention = makeFakeAttention();
     const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
+    const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 50, width: 200, height: 16 }));
+
+    const dispose = startToolAttentionProducer({
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
+      getCurrentLineRect,
+    });
+
+    toolActivity.emit({ activity: "writing", timestamp: 2000 });
+
+    const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "tool-activity");
+    expect(call?.[1]).toMatchObject({ reason: "tool-writing" });
+    dispose.dispose();
+  });
+
+  it("tool-activity running → reason: tool-running", () => {
+    const attention = makeFakeAttention();
+    const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
+    const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 50, width: 200, height: 16 }));
+
+    const dispose = startToolAttentionProducer({
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
+      getCurrentLineRect,
+    });
+
+    toolActivity.emit({ activity: "running", timestamp: 3000 });
+
+    const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "tool-activity");
+    expect(call?.[1]).toMatchObject({ reason: "tool-running" });
+    dispose.dispose();
+  });
+
+  it("tool-activity none → tool-activity source を clear する（active 状態から）", () => {
+    const attention = makeFakeAttention();
+    const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
+    const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 50, width: 200, height: 16 }));
+
+    const dispose = startToolAttentionProducer({
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
+      getCurrentLineRect,
+    });
+
+    // 先に active にしてから none で clear
+    toolActivity.emit({ activity: "reading", timestamp: 1000 });
+    toolActivity.emit({ activity: "none", timestamp: 2000 });
+
+    const clearCall = attention.setSourceTarget.mock.calls.find(
+      (c) => c[0] === "tool-activity" && c[1] === null,
+    );
+    expect(clearCall).toBeDefined();
+    dispose.dispose();
+  });
+
+  it("post-tool-failure → tool-diagnostic source を priority 6 で emit する", () => {
+    const attention = makeFakeAttention();
+    const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
     const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 70, width: 200, height: 16 }));
 
     const dispose = startToolAttentionProducer({
       attention,
       subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
       getCurrentLineRect,
     });
 
@@ -71,73 +161,116 @@ describe("startToolAttentionProducer", () => {
     const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "tool-diagnostic");
     expect(call).toBeDefined();
     expect(call?.[1]).toMatchObject({
+      kind: "terminal-region",
       source: "tool-diagnostic",
-      priority: 8,
+      priority: 6,
+      confidence: 0.8,
       reason: "diagnostic",
     });
     dispose.dispose();
   });
 
-  it("clears tool-running and tool-diagnostic on stop signal when previously active", () => {
+  it("stop → tool-activity が active なら clear する", () => {
     const attention = makeFakeAttention();
     const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
     const getCurrentLineRect = vi.fn(() => ({ x: 5, y: 70, width: 200, height: 16 }));
 
     const dispose = startToolAttentionProducer({
       attention,
       subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
       getCurrentLineRect,
     });
 
-    // 先に両 source を active にする
-    hookSignal.emit({ name: "pre-tool-use" });
-    hookSignal.emit({ name: "post-tool-failure" });
-
-    // それから stop で両 clear
+    toolActivity.emit({ activity: "reading", timestamp: 1000 });
     hookSignal.emit({ name: "stop" });
 
-    const runningClear = attention.setSourceTarget.mock.calls.find(
-      (c) => c[0] === "tool-running" && c[1] === null,
+    const clearCall = attention.setSourceTarget.mock.calls.find(
+      (c) => c[0] === "tool-activity" && c[1] === null,
     );
-    const diagnosticClear = attention.setSourceTarget.mock.calls.find(
-      (c) => c[0] === "tool-diagnostic" && c[1] === null,
-    );
-    expect(runningClear).toBeDefined();
-    expect(diagnosticClear).toBeDefined();
+    expect(clearCall).toBeDefined();
     dispose.dispose();
   });
 
-  it("does not clear on stop signal when never previously active (stateful)", () => {
+  it("stop → tool-activity が inactive なら setSourceTarget を呼ばない（stateful）", () => {
     const attention = makeFakeAttention();
     const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
     const getCurrentLineRect = vi.fn(() => null);
 
     const dispose = startToolAttentionProducer({
       attention,
       subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
       getCurrentLineRect,
     });
 
     hookSignal.emit({ name: "stop" });
 
-    // virgin state: stop で setSourceTarget(null) は呼ばれない
+    // virgin state: stop で setSourceTarget は呼ばれない
     expect(attention.setSourceTarget).not.toHaveBeenCalled();
     dispose.dispose();
   });
 
-  it("dispose unsubscribes from hook signal", () => {
+  it("dispose で両 subscription が unsubscribe される", () => {
     const attention = makeFakeAttention();
-    const handlerDispose = vi.fn();
-    const subscribeHookSignalFn = vi.fn(() => ({ dispose: handlerDispose }));
-    const subscribeHookSignal = subscribeHookSignalFn as unknown as SubscribeHookSignal &
-      typeof subscribeHookSignalFn;
+    const hookDisposeInner = vi.fn();
+    const activityDisposeInner = vi.fn();
+    const subscribeHookSignal = vi.fn(() => ({
+      dispose: hookDisposeInner,
+    })) as unknown as SubscribeHookSignal;
+    const subscribeToolActivity = vi.fn(() => ({
+      dispose: activityDisposeInner,
+    })) as unknown as SubscribeToolActivity;
+
     const handle = startToolAttentionProducer({
       attention,
       subscribeHookSignal,
+      subscribeToolActivity,
       getCurrentLineRect: () => null,
     });
 
     handle.dispose();
-    expect(handlerDispose).toHaveBeenCalled();
+    expect(hookDisposeInner).toHaveBeenCalled();
+    expect(activityDisposeInner).toHaveBeenCalled();
+  });
+
+  it("getCurrentLineRect が null → tool-activity を emit しない", () => {
+    const attention = makeFakeAttention();
+    const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
+    const getCurrentLineRect = vi.fn(() => null);
+
+    const dispose = startToolAttentionProducer({
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
+      getCurrentLineRect,
+    });
+
+    toolActivity.emit({ activity: "reading", timestamp: 1000 });
+
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
+    dispose.dispose();
+  });
+
+  it("getCurrentLineRect が null → tool-diagnostic を emit しない", () => {
+    const attention = makeFakeAttention();
+    const hookSignal = makeFakeHookSignal();
+    const toolActivity = makeFakeToolActivity();
+    const getCurrentLineRect = vi.fn(() => null);
+
+    const dispose = startToolAttentionProducer({
+      attention,
+      subscribeHookSignal: hookSignal.subscribeHookSignal,
+      subscribeToolActivity: toolActivity.subscribeToolActivity,
+      getCurrentLineRect,
+    });
+
+    hookSignal.emit({ name: "post-tool-failure" });
+
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
+    dispose.dispose();
   });
 });

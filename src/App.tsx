@@ -37,6 +37,7 @@ import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import {
   startDevAttentionProducer,
+  startFocusedDomAttentionProducer,
   startInputCursorAttentionProducer,
   startMcpAttentionProducer,
   startMouseAttentionProducer,
@@ -1187,6 +1188,9 @@ function App() {
     disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
     disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
 
+    // focused-dom producer: document.activeElement を rAF loop で監視する。
+    disposables.push(startFocusedDomAttentionProducer({ attention }));
+
     // EventBus hook-signal → tool producer adapter。
     // Trigger は hook-signal event を全通過させ（match は常に non-null）、
     // ReactionHandler 側で signal.name を取り出して startToolAttentionProducer に渡す。
@@ -1214,10 +1218,43 @@ function App() {
       return { dispose: () => reg.dispose() };
     };
 
+    // EventBus tool-activity → tool producer adapter。
+    // v1 では App.tsx の trigger handler が直接 setToolActivityAttention を呼んでいたが、
+    // v2 では producer 層に分離するため EventBus adapter で橋渡しする。
+    const subscribeToolActivity = (
+      handler: (event: { activity: string; timestamp: number }) => void,
+    ): Disposable => {
+      const trigger = {
+        id: "builtin:tool-activity-to-attention",
+        match: (event: import("@charminal/sdk").DispatchEvent) => {
+          if (event.kind === "tool-activity") {
+            return { reaction: "__noop__" as import("@charminal/sdk").ReactionType };
+          }
+          return null;
+        },
+      };
+      const reg = runtime.bus.register(
+        trigger,
+        (reactionEvent) => {
+          const dispatched = reactionEvent.triggeredBy;
+          if (dispatched.kind === "tool-activity") {
+            handler({ activity: dispatched.activity, timestamp: dispatched.timestamp });
+          }
+        },
+        { type: "persona", packId: "__tool-attention__" },
+      );
+      return { dispose: () => reg.dispose() };
+    };
+
     const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
 
     disposables.push(
-      startToolAttentionProducer({ attention, subscribeHookSignal, getCurrentLineRect }),
+      startToolAttentionProducer({
+        attention,
+        subscribeHookSignal,
+        subscribeToolActivity,
+        getCurrentLineRect,
+      }),
     );
 
     return () => {
@@ -1258,8 +1295,27 @@ function App() {
         };
       };
 
+      // v1 `setMcpRequestAttention` と同じ rect 選択ロジック。
+      // get-ui-state / set-ui-state → activeUi（非 ambient UI コンテナ）、
+      // それ以外 → sidebar。両方なければ null を返す。
+      const getTargetRect = (tool: string) => {
+        const activeUi = document.querySelector<HTMLElement>(
+          ".ui-pack-container:not(.ui-pack-container--ambient)",
+        );
+        const sidebar = document.querySelector<HTMLElement>(".sidebar");
+        const targetElement =
+          tool === "get-ui-state" || tool === "set-ui-state" ? (activeUi ?? sidebar) : sidebar;
+        const r = targetElement?.getBoundingClientRect();
+        if (r === undefined || r.width <= 0 || r.height <= 0) return null;
+        return { x: r.left, y: r.top, width: r.width, height: r.height };
+      };
+
       if (disposed) return;
-      producerDisposable = startMcpAttentionProducer({ attention, listen: listenFactory });
+      producerDisposable = startMcpAttentionProducer({
+        attention,
+        listen: listenFactory,
+        getTargetRect,
+      });
     })();
 
     return () => {

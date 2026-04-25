@@ -1,51 +1,101 @@
 /**
  * MCP attention producer。
  *
- * `mcp:tool-request` event を listen し、tool 起動を mcp-ui kind の
- * AttentionTarget として emit。失効は resolver の maxAge=2000ms に任せる
- * (v1 の hard-coded setTimeout は廃止)。
+ * `mcp:tool-request` Tauri event を listen し、tool 起動を mcp-ui kind の
+ * AttentionTarget として emit する。
+ *
+ * v1 App.tsx `setMcpRequestAttention` を producer 層に切り出したもの。
+ * source key / priority / confidence / timeout / rect 戦略は v1 と 1:1。
+ *
+ * - source key: "mcp-tool-request"
+ * - priority: 4 / confidence: 0.72 / kind: mcp-ui
+ * - reason: set-ui-state → "tool-writing"、それ以外 → "tool-reading"
+ * - TTL: 1200ms の setTimeout で手動 clear（resolver maxAge には任せない）
+ * - rect: `.ui-pack-container:not(.ui-pack-container--ambient)` または `.sidebar`
+ *   を getTargetRect injection で取得する
  *
  * listen factory は injectable: 本番では `@tauri-apps/api/event` の
- * `listen` を adapter で wrap して渡す (Phase 1d で App.tsx 配線)、
- * test では fake を渡す。
- *
- * rect は PLACEHOLDER_RECT で仮置き。Phase 1c で aura 体験を確認しながら
- * 実際の MCP UI の rect 提供経路を再考する (event payload 拡張が有力候補)。
+ * `listen` を adapter で wrap して渡す。test では fake を渡す。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
 import type { Disposable } from "./types";
 
-const PRIORITY = 6;
+const SOURCE = "mcp-tool-request";
+const PRIORITY = 4;
 const CONFIDENCE = 0.72;
-const PLACEHOLDER_RECT = { x: 0, y: 0, width: 100, height: 30 };
+const TIMEOUT_MS = 1200;
+const EXPAND_PX = 8;
 
 type EventListener<P> = (payload: P) => void;
 export type ListenFactory = <P>(eventName: string, handler: EventListener<P>) => Disposable;
 
+interface Rect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 interface StartOptions {
   readonly attention: AttentionRuntime;
   readonly listen: ListenFactory;
+  /** tool 名から rect を返す。App.tsx 側で DOM 要素の getBoundingClientRect を wrap して注入。 */
+  readonly getTargetRect: (tool: string) => Rect | null;
+  /** テスト用タイマー override。省略時は window.setTimeout / clearTimeout を使う。 */
+  readonly setTimeout?: (cb: () => void, ms: number) => number;
+  readonly clearTimeout?: (id: number) => void;
 }
 
 export function startMcpAttentionProducer(opts: StartOptions): Disposable {
-  const { attention, listen } = opts;
+  const {
+    attention,
+    listen,
+    getTargetRect,
+    setTimeout: _setTimeout = (cb: () => void, ms: number) => window.setTimeout(cb, ms),
+    clearTimeout: _clearTimeout = (id: number) => window.clearTimeout(id),
+  } = opts;
+
+  let clearTimer: number | null = null;
 
   const sub = listen<{ tool: string }>("mcp:tool-request", (payload) => {
-    attention.setSourceTarget("mcp-tool-request", {
+    const rect = getTargetRect(payload.tool);
+    if (rect === null) return;
+
+    // 前の timer があれば cancel してから再スタート
+    if (clearTimer !== null) {
+      _clearTimeout(clearTimer);
+      clearTimer = null;
+    }
+
+    attention.setSourceTarget(SOURCE, {
       kind: "mcp-ui",
-      source: "mcp-tool-request",
-      rect: PLACEHOLDER_RECT,
+      source: SOURCE,
+      rect: {
+        x: rect.x - EXPAND_PX,
+        y: rect.y - EXPAND_PX,
+        width: rect.width + EXPAND_PX * 2,
+        height: rect.height + EXPAND_PX * 2,
+      },
       confidence: CONFIDENCE,
       priority: PRIORITY,
       timestamp: performance.now(),
       reason: payload.tool === "set-ui-state" ? "tool-writing" : "tool-reading",
     });
+
+    clearTimer = _setTimeout(() => {
+      attention.setSourceTarget(SOURCE, null);
+      clearTimer = null;
+    }, TIMEOUT_MS);
   });
 
   return {
     dispose: () => {
       sub.dispose();
+      if (clearTimer !== null) {
+        _clearTimeout(clearTimer);
+        clearTimer = null;
+      }
     },
   };
 }

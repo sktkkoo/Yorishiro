@@ -10,6 +10,7 @@ const DEFAULT_MAX_AGE_MS: Record<AttentionTarget["kind"], number> = {
   "input-cursor": 2000,
   "terminal-region": 2000,
   "mcp-ui": 2000,
+  "focused-dom": 2000,
 };
 
 export function resolveAttentionTarget(
