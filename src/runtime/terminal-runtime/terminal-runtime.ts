@@ -7,7 +7,12 @@ import { ptyResize, ptySpawn, ptyWrite } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
-import type { PtyParams, TerminalCursorClientPosition, TerminalRuntime } from "./types";
+import type {
+  PtyParams,
+  TerminalCursorClientPosition,
+  TerminalLineRect,
+  TerminalRuntime,
+} from "./types";
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
 
@@ -301,6 +306,49 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       cols: this.term.cols,
       rows: this.term.rows,
     };
+  }
+
+  getViewportLineRects(): ReadonlyArray<TerminalLineRect> {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return [];
+
+    const containerRect = this.xtermContainer.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) return [];
+
+    const cellWidth = containerRect.width / this.term.cols;
+    const cellHeight = containerRect.height / this.term.rows;
+
+    const result: TerminalLineRect[] = [];
+
+    for (let row = this.term.rows - 1; row >= 0; row--) {
+      const line = buffer.getLine(buffer.viewportY + row);
+      if (!line) continue;
+
+      let startCol = -1;
+      let endCol = -1;
+      for (let col = 0; col < this.term.cols; col++) {
+        const cell = line.getCell(col);
+        const ch = cell?.getChars() ?? "";
+        if (ch !== "" && ch !== " ") {
+          if (startCol === -1) startCol = col;
+          endCol = col;
+        }
+      }
+
+      if (startCol === -1 || endCol === -1) continue;
+
+      result.push({
+        text: line.translateToString(true),
+        rect: {
+          x: containerRect.left + startCol * cellWidth,
+          y: containerRect.top + row * cellHeight,
+          width: Math.max(cellWidth, (endCol - startCol + 1) * cellWidth),
+          height: cellHeight,
+        },
+      });
+    }
+
+    return result;
   }
 
   subscribePtyData(listener: () => void): Disposable {

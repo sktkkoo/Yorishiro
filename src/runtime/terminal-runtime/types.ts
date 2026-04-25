@@ -19,6 +19,20 @@ export interface TerminalCursorClientPosition {
 }
 
 /**
+ * viewport の 1 line の rect + text。意味分類は呼び出し側が
+ * `classifyTerminalOutputAttentionReason` 等で行う。
+ */
+export interface TerminalLineRect {
+  readonly text: string;
+  readonly rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+}
+
+/**
  * TerminalRuntime の public interface。terminal.tsx が参照するのはこの型だけ。
  *
  * 寿命: webview lifetime（= hot-data 経由で HMR 越しに同一 instance）。
@@ -86,4 +100,12 @@ export interface TerminalRuntime {
    * 引数なし (rect 再計算の trigger 用途)。dispose で listener を外す。
    */
   subscribeViewportScroll(listener: () => void): Disposable;
+
+  /**
+   * viewport の全 line の rect + text を返す（最終行から逆順）。空白だけの
+   * 行は除外。viewport scroll や PTY 出力後に producer が呼ぶ。
+   *
+   * 意味分類はここではしない（producer 側の責務）。
+   */
+  getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
 }
