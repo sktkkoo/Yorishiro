@@ -104,9 +104,11 @@ describe("Aura component", () => {
     });
 
     // RAF を 1 tick 進める (jsdom では requestAnimationFrame は同期で setTimeout に
-    // fall back する Polyfill がある場合と無い場合がある。ここでは subscribe 直後の
-    // setView が反映された state を確認するだけで sufficient)
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // fall back する Polyfill がある場合と無い場合がある。act() で wrap して
+    // pending React state を flush してから assert する)
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
     const overlay = container.querySelector('[data-testid="attention-aura-overlay"]');
     expect(overlay).not.toBeNull();
