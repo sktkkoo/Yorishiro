@@ -90,6 +90,8 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "Enter") return;
+    // IME composition 中 (かな漢字変換の確定 Enter) は送信 Enter と区別して無視。
+    if (event.isComposing) return;
     const focused = document.activeElement;
     let source: string;
     let rect: { x: number; y: number; width: number; height: number };

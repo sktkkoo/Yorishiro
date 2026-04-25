@@ -205,6 +205,35 @@ describe("input-cursor producer (sent / activate)", () => {
     }
   });
 
+  it("ignores Enter while IME composition is active (isComposing=true)", () => {
+    vi.useFakeTimers();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+      });
+
+      // KeyboardEventInit に isComposing は標準には無いが、JSDOM/Vitest で
+      // KeyboardEvent の prototype property として直接拾われる。
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
+      Object.defineProperty(event, "isComposing", { value: true });
+      window.dispatchEvent(event);
+
+      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
+      expect(call).toBeUndefined();
+      dispose.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("emits input-cursor:activate when Enter pressed on a focused button", () => {
     vi.useFakeTimers();
     const originalRect = HTMLElement.prototype.getBoundingClientRect;
