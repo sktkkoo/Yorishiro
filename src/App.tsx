@@ -26,7 +26,11 @@ import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
 import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
 import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
-import charminalSettingsPack from "../bundled-packs/ui/charminal-settings/ui";
+import charminalSettingsPack, {
+  PREVIOUS_ACTIVE_UI_KEY,
+  resolveCloseTarget,
+  SETTINGS_PACK_ID,
+} from "../bundled-packs/ui/charminal-settings/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
@@ -1182,9 +1186,9 @@ function App() {
     const uiState = getUiStateStore();
     const current = uiPackRegistry.getActiveUi()?.id ?? null;
     // 自分自身を保存しない（settings 中に再度開くことは無いはずだが防御）
-    const previousId = current === "charminal-settings" ? null : current;
-    uiState.set("charminal-settings", "previous-active-ui", previousId);
-    uiPackRegistry.setActiveUi("charminal-settings");
+    const previousId = current === SETTINGS_PACK_ID ? null : current;
+    uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, previousId);
+    uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
   }, []);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
@@ -1210,13 +1214,9 @@ function App() {
     const onCloseRequested = (event: Event) => {
       const detail = (event as CustomEvent<{ target: string | null }>).detail;
       const uiPackRegistry = getUiRegistry();
-      const target = detail?.target ?? null;
-      if (target === null) {
-        uiPackRegistry.setActiveUi(null);
-        return;
-      }
-      const exists = uiPackRegistry.listEntries().some((e) => e.id === target);
-      uiPackRegistry.setActiveUi(exists ? target : null);
+      const availableIds = uiPackRegistry.listEntries().map((e) => e.id);
+      const target = resolveCloseTarget({ saved: detail?.target ?? null, availableIds });
+      uiPackRegistry.setActiveUi(target);
     };
     window.addEventListener("charminal-settings:close-requested", onCloseRequested);
     return () => {
