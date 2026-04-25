@@ -684,6 +684,19 @@ function App() {
     return () => sub.dispose();
   }, [personaRegistry]);
 
+  /**
+   * VRM file path を local state と localStorage に同時反映する。
+   * UI pack（`ctx.app.setVrm`）と sidebar の picker 経路で共有する。
+   */
+  const applyVrmPath = useCallback((path: string | null) => {
+    setVrmPath(path);
+    if (path === null) {
+      localStorage.removeItem(VRM_STORAGE_KEY);
+    } else {
+      localStorage.setItem(VRM_STORAGE_KEY, path);
+    }
+  }, []);
+
   // ── UI pack: subscribe + mount / dispose lifecycle ────────────────────
   // active UI pack が切り替わるたびに前の pack を teardown（dispose + container remove +
   // layout reset）してから新しい pack の layout を apply、container を body 直下に挿入、
@@ -817,6 +830,12 @@ function App() {
             applyLayout(layout, targets);
           },
         },
+        app: {
+          setVrm: (path: string | null) => applyVrmPath(path),
+        },
+        emitEvent: (name: string, payload?: unknown) => {
+          runtime.bus.emitSynthetic({ type: "harness", packId }, name, payload, 0);
+        },
       };
     };
 
@@ -899,6 +918,8 @@ function App() {
     uiState,
     isUserLayerReady,
     logBridge,
+    applyVrmPath,
+    runtime,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -1059,19 +1080,6 @@ function App() {
   }, [cwd]);
 
   // ── VRM import ──────────────────────────────────────────────
-
-  /**
-   * VRM file path を local state と localStorage に同時反映する。
-   * UI pack（`ctx.app.setVrm`）と sidebar の picker 経路で共有する。
-   */
-  const applyVrmPath = useCallback((path: string | null) => {
-    setVrmPath(path);
-    if (path === null) {
-      localStorage.removeItem(VRM_STORAGE_KEY);
-    } else {
-      localStorage.setItem(VRM_STORAGE_KEY, path);
-    }
-  }, []);
 
   const handleLoadVrm = useCallback(async () => {
     try {
