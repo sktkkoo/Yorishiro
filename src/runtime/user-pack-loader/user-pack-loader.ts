@@ -66,7 +66,7 @@ export interface LoadUserPacksDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry?: UiPackRegistry;
-  readonly ambientUiPackRegistry?: AmbientUiPackRegistry;
+  readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly devLog: SubsystemLog;
   /**
    * Hot-reload 用の idempotency 層。register 結果の Disposable をここに格納し、
@@ -127,7 +127,7 @@ export interface LoadSingleUserPackDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry?: UiPackRegistry;
-  readonly ambientUiPackRegistry?: AmbientUiPackRegistry;
+  readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
@@ -329,9 +329,6 @@ export async function loadSingleUserPack(
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
     if (entry.kind === "ambient-ui") {
-      if (ambientUiPackRegistry === undefined) {
-        throw new Error("AmbientUiPackRegistry is required to register ambient-ui packs");
-      }
       // SDK 側に validator が無いので最低限の shape check をここで行う。
       // 形式: { type: "ambient-ui", id: string, mount: function }
       if (
