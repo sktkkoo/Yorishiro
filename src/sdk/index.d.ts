@@ -22,16 +22,17 @@ export type { Layer, LayerRole, SceneSpec } from "./scene";
 export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
 export type {
+  UiAppAPI,
+  UiAppPackOption,
+  UiClaimAPI,
+  UiContext,
+  UiLayout,
+  UiLayoutAPI,
   UiPackDefinition,
   UiPackManifest,
-  UiLayout,
-  UiAppAPI,
-  UiContext,
-  UiLayoutAPI,
-  UiThreeAPI,
-  UiClaimAPI,
   UiSceneAPI,
   UiSceneLayerPatch,
   UiSceneLayerTarget,
   UiStateAPI,
+  UiThreeAPI,
 } from "./ui-pack";

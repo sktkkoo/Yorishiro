@@ -10,6 +10,7 @@
 
 import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
 import type React from "react";
+import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
@@ -33,11 +34,73 @@ export function resolveCloseTarget(args: ResolveCloseTargetArgs): string | null 
   return args.saved;
 }
 
+export interface ApplyConfigUpdateArgs<T> {
+  readonly next: T;
+  readonly prev: T;
+  readonly setLocal: (value: T) => void;
+  readonly write: (value: T) => Promise<void>;
+  readonly emitEvent: (name: string, payload?: unknown) => void;
+  readonly field: string;
+}
+
+/**
+ * 楽観的 update + 失敗時 rollback + emitEvent。設定 dropdown / toggle 共通の handler。
+ */
+export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Promise<void> {
+  args.setLocal(args.next);
+  try {
+    await args.write(args.next);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.error(`[charminal-settings] ${args.field} write failed:`, reason);
+    args.emitEvent("charminal-settings:write-failed", { field: args.field, reason });
+    args.setLocal(args.prev);
+  }
+}
+
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
+  const [persona, setPersona] = useState<string | null>(null);
+  const [scene, setScene] = useState<string | null>(null);
+  const personas = ctx.app.listPersonas();
+  const scenes = ctx.app.listScenes();
+
+  useEffect(() => {
+    let aborted = false;
+    void ctx.app.getConfig().then((cur) => {
+      if (aborted) return;
+      setPersona(cur.primaryPersona);
+      setScene(cur.activeScene);
+    });
+    return () => {
+      aborted = true;
+    };
+  }, [ctx]);
+
+  const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    void applyConfigUpdate({
+      next: e.target.value || null,
+      prev: persona,
+      setLocal: setPersona,
+      write: (v) => ctx.app.setPrimaryPersona(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "primaryPersona",
+    });
+  };
+
+  const onSceneChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    void applyConfigUpdate({
+      next: e.target.value || null,
+      prev: scene,
+      setLocal: setScene,
+      write: (v) => ctx.app.setActiveScene(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "activeScene",
+    });
+  };
+
   const onClose = () => {
     const saved = ctx.state.get(PREVIOUS_ACTIVE_UI_KEY);
     const savedStr = typeof saved === "string" ? saved : null;
-    // self-id（init.js 誤設定）の場合は null 化。registry 不在 id は App.tsx 側 listener で fallback。
     const target = savedStr === SETTINGS_PACK_ID ? null : savedStr;
     window.dispatchEvent(
       new CustomEvent("charminal-settings:close-requested", {
@@ -92,7 +155,29 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         </button>
       </header>
       <main style={{ flex: 1, padding: "20px", overflowY: "auto" }}>
-        <p style={{ opacity: 0.6 }}>section A / B / C は次の Task で追加します。</p>
+        <Section title="キャラクター">
+          {/* VRM picker は Task 10 で追加 */}
+          <Field label="Persona">
+            <select value={persona ?? ""} onChange={onPersonaChange} style={selectStyle}>
+              <option value="">（選択しない）</option>
+              {personas.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name ?? p.id} {p.origin === "user" ? "(user)" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Scene">
+            <select value={scene ?? ""} onChange={onSceneChange} style={selectStyle}>
+              <option value="">（選択しない）</option>
+              {scenes.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name ?? s.id} {s.origin === "user" ? "(user)" : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </Section>
       </main>
       <footer
         style={{
@@ -105,6 +190,60 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         ⌘R / Ctrl+R で Charminal 全体を reload できます
       </footer>
     </div>
+  );
+}
+
+const sectionLabelStyle: React.CSSProperties = {
+  fontSize: "11px",
+  opacity: 0.6,
+  textTransform: "uppercase",
+  letterSpacing: "0.08em",
+  marginBottom: "12px",
+};
+
+const fieldGridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "100px 1fr",
+  gap: "8px 12px",
+  alignItems: "center",
+};
+
+const selectStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  color: "inherit",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: "4px",
+  padding: "6px 10px",
+  font: "inherit",
+};
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <section style={{ marginBottom: "28px" }}>
+      <div style={sectionLabelStyle}>{title}</div>
+      <div style={fieldGridStyle}>{children}</div>
+    </section>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <>
+      <div style={{ opacity: 0.7 }}>{label}</div>
+      <div>{children}</div>
+    </>
   );
 }
 

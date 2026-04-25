@@ -54,7 +54,10 @@ import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
-import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
+import {
+  readCharminalConfigText,
+  writeCharminalConfigText,
+} from "./runtime/user-pack-loader/charminal-io";
 import { parseConfig, type TerminalAgent } from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
@@ -832,6 +835,47 @@ function App() {
         },
         app: {
           setVrm: (path: string | null) => applyVrmPath(path),
+          listPersonas: () =>
+            personaRegistry.listEntries().map((e) => ({
+              id: e.id,
+              name: e.persona.name,
+              origin: e.origin,
+            })),
+          listScenes: () =>
+            scenePackRegistry.listEntries().map((e) => ({
+              id: e.id,
+              name: e.manifest.name,
+              origin: e.origin,
+            })),
+          setPrimaryPersona: async (id) => {
+            const cur = parseConfig(await readCharminalConfigText());
+            await writeCharminalConfigText(
+              `${JSON.stringify({ ...cur, primaryPersona: id }, null, 2)}\n`,
+            );
+            personaRegistry.setPrimaryPersona(id);
+          },
+          setActiveScene: async (id) => {
+            const cur = parseConfig(await readCharminalConfigText());
+            await writeCharminalConfigText(
+              `${JSON.stringify({ ...cur, activeScene: id }, null, 2)}\n`,
+            );
+            scenePackRegistry.setActiveScene(id);
+          },
+          setTerminalAgent: async (agent) => {
+            const cur = parseConfig(await readCharminalConfigText());
+            await writeCharminalConfigText(
+              `${JSON.stringify({ ...cur, terminalAgent: agent }, null, 2)}\n`,
+            );
+          },
+          getConfig: async () => {
+            const text = await readCharminalConfigText();
+            const cur = parseConfig(text);
+            return {
+              primaryPersona: cur.primaryPersona,
+              activeScene: cur.activeScene,
+              terminalAgent: cur.terminalAgent,
+            };
+          },
         },
         emitEvent: (name: string, payload?: unknown) => {
           runtime.bus.emitSynthetic({ type: "harness", packId }, name, payload, 0);
@@ -920,6 +964,8 @@ function App() {
     logBridge,
     applyVrmPath,
     runtime,
+    personaRegistry,
+    scenePackRegistry,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

@@ -69,6 +69,15 @@ export interface UiPackManifest {
 }
 
 /**
+ * dropdown 用の pack 選択肢。id・name・出自を保持する。
+ */
+export interface UiAppPackOption {
+  readonly id: string;
+  readonly name?: string;
+  readonly origin: "bundled" | "user";
+}
+
+/**
  * UI pack から App-level state を変更するための API namespace。
  * 将来 app-level の他 state を expose する余地を残すため namespace を切る。
  */
@@ -78,6 +87,25 @@ export interface UiAppAPI {
    * 反映を行う。`null` で VRM 未読み込み状態に戻す。
    */
   setVrm(path: string | null): void;
+  /** 利用可能な persona pack の一覧（dropdown 用）。 */
+  listPersonas(): readonly UiAppPackOption[];
+  /** 利用可能な scene pack の一覧。 */
+  listScenes(): readonly UiAppPackOption[];
+  /** primaryPersona を切り替える。`config.json` に書き戻す責務もここ。 */
+  setPrimaryPersona(id: string | null): Promise<void>;
+  /** activeScene を切り替える。 */
+  setActiveScene(id: string | null): Promise<void>;
+  /** terminalAgent を切り替える。 */
+  setTerminalAgent(agent: "claude" | "codex"): Promise<void>;
+  /**
+   * 現 config の snapshot（読み取り専用、初期値表示用）。
+   * `~/.charminal/config.json` を fresh に読んで返す async。
+   */
+  getConfig(): Promise<{
+    readonly primaryPersona: string | null;
+    readonly activeScene: string | null;
+    readonly terminalAgent: "claude" | "codex";
+  }>;
 }
 
 /**
