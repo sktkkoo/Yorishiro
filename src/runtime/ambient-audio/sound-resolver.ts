@@ -23,3 +23,26 @@ export function pathToStem(path: string): string {
     : path;
   return stripped.replace(SUPPORTED_EXT, "");
 }
+
+/**
+ * Vite glob result から stem → URL の Map を構築。
+ * Stem 衝突 (例: rain.mp3 と rain.wav) は throw して fail-fast。
+ *
+ * Pure 関数 (glob は import.meta.glob result を inject)。
+ * Module init 時に 1 回呼ばれて SHARED_SOUNDS が確定する。
+ */
+export function buildSharedSoundMap(glob: Record<string, string>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [path, url] of Object.entries(glob)) {
+    const stem = pathToStem(path);
+    const existing = map.get(stem);
+    if (existing !== undefined) {
+      throw new Error(
+        `Duplicate shared sound name '${stem}': both '${path}' and existing entry. ` +
+          `Shared sound names must be unique across extensions and namespaces.`,
+      );
+    }
+    map.set(stem, url);
+  }
+  return map;
+}
