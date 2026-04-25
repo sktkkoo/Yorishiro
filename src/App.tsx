@@ -58,7 +58,11 @@ import {
   readCharminalConfigText,
   writeCharminalConfigText,
 } from "./runtime/user-pack-loader/charminal-io";
-import { parseConfig, type TerminalAgent } from "./runtime/user-pack-loader/config";
+import {
+  parseConfig,
+  serializeConfig,
+  type TerminalAgent,
+} from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
 import type { ScenePackManifest } from "./sdk/scene-pack";
@@ -731,6 +735,24 @@ function App() {
       };
     };
 
+    // 設定 write は read-modify-write なので並行 click で race する。
+    // Promise chain で逐次化する（同 useEffect 寿命内で 1 本）。
+    let pendingConfigWrite: Promise<void> = Promise.resolve();
+    const updateConfig = (
+      patch: Partial<{
+        primaryPersona: string | null;
+        activeScene: string | null;
+        terminalAgent: "claude" | "codex";
+      }>,
+    ): Promise<void> => {
+      const next = pendingConfigWrite.then(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
+      });
+      pendingConfigWrite = next.catch(() => undefined);
+      return next;
+    };
+
     const buildUiContext = (
       packId: string,
       signal: AbortSignal,
@@ -848,24 +870,16 @@ function App() {
               origin: e.origin,
             })),
           setPrimaryPersona: async (id) => {
-            const cur = parseConfig(await readCharminalConfigText());
-            await writeCharminalConfigText(
-              `${JSON.stringify({ ...cur, primaryPersona: id }, null, 2)}\n`,
-            );
+            await updateConfig({ primaryPersona: id });
             personaRegistry.setPrimaryPersona(id);
           },
           setActiveScene: async (id) => {
-            const cur = parseConfig(await readCharminalConfigText());
-            await writeCharminalConfigText(
-              `${JSON.stringify({ ...cur, activeScene: id }, null, 2)}\n`,
-            );
+            await updateConfig({ activeScene: id });
             scenePackRegistry.setActiveScene(id);
           },
           setTerminalAgent: async (agent) => {
-            const cur = parseConfig(await readCharminalConfigText());
-            await writeCharminalConfigText(
-              `${JSON.stringify({ ...cur, terminalAgent: agent }, null, 2)}\n`,
-            );
+            await updateConfig({ terminalAgent: agent });
+            // terminalAgent は既存セッションに反映しない仕様（仕様書通り）
           },
           getConfig: async () => {
             const text = await readCharminalConfigText();
