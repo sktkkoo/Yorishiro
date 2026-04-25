@@ -70,6 +70,11 @@ export function TerminalPromptButton(props: TerminalPromptButtonProps): React.JS
     if (pending) return;
     setPending(true);
     try {
+      if (props.closeActiveUiBeforeWrite && !props.closeActiveUi) {
+        console.warn(
+          "[TerminalPromptButton] closeActiveUiBeforeWrite is true but closeActiveUi is not provided; close-before-write will be skipped",
+        );
+      }
       const result = await performTerminalPromptWrite({
         text: props.text,
         ptyWrite: props.ptyWrite,
