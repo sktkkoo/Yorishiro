@@ -1,10 +1,18 @@
 /**
  * Terminal attention producer。
  *
- * PTY data 出力 / viewport scroll を listen し、`getViewportLineRects()` で
- * 全非空 line を取得して `classifyTerminalOutputAttentionReason()` で意味分類。
- * diagnostic / file-link に該当する line だけを別 source key で並列 emit する。
- * recent-output (意味なし) は emit しない (v2 原則「意味なきもの aura なし」)。
+ * rAF loop で毎 frame `getViewportLineRects()` を poll し、bottom-most（配列先頭）
+ * から意味分類を行う。diagnostic / file-link に該当する最初の行だけを各 source key
+ * で emit する。recent-output は emit しない（v2 原則「意味なきもの aura なし」、
+ * docs/decisions/semantic-priority-attention.md）。
+ *
+ * `getViewportLineRects()` は最終行から逆順で返すため、配列の index 0 が viewport
+ * 最下行（= 直近出力行）となる。top-first ではなく bottom-first で scan することで
+ * v1 の「直近出力行を優先」semantic に合わせる。
+ *
+ * event-driven (subscribePtyData / subscribeViewportScroll) は廃止。
+ * PTY 出力後に xterm が行を確定する frame との乖離で diagnostic 検出が
+ * 取りこぼされていたため、rAF loop に切り替えた。
  *
  * Internal design-record: 2026-04-25-attention-aura-v2-design.md
  *   「Producer 一覧と priority」section
@@ -23,17 +31,17 @@ const CONFIDENCE = 0.7;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
-  readonly terminal: Pick<
-    TerminalRuntime,
-    "subscribePtyData" | "subscribeViewportScroll" | "getViewportLineRects"
-  >;
+  readonly terminal: Pick<TerminalRuntime, "getViewportLineRects">;
 }
 
 export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   const { attention, terminal } = opts;
   const activeSources = new Set<string>();
+  let rafId: number | null = null;
 
   const scan = (): void => {
+    // getViewportLineRects は最終行から逆順で返す（index 0 = 最下行 = 直近出力行）。
+    // bottom-first で scan し、最初にマッチした行を各カテゴリの代表として emit する。
     const lines = terminal.getViewportLineRects();
     const nowActive = new Set<string>();
 
@@ -60,13 +68,20 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
     for (const source of nowActive) activeSources.add(source);
   };
 
-  const ptySub = terminal.subscribePtyData(scan);
-  const scrollSub = terminal.subscribeViewportScroll(scan);
+  const tick = (): void => {
+    scan();
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
 
   return {
     dispose: () => {
-      ptySub.dispose();
-      scrollSub.dispose();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      // dispose 時に active source を全 clear する
+      for (const source of activeSources) {
+        attention.setSourceTarget(source, null);
+      }
+      activeSources.clear();
     },
   };
 }
