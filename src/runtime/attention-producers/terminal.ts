@@ -2,13 +2,25 @@
  * Terminal attention producer。
  *
  * rAF loop で毎 frame `getViewportLineRects()` を poll し、bottom-most（配列先頭）
- * から意味分類を行う。diagnostic / file-link に該当する最初の行だけを各 source key
- * で emit する。recent-output は emit しない（v2 原則「意味なきもの aura なし」、
- * docs/decisions/semantic-priority-attention.md）。
+ * から意味分類を行う。diagnostic / file-link に該当する行が **新規に現れた** ときだけ
+ * emit し、`PULSE_MS` 後に null clear する一過性（transient）設計。
  *
  * `getViewportLineRects()` は最終行から逆順で返すため、配列の index 0 が viewport
  * 最下行（= 直近出力行）となる。top-first ではなく bottom-first で scan することで
  * v1 の「直近出力行を優先」semantic に合わせる。
+ *
+ * ### 新規判定の仕組み
+ * - 前 frame の diagnostic / file-link 行テキストを Set で保持する。
+ * - 今 frame で新たに現れた行（= 前 frame の Set にない）を「新規」とし、
+ *   カテゴリごとに最初の 1 行だけ emit する（bottom-first 順で直近行が優先）。
+ * - emit 後 `setTimeout(PULSE_MS)` で null clear をスケジュールする。
+ *   pulse 中に別の新規行が来た場合は既存 timer をキャンセルして上書きする。
+ * - viewport が空になると seen Set がリセットされ、再表示時に再 emit が有効になる。
+ *
+ * ### A2+B2 設計変更
+ * - diagnostic aura が常駐しなくなるため「typing が見える時間」が確保される。
+ * - typing priority は input-cursor producer 側で 5 に変更（B2）。
+ *   diagnostic priority 8 は維持（出現瞬間は強い、3 秒で消える）。
  *
  * event-driven (subscribePtyData / subscribeViewportScroll) は廃止。
  * PTY 出力後に xterm が行を確定する frame との乖離で diagnostic 検出が
@@ -23,6 +35,9 @@ import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalLineRect, TerminalRuntime } from "../terminal-runtime/types";
 import type { Disposable } from "./types";
 
+/** diagnostic / file-link pulse の持続時間（ms）。この時間後に source を null clear する */
+const PULSE_MS = 3000;
+
 const PRIORITY_DIAGNOSTIC = 8;
 const PRIORITY_FILE_LINK = 5;
 // 意味分類は heuristic (regex ベース) のため確度は中程度。kind 内で
@@ -32,40 +47,88 @@ const CONFIDENCE = 0.7;
 interface StartOptions {
   readonly attention: AttentionRuntime;
   readonly terminal: Pick<TerminalRuntime, "getViewportLineRects">;
+  /**
+   * テスト用 setTimeout 注入。省略時は globalThis.setTimeout。
+   * timer ID の型は環境（Node / ブラウザ）で異なるため unknown で受け渡す。
+   */
+  readonly setTimeout?: (fn: () => void, delay: number) => unknown;
+  /**
+   * テスト用 clearTimeout 注入。省略時は globalThis.clearTimeout。
+   */
+  readonly clearTimeout?: (id: unknown) => void;
 }
 
 export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   const { attention, terminal } = opts;
-  const activeSources = new Set<string>();
+  // DI 注入口。省略時は globalThis の関数にフォールバックする。
+  // timer ID の型は環境（Node / ブラウザ）で異なるため、ここでは unknown で統一する。
+  const setTimeoutFn: (fn: () => void, delay: number) => unknown =
+    opts.setTimeout ?? globalThis.setTimeout.bind(globalThis);
+  const clearTimeoutFn: (id: unknown) => void =
+    opts.clearTimeout ?? (globalThis.clearTimeout.bind(globalThis) as (id: unknown) => void);
+
+  // 前 frame で検出済みの行テキストを保持する。
+  // viewport が空になると次の tick で両 Set が clear され、再表示時に再 emit される。
+  let seenDiagnosticLines = new Set<string>();
+  let seenFileLinkLines = new Set<string>();
+
+  // source ごとの pending pulse timer を管理する。
+  // 新規行が来たら既存 timer をキャンセルして上書きする（stacking しない）。
+  const pulseTimers = new Map<string, unknown>();
+
   let rafId: number | null = null;
+
+  /** source の pulse timer を開始（または上書き）し、PULSE_MS 後に null clear する */
+  const startPulse = (source: string): void => {
+    const existing = pulseTimers.get(source);
+    if (existing !== undefined) clearTimeoutFn(existing);
+    const timer = setTimeoutFn(() => {
+      attention.setSourceTarget(source, null);
+      pulseTimers.delete(source);
+    }, PULSE_MS);
+    pulseTimers.set(source, timer);
+  };
 
   const scan = (): void => {
     // getViewportLineRects は最終行から逆順で返す（index 0 = 最下行 = 直近出力行）。
-    // bottom-first で scan し、最初にマッチした行を各カテゴリの代表として emit する。
+    // bottom-first で scan し、カテゴリごとに新規行の最初の 1 行だけ emit する。
     const lines = terminal.getViewportLineRects();
-    const nowActive = new Set<string>();
+
+    // 今 frame に存在する行テキスト（次 frame の seen Set になる）
+    const currentDiagnosticLines = new Set<string>();
+    const currentFileLinkLines = new Set<string>();
+
+    // emit 済みフラグ（1 frame 内の重複 emit 防止）
+    let diagnosticEmitted = false;
+    let fileLinkEmitted = false;
 
     for (const line of lines) {
       const reason = classifyTerminalOutputAttentionReason(line.text);
-      if (reason === "diagnostic" && !nowActive.has("terminal:diagnostic")) {
-        emit(attention, "terminal:diagnostic", line, PRIORITY_DIAGNOSTIC, "diagnostic");
-        nowActive.add("terminal:diagnostic");
-      } else if (reason === "file-link" && !nowActive.has("terminal:file-link")) {
-        emit(attention, "terminal:file-link", line, PRIORITY_FILE_LINK, "file-link");
-        nowActive.add("terminal:file-link");
+
+      if (reason === "diagnostic") {
+        currentDiagnosticLines.add(line.text);
+        if (!diagnosticEmitted && !seenDiagnosticLines.has(line.text)) {
+          // 新規行が検出された：emit + pulse 開始
+          emitLine(attention, "terminal:diagnostic", line, PRIORITY_DIAGNOSTIC, "diagnostic");
+          startPulse("terminal:diagnostic");
+          diagnosticEmitted = true;
+        }
+      } else if (reason === "file-link") {
+        currentFileLinkLines.add(line.text);
+        if (!fileLinkEmitted && !seenFileLinkLines.has(line.text)) {
+          emitLine(attention, "terminal:file-link", line, PRIORITY_FILE_LINK, "file-link");
+          startPulse("terminal:file-link");
+          fileLinkEmitted = true;
+        }
       }
-      if (nowActive.size === 2) break;
+
+      // 両カテゴリの新規行を発見済みなら早期終了
+      if (diagnosticEmitted && fileLinkEmitted) break;
     }
 
-    // 前回 active だが今回 emit しなかった source は null で clear
-    for (const source of activeSources) {
-      if (!nowActive.has(source)) {
-        attention.setSourceTarget(source, null);
-      }
-    }
-
-    activeSources.clear();
-    for (const source of nowActive) activeSources.add(source);
+    // seen Set を今 frame の内容で更新（viewport 空なら両 Set も空になる）
+    seenDiagnosticLines = currentDiagnosticLines;
+    seenFileLinkLines = currentFileLinkLines;
   };
 
   const tick = (): void => {
@@ -77,16 +140,17 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   return {
     dispose: () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      // dispose 時に active source を全 clear する
-      for (const source of activeSources) {
+      // dispose 時に全 pulse timer をキャンセルし、active source を clear する
+      for (const [source, timer] of pulseTimers) {
+        clearTimeoutFn(timer);
         attention.setSourceTarget(source, null);
       }
-      activeSources.clear();
+      pulseTimers.clear();
     },
   };
 }
 
-function emit(
+function emitLine(
   attention: AttentionRuntime,
   source: string,
   line: TerminalLineRect,

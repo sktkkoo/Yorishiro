@@ -91,7 +91,7 @@ describe("startInputCursorAttentionProducer", () => {
       expect(call?.[1]).toMatchObject({
         kind: "input-cursor",
         source: "input-cursor:typing",
-        priority: 3,
+        priority: 5,
         reason: "typing",
       });
       expect(call?.[1].rect).toMatchObject({ x: 50, y: 100, width: 8, height: 16 });

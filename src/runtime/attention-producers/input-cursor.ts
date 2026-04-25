@@ -2,7 +2,7 @@
  * Input cursor attention producer。
  *
  * rAF loop で毎 frame caret 位置を poll し、stateful に管理:
- * - rect が取れた: input-cursor:typing として emit (priority=3)
+ * - rect が取れた: input-cursor:typing として emit (priority=5)
  * - rect 不在 (null) かつ前回 active: null clear
  * - rect 不在 かつ前回 inactive: 何もしない
  *
@@ -24,7 +24,7 @@ import type { Disposable } from "./types";
 const SOURCE_TYPING = "input-cursor:typing";
 const SOURCE_SENT = "input-cursor:sent";
 const SOURCE_ACTIVATE = "input-cursor:activate";
-const PRIORITY_TYPING = 3;
+const PRIORITY_TYPING = 5;
 const PRIORITY_SENT_ACTIVATE = 5;
 const CONFIDENCE = 1;
 // Enter は単発 event のため、resolver maxAge 任せの定常監視原則と異なり、

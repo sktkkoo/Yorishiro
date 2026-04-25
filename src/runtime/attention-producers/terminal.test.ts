@@ -37,7 +37,42 @@ function makeRafStub() {
     rafSpy.mockRestore();
     vi.mocked(globalThis.cancelAnimationFrame).mockRestore?.();
   };
-  return { rafSpy, tick, restore };
+  return { rafSpy, tick, restore, state };
+}
+
+/**
+ * setTimeout / clearTimeout の手動制御スタブ。
+ * vi.useFakeTimers() は requestAnimationFrame をグローバルから除去するため、
+ * rAF spy と共存できない。producer の DI 注入口を使って直接制御する。
+ * ID は number で管理し、StartOptions の unknown 型インターフェースに適合する。
+ */
+function makeTimerStub() {
+  const pending = new Map<number, { fn: () => void; delay: number; fireAt: number }>();
+  let nextId = 1;
+  let now = 0;
+
+  const setTimeoutFn = (fn: () => void, delay: number): unknown => {
+    const id = nextId++;
+    pending.set(id, { fn, delay, fireAt: now + delay });
+    return id;
+  };
+
+  const clearTimeoutFn = (id: unknown): void => {
+    pending.delete(id as number);
+  };
+
+  /** 指定 ms だけ時刻を進め、発火すべき timer を全て実行する */
+  const advance = (ms: number): void => {
+    now += ms;
+    for (const [id, entry] of [...pending]) {
+      if (entry.fireAt <= now) {
+        pending.delete(id);
+        entry.fn();
+      }
+    }
+  };
+
+  return { setTimeoutFn, clearTimeoutFn, advance, pending };
 }
 
 describe("startTerminalAttentionProducer", () => {
@@ -66,51 +101,86 @@ describe("startTerminalAttentionProducer", () => {
     }
   });
 
-  it("rAF tick で diagnostic 行が bottom-most なら terminal:diagnostic を emit する", () => {
+  it("新規 diagnostic 行が現れた frame のみ terminal:diagnostic を emit する", () => {
     const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
     try {
       const attention = makeFakeAttention();
       // getViewportLineRects は bottom-first 順で返す（index 0 = 最下行）
       const terminal = makeFakeTerminal([
         { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
       ]);
-      const dispose = startTerminalAttentionProducer({ attention, terminal });
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
 
+      // frame N: 新規行 → emit される
       tick();
-
-      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "terminal:diagnostic");
-      expect(call).toBeDefined();
-      expect(call?.[1]).toMatchObject({
+      const callsAfterFrame1 = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
+      );
+      expect(callsAfterFrame1).toHaveLength(1);
+      expect(callsAfterFrame1[0]?.[1]).toMatchObject({
         kind: "terminal-region",
         source: "terminal:diagnostic",
         priority: 8,
         reason: "diagnostic",
       });
+
+      // frame N+1: 同一行がまだ viewport に存在 → 再 emit しない
+      attention.setSourceTarget.mockClear();
+      tick();
+      const callsAfterFrame2 = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
+      );
+      expect(callsAfterFrame2).toHaveLength(0);
+
       dispose.dispose();
     } finally {
       restore();
     }
   });
 
-  it("rAF tick で file-link 行が bottom-most なら terminal:file-link を emit する", () => {
+  it("新規 file-link 行が現れた frame のみ terminal:file-link を emit する", () => {
     const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
     try {
       const attention = makeFakeAttention();
       const terminal = makeFakeTerminal([
         { text: "src/App.tsx:12", rect: { x: 10, y: 80, width: 200, height: 16 } },
       ]);
-      const dispose = startTerminalAttentionProducer({ attention, terminal });
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
 
+      // frame N: 新規行 → emit
       tick();
-
-      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "terminal:file-link");
-      expect(call).toBeDefined();
-      expect(call?.[1]).toMatchObject({
+      const callsAfterFrame1 = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "terminal:file-link" && c[1] !== null,
+      );
+      expect(callsAfterFrame1).toHaveLength(1);
+      expect(callsAfterFrame1[0]?.[1]).toMatchObject({
         kind: "terminal-region",
         source: "terminal:file-link",
         priority: 5,
         reason: "file-link",
       });
+
+      // frame N+1: 同一行がまだ存在 → 再 emit しない
+      attention.setSourceTarget.mockClear();
+      tick();
+      expect(
+        attention.setSourceTarget.mock.calls.filter(
+          (c) => c[0] === "terminal:file-link" && c[1] !== null,
+        ),
+      ).toHaveLength(0);
+
       dispose.dispose();
     } finally {
       restore();
@@ -135,8 +205,9 @@ describe("startTerminalAttentionProducer", () => {
     }
   });
 
-  it("viewport に diagnostic と file-link の両方がある場合は並列 emit する", () => {
+  it("viewport に diagnostic と file-link の両方が新規に現れた場合は並列 emit する", () => {
     const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
     try {
       const attention = makeFakeAttention();
       // bottom-first: index 0 が最下行（diagnostic）、index 1 が上の行（file-link）
@@ -144,7 +215,12 @@ describe("startTerminalAttentionProducer", () => {
         { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
         { text: "src/App.tsx:12", rect: { x: 10, y: 50, width: 200, height: 16 } },
       ]);
-      const dispose = startTerminalAttentionProducer({ attention, terminal });
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
 
       tick();
 
@@ -162,8 +238,9 @@ describe("startTerminalAttentionProducer", () => {
     }
   });
 
-  it("前 frame で active だった diagnostic 行が消えたら null で clear する", () => {
+  it("diagnostic 行が viewport から消えた frame では null clear しない（pulse timer が管理する）", () => {
     const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
     try {
       const attention = makeFakeAttention();
       const lines: Array<{
@@ -171,41 +248,207 @@ describe("startTerminalAttentionProducer", () => {
         rect: { x: number; y: number; width: number; height: number };
       }> = [{ text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } }];
       const terminal = makeFakeTerminal(lines);
-      const dispose = startTerminalAttentionProducer({ attention, terminal });
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
 
-      // 1 frame 目: diagnostic emit
+      // frame N: 新規 diagnostic → emit
       tick();
 
-      // viewport が変わって diagnostic が消えた状態を simulate
+      // viewport から diagnostic が消えた状態をシミュレート
       lines.length = 0;
       lines.push({ text: "OK", rect: { x: 10, y: 100, width: 200, height: 16 } });
 
-      // 2 frame 目: 前 frame active だった diagnostic を null で clear
+      attention.setSourceTarget.mockClear();
+      // frame N+1: 行が消えても rAF tick 内では null clear しない（timer が担当）
       tick();
 
+      // pulse timer（3000ms）はまだ発火していないので null clear は呼ばれていない
       const nullCall = attention.setSourceTarget.mock.calls.find(
         (c) => c[0] === "terminal:diagnostic" && c[1] === null,
       );
-      expect(nullCall).toBeDefined();
+      expect(nullCall).toBeUndefined();
+
       dispose.dispose();
     } finally {
       restore();
     }
   });
 
-  it("dispose で rAF がキャンセルされる", () => {
-    const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 42);
+  it("行が viewport から消えて再度現れたとき再 emit する", () => {
+    const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal([]);
-      const handle = startTerminalAttentionProducer({ attention, terminal });
+      const lines: Array<{
+        text: string;
+        rect: { x: number; y: number; width: number; height: number };
+      }> = [{ text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } }];
+      const terminal = makeFakeTerminal(lines);
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
+
+      // frame N: 新規行 → emit
+      tick();
+
+      // viewport から消える
+      lines.length = 0;
+      // frame N+1: 空 → seen Set もクリアされる
+      tick();
+
+      // 再度現れる
+      lines.push({ text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } });
+
+      attention.setSourceTarget.mockClear();
+      // frame N+2: seen には存在しない → 再 emit される
+      tick();
+
+      const reEmitCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
+      );
+      expect(reEmitCall).toBeDefined();
+
+      dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("pulse timer が 3000ms 後に発火して source を null clear する", () => {
+    const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal([
+        { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
+      ]);
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
+
+      // frame N: emit + timer 開始
+      tick();
+
+      // timer 発火前は null clear なし
+      timers.advance(2999);
+      expect(
+        attention.setSourceTarget.mock.calls.find(
+          (c) => c[0] === "terminal:diagnostic" && c[1] === null,
+        ),
+      ).toBeUndefined();
+
+      // 3000ms で発火
+      timers.advance(1);
+      const nullCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "terminal:diagnostic" && c[1] === null,
+      );
+      expect(nullCall).toBeDefined();
+
+      dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("pulse 中に新規行が来たとき既存 timer をキャンセルして新 timer を開始する", () => {
+    const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
+    try {
+      const attention = makeFakeAttention();
+      const lines: Array<{
+        text: string;
+        rect: { x: number; y: number; width: number; height: number };
+      }> = [{ text: "Error: first error", rect: { x: 10, y: 100, width: 200, height: 16 } }];
+      const terminal = makeFakeTerminal(lines);
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
+
+      // frame N: 最初の diagnostic → emit + timer_1 開始
+      tick();
+
+      // 1500ms 経過（timer_1 まだ生存中）
+      timers.advance(1500);
+
+      // viewport が変わって別の diagnostic 行が出現（前の行は消えたとする）
+      lines.length = 0;
+      lines.push({ text: "Error: second error", rect: { x: 10, y: 100, width: 200, height: 16 } });
+
+      attention.setSourceTarget.mockClear();
+      // frame N+1: 新規行 → emit + timer_1 cancel + timer_2 開始
+      tick();
+
+      // 新しい emit が来ているはず
+      const newEmit = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
+      );
+      expect(newEmit).toBeDefined();
+
+      // timer_1 がキャンセルされたので元の残り時間 1500ms 経過では発火しない
+      attention.setSourceTarget.mockClear();
+      timers.advance(1500);
+      expect(
+        attention.setSourceTarget.mock.calls.find(
+          (c) => c[0] === "terminal:diagnostic" && c[1] === null,
+        ),
+      ).toBeUndefined();
+
+      // timer_2 の 3000ms（frame N+1 から）で発火する
+      timers.advance(1500); // 合計 3000ms 到達
+      const nullCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "terminal:diagnostic" && c[1] === null,
+      );
+      expect(nullCall).toBeDefined();
+
+      dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("dispose で rAF と全 pulse timer がキャンセルされる", () => {
+    const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal([
+        { text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } },
+      ]);
+      const handle = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
+
+      // 1 tick 走らせて pulse timer を開始する
+      tick();
+      expect(timers.pending.size).toBe(1); // timer が登録されている
 
       handle.dispose();
-      expect(cancelSpy).toHaveBeenCalledWith(42);
+
+      // dispose 後は pending timer が全て削除されている（cancel済み）
+      expect(timers.pending.size).toBe(0);
+
+      // dispose 後に timer を advance しても新たな setSourceTarget 呼び出しがない
+      const callsAtDispose = attention.setSourceTarget.mock.calls.length;
+      timers.advance(3000);
+      expect(attention.setSourceTarget.mock.calls.length).toBe(callsAtDispose);
     } finally {
-      cancelSpy.mockRestore();
-      vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
+      restore();
     }
   });
 
@@ -228,6 +471,43 @@ describe("startTerminalAttentionProducer", () => {
       // 次の tick で更新されない（stub は同一 cb を保持したまま）。
       // getViewportLineRects の呼び出し回数が増えないことで確認する。
       expect(terminal.getViewportLineRects.mock.calls.length).toBe(countAfterFirstTick);
+    } finally {
+      restore();
+    }
+  });
+
+  it("viewport が空になると seen Set がリセットされる（次回の行出現で再 emit 可能）", () => {
+    const { tick, restore } = makeRafStub();
+    const timers = makeTimerStub();
+    try {
+      const attention = makeFakeAttention();
+      const lines: Array<{
+        text: string;
+        rect: { x: number; y: number; width: number; height: number };
+      }> = [{ text: "Error: build failed", rect: { x: 10, y: 100, width: 200, height: 16 } }];
+      const terminal = makeFakeTerminal(lines);
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+      });
+
+      tick(); // frame 1: emit
+      lines.length = 0;
+      tick(); // frame 2: viewport empty → seen Set clear
+
+      // 同一テキストの行が再度現れる
+      lines.push({ text: "Error: build failed", rect: { x: 10, y: 200, width: 200, height: 16 } });
+      attention.setSourceTarget.mockClear();
+      tick(); // frame 3: 再 emit されるはず
+
+      const reEmit = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
+      );
+      expect(reEmit).toBeDefined();
+
+      dispose.dispose();
     } finally {
       restore();
     }
