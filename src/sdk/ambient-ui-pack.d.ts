@@ -17,8 +17,10 @@
  *                      (observation-only の境界)
  *
  * ambientUiPackRegistry は **multi-active**: 複数 pack が同時に mount され
- * 重なる。`config.json` の `activeAmbientUi` で user が picks する
+ * 重なる。`config.json` の `activeAmbientUi` で user が picks する想定
  * (feedback_single_active_config_picks の精神を multi-active に拡張)。
+ * **注: `activeAmbientUi` は Phase 1b 以降で `config.ts` に追加予定**。Phase 1a
+ * 時点では config からの control はまだ wire されていない。
  *
  * Internal design-record: 2026-04-25-attention-aura-v2-design.md
  * 「Surface / SDK 設計」section

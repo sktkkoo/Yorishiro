@@ -47,6 +47,13 @@ class AttentionRuntimeImpl implements AttentionRuntime {
   }
 }
 
+/**
+ * 同一 snapshot で listener を叩かないための等価判定。
+ *
+ * 全 field を比較する (timestamp 含む)。timestamp が違えば「同じ rect / kind /
+ * source の新しい観察」として再 publish する — producer が一定間隔で同 rect を
+ * 出してくる場合でも freshness 維持のため必要。
+ */
 function sameSnapshot(a: AttentionSnapshot, b: AttentionSnapshot): boolean {
   if (a.target === b.target) return true;
   if (a.target === null || b.target === null) return false;
