@@ -1122,14 +1122,30 @@ function App() {
       .catch(() => setVrmUrl(null));
   }, [vrmPath]);
 
-  // ambient-ui packs を #ambient-layer に mount/unmount する。
+  // ambient-ui packs を document.body 直下の #ambient-layer に mount/unmount する。
   // subscribeActiveSet で active set の変化を購読し、差分調整（reconcile）する。
+  //
+  // ── なぜ document.body 直下か ──
+  // xterm の xtermContainer も document.body 直下（zIndex: 1）に命令的に append される。
+  // React の #root は xterm より先に DOM に存在するため、#root 内の fixed 要素は
+  // DOM 順で先行するノードの stacking context に収まり、後から append された
+  // xtermContainer（WebGL canvas あり）の下に隠れる。
+  // ambientLayer を xtermContainer より後に body に append することで、
+  // z-index 競合なしに xterm WebGL canvas の上に重ねられる（v1 と同じ戦略）。
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons + DOM are stable
   useEffect(() => {
     const ambientUiRegistry = getAmbientUiPackRegistry();
     const attention = getAttentionRuntime();
-    const ambientLayer = document.getElementById("ambient-layer");
-    if (ambientLayer === null) return;
+
+    // #ambient-layer を document.body 直下に生成する（v1 の zIndex: 20 を踏襲）
+    const ambientLayer = document.createElement("div");
+    ambientLayer.id = "ambient-layer";
+    ambientLayer.setAttribute("aria-hidden", "true");
+    ambientLayer.style.position = "fixed";
+    ambientLayer.style.inset = "0";
+    ambientLayer.style.pointerEvents = "none";
+    ambientLayer.style.zIndex = "20";
+    document.body.appendChild(ambientLayer);
 
     type Mounted = { container: HTMLDivElement; disposable: Disposable };
     const mounted = new Map<string, Mounted>();
@@ -1171,6 +1187,7 @@ function App() {
         entry.container.remove();
       }
       mounted.clear();
+      ambientLayer.remove();
     };
   }, []);
 
@@ -1352,15 +1369,6 @@ function App() {
           perception={perception}
         />
       )}
-      <div
-        id="ambient-layer"
-        aria-hidden="true"
-        style={{
-          position: "fixed",
-          inset: 0,
-          pointerEvents: "none",
-        }}
-      />
     </div>
   );
 }
