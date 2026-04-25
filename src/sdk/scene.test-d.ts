@@ -1,0 +1,18 @@
+import { describe, it } from "vitest";
+import type { AmbientSound, SceneSpec } from "./scene";
+
+describe("SceneSpec.ambient (type)", () => {
+  it("accepts an ambient field with src + volume", () => {
+    const _scene: SceneSpec = {
+      id: "test",
+      layers: [],
+      ambient: [{ src: "sound:rain", volume: 0.5 }, { src: "./assets/cafe.mp3" }],
+    };
+    void _scene;
+  });
+
+  it("accepts AmbientSound with only src (volume optional)", () => {
+    const _s: AmbientSound = { src: "sound:wind" };
+    void _s;
+  });
+});

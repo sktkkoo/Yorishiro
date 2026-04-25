@@ -38,6 +38,21 @@ export interface Layer {
 }
 
 /**
+ * Ambient sound declaration for a scene. Looped 常時再生される atmospheric layer。
+ *
+ * - `src`: `'sound:<name>'` / `'sound:<namespace>/<name>'` (shared library)
+ *          または `'./assets/<file>'` (pack-local)
+ *          または絶対 URL (`https://...` / `asset://...`)
+ * - `volume`: 0..1。default 1.0
+ *
+ * Internal design-record: specs/2026-04-25-scene-ambient-audio-design.md §4.1
+ */
+export interface AmbientSound {
+  readonly src: string;
+  readonly volume?: number;
+}
+
+/**
  * scene の宣言。
  *
  * - `layers` は先頭が一番奥、末尾が一番手前
@@ -47,4 +62,12 @@ export interface Layer {
 export interface SceneSpec {
   readonly id: string;
   readonly layers: ReadonlyArray<Layer>;
+  /**
+   * Default ambient mix。空配列 / undefined で無音 scene。
+   * AmbientAudioRuntime が ScenePackRegistry を subscribe し、scene 切替 /
+   * hot reload で 500ms crossfade を行う。共通 sound は再生位置を保持。
+   *
+   * Internal design-record: specs/2026-04-25-scene-ambient-audio-design.md §4
+   */
+  readonly ambient?: ReadonlyArray<AmbientSound>;
 }
