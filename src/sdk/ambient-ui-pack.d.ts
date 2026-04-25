@@ -63,5 +63,5 @@ export interface AmbientUiPackManifest {
 export interface AmbientUiPackDefinition {
   readonly type: "ambient-ui";
   readonly id: string;
-  mount(ctx: AmbientUiContext, container: HTMLDivElement): Disposable;
+  readonly mount: (ctx: AmbientUiContext, container: HTMLDivElement) => Disposable;
 }
