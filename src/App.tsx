@@ -37,6 +37,7 @@ import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import {
   startDevAttentionProducer,
+  startInputCursorAttentionProducer,
   startMouseAttentionProducer,
   startTerminalAttentionProducer,
 } from "./runtime/attention-producers";
@@ -1180,6 +1181,7 @@ function App() {
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
     disposables.push(startMouseAttentionProducer({ attention }));
+    disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
     disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
 
     return () => {
