@@ -201,7 +201,7 @@ describe("serializeConfig", () => {
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
 
-  it("writes terminalAgent only when codex is selected", () => {
+  it("writes terminalAgent when codex is selected", () => {
     const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({
       activeAmbientUi: ["attention-aura"],

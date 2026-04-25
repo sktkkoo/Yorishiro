@@ -27,6 +27,9 @@ const CONFIDENCE = 1;
 // producer 側で 600ms 後に null clear する短いパルス設計。
 const PULSE_CLEAR_MS = 600;
 
+// Enter で activate される標準的な要素のみ。`<input type="submit">` 等は
+// Charminal の terminal-first UI で現状想定外のため省略 (mouse producer の
+// INTERACTIVE_TAGS は click 対象なので別集合)。Phase 1d 実 UI で要拡張なら追加。
 const ACTIVATABLE_TAGS = new Set(["BUTTON", "A"]);
 
 interface StartOptions {
