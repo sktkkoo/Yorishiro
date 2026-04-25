@@ -35,6 +35,11 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import {
+  startDevAttentionProducer,
+  startMouseAttentionProducer,
+  startTerminalAttentionProducer,
+} from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
@@ -1161,6 +1166,24 @@ function App() {
         entry.container.remove();
       }
       mounted.clear();
+    };
+  }, []);
+
+  // attention producer を起動し、cleanup で dispose する。
+  // terminal は terminal-runtime singleton を渡す。mouse は document-level listener。
+  // dev producer は import.meta.env.DEV で gate され、production では no-op。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
+  useEffect(() => {
+    const attention = getAttentionRuntime();
+    const terminal = getTerminalRuntime();
+
+    const disposables: Disposable[] = [];
+    disposables.push(startTerminalAttentionProducer({ attention, terminal }));
+    disposables.push(startMouseAttentionProducer({ attention }));
+    disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
+
+    return () => {
+      for (const d of disposables) d.dispose();
     };
   }, []);
 
