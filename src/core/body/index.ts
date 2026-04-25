@@ -94,6 +94,9 @@ export class Body {
   /** attention.subscribe の解除トークン。initAttention / disposeAttention で管理。 */
   private attentionSub: Disposable | null = null;
 
+  /** 直前の attention snapshot の source。source 変化検知に使用。 */
+  private lastAttentionSource: string | null = null;
+
   /** VRM head の screen 座標（three-runtime が毎 frame setHeadClientReference で更新）。 */
   private headClientX = 0;
   private headClientY = 0;
@@ -290,15 +293,32 @@ export class Body {
    * attention runtime の subscribe を開始する。
    * snapshot.target が存在する場合、その rect 中心を CursorAttentionSystem に
    * 供給することで Body の視線が「現在の attention target」を追う。
+   *
+   * source が null → 非 null、または別の source に変化した時点で
+   * triggerCursorAttention を呼び CursorAttentionSystem の即時 episode を起動する。
+   * 同一 source の rect 更新（pointermove 等）では再 trigger しない（二重起動回避）。
+   *
    * idempotent（2 回呼んでも 2 本張らない）。
    */
   initAttention(): void {
     if (this.attentionSub !== null) return;
     const attention = getAttentionRuntime();
     this.attentionSub = attention.subscribe((snapshot: AttentionSnapshot) => {
-      if (snapshot.target === null) return;
+      if (snapshot.target === null) {
+        this.lastAttentionSource = null;
+        return;
+      }
       const cx = snapshot.target.rect.x + snapshot.target.rect.width / 2;
       const cy = snapshot.target.rect.y + snapshot.target.rect.height / 2;
+
+      // source 変化を検知して即時 episode を起動（rect のみの更新では trigger しない）
+      const newSource = snapshot.target.source;
+      if (newSource !== this.lastAttentionSource) {
+        // duration は v1 同様 random 1〜3 秒（injectable random は CursorAttentionSystem が保持）
+        this.cursorAttention.triggerCursorAttention();
+      }
+      this.lastAttentionSource = newSource;
+
       this.cursorAttention.setPointerPositionFromHead(
         cx,
         cy,
@@ -316,6 +336,7 @@ export class Body {
       this.attentionSub.dispose();
       this.attentionSub = null;
     }
+    this.lastAttentionSource = null;
   }
 
   // ─── CharacterAPI implementations ─────────────────────
