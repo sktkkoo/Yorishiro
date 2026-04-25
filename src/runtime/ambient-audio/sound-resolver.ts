@@ -48,3 +48,29 @@ export function buildSharedSoundMap(glob: Record<string, string>): ReadonlyMap<s
   }
   return map;
 }
+
+/**
+ * shared library map から stem を引いて URL を返す。Map ベースの単純 lookup。
+ * `'sound:'` prefix の strip / 絶対 URL pass-through / pack-relative dispatch は
+ * scene-pack-registry/asset-resolver.ts 側が orchestrate する (循環 import 回避)。
+ */
+export function resolveSharedSound(
+  stem: string,
+  sharedMap: ReadonlyMap<string, string>,
+): string | null {
+  return sharedMap.get(stem) ?? null;
+}
+
+/**
+ * Vite が build 時に bundled-packs/shared/sounds/ を walk して URL map を作る。
+ * Glob pattern: flat root + 一段 namespace のみ ({*,*\/*})。深い階層は対象外。
+ *
+ * Module init 時に buildSharedSoundMap で Map 化、duplicate stem は throw
+ * (build / dev / prod すべてで即失敗)。
+ */
+const SHARED_SOUNDS_GLOB = import.meta.glob(
+  "/bundled-packs/shared/sounds/{*,*/*}.{mp3,wav,ogg,m4a}",
+  { eager: true, query: "?url", import: "default" },
+) as Record<string, string>;
+
+export const SHARED_SOUNDS: ReadonlyMap<string, string> = buildSharedSoundMap(SHARED_SOUNDS_GLOB);
