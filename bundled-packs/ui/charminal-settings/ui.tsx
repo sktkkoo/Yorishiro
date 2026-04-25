@@ -12,6 +12,8 @@ import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { ptyWrite } from "../../../src/bindings/tauri-commands";
+import { TerminalPromptButton } from "../../../src/sdk/components/terminal-prompt-button";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
@@ -268,6 +270,57 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         >
           ※ 次の terminal 起動から反映
         </div>
+        <section style={{ marginBottom: "28px" }}>
+          <div style={sectionLabelStyle}>ショートカット</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <TerminalPromptButton
+              text="/charminal:charm ショートカットを変更したい"
+              label="ショートカットを変更"
+              closeActiveUiBeforeWrite
+              ptyWrite={ptyWrite}
+              closeActiveUi={() => {
+                // close-requested イベントを fire（App.tsx 側 listener が setActiveUi で復元する）
+                const saved = ctx.state.get(PREVIOUS_ACTIVE_UI_KEY);
+                const target =
+                  typeof saved === "string" && saved !== SETTINGS_PACK_ID ? saved : null;
+                window.dispatchEvent(
+                  new CustomEvent("charminal-settings:close-requested", {
+                    detail: { target },
+                  }),
+                );
+              }}
+              onError={(reason) => {
+                ctx.emitEvent("charminal-settings:write-failed", {
+                  field: "shortcut-prompt",
+                  reason,
+                });
+              }}
+              style={{
+                alignSelf: "flex-start",
+                background: "rgba(77, 217, 207, 0.08)",
+                color: "inherit",
+                padding: "8px 14px",
+                borderRadius: "4px",
+                border: "1px solid rgba(77, 217, 207, 0.25)",
+                cursor: "pointer",
+                font: "inherit",
+              }}
+            />
+            <div style={{ fontSize: "11px", opacity: 0.55, lineHeight: 1.5 }}>
+              クリックで terminal に{" "}
+              <code
+                style={{
+                  background: "rgba(255,255,255,0.06)",
+                  padding: "1px 6px",
+                  borderRadius: "3px",
+                }}
+              >
+                /charminal:charm ショートカットを変更したい
+              </code>{" "}
+              を入力します。Enter で実行。
+            </div>
+          </div>
+        </section>
       </main>
       <footer
         style={{
