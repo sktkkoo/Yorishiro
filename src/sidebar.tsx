@@ -11,6 +11,7 @@ interface SidebarProps {
   readonly onPickFolder: () => void;
   readonly vrmUrl: string | null;
   readonly onLoadVrm: () => void;
+  readonly onOpenSettings: () => void;
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
   readonly effectDispatcher?: EffectDispatcher;
@@ -22,6 +23,7 @@ export default function Sidebar({
   onPickFolder,
   vrmUrl,
   onLoadVrm,
+  onOpenSettings,
   onBodyReady,
   bodyDevLog,
   effectDispatcher,
@@ -29,10 +31,21 @@ export default function Sidebar({
 }: SidebarProps) {
   return (
     <div className="sidebar">
-      <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
-        <span className="folder-icon">📁</span>
-        <span className="folder-name">{folderName}</span>
-      </button>
+      <div className="sidebar-top-row">
+        <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
+          <span className="folder-icon">📁</span>
+          <span className="folder-name">{folderName}</span>
+        </button>
+        <button
+          type="button"
+          className="settings-btn"
+          onClick={onOpenSettings}
+          aria-label="設定を開く"
+          title="設定"
+        >
+          ⚙️
+        </button>
+      </div>
 
       <div className="charactor-container">
         {scene !== null ? (
@@ -50,6 +63,9 @@ export default function Sidebar({
               <div className="vrm-placeholder">
                 <span className="vrm-placeholder-icon">🤖</span>
                 <p className="vrm-placeholder-text">VRM 未読み込み</p>
+                <button type="button" className="avatar-btn-cta" onClick={onLoadVrm}>
+                  アバターを読み込む →
+                </button>
               </div>
             )}
           </SceneCompositor>
@@ -66,13 +82,12 @@ export default function Sidebar({
           <div className="vrm-placeholder">
             <span className="vrm-placeholder-icon">🤖</span>
             <p className="vrm-placeholder-text">VRM 未読み込み</p>
+            <button type="button" className="avatar-btn-cta" onClick={onLoadVrm}>
+              アバターを読み込む →
+            </button>
           </div>
         )}
       </div>
-
-      <button type="button" className="avatar-btn" onClick={onLoadVrm}>
-        <span className="avatar-btn-label">{vrmUrl ? "アバターを変更" : "アバターを読み込む"}</span>
-      </button>
     </div>
   );
 }

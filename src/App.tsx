@@ -1185,6 +1185,7 @@ function App() {
         onPickFolder={handlePickFolder}
         vrmUrl={vrmUrl}
         onLoadVrm={handleLoadVrm}
+        onOpenSettings={() => {}}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         effectDispatcher={effectDispatcher}

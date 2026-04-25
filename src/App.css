@@ -159,3 +159,44 @@ body,
 .terminal-container .xterm {
   height: 100%;
 }
+
+/* ── Sidebar top row ────────────────────────────────── */
+.sidebar-top-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.sidebar-top-row .folder-btn {
+  flex: 1;
+}
+
+.settings-btn {
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 6px 10px;
+  font: inherit;
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-btn:hover {
+  background: rgba(77, 217, 207, 0.12);
+  border-color: rgba(77, 217, 207, 0.3);
+}
+
+.avatar-btn-cta {
+  background: rgba(77, 217, 207, 0.08);
+  color: inherit;
+  border: 1px solid rgba(77, 217, 207, 0.25);
+  border-radius: 4px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  margin-top: 8px;
+}
