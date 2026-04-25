@@ -1060,6 +1060,19 @@ function App() {
 
   // ── VRM import ──────────────────────────────────────────────
 
+  /**
+   * VRM file path を local state と localStorage に同時反映する。
+   * UI pack（`ctx.app.setVrm`）と sidebar の picker 経路で共有する。
+   */
+  const applyVrmPath = useCallback((path: string | null) => {
+    setVrmPath(path);
+    if (path === null) {
+      localStorage.removeItem(VRM_STORAGE_KEY);
+    } else {
+      localStorage.setItem(VRM_STORAGE_KEY, path);
+    }
+  }, []);
+
   const handleLoadVrm = useCallback(async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -1070,13 +1083,12 @@ function App() {
       });
       if (selected) {
         const dest = await invoke<string>("import_vrm", { src: selected as string });
-        setVrmPath(dest);
-        localStorage.setItem(VRM_STORAGE_KEY, dest);
+        applyVrmPath(dest);
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, []);
+  }, [applyVrmPath]);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 
