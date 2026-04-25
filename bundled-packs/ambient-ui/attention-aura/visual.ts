@@ -1,18 +1,27 @@
 /**
  * Aura の見た目を decide する pure 関数群。
  *
- * - `targetOpacity(target)`: kind ごとの base opacity に confidence を掛けた値。
- *   confidence は [0, 1] にクランプ。
- * - `auraVisualForTarget(input)`: kind / reason ごとに blur radius (box-shadow 用) /
+ * - `targetOpacity(target)`: kind ごとの base opacity に reasonBoost と
+ *   confidence を掛けた値。confidence は [0, 1] にクランプ。
+ * - `auraVisualForTarget(input)`: kind / reason ごとに blur radius /
  *   spread / borderRadius / background gradient / boxShadow を返す。
  *
- * v1 では filter: blur を使っていたが GPU composite layer 全体に bloom を
- * かけるコストが高いため、v2 では box-shadow の blur radius と radial-gradient で
- * glow を表現する。
+ * v1 の visual fidelity を復元: mixBlendMode: "screen" + filter: blur(px) の
+ * 組み合わせを前提とした glow intensity で gradient / spread を設定している。
+ * container は spread 込みで rect を拡張して描画すること (ui.tsx 参照)。
+ *
+ * 意図的な v1 との差異:
+ * - recent-output: v2 では emit されないため visual entry なし
+ *   (decision: docs/decisions/semantic-priority-attention.md)
+ * - sent / activate (input-cursor): v2 で新規追加した reason。
+ *   pulse 系の visual を新規定義。
+ * - focused-dom: SDK の AttentionTargetKind に未追加 (B6/B7 で producer 復元予定)。
+ *   AuraVisualInput では string として受け取れるよう拡張した kind を使用。
  */
 
 import type { AttentionTarget, AttentionTargetKind } from "@charminal/sdk";
 
+/** kind ごとの base opacity。v1 から復元。 */
 const TARGET_BASE_OPACITY: Record<AttentionTargetKind, number> = {
   mouse: 0.36,
   "input-cursor": 0.42,
@@ -20,15 +29,44 @@ const TARGET_BASE_OPACITY: Record<AttentionTargetKind, number> = {
   "mcp-ui": 0.4,
 };
 
-export function targetOpacity(target: AttentionTarget | null): number {
-  if (target === null) return 0;
-  const base = TARGET_BASE_OPACITY[target.kind];
-  const confidence = Math.max(0, Math.min(1, target.confidence));
-  return base * confidence;
+/**
+ * focused-dom は SDK v2 では未定義 (B6/B7 で復元予定) のため、
+ * 別 map で保持して targetOpacity から参照する。
+ */
+const EXTENDED_BASE_OPACITY: Record<string, number> = {
+  "focused-dom": 0.32,
+};
+
+/**
+ * reason による opacity 倍率。v1 から復元。
+ * - approval-required / error / diagnostic: 1.18 倍 (注意喚起)
+ * - file-link: 1.08 倍 (軽微な強調)
+ * - その他: 1.0 (そのまま)
+ */
+function reasonBoost(reason: string | undefined): number {
+  if (reason === "approval-required" || reason === "error" || reason === "diagnostic") {
+    return 1.18;
+  }
+  if (reason === "file-link") {
+    return 1.08;
+  }
+  return 1.0;
 }
 
+export function targetOpacity(target: AttentionTarget | null): number {
+  if (target === null) return 0;
+  const base = TARGET_BASE_OPACITY[target.kind] ?? EXTENDED_BASE_OPACITY[target.kind] ?? 0.36;
+  const confidence = Math.max(0, Math.min(1, target.confidence));
+  return base * reasonBoost(target.reason) * confidence;
+}
+
+/**
+ * auraVisualForTarget に渡す入力。
+ * kind は SDK の AttentionTargetKind を基本とするが、将来の focused-dom 等を
+ * 受け取れるよう string に広げている。
+ */
 export interface AuraVisualInput {
-  readonly kind: AttentionTargetKind;
+  readonly kind: AttentionTargetKind | string;
   readonly reason: string | undefined;
   readonly width: number;
   readonly height: number;
@@ -42,50 +80,147 @@ export interface AuraVisualStyle {
   readonly boxShadow: string;
 }
 
+/**
+ * kind / reason の組み合わせに応じた aura visual style を返す。
+ *
+ * 優先順位:
+ *   1. terminal-region の reason override (tool-reading, tool-writing, tool-running,
+ *      approval-required, error, diagnostic, file-link, search-match)
+ *   2. input-cursor の reason override (sent, activate)
+ *   3. kind ベースのスタイル (input-cursor, focused-dom, mcp-ui, terminal-region default, mouse)
+ */
 export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
   const baseRadius = Math.min(12, Math.max(4, Math.min(input.width, input.height) / 2));
 
+  // ── input-cursor ────────────────────────────────────────────────────────────
+
   if (input.kind === "input-cursor") {
+    // sent: Enter 送信後の pulse。白く強いフラッシュ。
+    if (input.reason === "sent") {
+      return {
+        blur: 12,
+        spread: 22,
+        borderRadius: baseRadius,
+        background:
+          "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.62) 22%, rgba(242, 248, 255, 0.28) 54%, rgba(242, 248, 255, 0) 100%)",
+        boxShadow:
+          "0 0 18px rgba(255, 255, 255, 0.52), 0 0 38px rgba(242, 248, 255, 0.36), 0 0 64px rgba(242, 248, 255, 0.18)",
+      };
+    }
+    // activate: ウィンドウ/入力フォーカス取得時の pulse。sent より暖色寄り。
+    if (input.reason === "activate") {
+      return {
+        blur: 12,
+        spread: 22,
+        borderRadius: baseRadius,
+        background:
+          "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.82) 0%, rgba(255, 248, 235, 0.58) 24%, rgba(255, 240, 200, 0.24) 54%, rgba(255, 240, 200, 0) 100%)",
+        boxShadow:
+          "0 0 18px rgba(255, 255, 255, 0.48), 0 0 38px rgba(255, 240, 200, 0.32), 0 0 60px rgba(255, 240, 200, 0.16)",
+      };
+    }
+    // デフォルト typing / cursor 状態。v1 から復元。
     return {
       blur: 10,
-      spread: 18,
+      spread: 26,
       borderRadius: baseRadius,
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.48) 24%, rgba(242, 247, 255, 0.22) 54%, rgba(242, 247, 255, 0) 100%)",
-      boxShadow: "0 0 12px rgba(255, 255, 255, 0.38), 0 0 24px rgba(242, 247, 255, 0.28)",
+      boxShadow:
+        "0 0 16px rgba(255, 255, 255, 0.38), 0 0 34px rgba(242, 247, 255, 0.28), 0 0 64px rgba(242, 247, 255, 0.16)",
     };
   }
+
+  // ── focused-dom (B6/B7 で producer 復元予定) ─────────────────────────────────
+
+  if (input.kind === "focused-dom") {
+    return {
+      blur: 8,
+      spread: 18,
+      borderRadius: Math.min(10, Math.max(5, baseRadius)),
+      background:
+        "radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.34) 0%, rgba(225, 246, 255, 0.24) 42%, rgba(225, 246, 255, 0.08) 74%, rgba(225, 246, 255, 0) 100%)",
+      boxShadow: "0 0 12px rgba(255, 255, 255, 0.26), 0 0 24px rgba(225, 246, 255, 0.2)",
+    };
+  }
+
+  // ── mcp-ui ───────────────────────────────────────────────────────────────────
+
   if (input.kind === "mcp-ui") {
     return {
       blur: 12,
-      spread: 24,
+      spread: 28,
       borderRadius: Math.min(12, Math.max(6, baseRadius)),
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.56) 0%, rgba(218, 244, 255, 0.36) 34%, rgba(154, 223, 255, 0.12) 72%, rgba(154, 223, 255, 0) 100%)",
-      boxShadow: "0 0 16px rgba(255, 255, 255, 0.28), 0 0 36px rgba(160, 226, 255, 0.24)",
+      boxShadow:
+        "0 0 16px rgba(255, 255, 255, 0.28), 0 0 36px rgba(160, 226, 255, 0.24), 0 0 68px rgba(160, 226, 255, 0.12)",
     };
   }
+
+  // ── terminal-region の reason override ───────────────────────────────────────
+
+  if (
+    input.reason === "tool-reading" ||
+    input.reason === "tool-writing" ||
+    input.reason === "tool-running"
+  ) {
+    const running = input.reason === "tool-running";
+    const writing = input.reason === "tool-writing";
+    return {
+      blur: running ? 14 : 10,
+      spread: running ? 34 : 24,
+      borderRadius: Math.min(12, Math.max(5, baseRadius)),
+      background: writing
+        ? "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.54) 0%, rgba(232, 255, 218, 0.34) 36%, rgba(164, 240, 148, 0.1) 72%, rgba(164, 240, 148, 0) 100%)"
+        : "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.52) 0%, rgba(218, 244, 255, 0.34) 36%, rgba(148, 216, 240, 0.1) 72%, rgba(148, 216, 240, 0) 100%)",
+      boxShadow: running
+        ? "0 0 16px rgba(255, 255, 255, 0.28), 0 0 42px rgba(255, 218, 160, 0.22)"
+        : "0 0 14px rgba(255, 255, 255, 0.24), 0 0 30px rgba(190, 240, 230, 0.2)",
+    };
+  }
+
+  if (input.reason === "approval-required") {
+    return {
+      blur: 14,
+      spread: 30,
+      borderRadius: Math.min(12, Math.max(6, baseRadius)),
+      background:
+        "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.68) 0%, rgba(255, 244, 216, 0.42) 34%, rgba(255, 214, 150, 0.16) 68%, rgba(255, 214, 150, 0) 100%)",
+      boxShadow:
+        "0 0 18px rgba(255, 255, 255, 0.34), 0 0 42px rgba(255, 218, 160, 0.3), 0 0 76px rgba(255, 218, 160, 0.16)",
+    };
+  }
+
+  if (input.reason === "error" || input.reason === "diagnostic") {
+    return {
+      blur: 12,
+      spread: 20,
+      borderRadius: Math.min(10, Math.max(4, baseRadius)),
+      background:
+        "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.58) 0%, rgba(255, 225, 218, 0.34) 36%, rgba(255, 142, 120, 0.14) 72%, rgba(255, 142, 120, 0) 100%)",
+      boxShadow: "0 0 16px rgba(255, 255, 255, 0.3), 0 0 38px rgba(255, 150, 128, 0.26)",
+    };
+  }
+
+  if (
+    input.reason === "search-match" ||
+    input.reason === "selection" ||
+    input.reason === "file-link"
+  ) {
+    return {
+      blur: 6,
+      spread: 12,
+      borderRadius: Math.min(8, Math.max(3, baseRadius)),
+      background:
+        "radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.44) 0%, rgba(210, 248, 239, 0.3) 38%, rgba(210, 248, 239, 0.08) 78%, rgba(210, 248, 239, 0) 100%)",
+      boxShadow: "0 0 10px rgba(255, 255, 255, 0.26), 0 0 22px rgba(210, 248, 239, 0.22)",
+    };
+  }
+
+  // ── terminal-region default (reason なし / 上記以外) ─────────────────────────
+
   if (input.kind === "terminal-region") {
-    if (input.reason === "diagnostic") {
-      return {
-        blur: 14,
-        spread: 32,
-        borderRadius: baseRadius,
-        background:
-          "radial-gradient(ellipse at 50% 45%, rgba(255, 220, 200, 0.62) 0%, rgba(255, 180, 160, 0.36) 36%, rgba(255, 140, 130, 0.1) 72%, rgba(255, 140, 130, 0) 100%)",
-        boxShadow: "0 0 16px rgba(255, 220, 200, 0.36), 0 0 42px rgba(255, 180, 160, 0.24)",
-      };
-    }
-    if (input.reason === "file-link") {
-      return {
-        blur: 12,
-        spread: 24,
-        borderRadius: baseRadius,
-        background:
-          "radial-gradient(ellipse at 50% 45%, rgba(218, 244, 255, 0.5) 0%, rgba(180, 220, 255, 0.32) 36%, rgba(180, 220, 255, 0.08) 72%, rgba(180, 220, 255, 0) 100%)",
-        boxShadow: "0 0 14px rgba(218, 244, 255, 0.32), 0 0 30px rgba(180, 220, 255, 0.22)",
-      };
-    }
     return {
       blur: 10,
       spread: 20,
@@ -95,13 +230,16 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
       boxShadow: "0 0 12px rgba(255, 255, 255, 0.28), 0 0 24px rgba(242, 247, 255, 0.2)",
     };
   }
-  // mouse (default)
+
+  // ── mouse (default fallback) ─────────────────────────────────────────────────
+
   return {
     blur: 16,
-    spread: 28,
+    spread: 38,
     borderRadius: baseRadius,
     background:
       "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.48) 22%, rgba(242, 247, 255, 0.26) 50%, rgba(242, 247, 255, 0.06) 78%, rgba(242, 247, 255, 0) 100%)",
-    boxShadow: "0 0 18px rgba(255, 255, 255, 0.38), 0 0 38px rgba(242, 247, 255, 0.3)",
+    boxShadow:
+      "0 0 18px rgba(255, 255, 255, 0.38), 0 0 38px rgba(242, 247, 255, 0.3), 0 0 72px rgba(242, 247, 255, 0.18)",
   };
 }

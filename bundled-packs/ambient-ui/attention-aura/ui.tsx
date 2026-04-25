@@ -7,9 +7,9 @@
  * 設計の核:
  * - target=null かつ opacity=0 で **RAF を完全停止** (Phase 1a 設計判断)
  * - lerp 収束 (rect 0.5px / opacity 0.005 以下の差) で RAF pause
- * - rect 補間は `transform: translate + scale` で GPU layer に乗せる
+ * - `mixBlendMode: "screen"` + `filter: blur(px)` で加算 glow を実現 (v1 復元)
+ * - container を spread 込みで拡張: left: x-spread, width: rect.width+spread*2
  * - opacity 変化は CSS `transition: opacity` で compositor 任せ
- * - filter: blur は使わず box-shadow blur radius + radial-gradient で glow
  *
  * Internal design-record: 2026-04-25-attention-aura-v2-design.md
  *   「Aura 描画負荷の対策」section
@@ -132,18 +132,19 @@ function Aura({ ctx }: AuraComponentProps): React.JSX.Element | null {
       data-testid="attention-aura-overlay"
       style={{
         position: "fixed",
-        left: view.x,
-        top: view.y,
-        width: view.width,
-        height: view.height,
+        left: view.x - visual.spread,
+        top: view.y - visual.spread,
+        width: view.width + visual.spread * 2,
+        height: view.height + visual.spread * 2,
         opacity: view.opacity,
         pointerEvents: "none",
         borderRadius: visual.borderRadius,
         background: visual.background,
         boxShadow: visual.boxShadow,
+        filter: `blur(${visual.blur}px)`,
+        mixBlendMode: "screen",
         transition: "opacity 220ms linear",
         transform: "translateZ(0)",
-        zIndex: 100,
       }}
     />
   );
