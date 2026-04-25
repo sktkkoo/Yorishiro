@@ -10,14 +10,10 @@
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
  */
 
-import type {
-  AmbientUiContext,
-  Disposable,
-  EffectDefinition,
-  PersonaDefinition,
-} from "@charminal/sdk";
+import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
+  validateAmbientUiPackDefinition,
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
@@ -297,27 +293,7 @@ async function reloadPack(
         note: `re-registered ui '${pack.id}'`,
       });
     } else if (action.kind === "ambient-ui") {
-      // SDK 側に validator が無いので最低限の shape check をここで行う。
-      // "ui" 分岐とは独立した registry に閉じ、uiPackRegistry を触らない（v1 critical の不再発）。
-      if (
-        !def ||
-        typeof def !== "object" ||
-        (def as { type?: unknown }).type !== "ambient-ui" ||
-        typeof (def as { id?: unknown }).id !== "string" ||
-        typeof (def as { mount?: unknown }).mount !== "function"
-      ) {
-        deps.userPackLog.write({
-          phase: "reload",
-          note: `invalid ambient-ui pack definition for '${action.id}'`,
-          data: { entryPath: action.entryPath },
-        });
-        return;
-      }
-      const pack = def as {
-        readonly type: "ambient-ui";
-        readonly id: string;
-        readonly mount: (ctx: AmbientUiContext, container: HTMLDivElement) => Disposable;
-      };
+      const pack = validateAmbientUiPackDefinition(def);
       deps.packRegistry.dispose(action.id, action.kind);
       const handle = deps.ambientUiPackRegistry.register({
         id: pack.id,

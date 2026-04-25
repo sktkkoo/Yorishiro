@@ -16,15 +16,11 @@
  * isolation だけ検証する。
  */
 
-import type {
-  AmbientUiContext,
-  Disposable,
-  EffectDefinition,
-  PersonaDefinition,
-} from "@charminal/sdk";
+import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   PackValidationError,
+  validateAmbientUiPackDefinition,
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
@@ -329,24 +325,7 @@ export async function loadSingleUserPack(
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
     if (entry.kind === "ambient-ui") {
-      // SDK 側に validator が無いので最低限の shape check をここで行う。
-      // 形式: { type: "ambient-ui", id: string, mount: function }
-      if (
-        !def ||
-        typeof def !== "object" ||
-        (def as { type?: unknown }).type !== "ambient-ui" ||
-        typeof (def as { id?: unknown }).id !== "string" ||
-        typeof (def as { mount?: unknown }).mount !== "function"
-      ) {
-        const error = "invalid ambient-ui pack definition";
-        devLog.write({ phase: "validate", note: `${error} for '${entry.id}'` });
-        return { status: "failed", id: entry.id, kind: entry.kind, error };
-      }
-      const pack = def as {
-        readonly type: "ambient-ui";
-        readonly id: string;
-        readonly mount: (ctx: AmbientUiContext, container: HTMLDivElement) => Disposable;
-      };
+      const pack = validateAmbientUiPackDefinition(def);
       const handle = ambientUiPackRegistry.register({
         id: pack.id,
         origin: "user",
