@@ -157,7 +157,10 @@ const attentionAuraPack = {
     const root = ReactDOM.createRoot(container);
     root.render(<Aura ctx={ctx} />);
     return {
-      dispose: () => root.unmount(),
+      // React Strict Mode の double-mount cleanup で sync unmount すると
+      // 「Attempted to synchronously unmount a root while React was already
+      // rendering」が出るため microtask に defer する。
+      dispose: () => queueMicrotask(() => root.unmount()),
     };
   },
 } satisfies AmbientUiPackDefinition;
