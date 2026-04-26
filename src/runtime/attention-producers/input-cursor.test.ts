@@ -16,17 +16,9 @@ function makeFakeAttention() {
 function makeFakeTerminal(
   cursor: ReturnType<TerminalRuntime["getInputCursorClientPosition"]> | null,
 ) {
-  const submitListeners: Array<() => void> = [];
   const getInputCursorClientPosition = vi.fn(() => cursor);
-  const subscribeUserSubmit = vi.fn((listener: () => void) => {
-    submitListeners.push(listener);
-    return { dispose: () => {} };
-  });
-  const fake = { getInputCursorClientPosition, subscribeUserSubmit };
-  const fireSubmit = (): void => {
-    for (const l of submitListeners) l();
-  };
-  return { fake: fake as unknown as TerminalRuntime & typeof fake, fireSubmit };
+  const fake = { getInputCursorClientPosition };
+  return { fake: fake as unknown as TerminalRuntime & typeof fake };
 }
 
 // rAF stub ヘルパー：mockImplementation の closure への代入を
@@ -144,13 +136,8 @@ describe("startInputCursorAttentionProducer", () => {
         cellWidth: number;
         cellHeight: number;
       } | null = { clientX: 50, clientY: 100, cellWidth: 8, cellHeight: 16 };
-      const submitListeners: Array<() => void> = [];
       const terminal = {
         getInputCursorClientPosition: vi.fn(() => cursor),
-        subscribeUserSubmit: vi.fn((listener: () => void) => {
-          submitListeners.push(listener);
-          return { dispose: () => {} };
-        }),
       };
       const dispose = startInputCursorAttentionProducer({
         attention,
@@ -190,185 +177,6 @@ describe("startInputCursorAttentionProducer", () => {
     } finally {
       cancelSpy.mockRestore();
       vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
-    }
-  });
-});
-
-describe("input-cursor producer (sent — xterm.onData \\r 検出駆動)", () => {
-  it("subscribeUserSubmit が fire された時に input-cursor:sent を emit する", () => {
-    vi.useFakeTimers();
-    try {
-      const attention = makeFakeAttention();
-      const { fake: terminal, fireSubmit } = makeFakeTerminal({
-        clientX: 50,
-        clientY: 100,
-        cellWidth: 8,
-        cellHeight: 16,
-      });
-      const dispose = startInputCursorAttentionProducer({
-        attention,
-        terminal,
-      });
-
-      fireSubmit();
-
-      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
-      expect(call).toBeDefined();
-      expect(call?.[1]).toMatchObject({
-        kind: "input-cursor",
-        source: "input-cursor:sent",
-        priority: 5,
-        reason: "sent",
-      });
-      expect(call?.[1].rect).toMatchObject({ x: 50, y: 100, width: 8, height: 16 });
-
-      // 600ms 後に null clear
-      vi.advanceTimersByTime(700);
-      const clearCall = attention.setSourceTarget.mock.calls.find(
-        (c) => c[0] === "input-cursor:sent" && c[1] === null,
-      );
-      expect(clearCall).toBeDefined();
-      dispose.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("cursor が null のとき submit しても emit しない", () => {
-    vi.useFakeTimers();
-    try {
-      const attention = makeFakeAttention();
-      // caret が取れない状態（直近 2 秒以内に typing なし等）
-      const { fake: terminal, fireSubmit } = makeFakeTerminal(null);
-      const dispose = startInputCursorAttentionProducer({
-        attention,
-        terminal,
-      });
-
-      fireSubmit();
-
-      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
-      expect(call).toBeUndefined();
-      dispose.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("600ms 後に pulse を null clear する", () => {
-    vi.useFakeTimers();
-    try {
-      const attention = makeFakeAttention();
-      const { fake: terminal, fireSubmit } = makeFakeTerminal({
-        clientX: 10,
-        clientY: 20,
-        cellWidth: 8,
-        cellHeight: 16,
-      });
-      const dispose = startInputCursorAttentionProducer({
-        attention,
-        terminal,
-      });
-
-      fireSubmit();
-
-      // 599ms では clear されていない
-      vi.advanceTimersByTime(599);
-      const earlyClear = attention.setSourceTarget.mock.calls.find(
-        (c) => c[0] === "input-cursor:sent" && c[1] === null,
-      );
-      expect(earlyClear).toBeUndefined();
-
-      // 600ms 経過で clear される
-      vi.advanceTimersByTime(1);
-      const clearCall = attention.setSourceTarget.mock.calls.find(
-        (c) => c[0] === "input-cursor:sent" && c[1] === null,
-      );
-      expect(clearCall).toBeDefined();
-      dispose.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("連続 submit で前の pulse timer をキャンセルして新しい pulse を emit する", () => {
-    vi.useFakeTimers();
-    try {
-      const attention = makeFakeAttention();
-      const { fake: terminal, fireSubmit } = makeFakeTerminal({
-        clientX: 50,
-        clientY: 100,
-        cellWidth: 8,
-        cellHeight: 16,
-      });
-      const dispose = startInputCursorAttentionProducer({
-        attention,
-        terminal,
-      });
-
-      // 1 回目 submit
-      fireSubmit();
-      const firstEmitCount = attention.setSourceTarget.mock.calls.filter(
-        (c) => c[0] === "input-cursor:sent" && c[1] !== null,
-      ).length;
-      expect(firstEmitCount).toBe(1);
-
-      // 300ms 後（pulse 継続中）に 2 回目 submit
-      vi.advanceTimersByTime(300);
-      fireSubmit();
-
-      // さらに 600ms 後（2 回目 pulse のみ clear）
-      vi.advanceTimersByTime(700);
-
-      const sentEmits = attention.setSourceTarget.mock.calls.filter(
-        (c) => c[0] === "input-cursor:sent" && c[1] !== null,
-      );
-      const clearEmits = attention.setSourceTarget.mock.calls.filter(
-        (c) => c[0] === "input-cursor:sent" && c[1] === null,
-      );
-      // emit は 2 回、clear は 1 回（前の timer はキャンセルされた）
-      expect(sentEmits).toHaveLength(2);
-      expect(clearEmits).toHaveLength(1);
-      dispose.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("dispose で userSubmit 購読解除・rAF cancel・pulse timer cancel を全て行う", () => {
-    vi.useFakeTimers();
-    const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 99);
-    try {
-      const attention = makeFakeAttention();
-      const { fake: terminal, fireSubmit } = makeFakeTerminal({
-        clientX: 50,
-        clientY: 100,
-        cellWidth: 8,
-        cellHeight: 16,
-      });
-      const handle = startInputCursorAttentionProducer({
-        attention,
-        terminal,
-      });
-
-      fireSubmit();
-
-      // pulse 継続中に dispose
-      handle.dispose();
-
-      // rAF がキャンセルされている
-      expect(cancelSpy).toHaveBeenCalledWith(99);
-
-      // timer が cancel されているので 700ms 後も clear call が増えない
-      const beforeAdvance = attention.setSourceTarget.mock.calls.length;
-      vi.advanceTimersByTime(700);
-      const afterAdvance = attention.setSourceTarget.mock.calls.length;
-      expect(afterAdvance).toBe(beforeAdvance);
-    } finally {
-      cancelSpy.mockRestore();
-      vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
-      vi.useRealTimers();
     }
   });
 });

@@ -35,13 +35,9 @@ v1 では PTY に何か出力されると priority 1 で emit していた。v2 
 - 理由: 「PTY output が来た」は内容問わず発火するため **意味が薄い**。住人が向けるべき視線を稀釈する。
 - v1 での priority 1（最弱）という設定自体が「他に見るものがない時だけ」という意味だったが、それは「emit しない」で十分表現できる。
 
-### 2. `sent` / `activate` reason の追加（input-cursor の拡張）
+### 2. `sent` / `activate` reasons — 追加後に撤回
 
-v1 にはなかった **Enter キーの短いパルス**（600ms transient）を v2 で追加。
-
-- `input-cursor:sent`: terminal で Enter → 「あなたが送信した」という acknowledgment。xterm cursor cell rect。
-- `input-cursor:activate`: button / link にフォーカスして Enter → 「あなたが起動した」という acknowledgment。activeElement rect。
-- priority=5 / confidence=1.0。600ms 後に producer 側で null clear（resolver maxAge に任せない例外的設計）。
+B15 で input-cursor の sent（Enter 送信時の pulse）と activate（interactive element の Enter activate 時）を v2 拡張として追加したが、user-prompt-submit hook の発火タイミング問題（B16/B17 参照、`docs/decisions/hook-signals.md`）と production build で xterm.onData("\r") 駆動でも実 visual が出ない問題（B18 撤回）で cost/value が見合わず B18 で撤回。input-cursor は typing のみとなり、v1 の挙動と一致する。
 
 ### 3. terminal-region aura を transient 化（commit c0ecb23 — A2+B2 spec）
 
@@ -58,7 +54,7 @@ v1 では typing は priority 2 相当の低優先だった。v2 では priority
 
 ---
 
-## 現在の attention source 一覧（10 source）
+## 現在の attention source 一覧（8 source）
 
 各値は producer ファイルの実装値（コメントや定数から読み取った実測値）。
 
@@ -72,8 +68,6 @@ v1 では typing は priority 2 相当の低優先だった。v2 では priority
 | mcp-tool-request | mcp-ui | 4 | 0.72 | tool-writing (set-ui-state) / tool-reading (その他) | `.ui-pack-container:not(.ambient)` または `.sidebar` ±8px expand | 1200ms timeout で手動 clear |
 | focused-dom | focused-dom | 5 | 0.7 | focus | activeElement bounding rect ±10px expand | rAF poll で focus 変化を検出し null clear |
 | input-cursor:typing | input-cursor | 5 | 1.0 | typing | xterm cursor cell rect（拡張なし） | rAF poll（lastUserInputAt gate）+ TTL 2000ms |
-| input-cursor:sent | input-cursor | 5 | 1.0 | sent | xterm cursor cell rect | Enter keydown → 600ms pulse |
-| input-cursor:activate | input-cursor | 5 | 1.0 | activate | activeElement bounding rect | Enter keydown（button/a にフォーカス時）→ 600ms pulse |
 
 **emit しない source（設計的に削除済み）:**
 
@@ -110,5 +104,6 @@ v1 では typing は priority 2 相当の低優先だった。v2 では priority
 
 ## 改訂履歴
 
+- 2026-04-26 (B18): sent / activate を v2 deviation から「追加後撤回」に書き換え。source テーブルを 10 → 8 source に更新（input-cursor:sent・input-cursor:activate 行を削除）。
 - 2026-04-26: 全面書き直し。Phase 1d 後の 7 本 fix commit（5ebfd0d〜c0ecb23）により v2 は「v1 UX を v2 architecture で担保」する設計に収束したため、「mouse / focused-dom は意味希薄として cut」という旧記述を撤回し実態に合わせた。v2 の intentional deviation 4 点・source テーブル（10 source）・「v1 を真とした理由」section を追加。
 - 2026-04-25: 初版作成（Phase 1d-10。旧記述の誤りが後に判明し本日付で全面改訂）。

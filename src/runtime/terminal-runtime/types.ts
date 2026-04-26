@@ -112,10 +112,4 @@ export interface TerminalRuntime {
    * 意味分類はここではしない（producer 側の責務）。
    */
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
-
-  /**
-   * User が Enter を押して PTY に \r が送信された時 fire する。IME 確定 Enter は
-   * xterm 内部で消費されるため、ここには来ない。sent aura producer の trigger に使う。
-   */
-  subscribeUserSubmit(listener: () => void): Disposable;
 }

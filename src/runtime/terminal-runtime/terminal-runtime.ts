@@ -40,7 +40,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastUserInputAt = -Infinity;
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
-  private readonly userSubmitListeners = new Set<() => void>();
 
   constructor() {
     this.term = new XTerm({
@@ -119,11 +118,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.onData((data) => {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
-      if (data.includes("\r")) {
-        for (const listener of Array.from(this.userSubmitListeners)) {
-          listener();
-        }
-      }
       writeQueue = writeQueue.then(async () => {
         try {
           await ptyWrite({ data });
@@ -380,15 +374,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return {
       dispose: () => {
         this.scrollListeners.delete(listener);
-      },
-    };
-  }
-
-  subscribeUserSubmit(listener: () => void): Disposable {
-    this.userSubmitListeners.add(listener);
-    return {
-      dispose: () => {
-        this.userSubmitListeners.delete(listener);
       },
     };
   }

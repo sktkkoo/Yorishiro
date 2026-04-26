@@ -115,30 +115,6 @@ describe("auraVisualForTarget", () => {
     expect(cursor.spread).toBeLessThan(mouse.spread);
   });
 
-  it("input-cursor/sent は pulse 系の強い visual (spread 22)", () => {
-    const sent = auraVisualForTarget({
-      kind: "input-cursor",
-      reason: "sent",
-      width: 8,
-      height: 16,
-    });
-    expect(sent.spread).toBe(22);
-    expect(sent.blur).toBe(12);
-    // 白基調
-    expect(sent.background).toContain("rgba(255, 255, 255");
-  });
-
-  it("input-cursor/activate は sent に近い pulse 系 (spread 22)", () => {
-    const activate = auraVisualForTarget({
-      kind: "input-cursor",
-      reason: "activate",
-      width: 8,
-      height: 16,
-    });
-    expect(activate.spread).toBe(22);
-    expect(activate.blur).toBe(12);
-  });
-
   it("focused-dom の visual を返す (B6/B7 で producer 復元予定)", () => {
     const v = auraVisualForTarget({
       kind: "focused-dom",

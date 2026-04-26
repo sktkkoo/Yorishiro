@@ -101,3 +101,4 @@ rename する代案も検討したが（例：`turn-start` など）、以下の
 - `src-tauri/src/hooks.rs`: hook install 実装
 - commit 8e33de6: B17 sent aura 修正（xterm.onData 駆動への切り替え）
 - commit 3b6b1a7: B15 sent aura 初実装（user-prompt-submit 駆動、後に問題判明）
+- B18 で sent 機能自体を撤回した。「user の操作瞬間反応」という需要は typing aura（打鍵中の継続表示）で十分担保されており、cost/value で sent の追加実装は割に合わなかった。教訓 — `user-prompt-submit` hook の発火タイミングが「次ターン処理開始境界」であること自体は引き続き本文書の知見として保持する。

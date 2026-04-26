@@ -13,8 +13,6 @@
  * 意図的な v1 との差異:
  * - recent-output: v2 では emit されないため visual entry なし
  *   (decision: docs/decisions/semantic-priority-attention.md)
- * - sent / activate (input-cursor): v2 で新規追加した reason。
- *   pulse 系の visual を新規定義。
  * - focused-dom: SDK AttentionTargetKind に追加済み、producer も復元済み（B6）。
  */
 
@@ -76,8 +74,7 @@ export interface AuraVisualStyle {
  * 優先順位:
  *   1. terminal-region の reason override (tool-reading, tool-writing, tool-running,
  *      approval-required, error, diagnostic, file-link, search-match)
- *   2. input-cursor の reason override (sent, activate)
- *   3. kind ベースのスタイル (input-cursor, focused-dom, mcp-ui, terminal-region default, mouse)
+ *   2. kind ベースのスタイル (input-cursor, focused-dom, mcp-ui, terminal-region default, mouse)
  */
 export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
   const baseRadius = Math.min(12, Math.max(4, Math.min(input.width, input.height) / 2));
@@ -85,31 +82,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
   // ── input-cursor ────────────────────────────────────────────────────────────
 
   if (input.kind === "input-cursor") {
-    // sent: Enter 送信後の pulse。白く強いフラッシュ。
-    if (input.reason === "sent") {
-      return {
-        blur: 12,
-        spread: 22,
-        borderRadius: baseRadius,
-        background:
-          "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.88) 0%, rgba(255, 255, 255, 0.62) 22%, rgba(242, 248, 255, 0.28) 54%, rgba(242, 248, 255, 0) 100%)",
-        boxShadow:
-          "0 0 18px rgba(255, 255, 255, 0.52), 0 0 38px rgba(242, 248, 255, 0.36), 0 0 64px rgba(242, 248, 255, 0.18)",
-      };
-    }
-    // activate: ウィンドウ/入力フォーカス取得時の pulse。sent より暖色寄り。
-    if (input.reason === "activate") {
-      return {
-        blur: 12,
-        spread: 22,
-        borderRadius: baseRadius,
-        background:
-          "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.82) 0%, rgba(255, 248, 235, 0.58) 24%, rgba(255, 240, 200, 0.24) 54%, rgba(255, 240, 200, 0) 100%)",
-        boxShadow:
-          "0 0 18px rgba(255, 255, 255, 0.48), 0 0 38px rgba(255, 240, 200, 0.32), 0 0 60px rgba(255, 240, 200, 0.16)",
-      };
-    }
-    // デフォルト typing / cursor 状態。v1 から復元。
+    // typing / cursor 状態。v1 から復元。
     return {
       blur: 10,
       spread: 26,
