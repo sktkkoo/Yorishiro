@@ -1,4 +1,4 @@
-import type { TerminalCellData } from "@charminal/sdk";
+import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import type { Perception } from "../../core/perception";
 import type { TerminalAgent } from "../user-pack-loader/config";
 
@@ -16,6 +16,24 @@ export interface PtyParams {
 export interface TerminalCursorClientPosition {
   readonly clientX: number;
   readonly clientY: number;
+  /** xterm 1 セルの幅（px）。attention rect の width 算出に使う。 */
+  readonly cellWidth: number;
+  /** xterm 1 セルの高さ（px）。attention rect の height 算出に使う。 */
+  readonly cellHeight: number;
+}
+
+/**
+ * viewport の 1 line の rect + text。意味分類は呼び出し側が
+ * `classifyTerminalOutputAttentionReason` 等で行う。
+ */
+export interface TerminalLineRect {
+  readonly text: string;
+  readonly rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
 }
 
 /**
@@ -73,4 +91,25 @@ export interface TerminalRuntime {
    * xterm が未 open なら null を返す。
    */
   extractVisibleCells(): TerminalCellData | null;
+
+  /**
+   * PTY からの出力 (data event) ごとに listener を呼ぶ。listener には
+   * 何も引数を渡さない (dirty flag 用途)。実際の data 内容は xterm buffer 経由で
+   * 取得する。dispose で listener を外す。
+   */
+  subscribePtyData(listener: () => void): Disposable;
+
+  /**
+   * xterm container の viewport scroll が発生したときに listener を呼ぶ。
+   * 引数なし (rect 再計算の trigger 用途)。dispose で listener を外す。
+   */
+  subscribeViewportScroll(listener: () => void): Disposable;
+
+  /**
+   * viewport の全 line の rect + text を返す（最終行から逆順）。空白だけの
+   * 行は除外。viewport scroll や PTY 出力後に producer が呼ぶ。
+   *
+   * 意味分類はここではしない（producer 側の責務）。
+   */
+  getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
 }

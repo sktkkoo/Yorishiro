@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PackValidationError,
+  validateAmbientUiPackDefinition,
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
@@ -129,6 +130,58 @@ describe("validateUiPackDefinition", () => {
       /layout/,
     );
     expect(() => validateUiPackDefinition({ id: "x", type: "ui", layout: {} })).toThrow(/mount/);
+  });
+});
+
+describe("validateAmbientUiPackDefinition", () => {
+  const validAmbientUi = {
+    id: "sample-ambient",
+    type: "ambient-ui",
+    mount: () => ({ dispose: () => {} }),
+  };
+
+  it("returns the value when shape is valid", () => {
+    expect(validateAmbientUiPackDefinition(validAmbientUi)).toBe(validAmbientUi);
+  });
+
+  it("rejects non-object inputs", () => {
+    expect(() => validateAmbientUiPackDefinition(null)).toThrow(PackValidationError);
+    expect(() => validateAmbientUiPackDefinition(42)).toThrow(PackValidationError);
+    expect(() => validateAmbientUiPackDefinition("ambient-ui")).toThrow(PackValidationError);
+  });
+
+  it("rejects missing or non-string id", () => {
+    expect(() => validateAmbientUiPackDefinition({ type: "ambient-ui", mount: () => {} })).toThrow(
+      /id/,
+    );
+    expect(() =>
+      validateAmbientUiPackDefinition({ id: 99, type: "ambient-ui", mount: () => {} }),
+    ).toThrow(/id/);
+  });
+
+  it("rejects wrong or missing type", () => {
+    expect(() => validateAmbientUiPackDefinition({ id: "x", type: "ui", mount: () => {} })).toThrow(
+      /type/,
+    );
+    expect(() => validateAmbientUiPackDefinition({ id: "x", mount: () => {} })).toThrow(/type/);
+  });
+
+  it("rejects non-function mount", () => {
+    expect(() =>
+      validateAmbientUiPackDefinition({ id: "x", type: "ambient-ui", mount: "start" }),
+    ).toThrow(/mount/);
+    expect(() => validateAmbientUiPackDefinition({ id: "x", type: "ambient-ui" })).toThrow(/mount/);
+  });
+
+  it("accepts extra fields (tolerant toward future extensions)", () => {
+    expect(() =>
+      validateAmbientUiPackDefinition({
+        id: "x",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+        extraField: "ignored",
+      }),
+    ).not.toThrow();
   });
 });
 

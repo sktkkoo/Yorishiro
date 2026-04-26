@@ -1,4 +1,4 @@
-import type { TerminalCellData } from "@charminal/sdk";
+import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
@@ -7,7 +7,12 @@ import { ptyResize, ptySpawn, ptyWrite } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
-import type { PtyParams, TerminalCursorClientPosition, TerminalRuntime } from "./types";
+import type {
+  PtyParams,
+  TerminalCursorClientPosition,
+  TerminalLineRect,
+  TerminalRuntime,
+} from "./types";
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
 
@@ -33,6 +38,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private currentParams: PtyParams | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private lastUserInputAt = -Infinity;
+  private readonly ptyDataListeners = new Set<() => void>();
+  private readonly scrollListeners = new Set<() => void>();
 
   constructor() {
     this.term = new XTerm({
@@ -93,6 +100,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.channel.onmessage = (data: ArrayBuffer) => {
       const bytes = new Uint8Array(data);
       this.term.write(bytes);
+      this.notifyPtyDataListeners();
       const text = this.textDecoder.decode(bytes, { stream: true });
       this.perceptionRef.current?.onPtyOutput(text);
     };
@@ -117,6 +125,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           // PTY already closed — silent
         }
       });
+    });
+
+    // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
+    this.term.onScroll(() => {
+      for (const listener of Array.from(this.scrollListeners)) {
+        listener();
+      }
     });
 
     // xterm 側の cols/rows 変化を Rust に転送
@@ -194,13 +209,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {
-    if (performance.now() - this.lastUserInputAt > TYPING_CURSOR_ACTIVE_MS) return null;
+    const sinceInput = performance.now() - this.lastUserInputAt;
+    if (sinceInput > TYPING_CURSOR_ACTIVE_MS) {
+      return null;
+    }
 
     const buffer = this.term.buffer.active;
-    if (!buffer) return null;
+    if (!buffer) {
+      return null;
+    }
 
     const rect = this.xtermContainer.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
+    if (rect.width === 0 || rect.height === 0) {
+      return null;
+    }
 
     const cellWidth = rect.width / this.term.cols;
     const cellHeight = rect.height / this.term.rows;
@@ -210,6 +232,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return {
       clientX: rect.left + (col + 0.5) * cellWidth,
       clientY: rect.top + (row + 0.5) * cellHeight,
+      cellWidth,
+      cellHeight,
     };
   }
 
@@ -291,6 +315,73 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       cols: this.term.cols,
       rows: this.term.rows,
     };
+  }
+
+  getViewportLineRects(): ReadonlyArray<TerminalLineRect> {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return [];
+
+    const containerRect = this.xtermContainer.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) return [];
+
+    const cellWidth = containerRect.width / this.term.cols;
+    const cellHeight = containerRect.height / this.term.rows;
+
+    const result: TerminalLineRect[] = [];
+
+    for (let row = this.term.rows - 1; row >= 0; row--) {
+      const line = buffer.getLine(buffer.viewportY + row);
+      if (!line) continue;
+
+      let startCol = -1;
+      let endCol = -1;
+      for (let col = 0; col < this.term.cols; col++) {
+        const cell = line.getCell(col);
+        const ch = cell?.getChars() ?? "";
+        if (ch !== "" && ch !== " ") {
+          if (startCol === -1) startCol = col;
+          endCol = col;
+        }
+      }
+
+      if (startCol === -1 || endCol === -1) continue;
+
+      result.push({
+        text: line.translateToString(true),
+        rect: {
+          x: containerRect.left + startCol * cellWidth,
+          y: containerRect.top + row * cellHeight,
+          width: Math.max(cellWidth, (endCol - startCol + 1) * cellWidth),
+          height: cellHeight,
+        },
+      });
+    }
+
+    return result;
+  }
+
+  subscribePtyData(listener: () => void): Disposable {
+    this.ptyDataListeners.add(listener);
+    return {
+      dispose: () => {
+        this.ptyDataListeners.delete(listener);
+      },
+    };
+  }
+
+  subscribeViewportScroll(listener: () => void): Disposable {
+    this.scrollListeners.add(listener);
+    return {
+      dispose: () => {
+        this.scrollListeners.delete(listener);
+      },
+    };
+  }
+
+  private notifyPtyDataListeners(): void {
+    for (const listener of Array.from(this.ptyDataListeners)) {
+      listener();
+    }
   }
 
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {

@@ -1,8 +1,14 @@
 /**
- * CursorAttentionSystem — brief, delayed attention flicks toward the cursor.
+ * CursorAttentionSystem — 頭部・眼球の attention 挙動を二段構成で生成する。
  *
- * This intentionally avoids continuous cursor coupling. It schedules rare,
- * short episodes and outputs small head/eye offsets with a soft lag.
+ * (1) 自発的 ambient glance：8〜15 秒ごとに 1〜3 秒間の短い視線フリックを
+ *     spontaneous に起動し、キャラクターの「生きている感覚」の基底を作る。
+ * (2) 即時 triggered episode：triggerCursorAttention(durationS) を呼ぶと
+ *     外部の attention（クリック等）に対してキャラクターが即座に視線を向ける
+ *     episode を開始する。
+ *
+ * pointer 位置は setPointerPositionFromHead で供給する。
+ * 出力：headYawRad / headPitchRad（ラジアン）、eyeYawDeg / eyePitchDeg（度）。
  */
 
 export type CursorAttentionMode = "eyes" | "both";
@@ -64,10 +70,21 @@ export class CursorAttentionSystem {
 
   private readonly random: () => number;
   private readonly onEvent?: (event: CursorAttentionEvent) => void;
+  /**
+   * ambient cycle の発火条件を外部から注入できるゲート関数。
+   * undefined の場合は常に true（後方互換）。
+   * triggerCursorAttention（外部からの即時 episode）はこのゲートを参照しない。
+   */
+  private readonly ambientGate?: () => boolean;
 
-  constructor(random?: () => number, onEvent?: (event: CursorAttentionEvent) => void) {
+  constructor(
+    random?: () => number,
+    onEvent?: (event: CursorAttentionEvent) => void,
+    ambientGate?: () => boolean,
+  ) {
     this.random = random ?? Math.random;
     this.onEvent = onEvent;
+    this.ambientGate = ambientGate;
     this.nextTimer = this.pickNextDelay();
   }
 
@@ -101,7 +118,13 @@ export class CursorAttentionSystem {
     if (this.mode === null) {
       this.nextTimer -= delta;
       if (this.nextTimer <= 0) {
-        this.startEpisode();
+        if (this.ambientGate === undefined || this.ambientGate()) {
+          // ゲートが許可（または未設定）→ episode 開始
+          this.startEpisode();
+        } else {
+          // ゲートが拒否 → episode をスキップして次サイクルまでタイマーをリセット
+          this.nextTimer = this.pickNextDelay();
+        }
       }
       return;
     }
@@ -163,8 +186,18 @@ export class CursorAttentionSystem {
     };
   }
 
-  private startEpisode(): void {
-    this.activeDuration = DURATION_MIN_S + this.random() * (DURATION_MAX_S - DURATION_MIN_S);
+  /**
+   * 外部の attention source 変化（クリック等）を受けて即時 episode を起動する。
+   * Body.initAttention の subscribe callback から source 変化時に呼ばれる。
+   * @param durationS episode 継続秒数（省略時は random 1〜3 秒）
+   */
+  triggerCursorAttention(durationS?: number): void {
+    this.startEpisode(durationS);
+  }
+
+  private startEpisode(durationS?: number): void {
+    this.activeDuration =
+      durationS ?? DURATION_MIN_S + this.random() * (DURATION_MAX_S - DURATION_MIN_S);
     this.activeTimer = this.activeDuration;
 
     this.mode = this.random() < 0.5 ? "eyes" : "both";
