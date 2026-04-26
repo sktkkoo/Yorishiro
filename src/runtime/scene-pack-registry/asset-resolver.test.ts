@@ -229,4 +229,45 @@ describe("resolveSceneAssets", () => {
     expect(result.layers[1].src).toBe("https://cdn.example.com/bg.mp4");
     expect(onMissing).not.toHaveBeenCalled();
   });
+
+  it("resolves ambient[].src via shared library lookup", async () => {
+    const scene: SceneSpec = {
+      id: "test",
+      layers: [],
+      ambient: [
+        { src: "sound:rain", volume: 0.5 },
+        { src: "https://cdn.example.com/abs.mp3", volume: 1.0 },
+      ],
+    };
+    const result = await resolveSceneAssets(scene, {
+      origin: "bundled",
+      packId: "any",
+    });
+    expect(result.ambient).toBeDefined();
+    // 'sound:rain' は実 glob に file が無いので解決失敗 → entry が落ちる
+    // 絶対 URL はそのまま残る
+    expect(result.ambient).toEqual([{ src: "https://cdn.example.com/abs.mp3", volume: 1.0 }]);
+  });
+
+  it("preserves ambient field shape (volume passes through)", async () => {
+    const scene: SceneSpec = {
+      id: "test",
+      layers: [],
+      ambient: [{ src: "asset://localhost/x.mp3", volume: 0.3 }],
+    };
+    const result = await resolveSceneAssets(scene, {
+      origin: "bundled",
+      packId: "any",
+    });
+    expect(result.ambient).toEqual([{ src: "asset://localhost/x.mp3", volume: 0.3 }]);
+  });
+
+  it("leaves ambient undefined when scene declares no ambient", async () => {
+    const scene: SceneSpec = { id: "test", layers: [] };
+    const result = await resolveSceneAssets(scene, {
+      origin: "bundled",
+      packId: "any",
+    });
+    expect(result.ambient).toBeUndefined();
+  });
 });

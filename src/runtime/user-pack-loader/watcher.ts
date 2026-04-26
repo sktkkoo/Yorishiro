@@ -13,10 +13,12 @@
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
+  validateAmbientUiPackDefinition,
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
 } from "../../sdk/validators";
+import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
@@ -32,6 +34,7 @@ export interface StartPackWatcherDeps {
   readonly personaRegistry: PersonaRegistrar;
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
+  readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
@@ -288,6 +291,26 @@ async function reloadPack(
       deps.userPackLog.write({
         phase: "reload",
         note: `re-registered ui '${pack.id}'`,
+      });
+    } else if (action.kind === "ambient-ui") {
+      const pack = validateAmbientUiPackDefinition(def);
+      deps.packRegistry.dispose(action.id, action.kind);
+      const handle = deps.ambientUiPackRegistry.register({
+        id: pack.id,
+        origin: "user",
+        manifest: {
+          id: pack.id,
+          type: "ambient-ui",
+          version: "0.0.0",
+          charminalVersion: "*",
+          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+        },
+        pack: { mount: pack.mount },
+      });
+      deps.packRegistry.register(action.id, action.kind, handle);
+      deps.userPackLog.write({
+        phase: "reload",
+        note: `re-registered ambient-ui '${pack.id}'`,
       });
     }
   } catch (err) {

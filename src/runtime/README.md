@@ -11,6 +11,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 
 | Module | 責務 | Entry | 備考 |
 |---|---|---|---|
+| `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
 | `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `persona-reflex/` | Active persona の reflex（customTriggers + responses）を EventBus に bridge | `persona-reflex-dispatcher.ts` | [decisions/motion-effect-trigger-axes.md](../../docs/decisions/motion-effect-trigger-axes.md) |
@@ -24,6 +25,10 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `ui-claim-state/` | UI pack が本体自動処理を一時 suspend するための token ベース state holder | `ui-claim-state.ts` | claim/release、three-runtime と body が毎フレーム参照 |
 | `ui-pack-registry/` | UI pack の single-active 管理 + config.activeUi 反映 | `ui-pack-registry.ts` | SingleActiveRegistry extend |
 | `ui-state-store/` | UI pack と MCP bridge が共有する pack-scoped key-value state | `ui-state-store.ts` | `ctx.state` と `get_ui_state` / `set_ui_state` が参照。packId ごとに分離 |
+| `attention-runtime/` | source ごとの AttentionTarget を集約し、resolver で 1 本に絞った AttentionSnapshot を publish する | `attention-runtime.ts` | Phase 1a で新設 |
+| `ambient-ui-pack-registry/` | ambient-ui pack の登録と active 集合（multi-active）を管理。enable / disable / getActiveSet | `ambient-ui-pack-registry.ts` | Phase 1a で新設 |
+| `attention-producers/` | runtime event を AttentionTarget に変換する 7 module（terminal / mouse / input-cursor / mcp / tool / dev / focused-dom）。各 producer は `start*Producer` 関数が Disposable を返す。Phase 1d で App.tsx 配線、debug fix（commits 5ebfd0d〜c0ecb23）で v1 UX に揃え（各 producer の rect / priority / 駆動方式が v1 reference に整合） | `index.ts` | Phase 1b で新設 |
+| `bundled-attention-aura/` | bundled `attention-aura` ambient-ui pack の register helper。Phase 1d で App.tsx boot path から呼ぶ | `index.ts` | Phase 1c で新設 |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
 
@@ -57,6 +62,7 @@ terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) と
 | `persona-registry/` | single-active | user > bundled、user dispose で promotion 自動取消 | [persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `scene-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeScene` で user picks |
 | `ui-pack-registry/` | single-active | user > bundled (dispose + 置換) | config の `activeUi` で user picks。設計詳細は internal design-record: `2026-04-21-ui-pack-single-active.md` |
+| `ambient-ui-pack-registry/` | **multi-active**（集合） | enable / disable / getActiveSet で操作 | primary UI を奪わない overlay 系 pack（attention aura など）。複数 pack が重なる前提 |
 | Effect (event-driven) | 複数並行 | bundled-over-user の挙動は未確定 | 整理されていない領域、care |
 
 **設計原則**：「scene と effect はどちらも pack だが、動作 model が違うので別 concept として独立に扱う」。表面的類似で統合しない（[memory: feedback_separate_conceptually_distinct_systems](../../.claude/projects/-Users-user-Charminal/memory/feedback_separate_conceptually_distinct_systems.md)）。

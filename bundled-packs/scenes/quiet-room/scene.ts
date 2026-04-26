@@ -41,5 +41,6 @@ export default {
           "radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
       },
     ],
+    ambient: [{ src: "sound:calming-rain", volume: 0.4 }],
   },
 } satisfies ScenePackDefinition;

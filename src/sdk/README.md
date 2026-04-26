@@ -4,9 +4,9 @@
 
 ---
 
-## UGC の Pack 種別（4 種類）
+## UGC の Pack 種別（5 種類）
 
-Charminal の UGC は 4 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / harness / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）。
+Charminal の UGC は 5 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / harness / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
 
 | Pack type | 性格 | 責務 | 主な context API | 主な制約 |
 |---|---|---|---|---|
@@ -14,6 +14,9 @@ Charminal の UGC は 4 種類の Pack に分かれる。**どれを書きたい
 | **Harness Pack** | runtime-active | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
+| **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | renderer / attention | multi-active（複数同時 enable）。`ambient-ui-pack-registry` で管理 |
+
+- `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、`#ambient-layer` 内の自身の container に描画する。bundled 例: `attention-aura` (v2 attention のデフォルト visual)。
 
 **迷ったら**：
 
@@ -21,6 +24,7 @@ Charminal の UGC は 4 種類の Pack に分かれる。**どれを書きたい
 - 「コマンドを実行したり通知を出したりしたい」→ Harness Pack
 - 「パーティクルや画面効果を描きたい」→ Effect Pack
 - 「背景・前景の layer 構成を変えて居場所を作りたい」→ Scene Pack
+- 「注目状態などを overlay で常時可視化したい」→ Ambient UI Pack
 
 ---
 
@@ -601,6 +605,31 @@ export default {
   },
 } satisfies ScenePackDefinition;
 ```
+
+### Ambient sound
+
+Scene が場の atmospheric layer として ambient sound を declare できる。常時 loop 再生され、scene 切替で 500ms crossfade。
+
+```typescript
+export default {
+  id: 'rainy-window',
+  type: 'scene',
+  scene: {
+    id: 'rainy-window',
+    layers: [/* ... */],
+    ambient: [
+      { src: 'sound:rain', volume: 0.5 },                // shared library
+      { src: 'sound:lofi-vibes/cafe-loop', volume: 0.3 }, // namespace 付き shared
+      { src: './assets/window-creak.mp3', volume: 0.2 },  // pack-local
+    ],
+  },
+} satisfies ScenePackDefinition;
+```
+
+- `src`: `'sound:<name>'` (shared) / `'sound:<namespace>/<name>'` (一段 namespace) / `'./...'` (pack-local) / 絶対 URL
+- `volume`: 0..1, default 1.0
+- 全 sound は loop 再生。one-shot は Effect Pack の `ctx.audio.play` で別系統
+- shared sound の置き場と命名は `bundled-packs/shared/sounds/README.md` 参照
 
 ### Layer の field
 

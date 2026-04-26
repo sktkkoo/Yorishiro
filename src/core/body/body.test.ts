@@ -257,6 +257,88 @@ describe("CursorAttentionSystem", () => {
     expect(attention.getOutput().mode).toBe("eyes");
   });
 
+  it("triggerCursorAttention: episode starts immediately without waiting for ambient timer", () => {
+    // ambient timer は 8〜15 秒だが trigger を呼ぶと即座に active になる
+    const attention = new CursorAttentionSystem(() => 0);
+    expect(attention.isActive).toBe(false);
+
+    attention.triggerCursorAttention();
+    expect(attention.isActive).toBe(true);
+  });
+
+  it("triggerCursorAttention: episode runs for the specified duration", () => {
+    const attention = new CursorAttentionSystem(() => 0);
+    attention.triggerCursorAttention(2.5);
+
+    // 2.4 秒後はまだ active
+    attention.update(2.4);
+    expect(attention.isActive).toBe(true);
+
+    // 2.5 秒を超えたら終了
+    attention.update(0.2);
+    expect(attention.isActive).toBe(false);
+  });
+
+  it("triggerCursorAttention: uses random duration when not specified", () => {
+    // random が 0 → duration = DURATION_MIN_S = 1.0
+    const attention = new CursorAttentionSystem(() => 0);
+    attention.triggerCursorAttention();
+
+    attention.update(0.9);
+    expect(attention.isActive).toBe(true);
+
+    attention.update(0.2);
+    expect(attention.isActive).toBe(false);
+  });
+
+  it("triggerCursorAttention: emits start event with requested duration", () => {
+    const events: unknown[] = [];
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      (e) => events.push(e),
+    );
+
+    attention.triggerCursorAttention(1.5);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ kind: "start", durationS: 1.5 });
+  });
+
+  it("source 変化検知パターン: 同 source の連続 snapshot では trigger は 1 回のみ", () => {
+    // Body.initAttention の source-change ロジックを模倣したテスト
+    let triggerCount = 0;
+    const attention = new CursorAttentionSystem(() => 0);
+    const origTrigger = attention.triggerCursorAttention.bind(attention);
+    // triggerCursorAttention の呼び出し回数を計測するラッパー
+    let lastSource: string | null = null;
+
+    function handleSnapshot(source: string | null): void {
+      if (source === null) {
+        lastSource = null;
+        return;
+      }
+      if (source !== lastSource) {
+        triggerCount++;
+        origTrigger();
+      }
+      lastSource = source;
+    }
+
+    // source A で 3 回連続 snapshot → trigger は 1 回
+    handleSnapshot("mouse");
+    handleSnapshot("mouse");
+    handleSnapshot("mouse");
+    expect(triggerCount).toBe(1);
+
+    // source B に変化 → trigger が追加で 1 回
+    handleSnapshot("terminal");
+    expect(triggerCount).toBe(2);
+
+    // null → source C → trigger が追加で 1 回
+    handleSnapshot(null);
+    handleSnapshot("input-cursor");
+    expect(triggerCount).toBe(3);
+  });
+
   it("briefly follows the pointer with a delayed, subtle output", () => {
     const values = [0, 0.5, 0.9];
     const attention = new CursorAttentionSystem(() => values.shift() ?? 0.5);
@@ -305,6 +387,62 @@ describe("CursorAttentionSystem", () => {
     expect(snapshot.targetX).toBe(1);
     expect(snapshot.lagX).toBeLessThan(1);
     expect(out.eyeYawDeg).toBeCloseTo(56);
+  });
+
+  // ─── ambientGate ─────────────────────────────────────────
+
+  it("ambientGate が true を返す場合: ambient タイマー発火で episode が開始する", () => {
+    // random=0 → delay=8s、duration=1s
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      undefined,
+      () => true,
+    );
+
+    attention.update(8.1);
+    expect(attention.isActive).toBe(true);
+  });
+
+  it("ambientGate が false を返す場合: ambient タイマー発火で episode をスキップしタイマーをリセット", () => {
+    // random=0 → delay=8s
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      undefined,
+      () => false,
+    );
+
+    attention.update(8.1);
+    // episode はスキップされる
+    expect(attention.isActive).toBe(false);
+
+    // タイマーが再セットされているため、さらに 8 秒待っても gate=false なら再スキップ
+    attention.update(8.1);
+    expect(attention.isActive).toBe(false);
+  });
+
+  it("ambientGate が undefined の場合: 後方互換で episode が開始する", () => {
+    // gate 未指定 → 従来通り動作
+    const attention = new CursorAttentionSystem(() => 0);
+
+    attention.update(8.1);
+    expect(attention.isActive).toBe(true);
+  });
+
+  it("triggerCursorAttention は gate=false でも episode を開始する（ゲート無視）", () => {
+    // ambient gate は常に false だが、直接 trigger は通る
+    const attention = new CursorAttentionSystem(
+      () => 0,
+      undefined,
+      () => false,
+    );
+
+    // ambient では発火しない
+    attention.update(8.1);
+    expect(attention.isActive).toBe(false);
+
+    // 直接 trigger → gate を無視して即時 episode 開始
+    attention.triggerCursorAttention();
+    expect(attention.isActive).toBe(true);
   });
 
   it("logs start and end events with duration and next delay", () => {

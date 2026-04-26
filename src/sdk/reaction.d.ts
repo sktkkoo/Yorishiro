@@ -81,12 +81,53 @@ export interface HookSignalEvent {
 }
 
 export interface HookSignal {
-  readonly name:
+  readonly name: /**
+   * Claude Code 公式 hook `PreToolUse` のブリッジ。
+   *
+   * 発火タイミング: tool 呼び出しの直前。
+   * 用途: tool 実行の検出、診断 aura のような tool-activity driven の反応。
+   */
     | "pre-tool-use"
+    /**
+     * Claude Code 公式 hook `PostToolUse` のブリッジ。
+     *
+     * 発火タイミング: tool が正常に完了した直後。
+     * 用途: tool 完了の検出、完了後の状態遷移。
+     */
     | "post-tool-use"
+    /**
+     * Claude Code 公式 hook `PostToolUseFailure` のブリッジ。
+     *
+     * 発火タイミング: tool が失敗した直後（例外・タイムアウト等）。
+     * 用途: エラー反応、失敗診断。
+     */
     | "post-tool-failure"
+    /**
+     * Claude Code 公式 hook `UserPromptSubmit` のブリッジ。
+     *
+     * 発火タイミング: user の Enter 押下瞬間ではなく、**Claude が前ターンの応答を
+     * 完了し、次の prompt の処理を開始する境界**で fire する。前ターンが長いと
+     * 数十秒の遅延がある。
+     *
+     * 用途: ターン境界の状態遷移 (例: Body state を thinking に切り替え)。
+     * NOT 用途: user の操作瞬間に反応する UI (例: sent aura) — それには
+     * `terminal-runtime.subscribeUserSubmit` (xterm.onData の `\r` 検出) を使う。
+     * 詳細は docs/decisions/hook-signals.md を参照。
+     */
     | "user-prompt-submit"
+    /**
+     * Claude Code 公式 hook `Stop` のブリッジ。
+     *
+     * 発火タイミング: Claude が応答を完了した時（ターン終了）。
+     * 用途: ターン終了の検出、idle 状態への遷移。
+     */
     | "stop"
+    /**
+     * Claude Code 公式 hook `Notification` のブリッジ。
+     *
+     * 発火タイミング: Claude が notification を発行した時。
+     * 用途: notification に応じた反応（例：warning 類）。
+     */
     | "notification";
   readonly payload?: unknown;
 }
