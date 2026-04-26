@@ -40,7 +40,7 @@ export default function Sidebar({
           type="button"
           className="settings-btn"
           onClick={onOpenSettings}
-          aria-label="設定を開く"
+          aria-label="設定"
           title="設定"
         >
           <svg

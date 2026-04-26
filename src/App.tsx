@@ -1185,9 +1185,19 @@ function App() {
     const uiPackRegistry = getUiRegistry();
     const uiState = getUiStateStore();
     const current = uiPackRegistry.getActiveUi()?.id ?? null;
-    // 自分自身を保存しない（settings 中に再度開くことは無いはずだが防御）
-    const previousId = current === SETTINGS_PACK_ID ? null : current;
-    uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, previousId);
+
+    if (current === SETTINGS_PACK_ID) {
+      // 既に開いている → 閉じる（toggle）。✕ ボタンと同じ復元 logic を共有する。
+      const saved = uiState.get(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY);
+      const savedStr = typeof saved === "string" ? saved : null;
+      const availableIds = uiPackRegistry.listEntries().map((e) => e.id);
+      const target = resolveCloseTarget({ saved: savedStr, availableIds });
+      uiPackRegistry.setActiveUi(target);
+      return;
+    }
+
+    // 閉じている → 開く。現 activeUi を previous として保存。
+    uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, current);
     uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
   }, []);
 
