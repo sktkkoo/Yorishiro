@@ -1265,10 +1265,8 @@ function App() {
 
     const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
 
-    // input-cursor producer: typing は rAF loop、sent は user-prompt-submit hook-signal 駆動。
-    disposables.push(
-      startInputCursorAttentionProducer({ attention, terminal, subscribeHookSignal }),
-    );
+    // input-cursor producer: typing は rAF loop、sent は xterm.onData の \r 検出駆動。
+    disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
 
     disposables.push(
       startToolAttentionProducer({

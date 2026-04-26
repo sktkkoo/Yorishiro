@@ -40,6 +40,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastUserInputAt = -Infinity;
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
+  private readonly userSubmitListeners = new Set<() => void>();
 
   constructor() {
     this.term = new XTerm({
@@ -118,6 +119,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.onData((data) => {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
+      if (data.includes("\r")) {
+        for (const listener of Array.from(this.userSubmitListeners)) {
+          listener();
+        }
+      }
       writeQueue = writeQueue.then(async () => {
         try {
           await ptyWrite({ data });
@@ -209,13 +215,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {
-    if (performance.now() - this.lastUserInputAt > TYPING_CURSOR_ACTIVE_MS) return null;
+    const sinceInput = performance.now() - this.lastUserInputAt;
+    if (sinceInput > TYPING_CURSOR_ACTIVE_MS) {
+      return null;
+    }
 
     const buffer = this.term.buffer.active;
-    if (!buffer) return null;
+    if (!buffer) {
+      return null;
+    }
 
     const rect = this.xtermContainer.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
+    if (rect.width === 0 || rect.height === 0) {
+      return null;
+    }
 
     const cellWidth = rect.width / this.term.cols;
     const cellHeight = rect.height / this.term.rows;
@@ -367,6 +380,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return {
       dispose: () => {
         this.scrollListeners.delete(listener);
+      },
+    };
+  }
+
+  subscribeUserSubmit(listener: () => void): Disposable {
+    this.userSubmitListeners.add(listener);
+    return {
+      dispose: () => {
+        this.userSubmitListeners.delete(listener);
       },
     };
   }

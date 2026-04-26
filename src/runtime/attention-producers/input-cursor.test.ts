@@ -16,9 +16,17 @@ function makeFakeAttention() {
 function makeFakeTerminal(
   cursor: ReturnType<TerminalRuntime["getInputCursorClientPosition"]> | null,
 ) {
+  const submitListeners: Array<() => void> = [];
   const getInputCursorClientPosition = vi.fn(() => cursor);
-  const fake = { getInputCursorClientPosition };
-  return fake as unknown as TerminalRuntime & typeof fake;
+  const subscribeUserSubmit = vi.fn((listener: () => void) => {
+    submitListeners.push(listener);
+    return { dispose: () => {} };
+  });
+  const fake = { getInputCursorClientPosition, subscribeUserSubmit };
+  const fireSubmit = (): void => {
+    for (const l of submitListeners) l();
+  };
+  return { fake: fake as unknown as TerminalRuntime & typeof fake, fireSubmit };
 }
 
 // rAF stub ヘルパー：mockImplementation の closure への代入を
@@ -40,39 +48,21 @@ function makeRafStub() {
   return { rafSpy, tick, restore };
 }
 
-/**
- * subscribeHookSignal の fake を作成する。
- * 返した `emit` を呼ぶことで登録済み handler を全て発火できる。
- */
-function makeHookSignalStub() {
-  const handlers: Array<(event: { name: string }) => void> = [];
-  const subscribeHookSignal = vi.fn((handler: (event: { name: string }) => void) => {
-    handlers.push(handler);
-    return { dispose: () => {} };
-  });
-  const emit = (name: string): void => {
-    for (const h of handlers) h({ name });
-  };
-  return { subscribeHookSignal, emit };
-}
-
 describe("startInputCursorAttentionProducer", () => {
   it("getInputCursorClientPosition は rAF 毎に呼ばれる", () => {
     // requestAnimationFrame をスタブし、手動で tick を制御する
     const { rafSpy, tick, restore } = makeRafStub();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
+      const { fake: terminal } = makeFakeTerminal({
         clientX: 50,
         clientY: 100,
         cellWidth: 8,
         cellHeight: 16,
       });
-      const { subscribeHookSignal } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
       // 起動直後に 1 回 rAF が登録されている
@@ -97,17 +87,15 @@ describe("startInputCursorAttentionProducer", () => {
     const { tick, restore } = makeRafStub();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
+      const { fake: terminal } = makeFakeTerminal({
         clientX: 50,
         clientY: 100,
         cellWidth: 8,
         cellHeight: 16,
       });
-      const { subscribeHookSignal } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
       tick();
@@ -131,12 +119,10 @@ describe("startInputCursorAttentionProducer", () => {
     const { tick, restore } = makeRafStub();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal(null);
-      const { subscribeHookSignal } = makeHookSignalStub();
+      const { fake: terminal } = makeFakeTerminal(null);
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
       tick();
@@ -158,14 +144,17 @@ describe("startInputCursorAttentionProducer", () => {
         cellWidth: number;
         cellHeight: number;
       } | null = { clientX: 50, clientY: 100, cellWidth: 8, cellHeight: 16 };
+      const submitListeners: Array<() => void> = [];
       const terminal = {
         getInputCursorClientPosition: vi.fn(() => cursor),
+        subscribeUserSubmit: vi.fn((listener: () => void) => {
+          submitListeners.push(listener);
+          return { dispose: () => {} };
+        }),
       };
-      const { subscribeHookSignal } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
       // 1 frame 目: caret visible → typing emit
@@ -190,12 +179,10 @@ describe("startInputCursorAttentionProducer", () => {
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 42);
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal(null);
-      const { subscribeHookSignal } = makeHookSignalStub();
+      const { fake: terminal } = makeFakeTerminal(null);
       const handle = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
       handle.dispose();
@@ -207,25 +194,23 @@ describe("startInputCursorAttentionProducer", () => {
   });
 });
 
-describe("input-cursor producer (sent — hook-signal driven)", () => {
-  it("user-prompt-submit hook-signal で input-cursor:sent を emit する", () => {
+describe("input-cursor producer (sent — xterm.onData \\r 検出駆動)", () => {
+  it("subscribeUserSubmit が fire された時に input-cursor:sent を emit する", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
+      const { fake: terminal, fireSubmit } = makeFakeTerminal({
         clientX: 50,
         clientY: 100,
         cellWidth: 8,
         cellHeight: 16,
       });
-      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
-      emit("user-prompt-submit");
+      fireSubmit();
 
       const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
       expect(call).toBeDefined();
@@ -249,49 +234,18 @@ describe("input-cursor producer (sent — hook-signal driven)", () => {
     }
   });
 
-  it("user-prompt-submit 以外の hook-signal では emit しない", () => {
+  it("cursor が null のとき submit しても emit しない", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
-        clientX: 50,
-        clientY: 100,
-        cellWidth: 8,
-        cellHeight: 16,
-      });
-      const { subscribeHookSignal, emit } = makeHookSignalStub();
+      // caret が取れない状態（直近 2 秒以内に typing なし等）
+      const { fake: terminal, fireSubmit } = makeFakeTerminal(null);
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
-      emit("pre-tool-use");
-      emit("stop");
-      emit("notification");
-
-      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
-      expect(call).toBeUndefined();
-      dispose.dispose();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("getInputCursorClientPosition が null のとき submit しても emit しない", () => {
-    vi.useFakeTimers();
-    try {
-      const attention = makeFakeAttention();
-      // caret が取れない状態（直近 typing なし等）
-      const terminal = makeFakeTerminal(null);
-      const { subscribeHookSignal, emit } = makeHookSignalStub();
-      const dispose = startInputCursorAttentionProducer({
-        attention,
-        terminal,
-        subscribeHookSignal,
-      });
-
-      emit("user-prompt-submit");
+      fireSubmit();
 
       const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
       expect(call).toBeUndefined();
@@ -305,20 +259,18 @@ describe("input-cursor producer (sent — hook-signal driven)", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
+      const { fake: terminal, fireSubmit } = makeFakeTerminal({
         clientX: 10,
         clientY: 20,
         cellWidth: 8,
         cellHeight: 16,
       });
-      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
-      emit("user-prompt-submit");
+      fireSubmit();
 
       // 599ms では clear されていない
       vi.advanceTimersByTime(599);
@@ -343,21 +295,19 @@ describe("input-cursor producer (sent — hook-signal driven)", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
+      const { fake: terminal, fireSubmit } = makeFakeTerminal({
         clientX: 50,
         clientY: 100,
         cellWidth: 8,
         cellHeight: 16,
       });
-      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
       // 1 回目 submit
-      emit("user-prompt-submit");
+      fireSubmit();
       const firstEmitCount = attention.setSourceTarget.mock.calls.filter(
         (c) => c[0] === "input-cursor:sent" && c[1] !== null,
       ).length;
@@ -365,7 +315,7 @@ describe("input-cursor producer (sent — hook-signal driven)", () => {
 
       // 300ms 後（pulse 継続中）に 2 回目 submit
       vi.advanceTimersByTime(300);
-      emit("user-prompt-submit");
+      fireSubmit();
 
       // さらに 600ms 後（2 回目 pulse のみ clear）
       vi.advanceTimersByTime(700);
@@ -385,26 +335,24 @@ describe("input-cursor producer (sent — hook-signal driven)", () => {
     }
   });
 
-  it("dispose で hookSub・rAF・pulse timer を全て cleanup する", () => {
+  it("dispose で userSubmit 購読解除・rAF cancel・pulse timer cancel を全て行う", () => {
     vi.useFakeTimers();
     const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
     vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 99);
     try {
       const attention = makeFakeAttention();
-      const terminal = makeFakeTerminal({
+      const { fake: terminal, fireSubmit } = makeFakeTerminal({
         clientX: 50,
         clientY: 100,
         cellWidth: 8,
         cellHeight: 16,
       });
-      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const handle = startInputCursorAttentionProducer({
         attention,
         terminal,
-        subscribeHookSignal,
       });
 
-      emit("user-prompt-submit");
+      fireSubmit();
 
       // pulse 継続中に dispose
       handle.dispose();

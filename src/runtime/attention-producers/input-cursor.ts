@@ -10,12 +10,15 @@
  * user 入力時に lastUserInputAt が更新されたことを自然に拾う
  * （subscribePtyData は agent 出力でしか発火しないため使わない）。
  *
- * hook-signal `user-prompt-submit` を listen し、発火時点の caret 位置に
- * input-cursor:sent を priority=5 で emit する。600ms 後に null clear する
- * 短いパルス設計（単発 event のため resolver maxAge 任せでなく producer 側で ttl を持つ）。
- * キー入力判定は一切行わない（IME / Shift+Enter / paste 誤検知排除）。
+ * sent aura は xterm.onData の \r 検出（subscribeUserSubmit）で駆動する。
+ * user が Enter を押した瞬間に同期的に発火するため、hook-signal 方式
+ * （ターン境界で ~30 秒遅延）と異なり sent aura のセマンティクスと整合する。
+ * IME 確定 Enter は xterm 内部で消費されるため onData に来ず、自然除外される。
+ * 発火時点の caret 位置に input-cursor:sent を priority=5 で emit する。
+ * 600ms 後に null clear する短いパルス設計（単発 event のため resolver maxAge
+ * 任せでなく producer 側で ttl を持つ）。
  *
- * dispose で rAF cancel + hookSub dispose + pulse timer cancel を全て行う。
+ * dispose で rAF cancel + userSubmitSub dispose + pulse timer cancel を全て行う。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
@@ -33,13 +36,11 @@ const PULSE_CLEAR_MS = 600;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
-  readonly terminal: Pick<TerminalRuntime, "getInputCursorClientPosition">;
-  /** EventBus hook-signal を購読する adapter。App.tsx から inject する。 */
-  readonly subscribeHookSignal: (handler: (event: { name: string }) => void) => Disposable;
+  readonly terminal: Pick<TerminalRuntime, "getInputCursorClientPosition" | "subscribeUserSubmit">;
 }
 
 export function startInputCursorAttentionProducer(opts: StartOptions): Disposable {
-  const { attention, terminal, subscribeHookSignal } = opts;
+  const { attention, terminal } = opts;
   let typingActive = false;
   let pulseTimer: ReturnType<typeof setTimeout> | null = null;
   let rafId: number | null = null;
@@ -85,10 +86,9 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
   };
   rafId = requestAnimationFrame(tick);
 
-  // hook-signal `user-prompt-submit` を listen し、caret 位置に sent pulse を emit する。
+  // xterm.onData の \r 検出（subscribeUserSubmit）で sent pulse を emit する。
   // caret が null のとき（直近 2 秒以内に typing なし等）は emit しない。
-  const hookSub = subscribeHookSignal((event) => {
-    if (event.name !== "user-prompt-submit") return;
+  const userSubmitSub = terminal.subscribeUserSubmit(() => {
     const cursor = terminal.getInputCursorClientPosition();
     if (cursor === null) return;
     cancelPulseTimer();
@@ -115,7 +115,7 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
   return {
     dispose: () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      hookSub.dispose();
+      userSubmitSub.dispose();
       cancelPulseTimer();
     },
   };
