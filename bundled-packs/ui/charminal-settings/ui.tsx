@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { ptyWrite } from "../../../src/bindings/tauri-commands";
 import { TerminalPromptButton } from "../../../src/sdk/components/terminal-prompt-button";
+import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
@@ -156,10 +157,10 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         left: "var(--sidebar-width)",
         width: "calc(100% - var(--sidebar-width))",
         height: "100vh",
-        background: "rgba(14, 23, 34, 0.96)",
-        color: "#eceff4",
-        fontFamily: "monospace",
-        fontSize: "12px",
+        background: COLORS.bgPanel,
+        color: COLORS.fg,
+        fontFamily: FONT.family,
+        fontSize: FONT.sizeS,
         pointerEvents: "auto",
         display: "flex",
         flexDirection: "column",
@@ -167,14 +168,14 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     >
       <header
         style={{
-          padding: "16px 20px",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          padding: `${SPACING.lg} ${SPACING.xl}`,
+          borderBottom: `1px solid ${COLORS.borderSubtle}`,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
         }}
       >
-        <span style={{ fontSize: "14px", fontWeight: 600 }}>設定</span>
+        <span style={{ fontSize: FONT.sizeL, fontWeight: FONT.weightSemibold }}>設定</span>
         <button
           type="button"
           onClick={onClose}
@@ -182,9 +183,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           style={{
             cursor: "pointer",
             opacity: 0.8,
-            padding: "4px 10px",
-            borderRadius: "4px",
-            background: "rgba(255,255,255,0.06)",
+            padding: `${SPACING.xs} 10px`,
+            borderRadius: RADIUS.sm,
+            background: COLORS.bgInputHover,
             color: "inherit",
             border: "none",
             font: "inherit",
@@ -193,18 +194,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           ✕
         </button>
       </header>
-      <main style={{ flex: 1, padding: "20px", overflowY: "auto" }}>
+      <main style={{ flex: 1, padding: SPACING.xl, overflowY: "auto" }}>
         <Section title="キャラクター">
           <Field label="VRM body">
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div style={{ display: "flex", gap: SPACING.sm }}>
               <div
                 style={{
                   flex: "0 1 auto",
                   maxWidth: "200px",
-                  background: "rgba(255,255,255,0.04)",
-                  padding: "6px 10px",
-                  borderRadius: "4px",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  background: COLORS.bgInput,
+                  padding: `6px 10px`,
+                  borderRadius: RADIUS.sm,
+                  border: `1px solid ${COLORS.borderSubtle}`,
                   opacity: 0.85,
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -218,11 +219,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 type="button"
                 onClick={onPickVrm}
                 style={{
-                  background: "rgba(255,255,255,0.08)",
+                  background: COLORS.bgButton,
                   color: "inherit",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  borderRadius: "4px",
-                  padding: "6px 12px",
+                  border: `1px solid ${COLORS.borderMid}`,
+                  borderRadius: RADIUS.sm,
+                  padding: `6px ${SPACING.md}`,
                   cursor: "pointer",
                   font: "inherit",
                 }}
@@ -262,18 +263,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         </Section>
         <div
           style={{
-            marginTop: "-20px",
-            marginBottom: "28px",
+            marginTop: `-${SPACING.xl}`,
+            marginBottom: SPACING.xxl,
             marginLeft: "112px",
-            fontSize: "11px",
+            fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}
         >
           ※ 次の terminal 起動から反映
         </div>
-        <section style={{ marginBottom: "28px" }}>
+        <section style={{ marginBottom: SPACING.xxl }}>
           <div style={sectionLabelStyle}>ショートカット</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: SPACING.sm }}>
             <TerminalPromptButton
               text="/charminal:charm ショートカットを変更したい"
               label="ショートカットを変更"
@@ -298,20 +299,20 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               }}
               style={{
                 alignSelf: "flex-start",
-                background: "rgba(77, 217, 207, 0.08)",
+                background: COLORS.accentSoft,
                 color: "inherit",
-                padding: "8px 14px",
-                borderRadius: "4px",
-                border: "1px solid rgba(77, 217, 207, 0.25)",
+                padding: `${SPACING.sm} 14px`,
+                borderRadius: RADIUS.sm,
+                border: `1px solid ${COLORS.accentBorder}`,
                 cursor: "pointer",
                 font: "inherit",
               }}
             />
-            <div style={{ fontSize: "11px", opacity: 0.55, lineHeight: 1.5 }}>
+            <div style={{ fontSize: FONT.sizeXs, opacity: 0.55, lineHeight: 1.5 }}>
               クリックで terminal に{" "}
               <code
                 style={{
-                  background: "rgba(255,255,255,0.06)",
+                  background: COLORS.bgInputHover,
                   padding: "1px 6px",
                   borderRadius: "3px",
                 }}
@@ -325,9 +326,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       </main>
       <footer
         style={{
-          padding: "12px 20px",
-          borderTop: "1px solid rgba(255,255,255,0.08)",
-          fontSize: "11px",
+          padding: `${SPACING.md} ${SPACING.xl}`,
+          borderTop: `1px solid ${COLORS.borderSubtle}`,
+          fontSize: FONT.sizeXs,
           opacity: 0.55,
         }}
       >
@@ -338,26 +339,26 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 }
 
 const sectionLabelStyle: React.CSSProperties = {
-  fontSize: "11px",
+  fontSize: FONT.sizeXs,
   opacity: 0.6,
   textTransform: "uppercase",
   letterSpacing: "0.08em",
-  marginBottom: "12px",
+  marginBottom: SPACING.md,
 };
 
 const fieldGridStyle: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "100px 1fr",
-  gap: "8px 12px",
+  gap: `${SPACING.sm} ${SPACING.md}`,
   alignItems: "center",
 };
 
 const selectStyle: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
+  background: COLORS.bgInput,
   color: "inherit",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: "4px",
-  padding: "6px 10px",
+  border: `1px solid ${COLORS.borderSubtle}`,
+  borderRadius: RADIUS.sm,
+  padding: `6px 10px`,
   font: "inherit",
 };
 
