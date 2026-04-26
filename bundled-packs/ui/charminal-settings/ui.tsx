@@ -61,6 +61,87 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
   }
 }
 
+interface SelectOption {
+  readonly value: string;
+  readonly label: string;
+}
+
+/**
+ * `appearance: none` + カスタム chevron SVG を持つ select component。
+ * tokens 経由でスタイルを一元管理する。
+ */
+function Select({
+  value,
+  options,
+  onChange,
+  loadingPlaceholder,
+}: {
+  value: string;
+  options: readonly SelectOption[];
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  /** value === "" の時に表示する disabled option（読み込み中など）。 */
+  loadingPlaceholder?: string;
+}): React.JSX.Element {
+  return (
+    <div style={{ position: "relative", display: "block", width: "100%" }}>
+      <select
+        value={value}
+        onChange={onChange}
+        style={{
+          appearance: "none",
+          WebkitAppearance: "none",
+          MozAppearance: "none",
+          background: COLORS.bgInput,
+          border: `1px solid ${COLORS.borderSubtle}`,
+          borderRadius: RADIUS.sm,
+          padding: `${SPACING.sm} ${SPACING.xl} ${SPACING.sm} ${SPACING.md}`,
+          color: COLORS.fg,
+          font: "inherit",
+          fontFamily: FONT.family,
+          fontSize: FONT.sizeS,
+          cursor: "pointer",
+          width: "100%",
+          outline: "none",
+        }}
+      >
+        {value === "" && loadingPlaceholder && (
+          <option value="" disabled>
+            {loadingPlaceholder}
+          </option>
+        )}
+        {options.map((opt) => (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        ))}
+      </select>
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 12 12"
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          right: SPACING.sm,
+          top: "50%",
+          transform: "translateY(-50%)",
+          pointerEvents: "none",
+          color: COLORS.fgDimmer,
+        }}
+      >
+        <path
+          d="M2 4 L6 8 L10 4"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [vrmName, setVrmName] = useState<string>(() => {
     const stored = localStorage.getItem("charminal:vrm");
@@ -233,32 +314,38 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             </div>
           </Field>
           <Field label="Persona">
-            <select value={persona ?? ""} onChange={onPersonaChange} style={selectStyle}>
-              <option value="">（選択しない）</option>
-              {personas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name ?? p.id} {p.origin === "user" ? "(user)" : ""}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={persona ?? ""}
+              onChange={onPersonaChange}
+              loadingPlaceholder={persona === null ? "読み込み中..." : undefined}
+              options={personas.map((p) => ({
+                value: p.id,
+                label: `${p.name ?? p.id}${p.origin === "user" ? " (user)" : ""}`,
+              }))}
+            />
           </Field>
           <Field label="Scene">
-            <select value={scene ?? ""} onChange={onSceneChange} style={selectStyle}>
-              <option value="">（選択しない）</option>
-              {scenes.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name ?? s.id} {s.origin === "user" ? "(user)" : ""}
-                </option>
-              ))}
-            </select>
+            <Select
+              value={scene ?? ""}
+              onChange={onSceneChange}
+              loadingPlaceholder={scene === null ? "読み込み中..." : undefined}
+              options={scenes.map((s) => ({
+                value: s.id,
+                label: `${s.name ?? s.id}${s.origin === "user" ? " (user)" : ""}`,
+              }))}
+            />
           </Field>
         </Section>
         <Section title="ターミナル">
           <Field label="Coding agent">
-            <select value={agent} onChange={onAgentChange} style={selectStyle}>
-              <option value="claude">Claude Code</option>
-              <option value="codex">Codex</option>
-            </select>
+            <Select
+              value={agent}
+              onChange={onAgentChange}
+              options={[
+                { value: "claude", label: "Claude Code" },
+                { value: "codex", label: "Codex" },
+              ]}
+            />
           </Field>
         </Section>
         <div
@@ -353,15 +440,6 @@ const fieldGridStyle: React.CSSProperties = {
   alignItems: "center",
 };
 
-const selectStyle: React.CSSProperties = {
-  background: COLORS.bgInput,
-  color: "inherit",
-  border: `1px solid ${COLORS.borderSubtle}`,
-  borderRadius: RADIUS.sm,
-  padding: `6px 10px`,
-  font: "inherit",
-};
-
 function Section({
   title,
   children,
@@ -370,7 +448,7 @@ function Section({
   children: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section style={{ marginBottom: "28px" }}>
+    <section style={{ marginBottom: SPACING.xxl }}>
       <div style={sectionLabelStyle}>{title}</div>
       <div style={fieldGridStyle}>{children}</div>
     </section>
