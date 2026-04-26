@@ -216,6 +216,44 @@ describe("charminal-default persona triggers", () => {
     });
   });
 
+  describe("synthetic settings:write-failed → distressed trigger", () => {
+    const trigger = triggers.find((t) => t.id === "charminal-default:settings-write-failed");
+
+    it("is registered in customTriggers", () => {
+      expect(trigger).toBeDefined();
+    });
+
+    it("matches charminal-settings:write-failed synthetic events with reaction=distressed", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      const payload = { field: "primaryPersona", reason: "permission denied" };
+
+      const match = trigger.match({
+        kind: "synthetic",
+        source: { type: "harness", packId: "charminal-settings" },
+        name: "charminal-settings:write-failed",
+        payload,
+        timestamp: 1000,
+      });
+
+      expect(match).toEqual({
+        reaction: "distressed",
+        payload,
+      });
+    });
+
+    it("does not match unrelated synthetic events", () => {
+      if (!trigger) throw new Error("trigger not registered");
+      expect(
+        trigger.match({
+          kind: "synthetic",
+          source: { type: "harness", packId: "charminal-settings" },
+          name: "other:event",
+          timestamp: 1000,
+        }),
+      ).toBeNull();
+    });
+  });
+
   describe("distressed handler", () => {
     const handler = persona.reflex.responses.distressed?.handlers[0]?.handler;
 

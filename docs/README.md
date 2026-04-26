@@ -112,6 +112,7 @@ Source code 内で参照するときは：
 | `bundled-packs/scenes/quiet-room/` | scene | Phase 1 default scene（3 layer composition） |
 | `bundled-packs/effects/screen-shake/` | effect | DOM shake on error |
 | `bundled-packs/ui/camera-lighting-panel/` | ui | camera / lighting reference UI pack |
+| `bundled-packs/ui/charminal-settings/` | ui | 設定画面 reference |
 | `bundled-packs/ambient-ui/attention-aura/`（Phase 1c 予定） | ambient-ui | 視線追跡 overlay 可視化（multi-active） |
 | `bundled-packs/shared/` | shared assets | animations / voices / bodies |
 

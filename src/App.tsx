@@ -26,6 +26,12 @@ import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json"
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
 import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
 import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
+import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
+import charminalSettingsPack, {
+  PREVIOUS_ACTIVE_UI_KEY,
+  resolveCloseTarget,
+  SETTINGS_PACK_ID,
+} from "../bundled-packs/ui/charminal-settings/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
@@ -68,8 +74,15 @@ import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
-import { readCharminalConfigText } from "./runtime/user-pack-loader/charminal-io";
-import { parseConfig, type TerminalAgent } from "./runtime/user-pack-loader/config";
+import {
+  readCharminalConfigText,
+  writeCharminalConfigText,
+} from "./runtime/user-pack-loader/charminal-io";
+import {
+  parseConfig,
+  serializeConfig,
+  type TerminalAgent,
+} from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
 import type { ScenePackManifest } from "./sdk/scene-pack";
@@ -352,6 +365,21 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
+    });
+
+    // bundled charminal-settings UI pack。
+    uiPackRegistry.register({
+      id: charminalSettingsPack.id,
+      origin: "bundled",
+      manifest: charminalSettingsManifest as UiPackManifest,
+      pack: {
+        layout: charminalSettingsPack.layout,
+        mount: charminalSettingsPack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${charminalSettingsPack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
@@ -720,6 +748,19 @@ function App() {
     return () => sub.dispose();
   }, [personaRegistry]);
 
+  /**
+   * VRM file path を local state と localStorage に同時反映する。
+   * UI pack（`ctx.app.setVrm`）と sidebar の picker 経路で共有する。
+   */
+  const applyVrmPath = useCallback((path: string | null) => {
+    setVrmPath(path);
+    if (path === null) {
+      localStorage.removeItem(VRM_STORAGE_KEY);
+    } else {
+      localStorage.setItem(VRM_STORAGE_KEY, path);
+    }
+  }, []);
+
   // ── UI pack: subscribe + mount / dispose lifecycle ────────────────────
   // active UI pack が切り替わるたびに前の pack を teardown（dispose + container remove +
   // layout reset）してから新しい pack の layout を apply、container を body 直下に挿入、
@@ -749,6 +790,24 @@ function App() {
         sidebar,
         character,
       };
+    };
+
+    // 設定 write は read-modify-write なので並行 click で race する。
+    // Promise chain で逐次化する（同 useEffect 寿命内で 1 本）。
+    let pendingConfigWrite: Promise<void> = Promise.resolve();
+    const updateConfig = (
+      patch: Partial<{
+        primaryPersona: string | null;
+        activeScene: string | null;
+        terminalAgent: "claude" | "codex";
+      }>,
+    ): Promise<void> => {
+      const next = pendingConfigWrite.then(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
+      });
+      pendingConfigWrite = next.catch(() => undefined);
+      return next;
     };
 
     const buildUiContext = (
@@ -853,6 +912,45 @@ function App() {
             applyLayout(layout, targets);
           },
         },
+        app: {
+          setVrm: (path: string | null) => applyVrmPath(path),
+          listPersonas: () =>
+            personaRegistry.listEntries().map((e) => ({
+              id: e.id,
+              name: e.persona.name,
+              origin: e.origin,
+            })),
+          listScenes: () =>
+            scenePackRegistry.listEntries().map((e) => ({
+              id: e.id,
+              name: e.manifest.name,
+              origin: e.origin,
+            })),
+          setPrimaryPersona: async (id) => {
+            await updateConfig({ primaryPersona: id });
+            personaRegistry.setPrimaryPersona(id);
+          },
+          setActiveScene: async (id) => {
+            await updateConfig({ activeScene: id });
+            scenePackRegistry.setActiveScene(id);
+          },
+          setTerminalAgent: async (agent) => {
+            await updateConfig({ terminalAgent: agent });
+            // terminalAgent は既存セッションに反映しない仕様（仕様書通り）
+          },
+          getConfig: async () => {
+            const text = await readCharminalConfigText();
+            const cur = parseConfig(text);
+            return {
+              primaryPersona: cur.primaryPersona,
+              activeScene: cur.activeScene,
+              terminalAgent: cur.terminalAgent,
+            };
+          },
+        },
+        emitEvent: (name: string, payload?: unknown) => {
+          runtime.bus.emitSynthetic({ type: "harness", packId }, name, payload, 0);
+        },
       };
     };
 
@@ -935,6 +1033,10 @@ function App() {
     uiState,
     isUserLayerReady,
     logBridge,
+    applyVrmPath,
+    runtime,
+    personaRegistry,
+    scenePackRegistry,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -1107,12 +1209,33 @@ function App() {
       });
       if (selected) {
         const dest = await invoke<string>("import_vrm", { src: selected as string });
-        setVrmPath(dest);
-        localStorage.setItem(VRM_STORAGE_KEY, dest);
+        applyVrmPath(dest);
       }
     } catch {
       // Dialog not available outside Tauri
     }
+  }, [applyVrmPath]);
+
+  // ── Settings ─────────────────────────────────────────────
+
+  const handleOpenSettings = useCallback(() => {
+    const uiPackRegistry = getUiRegistry();
+    const uiState = getUiStateStore();
+    const current = uiPackRegistry.getActiveUi()?.id ?? null;
+
+    if (current === SETTINGS_PACK_ID) {
+      // 既に開いている → 閉じる（toggle）。✕ ボタンと同じ復元 logic を共有する。
+      const saved = uiState.get(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY);
+      const savedStr = typeof saved === "string" ? saved : null;
+      const availableIds = uiPackRegistry.listEntries().map((e) => e.id);
+      const target = resolveCloseTarget({ saved: savedStr, availableIds });
+      uiPackRegistry.setActiveUi(target);
+      return;
+    }
+
+    // 閉じている → 開く。現 activeUi を previous として保存。
+    uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, current);
+    uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
   }, []);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
@@ -1357,6 +1480,37 @@ function App() {
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
+  // ── Settings: close-requested listener ─────────────────────
+
+  useEffect(() => {
+    const onCloseRequested = (event: Event) => {
+      const detail = (event as CustomEvent<{ target: string | null }>).detail;
+      const uiPackRegistry = getUiRegistry();
+      const availableIds = uiPackRegistry.listEntries().map((e) => e.id);
+      const target = resolveCloseTarget({ saved: detail?.target ?? null, availableIds });
+      uiPackRegistry.setActiveUi(target);
+    };
+    window.addEventListener("charminal-settings:close-requested", onCloseRequested);
+    return () => {
+      window.removeEventListener("charminal-settings:close-requested", onCloseRequested);
+    };
+  }, []);
+
+  // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        window.location.reload();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+    };
+  }, []);
+
   // screen-shake は bundled-packs/effects/screen-shake を EffectPackRunner
   // 経由で動かす（runtime singleton で register 済み）。この useEffect は不要。
 
@@ -1367,6 +1521,7 @@ function App() {
         onPickFolder={handlePickFolder}
         vrmUrl={vrmUrl}
         onLoadVrm={handleLoadVrm}
+        onOpenSettings={handleOpenSettings}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         effectDispatcher={effectDispatcher}

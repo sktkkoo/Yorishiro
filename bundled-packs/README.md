@@ -83,6 +83,7 @@ bundled-packs/
 UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
 - **camera-lighting-panel** — default reference。camera tracking toggle / position X/Y/Z / FOV / directional light intensity / color / scene background・foreground media / blur を panel から操作。`ctx.three` / `ctx.claim.camera()` / `ctx.scene` / `ctx.state` 機構の実例。
+- `bundled-packs/ui/charminal-settings/` — Charminal の設定画面（avatar / persona / scene / agent / shortcut の入口）
 
 ## ambient-ui/（Phase 1c 同梱済み）
 
