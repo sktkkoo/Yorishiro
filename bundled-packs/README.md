@@ -26,7 +26,8 @@ bundled-packs/
 └── shared/                  — 共有 asset library
     ├── animations/          — VRMA
     ├── voices/              — voice category 別
-    └── bodies/              — VRM
+    ├── bodies/              — VRM
+    └── sounds/              — ambient sound library（Scene Pack の ambient 宣言で参照）
 ```
 
 > User pack は対称的に **flat layout**（`~/.charminal/packs/<id>/<kind>.js`）。混同しない（[memory: feedback_user_pack_layout](../.claude/projects/-Users-user-Charminal/memory/feedback_user_pack_layout.md)）。
@@ -104,6 +105,11 @@ Ambient UI pack（6 つ目の pack kind）。primary UI を占有せず、複数
 
 ### bodies/
 - VRM character files
+
+### sounds/
+- 共有 ambient sound library。Scene Pack の `ambient` 宣言から `'sound:<name>'` で参照
+- Layout: flat root (汎用) + 一段 namespace (pack-specific)。詳細は `shared/sounds/README.md`
+- 拡張子: `mp3` / `wav` / `ogg` / `m4a`
 
 ---
 

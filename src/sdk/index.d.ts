@@ -30,7 +30,7 @@ export type {
   AttentionTarget,
   AttentionTargetKind,
 } from "./attention";
-export type { Layer, LayerRole, SceneSpec } from "./scene";
+export type { AmbientSound, Layer, LayerRole, SceneSpec } from "./scene";
 export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
 export type {

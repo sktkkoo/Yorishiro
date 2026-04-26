@@ -34,6 +34,7 @@ import type { Layer, LayerRole, SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
+import { initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import {
   startDevAttentionProducer,
@@ -401,10 +402,10 @@ function App() {
         const resolved = await resolveSceneAssets(quietRoomPack.scene, {
           origin: "bundled",
           packId: quietRoomPack.id,
-          onMissing: (layerId, src) => {
+          onMissing: (assetKey, src) => {
             appLog.write({
               phase: "register",
-              note: `bundled scene "${quietRoomPack.id}": asset missing for layer "${layerId}" (src="${src}")`,
+              note: `bundled scene "${quietRoomPack.id}": asset missing for layer "${assetKey}" (src="${src}")`,
             });
           },
         });
@@ -417,6 +418,13 @@ function App() {
         appLog.write({
           phase: "register",
           note: `registered bundled scene '${quietRoomPack.id}'`,
+        });
+        // Ambient audio engine：subscribeActive で active scene の `ambient` 宣言を再生する。
+        // register 時の resolveSceneAssets で URL は解決済みなので、engine は origin を知らずに済む。
+        initAmbientAudio(scenePackRegistry);
+        appLog.write({
+          phase: "register",
+          note: "initialized AmbientAudioRuntime",
         });
       } catch (err) {
         appLog.write({

@@ -90,8 +90,8 @@ Source code 内で参照するときは：
 
 | Directory | 責務 | 詳細 |
 |---|---|---|
-| `src/core/` | Presence Harness の primitive 層（body / time / perception / expression / space / scene / interaction / log-bridge / two-layer / dev-log / ui-layout / **attention**） | [../src/core/README.md](../src/core/README.md) |
-| `src/runtime/` | Pack 管理 / event dispatch / module registry / singleton services / ui-pack-registry / **attention-runtime** / **ambient-ui-pack-registry** | [../src/runtime/README.md](../src/runtime/README.md) |
+| `src/core/` | Presence Harness の primitive 層（body / time / perception / expression / space / scene / interaction / log-bridge / two-layer / dev-log / ui-layout / attention） | [../src/core/README.md](../src/core/README.md) |
+| `src/runtime/` | Pack 管理 / event dispatch / module registry / singleton services / ui-pack-registry / attention-runtime / ambient-ui-pack-registry / ambient-audio | [../src/runtime/README.md](../src/runtime/README.md) |
 | `src/sdk/` | Pack 作者向け型定義と API contract（公開 surface） | [../src/sdk/README.md](../src/sdk/README.md) |
 | `src/bindings/` | Tauri command bridge（TS ↔ Rust） | — |
 

@@ -12,7 +12,8 @@
  * Internal design-record: specs/2026-04-18-scene-pack-registry.md §5
  */
 
-import type { Layer, SceneSpec } from "../../sdk/scene";
+import type { AmbientSound, Layer, SceneSpec } from "../../sdk/scene";
+import { resolveSharedSound, SHARED_SOUNDS } from "../ambient-audio/sound-resolver";
 
 /**
  * Vite の import.meta.glob で bundled-packs/scenes/ 配下の asset を build 時に取得。
@@ -22,7 +23,7 @@ import type { Layer, SceneSpec } from "../../sdk/scene";
  * src を外して register される（§5.5 graceful degradation）。
  */
 const BUNDLED_ASSETS = import.meta.glob(
-  "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif,svg}",
+  "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif,svg,mp3,wav,ogg,m4a}",
   { eager: true, query: "?url", import: "default" },
 ) as Record<string, string>;
 
@@ -72,7 +73,11 @@ export interface ResolveOptions {
   readonly origin: "bundled" | "user";
   readonly packId: string;
   readonly packDir?: string;
-  readonly onMissing?: (layerId: string, src: string) => void;
+  /**
+   * Resolution failure callback。`assetKey` は layer の場合は layer.id、
+   * ambient の場合は文字列 `"ambient"` (集約識別子)。
+   */
+  readonly onMissing?: (assetKey: string, src: string) => void;
 }
 
 /**
@@ -134,7 +139,8 @@ const DEFAULT_RESOLVERS: LayerResolvers = {
 
 /**
  * SceneSpec の全 layer を walk し、src を絶対 URL に解決する。
- * 解決失敗時は当該 layer の src を undefined に置き換える（graceful degradation）。
+ * ambient が宣言されている場合は ambient[] も walk して src を解決する。
+ * 解決失敗時は当該 layer の src を undefined に、ambient entry を配列から除去（graceful degradation）。
  *
  * onMissing: 解決失敗時に呼ばれる callback（dev-log 等に warning を出す用途）。
  */
@@ -145,5 +151,61 @@ export async function resolveSceneAssets(
   const resolvedLayers = await Promise.all(
     scene.layers.map((layer) => resolveLayerAssetWith(layer, options, DEFAULT_RESOLVERS)),
   );
-  return { ...scene, layers: resolvedLayers };
+
+  if (scene.ambient === undefined) {
+    return { ...scene, layers: resolvedLayers };
+  }
+
+  const resolvedAmbient = (
+    await Promise.all(scene.ambient.map((a) => resolveAmbientSound(a, options)))
+  ).filter((a): a is NonNullable<typeof a> => a !== null);
+
+  return { ...scene, layers: resolvedLayers, ambient: resolvedAmbient };
+}
+
+const SOUND_SCHEME_PREFIX = "sound:";
+
+/**
+ * 1 つの ambient sound の src を絶対 URL に解決する。
+ * - `'sound:<stem>'` → SHARED_SOUNDS を引く
+ * - 絶対 URL → そのまま
+ * - `'./...'` → bundled / user の既存 resolver
+ * 解決失敗時は null を返し、呼び出し側で entry を落とす (graceful degradation)。
+ */
+async function resolveAmbientSound(
+  ambient: AmbientSound,
+  options: ResolveOptions,
+): Promise<AmbientSound | null> {
+  if (ambient.src.startsWith(SOUND_SCHEME_PREFIX)) {
+    const stem = ambient.src.slice(SOUND_SCHEME_PREFIX.length);
+    const resolved = resolveSharedSound(stem, SHARED_SOUNDS);
+    if (resolved === null) {
+      options.onMissing?.("ambient", ambient.src);
+      return null;
+    }
+    return { ...ambient, src: resolved };
+  }
+
+  if (isAbsoluteUrl(ambient.src)) return ambient;
+
+  // NOTE: bundled / user の pack-relative branch は unit test の coverage 外。
+  // resolveBundledAsset / resolveUserAsset の挙動は asset-resolver の layer 系
+  // test (resolveLayerAssetWith) で injection 経由で検証済み。end-to-end 検証は
+  // Task 15 の dev verification (実 scene + 実 sound file) に委ねる。
+  try {
+    let resolved: string | null = null;
+    if (options.origin === "bundled") {
+      resolved = resolveBundledAsset(options.packId, ambient.src);
+    } else if (options.packDir !== undefined) {
+      resolved = await resolveUserAsset(options.packDir, ambient.src);
+    }
+    if (resolved === null) {
+      options.onMissing?.("ambient", ambient.src);
+      return null;
+    }
+    return { ...ambient, src: resolved };
+  } catch {
+    options.onMissing?.("ambient", ambient.src);
+    return null;
+  }
 }

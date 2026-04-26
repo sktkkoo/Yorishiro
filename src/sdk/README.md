@@ -606,6 +606,31 @@ export default {
 } satisfies ScenePackDefinition;
 ```
 
+### Ambient sound
+
+Scene が場の atmospheric layer として ambient sound を declare できる。常時 loop 再生され、scene 切替で 500ms crossfade。
+
+```typescript
+export default {
+  id: 'rainy-window',
+  type: 'scene',
+  scene: {
+    id: 'rainy-window',
+    layers: [/* ... */],
+    ambient: [
+      { src: 'sound:rain', volume: 0.5 },                // shared library
+      { src: 'sound:lofi-vibes/cafe-loop', volume: 0.3 }, // namespace 付き shared
+      { src: './assets/window-creak.mp3', volume: 0.2 },  // pack-local
+    ],
+  },
+} satisfies ScenePackDefinition;
+```
+
+- `src`: `'sound:<name>'` (shared) / `'sound:<namespace>/<name>'` (一段 namespace) / `'./...'` (pack-local) / 絶対 URL
+- `volume`: 0..1, default 1.0
+- 全 sound は loop 再生。one-shot は Effect Pack の `ctx.audio.play` で別系統
+- shared sound の置き場と命名は `bundled-packs/shared/sounds/README.md` 参照
+
 ### Layer の field
 
 | field | 役割 | 備考 |
