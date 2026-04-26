@@ -199,7 +199,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             <div style={{ display: "flex", gap: "8px" }}>
               <div
                 style={{
-                  flex: 1,
+                  flex: "0 1 auto",
+                  maxWidth: "200px",
                   background: "rgba(255,255,255,0.04)",
                   padding: "6px 10px",
                   borderRadius: "4px",
