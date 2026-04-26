@@ -13,7 +13,12 @@
  * 落ちる場所を明示的にするための safety net。
  */
 
-import type { EffectDefinition, PersonaDefinition, UiPackDefinition } from "./index";
+import type {
+  AmbientUiPackDefinition,
+  EffectDefinition,
+  PersonaDefinition,
+  UiPackDefinition,
+} from "./index";
 import type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 
 /** Pack の shape 違反で throw される error。loader 側で catch して dev-log に流す想定。 */
@@ -71,6 +76,24 @@ export function validateUiPackDefinition(pack: unknown): UiPackDefinition {
   requireField(pack, "layout", isObject, "an object", ctx);
   requireField(pack, "mount", (v) => typeof v === "function", "a function", ctx);
   return pack as unknown as UiPackDefinition;
+}
+
+/**
+ * AmbientUiPackDefinition の shape を検証する。成功時は同じ値を返し、失敗時は
+ * PackValidationError を throw する。
+ *
+ * 必須 field: `type === "ambient-ui"`、`id: string`、`mount: function`。
+ * 余分な field は tolerant に無視する（user の将来拡張を壊さない）。
+ */
+export function validateAmbientUiPackDefinition(pack: unknown): AmbientUiPackDefinition {
+  if (!isObject(pack)) {
+    throw new PackValidationError(`AmbientUiPackDefinition must be an object (got ${typeof pack})`);
+  }
+  const ctx = "AmbientUiPackDefinition";
+  requireField(pack, "id", (v) => typeof v === "string", "a string", ctx);
+  requireField(pack, "type", (v) => v === "ambient-ui", '"ambient-ui"', ctx);
+  requireField(pack, "mount", (v) => typeof v === "function", "a function", ctx);
+  return pack as unknown as AmbientUiPackDefinition;
 }
 
 /**

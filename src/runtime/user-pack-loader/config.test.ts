@@ -13,6 +13,7 @@ import {
   EMPTY_CONFIG,
   parseConfig,
   serializeConfig,
+  withActiveAmbientUiSet,
   withActiveSceneSet,
   withActiveUiSet,
   withDisabledPackAdded,
@@ -37,6 +38,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -49,6 +51,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -61,6 +64,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -73,6 +77,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -85,6 +90,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -97,6 +103,7 @@ describe("parseConfig", () => {
       mcpPort: 12345,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -114,6 +121,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     });
   });
@@ -131,7 +139,7 @@ describe("parseConfig", () => {
 
 describe("serializeConfig", () => {
   it("omits empty arrays and null fields for minimal JSON", () => {
-    const cfg: CharminalConfig = EMPTY_CONFIG;
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG, activeAmbientUi: [] };
     const text = serializeConfig(cfg);
     expect(JSON.parse(text)).toEqual({});
   });
@@ -143,6 +151,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: [],
       terminalAgent: "claude",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
@@ -155,13 +164,14 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: [],
       terminalAgent: "claude",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
 
   it("omits primaryPersona when null", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG, primaryPersona: null };
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG, primaryPersona: null, activeAmbientUi: [] };
     expect(serializeConfig(cfg)).toBe("{}\n");
   });
 
@@ -172,6 +182,7 @@ describe("serializeConfig", () => {
       mcpPort: 18743,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: [],
       terminalAgent: "claude",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
@@ -184,14 +195,18 @@ describe("serializeConfig", () => {
       mcpPort: 18743,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "codex",
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
 
-  it("writes terminalAgent only when codex is selected", () => {
+  it("writes terminalAgent when codex is selected", () => {
     const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
-    expect(JSON.parse(serializeConfig(cfg))).toEqual({ terminalAgent: "codex" });
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({
+      activeAmbientUi: ["attention-aura"],
+      terminalAgent: "codex",
+    });
   });
 });
 
@@ -214,6 +229,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     };
     const next = withDisabledPackRemoved(base, "a");
@@ -227,6 +243,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
+      activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
     };
     const next = withDisabledPackRemoved(base, "phantom");
@@ -256,7 +273,7 @@ describe("activeScene", () => {
   });
 
   it("serializeConfig omits activeScene when null", () => {
-    const cfg = { ...EMPTY_CONFIG, activeScene: null };
+    const cfg = { ...EMPTY_CONFIG, activeScene: null, activeAmbientUi: [] };
     expect(serializeConfig(cfg)).toBe("{}\n");
   });
 
@@ -318,5 +335,34 @@ describe("withPrimaryPersonaSet", () => {
     const cfg = { ...EMPTY_CONFIG, primaryPersona: "existing" };
     const next = withPrimaryPersonaSet(cfg, null);
     expect(next.primaryPersona).toBeNull();
+  });
+});
+
+describe("activeAmbientUi", () => {
+  it("defaults to ['attention-aura']", () => {
+    expect(EMPTY_CONFIG.activeAmbientUi).toEqual(["attention-aura"]);
+  });
+
+  it("parses array of strings from JSON", () => {
+    const cfg = parseConfig(JSON.stringify({ activeAmbientUi: ["attention-aura", "my-overlay"] }));
+    expect(cfg.activeAmbientUi).toEqual(["attention-aura", "my-overlay"]);
+  });
+
+  it("ignores non-string entries during parse", () => {
+    const cfg = parseConfig(
+      JSON.stringify({ activeAmbientUi: ["attention-aura", 42, null, "ok"] }),
+    );
+    expect(cfg.activeAmbientUi).toEqual(["attention-aura", "ok"]);
+  });
+
+  it("serializes back to array", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: ["a", "b"] };
+    const out = JSON.parse(serializeConfig(cfg));
+    expect(out.activeAmbientUi).toEqual(["a", "b"]);
+  });
+
+  it("withActiveAmbientUiSet replaces the array", () => {
+    const next = withActiveAmbientUiSet(EMPTY_CONFIG, ["x", "y"]);
+    expect(next.activeAmbientUi).toEqual(["x", "y"]);
   });
 });

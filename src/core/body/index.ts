@@ -17,7 +17,9 @@
 import type {
   AnimationHandle,
   AnimationRef,
+  AttentionSnapshot,
   CharacterAPI,
+  Disposable,
   ExpressionHandle,
   ExpressionTarget,
   GazeHandle,
@@ -26,6 +28,7 @@ import type {
   PlayOptions,
 } from "@charminal/sdk";
 import type { VRM } from "@pixiv/three-vrm";
+import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
 import { AnimationPlayer } from "./animation-player";
@@ -87,9 +90,18 @@ export class Body {
   /** Track all active gaze handles for interrupt(). */
   private readonly activeGazeHandles = new Set<BodyGazeHandle>();
   private cursorAttentionLogTimer = 0;
-  private pointerClientX: number | null = null;
-  private pointerClientY: number | null = null;
-  private cursorAttentionTargetSource: "mouse" | "input" = "mouse";
+
+  /** attention.subscribe の解除トークン。initAttention / disposeAttention で管理。 */
+  private attentionSub: Disposable | null = null;
+
+  /** 直前の attention snapshot の source。source 変化検知に使用。 */
+  private lastAttentionSource: string | null = null;
+
+  /** VRM head の screen 座標（three-runtime が毎 frame setHeadClientReference で更新）。 */
+  private headClientX = 0;
+  private headClientY = 0;
+  private viewportWidth = 0;
+  private viewportHeight = 0;
 
   constructor(vrm: VRM, devLog?: SubsystemLog, claimState?: ClaimState) {
     this.vrm = vrm;
@@ -99,20 +111,24 @@ export class Body {
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
-    this.cursorAttention = new CursorAttentionSystem(undefined, (event) => {
-      this.devLog?.write({
-        phase: "cursor-attention",
-        note:
-          event.kind === "start"
-            ? `cursor attention start: ${event.mode}`
-            : `cursor attention end: ${event.mode}`,
-        data: {
-          mode: event.mode,
-          durationS: Number(event.durationS.toFixed(2)),
-          nextDelayS: event.nextDelayS === null ? null : Number(event.nextDelayS.toFixed(2)),
-        },
-      });
-    });
+    this.cursorAttention = new CursorAttentionSystem(
+      /* random */ undefined,
+      /* onEvent */ (event) => {
+        this.devLog?.write({
+          phase: "gaze",
+          note:
+            event.kind === "start"
+              ? `gaze episode start: ${event.mode}`
+              : `gaze episode end: ${event.mode}`,
+          data: {
+            mode: event.mode,
+            durationS: Number(event.durationS.toFixed(2)),
+            nextDelayS: event.nextDelayS === null ? null : Number(event.nextDelayS.toFixed(2)),
+          },
+        });
+      },
+      /* ambientGate */ () => getAttentionRuntime().get().target !== null,
+    );
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
@@ -254,35 +270,77 @@ export class Body {
 
   /** Dispose all resources. */
   dispose(): void {
+    this.disposeAttention();
     this.animationPlayer.stopAll();
     this.activeExprHandles.clear();
     this.activeGazeHandles.clear();
   }
 
-  setPointerClientPosition(clientX: number, clientY: number): void {
-    this.pointerClientX = clientX;
-    this.pointerClientY = clientY;
-  }
-
-  setCursorAttentionTargetSource(source: "mouse" | "input"): void {
-    this.cursorAttentionTargetSource = source;
-  }
-
-  setCursorAttentionHeadReference(
+  /**
+   * VRM head の screen 座標と viewport サイズを毎 frame 更新する。
+   * three-runtime の render loop から呼ばれる。attention subscriber が
+   * setPointerPositionFromHead を呼ぶ際の基準点として使用する。
+   */
+  setHeadClientReference(
     headClientX: number,
     headClientY: number,
     width: number,
     height: number,
   ): void {
-    if (this.pointerClientX === null || this.pointerClientY === null) return;
-    this.cursorAttention.setPointerPositionFromHead(
-      this.pointerClientX,
-      this.pointerClientY,
-      headClientX,
-      headClientY,
-      width,
-      height,
-    );
+    this.headClientX = headClientX;
+    this.headClientY = headClientY;
+    this.viewportWidth = width;
+    this.viewportHeight = height;
+  }
+
+  /**
+   * attention runtime の subscribe を開始する。
+   * snapshot.target が存在する場合、その rect 中心を CursorAttentionSystem に
+   * 供給することで Body の視線が「現在の attention target」を追う。
+   *
+   * source が null → 非 null、または別の source に変化した時点で
+   * triggerCursorAttention を呼び CursorAttentionSystem の即時 episode を起動する。
+   * 同一 source の rect 更新（pointermove 等）では再 trigger しない（二重起動回避）。
+   *
+   * idempotent（2 回呼んでも 2 本張らない）。
+   */
+  initAttention(): void {
+    if (this.attentionSub !== null) return;
+    const attention = getAttentionRuntime();
+    this.attentionSub = attention.subscribe((snapshot: AttentionSnapshot) => {
+      if (snapshot.target === null) {
+        this.lastAttentionSource = null;
+        return;
+      }
+      const cx = snapshot.target.rect.x + snapshot.target.rect.width / 2;
+      const cy = snapshot.target.rect.y + snapshot.target.rect.height / 2;
+
+      // source 変化を検知して即時 episode を起動（rect のみの更新では trigger しない）
+      const newSource = snapshot.target.source;
+      if (newSource !== this.lastAttentionSource) {
+        // duration は v1 同様 random 1〜3 秒（injectable random は CursorAttentionSystem が保持）
+        this.cursorAttention.triggerCursorAttention();
+      }
+      this.lastAttentionSource = newSource;
+
+      this.cursorAttention.setPointerPositionFromHead(
+        cx,
+        cy,
+        this.headClientX,
+        this.headClientY,
+        this.viewportWidth,
+        this.viewportHeight,
+      );
+    });
+  }
+
+  /** attention subscription を解除する。dispose() 内からも呼ばれる。 */
+  disposeAttention(): void {
+    if (this.attentionSub !== null) {
+      this.attentionSub.dispose();
+      this.attentionSub = null;
+    }
+    this.lastAttentionSource = null;
   }
 
   // ─── CharacterAPI implementations ─────────────────────
@@ -436,11 +494,10 @@ export class Body {
 
     const snapshot = this.cursorAttention.getDebugSnapshot();
     this.devLog?.write({
-      phase: "cursor-attention",
-      note: "cursor attention sample",
+      phase: "gaze",
+      note: "gaze sample",
       data: {
         mode: output.mode,
-        targetSource: this.cursorAttentionTargetSource,
         targetX: Number(snapshot.targetX.toFixed(2)),
         targetY: Number(snapshot.targetY.toFixed(2)),
         lagX: Number(snapshot.lagX.toFixed(2)),

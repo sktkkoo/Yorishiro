@@ -1,7 +1,7 @@
 # bundled-packs/ — 同梱 pack と shared assets
 
 > このファイルは「**同梱 pack に何があるか・どう扱うか**（layout / immutability / fork stance）」を確認したい時に読む。対象：dev / AI / pack 作者。
-> Pack を書く方法は [../src/sdk/README.md](../src/sdk/README.md)。Pack 種別（persona / harness / effect / scene / ui の 5 種）の整理は同 doc 冒頭。
+> Pack を書く方法は [../src/sdk/README.md](../src/sdk/README.md)。Pack 種別（persona / harness / effect / scene / ui / ambient-ui の 6 種）の整理は同 doc 冒頭。
 
 Charminal に同梱される **standard pack** と **shared assets**。pack 作者向けの reference implementation でもある。
 
@@ -21,6 +21,8 @@ bundled-packs/
 │   └── screen-shake/        — DOM shake on error
 ├── ui/
 │   └── camera-lighting-panel/ — default reference UI pack
+├── ambient-ui/              — overlay 系 pack（Phase 1c で同梱済み）
+│   └── attention-aura/      — 視線追跡を overlay で可視化（multi-active 対応 ambient-ui pack）
 └── shared/                  — 共有 asset library
     ├── animations/          — VRMA
     ├── voices/              — voice category 別
@@ -81,6 +83,12 @@ bundled-packs/
 UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
 - **camera-lighting-panel** — default reference。camera tracking toggle / position X/Y/Z / FOV / directional light intensity / color / scene background・foreground media / blur を panel から操作。`ctx.three` / `ctx.claim.camera()` / `ctx.scene` / `ctx.state` 機構の実例。
+
+## ambient-ui/（Phase 1c 同梱済み）
+
+Ambient UI pack（6 つ目の pack kind）。primary UI を占有せず、複数 pack が重なる **multi-active** overlay 層。`ambient-ui-pack-registry` が enable / disable / getActiveSet を管理する。SDK と registry は Phase 1a で実装済み（`src/runtime/ambient-ui-pack-registry/`）。
+
+- **attention-aura** v0.1.0（同梱済み）— `AttentionSnapshot` を subscribe し、注目対象の rect 上に light band を canvas overlay で描画する。Phase 1d で App.tsx 側のルーティングが配線され完全に動作する（pack 側実装は本 Phase で完了）。
 
 ---
 

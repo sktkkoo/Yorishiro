@@ -18,6 +18,18 @@ export * from "./context";
 export * from "./persona";
 export * from "./harness";
 export * from "./effect";
+export type {
+  AmbientUiContext,
+  AmbientUiPackDefinition,
+  AmbientUiPackManifest,
+} from "./ambient-ui-pack";
+export type {
+  AttentionAPI,
+  AttentionRect,
+  AttentionSnapshot,
+  AttentionTarget,
+  AttentionTargetKind,
+} from "./attention";
 export type { AmbientSound, Layer, LayerRole, SceneSpec } from "./scene";
 export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";

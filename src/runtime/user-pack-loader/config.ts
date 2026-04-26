@@ -11,6 +11,7 @@
  * - `mcpPort: number`（optional）: MCP server の port override
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
+ * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
  * - `terminalAgent: "claude" | "codex"`（optional）: Terminal で自動起動する coding agent
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
@@ -29,6 +30,8 @@ export interface CharminalConfig {
   readonly activeScene: string | null;
   /** User が explicit に picks した UI pack の id。null なら UI pack なし。 */
   readonly activeUi: string | null;
+  /** 同時有効化される ambient-ui pack の id 一覧。複数 active 可。 */
+  readonly activeAmbientUi: ReadonlyArray<string>;
   /** Terminal で自動起動する coding agent。未指定なら Claude Code。 */
   readonly terminalAgent: TerminalAgent;
 }
@@ -41,6 +44,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   mcpPort: null,
   activeScene: null,
   activeUi: null,
+  activeAmbientUi: ["attention-aura"],
   terminalAgent: "claude",
 };
 
@@ -83,6 +87,8 @@ export function parseConfig(text: string): CharminalConfig {
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
     activeUi: toNullableString(obj.activeUi),
+    activeAmbientUi:
+      "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
     terminalAgent: toTerminalAgent(obj.terminalAgent),
   };
 }
@@ -98,6 +104,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
+  if (cfg.activeAmbientUi.length > 0) out.activeAmbientUi = [...cfg.activeAmbientUi];
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
@@ -136,4 +143,14 @@ export function withActiveUiSet(cfg: CharminalConfig, id: string | null): Charmi
  */
 export function withPrimaryPersonaSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
   return { ...cfg, primaryPersona: id };
+}
+
+/**
+ * activeAmbientUi の配列を置き換えた新しい config を返す。
+ */
+export function withActiveAmbientUiSet(
+  cfg: CharminalConfig,
+  ids: ReadonlyArray<string>,
+): CharminalConfig {
+  return { ...cfg, activeAmbientUi: [...ids] };
 }

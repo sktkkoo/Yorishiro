@@ -13,6 +13,10 @@
 export const KEYS = {
   /** App.tsx runtime singleton (Phase 0b): time / bus / registry / perception / logBridge. */
   APP_RUNTIME: "app:runtime",
+  /** AttentionRuntime singleton: source ごとの AttentionTarget を集約し、resolver で 1 本に絞った snapshot を publish する。 */
+  ATTENTION_RUNTIME: "attention:runtime",
+  /** AmbientUiPackRegistry singleton: ambient-ui pack の登録と active 集合（multi-active）を管理する。 */
+  AMBIENT_UI_PACK_REGISTRY: "ambient-ui-pack:registry",
   /** ModuleRegistry singleton (Phase 1). */
   MODULE_REGISTRY: "registry:module",
   /** PersonaRegistry singleton (persona single-active plan): 登録済み persona と active state。 */

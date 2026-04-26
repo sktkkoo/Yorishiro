@@ -1,4 +1,5 @@
 import type {
+  AmbientUiContext,
   Disposable,
   Trigger,
   UiClaimAPI,
@@ -34,6 +35,18 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { initAmbientAudio } from "./runtime/ambient-audio";
+import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import {
+  startDevAttentionProducer,
+  startFocusedDomAttentionProducer,
+  startInputCursorAttentionProducer,
+  startMcpAttentionProducer,
+  startMouseAttentionProducer,
+  startTerminalAttentionProducer,
+  startToolAttentionProducer,
+} from "./runtime/attention-producers";
+import { getAttentionRuntime } from "./runtime/attention-runtime";
+import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import { getModuleRegistry } from "./runtime/module-registry";
@@ -355,6 +368,16 @@ function App() {
       logger,
     });
 
+    // ── Bundled ambient-UI pack 登録（attention-aura）────────────────────────
+    // bootstrap より前に register しておくことで、Step 2 の config 読み込み後に
+    // registry.enable() を呼んでも「unknown id」警告が出ない。
+    const ambientUiRegistry = getAmbientUiPackRegistry();
+    registerBundledAttentionAura({ registry: ambientUiRegistry });
+    appLog.write({
+      phase: "register",
+      note: "registered bundled ambient-UI pack 'attention-aura'",
+    });
+
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
     // 旧来は 3 つの fire-and-forget IIFE で並行実行していたが、互いに strict な
     // 順序依存（bundled scene → config 反映 → user pack load）があり race で
@@ -423,6 +446,9 @@ function App() {
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
+        for (const id of config.activeAmbientUi) {
+          getAmbientUiPackRegistry().enable(id);
+        }
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -442,6 +468,7 @@ function App() {
           personaRegistry,
           scenePackRegistry,
           uiPackRegistry,
+          ambientUiPackRegistry: getAmbientUiPackRegistry(),
           effectDispatcher,
           emitEvent: (name, payload) => {
             bus.emitSynthetic({ type: "harness", packId: "user-init" }, name, payload, 0);
@@ -534,6 +561,7 @@ function App() {
             personaRegistry,
             scenePackRegistry,
             uiPackRegistry,
+            ambientUiPackRegistry: getAmbientUiPackRegistry(),
             packRegistry,
             userPackLog,
           });
@@ -921,6 +949,7 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
+        body.initAttention();
         dispatcher.setContextFactory(
           createRealPersonaContextFactory({ body, logBridge, effectDispatcher }),
         );
@@ -1100,6 +1129,231 @@ function App() {
       })
       .catch(() => setVrmUrl(null));
   }, [vrmPath]);
+
+  // ambient-ui packs を document.body 直下の #ambient-layer に mount/unmount する。
+  // subscribeActiveSet で active set の変化を購読し、差分調整（reconcile）する。
+  //
+  // ── なぜ document.body 直下か ──
+  // xterm の xtermContainer も document.body 直下（zIndex: 1）に命令的に append される。
+  // React の #root は xterm より先に DOM に存在するため、#root 内の fixed 要素は
+  // DOM 順で先行するノードの stacking context に収まり、後から append された
+  // xtermContainer（WebGL canvas あり）の下に隠れる。
+  // ambientLayer を xtermContainer より後に body に append することで、
+  // z-index 競合なしに xterm WebGL canvas の上に重ねられる（v1 と同じ戦略）。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons + DOM are stable
+  useEffect(() => {
+    const ambientUiRegistry = getAmbientUiPackRegistry();
+    const attention = getAttentionRuntime();
+
+    // #ambient-layer を document.body 直下に生成する（v1 の zIndex: 20 を踏襲）
+    const ambientLayer = document.createElement("div");
+    ambientLayer.id = "ambient-layer";
+    ambientLayer.setAttribute("aria-hidden", "true");
+    ambientLayer.style.position = "fixed";
+    ambientLayer.style.inset = "0";
+    ambientLayer.style.pointerEvents = "none";
+    ambientLayer.style.zIndex = "20";
+    document.body.appendChild(ambientLayer);
+
+    type Mounted = { container: HTMLDivElement; disposable: Disposable };
+    const mounted = new Map<string, Mounted>();
+
+    const reconcile = (activeIds: ReadonlyArray<string>): void => {
+      const activeSet = new Set(activeIds);
+
+      for (const [id, entry] of mounted) {
+        if (!activeSet.has(id)) {
+          entry.disposable.dispose();
+          entry.container.remove();
+          mounted.delete(id);
+        }
+      }
+
+      for (const id of activeIds) {
+        if (mounted.has(id)) continue;
+        const packEntry = ambientUiRegistry.listEntries().find((e) => e.id === id);
+        if (packEntry === undefined) continue;
+
+        const container = document.createElement("div");
+        container.className = "ambient-ui-container";
+        container.dataset.packId = id;
+        ambientLayer.appendChild(container);
+
+        const ctx: AmbientUiContext = { attention };
+        const disposable = packEntry.pack.mount(ctx, container);
+        mounted.set(id, { container, disposable });
+      }
+    };
+
+    const sub = ambientUiRegistry.subscribeActiveSet(reconcile);
+    reconcile(ambientUiRegistry.getActiveSet());
+
+    return () => {
+      sub.dispose();
+      for (const [, entry] of mounted) {
+        entry.disposable.dispose();
+        entry.container.remove();
+      }
+      mounted.clear();
+      ambientLayer.remove();
+    };
+  }, []);
+
+  // attention producer を起動し、cleanup で dispose する。
+  // terminal は terminal-runtime singleton を渡す。mouse は document-level listener。
+  // dev producer は import.meta.env.DEV で gate され、production では no-op。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
+  useEffect(() => {
+    const attention = getAttentionRuntime();
+    const terminal = getTerminalRuntime();
+
+    const disposables: Disposable[] = [];
+    disposables.push(startTerminalAttentionProducer({ attention, terminal }));
+    disposables.push(startMouseAttentionProducer({ attention }));
+    disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
+
+    // focused-dom producer: document.activeElement を rAF loop で監視する。
+    disposables.push(startFocusedDomAttentionProducer({ attention }));
+
+    // EventBus hook-signal → attention producer adapter。
+    // Trigger は hook-signal event を全通過させ（match は常に non-null）、
+    // ReactionHandler 側で signal.name を取り出して各 producer に渡す。
+    // source は builtin 識別子で固定（pack ではないため packId は "__tool-attention__"）。
+    // input-cursor producer と tool producer の両方で同じ adapter を再利用する。
+    const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
+      const trigger = {
+        id: "builtin:hook-signal-to-tool-attention",
+        match: (event: import("@charminal/sdk").DispatchEvent) => {
+          if (event.kind === "hook-signal") {
+            return { reaction: "__noop__" as import("@charminal/sdk").ReactionType };
+          }
+          return null;
+        },
+      };
+      const reg = runtime.bus.register(
+        trigger,
+        (reactionEvent) => {
+          const dispatched = reactionEvent.triggeredBy;
+          if (dispatched.kind === "hook-signal") {
+            handler({ name: dispatched.signal.name });
+          }
+        },
+        { type: "persona", packId: "__tool-attention__" },
+      );
+      return { dispose: () => reg.dispose() };
+    };
+
+    // EventBus tool-activity → tool producer adapter。
+    // v1 では App.tsx の trigger handler が直接 setToolActivityAttention を呼んでいたが、
+    // v2 では producer 層に分離するため EventBus adapter で橋渡しする。
+    const subscribeToolActivity = (
+      handler: (event: { activity: string; timestamp: number }) => void,
+    ): Disposable => {
+      const trigger = {
+        id: "builtin:tool-activity-to-attention",
+        match: (event: import("@charminal/sdk").DispatchEvent) => {
+          if (event.kind === "tool-activity") {
+            return { reaction: "__noop__" as import("@charminal/sdk").ReactionType };
+          }
+          return null;
+        },
+      };
+      const reg = runtime.bus.register(
+        trigger,
+        (reactionEvent) => {
+          const dispatched = reactionEvent.triggeredBy;
+          if (dispatched.kind === "tool-activity") {
+            handler({ activity: dispatched.activity, timestamp: dispatched.timestamp });
+          }
+        },
+        { type: "persona", packId: "__tool-attention__" },
+      );
+      return { dispose: () => reg.dispose() };
+    };
+
+    const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
+
+    // input-cursor producer: typing は rAF loop、sent は xterm.onData の \r 検出駆動。
+    disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
+
+    disposables.push(
+      startToolAttentionProducer({
+        attention,
+        subscribeHookSignal,
+        subscribeToolActivity,
+        getCurrentLineRect,
+      }),
+    );
+
+    return () => {
+      for (const d of disposables) d.dispose();
+    };
+  }, []);
+
+  // mcp attention producer を起動する。
+  // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。
+  // dynamic import は非同期のため、他 producer の起動を妨げないよう独立した useEffect に分離。
+  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
+  useEffect(() => {
+    const attention = getAttentionRuntime();
+    let disposed = false;
+    let producerDisposable: Disposable | null = null;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+
+      const listenFactory = <P,>(eventName: string, handler: (payload: P) => void): Disposable => {
+        let unlisten: (() => void) | null = null;
+        let cancelled = false;
+        void listen<P>(eventName, (event) => handler(event.payload)).then((fn) => {
+          if (cancelled) {
+            fn();
+          } else {
+            unlisten = fn;
+          }
+        });
+        return {
+          dispose: () => {
+            cancelled = true;
+            if (unlisten !== null) {
+              unlisten();
+              unlisten = null;
+            }
+          },
+        };
+      };
+
+      // v1 `setMcpRequestAttention` と同じ rect 選択ロジック。
+      // get-ui-state / set-ui-state → activeUi（非 ambient UI コンテナ）、
+      // それ以外 → sidebar。両方なければ null を返す。
+      const getTargetRect = (tool: string) => {
+        const activeUi = document.querySelector<HTMLElement>(
+          ".ui-pack-container:not(.ui-pack-container--ambient)",
+        );
+        const sidebar = document.querySelector<HTMLElement>(".sidebar");
+        const targetElement =
+          tool === "get-ui-state" || tool === "set-ui-state" ? (activeUi ?? sidebar) : sidebar;
+        const r = targetElement?.getBoundingClientRect();
+        if (r === undefined || r.width <= 0 || r.height <= 0) return null;
+        return { x: r.left, y: r.top, width: r.width, height: r.height };
+      };
+
+      if (disposed) return;
+      producerDisposable = startMcpAttentionProducer({
+        attention,
+        listen: listenFactory,
+        getTargetRect,
+      });
+    })();
+
+    return () => {
+      disposed = true;
+      if (producerDisposable !== null) {
+        producerDisposable.dispose();
+        producerDisposable = null;
+      }
+    };
+  }, []);
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
