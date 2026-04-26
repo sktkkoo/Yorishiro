@@ -69,6 +69,10 @@ interface SelectOption {
 /**
  * `appearance: none` + カスタム chevron SVG を持つ select component。
  * tokens 経由でスタイルを一元管理する。
+ *
+ * - options が 0 件: 非インタラクティブな「（pack なし）」ラベルを表示。
+ * - options が 1 件: dropdown にする意味がないので static label として表示。
+ * - options が 2 件以上: 通常の native select を表示。
  */
 function Select({
   value,
@@ -82,8 +86,66 @@ function Select({
   /** value === "" の時に表示する disabled option（読み込み中など）。 */
   loadingPlaceholder?: string;
 }): React.JSX.Element {
+  // 0 options: pack が登録されていない
+  if (options.length === 0) {
+    return (
+      <div
+        style={{
+          background: COLORS.bgInput,
+          border: `1px solid ${COLORS.borderSubtle}`,
+          borderRadius: RADIUS.sm,
+          padding: `${SPACING.sm} ${SPACING.md}`,
+          color: COLORS.fgDimmer,
+          font: "inherit",
+          fontFamily: FONT.family,
+          fontSize: FONT.sizeS,
+          minWidth: "220px",
+          maxWidth: "360px",
+        }}
+      >
+        （pack なし）
+      </div>
+    );
+  }
+
+  // 1 option: dropdown にする意味がないので static label として表示
+  if (options.length === 1) {
+    const sole = options[0];
+    return (
+      <div
+        style={{
+          background: COLORS.bgInput,
+          border: `1px solid ${COLORS.borderSubtle}`,
+          borderRadius: RADIUS.sm,
+          padding: `${SPACING.sm} ${SPACING.md}`,
+          color: COLORS.fgDim,
+          font: "inherit",
+          fontFamily: FONT.family,
+          fontSize: FONT.sizeS,
+          minWidth: "220px",
+          maxWidth: "360px",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={sole.label}
+      >
+        {sole.label}
+      </div>
+    );
+  }
+
+  // 通常: native select with chevron
   return (
-    <div style={{ position: "relative", display: "block", width: "100%" }}>
+    <div
+      style={{
+        position: "relative",
+        display: "block",
+        width: "100%",
+        minWidth: "220px",
+        maxWidth: "360px",
+      }}
+    >
       <select
         value={value}
         onChange={onChange}
@@ -326,7 +388,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           ✕
         </button>
       </header>
-      <main style={{ flex: 1, padding: SPACING.xl, overflowY: "auto" }}>
+      <main
+        style={{
+          flex: 1,
+          padding: SPACING.xl,
+          width: "100%",
+          maxWidth: "560px",
+          overflowY: "auto",
+        }}
+      >
         <Section title="キャラクター">
           <Field label="VRM body">
             <div style={{ display: "flex", gap: SPACING.sm }}>
