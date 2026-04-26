@@ -10,11 +10,12 @@
  * user 入力時に lastUserInputAt が更新されたことを自然に拾う
  * （subscribePtyData は agent 出力でしか発火しないため使わない）。
  *
- * Enter keydown を listen し、focused 要素が <button> / <a> / [role=button] なら
- * input-cursor:activate、それ以外は input-cursor:sent を priority=5 で emit する。
- * どちらも 600ms 後に null clear する短いパルス設計（Enter は単発 event のため、
- * resolver maxAge 任せの定常監視原則と分けて producer 側で短い ttl を持つ例外）。
- * dispose で rAF cancel + pulse timer cancel を両方行う。
+ * hook-signal `user-prompt-submit` を listen し、発火時点の caret 位置に
+ * input-cursor:sent を priority=5 で emit する。600ms 後に null clear する
+ * 短いパルス設計（単発 event のため resolver maxAge 任せでなく producer 側で ttl を持つ）。
+ * キー入力判定は一切行わない（IME / Shift+Enter / paste 誤検知排除）。
+ *
+ * dispose で rAF cancel + hookSub dispose + pulse timer cancel を全て行う。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
@@ -23,26 +24,22 @@ import type { Disposable } from "./types";
 
 const SOURCE_TYPING = "input-cursor:typing";
 const SOURCE_SENT = "input-cursor:sent";
-const SOURCE_ACTIVATE = "input-cursor:activate";
 const PRIORITY_TYPING = 5;
-const PRIORITY_SENT_ACTIVATE = 5;
+const PRIORITY_SENT = 5;
 const CONFIDENCE = 1;
-// Enter は単発 event のため、resolver maxAge 任せの定常監視原則と異なり、
+// 単発 event のため、resolver maxAge 任せの定常監視原則と異なり、
 // producer 側で 600ms 後に null clear する短いパルス設計。
 const PULSE_CLEAR_MS = 600;
-
-// Enter で activate される標準的な要素のみ。`<input type="submit">` 等は
-// Charminal の terminal-first UI で現状想定外のため省略 (mouse producer の
-// INTERACTIVE_TAGS は click 対象なので別集合)。Phase 1d 実 UI で要拡張なら追加。
-const ACTIVATABLE_TAGS = new Set(["BUTTON", "A"]);
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
   readonly terminal: Pick<TerminalRuntime, "getInputCursorClientPosition">;
+  /** EventBus hook-signal を購読する adapter。App.tsx から inject する。 */
+  readonly subscribeHookSignal: (handler: (event: { name: string }) => void) => Disposable;
 }
 
 export function startInputCursorAttentionProducer(opts: StartOptions): Disposable {
-  const { attention, terminal } = opts;
+  const { attention, terminal, subscribeHookSignal } = opts;
   let typingActive = false;
   let pulseTimer: ReturnType<typeof setTimeout> | null = null;
   let rafId: number | null = null;
@@ -88,59 +85,37 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
   };
   rafId = requestAnimationFrame(tick);
 
-  const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key !== "Enter") return;
-    // IME composition 中 (かな漢字変換の確定 Enter) は送信 Enter と区別して無視。
-    if (event.isComposing) return;
-    const focused = document.activeElement;
-    let source: string;
-    let rect: { x: number; y: number; width: number; height: number };
-    let reason: string;
-
-    if (
-      focused instanceof HTMLElement &&
-      (ACTIVATABLE_TAGS.has(focused.tagName) || focused.getAttribute("role") === "button")
-    ) {
-      const r = focused.getBoundingClientRect();
-      if (r.width === 0 || r.height === 0) return; // jsdom 等で rect 0 はスキップ
-      source = SOURCE_ACTIVATE;
-      rect = { x: r.left, y: r.top, width: r.width, height: r.height };
-      reason = "activate";
-    } else {
-      const cursor = terminal.getInputCursorClientPosition();
-      if (cursor === null) return;
-      source = SOURCE_SENT;
-      rect = {
+  // hook-signal `user-prompt-submit` を listen し、caret 位置に sent pulse を emit する。
+  // caret が null のとき（直近 2 秒以内に typing なし等）は emit しない。
+  const hookSub = subscribeHookSignal((event) => {
+    if (event.name !== "user-prompt-submit") return;
+    const cursor = terminal.getInputCursorClientPosition();
+    if (cursor === null) return;
+    cancelPulseTimer();
+    attention.setSourceTarget(SOURCE_SENT, {
+      kind: "input-cursor",
+      source: SOURCE_SENT,
+      rect: {
         x: cursor.clientX,
         y: cursor.clientY,
         width: cursor.cellWidth,
         height: cursor.cellHeight,
-      };
-      reason = "sent";
-    }
-
-    cancelPulseTimer();
-    attention.setSourceTarget(source, {
-      kind: "input-cursor",
-      source,
-      rect,
+      },
       confidence: CONFIDENCE,
-      priority: PRIORITY_SENT_ACTIVATE,
+      priority: PRIORITY_SENT,
       timestamp: performance.now(),
-      reason,
+      reason: "sent",
     });
     pulseTimer = setTimeout(() => {
-      attention.setSourceTarget(source, null);
+      attention.setSourceTarget(SOURCE_SENT, null);
       pulseTimer = null;
     }, PULSE_CLEAR_MS);
-  };
-
-  window.addEventListener("keydown", onKeyDown, true);
+  });
 
   return {
     dispose: () => {
       if (rafId !== null) cancelAnimationFrame(rafId);
-      window.removeEventListener("keydown", onKeyDown, true);
+      hookSub.dispose();
       cancelPulseTimer();
     },
   };

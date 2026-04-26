@@ -1202,16 +1202,16 @@ function App() {
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
     disposables.push(startMouseAttentionProducer({ attention }));
-    disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
     disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
 
     // focused-dom producer: document.activeElement を rAF loop で監視する。
     disposables.push(startFocusedDomAttentionProducer({ attention }));
 
-    // EventBus hook-signal → tool producer adapter。
+    // EventBus hook-signal → attention producer adapter。
     // Trigger は hook-signal event を全通過させ（match は常に non-null）、
-    // ReactionHandler 側で signal.name を取り出して startToolAttentionProducer に渡す。
+    // ReactionHandler 側で signal.name を取り出して各 producer に渡す。
     // source は builtin 識別子で固定（pack ではないため packId は "__tool-attention__"）。
+    // input-cursor producer と tool producer の両方で同じ adapter を再利用する。
     const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
       const trigger = {
         id: "builtin:hook-signal-to-tool-attention",
@@ -1264,6 +1264,11 @@ function App() {
     };
 
     const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
+
+    // input-cursor producer: typing は rAF loop、sent は user-prompt-submit hook-signal 駆動。
+    disposables.push(
+      startInputCursorAttentionProducer({ attention, terminal, subscribeHookSignal }),
+    );
 
     disposables.push(
       startToolAttentionProducer({

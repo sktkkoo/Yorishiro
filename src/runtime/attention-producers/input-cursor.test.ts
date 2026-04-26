@@ -40,6 +40,22 @@ function makeRafStub() {
   return { rafSpy, tick, restore };
 }
 
+/**
+ * subscribeHookSignal の fake を作成する。
+ * 返した `emit` を呼ぶことで登録済み handler を全て発火できる。
+ */
+function makeHookSignalStub() {
+  const handlers: Array<(event: { name: string }) => void> = [];
+  const subscribeHookSignal = vi.fn((handler: (event: { name: string }) => void) => {
+    handlers.push(handler);
+    return { dispose: () => {} };
+  });
+  const emit = (name: string): void => {
+    for (const h of handlers) h({ name });
+  };
+  return { subscribeHookSignal, emit };
+}
+
 describe("startInputCursorAttentionProducer", () => {
   it("getInputCursorClientPosition は rAF 毎に呼ばれる", () => {
     // requestAnimationFrame をスタブし、手動で tick を制御する
@@ -52,7 +68,12 @@ describe("startInputCursorAttentionProducer", () => {
         cellWidth: 8,
         cellHeight: 16,
       });
-      const dispose = startInputCursorAttentionProducer({ attention, terminal });
+      const { subscribeHookSignal } = makeHookSignalStub();
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
 
       // 起動直後に 1 回 rAF が登録されている
       expect(rafSpy).toHaveBeenCalledTimes(1);
@@ -82,7 +103,12 @@ describe("startInputCursorAttentionProducer", () => {
         cellWidth: 8,
         cellHeight: 16,
       });
-      const dispose = startInputCursorAttentionProducer({ attention, terminal });
+      const { subscribeHookSignal } = makeHookSignalStub();
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
 
       tick();
 
@@ -106,7 +132,12 @@ describe("startInputCursorAttentionProducer", () => {
     try {
       const attention = makeFakeAttention();
       const terminal = makeFakeTerminal(null);
-      const dispose = startInputCursorAttentionProducer({ attention, terminal });
+      const { subscribeHookSignal } = makeHookSignalStub();
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
 
       tick();
 
@@ -130,7 +161,12 @@ describe("startInputCursorAttentionProducer", () => {
       const terminal = {
         getInputCursorClientPosition: vi.fn(() => cursor),
       };
-      const dispose = startInputCursorAttentionProducer({ attention, terminal });
+      const { subscribeHookSignal } = makeHookSignalStub();
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
 
       // 1 frame 目: caret visible → typing emit
       tick();
@@ -155,7 +191,12 @@ describe("startInputCursorAttentionProducer", () => {
     try {
       const attention = makeFakeAttention();
       const terminal = makeFakeTerminal(null);
-      const handle = startInputCursorAttentionProducer({ attention, terminal });
+      const { subscribeHookSignal } = makeHookSignalStub();
+      const handle = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
 
       handle.dispose();
       expect(cancelSpy).toHaveBeenCalledWith(42);
@@ -166,8 +207,8 @@ describe("startInputCursorAttentionProducer", () => {
   });
 });
 
-describe("input-cursor producer (sent / activate)", () => {
-  it("emits input-cursor:sent on Enter keydown when no interactive element is focused", () => {
+describe("input-cursor producer (sent — hook-signal driven)", () => {
+  it("user-prompt-submit hook-signal で input-cursor:sent を emit する", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
@@ -177,12 +218,14 @@ describe("input-cursor producer (sent / activate)", () => {
         cellWidth: 8,
         cellHeight: 16,
       });
+      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        subscribeHookSignal,
       });
 
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      emit("user-prompt-submit");
 
       const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
       expect(call).toBeDefined();
@@ -192,6 +235,7 @@ describe("input-cursor producer (sent / activate)", () => {
         priority: 5,
         reason: "sent",
       });
+      expect(call?.[1].rect).toMatchObject({ x: 50, y: 100, width: 8, height: 16 });
 
       // 600ms 後に null clear
       vi.advanceTimersByTime(700);
@@ -205,7 +249,7 @@ describe("input-cursor producer (sent / activate)", () => {
     }
   });
 
-  it("ignores Enter while IME composition is active (isComposing=true)", () => {
+  it("user-prompt-submit 以外の hook-signal では emit しない", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
@@ -215,16 +259,16 @@ describe("input-cursor producer (sent / activate)", () => {
         cellWidth: 8,
         cellHeight: 16,
       });
+      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        subscribeHookSignal,
       });
 
-      // KeyboardEventInit に isComposing は標準には無いが、JSDOM/Vitest で
-      // KeyboardEvent の prototype property として直接拾われる。
-      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true });
-      Object.defineProperty(event, "isComposing", { value: true });
-      window.dispatchEvent(event);
+      emit("pre-tool-use");
+      emit("stop");
+      emit("notification");
 
       const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
       expect(call).toBeUndefined();
@@ -234,60 +278,68 @@ describe("input-cursor producer (sent / activate)", () => {
     }
   });
 
-  it("emits input-cursor:activate when Enter pressed on a focused button", () => {
+  it("getInputCursorClientPosition が null のとき submit しても emit しない", () => {
     vi.useFakeTimers();
-    const originalRect = HTMLElement.prototype.getBoundingClientRect;
-    HTMLElement.prototype.getBoundingClientRect = () =>
-      ({
-        x: 10,
-        y: 20,
-        left: 10,
-        top: 20,
-        right: 110,
-        bottom: 70,
-        width: 100,
-        height: 50,
-        toJSON: () => ({}),
-      }) as DOMRect;
     try {
-      const button = document.createElement("button");
-      document.body.appendChild(button);
-      button.focus();
-
       const attention = makeFakeAttention();
+      // caret が取れない状態（直近 typing なし等）
       const terminal = makeFakeTerminal(null);
+      const { subscribeHookSignal, emit } = makeHookSignalStub();
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        subscribeHookSignal,
       });
 
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      emit("user-prompt-submit");
 
-      const call = attention.setSourceTarget.mock.calls.find(
-        (c) => c[0] === "input-cursor:activate",
-      );
-      expect(call).toBeDefined();
-      expect(call?.[1]).toMatchObject({
-        source: "input-cursor:activate",
-        priority: 5,
-        reason: "activate",
-      });
-
-      vi.advanceTimersByTime(700);
-      const clearCall = attention.setSourceTarget.mock.calls.find(
-        (c) => c[0] === "input-cursor:activate" && c[1] === null,
-      );
-      expect(clearCall).toBeDefined();
-
-      button.remove();
+      const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:sent");
+      expect(call).toBeUndefined();
       dispose.dispose();
     } finally {
-      HTMLElement.prototype.getBoundingClientRect = originalRect;
       vi.useRealTimers();
     }
   });
 
-  it("dispose cancels pending sent/activate cleanup timers", () => {
+  it("600ms 後に pulse を null clear する", () => {
+    vi.useFakeTimers();
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 10,
+        clientY: 20,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const { subscribeHookSignal, emit } = makeHookSignalStub();
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
+
+      emit("user-prompt-submit");
+
+      // 599ms では clear されていない
+      vi.advanceTimersByTime(599);
+      const earlyClear = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:sent" && c[1] === null,
+      );
+      expect(earlyClear).toBeUndefined();
+
+      // 600ms 経過で clear される
+      vi.advanceTimersByTime(1);
+      const clearCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:sent" && c[1] === null,
+      );
+      expect(clearCall).toBeDefined();
+      dispose.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("連続 submit で前の pulse timer をキャンセルして新しい pulse を emit する", () => {
     vi.useFakeTimers();
     try {
       const attention = makeFakeAttention();
@@ -297,17 +349,77 @@ describe("input-cursor producer (sent / activate)", () => {
         cellWidth: 8,
         cellHeight: 16,
       });
-      const handle = startInputCursorAttentionProducer({ attention, terminal });
+      const { subscribeHookSignal, emit } = makeHookSignalStub();
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
 
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      // 1 回目 submit
+      emit("user-prompt-submit");
+      const firstEmitCount = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "input-cursor:sent" && c[1] !== null,
+      ).length;
+      expect(firstEmitCount).toBe(1);
+
+      // 300ms 後（pulse 継続中）に 2 回目 submit
+      vi.advanceTimersByTime(300);
+      emit("user-prompt-submit");
+
+      // さらに 600ms 後（2 回目 pulse のみ clear）
+      vi.advanceTimersByTime(700);
+
+      const sentEmits = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "input-cursor:sent" && c[1] !== null,
+      );
+      const clearEmits = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "input-cursor:sent" && c[1] === null,
+      );
+      // emit は 2 回、clear は 1 回（前の timer はキャンセルされた）
+      expect(sentEmits).toHaveLength(2);
+      expect(clearEmits).toHaveLength(1);
+      dispose.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("dispose で hookSub・rAF・pulse timer を全て cleanup する", () => {
+    vi.useFakeTimers();
+    const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
+    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 99);
+    try {
+      const attention = makeFakeAttention();
+      const terminal = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const { subscribeHookSignal, emit } = makeHookSignalStub();
+      const handle = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        subscribeHookSignal,
+      });
+
+      emit("user-prompt-submit");
+
+      // pulse 継続中に dispose
       handle.dispose();
 
+      // rAF がキャンセルされている
+      expect(cancelSpy).toHaveBeenCalledWith(99);
+
+      // timer が cancel されているので 700ms 後も clear call が増えない
       const beforeAdvance = attention.setSourceTarget.mock.calls.length;
       vi.advanceTimersByTime(700);
       const afterAdvance = attention.setSourceTarget.mock.calls.length;
-      // dispose 後は timer が cancel されるので新たな clear は呼ばれない
       expect(afterAdvance).toBe(beforeAdvance);
     } finally {
+      cancelSpy.mockRestore();
+      vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
       vi.useRealTimers();
     }
   });
