@@ -142,6 +142,57 @@ function Select({
   );
 }
 
+interface ButtonProps {
+  readonly variant?: "primary" | "neutral";
+  readonly onClick?: () => void;
+  readonly children: React.ReactNode;
+  readonly ariaLabel?: string;
+  readonly style?: React.CSSProperties;
+  readonly disabled?: boolean;
+}
+
+/**
+ * 2 variant の汎用ボタン。
+ * - primary: teal accent（accent soft fill + accent border）
+ * - neutral: white-wash（bgButton fill + borderMid border）
+ *
+ * tokens 経由でスタイルを一元管理する。
+ */
+function Button(props: ButtonProps): React.JSX.Element {
+  const variant = props.variant ?? "neutral";
+  const variantStyle: React.CSSProperties =
+    variant === "primary"
+      ? {
+          background: COLORS.accentSoft,
+          border: `1px solid ${COLORS.accentBorder}`,
+        }
+      : {
+          background: COLORS.bgButton,
+          border: `1px solid ${COLORS.borderMid}`,
+        };
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      aria-label={props.ariaLabel}
+      disabled={props.disabled}
+      style={{
+        ...variantStyle,
+        color: COLORS.fg,
+        borderRadius: RADIUS.sm,
+        padding: `${SPACING.sm} ${SPACING.md}`,
+        cursor: "pointer",
+        font: "inherit",
+        fontFamily: FONT.family,
+        fontSize: FONT.sizeS,
+        ...props.style,
+      }}
+    >
+      {props.children}
+    </button>
+  );
+}
+
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [vrmName, setVrmName] = useState<string>(() => {
     const stored = localStorage.getItem("charminal:vrm");
@@ -296,21 +347,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               >
                 {vrmName || "（未読み込み）"}
               </div>
-              <button
-                type="button"
-                onClick={onPickVrm}
-                style={{
-                  background: COLORS.bgButton,
-                  color: "inherit",
-                  border: `1px solid ${COLORS.borderMid}`,
-                  borderRadius: RADIUS.sm,
-                  padding: `6px ${SPACING.md}`,
-                  cursor: "pointer",
-                  font: "inherit",
-                }}
-              >
-                変更...
-              </button>
+              <Button onClick={onPickVrm}>変更...</Button>
             </div>
           </Field>
           <Field label="Persona">
@@ -387,12 +424,14 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               style={{
                 alignSelf: "flex-start",
                 background: COLORS.accentSoft,
-                color: "inherit",
-                padding: `${SPACING.sm} 14px`,
+                color: COLORS.fg,
+                padding: `${SPACING.sm} ${SPACING.lg}`,
                 borderRadius: RADIUS.sm,
                 border: `1px solid ${COLORS.accentBorder}`,
                 cursor: "pointer",
                 font: "inherit",
+                fontFamily: FONT.family,
+                fontSize: FONT.sizeS,
               }}
             />
             <div style={{ fontSize: FONT.sizeXs, opacity: 0.55, lineHeight: 1.5 }}>
