@@ -6,7 +6,8 @@
  *
  * - tool-activity (reading|writing|running) → "tool-activity" source を emit
  *   (priority=4 / kind: terminal-region / reason: tool-reading|tool-writing|tool-running)
- * - tool-activity (none) → "tool-activity" source を clear
+ *   3 秒後に auto null clear (pulse 化)。連続 activity は timer 上書き
+ * - tool-activity (none) → "tool-activity" source を即時 clear (pulse timer も cancel)
  * - hook-signal post-tool-failure → "tool-diagnostic" source を emit
  *   (priority=6 / kind: terminal-region / reason: diagnostic)
  * - hook-signal stop → "tool-activity" source を belt-and-suspenders で clear
@@ -28,6 +29,9 @@ const PRIORITY_DIAGNOSTIC = 6;
 const CONFIDENCE_ACTIVITY = 0.72;
 const CONFIDENCE_DIAGNOSTIC = 0.8;
 const EXPAND_PX = 6;
+// tool 1 回ごとに 3 秒だけ pulse させる。Claude が連続して tool を呼ぶ間も
+// 「常駐」ではなく「光が瞬く」体感に揃え、画面下に居座らないようにする。
+const PULSE_MS = 3000;
 
 interface HookSignalEvent {
   readonly name: string;
@@ -54,6 +58,14 @@ export function startToolAttentionProducer(opts: StartOptions): Disposable {
   const { attention, subscribeHookSignal, subscribeToolActivity, getCurrentLineRect } = opts;
 
   let activityActive = false;
+  let pulseTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const cancelPulse = (): void => {
+    if (pulseTimer !== null) {
+      clearTimeout(pulseTimer);
+      pulseTimer = null;
+    }
+  };
 
   const emitActivity = (activity: string, timestamp: number): void => {
     const rect = getCurrentLineRect();
@@ -73,9 +85,17 @@ export function startToolAttentionProducer(opts: StartOptions): Disposable {
       reason: `tool-${activity}`,
     });
     activityActive = true;
+    // pulse 化: 3 秒で auto null clear。新しい activity 発火時は前の timer を上書き。
+    cancelPulse();
+    pulseTimer = setTimeout(() => {
+      attention.setSourceTarget(SOURCE_ACTIVITY, null);
+      activityActive = false;
+      pulseTimer = null;
+    }, PULSE_MS);
   };
 
   const clearActivity = (): void => {
+    cancelPulse();
     if (activityActive) {
       attention.setSourceTarget(SOURCE_ACTIVITY, null);
       activityActive = false;
@@ -119,6 +139,7 @@ export function startToolAttentionProducer(opts: StartOptions): Disposable {
     dispose: () => {
       activitySub.dispose();
       hookSub.dispose();
+      cancelPulse();
     },
   };
 }

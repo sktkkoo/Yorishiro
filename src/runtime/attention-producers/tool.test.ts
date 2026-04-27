@@ -273,4 +273,71 @@ describe("startToolAttentionProducer", () => {
     expect(attention.setSourceTarget).not.toHaveBeenCalled();
     dispose.dispose();
   });
+
+  it("tool-activity は 3 秒で auto null clear (pulse)", () => {
+    vi.useFakeTimers();
+    try {
+      const attention = makeFakeAttention();
+      const hookSignal = makeFakeHookSignal();
+      const toolActivity = makeFakeToolActivity();
+      const getCurrentLineRect = vi.fn(() => ({ x: 0, y: 0, width: 100, height: 20 }));
+
+      const dispose = startToolAttentionProducer({
+        attention,
+        subscribeHookSignal: hookSignal.subscribeHookSignal,
+        subscribeToolActivity: toolActivity.subscribeToolActivity,
+        getCurrentLineRect,
+      });
+
+      toolActivity.emit({ activity: "running", timestamp: 1000 });
+      const emitCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "tool-activity" && c[1] !== null,
+      );
+      expect(emitCall).toBeDefined();
+
+      vi.advanceTimersByTime(3100);
+      const clearCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "tool-activity" && c[1] === null,
+      );
+      expect(clearCall).toBeDefined();
+      dispose.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("連続 activity で pulse timer が上書きされる (前 timer は cancel)", () => {
+    vi.useFakeTimers();
+    try {
+      const attention = makeFakeAttention();
+      const hookSignal = makeFakeHookSignal();
+      const toolActivity = makeFakeToolActivity();
+      const getCurrentLineRect = vi.fn(() => ({ x: 0, y: 0, width: 100, height: 20 }));
+
+      const dispose = startToolAttentionProducer({
+        attention,
+        subscribeHookSignal: hookSignal.subscribeHookSignal,
+        subscribeToolActivity: toolActivity.subscribeToolActivity,
+        getCurrentLineRect,
+      });
+
+      toolActivity.emit({ activity: "reading", timestamp: 1000 });
+      vi.advanceTimersByTime(2000);
+      toolActivity.emit({ activity: "writing", timestamp: 3000 });
+      vi.advanceTimersByTime(2000); // 元 timer なら clear、上書きなら未だ active
+      const clearBeforeNewTimer = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "tool-activity" && c[1] === null,
+      );
+      expect(clearBeforeNewTimer.length).toBe(0);
+
+      vi.advanceTimersByTime(1500); // 新 timer 完了
+      const clearAfterNewTimer = attention.setSourceTarget.mock.calls.filter(
+        (c) => c[0] === "tool-activity" && c[1] === null,
+      );
+      expect(clearAfterNewTimer.length).toBe(1);
+      dispose.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
