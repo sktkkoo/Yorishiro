@@ -7,6 +7,7 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
  */
 
+import type * as THREE from "three";
 import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
@@ -208,4 +209,234 @@ function resolvePackId(
     throw new Error("no active UI pack");
   }
   return active;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * helper（module-level）
+ * ────────────────────────────────────────────────────────── */
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * scene 内の最初の DirectionalLight を 1 個取り出す。
+ * camera-lighting-panel 既存実装と同 logic。pack 依存を MCP 層に持ち込まないため
+ * 同じ helper を独立に持つ（3 行重複は abstraction より良い、
+ * CLAUDE.md「premature abstraction を避ける」）。
+ */
+function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
+  let found: THREE.DirectionalLight | null = null;
+  scene.traverse((obj) => {
+    if (!found && (obj as THREE.DirectionalLight).isDirectionalLight) {
+      found = obj as THREE.DirectionalLight;
+    }
+  });
+  return found;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * state.get
+ * ────────────────────────────────────────────────────────── */
+
+export interface StateGetDeps {
+  readonly readConfig: () => Promise<CharminalConfig>;
+  readonly getCamera: () => THREE.PerspectiveCamera | null;
+  readonly getScene: () => THREE.Scene | null;
+  readonly getVrm: () => unknown | null;
+}
+
+export interface StateGetResult {
+  readonly config: {
+    primaryPersona: string | null;
+    activeScene: string | null;
+    terminalAgent: "claude" | "codex";
+  };
+  readonly camera: { position: readonly [number, number, number]; fov: number };
+  readonly lighting: { intensity: number; color: string };
+  readonly vrmLoaded: boolean;
+}
+
+/**
+ * config / camera / lighting / vrmLoaded をひとまとめにして返す read-only handler。
+ * 各 dependency は null 可で、nil の場合は安全な default を返す（camera 0,0,0 等）。
+ */
+export function createStateGetHandler(deps: StateGetDeps) {
+  return async (_request: unknown): Promise<StateGetResult> => {
+    const cfg = await deps.readConfig();
+    const cam = deps.getCamera();
+    const scene = deps.getScene();
+    const light = scene ? findDirectionalLight(scene) : null;
+    return {
+      config: {
+        primaryPersona: cfg.primaryPersona,
+        activeScene: cfg.activeScene,
+        terminalAgent: cfg.terminalAgent,
+      },
+      camera: {
+        position: cam ? [cam.position.x, cam.position.y, cam.position.z] : [0, 0, 0],
+        fov: cam && "fov" in cam ? cam.fov : 0,
+      },
+      lighting: {
+        intensity: light?.intensity ?? 0,
+        color: light ? `#${light.color.getHexString()}` : "#ffffff",
+      },
+      vrmLoaded: deps.getVrm() !== null,
+    };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * body.expression.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface BodyExpressionSetDeps {
+  readonly getVrm: () => {
+    expressionManager?: { setValue: (n: string, v: number) => void };
+  } | null;
+}
+
+export interface BodyExpressionSetResult {
+  readonly preset: string;
+  readonly intensity: number;
+}
+
+/**
+ * VRM expression を preset 名 + intensity (0-1) で設定する handler。
+ * intensity を omit すると 1 を default として用い、範囲外は 0-1 に clamp する。
+ * VRM が未 load の場合は throw する。
+ */
+export function createBodyExpressionSetHandler(deps: BodyExpressionSetDeps) {
+  return async (request: unknown): Promise<BodyExpressionSetResult> => {
+    const r = (request ?? {}) as { preset?: unknown; intensity?: unknown };
+    if (typeof r.preset !== "string" || r.preset === "") {
+      throw new Error("missing preset");
+    }
+    const vrm = deps.getVrm();
+    if (!vrm?.expressionManager) {
+      throw new Error("no VRM loaded");
+    }
+    const intensity = clamp01(
+      typeof r.intensity === "number" && Number.isFinite(r.intensity) ? r.intensity : 1,
+    );
+    vrm.expressionManager.setValue(r.preset, intensity);
+    return { preset: r.preset, intensity };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * space.effect.play
+ * ────────────────────────────────────────────────────────── */
+
+export interface SpaceEffectPlayDeps {
+  readonly effectDispatcher: {
+    dispatch: (request: { kind: string; payload?: unknown }) => unknown;
+  };
+}
+
+export interface SpaceEffectPlayResult {
+  readonly kind: string;
+}
+
+/**
+ * effect dispatcher 経由で effect pack に reaction を発火する handler。
+ * payload は object のときのみ pass-through し、それ以外は undefined にする。
+ */
+export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
+  return async (request: unknown): Promise<SpaceEffectPlayResult> => {
+    const r = (request ?? {}) as { kind?: unknown; payload?: unknown };
+    if (typeof r.kind !== "string" || r.kind === "") {
+      throw new Error("missing kind");
+    }
+    const payload =
+      typeof r.payload === "object" && r.payload !== null && !Array.isArray(r.payload)
+        ? (r.payload as Record<string, unknown>)
+        : undefined;
+    deps.effectDispatcher.dispatch({ kind: r.kind, payload });
+    return { kind: r.kind };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * scene.camera.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneCameraSetDeps {
+  readonly getCamera: () => THREE.PerspectiveCamera | null;
+}
+
+export interface SceneCameraSetResult {
+  readonly position: readonly [number, number, number];
+  readonly fov: number;
+}
+
+function parseVec3(v: unknown): readonly [number, number, number] | undefined {
+  if (!Array.isArray(v) || v.length !== 3) return undefined;
+  if (!v.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
+  return [v[0] as number, v[1] as number, v[2] as number];
+}
+
+/**
+ * camera の position / target (lookAt) / fov を opportunistic に更新する handler。
+ * 与えられなかった field は変更しない。camera 未準備時は throw する。
+ */
+export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
+  return async (request: unknown): Promise<SceneCameraSetResult> => {
+    const r = (request ?? {}) as {
+      position?: unknown;
+      target?: unknown;
+      fov?: unknown;
+    };
+    const cam = deps.getCamera();
+    if (!cam) throw new Error("camera not ready");
+    const position = parseVec3(r.position);
+    const target = parseVec3(r.target);
+    if (position) cam.position.set(position[0], position[1], position[2]);
+    if (target) cam.lookAt(target[0], target[1], target[2]);
+    if (typeof r.fov === "number" && Number.isFinite(r.fov) && "fov" in cam) {
+      cam.fov = r.fov;
+      cam.updateProjectionMatrix();
+    }
+    return {
+      position: [cam.position.x, cam.position.y, cam.position.z],
+      fov: "fov" in cam ? cam.fov : 0,
+    };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * scene.lighting.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneLightingSetDeps {
+  readonly getScene: () => THREE.Scene | null;
+}
+
+export interface SceneLightingSetResult {
+  readonly intensity: number;
+  readonly color: string;
+}
+
+/**
+ * scene 内の最初の DirectionalLight に intensity / color を opportunistic に
+ * 適用する handler。light が無い場合は throw する。
+ */
+export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
+  return async (request: unknown): Promise<SceneLightingSetResult> => {
+    const r = (request ?? {}) as { intensity?: unknown; color?: unknown };
+    const scene = deps.getScene();
+    if (!scene) throw new Error("scene not ready");
+    const light = findDirectionalLight(scene);
+    if (!light) throw new Error("no DirectionalLight in scene");
+    if (typeof r.intensity === "number" && Number.isFinite(r.intensity)) {
+      light.intensity = r.intensity;
+    }
+    if (typeof r.color === "string") {
+      light.color.set(r.color);
+    }
+    return {
+      intensity: light.intensity,
+      color: `#${light.color.getHexString()}`,
+    };
+  };
 }

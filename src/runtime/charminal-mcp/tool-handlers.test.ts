@@ -5,18 +5,32 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
-import { describe, expect, it } from "vitest";
+import type * as THREE from "three";
+import { describe, expect, it, vi } from "vitest";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 import {
+  createBodyExpressionSetHandler,
   createDisablePackHandler,
   createEnablePackHandler,
   createGetUiStateHandler,
   createListPacksHandler,
+  createSceneCameraSetHandler,
+  createSceneLightingSetHandler,
   createSetUiStateHandler,
+  createSpaceEffectPlayHandler,
+  createStateGetHandler,
 } from "./tool-handlers";
+
+/**
+ * Three.js / VRM 型のフルセットを mock で再現するのは過剰なので、
+ * test 内で必要な subset を `as unknown as <T>` で narrow する。
+ */
+type SceneLike = THREE.Scene;
+type CameraLike = THREE.PerspectiveCamera;
+type SceneObjectLike = THREE.Object3D;
 
 describe("list_packs handler", () => {
   it("merges registry / disabledPacks / load-report.failed under their invariants", async () => {
@@ -269,5 +283,196 @@ describe("ui_state handlers", () => {
 
     await expect(set({ key: "camera.x", value: 1 })).rejects.toThrow("no active UI pack");
     await expect(get({ key: "camera.x" })).rejects.toThrow("no active UI pack");
+  });
+});
+
+describe("createStateGetHandler", () => {
+  it("aggregates config + camera + lighting + vrmLoaded", async () => {
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: "p1",
+        activeScene: "s1",
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => ({ position: { x: 1, y: 2, z: 3 }, fov: 45 }) as unknown as CameraLike,
+      getScene: () =>
+        ({
+          traverse: (cb: (obj: SceneObjectLike) => void) =>
+            cb({
+              isDirectionalLight: true,
+              intensity: 0.8,
+              color: { getHexString: () => "ffeecc" },
+            } as unknown as SceneObjectLike),
+        }) as unknown as SceneLike,
+      getVrm: () => ({}),
+    });
+    const result = await handler({});
+    expect(result).toMatchObject({
+      config: { primaryPersona: "p1", activeScene: "s1", terminalAgent: "claude" },
+      camera: { position: [1, 2, 3], fov: 45 },
+      lighting: { intensity: 0.8, color: "#ffeecc" },
+      vrmLoaded: true,
+    });
+  });
+
+  it("handles null camera / no light / no vrm gracefully", async () => {
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+    });
+    const result = await handler({});
+    expect(result.camera.position).toEqual([0, 0, 0]);
+    expect(result.lighting.intensity).toBe(0);
+    expect(result.vrmLoaded).toBe(false);
+  });
+});
+
+describe("createBodyExpressionSetHandler", () => {
+  it("calls expressionManager.setValue with preset and intensity", async () => {
+    const setValue = vi.fn();
+    const handler = createBodyExpressionSetHandler({
+      getVrm: () => ({ expressionManager: { setValue } }),
+    });
+    const result = await handler({ preset: "happy", intensity: 0.7 });
+    expect(setValue).toHaveBeenCalledWith("happy", 0.7);
+    expect(result).toEqual({ preset: "happy", intensity: 0.7 });
+  });
+
+  it("defaults intensity to 1 when omitted", async () => {
+    const setValue = vi.fn();
+    const handler = createBodyExpressionSetHandler({
+      getVrm: () => ({ expressionManager: { setValue } }),
+    });
+    await handler({ preset: "happy" });
+    expect(setValue).toHaveBeenCalledWith("happy", 1);
+  });
+
+  it("clamps intensity to 0-1 range", async () => {
+    const setValue = vi.fn();
+    const handler = createBodyExpressionSetHandler({
+      getVrm: () => ({ expressionManager: { setValue } }),
+    });
+    await handler({ preset: "happy", intensity: 2 });
+    expect(setValue).toHaveBeenCalledWith("happy", 1);
+    await handler({ preset: "happy", intensity: -0.5 });
+    expect(setValue).toHaveBeenCalledWith("happy", 0);
+  });
+
+  it("throws when VRM not loaded", async () => {
+    const handler = createBodyExpressionSetHandler({
+      getVrm: () => null,
+    });
+    await expect(handler({ preset: "happy" })).rejects.toThrow(/no VRM loaded/);
+  });
+
+  it("throws on missing preset", async () => {
+    const handler = createBodyExpressionSetHandler({
+      getVrm: () => ({ expressionManager: { setValue: vi.fn() } }),
+    });
+    await expect(handler({})).rejects.toThrow(/preset/);
+  });
+});
+
+describe("createSpaceEffectPlayHandler", () => {
+  it("dispatches with kind and payload", async () => {
+    const dispatch = vi.fn();
+    const handler = createSpaceEffectPlayHandler({
+      effectDispatcher: { dispatch },
+    });
+    const result = await handler({ kind: "fireworks", payload: { color: "red" } });
+    expect(dispatch).toHaveBeenCalledWith({ kind: "fireworks", payload: { color: "red" } });
+    expect(result).toEqual({ kind: "fireworks" });
+  });
+
+  it("dispatches without payload", async () => {
+    const dispatch = vi.fn();
+    const handler = createSpaceEffectPlayHandler({
+      effectDispatcher: { dispatch },
+    });
+    await handler({ kind: "shake" });
+    expect(dispatch).toHaveBeenCalledWith({ kind: "shake", payload: undefined });
+  });
+
+  it("throws on missing kind", async () => {
+    const handler = createSpaceEffectPlayHandler({
+      effectDispatcher: { dispatch: vi.fn() },
+    });
+    await expect(handler({})).rejects.toThrow(/kind/);
+  });
+});
+
+describe("createSceneCameraSetHandler", () => {
+  it("sets position / target / fov when given", async () => {
+    const camera = {
+      position: {
+        x: 0,
+        y: 0,
+        z: 0,
+        set: vi.fn(function (
+          this: { x: number; y: number; z: number },
+          x: number,
+          y: number,
+          z: number,
+        ) {
+          this.x = x;
+          this.y = y;
+          this.z = z;
+        }),
+      },
+      lookAt: vi.fn(),
+      fov: 50,
+      updateProjectionMatrix: vi.fn(),
+    };
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => camera as unknown as CameraLike,
+    });
+    const result = await handler({ position: [1, 2, 3], target: [4, 5, 6], fov: 30 });
+    expect(camera.position.set).toHaveBeenCalledWith(1, 2, 3);
+    expect(camera.lookAt).toHaveBeenCalledWith(4, 5, 6);
+    expect(camera.fov).toBe(30);
+    expect(camera.updateProjectionMatrix).toHaveBeenCalled();
+    expect(result.fov).toBe(30);
+  });
+
+  it("throws when camera not ready", async () => {
+    const handler = createSceneCameraSetHandler({ getCamera: () => null });
+    await expect(handler({ position: [1, 2, 3] })).rejects.toThrow(/camera not ready/);
+  });
+});
+
+describe("createSceneLightingSetHandler", () => {
+  it("sets intensity and color on DirectionalLight", async () => {
+    const colorSet = vi.fn();
+    const light = {
+      isDirectionalLight: true,
+      intensity: 0.5,
+      color: { set: colorSet, getHexString: () => "ff8800" },
+    };
+    const handler = createSceneLightingSetHandler({
+      getScene: () =>
+        ({
+          traverse: (cb: (obj: SceneObjectLike) => void) => cb(light as unknown as SceneObjectLike),
+        }) as unknown as SceneLike,
+    });
+    const result = await handler({ intensity: 0.9, color: "#ff8800" });
+    expect(light.intensity).toBe(0.9);
+    expect(colorSet).toHaveBeenCalledWith("#ff8800");
+    expect(result).toEqual({ intensity: 0.9, color: "#ff8800" });
+  });
+
+  it("throws when no DirectionalLight in scene", async () => {
+    const handler = createSceneLightingSetHandler({
+      getScene: () =>
+        ({
+          traverse: (_cb: (obj: SceneObjectLike) => void) => {},
+        }) as unknown as SceneLike,
+    });
+    await expect(handler({ intensity: 0.5 })).rejects.toThrow(/no DirectionalLight/);
   });
 });
