@@ -34,6 +34,21 @@ interface FadingOutEntry {
 export class AmbientAudioRuntime {
   private readonly active = new Map<string, ActiveEntry>();
   private readonly fadingOut = new Map<string, FadingOutEntry>();
+  private muted = false;
+
+  /**
+   * Mute / unmute すべての ambient sound。Howl 単位の `mute()` を使うので
+   * scene 切替や fadeout 中の Howl にも反映される。新規 Howl は `setMix`
+   * 内で生成直後に muted state を適用する。
+   *
+   * setMix とは独立に呼べる：mix を保ったまま再生だけ止める用途。
+   */
+  setMuted(muted: boolean): void {
+    if (this.muted === muted) return;
+    this.muted = muted;
+    for (const entry of this.active.values()) entry.howl.mute(muted);
+    for (const entry of this.fadingOut.values()) entry.howl.mute(muted);
+  }
 
   /**
    * Active から外れる sound を fade out して unload を schedule。
@@ -97,6 +112,7 @@ export class AmbientAudioRuntime {
             this.active.delete(url);
           },
         });
+        if (this.muted) howl.mute(true);
         howl.play();
         howl.fade(0, volume, CROSSFADE_MS);
         this.active.set(url, { howl, volume });

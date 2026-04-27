@@ -40,6 +40,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -53,6 +54,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -66,6 +68,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -79,6 +82,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -92,6 +96,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -105,6 +110,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -123,6 +129,7 @@ describe("parseConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     });
   });
 
@@ -153,6 +160,7 @@ describe("serializeConfig", () => {
       activeUi: null,
       activeAmbientUi: [],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -166,6 +174,7 @@ describe("serializeConfig", () => {
       activeUi: null,
       activeAmbientUi: [],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -184,6 +193,7 @@ describe("serializeConfig", () => {
       activeUi: null,
       activeAmbientUi: [],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -197,6 +207,7 @@ describe("serializeConfig", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "codex",
+      ambientAudioMuted: true,
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -231,6 +242,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -245,6 +257,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
+      ambientAudioMuted: false,
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);
@@ -364,5 +377,34 @@ describe("activeAmbientUi", () => {
   it("withActiveAmbientUiSet replaces the array", () => {
     const next = withActiveAmbientUiSet(EMPTY_CONFIG, ["x", "y"]);
     expect(next.activeAmbientUi).toEqual(["x", "y"]);
+  });
+});
+
+describe("ambientAudioMuted", () => {
+  it("defaults to false", () => {
+    expect(EMPTY_CONFIG.ambientAudioMuted).toBe(false);
+  });
+
+  it("parses true from JSON", () => {
+    expect(parseConfig('{"ambientAudioMuted": true}').ambientAudioMuted).toBe(true);
+  });
+
+  it("parses false from JSON", () => {
+    expect(parseConfig('{"ambientAudioMuted": false}').ambientAudioMuted).toBe(false);
+  });
+
+  it("treats non-boolean as false", () => {
+    expect(parseConfig('{"ambientAudioMuted": "true"}').ambientAudioMuted).toBe(false);
+    expect(parseConfig('{"ambientAudioMuted": 1}').ambientAudioMuted).toBe(false);
+  });
+
+  it("omits ambientAudioMuted from serialized output when false (default)", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [] };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({});
+  });
+
+  it("writes ambientAudioMuted when true", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], ambientAudioMuted: true };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ ambientAudioMuted: true });
   });
 });

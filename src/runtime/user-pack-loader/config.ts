@@ -13,6 +13,7 @@
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
  * - `terminalAgent: "claude" | "codex"`（optional）: Terminal で自動起動する coding agent
+ * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
@@ -34,6 +35,8 @@ export interface CharminalConfig {
   readonly activeAmbientUi: ReadonlyArray<string>;
   /** Terminal で自動起動する coding agent。未指定なら Claude Code。 */
   readonly terminalAgent: TerminalAgent;
+  /** Scene pack の `ambient` 宣言で再生される環境音を mute する。 */
+  readonly ambientAudioMuted: boolean;
 }
 
 export type TerminalAgent = "claude" | "codex";
@@ -46,6 +49,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   activeUi: null,
   activeAmbientUi: ["attention-aura"],
   terminalAgent: "claude",
+  ambientAudioMuted: false,
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -63,6 +67,10 @@ const toNullableString = (value: unknown): string | null => {
 
 const toTerminalAgent = (value: unknown): TerminalAgent => {
   return value === "codex" ? "codex" : "claude";
+};
+
+const toBoolean = (value: unknown): boolean => {
+  return value === true;
 };
 
 /**
@@ -90,6 +98,7 @@ export function parseConfig(text: string): CharminalConfig {
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
     terminalAgent: toTerminalAgent(obj.terminalAgent),
+    ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
   };
 }
 
@@ -106,6 +115,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
   if (cfg.activeAmbientUi.length > 0) out.activeAmbientUi = [...cfg.activeAmbientUi];
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
+  if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 

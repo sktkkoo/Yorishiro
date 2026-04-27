@@ -40,7 +40,7 @@ import type { Layer, LayerRole, SceneSpec } from "./core/scene";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
-import { initAmbientAudio } from "./runtime/ambient-audio";
+import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import {
   startDevAttentionProducer,
@@ -449,7 +449,7 @@ function App() {
         });
         // Ambient audio engine：subscribeActive で active scene の `ambient` 宣言を再生する。
         // register 時の resolveSceneAssets で URL は解決済みなので、engine は origin を知らずに済む。
-        initAmbientAudio(scenePackRegistry);
+        ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
         appLog.write({
           phase: "register",
           note: "initialized AmbientAudioRuntime",
@@ -477,6 +477,7 @@ function App() {
         for (const id of config.activeAmbientUi) {
           getAmbientUiPackRegistry().enable(id);
         }
+        ambientAudioEngineRef.current?.setMuted(config.ambientAudioMuted);
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -726,6 +727,8 @@ function App() {
   );
   const renderedSceneRef = useRef<SceneSpec | null>(renderedScene);
   const sceneListenersRef = useRef(new Set<(scene: SceneSpec | null) => void>());
+  // initAmbientAudio で生成した engine を buildUiContext からも触れるよう保持する。
+  const ambientAudioEngineRef = useRef<AmbientAudioRuntime | null>(null);
 
   useEffect(() => {
     renderedSceneRef.current = renderedScene;
@@ -800,6 +803,7 @@ function App() {
         primaryPersona: string | null;
         activeScene: string | null;
         terminalAgent: "claude" | "codex";
+        ambientAudioMuted: boolean;
       }>,
     ): Promise<void> => {
       const next = pendingConfigWrite.then(async () => {
@@ -938,6 +942,10 @@ function App() {
             await updateConfig({ terminalAgent: agent });
             // terminalAgent は既存セッションに反映しない仕様（仕様書通り）
           },
+          setAmbientAudioMuted: async (muted) => {
+            await updateConfig({ ambientAudioMuted: muted });
+            ambientAudioEngineRef.current?.setMuted(muted);
+          },
           getConfig: async () => {
             const text = await readCharminalConfigText();
             const cur = parseConfig(text);
@@ -945,6 +953,7 @@ function App() {
               primaryPersona: cur.primaryPersona,
               activeScene: cur.activeScene,
               terminalAgent: cur.terminalAgent,
+              ambientAudioMuted: cur.ambientAudioMuted,
             };
           },
         },
