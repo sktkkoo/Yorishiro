@@ -559,6 +559,12 @@ function App() {
           createEnablePackHandler,
           createGetUiStateHandler,
           createSetUiStateHandler,
+          // 新規 5 factory：
+          createStateGetHandler,
+          createBodyExpressionSetHandler,
+          createSpaceEffectPlayHandler,
+          createSceneCameraSetHandler,
+          createSceneLightingSetHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -619,6 +625,25 @@ function App() {
           "set-ui-state": createSetUiStateHandler({
             state: uiState,
             getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
+          }),
+          // ── Phase β cosmetic write tools ────────────────────────
+          "state.get": createStateGetHandler({
+            readConfig,
+            getCamera: () => getThreeRuntime().getCamera(),
+            getScene: () => getThreeRuntime().getScene(),
+            getVrm: () => getThreeRuntime().getVrm(),
+          }),
+          "body.expression.set": createBodyExpressionSetHandler({
+            getVrm: () => getThreeRuntime().getVrm(),
+          }),
+          "space.effect.play": createSpaceEffectPlayHandler({
+            effectDispatcher,
+          }),
+          "scene.camera.set": createSceneCameraSetHandler({
+            getCamera: () => getThreeRuntime().getCamera(),
+          }),
+          "scene.lighting.set": createSceneLightingSetHandler({
+            getScene: () => getThreeRuntime().getScene(),
           }),
         };
 
