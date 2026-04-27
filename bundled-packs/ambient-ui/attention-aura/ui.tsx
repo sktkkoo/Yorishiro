@@ -50,9 +50,13 @@ function Aura({ ctx }: AuraComponentProps): React.JSX.Element | null {
     const target = targetRef.current;
 
     setView((current) => {
-      let nextTargetView: AuraView;
       if (target === null) {
-        // fade-out
+        // --- fade-out フェーズ ---
+        // elapsedS が FADE_OUT_DURATION_S に達するまで RAF を継続し、
+        // opacity を滑らかに減衰させる。lerp 収束チェックは行わない。
+        // (lerp 収束で止めると nextTargetView.opacity ≈ current.opacity になった
+        //  瞬間に isConverged が true になり、fade 初フレームで RAF が止まって
+        //  opacity が 0 に即スナップする bug を防ぐため)
         let fade = fadeStateRef.current;
         if (fade === null) {
           fade = { startOpacity: current.opacity, elapsedS: 0 };
@@ -60,30 +64,41 @@ function Aura({ ctx }: AuraComponentProps): React.JSX.Element | null {
         }
         const updated = { startOpacity: fade.startOpacity, elapsedS: fade.elapsedS + delta };
         fadeStateRef.current = updated;
+
+        // duration 到達 → RAF 停止し opacity を 0 確定
+        if (updated.elapsedS >= FADE_OUT_DURATION_S) {
+          if (rafRef.current !== null) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          fadeStateRef.current = null;
+          return { ...current, opacity: 0 };
+        }
+
+        // duration 未到達 → opacity を減衰させて RAF 継続
         const opacity = fadeOutOpacity(updated, FADE_OUT_DURATION_S);
-        nextTargetView = { ...current, opacity };
-      } else {
-        fadeStateRef.current = null;
-        const desiredOpacity = targetOpacity(target);
-        nextTargetView = {
-          x: target.rect.x,
-          y: target.rect.y,
-          width: target.rect.width,
-          height: target.rect.height,
-          opacity: desiredOpacity,
-        };
+        rafRef.current = requestAnimationFrame(tick);
+        return { ...current, opacity };
       }
+
+      // --- target 追従フェーズ ---
+      fadeStateRef.current = null;
+      const desiredOpacity = targetOpacity(target);
+      const nextTargetView: AuraView = {
+        x: target.rect.x,
+        y: target.rect.y,
+        width: target.rect.width,
+        height: target.rect.height,
+        opacity: desiredOpacity,
+      };
       const next = lerpView(current, nextTargetView, t);
 
-      // 収束したら RAF を pause + null 状態なら opacity を強制 0 に
+      // lerp 収束したら RAF を pause (Phase 1a 設計判断: target が静止している間は
+      // RAF を止めてバッテリー / CPU 負荷を下げる。target 変化で subscribe から再起動)
       if (isConverged(next, nextTargetView)) {
         if (rafRef.current !== null) {
           cancelAnimationFrame(rafRef.current);
           rafRef.current = null;
-        }
-        if (target === null) {
-          fadeStateRef.current = null;
-          return { ...nextTargetView, opacity: 0 };
         }
         return nextTargetView;
       }
