@@ -59,6 +59,51 @@ pub struct SetUiStateRequest {
     pub value: Value,
 }
 
+/// `state_get` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StateGetRequest {}
+
+/// `body_expression_set` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BodyExpressionSetRequest {
+    /// VRM expression preset 名（"happy" / "angry" / "sad" / "relaxed" / "surprised" / "neutral" など）。
+    pub preset: String,
+    /// 0-1, default 1。0 で表情解除。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intensity: Option<f32>,
+}
+
+/// `space_effect_play` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SpaceEffectPlayRequest {
+    /// Effect kind（既存 effect pack の handler key、例: "fireworks" / "letter" / "shake"）。
+    pub kind: String,
+    /// effect handler が解釈する任意 payload。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload: Option<Value>,
+}
+
+/// `scene_camera_set` の引数。すべて optional、与えた field のみ更新。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SceneCameraSetRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<[f32; 3]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<[f32; 3]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fov: Option<f32>,
+}
+
+/// `scene_lighting_set` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SceneLightingSetRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intensity: Option<f32>,
+    /// "#rrggbb" hex string
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub color: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct Charminal {
     app_handle: AppHandle,
@@ -164,6 +209,83 @@ impl Charminal {
         .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(response)
     }
+
+    /// state_get: aggregate snapshot of config + camera + lighting + vrm load
+    #[tool(
+        description = "Snapshot Charminal current state (config / camera / lighting / vrm load)."
+    )]
+    async fn state_get(
+        &self,
+        _params: Parameters<StateGetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "state.get", json!({})).await
+    }
+
+    /// body_expression_set: VRM expression preset (conscious-layer path only;
+    /// reflex-layer expressions use a separate non-MCP path).
+    #[tool(
+        description = "Set the resident's facial expression preset (conscious-layer path; reflex-driven expressions use a separate non-MCP path)."
+    )]
+    async fn body_expression_set(
+        &self,
+        Parameters(req): Parameters<BodyExpressionSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "body.expression.set",
+            json!({ "preset": req.preset, "intensity": req.intensity }),
+        )
+        .await
+    }
+
+    /// space_effect_play: dispatch scene effect by kind. Equivalent to
+    /// `ctx.space.injectEffect` from in-process pack code.
+    #[tool(
+        description = "Dispatch a scene effect by kind (same dispatcher as in-process pack code; no listener = no-op)."
+    )]
+    async fn space_effect_play(
+        &self,
+        Parameters(req): Parameters<SpaceEffectPlayRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "space.effect.play",
+            json!({ "kind": req.kind, "payload": req.payload }),
+        )
+        .await
+    }
+
+    /// scene_camera_set: PerspectiveCamera position / lookAt target / fov
+    #[tool(description = "Set scene camera position, lookAt target, or fov.")]
+    async fn scene_camera_set(
+        &self,
+        Parameters(req): Parameters<SceneCameraSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "scene.camera.set",
+            json!({
+                "position": req.position,
+                "target": req.target,
+                "fov": req.fov,
+            }),
+        )
+        .await
+    }
+
+    /// scene_lighting_set: scene の DirectionalLight intensity / color
+    #[tool(description = "Set scene DirectionalLight intensity and/or color (#rrggbb).")]
+    async fn scene_lighting_set(
+        &self,
+        Parameters(req): Parameters<SceneLightingSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "scene.lighting.set",
+            json!({ "intensity": req.intensity, "color": req.color }),
+        )
+        .await
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -172,6 +294,14 @@ impl ServerHandler for Charminal {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions("Charminal user-layer inspection tools")
     }
+}
+
+/// 共通 helper: emit_tool_event + unwrap_ts_response。
+async fn emit_to(app: &AppHandle, tool: &str, request: Value) -> Result<CallToolResult, McpError> {
+    let r = emit_tool_event(app, tool, request)
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
+    unwrap_ts_response(r)
 }
 
 /// TS 側 `dispatchToolEvent` が返す `{ ok, payload } | { ok, reason }` を
