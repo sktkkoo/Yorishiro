@@ -210,7 +210,11 @@ impl Charminal {
         unwrap_ts_response(response)
     }
 
-    /// state_get: aggregate snapshot of config + camera + lighting + vrm load
+    // 以下 5 tool は dot.notation の dispatch key を使う。既存 kebab key との
+    // dual convention は Phase γ で actions registry 抽出時に再考
+    // （specs/2026-04-28-mcp-mvp-design.md §Tool naming）。
+
+    /// state_get: config / camera / lighting / vrm load を集約した snapshot を返す。
     #[tool(
         description = "Snapshot Charminal current state (config / camera / lighting / vrm load)."
     )]
@@ -221,8 +225,8 @@ impl Charminal {
         emit_to(&self.app_handle, "state.get", json!({})).await
     }
 
-    /// body_expression_set: VRM expression preset (conscious-layer path only;
-    /// reflex-layer expressions use a separate non-MCP path).
+    /// body_expression_set: VRM expression preset を設定（意識層 → 身体の path のみ、
+    /// 反射層は別の non-MCP path を使う）。
     #[tool(
         description = "Set the resident's facial expression preset (conscious-layer path; reflex-driven expressions use a separate non-MCP path)."
     )]
@@ -238,8 +242,8 @@ impl Charminal {
         .await
     }
 
-    /// space_effect_play: dispatch scene effect by kind. Equivalent to
-    /// `ctx.space.injectEffect` from in-process pack code.
+    /// space_effect_play: scene effect を kind で発火する。in-process pack の
+    /// `ctx.space.injectEffect` と同 dispatcher。
     #[tool(
         description = "Dispatch a scene effect by kind (same dispatcher as in-process pack code; no listener = no-op)."
     )]
@@ -255,7 +259,7 @@ impl Charminal {
         .await
     }
 
-    /// scene_camera_set: PerspectiveCamera position / lookAt target / fov
+    /// scene_camera_set: PerspectiveCamera の position / lookAt target / fov を更新する。
     #[tool(description = "Set scene camera position, lookAt target, or fov.")]
     async fn scene_camera_set(
         &self,
@@ -273,7 +277,7 @@ impl Charminal {
         .await
     }
 
-    /// scene_lighting_set: scene の DirectionalLight intensity / color
+    /// scene_lighting_set: scene の DirectionalLight の intensity / color を更新する。
     #[tool(description = "Set scene DirectionalLight intensity and/or color (#rrggbb).")]
     async fn scene_lighting_set(
         &self,
