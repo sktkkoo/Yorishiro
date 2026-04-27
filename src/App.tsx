@@ -632,9 +632,10 @@ function App() {
             getCamera: () => getThreeRuntime().getCamera(),
             getScene: () => getThreeRuntime().getScene(),
             getVrm: () => getThreeRuntime().getVrm(),
+            getBody: () => getThreeRuntime().getBody(),
           }),
           "body.expression.set": createBodyExpressionSetHandler({
-            getVrm: () => getThreeRuntime().getVrm(),
+            getBody: () => getThreeRuntime().getBody(),
           }),
           "space.effect.play": createSpaceEffectPlayHandler({
             effectDispatcher,

@@ -227,6 +227,10 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return this.currentVrm;
   }
 
+  getBody(): Body | null {
+    return this.currentBody;
+  }
+
   // ─── private methods ────────────────────────────────────────────
 
   private startRenderLoop(): void {

@@ -7,12 +7,14 @@
 
 import type { SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 import {
+  __resetMcpExpressionSlotsForTesting,
+  type BodyLike,
   createBodyExpressionSetHandler,
   createDisablePackHandler,
   createEnablePackHandler,
@@ -288,7 +290,7 @@ describe("ui_state handlers", () => {
 });
 
 describe("createStateGetHandler", () => {
-  it("aggregates config + camera + lighting + vrmLoaded", async () => {
+  it("aggregates config + camera + lighting + vrmLoaded + expressions", async () => {
     const handler = createStateGetHandler({
       readConfig: vi.fn().mockResolvedValue({
         primaryPersona: "p1",
@@ -306,6 +308,19 @@ describe("createStateGetHandler", () => {
             } as unknown as SceneObjectLike),
         }) as unknown as SceneLike,
       getVrm: () => ({}),
+      getBody: () =>
+        ({
+          acquireExpressionSlot: vi.fn(),
+          getExpressionSlots: () => [
+            {
+              source: "mcp",
+              kind: "mood",
+              expressionName: "happy",
+              requestedWeight: 0.7,
+              effectiveWeight: 0.7,
+            },
+          ],
+        }) as unknown as BodyLike,
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -313,10 +328,19 @@ describe("createStateGetHandler", () => {
       camera: { position: [1, 2, 3], fov: 45 },
       lighting: { intensity: 0.8, color: "#ffeecc" },
       vrmLoaded: true,
+      expressions: [
+        {
+          source: "mcp",
+          kind: "mood",
+          name: "happy",
+          requestedWeight: 0.7,
+          effectiveWeight: 0.7,
+        },
+      ],
     });
   });
 
-  it("handles null camera / no light / no vrm gracefully", async () => {
+  it("handles null camera / no light / no vrm / no body gracefully", async () => {
     const handler = createStateGetHandler({
       readConfig: vi.fn().mockResolvedValue({
         primaryPersona: null,
@@ -326,11 +350,13 @@ describe("createStateGetHandler", () => {
       getCamera: () => null,
       getScene: () => null,
       getVrm: () => null,
+      getBody: () => null,
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
     expect(result.lighting.intensity).toBe(0);
     expect(result.vrmLoaded).toBe(false);
+    expect(result.expressions).toEqual([]);
   });
 
   it("returns lighting defaults when scene has no DirectionalLight", async () => {
@@ -346,55 +372,117 @@ describe("createStateGetHandler", () => {
           traverse: (_cb: (obj: SceneObjectLike) => void) => {},
         }) as unknown as SceneLike,
       getVrm: () => null,
+      getBody: () => null,
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
     expect(result.lighting.color).toBe("#ffffff");
+    expect(result.expressions).toEqual([]);
   });
 });
 
 describe("createBodyExpressionSetHandler", () => {
-  it("calls expressionManager.setValue with preset and intensity", async () => {
-    const setValue = vi.fn();
-    const handler = createBodyExpressionSetHandler({
-      getVrm: () => ({ expressionManager: { setValue } }),
+  /**
+   * Body.acquireExpressionSlot の戻り値（ExpressionHandle）を mock する helper。
+   * release / setIntensity は spy として観察可能。effectiveWeight は固定値で OK。
+   */
+  function makeMockHandle() {
+    return {
+      target: { kind: "mood" as const, preset: "happy" as const },
+      requestedIntensity: 0,
+      effectiveWeight: 0,
+      release: vi.fn(),
+      setIntensity: vi.fn(),
+    };
+  }
+
+  function makeMockBody(): {
+    body: BodyLike;
+    acquireExpressionSlot: ReturnType<typeof vi.fn>;
+    getExpressionSlots: ReturnType<typeof vi.fn>;
+    handles: ReturnType<typeof makeMockHandle>[];
+  } {
+    const handles: ReturnType<typeof makeMockHandle>[] = [];
+    const acquireExpressionSlot = vi.fn(() => {
+      const h = makeMockHandle();
+      handles.push(h);
+      return h;
     });
+    const getExpressionSlots = vi.fn(() => []);
+    const body = {
+      acquireExpressionSlot,
+      getExpressionSlots,
+    } as unknown as BodyLike;
+    return { body, acquireExpressionSlot, getExpressionSlots, handles };
+  }
+
+  beforeEach(() => {
+    __resetMcpExpressionSlotsForTesting();
+  });
+
+  it("acquires expression slot via Body.acquireExpressionSlot with mcp source / mood kind", async () => {
+    const { body, acquireExpressionSlot } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
     const result = await handler({ preset: "happy", intensity: 0.7 });
-    expect(setValue).toHaveBeenCalledWith("happy", 0.7);
+    expect(acquireExpressionSlot).toHaveBeenCalledWith("mcp", "mood", "happy", 0.7);
     expect(result).toEqual({ preset: "happy", intensity: 0.7 });
   });
 
   it("defaults intensity to 1 when omitted", async () => {
-    const setValue = vi.fn();
-    const handler = createBodyExpressionSetHandler({
-      getVrm: () => ({ expressionManager: { setValue } }),
-    });
+    const { body, acquireExpressionSlot } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
     await handler({ preset: "happy" });
-    expect(setValue).toHaveBeenCalledWith("happy", 1);
+    expect(acquireExpressionSlot).toHaveBeenCalledWith("mcp", "mood", "happy", 1);
   });
 
   it("clamps intensity to 0-1 range", async () => {
-    const setValue = vi.fn();
-    const handler = createBodyExpressionSetHandler({
-      getVrm: () => ({ expressionManager: { setValue } }),
-    });
+    const { body, acquireExpressionSlot } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
     await handler({ preset: "happy", intensity: 2 });
-    expect(setValue).toHaveBeenCalledWith("happy", 1);
+    expect(acquireExpressionSlot).toHaveBeenLastCalledWith("mcp", "mood", "happy", 1);
+    // -0.5 → 0、ただし 0 は acquire しない（release のみ）
     await handler({ preset: "happy", intensity: -0.5 });
-    expect(setValue).toHaveBeenCalledWith("happy", 0);
+    // 直前は 1 で acquire 済み、次は intensity 0 なので追加 acquire 無し
+    expect(acquireExpressionSlot).toHaveBeenCalledTimes(1);
   });
 
-  it("throws when VRM not loaded", async () => {
-    const handler = createBodyExpressionSetHandler({
-      getVrm: () => null,
-    });
+  it("re-acquires: previous handle.release is called and new slot acquired", async () => {
+    const { body, acquireExpressionSlot, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    await handler({ preset: "happy", intensity: 0.5 });
+    expect(handles).toHaveLength(1);
+    expect(handles[0].release).not.toHaveBeenCalled();
+
+    await handler({ preset: "sad", intensity: 0.6 });
+    // 前 handle が release され、新規 acquire が走る
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+    expect(acquireExpressionSlot).toHaveBeenCalledTimes(2);
+    expect(acquireExpressionSlot).toHaveBeenLastCalledWith("mcp", "mood", "sad", 0.6);
+  });
+
+  it("intensity 0: releases previous slot without new acquire", async () => {
+    const { body, acquireExpressionSlot, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    await handler({ preset: "happy", intensity: 0.5 });
+    expect(handles).toHaveLength(1);
+
+    const result = await handler({ preset: "happy", intensity: 0 });
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+    // intensity 0 は acquire しない
+    expect(acquireExpressionSlot).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ preset: "happy", intensity: 0 });
+  });
+
+  it("throws when Body not available", async () => {
+    const handler = createBodyExpressionSetHandler({ getBody: () => null });
     await expect(handler({ preset: "happy" })).rejects.toThrow(/no VRM loaded/);
   });
 
   it("throws on missing preset", async () => {
-    const handler = createBodyExpressionSetHandler({
-      getVrm: () => ({ expressionManager: { setValue: vi.fn() } }),
-    });
+    const { body } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
     await expect(handler({})).rejects.toThrow(/preset/);
   });
 });

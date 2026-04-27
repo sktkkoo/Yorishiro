@@ -45,4 +45,6 @@ export interface ThreeRuntime {
   getRenderer(): THREE.WebGLRenderer;
   /** VRM 未 load なら null。load 後に非 null。 */
   getVrm(): VRM | null;
+  /** Body 未生成なら null。VRM load 完了後に非 null。 */
+  getBody(): Body | null;
 }

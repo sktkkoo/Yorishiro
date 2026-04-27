@@ -55,7 +55,13 @@ export class EyelidExpressionController {
   private updateAutoBlinkSlot(blinkValue: number): void {
     if (blinkValue > 0) {
       if (this.autoBlinkSlotId === -1) {
-        this.autoBlinkSlotId = this.expressions.addSlot(BLINK_EXPRESSION_NAME, blinkValue);
+        // 自律 blink は反射的 system なので "reflex" / "eye" として登録。
+        this.autoBlinkSlotId = this.expressions.addSlot(
+          "reflex",
+          "eye",
+          BLINK_EXPRESSION_NAME,
+          blinkValue,
+        );
       } else {
         this.expressions.setWeight(this.autoBlinkSlotId, blinkValue);
       }
@@ -74,7 +80,15 @@ export class EyelidExpressionController {
         this.idleSquintSuppressionToken = this.blinkSystem.suppress();
       }
       if (this.idleSquintSlotId === -1) {
-        this.idleSquintSlotId = this.expressions.addSlot(BLINK_EXPRESSION_NAME, squintValue);
+        // idle squint は reflex の auto-blink と同 source/kind だと dedup されて
+        // しまうので、"idle" source として登録する（同じ "blink" 名でも
+        // (source, kind) が違えば共存可能）。
+        this.idleSquintSlotId = this.expressions.addSlot(
+          "idle",
+          "eye",
+          BLINK_EXPRESSION_NAME,
+          squintValue,
+        );
       } else {
         this.expressions.setWeight(this.idleSquintSlotId, squintValue);
       }
