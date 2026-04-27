@@ -7,6 +7,7 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
  */
 
+import type { SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { UiStateStore } from "../ui-state-store";
 import {
@@ -243,7 +244,7 @@ export interface StateGetDeps {
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly getCamera: () => THREE.PerspectiveCamera | null;
   readonly getScene: () => THREE.Scene | null;
-  readonly getVrm: () => unknown | null;
+  readonly getVrm: () => unknown;
 }
 
 export interface StateGetResult {
@@ -330,7 +331,7 @@ export function createBodyExpressionSetHandler(deps: BodyExpressionSetDeps) {
 
 export interface SpaceEffectPlayDeps {
   readonly effectDispatcher: {
-    dispatch: (request: { kind: string; payload?: unknown }) => unknown;
+    dispatch: (request: SpaceEffectRequest) => unknown;
   };
 }
 
@@ -340,7 +341,9 @@ export interface SpaceEffectPlayResult {
 
 /**
  * effect dispatcher 経由で effect pack に reaction を発火する handler。
- * payload は object のときのみ pass-through し、それ以外は undefined にする。
+ * SpaceEffectRequest は flat な discriminated union（kind に応じて intensity / origin /
+ * durationMs 等が直に並ぶ）。MCP 経由では payload object でラップして受けるが、dispatch
+ * には spread でフラット化して渡す。payload が object でなければ kind のみ送る。
  */
 export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
   return async (request: unknown): Promise<SpaceEffectPlayResult> => {
@@ -348,11 +351,11 @@ export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
     if (typeof r.kind !== "string" || r.kind === "") {
       throw new Error("missing kind");
     }
-    const payload =
+    const payloadObj =
       typeof r.payload === "object" && r.payload !== null && !Array.isArray(r.payload)
         ? (r.payload as Record<string, unknown>)
-        : undefined;
-    deps.effectDispatcher.dispatch({ kind: r.kind, payload });
+        : {};
+    deps.effectDispatcher.dispatch({ kind: r.kind, ...payloadObj } as SpaceEffectRequest);
     return { kind: r.kind };
   };
 }

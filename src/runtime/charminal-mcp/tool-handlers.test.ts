@@ -5,6 +5,7 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
+import type { SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import { createUiStateStore } from "../ui-state-store";
@@ -97,7 +98,7 @@ describe("list_packs handler", () => {
       readLoadReport: async () => report,
     });
 
-    const result = (await handler({})) as unknown as { packs: Array<{ status: string }> };
+    const result = await handler({});
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0].status).toBe("loaded");
   });
@@ -331,6 +332,25 @@ describe("createStateGetHandler", () => {
     expect(result.lighting.intensity).toBe(0);
     expect(result.vrmLoaded).toBe(false);
   });
+
+  it("returns lighting defaults when scene has no DirectionalLight", async () => {
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => null,
+      getScene: () =>
+        ({
+          traverse: (_cb: (obj: SceneObjectLike) => void) => {},
+        }) as unknown as SceneLike,
+      getVrm: () => null,
+    });
+    const result = await handler({});
+    expect(result.lighting.intensity).toBe(0);
+    expect(result.lighting.color).toBe("#ffffff");
+  });
 });
 
 describe("createBodyExpressionSetHandler", () => {
@@ -380,28 +400,44 @@ describe("createBodyExpressionSetHandler", () => {
 });
 
 describe("createSpaceEffectPlayHandler", () => {
-  it("dispatches with kind and payload", async () => {
+  it("dispatches with kind and flattened payload", async () => {
     const dispatch = vi.fn();
     const handler = createSpaceEffectPlayHandler({
-      effectDispatcher: { dispatch },
+      effectDispatcher: { dispatch } as unknown as {
+        dispatch: (r: SpaceEffectRequest) => unknown;
+      },
     });
-    const result = await handler({ kind: "fireworks", payload: { color: "red" } });
-    expect(dispatch).toHaveBeenCalledWith({ kind: "fireworks", payload: { color: "red" } });
+    const result = await handler({
+      kind: "fireworks",
+      payload: { origin: { x: 0.5, y: 0.5 }, count: 30, durationMs: 1500 },
+    });
+    // payload field を spread してフラット化することを assert
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: "fireworks",
+      origin: { x: 0.5, y: 0.5 },
+      count: 30,
+      durationMs: 1500,
+    });
     expect(result).toEqual({ kind: "fireworks" });
   });
 
-  it("dispatches without payload", async () => {
+  it("dispatches with kind only when no payload", async () => {
     const dispatch = vi.fn();
     const handler = createSpaceEffectPlayHandler({
-      effectDispatcher: { dispatch },
+      effectDispatcher: { dispatch } as unknown as {
+        dispatch: (r: SpaceEffectRequest) => unknown;
+      },
     });
     await handler({ kind: "shake" });
-    expect(dispatch).toHaveBeenCalledWith({ kind: "shake", payload: undefined });
+    // payload なしの時は kind のみ
+    expect(dispatch).toHaveBeenCalledWith({ kind: "shake" });
   });
 
   it("throws on missing kind", async () => {
     const handler = createSpaceEffectPlayHandler({
-      effectDispatcher: { dispatch: vi.fn() },
+      effectDispatcher: { dispatch: vi.fn() } as unknown as {
+        dispatch: (r: SpaceEffectRequest) => unknown;
+      },
     });
     await expect(handler({})).rejects.toThrow(/kind/);
   });
