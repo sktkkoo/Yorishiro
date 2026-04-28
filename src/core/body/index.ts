@@ -561,8 +561,12 @@ export class Body {
   }
 
   private interrupt(_reason?: string): void {
-    // Stop all animations
-    this.animationPlayer.stopAll(200);
+    // motion は MotionScheduler 経由で停止する。scheduler が active を 200ms fade で
+    // 解放し、onDeactivate callback が AnimationPlayer.stop / cancel を駆動する。
+    // 結果として外部挙動（fade-out 200ms）は不変だが、cancellation は
+    // getMotionSnapshot() で観察可能になり、completion は {reason: "cancelled"}
+    // で resolve される。
+    this.motionScheduler.cancelAll(200);
 
     // Release all expressions
     for (const h of this.activeExprHandles) {

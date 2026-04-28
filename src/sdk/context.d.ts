@@ -305,7 +305,16 @@ export interface PlayOptions {
   weight?: number;
   loop?: boolean;
   speed?: number;
-  /** BodyScheduler の priority（ties のとき latest 優先） */
+  /**
+   * Legacy field — MVP では無視される。
+   *
+   * priority arbitration は MotionScheduler が固定 enum
+   * (`MotionPriority`) で管理するようになったため、本 numeric
+   * priority は consult されない。互換のため field 自体は残してある。
+   * Phase γ で `MotionRequest` API へ migration 予定。
+   *
+   * 設計仕様: 2026-04-29-motion-priority-queue-design.md §5.4
+   */
   priority?: number;
 }
 
