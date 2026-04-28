@@ -26,6 +26,9 @@ import type {
   GazeOptions,
   GazeTarget,
   PlayOptions,
+  MotionHandle as SdkMotionHandle,
+  MotionRequest as SdkMotionRequest,
+  MotionSnapshot as SdkMotionSnapshot,
 } from "@charminal/sdk";
 import type { VRM } from "@pixiv/three-vrm";
 import { getAttentionRuntime } from "../../runtime/attention-runtime";
@@ -43,6 +46,7 @@ import {
 } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
+import { type MotionRequest as InternalMotionRequest, MotionScheduler } from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
 
 // ─── Constants ───────────────────────────────────────────
@@ -78,6 +82,15 @@ export class Body {
   private readonly proceduralBones: ProceduralBones;
   private readonly claimState: ClaimState;
   private readonly devLog?: SubsystemLog;
+  /**
+   * Motion priority queue。M2 時点では field として保持するのみで、Body.play
+   * 経路はまだ旧実装（直接 animationPlayer 呼び出し）を通る。M3 で Body.play
+   * を scheduler 経由に書き換え、onActivate / onDeactivate を AnimationPlayer
+   * に wire up する。
+   *
+   * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §3
+   */
+  private readonly motionScheduler: MotionScheduler;
 
   /** State-dependent expression slot IDs. */
   private stateExprSlots: number[] = [];
@@ -138,6 +151,17 @@ export class Body {
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
+
+    this.motionScheduler = new MotionScheduler({
+      onActivate: async (_req) => {
+        // M3 で Body.play 経路から AnimationPlayer.play() を呼ぶように差し替える。
+        // M2 時点ではまだ scheduler に request が来ない (Body.play は旧経路) ので no-op。
+      },
+      onDeactivate: (_fadeMs) => {
+        // 同上、M3 で AnimationPlayer.stop() に配線。
+      },
+      now: () => performance.now(),
+    });
 
     this.applyStateExpressions("idle");
   }
@@ -452,6 +476,31 @@ export class Body {
    */
   getExpressionSlots(): ReadonlyArray<SlotSnapshot> {
     return this.expressions.getSlots();
+  }
+
+  /**
+   * 外部 source（MCP 等）が motion slot を acquire するための public API。
+   * priority queue に基づく single-active + preempt model で動く。
+   *
+   * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §3
+   *
+   * Note: M2 時点では Body 内部から本 method を呼ぶ経路は無い（Body.play は
+   * 旧経路のまま）。M3 で Body.play を本 scheduler 経由に書き換える。
+   */
+  acquireMotionSlot(request: SdkMotionRequest): SdkMotionHandle {
+    // SDK / internal の MotionRequest は構造的に同型（MotionSource / MotionPriority /
+    // MotionOptions も同じ string-literal union と field shape）。internal scheduler
+    // の MotionRequest.animation は string、SDK 側は AnimationRef = string なので
+    // assignable。境界で cast する。
+    return this.motionScheduler.request(request as InternalMotionRequest) as SdkMotionHandle;
+  }
+
+  /**
+   * 現在 active な motion の snapshot。state.get 等の observability で
+   * 住人 AI が自分の motion 構成を読むために使う。
+   */
+  getMotionSnapshot(): SdkMotionSnapshot {
+    return this.motionScheduler.getSnapshot() as SdkMotionSnapshot;
   }
 
   private gaze(target: GazeTarget, _options?: GazeOptions): GazeHandle {

@@ -352,6 +352,92 @@ export interface GazeHandle {
   release(): void;
 }
 
+// ─── MotionPriorityQueue (Phase γ-adjacent) ───────────────────
+
+/**
+ * Body motion の発火 source。state.get で観察可能、residents が自分の motion 構成を読める。
+ * - "reflex": 反射層（perception bridge 等）から発火
+ * - "mcp": 住人 AI が MCP tool 経由で意識的に発火（Phase γ）
+ * - "persona": persona reflex handler 経由（ctx.character.play の caller）
+ * - "idle": 30s+ idle の小動作
+ * - "state": Body.setState 連動（writing 中の Typing 等）
+ * - "system": 内部用（greeting nod 等）
+ */
+export type MotionSource = "reflex" | "mcp" | "persona" | "idle" | "state" | "system";
+
+/**
+ * Motion priority levels（5 段、固定 enum）。higher が lower を preempt する。
+ * - "critical-reflex" (L5): 強制割り込み（startle / flinch、MVP では未使用枠）
+ * - "mcp-conscious" (L4): 住人 AI の意思
+ * - "persona-handler" (L3): persona reflex の演技 motion
+ * - "state-driven" (L2): state 連動 (Typing during writing 等)
+ * - "idle-fidget" (L1): 30s+ idle の小動作
+ *
+ * "default-pose" は queue 外（active が無いとき procedural-bones + breathing が default）、
+ * priority enum には含めない。acquireMotionSlot で渡せない設計。
+ */
+export type MotionPriority =
+  | "critical-reflex"
+  | "mcp-conscious"
+  | "persona-handler"
+  | "state-driven"
+  | "idle-fidget";
+
+/** Motion 起動時の補助 option（fade / loop / speed 等の表現 parameter）。 */
+export interface MotionOptions {
+  readonly fadeInMs?: number;
+  readonly fadeOutMs?: number;
+  readonly weight?: number;
+  readonly loop?: boolean;
+  readonly speed?: number;
+}
+
+/** Scheduler への motion 依頼。priority と animation 識別子を含む。 */
+export interface MotionRequest {
+  readonly source: MotionSource;
+  readonly priority: MotionPriority;
+  readonly animation: AnimationRef;
+  readonly options?: MotionOptions;
+}
+
+/** Handle の completion を区別するための reason。 */
+export type MotionCompletionReason = "completed" | "cancelled" | "preempted";
+
+/**
+ * `acquireMotionSlot()` が返す handle。caller はこれで motion の release / cancel /
+ * 状態確認 / 完了 await を行う。
+ */
+export interface MotionHandle {
+  readonly source: MotionSource;
+  readonly priority: MotionPriority;
+  readonly animation: AnimationRef;
+  readonly startedAt: number;
+  release(fadeMs?: number): void;
+  cancel(): void;
+  isActive(): boolean;
+  isPreempted(): boolean;
+  /** 自然完了 / cancel / preempt のいずれか。reject はしない。 */
+  readonly completion: Promise<{ readonly reason: MotionCompletionReason }>;
+}
+
+/** Snapshot 観察用の active / preempted entry の read-only 形。 */
+export interface MotionEntry {
+  readonly source: MotionSource;
+  readonly priority: MotionPriority;
+  readonly animation: string;
+  readonly startedAt: number;
+}
+
+/**
+ * Scheduler 状態の snapshot（observability で使う）。
+ * `preempted` field は単一 active stop model のため現状常に空、symmetry のため field 保持。
+ */
+export interface MotionSnapshot {
+  readonly active: MotionEntry | null;
+  /** Stop model のため現状常に空、symmetry のため field 保持 */
+  readonly preempted: ReadonlyArray<MotionEntry>;
+}
+
 export interface Vec3 {
   x: number;
   y: number;
