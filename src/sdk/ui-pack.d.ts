@@ -97,6 +97,8 @@ export interface UiAppAPI {
   setActiveScene(id: string | null): Promise<void>;
   /** terminalAgent を切り替える。 */
   setTerminalAgent(agent: "claude" | "codex"): Promise<void>;
+  /** Scene pack の環境音を mute / unmute する。 */
+  setAmbientAudioMuted(muted: boolean): Promise<void>;
   /**
    * 現 config の snapshot（読み取り専用、初期値表示用）。
    * `~/.charminal/config.json` を fresh に読んで返す async。
@@ -105,6 +107,7 @@ export interface UiAppAPI {
     readonly primaryPersona: string | null;
     readonly activeScene: string | null;
     readonly terminalAgent: "claude" | "codex";
+    readonly ambientAudioMuted: boolean;
   }>;
 }
 

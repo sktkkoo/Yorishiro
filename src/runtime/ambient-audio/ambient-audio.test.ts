@@ -10,6 +10,7 @@ const createdHowls: Array<{
   play: ReturnType<typeof vi.fn>;
   fade: ReturnType<typeof vi.fn>;
   unload: ReturnType<typeof vi.fn>;
+  mute: ReturnType<typeof vi.fn>;
   volumeFn: ReturnType<typeof vi.fn>;
 }> = [];
 
@@ -24,6 +25,7 @@ vi.mock("howler", () => {
         play: vi.fn(),
         fade: vi.fn(),
         unload: vi.fn(),
+        mute: vi.fn(),
         volumeFn: vi.fn().mockImplementation(function (this: { volume: number }) {
           return this.volume;
         }),
@@ -174,6 +176,48 @@ describe("AmbientAudioRuntime", () => {
         html5: false,
       }),
     );
+  });
+
+  it("setMuted: muting toggles mute on every active Howl", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMix([
+      { url: "/a.mp3", volume: 0.5 },
+      { url: "/b.mp3", volume: 0.3 },
+    ]);
+    runtime.setMuted(true);
+    for (const h of createdHowls) {
+      expect(h.mute).toHaveBeenCalledWith(true);
+    }
+  });
+
+  it("setMuted: unmuting toggles mute off", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMix([{ url: "/a.mp3", volume: 0.5 }]);
+    runtime.setMuted(true);
+    const [h] = createdHowls;
+    if (h === undefined) throw new Error("Howl が作られていない");
+    h.mute.mockClear();
+    runtime.setMuted(false);
+    expect(h.mute).toHaveBeenCalledWith(false);
+  });
+
+  it("setMuted: same value is a no-op (no redundant mute calls)", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMix([{ url: "/a.mp3", volume: 0.5 }]);
+    const [h] = createdHowls;
+    if (h === undefined) throw new Error("Howl が作られていない");
+    h.mute.mockClear();
+    runtime.setMuted(false);
+    expect(h.mute).not.toHaveBeenCalled();
+  });
+
+  it("setMuted: new Howl created while muted starts muted", () => {
+    const runtime = new AmbientAudioRuntime();
+    runtime.setMuted(true);
+    runtime.setMix([{ url: "/a.mp3", volume: 0.5 }]);
+    const [h] = createdHowls;
+    if (h === undefined) throw new Error("Howl が作られていない");
+    expect(h.mute).toHaveBeenCalledWith(true);
   });
 
   it("setMix: removed sound that completes fadeout is gone (unload called, fadingOut cleared)", async () => {

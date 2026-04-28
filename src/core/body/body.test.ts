@@ -18,30 +18,30 @@ import { IdleSquintSystem } from "./idle-squint-system";
 describe("ExpressionManager", () => {
   it("single expression: effective equals requested", () => {
     const mgr = new ExpressionManager();
-    const id = mgr.addSlot("happy", 0.5);
+    const id = mgr.addSlot("persona", "mood", "happy", 0.5);
     expect(mgr.getEffectiveWeight(id)).toBe(0.5);
   });
 
   it("two expressions under budget: no scale-down", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.3);
-    const b = mgr.addSlot("sad", 0.4);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.3);
+    const b = mgr.addSlot("reflex", "eye", "sad", 0.4);
     expect(mgr.getEffectiveWeight(a)).toBe(0.3);
     expect(mgr.getEffectiveWeight(b)).toBe(0.4);
   });
 
   it("two expressions at exactly 1.0: no scale-down", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.6);
-    const b = mgr.addSlot("sad", 0.4);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.6);
+    const b = mgr.addSlot("reflex", "eye", "sad", 0.4);
     expect(mgr.getEffectiveWeight(a)).toBe(0.6);
     expect(mgr.getEffectiveWeight(b)).toBe(0.4);
   });
 
   it("two expressions over budget: proportional scale-down", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.8);
-    const b = mgr.addSlot("sad", 0.4);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.8);
+    const b = mgr.addSlot("reflex", "eye", "sad", 0.4);
     // total = 1.2, scale = 1/1.2
     expect(mgr.getEffectiveWeight(a)).toBeCloseTo(0.8 / 1.2);
     expect(mgr.getEffectiveWeight(b)).toBeCloseTo(0.4 / 1.2);
@@ -51,9 +51,9 @@ describe("ExpressionManager", () => {
 
   it("three expressions over budget: proportional scale-down preserves ratios", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.5);
-    const b = mgr.addSlot("sad", 0.5);
-    const c = mgr.addSlot("surprised", 0.5);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.5);
+    const b = mgr.addSlot("mcp", "mood", "sad", 0.5);
+    const c = mgr.addSlot("reflex", "eye", "surprised", 0.5);
     // total = 1.5, scale = 1/1.5 = 2/3
     expect(mgr.getEffectiveWeight(a)).toBeCloseTo(1 / 3);
     expect(mgr.getEffectiveWeight(b)).toBeCloseTo(1 / 3);
@@ -62,8 +62,8 @@ describe("ExpressionManager", () => {
 
   it("removing a slot gives remaining expressions more budget", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.8);
-    const b = mgr.addSlot("sad", 0.4);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.8);
+    const b = mgr.addSlot("reflex", "eye", "sad", 0.4);
     // Over budget: a = 0.8/1.2, b = 0.4/1.2
     expect(mgr.getEffectiveWeight(a)).toBeCloseTo(0.8 / 1.2);
 
@@ -75,7 +75,7 @@ describe("ExpressionManager", () => {
 
   it("setWeight updates effective weights", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.3);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.3);
     expect(mgr.getEffectiveWeight(a)).toBe(0.3);
 
     mgr.setWeight(a, 0.7);
@@ -84,8 +84,8 @@ describe("ExpressionManager", () => {
 
   it("setWeight triggers budget recomputation", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0.5);
-    const b = mgr.addSlot("sad", 0.3);
+    const a = mgr.addSlot("persona", "mood", "happy", 0.5);
+    const b = mgr.addSlot("reflex", "eye", "sad", 0.3);
     // total 0.8 — under budget
     expect(mgr.getEffectiveWeight(a)).toBe(0.5);
 
@@ -95,11 +95,12 @@ describe("ExpressionManager", () => {
     expect(mgr.getEffectiveWeight(b)).toBeCloseTo(0.3 / 1.2);
   });
 
-  it("getResolved aggregates by expression name", () => {
+  it("getResolved aggregates by expression name across different sources", () => {
     const mgr = new ExpressionManager();
-    mgr.addSlot("happy", 0.3);
-    mgr.addSlot("happy", 0.2); // same expression, two slots
-    mgr.addSlot("sad", 0.1);
+    // 異 source・同名 expression は getResolved で合算される
+    mgr.addSlot("persona", "mood", "happy", 0.3);
+    mgr.addSlot("mcp", "mood", "happy", 0.2);
+    mgr.addSlot("reflex", "eye", "sad", 0.1);
 
     const resolved = mgr.getResolved();
     expect(resolved.get("happy")).toBeCloseTo(0.5);
@@ -113,7 +114,7 @@ describe("ExpressionManager", () => {
 
   it("zero weight slot does not cause division by zero", () => {
     const mgr = new ExpressionManager();
-    const a = mgr.addSlot("happy", 0);
+    const a = mgr.addSlot("persona", "mood", "happy", 0);
     expect(mgr.getEffectiveWeight(a)).toBe(0);
     expect(mgr.size).toBe(1);
   });
@@ -128,6 +129,75 @@ describe("ExpressionManager", () => {
     const mgr = new ExpressionManager();
     mgr.removeSlot(999); // should not throw
     expect(mgr.size).toBe(0);
+  });
+
+  // ─── source / kind dedup ─────────────────────────────────
+
+  it("per-(source, kind) dedup: same source+kind releases previous slot", () => {
+    const mgr = new ExpressionManager();
+    const first = mgr.addSlot("mcp", "mood", "happy", 0.6);
+    const second = mgr.addSlot("mcp", "mood", "sad", 0.4);
+
+    // first slot は dedup により release されている
+    expect(mgr.getEffectiveWeight(first)).toBe(0);
+    expect(mgr.getEffectiveWeight(second)).toBe(0.4);
+    expect(mgr.size).toBe(1);
+  });
+
+  it("different sources, same kind+name: weights sum in getResolved", () => {
+    const mgr = new ExpressionManager();
+    mgr.addSlot("persona", "mood", "happy", 0.3);
+    mgr.addSlot("mcp", "mood", "happy", 0.4);
+    // どちらも mood/happy だが source が違うので両方 active
+    expect(mgr.size).toBe(2);
+    expect(mgr.getResolved().get("happy")).toBeCloseTo(0.7);
+  });
+
+  it("4 slots of different (source, kind) all weight 1: total 4 → each effective 0.25", () => {
+    const mgr = new ExpressionManager();
+    const a = mgr.addSlot("persona", "mood", "happy", 1);
+    const b = mgr.addSlot("mcp", "mood", "sad", 1);
+    const c = mgr.addSlot("reflex", "eye", "blink", 1);
+    const d = mgr.addSlot("idle", "lip", "aa", 1);
+
+    expect(mgr.getEffectiveWeight(a)).toBeCloseTo(0.25);
+    expect(mgr.getEffectiveWeight(b)).toBeCloseTo(0.25);
+    expect(mgr.getEffectiveWeight(c)).toBeCloseTo(0.25);
+    expect(mgr.getEffectiveWeight(d)).toBeCloseTo(0.25);
+  });
+
+  it('source "mcp" + source "reflex" both pushing "happy" mood: getResolved sums', () => {
+    const mgr = new ExpressionManager();
+    // "reflex"+"mood" は実運用上は無いが、mixer の組合せ自体は可能
+    mgr.addSlot("mcp", "mood", "happy", 0.3);
+    mgr.addSlot("reflex", "mood", "happy", 0.2);
+    expect(mgr.getResolved().get("happy")).toBeCloseTo(0.5);
+  });
+
+  it("getSlots returns snapshots with source / kind / weights", () => {
+    const mgr = new ExpressionManager();
+    mgr.addSlot("mcp", "mood", "happy", 0.7);
+    mgr.addSlot("reflex", "eye", "blink", 0.4);
+
+    const snaps = mgr.getSlots();
+    expect(snaps).toHaveLength(2);
+    const happy = snaps.find((s) => s.expressionName === "happy");
+    const blink = snaps.find((s) => s.expressionName === "blink");
+    expect(happy).toMatchObject({
+      source: "mcp",
+      kind: "mood",
+      expressionName: "happy",
+      requestedWeight: 0.7,
+    });
+    expect(blink).toMatchObject({
+      source: "reflex",
+      kind: "eye",
+      expressionName: "blink",
+      requestedWeight: 0.4,
+    });
+    // total 1.1 → scaled-down
+    expect(happy?.effectiveWeight).toBeCloseTo(0.7 / 1.1);
+    expect(blink?.effectiveWeight).toBeCloseTo(0.4 / 1.1);
   });
 });
 
@@ -527,7 +597,7 @@ describe("EyelidExpressionController", () => {
     const blink = new BlinkSystem(() => 0);
     const squint = new IdleSquintSystem(() => 0);
     const eyelids = new EyelidExpressionController(expressions, blink, squint);
-    const neutralSlot = expressions.addSlot("neutral", 1);
+    const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
 
     eyelids.update(0, 6.1, {
       idle: true,
@@ -553,7 +623,7 @@ describe("EyelidExpressionController", () => {
     const blink = new BlinkSystem(() => 0);
     const squint = new IdleSquintSystem(() => 0);
     const eyelids = new EyelidExpressionController(expressions, blink, squint);
-    const neutralSlot = expressions.addSlot("neutral", 1);
+    const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
 
     eyelids.update(0, 6.1, {
       idle: true,

@@ -7,6 +7,9 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
  */
 
+import type { ExpressionHandle, SpaceEffectRequest } from "@charminal/sdk";
+import type * as THREE from "three";
+import type { Body, ExpressionKind } from "../../core/body";
 import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
@@ -208,4 +211,317 @@ function resolvePackId(
     throw new Error("no active UI pack");
   }
   return active;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * helper（module-level）
+ * ────────────────────────────────────────────────────────── */
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+/**
+ * scene 内の最初の DirectionalLight を 1 個取り出す。
+ * camera-lighting-panel 既存実装と同 logic。pack 依存を MCP 層に持ち込まないため
+ * 同じ helper を独立に持つ（3 行重複は abstraction より良い、
+ * CLAUDE.md「premature abstraction を避ける」）。
+ */
+function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
+  let found: THREE.DirectionalLight | null = null;
+  scene.traverse((obj) => {
+    if (!found && (obj as THREE.DirectionalLight).isDirectionalLight) {
+      found = obj as THREE.DirectionalLight;
+    }
+  });
+  return found;
+}
+
+/* ──────────────────────────────────────────────────────────
+ * state.get
+ * ────────────────────────────────────────────────────────── */
+
+/**
+ * Body から取り出した slot snapshot を MCP 応答用の plain shape に narrowed する型。
+ * Body の SlotSnapshot をそのまま再 export するのではなく、ここで MCP boundary
+ * 用の型を独立に定義することで、Body 内部の型変化が tool 応答 contract に
+ * 漏れないようにする。
+ */
+export interface ExpressionSlotEntry {
+  readonly source: string;
+  readonly kind: string;
+  readonly name: string;
+  readonly requestedWeight: number;
+  readonly effectiveWeight: number;
+}
+
+/**
+ * Body の subset 型。tool-handlers が必要とする method のみ。
+ * test mock を書きやすくするため、Body 全体ではなく shape で受ける。
+ */
+export interface BodyLike {
+  readonly acquireExpressionSlot: Body["acquireExpressionSlot"];
+  readonly getExpressionSlots: Body["getExpressionSlots"];
+}
+
+export interface StateGetDeps {
+  readonly readConfig: () => Promise<CharminalConfig>;
+  readonly getCamera: () => THREE.PerspectiveCamera | null;
+  readonly getScene: () => THREE.Scene | null;
+  readonly getVrm: () => unknown;
+  readonly getBody: () => BodyLike | null;
+}
+
+export interface StateGetResult {
+  readonly config: {
+    primaryPersona: string | null;
+    activeScene: string | null;
+    terminalAgent: "claude" | "codex";
+  };
+  readonly camera: { position: readonly [number, number, number]; fov: number };
+  readonly lighting: { intensity: number; color: string };
+  readonly vrmLoaded: boolean;
+  readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
+}
+
+/**
+ * config / camera / lighting / vrmLoaded / expressions をひとまとめにして返す
+ * read-only handler。各 dependency は null 可で、nil の場合は安全な default を
+ * 返す（camera 0,0,0 等）。expressions は Body.getExpressionSlots() の snapshot
+ * を MCP 応答用 shape に詰め替えたもの。Body 未生成時は空配列。
+ */
+export function createStateGetHandler(deps: StateGetDeps) {
+  return async (_request: unknown): Promise<StateGetResult> => {
+    const cfg = await deps.readConfig();
+    const cam = deps.getCamera();
+    const scene = deps.getScene();
+    const light = scene ? findDirectionalLight(scene) : null;
+    const body = deps.getBody();
+    const expressions = body
+      ? body.getExpressionSlots().map(
+          (s): ExpressionSlotEntry => ({
+            source: s.source,
+            kind: s.kind,
+            name: s.expressionName,
+            requestedWeight: s.requestedWeight,
+            effectiveWeight: s.effectiveWeight,
+          }),
+        )
+      : [];
+    return {
+      config: {
+        primaryPersona: cfg.primaryPersona,
+        activeScene: cfg.activeScene,
+        terminalAgent: cfg.terminalAgent,
+      },
+      camera: {
+        position: cam ? [cam.position.x, cam.position.y, cam.position.z] : [0, 0, 0],
+        fov: cam && "fov" in cam ? cam.fov : 0,
+      },
+      lighting: {
+        intensity: light?.intensity ?? 0,
+        color: light ? `#${light.color.getHexString()}` : "#ffffff",
+      },
+      vrmLoaded: deps.getVrm() !== null,
+      expressions,
+    };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * body.expression.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface BodyExpressionSetDeps {
+  readonly getBody: () => BodyLike | null;
+}
+
+export interface BodyExpressionSetResult {
+  readonly preset: string;
+  readonly intensity: number;
+}
+
+/**
+ * MCP module-level の slot 保持 Map。kind ごとに最新の handle を 1 つだけ持ち、
+ * 再 acquire 時に前 handle を release する。Body 側の per-(source, kind) dedup
+ * があるので二重解放にはならないが、handle.release() を明示呼びすることで
+ * blink 抑制 token 等の副作用も漏れなく解放される。
+ *
+ * Phase β は kind = "mood" のみ公開なので Map に入る entry も実質 1 つだが、
+ * 将来 eye / lip / custom を解放した時のために kind 軸で持っておく。
+ */
+const mcpExpressionSlots = new Map<ExpressionKind, ExpressionHandle>();
+
+/**
+ * Body の expression mixer に MCP source として slot を acquire / release する
+ * handler。intensity を omit すると 1、範囲外は 0-1 に clamp する。intensity が
+ * 0 の場合は前 slot の release のみ行い、新規 acquire はしない。Body 未生成
+ * （VRM 未 load）の場合は throw する。
+ *
+ * frame-loop overwrite 問題: 旧実装は `vrm.expressionManager.setValue()` を
+ * 直接呼んでいたが、これは Body.applyExpressions() が毎 frame 全 expression を
+ * 0 リセット → mixer resolved を再書き込みする実装のため、次 frame に消されて
+ * いた。slot 経路に切り替えることで mixer の SOT に登録され、frame をまたいで
+ * 維持される。
+ */
+export function createBodyExpressionSetHandler(deps: BodyExpressionSetDeps) {
+  return async (request: unknown): Promise<BodyExpressionSetResult> => {
+    const r = (request ?? {}) as { preset?: unknown; intensity?: unknown };
+    if (typeof r.preset !== "string" || r.preset === "") {
+      throw new Error("missing preset");
+    }
+    const body = deps.getBody();
+    if (!body) {
+      throw new Error("no VRM loaded");
+    }
+    const intensity = clamp01(
+      typeof r.intensity === "number" && Number.isFinite(r.intensity) ? r.intensity : 1,
+    );
+    // Phase β は mood のみ MCP 公開。eye / lip / custom は別 tool になる予定。
+    const kind: ExpressionKind = "mood";
+
+    // 既存 MCP slot があれば release（per-kind 単 slot）
+    const previousHandle = mcpExpressionSlots.get(kind);
+    if (previousHandle) {
+      previousHandle.release();
+      mcpExpressionSlots.delete(kind);
+    }
+
+    if (intensity === 0) {
+      // intensity 0 は release のみ、新規 acquire しない
+      return { preset: r.preset, intensity: 0 };
+    }
+
+    const handle = body.acquireExpressionSlot("mcp", kind, r.preset, intensity);
+    mcpExpressionSlots.set(kind, handle);
+    return { preset: r.preset, intensity };
+  };
+}
+
+/**
+ * テスト専用: module-level の MCP slot Map を空にする。
+ * 同じ vitest プロセス内で createBodyExpressionSetHandler が複数回 instance 化
+ * される場合に、test 同士の slot 漏れを防ぐ。
+ */
+export function __resetMcpExpressionSlotsForTesting(): void {
+  mcpExpressionSlots.clear();
+}
+
+/* ──────────────────────────────────────────────────────────
+ * space.effect.play
+ * ────────────────────────────────────────────────────────── */
+
+export interface SpaceEffectPlayDeps {
+  readonly effectDispatcher: {
+    dispatch: (request: SpaceEffectRequest) => unknown;
+  };
+}
+
+export interface SpaceEffectPlayResult {
+  readonly kind: string;
+}
+
+/**
+ * effect dispatcher 経由で effect pack に reaction を発火する handler。
+ * SpaceEffectRequest は flat な discriminated union（kind に応じて intensity / origin /
+ * durationMs 等が直に並ぶ）。MCP 経由では payload object でラップして受けるが、dispatch
+ * には spread でフラット化して渡す。payload が object でなければ kind のみ送る。
+ */
+export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
+  return async (request: unknown): Promise<SpaceEffectPlayResult> => {
+    const r = (request ?? {}) as { kind?: unknown; payload?: unknown };
+    if (typeof r.kind !== "string" || r.kind === "") {
+      throw new Error("missing kind");
+    }
+    const payloadObj =
+      typeof r.payload === "object" && r.payload !== null && !Array.isArray(r.payload)
+        ? (r.payload as Record<string, unknown>)
+        : {};
+    deps.effectDispatcher.dispatch({ kind: r.kind, ...payloadObj } as SpaceEffectRequest);
+    return { kind: r.kind };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * scene.camera.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneCameraSetDeps {
+  readonly getCamera: () => THREE.PerspectiveCamera | null;
+}
+
+export interface SceneCameraSetResult {
+  readonly position: readonly [number, number, number];
+  readonly fov: number;
+}
+
+function parseVec3(v: unknown): readonly [number, number, number] | undefined {
+  if (!Array.isArray(v) || v.length !== 3) return undefined;
+  if (!v.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
+  return [v[0] as number, v[1] as number, v[2] as number];
+}
+
+/**
+ * camera の position / target (lookAt) / fov を opportunistic に更新する handler。
+ * 与えられなかった field は変更しない。camera 未準備時は throw する。
+ */
+export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
+  return async (request: unknown): Promise<SceneCameraSetResult> => {
+    const r = (request ?? {}) as {
+      position?: unknown;
+      target?: unknown;
+      fov?: unknown;
+    };
+    const cam = deps.getCamera();
+    if (!cam) throw new Error("camera not ready");
+    const position = parseVec3(r.position);
+    const target = parseVec3(r.target);
+    if (position) cam.position.set(position[0], position[1], position[2]);
+    if (target) cam.lookAt(target[0], target[1], target[2]);
+    if (typeof r.fov === "number" && Number.isFinite(r.fov) && "fov" in cam) {
+      cam.fov = r.fov;
+      cam.updateProjectionMatrix();
+    }
+    return {
+      position: [cam.position.x, cam.position.y, cam.position.z],
+      fov: "fov" in cam ? cam.fov : 0,
+    };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * scene.lighting.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneLightingSetDeps {
+  readonly getScene: () => THREE.Scene | null;
+}
+
+export interface SceneLightingSetResult {
+  readonly intensity: number;
+  readonly color: string;
+}
+
+/**
+ * scene 内の最初の DirectionalLight に intensity / color を opportunistic に
+ * 適用する handler。light が無い場合は throw する。
+ */
+export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
+  return async (request: unknown): Promise<SceneLightingSetResult> => {
+    const r = (request ?? {}) as { intensity?: unknown; color?: unknown };
+    const scene = deps.getScene();
+    if (!scene) throw new Error("scene not ready");
+    const light = findDirectionalLight(scene);
+    if (!light) throw new Error("no DirectionalLight in scene");
+    if (typeof r.intensity === "number" && Number.isFinite(r.intensity)) {
+      light.intensity = r.intensity;
+    }
+    if (typeof r.color === "string") {
+      light.color.set(r.color);
+    }
+    return {
+      intensity: light.intensity,
+      color: `#${light.color.getHexString()}`,
+    };
+  };
 }

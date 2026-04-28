@@ -255,6 +255,89 @@ function Button(props: ButtonProps): React.JSX.Element {
   );
 }
 
+/**
+ * 音量 / ミュート切り替えの icon toggle button。boolean state を画面上で
+ * 直接切り替える用途。state ごとに icon と border 色を変え、現在状態が一目で
+ * わかるようにする。
+ */
+function AudioMuteToggle({
+  muted,
+  disabled,
+  onToggle,
+}: {
+  muted: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={muted}
+      aria-label={muted ? "環境音をミュート解除" : "環境音をミュート"}
+      title={muted ? "環境音をミュート解除" : "環境音をミュート"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "32px",
+        height: "32px",
+        background: muted ? COLORS.bgInput : COLORS.accentSoft,
+        border: `1px solid ${muted ? COLORS.borderSubtle : COLORS.accentBorder}`,
+        borderRadius: RADIUS.sm,
+        color: muted ? COLORS.fgDimmer : COLORS.accent,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        padding: 0,
+        font: "inherit",
+      }}
+    >
+      {muted ? <VolumeXIcon /> : <Volume2Icon />}
+    </button>
+  );
+}
+
+function Volume2Icon(): React.JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 5 6 9H2v6h4l5 4V5z" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
+function VolumeXIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M11 5 6 9H2v6h4l5 4V5z" />
+      <line x1="22" y1="9" x2="16" y2="15" />
+      <line x1="16" y1="9" x2="22" y2="15" />
+    </svg>
+  );
+}
+
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [vrmName, setVrmName] = useState<string>(() => {
     const stored = localStorage.getItem("charminal:vrm");
@@ -263,6 +346,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
   const [agent, setAgent] = useState<"claude" | "codex">("claude");
+  // 環境音 mute は config が読まれるまで undecided。getConfig 後に boolean を入れる。
+  const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
   const personas = ctx.app.listPersonas();
   const scenes = ctx.app.listScenes();
 
@@ -273,6 +358,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setPersona(cur.primaryPersona);
       setScene(cur.activeScene);
       setAgent(cur.terminalAgent);
+      setAmbientMuted(cur.ambientAudioMuted);
     });
     return () => {
       aborted = true;
@@ -310,6 +396,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setTerminalAgent(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "terminalAgent",
+    });
+  };
+
+  const onAmbientMutedToggle = () => {
+    if (ambientMuted === null) return; // 初回 load 中は無視
+    void applyConfigUpdate({
+      next: !ambientMuted,
+      prev: ambientMuted,
+      setLocal: setAmbientMuted,
+      write: (v) => ctx.app.setAmbientAudioMuted(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "ambientAudioMuted",
     });
   };
 
@@ -440,6 +538,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 value: s.id,
                 label: `${s.name ?? s.id}${s.origin === "user" ? " (user)" : ""}`,
               }))}
+            />
+          </Field>
+        </Section>
+        <Section title="オーディオ">
+          <Field label="環境音">
+            <AudioMuteToggle
+              muted={ambientMuted ?? false}
+              disabled={ambientMuted === null}
+              onToggle={onAmbientMutedToggle}
             />
           </Field>
         </Section>

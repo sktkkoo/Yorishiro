@@ -34,7 +34,13 @@ import type { SubsystemLog } from "../dev-log";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
-import { ExpressionManager, expressionTargetToName } from "./expression-manager";
+import {
+  type ExpressionKind,
+  ExpressionManager,
+  type ExpressionSource,
+  expressionTargetToName,
+  type SlotSnapshot,
+} from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
 import { ProceduralBones } from "./procedural-bones";
@@ -385,7 +391,7 @@ export class Body {
 
   private express(target: ExpressionTarget, intensity: number): ExpressionHandle {
     const expressionName = expressionTargetToName(target);
-    const slotId = this.expressions.addSlot(expressionName, intensity);
+    const slotId = this.expressions.addSlot("persona", target.kind, expressionName, intensity);
 
     const blinkSuppressionToken =
       expressionName === BLINK_EXPRESSION_NAME ? this.blinkSystem.suppress() : null;
@@ -402,6 +408,50 @@ export class Body {
     );
     this.activeExprHandles.add(handle);
     return handle;
+  }
+
+  /**
+   * 外部 source（MCP 等）が expression slot を直接 acquire するための public API。
+   * source と kind を必ず渡す。同じ (source, kind) は dedup され、前 slot は
+   * 自動的に release される。返り値の handle は ExpressionHandle 互換で、
+   * release / setIntensity / effectiveWeight を持つ。
+   *
+   * Note: target shape は kind = "mood" の場合 preset 名を、それ以外は
+   * 適切な field に expressionName を入れた discriminated union を組む。
+   * Phase β では mood のみ MCP 公開なので主に "mood" パスを通る。
+   */
+  acquireExpressionSlot(
+    source: ExpressionSource,
+    kind: ExpressionKind,
+    expressionName: string,
+    intensity: number,
+  ): ExpressionHandle {
+    const slotId = this.expressions.addSlot(source, kind, expressionName, intensity);
+
+    const blinkSuppressionToken =
+      expressionName === BLINK_EXPRESSION_NAME ? this.blinkSystem.suppress() : null;
+
+    const target = buildExpressionTarget(kind, expressionName);
+    const handle = new BodyExpressionHandle(
+      target,
+      expressionName,
+      intensity,
+      slotId,
+      this.expressions,
+      this.blinkSystem,
+      blinkSuppressionToken,
+      this.activeExprHandles,
+    );
+    this.activeExprHandles.add(handle);
+    return handle;
+  }
+
+  /**
+   * 現在 active な全 expression slot の snapshot を返す。state.get などの
+   * observability で住人 AI が自分の感情構成を読むために使う。
+   */
+  getExpressionSlots(): ReadonlyArray<SlotSnapshot> {
+    return this.expressions.getSlots();
   }
 
   private gaze(target: GazeTarget, _options?: GazeOptions): GazeHandle {
@@ -522,9 +572,11 @@ export class Body {
     this.stateExprState = state;
 
     // Add new state expressions
+    // Note: state base 表情は "idle" source / "mood" kind で持つ。
+    // MCP の "mcp" / persona の "persona" と独立に共存する。
     const targets = STATE_EXPRESSIONS[state];
     for (const [name, value] of targets) {
-      this.stateExprSlots.push(this.expressions.addSlot(name, value));
+      this.stateExprSlots.push(this.expressions.addSlot("idle", "mood", name, value));
     }
   }
 
@@ -540,7 +592,18 @@ export class Body {
 
     if (this.relaxedValue > 0) {
       if (this.relaxedSlotId === -1) {
-        this.relaxedSlotId = this.expressions.addSlot("relaxed", this.relaxedValue);
+        // 注意: "idle" source / "mood" kind は applyStateExpressions と同じ
+        // (source, kind) なので、addSlot 経由だと state base 表情 (neutral) を
+        // 巻き込んで release してしまう。relaxed は別 channel として扱うため、
+        // 既存の (source, kind) 衝突を避けて直接低レベル API を回避する目的で
+        // ここは "idle" + "custom" として登録する（concurrent な複数 idle 系
+        // 表情を併存させる意図）。
+        this.relaxedSlotId = this.expressions.addSlot(
+          "idle",
+          "custom",
+          "relaxed",
+          this.relaxedValue,
+        );
       } else {
         this.expressions.setWeight(this.relaxedSlotId, this.relaxedValue);
       }
@@ -655,10 +718,51 @@ class BodyGazeHandle implements GazeHandle {
   }
 }
 
+/**
+ * acquireExpressionSlot 内で使用する ExpressionTarget 構築 helper。
+ * SDK の ExpressionTarget は kind ごとに異なる field を持つ discriminated
+ * union なので、kind と expressionName から最も妥当な target を組む。
+ *
+ * Phase β では mood のみ MCP 公開だが、将来 eye / lip / custom も外部から
+ * acquire される可能性に備えて全 kind を網羅する。target の field 値は
+ * SDK の string literal union 制約を満たさないこともあるため、unknown 経由で
+ * narrow させる（SDK 型の externals は緩めに扱う）。
+ */
+function buildExpressionTarget(kind: ExpressionKind, expressionName: string): ExpressionTarget {
+  switch (kind) {
+    case "mood":
+      return {
+        kind: "mood",
+        preset: expressionName,
+      } as unknown as ExpressionTarget;
+    case "eye":
+      return {
+        kind: "eye",
+        variant: expressionName,
+      } as unknown as ExpressionTarget;
+    case "lip":
+      return {
+        kind: "lip",
+        phoneme: expressionName,
+      } as unknown as ExpressionTarget;
+    case "custom":
+      return {
+        kind: "custom",
+        blendShapeName: expressionName,
+      };
+  }
+}
+
 export { AnimationPlayer } from "./animation-player";
 export { BlinkSystem } from "./blink-system";
 // Re-export subsystem types for testing
-export { ExpressionManager, expressionTargetToName } from "./expression-manager";
+export {
+  type ExpressionKind,
+  ExpressionManager,
+  type ExpressionSource,
+  expressionTargetToName,
+  type SlotSnapshot,
+} from "./expression-manager";
 export { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 export { EyelidExpressionController } from "./eyelid-expression-controller";
 export { IdleSquintSystem } from "./idle-squint-system";
