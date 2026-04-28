@@ -73,6 +73,17 @@ describe("ScenePackRegistryImpl", () => {
     expect(listener.mock.calls.length).toBe(initialCalls);
   });
 
+  it("allows multiple bundled scenes as standard choices without warning", () => {
+    const warnings: string[] = [];
+    const registry = new ScenePackRegistryImpl({
+      warn: (msg) => warnings.push(msg),
+    });
+    registry.register(makeEntry("quiet-room", "bundled"));
+    registry.register(makeEntry("radiant-meadow", "bundled"));
+    expect(warnings).toHaveLength(0);
+    expect(registry.listEntries()).toHaveLength(2);
+  });
+
   it("unsubscribes via returned Disposable", () => {
     const registry = new ScenePackRegistryImpl();
     const listener = vi.fn();

@@ -24,6 +24,8 @@ import charminalDefaultManifest from "../bundled-packs/personas/charminal-defaul
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
 import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
 import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
+import radiantMeadowManifest from "../bundled-packs/scenes/radiant-meadow/manifest.json";
+import radiantMeadowPack from "../bundled-packs/scenes/radiant-meadow/scene";
 import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
 import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
@@ -103,6 +105,7 @@ type MutableLayer = {
   role?: LayerRole;
   src?: string;
   mediaType?: "image" | "video";
+  procedural?: Layer["procedural"];
   backgroundColor?: string;
   backgroundImage?: string;
   blur?: number;
@@ -127,6 +130,7 @@ function applySceneLayerPatch(layer: Layer, patch: UiSceneLayerPatch): Layer {
       delete next.src;
     } else if (patch.src !== undefined) {
       next.src = patch.src;
+      delete next.procedural;
     }
   }
   if ("mediaType" in patch) {
@@ -427,26 +431,32 @@ function App() {
     async function bootstrap(): Promise<void> {
       // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
       try {
-        const resolved = await resolveSceneAssets(quietRoomPack.scene, {
-          origin: "bundled",
-          packId: quietRoomPack.id,
-          onMissing: (assetKey, src) => {
-            appLog.write({
-              phase: "register",
-              note: `bundled scene "${quietRoomPack.id}": asset missing for layer "${assetKey}" (src="${src}")`,
-            });
-          },
-        });
-        scenePackRegistry.register({
-          id: quietRoomPack.id,
-          manifest: quietRoomManifest as ScenePackManifest,
-          scene: resolved,
-          origin: "bundled",
-        });
-        appLog.write({
-          phase: "register",
-          note: `registered bundled scene '${quietRoomPack.id}'`,
-        });
+        const bundledScenes = [
+          { pack: quietRoomPack, manifest: quietRoomManifest as ScenePackManifest },
+          { pack: radiantMeadowPack, manifest: radiantMeadowManifest as ScenePackManifest },
+        ];
+        for (const { pack, manifest } of bundledScenes) {
+          const resolved = await resolveSceneAssets(pack.scene, {
+            origin: "bundled",
+            packId: pack.id,
+            onMissing: (assetKey, src) => {
+              appLog.write({
+                phase: "register",
+                note: `bundled scene "${pack.id}": asset missing for layer "${assetKey}" (src="${src}")`,
+              });
+            },
+          });
+          scenePackRegistry.register({
+            id: pack.id,
+            manifest,
+            scene: resolved,
+            origin: "bundled",
+          });
+          appLog.write({
+            phase: "register",
+            note: `registered bundled scene '${pack.id}'`,
+          });
+        }
         // Ambient audio engine：subscribeActive で active scene の `ambient` 宣言を再生する。
         // register 時の resolveSceneAssets で URL は解決済みなので、engine は origin を知らずに済む。
         ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;

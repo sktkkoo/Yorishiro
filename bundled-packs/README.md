@@ -16,7 +16,8 @@ bundled-packs/
 ├── personas/
 │   └── charminal-default/   — flagship persona
 ├── scenes/
-│   └── quiet-room/          — Phase 1 default scene (3 layer)
+│   ├── quiet-room/          — default scene (3 layer)
+│   └── radiant-meadow/      — Three.js procedural meadow scene
 ├── effects/
 │   └── screen-shake/        — DOM shake on error
 ├── ui/
@@ -48,6 +49,12 @@ bundled-packs/
 - **Files**: `manifest.json`, `README.md`
 - **役割**: Phase 1 default scene。3 層 (background / character / foreground) layer composition の例
 - 詳細：`bundled-packs/scenes/quiet-room/README.md`
+
+### scenes/radiant-meadow
+- **Entry**: `scene.ts`
+- **Files**: `manifest.json`, `README.md`
+- **役割**: runtime 内蔵 Three.js procedural renderer `radiant-meadow` を使う high-fidelity scene。外部画像 / 動画 asset なしで、空・山並み・風になびく草・光粒子を描く
+- 詳細：`bundled-packs/scenes/radiant-meadow/README.md`
 
 ### effects/screen-shake
 - **Entry**: `effect.ts`

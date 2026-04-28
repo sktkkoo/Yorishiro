@@ -34,8 +34,8 @@ import type { SceneSpec } from "./scene";
  * 注: `defaultActive` field は採用しない。Design B（memory:
  * feedback_single_active_config_picks）により、active 選択は pack 自己申告では
  * なく `~/.charminal/config.json` の `activeScene` で user が global に picks する。
- * factory default は App.tsx の hard-code（bundled `quiet-room` を register し、
- * config が空なら Registry が fallback でそれを選ぶ）。
+ * factory default は App.tsx の bundled scene 登録。config が空なら Registry が
+ * bundled の alphabetical 先頭（現状 `quiet-room`）を fallback として選ぶ。
  */
 export interface ScenePackManifest {
   readonly $schema?: string;

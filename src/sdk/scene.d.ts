@@ -18,12 +18,25 @@
 export type LayerRole = "background" | "character" | "foreground";
 
 /**
+ * Runtime が内蔵 renderer で描く procedural layer。
+ *
+ * Scene Pack 自体は declarative のまま保ち、Three.js などの実行コードは
+ * Charminal runtime 側に閉じる。
+ */
+export type ProceduralLayerKind = "radiant-meadow";
+
+export interface ProceduralLayer {
+  readonly kind: ProceduralLayerKind;
+}
+
+/**
  * 1 枚の layer。
  *
  * - `role`: compositor が特定の処理を効かせる対象
  * - `src`: 画像 / 動画の path。拡張子から <img> or <video> を自動判定。
  *   pack-relative path（`"./assets/foo.mp4"`）または絶対 URL（`"https://..."`）。
  *   bundled / user どちらの pack でも書き方は共通、Loader が解決する
+ * - `procedural`: runtime 内蔵の procedural renderer。src と併用しない
  * - `backgroundColor` / `backgroundImage`: CSS の単色 / gradient。src と併用可
  * - `blur`: per-layer 独立の CSS filter blur 値（px）
  */
@@ -32,6 +45,7 @@ export interface Layer {
   readonly role?: LayerRole;
   readonly src?: string;
   readonly mediaType?: "image" | "video";
+  readonly procedural?: ProceduralLayer;
   readonly backgroundColor?: string;
   readonly backgroundImage?: string;
   readonly blur?: number;

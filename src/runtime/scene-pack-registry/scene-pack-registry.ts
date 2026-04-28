@@ -34,8 +34,8 @@ export class ScenePackRegistryImpl
       extractValue: (entry) => entry.scene,
       label: "ScenePackRegistry",
       warn: opts.warn,
-      // scene は同梱 pack を増やす際の名前衝突警告を出す。persona は今のところ off
-      warnOnMultipleBundled: true,
+      // bundled scene は複数の標準選択肢を持てる。fallback は alphabetical 先頭。
+      warnOnMultipleBundled: false,
     });
   }
 

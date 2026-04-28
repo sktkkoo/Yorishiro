@@ -23,15 +23,15 @@
 - 各 layer に独立した **CSS filter blur** を掛ける（被写界深度 DoF 表現）
 - 画像 / 動画を `src` で layer の content に置く
 - CSS gradient を `backgroundImage` で置く
+- runtime 内蔵 Three.js renderer を `procedural` layer として置く
 
 **まだできないこと（Phase 2 以降）:**
 
-- pack として外部 file に分離して hot-load する（`~/.charminal/packs/scenes/` 等）
 - terminal 状態に応じて色や blur が変わる ambient binding（β channel）
 - Auto Color Correction（shoost の「背景基準で前景を染める」）
 - Camera filter（diffusion / glow 等）
 
-現段階で scene を試すには **`src/App.tsx` の `stubScene` を直接編集** する。Phase 2 で pack 化されると、ここを書き換えなくても `~/.charminal/packs/scenes/` に pack を置くだけで反映されるようになる。
+scene を試すには bundled / user scene pack を登録し、`~/.charminal/config.json` の `activeScene` で選ぶ。config が空なら bundled `quiet-room` が fallback になる。
 
 ---
 
@@ -55,6 +55,8 @@ interface Layer {
   readonly id: string;
   readonly role?: "background" | "character" | "foreground";
   readonly src?: string;
+  readonly mediaType?: "image" | "video";
+  readonly procedural?: { readonly kind: "radiant-meadow" };
   readonly backgroundColor?: string;
   readonly backgroundImage?: string;
   readonly blur?: number;
@@ -66,6 +68,8 @@ interface Layer {
 | `id` | layer の識別子 | `data-layer-id` attribute として DOM に出る（debug 用）|
 | `role` | compositor の特殊扱い | 下表参照。指定しなくてよい。指定しない layer は単に順に積まれる |
 | `src` | 画像 / 動画の path | 拡張子から `<img>` / `<video>` を自動判定。`object-fit: cover` で layer を満たす |
+| `mediaType` | `src` の種類 | blob URL など拡張子判定できない時に `"image"` / `"video"` を明示する |
+| `procedural` | runtime 内蔵 renderer | `{ kind: "radiant-meadow" }` など。scene は declarative のまま、描画コードは runtime 側に閉じる。`src` と併用しない |
 | `backgroundColor` | CSS background-color | 単色の layer を作るとき |
 | `backgroundImage` | CSS background-image | `linear-gradient(...)` や `url(...)` を書く。gradient 用途が中心 |
 | `blur` | CSS `filter: blur(Xpx)` | per-layer 独立。`0` を明示すると「ぼかさない」を強制（親由来の blur を上書き）、未指定なら filter property 自体を発行しない |
@@ -134,6 +138,18 @@ const scene: SceneSpec = {
 ```
 
 **注意:** gradient に blur を掛けても視覚的変化はほぼ出ない（元々 high frequency detail がないため）。blur の効きを確認したければ、**detail のある画像か動画**を置くこと。
+
+### Procedural 背景（runtime 内蔵 renderer）
+
+```typescript
+{
+  id: "radiant-meadow-three",
+  role: "background",
+  procedural: { kind: "radiant-meadow" },
+}
+```
+
+`procedural` は Scene Pack の宣言から renderer を選ぶための最小 hook。pack 内に Three.js 実行コードを持たせず、renderer の lifecycle / RAF / dispose は runtime 側で管理する。現時点の bundled 実装は `radiant-meadow` のみ。
 
 ### 役割を持たない layer（中間の粒子など）
 

@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import type { AmbientSound, SceneSpec } from "./scene";
+import type { AmbientSound, ProceduralLayer, SceneSpec } from "./scene";
 
 describe("SceneSpec.ambient (type)", () => {
   it("accepts an ambient field with src + volume", () => {
@@ -14,5 +14,14 @@ describe("SceneSpec.ambient (type)", () => {
   it("accepts AmbientSound with only src (volume optional)", () => {
     const _s: AmbientSound = { src: "sound:wind" };
     void _s;
+  });
+
+  it("accepts a procedural radiant-meadow layer", () => {
+    const _procedural: ProceduralLayer = { kind: "radiant-meadow" };
+    const _scene: SceneSpec = {
+      id: "procedural-test",
+      layers: [{ id: "three-bg", role: "background", procedural: _procedural }],
+    };
+    void _scene;
   });
 });

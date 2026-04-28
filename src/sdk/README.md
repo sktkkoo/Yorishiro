@@ -4,9 +4,9 @@
 
 ---
 
-## UGC の Pack 種別（5 種類）
+## UGC の Pack 種別（6 種類）
 
-Charminal の UGC は 5 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / harness / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
+Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / harness / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
 
 | Pack type | 性格 | 責務 | 主な context API | 主な制約 |
 |---|---|---|---|---|
@@ -14,6 +14,7 @@ Charminal の UGC は 5 種類の Pack に分かれる。**どれを書きたい
 | **Harness Pack** | runtime-active | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
+| **UI Pack** | primary UI | Charminal の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
 | **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | renderer / attention | multi-active（複数同時 enable）。`ambient-ui-pack-registry` で管理 |
 
 - `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、`#ambient-layer` 内の自身の container に描画する。bundled 例: `attention-aura` (v2 attention のデフォルト visual)。
@@ -24,6 +25,7 @@ Charminal の UGC は 5 種類の Pack に分かれる。**どれを書きたい
 - 「コマンドを実行したり通知を出したりしたい」→ Harness Pack
 - 「パーティクルや画面効果を描きたい」→ Effect Pack
 - 「背景・前景の layer 構成を変えて居場所を作りたい」→ Scene Pack
+- 「操作パネルや layout を差し替えたい」→ UI Pack
 - 「注目状態などを overlay で常時可視化したい」→ Ambient UI Pack
 
 ---
@@ -638,6 +640,7 @@ export default {
 | `id` | layer 識別子 | DOM の `data-layer-id` attribute |
 | `role` | compositor の特殊扱い | `'background'` / `'character'` / `'foreground'` のいずれか、または省略 |
 | `src` | 画像 / 動画 path | 拡張子から `<img>` / `<video>` 自動判定。`object-fit: cover` |
+| `procedural` | runtime 内蔵 renderer | `{ kind: 'radiant-meadow' }` など。Scene Pack は declarative のまま、描画実装は runtime 側に閉じる。`src` と併用しない |
 | `backgroundColor` | CSS background-color | 単色 |
 | `backgroundImage` | CSS background-image | gradient や `url(...)` |
 | `blur` | CSS `filter: blur(Xpx)` | per-layer 独立。`0` で「ぼかさない」を明示 |
@@ -672,6 +675,7 @@ export default {
 ### Bundled scene の参考
 
 - `bundled-packs/scenes/quiet-room/` — flagship reference（gradient のみ、3 層構成）
+- `bundled-packs/scenes/radiant-meadow/` — Three.js procedural renderer `radiant-meadow` を使う high-fidelity reference
 - 詳細な data model 解説：[`src/core/scene/README.md`](../core/scene/README.md)
 
 ---

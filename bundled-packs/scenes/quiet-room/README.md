@@ -2,8 +2,8 @@
 
 Charminal 本体同梱の reference scene pack。`~/.charminal/config.json` の
 `activeScene` が未設定なら、この pack が fallback default として選ばれる
-（Design B: Registry の bundled alphabetical fallback で現在 bundled 唯一なので
-quiet-room が選ばれる）。
+（Design B: Registry の bundled alphabetical fallback で `quiet-room` が
+`radiant-meadow` より先に来るため）。
 
 ## 構成
 
