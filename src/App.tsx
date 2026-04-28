@@ -559,12 +559,15 @@ function App() {
           createEnablePackHandler,
           createGetUiStateHandler,
           createSetUiStateHandler,
-          // 新規 5 factory：
+          // Phase β cosmetic write tools：
           createStateGetHandler,
           createBodyExpressionSetHandler,
           createSpaceEffectPlayHandler,
           createSceneCameraSetHandler,
           createSceneLightingSetHandler,
+          // Phase γ motion tools：
+          createBodyAnimationPlayHandler,
+          createBodyMotionCancelHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -646,6 +649,11 @@ function App() {
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),
           }),
+          // ── Phase γ motion tools ────────────────────────
+          "body.animation.play": createBodyAnimationPlayHandler({
+            getBody: () => getThreeRuntime().getBody(),
+          }),
+          "body.motion.cancel": createBodyMotionCancelHandler(),
         };
 
         await listen<{ requestId: string; tool: string; request: unknown }>(

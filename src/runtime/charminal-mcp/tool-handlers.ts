@@ -7,7 +7,12 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
  */
 
-import type { ExpressionHandle, MotionSnapshot, SpaceEffectRequest } from "@charminal/sdk";
+import type {
+  ExpressionHandle,
+  MotionHandle,
+  MotionSnapshot,
+  SpaceEffectRequest,
+} from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import type { UiStateStore } from "../ui-state-store";
@@ -263,6 +268,7 @@ export interface BodyLike {
   readonly acquireExpressionSlot: Body["acquireExpressionSlot"];
   readonly getExpressionSlots: Body["getExpressionSlots"];
   readonly getMotionSnapshot: Body["getMotionSnapshot"];
+  readonly acquireMotionSlot: Body["acquireMotionSlot"];
 }
 
 export interface StateGetDeps {
@@ -538,4 +544,106 @@ export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
       color: `#${light.color.getHexString()}`,
     };
   };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * body.animation.play
+ * ────────────────────────────────────────────────────────── */
+
+/** MCP source の active motion handle（single active、re-call で前 handle release）。 */
+let mcpMotionHandle: MotionHandle | null = null;
+
+export interface BodyAnimationPlayDeps {
+  readonly getBody: () => BodyLike | null;
+}
+
+export interface BodyAnimationPlayResult {
+  readonly animation: string;
+  readonly priority: string;
+  readonly source: string;
+}
+
+/**
+ * 住人 AI が body animation を MCP 経由で再生する handler。
+ * priority "mcp-conscious" で MotionScheduler に request。
+ * re-call で前 MCP motion を release → 新規 acquire。
+ */
+export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
+  return async (request: unknown): Promise<BodyAnimationPlayResult> => {
+    const r = (request ?? {}) as {
+      animation?: unknown;
+      fadeInMs?: unknown;
+      fadeOutMs?: unknown;
+      weight?: unknown;
+      loop?: unknown;
+      speed?: unknown;
+    };
+    if (typeof r.animation !== "string" || r.animation === "") {
+      throw new Error("missing animation");
+    }
+    const body = deps.getBody();
+    if (!body) {
+      throw new Error("no Body loaded");
+    }
+
+    // 既存 MCP motion があれば release（single active）
+    if (mcpMotionHandle) {
+      mcpMotionHandle.release(200);
+      mcpMotionHandle = null;
+    }
+
+    const handle = body.acquireMotionSlot({
+      source: "mcp",
+      priority: "mcp-conscious",
+      animation: r.animation,
+      options: {
+        fadeInMs: typeof r.fadeInMs === "number" ? r.fadeInMs : undefined,
+        fadeOutMs: typeof r.fadeOutMs === "number" ? r.fadeOutMs : undefined,
+        weight: typeof r.weight === "number" ? r.weight : undefined,
+        loop: typeof r.loop === "boolean" ? r.loop : undefined,
+        speed: typeof r.speed === "number" ? r.speed : undefined,
+      },
+    });
+    mcpMotionHandle = handle;
+
+    return {
+      animation: r.animation,
+      priority: "mcp-conscious",
+      source: "mcp",
+    };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * body.motion.cancel
+ * ────────────────────────────────────────────────────────── */
+
+export interface BodyMotionCancelResult {
+  readonly cancelled: boolean;
+}
+
+/**
+ * MCP source の active body animation を停止する handler。
+ * 他 source (persona / state / idle) の motion には影響しない。
+ */
+export function createBodyMotionCancelHandler() {
+  return async (_request: unknown): Promise<BodyMotionCancelResult> => {
+    if (!mcpMotionHandle) {
+      return { cancelled: false };
+    }
+    mcpMotionHandle.release(200);
+    mcpMotionHandle = null;
+    return { cancelled: true };
+  };
+}
+
+/**
+ * テスト用：module-level mcpMotionHandle を reset する。
+ * afterEach で呼んで cross-test 汚染を防止。
+ */
+export function __resetMcpMotionHandleForTesting(): void {
+  if (mcpMotionHandle) {
+    mcpMotionHandle.release(0);
+    mcpMotionHandle = null;
+  }
 }
