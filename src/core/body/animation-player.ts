@@ -143,6 +143,18 @@ export class AnimationPlayer {
     const action = this.mixer.clipAction(clip);
     const id = nextAnimId++;
 
+    // 直前まで active だった「別の」AnimationAction を crossFadeFrom の source に
+    // するため探す。MotionScheduler は single-active model なので通常 0 or 1
+    // entry。同じ action instance が再 play される replay case は除外（同 action
+    // への crossFade は意味がない）。複数残っていたら最新 (= 最大 id) を選ぶ。
+    let prevActive: ActiveAnimation | null = null;
+    for (const anim of this.active.values()) {
+      if (anim.action === action) continue;
+      if (!prevActive || anim.id > prevActive.id) {
+        prevActive = anim;
+      }
+    }
+
     // reset() calls stopFading()/stopWarping() internally, which clobbers any
     // fadeIn scheduled before it. Reset first, then configure, then fade, then
     // play — this keeps the fadeIn's weight ramp intact.
@@ -152,13 +164,22 @@ export class AnimationPlayer {
     action.setEffectiveWeight(opts.weight ?? 0.7);
     if (opts.speed !== undefined) action.setEffectiveTimeScale(opts.speed);
 
-    // Fade in
     const fadeInSec = (opts.fadeInMs ?? 200) / 1000;
-    if (fadeInSec > 0) {
-      action.fadeIn(fadeInSec);
-    }
 
-    action.play();
+    if (prevActive && fadeInSec > 0) {
+      // Synchronized crossfade: prev の weight を duration で 0 へ、self の weight
+      // を同 duration で 1 へ。total weight が 1.0 を維持されるので、独立 fadeIn +
+      // fadeOut で出る overshoot (~1.2) と「motion 混ざる」 blend が消える。
+      // warp=true で time-scale も補間 → 動作速度が違う clip 間も滑らか。
+      // prev の AnimationAction は fade 完了後 weight 0 で contribution なし、
+      // 既存の auto-fadeOut / stop 機構で自然 cleanup されるので明示 delete 不要。
+      action.play();
+      action.crossFadeFrom(prevActive.action, fadeInSec, true);
+    } else {
+      // 前 active なし、または fadeIn 0 の即時 swap。既存 path を維持。
+      if (fadeInSec > 0) action.fadeIn(fadeInSec);
+      action.play();
+    }
 
     const { promise: completion, resolve, reject } = createDeferred();
 

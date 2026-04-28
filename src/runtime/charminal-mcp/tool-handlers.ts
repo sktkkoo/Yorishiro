@@ -567,6 +567,10 @@ export interface BodyAnimationPlayResult {
  * 住人 AI が body animation を MCP 経由で再生する handler。
  * priority "mcp-conscious" で MotionScheduler に request。
  * re-call で前 MCP motion を release → 新規 acquire。
+ *
+ * weight default は 1.0 (AnimationPlayer の 0.7 default を override)。
+ * MCP-conscious は意識的な motion なので procedural-bones を完全 override する。
+ * 部分的に procedural と混ぜたい場合は明示的に weight を渡す（例: weight: 0.5）。
  */
 export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
   return async (request: unknown): Promise<BodyAnimationPlayResult> => {
@@ -599,7 +603,7 @@ export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
       options: {
         fadeInMs: typeof r.fadeInMs === "number" ? r.fadeInMs : undefined,
         fadeOutMs: typeof r.fadeOutMs === "number" ? r.fadeOutMs : undefined,
-        weight: typeof r.weight === "number" ? r.weight : undefined,
+        weight: typeof r.weight === "number" ? r.weight : 1.0, // MCP-conscious motion は procedural を override する
         loop: typeof r.loop === "boolean" ? r.loop : undefined,
         speed: typeof r.speed === "number" ? r.speed : undefined,
       },
