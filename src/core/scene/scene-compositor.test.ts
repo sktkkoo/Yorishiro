@@ -58,6 +58,16 @@ describe("layerStyle", () => {
     expect(style.backgroundImage).toBe("radial-gradient(circle, #fff, transparent)");
     expect(style.position).toBe("absolute");
   });
+
+  it("places foreground layers above the character canvas by default", () => {
+    const style = layerStyle({ id: "fg", role: "foreground" });
+    expect(style.zIndex).toBe(1);
+  });
+
+  it("does not add z-index to character layers by default", () => {
+    const style = layerStyle({ id: "vrm-slot", role: "character" });
+    expect(style.zIndex).toBeUndefined();
+  });
 });
 
 describe("isVideoSrc", () => {
