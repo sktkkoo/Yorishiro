@@ -311,9 +311,9 @@ export interface PlayOptions {
    * priority arbitration は MotionScheduler が固定 enum
    * (`MotionPriority`) で管理するようになったため、本 numeric
    * priority は consult されない。互換のため field 自体は残してある。
-   * Phase γ で `MotionRequest` API へ migration 予定。
    *
-   * 設計仕様: 2026-04-29-motion-priority-queue-design.md §5.4
+   * @deprecated Phase γ で MotionRequest API に移行。MVP では無視される。
+   *   See: 2026-04-29-motion-priority-queue-design.md §5.4
    */
   priority?: number;
 }
@@ -321,6 +321,11 @@ export interface PlayOptions {
 export interface AnimationHandle {
   readonly animation: AnimationRef;
   readonly startedAt: number;
+  /**
+   * @deprecated Priority queue model では weight 変更は no-op + console.warn。
+   *   Phase γ で MotionRequest 経由の re-acquire pattern に移行予定。
+   *   See: 2026-04-29-motion-priority-queue-design.md §5.1
+   */
   setWeight(weight: number, fadeMs?: number): void;
   stop(fadeMs?: number): Promise<void>;
   cancel(): void;
