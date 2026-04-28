@@ -104,6 +104,34 @@ pub struct SceneLightingSetRequest {
     pub color: Option<String>,
 }
 
+/// `body_animation_play` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BodyAnimationPlayRequest {
+    /// アニメーション ref（例: "anim:VRMA_small_nod" / "anim:Typing" 等）。
+    pub animation: String,
+    /// フェードイン ms。default 200。
+    #[serde(rename = "fadeInMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_in_ms: Option<u32>,
+    /// フェードアウト ms。default 250。
+    #[serde(rename = "fadeOutMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fade_out_ms: Option<u32>,
+    /// weight 0-1。default 1。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub weight: Option<f32>,
+    /// ループ再生するか。default false。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#loop: Option<bool>,
+    /// 再生速度倍率。default 1。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f32>,
+}
+
+/// `body_motion_cancel` の引数。空。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BodyMotionCancelRequest {}
+
 #[derive(Clone)]
 pub struct Charminal {
     app_handle: AppHandle,
@@ -289,6 +317,40 @@ impl Charminal {
             json!({ "intensity": req.intensity, "color": req.color }),
         )
         .await
+    }
+
+    /// 住人 AI が意識的に body animation を再生する（priority mcp-conscious）。
+    #[tool(
+        description = "Play a body animation at mcp-conscious priority. Preempts lower-priority motions (persona/state/idle). Re-calling replaces the current MCP animation."
+    )]
+    async fn body_animation_play(
+        &self,
+        Parameters(req): Parameters<BodyAnimationPlayRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "body.animation.play",
+            json!({
+                "animation": req.animation,
+                "fadeInMs": req.fade_in_ms,
+                "fadeOutMs": req.fade_out_ms,
+                "weight": req.weight,
+                "loop": req.r#loop,
+                "speed": req.speed,
+            }),
+        )
+        .await
+    }
+
+    /// MCP source の active body animation を停止する。他 source には影響しない。
+    #[tool(
+        description = "Cancel the current MCP-initiated body animation. Other sources (persona/state/idle) are not affected."
+    )]
+    async fn body_motion_cancel(
+        &self,
+        _params: Parameters<BodyMotionCancelRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "body.motion.cancel", json!({})).await
     }
 }
 

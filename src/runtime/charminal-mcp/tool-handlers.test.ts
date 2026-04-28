@@ -7,15 +7,18 @@
 
 import type { SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 import {
   __resetMcpExpressionSlotsForTesting,
+  __resetMcpMotionHandleForTesting,
   type BodyLike,
+  createBodyAnimationPlayHandler,
   createBodyExpressionSetHandler,
+  createBodyMotionCancelHandler,
   createDisablePackHandler,
   createEnablePackHandler,
   createGetUiStateHandler,
@@ -632,5 +635,133 @@ describe("createSceneLightingSetHandler", () => {
         }) as unknown as SceneLike,
     });
     await expect(handler({ intensity: 0.5 })).rejects.toThrow(/no DirectionalLight/);
+  });
+});
+
+describe("createBodyAnimationPlayHandler", () => {
+  afterEach(() => {
+    __resetMcpMotionHandleForTesting();
+  });
+
+  function makeMockMotionHandle(overrides?: Partial<{ animation: string; startedAt: number }>) {
+    return {
+      source: "mcp" as const,
+      priority: "mcp-conscious" as const,
+      animation: overrides?.animation ?? "anim:wave",
+      startedAt: overrides?.startedAt ?? 1000,
+      release: vi.fn(),
+      cancel: vi.fn(),
+      isActive: () => true,
+      isPreempted: () => false,
+      completion: new Promise<{ reason: "completed" | "cancelled" | "preempted" }>(() => {}),
+    };
+  }
+
+  it("acquires motion slot at mcp-conscious priority", async () => {
+    const mockHandle = makeMockMotionHandle();
+    const acquireMotionSlot = vi.fn().mockReturnValue(mockHandle);
+    const body = {
+      acquireMotionSlot,
+      getMotionSnapshot: vi.fn(),
+      getExpressionSlots: vi.fn().mockReturnValue([]),
+      acquireExpressionSlot: vi.fn(),
+    };
+    const handler = createBodyAnimationPlayHandler({
+      getBody: () => body as unknown as BodyLike,
+    });
+    const result = await handler({ animation: "anim:wave" });
+    expect(acquireMotionSlot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "mcp",
+        priority: "mcp-conscious",
+        animation: "anim:wave",
+      }),
+    );
+    expect(result).toEqual({
+      animation: "anim:wave",
+      priority: "mcp-conscious",
+      source: "mcp",
+    });
+  });
+
+  it("releases previous MCP motion on re-call", async () => {
+    const handle1 = makeMockMotionHandle({ animation: "anim:wave" });
+    const handle2 = makeMockMotionHandle({ animation: "anim:nod", startedAt: 2000 });
+    const acquireMotionSlot = vi.fn().mockReturnValueOnce(handle1).mockReturnValueOnce(handle2);
+    const body = {
+      acquireMotionSlot,
+      getMotionSnapshot: vi.fn(),
+      getExpressionSlots: vi.fn().mockReturnValue([]),
+      acquireExpressionSlot: vi.fn(),
+    };
+    const handler = createBodyAnimationPlayHandler({
+      getBody: () => body as unknown as BodyLike,
+    });
+    await handler({ animation: "anim:wave" });
+    await handler({ animation: "anim:nod" });
+    expect(handle1.release).toHaveBeenCalledWith(200);
+  });
+
+  it("throws when no Body loaded", async () => {
+    const handler = createBodyAnimationPlayHandler({ getBody: () => null });
+    await expect(handler({ animation: "anim:wave" })).rejects.toThrow(/no Body loaded/);
+  });
+
+  it("throws on missing animation", async () => {
+    const body = {
+      acquireMotionSlot: vi.fn(),
+      getMotionSnapshot: vi.fn(),
+      getExpressionSlots: vi.fn().mockReturnValue([]),
+      acquireExpressionSlot: vi.fn(),
+    };
+    const handler = createBodyAnimationPlayHandler({
+      getBody: () => body as unknown as BodyLike,
+    });
+    await expect(handler({})).rejects.toThrow(/missing animation/);
+  });
+});
+
+describe("createBodyMotionCancelHandler", () => {
+  afterEach(() => {
+    __resetMcpMotionHandleForTesting();
+  });
+
+  it("returns cancelled: false when no MCP motion active", async () => {
+    const handler = createBodyMotionCancelHandler();
+    const result = await handler({});
+    expect(result).toEqual({ cancelled: false });
+  });
+
+  it("releases and returns cancelled: true when MCP motion active", async () => {
+    const release = vi.fn();
+    const mockHandle = {
+      source: "mcp" as const,
+      priority: "mcp-conscious" as const,
+      animation: "anim:wave",
+      startedAt: 1000,
+      release,
+      cancel: vi.fn(),
+      isActive: () => true,
+      isPreempted: () => false,
+      completion: new Promise<{ reason: "completed" | "cancelled" | "preempted" }>(() => {}),
+    };
+    const acquireMotionSlot = vi.fn().mockReturnValue(mockHandle);
+    const body = {
+      acquireMotionSlot,
+      getMotionSnapshot: vi.fn(),
+      getExpressionSlots: vi.fn().mockReturnValue([]),
+      acquireExpressionSlot: vi.fn(),
+    };
+    // play で module-level handle を設定
+    const playHandler = createBodyAnimationPlayHandler({
+      getBody: () => body as unknown as BodyLike,
+    });
+    await playHandler({ animation: "anim:wave" });
+
+    // cancel
+    const cancelHandler = createBodyMotionCancelHandler();
+    const result = await cancelHandler({});
+    expect(result).toEqual({ cancelled: true });
+    expect(release).toHaveBeenCalledWith(200);
   });
 });
