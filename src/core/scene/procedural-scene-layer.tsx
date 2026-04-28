@@ -2,6 +2,70 @@ import { type CSSProperties, useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { ProceduralLayer } from "./types";
 
+/**
+ * radiant-meadow procedural renderer の shared parameters.
+ *
+ * Tarkovsky『鏡』の麦畑シーン (overcast morning, 低彩度, 風の波) を reference に
+ * 全 component が共有する palette / fog / wind 値。
+ *
+ * Internal design-record: 2026-04-29-radiant-meadow-mirror-redesign.md
+ *
+ * 各 create* 関数はこの const を参照し、shader uniform に渡す。
+ * inline literal で hand-tune しないこと（component 間で色味が崩れる）。
+ */
+export const PALETTE = {
+  /** 灰青（天頂） */
+  skyZenith: new THREE.Color(0.72, 0.78, 0.82),
+  /** 淡い cream-grey（地平線） */
+  skyHorizon: new THREE.Color(0.86, 0.86, 0.8),
+  /** 灰緑（forest 近） */
+  forestNear: new THREE.Color(0.42, 0.5, 0.42),
+  /** 霧に溶ける遠 */
+  forestFar: new THREE.Color(0.68, 0.72, 0.68),
+  /** 暗い dusty green */
+  grassRoot: new THREE.Color(0.22, 0.3, 0.18),
+  /** mid green-khaki */
+  grassMid: new THREE.Color(0.46, 0.52, 0.32),
+  /** dry cream-khaki */
+  grassTip: new THREE.Color(0.74, 0.74, 0.54),
+  /** off-white */
+  wildflower: new THREE.Color(0.95, 0.94, 0.86),
+  /** dust cream */
+  particle: new THREE.Color(0.92, 0.9, 0.82),
+  /** 霧の色 */
+  hazeColor: new THREE.Color(0.84, 0.86, 0.82),
+} as const;
+
+/**
+ * Atmospheric haze (depth-based, applied in shaders that have view-space distance).
+ * Camera linear depth ではなく view-space distance（既存 `vDepth` と同じ semantics）。
+ */
+export const FOG = {
+  /** 霧が始まる距離 */
+  near: 4.0,
+  /** 完全に空気に溶ける距離 */
+  far: 28.0,
+} as const;
+
+/**
+ * 風の parameters。
+ *
+ * - direction: 既存の風向き
+ * - long-wavelength traveling wave: Mirror の signature。風向きに沿って画面を横切る波
+ * - rustle: 既存の高周波 noise の強さ（保持）
+ */
+export const WIND = {
+  direction: new THREE.Vector2(1.0, 0.28).normalize(),
+  /** 波長 (world units) */
+  waveLength: 6.0,
+  /** 波の進行速度 (world units / sec) */
+  waveSpeed: 1.6,
+  /** bendMask 最大時の peak bend (radians 相当) */
+  waveAmplitude: 0.42,
+  /** 既存の高周波 rustle の強さ */
+  rustleStrength: 0.28,
+} as const;
+
 export interface ProceduralSceneLayerProps {
   readonly procedural: ProceduralLayer;
 }
