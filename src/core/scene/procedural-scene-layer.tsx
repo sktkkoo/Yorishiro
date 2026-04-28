@@ -181,6 +181,13 @@ function createRadiantSky(): DisposableObject & {
         cloud *= smoothstep(0.18, 0.48, uv.y) * smoothstep(0.98, 0.58, uv.y);
         color = mix(color, vec3(1.0, 0.9, 0.72), cloud * 0.3);
 
+        float horizonMist = smoothstep(0.02, 0.42, uv.y) * smoothstep(0.76, 0.22, uv.y);
+        float heightVeil = smoothstep(0.68, 0.0, uv.y);
+        vec3 lowAir = vec3(0.93, 0.88, 0.72);
+        vec3 highAir = vec3(0.72, 0.84, 0.98);
+        vec3 airColor = mix(lowAir, highAir, smoothstep(0.18, 0.88, uv.y));
+        color = mix(color, airColor, horizonMist * 0.34 + heightVeil * 0.18);
+
         float vignette = smoothstep(0.92, 0.35, distance(uv, vec2(0.5, 0.54)));
         color *= mix(0.76, 1.0, vignette);
         gl_FragColor = vec4(color, 1.0);
@@ -290,7 +297,7 @@ function createGrassField(): DisposableObject & {
   readonly uniforms: { readonly uTime: { value: number } };
 } {
   const random = mulberry32(0x5eedcafe);
-  const count = 7600;
+  const count = 10600;
   const geometry = createGrassBladeGeometry();
   geometry.setAttribute(
     "bladePhase",
@@ -397,15 +404,33 @@ function createGrassField(): DisposableObject & {
   const lean = geometry.getAttribute("bladeLean") as THREE.InstancedBufferAttribute;
 
   for (let i = 0; i < count; i += 1) {
-    const near = i < count * 0.38;
+    const nearEdge = i < count * 0.28;
+    const near = i < count * 0.62;
     const depth = random();
-    const z = near ? 1.45 - random() * 2.8 : -0.55 - depth * depth * 24.0;
-    const spread = near ? 7.4 + random() * 2.6 : 3.8 + depth * 19.0;
+    const z = nearEdge
+      ? 4.25 - random() * 2.45
+      : near
+        ? 1.85 - random() * 4.7
+        : -0.65 - depth * depth * 24.0;
+    const spread = nearEdge
+      ? 10.0 + random() * 5.8
+      : near
+        ? 7.8 + random() * 4.4
+        : 3.8 + depth * 19.0;
     const x = (random() - 0.5) * spread;
-    const height = near ? 0.66 + random() * 1.08 : 0.34 + random() * 0.98 * (1.0 - depth * 0.32);
-    const width = near ? 0.023 + random() * 0.034 : 0.016 + random() * 0.024;
+    const height = nearEdge
+      ? 1.0 + random() * 1.42
+      : near
+        ? 0.66 + random() * 1.1
+        : 0.34 + random() * 0.98 * (1.0 - depth * 0.32);
+    const width = nearEdge
+      ? 0.032 + random() * 0.052
+      : near
+        ? 0.023 + random() * 0.034
+        : 0.016 + random() * 0.024;
+    const rootY = nearEdge ? -0.32 - random() * 0.08 : -0.15;
 
-    dummy.position.set(x, -0.15, z);
+    dummy.position.set(x, rootY, z);
     dummy.rotation.set(0, random() * Math.PI, 0);
     dummy.scale.set(width, height, 1);
     dummy.updateMatrix();
