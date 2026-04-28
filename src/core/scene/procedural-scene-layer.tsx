@@ -408,9 +408,9 @@ function createGrassField(): DisposableObject & {
     const near = i < count * 0.62;
     const depth = random();
     const z = nearEdge
-      ? 4.25 - random() * 2.45
+      ? 3.15 - random() * 2.05
       : near
-        ? 1.85 - random() * 4.7
+        ? 1.35 - random() * 4.15
         : -0.65 - depth * depth * 24.0;
     const spread = nearEdge
       ? 10.0 + random() * 5.8
@@ -419,16 +419,16 @@ function createGrassField(): DisposableObject & {
         : 3.8 + depth * 19.0;
     const x = (random() - 0.5) * spread;
     const height = nearEdge
-      ? 1.0 + random() * 1.42
+      ? 0.42 + random() * 0.52
       : near
-        ? 0.66 + random() * 1.1
-        : 0.34 + random() * 0.98 * (1.0 - depth * 0.32);
+        ? 0.36 + random() * 0.58
+        : 0.22 + random() * 0.62 * (1.0 - depth * 0.32);
     const width = nearEdge
-      ? 0.032 + random() * 0.052
+      ? 0.018 + random() * 0.034
       : near
-        ? 0.023 + random() * 0.034
+        ? 0.016 + random() * 0.028
         : 0.016 + random() * 0.024;
-    const rootY = nearEdge ? -0.32 - random() * 0.08 : -0.15;
+    const rootY = nearEdge ? -0.3 - random() * 0.06 : -0.15;
 
     dummy.position.set(x, rootY, z);
     dummy.rotation.set(0, random() * Math.PI, 0);
@@ -487,7 +487,7 @@ function createSeedHeads(): DisposableObject & {
   readonly uniforms: { readonly uTime: { value: number } };
 } {
   const random = mulberry32(0xa11ce);
-  const count = 380;
+  const count = 260;
   const geometry = new THREE.SphereGeometry(0.022, 8, 5);
   const uniforms = { uTime: { value: 0 } };
   const material = new THREE.ShaderMaterial({
@@ -517,10 +517,10 @@ function createSeedHeads(): DisposableObject & {
 
   for (let i = 0; i < count; i += 1) {
     const depth = random();
-    const z = 0.8 - depth * depth * 16.0;
+    const z = 0.25 - depth * depth * 15.0;
     const spread = 4.2 + depth * 11.0;
-    dummy.position.set((random() - 0.5) * spread, 0.28 + random() * 0.86, z);
-    dummy.scale.setScalar(0.65 + random() * 1.4);
+    dummy.position.set((random() - 0.5) * spread, 0.1 + random() * 0.46, z);
+    dummy.scale.setScalar(0.42 + random() * 0.78);
     dummy.updateMatrix();
     matrix.copy(dummy.matrix);
     mesh.setMatrixAt(i, matrix);
