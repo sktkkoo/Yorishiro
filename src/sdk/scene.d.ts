@@ -70,6 +70,7 @@ export interface AmbientSound {
  * scene の宣言。
  *
  * - `layers` は先頭が一番奥、末尾が一番手前
+ * - `role: "foreground"` は default で character canvas より前に描画される
  * - Phase 2 は layers のみ。Phase 3 で `ambient` binding、Phase 4+ で
  *   `camera` filter / Auto Color Correct を足す予定
  */

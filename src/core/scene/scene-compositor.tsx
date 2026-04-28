@@ -14,6 +14,8 @@ import type { Layer, SceneSpec } from "./types";
  *   - scene.layers を stacking order で <div> として描画。scene.layers の**先頭が一番奥**、
  *     末尾が一番手前。各 layer は `position: absolute; inset: 0` で親を覆い、後続 sibling が
  *     DOM 順で上に重なる。
+ *   - role="foreground" は前景の意味を優先し、ThreeRuntime が body 直下に置く character
+ *     canvas より前に来るよう positive z-index を持つ。
  *   - per-layer の blur / backgroundColor / backgroundImage を inline style で apply
  *   - layer.src が set されていれば <img> or <video> を挿入（拡張子から判定）
  *   - role="character" の layer に children を埋める（= VRM の slot）
@@ -41,6 +43,8 @@ const layerBaseStyle: CSSProperties = {
   position: "absolute",
   inset: 0,
 };
+
+const foregroundLayerZIndex = 1;
 
 const coverStyle: CSSProperties = {
   width: "100%",
@@ -74,6 +78,9 @@ export function isProceduralLayer(layer: Layer): boolean {
  */
 export function layerStyle(layer: Layer): CSSProperties {
   const style: CSSProperties = { ...layerBaseStyle };
+  if (layer.role === "foreground") {
+    style.zIndex = foregroundLayerZIndex;
+  }
   if (typeof layer.blur === "number") {
     style.filter = `blur(${layer.blur}px)`;
   }

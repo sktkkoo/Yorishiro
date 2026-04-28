@@ -46,7 +46,7 @@ interface SceneSpec {
 }
 ```
 
-`layers` は**先頭が一番奥**、末尾が一番手前。layer はすべて `position: absolute; inset: 0` で親を覆い、DOM 順で上に重なっていく。
+`layers` は**先頭が一番奥**、末尾が一番手前。layer はすべて `position: absolute; inset: 0` で親を覆い、DOM 順で上に重なっていく。ただし `role: "foreground"` は「住人の手前」という意味を優先し、character canvas より前に出る default z-index を持つ。
 
 ### Layer
 
@@ -80,7 +80,7 @@ interface Layer {
 |---|---|---|
 | `background` | 住人の奥。Phase 2 で Auto Color Correct の光源になる予定 | 0 or 1 |
 | `character` | **VRM slot**。compositor が runtime から VRM canvas を差し込む。src / backgroundColor / backgroundImage は**通常 undefined** | 0 or 1（通常 1） |
-| `foreground` | 住人の手前。vignette、カーテン、窓枠など | 0 or 1 |
+| `foreground` | 住人の手前。vignette、カーテン、窓枠など。default で character canvas より前に描画される | 0 or 1 |
 
 role を持たない layer は好きなだけ追加できる（粒子 video、haze、overlay など）。compositing の特殊処理（blur target、auto color correct）が効くのは **role を持つ layer のみ**。
 

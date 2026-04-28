@@ -587,7 +587,8 @@ export default {
   scene: {
     id: 'my-scene',
     layers: [
-      // layer は先頭が一番奥、末尾が一番手前
+      // layer は先頭が一番奥、末尾が一番手前。
+      // role: 'foreground' は default で character canvas より前に描画される
       {
         id: 'backdrop',
         role: 'background',
@@ -648,7 +649,7 @@ export default {
 `role` を持つ layer は **0 or 1 枚**：
 - `'character'`: VRM slot（compositor が runtime から VRM canvas を差し込む。**通常 src/backgroundColor/backgroundImage は undefined**）
 - `'background'`: 住人の奥（Phase 2 で Auto Color Correct の光源候補）
-- `'foreground'`: 住人の手前（vignette、窓枠など）
+- `'foreground'`: 住人の手前（vignette、窓枠など）。default で character canvas より前に描画される
 
 `role` を持たない layer は粒子・haze・overlay などに自由に追加可能。
 
