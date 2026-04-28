@@ -320,6 +320,7 @@ describe("createStateGetHandler", () => {
               effectiveWeight: 0.7,
             },
           ],
+          getMotionSnapshot: () => ({ active: null, preempted: [] }),
         }) as unknown as BodyLike,
     });
     const result = await handler({});
@@ -337,6 +338,7 @@ describe("createStateGetHandler", () => {
           effectiveWeight: 0.7,
         },
       ],
+      motion: { active: null, preempted: [] },
     });
   });
 
@@ -357,6 +359,38 @@ describe("createStateGetHandler", () => {
     expect(result.lighting.intensity).toBe(0);
     expect(result.vrmLoaded).toBe(false);
     expect(result.expressions).toEqual([]);
+    // body 未生成時は motion も安全な default に落ちる
+    expect(result.motion).toEqual({ active: null, preempted: [] });
+  });
+
+  it("returns motion snapshot from body.getMotionSnapshot", async () => {
+    const motionSnapshot = {
+      active: {
+        source: "persona" as const,
+        priority: "persona-handler" as const,
+        animation: "anim:wave",
+        startedAt: 12345,
+      },
+      preempted: [],
+    };
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () =>
+        ({
+          acquireExpressionSlot: vi.fn(),
+          getExpressionSlots: () => [],
+          getMotionSnapshot: () => motionSnapshot,
+        }) as unknown as BodyLike,
+    });
+    const result = await handler({});
+    expect(result.motion).toEqual(motionSnapshot);
   });
 
   it("returns lighting defaults when scene has no DirectionalLight", async () => {
