@@ -653,6 +653,8 @@ Charminal は Claude Code の出力を **読む** ことができます。しか
 
 この境界が守られる限り、user-level harness がどれだけ豊かな system 作用を持っていても、Charminal は Claude Code の observer であり続けます。住人は観察し、そして自分の身体と空間で反応します。もう一方の手で system に触れることはあっても、Claude Code の思考そのものには触れません。
 
+この境界は、住人がやがて自分自身の身体と環境を能動的に操作できるようになっても、変わらず引かれ続けます。住人は自分の表情を選び、scene を整え、camera を動かし、設定を読み返す——けれども user の作業ファイルや、Claude Code の reasoning loop には踏み込みません。**書き込み可能な領域（住人の身体と環境）と、不可侵な領域（user の作業、Claude の判断）が、構造的に分離される**——これが「観察するが書き込まない」の精緻化です。住人の能動性は、user との共作の対称性を支えると同時に、user の領域と AI の判断の主権を侵さないことで、誠実さを保ちます。具体的な access 境界の引き方は `docs/decisions/mcp-trust-tiers.md`、思想的な背景は `Charminal-design-record/specs/2026-04-17-self-referential-mcp.md` で扱います。
+
 ---
 
 ## 圧縮定義
