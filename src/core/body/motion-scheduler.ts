@@ -122,15 +122,12 @@ export interface MotionSchedulerCallbacks {
 }
 
 interface InternalSlot {
-  readonly id: number;
   readonly request: MotionRequest;
   readonly startedAt: number;
   readonly resolveCompletion: (result: { reason: CompletionReason }) => void;
   readonly handle: MotionHandle;
   state: "active" | "preempted" | "released";
 }
-
-let nextSlotId = 1;
 
 /** Default fade values (ms)。spec §3 「Defaults」参照。 */
 const DEFAULT_FADE_OUT_MS = 250;
@@ -200,19 +197,18 @@ export class MotionScheduler {
 
   // ─── Internal ──────────────────────────────────────────
 
-  private preemptCurrent(_fadeMs: number): void {
+  private preemptCurrent(fadeMs: number): void {
     const slot = this.currentSlot;
     if (!slot || slot.state !== "active") {
       return;
     }
     slot.state = "preempted";
     this.currentSlot = null;
-    this.callbacks.onDeactivate(_fadeMs);
+    this.callbacks.onDeactivate(fadeMs);
     slot.resolveCompletion({ reason: "preempted" });
   }
 
   private activateNew(req: MotionRequest): MotionHandle {
-    const id = nextSlotId++;
     const startedAt = this.callbacks.now();
 
     let resolveCompletion!: (result: { reason: CompletionReason }) => void;
@@ -229,7 +225,6 @@ export class MotionScheduler {
     };
 
     const slot: InternalSlot = {
-      id,
       request: req,
       startedAt,
       resolveCompletion: safeResolve,
@@ -273,7 +268,10 @@ export class MotionScheduler {
         }
       })
       .catch(() => {
-        // mixer 側 error も完了扱いで queue から外す。
+        // load 失敗等。3 種 reason (completed / cancelled / preempted) のどれにも
+        // 厳密には該当しないが、活動 not bumped / not user-cancelled の中で最も近い
+        // semantics として "completed" を採用。Phase γ で MCP 経由 caller に
+        // 失敗を伝える要件が出たら "errored" 4th reason を spec に追加検討。
         if (slot.state === "active") {
           slot.state = "released";
           if (this.currentSlot === slot) {
