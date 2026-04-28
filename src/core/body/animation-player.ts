@@ -6,7 +6,10 @@
  * - Fade-in / fade-out
  * - Loop / one-shot
  * - Weight control per action
- * - Priority-based slot management
+ *
+ * Priority arbitration は本層では行わない。`MotionScheduler` (上位 layer) が
+ * priority queue を管理し、本 player は callback 経由で driven される
+ * 純粋な playback primitive。
  *
  * Three.js-dependent — not unit-testable without mocks.
  */
@@ -35,7 +38,6 @@ interface ActiveAnimation {
   readonly id: number;
   readonly ref: string;
   readonly action: THREE.AnimationAction;
-  readonly priority: number;
   readonly startedAt: number;
   readonly loop: boolean;
   /** Fade duration applied when a non-looping action reaches its last frame. */
@@ -119,7 +121,6 @@ export class AnimationPlayer {
       weight?: number;
       loop?: boolean;
       speed?: number;
-      priority?: number;
     } = {},
   ): Promise<{
     id: number;
@@ -165,7 +166,6 @@ export class AnimationPlayer {
       id,
       ref,
       action,
-      priority: opts.priority ?? 0,
       startedAt: performance.now(),
       loop: opts.loop ?? false,
       autoFadeOutMs: opts.fadeOutMs ?? DEFAULT_AUTO_FADE_OUT_MS,

@@ -7,7 +7,7 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.6
  */
 
-import type { ExpressionHandle, SpaceEffectRequest } from "@charminal/sdk";
+import type { ExpressionHandle, MotionSnapshot, SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import type { UiStateStore } from "../ui-state-store";
@@ -262,6 +262,7 @@ export interface ExpressionSlotEntry {
 export interface BodyLike {
   readonly acquireExpressionSlot: Body["acquireExpressionSlot"];
   readonly getExpressionSlots: Body["getExpressionSlots"];
+  readonly getMotionSnapshot: Body["getMotionSnapshot"];
 }
 
 export interface StateGetDeps {
@@ -282,13 +283,21 @@ export interface StateGetResult {
   readonly lighting: { intensity: number; color: string };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
+  /**
+   * 現在 active な motion の snapshot。`preempted` は単一 active stop model のため
+   * 現状常に空配列だが、symmetry 確保のため field として保持される。Body 未生成
+   * （VRM 未 load）の場合は `{ active: null, preempted: [] }` を返す。
+   */
+  readonly motion: MotionSnapshot;
 }
 
 /**
- * config / camera / lighting / vrmLoaded / expressions をひとまとめにして返す
- * read-only handler。各 dependency は null 可で、nil の場合は安全な default を
- * 返す（camera 0,0,0 等）。expressions は Body.getExpressionSlots() の snapshot
- * を MCP 応答用 shape に詰め替えたもの。Body 未生成時は空配列。
+ * config / camera / lighting / vrmLoaded / expressions / motion をひとまとめに
+ * して返す read-only handler。各 dependency は null 可で、nil の場合は安全な
+ * default を返す（camera 0,0,0 等）。expressions は Body.getExpressionSlots() の
+ * snapshot を MCP 応答用 shape に詰め替えたもの。motion は Body.getMotionSnapshot()
+ * を素通しで返す（preempted は stop model のため常に空配列）。Body 未生成時は
+ * expressions = []、motion = { active: null, preempted: [] }。
  */
 export function createStateGetHandler(deps: StateGetDeps) {
   return async (_request: unknown): Promise<StateGetResult> => {
@@ -308,6 +317,10 @@ export function createStateGetHandler(deps: StateGetDeps) {
           }),
         )
       : [];
+    const motion: MotionSnapshot = body?.getMotionSnapshot() ?? {
+      active: null,
+      preempted: [],
+    };
     return {
       config: {
         primaryPersona: cfg.primaryPersona,
@@ -324,6 +337,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       },
       vrmLoaded: deps.getVrm() !== null,
       expressions,
+      motion,
     };
   };
 }
