@@ -105,8 +105,16 @@ export class Body {
   private relaxedValue = 0;
   private relaxedSlotId = -1;
 
-  /** State-driven animation (e.g., Typing during writing). */
-  private stateAnimStop: (() => Promise<void>) | null = null;
+  /**
+   * State-driven animation の MotionHandle (e.g., Typing during writing)。
+   * MotionScheduler.request の返値を保持し、state 遷移時に release する。
+   *
+   * Internal の MotionHandle 型で持つ（SDK 型と structurally identical だが、
+   * 同 module 内で完結するため cast を避ける）。
+   *
+   * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §5.2
+   */
+  private stateMotionHandle: InternalMotionHandle | null = null;
 
   /**
    * MotionScheduler が現在 active 化している AnimationPlayer の playback handle。
@@ -245,18 +253,25 @@ export class Body {
     }
 
     // State-driven animation: Typing during writing
+    // MotionScheduler に priority "state-driven" (L2) で acquire する。persona-handler
+    // (L3) より低 priority なので、typing 中の persona reflex motion が typing を
+    // preempt できる (spec Q: state > idle、persona > state)。
     if (state === "writing" && prevState !== "writing") {
-      // Stop previous state animation if any
-      this.stateAnimStop?.();
-      this.animationPlayer
-        .play("anim:Typing", { weight: 0.5, loop: true, fadeInMs: 500 })
-        .then((result) => {
-          this.stateAnimStop = result.stop;
-        })
-        .catch(() => {});
-    } else if (state !== "writing" && this.stateAnimStop) {
-      this.stateAnimStop();
-      this.stateAnimStop = null;
+      // Release previous state motion if any (transition fade 200ms)
+      this.stateMotionHandle?.release(200);
+      this.stateMotionHandle = this.motionScheduler.request({
+        source: "state",
+        priority: "state-driven",
+        animation: "anim:Typing",
+        options: {
+          weight: 0.5,
+          loop: true,
+          fadeInMs: 500,
+        },
+      });
+    } else if (state !== "writing" && this.stateMotionHandle) {
+      this.stateMotionHandle.release(200);
+      this.stateMotionHandle = null;
     }
   }
 
