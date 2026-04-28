@@ -10,4 +10,10 @@
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §4
  */
 
-export type { Layer, LayerRole, SceneSpec } from "../../sdk/scene";
+export type {
+  Layer,
+  LayerRole,
+  ProceduralLayer,
+  ProceduralLayerKind,
+  SceneSpec,
+} from "../../sdk/scene";

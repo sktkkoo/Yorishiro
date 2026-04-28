@@ -1,6 +1,7 @@
 // src/core/scene/scene-compositor.tsx
 
 import type { CSSProperties, ReactNode } from "react";
+import { ProceduralSceneLayer } from "./procedural-scene-layer";
 import type { Layer, SceneSpec } from "./types";
 
 /**
@@ -63,6 +64,10 @@ export function isVideoLayer(layer: Layer): boolean {
   return layer.src !== undefined && isVideoSrc(layer.src);
 }
 
+export function isProceduralLayer(layer: Layer): boolean {
+  return layer.procedural !== undefined;
+}
+
 /**
  * Layer -> inline style の pure 関数。test 対象。
  * export しておき scene-compositor.test.ts から import する。
@@ -86,6 +91,9 @@ export function SceneCompositor({ scene, children }: SceneCompositorProps) {
     <div className="scene-compositor" style={containerStyle}>
       {scene.layers.map((layer) => (
         <div key={layer.id} data-layer-id={layer.id} style={layerStyle(layer)}>
+          {layer.procedural !== undefined ? (
+            <ProceduralSceneLayer procedural={layer.procedural} />
+          ) : null}
           {layer.src !== undefined ? (
             isVideoLayer(layer) ? (
               <video src={layer.src} autoPlay muted loop playsInline style={coverStyle} />
