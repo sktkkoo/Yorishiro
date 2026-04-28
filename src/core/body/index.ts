@@ -46,7 +46,11 @@ import {
 } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
-import { type MotionRequest as InternalMotionRequest, MotionScheduler } from "./motion-scheduler";
+import {
+  type MotionHandle as InternalMotionHandle,
+  type MotionRequest as InternalMotionRequest,
+  MotionScheduler,
+} from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
 
 // ─── Constants ───────────────────────────────────────────
@@ -104,6 +108,18 @@ export class Body {
   /** State-driven animation (e.g., Typing during writing). */
   private stateAnimStop: (() => Promise<void>) | null = null;
 
+  /**
+   * MotionScheduler が現在 active 化している AnimationPlayer の playback handle。
+   * onActivate で set、natural 完了 / onDeactivate で clear する。
+   * onDeactivate からこの handle 経由で stop / cancel を呼ぶ。
+   *
+   * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §5.1
+   */
+  private activeMotionPlayback: {
+    readonly stop: (fadeMs?: number) => Promise<void>;
+    readonly cancel: () => void;
+  } | null = null;
+
   /** Track all active expression handles for interrupt(). */
   private readonly activeExprHandles = new Set<BodyExpressionHandle>();
   /** Track all active gaze handles for interrupt(). */
@@ -153,12 +169,44 @@ export class Body {
     this.proceduralBones.bindVrm(vrm);
 
     this.motionScheduler = new MotionScheduler({
-      onActivate: async (_req) => {
-        // M3 で Body.play 経路から AnimationPlayer.play() を呼ぶように差し替える。
-        // M2 時点ではまだ scheduler に request が来ない (Body.play は旧経路) ので no-op。
+      onActivate: async (req) => {
+        // AnimationPlayer.play() を呼んで clip を mixer に載せる。返値の handle
+        // (stop / cancel / completion) を activeMotionPlayback に保持し、
+        // onDeactivate が同じ playback を停止できるようにする。
+        //
+        // play() の Promise が natural に resolve（= completion fulfilled）した時点で
+        // MotionScheduler 側は「自然完了」として扱う。preempt / cancel の場合は
+        // onDeactivate が先に handle.stop / cancel を呼び、completion を resolve させる
+        // ことで本 await が抜ける（MotionScheduler の settled guard が二重 resolve を防ぐ）。
+        const result = await this.animationPlayer.play(req.animation, {
+          fadeInMs: req.options?.fadeInMs,
+          fadeOutMs: req.options?.fadeOutMs,
+          weight: req.options?.weight,
+          loop: req.options?.loop,
+          speed: req.options?.speed,
+        });
+        this.activeMotionPlayback = { stop: result.stop, cancel: result.cancel };
+        try {
+          await result.completion;
+        } finally {
+          if (this.activeMotionPlayback?.stop === result.stop) {
+            this.activeMotionPlayback = null;
+          }
+        }
       },
-      onDeactivate: (_fadeMs) => {
-        // 同上、M3 で AnimationPlayer.stop() に配線。
+      onDeactivate: (fadeMs) => {
+        // active な playback があれば停止。fadeMs が 0 なら cancel（即時）、
+        // それ以外は stop(fadeMs)。stop は async だが onDeactivate は void 契約
+        // なので fire-and-forget でよい（completion 解決は MotionScheduler 側で
+        // resolveCompletion により先行している）。
+        const playback = this.activeMotionPlayback;
+        if (!playback) return;
+        this.activeMotionPlayback = null;
+        if (fadeMs <= 0) {
+          playback.cancel();
+        } else {
+          void playback.stop(fadeMs);
+        }
       },
       now: () => performance.now(),
     });
@@ -375,42 +423,27 @@ export class Body {
 
   // ─── CharacterAPI implementations ─────────────────────
 
+  /**
+   * Persona pack ({@link CharacterAPI.play}) からの motion 起動 entrypoint。
+   * MotionScheduler 経由で priority queue に乗せ、返値は SDK の AnimationHandle 型に
+   * adapt する。priority 値は固定で "persona-handler" を使う（spec §3 / §5.1）。
+   *
+   * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §5.1
+   */
   private play(animation: AnimationRef, options?: PlayOptions): AnimationHandle {
-    const startedAt = performance.now();
-
-    // Kick off async load+play, but return handle synchronously
-    const handle: AnimationHandle = {
+    const motionHandle = this.motionScheduler.request({
+      source: "persona",
+      priority: "persona-handler",
       animation,
-      startedAt,
-      setWeight: () => {},
-      stop: () => Promise.resolve(),
-      cancel: () => {},
-      completion: Promise.resolve(),
-    };
-
-    // Replace handle internals once loaded
-    this.animationPlayer
-      .play(animation, {
+      options: {
         fadeInMs: options?.fadeInMs,
         fadeOutMs: options?.fadeOutMs,
         weight: options?.weight,
         loop: options?.loop,
         speed: options?.speed,
-        priority: options?.priority,
-      })
-      .then((result) => {
-        // Patch the handle with real controls
-        // Using Object.defineProperty to update readonly-ish fields on the returned object
-        (handle as { setWeight: AnimationHandle["setWeight"] }).setWeight = result.setWeight;
-        (handle as { stop: AnimationHandle["stop"] }).stop = result.stop;
-        (handle as { cancel: AnimationHandle["cancel"] }).cancel = result.cancel;
-        (handle as { completion: Promise<void> }).completion = result.completion;
-      })
-      .catch((err) => {
-        console.warn("[Body] animation play failed:", err);
-      });
-
-    return handle;
+      },
+    });
+    return adaptMotionHandleToAnimationHandle(motionHandle);
   }
 
   private express(target: ExpressionTarget, intensity: number): ExpressionHandle {
@@ -800,6 +833,45 @@ function buildExpressionTarget(kind: ExpressionKind, expressionName: string): Ex
         blendShapeName: expressionName,
       };
   }
+}
+
+/**
+ * Internal MotionHandle (priority queue layer) を SDK の AnimationHandle 形に
+ * 変換する bridge。persona pack の既存 callsite (`ctx.character.play(...).stop()` 等)
+ * は AnimationHandle 形を期待しているため、shape を保ったまま実体を MotionScheduler
+ * に委譲する。
+ *
+ * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §5.1
+ *
+ * - `setWeight`: priority queue model では active 中の動的 weight 変更は取り扱わず、
+ *   no-op + dev console warning に倒す。weight を変えたい場合は新しい play() を発行する
+ *   (= 同 priority preempt として last-write-wins に乗る) のが正規路。
+ * - `stop(fadeMs)`: MotionHandle.release(fadeMs) に転送。AnimationHandle 契約上は
+ *   `Promise<void>` を返す必要があるため、internal completion を `void` に narrow して
+ *   返す（reason 区別は外には漏らさない）。
+ * - `cancel`: MotionHandle.cancel に直結。
+ * - `completion`: `{reason}` 付きの internal completion を `void` に narrow。
+ */
+function adaptMotionHandleToAnimationHandle(motion: InternalMotionHandle): AnimationHandle {
+  const completion: Promise<void> = motion.completion.then(() => undefined);
+  return {
+    animation: motion.animation,
+    startedAt: motion.startedAt,
+    setWeight: (_weight: number, _fadeMs?: number) => {
+      console.warn(
+        "[motion] AnimationHandle.setWeight is no-op under priority-queue model; " +
+          "issue a fresh character.play() to change weight",
+      );
+    },
+    stop: (fadeMs?: number) => {
+      motion.release(fadeMs);
+      return completion;
+    },
+    cancel: () => {
+      motion.cancel();
+    },
+    completion,
+  };
 }
 
 export { AnimationPlayer } from "./animation-player";
