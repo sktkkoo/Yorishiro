@@ -66,7 +66,7 @@ MCP:
 
 ## 設計上守るもの
 
-- **PTY は observation only**：`pty_write` は user typing に対応する write。**persona / harness から TS 側で `pty_write` を呼ばない** ([critical-constraints §1](../docs/decisions/critical-constraints.md))
+- **PTY は observation only**：`pty_write` は user typing に対応する write。**persona / utility から TS 側で `pty_write` を呼ばない** ([critical-constraints §1](../docs/decisions/critical-constraints.md))
 - Terminal agent は `~/.charminal/config.json::terminalAgent` で `claude` / `codex` を選ぶ。設定 field は [docs/configuration.md](../docs/configuration.md)、設計判断は [docs/decisions/codex-terminal-agent.md](../docs/decisions/codex-terminal-agent.md)
 - **MCP server failure ≠ Charminal crash**：MCP は rescue 用 tool 経路、本体には影響しない設計
 - **File write は atomic**：tmp → rename pattern。partial write を user に見せない

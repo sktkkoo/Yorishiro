@@ -1,7 +1,7 @@
 # bundled-packs/ — 同梱 pack と shared assets
 
 > このファイルは「**同梱 pack に何があるか・どう扱うか**（layout / immutability / fork stance）」を確認したい時に読む。対象：dev / AI / pack 作者。
-> Pack を書く方法は [../src/sdk/README.md](../src/sdk/README.md)。Pack 種別（persona / harness / effect / scene / ui / ambient-ui の 6 種）の整理は同 doc 冒頭。
+> Pack を書く方法は [../src/sdk/README.md](../src/sdk/README.md)。Pack 種別（persona / utility / effect / scene / ui / ambient-ui の 6 種）の整理は同 doc 冒頭。
 
 Charminal に同梱される **standard pack** と **shared assets**。pack 作者向けの reference implementation でもある。
 
@@ -145,6 +145,6 @@ bundled-packs は Charminal 本体の一部として扱う：
 ## 関連 doc
 
 - pack 作者向け：[../src/sdk/README.md](../src/sdk/README.md)
-- 制約（PTY / harness / synthetic event）：[../docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
-- design-record（pack 三軸 = persona / harness / effect の確定）：`../Charminal-design-record/2026-04-11-design-exploration.md` revelation 3.12, 3.15
+- 制約（PTY / utility / synthetic event）：[../docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
+- design-record（pack 三軸 = persona / utility / effect の確定）：`../Charminal-design-record/2026-04-11-design-exploration.md` revelation 3.12, 3.15
 - design-record（scene pack の追加 = declarative・single-active）：`../Charminal-design-record/specs/2026-04-18-scene-pack-registry.md`

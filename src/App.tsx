@@ -519,7 +519,7 @@ function App() {
           ambientUiPackRegistry: getAmbientUiPackRegistry(),
           effectDispatcher,
           emitEvent: (name, payload) => {
-            bus.emitSynthetic({ type: "harness", packId: "user-init" }, name, payload, 0);
+            bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
           },
           packRegistry,
           personaDefaults: charminalDefaultPack,
@@ -1132,7 +1132,7 @@ function App() {
           },
         },
         emitEvent: (name: string, payload?: unknown) => {
-          runtime.bus.emitSynthetic({ type: "harness", packId }, name, payload, 0);
+          runtime.bus.emitSynthetic({ type: "utility", packId }, name, payload, 0);
         },
       };
     };

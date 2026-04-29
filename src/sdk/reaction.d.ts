@@ -3,8 +3,8 @@
  *
  * 反応の語彙と trigger system の型定義。
  *
- * ReactionType は persona と harness の共通 contract。
- * harness が custom trigger で event を ReactionType に変換し、
+ * ReactionType は persona と utility の共通 contract。
+ * utility が custom trigger で event を ReactionType に変換し、
  * persona が reflex.responses でその ReactionType を handle する。
  */
 
@@ -28,7 +28,7 @@ export type StandardReactionType =
 
 /**
  * 反応タイプ。標準 vocabulary + 任意の custom 文字列。
- * harness が独自 reaction を定義する場合は custom 文字列を使う。
+ * utility が独自 reaction を定義する場合は custom 文字列を使う。
  * 例: 'build-completed', 'test-passed', 'deploy-failed'
  */
 export type ReactionType = StandardReactionType | (string & {});
@@ -45,7 +45,7 @@ export type ReactionType = StandardReactionType | (string & {});
  *
  * - **外来 event**: PTY 出力、hook signal、user 入力、idle 検知、window、
  *   scene 変化、`/charm` command など、runtime が観測して生成するもの
- * - **`SyntheticEvent`**: runtime ではなく persona / harness の handler が
+ * - **`SyntheticEvent`**: runtime ではなく persona / utility の handler が
  *   自ら `ctx.emitEvent()` で発行する合成 event。handler が「観察したこと」
  *   を announce するために使う。詳細は SyntheticEvent の JSDoc 参照
  *
@@ -172,7 +172,7 @@ export interface CharmCommandEvent {
 
 /**
  * Handler 発 event。runtime が観測する環境 event ではなく、
- * persona / harness の handler が `ctx.emitEvent(name, payload)` で
+ * persona / utility の handler が `ctx.emitEvent(name, payload)` で
  * 自ら runtime に投入する「合成 event」。
  *
  * ## なぜ存在するのか
@@ -184,7 +184,7 @@ export interface CharmCommandEvent {
  * trigger の composability（複数 pack が同じ event を独立に解釈できる性質）
  * が壊れるため。
  *
- * では、harness handler が `system.exec` の結果から「deploy が失敗した」と
+ * では、utility handler が `system.exec` の結果から「deploy が失敗した」と
  * 気付いたとき、どうやって persona を悲しませるのか？
  * → handler は直接「悲しませる」のではなく、**観察した事実を announce** する。
  * `ctx.emitEvent('deploy-failed', { exitCode, stderr })` を呼ぶと、runtime は
@@ -222,7 +222,7 @@ export interface SyntheticEvent {
    * pack の追跡・debugging・log attribution に使う。
    */
   readonly source: {
-    readonly type: "harness" | "persona";
+    readonly type: "utility" | "persona";
     readonly packId: string;
   };
   /**
@@ -250,9 +250,9 @@ export interface SyntheticEvent {
 // ─── Trigger system ────────────────────────────────────────
 
 /**
- * Custom trigger 定義。persona / harness が独自に追加できる。
+ * Custom trigger 定義。persona / utility が独自に追加できる。
  *
- * Persona の reflex.customTriggers と Harness の customTriggers の両方で使う。
+ * Persona の reflex.customTriggers と Utility の customTriggers の両方で使う。
  * 環境 event を受けて、match すれば反応を発火する。
  */
 export interface Trigger {
@@ -273,13 +273,13 @@ export interface Trigger {
 
 /**
  * Trigger match の結果。reaction type と、optional な payload を含む。
- * payload は harness → persona の情報伝達チャネル。
+ * payload は utility → persona の情報伝達チャネル。
  */
 export interface TriggerMatch {
   readonly reaction: ReactionType;
   /**
    * 任意の付加情報。persona handler は ctx.event.payload で受け取れる。
-   * 型は harness が自由に定義できるので `unknown`。
+   * 型は utility が自由に定義できるので `unknown`。
    * 使う側は自分で cast する必要がある（付随課題: 型安全性は TBD）。
    */
   readonly payload?: unknown;
