@@ -591,6 +591,7 @@ function App() {
           // UI tween tools：
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
+          createUiSidebarSetHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -705,6 +706,18 @@ function App() {
               if (!el) return 1;
               const raw = el.style.opacity;
               return raw === "" ? 1 : Number(raw);
+            },
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          "ui.sidebar.set": createUiSidebarSetHandler({
+            setSidebarWidth: (px) => {
+              document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+            },
+            getSidebarWidth: () => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--sidebar-width")
+                .trim();
+              return Number.parseFloat(raw) || 280;
             },
             tweenManager: getThreeRuntime().getTweenManager(),
           }),

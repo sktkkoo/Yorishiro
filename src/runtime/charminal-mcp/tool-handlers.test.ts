@@ -30,6 +30,7 @@ import {
   createSpaceEffectPlayHandler,
   createStateGetHandler,
   createUiSceneLayerSetHandler,
+  createUiSidebarSetHandler,
   createUiTerminalSetHandler,
 } from "./tool-handlers";
 
@@ -846,5 +847,34 @@ describe("createUiTerminalSetHandler", () => {
     const result = await handler({ opacity: 0.5 });
     expect(result.tweening).toBeUndefined();
     expect(setTo).toBe(0.5);
+  });
+});
+
+describe("createUiSidebarSetHandler", () => {
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: () => {},
+      getSidebarWidth: () => 280,
+      tweenManager: tm,
+    });
+    const result = await handler({ width: 350, durationMs: 800 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("ui.sidebar.width")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: (v) => {
+        setTo = v;
+      },
+      getSidebarWidth: () => 280,
+      tweenManager: tm,
+    });
+    const result = await handler({ width: 350 });
+    expect(result.tweening).toBeUndefined();
+    expect(setTo).toBe(350);
   });
 });

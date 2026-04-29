@@ -161,6 +161,18 @@ pub struct UiTerminalSetRequest {
     pub duration_ms: Option<u32>,
 }
 
+/// `ui_sidebar_set` の引数。sidebar の幅を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiSidebarSetRequest {
+    /// Sidebar width in px（数値）。CSS custom property `--sidebar-width` を操作する。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
 #[derive(Clone)]
 pub struct Charminal {
     app_handle: AppHandle,
@@ -414,6 +426,23 @@ impl Charminal {
             "ui.terminal.set",
             json!({
                 "opacity": req.opacity,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
+    }
+
+    /// sidebar の幅を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(description = "Set sidebar width (px). Supports smooth interpolation via durationMs.")]
+    async fn ui_sidebar_set(
+        &self,
+        Parameters(req): Parameters<UiSidebarSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.sidebar.set",
+            json!({
+                "width": req.width,
                 "durationMs": req.duration_ms,
             }),
         )
