@@ -46,7 +46,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private loadToken = 0;
   private readonly tweenManager = new TweenManager();
   private currentPlaceholder: HTMLElement | null = null;
-  private resizeObserver: ResizeObserver | null = null;
   private lastRendererW = 0;
   private lastRendererH = 0;
   private cameraTrackingEnabled = true;
@@ -54,14 +53,14 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   constructor() {
     this.claimState = getClaimState();
 
-    // ── Canvas container (document.body 直下、singleton-owned) ─────
+    // ── Canvas container（attachTo で placeholder の子に移動する）─────
     this.canvasContainer = document.createElement("div");
     this.canvasContainer.className = "three-singleton-container";
-    this.canvasContainer.style.position = "fixed";
+    this.canvasContainer.style.position = "absolute";
+    this.canvasContainer.style.inset = "0";
     this.canvasContainer.style.visibility = "hidden";
     this.canvasContainer.style.pointerEvents = "none";
     this.canvasContainer.style.zIndex = "0";
-    document.body.appendChild(this.canvasContainer);
 
     this.canvas = document.createElement("canvas");
     this.canvas.style.display = "block";
@@ -100,30 +99,16 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   attachTo(container: HTMLElement): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
     this.currentPlaceholder = container;
-
-    const syncRect = () => {
-      const rect = container.getBoundingClientRect();
-      this.canvasContainer.style.top = `${rect.top}px`;
-      this.canvasContainer.style.left = `${rect.left}px`;
-      this.canvasContainer.style.width = `${rect.width}px`;
-      this.canvasContainer.style.height = `${rect.height}px`;
-      this.canvasContainer.style.visibility = "visible";
-    };
-
-    syncRect();
-
-    this.resizeObserver = new ResizeObserver(syncRect);
-    this.resizeObserver.observe(container);
+    container.style.position = "relative";
+    container.appendChild(this.canvasContainer);
+    this.canvasContainer.style.visibility = "visible";
   }
 
   detachContainer(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
     this.currentPlaceholder = null;
     this.canvasContainer.style.visibility = "hidden";
+    this.canvasContainer.remove();
   }
 
   setShakeOffset(dx: number, dy: number): void {
@@ -277,15 +262,9 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
   private handleResize(): void {
     if (!this.currentPlaceholder) return;
-    const rect = this.currentPlaceholder.getBoundingClientRect();
-    const w = Math.floor(rect.width);
-    const h = Math.floor(rect.height);
+    const w = this.currentPlaceholder.clientWidth;
+    const h = this.currentPlaceholder.clientHeight;
     if (w === 0 || h === 0) return;
-
-    this.canvasContainer.style.top = `${rect.top}px`;
-    this.canvasContainer.style.left = `${rect.left}px`;
-    this.canvasContainer.style.width = `${w}px`;
-    this.canvasContainer.style.height = `${h}px`;
 
     if (w !== this.lastRendererW || h !== this.lastRendererH) {
       this.lastRendererW = w;

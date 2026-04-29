@@ -37,6 +37,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private currentParams: PtyParams | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private resizeRafId = 0;
+  private lastFitW = 0;
+  private lastFitH = 0;
   private lastUserInputAt = -Infinity;
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
@@ -143,34 +146,41 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   attachTo(container: HTMLElement): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    cancelAnimationFrame(this.resizeRafId);
 
     const syncRect = () => {
-      // placeholder の外形 rect（padding 込み）から、computed padding を
-      // 差し引いた content box に xterm を配置する。これで
-      // .terminal-container { padding: ... } が自然に効く。
       const rect = container.getBoundingClientRect();
       const cs = getComputedStyle(container);
       const padLeft = parseFloat(cs.paddingLeft) || 0;
       const padTop = parseFloat(cs.paddingTop) || 0;
       const padRight = parseFloat(cs.paddingRight) || 0;
       const padBottom = parseFloat(cs.paddingBottom) || 0;
+      const w = Math.floor(rect.width - padLeft - padRight);
+      const h = Math.floor(rect.height - padTop - padBottom);
       this.xtermContainer.style.top = `${rect.top + padTop}px`;
       this.xtermContainer.style.left = `${rect.left + padLeft}px`;
-      this.xtermContainer.style.width = `${rect.width - padLeft - padRight}px`;
-      this.xtermContainer.style.height = `${rect.height - padTop - padBottom}px`;
+      this.xtermContainer.style.width = `${w}px`;
+      this.xtermContainer.style.height = `${h}px`;
       this.xtermContainer.style.visibility = "visible";
-      requestAnimationFrame(() => this.fitAddon.fit());
+      if (w !== this.lastFitW || h !== this.lastFitH) {
+        this.lastFitW = w;
+        this.lastFitH = h;
+        this.fitAddon.fit();
+      }
     };
 
-    syncRect();
-
-    this.resizeObserver = new ResizeObserver(syncRect);
-    this.resizeObserver.observe(container);
+    const tick = () => {
+      syncRect();
+      this.resizeRafId = requestAnimationFrame(tick);
+    };
+    this.resizeRafId = requestAnimationFrame(tick);
   }
 
   detachContainer(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    cancelAnimationFrame(this.resizeRafId);
+    this.resizeRafId = 0;
     this.xtermContainer.style.visibility = "hidden";
   }
 
