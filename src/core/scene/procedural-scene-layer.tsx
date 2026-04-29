@@ -109,8 +109,9 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 120);
+  // 位置は変えず、若干下を向ける。空の領域を抑え、草原を画面に多く入れる
   camera.position.set(0, 1.05, 5.2);
-  camera.lookAt(0, 0.48, -5.6);
+  camera.lookAt(0, 0.0, -5.6);
 
   const objects: DisposableObject[] = [];
   const clock = new THREE.Clock();
