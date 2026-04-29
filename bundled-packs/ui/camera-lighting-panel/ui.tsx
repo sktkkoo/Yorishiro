@@ -352,7 +352,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     };
 
   const panelStyle: React.CSSProperties = {
-    background: "rgba(36, 52, 71, 0.85)",
+    background: "var(--charminal-panel-bg)",
     color: "var(--charminal-fg)",
     border: "1px solid var(--charminal-accent-border)",
     borderRadius: "8px",
@@ -379,10 +379,10 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   };
 
   const buttonStyle: React.CSSProperties = {
-    border: "1px solid rgba(236, 239, 244, 0.22)",
+    border: "1px solid var(--charminal-border)",
     borderRadius: "6px",
-    background: "rgba(236, 239, 244, 0.08)",
-    color: "#eceff4",
+    background: "var(--charminal-input-bg)",
+    color: "var(--charminal-fg)",
     font: "inherit",
     padding: "6px 8px",
     cursor: "pointer",
