@@ -17,6 +17,7 @@
  */
 
 import type { SubsystemLog } from "../../core/dev-log";
+import type { TweenManager } from "../../core/tween/tween-manager";
 import type { PersonaDefinition } from "../../sdk/persona";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
@@ -47,6 +48,7 @@ export interface LoadUserLayerDeps {
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
+  readonly tweenManager?: TweenManager;
 }
 
 export interface LoadUserLayerResult {
@@ -141,6 +143,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
         emitEvent: deps.emitEvent,
         devLog: deps.initScriptLog,
         setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
+        tweenManager: deps.tweenManager,
         fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
         importModule: async (path) => {
           const url = await buildCacheBustUrl(path);

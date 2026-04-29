@@ -68,6 +68,11 @@ describe("layerStyle", () => {
     const style = layerStyle({ id: "vrm-slot", role: "character" });
     expect(style.zIndex).toBeUndefined();
   });
+
+  it("opacity が指定されている場合 style.opacity に反映する", () => {
+    const result = layerStyle({ id: "test", opacity: 0.5 });
+    expect(result.opacity).toBe(0.5);
+  });
 });
 
 describe("isVideoSrc", () => {

@@ -2,6 +2,7 @@ import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
 import type { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
+import type { TweenManager } from "../../core/tween/tween-manager";
 
 /**
  * ThreeRuntime の public interface。vrm-viewer.tsx が参照するのはこの型だけ。
@@ -47,4 +48,6 @@ export interface ThreeRuntime {
   getVrm(): VRM | null;
   /** Body 未生成なら null。VRM load 完了後に非 null。 */
   getBody(): Body | null;
+  /** TweenManager instance。per-frame 補間の backing store。 */
+  getTweenManager(): TweenManager;
 }

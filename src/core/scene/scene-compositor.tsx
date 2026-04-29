@@ -84,6 +84,9 @@ export function layerStyle(layer: Layer): CSSProperties {
   if (typeof layer.blur === "number") {
     style.filter = `blur(${layer.blur}px)`;
   }
+  if (typeof layer.opacity === "number") {
+    style.opacity = layer.opacity;
+  }
   if (layer.backgroundColor !== undefined) {
     style.backgroundColor = layer.backgroundColor;
   }

@@ -11,8 +11,14 @@
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-a: 最小限の user pack load」
  */
 
-import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@charminal/sdk";
+import type {
+  EffectDefinition,
+  PersonaDefinition,
+  SpaceEffectRequest,
+  TweenAPI,
+} from "@charminal/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
+import type { TweenManager } from "../../core/tween/tween-manager";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
 import type { PersonaEntry } from "../persona-registry";
 import { applyPersonaDefaults } from "./persona-defaults";
@@ -43,6 +49,8 @@ export interface CharminalInitContext {
   dispatchEffect(request: SpaceEffectRequest): void;
   emitEvent(name: string, payload?: unknown): void;
   setActiveUi(id: string | null): void;
+  /** Per-frame parameter 補間。init scope で開始した tween はアプリ終了まで有効。 */
+  tween: TweenAPI;
 }
 
 export interface LoadInitScriptDeps {
@@ -53,6 +61,7 @@ export interface LoadInitScriptDeps {
   readonly personaDefaults?: PersonaDefinition;
   readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly setActiveUi?: (id: string | null) => void;
+  readonly tweenManager?: TweenManager;
   /**
    * Tauri の user_init_script_path を叩いて init.js の absolute path を返す。
    * 見つからなければ null。
@@ -111,6 +120,20 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
       throw new Error("setActiveUi is not available in this runtime");
     }
     deps.setActiveUi(id);
+  },
+  tween: {
+    start(key, to, durationMs, apply, options) {
+      if (!deps.tweenManager) throw new Error("tweenManager is not available");
+      return deps.tweenManager.start(`init:${key}`, to, durationMs, apply, options);
+    },
+    startVec3(key, to, durationMs, apply, options) {
+      if (!deps.tweenManager) throw new Error("tweenManager is not available");
+      return deps.tweenManager.startVec3(`init:${key}`, to, durationMs, apply, options);
+    },
+    cancel(key) {
+      if (!deps.tweenManager) throw new Error("tweenManager is not available");
+      deps.tweenManager.cancel(`init:${key}`);
+    },
   },
 });
 

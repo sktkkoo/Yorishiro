@@ -22,6 +22,7 @@
 | `dev-log/` | development 時のみ active な generation-time mirror log | impl | `index.ts` |
 | `two-layer/` | 意識層と反射層を orchestrate する coordinator | **skeleton** | `index.ts` |
 | `attention/` | 注目 source（mouse / terminal / gaze）ごとの AttentionTarget 定義と resolver（複数 source → 1 本の AttentionSnapshot に合成） | impl | `index.ts` |
+| `tween/` | Per-frame パラメータ補間（numberLerp / vec3Lerp / colorLerp + TweenManager） | impl | `tween-manager.ts` |
 
 skeleton 標記は **API 形は決まっているが本格実装は post-MVP** の意味。
 

@@ -8,6 +8,7 @@
  */
 
 import type {
+  Disposable,
   ExpressionHandle,
   MotionHandle,
   MotionSnapshot,
@@ -15,6 +16,8 @@ import type {
 } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
+import { colorLerp } from "../../core/tween/lerp";
+import type { TweenManager } from "../../core/tween/tween-manager";
 import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
@@ -277,6 +280,10 @@ export interface StateGetDeps {
   readonly getScene: () => THREE.Scene | null;
   readonly getVrm: () => unknown;
   readonly getBody: () => BodyLike | null;
+  readonly tweenManager: TweenManager;
+  readonly getSidebarWidth: () => number;
+  readonly getTerminalOpacity: () => number;
+  readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
 }
 
 export interface StateGetResult {
@@ -295,6 +302,19 @@ export interface StateGetResult {
    * （VRM 未 load）の場合は `{ active: null, preempted: [] }` を返す。
    */
   readonly motion: MotionSnapshot;
+  readonly ui: {
+    readonly sidebar: { readonly width: number };
+    readonly terminal: { readonly opacity: number };
+    readonly sceneLayers: {
+      readonly background: { readonly blur: number; readonly opacity: number };
+      readonly foreground: { readonly blur: number; readonly opacity: number };
+    };
+  };
+  readonly tweens: ReadonlyArray<{
+    readonly key: string;
+    readonly progress: number;
+    readonly remainingMs: number;
+  }>;
 }
 
 /**
@@ -344,6 +364,15 @@ export function createStateGetHandler(deps: StateGetDeps) {
       vrmLoaded: deps.getVrm() !== null,
       expressions,
       motion,
+      ui: {
+        sidebar: { width: deps.getSidebarWidth() },
+        terminal: { opacity: deps.getTerminalOpacity() },
+        sceneLayers: {
+          background: deps.getSceneLayerValues("background"),
+          foreground: deps.getSceneLayerValues("foreground"),
+        },
+      },
+      tweens: deps.tweenManager.getActive(),
     };
   };
 }
@@ -468,11 +497,14 @@ export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
 
 export interface SceneCameraSetDeps {
   readonly getCamera: () => THREE.PerspectiveCamera | null;
+  readonly tweenManager: TweenManager;
+  readonly claimCamera: () => Disposable;
 }
 
 export interface SceneCameraSetResult {
   readonly position: readonly [number, number, number];
   readonly fov: number;
+  readonly tweening?: boolean;
 }
 
 function parseVec3(v: unknown): readonly [number, number, number] | undefined {
@@ -484,24 +516,110 @@ function parseVec3(v: unknown): readonly [number, number, number] | undefined {
 /**
  * camera の position / target (lookAt) / fov を opportunistic に更新する handler。
  * 与えられなかった field は変更しない。camera 未準備時は throw する。
+ *
+ * durationMs > 0 の場合は TweenManager で per-frame 補間を行い、補間中は
+ * claimCamera() で head-tracking を suspend する。durationMs 省略 / 0 は即時反映
+ * （後方互換）。
  */
 export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
+  let cameraClaimDisposable: Disposable | null = null;
+  const activeCameraTweenKeys = new Set<string>();
+
+  function ensureCameraClaim(): void {
+    if (!cameraClaimDisposable) cameraClaimDisposable = deps.claimCamera();
+  }
+  function releaseCameraClaimIfDone(): void {
+    if (activeCameraTweenKeys.size === 0 && cameraClaimDisposable) {
+      cameraClaimDisposable.dispose();
+      cameraClaimDisposable = null;
+    }
+  }
+  function trackTween(key: string, handle: { completion: Promise<void> }): void {
+    activeCameraTweenKeys.add(key);
+    handle.completion.then(() => {
+      activeCameraTweenKeys.delete(key);
+      releaseCameraClaimIfDone();
+    });
+  }
+
   return async (request: unknown): Promise<SceneCameraSetResult> => {
     const r = (request ?? {}) as {
       position?: unknown;
       target?: unknown;
       fov?: unknown;
+      durationMs?: unknown;
     };
     const cam = deps.getCamera();
     if (!cam) throw new Error("camera not ready");
+
     const position = parseVec3(r.position);
     const target = parseVec3(r.target);
+    const fovValue = typeof r.fov === "number" && Number.isFinite(r.fov) ? r.fov : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      ensureCameraClaim();
+
+      if (position) {
+        const h = deps.tweenManager.startVec3(
+          "camera.position",
+          position,
+          durationMs,
+          (v) => cam.position.set(v[0], v[1], v[2]),
+          { from: [cam.position.x, cam.position.y, cam.position.z] },
+        );
+        trackTween("camera.position", h);
+      }
+      if (target) {
+        // camera.lookAt target は PerspectiveCamera に保持されないため
+        // "from" は [0, cam.position.y, 0] で近似（正面向き前提）
+        const h = deps.tweenManager.startVec3(
+          "camera.target",
+          target,
+          durationMs,
+          (v) => cam.lookAt(v[0], v[1], v[2]),
+          { from: [0, cam.position.y, 0] },
+        );
+        trackTween("camera.target", h);
+      }
+      if (fovValue !== undefined && "fov" in cam) {
+        const h = deps.tweenManager.start(
+          "camera.fov",
+          fovValue,
+          durationMs,
+          (v) => {
+            cam.fov = v;
+            cam.updateProjectionMatrix();
+          },
+          { from: cam.fov },
+        );
+        trackTween("camera.fov", h);
+      }
+
+      return {
+        position: [cam.position.x, cam.position.y, cam.position.z],
+        fov: "fov" in cam ? cam.fov : 0,
+        tweening: true,
+      };
+    }
+
+    // Instant mode: cancel active tweens + direct set（既存動作）
+    deps.tweenManager.cancel("camera.position");
+    deps.tweenManager.cancel("camera.target");
+    deps.tweenManager.cancel("camera.fov");
+    activeCameraTweenKeys.clear();
+    releaseCameraClaimIfDone();
+
     if (position) cam.position.set(position[0], position[1], position[2]);
     if (target) cam.lookAt(target[0], target[1], target[2]);
-    if (typeof r.fov === "number" && Number.isFinite(r.fov) && "fov" in cam) {
-      cam.fov = r.fov;
+    if (fovValue !== undefined && "fov" in cam) {
+      cam.fov = fovValue;
       cam.updateProjectionMatrix();
     }
+
     return {
       position: [cam.position.x, cam.position.y, cam.position.z],
       fov: "fov" in cam ? cam.fov : 0,
@@ -515,29 +633,74 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
 
 export interface SceneLightingSetDeps {
   readonly getScene: () => THREE.Scene | null;
+  readonly tweenManager: TweenManager;
 }
 
 export interface SceneLightingSetResult {
   readonly intensity: number;
   readonly color: string;
+  readonly tweening?: boolean;
 }
 
 /**
  * scene 内の最初の DirectionalLight に intensity / color を opportunistic に
  * 適用する handler。light が無い場合は throw する。
+ * durationMs > 0 の場合は TweenManager で per-frame 補間を行う。
+ * durationMs 省略 / 0 は即時反映（後方互換）。
  */
 export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
   return async (request: unknown): Promise<SceneLightingSetResult> => {
-    const r = (request ?? {}) as { intensity?: unknown; color?: unknown };
+    const r = (request ?? {}) as { intensity?: unknown; color?: unknown; durationMs?: unknown };
     const scene = deps.getScene();
     if (!scene) throw new Error("scene not ready");
     const light = findDirectionalLight(scene);
     if (!light) throw new Error("no DirectionalLight in scene");
-    if (typeof r.intensity === "number" && Number.isFinite(r.intensity)) {
-      light.intensity = r.intensity;
+
+    const intensityVal =
+      typeof r.intensity === "number" && Number.isFinite(r.intensity) ? r.intensity : undefined;
+    const colorVal = typeof r.color === "string" ? r.color : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      if (intensityVal !== undefined) {
+        deps.tweenManager.start(
+          "lighting.intensity",
+          intensityVal,
+          durationMs,
+          (v) => {
+            light.intensity = v;
+          },
+          { from: light.intensity },
+        );
+      }
+      if (colorVal !== undefined) {
+        deps.tweenManager.startWithLerp(
+          "lighting.color",
+          `#${light.color.getHexString()}`,
+          colorVal,
+          durationMs,
+          colorLerp,
+          (v) => light.color.set(v),
+        );
+      }
+      return {
+        intensity: light.intensity,
+        color: `#${light.color.getHexString()}`,
+        tweening: true,
+      };
     }
-    if (typeof r.color === "string") {
-      light.color.set(r.color);
+
+    // Instant mode: cancel active tweens + direct set（既存動作）
+    deps.tweenManager.cancel("lighting.intensity");
+    deps.tweenManager.cancel("lighting.color");
+    if (intensityVal !== undefined) {
+      light.intensity = intensityVal;
+    }
+    if (colorVal !== undefined) {
+      light.color.set(colorVal);
     }
     return {
       intensity: light.intensity,
@@ -650,4 +813,162 @@ export function __resetMcpMotionHandleForTesting(): void {
     mcpMotionHandle.release(0);
     mcpMotionHandle = null;
   }
+}
+
+/* ──────────────────────────────────────────────────────────
+ * ui.scene-layer.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiSceneLayerSetDeps {
+  readonly updateSceneLayer: (
+    target: { role: string },
+    patch: { blur?: number | null; opacity?: number | null },
+  ) => void;
+  readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
+  readonly tweenManager: TweenManager;
+}
+
+export interface UiSceneLayerSetResult {
+  readonly role: string;
+  readonly blur?: number | null;
+  readonly opacity?: number | null;
+  readonly tweening?: boolean;
+}
+
+export function createUiSceneLayerSetHandler(deps: UiSceneLayerSetDeps) {
+  return async (request: unknown): Promise<UiSceneLayerSetResult> => {
+    const r = requestRecord(request);
+    const role = r.role;
+    if (role !== "background" && role !== "foreground") {
+      throw new Error('role must be "background" or "foreground"');
+    }
+    const blur = typeof r.blur === "number" && Number.isFinite(r.blur) ? r.blur : undefined;
+    const opacity =
+      typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      const current = deps.getSceneLayerValues(role);
+      if (blur !== undefined) {
+        deps.tweenManager.start(
+          `scene.layer.blur.${role}`,
+          blur,
+          durationMs,
+          (v) => deps.updateSceneLayer({ role }, { blur: v }),
+          { from: current.blur },
+        );
+      }
+      if (opacity !== undefined) {
+        deps.tweenManager.start(
+          `scene.layer.opacity.${role}`,
+          opacity,
+          durationMs,
+          (v) => deps.updateSceneLayer({ role }, { opacity: v }),
+          { from: current.opacity },
+        );
+      }
+      return { role, blur, opacity, tweening: true };
+    }
+
+    // 即時: active な tween を cancel + 直接 set
+    deps.tweenManager.cancel(`scene.layer.blur.${role}`);
+    deps.tweenManager.cancel(`scene.layer.opacity.${role}`);
+    const patch: { blur?: number | null; opacity?: number | null } = {};
+    if (blur !== undefined) patch.blur = blur;
+    if (opacity !== undefined) patch.opacity = opacity;
+    // null reset のサポート: raw request に明示的 null があるかチェック
+    if (r.blur === null) patch.blur = null;
+    if (r.opacity === null) patch.opacity = null;
+    deps.updateSceneLayer({ role }, patch);
+    return { role, blur, opacity };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * ui.terminal.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiTerminalSetDeps {
+  readonly setTerminalOpacity: (value: number) => void;
+  readonly getTerminalOpacity: () => number;
+  readonly tweenManager: TweenManager;
+}
+
+export interface UiTerminalSetResult {
+  readonly opacity?: number;
+  readonly tweening?: boolean;
+}
+
+export function createUiTerminalSetHandler(deps: UiTerminalSetDeps) {
+  return async (request: unknown): Promise<UiTerminalSetResult> => {
+    const r = requestRecord(request);
+    const opacity =
+      typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (opacity === undefined) {
+      return {};
+    }
+
+    if (durationMs > 0) {
+      deps.tweenManager.start("ui.terminal.opacity", opacity, durationMs, deps.setTerminalOpacity, {
+        from: deps.getTerminalOpacity(),
+      });
+      return { opacity, tweening: true };
+    }
+
+    // 即時: active な tween を cancel + 直接 set
+    deps.tweenManager.cancel("ui.terminal.opacity");
+    deps.setTerminalOpacity(opacity);
+    return { opacity };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * ui.sidebar.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiSidebarSetDeps {
+  readonly setSidebarWidth: (px: number) => void;
+  readonly getSidebarWidth: () => number;
+  readonly tweenManager: TweenManager;
+}
+
+export interface UiSidebarSetResult {
+  readonly width?: number;
+  readonly tweening?: boolean;
+}
+
+export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
+  return async (request: unknown): Promise<UiSidebarSetResult> => {
+    const r = requestRecord(request);
+    const width =
+      typeof r.width === "number" && Number.isFinite(r.width) && r.width > 0 ? r.width : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (width === undefined) {
+      return {};
+    }
+
+    if (durationMs > 0) {
+      deps.tweenManager.start("ui.sidebar.width", width, durationMs, deps.setSidebarWidth, {
+        from: deps.getSidebarWidth(),
+      });
+      return { width, tweening: true };
+    }
+
+    // 即時: active な tween を cancel + 直接 set
+    deps.tweenManager.cancel("ui.sidebar.width");
+    deps.setSidebarWidth(width);
+    return { width };
+  };
 }

@@ -49,6 +49,8 @@ export interface Layer {
   readonly backgroundColor?: string;
   readonly backgroundImage?: string;
   readonly blur?: number;
+  /** 0-1。省略は 1（完全不透明）。 */
+  readonly opacity?: number;
 }
 
 /**

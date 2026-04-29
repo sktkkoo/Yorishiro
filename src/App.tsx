@@ -2,6 +2,7 @@ import type {
   AmbientUiContext,
   Disposable,
   Trigger,
+  TweenAPI,
   UiClaimAPI,
   UiContext,
   UiLayout,
@@ -109,6 +110,7 @@ type MutableLayer = {
   backgroundColor?: string;
   backgroundImage?: string;
   blur?: number;
+  opacity?: number;
 };
 
 function sceneLayerTargetKey(target: UiSceneLayerTarget): string | null {
@@ -159,6 +161,13 @@ function applySceneLayerPatch(layer: Layer, patch: UiSceneLayerPatch): Layer {
       delete next.blur;
     } else if (patch.blur !== undefined) {
       next.blur = patch.blur;
+    }
+  }
+  if ("opacity" in patch) {
+    if (patch.opacity === null) {
+      delete next.opacity;
+    } else if (patch.opacity !== undefined) {
+      next.opacity = patch.opacity;
     }
   }
   return next;
@@ -516,6 +525,7 @@ function App() {
           personaDefaults: charminalDefaultPack,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
           initScriptLog: createSubsystemLog(devLog, "InitScript"),
+          tweenManager: getThreeRuntime().getTweenManager(),
         });
         safeMode = result.safeMode;
         appLog.write({
@@ -578,6 +588,10 @@ function App() {
           // Phase γ motion tools：
           createBodyAnimationPlayHandler,
           createBodyMotionCancelHandler,
+          // UI tween tools：
+          createUiSceneLayerSetHandler,
+          createUiTerminalSetHandler,
+          createUiSidebarSetHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -646,6 +660,25 @@ function App() {
             getScene: () => getThreeRuntime().getScene(),
             getVrm: () => getThreeRuntime().getVrm(),
             getBody: () => getThreeRuntime().getBody(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            getSidebarWidth: () => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--sidebar-width")
+                .trim();
+              return Number.parseFloat(raw) || 280;
+            },
+            getTerminalOpacity: () => {
+              const el = document.querySelector<HTMLElement>(".terminal-container");
+              if (!el) return 1;
+              const raw = el.style.opacity;
+              return raw === "" ? 1 : Number(raw);
+            },
+            getSceneLayerValues: (role) => {
+              const scene = renderedSceneRef.current;
+              if (!scene) return { blur: 0, opacity: 1 };
+              const layer = scene.layers.find((l) => l.role === role);
+              return { blur: layer?.blur ?? 0, opacity: layer?.opacity ?? 1 };
+            },
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
@@ -655,15 +688,61 @@ function App() {
           }),
           "scene.camera.set": createSceneCameraSetHandler({
             getCamera: () => getThreeRuntime().getCamera(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            claimCamera: () => claimState.claim("camera"),
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),
+            tweenManager: getThreeRuntime().getTweenManager(),
           }),
           // ── Phase γ motion tools ────────────────────────
           "body.animation.play": createBodyAnimationPlayHandler({
             getBody: () => getThreeRuntime().getBody(),
           }),
           "body.motion.cancel": createBodyMotionCancelHandler(),
+          // ── UI tween tools ─────────────────────────────────
+          "ui.scene-layer.set": createUiSceneLayerSetHandler({
+            updateSceneLayer: (target, patch) => {
+              setSceneLayerOverrides((prev) =>
+                upsertSceneLayerOverride(prev, { role: target.role as LayerRole }, patch),
+              );
+            },
+            getSceneLayerValues: (role) => {
+              const scene = renderedSceneRef.current;
+              if (!scene) return { blur: 0, opacity: 1 };
+              const layer = scene.layers.find((l) => l.role === role);
+              return {
+                blur: layer?.blur ?? 0,
+                opacity: layer?.opacity ?? 1,
+              };
+            },
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          "ui.terminal.set": createUiTerminalSetHandler({
+            setTerminalOpacity: (value) => {
+              const el = document.querySelector<HTMLElement>(".terminal-container");
+              if (el) el.style.opacity = String(value);
+            },
+            getTerminalOpacity: () => {
+              const el = document.querySelector<HTMLElement>(".terminal-container");
+              if (!el) return 1;
+              const raw = el.style.opacity;
+              return raw === "" ? 1 : Number(raw);
+            },
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          "ui.sidebar.set": createUiSidebarSetHandler({
+            setSidebarWidth: (px) => {
+              document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+            },
+            getSidebarWidth: () => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--sidebar-width")
+                .trim();
+              return Number.parseFloat(raw) || 280;
+            },
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
         };
 
         await listen<{ requestId: string; tool: string; request: unknown }>(
@@ -864,6 +943,29 @@ function App() {
       targets: LayoutTargets,
     ): UiContext => {
       const threeRuntime = getThreeRuntime();
+
+      // ── tween: pack-scoped TweenAPI ─────────────────────────
+      const tweenManager = threeRuntime.getTweenManager();
+      const tweenPrefix = `pack:${packId}:`;
+      const tween: TweenAPI = {
+        start(key, to, durationMs, apply, options) {
+          return tweenManager.start(tweenPrefix + key, to, durationMs, apply, options);
+        },
+        startVec3(key, to, durationMs, apply, options) {
+          return tweenManager.startVec3(tweenPrefix + key, to, durationMs, apply, options);
+        },
+        cancel(key) {
+          tweenManager.cancel(tweenPrefix + key);
+        },
+      };
+      signal.addEventListener(
+        "abort",
+        () => {
+          tweenManager.cancelByPrefix(tweenPrefix);
+        },
+        { once: true },
+      );
+
       const three: UiThreeAPI = {
         get camera() {
           return threeRuntime.getCamera();
@@ -952,6 +1054,7 @@ function App() {
         scene,
         state,
         time,
+        tween,
         log: createLogAPI(logBridge, packId),
         signal,
         layout: {

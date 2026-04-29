@@ -8,6 +8,7 @@
 import type { SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TweenManager } from "../../core/tween/tween-manager";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
@@ -28,6 +29,9 @@ import {
   createSetUiStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
+  createUiSceneLayerSetHandler,
+  createUiSidebarSetHandler,
+  createUiTerminalSetHandler,
 } from "./tool-handlers";
 
 /**
@@ -325,6 +329,10 @@ describe("createStateGetHandler", () => {
           ],
           getMotionSnapshot: () => ({ active: null, preempted: [] }),
         }) as unknown as BodyLike,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -356,6 +364,10 @@ describe("createStateGetHandler", () => {
       getScene: () => null,
       getVrm: () => null,
       getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -391,6 +403,10 @@ describe("createStateGetHandler", () => {
           getExpressionSlots: () => [],
           getMotionSnapshot: () => motionSnapshot,
         }) as unknown as BodyLike,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -410,11 +426,71 @@ describe("createStateGetHandler", () => {
         }) as unknown as SceneLike,
       getVrm: () => null,
       getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
     expect(result.lighting.color).toBe("#ffffff");
     expect(result.expressions).toEqual([]);
+  });
+
+  it("ui section を返す", async () => {
+    const handler = createStateGetHandler({
+      readConfig: async () => ({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+        disabledPacks: [],
+        ambientAudioMuted: false,
+        mcpPort: null,
+        activeUi: null,
+        activeAmbientUi: [],
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 350,
+      getTerminalOpacity: () => 0.7,
+      getSceneLayerValues: (role) =>
+        role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
+    });
+    const result = await handler({});
+    expect(result.ui.sidebar.width).toBe(350);
+    expect(result.ui.terminal.opacity).toBe(0.7);
+    expect(result.ui.sceneLayers.background).toEqual({ blur: 5, opacity: 0.8 });
+  });
+
+  it("active tween を tweens に返す", async () => {
+    const tm = new TweenManager();
+    tm.start("test-key", 100, 1000, () => {}, { from: 0 });
+    const handler = createStateGetHandler({
+      readConfig: async () => ({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+        disabledPacks: [],
+        ambientAudioMuted: false,
+        mcpPort: null,
+        activeUi: null,
+        activeAmbientUi: [],
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () => null,
+      tweenManager: tm,
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+    });
+    const result = await handler({});
+    expect(result.tweens.length).toBe(1);
+    expect(result.tweens[0].key).toBe("test-key");
   });
 });
 
@@ -569,8 +645,8 @@ describe("createSpaceEffectPlayHandler", () => {
 });
 
 describe("createSceneCameraSetHandler", () => {
-  it("sets position / target / fov when given", async () => {
-    const camera = {
+  function makeMockCamera() {
+    return {
       position: {
         x: 0,
         y: 0,
@@ -590,8 +666,14 @@ describe("createSceneCameraSetHandler", () => {
       fov: 50,
       updateProjectionMatrix: vi.fn(),
     };
+  }
+
+  it("sets position / target / fov when given", async () => {
+    const camera = makeMockCamera();
     const handler = createSceneCameraSetHandler({
       getCamera: () => camera as unknown as CameraLike,
+      tweenManager: new TweenManager(),
+      claimCamera: () => ({ dispose: () => {} }),
     });
     const result = await handler({ position: [1, 2, 3], target: [4, 5, 6], fov: 30 });
     expect(camera.position.set).toHaveBeenCalledWith(1, 2, 3);
@@ -602,28 +684,82 @@ describe("createSceneCameraSetHandler", () => {
   });
 
   it("throws when camera not ready", async () => {
-    const handler = createSceneCameraSetHandler({ getCamera: () => null });
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => null,
+      tweenManager: new TweenManager(),
+      claimCamera: () => ({ dispose: () => {} }),
+    });
     await expect(handler({ position: [1, 2, 3] })).rejects.toThrow(/camera not ready/);
+  });
+
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const mockCamera = makeMockCamera();
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => mockCamera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+    });
+    const result = await handler({
+      position: [1.5, 1.3, 0],
+      durationMs: 1000,
+    });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("camera.position")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映（後方互換）", async () => {
+    const tm = new TweenManager();
+    const mockCamera = makeMockCamera();
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => mockCamera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+    });
+    const result = await handler({ position: [1, 2, 3] });
+    expect(result.tweening).toBeUndefined();
+    expect(mockCamera.position.x).toBe(1);
+  });
+
+  it("instant set が active tween を cancel", async () => {
+    const tm = new TweenManager();
+    const mockCamera = makeMockCamera();
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => mockCamera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+    });
+    await handler({ position: [1, 1, 1], durationMs: 1000 });
+    expect(tm.isActive("camera.position")).toBe(true);
+    await handler({ position: [2, 2, 2] });
+    expect(tm.isActive("camera.position")).toBe(false);
   });
 });
 
 describe("createSceneLightingSetHandler", () => {
+  const mockLight = {
+    isDirectionalLight: true,
+    intensity: 0.5,
+    color: { set: vi.fn(), getHexString: () => "ff8800" },
+  };
+  const mockScene = {
+    traverse: (cb: (obj: SceneObjectLike) => void) => cb(mockLight as unknown as SceneObjectLike),
+  };
+
+  beforeEach(() => {
+    mockLight.intensity = 0.5;
+    mockLight.color.set = vi.fn();
+    mockLight.color.getHexString = () => "ff8800";
+  });
+
   it("sets intensity and color on DirectionalLight", async () => {
-    const colorSet = vi.fn();
-    const light = {
-      isDirectionalLight: true,
-      intensity: 0.5,
-      color: { set: colorSet, getHexString: () => "ff8800" },
-    };
     const handler = createSceneLightingSetHandler({
-      getScene: () =>
-        ({
-          traverse: (cb: (obj: SceneObjectLike) => void) => cb(light as unknown as SceneObjectLike),
-        }) as unknown as SceneLike,
+      getScene: () => mockScene as unknown as SceneLike,
+      tweenManager: new TweenManager(),
     });
     const result = await handler({ intensity: 0.9, color: "#ff8800" });
-    expect(light.intensity).toBe(0.9);
-    expect(colorSet).toHaveBeenCalledWith("#ff8800");
+    expect(mockLight.intensity).toBe(0.9);
+    expect(mockLight.color.set).toHaveBeenCalledWith("#ff8800");
     expect(result).toEqual({ intensity: 0.9, color: "#ff8800" });
   });
 
@@ -633,8 +769,31 @@ describe("createSceneLightingSetHandler", () => {
         ({
           traverse: (_cb: (obj: SceneObjectLike) => void) => {},
         }) as unknown as SceneLike,
+      tweenManager: new TweenManager(),
     });
     await expect(handler({ intensity: 0.5 })).rejects.toThrow(/no DirectionalLight/);
+  });
+
+  it("durationMs > 0 で tween 登録", async () => {
+    const tm = new TweenManager();
+    const handler = createSceneLightingSetHandler({
+      getScene: () => mockScene as unknown as SceneLike,
+      tweenManager: tm,
+    });
+    const result = await handler({ intensity: 0.5, durationMs: 800 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("lighting.intensity")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映（後方互換）", async () => {
+    const tm = new TweenManager();
+    const handler = createSceneLightingSetHandler({
+      getScene: () => mockScene as unknown as SceneLike,
+      tweenManager: tm,
+    });
+    const result = await handler({ intensity: 0.3 });
+    expect(result.tweening).toBeUndefined();
+    expect(mockLight.intensity).toBe(0.3);
   });
 });
 
@@ -763,5 +922,114 @@ describe("createBodyMotionCancelHandler", () => {
     const result = await cancelHandler({});
     expect(result).toEqual({ cancelled: true });
     expect(release).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("createUiSceneLayerSetHandler", () => {
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const patches: Array<{ role: string; patch: Record<string, unknown> }> = [];
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: (target, patch) => patches.push({ role: target.role, patch }),
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    const result = await handler({ role: "background", blur: 8, durationMs: 600 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("scene.layer.blur.background")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映", async () => {
+    const tm = new TweenManager();
+    const patches: Array<{ role: string; patch: Record<string, unknown> }> = [];
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: (target, patch) => patches.push({ role: target.role, patch }),
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    const result = await handler({ role: "background", blur: 5 });
+    expect(result.tweening).toBeUndefined();
+    expect(patches.length).toBe(1);
+    expect(patches[0].patch).toEqual({ blur: 5 });
+  });
+
+  it("不正な role で throw", async () => {
+    const tm = new TweenManager();
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: () => {},
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    await expect(handler({ role: "invalid" })).rejects.toThrow("role");
+  });
+
+  it("blur のみ指定で opacity は変更しない", async () => {
+    const tm = new TweenManager();
+    const patches: Array<Record<string, unknown>> = [];
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: (_target, patch) => patches.push(patch),
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    await handler({ role: "foreground", blur: 3 });
+    expect(patches[0]).toEqual({ blur: 3 });
+  });
+});
+
+describe("createUiTerminalSetHandler", () => {
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const handler = createUiTerminalSetHandler({
+      setTerminalOpacity: () => {},
+      getTerminalOpacity: () => 1,
+      tweenManager: tm,
+    });
+    const result = await handler({ opacity: 0.5, durationMs: 400 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("ui.terminal.opacity")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiTerminalSetHandler({
+      setTerminalOpacity: (v) => {
+        setTo = v;
+      },
+      getTerminalOpacity: () => 1,
+      tweenManager: tm,
+    });
+    const result = await handler({ opacity: 0.5 });
+    expect(result.tweening).toBeUndefined();
+    expect(setTo).toBe(0.5);
+  });
+});
+
+describe("createUiSidebarSetHandler", () => {
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: () => {},
+      getSidebarWidth: () => 280,
+      tweenManager: tm,
+    });
+    const result = await handler({ width: 350, durationMs: 800 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("ui.sidebar.width")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: (v) => {
+        setTo = v;
+      },
+      getSidebarWidth: () => 280,
+      tweenManager: tm,
+    });
+    const result = await handler({ width: 350 });
+    expect(result.tweening).toBeUndefined();
+    expect(setTo).toBe(350);
   });
 });

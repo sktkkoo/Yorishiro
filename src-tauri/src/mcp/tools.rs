@@ -92,6 +92,10 @@ pub struct SceneCameraSetRequest {
     pub target: Option<[f32; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fov: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
 }
 
 /// `scene_lighting_set` の引数。
@@ -102,6 +106,10 @@ pub struct SceneLightingSetRequest {
     /// "#rrggbb" hex string
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
 }
 
 /// `body_animation_play` の引数。
@@ -131,6 +139,47 @@ pub struct BodyAnimationPlayRequest {
 /// `body_motion_cancel` の引数。空。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyMotionCancelRequest {}
+
+/// `ui_scene_layer_set` の引数。scene layer の blur / opacity を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiSceneLayerSetRequest {
+    /// Layer role: "background" or "foreground"
+    pub role: String,
+    /// Blur radius (px)。null でリセット（= blur なし）。省略は変更なし。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blur: Option<f32>,
+    /// Opacity 0-1。null でリセット（= 1）。省略は変更なし。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
+/// `ui_terminal_set` の引数。terminal container の opacity を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiTerminalSetRequest {
+    /// Terminal container opacity 0-1。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
+/// `ui_sidebar_set` の引数。sidebar の幅を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiSidebarSetRequest {
+    /// Sidebar width in px（数値）。CSS custom property `--sidebar-width` を操作する。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
 
 #[derive(Clone)]
 pub struct Charminal {
@@ -300,6 +349,7 @@ impl Charminal {
                 "position": req.position,
                 "target": req.target,
                 "fov": req.fov,
+                "durationMs": req.duration_ms,
             }),
         )
         .await
@@ -314,7 +364,7 @@ impl Charminal {
         emit_to(
             &self.app_handle,
             "scene.lighting.set",
-            json!({ "intensity": req.intensity, "color": req.color }),
+            json!({ "intensity": req.intensity, "color": req.color, "durationMs": req.duration_ms }),
         )
         .await
     }
@@ -351,6 +401,61 @@ impl Charminal {
         _params: Parameters<BodyMotionCancelRequest>,
     ) -> Result<CallToolResult, McpError> {
         emit_to(&self.app_handle, "body.motion.cancel", json!({})).await
+    }
+
+    /// scene layer の blur / opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(
+        description = "Set scene layer blur and/or opacity. Supports smooth interpolation via durationMs."
+    )]
+    async fn ui_scene_layer_set(
+        &self,
+        Parameters(req): Parameters<UiSceneLayerSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.scene-layer.set",
+            json!({
+                "role": req.role,
+                "blur": req.blur,
+                "opacity": req.opacity,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
+    }
+
+    /// terminal container の opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(description = "Set terminal opacity. Supports smooth interpolation via durationMs.")]
+    async fn ui_terminal_set(
+        &self,
+        Parameters(req): Parameters<UiTerminalSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.terminal.set",
+            json!({
+                "opacity": req.opacity,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
+    }
+
+    /// sidebar の幅を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(description = "Set sidebar width (px). Supports smooth interpolation via durationMs.")]
+    async fn ui_sidebar_set(
+        &self,
+        Parameters(req): Parameters<UiSidebarSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.sidebar.set",
+            json!({
+                "width": req.width,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
     }
 }
 
