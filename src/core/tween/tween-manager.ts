@@ -39,7 +39,7 @@ export class TweenManager {
    * @param to - 補間先の値
    * @param durationMs - 補間にかける時間（ミリ秒）
    * @param apply - 補間値を受け取るコールバック
-   * @param options.from - 補間元の値（省略時は to と同じ値、実質即時完了）
+   * @param options.from - 補間元の値。省略時は to と同じ値を使用（変化なし）。
    */
   start(
     key: string,
@@ -140,6 +140,22 @@ export class TweenManager {
     lerp: (a: T, b: T, t: number) => T,
     apply: (v: T) => void,
   ): TweenHandle {
+    // durationMs=0 の場合は即時 apply して resolve（division-by-zero / zombie tween 防止）
+    if (durationMs <= 0) {
+      const old = this.active.get(key);
+      if (old) {
+        this.active.delete(key);
+        old.resolve();
+      }
+      apply(to);
+      let resolve!: () => void;
+      const completion = new Promise<void>((r) => {
+        resolve = r;
+      });
+      resolve();
+      return { cancel: () => {}, completion };
+    }
+
     // 同一 key が存在する場合は古いエントリを resolve して置換（last-write-wins）
     const old = this.active.get(key);
     if (old) old.resolve();
