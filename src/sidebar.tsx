@@ -2,7 +2,6 @@ import { lazy, Suspense } from "react";
 import type { Body } from "./core/body";
 import type { SubsystemLog } from "./core/dev-log";
 import { SceneCompositor, type SceneSpec } from "./core/scene";
-import type { EffectDispatcher } from "./core/space";
 
 const VrmViewer = lazy(() => import("./vrm-viewer"));
 
@@ -14,7 +13,6 @@ interface SidebarProps {
   readonly onOpenSettings: () => void;
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
-  readonly effectDispatcher?: EffectDispatcher;
   readonly scene: SceneSpec | null;
 }
 
@@ -26,7 +24,6 @@ export default function Sidebar({
   onOpenSettings,
   onBodyReady,
   bodyDevLog,
-  effectDispatcher,
   scene,
 }: SidebarProps) {
   return (
@@ -65,12 +62,7 @@ export default function Sidebar({
           <SceneCompositor scene={scene}>
             {vrmUrl ? (
               <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
-                <VrmViewer
-                  url={vrmUrl}
-                  onBodyReady={onBodyReady}
-                  devLog={bodyDevLog}
-                  effectDispatcher={effectDispatcher}
-                />
+                <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
               </Suspense>
             ) : (
               <div className="vrm-placeholder">
@@ -84,12 +76,7 @@ export default function Sidebar({
           </SceneCompositor>
         ) : vrmUrl ? (
           <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
-            <VrmViewer
-              url={vrmUrl}
-              onBodyReady={onBodyReady}
-              devLog={bodyDevLog}
-              effectDispatcher={effectDispatcher}
-            />
+            <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
           </Suspense>
         ) : (
           <div className="vrm-placeholder">

@@ -1687,7 +1687,6 @@ function App() {
         onOpenSettings={handleOpenSettings}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
-        effectDispatcher={effectDispatcher}
         scene={renderedScene}
       />
       {isUserLayerReady && (

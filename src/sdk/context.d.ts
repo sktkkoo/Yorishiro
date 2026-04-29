@@ -540,7 +540,6 @@ export interface SpaceAPI {
  * 飛び込んでくる演出など）が、default は 0-1 の範囲で考えること。
  */
 export type SpaceEffectRequest =
-  | { kind: "shake"; intensity: number; durationMs: number }
   | { kind: "screen-shake"; intensity: number; durationMs: number }
   | { kind: "flash"; color: string; durationMs: number }
   | { kind: "particles"; origin: Vec2; count: number; durationMs: number; colorScheme?: string }

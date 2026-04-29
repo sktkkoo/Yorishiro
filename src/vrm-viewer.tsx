@@ -13,29 +13,18 @@
  * Internal design-record: 2026-04-17-three-runtime-singleton.md.
  */
 
-import type { SpaceEffectRequest } from "@charminal/sdk";
 import { useEffect, useRef } from "react";
 import type { Body } from "./core/body";
 import type { SubsystemLog } from "./core/dev-log";
-import { computeShakeOffset, type EffectDispatcher } from "./core/space";
 import { getThreeRuntime } from "./runtime/three-runtime";
-
-/**
- * `SpaceEffectRequest` は末尾に catch-all `{ kind: string; ... }` を持つので、
- * `kind === "shake"` だけでは `durationMs` / `intensity` が `unknown` に残る。
- * subscribe は kind を限定して配線しているため、実際に届く request は必ず
- * `shake` shape であると前提して narrow する。
- */
-type ShakeRequest = Extract<SpaceEffectRequest, { kind: "shake" }>;
 
 interface VrmViewerProps {
   readonly url: string;
   readonly onBodyReady?: (body: Body | null) => void;
   readonly devLog?: SubsystemLog;
-  readonly effectDispatcher?: EffectDispatcher;
 }
 
-export default function VrmViewer({ url, onBodyReady, devLog, effectDispatcher }: VrmViewerProps) {
+export default function VrmViewer({ url, onBodyReady, devLog }: VrmViewerProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
 
   // ── Attach to the singleton canvas ────────────────────────────
@@ -66,34 +55,6 @@ export default function VrmViewer({ url, onBodyReady, devLog, effectDispatcher }
   useEffect(() => {
     getThreeRuntime().setDevLog(devLog ?? null);
   }, [devLog]);
-
-  // ── Shake effect subscription ─────────────────────────────────
-  // NOTE: placeholderRef の transform では canvas は動かない — canvas は
-  // document.body 直下に居て placeholder の boundingRect に追従するだけの
-  // 別 DOM。shake は ThreeRuntime の canvasContainer 側に直接当てる。
-
-  useEffect(() => {
-    if (!effectDispatcher) return;
-    return effectDispatcher.subscribe("shake", (request) => {
-      if (request.kind !== "shake") return;
-      const shake = request as ShakeRequest;
-      const runtime = getThreeRuntime();
-      const start = performance.now();
-      const tick = (now: number) => {
-        const elapsed = now - start;
-        const { dx, dy } = computeShakeOffset(
-          elapsed,
-          shake.durationMs,
-          shake.intensity,
-          Math.random,
-        );
-        runtime.setShakeOffset(dx, dy);
-        if (dx === 0 && dy === 0) return;
-        requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
-  }, [effectDispatcher]);
 
   return <div ref={placeholderRef} className="vrm-container" />;
 }
