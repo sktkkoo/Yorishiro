@@ -191,7 +191,7 @@ describe("charminal-default persona triggers", () => {
 
       const match = trigger.match({
         kind: "synthetic",
-        source: { type: "harness", packId: "user-init" },
+        source: { type: "utility", packId: "user-init" },
         name: "charminal-default:shoot",
         payload,
         timestamp: 1000,
@@ -208,7 +208,7 @@ describe("charminal-default persona triggers", () => {
       expect(
         trigger.match({
           kind: "synthetic",
-          source: { type: "harness", packId: "user-init" },
+          source: { type: "utility", packId: "user-init" },
           name: "other:shoot",
           timestamp: 1000,
         }),
@@ -229,7 +229,7 @@ describe("charminal-default persona triggers", () => {
 
       const match = trigger.match({
         kind: "synthetic",
-        source: { type: "harness", packId: "charminal-settings" },
+        source: { type: "utility", packId: "charminal-settings" },
         name: "charminal-settings:write-failed",
         payload,
         timestamp: 1000,
@@ -246,7 +246,7 @@ describe("charminal-default persona triggers", () => {
       expect(
         trigger.match({
           kind: "synthetic",
-          source: { type: "harness", packId: "charminal-settings" },
+          source: { type: "utility", packId: "charminal-settings" },
           name: "other:event",
           timestamp: 1000,
         }),

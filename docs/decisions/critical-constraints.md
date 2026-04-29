@@ -15,7 +15,7 @@
 
 ### Rule
 
-`claude.input` のような **PTY に書き込む API は存在しない**。perception primitive は PTY output を **読むだけ** で、persona / harness / runtime のどこからも write できない。型レベルで強制されている（API がそもそも生えていない）。
+`claude.input` のような **PTY に書き込む API は存在しない**。perception primitive は PTY output を **読むだけ** で、persona / utility / runtime のどこからも write できない。型レベルで強制されている（API がそもそも生えていない）。
 
 ### Why
 
@@ -27,7 +27,7 @@
 
 - 「user の許可を取れば書き込んでいいのでは」→ NO。user consent は誠実さを担保しない（白塗り化する）
 - 「特定の trigger に限定して write API を生やす」→ NO。grey zone を作らない
-- harness / persona から「key を送る」「command を流す」ような副作用を持つ API を追加しない
+- utility / persona から「key を送る」「command を流す」ような副作用を持つ API を追加しない
 
 ### Reference
 
@@ -37,35 +37,35 @@
 
 ---
 
-## 2. Harness は motion-free
+## 2. Utility は motion-free
 
 ### Rule
 
-Harness は system API（exec / fs / notify など）と **抽象 reaction の emit** のみ。`character` / `voice` / `space` の motion 系 API は **HarnessContext に型ごと存在しない**。身体表現は persona 専属。
+Utility は system API（exec / fs / notify など）と **抽象 reaction の emit** のみ。`character` / `voice` / `space` の motion 系 API は **UtilityContext に型ごと存在しない**。身体表現は persona 専属。
 
 ### Why
 
-- Persona と harness の **責務の clean separation**：harness は「機能的な automation」、persona は「キャラクターの存在感」
-- もし harness が motion を触れると、複数 harness と persona の motion 衝突 resolution が指数増大（augment / exclusive / priority …）
+- Persona と utility の **責務の clean separation**：utility は「機能的な automation」、persona は「キャラクターの存在感」
+- もし utility が motion を触れると、複数 utility と persona の motion 衝突 resolution が指数増大（augment / exclusive / priority …）
 - 結果として **BodyScheduler が必要になる場面が persona 内に閉じる** → MVP で BodyScheduler を defer できる正当化
 
 ### Don't
 
-- harness pack の中で `ctx.character.expressTrue(...)` のような motion API を呼ばない（型 error になる）
-- 「便利だから harness にも一時的に motion API を生やす」→ NO。型レベル境界を壊すと revelation 3.17 の Twin-trigger co-emission idiom が成立しなくなる
+- utility pack の中で `ctx.character.expressTrue(...)` のような motion API を呼ばない（型 error になる）
+- 「便利だから utility にも一時的に motion API を生やす」→ NO。型レベル境界を壊すと revelation 3.17 の Twin-trigger co-emission idiom が成立しなくなる
 
 ### How to apply（境界が曖昧な場面）
 
-「これは harness か persona か」迷う場面では：
+「これは utility か persona か」迷う場面では：
 
-- **機能的副作用（exec, fs, notify, log）が主目的** → harness
+- **機能的副作用（exec, fs, notify, log）が主目的** → utility
 - **キャラクターの内面 / 身体表現が主目的** → persona
-- **両方** → harness で機能を実行 + 完了時に **synthetic event を emit** → persona がそれに反応して motion を出す（= Twin-trigger co-emission）
+- **両方** → utility で機能を実行 + 完了時に **synthetic event を emit** → persona がそれに反応して motion を出す（= Twin-trigger co-emission）
 
 ### Reference
 
 - design-record: `2026-04-11-design-exploration.md` revelation 3.14
-- source: `src/sdk/harness.d.ts` — HarnessContext 型定義（character/voice/space 不在）
+- source: `src/sdk/utility.d.ts` — UtilityContext 型定義（character/voice/space 不在）
 
 ---
 
@@ -107,28 +107,28 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ---
 
-## 4. Twin-trigger co-emission（harness ↔ persona の正規 idiom）
+## 4. Twin-trigger co-emission（utility ↔ persona の正規 idiom）
 
 ### Rule
 
-同じ環境 event に対して **harness の機能反応 + persona の存在反応** を emit したい時は、**同じ trigger を二つの pack に独立に書く**（harness 側と persona 側）。harness が persona を直接呼ぶ API は提供しない。
+同じ環境 event に対して **utility の機能反応 + persona の存在反応** を emit したい時は、**同じ trigger を二つの pack に独立に書く**（utility 側と persona 側）。utility が persona を直接呼ぶ API は提供しない。
 
 ### Why
 
-- harness と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PRESENCE_HARNESS.md](../philosophy/PRESENCE_HARNESS.md)）
+- utility と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PRESENCE_HARNESS.md](../philosophy/PRESENCE_HARNESS.md)）
 - 一方が落ちても他方が動く（degradation の独立）
 - pack の独立 install / disable が壊れない
 
 ### Don't
 
-- harness から persona の reaction を直接 trigger する API を追加しない
-- harness と persona の trigger を「shared subscription」として 1 個にまとめない
+- utility から persona の reaction を直接 trigger する API を追加しない
+- utility と persona の trigger を「shared subscription」として 1 個にまとめない
 
 ### How to apply
 
 「ファイル保存時に backup を取りつつ Charminal を pleased にしたい」場合：
 
-- harness pack：`onFileSave` trigger → `system.exec("cp ...")` で backup
+- utility pack：`onFileSave` trigger → `system.exec("cp ...")` で backup
 - persona pack：`onFileSave` trigger → `pleased` reaction
 - 両方を user が install すれば co-emission される。片方だけでも動く
 
@@ -218,7 +218,7 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 ```
 PTY observation only ─┐
                       ├─ → 「観察するが干渉しない」原則の三段適用
-Harness motion-free ──┤    （harness が persona の領域に踏み込まない、
+Utility motion-free ──┤    （utility が persona の領域に踏み込まない、
                       │     persona が PTY に踏み込まない、
 Ambient-ui write-free ┘     pack が attention を造らない）
 

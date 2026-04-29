@@ -140,7 +140,7 @@ export interface UiContext {
   /** Per-frame parameter 補間。pack dispose 時に自動 cancel される。 */
   readonly tween: TweenAPI;
   /**
-   * persona / harness の trigger に synthetic event を流す。
+   * persona / utility の trigger に synthetic event を流す。
    * `CharminalInitContext.emitEvent` と同 shape。
    */
   emitEvent(name: string, payload?: unknown): void;

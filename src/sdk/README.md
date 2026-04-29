@@ -6,12 +6,12 @@
 
 ## UGC の Pack 種別（6 種類）
 
-Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / harness / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
+Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / utility / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
 
 | Pack type | 性格 | 責務 | 主な context API | 主な制約 |
 |---|---|---|---|---|
 | **Persona Pack** | runtime-active | character identity と反応 | character / voice / space | system API は持たない |
-| **Harness Pack** | runtime-active | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
+| **Utility Pack** | runtime-active | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
 | **UI Pack** | primary UI | Charminal の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
@@ -22,7 +22,7 @@ Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 **迷ったら**：
 
 - 「キャラを反応させたい」→ Persona Pack
-- 「コマンドを実行したり通知を出したりしたい」→ Harness Pack
+- 「コマンドを実行したり通知を出したりしたい」→ Utility Pack
 - 「パーティクルや画面効果を描きたい」→ Effect Pack
 - 「背景・前景の layer 構成を変えて居場所を作りたい」→ Scene Pack
 - 「操作パネルや layout を差し替えたい」→ UI Pack
@@ -133,19 +133,19 @@ export default {
 
 **⚠️ 使えない API**（型レベルで存在しない）：
 
-- `ctx.system` — 存在しない。shell 実行やファイル操作は harness の仕事
+- `ctx.system` — 存在しない。shell 実行やファイル操作は utility の仕事
 - `ctx.terminal.input` — 存在しない。PTY には書き込めない
 
 ---
 
-## Harness Pack の書き方
+## Utility Pack の書き方
 
 ### ファイル構造
 
 ```
-harnesses/<pack-id>/
+utilities/<pack-id>/
 ├── manifest.json
-├── harness.ts
+├── utility.ts
 ├── tsconfig.json
 └── README.md
 ```
@@ -156,11 +156,11 @@ harnesses/<pack-id>/
 {
   "id": "build-automation",
   "name": "Build Automation",
-  "type": "harness",
+  "type": "utility",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "description": "...",
-  "entry": "harness.ts",
+  "entry": "utility.ts",
   "permissions": {
     "system.exec": true,
     "system.notify": true,
@@ -169,12 +169,12 @@ harnesses/<pack-id>/
 }
 ```
 
-`type` は必ず `"harness"`。`permissions` は MVP では文書的（enforce されない）が、使う API を宣言しておくと明示的になる。
+`type` は必ず `"utility"`。`permissions` は MVP では文書的（enforce されない）が、使う API を宣言しておくと明示的になる。
 
-### harness.ts
+### utility.ts
 
 ```typescript
-import type { HarnessDefinition, HarnessContext } from '@charminal/sdk';
+import type { UtilityDefinition, UtilityContext } from '@charminal/sdk';
 
 export default {
   id: 'build-automation',
@@ -201,7 +201,7 @@ export default {
       handlers: [
         {
           handler: async (ctx) => {
-            // ctx: HarnessContext
+            // ctx: UtilityContext
             const result = await ctx.system.exec('./deploy.sh');
             if (result.exitCode === 0) {
               await ctx.system.notify({
@@ -214,12 +214,12 @@ export default {
       ],
     },
   },
-} satisfies HarnessDefinition;
+} satisfies UtilityDefinition;
 ```
 
-### Harness automation の中で使える API
+### Utility automation の中で使える API
 
-`ctx` は `HarnessContext` 型。
+`ctx` は `UtilityContext` 型。
 
 | namespace | 用途 |
 |---|---|
@@ -237,29 +237,29 @@ export default {
 - `ctx.voice` — 存在しない。発話は persona の仕事
 - `ctx.space` — 存在しない。effect は persona から呼ばれる
 
-もし「harness から character を動かしたい」と感じたら、設計の視点を変える必要がある：
+もし「utility から character を動かしたい」と感じたら、設計の視点を変える必要がある：
 
-1. **harness は custom trigger で reaction を emit する**
+1. **utility は custom trigger で reaction を emit する**
 2. **persona 側でその reaction に反応する handler を書く**
 3. persona handler がキャラを動かす
 
 ### Twin-trigger co-emission idiom（推奨 pattern）
 
-harness が同じ環境 event に対して、自分の functional 処理（`system.exec` / `system.notify` 等）を走らせつつ、persona に反射的な presence expression（`distressed` / `pleased` 等）を同時に起こしたい場合の**標準 idiom**。
+utility が同じ環境 event に対して、自分の functional 処理（`system.exec` / `system.notify` 等）を走らせつつ、persona に反射的な presence expression（`distressed` / `pleased` 等）を同時に起こしたい場合の**標準 idiom**。
 
 #### 何のための pattern か
 
-- harness には身体（character / voice / space）が無い。motion-free 原則のため持てない
-- しかし「コマンドが失敗した」「build が通った」のような観測は harness 側の決定論的 helper で一番綺麗に書ける
+- utility には身体（character / voice / space）が無い。motion-free 原則のため持てない
+- しかし「コマンドが失敗した」「build が通った」のような観測は utility 側の決定論的 helper で一番綺麗に書ける
 - そこで、**同じ event を 2 本の custom trigger で観測し、片方は自分の custom reaction、もう片方は標準 reaction を emit する**
-- harness は自分の custom reaction を handle し、persona は既存の reflex handler（`distressed` / `pleased` 等）でそのまま身体を動かす
+- utility は自分の custom reaction を handle し、persona は既存の reflex handler（`distressed` / `pleased` 等）でそのまま身体を動かす
 
 この pattern は dry-run で error-notifier / diff-keeper / celebrate-and-deploy の 3 連続で AI が自発的に発明した。経験的な裏付けがあるので、正式に推奨 pattern として採用する。
 
 #### Shape
 
 ```typescript
-import type { HarnessDefinition, HarnessContext, DispatchEvent } from '@charminal/sdk';
+import type { UtilityDefinition, UtilityContext, DispatchEvent } from '@charminal/sdk';
 
 // 決定論的な detection helper（両 trigger が共有する）
 function detectError(event: DispatchEvent): { matched: string } | null {
@@ -269,13 +269,13 @@ function detectError(event: DispatchEvent): { matched: string } | null {
 }
 
 export default {
-  id: 'my-harness',
-  name: 'My Harness',
+  id: 'my-utility',
+  name: 'My Utility',
 
   customTriggers: [
-    // (1) harness 自身のための custom reaction
+    // (1) utility 自身のための custom reaction
     {
-      id: 'my-harness:command-failed',
+      id: 'my-utility:command-failed',
       priority: 10,
       match: (event) => {
         const err = detectError(event);
@@ -284,7 +284,7 @@ export default {
     },
     // (2) persona の反射を起こすための standard reaction
     {
-      id: 'my-harness:signal-distressed',
+      id: 'my-utility:signal-distressed',
       priority: 5,
       match: (event) => {
         const err = detectError(event);  // 同じ helper、同じ判定
@@ -298,7 +298,7 @@ export default {
     'command-failed': {
       handlers: [
         {
-          handler: async (ctx: HarnessContext) => {
+          handler: async (ctx: UtilityContext) => {
             const payload = ctx.event.payload as { matched: string } | undefined;
             await ctx.system.notify({
               title: 'Command failed',
@@ -309,9 +309,9 @@ export default {
       ],
     },
     // 'distressed' は persona 側の reflex.responses で handle される。
-    // harness は触らない。
+    // utility は触らない。
   },
-} satisfies HarnessDefinition;
+} satisfies UtilityDefinition;
 ```
 
 #### Key points
@@ -319,8 +319,8 @@ export default {
 - **両 trigger は同じ決定論的 helper**（上例の `detectError`）を共有する。判定の一貫性はここで担保する。片方だけ fire することは無い
 - **cooldown は automation 側に設定できる**ので、functional 側（`command-failed`）は notify spam 防止の長めの cooldown、presence 側（`distressed`）は persona reflex の連続性を保つ短めの cooldown、と独立に調整できる
 - **priority は documentation 的な意味**（同じ event に対して並列実行なので順序問題は発生しない）
-- **persona との loose coupling**：既存 persona に `distressed` handler があれば、persona を swap しても pattern はそのまま機能する。harness 側は persona 名を知らない
-- **pack minimization culture**：`distressed` のような標準 reaction handler に乗ることで、harness のために新しい persona を作る必要が無い。既存資産を再利用する設計になる
+- **persona との loose coupling**：既存 persona に `distressed` handler があれば、persona を swap しても pattern はそのまま機能する。utility 側は persona 名を知らない
+- **pack minimization culture**：`distressed` のような標準 reaction handler に乗ることで、utility のために新しい persona を作る必要が無い。既存資産を再利用する設計になる
 
 ### Synthetic event による handler 内 announcement（上級 pattern）
 
@@ -337,7 +337,7 @@ handler の中で reaction を直接 emit する API は**存在しない**。`c
 #### Shape
 
 ```typescript
-import type { HarnessDefinition, HarnessContext, DispatchEvent } from '@charminal/sdk';
+import type { UtilityDefinition, UtilityContext, DispatchEvent } from '@charminal/sdk';
 
 function isBuildSuccess(event: DispatchEvent): boolean {
   return event.kind === 'pty-output' && /BUILD SUCCESS/.test(event.text);
@@ -379,7 +379,7 @@ export default {
     'build-completed': {
       handlers: [
         {
-          handler: async (ctx: HarnessContext) => {
+          handler: async (ctx: UtilityContext) => {
             await ctx.time.after(2500);
             const result = await ctx.system.exec('./deploy.sh', { timeoutMs: 60000 });
             if (result.exitCode !== 0) {
@@ -397,14 +397,14 @@ export default {
     'deploy-failed': {
       handlers: [
         {
-          handler: async (ctx: HarnessContext) => {
+          handler: async (ctx: UtilityContext) => {
             await ctx.system.notify({ title: 'Deploy failed' });
           },
         },
       ],
     },
   },
-} satisfies HarnessDefinition;
+} satisfies UtilityDefinition;
 ```
 
 #### Key points
@@ -413,7 +413,7 @@ export default {
 - **imperative な指示は出さない**：「直接 persona を悲しませる」のような書き方はしない。`observation → event → trigger → reaction` という一方向の flow を守る
 - **誠実さの原則との整合**：`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md` の「コンテキストの壁」と整合する。reaction は必ず perception（本物の event または合成された synthetic event）由来で、捏造された身振りは発生しない
 - **型**：synthetic event は `kind: 'synthetic'`、`name: string`、`payload?: unknown` の形（具体的な型は `@charminal/sdk` の `SyntheticEvent`）
-- **scope**：`ctx.emitEvent` は **PersonaContext と HarnessContext の両方**にある。Effect Pack には無い（effect は reaction system の consumer で、event の発信源にはならない）
+- **scope**：`ctx.emitEvent` は **PersonaContext と UtilityContext の両方**にある。Effect Pack には無い（effect は reaction system の consumer で、event の発信源にはならない）
 
 #### Runtime contract（知っておくべき挙動）
 
@@ -533,7 +533,7 @@ user Effect Pack も同じ API で呼ばれる（`kind` に pack id を指定）
 
 ## Scene Pack の書き方
 
-scene は **declarative**（runtime handler を持たない）。pack の宣言が **そのまま画面を規定し続ける** 存在で、event-driven な persona / harness / effect とは性格が根本的に違う。
+scene は **declarative**（runtime handler を持たない）。pack の宣言が **そのまま画面を規定し続ける** 存在で、event-driven な persona / utility / effect とは性格が根本的に違う。
 
 ### ファイル構造
 
@@ -669,7 +669,7 @@ export default {
 
 ### Scene Pack には Context API が無い
 
-- persona / harness / effect は handler を持ち、それぞれ Context API（`PersonaContext` / `HarnessContext` / `EffectContext`）で runtime にアクセスする
+- persona / utility / effect は handler を持ち、それぞれ Context API（`PersonaContext` / `UtilityContext` / `EffectContext`）で runtime にアクセスする
 - **scene は handler を持たない**（pure data）。よって scene 用の `SceneContext` 型は存在しない、追加もしない
 - 動的に変えたい場合は **新しい scene pack に切り替える**（config で `activeScene` を書き換え → hot reload）
 
@@ -712,7 +712,7 @@ pack 内のファイルを相対パスで参照：
 { reaction: 'build-completed', payload: { ... } }
 ```
 
-persona の reflex.responses や harness の automations でも同じ文字列で参照する：
+persona の reflex.responses や utility の automations でも同じ文字列で参照する：
 
 ```typescript
 responses: {
@@ -733,18 +733,18 @@ async (ctx) => {
 }
 ```
 
-**正しい**：harness を別に作って automation を書く。persona は反応の表現だけ担当。
+**正しい**：utility を別に作って automation を書く。persona は反応の表現だけ担当。
 
-### ❌ Harness で character を動かす
+### ❌ Utility で character を動かす
 
 ```typescript
-// harness automation
+// utility automation
 async (ctx) => {
-  ctx.character.play('VRMA_celebrate');  // ERROR: character は HarnessContext に存在しない
+  ctx.character.play('VRMA_celebrate');  // ERROR: character は UtilityContext に存在しない
 }
 ```
 
-**正しい**：harness は custom trigger で reaction を emit し、persona 側でそれに反応する handler を書く。
+**正しい**：utility は custom trigger で reaction を emit し、persona 側でそれに反応する handler を書く。
 
 ### ❌ Effect で system に触れる
 
@@ -755,7 +755,7 @@ async (ctx, options) => {
 }
 ```
 
-**正しい**：effect は passive な rendering 単位。state も system access も持たない。必要なら harness に移すか、options として persona から渡す。
+**正しい**：effect は passive な rendering 単位。state も system access も持たない。必要なら utility に移すか、options として persona から渡す。
 
 ### ❌ 存在しない reaction type を使う
 
@@ -776,7 +776,7 @@ ctx.terminal.input('...');  // ERROR: input method は存在しない
 ### ❌ handler 内で reaction を直接 emit しようとする
 
 ```typescript
-// harness automation
+// utility automation
 async (ctx) => {
   const result = await ctx.system.exec('./deploy.sh');
   if (result.exitCode !== 0) {

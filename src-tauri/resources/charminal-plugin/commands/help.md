@@ -52,14 +52,14 @@ AI が `/create` や `/update` 経由で pack を書く際、毎回 permission p
 | 種類 | 何をする | active 数 | config key |
 |---|---|---|---|
 | **persona** | キャラクターの性格・反応・身体・声を定義 | single | `primaryPersona` |
-| **harness** | 環境への自動作用（通知、clipboard 等） | multi | — |
+| **utility** | 環境への自動作用（通知、clipboard 等） | multi | — |
 | **effect** | 視覚演出（パーティクル、shake 等） | multi（event-driven） | — |
 | **scene** | 背景 / 前景の layer stack | single | `activeScene` |
 | **ui** | サイドバーの主要 UI パネル | single | `activeUi` |
 | **ambient-ui** | 常時表示のオーバーレイ UI | multi | — |
 
 - persona / scene / ui は **single-active**：`~/.charminal/config.json` の config key で user が明示的に選ぶ
-- harness / effect / ambient-ui は **multi-active**：loaded されればそのまま動く（harness）、persona handler から呼ばれる（effect）、常時表示される（ambient-ui）
+- utility / effect / ambient-ui は **multi-active**：loaded されればそのまま動く（utility）、persona handler から呼ばれる（effect）、常時表示される（ambient-ui）
 
 ---
 
@@ -72,7 +72,7 @@ AI が `/create` や `/update` 経由で pack を書く際、毎回 permission p
 | ファイル | 役割 |
 |---|---|
 | `manifest.json` | id / type / version / entry の宣言（全 pack 共通） |
-| `<kind>.js` | pack 本体（persona.js / harness.js / effect.js / scene.js / ui.js / ambient-ui.js） |
+| `<kind>.js` | pack 本体（persona.js / utility.js / effect.js / scene.js / ui.js / ambient-ui.js） |
 | `persona.md` | **persona のみ**。キャラクター人格の canonical source |
 
 `manifest.json` の共通 fields:
@@ -80,7 +80,7 @@ AI が `/create` や `/update` 経由で pack を書く際、毎回 permission p
 ```json
 {
   "id": "<pack-id>",
-  "type": "<persona | harness | effect | scene | ui | ambient-ui>",
+  "type": "<persona | utility | effect | scene | ui | ambient-ui>",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "entry": "<kind>.js"
@@ -150,9 +150,9 @@ pack 開発時に参照する型定義の所在:
 
 | ファイル | 内容 |
 |---|---|
-| `src/sdk/context.d.ts` | PersonaContext / HarnessContext / EffectContext / UiContext / AmbientUiContext |
+| `src/sdk/context.d.ts` | PersonaContext / UtilityContext / EffectContext / UiContext / AmbientUiContext |
 | `src/sdk/reaction.d.ts` | DispatchEvent / TriggerMatch / ReactionType |
-| `src/sdk/pack.d.ts` | PersonaDefinition / HarnessDefinition / EffectDefinition / ScenePackDefinition / UiPackDefinition / AmbientUiPackDefinition |
+| `src/sdk/pack.d.ts` | PersonaDefinition / UtilityDefinition / EffectDefinition / ScenePackDefinition / UiPackDefinition / AmbientUiPackDefinition |
 
 full API doc は `npm run doc`（typedoc）で生成できる。
 
@@ -164,14 +164,14 @@ pack 種類ごとに使えない API が型レベルで強制されている。
 
 | pack 種類 | 使えない API | 理由 |
 |---|---|---|
-| **persona** | `ctx.system.*` | 環境操作は harness の責務 |
-| **harness** | `ctx.character.*` / `ctx.voice.*` / `ctx.space.*` | 表現は persona の責務（motion-free） |
+| **persona** | `ctx.system.*` | 環境操作は utility の責務 |
+| **utility** | `ctx.character.*` / `ctx.voice.*` / `ctx.space.*` | 表現は persona の責務（motion-free） |
 | **effect** | ほぼ全部（renderer + audio + time のみ） | state を持たない short-lived rendering 単位 |
 | **scene** | handler 無し（宣言のみ） | 純粋なデータ定義 |
 | **ui** | `ctx.system` / `ctx.character` / `ctx.voice` | 描画と state 管理のみ |
-| **ambient-ui** | persona / harness / system API | renderer と attention 情報のみ |
+| **ambient-ui** | persona / utility / system API | renderer と attention 情報のみ |
 
-- harness からキャラを動かしたい場合 → **Twin-trigger co-emission**（harness の custom trigger が persona 側の reaction も emit、persona handler が拾う）
+- utility からキャラを動かしたい場合 → **Twin-trigger co-emission**（utility の custom trigger が persona 側の reaction も emit、persona handler が拾う）
 - handler 内から新 reaction を起こしたい場合 → `ctx.emitEvent()` で **synthetic event** を announce、trigger match 経由で発火
 
 ---

@@ -225,7 +225,7 @@ describe("PersonaReflexDispatcher", () => {
       expect(source).toEqual({ type: "persona", packId: "alice" });
     });
 
-    it("initialActive in harness drives the first subscribeActive callback synchronously", () => {
+    it("initialActive in test harness drives the first subscribeActive callback synchronously", () => {
       const handler = vi.fn<PersonaHandler>(async () => {});
       const persona = makePersona({
         customTriggers: [userInputTrigger("pleased")],

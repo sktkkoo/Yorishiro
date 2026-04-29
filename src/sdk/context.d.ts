@@ -1,11 +1,11 @@
 /**
  * @charminal/sdk/context
  *
- * 3 つの context 型：PersonaContext / HarnessContext / EffectContext
+ * 3 つの context 型：PersonaContext / UtilityContext / EffectContext
  *
  * 型レベルで境界が強制される：
  *   - PersonaContext は system API を持たない
- *   - HarnessContext は character/voice/space を持たない
+ *   - UtilityContext は character/voice/space を持たない
  *   - EffectContext は最小 API のみ
  *
  * これにより pack 作者（AI）が誤って境界を越える code を書くと
@@ -25,7 +25,7 @@ import type { ReactionEvent } from "./reaction";
  *
  * Persona はキャラクター identity の表現に専念する。
  * 環境への functional な作用（ファイル書き込み、shell 実行、OS 通知）は
- * harness に任せる（型レベルで強制される）。
+ * utility に任せる（型レベルで強制される）。
  */
 export interface PersonaContext {
   /** 発火した reaction event */
@@ -99,19 +99,19 @@ export interface PersonaContext {
   readonly signal: AbortSignal; // 中断通知
 }
 
-// ─── HarnessContext ────────────────────────────────────────
+// ─── UtilityContext ────────────────────────────────────────
 
 /**
- * Harness の automation が受け取る context。
+ * Utility の automation が受け取る context。
  * system API と共有 utility を持つが、presence API は一切持たない。
  *
- * Harness は機能的な automation に専念する。
+ * Utility は機能的な automation に専念する。
  * キャラクターの表現（モーション、声、空間 effect）は persona に任せる。
- * harness は抽象 reaction を emit するか、system API で独自に作用するだけ。
+ * utility は抽象 reaction を emit するか、system API で独自に作用するだけ。
  *
  * NOTE: この型は PersonaContext を extends しない。独立した型。
  */
-export interface HarnessContext {
+export interface UtilityContext {
   readonly event: ReactionEvent;
   readonly persona: PersonaRef; // 現在 active な persona への参照（読み取り専用）
   readonly time: Time;
@@ -119,20 +119,20 @@ export interface HarnessContext {
   /**
    * Synthetic event を runtime に投入する。
    *
-   * harness handler 内で「観察したこと」（`system.exec` の結果、ログから
+   * utility handler 内で「観察したこと」（`system.exec` の結果、ログから
    * 気付いたこと等）を event として announce する primitive。投入された
    * event は通常の trigger loop を通り、match した triggers が reaction を
-   * emit する。**これが harness から persona の反応を誘発する正規経路**
-   * である（revelation 3.14: harness は motion-free、抽象 reaction を
+   * emit する。**これが utility から persona の反応を誘発する正規経路**
+   * である（revelation 3.14: utility は motion-free、抽象 reaction を
    * emit する）。
    *
    * ⚠️ これは reaction を直接 emit する API ではない。reaction は必ず
-   * trigger match を経由する（declarative）。harness が「persona を
+   * trigger match を経由する（declarative）。utility が「persona を
    * 悲しませる」のような imperative な指示を出すことはできない。
    *
    * ## 正しい使い方（twin-trigger idiom, revelation 3.17）
    *
-   * 1. harness handler 内で何かを観察
+   * 1. utility handler 内で何かを観察
    *    （例：`deploy.sh` が exitCode != 0 を返した）
    * 2. `ctx.emitEvent('deploy-failed', { exitCode, stderr })` で announce
    * 3. 同じ pack の custom trigger が `'synthetic'` kind + name
@@ -143,7 +143,7 @@ export interface HarnessContext {
    * handler は「何が起きたか」を述べるだけで、「どう反応するか」は
    * persona の reflex が決める——この分離が持続可能な composability を生む。
    *
-   * ## Runtime contract（PersonaContext.emitEvent と同一）
+   * ## Runtime contract（PersonaContext.emitEvent と同一の contract）
    *
    * - **Timing**: trigger matching は emit 呼び出しの calling stack で
    *   同期的に走る。match した handler は外来 event と同じ async scheduler
@@ -574,7 +574,7 @@ export interface SpaceEffectHandle {
   cancel(): void;
 }
 
-// ─── SystemAPI (harness only) ──────────────────────────────
+// ─── SystemAPI (utility only) ──────────────────────────────
 
 export interface SystemAPI {
   /** shell コマンドを実行して完了を待つ */

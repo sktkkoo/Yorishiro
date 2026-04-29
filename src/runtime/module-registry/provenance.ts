@@ -3,15 +3,15 @@
  *
  * - builtin : Charminal 本体由来（const array、組込み handler 等）
  * - persona : persona pack 由来（packId で識別）
- * - harness : harness pack 由来（packId で識別）
+ * - utility : utility pack 由来（packId で識別）
  *
- * 用途は (1) revelation 3.14（harness motion-free）等の不変量を型で強制する材料、
+ * 用途は (1) revelation 3.14（utility motion-free）等の不変量を型で強制する材料、
  * (2) UGC UI で「誰の実装か」を区別表示する根拠、(3) debug log の origin tag。
  */
 export type Provenance =
   | { readonly source: "builtin" }
   | { readonly source: "persona"; readonly packId: string }
-  | { readonly source: "harness"; readonly packId: string };
+  | { readonly source: "utility"; readonly packId: string };
 
 /**
  * Module kind. Phase 1 では trigger-handler のみが consumer を持ち、残り 2 つは
@@ -24,7 +24,7 @@ export type ModuleKind = "trigger-handler" | "procedural-module" | "animation-pr
  *
  * - builtin   : 全 kind 可（runtime 自身の組込み実装）
  * - persona   : trigger-handler / procedural-module / animation-provider（motion 全般）
- * - harness   : trigger-handler のみ（motion 系は revelation 3.14 で禁じられている）
+ * - utility   : trigger-handler のみ（motion 系は revelation 3.14 で禁じられている）
  *
  * 型レベルの enforcement は AllowedKindFor<Source> として表現し、register の signature
  * で `kind extends AllowedKindFor<Provenance["source"]>` を要求する形で使う。
@@ -33,7 +33,7 @@ export type AllowedKindFor<S extends Provenance["source"]> = S extends "builtin"
   ? ModuleKind
   : S extends "persona"
     ? "trigger-handler" | "procedural-module" | "animation-provider"
-    : S extends "harness"
+    : S extends "utility"
       ? "trigger-handler"
       : never;
 
@@ -52,7 +52,7 @@ export function isAllowed(kind: ModuleKind, provenance: Provenance): boolean {
       return (
         kind === "trigger-handler" || kind === "procedural-module" || kind === "animation-provider"
       );
-    case "harness":
+    case "utility":
       return kind === "trigger-handler";
   }
 }
