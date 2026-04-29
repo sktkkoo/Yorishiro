@@ -285,6 +285,7 @@ export interface StateGetDeps {
   readonly getTerminalOpacity: () => number;
   readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
   readonly getCameraTracking: () => boolean;
+  readonly getEffectKinds: () => ReadonlyArray<string>;
 }
 
 export interface StateGetResult {
@@ -316,6 +317,7 @@ export interface StateGetResult {
     readonly progress: number;
     readonly remainingMs: number;
   }>;
+  readonly effectKinds: ReadonlyArray<string>;
 }
 
 /**
@@ -375,6 +377,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
         },
       },
       tweens: deps.tweenManager.getActive(),
+      effectKinds: deps.getEffectKinds(),
     };
   };
 }

@@ -334,6 +334,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getEffectKinds: () => [],
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -370,6 +371,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getEffectKinds: () => [],
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -410,6 +412,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getEffectKinds: () => [],
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -434,6 +437,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getEffectKinds: () => [],
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
@@ -463,6 +467,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: (role) =>
         role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
       getCameraTracking: () => true,
+      getEffectKinds: () => [],
     });
     const result = await handler({});
     expect(result.ui.sidebar.width).toBe(350);
@@ -493,6 +498,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getEffectKinds: () => [],
     });
     const result = await handler({});
     expect(result.tweens.length).toBe(1);

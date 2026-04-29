@@ -30,6 +30,10 @@ export class EffectDispatcher {
     };
   }
 
+  getRegisteredKinds(): ReadonlyArray<string> {
+    return [...this.listeners.keys()];
+  }
+
   subscribe(kind: string, listener: EffectListener): () => void {
     let set = this.listeners.get(kind);
     if (!set) {

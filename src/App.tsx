@@ -680,6 +680,7 @@ function App() {
               return { blur: layer?.blur ?? 0, opacity: layer?.opacity ?? 1 };
             },
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
+            getEffectKinds: () => effectDispatcher.getRegisteredKinds(),
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
