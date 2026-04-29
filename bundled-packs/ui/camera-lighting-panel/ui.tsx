@@ -1,12 +1,12 @@
 /**
  * camera-lighting-panel — Plan 2 の reference implementation。
  *
- * Tracking OFF で ctx.claim.camera() を取得し、camera position を UI pack から
- * 直接操作する。lighting は claim 対象外なので scene 内の DirectionalLight を探して
- * 直接 mutate する。
+ * Tracking OFF で ctx.three.setCameraTracking(false) を呼び、camera position を
+ * UI pack から直接操作する。lighting は scene 内の DirectionalLight を探して直接
+ * mutate する。
  */
 
-import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
+import type { UiContext, UiPackDefinition } from "@charminal/sdk";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -34,11 +34,6 @@ const STATE_KEYS = {
   foregroundMediaType: "scene.foreground.mediaType",
   foregroundName: "scene.foreground.name",
 } as const;
-
-function numberState(ctx: UiContext, key: string, fallback: number): number {
-  const value = ctx.state.get(key);
-  return typeof value === "number" ? value : fallback;
-}
 
 function booleanState(ctx: UiContext, key: string, fallback: boolean): boolean {
   const value = ctx.state.get(key);
@@ -92,31 +87,26 @@ function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
 }
 
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
-  const cameraClaimRef = useRef<Disposable | null>(null);
-  const [tracking, setTracking] = useState(() => booleanState(ctx, STATE_KEYS.tracking, true));
-  const [camX, setCamX] = useState(() =>
-    numberState(ctx, STATE_KEYS.camX, ctx.three.camera.position.x),
-  );
-  const [camY, setCamY] = useState(() =>
-    numberState(ctx, STATE_KEYS.camY, ctx.three.camera.position.y),
-  );
-  const [camZ, setCamZ] = useState(() =>
-    numberState(ctx, STATE_KEYS.camZ, ctx.three.camera.position.z),
-  );
-  const [fov, setFov] = useState(() => numberState(ctx, STATE_KEYS.fov, ctx.three.camera.fov));
-  const [intensity, setIntensity] = useState(() => numberState(ctx, STATE_KEYS.intensity, 0.8));
-  const [color, setColor] = useState(() => stringState(ctx, STATE_KEYS.color, "#ffffff"));
+  const [tracking, setTracking] = useState(() => ctx.three.getCameraTracking());
+  const [camX, setCamX] = useState(() => ctx.three.camera.position.x);
+  const [camY, setCamY] = useState(() => ctx.three.camera.position.y);
+  const [camZ, setCamZ] = useState(() => ctx.three.camera.position.z);
+  const [fov, setFov] = useState(() => ctx.three.camera.fov);
+  const [intensity, setIntensity] = useState(() => {
+    const light = findDirectionalLight(ctx.three.scene);
+    return light ? light.intensity : 0.8;
+  });
+  const [color, setColor] = useState(() => {
+    const light = findDirectionalLight(ctx.three.scene);
+    return light ? `#${light.color.getHexString()}` : "#ffffff";
+  });
   const [targetLock, setTargetLock] = useState(() =>
     booleanState(ctx, STATE_KEYS.targetLock, true),
   );
   const backgroundInputRef = useRef<HTMLInputElement | null>(null);
   const foregroundInputRef = useRef<HTMLInputElement | null>(null);
-  const [backgroundBlur, setBackgroundBlur] = useState(() =>
-    numberState(ctx, STATE_KEYS.backgroundBlur, layerBlur(ctx, "background", 0)),
-  );
-  const [foregroundBlur, setForegroundBlur] = useState(() =>
-    numberState(ctx, STATE_KEYS.foregroundBlur, layerBlur(ctx, "foreground", 0)),
-  );
+  const [backgroundBlur, setBackgroundBlur] = useState(() => layerBlur(ctx, "background", 0));
+  const [foregroundBlur, setForegroundBlur] = useState(() => layerBlur(ctx, "foreground", 0));
   const [backgroundSrc, setBackgroundSrc] = useState(() =>
     stringState(ctx, STATE_KEYS.backgroundSrc, ""),
   );
@@ -237,17 +227,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    if (tracking) {
-      cameraClaimRef.current?.dispose();
-      cameraClaimRef.current = null;
-    } else if (!cameraClaimRef.current) {
-      cameraClaimRef.current = ctx.claim.camera();
-    }
-
-    return () => {
-      cameraClaimRef.current?.dispose();
-      cameraClaimRef.current = null;
-    };
+    ctx.three.setCameraTracking(tracking);
   }, [tracking, ctx]);
 
   useEffect(() => {

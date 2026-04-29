@@ -158,6 +158,9 @@ export interface UiThreeAPI {
   readonly scene: THREE.Scene;
   readonly renderer: THREE.WebGLRenderer;
   readonly vrm: VRM | null;
+  /** カメラ自動追従の有効/無効を設定。claim とは独立した app-level の設定。 */
+  setCameraTracking(enabled: boolean): void;
+  getCameraTracking(): boolean;
 }
 
 /**
@@ -179,6 +182,8 @@ export interface UiClaimAPI {
   camera(): Disposable;
   expression(): Disposable;
   animation(): Disposable;
+  /** 指定 kind が現在 claim 済みかを返す。 */
+  isClaimed(kind: "camera" | "expression" | "animation"): boolean;
 }
 
 export interface UiSceneLayerTarget {
