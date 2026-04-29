@@ -109,10 +109,8 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 120);
-  // 草丈すれすれの低い目線で、若干 上向き pitch。空ではなく草原を見せたい。
-  // 近景の blade が縦に伸びて Tarkovsky 的な「草に包まれる」framing になる
-  camera.position.set(0, 0.45, 5.2);
-  camera.lookAt(0, 0.95, -5.6);
+  camera.position.set(0, 1.05, 5.2);
+  camera.lookAt(0, 0.48, -5.6);
 
   const objects: DisposableObject[] = [];
   const clock = new THREE.Clock();
