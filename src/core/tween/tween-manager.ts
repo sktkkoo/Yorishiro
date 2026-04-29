@@ -73,6 +73,21 @@ export class TweenManager {
     return this._register(key, fromVal, toVal, durationMs, vec3Lerp, apply);
   }
 
+  /**
+   * 任意の型 T に対する tween を開始する。custom lerp 関数を指定可能。
+   * SDK の TweenAPI には公開されない internal API（MCP handler 等が直接使用）。
+   */
+  startWithLerp<T>(
+    key: string,
+    from: T,
+    to: T,
+    durationMs: number,
+    lerp: (a: T, b: T, t: number) => T,
+    apply: (v: T) => void,
+  ): TweenHandle {
+    return this._register(key, from, to, durationMs, lerp, apply);
+  }
+
   /** 指定 key の tween を停止する。completion は resolve される（reject ではない）。 */
   cancel(key: string): void {
     const entry = this.active.get(key);

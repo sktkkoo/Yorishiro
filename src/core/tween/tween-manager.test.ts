@@ -113,6 +113,18 @@ describe("TweenManager", () => {
     expect(tm.isActive("instant")).toBe(false);
   });
 
+  it("startWithLerp で custom lerp が使える", () => {
+    const tm = new TweenManager();
+    const values: string[] = [];
+    const stringLerp = (a: string, b: string, t: number) => (t < 0.5 ? a : b);
+    tm.startWithLerp("custom", "hello", "world", 1000, stringLerp, (v) => values.push(v));
+    tm.tick(0);
+    tm.tick(400);
+    expect(values).toContain("hello");
+    tm.tick(600);
+    expect(values).toContain("world");
+  });
+
   it("TweenHandle.cancel で自分だけ cancel する", async () => {
     const manager = new TweenManager();
     const h1 = manager.start("a", 1, 1000, () => {});

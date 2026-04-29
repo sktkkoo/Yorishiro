@@ -16,6 +16,7 @@ import type {
 } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
+import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { UiStateStore } from "../ui-state-store";
 import {
@@ -632,29 +633,74 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
 
 export interface SceneLightingSetDeps {
   readonly getScene: () => THREE.Scene | null;
+  readonly tweenManager: TweenManager;
 }
 
 export interface SceneLightingSetResult {
   readonly intensity: number;
   readonly color: string;
+  readonly tweening?: boolean;
 }
 
 /**
  * scene 内の最初の DirectionalLight に intensity / color を opportunistic に
  * 適用する handler。light が無い場合は throw する。
+ * durationMs > 0 の場合は TweenManager で per-frame 補間を行う。
+ * durationMs 省略 / 0 は即時反映（後方互換）。
  */
 export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
   return async (request: unknown): Promise<SceneLightingSetResult> => {
-    const r = (request ?? {}) as { intensity?: unknown; color?: unknown };
+    const r = (request ?? {}) as { intensity?: unknown; color?: unknown; durationMs?: unknown };
     const scene = deps.getScene();
     if (!scene) throw new Error("scene not ready");
     const light = findDirectionalLight(scene);
     if (!light) throw new Error("no DirectionalLight in scene");
-    if (typeof r.intensity === "number" && Number.isFinite(r.intensity)) {
-      light.intensity = r.intensity;
+
+    const intensityVal =
+      typeof r.intensity === "number" && Number.isFinite(r.intensity) ? r.intensity : undefined;
+    const colorVal = typeof r.color === "string" ? r.color : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      if (intensityVal !== undefined) {
+        deps.tweenManager.start(
+          "lighting.intensity",
+          intensityVal,
+          durationMs,
+          (v) => {
+            light.intensity = v;
+          },
+          { from: light.intensity },
+        );
+      }
+      if (colorVal !== undefined) {
+        deps.tweenManager.startWithLerp(
+          "lighting.color",
+          `#${light.color.getHexString()}`,
+          colorVal,
+          durationMs,
+          colorLerp,
+          (v) => light.color.set(v),
+        );
+      }
+      return {
+        intensity: light.intensity,
+        color: `#${light.color.getHexString()}`,
+        tweening: true,
+      };
     }
-    if (typeof r.color === "string") {
-      light.color.set(r.color);
+
+    // Instant mode: cancel active tweens + direct set（既存動作）
+    deps.tweenManager.cancel("lighting.intensity");
+    deps.tweenManager.cancel("lighting.color");
+    if (intensityVal !== undefined) {
+      light.intensity = intensityVal;
+    }
+    if (colorVal !== undefined) {
+      light.color.set(colorVal);
     }
     return {
       intensity: light.intensity,

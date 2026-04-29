@@ -731,22 +731,29 @@ describe("createSceneCameraSetHandler", () => {
 });
 
 describe("createSceneLightingSetHandler", () => {
+  const mockLight = {
+    isDirectionalLight: true,
+    intensity: 0.5,
+    color: { set: vi.fn(), getHexString: () => "ff8800" },
+  };
+  const mockScene = {
+    traverse: (cb: (obj: SceneObjectLike) => void) => cb(mockLight as unknown as SceneObjectLike),
+  };
+
+  beforeEach(() => {
+    mockLight.intensity = 0.5;
+    mockLight.color.set = vi.fn();
+    mockLight.color.getHexString = () => "ff8800";
+  });
+
   it("sets intensity and color on DirectionalLight", async () => {
-    const colorSet = vi.fn();
-    const light = {
-      isDirectionalLight: true,
-      intensity: 0.5,
-      color: { set: colorSet, getHexString: () => "ff8800" },
-    };
     const handler = createSceneLightingSetHandler({
-      getScene: () =>
-        ({
-          traverse: (cb: (obj: SceneObjectLike) => void) => cb(light as unknown as SceneObjectLike),
-        }) as unknown as SceneLike,
+      getScene: () => mockScene as unknown as SceneLike,
+      tweenManager: new TweenManager(),
     });
     const result = await handler({ intensity: 0.9, color: "#ff8800" });
-    expect(light.intensity).toBe(0.9);
-    expect(colorSet).toHaveBeenCalledWith("#ff8800");
+    expect(mockLight.intensity).toBe(0.9);
+    expect(mockLight.color.set).toHaveBeenCalledWith("#ff8800");
     expect(result).toEqual({ intensity: 0.9, color: "#ff8800" });
   });
 
@@ -756,8 +763,31 @@ describe("createSceneLightingSetHandler", () => {
         ({
           traverse: (_cb: (obj: SceneObjectLike) => void) => {},
         }) as unknown as SceneLike,
+      tweenManager: new TweenManager(),
     });
     await expect(handler({ intensity: 0.5 })).rejects.toThrow(/no DirectionalLight/);
+  });
+
+  it("durationMs > 0 で tween 登録", async () => {
+    const tm = new TweenManager();
+    const handler = createSceneLightingSetHandler({
+      getScene: () => mockScene as unknown as SceneLike,
+      tweenManager: tm,
+    });
+    const result = await handler({ intensity: 0.5, durationMs: 800 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("lighting.intensity")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映（後方互換）", async () => {
+    const tm = new TweenManager();
+    const handler = createSceneLightingSetHandler({
+      getScene: () => mockScene as unknown as SceneLike,
+      tweenManager: tm,
+    });
+    const result = await handler({ intensity: 0.3 });
+    expect(result.tweening).toBeUndefined();
+    expect(mockLight.intensity).toBe(0.3);
   });
 });
 

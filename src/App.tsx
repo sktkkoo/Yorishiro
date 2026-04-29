@@ -693,6 +693,7 @@ function App() {
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),
+            tweenManager: getThreeRuntime().getTweenManager(),
           }),
           // ── Phase γ motion tools ────────────────────────
           "body.animation.play": createBodyAnimationPlayHandler({
