@@ -444,7 +444,7 @@ impl PtyState {
                 cmd.arg(hooks_path.to_str().unwrap_or_default());
                 hooks_path_to_cleanup = Some(hooks_path);
 
-                // Load Charminal's bundled plugin dir (contains /charm skill).
+                // Load Charminal's bundled plugin dir (contains charm: skills).
                 // Session-scoped; does not touch ~/.claude or the user's cwd.
                 if let Some(ref dir) = plugin_dir {
                     if dir.exists() {

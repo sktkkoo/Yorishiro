@@ -6,12 +6,12 @@ describe("performTerminalPromptWrite", () => {
   it("calls ptyWrite with the exact text (no trailing newline)", async () => {
     const ptyWrite = vi.fn().mockResolvedValue(undefined);
     await performTerminalPromptWrite({
-      text: "/charminal:charm 試したい",
+      text: "/charm:create 試したい",
       ptyWrite,
       closeActiveUi: undefined,
     });
     expect(ptyWrite).toHaveBeenCalledTimes(1);
-    expect(ptyWrite).toHaveBeenCalledWith({ data: "/charminal:charm 試したい" });
+    expect(ptyWrite).toHaveBeenCalledWith({ data: "/charm:create 試したい" });
   });
 
   it("closes active UI before writing when closeActiveUi is provided", async () => {
