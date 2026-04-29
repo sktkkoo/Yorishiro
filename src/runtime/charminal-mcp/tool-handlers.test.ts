@@ -639,8 +639,8 @@ describe("createSpaceEffectPlayHandler", () => {
 });
 
 describe("createSceneCameraSetHandler", () => {
-  it("sets position / target / fov when given", async () => {
-    const camera = {
+  function makeMockCamera() {
+    return {
       position: {
         x: 0,
         y: 0,
@@ -660,8 +660,14 @@ describe("createSceneCameraSetHandler", () => {
       fov: 50,
       updateProjectionMatrix: vi.fn(),
     };
+  }
+
+  it("sets position / target / fov when given", async () => {
+    const camera = makeMockCamera();
     const handler = createSceneCameraSetHandler({
       getCamera: () => camera as unknown as CameraLike,
+      tweenManager: new TweenManager(),
+      claimCamera: () => ({ dispose: () => {} }),
     });
     const result = await handler({ position: [1, 2, 3], target: [4, 5, 6], fov: 30 });
     expect(camera.position.set).toHaveBeenCalledWith(1, 2, 3);
@@ -672,8 +678,55 @@ describe("createSceneCameraSetHandler", () => {
   });
 
   it("throws when camera not ready", async () => {
-    const handler = createSceneCameraSetHandler({ getCamera: () => null });
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => null,
+      tweenManager: new TweenManager(),
+      claimCamera: () => ({ dispose: () => {} }),
+    });
     await expect(handler({ position: [1, 2, 3] })).rejects.toThrow(/camera not ready/);
+  });
+
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const mockCamera = makeMockCamera();
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => mockCamera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+    });
+    const result = await handler({
+      position: [1.5, 1.3, 0],
+      durationMs: 1000,
+    });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("camera.position")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映（後方互換）", async () => {
+    const tm = new TweenManager();
+    const mockCamera = makeMockCamera();
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => mockCamera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+    });
+    const result = await handler({ position: [1, 2, 3] });
+    expect(result.tweening).toBeUndefined();
+    expect(mockCamera.position.x).toBe(1);
+  });
+
+  it("instant set が active tween を cancel", async () => {
+    const tm = new TweenManager();
+    const mockCamera = makeMockCamera();
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => mockCamera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+    });
+    await handler({ position: [1, 1, 1], durationMs: 1000 });
+    expect(tm.isActive("camera.position")).toBe(true);
+    await handler({ position: [2, 2, 2] });
+    expect(tm.isActive("camera.position")).toBe(false);
   });
 });
 

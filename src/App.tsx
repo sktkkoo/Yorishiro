@@ -688,6 +688,8 @@ function App() {
           }),
           "scene.camera.set": createSceneCameraSetHandler({
             getCamera: () => getThreeRuntime().getCamera(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            claimCamera: () => claimState.claim("camera"),
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),

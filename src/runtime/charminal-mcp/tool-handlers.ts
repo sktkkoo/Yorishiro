@@ -8,6 +8,7 @@
  */
 
 import type {
+  Disposable,
   ExpressionHandle,
   MotionHandle,
   MotionSnapshot,
@@ -495,11 +496,14 @@ export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
 
 export interface SceneCameraSetDeps {
   readonly getCamera: () => THREE.PerspectiveCamera | null;
+  readonly tweenManager: TweenManager;
+  readonly claimCamera: () => Disposable;
 }
 
 export interface SceneCameraSetResult {
   readonly position: readonly [number, number, number];
   readonly fov: number;
+  readonly tweening?: boolean;
 }
 
 function parseVec3(v: unknown): readonly [number, number, number] | undefined {
@@ -511,24 +515,110 @@ function parseVec3(v: unknown): readonly [number, number, number] | undefined {
 /**
  * camera の position / target (lookAt) / fov を opportunistic に更新する handler。
  * 与えられなかった field は変更しない。camera 未準備時は throw する。
+ *
+ * durationMs > 0 の場合は TweenManager で per-frame 補間を行い、補間中は
+ * claimCamera() で head-tracking を suspend する。durationMs 省略 / 0 は即時反映
+ * （後方互換）。
  */
 export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
+  let cameraClaimDisposable: Disposable | null = null;
+  const activeCameraTweenKeys = new Set<string>();
+
+  function ensureCameraClaim(): void {
+    if (!cameraClaimDisposable) cameraClaimDisposable = deps.claimCamera();
+  }
+  function releaseCameraClaimIfDone(): void {
+    if (activeCameraTweenKeys.size === 0 && cameraClaimDisposable) {
+      cameraClaimDisposable.dispose();
+      cameraClaimDisposable = null;
+    }
+  }
+  function trackTween(key: string, handle: { completion: Promise<void> }): void {
+    activeCameraTweenKeys.add(key);
+    handle.completion.then(() => {
+      activeCameraTweenKeys.delete(key);
+      releaseCameraClaimIfDone();
+    });
+  }
+
   return async (request: unknown): Promise<SceneCameraSetResult> => {
     const r = (request ?? {}) as {
       position?: unknown;
       target?: unknown;
       fov?: unknown;
+      durationMs?: unknown;
     };
     const cam = deps.getCamera();
     if (!cam) throw new Error("camera not ready");
+
     const position = parseVec3(r.position);
     const target = parseVec3(r.target);
+    const fovValue = typeof r.fov === "number" && Number.isFinite(r.fov) ? r.fov : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      ensureCameraClaim();
+
+      if (position) {
+        const h = deps.tweenManager.startVec3(
+          "camera.position",
+          position,
+          durationMs,
+          (v) => cam.position.set(v[0], v[1], v[2]),
+          { from: [cam.position.x, cam.position.y, cam.position.z] },
+        );
+        trackTween("camera.position", h);
+      }
+      if (target) {
+        // camera.lookAt target は PerspectiveCamera に保持されないため
+        // "from" は [0, cam.position.y, 0] で近似（正面向き前提）
+        const h = deps.tweenManager.startVec3(
+          "camera.target",
+          target,
+          durationMs,
+          (v) => cam.lookAt(v[0], v[1], v[2]),
+          { from: [0, cam.position.y, 0] },
+        );
+        trackTween("camera.target", h);
+      }
+      if (fovValue !== undefined && "fov" in cam) {
+        const h = deps.tweenManager.start(
+          "camera.fov",
+          fovValue,
+          durationMs,
+          (v) => {
+            cam.fov = v;
+            cam.updateProjectionMatrix();
+          },
+          { from: cam.fov },
+        );
+        trackTween("camera.fov", h);
+      }
+
+      return {
+        position: [cam.position.x, cam.position.y, cam.position.z],
+        fov: "fov" in cam ? cam.fov : 0,
+        tweening: true,
+      };
+    }
+
+    // Instant mode: cancel active tweens + direct set（既存動作）
+    deps.tweenManager.cancel("camera.position");
+    deps.tweenManager.cancel("camera.target");
+    deps.tweenManager.cancel("camera.fov");
+    activeCameraTweenKeys.clear();
+    releaseCameraClaimIfDone();
+
     if (position) cam.position.set(position[0], position[1], position[2]);
     if (target) cam.lookAt(target[0], target[1], target[2]);
-    if (typeof r.fov === "number" && Number.isFinite(r.fov) && "fov" in cam) {
-      cam.fov = r.fov;
+    if (fovValue !== undefined && "fov" in cam) {
+      cam.fov = fovValue;
       cam.updateProjectionMatrix();
     }
+
     return {
       position: [cam.position.x, cam.position.y, cam.position.z],
       fov: "fov" in cam ? cam.fov : 0,
