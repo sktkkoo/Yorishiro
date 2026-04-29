@@ -577,7 +577,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           <div style={sectionLabelStyle}>ショートカット</div>
           <div style={{ display: "flex", flexDirection: "column", gap: SPACING.sm }}>
             <TerminalPromptButton
-              text="/charminal:charm ショートカットを変更したい"
+              text="/charm:shortcut ショートカットを変更したい"
               label="ショートカットを変更"
               closeActiveUiBeforeWrite
               ptyWrite={ptyWrite}
@@ -620,7 +620,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                   borderRadius: "3px",
                 }}
               >
-                /charminal:charm ショートカットを変更したい
+                /charm:shortcut ショートカットを変更したい
               </code>{" "}
               を入力します。Enter で実行。
             </div>

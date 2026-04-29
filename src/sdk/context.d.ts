@@ -703,7 +703,7 @@ export interface TerminalAPI {
 
 // ─── CharmAPI (shared) ─────────────────────────────────────
 
-/** /charm コマンドを発火するための API */
+/** charm コマンド（/charm:create 等）を発火するための API */
 export type CharmAPI = (command: string) => Promise<void>;
 
 // ─── RendererAPI (effect only) ─────────────────────────────
