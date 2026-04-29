@@ -668,7 +668,7 @@ function App() {
               return Number.parseFloat(raw) || 280;
             },
             getTerminalOpacity: () => {
-              const el = document.querySelector<HTMLElement>(".terminal-container");
+              const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
               if (!el) return 1;
               const raw = el.style.opacity;
               return raw === "" ? 1 : Number(raw);
@@ -720,11 +720,11 @@ function App() {
           }),
           "ui.terminal.set": createUiTerminalSetHandler({
             setTerminalOpacity: (value) => {
-              const el = document.querySelector<HTMLElement>(".terminal-container");
+              const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
               if (el) el.style.opacity = String(value);
             },
             getTerminalOpacity: () => {
-              const el = document.querySelector<HTMLElement>(".terminal-container");
+              const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
               if (!el) return 1;
               const raw = el.style.opacity;
               return raw === "" ? 1 : Number(raw);
