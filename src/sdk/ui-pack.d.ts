@@ -179,6 +179,8 @@ export interface UiClaimAPI {
   camera(): Disposable;
   expression(): Disposable;
   animation(): Disposable;
+  /** 指定 kind が現在 claim 済みかを返す。 */
+  isClaimed(kind: "camera" | "expression" | "animation"): boolean;
 }
 
 export interface UiSceneLayerTarget {
