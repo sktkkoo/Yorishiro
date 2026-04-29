@@ -55,6 +55,19 @@ export interface SlotSnapshot {
   readonly effectiveWeight: number;
 }
 
+/**
+ * 同 kind 内の source 優先度。数値が大きいほど優先。
+ * 同 kind に上位 source がいると下位の effective weight が 0 になる。
+ */
+const SOURCE_PRIORITY: Record<ExpressionSource, number> = {
+  idle: 0,
+  thinking: 1,
+  persona: 2,
+  mcp: 3,
+  system: 3,
+  reflex: 4,
+};
+
 let nextSlotId = 1;
 
 export class ExpressionManager {
@@ -155,17 +168,37 @@ export class ExpressionManager {
   }
 
   /**
-   * Recompute effective weights: proportional scale-down when total > 1.
-   * When total <= 1, effective = requested.
+   * Recompute effective weights。
+   * 1. 同 kind に上位 source がいる slot は suppressed（effective = 0）
+   * 2. 残った slot の合計が 1 を超えたら proportional scale-down
    */
   private recompute(): void {
+    // kind ごとに最高 priority の source を求める
+    const kindTopPriority = new Map<ExpressionKind, number>();
+    for (const slot of this.slots.values()) {
+      const p = SOURCE_PRIORITY[slot.source];
+      const current = kindTopPriority.get(slot.kind) ?? -1;
+      if (p > current) kindTopPriority.set(slot.kind, p);
+    }
+
+    // suppressed slot を判定しつつ active total を計算
+    const suppressed = new Set<number>();
     let total = 0;
     for (const slot of this.slots.values()) {
-      total += slot.requestedWeight;
+      const top = kindTopPriority.get(slot.kind) ?? -1;
+      if (SOURCE_PRIORITY[slot.source] < top) {
+        suppressed.add(slot.id);
+        slot.effectiveWeight = 0;
+      } else {
+        total += slot.requestedWeight;
+      }
     }
+
     const scale = total > 1 ? 1 / total : 1;
     for (const slot of this.slots.values()) {
-      slot.effectiveWeight = slot.requestedWeight * scale;
+      if (!suppressed.has(slot.id)) {
+        slot.effectiveWeight = slot.requestedWeight * scale;
+      }
     }
   }
 }

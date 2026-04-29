@@ -49,15 +49,16 @@ describe("ExpressionManager", () => {
     expect(mgr.getEffectiveWeight(a) + mgr.getEffectiveWeight(b)).toBeCloseTo(1.0);
   });
 
-  it("three expressions over budget: proportional scale-down preserves ratios", () => {
+  it("three expressions over budget: priority suppression + scale-down", () => {
     const mgr = new ExpressionManager();
     const a = mgr.addSlot("persona", "mood", "happy", 0.5);
     const b = mgr.addSlot("mcp", "mood", "sad", 0.5);
     const c = mgr.addSlot("reflex", "eye", "surprised", 0.5);
-    // total = 1.5, scale = 1/1.5 = 2/3
-    expect(mgr.getEffectiveWeight(a)).toBeCloseTo(1 / 3);
-    expect(mgr.getEffectiveWeight(b)).toBeCloseTo(1 / 3);
-    expect(mgr.getEffectiveWeight(c)).toBeCloseTo(1 / 3);
+    // mcp(3) > persona(2) in mood → persona suppressed
+    // active: mcp/mood 0.5 + reflex/eye 0.5 = 1.0 → no scale-down
+    expect(mgr.getEffectiveWeight(a)).toBe(0);
+    expect(mgr.getEffectiveWeight(b)).toBe(0.5);
+    expect(mgr.getEffectiveWeight(c)).toBe(0.5);
   });
 
   it("removing a slot gives remaining expressions more budget", () => {
@@ -95,15 +96,15 @@ describe("ExpressionManager", () => {
     expect(mgr.getEffectiveWeight(b)).toBeCloseTo(0.3 / 1.2);
   });
 
-  it("getResolved aggregates by expression name across different sources", () => {
+  it("getResolved: higher priority source suppresses lower in same kind", () => {
     const mgr = new ExpressionManager();
-    // 異 source・同名 expression は getResolved で合算される
     mgr.addSlot("persona", "mood", "happy", 0.3);
     mgr.addSlot("mcp", "mood", "happy", 0.2);
     mgr.addSlot("reflex", "eye", "sad", 0.1);
 
+    // mcp(3) > persona(2) in mood → persona suppressed
     const resolved = mgr.getResolved();
-    expect(resolved.get("happy")).toBeCloseTo(0.5);
+    expect(resolved.get("happy")).toBeCloseTo(0.2);
     expect(resolved.get("sad")).toBeCloseTo(0.1);
   });
 
@@ -144,34 +145,36 @@ describe("ExpressionManager", () => {
     expect(mgr.size).toBe(1);
   });
 
-  it("different sources, same kind+name: weights sum in getResolved", () => {
+  it("different sources, same kind: higher priority wins", () => {
     const mgr = new ExpressionManager();
     mgr.addSlot("persona", "mood", "happy", 0.3);
     mgr.addSlot("mcp", "mood", "happy", 0.4);
-    // どちらも mood/happy だが source が違うので両方 active
+    // mcp(3) > persona(2) → persona suppressed
     expect(mgr.size).toBe(2);
-    expect(mgr.getResolved().get("happy")).toBeCloseTo(0.7);
+    expect(mgr.getResolved().get("happy")).toBeCloseTo(0.4);
   });
 
-  it("4 slots of different (source, kind) all weight 1: total 4 → each effective 0.25", () => {
+  it("4 slots of different (source, kind): priority suppression + scale-down", () => {
     const mgr = new ExpressionManager();
     const a = mgr.addSlot("persona", "mood", "happy", 1);
     const b = mgr.addSlot("mcp", "mood", "sad", 1);
     const c = mgr.addSlot("reflex", "eye", "blink", 1);
     const d = mgr.addSlot("idle", "lip", "aa", 1);
 
-    expect(mgr.getEffectiveWeight(a)).toBeCloseTo(0.25);
-    expect(mgr.getEffectiveWeight(b)).toBeCloseTo(0.25);
-    expect(mgr.getEffectiveWeight(c)).toBeCloseTo(0.25);
-    expect(mgr.getEffectiveWeight(d)).toBeCloseTo(0.25);
+    // mcp(3) > persona(2) in mood → persona suppressed
+    // active: mcp/mood 1 + reflex/eye 1 + idle/lip 1 = 3 → scale 1/3
+    expect(mgr.getEffectiveWeight(a)).toBe(0);
+    expect(mgr.getEffectiveWeight(b)).toBeCloseTo(1 / 3);
+    expect(mgr.getEffectiveWeight(c)).toBeCloseTo(1 / 3);
+    expect(mgr.getEffectiveWeight(d)).toBeCloseTo(1 / 3);
   });
 
-  it('source "mcp" + source "reflex" both pushing "happy" mood: getResolved sums', () => {
+  it('source "reflex" suppresses "mcp" in same kind (reflex priority > mcp)', () => {
     const mgr = new ExpressionManager();
-    // "reflex"+"mood" は実運用上は無いが、mixer の組合せ自体は可能
     mgr.addSlot("mcp", "mood", "happy", 0.3);
     mgr.addSlot("reflex", "mood", "happy", 0.2);
-    expect(mgr.getResolved().get("happy")).toBeCloseTo(0.5);
+    // reflex(4) > mcp(3) in mood → mcp suppressed
+    expect(mgr.getResolved().get("happy")).toBeCloseTo(0.2);
   });
 
   it("getSlots returns snapshots with source / kind / weights", () => {
