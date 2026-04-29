@@ -108,7 +108,7 @@ describe("TweenManager", () => {
   it("durationMs=0 で即時 apply + completion resolve", () => {
     const tm = new TweenManager();
     const values: number[] = [];
-    const _handle = tm.start("instant", 42, 0, (v) => values.push(v));
+    tm.start("instant", 42, 0, (v) => values.push(v));
     expect(values).toEqual([42]);
     expect(tm.isActive("instant")).toBe(false);
   });
