@@ -125,8 +125,16 @@ Charminal が起動中であれば以下の MCP tool が使える。
 | tool | 引数 | 説明 |
 |---|---|---|
 | `space_effect_play(...)` | effect params | 視覚エフェクト再生 |
-| `scene_camera_set(...)` | camera params | カメラ位置調整 |
-| `scene_lighting_set(...)` | lighting params | ライティング調整 |
+| `scene_camera_set(...)` | camera params, durationMs? | カメラ位置調整（durationMs で滑らか補間） |
+| `scene_lighting_set(...)` | lighting params, durationMs? | ライティング調整（durationMs で滑らか補間） |
+
+### UI 操作
+
+| tool | 引数 | 説明 |
+|---|---|---|
+| `ui_sidebar_set(...)` | width, durationMs? | サイドバー幅を設定（px、durationMs で滑らか補間） |
+| `ui_terminal_set(...)` | opacity, durationMs? | ターミナル透明度を設定（durationMs で滑らか補間） |
+| `ui_scene_layer_set(...)` | role, blur?, opacity?, durationMs? | 背景・前景のぼかし/透明度（durationMs で滑らか補間） |
 
 ### 全体 state
 
