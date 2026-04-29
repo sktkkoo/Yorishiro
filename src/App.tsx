@@ -72,6 +72,7 @@ import {
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
@@ -472,6 +473,13 @@ function App() {
         appLog.write({
           phase: "register",
           note: "initialized AmbientAudioRuntime",
+        });
+        // Terminal theme：subscribeActive で active scene の `terminal` 宣言をカラーテーマに適用する。
+        // scene が terminal を宣言していなければ DEFAULT_TERMINAL_THEME にフォールバック。
+        initTerminalTheme(scenePackRegistry, getTerminalRuntime());
+        appLog.write({
+          phase: "register",
+          note: "initialized terminal theme wire",
         });
       } catch (err) {
         appLog.write({

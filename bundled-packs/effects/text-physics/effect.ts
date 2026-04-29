@@ -126,7 +126,7 @@ export default {
       maskDiv.style.top = `${cellData.terminalRect.top + cutoffRow * cellData.cellHeight}px`;
       maskDiv.style.width = `${cellData.terminalRect.width}px`;
       maskDiv.style.height = `${(maxAffectedRow - cutoffRow + 1) * cellData.cellHeight}px`;
-      maskDiv.style.backgroundColor = "var(--terminal-background, #0f1923)";
+      maskDiv.style.backgroundColor = "var(--charminal-bg, #0f1923)";
       maskDiv.style.zIndex = "1";
       container.appendChild(maskDiv);
 
