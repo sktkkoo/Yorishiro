@@ -96,6 +96,9 @@ pub struct SceneCameraSetRequest {
     #[serde(rename = "durationMs")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u32>,
+    /// カメラ自動追従（head tracking）の有効/無効。省略で変更なし。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tracking: Option<bool>,
 }
 
 /// `scene_lighting_set` の引数。
@@ -350,6 +353,7 @@ impl Charminal {
                 "target": req.target,
                 "fov": req.fov,
                 "durationMs": req.duration_ms,
+                "tracking": req.tracking,
             }),
         )
         .await

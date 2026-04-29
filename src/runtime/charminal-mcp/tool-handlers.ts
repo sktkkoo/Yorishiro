@@ -284,6 +284,7 @@ export interface StateGetDeps {
   readonly getSidebarWidth: () => number;
   readonly getTerminalOpacity: () => number;
   readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
+  readonly getCameraTracking: () => boolean;
 }
 
 export interface StateGetResult {
@@ -292,7 +293,7 @@ export interface StateGetResult {
     activeScene: string | null;
     terminalAgent: "claude" | "codex";
   };
-  readonly camera: { position: readonly [number, number, number]; fov: number };
+  readonly camera: { position: readonly [number, number, number]; fov: number; tracking: boolean };
   readonly lighting: { intensity: number; color: string };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
@@ -356,6 +357,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       camera: {
         position: cam ? [cam.position.x, cam.position.y, cam.position.z] : [0, 0, 0],
         fov: cam && "fov" in cam ? cam.fov : 0,
+        tracking: deps.getCameraTracking(),
       },
       lighting: {
         intensity: light?.intensity ?? 0,
@@ -499,12 +501,15 @@ export interface SceneCameraSetDeps {
   readonly getCamera: () => THREE.PerspectiveCamera | null;
   readonly tweenManager: TweenManager;
   readonly claimCamera: () => Disposable;
+  readonly setCameraTracking: (enabled: boolean) => void;
+  readonly getCameraTracking: () => boolean;
 }
 
 export interface SceneCameraSetResult {
   readonly position: readonly [number, number, number];
   readonly fov: number;
   readonly tweening?: boolean;
+  readonly tracking?: boolean;
 }
 
 function parseVec3(v: unknown): readonly [number, number, number] | undefined {
@@ -548,6 +553,7 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
       target?: unknown;
       fov?: unknown;
       durationMs?: unknown;
+      tracking?: unknown;
     };
     const cam = deps.getCamera();
     if (!cam) throw new Error("camera not ready");
@@ -559,6 +565,11 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
       typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
         ? r.durationMs
         : 0;
+    const trackingValue = typeof r.tracking === "boolean" ? r.tracking : undefined;
+
+    if (trackingValue !== undefined) {
+      deps.setCameraTracking(trackingValue);
+    }
 
     if (durationMs > 0) {
       ensureCameraClaim();
@@ -603,6 +614,7 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
         position: [cam.position.x, cam.position.y, cam.position.z],
         fov: "fov" in cam ? cam.fov : 0,
         tweening: true,
+        tracking: deps.getCameraTracking(),
       };
     }
 
@@ -623,6 +635,7 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
     return {
       position: [cam.position.x, cam.position.y, cam.position.z],
       fov: "fov" in cam ? cam.fov : 0,
+      tracking: deps.getCameraTracking(),
     };
   };
 }
