@@ -192,6 +192,8 @@ export interface UiSceneLayerPatch {
   readonly backgroundColor?: string | null;
   readonly backgroundImage?: string | null;
   readonly blur?: number | null;
+  /** 0-1。null でリセット（= 1 に戻る）。 */
+  readonly opacity?: number | null;
 }
 
 export interface UiSceneAPI {

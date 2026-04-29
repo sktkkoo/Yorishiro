@@ -110,6 +110,7 @@ type MutableLayer = {
   backgroundColor?: string;
   backgroundImage?: string;
   blur?: number;
+  opacity?: number;
 };
 
 function sceneLayerTargetKey(target: UiSceneLayerTarget): string | null {
@@ -160,6 +161,13 @@ function applySceneLayerPatch(layer: Layer, patch: UiSceneLayerPatch): Layer {
       delete next.blur;
     } else if (patch.blur !== undefined) {
       next.blur = patch.blur;
+    }
+  }
+  if ("opacity" in patch) {
+    if (patch.opacity === null) {
+      delete next.opacity;
+    } else if (patch.opacity !== undefined) {
+      next.opacity = patch.opacity;
     }
   }
   return next;
