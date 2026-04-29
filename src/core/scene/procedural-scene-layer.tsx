@@ -559,7 +559,7 @@ function createGrassField(): DisposableObject & {
   readonly uniforms: { readonly uTime: { value: number } };
 } {
   const random = mulberry32(0x5eedcafe);
-  const count = 10600;
+  const count = 13000;
   const geometry = createGrassBladeGeometry();
   geometry.setAttribute(
     "bladePhase",
@@ -678,7 +678,15 @@ function createGrassField(): DisposableObject & {
 
         // 最終的な lean は風方向のみへ。max で負成分を排除して片側のみへ倒す
         float totalBend = max(bend + baseLean + travelingBend, 0.0);
-        worldPosition.xz += windDir * totalBend + crossWind * fineNoise * 0.016 * bendMask;
+        worldPosition.xz += windDir * totalBend + crossWind * fineNoise * 0.035 * bendMask;
+
+        // Ambient sway: 風と独立した個体ごとの揺らぎ。垂直静止を崩す
+        float swayPhase = bladePhase * 3.17;
+        float swayX = sin(uTime * 0.55 + swayPhase) * 0.04
+                     + sin(uTime * 1.3 + swayPhase * 0.7) * 0.015;
+        float swayZ = sin(uTime * 0.42 + swayPhase + 1.9) * 0.032
+                     + sin(uTime * 1.1 + swayPhase * 0.6 + 0.8) * 0.012;
+        worldPosition.xz += vec2(swayX, swayZ) * bendMask;
 
         vec4 mvPosition = modelViewMatrix * worldPosition;
         gl_Position = projectionMatrix * mvPosition;
@@ -726,31 +734,40 @@ function createGrassField(): DisposableObject & {
   const lean = geometry.getAttribute("bladeLean") as THREE.InstancedBufferAttribute;
 
   for (let i = 0; i < count; i += 1) {
-    const nearEdge = i < count * 0.28;
-    const near = i < count * 0.62;
+    const veryNear = i < count * 0.15;
+    const nearEdge = !veryNear && i < count * 0.36;
+    const near = !veryNear && !nearEdge && i < count * 0.64;
     const depth = random();
-    const z = nearEdge
-      ? 3.15 - random() * 2.05
-      : near
-        ? 1.35 - random() * 4.15
-        : -0.65 - depth * depth * 24.0;
-    const spread = nearEdge
-      ? 10.0 + random() * 5.8
-      : near
-        ? 7.8 + random() * 4.4
-        : 3.8 + depth * 19.0;
+    const z = veryNear
+      ? 3.6 - random() * 1.4
+      : nearEdge
+        ? 3.15 - random() * 2.05
+        : near
+          ? 1.35 - random() * 4.15
+          : -0.65 - depth * depth * 24.0;
+    const spread = veryNear
+      ? 13.0 + random() * 6.0
+      : nearEdge
+        ? 10.0 + random() * 5.8
+        : near
+          ? 7.8 + random() * 4.4
+          : 3.8 + depth * 19.0;
     const x = (random() - 0.5) * spread;
-    const height = nearEdge
-      ? 0.42 + random() * 0.52
-      : near
-        ? 0.36 + random() * 0.58
-        : 0.22 + random() * 0.62 * (1.0 - depth * 0.32);
-    const width = nearEdge
-      ? 0.018 + random() * 0.034
-      : near
-        ? 0.016 + random() * 0.028
-        : 0.016 + random() * 0.024;
-    const rootY = nearEdge ? -0.3 - random() * 0.06 : -0.15;
+    const height = veryNear
+      ? 0.36 + random() * 0.42
+      : nearEdge
+        ? 0.42 + random() * 0.52
+        : near
+          ? 0.36 + random() * 0.58
+          : 0.22 + random() * 0.62 * (1.0 - depth * 0.32);
+    const width = veryNear
+      ? 0.04 + random() * 0.072
+      : nearEdge
+        ? 0.036 + random() * 0.068
+        : near
+          ? 0.032 + random() * 0.056
+          : 0.032 + random() * 0.048;
+    const rootY = veryNear ? -0.34 - random() * 0.08 : nearEdge ? -0.3 - random() * 0.06 : -0.15;
 
     dummy.position.set(x, rootY, z);
     dummy.rotation.set(0, random() * Math.PI, 0);
@@ -787,7 +804,7 @@ function createGrassBladeGeometry(): THREE.BufferGeometry {
 
   for (let i = 0; i <= segments; i += 1) {
     const h = i / segments;
-    const width = (1 - h) * (1 - h * 0.58);
+    const width = (1 - h) ** 0.72 * (1 - h * 0.52);
     const curve = Math.sin(h * Math.PI) * 0.1;
     positions.push(-0.5 * width + curve, h, 0, 0.5 * width + curve, h, 0);
   }
@@ -851,8 +868,8 @@ function createSeedHeads(): DisposableObject & {
     const depth = random();
     const z = 0.25 - depth * depth * 15.0;
     const spread = 4.2 + depth * 11.0;
-    dummy.position.set((random() - 0.5) * spread, 0.1 + random() * 0.46, z);
-    dummy.scale.setScalar(0.42 + random() * 0.78);
+    dummy.position.set((random() - 0.5) * spread, 0.28 + random() * 0.54, z);
+    dummy.scale.setScalar(0.52 + random() * 0.88);
     dummy.updateMatrix();
     matrix.copy(dummy.matrix);
     mesh.setMatrixAt(i, matrix);
@@ -918,7 +935,7 @@ function createWildflowers(): DisposableObject & {
   for (let i = 0; i < count; i += 1) {
     // x は広めに spread 12、y は草の中ほど、z は近景中心 [3.0, -2.0]
     const x = (random() - 0.5) * 12;
-    const y = 0.18 + random() * 0.32;
+    const y = 0.3 + random() * 0.38;
     const z = 0.5 - random() * random() * 5.5;
     dummy.position.set(x, y, z);
     dummy.rotation.set(0, random() * Math.PI * 2, 0);
