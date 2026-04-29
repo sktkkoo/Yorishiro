@@ -18,7 +18,7 @@
 
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
-import type { CharacterAPI, Disposable, LogAPI, SpaceAPI, Time } from "./context";
+import type { CharacterAPI, Disposable, LogAPI, SpaceAPI, Time, TweenAPI } from "./context";
 import type { LayerRole, SceneSpec } from "./scene";
 
 /**
@@ -137,6 +137,8 @@ export interface UiContext {
   readonly layout: UiLayoutAPI;
   /** App-level state への bridge（VRM 切替など）。 */
   readonly app: UiAppAPI;
+  /** Per-frame parameter 補間。pack dispose 時に自動 cancel される。 */
+  readonly tween: TweenAPI;
   /**
    * persona / harness の trigger に synthetic event を流す。
    * `CharminalInitContext.emitEvent` と同 shape。

@@ -164,6 +164,9 @@ export interface HarnessContext {
    */
   emitEvent(name: string, payload?: unknown): void;
 
+  // ─── Tween ────────────────
+  readonly tween: TweenAPI;
+
   // ─── Functional output ─────────────
 
   readonly system: SystemAPI;
@@ -824,6 +827,52 @@ export interface EffectAudioAPI {
 export interface AudioPlayOptions {
   volume?: number;
   loop?: boolean;
+}
+
+// ─── TweenAPI (shared) ────────────────────────────────────
+
+/**
+ * Per-frame parameter 補間の SDK surface。
+ *
+ * key ごとに last-write-wins。同 key の新 tween は古い tween を cancel し、
+ * 現在値から開始する。pack dispose 時（signal abort）に、その pack が開始した
+ * tween は自動的に cancel される。
+ *
+ * Philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「観察の境界」
+ * — 身体・空間の変化は連続であるべき。
+ */
+export interface TweenAPI {
+  /** 数値の smooth transition。key ごとに last-write-wins。 */
+  start(
+    key: string,
+    to: number,
+    durationMs: number,
+    apply: (value: number) => void,
+    options?: { from?: number },
+  ): TweenHandle;
+
+  /** Vec3 の smooth transition。 */
+  startVec3(
+    key: string,
+    to: readonly [number, number, number],
+    durationMs: number,
+    apply: (value: [number, number, number]) => void,
+    options?: { from?: readonly [number, number, number] },
+  ): TweenHandle;
+
+  /** Active tween を key で cancel。 */
+  cancel(key: string): void;
+}
+
+/**
+ * 個別 tween の handle。cancel で即座に止め、completion で完了を await できる。
+ * cancel 時も completion は resolve する（reject ではない）。
+ */
+export interface TweenHandle {
+  /** Cancel this tween immediately。 */
+  cancel(): void;
+  /** Completes when tween finishes naturally or is cancelled。 */
+  readonly completion: Promise<void>;
 }
 
 // ─── PersonaRef ────────────────────────────────────────────
