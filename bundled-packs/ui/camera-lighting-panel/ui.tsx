@@ -238,8 +238,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     }
 
     return () => {
-      cameraClaimRef.current?.dispose();
-      cameraClaimRef.current = null;
+      // tracking=OFF のまま unmount → claim を維持して自動追従を抑制し続ける
+      if (tracking) {
+        cameraClaimRef.current?.dispose();
+        cameraClaimRef.current = null;
+      }
     };
   }, [tracking, ctx]);
 
