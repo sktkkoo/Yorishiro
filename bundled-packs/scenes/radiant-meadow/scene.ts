@@ -56,5 +56,18 @@ export default {
       brightCyan: "#8fd4aa",
       brightWhite: "#f5f5ef",
     },
+    ui: {
+      background: "#1a1e14",
+      foreground: "#e0e4d8",
+      sidebarBackground: "#141810",
+      border: "rgba(74, 85, 64, 0.5)",
+      buttonBackground: "#2d3a25",
+      buttonForeground: "#b5bca8",
+      accent: "rgba(140, 191, 111, 1)",
+      accentSoft: "rgba(140, 191, 111, 0.08)",
+      accentBorder: "rgba(140, 191, 111, 0.25)",
+      muted: "#4a5540",
+      glow: "rgba(140, 191, 111, 0.06)",
+    },
   },
 } satisfies ScenePackDefinition;

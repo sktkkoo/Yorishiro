@@ -69,6 +69,35 @@ export interface AmbientSound {
 }
 
 /**
+ * scene が指定する UI カラーテーマ。CSS カスタムプロパティとして `:root` に適用される。
+ * 全 field optional で、指定されたものだけ default を上書きする。
+ */
+export interface UiTheme {
+  /** アプリ全体の背景色 */
+  readonly background?: string;
+  /** テキスト色 */
+  readonly foreground?: string;
+  /** サイドバーの背景色 */
+  readonly sidebarBackground?: string;
+  /** ボーダー色 */
+  readonly border?: string;
+  /** ボタンの背景色 */
+  readonly buttonBackground?: string;
+  /** ボタンのテキスト色 */
+  readonly buttonForeground?: string;
+  /** アクセントカラー */
+  readonly accent?: string;
+  /** アクセントの薄い版（ホバー、背景用） */
+  readonly accentSoft?: string;
+  /** アクセントのボーダー色 */
+  readonly accentBorder?: string;
+  /** muted テキスト色（プレースホルダー等） */
+  readonly muted?: string;
+  /** グロー色（キャラクター周辺のグラデーション） */
+  readonly glow?: string;
+}
+
+/**
  * scene が指定するターミナルカラー。xterm.js の ITheme と同じ shape。
  * 全 field optional で、指定されたものだけ default を上書きする。
  */
@@ -121,4 +150,6 @@ export interface SceneSpec {
    * ambient audio と同じく scene 切替時に自動適用。
    */
   readonly terminal?: TerminalTheme;
+  /** scene が指定する UI カラーテーマ。CSS 変数として適用、scene 切替時に自動更新 */
+  readonly ui?: UiTheme;
 }

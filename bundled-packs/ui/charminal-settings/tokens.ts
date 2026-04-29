@@ -10,27 +10,27 @@
  */
 
 const DARK = {
-  // surface
+  // surface — パネル固有 / 相対的な半透明はそのまま
   bgPanel: "rgba(14, 23, 34, 0.96)",
   bgInput: "rgba(255, 255, 255, 0.04)",
   bgInputHover: "rgba(255, 255, 255, 0.06)",
   bgButton: "rgba(255, 255, 255, 0.08)",
   bgButtonHover: "rgba(255, 255, 255, 0.14)",
 
-  // accent (Charminal teal)
-  accent: "rgba(77, 217, 207, 1)",
-  accentSoft: "rgba(77, 217, 207, 0.08)",
-  accentSoftHover: "rgba(77, 217, 207, 0.16)",
-  accentBorder: "rgba(77, 217, 207, 0.25)",
-  accentBorderHover: "rgba(77, 217, 207, 0.4)",
+  // accent — scene テーマの CSS 変数を参照
+  accent: "var(--charminal-accent)",
+  accentSoft: "var(--charminal-accent-soft)",
+  accentSoftHover: "rgba(255, 255, 255, 0.16)",
+  accentBorder: "var(--charminal-accent-border)",
+  accentBorderHover: "rgba(255, 255, 255, 0.4)",
 
-  // text
-  fg: "#eceff4",
+  // text — fg は scene テーマ、dim 系は相対的な透明度なのでそのまま
+  fg: "var(--charminal-fg)",
   fgDim: "rgba(236, 239, 244, 0.7)",
   fgDimmer: "rgba(236, 239, 244, 0.55)",
   fgDimmest: "rgba(236, 239, 244, 0.4)",
 
-  // borders
+  // borders — 相対的な半透明、そのまま
   borderSubtle: "rgba(255, 255, 255, 0.08)",
   borderMid: "rgba(255, 255, 255, 0.14)",
 } as const;

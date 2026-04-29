@@ -353,8 +353,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const panelStyle: React.CSSProperties = {
     background: "rgba(36, 52, 71, 0.85)",
-    color: "#eceff4",
-    border: "1px solid rgba(77, 217, 207, 0.4)",
+    color: "var(--charminal-fg)",
+    border: "1px solid var(--charminal-accent-border)",
     borderRadius: "8px",
     fontSize: "11px",
     fontFamily: "monospace",

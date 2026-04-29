@@ -1,5 +1,18 @@
 :root {
   --sidebar-width: 280px;
+
+  /* Scene theme colors — scene 切替時に JS から上書きされる */
+  --charminal-bg: #0f1923;
+  --charminal-fg: #eceff4;
+  --charminal-sidebar-bg: #0a1118;
+  --charminal-border: rgba(59, 80, 104, 0.5);
+  --charminal-button-bg: #243447;
+  --charminal-button-fg: #a8b8cc;
+  --charminal-accent: rgba(77, 217, 207, 1);
+  --charminal-accent-soft: rgba(77, 217, 207, 0.08);
+  --charminal-accent-border: rgba(77, 217, 207, 0.25);
+  --charminal-muted: #3b5068;
+  --charminal-glow: rgba(77, 217, 207, 0.06);
 }
 
 /* ── Reset ──────────────────────────────────────────── */
@@ -16,8 +29,8 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
-  background: #0f1923;
-  color: #eceff4;
+  background: var(--charminal-bg);
+  color: var(--charminal-fg);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
@@ -34,8 +47,8 @@ body,
   min-width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
-  background: #0a1118;
-  border-right: 1px solid rgba(59, 80, 104, 0.5);
+  background: var(--charminal-sidebar-bg);
+  border-right: 1px solid var(--charminal-border);
   padding: 12px;
   overflow: hidden;
 }
@@ -46,10 +59,10 @@ body,
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
-  background: #243447;
-  border: 1px solid rgba(59, 80, 104, 0.5);
+  background: var(--charminal-button-bg);
+  border: 1px solid var(--charminal-border);
   border-radius: 8px;
-  color: #a8b8cc;
+  color: var(--charminal-button-fg);
   font-size: 12px;
   cursor: pointer;
   transition:
@@ -58,8 +71,8 @@ body,
 }
 
 .folder-btn:hover {
-  background: rgba(77, 217, 207, 0.1);
-  color: #eceff4;
+  background: var(--charminal-accent-soft);
+  color: var(--charminal-fg);
 }
 
 .folder-icon {
@@ -82,7 +95,7 @@ body,
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: radial-gradient(ellipse at 50% 40%, rgba(77, 217, 207, 0.06) 0%, transparent 70%);
+  background: radial-gradient(ellipse at 50% 40%, var(--charminal-glow) 0%, transparent 70%);
 }
 
 .vrm-placeholder {
@@ -90,7 +103,7 @@ body,
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  color: #3b5068;
+  color: var(--charminal-muted);
 }
 
 .vrm-placeholder-icon {
@@ -117,7 +130,7 @@ body,
   justify-content: center;
   width: 100%;
   height: 100%;
-  color: #3b5068;
+  color: var(--charminal-muted);
   font-size: 12px;
 }
 
@@ -167,9 +180,9 @@ body,
 }
 
 .avatar-btn-cta {
-  background: rgba(77, 217, 207, 0.08);
+  background: var(--charminal-accent-soft);
   color: inherit;
-  border: 1px solid rgba(77, 217, 207, 0.25);
+  border: 1px solid var(--charminal-accent-border);
   border-radius: 4px;
   padding: 6px 12px;
   cursor: pointer;
