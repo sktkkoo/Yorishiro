@@ -278,6 +278,10 @@ export interface StateGetDeps {
   readonly getScene: () => THREE.Scene | null;
   readonly getVrm: () => unknown;
   readonly getBody: () => BodyLike | null;
+  readonly tweenManager: TweenManager;
+  readonly getSidebarWidth: () => number;
+  readonly getTerminalOpacity: () => number;
+  readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
 }
 
 export interface StateGetResult {
@@ -296,6 +300,19 @@ export interface StateGetResult {
    * （VRM 未 load）の場合は `{ active: null, preempted: [] }` を返す。
    */
   readonly motion: MotionSnapshot;
+  readonly ui: {
+    readonly sidebar: { readonly width: number };
+    readonly terminal: { readonly opacity: number };
+    readonly sceneLayers: {
+      readonly background: { readonly blur: number; readonly opacity: number };
+      readonly foreground: { readonly blur: number; readonly opacity: number };
+    };
+  };
+  readonly tweens: ReadonlyArray<{
+    readonly key: string;
+    readonly progress: number;
+    readonly remainingMs: number;
+  }>;
 }
 
 /**
@@ -345,6 +362,15 @@ export function createStateGetHandler(deps: StateGetDeps) {
       vrmLoaded: deps.getVrm() !== null,
       expressions,
       motion,
+      ui: {
+        sidebar: { width: deps.getSidebarWidth() },
+        terminal: { opacity: deps.getTerminalOpacity() },
+        sceneLayers: {
+          background: deps.getSceneLayerValues("background"),
+          foreground: deps.getSceneLayerValues("foreground"),
+        },
+      },
+      tweens: deps.tweenManager.getActive(),
     };
   };
 }

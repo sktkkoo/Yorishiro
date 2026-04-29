@@ -329,6 +329,10 @@ describe("createStateGetHandler", () => {
           ],
           getMotionSnapshot: () => ({ active: null, preempted: [] }),
         }) as unknown as BodyLike,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -360,6 +364,10 @@ describe("createStateGetHandler", () => {
       getScene: () => null,
       getVrm: () => null,
       getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -395,6 +403,10 @@ describe("createStateGetHandler", () => {
           getExpressionSlots: () => [],
           getMotionSnapshot: () => motionSnapshot,
         }) as unknown as BodyLike,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -414,11 +426,65 @@ describe("createStateGetHandler", () => {
         }) as unknown as SceneLike,
       getVrm: () => null,
       getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
     expect(result.lighting.color).toBe("#ffffff");
     expect(result.expressions).toEqual([]);
+  });
+
+  it("ui section を返す", async () => {
+    const handler = createStateGetHandler({
+      readConfig: async () => ({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+        disabledPacks: [],
+        ambientAudioMuted: false,
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 350,
+      getTerminalOpacity: () => 0.7,
+      getSceneLayerValues: (role) =>
+        role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
+    });
+    const result = await handler({});
+    expect(result.ui.sidebar.width).toBe(350);
+    expect(result.ui.terminal.opacity).toBe(0.7);
+    expect(result.ui.sceneLayers.background).toEqual({ blur: 5, opacity: 0.8 });
+  });
+
+  it("active tween を tweens に返す", async () => {
+    const tm = new TweenManager();
+    tm.start("test-key", 100, 1000, () => {}, { from: 0 });
+    const handler = createStateGetHandler({
+      readConfig: async () => ({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+        disabledPacks: [],
+        ambientAudioMuted: false,
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () => null,
+      tweenManager: tm,
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+    });
+    const result = await handler({});
+    expect(result.tweens.length).toBe(1);
+    expect(result.tweens[0].key).toBe("test-key");
   });
 });
 

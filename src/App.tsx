@@ -660,6 +660,25 @@ function App() {
             getScene: () => getThreeRuntime().getScene(),
             getVrm: () => getThreeRuntime().getVrm(),
             getBody: () => getThreeRuntime().getBody(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            getSidebarWidth: () => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--sidebar-width")
+                .trim();
+              return Number.parseFloat(raw) || 280;
+            },
+            getTerminalOpacity: () => {
+              const el = document.querySelector<HTMLElement>(".terminal-container");
+              if (!el) return 1;
+              const raw = el.style.opacity;
+              return raw === "" ? 1 : Number(raw);
+            },
+            getSceneLayerValues: (role) => {
+              const scene = renderedSceneRef.current;
+              if (!scene) return { blur: 0, opacity: 1 };
+              const layer = scene.layers.find((l) => l.role === role);
+              return { blur: layer?.blur ?? 0, opacity: layer?.opacity ?? 1 };
+            },
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
