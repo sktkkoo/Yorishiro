@@ -5,5 +5,5 @@
  * Internal design-record: 2026-04-17-terminal-runtime-singleton.md.
  */
 
-export { getTerminalRuntime } from "./terminal-runtime";
+export { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./terminal-runtime";
 export type { PtyParams, TerminalRuntime } from "./types";

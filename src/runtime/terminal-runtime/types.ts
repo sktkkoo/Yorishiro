@@ -1,4 +1,5 @@
 import type { Disposable, TerminalCellData } from "@charminal/sdk";
+import type { ITheme as XTermTheme } from "@xterm/xterm";
 import type { Perception } from "../../core/perception";
 import type { TerminalAgent } from "../user-pack-loader/config";
 
@@ -98,6 +99,12 @@ export interface TerminalRuntime {
    * 取得する。dispose で listener を外す。
    */
   subscribePtyData(listener: () => void): Disposable;
+
+  /**
+   * ターミナルのカラーテーマを更新する。scene 切替時に呼ばれる。
+   * partial merge で、指定された field だけ上書きする。
+   */
+  setTheme(theme: Partial<XTermTheme>): void;
 
   /**
    * xterm container の viewport scroll が発生したときに listener を呼ぶ。

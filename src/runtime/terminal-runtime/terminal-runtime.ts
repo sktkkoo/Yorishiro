@@ -2,6 +2,7 @@ import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { ptyResize, ptySpawn, ptyWrite } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
@@ -15,6 +16,32 @@ import type {
 } from "./types";
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
+
+/** xterm.js の初期カラーテーマ。scene が未設定の時のフォールバック。 */
+export const DEFAULT_TERMINAL_THEME: XTermTheme = {
+  background: "#0f1923",
+  foreground: "#eceff4",
+  cursor: "#4dd9cf",
+  cursorAccent: "#0f1923",
+  selectionBackground: "#243447",
+  selectionForeground: "#eceff4",
+  black: "#0f1923",
+  red: "#ff6b8a",
+  green: "#4dd9cf",
+  yellow: "#f0c674",
+  blue: "#81a2be",
+  magenta: "#b294bb",
+  cyan: "#39c5bb",
+  white: "#eceff4",
+  brightBlack: "#3b5068",
+  brightRed: "#ff8da5",
+  brightGreen: "#6eded6",
+  brightYellow: "#f5d6a0",
+  brightBlue: "#a8c8e0",
+  brightMagenta: "#c9aed0",
+  brightCyan: "#7eeee6",
+  brightWhite: "#ffffff",
+};
 
 /**
  * TerminalRuntime implementation. See types.ts for the contract.
@@ -46,30 +73,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   constructor() {
     this.term = new XTerm({
-      theme: {
-        background: "#0f1923",
-        foreground: "#eceff4",
-        cursor: "#4dd9cf",
-        cursorAccent: "#0f1923",
-        selectionBackground: "#243447",
-        selectionForeground: "#eceff4",
-        black: "#0f1923",
-        red: "#ff6b8a",
-        green: "#4dd9cf",
-        yellow: "#f0c674",
-        blue: "#81a2be",
-        magenta: "#b294bb",
-        cyan: "#39c5bb",
-        white: "#eceff4",
-        brightBlack: "#3b5068",
-        brightRed: "#ff8da5",
-        brightGreen: "#6eded6",
-        brightYellow: "#f5d6a0",
-        brightBlue: "#a8c8e0",
-        brightMagenta: "#c9aed0",
-        brightCyan: "#7eeee6",
-        brightWhite: "#ffffff",
-      },
+      theme: { ...DEFAULT_TERMINAL_THEME },
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
       fontSize: 13,
       cursorBlink: true,
@@ -216,6 +220,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       );
     }
     this.perceptionRef.current = perception;
+  }
+
+  setTheme(theme: Partial<XTermTheme>): void {
+    this.term.options.theme = { ...this.term.options.theme, ...theme };
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {

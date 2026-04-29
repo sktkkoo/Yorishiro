@@ -69,6 +69,35 @@ export interface AmbientSound {
 }
 
 /**
+ * scene が指定するターミナルカラー。xterm.js の ITheme と同じ shape。
+ * 全 field optional で、指定されたものだけ default を上書きする。
+ */
+export interface TerminalTheme {
+  readonly background?: string;
+  readonly foreground?: string;
+  readonly cursor?: string;
+  readonly cursorAccent?: string;
+  readonly selectionBackground?: string;
+  readonly selectionForeground?: string;
+  readonly black?: string;
+  readonly red?: string;
+  readonly green?: string;
+  readonly yellow?: string;
+  readonly blue?: string;
+  readonly magenta?: string;
+  readonly cyan?: string;
+  readonly white?: string;
+  readonly brightBlack?: string;
+  readonly brightRed?: string;
+  readonly brightGreen?: string;
+  readonly brightYellow?: string;
+  readonly brightBlue?: string;
+  readonly brightMagenta?: string;
+  readonly brightCyan?: string;
+  readonly brightWhite?: string;
+}
+
+/**
  * scene の宣言。
  *
  * - `layers` は先頭が一番奥、末尾が一番手前
@@ -87,4 +116,9 @@ export interface SceneSpec {
    * Internal design-record: specs/2026-04-25-scene-ambient-audio-design.md §4
    */
   readonly ambient?: ReadonlyArray<AmbientSound>;
+  /**
+   * scene が指定するターミナルの色テーマ。省略時は Charminal default が使われる。
+   * ambient audio と同じく scene 切替時に自動適用。
+   */
+  readonly terminal?: TerminalTheme;
 }
