@@ -30,6 +30,7 @@ import type { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 export interface PackStatusEntry {
   readonly id: string;
   readonly kind: string;
+  readonly origin: "bundled" | "user";
   readonly status: "loaded" | "disabled" | "failed";
 }
 
@@ -39,16 +40,27 @@ export interface ListPacksResponse {
 
 export interface ListPacksDeps {
   readonly readRegistry: () => Array<{ id: string; kind: string }>;
+  readonly readBundledPacks: () => Array<{ id: string; kind: string }>;
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
 }
 
 export function createListPacksHandler(deps: ListPacksDeps) {
   return async (_request: unknown): Promise<ListPacksResponse> => {
+    const bundled = deps.readBundledPacks().map(
+      (e): PackStatusEntry => ({
+        id: e.id,
+        kind: e.kind,
+        origin: "bundled",
+        status: "loaded" as const,
+      }),
+    );
+
     const loaded = deps.readRegistry().map(
       (e): PackStatusEntry => ({
         id: e.id,
         kind: e.kind,
+        origin: "user",
         status: "loaded" as const,
       }),
     );
@@ -57,14 +69,13 @@ export function createListPacksHandler(deps: ListPacksDeps) {
     const config = await deps.readConfig();
     const disabled = config.disabledPacks
       .filter((id) => {
-        // registry と disabledPacks は loader filter で排他になるはずだが、
-        // 念のため「registry に同じ id が無い」ものだけ disabled として表面化。
         return !loaded.some((e) => e.id === id);
       })
       .map(
         (id): PackStatusEntry => ({
           id,
           kind: "",
+          origin: "user",
           status: "disabled" as const,
         }),
       );
@@ -80,12 +91,13 @@ export function createListPacksHandler(deps: ListPacksDeps) {
         failed.push({
           id: entry.id,
           kind: entry.kind,
+          origin: "user",
           status: "failed",
         });
       }
     }
 
-    return { packs: [...loaded, ...disabled, ...failed] };
+    return { packs: [...bundled, ...loaded, ...disabled, ...failed] };
   };
 }
 
@@ -149,19 +161,18 @@ function requestRecord(request: unknown): Record<string, unknown> {
     : {};
 }
 
-export interface GetUiStateDeps {
+export interface GetPackStateDeps {
   readonly state: UiStateStore;
-  readonly getActiveUiId: () => string | null;
 }
 
-export type GetUiStateResponse =
+export type GetPackStateResponse =
   | { readonly packId: string; readonly key: string; readonly value: unknown }
   | { readonly packId: string; readonly state: Record<string, unknown> };
 
-export function createGetUiStateHandler(deps: GetUiStateDeps) {
-  return async (request: unknown): Promise<GetUiStateResponse> => {
+export function createGetPackStateHandler(deps: GetPackStateDeps) {
+  return async (request: unknown): Promise<GetPackStateResponse> => {
     const record = requestRecord(request);
-    const packId = resolvePackId(record, deps.getActiveUiId);
+    const packId = requirePackId(record);
     const key = record.key;
     if (key === undefined || key === null) {
       return { packId, state: deps.state.entries(packId) };
@@ -173,22 +184,21 @@ export function createGetUiStateHandler(deps: GetUiStateDeps) {
   };
 }
 
-export interface SetUiStateDeps {
+export interface SetPackStateDeps {
   readonly state: UiStateStore;
-  readonly getActiveUiId: () => string | null;
 }
 
-export interface SetUiStateResponse {
+export interface SetPackStateResponse {
   readonly ok: true;
   readonly packId: string;
   readonly key: string;
   readonly value: unknown;
 }
 
-export function createSetUiStateHandler(deps: SetUiStateDeps) {
-  return async (request: unknown): Promise<SetUiStateResponse> => {
+export function createSetPackStateHandler(deps: SetPackStateDeps) {
+  return async (request: unknown): Promise<SetPackStateResponse> => {
     const record = requestRecord(request);
-    const packId = resolvePackId(record, deps.getActiveUiId);
+    const packId = requirePackId(record);
     const key = record.key;
     if (typeof key !== "string" || key === "") {
       throw new Error("key must be a non-empty string");
@@ -202,23 +212,12 @@ export function createSetUiStateHandler(deps: SetUiStateDeps) {
   };
 }
 
-function resolvePackId(
-  record: Record<string, unknown>,
-  getActiveUiId: () => string | null,
-): string {
+function requirePackId(record: Record<string, unknown>): string {
   const requested = record.packId;
-  if (requested !== undefined && requested !== null) {
-    if (typeof requested !== "string" || requested === "") {
-      throw new Error("packId must be a non-empty string");
-    }
-    return requested;
+  if (typeof requested !== "string" || requested === "") {
+    throw new Error("packId is required (pack state is per-pack, not app-level)");
   }
-
-  const active = getActiveUiId();
-  if (active === null) {
-    throw new Error("no active UI pack");
-  }
-  return active;
+  return requested;
 }
 
 /* ──────────────────────────────────────────────────────────
