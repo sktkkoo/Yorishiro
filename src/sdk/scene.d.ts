@@ -77,14 +77,20 @@ export interface UiTheme {
   readonly background?: string;
   /** テキスト色 */
   readonly foreground?: string;
+  /** 薄いテキスト色（セクションヘッダー、ヒント等） */
+  readonly foregroundDim?: string;
   /** サイドバーの背景色 */
   readonly sidebarBackground?: string;
+  /** パネル（設定画面等）の背景色 */
+  readonly panelBackground?: string;
   /** ボーダー色 */
   readonly border?: string;
   /** ボタンの背景色 */
   readonly buttonBackground?: string;
   /** ボタンのテキスト色 */
   readonly buttonForeground?: string;
+  /** input / toggle の背景色 */
+  readonly inputBackground?: string;
   /** アクセントカラー */
   readonly accent?: string;
   /** アクセントの薄い版（ホバー、背景用） */

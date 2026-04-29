@@ -69,10 +69,13 @@ export default {
     ui: {
       background: "#0f1923",
       foreground: "#eceff4",
+      foregroundDim: "rgba(236, 239, 244, 0.55)",
       sidebarBackground: "#0a1118",
+      panelBackground: "rgba(14, 23, 34, 0.96)",
       border: "rgba(59, 80, 104, 0.5)",
       buttonBackground: "#243447",
       buttonForeground: "#a8b8cc",
+      inputBackground: "rgba(255, 255, 255, 0.04)",
       accent: "rgba(77, 217, 207, 1)",
       accentSoft: "rgba(77, 217, 207, 0.08)",
       accentBorder: "rgba(77, 217, 207, 0.25)",
