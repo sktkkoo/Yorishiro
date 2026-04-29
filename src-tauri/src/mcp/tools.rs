@@ -92,6 +92,10 @@ pub struct SceneCameraSetRequest {
     pub target: Option<[f32; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fov: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
 }
 
 /// `scene_lighting_set` の引数。
@@ -102,6 +106,10 @@ pub struct SceneLightingSetRequest {
     /// "#rrggbb" hex string
     #[serde(skip_serializing_if = "Option::is_none")]
     pub color: Option<String>,
+    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
 }
 
 /// `body_animation_play` の引数。
@@ -341,6 +349,7 @@ impl Charminal {
                 "position": req.position,
                 "target": req.target,
                 "fov": req.fov,
+                "durationMs": req.duration_ms,
             }),
         )
         .await
@@ -355,7 +364,7 @@ impl Charminal {
         emit_to(
             &self.app_handle,
             "scene.lighting.set",
-            json!({ "intensity": req.intensity, "color": req.color }),
+            json!({ "intensity": req.intensity, "color": req.color, "durationMs": req.duration_ms }),
         )
         .await
     }
