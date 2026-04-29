@@ -105,16 +105,9 @@ export class Body {
   private relaxedValue = 0;
   private relaxedSlotId = -1;
 
-  /**
-   * State-driven animation の MotionHandle (e.g., Typing during writing)。
-   * MotionScheduler.request の返値を保持し、state 遷移時に release する。
-   *
-   * Internal の MotionHandle 型で持つ（SDK 型と structurally identical だが、
-   * 同 module 内で完結するため cast を避ける）。
-   *
-   * 設計仕様: internal design-record: 2026-04-29-motion-priority-queue-design.md §5.2
-   */
-  private stateMotionHandle: InternalMotionHandle | null = null;
+  // State-driven animation は現在無効化中（Typing.vrma 差し替え待ち）。
+  // 有効化時にコメントを外す。
+  // private stateMotionHandle: InternalMotionHandle | null = null;
 
   /**
    * MotionScheduler が現在 active 化している AnimationPlayer の playback handle。
@@ -231,7 +224,7 @@ export class Body {
    * Called by Perception (via tool-activity events) or handler logic.
    */
   setState(state: EyeState): void {
-    const prevState = this.eyeSystem.state;
+    // const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);
     // "thinking family": Claude のターン中は writing 以外ずっと頭を揺らす。
     // writing を除外するのは Typing.vrma と procedural head drift がぶつかるため。
@@ -252,27 +245,26 @@ export class Body {
       this.eyelids.clearIdleSquint();
     }
 
-    // State-driven animation: Typing during writing
-    // MotionScheduler に priority "state-driven" (L2) で acquire する。persona-handler
-    // (L3) より低 priority なので、typing 中の persona reflex motion が typing を
-    // preempt できる (spec Q: state > idle、persona > state)。
-    if (state === "writing" && prevState !== "writing") {
-      // Release previous state motion if any (transition fade 200ms)
-      this.stateMotionHandle?.release(200);
-      this.stateMotionHandle = this.motionScheduler.request({
-        source: "state",
-        priority: "state-driven",
-        animation: "anim:Typing",
-        options: {
-          weight: 0.5,
-          loop: true,
-          fadeInMs: 500,
-        },
-      });
-    } else if (state !== "writing" && this.stateMotionHandle) {
-      this.stateMotionHandle.release(200);
-      this.stateMotionHandle = null;
-    }
+    // State-driven animation: writing 中のモーション再生。
+    // 現在は Typing.vrma の品質問題（procedural との blend 破綻・頻発する tool 呼び出し
+    // での視覚ノイズ）により無効化。VRMA 差し替え後にコメントを外す。
+    //
+    // if (state === "writing" && prevState !== "writing") {
+    //   this.stateMotionHandle?.release(400);
+    //   this.stateMotionHandle = this.motionScheduler.request({
+    //     source: "state",
+    //     priority: "state-driven",
+    //     animation: "anim:Typing",
+    //     options: {
+    //       weight: 1,
+    //       loop: true,
+    //       fadeInMs: 800,
+    //     },
+    //   });
+    // } else if (state !== "writing" && this.stateMotionHandle) {
+    //   this.stateMotionHandle.release(400);
+    //   this.stateMotionHandle = null;
+    // }
   }
 
   update(delta: number, elapsed: number): void {
