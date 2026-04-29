@@ -679,6 +679,7 @@ function App() {
               const layer = scene.layers.find((l) => l.role === role);
               return { blur: layer?.blur ?? 0, opacity: layer?.opacity ?? 1 };
             },
+            getCameraTracking: () => getThreeRuntime().getCameraTracking(),
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
@@ -690,6 +691,8 @@ function App() {
             getCamera: () => getThreeRuntime().getCamera(),
             tweenManager: getThreeRuntime().getTweenManager(),
             claimCamera: () => claimState.claim("camera"),
+            setCameraTracking: (enabled) => getThreeRuntime().setCameraTracking(enabled),
+            getCameraTracking: () => getThreeRuntime().getCameraTracking(),
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),

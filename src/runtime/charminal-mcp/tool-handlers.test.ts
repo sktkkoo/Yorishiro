@@ -333,11 +333,12 @@ describe("createStateGetHandler", () => {
       getSidebarWidth: () => 280,
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => true,
     });
     const result = await handler({});
     expect(result).toMatchObject({
       config: { primaryPersona: "p1", activeScene: "s1", terminalAgent: "claude" },
-      camera: { position: [1, 2, 3], fov: 45 },
+      camera: { position: [1, 2, 3], fov: 45, tracking: true },
       lighting: { intensity: 0.8, color: "#ffeecc" },
       vrmLoaded: true,
       expressions: [
@@ -368,6 +369,7 @@ describe("createStateGetHandler", () => {
       getSidebarWidth: () => 280,
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => true,
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -407,6 +409,7 @@ describe("createStateGetHandler", () => {
       getSidebarWidth: () => 280,
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => true,
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -430,6 +433,7 @@ describe("createStateGetHandler", () => {
       getSidebarWidth: () => 280,
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => true,
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
@@ -458,6 +462,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 0.7,
       getSceneLayerValues: (role) =>
         role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
+      getCameraTracking: () => true,
     });
     const result = await handler({});
     expect(result.ui.sidebar.width).toBe(350);
@@ -487,6 +492,7 @@ describe("createStateGetHandler", () => {
       getSidebarWidth: () => 280,
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => true,
     });
     const result = await handler({});
     expect(result.tweens.length).toBe(1);
@@ -645,6 +651,14 @@ describe("createSpaceEffectPlayHandler", () => {
 });
 
 describe("createSceneCameraSetHandler", () => {
+  let trackingEnabled = true;
+  const mockTrackingDeps = {
+    setCameraTracking: (enabled: boolean) => {
+      trackingEnabled = enabled;
+    },
+    getCameraTracking: () => trackingEnabled,
+  };
+
   function makeMockCamera() {
     return {
       position: {
@@ -674,6 +688,7 @@ describe("createSceneCameraSetHandler", () => {
       getCamera: () => camera as unknown as CameraLike,
       tweenManager: new TweenManager(),
       claimCamera: () => ({ dispose: () => {} }),
+      ...mockTrackingDeps,
     });
     const result = await handler({ position: [1, 2, 3], target: [4, 5, 6], fov: 30 });
     expect(camera.position.set).toHaveBeenCalledWith(1, 2, 3);
@@ -688,6 +703,7 @@ describe("createSceneCameraSetHandler", () => {
       getCamera: () => null,
       tweenManager: new TweenManager(),
       claimCamera: () => ({ dispose: () => {} }),
+      ...mockTrackingDeps,
     });
     await expect(handler({ position: [1, 2, 3] })).rejects.toThrow(/camera not ready/);
   });
@@ -699,6 +715,7 @@ describe("createSceneCameraSetHandler", () => {
       getCamera: () => mockCamera as unknown as CameraLike,
       tweenManager: tm,
       claimCamera: () => ({ dispose: () => {} }),
+      ...mockTrackingDeps,
     });
     const result = await handler({
       position: [1.5, 1.3, 0],
@@ -715,6 +732,7 @@ describe("createSceneCameraSetHandler", () => {
       getCamera: () => mockCamera as unknown as CameraLike,
       tweenManager: tm,
       claimCamera: () => ({ dispose: () => {} }),
+      ...mockTrackingDeps,
     });
     const result = await handler({ position: [1, 2, 3] });
     expect(result.tweening).toBeUndefined();
@@ -728,6 +746,7 @@ describe("createSceneCameraSetHandler", () => {
       getCamera: () => mockCamera as unknown as CameraLike,
       tweenManager: tm,
       claimCamera: () => ({ dispose: () => {} }),
+      ...mockTrackingDeps,
     });
     await handler({ position: [1, 1, 1], durationMs: 1000 });
     expect(tm.isActive("camera.position")).toBe(true);

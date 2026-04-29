@@ -47,7 +47,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly tweenManager = new TweenManager();
   private currentPlaceholder: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private needsResize = true;
+  private lastRendererW = 0;
+  private lastRendererH = 0;
   private cameraTrackingEnabled = true;
 
   constructor() {
@@ -110,7 +111,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       this.canvasContainer.style.width = `${rect.width}px`;
       this.canvasContainer.style.height = `${rect.height}px`;
       this.canvasContainer.style.visibility = "visible";
-      this.needsResize = true;
     };
 
     syncRect();
@@ -276,14 +276,24 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   private handleResize(): void {
-    if (!this.needsResize || !this.currentPlaceholder) return;
-    this.needsResize = false;
-    const w = this.currentPlaceholder.clientWidth;
-    const h = this.currentPlaceholder.clientHeight;
+    if (!this.currentPlaceholder) return;
+    const rect = this.currentPlaceholder.getBoundingClientRect();
+    const w = Math.floor(rect.width);
+    const h = Math.floor(rect.height);
     if (w === 0 || h === 0) return;
-    this.renderer.setSize(w, h);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+
+    this.canvasContainer.style.top = `${rect.top}px`;
+    this.canvasContainer.style.left = `${rect.left}px`;
+    this.canvasContainer.style.width = `${w}px`;
+    this.canvasContainer.style.height = `${h}px`;
+
+    if (w !== this.lastRendererW || h !== this.lastRendererH) {
+      this.lastRendererW = w;
+      this.lastRendererH = h;
+      this.renderer.setSize(w, h);
+      this.camera.aspect = w / h;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   private updateBodyPointerReference(): void {
