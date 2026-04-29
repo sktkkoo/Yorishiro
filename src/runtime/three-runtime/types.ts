@@ -50,4 +50,7 @@ export interface ThreeRuntime {
   getBody(): Body | null;
   /** TweenManager instance。per-frame 補間の backing store。 */
   getTweenManager(): TweenManager;
+  /** カメラ自動追従（head tracking）の有効/無効。app-level の設定で、claim とは独立。 */
+  setCameraTracking(enabled: boolean): void;
+  getCameraTracking(): boolean;
 }

@@ -48,6 +48,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private currentPlaceholder: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private needsResize = true;
+  private cameraTrackingEnabled = true;
 
   constructor() {
     this.claimState = getClaimState();
@@ -237,6 +238,14 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return this.tweenManager;
   }
 
+  setCameraTracking(enabled: boolean): void {
+    this.cameraTrackingEnabled = enabled;
+  }
+
+  getCameraTracking(): boolean {
+    return this.cameraTrackingEnabled;
+  }
+
   // ─── private methods ────────────────────────────────────────────
 
   private startRenderLoop(): void {
@@ -253,7 +262,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.updateBodyPointerReference();
         this.currentBody.update(delta, elapsed);
 
-        if (this.trackHead && !this.claimState.isClaimed("camera")) {
+        if (this.trackHead && this.cameraTrackingEnabled && !this.claimState.isClaimed("camera")) {
           this.trackHead.getWorldPosition(this.headWorldPos);
           const desiredY = this.headWorldPos.y - 0.05;
           this.camera.position.y += (desiredY - this.camera.position.y) * Math.min(1.5 * delta, 1);

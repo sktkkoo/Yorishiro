@@ -158,6 +158,9 @@ export interface UiThreeAPI {
   readonly scene: THREE.Scene;
   readonly renderer: THREE.WebGLRenderer;
   readonly vrm: VRM | null;
+  /** カメラ自動追従の有効/無効を設定。claim とは独立した app-level の設定。 */
+  setCameraTracking(enabled: boolean): void;
+  getCameraTracking(): boolean;
 }
 
 /**

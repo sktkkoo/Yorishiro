@@ -1,12 +1,12 @@
 /**
  * camera-lighting-panel — Plan 2 の reference implementation。
  *
- * Tracking OFF で ctx.claim.camera() を取得し、camera position を UI pack から
- * 直接操作する。lighting は claim 対象外なので scene 内の DirectionalLight を探して
- * 直接 mutate する。
+ * Tracking OFF で ctx.three.setCameraTracking(false) を呼び、camera position を
+ * UI pack から直接操作する。lighting は scene 内の DirectionalLight を探して直接
+ * mutate する。
  */
 
-import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
+import type { UiContext, UiPackDefinition } from "@charminal/sdk";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -87,10 +87,7 @@ function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
 }
 
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
-  const cameraClaimRef = useRef<Disposable | null>(null);
-  const [tracking, setTracking] = useState(() =>
-    ctx.claim.isClaimed("camera") ? false : booleanState(ctx, STATE_KEYS.tracking, true),
-  );
+  const [tracking, setTracking] = useState(() => ctx.three.getCameraTracking());
   const [camX, setCamX] = useState(() => ctx.three.camera.position.x);
   const [camY, setCamY] = useState(() => ctx.three.camera.position.y);
   const [camZ, setCamZ] = useState(() => ctx.three.camera.position.z);
@@ -230,20 +227,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    if (tracking) {
-      cameraClaimRef.current?.dispose();
-      cameraClaimRef.current = null;
-    } else if (!cameraClaimRef.current) {
-      cameraClaimRef.current = ctx.claim.camera();
-    }
-
-    return () => {
-      // tracking=OFF のまま unmount → claim を維持して自動追従を抑制し続ける
-      if (tracking) {
-        cameraClaimRef.current?.dispose();
-        cameraClaimRef.current = null;
-      }
-    };
+    ctx.three.setCameraTracking(tracking);
   }, [tracking, ctx]);
 
   useEffect(() => {

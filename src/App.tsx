@@ -979,6 +979,8 @@ function App() {
         get vrm() {
           return threeRuntime.getVrm();
         },
+        setCameraTracking: (enabled) => threeRuntime.setCameraTracking(enabled),
+        getCameraTracking: () => threeRuntime.getCameraTracking(),
       };
       const claim: UiClaimAPI = {
         camera: () => claimState.claim("camera"),
