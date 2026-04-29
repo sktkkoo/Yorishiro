@@ -21,12 +21,14 @@ export default {
   id: "screen-shake",
   type: "effect",
   run: async (
-    ctx: EffectContext<ScreenShakeOptions>,
-    options: ScreenShakeOptions,
+    ctx: EffectContext<Partial<ScreenShakeOptions>>,
+    options: Partial<ScreenShakeOptions>,
   ): Promise<void> => {
-    const filter = ctx.renderer.addShakeFilter(options.intensity);
+    const intensity = options.intensity ?? 1;
+    const durationMs = options.durationMs ?? 300;
+    const filter = ctx.renderer.addShakeFilter(intensity);
     try {
-      await ctx.time.after(options.durationMs);
+      await ctx.time.after(durationMs);
     } finally {
       filter.dispose();
     }
