@@ -15,6 +15,7 @@ import type {
 } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
+import type { TweenManager } from "../../core/tween/tween-manager";
 import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
@@ -650,4 +651,119 @@ export function __resetMcpMotionHandleForTesting(): void {
     mcpMotionHandle.release(0);
     mcpMotionHandle = null;
   }
+}
+
+/* ──────────────────────────────────────────────────────────
+ * ui.scene-layer.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiSceneLayerSetDeps {
+  readonly updateSceneLayer: (
+    target: { role: string },
+    patch: { blur?: number | null; opacity?: number | null },
+  ) => void;
+  readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
+  readonly tweenManager: TweenManager;
+}
+
+export interface UiSceneLayerSetResult {
+  readonly role: string;
+  readonly blur?: number | null;
+  readonly opacity?: number | null;
+  readonly tweening?: boolean;
+}
+
+export function createUiSceneLayerSetHandler(deps: UiSceneLayerSetDeps) {
+  return async (request: unknown): Promise<UiSceneLayerSetResult> => {
+    const r = requestRecord(request);
+    const role = r.role;
+    if (role !== "background" && role !== "foreground") {
+      throw new Error('role must be "background" or "foreground"');
+    }
+    const blur = typeof r.blur === "number" && Number.isFinite(r.blur) ? r.blur : undefined;
+    const opacity =
+      typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      const current = deps.getSceneLayerValues(role);
+      if (blur !== undefined) {
+        deps.tweenManager.start(
+          `scene.layer.blur.${role}`,
+          blur,
+          durationMs,
+          (v) => deps.updateSceneLayer({ role }, { blur: v }),
+          { from: current.blur },
+        );
+      }
+      if (opacity !== undefined) {
+        deps.tweenManager.start(
+          `scene.layer.opacity.${role}`,
+          opacity,
+          durationMs,
+          (v) => deps.updateSceneLayer({ role }, { opacity: v }),
+          { from: current.opacity },
+        );
+      }
+      return { role, blur, opacity, tweening: true };
+    }
+
+    // 即時: active な tween を cancel + 直接 set
+    deps.tweenManager.cancel(`scene.layer.blur.${role}`);
+    deps.tweenManager.cancel(`scene.layer.opacity.${role}`);
+    const patch: { blur?: number | null; opacity?: number | null } = {};
+    if (blur !== undefined) patch.blur = blur;
+    if (opacity !== undefined) patch.opacity = opacity;
+    // null reset のサポート: raw request に明示的 null があるかチェック
+    if (r.blur === null) patch.blur = null;
+    if (r.opacity === null) patch.opacity = null;
+    deps.updateSceneLayer({ role }, patch);
+    return { role, blur, opacity };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * ui.terminal.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiTerminalSetDeps {
+  readonly setTerminalOpacity: (value: number) => void;
+  readonly getTerminalOpacity: () => number;
+  readonly tweenManager: TweenManager;
+}
+
+export interface UiTerminalSetResult {
+  readonly opacity?: number;
+  readonly tweening?: boolean;
+}
+
+export function createUiTerminalSetHandler(deps: UiTerminalSetDeps) {
+  return async (request: unknown): Promise<UiTerminalSetResult> => {
+    const r = requestRecord(request);
+    const opacity =
+      typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (opacity === undefined) {
+      return {};
+    }
+
+    if (durationMs > 0) {
+      deps.tweenManager.start("ui.terminal.opacity", opacity, durationMs, deps.setTerminalOpacity, {
+        from: deps.getTerminalOpacity(),
+      });
+      return { opacity, tweening: true };
+    }
+
+    // 即時: active な tween を cancel + 直接 set
+    deps.tweenManager.cancel("ui.terminal.opacity");
+    deps.setTerminalOpacity(opacity);
+    return { opacity };
+  };
 }

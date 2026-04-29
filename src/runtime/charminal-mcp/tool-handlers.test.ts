@@ -8,6 +8,7 @@
 import type { SpaceEffectRequest } from "@charminal/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { TweenManager } from "../../core/tween/tween-manager";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
@@ -28,6 +29,8 @@ import {
   createSetUiStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
+  createUiSceneLayerSetHandler,
+  createUiTerminalSetHandler,
 } from "./tool-handlers";
 
 /**
@@ -763,5 +766,85 @@ describe("createBodyMotionCancelHandler", () => {
     const result = await cancelHandler({});
     expect(result).toEqual({ cancelled: true });
     expect(release).toHaveBeenCalledWith(200);
+  });
+});
+
+describe("createUiSceneLayerSetHandler", () => {
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const patches: Array<{ role: string; patch: Record<string, unknown> }> = [];
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: (target, patch) => patches.push({ role: target.role, patch }),
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    const result = await handler({ role: "background", blur: 8, durationMs: 600 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("scene.layer.blur.background")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映", async () => {
+    const tm = new TweenManager();
+    const patches: Array<{ role: string; patch: Record<string, unknown> }> = [];
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: (target, patch) => patches.push({ role: target.role, patch }),
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    const result = await handler({ role: "background", blur: 5 });
+    expect(result.tweening).toBeUndefined();
+    expect(patches.length).toBe(1);
+    expect(patches[0].patch).toEqual({ blur: 5 });
+  });
+
+  it("不正な role で throw", async () => {
+    const tm = new TweenManager();
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: () => {},
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    await expect(handler({ role: "invalid" })).rejects.toThrow("role");
+  });
+
+  it("blur のみ指定で opacity は変更しない", async () => {
+    const tm = new TweenManager();
+    const patches: Array<Record<string, unknown>> = [];
+    const handler = createUiSceneLayerSetHandler({
+      updateSceneLayer: (_target, patch) => patches.push(patch),
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      tweenManager: tm,
+    });
+    await handler({ role: "foreground", blur: 3 });
+    expect(patches[0]).toEqual({ blur: 3 });
+  });
+});
+
+describe("createUiTerminalSetHandler", () => {
+  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
+    const tm = new TweenManager();
+    const handler = createUiTerminalSetHandler({
+      setTerminalOpacity: () => {},
+      getTerminalOpacity: () => 1,
+      tweenManager: tm,
+    });
+    const result = await handler({ opacity: 0.5, durationMs: 400 });
+    expect(result.tweening).toBe(true);
+    expect(tm.isActive("ui.terminal.opacity")).toBe(true);
+  });
+
+  it("durationMs 省略で即時反映", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiTerminalSetHandler({
+      setTerminalOpacity: (v) => {
+        setTo = v;
+      },
+      getTerminalOpacity: () => 1,
+      tweenManager: tm,
+    });
+    const result = await handler({ opacity: 0.5 });
+    expect(result.tweening).toBeUndefined();
+    expect(setTo).toBe(0.5);
   });
 });

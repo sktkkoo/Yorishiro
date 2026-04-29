@@ -588,6 +588,9 @@ function App() {
           // Phase γ motion tools：
           createBodyAnimationPlayHandler,
           createBodyMotionCancelHandler,
+          // UI tween tools：
+          createUiSceneLayerSetHandler,
+          createUiTerminalSetHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -674,6 +677,37 @@ function App() {
             getBody: () => getThreeRuntime().getBody(),
           }),
           "body.motion.cancel": createBodyMotionCancelHandler(),
+          // ── UI tween tools ─────────────────────────────────
+          "ui.scene-layer.set": createUiSceneLayerSetHandler({
+            updateSceneLayer: (target, patch) => {
+              setSceneLayerOverrides((prev) =>
+                upsertSceneLayerOverride(prev, { role: target.role as LayerRole }, patch),
+              );
+            },
+            getSceneLayerValues: (role) => {
+              const scene = renderedSceneRef.current;
+              if (!scene) return { blur: 0, opacity: 1 };
+              const layer = scene.layers.find((l) => l.role === role);
+              return {
+                blur: layer?.blur ?? 0,
+                opacity: layer?.opacity ?? 1,
+              };
+            },
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          "ui.terminal.set": createUiTerminalSetHandler({
+            setTerminalOpacity: (value) => {
+              const el = document.querySelector<HTMLElement>(".terminal-container");
+              if (el) el.style.opacity = String(value);
+            },
+            getTerminalOpacity: () => {
+              const el = document.querySelector<HTMLElement>(".terminal-container");
+              if (!el) return 1;
+              const raw = el.style.opacity;
+              return raw === "" ? 1 : Number(raw);
+            },
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
         };
 
         await listen<{ requestId: string; tool: string; request: unknown }>(

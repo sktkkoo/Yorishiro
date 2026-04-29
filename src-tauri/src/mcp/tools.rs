@@ -132,6 +132,35 @@ pub struct BodyAnimationPlayRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyMotionCancelRequest {}
 
+/// `ui_scene_layer_set` の引数。scene layer の blur / opacity を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiSceneLayerSetRequest {
+    /// Layer role: "background" or "foreground"
+    pub role: String,
+    /// Blur radius (px)。null でリセット（= blur なし）。省略は変更なし。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blur: Option<f32>,
+    /// Opacity 0-1。null でリセット（= 1）。省略は変更なし。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
+/// `ui_terminal_set` の引数。terminal container の opacity を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiTerminalSetRequest {
+    /// Terminal container opacity 0-1。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub opacity: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
 #[derive(Clone)]
 pub struct Charminal {
     app_handle: AppHandle,
@@ -351,6 +380,44 @@ impl Charminal {
         _params: Parameters<BodyMotionCancelRequest>,
     ) -> Result<CallToolResult, McpError> {
         emit_to(&self.app_handle, "body.motion.cancel", json!({})).await
+    }
+
+    /// scene layer の blur / opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(
+        description = "Set scene layer blur and/or opacity. Supports smooth interpolation via durationMs."
+    )]
+    async fn ui_scene_layer_set(
+        &self,
+        Parameters(req): Parameters<UiSceneLayerSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.scene-layer.set",
+            json!({
+                "role": req.role,
+                "blur": req.blur,
+                "opacity": req.opacity,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
+    }
+
+    /// terminal container の opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(description = "Set terminal opacity. Supports smooth interpolation via durationMs.")]
+    async fn ui_terminal_set(
+        &self,
+        Parameters(req): Parameters<UiTerminalSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.terminal.set",
+            json!({
+                "opacity": req.opacity,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
     }
 }
 
