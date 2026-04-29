@@ -577,8 +577,8 @@ function App() {
           createListPacksHandler,
           createDisablePackHandler,
           createEnablePackHandler,
-          createGetUiStateHandler,
-          createSetUiStateHandler,
+          createGetPackStateHandler,
+          createSetPackStateHandler,
           // Phase β cosmetic write tools：
           createStateGetHandler,
           createBodyExpressionSetHandler,
@@ -632,6 +632,28 @@ function App() {
         const handlers: ToolHandlerMap = {
           "list-packs": createListPacksHandler({
             readRegistry: () => packRegistry.listEntries(),
+            readBundledPacks: () => [
+              ...personaRegistry
+                .listEntries()
+                .filter((e) => e.origin === "bundled")
+                .map((e) => ({ id: e.id, kind: "persona" })),
+              ...scenePackRegistry
+                .listEntries()
+                .filter((e) => e.origin === "bundled")
+                .map((e) => ({ id: e.id, kind: "scene" })),
+              ...uiPackRegistry
+                .listEntries()
+                .filter((e) => e.origin === "bundled")
+                .map((e) => ({ id: e.id, kind: "ui" })),
+              ...[
+                cameraMovePack,
+                desaturatePack,
+                fireworksPack,
+                fireworksVolleyPack,
+                screenShakePack,
+                textPhysicsPack,
+              ].map((p) => ({ id: p.id, kind: "effect" })),
+            ],
             readConfig,
             readLoadReport,
           }),
@@ -645,13 +667,11 @@ function App() {
             writeConfig,
             reloadPack,
           }),
-          "get-ui-state": createGetUiStateHandler({
+          "get-ui-state": createGetPackStateHandler({
             state: uiState,
-            getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
           }),
-          "set-ui-state": createSetUiStateHandler({
+          "set-ui-state": createSetPackStateHandler({
             state: uiState,
-            getActiveUiId: () => uiPackRegistry.getActiveUi()?.id ?? null,
           }),
           // ── Phase β cosmetic write tools ────────────────────────
           "state.get": createStateGetHandler({

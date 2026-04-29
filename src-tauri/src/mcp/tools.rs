@@ -37,23 +37,23 @@ pub struct ListPacksRequest {}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListLoadErrorsRequest {}
 
-/// `get_ui_state` の引数。key 省略時は full snapshot を返す。
+/// `get_ui_state` の引数。pack 内部 state の読み取り。key 省略時は full snapshot を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetUiStateRequest {
-    /// Optional UI pack id. Defaults to the active UI pack.
+    /// Pack id（必須）。pack 内部 state は pack ごとに分離されている。
     #[serde(rename = "packId")]
-    pub pack_id: Option<String>,
-    /// Optional UI state key. Omit to retrieve all keys.
+    pub pack_id: String,
+    /// Optional state key. Omit to retrieve all keys.
     pub key: Option<String>,
 }
 
-/// `set_ui_state` の引数。value は JSON value として TS runtime に渡す。
+/// `set_ui_state` の引数。pack 内部 state への書き込み。value は JSON value として TS runtime に渡す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetUiStateRequest {
-    /// Optional UI pack id. Defaults to the active UI pack.
+    /// Pack id（必須）。pack 内部 state は pack ごとに分離されている。
     #[serde(rename = "packId")]
-    pub pack_id: Option<String>,
-    /// Target UI state key.
+    pub pack_id: String,
+    /// Target state key.
     pub key: String,
     /// JSON value to store.
     pub value: Value,
@@ -255,10 +255,10 @@ impl Charminal {
         unwrap_ts_response(response)
     }
 
-    /// get_ui_state: TS runtime に委譲。key ありなら `{ key, value }`、
-    /// key なしなら `{ state }` を返す。
+    /// get_ui_state: pack 内部 state の読み取り。app-level UI（sidebar 幅等）ではなく、
+    /// 個別 pack が ctx.state で保持する key-value。
     #[tool(
-        description = "Read UI pack state. Pass key to read one value, or omit key for all state."
+        description = "Read pack internal state by packId. Pass key to read one value, or omit key for all state. This is per-pack state (e.g. slider values), NOT app-level UI (use ui_sidebar_set etc. for that)."
     )]
     async fn get_ui_state(
         &self,
@@ -274,7 +274,7 @@ impl Charminal {
         unwrap_ts_response(response)
     }
 
-    /// set_ui_state: TS runtime に委譲。UI pack の ctx.state subscribers に通知する。
+    /// set_ui_state: pack 内部 state への書き込み。ctx.state subscribers に通知する。
     #[tool(description = "Set one UI pack state value by key")]
     async fn set_ui_state(
         &self,
