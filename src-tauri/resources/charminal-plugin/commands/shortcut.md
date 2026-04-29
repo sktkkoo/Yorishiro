@@ -33,7 +33,7 @@ default export 関数が受け取る `CharminalInitContext`:
 | `registerEffect(pack)` | EffectDefinition を validator 経由で登録 |
 | `registerPersona(pack)` | PersonaDefinition を validator 経由で登録 |
 | `dispatchEffect(request)` | 登録済み effect を 1 回走らせる（built-in も user effect も同じ） |
-| `emitEvent(name, payload?)` | persona / utility の trigger loop に synthetic event を流す |
+| `emitEvent(name, payload?)` | persona の trigger loop に synthetic event を流す |
 | `setActiveUi(id)` | active な UI pack を切り替える（`null` で解除） |
 
 生 JS の API（`window.addEventListener` / `setTimeout` / `fetch` 等）も全部使える。
@@ -113,7 +113,7 @@ export default (ctx) => {
 
 - init.js が throw しても Charminal 本体は落ちない（dev-log に記録して続行）
 - context は最小限（register 2 つ + dispatch 1 つ + emitEvent + setActiveUi）のみ
-- `system` / `character` / `voice` / `space` の高位 API は持たない — それらが要るなら utility pack に移す
+- `system` / `character` / `voice` / `space` の高位 API は持たない — それらが要るなら pack に移す
 - pack の境界に収まらない自由記述が必要なときだけ init.js を使う
 
 ## 参考ファイル
