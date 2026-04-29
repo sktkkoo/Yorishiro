@@ -236,16 +236,19 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
   scene.add(motes.points);
   objects.push(motes);
 
+  let lastW = 0;
+  let lastH = 0;
+
   const resize = () => {
     const rect = host.getBoundingClientRect();
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
+    if (width === lastW && height === lastH) return;
+    lastW = width;
+    lastH = height;
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
-    // RT も同じ pixel 解像度に合わせる（pixelRatio は renderer 側で
-    // drawingBufferSize に反映済み）。setSize は内部で再 alloc するので
-    // dispose+recreate しなくて良い
     const pr = renderer.getPixelRatio();
     const rtWidth = Math.max(1, Math.floor(width * pr));
     const rtHeight = Math.max(1, Math.floor(height * pr));
@@ -267,6 +270,7 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     motes.uniforms.uTime.value = elapsed;
     postUniforms.uTime.value = elapsed;
     frame = requestAnimationFrame(tick);
+    resize();
 
     // 1) scene → renderTarget。既存の renderOrder / depthWrite はそのまま効く
     //    （RT も color + depth を持つ通常の framebuffer 相当）
