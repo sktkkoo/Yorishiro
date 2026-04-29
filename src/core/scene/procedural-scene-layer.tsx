@@ -654,18 +654,26 @@ function createGrassField(): DisposableObject & {
         fieldWave += slowNoise * 0.34 + fineNoise * 0.08;
 
         float bendMask = smoothstep(0.06, 1.0, h);
-        float baseLean = bladeLean * bendMask * 0.08;
+        // 個体差 lean: bipolar [-1,+1] を [0,+1] にマップし「個体ごとに lean 量が違う」
+        // 形にする。風の反対側に倒れる個体は出さない（風向きを視覚化するため）
+        float baseLean = (bladeLean * 0.5 + 0.5) * bendMask * 0.08;
         float tipFlutter = sin(uTime * 2.18 + bladePhase + h * 2.0 + fineNoise) * 0.028;
 
         // Mirror signature: 風向きに沿って画面を横切る long-wavelength traveling wave。
-        // anchor を風向き軸に投影 → 波長で正規化 → 時間で進行させる。
-        // bendMask の 2 乗で根本を固定し、穂先側ほど大きく傾く
+        // sin を [0,1] にマップして「常に風方向のみへ倒れる」形にする
+        // （波が来たら倒れる、過ぎたら戻る。反対側には振れない → 風向きが見える）
         float waveCoord = dot(anchor.xz, windDir) / uWaveLength * 6.2832;
-        float traveling = sin(waveCoord - uTime * uWaveSpeed * 6.2832 / uWaveLength);
-        float travelingBend = traveling * uWaveAmplitude * bendMask * bendMask;
+        float travelingRaw = sin(waveCoord - uTime * uWaveSpeed * 6.2832 / uWaveLength);
+        float travelingPulse = travelingRaw * 0.5 + 0.5;
+        float travelingBend = travelingPulse * uWaveAmplitude * bendMask * bendMask;
 
+        // turbulence (bend) は bipolar のまま小さく残す（葉のざわめき）。
+        // 一瞬反対方向にズレても下の clamp で吸収される
         float bend = (fieldWave * uWindStrength * bladeStiffness + tipFlutter) * bendMask * bendMask;
-        worldPosition.xz += windDir * (bend + baseLean + travelingBend) + crossWind * fineNoise * 0.016 * bendMask;
+
+        // 最終的な lean は風方向のみへ。max で負成分を排除して片側のみへ倒す
+        float totalBend = max(bend + baseLean + travelingBend, 0.0);
+        worldPosition.xz += windDir * totalBend + crossWind * fineNoise * 0.016 * bendMask;
 
         vec4 mvPosition = modelViewMatrix * worldPosition;
         gl_Position = projectionMatrix * mvPosition;
