@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
+import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
@@ -43,6 +44,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private currentBody: Body | null = null;
   private trackHead: THREE.Object3D | null = null;
   private loadToken = 0;
+  private readonly tweenManager = new TweenManager();
   private currentPlaceholder: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private needsResize = true;
@@ -231,6 +233,10 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return this.currentBody;
   }
 
+  getTweenManager(): TweenManager {
+    return this.tweenManager;
+  }
+
   // ─── private methods ────────────────────────────────────────────
 
   private startRenderLoop(): void {
@@ -241,6 +247,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       const elapsed = this.clock.getElapsedTime();
 
       this.handleResize();
+      this.tweenManager.tick(performance.now());
 
       if (this.currentBody) {
         this.updateBodyPointerReference();

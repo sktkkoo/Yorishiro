@@ -2,6 +2,7 @@ import type {
   AmbientUiContext,
   Disposable,
   Trigger,
+  TweenAPI,
   UiClaimAPI,
   UiContext,
   UiLayout,
@@ -516,6 +517,7 @@ function App() {
           personaDefaults: charminalDefaultPack,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
           initScriptLog: createSubsystemLog(devLog, "InitScript"),
+          tweenManager: getThreeRuntime().getTweenManager(),
         });
         safeMode = result.safeMode;
         appLog.write({
@@ -864,6 +866,29 @@ function App() {
       targets: LayoutTargets,
     ): UiContext => {
       const threeRuntime = getThreeRuntime();
+
+      // ── tween: pack-scoped TweenAPI ─────────────────────────
+      const tweenManager = threeRuntime.getTweenManager();
+      const tweenPrefix = `pack:${packId}:`;
+      const tween: TweenAPI = {
+        start(key, to, durationMs, apply, options) {
+          return tweenManager.start(tweenPrefix + key, to, durationMs, apply, options);
+        },
+        startVec3(key, to, durationMs, apply, options) {
+          return tweenManager.startVec3(tweenPrefix + key, to, durationMs, apply, options);
+        },
+        cancel(key) {
+          tweenManager.cancel(tweenPrefix + key);
+        },
+      };
+      signal.addEventListener(
+        "abort",
+        () => {
+          tweenManager.cancelByPrefix(tweenPrefix);
+        },
+        { once: true },
+      );
+
       const three: UiThreeAPI = {
         get camera() {
           return threeRuntime.getCamera();
@@ -952,6 +977,7 @@ function App() {
         scene,
         state,
         time,
+        tween,
         log: createLogAPI(logBridge, packId),
         signal,
         layout: {
