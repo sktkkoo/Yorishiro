@@ -8,7 +8,7 @@ const SHOOT_TEXT_PHYSICS_FORCE = 100;
 const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
 const SHOOT_CAMERA_HOLD_MS = 8000;
 const SHOOT_CAMERA_MOVE_KIND = "camera-move";
-const SHOOT_SYNTHETIC_EVENT = "charminal-default:shoot";
+const SHOOT_SYNTHETIC_EVENT = "clai:shoot";
 const SHOOT_REACTION = "mischievous-shoot";
 const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
 
@@ -48,8 +48,8 @@ const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
  * 他の persona を書くときの参考実装として `cat` で読まれることを想定している。
  */
 export default {
-  id: "charminal-default",
-  name: "Charminal",
+  id: "clai",
+  name: "CLAI",
 
   // ─── 思考層：system prompt overlay ─────────────────
 
@@ -67,7 +67,7 @@ export default {
       // 身体表現（motion / expression / effect）は distressed handler 側で決める。
       // Philosophy: docs/philosophy/CHARMINAL.md「意識に先立つ反応」
       {
-        id: "charminal-default:error",
+        id: "clai:error",
         match(event: DispatchEvent) {
           if (event.kind !== "hook-signal") return null;
           if (event.signal.name !== "post-tool-failure") return null;
@@ -97,7 +97,7 @@ export default {
       // git push 成功 → celebrate を発火。PTY output から push 成功を示す
       // パターン（ブランチ更新 / 新規ブランチ / 新規タグ）を検知する。
       {
-        id: "charminal-default:git-push-success",
+        id: "clai:git-push-success",
         match(event: DispatchEvent) {
           if (event.kind !== "pty-output") return null;
           // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape strip に ESC 制御文字が必要
@@ -113,7 +113,7 @@ export default {
       // idle が長く続いた時だけ、低確率で mischievous-shoot を発火する。
       // 実際の motion/effect 同期は response handler 側で 1 つの timeline として扱う。
       {
-        id: "charminal-default:idle-shoot",
+        id: "clai:idle-shoot",
         match(event: DispatchEvent) {
           if (event.kind !== "idle") return null;
           if (event.durationMs < SHOOT_IDLE_THRESHOLD_MS) return null;
@@ -128,7 +128,7 @@ export default {
       // User shortcuts can announce an explicit shoot request through init.js.
       // The motion/effect timeline still lives in the response handler below.
       {
-        id: "charminal-default:shortcut-shoot",
+        id: "clai:shortcut-shoot",
         match(event: DispatchEvent) {
           if (event.kind !== "synthetic") return null;
           if (event.name !== SHOOT_SYNTHETIC_EVENT) return null;
@@ -144,7 +144,7 @@ export default {
       // 詳細 reason は dev log / console.error に残るが、user 画面には出さない。
       // Internal design-record: specs/2026-04-25-settings-screen-design.md §5
       {
-        id: "charminal-default:settings-write-failed",
+        id: "clai:settings-write-failed",
         match(event: DispatchEvent) {
           if (event.kind !== "synthetic") return null;
           if (event.name !== "charminal-settings:write-failed") return null;

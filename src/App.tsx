@@ -21,8 +21,8 @@ import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
-import charminalDefaultManifest from "../bundled-packs/personas/charminal-default/manifest.json";
-import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
+import claiManifest from "../bundled-packs/personas/clai/manifest.json";
+import claiPack from "../bundled-packs/personas/clai/persona";
 import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/manifest.json";
 import mistyGrasslandsPack from "../bundled-packs/scenes/misty-grasslands/scene";
 import simpleRoomManifest from "../bundled-packs/scenes/simple-room/manifest.json";
@@ -347,7 +347,7 @@ function App() {
 
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
     // PersonaRegistryImpl は state management（active persona / subscribeActive）。
-    // bundled charminal-default を sync register する。ここを async にすると
+    // bundled clai を sync register する。ここを async にすると
     // 初期 render で getActivePersona() が null を返し、Terminal が systemPrompt=null
     // で spawn → async 完了後に再 spawn、という race が起きる。
     // bundled pack は static import 済なので register は同期で確定する。
@@ -356,14 +356,14 @@ function App() {
     const appLog = createSubsystemLog(devLog, "App");
     const personaRegistry = getPersonaRegistry();
     personaRegistry.register({
-      id: charminalDefaultPack.id,
-      manifest: charminalDefaultManifest as PersonaPackManifest,
-      persona: charminalDefaultPack,
+      id: claiPack.id,
+      manifest: claiManifest as PersonaPackManifest,
+      persona: claiPack,
       origin: "bundled",
     } satisfies PersonaEntry);
     appLog.write({
       phase: "register",
-      note: `registered bundled persona '${charminalDefaultPack.id}'`,
+      note: `registered bundled persona '${claiPack.id}'`,
     });
 
     // bundled camera-lighting-panel UI pack（Plan 2 reference）。
@@ -530,7 +530,7 @@ function App() {
             bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
           },
           packRegistry,
-          personaDefaults: charminalDefaultPack,
+          personaDefaults: claiPack,
           userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
           initScriptLog: createSubsystemLog(devLog, "InitScript"),
           tweenManager: getThreeRuntime().getTweenManager(),
@@ -893,7 +893,7 @@ function App() {
   }, [renderedScene]);
 
   // ── active persona を PersonaRegistryImpl から subscribe ────────────────
-  // bundled charminal-default は runtime factory 内で register 済み。
+  // bundled clai は runtime factory 内で register 済み。
   // config.primaryPersona が切り替わった場合、次の Terminal セッションから反映される。
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
   // （philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md 「観察の境界」）。

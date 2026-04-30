@@ -18,7 +18,7 @@ describe("buildLoadReport", () => {
       result: {
         loaded: [
           { id: "fireworks", kind: "effect" },
-          { id: "charminal-default", kind: "persona" },
+          { id: "clai", kind: "persona" },
         ],
         failed: [],
       },
@@ -28,7 +28,7 @@ describe("buildLoadReport", () => {
       safeMode: false,
       loadResults: [
         { id: "fireworks", kind: "effect", status: "loaded" },
-        { id: "charminal-default", kind: "persona", status: "loaded" },
+        { id: "clai", kind: "persona", status: "loaded" },
       ],
     });
   });

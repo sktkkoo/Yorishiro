@@ -45,10 +45,10 @@ describe("parseConfig", () => {
   });
 
   it("reads primaryPersona string", () => {
-    const json = JSON.stringify({ primaryPersona: "charminal-default" });
+    const json = JSON.stringify({ primaryPersona: "clai" });
     expect(parseConfig(json)).toEqual({
       disabledPacks: [],
-      primaryPersona: "charminal-default",
+      primaryPersona: "clai",
       mcpPort: null,
       activeScene: null,
       activeUi: null,
@@ -87,7 +87,7 @@ describe("parseConfig", () => {
   });
 
   it("silently ignores legacy activePersonas field", () => {
-    const json = JSON.stringify({ activePersonas: ["charminal-default"] });
+    const json = JSON.stringify({ activePersonas: ["clai"] });
     expect(parseConfig(json)).toEqual({
       disabledPacks: [],
       primaryPersona: null,
