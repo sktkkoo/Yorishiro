@@ -150,6 +150,16 @@ body,
   height: 100%;
 }
 
+/* xterm.js の hardcoded 色を scene テーマに追従させる */
+.xterm .composition-view {
+  background: var(--charminal-bg);
+  color: var(--charminal-fg);
+}
+
+.xterm .xterm-viewport {
+  background-color: var(--charminal-bg);
+}
+
 /* ── Sidebar top row ────────────────────────────────── */
 .sidebar-top-row {
   display: flex;

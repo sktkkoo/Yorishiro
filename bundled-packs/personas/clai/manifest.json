@@ -1,7 +1,7 @@
 {
   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
-  "id": "charminal-default",
-  "name": "Charminal",
+  "id": "clai",
+  "name": "CLAI",
   "type": "persona",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",

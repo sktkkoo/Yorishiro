@@ -1,4 +1,4 @@
-# charminal-default
+# clai
 
 Charminal の flagship persona。dry-run の pattern として、他の persona を書くときの参考実装。
 

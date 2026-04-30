@@ -35,7 +35,7 @@ const postToolFailure = (toolName: string): HookSignalEvent => ({
   timestamp: 0,
 });
 
-describe("charminal-default persona triggers", () => {
+describe("clai persona triggers", () => {
   const triggers = persona.reflex.customTriggers ?? [];
 
   afterEach(() => {
@@ -43,7 +43,7 @@ describe("charminal-default persona triggers", () => {
   });
 
   describe("error → distressed trigger", () => {
-    const trigger = triggers.find((t) => t.id === "charminal-default:error");
+    const trigger = triggers.find((t) => t.id === "clai:error");
 
     it("is registered in customTriggers", () => {
       expect(trigger).toBeDefined();
@@ -98,7 +98,7 @@ describe("charminal-default persona triggers", () => {
   });
 
   describe("git-push-success → celebrate trigger", () => {
-    const trigger = triggers.find((t) => t.id === "charminal-default:git-push-success");
+    const trigger = triggers.find((t) => t.id === "clai:git-push-success");
 
     it("is registered in customTriggers", () => {
       expect(trigger).toBeDefined();
@@ -151,7 +151,7 @@ describe("charminal-default persona triggers", () => {
   });
 
   describe("idle → mischievous-shoot trigger", () => {
-    const trigger = triggers.find((t) => t.id === "charminal-default:idle-shoot");
+    const trigger = triggers.find((t) => t.id === "clai:idle-shoot");
 
     it("is registered in customTriggers", () => {
       expect(trigger).toBeDefined();
@@ -179,7 +179,7 @@ describe("charminal-default persona triggers", () => {
   });
 
   describe("synthetic shortcut → mischievous-shoot-shortcut trigger", () => {
-    const trigger = triggers.find((t) => t.id === "charminal-default:shortcut-shoot");
+    const trigger = triggers.find((t) => t.id === "clai:shortcut-shoot");
 
     it("is registered in customTriggers", () => {
       expect(trigger).toBeDefined();
@@ -192,7 +192,7 @@ describe("charminal-default persona triggers", () => {
       const match = trigger.match({
         kind: "synthetic",
         source: { type: "utility", packId: "user-init" },
-        name: "charminal-default:shoot",
+        name: "clai:shoot",
         payload,
         timestamp: 1000,
       });
@@ -217,7 +217,7 @@ describe("charminal-default persona triggers", () => {
   });
 
   describe("synthetic settings:write-failed → distressed trigger", () => {
-    const trigger = triggers.find((t) => t.id === "charminal-default:settings-write-failed");
+    const trigger = triggers.find((t) => t.id === "clai:settings-write-failed");
 
     it("is registered in customTriggers", () => {
       expect(trigger).toBeDefined();

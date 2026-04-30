@@ -1,5 +1,5 @@
 /**
- * Integration smoke test for the charminal-default flagship persona.
+ * Integration smoke test for the clai flagship persona.
  *
  * Proves the full runtime stack end-to-end:
  * Time -> EventBus -> trigger match -> PersonaReflexDispatcher wrapper ->
@@ -123,7 +123,7 @@ const createTestHarness = (opts: TestHarnessOpts = {}): TestHarness => {
 
 // ─── tests ──────────────────────────────────────────────────────────
 
-describe("charminal-default persona integration", () => {
+describe("clai persona integration", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -137,7 +137,7 @@ describe("charminal-default persona integration", () => {
   it("activates as the single bundled persona and is exposed via getActivePersona", () => {
     const { registry, activate } = createTestHarness();
     activate(testPersona);
-    expect(registry.getActivePersona()?.id).toBe("charminal-default");
+    expect(registry.getActivePersona()?.id).toBe("clai");
   });
 
   // ── Distressed handler end-to-end ─────────────────────────────
@@ -158,8 +158,8 @@ describe("charminal-default persona integration", () => {
 
     bus.dispatch(makePtyOutputEvent("ERROR: something broke"));
 
-    expect(contextInputs[0].persona.id).toBe("charminal-default");
-    expect(contextInputs[0].persona.name).toBe("Charminal");
+    expect(contextInputs[0].persona.id).toBe("clai");
+    expect(contextInputs[0].persona.name).toBe("CLAI");
   });
 
   it("distressed handler runs to completion without crashing", async () => {

@@ -9,6 +9,7 @@
  */
 
 import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
+import { ChevronDown, Volume2, VolumeX } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -177,10 +178,8 @@ function Select({
           </option>
         ))}
       </select>
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 12 12"
+      <ChevronDown
+        size={10}
         aria-hidden="true"
         style={{
           position: "absolute",
@@ -190,16 +189,7 @@ function Select({
           pointerEvents: "none",
           color: COLORS.fgDimmer,
         }}
-      >
-        <path
-          d="M2 4 L6 8 L10 4"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
+      />
     </div>
   );
 }
@@ -293,48 +283,12 @@ function AudioMuteToggle({
         font: "inherit",
       }}
     >
-      {muted ? <VolumeXIcon /> : <Volume2Icon />}
+      {muted ? (
+        <VolumeX size={18} strokeWidth={1.8} aria-hidden="true" />
+      ) : (
+        <Volume2 size={18} strokeWidth={1.8} aria-hidden="true" />
+      )}
     </button>
-  );
-}
-
-function Volume2Icon(): React.JSX.Element {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M11 5 6 9H2v6h4l5 4V5z" />
-      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
-      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
-    </svg>
-  );
-}
-
-function VolumeXIcon(): React.JSX.Element {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M11 5 6 9H2v6h4l5 4V5z" />
-      <line x1="22" y1="9" x2="16" y2="15" />
-      <line x1="16" y1="9" x2="22" y2="15" />
-    </svg>
   );
 }
 

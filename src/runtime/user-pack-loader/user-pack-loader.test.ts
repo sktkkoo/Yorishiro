@@ -1109,7 +1109,7 @@ describe("loadSingleUserPack", () => {
     const packRegistry = new UserPackRegistry();
     const devLog = makeDevLog().subsystem;
     const defaults = {
-      id: "charminal-default",
+      id: "clai",
       name: "Charminal",
       reflex: {
         customTriggers: [

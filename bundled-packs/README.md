@@ -14,7 +14,7 @@ bundled は **kind-first**（種類別に分類）：
 ```
 bundled-packs/
 ├── personas/
-│   └── charminal-default/   — flagship persona
+│   └── clai/   — flagship persona
 ├── scenes/
 │   ├── quiet-room/          — default scene (3 layer)
 │   └── radiant-meadow/      — Three.js procedural meadow scene
@@ -37,12 +37,12 @@ bundled-packs/
 
 ## 同梱 pack 一覧
 
-### personas/charminal-default
+### personas/clai
 - **Entry**: `persona.ts`
 - **Files**: `manifest.json`, `README.md`, `persona.md`（design memo）
 - **役割**: SDK の flagship reference。新規 persona pack を書く AI / user が **これを読んで pattern を掴む**
 - **主要 reaction**: `startled`, `contemplative`, `pleased`, `distressed`, `curious` ほか
-- 詳細：`bundled-packs/personas/charminal-default/README.md`
+- 詳細：`bundled-packs/personas/clai/README.md`
 
 ### scenes/quiet-room
 - **Entry**: `scene.ts`

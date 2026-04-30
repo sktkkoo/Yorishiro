@@ -1,6 +1,6 @@
 {
   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
-  "id": "radiant-meadow",
+  "id": "misty-grasslands",
   "name": "Misty Grasslands",
   "type": "scene",
   "version": "0.1.0",
