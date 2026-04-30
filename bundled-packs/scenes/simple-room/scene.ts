@@ -18,10 +18,10 @@
 import type { ScenePackDefinition } from "@charminal/sdk";
 
 export default {
-  id: "quiet-room",
+  id: "simple-room",
   type: "scene",
   scene: {
-    id: "quiet-room",
+    id: "simple-room",
     layers: [
       {
         id: "backdrop",

@@ -2,22 +2,22 @@
  * Bundled scene pack「光の草原」。
  *
  * Scene pack は宣言型のまま、runtime 内蔵の Three.js procedural renderer
- * `radiant-meadow` を background として指定する。住人を前景化しすぎず、
+ * `misty-grasslands` を background として指定する。住人を前景化しすぎず、
  * 画面全体に静かな奥行きと風を作るための scene。
  */
 
 import type { ScenePackDefinition } from "@charminal/sdk";
 
 export default {
-  id: "radiant-meadow",
+  id: "misty-grasslands",
   type: "scene",
   scene: {
-    id: "radiant-meadow",
+    id: "misty-grasslands",
     layers: [
       {
-        id: "radiant-meadow-three",
+        id: "misty-grasslands-three",
         role: "background",
-        procedural: { kind: "radiant-meadow" },
+        procedural: { kind: "misty-grasslands" },
       },
       {
         id: "vrm-slot",

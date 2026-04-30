@@ -23,10 +23,10 @@ import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
 import charminalDefaultManifest from "../bundled-packs/personas/charminal-default/manifest.json";
 import charminalDefaultPack from "../bundled-packs/personas/charminal-default/persona";
-import quietRoomManifest from "../bundled-packs/scenes/quiet-room/manifest.json";
-import quietRoomPack from "../bundled-packs/scenes/quiet-room/scene";
-import radiantMeadowManifest from "../bundled-packs/scenes/radiant-meadow/manifest.json";
-import radiantMeadowPack from "../bundled-packs/scenes/radiant-meadow/scene";
+import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/manifest.json";
+import mistyGrasslandsPack from "../bundled-packs/scenes/misty-grasslands/scene";
+import simpleRoomManifest from "../bundled-packs/scenes/simple-room/manifest.json";
+import simpleRoomPack from "../bundled-packs/scenes/simple-room/scene";
 import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
 import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
@@ -442,8 +442,8 @@ function App() {
       // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
       try {
         const bundledScenes = [
-          { pack: quietRoomPack, manifest: quietRoomManifest as ScenePackManifest },
-          { pack: radiantMeadowPack, manifest: radiantMeadowManifest as ScenePackManifest },
+          { pack: simpleRoomPack, manifest: simpleRoomManifest as ScenePackManifest },
+          { pack: mistyGrasslandsPack, manifest: mistyGrasslandsManifest as ScenePackManifest },
         ];
         for (const { pack, manifest } of bundledScenes) {
           const resolved = await resolveSceneAssets(pack.scene, {

@@ -23,7 +23,7 @@ export type LayerRole = "background" | "character" | "foreground";
  * Scene Pack 自体は declarative のまま保ち、Three.js などの実行コードは
  * Charminal runtime 側に閉じる。
  */
-export type ProceduralLayerKind = "radiant-meadow";
+export type ProceduralLayerKind = "misty-grasslands";
 
 export interface ProceduralLayer {
   readonly kind: ProceduralLayerKind;

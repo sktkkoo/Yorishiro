@@ -78,8 +78,8 @@ describe("ScenePackRegistryImpl", () => {
     const registry = new ScenePackRegistryImpl({
       warn: (msg) => warnings.push(msg),
     });
-    registry.register(makeEntry("quiet-room", "bundled"));
-    registry.register(makeEntry("radiant-meadow", "bundled"));
+    registry.register(makeEntry("simple-room", "bundled"));
+    registry.register(makeEntry("misty-grasslands", "bundled"));
     expect(warnings).toHaveLength(0);
     expect(registry.listEntries()).toHaveLength(2);
   });

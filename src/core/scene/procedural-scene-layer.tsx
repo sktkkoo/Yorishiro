@@ -3,12 +3,12 @@ import * as THREE from "three";
 import type { ProceduralLayer } from "./types";
 
 /**
- * radiant-meadow procedural renderer の shared parameters.
+ * misty-grasslands procedural renderer の shared parameters.
  *
  * Tarkovsky『鏡』の麦畑シーン (overcast morning, 低彩度, 風の波) を reference に
  * 全 component が共有する palette / fog / wind 値。
  *
- * Internal design-record: 2026-04-29-radiant-meadow-mirror-redesign.md
+ * Internal design-record: 2026-04-29-misty-grasslands-mirror-redesign.md
  *
  * 各 create* 関数はこの const を参照し、shader uniform に渡す。
  * inline literal で hand-tune しないこと（component 間で色味が崩れる）。
@@ -86,7 +86,7 @@ export function ProceduralSceneLayer({ procedural }: ProceduralSceneLayerProps) 
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) return;
-    if (procedural.kind !== "radiant-meadow") return;
+    if (procedural.kind !== "misty-grasslands") return;
     return mountRadiantMeadow(host);
   }, [procedural.kind]);
 
@@ -120,7 +120,7 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
   // Scene を一旦 renderTarget に描いてから、fullscreen quad shader で
   // tonemap / desaturation / grain / vignette を掛けて canvas に出す。
   // Mirror (1975) の 35mm film 的な質感を作る subtle pass。
-  // Spec: internal design-record 2026-04-29-radiant-meadow-mirror-redesign.md Component 5
+  // Spec: internal design-record 2026-04-29-misty-grasslands-mirror-redesign.md Component 5
 
   // HalfFloat が使えれば tonemap headroom が広がるが、低スペック GPU では
   // 未対応のことがあるので render context capability を見て fallback する

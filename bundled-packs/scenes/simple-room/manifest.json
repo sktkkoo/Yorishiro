@@ -1,6 +1,6 @@
 {
   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
-  "id": "quiet-room",
+  "id": "simple-room",
   "name": "Simple Room",
   "type": "scene",
   "version": "0.1.0",

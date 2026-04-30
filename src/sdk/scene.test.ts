@@ -16,8 +16,8 @@ describe("SceneSpec.ambient (type)", () => {
     void _s;
   });
 
-  it("accepts a procedural radiant-meadow layer", () => {
-    const _procedural: ProceduralLayer = { kind: "radiant-meadow" };
+  it("accepts a procedural misty-grasslands layer", () => {
+    const _procedural: ProceduralLayer = { kind: "misty-grasslands" };
     const _scene: SceneSpec = {
       id: "procedural-test",
       layers: [{ id: "three-bg", role: "background", procedural: _procedural }],
