@@ -1,4 +1,5 @@
 import { type VRM, type VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { createElement } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Body } from "../../core/body";
@@ -8,6 +9,8 @@ import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
 import { getVrmCache } from "../vrm-cache";
+import { R3fHost } from "./r3f-host";
+import { R3fRuntimeRoot } from "./r3f-runtime-root";
 import type { ThreeRuntime } from "./types";
 
 /**
@@ -31,6 +34,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly clock: THREE.Clock;
   private readonly loader: GLTFLoader;
   private readonly claimState: ClaimState;
+  private readonly r3fHost: R3fHost;
 
   private readonly bodyListenerRef: {
     current: ((body: Body | null) => void) | null;
@@ -88,6 +92,15 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x000000, 0);
+
+    // ── R3F host（<Canvas> は使わず既存 renderer/scene/camera を共有）────
+    this.r3fHost = new R3fHost({
+      canvas: this.canvas,
+      renderer: this.renderer,
+      scene: this.scene,
+      camera: this.camera,
+    });
+    this.initializeR3fHost();
 
     // ── Clock + loader ────────────────────────────────────────────
     this.clock = new THREE.Clock();
@@ -237,11 +250,12 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     const tick = () => {
       requestAnimationFrame(tick);
 
+      const now = performance.now();
       const delta = this.clock.getDelta();
       const elapsed = this.clock.getElapsedTime();
 
       this.handleResize();
-      this.tweenManager.tick(performance.now());
+      this.tweenManager.tick(now);
 
       if (this.currentBody) {
         this.updateBodyPointerReference();
@@ -255,9 +269,25 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         }
       }
 
-      this.renderer.render(this.scene, this.camera);
+      if (!this.r3fHost.advance(now)) {
+        this.renderer.render(this.scene, this.camera);
+      }
     };
     requestAnimationFrame(tick);
+  }
+
+  private initializeR3fHost(): void {
+    void this.r3fHost
+      .initialize()
+      .then(() => {
+        this.r3fHost.render(createElement(R3fRuntimeRoot));
+        if (this.lastRendererW > 0 && this.lastRendererH > 0) {
+          this.r3fHost.setSize(this.lastRendererW, this.lastRendererH);
+        }
+      })
+      .catch((err) => {
+        console.error("[three-runtime] R3F host initialization failed:", err);
+      });
   }
 
   private handleResize(): void {
@@ -269,9 +299,13 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     if (w !== this.lastRendererW || h !== this.lastRendererH) {
       this.lastRendererW = w;
       this.lastRendererH = h;
-      this.renderer.setSize(w, h);
-      this.camera.aspect = w / h;
-      this.camera.updateProjectionMatrix();
+      if (this.r3fHost.isReady()) {
+        this.r3fHost.setSize(w, h);
+      } else {
+        this.renderer.setSize(w, h);
+        this.camera.aspect = w / h;
+        this.camera.updateProjectionMatrix();
+      }
     }
   }
 
