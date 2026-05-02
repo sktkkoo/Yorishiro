@@ -600,6 +600,9 @@ function App() {
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
           createUiSidebarSetHandler,
+          // Phase: active pack switching
+          createSceneActivateHandler,
+          createUiActivateHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -664,8 +667,11 @@ function App() {
             ],
             readConfig,
             readLoadReport,
-            // TODO(Task 8): scenePackRegistry / uiPackRegistry / personaRegistry の getActiveId() に接続する
-            getActiveIds: () => ({ scene: null, ui: null, persona: null }),
+            getActiveIds: () => ({
+              scene: scenePackRegistry.getActiveSceneId(),
+              ui: uiPackRegistry.getActiveUiId(),
+              persona: personaRegistry.getActivePersonaId(),
+            }),
           }),
           "disable-pack": createDisablePackHandler({
             readConfig,
@@ -711,8 +717,10 @@ function App() {
             },
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
             getEffectKinds: () => effectDispatcher.getRegisteredKinds(),
-            // TODO(Task 8): 実 registry に置き換える
-            getRuntimeActive: () => ({ scene: null, ui: null }),
+            getRuntimeActive: () => ({
+              scene: scenePackRegistry.getActiveSceneId(),
+              ui: uiPackRegistry.getActiveUiId(),
+            }),
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
@@ -791,6 +799,13 @@ function App() {
               height: window.innerHeight,
             }),
             tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          // ── Active pack switching ──────────────────────────
+          "scene.activate": createSceneActivateHandler({
+            registry: scenePackRegistry,
+          }),
+          "ui.activate": createUiActivateHandler({
+            registry: uiPackRegistry,
           }),
         };
 
