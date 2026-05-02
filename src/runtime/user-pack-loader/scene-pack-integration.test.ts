@@ -4,7 +4,7 @@
  * fetch / convertFileSrc はすべて stub で差し替え。Tauri runtime 依存なし。
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createSubsystemLog, DevLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
@@ -113,6 +113,38 @@ describe("registerScenePack", () => {
       expect(packRegistry.has("test-scene", "scene")).toBe(true);
     } finally {
       restore();
+    }
+  });
+
+  it("component field を持つ user scene pack は warn して entry には渡さない", async () => {
+    const FakeComponent = () => null;
+    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { ctx, scenePackEntries } = makeCtx({
+      id: "component-scene",
+      entryPath: "/p/component-scene/scene.js",
+      def: {
+        ...makeValidDef("component-scene"),
+        component: FakeComponent,
+      },
+    });
+
+    const restore = withFetch(
+      () =>
+        new Response(makeManifestJson("component-scene"), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    try {
+      const result = await registerScenePack(ctx);
+
+      expect(result.status).toBe("loaded");
+      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("component field"));
+      expect(scenePackEntries).toHaveLength(1);
+      expect(scenePackEntries[0].component).toBeUndefined();
+    } finally {
+      restore();
+      consoleWarnSpy.mockRestore();
     }
   });
 
