@@ -7,6 +7,11 @@ const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
 const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
 const SHOOT_CAMERA_HOLD_MS = 8000;
+// gun_fire アニメーション完了後、text-physics の cascade/rest/restore が
+// 一巡するまで motion slot を保持する。完了したら明示的に stop して idle に
+// preempt 権を譲る（clampWhenFinished で natural completion が発火しないため）。
+const SHOOT_MOTION_RELEASE_DELAY_MS = 6000;
+const SHOOT_MOTION_FADE_OUT_MS = 400;
 const SHOOT_CAMERA_MOVE_KIND = "camera-move";
 const SHOOT_SYNTHETIC_EVENT = "clai:shoot";
 const SHOOT_REACTION = "mischievous-shoot";
@@ -20,22 +25,34 @@ const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
   });
 
   ctx.character.interrupt(SHOOT_REACTION);
-  ctx.character.play("anim:VRMA_gun_fire", {
+  const motionHandle = ctx.character.play("anim:VRMA_gun_fire", {
     fadeInMs: 300,
     fadeOutMs: 300,
     weight: 1,
-    priority: 10,
   });
   ctx.space.injectEffect({ kind: SHOOT_CAMERA_MOVE_KIND, holdMs: SHOOT_CAMERA_HOLD_MS });
 
   await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
-  if (ctx.signal.aborted) return;
+  if (ctx.signal.aborted) {
+    motionHandle.cancel();
+    return;
+  }
 
   ctx.space.injectEffect({
     kind: "text-physics",
     origin: SHOOT_TEXT_PHYSICS_ORIGIN,
     force: SHOOT_TEXT_PHYSICS_FORCE,
   });
+
+  // text-physics が一巡するまで motion を保持してから release。
+  // 自然 completion を待つだけだと clampWhenFinished で slot が抜けず idle が
+  // preempt できない（state.motion.active に gun_fire が居座り続ける）。
+  await ctx.time.after(SHOOT_MOTION_RELEASE_DELAY_MS);
+  if (ctx.signal.aborted) {
+    motionHandle.cancel();
+    return;
+  }
+  await motionHandle.stop(SHOOT_MOTION_FADE_OUT_MS);
 };
 
 /**
