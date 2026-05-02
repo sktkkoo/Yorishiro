@@ -153,6 +153,7 @@ pub struct SceneActivateRequest {
 /// `ui_activate` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UiActivateRequest {
+    /// Pack id（null で active を clear）。registry のみ更新、config.json は触らない。
     pub id: Option<String>,
 }
 
