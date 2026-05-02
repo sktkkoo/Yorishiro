@@ -111,6 +111,12 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
     return entry !== null ? this.extractValue(entry) : null;
   }
 
+  /** 現在の active entry id（または null）。runtime active の id 取り出し用。 */
+  getActiveId(): string | null {
+    const entry = this.computeActive();
+    return entry?.id ?? null;
+  }
+
   /**
    * active 変更を subscribe。登録時に現 active で同期 1 回 fire。
    * 返す Disposable は unsubscribe。

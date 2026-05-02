@@ -5,10 +5,14 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
-import type { SpaceEffectRequest } from "@charminal/sdk";
+import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TweenManager } from "../../core/tween/tween-manager";
+import type { SceneSpec } from "../../sdk/scene";
+import type { ScenePackManifest } from "../../sdk/scene-pack";
+import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
+import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
@@ -24,11 +28,13 @@ import {
   createEnablePackHandler,
   createGetPackStateHandler,
   createListPacksHandler,
+  createSceneActivateHandler,
   createSceneCameraSetHandler,
   createSceneLightingSetHandler,
   createSetPackStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
+  createUiActivateHandler,
   createUiSceneLayerSetHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
@@ -71,15 +77,16 @@ describe("list_packs handler", () => {
         disabledPacks: ["c"],
       }),
       readLoadReport: async () => report,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
     });
 
     const result = await handler({});
     expect(result).toEqual({
       packs: expect.arrayContaining([
-        { id: "a", kind: "effect", origin: "user", status: "loaded" },
-        { id: "b", kind: "persona", origin: "user", status: "loaded" },
-        { id: "c", kind: "", origin: "user", status: "disabled" },
-        { id: "broken", kind: "effect", origin: "user", status: "failed" },
+        { id: "a", kind: "effect", origin: "user", status: "loaded", isActive: false },
+        { id: "b", kind: "persona", origin: "user", status: "loaded", isActive: false },
+        { id: "c", kind: "", origin: "user", status: "disabled", isActive: false },
+        { id: "broken", kind: "effect", origin: "user", status: "failed", isActive: false },
       ]),
     });
     expect((result as { packs: unknown[] }).packs).toHaveLength(4);
@@ -107,11 +114,44 @@ describe("list_packs handler", () => {
       readBundledPacks: () => [],
       readConfig: async () => EMPTY_CONFIG,
       readLoadReport: async () => report,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
     });
 
     const result = await handler({});
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0].status).toBe("loaded");
+  });
+
+  it("marks isActive based on getActiveIds for single-active kinds", async () => {
+    const registry = new UserPackRegistry();
+    registry.register("user-scene", "scene", { dispose: () => {} });
+    registry.register("user-ui", "ui", { dispose: () => {} });
+
+    const handler = createListPacksHandler({
+      readRegistry: () => registry.listEntries(),
+      readBundledPacks: () => [
+        { id: "bundled-scene", kind: "scene" },
+        { id: "bundled-ui", kind: "ui" },
+        { id: "bundled-persona", kind: "persona" },
+        { id: "bundled-effect", kind: "effect" },
+      ],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => null,
+      getActiveIds: () => ({
+        scene: "user-scene",
+        ui: "bundled-ui",
+        persona: null,
+      }),
+    });
+
+    const result = await handler({});
+    const byId = new Map(result.packs.map((p) => [`${p.kind}:${p.id}`, p]));
+    expect(byId.get("scene:user-scene")?.isActive).toBe(true);
+    expect(byId.get("scene:bundled-scene")?.isActive).toBe(false);
+    expect(byId.get("ui:user-ui")?.isActive).toBe(false);
+    expect(byId.get("ui:bundled-ui")?.isActive).toBe(true);
+    expect(byId.get("persona:bundled-persona")?.isActive).toBe(false);
+    expect(byId.get("effect:bundled-effect")?.isActive).toBe(false);
   });
 });
 
@@ -341,6 +381,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -358,6 +399,10 @@ describe("createStateGetHandler", () => {
         },
       ],
       motion: { active: null, preempted: [] },
+      runtime: {
+        activeScene: null,
+        activeUi: null,
+      },
     });
   });
 
@@ -378,6 +423,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -419,6 +465,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -444,6 +491,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
@@ -474,6 +522,7 @@ describe("createStateGetHandler", () => {
         role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.ui.sidebar.width).toBe(350);
@@ -505,10 +554,42 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.tweens.length).toBe(1);
     expect(result.tweens[0].key).toBe("test-key");
+  });
+
+  it("includes runtime.activeScene / activeUi from registries (independent of config)", async () => {
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: null,
+        activeScene: "config-scene", // 永続値
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => false,
+      getEffectKinds: () => [],
+      getRuntimeActive: () => ({
+        scene: "runtime-scene", // divergence: registry が config と違う
+        ui: "runtime-ui",
+      }),
+    });
+
+    const result = await handler({});
+    expect(result.config.activeScene).toBe("config-scene");
+    expect(result.runtime).toEqual({
+      activeScene: "runtime-scene",
+      activeUi: "runtime-ui",
+    });
   });
 });
 
@@ -1136,5 +1217,113 @@ describe("createUiSidebarSetHandler", () => {
     const result = await handler({});
     expect(setTo).toBe(280);
     expect(result.width).toBe(280);
+  });
+});
+
+describe("createSceneActivateHandler", () => {
+  const sceneSpec = (id: string) => ({ id, layers: [] }) as unknown as SceneSpec;
+  const manifest = (id: string) => ({ id, name: id }) as unknown as ScenePackManifest;
+  const makeRegistry = () => {
+    const r = new ScenePackRegistryImpl();
+    r.register({ id: "s1", manifest: manifest("s1"), scene: sceneSpec("s1"), origin: "bundled" });
+    r.register({ id: "s2", manifest: manifest("s2"), scene: sceneSpec("s2"), origin: "bundled" });
+    return r;
+  };
+
+  it("switches active scene by id", async () => {
+    const registry = makeRegistry();
+    const handler = createSceneActivateHandler({ registry });
+    const result = await handler({ id: "s2" });
+    expect(result).toEqual({ active: "s2" });
+    expect(registry.getActiveSceneId()).toBe("s2");
+  });
+
+  it("clears active when id is null", async () => {
+    const registry = makeRegistry();
+    const handler = createSceneActivateHandler({ registry });
+    // initial active is "s1" (alphabetical fallback)
+    expect(registry.getActiveSceneId()).toBe("s1");
+    const result = await handler({ id: null });
+    // setActive(null) → fallback re-applies → alphabetical "s1"
+    expect(result.active).toBe("s1");
+  });
+
+  it("rejects empty string id", async () => {
+    const registry = makeRegistry();
+    const handler = createSceneActivateHandler({ registry });
+    await expect(handler({ id: "" })).rejects.toThrow("id must be non-empty string or null");
+  });
+
+  it("rejects non-string non-null id", async () => {
+    const registry = makeRegistry();
+    const handler = createSceneActivateHandler({ registry });
+    await expect(handler({ id: 42 })).rejects.toThrow("id must be non-empty string or null");
+  });
+
+  it("rejects when id field is omitted", async () => {
+    const registry = makeRegistry();
+    const handler = createSceneActivateHandler({ registry });
+    await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
+  });
+
+  it("setting unknown id falls through to bundled fallback (no throw)", async () => {
+    const registry = makeRegistry();
+    const handler = createSceneActivateHandler({ registry });
+    // SingleActiveRegistry.setActive で unknown id は fall-through、bundled alphabetical 先頭が active
+    const result = await handler({ id: "ghost" });
+    expect(result.active).toBe("s1");
+  });
+});
+
+describe("createUiActivateHandler", () => {
+  const makeRegistry = () => {
+    const r = createUiPackRegistry();
+    r.register({
+      id: "u1",
+      origin: "bundled",
+      manifest: { id: "u1", name: "U1" } as unknown as UiPackManifest,
+      pack: {
+        layout: { mode: "auto" } as unknown as UiLayout,
+        mount: (_: UiContext) => ({ dispose: () => {} }),
+      },
+    });
+    r.register({
+      id: "u2",
+      origin: "bundled",
+      manifest: { id: "u2", name: "U2" } as unknown as UiPackManifest,
+      pack: {
+        layout: { mode: "auto" } as unknown as UiLayout,
+        mount: (_: UiContext) => ({ dispose: () => {} }),
+      },
+    });
+    return r;
+  };
+
+  it("switches active ui by id", async () => {
+    const registry = makeRegistry();
+    const handler = createUiActivateHandler({ registry });
+    const result = await handler({ id: "u2" });
+    expect(result).toEqual({ active: "u2" });
+    expect(registry.getActiveUiId()).toBe("u2");
+  });
+
+  it("clears with null (UI pack registry uses nullMeansNoActive=true)", async () => {
+    const registry = makeRegistry();
+    const handler = createUiActivateHandler({ registry });
+    await handler({ id: "u1" });
+    const result = await handler({ id: null });
+    // UiPackRegistry は nullMeansNoActive=true なので null で active も null
+    expect(result).toEqual({ active: null });
+    expect(registry.getActiveUiId()).toBeNull();
+  });
+
+  it("rejects empty string", async () => {
+    const handler = createUiActivateHandler({ registry: makeRegistry() });
+    await expect(handler({ id: "" })).rejects.toThrow("id must be non-empty string or null");
+  });
+
+  it("rejects when id field is omitted", async () => {
+    const handler = createUiActivateHandler({ registry: makeRegistry() });
+    await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
   });
 });

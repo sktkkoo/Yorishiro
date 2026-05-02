@@ -48,6 +48,11 @@ export class ScenePackRegistryImpl
   setActiveScene(id: string | null): void {
     this.setActive(id);
   }
+
+  /** Domain alias：base の `getActiveId()` を scene 名で expose。 */
+  getActiveSceneId(): string | null {
+    return this.getActiveId();
+  }
 }
 
 /** singleton accessor。HMR をまたいで 1 instance のみ。 */

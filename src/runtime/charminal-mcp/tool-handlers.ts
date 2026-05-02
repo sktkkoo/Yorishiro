@@ -32,6 +32,7 @@ export interface PackStatusEntry {
   readonly kind: string;
   readonly origin: "bundled" | "user";
   readonly status: "loaded" | "disabled" | "failed";
+  readonly isActive: boolean;
 }
 
 export interface ListPacksResponse {
@@ -43,16 +44,34 @@ export interface ListPacksDeps {
   readonly readBundledPacks: () => Array<{ id: string; kind: string }>;
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
+  /**
+   * single-active 系（scene / ui / persona）の現 active id 群を返す。
+   * 各 entry の isActive 判定に使う。multi-active 系は false 固定。
+   */
+  readonly getActiveIds: () => {
+    readonly scene: string | null;
+    readonly ui: string | null;
+    readonly persona: string | null;
+  };
 }
 
 export function createListPacksHandler(deps: ListPacksDeps) {
   return async (_request: unknown): Promise<ListPacksResponse> => {
+    const activeIds = deps.getActiveIds();
+    const isActiveFor = (kind: string, id: string): boolean => {
+      if (kind === "scene") return id === activeIds.scene;
+      if (kind === "ui") return id === activeIds.ui;
+      if (kind === "persona") return id === activeIds.persona;
+      return false;
+    };
+
     const bundled = deps.readBundledPacks().map(
       (e): PackStatusEntry => ({
         id: e.id,
         kind: e.kind,
         origin: "bundled",
         status: "loaded" as const,
+        isActive: isActiveFor(e.kind, e.id),
       }),
     );
 
@@ -62,6 +81,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
         kind: e.kind,
         origin: "user",
         status: "loaded" as const,
+        isActive: isActiveFor(e.kind, e.id),
       }),
     );
     const loadedKey = new Set(loaded.map((e) => `${e.kind}:${e.id}`));
@@ -77,6 +97,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
           kind: "",
           origin: "user",
           status: "disabled" as const,
+          isActive: false,
         }),
       );
     const disabledKey = new Set(disabled.map((e) => `${e.kind}:${e.id}`));
@@ -93,6 +114,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
           kind: entry.kind,
           origin: "user",
           status: "failed",
+          isActive: false,
         });
       }
     }
@@ -285,6 +307,15 @@ export interface StateGetDeps {
   readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
   readonly getCameraTracking: () => boolean;
   readonly getEffectKinds: () => ReadonlyArray<string>;
+  /**
+   * 現在 active な single-active pack の id 群（registry 由来、runtime SOT）。
+   * config.activeScene / config.primaryPersona は永続値、こちらは runtime 値。
+   * runtime-only 切り替え時は両者が divergence する。
+   */
+  readonly getRuntimeActive: () => {
+    readonly scene: string | null;
+    readonly ui: string | null;
+  };
 }
 
 export interface StateGetResult {
@@ -317,6 +348,13 @@ export interface StateGetResult {
     readonly remainingMs: number;
   }>;
   readonly effectKinds: ReadonlyArray<string>;
+  /**
+   * Registry SOT の active id（永続値の config.activeScene / config.primaryPersona と divergence する）。
+   */
+  readonly runtime: {
+    readonly activeScene: string | null;
+    readonly activeUi: string | null;
+  };
 }
 
 /**
@@ -349,6 +387,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       active: null,
       preempted: [],
     };
+    const runtimeActive = deps.getRuntimeActive();
     return {
       config: {
         primaryPersona: cfg.primaryPersona,
@@ -377,6 +416,10 @@ export function createStateGetHandler(deps: StateGetDeps) {
       },
       tweens: deps.tweenManager.getActive(),
       effectKinds: deps.getEffectKinds(),
+      runtime: {
+        activeScene: runtimeActive.scene,
+        activeUi: runtimeActive.ui,
+      },
     };
   };
 }
@@ -999,5 +1042,76 @@ export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
     deps.tweenManager.cancel("ui.sidebar.width");
     deps.setSidebarWidth(width);
     return { width };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * scene.activate
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneActivateDeps {
+  readonly registry: {
+    readonly setActiveScene: (id: string | null) => void;
+    readonly getActiveSceneId: () => string | null;
+  };
+}
+
+export interface SceneActivateResult {
+  readonly active: string | null;
+}
+
+/**
+ * Active scene pack を runtime-only で切り替える handler。
+ * registry のみ更新、~/.charminal/config.json は触らない。
+ * 不明な id は registry が fall-through で bundled default を選ぶ（throw しない）。
+ *
+ * 関連: docs/decisions/single-active-config-picks.md（runtime ≠ config の divergence 許容）
+ */
+export function createSceneActivateHandler(deps: SceneActivateDeps) {
+  return async (request: unknown): Promise<SceneActivateResult> => {
+    const r = requestRecord(request);
+    if (!("id" in r)) {
+      throw new Error("id must be non-empty string or null");
+    }
+    const id = r.id;
+    if (id !== null && (typeof id !== "string" || id === "")) {
+      throw new Error("id must be non-empty string or null");
+    }
+    deps.registry.setActiveScene(id);
+    return { active: deps.registry.getActiveSceneId() };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * ui.activate
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiActivateDeps {
+  readonly registry: {
+    readonly setActiveUi: (id: string | null) => void;
+    readonly getActiveUiId: () => string | null;
+  };
+}
+
+export interface UiActivateResult {
+  readonly active: string | null;
+}
+
+/**
+ * Active UI pack を runtime-only で切り替える handler。scene.activate と対称。
+ * registry のみ更新、~/.charminal/config.json は触らない。
+ */
+export function createUiActivateHandler(deps: UiActivateDeps) {
+  return async (request: unknown): Promise<UiActivateResult> => {
+    const r = requestRecord(request);
+    if (!("id" in r)) {
+      throw new Error("id must be non-empty string or null");
+    }
+    const id = r.id;
+    if (id !== null && (typeof id !== "string" || id === "")) {
+      throw new Error("id must be non-empty string or null");
+    }
+    deps.registry.setActiveUi(id);
+    return { active: deps.registry.getActiveUiId() };
   };
 }

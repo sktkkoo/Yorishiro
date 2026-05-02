@@ -185,6 +185,13 @@ describe("ScenePackRegistryImpl", () => {
     void sub1; // suppress unused warning
   });
 
+  it("getActiveSceneId returns active entry's id (alias of base getActiveId)", () => {
+    const registry = new ScenePackRegistryImpl();
+    expect(registry.getActiveSceneId()).toBeNull();
+    registry.register(makeEntry("s1", "bundled"));
+    expect(registry.getActiveSceneId()).toBe("s1");
+  });
+
   it("fires listener when same id is overridden with different scene", () => {
     const registry = new ScenePackRegistryImpl();
     const bundledEntry = makeEntry("same-id", "bundled");

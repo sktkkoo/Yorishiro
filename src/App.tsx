@@ -600,6 +600,9 @@ function App() {
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
           createUiSidebarSetHandler,
+          // Phase: active pack switching
+          createSceneActivateHandler,
+          createUiActivateHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -664,6 +667,11 @@ function App() {
             ],
             readConfig,
             readLoadReport,
+            getActiveIds: () => ({
+              scene: scenePackRegistry.getActiveSceneId(),
+              ui: uiPackRegistry.getActiveUiId(),
+              persona: personaRegistry.getActivePersonaId(),
+            }),
           }),
           "disable-pack": createDisablePackHandler({
             readConfig,
@@ -709,6 +717,10 @@ function App() {
             },
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
             getEffectKinds: () => effectDispatcher.getRegisteredKinds(),
+            getRuntimeActive: () => ({
+              scene: scenePackRegistry.getActiveSceneId(),
+              ui: uiPackRegistry.getActiveUiId(),
+            }),
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
@@ -787,6 +799,13 @@ function App() {
               height: window.innerHeight,
             }),
             tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          // ── Active pack switching ──────────────────────────
+          "scene.activate": createSceneActivateHandler({
+            registry: scenePackRegistry,
+          }),
+          "ui.activate": createUiActivateHandler({
+            registry: uiPackRegistry,
           }),
         };
 

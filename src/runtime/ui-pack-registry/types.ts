@@ -25,5 +25,8 @@ export interface UiPackRegistry {
   getActiveUi(): UiPackEntry | null;
   setActiveUi(id: string | null): void;
   subscribeActive(listener: (entry: UiPackEntry | null) => void): Disposable;
+  /** 現在 active な ui pack の id（または null）。 */
+  getActiveUiId(): string | null;
+
   listEntries(): ReadonlyArray<UiPackEntry>;
 }

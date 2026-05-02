@@ -79,4 +79,12 @@ describe("UiPackRegistry", () => {
     reg.register(entry("b"));
     expect(reg.listEntries()).toHaveLength(2);
   });
+
+  it("getActiveUiId returns active entry's id (alias of base getActiveId)", () => {
+    const registry = createUiPackRegistry();
+    expect(registry.getActiveUiId()).toBeNull();
+    registry.register(entry("u1"));
+    registry.setActiveUi("u1");
+    expect(registry.getActiveUiId()).toBe("u1");
+  });
 });

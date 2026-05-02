@@ -38,6 +38,11 @@ export class UiPackRegistryImpl
   setActiveUi(id: string | null): void {
     this.setActive(id);
   }
+
+  /** Domain alias：base の `getActiveId()` を UI pack 名で expose。 */
+  getActiveUiId(): string | null {
+    return this.getActiveId();
+  }
 }
 
 /** factory function（test 用の new instance 生成） */

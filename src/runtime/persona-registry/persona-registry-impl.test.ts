@@ -210,6 +210,13 @@ describe("PersonaRegistryImpl", () => {
     expect(listener).toHaveBeenCalledWith(userEntry.persona);
   });
 
+  it("getActivePersonaId returns active entry's id (alias of base getActiveId)", () => {
+    const registry = new PersonaRegistryImpl();
+    expect(registry.getActivePersonaId()).toBeNull();
+    registry.register(makeEntry("p1", "bundled"));
+    expect(registry.getActivePersonaId()).toBe("p1");
+  });
+
   it("bundled id collision overwrites with warning", () => {
     const warnings: string[] = [];
     const registry = new PersonaRegistryImpl({
