@@ -782,6 +782,10 @@ function App() {
               const initial = Number.parseFloat(raw) || 280;
               return () => initial;
             })(),
+            getWindowSize: () => ({
+              width: window.innerWidth,
+              height: window.innerHeight,
+            }),
             tweenManager: getThreeRuntime().getTweenManager(),
           }),
         };
