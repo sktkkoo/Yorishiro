@@ -1,8 +1,9 @@
-import { type VRM, type VRMHumanBoneName, VRMLoaderPlugin } from "@pixiv/three-vrm";
+import { type VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { createElement } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Body } from "../../core/body";
+import { applyVrmRestPose } from "../../core/body/vrm-rest-pose";
 import type { SubsystemLog } from "../../core/dev-log";
 import { TweenManager } from "../../core/tween/tween-manager";
 import { getOrInit } from "../hot-data";
@@ -162,8 +163,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
                 return;
               }
 
-              vrm.scene.rotation.y = Math.PI;
-              this.setupRestPose(vrm);
+              VRMUtils.rotateVRM0(vrm);
+              applyVrmRestPose(vrm);
               vrm.humanoid?.update();
 
               this.scene.add(vrm.scene);
@@ -342,63 +343,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       });
       this.currentVrm = null;
       this.trackHead = null;
-    }
-  }
-
-  /**
-   * Lower arms from T-pose to a natural rest position + relaxed finger curl.
-   * Lifted from the legacy vrm-viewer.tsx module-level function.
-   */
-  private setupRestPose(vrm: VRM): void {
-    const humanoid = vrm.humanoid;
-    if (!humanoid) return;
-
-    const set = (name: VRMHumanBoneName, axis: "x" | "y" | "z", rad: number) => {
-      const bone = humanoid.getNormalizedBoneNode(name);
-      if (bone) bone.rotation[axis] = rad;
-    };
-
-    // Upper arms down from T-pose
-    set("rightUpperArm", "z", -1.35);
-    set("leftUpperArm", "z", 1.35);
-    set("rightUpperArm", "x", 0.1);
-    set("leftUpperArm", "x", 0.1);
-
-    // Lower arms slightly bent
-    set("rightLowerArm", "z", -0.2);
-    set("leftLowerArm", "z", 0.2);
-
-    // Straighten wrists — upper arm rotation causes slight upward bend
-    set("leftHand", "z", 0.2);
-    set("rightHand", "z", -0.2);
-
-    // Relaxed finger curl — proximal > intermediate > distal で自然なカーブ
-    const fingerCurl: ReadonlyArray<[string, number]> = [
-      ["IndexProximal", 0.25],
-      ["IndexIntermediate", 0.35],
-      ["IndexDistal", 0.2],
-      ["MiddleProximal", 0.3],
-      ["MiddleIntermediate", 0.4],
-      ["MiddleDistal", 0.25],
-      ["RingProximal", 0.35],
-      ["RingIntermediate", 0.45],
-      ["RingDistal", 0.25],
-      ["LittleProximal", 0.4],
-      ["LittleIntermediate", 0.5],
-      ["LittleDistal", 0.3],
-    ];
-    for (const [suffix, angle] of fingerCurl) {
-      set(`left${suffix}` as VRMHumanBoneName, "x", angle);
-      set(`right${suffix}` as VRMHumanBoneName, "x", angle);
-    }
-
-    // 親指 — 軸が異なる、軽く内側に畳む
-    for (const side of ["left", "right"] as const) {
-      const sign = side === "left" ? 1 : -1;
-      set(`${side}ThumbMetacarpal` as VRMHumanBoneName, "x", 0.2);
-      set(`${side}ThumbMetacarpal` as VRMHumanBoneName, "z", sign * 0.3);
-      set(`${side}ThumbProximal` as VRMHumanBoneName, "x", 0.15);
-      set(`${side}ThumbDistal` as VRMHumanBoneName, "x", 0.1);
     }
   }
 }

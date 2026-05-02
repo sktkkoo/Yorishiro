@@ -10,6 +10,7 @@
 
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
+import { createVrmRestPose, type VrmRestPose } from "./vrm-rest-pose";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -18,12 +19,6 @@ const HEAD_DRIFT_AMP_Z = 0.04; // lateral tilt (radians)
 const HEAD_DRIFT_AMP_Y = 0.05; // yaw rotation (radians)
 const HEAD_DRIFT_SPEED = 1.2; // lerp speed (units/sec)
 const HEAD_LOOK_AT_SPEED = 1.2;
-
-// Rest pose base values for arms (must match setupRestPose in vrm-viewer.tsx)
-const LEFT_ARM_BASE_Z = 1.35;
-const LEFT_ARM_BASE_X = 0.1;
-const RIGHT_ARM_BASE_Z = -1.35;
-const RIGHT_ARM_BASE_X = 0.1;
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -51,6 +46,7 @@ export class ProceduralBones {
   private headLookAtCurrentY = 0;
   private headLookAtAppliedX = 0;
   private headLookAtAppliedY = 0;
+  private restPose: VrmRestPose | null = null;
 
   /** When true, head drift amplitude increases ×2.8 and interval shortens. */
   isThinking = false;
@@ -68,6 +64,7 @@ export class ProceduralBones {
     this.headBone = h.getNormalizedBoneNode("head");
     this.leftUpperArm = h.getNormalizedBoneNode("leftUpperArm");
     this.rightUpperArm = h.getNormalizedBoneNode("rightUpperArm");
+    this.restPose = createVrmRestPose(vrm);
   }
 
   setHeadLookAtOffset(yawRad: number, pitchRad: number): void {
@@ -138,13 +135,18 @@ export class ProceduralBones {
 
     // ── Arm micro-sway ──────────────────────────────────
     // Rest pose base + small sine offset (phase-shifted per arm)
-    if (this.leftUpperArm && w >= 0.001) {
-      this.leftUpperArm.rotation.z = LEFT_ARM_BASE_Z + Math.sin(elapsed * 0.5 + 1.2) * 0.02 * w;
-      this.leftUpperArm.rotation.x = LEFT_ARM_BASE_X + Math.sin(elapsed * 0.35) * 0.015 * w;
+    const restPose = this.restPose;
+    if (this.leftUpperArm && restPose && w >= 0.001) {
+      this.leftUpperArm.rotation.z =
+        restPose.leftArm.upperArmZ + Math.sin(elapsed * 0.5 + 1.2) * 0.02 * w;
+      this.leftUpperArm.rotation.x =
+        restPose.leftArm.upperArmX + Math.sin(elapsed * 0.35) * 0.015 * w;
     }
-    if (this.rightUpperArm && w >= 0.001) {
-      this.rightUpperArm.rotation.z = RIGHT_ARM_BASE_Z + Math.sin(elapsed * 0.5 + 2.4) * 0.02 * w;
-      this.rightUpperArm.rotation.x = RIGHT_ARM_BASE_X + Math.sin(elapsed * 0.35 + 1.8) * 0.015 * w;
+    if (this.rightUpperArm && restPose && w >= 0.001) {
+      this.rightUpperArm.rotation.z =
+        restPose.rightArm.upperArmZ + Math.sin(elapsed * 0.5 + 2.4) * 0.02 * w;
+      this.rightUpperArm.rotation.x =
+        restPose.rightArm.upperArmX + Math.sin(elapsed * 0.35 + 1.8) * 0.015 * w;
     }
   }
 }
