@@ -673,6 +673,13 @@ export default {
 - **scene は handler を持たない**（pure data）。よって scene 用の `SceneContext` 型は存在しない、追加もしない
 - 動的に変えたい場合は **新しい scene pack に切り替える**（config で `activeScene` を書き換え → hot reload）
 
+### `@charminal/sdk/r3f`
+
+R3F primitive の re-export entry。Scene pack が R3F component を export する時に使う。
+本 entry から import することで、Charminal 本体と同じ `@react-three/fiber` version を共有する。
+
+詳細: specs/2026-05-03-scene-pack-r3f-component.md §3.2
+
 ### Bundled scene の参考
 
 - `bundled-packs/scenes/quiet-room/` — flagship reference（gradient のみ、3 層構成）
