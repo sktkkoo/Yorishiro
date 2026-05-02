@@ -77,15 +77,16 @@ describe("list_packs handler", () => {
         disabledPacks: ["c"],
       }),
       readLoadReport: async () => report,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
     });
 
     const result = await handler({});
     expect(result).toEqual({
       packs: expect.arrayContaining([
-        { id: "a", kind: "effect", origin: "user", status: "loaded" },
-        { id: "b", kind: "persona", origin: "user", status: "loaded" },
-        { id: "c", kind: "", origin: "user", status: "disabled" },
-        { id: "broken", kind: "effect", origin: "user", status: "failed" },
+        { id: "a", kind: "effect", origin: "user", status: "loaded", isActive: false },
+        { id: "b", kind: "persona", origin: "user", status: "loaded", isActive: false },
+        { id: "c", kind: "", origin: "user", status: "disabled", isActive: false },
+        { id: "broken", kind: "effect", origin: "user", status: "failed", isActive: false },
       ]),
     });
     expect((result as { packs: unknown[] }).packs).toHaveLength(4);
@@ -113,11 +114,44 @@ describe("list_packs handler", () => {
       readBundledPacks: () => [],
       readConfig: async () => EMPTY_CONFIG,
       readLoadReport: async () => report,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
     });
 
     const result = await handler({});
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0].status).toBe("loaded");
+  });
+
+  it("marks isActive based on getActiveIds for single-active kinds", async () => {
+    const registry = new UserPackRegistry();
+    registry.register("user-scene", "scene", { dispose: () => {} });
+    registry.register("user-ui", "ui", { dispose: () => {} });
+
+    const handler = createListPacksHandler({
+      readRegistry: () => registry.listEntries(),
+      readBundledPacks: () => [
+        { id: "bundled-scene", kind: "scene" },
+        { id: "bundled-ui", kind: "ui" },
+        { id: "bundled-persona", kind: "persona" },
+        { id: "bundled-effect", kind: "effect" },
+      ],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => null,
+      getActiveIds: () => ({
+        scene: "user-scene",
+        ui: "bundled-ui",
+        persona: null,
+      }),
+    });
+
+    const result = await handler({});
+    const byId = new Map(result.packs.map((p) => [`${p.kind}:${p.id}`, p]));
+    expect(byId.get("scene:user-scene")?.isActive).toBe(true);
+    expect(byId.get("scene:bundled-scene")?.isActive).toBe(false);
+    expect(byId.get("ui:user-ui")?.isActive).toBe(false);
+    expect(byId.get("ui:bundled-ui")?.isActive).toBe(true);
+    expect(byId.get("persona:bundled-persona")?.isActive).toBe(false);
+    expect(byId.get("effect:bundled-effect")?.isActive).toBe(false);
   });
 });
 

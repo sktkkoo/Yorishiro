@@ -32,6 +32,7 @@ export interface PackStatusEntry {
   readonly kind: string;
   readonly origin: "bundled" | "user";
   readonly status: "loaded" | "disabled" | "failed";
+  readonly isActive: boolean;
 }
 
 export interface ListPacksResponse {
@@ -43,16 +44,34 @@ export interface ListPacksDeps {
   readonly readBundledPacks: () => Array<{ id: string; kind: string }>;
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
+  /**
+   * single-active 系（scene / ui / persona）の現 active id 群を返す。
+   * 各 entry の isActive 判定に使う。multi-active 系は false 固定。
+   */
+  readonly getActiveIds: () => {
+    readonly scene: string | null;
+    readonly ui: string | null;
+    readonly persona: string | null;
+  };
 }
 
 export function createListPacksHandler(deps: ListPacksDeps) {
   return async (_request: unknown): Promise<ListPacksResponse> => {
+    const activeIds = deps.getActiveIds();
+    const isActiveFor = (kind: string, id: string): boolean => {
+      if (kind === "scene") return id === activeIds.scene;
+      if (kind === "ui") return id === activeIds.ui;
+      if (kind === "persona") return id === activeIds.persona;
+      return false;
+    };
+
     const bundled = deps.readBundledPacks().map(
       (e): PackStatusEntry => ({
         id: e.id,
         kind: e.kind,
         origin: "bundled",
         status: "loaded" as const,
+        isActive: isActiveFor(e.kind, e.id),
       }),
     );
 
@@ -62,6 +81,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
         kind: e.kind,
         origin: "user",
         status: "loaded" as const,
+        isActive: isActiveFor(e.kind, e.id),
       }),
     );
     const loadedKey = new Set(loaded.map((e) => `${e.kind}:${e.id}`));
@@ -77,6 +97,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
           kind: "",
           origin: "user",
           status: "disabled" as const,
+          isActive: false,
         }),
       );
     const disabledKey = new Set(disabled.map((e) => `${e.kind}:${e.id}`));
@@ -93,6 +114,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
           kind: entry.kind,
           origin: "user",
           status: "failed",
+          isActive: false,
         });
       }
     }

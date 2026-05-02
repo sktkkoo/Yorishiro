@@ -664,6 +664,8 @@ function App() {
             ],
             readConfig,
             readLoadReport,
+            // TODO(Task 8): scenePackRegistry / uiPackRegistry / personaRegistry の getActiveId() に接続する
+            getActiveIds: () => ({ scene: null, ui: null, persona: null }),
           }),
           "disable-pack": createDisablePackHandler({
             readConfig,
