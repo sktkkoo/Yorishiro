@@ -49,31 +49,19 @@ export default function Sidebar({
         {scene !== null ? (
           <SceneCompositor scene={scene}>
             {vrmUrl ? (
-              <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+              <Suspense fallback={<div className="vrm-loading" />}>
                 <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
               </Suspense>
             ) : (
-              <div className="vrm-placeholder">
-                <span className="vrm-placeholder-icon">🤖</span>
-                <p className="vrm-placeholder-text">VRM 未読み込み</p>
-                <button type="button" className="avatar-btn-cta" onClick={onLoadVrm}>
-                  アバターを読み込む →
-                </button>
-              </div>
+              <div className="vrm-placeholder" />
             )}
           </SceneCompositor>
         ) : vrmUrl ? (
-          <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+          <Suspense fallback={<div className="vrm-loading" />}>
             <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
           </Suspense>
         ) : (
-          <div className="vrm-placeholder">
-            <span className="vrm-placeholder-icon">🤖</span>
-            <p className="vrm-placeholder-text">VRM 未読み込み</p>
-            <button type="button" className="avatar-btn-cta" onClick={onLoadVrm}>
-              アバターを読み込む →
-            </button>
-          </div>
+          <div className="vrm-placeholder" />
         )}
       </div>
     </div>
