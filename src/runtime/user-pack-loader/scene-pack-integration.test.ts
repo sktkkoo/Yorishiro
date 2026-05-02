@@ -26,8 +26,10 @@ function makeFakeScenePackRegistry(): { registry: ScenePackRegistry; entries: Sc
       return { dispose: () => {} };
     },
     getActiveScene: () => null,
+    getActiveEntry: () => null,
     getActiveSceneId: () => null,
     subscribeActive: () => ({ dispose: () => {} }),
+    subscribeActiveEntry: () => ({ dispose: () => {} }),
     setActiveScene: () => {},
     listEntries: () => entries,
   };

@@ -130,8 +130,10 @@ function makeFakeScenePackRegistry(): ScenePackRegistry {
       return { dispose: () => {} };
     },
     getActiveScene: () => null,
+    getActiveEntry: () => null,
     getActiveSceneId: () => null,
     subscribeActive: () => ({ dispose: () => {} }),
+    subscribeActiveEntry: () => ({ dispose: () => {} }),
     setActiveScene: () => {},
     listEntries: () => entries,
   };
@@ -308,8 +310,10 @@ describe("loadUserPacks", () => {
         return { dispose: () => {} };
       },
       getActiveScene: () => null,
+      getActiveEntry: () => null,
       getActiveSceneId: () => null,
       subscribeActive: () => ({ dispose: () => {} }),
+      subscribeActiveEntry: () => ({ dispose: () => {} }),
       setActiveScene: () => {},
       listEntries: () => fakeScenes,
     };

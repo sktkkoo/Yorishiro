@@ -18,7 +18,11 @@ import type { SceneSpec } from "../../sdk/scene";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { SingleActiveRegistry } from "../single-active-registry";
-import type { ScenePackEntry, ScenePackRegistry as ScenePackRegistryInterface } from "./types";
+import type {
+  Disposable,
+  ScenePackEntry,
+  ScenePackRegistry as ScenePackRegistryInterface,
+} from "./types";
 
 export interface ScenePackRegistryOptions {
   /** 診断ログ（bundled-over-user warning、bundled collision 等） */
@@ -52,6 +56,23 @@ export class ScenePackRegistryImpl
   /** Domain alias：base の `getActiveId()` を scene 名で expose。 */
   getActiveSceneId(): string | null {
     return this.getActiveId();
+  }
+
+  /** 現在の active scene pack の entry。R3F-component path の判別に使う。 */
+  getActiveEntry(): ScenePackEntry | null {
+    const id = this.getActiveId();
+    if (id === null) return null;
+    return this.listEntries().find((entry) => entry.id === id) ?? null;
+  }
+
+  /**
+   * Active entry 変更の subscriber。既存 subscribeActive(SceneSpec) と並列。
+   * base の subscribeActive(value) を thin wrapper する。
+   */
+  subscribeActiveEntry(listener: (entry: ScenePackEntry | null) => void): Disposable {
+    return this.subscribeActive(() => {
+      listener(this.getActiveEntry());
+    });
   }
 }
 

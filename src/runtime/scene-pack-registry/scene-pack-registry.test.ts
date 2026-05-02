@@ -219,3 +219,64 @@ describe("ScenePackRegistryImpl", () => {
     expect(listener).toHaveBeenCalledWith(userEntry.scene);
   });
 });
+
+describe("getActiveEntry / subscribeActiveEntry", () => {
+  it("getActiveEntry returns null when no entry registered", () => {
+    const registry = new ScenePackRegistryImpl();
+    expect(registry.getActiveEntry()).toBeNull();
+  });
+
+  it("getActiveEntry returns the active entry after register", () => {
+    const registry = new ScenePackRegistryImpl();
+    const entry = makeEntry("a", "bundled");
+    registry.register(entry);
+    const active = registry.getActiveEntry();
+    expect(active?.id).toBe("a");
+    expect(active?.origin).toBe("bundled");
+  });
+
+  it("getActiveEntry preserves component field", () => {
+    const registry = new ScenePackRegistryImpl();
+    const FakeComponent = () => null;
+    const entry: ScenePackEntry = {
+      ...makeEntry("with-component", "bundled"),
+      component: FakeComponent,
+    };
+    registry.register(entry);
+    const active = registry.getActiveEntry();
+    expect(active?.component).toBe(FakeComponent);
+  });
+
+  it("subscribeActiveEntry fires synchronously with current active on subscribe", () => {
+    const registry = new ScenePackRegistryImpl();
+    registry.register(makeEntry("a", "bundled"));
+    const listener = vi.fn();
+    registry.subscribeActiveEntry(listener);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]?.id).toBe("a");
+  });
+
+  it("subscribeActiveEntry fires on setActiveScene change", () => {
+    const registry = new ScenePackRegistryImpl();
+    registry.register(makeEntry("a", "bundled"));
+    registry.register(makeEntry("b", "bundled"));
+    const listener = vi.fn();
+    registry.subscribeActiveEntry(listener);
+    listener.mockClear();
+    registry.setActiveScene("b");
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(listener.mock.calls[0][0]?.id).toBe("b");
+  });
+
+  it("subscribeActiveEntry returns Disposable that stops further notifications", () => {
+    const registry = new ScenePackRegistryImpl();
+    registry.register(makeEntry("a", "bundled"));
+    registry.register(makeEntry("b", "bundled"));
+    const listener = vi.fn();
+    const sub = registry.subscribeActiveEntry(listener);
+    listener.mockClear();
+    sub.dispose();
+    registry.setActiveScene("b");
+    expect(listener).not.toHaveBeenCalled();
+  });
+});
