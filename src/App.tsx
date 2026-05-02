@@ -711,6 +711,8 @@ function App() {
             },
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
             getEffectKinds: () => effectDispatcher.getRegisteredKinds(),
+            // TODO(Task 8): 実 registry に置き換える
+            getRuntimeActive: () => ({ scene: null, ui: null }),
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),

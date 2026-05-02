@@ -307,6 +307,15 @@ export interface StateGetDeps {
   readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
   readonly getCameraTracking: () => boolean;
   readonly getEffectKinds: () => ReadonlyArray<string>;
+  /**
+   * 現在 active な single-active pack の id 群（registry 由来、runtime SOT）。
+   * config.activeScene / config.primaryPersona は永続値、こちらは runtime 値。
+   * runtime-only 切り替え時は両者が divergence する。
+   */
+  readonly getRuntimeActive: () => {
+    readonly scene: string | null;
+    readonly ui: string | null;
+  };
 }
 
 export interface StateGetResult {
@@ -339,6 +348,13 @@ export interface StateGetResult {
     readonly remainingMs: number;
   }>;
   readonly effectKinds: ReadonlyArray<string>;
+  /**
+   * Registry SOT の active id（永続値の config.activeScene / config.primaryPersona と divergence する）。
+   */
+  readonly runtime: {
+    readonly activeScene: string | null;
+    readonly activeUi: string | null;
+  };
 }
 
 /**
@@ -371,6 +387,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       active: null,
       preempted: [],
     };
+    const runtimeActive = deps.getRuntimeActive();
     return {
       config: {
         primaryPersona: cfg.primaryPersona,
@@ -399,6 +416,10 @@ export function createStateGetHandler(deps: StateGetDeps) {
       },
       tweens: deps.tweenManager.getActive(),
       effectKinds: deps.getEffectKinds(),
+      runtime: {
+        activeScene: runtimeActive.scene,
+        activeUi: runtimeActive.ui,
+      },
     };
   };
 }

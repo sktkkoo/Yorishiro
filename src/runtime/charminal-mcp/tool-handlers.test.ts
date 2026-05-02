@@ -381,6 +381,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -398,6 +399,10 @@ describe("createStateGetHandler", () => {
         },
       ],
       motion: { active: null, preempted: [] },
+      runtime: {
+        activeScene: null,
+        activeUi: null,
+      },
     });
   });
 
@@ -418,6 +423,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -459,6 +465,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -484,6 +491,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
@@ -514,6 +522,7 @@ describe("createStateGetHandler", () => {
         role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.ui.sidebar.width).toBe(350);
@@ -545,10 +554,42 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
       getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
     });
     const result = await handler({});
     expect(result.tweens.length).toBe(1);
     expect(result.tweens[0].key).toBe("test-key");
+  });
+
+  it("includes runtime.activeScene / activeUi from registries (independent of config)", async () => {
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: null,
+        activeScene: "config-scene", // 永続値
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => null,
+      getScene: () => null,
+      getVrm: () => null,
+      getBody: () => null,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => false,
+      getEffectKinds: () => [],
+      getRuntimeActive: () => ({
+        scene: "runtime-scene", // divergence: registry が config と違う
+        ui: "runtime-ui",
+      }),
+    });
+
+    const result = await handler({});
+    expect(result.config.activeScene).toBe("config-scene");
+    expect(result.runtime).toEqual({
+      activeScene: "runtime-scene",
+      activeUi: "runtime-ui",
+    });
   });
 });
 
