@@ -178,6 +178,10 @@ pub struct UiSidebarSetRequest {
     /// Sidebar width in px（数値）。CSS custom property `--sidebar-width` を操作する。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub width: Option<f32>,
+    /// Sidebar width in %（0–100）。ウィンドウ幅に対する割合。width と同時指定時は widthPercent を優先。
+    #[serde(rename = "widthPercent")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width_percent: Option<f32>,
     /// 補間時間（ms）。省略 / 0 で即時反映。
     #[serde(rename = "durationMs")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -456,6 +460,7 @@ impl Charminal {
             "ui.sidebar.set",
             json!({
                 "width": req.width,
+                "widthPercent": req.width_percent,
                 "durationMs": req.duration_ms,
             }),
         )

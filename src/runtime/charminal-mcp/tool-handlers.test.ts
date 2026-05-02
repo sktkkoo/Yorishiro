@@ -1037,12 +1037,15 @@ describe("createUiTerminalSetHandler", () => {
 });
 
 describe("createUiSidebarSetHandler", () => {
+  const windowSize = { width: 1200, height: 800 };
+
   it("durationMs > 0 で tween 登録 + tweening: true", async () => {
     const tm = new TweenManager();
     const handler = createUiSidebarSetHandler({
       setSidebarWidth: () => {},
       getSidebarWidth: () => 280,
       getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => windowSize,
       tweenManager: tm,
     });
     const result = await handler({ width: 350, durationMs: 800 });
@@ -1059,6 +1062,7 @@ describe("createUiSidebarSetHandler", () => {
       },
       getSidebarWidth: () => 280,
       getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => windowSize,
       tweenManager: tm,
     });
     const result = await handler({ width: 350 });
@@ -1075,11 +1079,46 @@ describe("createUiSidebarSetHandler", () => {
       },
       getSidebarWidth: () => 280,
       getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => windowSize,
       tweenManager: tm,
     });
     const result = await handler({ width: 0 });
     expect(setTo).toBe(0);
     expect(result.width).toBe(0);
+  });
+
+  it("widthPercent でウィンドウ幅に対する割合指定", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: (v) => {
+        setTo = v;
+      },
+      getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => windowSize,
+      tweenManager: tm,
+    });
+    const result = await handler({ widthPercent: 50 });
+    expect(setTo).toBe(600);
+    expect(result.width).toBe(600);
+  });
+
+  it("widthPercent が width より優先", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: (v) => {
+        setTo = v;
+      },
+      getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => windowSize,
+      tweenManager: tm,
+    });
+    const result = await handler({ width: 400, widthPercent: 80 });
+    expect(setTo).toBe(960);
+    expect(result.width).toBe(960);
   });
 
   it("width 省略でデフォルト幅にフォールバック", async () => {
@@ -1091,6 +1130,7 @@ describe("createUiSidebarSetHandler", () => {
       },
       getSidebarWidth: () => 400,
       getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => windowSize,
       tweenManager: tm,
     });
     const result = await handler({});

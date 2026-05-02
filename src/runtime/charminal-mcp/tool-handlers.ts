@@ -949,10 +949,16 @@ export function createUiTerminalSetHandler(deps: UiTerminalSetDeps) {
  * ui.sidebar.set
  * ────────────────────────────────────────────────────────── */
 
+export interface WindowSize {
+  readonly width: number;
+  readonly height: number;
+}
+
 export interface UiSidebarSetDeps {
   readonly setSidebarWidth: (px: number) => void;
   readonly getSidebarWidth: () => number;
   readonly getDefaultSidebarWidth: () => number;
+  readonly getWindowSize: () => WindowSize;
   readonly tweenManager: TweenManager;
 }
 
@@ -964,10 +970,19 @@ export interface UiSidebarSetResult {
 export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
   return async (request: unknown): Promise<UiSidebarSetResult> => {
     const r = requestRecord(request);
+    const widthPercent =
+      typeof r.widthPercent === "number" &&
+      Number.isFinite(r.widthPercent) &&
+      r.widthPercent >= 0 &&
+      r.widthPercent <= 100
+        ? r.widthPercent
+        : undefined;
     const width =
-      typeof r.width === "number" && Number.isFinite(r.width) && r.width >= 0
-        ? r.width
-        : deps.getDefaultSidebarWidth();
+      widthPercent !== undefined
+        ? deps.getWindowSize().width * (widthPercent / 100)
+        : typeof r.width === "number" && Number.isFinite(r.width) && r.width >= 0
+          ? r.width
+          : deps.getDefaultSidebarWidth();
     const durationMs =
       typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
         ? r.durationMs
