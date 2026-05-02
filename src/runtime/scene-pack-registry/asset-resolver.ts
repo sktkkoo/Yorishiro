@@ -43,6 +43,12 @@ export function normalizeRelativePath(src: string): string {
 }
 
 /**
+ * normalizeRelativePath の互換 alias。
+ * plan 上の名前に合わせて、既存利用を残したまま公開する。
+ */
+export const stripLeadingDotSlash = normalizeRelativePath;
+
+/**
  * bundled pack の pack-relative path を絶対 URL に解決。見つからなければ null。
  *
  * Defense-in-depth: packId / relativePath に path escape を含んでいたら null を即返す。
