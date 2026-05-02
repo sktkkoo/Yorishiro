@@ -11,13 +11,13 @@ export interface R3fRuntimeRootProps {
  *
  * Phase 1 keeps production output empty: it proves the custom root can share
  * the existing renderer/scene/camera without moving VRM or Body ownership yet.
- * Set localStorage["charminal:r3f-smoke"] = "1" before reload to show the
- * small smoke cube and confirm useFrame is driven by ThreeRuntime's RAF loop.
+ * Set `localStorage["charminal:r3f-debug"] = "1"` before reload to show the
+ * small debug cube and confirm useFrame is driven by ThreeRuntime's RAF loop.
  */
 export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
-  const smokeEnabled = useMemo(() => {
+  const debugEnabled = useMemo(() => {
     try {
-      return localStorage.getItem("charminal:r3f-smoke") === "1";
+      return localStorage.getItem("charminal:r3f-debug") === "1";
     } catch {
       return false;
     }
@@ -25,13 +25,13 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
 
   return (
     <>
-      {smokeEnabled ? <R3fSmokeCube /> : null}
+      {debugEnabled ? <R3fDebugCube /> : null}
       {children}
     </>
   );
 }
 
-function R3fSmokeCube() {
+function R3fDebugCube() {
   const meshRef = useRef<THREE.Mesh>(null);
 
   useFrame((_, delta) => {
@@ -42,7 +42,7 @@ function R3fSmokeCube() {
   });
 
   return (
-    <mesh ref={meshRef} position={[0.65, 1.25, -0.25]} scale={0.08}>
+    <mesh ref={meshRef} position={[0.12, 1.4, 0.05]} scale={0.06}>
       <boxGeometry args={[1, 1, 1]} />
       <meshBasicMaterial color="#4dd9cf" wireframe />
     </mesh>
