@@ -130,6 +130,7 @@ function makeFakeScenePackRegistry(): ScenePackRegistry {
       return { dispose: () => {} };
     },
     getActiveScene: () => null,
+    getActiveSceneId: () => null,
     subscribeActive: () => ({ dispose: () => {} }),
     setActiveScene: () => {},
     listEntries: () => entries,
@@ -145,6 +146,7 @@ function makeFakeUiPackRegistry(): UiPackRegistry & { readonly entries: UiPackEn
       return { dispose: () => {} };
     },
     getActiveUi: () => null,
+    getActiveUiId: () => null,
     setActiveUi: () => {},
     subscribeActive: () => ({ dispose: () => {} }),
     listEntries: () => entries,
@@ -306,6 +308,7 @@ describe("loadUserPacks", () => {
         return { dispose: () => {} };
       },
       getActiveScene: () => null,
+      getActiveSceneId: () => null,
       subscribeActive: () => ({ dispose: () => {} }),
       setActiveScene: () => {},
       listEntries: () => fakeScenes,

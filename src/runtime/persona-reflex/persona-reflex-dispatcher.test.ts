@@ -95,6 +95,10 @@ class FakePersonaRegistry implements PersonaRegistryInterface {
 
   setPrimaryPersona(_id: string | null): void {}
 
+  getActivePersonaId(): string | null {
+    return this.current?.id ?? null;
+  }
+
   listEntries(): ReadonlyArray<PersonaEntry> {
     return [];
   }

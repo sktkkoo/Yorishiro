@@ -61,6 +61,9 @@ export interface ScenePackRegistry {
    */
   setActiveScene(id: string | null): void;
 
+  /** 現在 active な scene pack の id（または null）。 */
+  getActiveSceneId(): string | null;
+
   /** debug / 設定 UI 用：登録済み全 entry を列挙。 */
   listEntries(): ReadonlyArray<ScenePackEntry>;
 }

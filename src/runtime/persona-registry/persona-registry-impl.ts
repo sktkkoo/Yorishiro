@@ -42,6 +42,11 @@ export class PersonaRegistryImpl
   setPrimaryPersona(id: string | null): void {
     this.setActive(id);
   }
+
+  /** Domain alias：base の `getActiveId()` を persona 名で expose。 */
+  getActivePersonaId(): string | null {
+    return this.getActiveId();
+  }
 }
 
 /** singleton accessor。HMR をまたいで 1 instance のみ。 */
