@@ -1401,25 +1401,6 @@ function App() {
     }
   }, [cwd]);
 
-  // ── VRM import ──────────────────────────────────────────────
-
-  const handleLoadVrm = useCallback(async () => {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const { invoke } = await import("@tauri-apps/api/core");
-      const selected = await open({
-        title: "VRM ファイルを選択",
-        filters: [{ name: "VRM", extensions: ["vrm"] }],
-      });
-      if (selected) {
-        const dest = await invoke<string>("import_vrm", { src: selected as string });
-        applyVrmPath(dest);
-      }
-    } catch {
-      // Dialog not available outside Tauri
-    }
-  }, [applyVrmPath]);
-
   // ── Settings ─────────────────────────────────────────────
 
   const handleOpenSettings = useCallback(() => {
@@ -1724,7 +1705,6 @@ function App() {
         folderName={folderName}
         onPickFolder={handlePickFolder}
         vrmUrl={vrmUrl}
-        onLoadVrm={handleLoadVrm}
         onOpenSettings={handleOpenSettings}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}

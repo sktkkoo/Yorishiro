@@ -10,7 +10,6 @@ interface SidebarProps {
   readonly folderName: string;
   readonly onPickFolder: () => void;
   readonly vrmUrl: string | null;
-  readonly onLoadVrm: () => void;
   readonly onOpenSettings: () => void;
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
@@ -21,7 +20,6 @@ export default function Sidebar({
   folderName,
   onPickFolder,
   vrmUrl,
-  onLoadVrm,
   onOpenSettings,
   onBodyReady,
   bodyDevLog,
@@ -49,31 +47,19 @@ export default function Sidebar({
         {scene !== null ? (
           <SceneCompositor scene={scene}>
             {vrmUrl ? (
-              <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+              <Suspense fallback={<div className="vrm-loading" />}>
                 <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
               </Suspense>
             ) : (
-              <div className="vrm-placeholder">
-                <span className="vrm-placeholder-icon">🤖</span>
-                <p className="vrm-placeholder-text">VRM 未読み込み</p>
-                <button type="button" className="avatar-btn-cta" onClick={onLoadVrm}>
-                  アバターを読み込む →
-                </button>
-              </div>
+              <div className="vrm-placeholder" />
             )}
           </SceneCompositor>
         ) : vrmUrl ? (
-          <Suspense fallback={<div className="vrm-loading">読み込み中...</div>}>
+          <Suspense fallback={<div className="vrm-loading" />}>
             <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
           </Suspense>
         ) : (
-          <div className="vrm-placeholder">
-            <span className="vrm-placeholder-icon">🤖</span>
-            <p className="vrm-placeholder-text">VRM 未読み込み</p>
-            <button type="button" className="avatar-btn-cta" onClick={onLoadVrm}>
-              アバターを読み込む →
-            </button>
-          </div>
+          <div className="vrm-placeholder" />
         )}
       </div>
     </div>
