@@ -1,20 +1,40 @@
+/**
+ * ThreeRuntime が管理する R3F content の root。
+ *
+ * 役割:
+ *   - ScenePackRegistry を subscribe し、active pack に component があれば
+ *     R3F tree に mount する。
+ *   - debug cube は localStorage opt-in の確認用として残す。
+ *   - VRM は本 phase では imperative のまま。vrmSlot prop は null を渡す。
+ *
+ * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §4
+ */
+
 import { useFrame } from "@react-three/fiber";
-import { type ReactNode, useMemo, useRef } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
+import { getSceneRegistry } from "../scene-pack-registry";
+import { BUNDLED_ASSETS } from "../scene-pack-registry/asset-resolver";
+import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
+import type { ScenePackEntry } from "../scene-pack-registry/types";
 
 export interface R3fRuntimeRootProps {
   readonly children?: ReactNode;
 }
 
-/**
- * Root for ThreeRuntime-hosted R3F content.
- *
- * Phase 1 keeps production output empty: it proves the custom root can share
- * the existing renderer/scene/camera without moving VRM or Body ownership yet.
- * Set `localStorage["charminal:r3f-debug"] = "1"` before reload to show the
- * small debug cube and confirm useFrame is driven by ThreeRuntime's RAF loop.
- */
 export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
+  const [activeEntry, setActiveEntry] = useState<ScenePackEntry | null>(null);
+
+  useEffect(() => {
+    const registry = getSceneRegistry();
+    const subscription = registry.subscribeActiveEntry((entry) => {
+      setActiveEntry(entry);
+    });
+    return () => {
+      subscription.dispose();
+    };
+  }, []);
+
   const debugEnabled = useMemo(() => {
     try {
       return localStorage.getItem("charminal:r3f-debug") === "1";
@@ -23,12 +43,37 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
     }
   }, []);
 
+  const ActiveComponent = activeEntry?.component;
+
   return (
     <>
       {debugEnabled ? <R3fDebugCube /> : null}
+      {ActiveComponent ? (
+        <ActivePackComponent Component={ActiveComponent} entry={activeEntry} />
+      ) : null}
       {children}
     </>
   );
+}
+
+interface ActivePackComponentProps {
+  readonly Component: NonNullable<ScenePackEntry["component"]>;
+  readonly entry: ScenePackEntry;
+}
+
+function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
+  const resolveAsset = useMemo(
+    () =>
+      makeResolveAsset({
+        packId: entry.id,
+        origin: entry.origin,
+        bundledAssets: BUNDLED_ASSETS,
+      }),
+    [entry.id, entry.origin],
+  );
+
+  // 本 phase では VRM を R3F tree に入れない。pack には null slot だけを渡す。
+  return <Component vrmSlot={null} resolveAsset={resolveAsset} />;
 }
 
 function R3fDebugCube() {

@@ -22,7 +22,7 @@ import { resolveSharedSound, SHARED_SOUNDS } from "../ambient-audio/sound-resolv
  * Glob pattern に漏れた拡張子の asset は undefined が返り、当該 layer は
  * src を外して register される（§5.5 graceful degradation）。
  */
-const BUNDLED_ASSETS = import.meta.glob(
+export const BUNDLED_ASSETS = import.meta.glob(
   "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif,svg,mp3,wav,ogg,m4a}",
   { eager: true, query: "?url", import: "default" },
 ) as Record<string, string>;
