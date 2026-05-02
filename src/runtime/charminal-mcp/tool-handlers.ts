@@ -1001,3 +1001,40 @@ export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
     return { width };
   };
 }
+
+/* ──────────────────────────────────────────────────────────
+ * scene.activate
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneActivateDeps {
+  readonly registry: {
+    readonly setActiveScene: (id: string | null) => void;
+    readonly getActiveSceneId: () => string | null;
+  };
+}
+
+export interface SceneActivateResult {
+  readonly active: string | null;
+}
+
+/**
+ * Active scene pack を runtime-only で切り替える handler。
+ * registry のみ更新、~/.charminal/config.json は触らない。
+ * 不明な id は registry が fall-through で bundled default を選ぶ（throw しない）。
+ *
+ * 関連: docs/decisions/single-active-config-picks.md（runtime ≠ config の divergence 許容）
+ */
+export function createSceneActivateHandler(deps: SceneActivateDeps) {
+  return async (request: unknown): Promise<SceneActivateResult> => {
+    const r = requestRecord(request);
+    if (!("id" in r)) {
+      throw new Error("id must be non-empty string or null");
+    }
+    const id = r.id;
+    if (id !== null && (typeof id !== "string" || id === "")) {
+      throw new Error("id must be non-empty string or null");
+    }
+    deps.registry.setActiveScene(id);
+    return { active: deps.registry.getActiveSceneId() };
+  };
+}
