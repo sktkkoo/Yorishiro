@@ -1038,3 +1038,37 @@ export function createSceneActivateHandler(deps: SceneActivateDeps) {
     return { active: deps.registry.getActiveSceneId() };
   };
 }
+
+/* ──────────────────────────────────────────────────────────
+ * ui.activate
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiActivateDeps {
+  readonly registry: {
+    readonly setActiveUi: (id: string | null) => void;
+    readonly getActiveUiId: () => string | null;
+  };
+}
+
+export interface UiActivateResult {
+  readonly active: string | null;
+}
+
+/**
+ * Active UI pack を runtime-only で切り替える handler。scene.activate と対称。
+ * registry のみ更新、~/.charminal/config.json は触らない。
+ */
+export function createUiActivateHandler(deps: UiActivateDeps) {
+  return async (request: unknown): Promise<UiActivateResult> => {
+    const r = requestRecord(request);
+    if (!("id" in r)) {
+      throw new Error("id must be non-empty string or null");
+    }
+    const id = r.id;
+    if (id !== null && (typeof id !== "string" || id === "")) {
+      throw new Error("id must be non-empty string or null");
+    }
+    deps.registry.setActiveUi(id);
+    return { active: deps.registry.getActiveUiId() };
+  };
+}

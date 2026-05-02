@@ -5,10 +5,14 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
-import type { SpaceEffectRequest } from "@charminal/sdk";
+import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TweenManager } from "../../core/tween/tween-manager";
+import type { SceneSpec } from "../../sdk/scene";
+import type { ScenePackManifest } from "../../sdk/scene-pack";
+import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
+import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
@@ -30,6 +34,7 @@ import {
   createSetPackStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
+  createUiActivateHandler,
   createUiSceneLayerSetHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
@@ -1140,10 +1145,6 @@ describe("createUiSidebarSetHandler", () => {
   });
 });
 
-import type { SceneSpec } from "../../sdk/scene";
-import type { ScenePackManifest } from "../../sdk/scene-pack";
-import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
-
 describe("createSceneActivateHandler", () => {
   const sceneSpec = (id: string) => ({ id, layers: [] }) as unknown as SceneSpec;
   const manifest = (id: string) => ({ id, name: id }) as unknown as ScenePackManifest;
@@ -1196,5 +1197,58 @@ describe("createSceneActivateHandler", () => {
     // SingleActiveRegistry.setActive で unknown id は fall-through、bundled alphabetical 先頭が active
     const result = await handler({ id: "ghost" });
     expect(result.active).toBe("s1");
+  });
+});
+
+describe("createUiActivateHandler", () => {
+  const makeRegistry = () => {
+    const r = createUiPackRegistry();
+    r.register({
+      id: "u1",
+      origin: "bundled",
+      manifest: { id: "u1", name: "U1" } as unknown as UiPackManifest,
+      pack: {
+        layout: { mode: "auto" } as unknown as UiLayout,
+        mount: (_: UiContext) => ({ dispose: () => {} }),
+      },
+    });
+    r.register({
+      id: "u2",
+      origin: "bundled",
+      manifest: { id: "u2", name: "U2" } as unknown as UiPackManifest,
+      pack: {
+        layout: { mode: "auto" } as unknown as UiLayout,
+        mount: (_: UiContext) => ({ dispose: () => {} }),
+      },
+    });
+    return r;
+  };
+
+  it("switches active ui by id", async () => {
+    const registry = makeRegistry();
+    const handler = createUiActivateHandler({ registry });
+    const result = await handler({ id: "u2" });
+    expect(result).toEqual({ active: "u2" });
+    expect(registry.getActiveUiId()).toBe("u2");
+  });
+
+  it("clears with null (UI pack registry uses nullMeansNoActive=true)", async () => {
+    const registry = makeRegistry();
+    const handler = createUiActivateHandler({ registry });
+    await handler({ id: "u1" });
+    const result = await handler({ id: null });
+    // UiPackRegistry は nullMeansNoActive=true なので null で active も null
+    expect(result).toEqual({ active: null });
+    expect(registry.getActiveUiId()).toBeNull();
+  });
+
+  it("rejects empty string", async () => {
+    const handler = createUiActivateHandler({ registry: makeRegistry() });
+    await expect(handler({ id: "" })).rejects.toThrow("id must be non-empty string or null");
+  });
+
+  it("rejects when id field is omitted", async () => {
+    const handler = createUiActivateHandler({ registry: makeRegistry() });
+    await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
   });
 });
