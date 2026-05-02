@@ -143,6 +143,19 @@ pub struct BodyAnimationPlayRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyMotionCancelRequest {}
 
+/// `scene_activate` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SceneActivateRequest {
+    /// Pack id（null で active を clear）。registry のみ更新、config.json は触らない。
+    pub id: Option<String>,
+}
+
+/// `ui_activate` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiActivateRequest {
+    pub id: Option<String>,
+}
+
 /// `ui_scene_layer_set` の引数。scene layer の blur / opacity を操作する。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UiSceneLayerSetRequest {
@@ -465,6 +478,28 @@ impl Charminal {
             }),
         )
         .await
+    }
+
+    /// scene pack の active を runtime-only で切り替える。config.json は触らない。
+    #[tool(
+        description = "Switch the active scene pack at runtime (registry only; does not persist to config.json). Pass null id to clear. Use list_packs to discover available scene pack ids."
+    )]
+    async fn scene_activate(
+        &self,
+        Parameters(req): Parameters<SceneActivateRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "scene.activate", json!({ "id": req.id })).await
+    }
+
+    /// UI pack の active を runtime-only で切り替える。config.json は触らない。
+    #[tool(
+        description = "Switch the active UI pack at runtime (registry only; does not persist to config.json). Pass null id to clear. Use list_packs to discover available ui pack ids."
+    )]
+    async fn ui_activate(
+        &self,
+        Parameters(req): Parameters<UiActivateRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "ui.activate", json!({ "id": req.id })).await
     }
 }
 
