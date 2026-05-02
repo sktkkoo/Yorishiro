@@ -7,4 +7,6 @@
  */
 
 export { SceneCompositor, type SceneCompositorProps } from "./scene-compositor";
+export type { SceneRouterProps } from "./scene-router";
+export { SceneRouter } from "./scene-router";
 export type { Layer, LayerRole, SceneSpec } from "./types";
