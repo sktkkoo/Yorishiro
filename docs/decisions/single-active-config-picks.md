@@ -3,7 +3,7 @@
 > このファイルは「**single-active な pack 種別の active 選択 mechanism を設計する**」時に読む。対象：dev / AI / pack 作者。
 
 **Status**: active
-**Last updated**: 2026-04-19
+**Last updated**: 2026-05-03
 
 ## TL;DR
 
@@ -30,6 +30,7 @@ scene / persona など single-active な pack 種別では、**active 選択は 
 
 - 新 single-active pack 種別を追加する際は **config に field 1 つ追加** + Charminal 側で fallback 設計
 - 新 pack 種別を「いつ複数並行 / いつ single-active」と分類する判断軸：状態を持つ / lifecycle が長い → single-active 寄り、event-driven / 短命 → 複数並行
+- **runtime active と config の divergence は許容**。MCP `scene.activate` / `ui.activate` は registry のみ更新する runtime-only mode で、`config.activeScene` / `config.activeUi` は永続値として残る。再起動で config picks に戻る。`state.get` の `runtime.activeScene` / `runtime.activeUi` で runtime SOT を観察できる
 
 ## 関連 reference
 
