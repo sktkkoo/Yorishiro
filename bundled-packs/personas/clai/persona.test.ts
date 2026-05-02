@@ -376,15 +376,17 @@ describe("clai persona triggers", () => {
       expect(handler).toBeDefined();
     });
 
-    it("plays gun-fire animation, zooms out the camera, holds it, waits 1500ms, then injects text-physics", async () => {
+    it("plays gun-fire animation, zooms out, waits, injects text-physics, then releases motion", async () => {
       if (!handler) throw new Error("handler not registered");
+      const stop = vi.fn(() => Promise.resolve());
+      const cancel = vi.fn();
       const play = vi.fn<(ref: AnimationRef, opts?: PlayOptions) => AnimationHandle>(
         (animation) => ({
           animation,
           startedAt: 0,
           setWeight: () => {},
-          stop: () => Promise.resolve(),
-          cancel: () => {},
+          stop,
+          cancel,
           completion: Promise.resolve(),
         }),
       );
@@ -418,22 +420,27 @@ describe("clai persona triggers", () => {
         fadeInMs: 300,
         fadeOutMs: 300,
         weight: 1,
-        priority: 10,
       });
       expect(injectEffect).toHaveBeenNthCalledWith(1, {
         kind: "camera-move",
         holdMs: 8000,
       });
-      expect(after).toHaveBeenCalledWith(1500);
+      expect(after).toHaveBeenNthCalledWith(1, 1500);
       expect(injectEffect).toHaveBeenNthCalledWith(2, {
         kind: "text-physics",
         origin: { x: 0.5, y: 0.7 },
         force: 100,
       });
+      expect(after).toHaveBeenNthCalledWith(2, 6000);
+      expect(stop).toHaveBeenCalledWith(400);
       expect(play.mock.invocationCallOrder[0]).toBeLessThan(after.mock.invocationCallOrder[0]);
       expect(after.mock.invocationCallOrder[0]).toBeLessThan(
         injectEffect.mock.invocationCallOrder[1],
       );
+      expect(injectEffect.mock.invocationCallOrder[1]).toBeLessThan(
+        after.mock.invocationCallOrder[1],
+      );
+      expect(after.mock.invocationCallOrder[1]).toBeLessThan(stop.mock.invocationCallOrder[0]);
     });
 
     it("does not inject text-physics after abort during the timing wait", async () => {
@@ -443,6 +450,17 @@ describe("clai persona triggers", () => {
       const after = vi.fn(async () => {
         (signal as { aborted: boolean }).aborted = true;
       });
+      const cancel = vi.fn();
+      const play = vi.fn<(ref: AnimationRef, opts?: PlayOptions) => AnimationHandle>(
+        (animation) => ({
+          animation,
+          startedAt: 0,
+          setWeight: () => {},
+          stop: () => Promise.resolve(),
+          cancel,
+          completion: Promise.resolve(),
+        }),
+      );
 
       const ctx = {
         event: {
@@ -451,7 +469,7 @@ describe("clai persona triggers", () => {
           payload: { durationMs: 90_000 },
           trigger: null,
         },
-        character: { play: vi.fn(), express: vi.fn(), gaze: vi.fn(), interrupt: vi.fn() },
+        character: { play, express: vi.fn(), gaze: vi.fn(), interrupt: vi.fn() },
         space: { injectEffect },
         log: { write: vi.fn(), tail: vi.fn(() => []), read: vi.fn(() => []) },
         time: { after },
@@ -465,6 +483,7 @@ describe("clai persona triggers", () => {
         kind: "camera-move",
         holdMs: 8000,
       });
+      expect(cancel).toHaveBeenCalledOnce();
     });
   });
 
