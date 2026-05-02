@@ -766,6 +766,8 @@ function App() {
           "ui.sidebar.set": createUiSidebarSetHandler({
             setSidebarWidth: (px) => {
               document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+              const el = document.querySelector<HTMLElement>(".sidebar");
+              if (el) el.style.display = px <= 0 ? "none" : "";
             },
             getSidebarWidth: () => {
               const raw = getComputedStyle(document.documentElement)
@@ -773,6 +775,13 @@ function App() {
                 .trim();
               return Number.parseFloat(raw) || 280;
             },
+            getDefaultSidebarWidth: (() => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--sidebar-width")
+                .trim();
+              const initial = Number.parseFloat(raw) || 280;
+              return () => initial;
+            })(),
             tweenManager: getThreeRuntime().getTweenManager(),
           }),
         };

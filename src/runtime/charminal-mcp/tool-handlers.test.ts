@@ -1042,6 +1042,7 @@ describe("createUiSidebarSetHandler", () => {
     const handler = createUiSidebarSetHandler({
       setSidebarWidth: () => {},
       getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
       tweenManager: tm,
     });
     const result = await handler({ width: 350, durationMs: 800 });
@@ -1057,10 +1058,43 @@ describe("createUiSidebarSetHandler", () => {
         setTo = v;
       },
       getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
       tweenManager: tm,
     });
     const result = await handler({ width: 350 });
     expect(result.tweening).toBeUndefined();
     expect(setTo).toBe(350);
+  });
+
+  it("width: 0 でサイドバー非表示", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: (v) => {
+        setTo = v;
+      },
+      getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
+      tweenManager: tm,
+    });
+    const result = await handler({ width: 0 });
+    expect(setTo).toBe(0);
+    expect(result.width).toBe(0);
+  });
+
+  it("width 省略でデフォルト幅にフォールバック", async () => {
+    const tm = new TweenManager();
+    let setTo = -1;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: (v) => {
+        setTo = v;
+      },
+      getSidebarWidth: () => 400,
+      getDefaultSidebarWidth: () => 280,
+      tweenManager: tm,
+    });
+    const result = await handler({});
+    expect(setTo).toBe(280);
+    expect(result.width).toBe(280);
   });
 });

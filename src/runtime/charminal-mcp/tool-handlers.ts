@@ -952,6 +952,7 @@ export function createUiTerminalSetHandler(deps: UiTerminalSetDeps) {
 export interface UiSidebarSetDeps {
   readonly setSidebarWidth: (px: number) => void;
   readonly getSidebarWidth: () => number;
+  readonly getDefaultSidebarWidth: () => number;
   readonly tweenManager: TweenManager;
 }
 
@@ -964,15 +965,13 @@ export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
   return async (request: unknown): Promise<UiSidebarSetResult> => {
     const r = requestRecord(request);
     const width =
-      typeof r.width === "number" && Number.isFinite(r.width) && r.width > 0 ? r.width : undefined;
+      typeof r.width === "number" && Number.isFinite(r.width) && r.width >= 0
+        ? r.width
+        : deps.getDefaultSidebarWidth();
     const durationMs =
       typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
         ? r.durationMs
         : 0;
-
-    if (width === undefined) {
-      return {};
-    }
 
     if (durationMs > 0) {
       deps.tweenManager.start("ui.sidebar.width", width, durationMs, deps.setSidebarWidth, {
