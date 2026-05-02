@@ -69,6 +69,7 @@ import {
 import {
   getSceneRegistry,
   resolveSceneAssets,
+  type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
@@ -89,7 +90,7 @@ import {
 } from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
-import type { ScenePackManifest } from "./sdk/scene-pack";
+import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
@@ -441,7 +442,10 @@ function App() {
     async function bootstrap(): Promise<void> {
       // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
       try {
-        const bundledScenes = [
+        const bundledScenes: ReadonlyArray<{
+          readonly pack: ScenePackDefinition;
+          readonly manifest: ScenePackManifest;
+        }> = [
           { pack: simpleRoomPack, manifest: simpleRoomManifest as ScenePackManifest },
           { pack: mistyGrasslandsPack, manifest: mistyGrasslandsManifest as ScenePackManifest },
         ];
@@ -461,6 +465,7 @@ function App() {
             manifest,
             scene: resolved,
             origin: "bundled",
+            component: pack.component,
           });
           appLog.write({
             phase: "register",
@@ -896,15 +901,16 @@ function App() {
     };
   }, [userLayerReady]);
 
-  // active scene を Registry から subscribe して React state に流す。
-  // `setActiveSceneState` と命名してメソッド名 `setActiveScene` との衝突を避ける。
-  const [activeScene, setActiveSceneState] = useState<SceneSpec | null>(() =>
-    scenePackRegistry.getActiveScene(),
+  // active scene entry を Registry から subscribe して React state に流す。
+  // SceneSpec が必要な UI context 系は entry.scene から既存どおり組み立てる。
+  const [activeSceneEntry, setActiveSceneEntryState] = useState<ScenePackEntry | null>(() =>
+    scenePackRegistry.getActiveEntry(),
   );
   useEffect(() => {
-    const sub = scenePackRegistry.subscribeActive((scene) => setActiveSceneState(scene));
+    const sub = scenePackRegistry.subscribeActiveEntry((entry) => setActiveSceneEntryState(entry));
     return () => sub.dispose();
   }, [scenePackRegistry]);
+  const activeScene = activeSceneEntry?.scene ?? null;
   const [sceneLayerOverrides, setSceneLayerOverrides] = useState<ReadonlyArray<SceneLayerOverride>>(
     [],
   );
@@ -912,6 +918,11 @@ function App() {
     () => applySceneLayerOverrides(activeScene, sceneLayerOverrides),
     [activeScene, sceneLayerOverrides],
   );
+  const renderedSceneEntry = useMemo<ScenePackEntry | null>(() => {
+    if (activeSceneEntry === null || renderedScene === null) return null;
+    if (renderedScene === activeSceneEntry.scene) return activeSceneEntry;
+    return { ...activeSceneEntry, scene: renderedScene };
+  }, [activeSceneEntry, renderedScene]);
   const renderedSceneRef = useRef<SceneSpec | null>(renderedScene);
   const sceneListenersRef = useRef(new Set<(scene: SceneSpec | null) => void>());
   // initAmbientAudio で生成した engine を buildUiContext からも触れるよう保持する。
@@ -1727,7 +1738,7 @@ function App() {
         onOpenSettings={handleOpenSettings}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
-        scene={renderedScene}
+        scene={renderedSceneEntry}
       />
       {isUserLayerReady && (
         <Terminal

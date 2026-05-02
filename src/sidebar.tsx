@@ -2,7 +2,8 @@ import { Folder, Settings } from "lucide-react";
 import { lazy, Suspense } from "react";
 import type { Body } from "./core/body";
 import type { SubsystemLog } from "./core/dev-log";
-import { SceneCompositor, type SceneSpec } from "./core/scene";
+import { SceneRouter } from "./core/scene";
+import type { ScenePackEntry } from "./runtime/scene-pack-registry/types";
 
 const VrmViewer = lazy(() => import("./vrm-viewer"));
 
@@ -13,7 +14,8 @@ interface SidebarProps {
   readonly onOpenSettings: () => void;
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
-  readonly scene: SceneSpec | null;
+  /** Active scene pack の entry。null は未登録状態。 */
+  readonly scene: ScenePackEntry | null;
 }
 
 export default function Sidebar({
@@ -25,6 +27,14 @@ export default function Sidebar({
   bodyDevLog,
   scene,
 }: SidebarProps) {
+  const vrmContent = vrmUrl ? (
+    <Suspense fallback={<div className="vrm-loading" />}>
+      <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
+    </Suspense>
+  ) : (
+    <div className="vrm-placeholder" />
+  );
+
   return (
     <div className="sidebar">
       <div className="sidebar-top-row">
@@ -44,23 +54,7 @@ export default function Sidebar({
       </div>
 
       <div className="charactor-container">
-        {scene !== null ? (
-          <SceneCompositor scene={scene}>
-            {vrmUrl ? (
-              <Suspense fallback={<div className="vrm-loading" />}>
-                <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
-              </Suspense>
-            ) : (
-              <div className="vrm-placeholder" />
-            )}
-          </SceneCompositor>
-        ) : vrmUrl ? (
-          <Suspense fallback={<div className="vrm-loading" />}>
-            <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
-          </Suspense>
-        ) : (
-          <div className="vrm-placeholder" />
-        )}
+        <SceneRouter entry={scene}>{vrmContent}</SceneRouter>
       </div>
     </div>
   );
