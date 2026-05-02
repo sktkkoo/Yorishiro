@@ -1724,7 +1724,6 @@ function App() {
         folderName={folderName}
         onPickFolder={handlePickFolder}
         vrmUrl={vrmUrl}
-        onLoadVrm={handleLoadVrm}
         onOpenSettings={handleOpenSettings}
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}

@@ -10,7 +10,6 @@ interface SidebarProps {
   readonly folderName: string;
   readonly onPickFolder: () => void;
   readonly vrmUrl: string | null;
-  readonly onLoadVrm: () => void;
   readonly onOpenSettings: () => void;
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
@@ -21,7 +20,6 @@ export default function Sidebar({
   folderName,
   onPickFolder,
   vrmUrl,
-  onLoadVrm,
   onOpenSettings,
   onBodyReady,
   bodyDevLog,
