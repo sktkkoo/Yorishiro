@@ -22,7 +22,7 @@ import { resolveSharedSound, SHARED_SOUNDS } from "../ambient-audio/sound-resolv
  * Glob pattern に漏れた拡張子の asset は undefined が返り、当該 layer は
  * src を外して register される（§5.5 graceful degradation）。
  */
-const BUNDLED_ASSETS = import.meta.glob(
+export const BUNDLED_ASSETS = import.meta.glob(
   "/bundled-packs/scenes/**/*.{mp4,webm,mov,m4v,ogv,jpg,jpeg,png,webp,avif,gif,svg,mp3,wav,ogg,m4a}",
   { eager: true, query: "?url", import: "default" },
 ) as Record<string, string>;
@@ -41,6 +41,12 @@ export function isAbsoluteUrl(src: string): boolean {
 export function normalizeRelativePath(src: string): string {
   return src.replace(/^\.\//, "");
 }
+
+/**
+ * normalizeRelativePath の互換 alias。
+ * plan 上の名前に合わせて、既存利用を残したまま公開する。
+ */
+export const stripLeadingDotSlash = normalizeRelativePath;
 
 /**
  * bundled pack の pack-relative path を絶対 URL に解決。見つからなければ null。

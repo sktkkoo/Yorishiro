@@ -8,8 +8,9 @@
  * Internal design-record: specs/2026-04-18-scene-pack-registry.md §3
  */
 
+import type { ComponentType } from "react";
 import type { SceneSpec } from "../../sdk/scene";
-import type { ScenePackManifest } from "../../sdk/scene-pack";
+import type { ScenePackComponentProps, ScenePackManifest } from "../../sdk/scene-pack";
 
 export type PackOrigin = "bundled" | "user";
 
@@ -24,6 +25,15 @@ export interface ScenePackEntry {
   readonly manifest: ScenePackManifest;
   readonly scene: SceneSpec;
   readonly origin: PackOrigin;
+
+  /**
+   * R3F-component scene pack の場合の component reference。
+   * Bundled pack のみ。User pack 由来の場合は loader が undefined を保つ
+   * （component field を含む user pack は loader が warn して捨てる）。
+   *
+   * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §5.2
+   */
+  readonly component?: ComponentType<ScenePackComponentProps>;
 }
 
 export interface Disposable {
@@ -48,10 +58,22 @@ export interface ScenePackRegistry {
   getActiveScene(): SceneSpec | null;
 
   /**
+   * 現在の active scene pack の entry（component を含む完全な entry）または null。
+   * R3F-component path の判別に使う。
+   */
+  getActiveEntry(): ScenePackEntry | null;
+
+  /**
    * active 変更を subscribe。登録時に現 active があれば同期で 1 回 fire。
    * 返す Disposable は unsubscribe。
    */
   subscribeActive(listener: (scene: SceneSpec | null) => void): Disposable;
+
+  /**
+   * Active entry 変更を subscribe。登録時に現 active があれば同期で 1 回 fire。
+   * 既存 subscribeActive(scene) と並列に存在する。
+   */
+  subscribeActiveEntry(listener: (entry: ScenePackEntry | null) => void): Disposable;
 
   /**
    * Active scene を user 選択として設定（`config.json` の `activeScene` 由来）。

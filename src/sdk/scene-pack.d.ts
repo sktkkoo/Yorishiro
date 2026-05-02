@@ -12,6 +12,7 @@
  * Internal design-record: specs/2026-04-18-scene-pack-registry.md §3
  */
 
+import type { ComponentType, ReactNode } from "react";
 import type { SceneSpec } from "./scene";
 
 /**
@@ -49,6 +50,26 @@ export interface ScenePackManifest {
 }
 
 /**
+ * Scene pack が R3F component を export する場合に受け取る props.
+ *
+ * - `vrmSlot`: VRM character の mount slot. 現状は runtime が `null` を渡す
+ *   （VRM は ThreeRuntime が imperative に管理）. 将来 VRM が R3F tree に
+ *   入った時点で `<VrmCharacter />` が渡されるようになる. Pack 作者は
+ *   `vrmSlot` を任意位置に挿入してよく, null の時は no-op として扱う.
+ * - `resolveAsset`: pack-relative path を絶対 URL に変換するヘルパー.
+ *   Bundled / user 両 origin で書き方は統一される（"./assets/foo.glb"）.
+ * - `controls`: 別 spec で扱う leva 連携用. 本 phase では型のみ provide,
+ *   value source は未配線（runtime は常に undefined を渡す）.
+ *
+ * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §3.1
+ */
+export interface ScenePackComponentProps {
+  readonly vrmSlot: ReactNode;
+  readonly resolveAsset: (relativePath: string) => string;
+  readonly controls?: Record<string, unknown>;
+}
+
+/**
  * scene.ts の export default 型。
  *
  * Example:
@@ -72,4 +93,16 @@ export interface ScenePackDefinition {
   readonly id: string;
   readonly type: "scene";
   readonly scene: SceneSpec;
+
+  /**
+   * Optional R3F component による visual 表現.
+   * 提供されれば runtime が R3F host に mount し, scene.layers は無視される.
+   * 提供されなければ既存の SceneCompositor が scene.layers を DOM stack で描画.
+   *
+   * 初期スコープでは bundled pack のみ provide 可能.
+   * User pack に component を含めても loader 側で reject される（warning log）.
+   *
+   * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §3.1, §5.2
+   */
+  readonly component?: ComponentType<ScenePackComponentProps>;
 }

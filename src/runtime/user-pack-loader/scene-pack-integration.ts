@@ -103,6 +103,12 @@ export async function registerScenePack(ctx: SceneRegisterContext): Promise<Scen
     });
     return { status: "failed", error };
   }
+  if (scenePackDef.component !== undefined) {
+    console.warn(
+      `[user-pack-loader] scene pack "${scenePackDef.id}" exports a component field. ` +
+        "R3F-component scene packs are not yet supported in user packs and will be ignored.",
+    );
+  }
 
   // 2. packDir = entryPath から末尾の `/scene.js` を除いたディレクトリ
   const packDir = ctx.entryPath.replace(/\/scene\.js$/, "");
@@ -153,6 +159,7 @@ export async function registerScenePack(ctx: SceneRegisterContext): Promise<Scen
     manifest,
     scene: resolved,
     origin: "user",
+    // component は user pack では渡さない（R3F-component scene pack は bundled-only）。
   });
   ctx.packRegistry.register(ctx.id, "scene", handle);
 
