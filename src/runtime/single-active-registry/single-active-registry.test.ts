@@ -44,6 +44,19 @@ describe("SingleActiveRegistry", () => {
       registry.register(makeEntry("b", "user"));
       expect(registry.listEntries()).toHaveLength(2);
     });
+
+    it("getActiveId returns active entry's id, or null", () => {
+      const registry = makeRegistry();
+      expect(registry.getActiveId()).toBeNull();
+      registry.register(makeEntry("a", "bundled"));
+      expect(registry.getActiveId()).toBe("a");
+      registry.setActive(null);
+      registry.register(makeEntry("b", "bundled"));
+      // alphabetical fallback: "a" stays active
+      expect(registry.getActiveId()).toBe("a");
+      registry.setActive("b");
+      expect(registry.getActiveId()).toBe("b");
+    });
   });
 
   describe("override pattern", () => {
