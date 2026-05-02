@@ -38,7 +38,11 @@ export type {
   ProceduralLayerKind,
   SceneSpec,
 } from "./scene";
-export type { ScenePackDefinition, ScenePackManifest } from "./scene-pack";
+export type {
+  ScenePackComponentProps,
+  ScenePackDefinition,
+  ScenePackManifest,
+} from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
 export type {
   UiAppAPI,
