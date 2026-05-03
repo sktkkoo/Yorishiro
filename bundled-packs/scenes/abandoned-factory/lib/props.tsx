@@ -2,15 +2,43 @@
  * abandoned-factory の GLTF props.
  * asset が欠ける場合は placeholder box を表示.
  *
- * useGLTF で GLB を load し、Suspense fallback で placeholder box を表示.
- * asset が存在しない場合でも scene 全体が壊れない graceful degradation.
+ * Asset 欠落検出の二段防御:
+ *   1. `resolveAsset` が relativePath をそのまま返した場合 (BUNDLED_ASSETS で
+ *      lookup miss) は useGLTF を呼ばずに直接 Placeholder を render. これで
+ *      不要な fetch エラーと Suspense 永久 fallback を防ぐ.
+ *   2. それでも GLTFProp 内で error が起きた場合は GltfErrorBoundary が catch
+ *      して Placeholder にフォールスルー. 1 個の prop の error が他の R3F
+ *      sibling まで unmount するのを防ぐ.
  */
 
 import { useGLTF } from "@react-three/drei";
-import { Suspense, useMemo } from "react";
+import { Component, type ReactNode, Suspense, useMemo } from "react";
 import type { Euler } from "three";
 import * as THREE from "three";
 import { CRT_POSITION, LANTERN_POSITION } from "./lights";
+
+/* ---- ErrorBoundary: GLTFLoader の throw を localize する ---- */
+
+interface GltfErrorBoundaryProps {
+  fallback: ReactNode;
+  children: ReactNode;
+}
+
+class GltfErrorBoundary extends Component<GltfErrorBoundaryProps, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    console.warn("[abandoned-factory] GLTF prop failed to load:", error.message);
+  }
+
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
 
 /* ---- 内部: GLTF prop ---- */
 
@@ -68,7 +96,8 @@ function Placeholder({ position, color = "#888888" }: PlaceholderProps) {
 interface PropEntry {
   /** デバッグ用 ID. key にも使う. */
   id: string;
-  url: string;
+  /** Pack-relative path (resolveAsset 適用前) */
+  relPath: string;
   position: readonly [number, number, number];
   rotation?: readonly [number, number, number];
   scale?: number | readonly [number, number, number];
@@ -80,75 +109,88 @@ interface AbandonedFactoryPropsProps {
 }
 
 /**
- * 廃工場の GLTF prop 群を Suspense 付きで mount.
+ * 廃工場の GLTF prop 群.
  *
- * 各 prop は Suspense fallback で placeholder box を表示するため、
- * GLB asset が欠落していても scene は正常に動作する.
+ * 各 entry につき:
+ *   - resolveAsset(relPath) === relPath (= 解決失敗) なら直接 Placeholder.
+ *   - 解決成功なら ErrorBoundary + Suspense でラップして GLTFProp を mount.
+ *     ErrorBoundary は GLTFLoader の reject などの runtime error を localize.
+ *     Suspense は load 中の loading promise を catch して Placeholder を表示.
  */
 export function AbandonedFactoryProps({ resolveAsset }: AbandonedFactoryPropsProps) {
   const entries: PropEntry[] = useMemo(
     () => [
       {
         id: "lantern",
-        url: resolveAsset("./assets/lantern.glb"),
+        relPath: "./assets/lantern.glb",
         position: LANTERN_POSITION,
         placeholderColor: "#f29e52",
       },
       {
         id: "crt-tv",
-        url: resolveAsset("./assets/crt-tv.glb"),
+        relPath: "./assets/crt-tv.glb",
         position: CRT_POSITION,
         placeholderColor: "#b8d0f0",
       },
       {
         id: "chair",
-        url: resolveAsset("./assets/chair.glb"),
+        relPath: "./assets/chair.glb",
         position: [1.2, 0, 0.3],
       },
       {
         id: "debris-1",
-        url: resolveAsset("./assets/debris-1.glb"),
+        relPath: "./assets/debris-1.glb",
         position: [-0.8, 0, 0.5],
       },
       {
         id: "debris-2",
-        url: resolveAsset("./assets/debris-2.glb"),
+        relPath: "./assets/debris-2.glb",
         position: [1.5, 0, -0.4],
       },
       {
         id: "machinery",
-        url: resolveAsset("./assets/machinery.glb"),
+        relPath: "./assets/machinery.glb",
         position: [-3.5, 0, -4],
       },
       {
         id: "oil-drum",
-        url: resolveAsset("./assets/oil-drum.glb"),
+        relPath: "./assets/oil-drum.glb",
         position: [3, 0, -3],
       },
       {
         id: "crates",
-        url: resolveAsset("./assets/crates.glb"),
+        relPath: "./assets/crates.glb",
         position: [-2.5, 0, 2.5],
       },
     ],
-    [resolveAsset],
+    [],
   );
 
   return (
     <group>
-      {entries.map((entry) => (
-        <Suspense
-          key={entry.id}
-          fallback={<Placeholder position={entry.position} color={entry.placeholderColor} />}
-        >
-          <GLTFProp
-            url={entry.url}
-            position={entry.position}
-            rotation={entry.rotation}
-            scale={entry.scale}
-          />
-        </Suspense>
-      ))}
+      {entries.map((entry) => {
+        const url = resolveAsset(entry.relPath);
+        const placeholder = (
+          <Placeholder position={entry.position} color={entry.placeholderColor} />
+        );
+        // resolveAsset が relPath をそのまま返した = BUNDLED_ASSETS lookup miss.
+        // useGLTF を呼ばずに Placeholder のみ.
+        if (url === entry.relPath) {
+          return <group key={entry.id}>{placeholder}</group>;
+        }
+        return (
+          <GltfErrorBoundary key={entry.id} fallback={placeholder}>
+            <Suspense fallback={placeholder}>
+              <GLTFProp
+                url={url}
+                position={entry.position}
+                rotation={entry.rotation}
+                scale={entry.scale}
+              />
+            </Suspense>
+          </GltfErrorBoundary>
+        );
+      })}
     </group>
   );
 }

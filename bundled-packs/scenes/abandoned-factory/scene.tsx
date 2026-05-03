@@ -24,6 +24,11 @@ import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
 
 function AbandonedFactoryScene({ vrmSlot, resolveAsset }: ScenePackComponentProps) {
+  // 一時 diagnostic: scene tree が R3F 内で実際に mount されているか確認用.
+  // 修正完了後に削除する.
+  if (typeof window !== "undefined") {
+    console.log("[abandoned-factory] AbandonedFactoryScene rendering");
+  }
   return (
     <>
       <Lights />
