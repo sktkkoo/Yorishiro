@@ -63,6 +63,10 @@ export class R3fHost {
   initialize(): Promise<void> {
     if (this.configurePromise) return this.configurePromise;
 
+    // renderer から初期サイズを取得。EffectComposer が mount 時に
+    // zero-size framebuffer を作るのを防ぐ。
+    const initSize = this.renderer.getSize(new THREE.Vector2());
+
     this.configurePromise = this.root
       .configure({
         gl: this.renderer,
@@ -71,6 +75,7 @@ export class R3fHost {
         frameloop: "never",
         dpr: Math.min(this.getDevicePixelRatio(), 2),
         flat: true,
+        size: { width: initSize.x, height: initSize.y, top: 0, left: 0 },
         onCreated: (state) => {
           this.state = state;
         },
