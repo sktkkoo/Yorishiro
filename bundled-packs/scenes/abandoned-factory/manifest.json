@@ -1,0 +1,10 @@
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "abandoned-factory",
+  "name": "abandoned factory",
+  "type": "scene",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "description": "誰かが灯を残していった廃工場。CLAI が時々ここに戻ってくる。",
+  "entry": "scene.tsx"
+}

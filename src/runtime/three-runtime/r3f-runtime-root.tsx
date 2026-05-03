@@ -17,6 +17,7 @@ import { getSceneRegistry } from "../scene-pack-registry";
 import { BUNDLED_ASSETS } from "../scene-pack-registry/asset-resolver";
 import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
 import type { ScenePackEntry } from "../scene-pack-registry/types";
+import { getThreeRuntime } from "../three-runtime";
 
 export interface R3fRuntimeRootProps {
   readonly children?: ReactNode;
@@ -72,7 +73,15 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
     [entry.id, entry.origin],
   );
 
-  // 本 phase では VRM を R3F tree に入れない。pack には null slot だけを渡す。
+  // R3F-component pack は独自 lighting を持つので ThreeRuntime の built-in
+  // lights を disable する. unmount 時に restore.
+  useEffect(() => {
+    getThreeRuntime().setDefaultLightsEnabled(false);
+    return () => {
+      getThreeRuntime().setDefaultLightsEnabled(true);
+    };
+  }, []);
+
   return <Component vrmSlot={null} resolveAsset={resolveAsset} />;
 }
 
