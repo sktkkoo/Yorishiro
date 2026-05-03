@@ -75,6 +75,12 @@ vi.mock("../scene-pack-registry/asset-resolver", () => ({
   stripLeadingDotSlash: (src: string): string => (src.startsWith("./") ? src.slice(2) : src),
 }));
 
+vi.mock("../three-runtime", () => ({
+  getThreeRuntime: () => ({
+    setDefaultLightsEnabled: vi.fn(),
+  }),
+}));
+
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
 

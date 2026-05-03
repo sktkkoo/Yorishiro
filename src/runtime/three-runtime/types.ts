@@ -53,4 +53,10 @@ export interface ThreeRuntime {
   /** カメラ自動追従（head tracking）の有効/無効。app-level の設定で、claim とは独立。 */
   setCameraTracking(enabled: boolean): void;
   getCameraTracking(): boolean;
+
+  /**
+   * R3F-component scene pack が独自 lighting を持つ場合に ThreeRuntime の
+   * built-in lights (AmbientLight + DirectionalLight) を disable / enable する.
+   */
+  setDefaultLightsEnabled(enabled: boolean): void;
 }
