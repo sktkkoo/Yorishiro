@@ -15,13 +15,14 @@ import { DustMotes, GodRays } from "./lib/atmosphere";
 import { Ceiling } from "./lib/ceiling";
 import { DistantPipes } from "./lib/distant-pipes";
 import { Floor } from "./lib/floor";
+import { Lights } from "./lib/lights";
 import { PowerLine } from "./lib/power-line";
 import { Walls } from "./lib/walls";
 
 function AbandonedFactoryScene({ vrmSlot }: ScenePackComponentProps) {
   return (
     <>
-      <ambientLight intensity={0.05} color="#1a1f28" />
+      <Lights />
       <Floor />
       <Walls />
       <Ceiling />
