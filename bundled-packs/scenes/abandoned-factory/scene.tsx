@@ -11,7 +11,7 @@
  */
 
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
-import { DustMotes, GodRays } from "./lib/atmosphere";
+import { DustMotes } from "./lib/atmosphere";
 import { Ceiling } from "./lib/ceiling";
 import { CrtScreen } from "./lib/crt-screen";
 import { DistantPipes } from "./lib/distant-pipes";
@@ -30,7 +30,6 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset }: ScenePackComponentProp
       <Walls />
       <Ceiling />
       <DustMotes />
-      <GodRays />
       <PowerLine />
       <DistantPipes />
       <AbandonedFactoryProps resolveAsset={resolveAsset} />
