@@ -6,6 +6,7 @@
 //!
 //! Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5 / 4.6
 
+pub mod screenshot;
 pub mod server;
 pub mod tools;
 pub mod types;

@@ -31,6 +31,7 @@ import {
   createSceneActivateHandler,
   createSceneCameraSetHandler,
   createSceneLightingSetHandler,
+  createSceneScreenshotHandler,
   createSetPackStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
@@ -1332,5 +1333,138 @@ describe("createUiActivateHandler", () => {
   it("rejects when id field is omitted", async () => {
     const handler = createUiActivateHandler({ registry: makeRegistry() });
     await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
+  });
+});
+
+/* ──────────────────────────────────────────────────────────
+ * scene.screenshot
+ * ────────────────────────────────────────────────────────── */
+
+describe("scene.screenshot handler", () => {
+  function makeMockCanvas() {
+    return {
+      toDataURL: vi.fn(() => "data:image/png;base64,AAAA"),
+      width: 800,
+      height: 600,
+    };
+  }
+
+  function makeMockRenderer(canvas: ReturnType<typeof makeMockCanvas>) {
+    return {
+      render: vi.fn(),
+      domElement: canvas,
+    } as unknown as THREE.WebGLRenderer;
+  }
+
+  function makeMockCamera() {
+    return {
+      position: { x: 0, y: 1.35, z: 1.1, set: vi.fn(), clone: vi.fn(), copy: vi.fn() },
+      quaternion: { clone: vi.fn(), copy: vi.fn() },
+      fov: 35,
+      updateProjectionMatrix: vi.fn(),
+      lookAt: vi.fn(),
+    } as unknown as THREE.PerspectiveCamera;
+  }
+
+  function makeDeps(
+    overrides: Partial<{
+      camera: THREE.PerspectiveCamera | null;
+      scene: THREE.Scene | null;
+      renderer: THREE.WebGLRenderer | null;
+    }> = {},
+  ) {
+    const canvas = makeMockCanvas();
+    const renderer =
+      overrides.renderer !== undefined ? overrides.renderer : makeMockRenderer(canvas);
+    const camera = overrides.camera !== undefined ? overrides.camera : makeMockCamera();
+    const scene = overrides.scene !== undefined ? overrides.scene : ({} as THREE.Scene);
+    const claimDispose = vi.fn();
+    return {
+      canvas,
+      renderer,
+      camera,
+      scene,
+      claimDispose,
+      deps: {
+        getCamera: () => camera,
+        getScene: () => scene,
+        getRenderer: () => renderer,
+        claimCamera: () => ({ dispose: claimDispose }),
+      },
+    };
+  }
+
+  it("default camera でキャプチャできる", async () => {
+    const { deps, canvas } = makeDeps();
+    const handler = createSceneScreenshotHandler(deps);
+    const result = await handler({});
+    expect(result.dataUrl).toBe("data:image/png;base64,AAAA");
+    expect(result.width).toBe(800);
+    expect(result.height).toBe(600);
+    expect(canvas.toDataURL).toHaveBeenCalledWith("image/png");
+  });
+
+  it("camera override を適用して復元する", async () => {
+    const { deps, camera } = makeDeps();
+    const cam = camera as unknown as {
+      position: {
+        set: ReturnType<typeof vi.fn>;
+        clone: ReturnType<typeof vi.fn>;
+        copy: ReturnType<typeof vi.fn>;
+      };
+      quaternion: { clone: ReturnType<typeof vi.fn>; copy: ReturnType<typeof vi.fn> };
+      fov: number;
+      updateProjectionMatrix: ReturnType<typeof vi.fn>;
+      lookAt: ReturnType<typeof vi.fn>;
+    };
+    const savedPos = { x: 0, y: 1.35, z: 1.1 };
+    const savedQuat = { x: 0, y: 0, z: 0, w: 1 };
+    cam.position.clone.mockReturnValue(savedPos);
+    cam.quaternion.clone.mockReturnValue(savedQuat);
+
+    const handler = createSceneScreenshotHandler(deps);
+    await handler({ position: [1, 2, 3], target: [0, 0, 0], fov: 60 });
+
+    expect(cam.position.set).toHaveBeenCalledWith(1, 2, 3);
+    expect(cam.lookAt).toHaveBeenCalledWith(0, 0, 0);
+    expect(cam.updateProjectionMatrix).toHaveBeenCalled();
+    // 復元
+    expect(cam.position.copy).toHaveBeenCalledWith(savedPos);
+    expect(cam.quaternion.copy).toHaveBeenCalledWith(savedQuat);
+  });
+
+  it("claim を取得して解放する", async () => {
+    const { deps, claimDispose } = makeDeps();
+    const handler = createSceneScreenshotHandler(deps);
+    await handler({});
+    expect(claimDispose).toHaveBeenCalled();
+  });
+
+  it("scene/camera/renderer が null のとき throw する", async () => {
+    const { deps } = makeDeps({ camera: null });
+    const handler = createSceneScreenshotHandler(deps);
+    await expect(handler({})).rejects.toThrow("scene not ready");
+  });
+
+  it("toDataURL が失敗しても camera が復元される", async () => {
+    const { deps, camera, canvas } = makeDeps();
+    const cam = camera as unknown as {
+      position: { clone: ReturnType<typeof vi.fn>; copy: ReturnType<typeof vi.fn> };
+      quaternion: { clone: ReturnType<typeof vi.fn>; copy: ReturnType<typeof vi.fn> };
+    };
+    const savedPos = {};
+    const savedQuat = {};
+    cam.position.clone.mockReturnValue(savedPos);
+    cam.quaternion.clone.mockReturnValue(savedQuat);
+
+    (canvas.toDataURL as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      throw new Error("toDataURL failed");
+    });
+
+    const handler = createSceneScreenshotHandler(deps);
+    await expect(handler({ position: [1, 2, 3] })).rejects.toThrow("toDataURL failed");
+    // finally block で復元されること
+    expect(cam.position.copy).toHaveBeenCalledWith(savedPos);
+    expect(cam.quaternion.copy).toHaveBeenCalledWith(savedQuat);
   });
 });

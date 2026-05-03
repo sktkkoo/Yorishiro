@@ -613,6 +613,8 @@ function App() {
           createUiActivateHandler,
           // Camera modulation
           createSceneCameraModulationHandler,
+          // Screenshot:
+          createSceneScreenshotHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -830,6 +832,13 @@ function App() {
           "scene.camera.modulation": createSceneCameraModulationHandler({
             getCameraModulation: () => getThreeRuntime().getCameraModulation(),
             isCameraModulationSuspended: () => getThreeRuntime().isCameraModulationSuspended(),
+          }),
+          // ── Screenshot ────────────────────────────────────
+          "scene.screenshot": createSceneScreenshotHandler({
+            getCamera: () => getThreeRuntime().getCamera(),
+            getScene: () => getThreeRuntime().getScene(),
+            getRenderer: () => getThreeRuntime().getRenderer(),
+            claimCamera: () => claimState.claim("camera"),
           }),
         };
 

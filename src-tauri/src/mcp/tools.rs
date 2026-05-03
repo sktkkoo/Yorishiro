@@ -143,6 +143,24 @@ pub struct BodyAnimationPlayRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyMotionCancelRequest {}
 
+/// `scene_screenshot` の引数。optional camera override で「カメラ移動→撮影→復元」をアトミックに行う。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SceneScreenshotRequest {
+    /// Camera position override [x, y, z]。省略で現在位置のまま撮影。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position: Option<[f32; 3]>,
+    /// Camera lookAt target override [x, y, z]。省略で現在の向きのまま。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<[f32; 3]>,
+    /// Camera field of view override (degrees)。省略で現在の fov。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fov: Option<f32>,
+}
+
+/// `app_screenshot` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AppScreenshotRequest {}
+
 /// `scene_activate` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SceneActivateRequest {
@@ -502,6 +520,40 @@ impl Charminal {
     ) -> Result<CallToolResult, McpError> {
         emit_to(&self.app_handle, "ui.activate", json!({ "id": req.id })).await
     }
+
+    /// Three.js canvas のスクリーンショットを撮影する。optional camera override で
+    /// 任意の角度・位置・FOV から撮影し、撮影後にカメラを元の状態に復元する。
+    #[tool(
+        description = "Capture a screenshot of the Three.js scene canvas. Optionally override camera position/target/fov for the shot — camera is restored after capture. Returns an image."
+    )]
+    async fn scene_screenshot(
+        &self,
+        Parameters(req): Parameters<SceneScreenshotRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let response = emit_tool_event(
+            &self.app_handle,
+            "scene.screenshot",
+            json!({
+                "position": req.position,
+                "target": req.target,
+                "fov": req.fov,
+            }),
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
+        unwrap_image_response(response)
+    }
+
+    /// ウィンドウ全体（DOM + WebGL canvas）のスクリーンショットを撮影する。macOS のみ。
+    #[tool(
+        description = "Capture a screenshot of the entire Charminal window (DOM + WebGL canvas). macOS only."
+    )]
+    async fn app_screenshot(
+        &self,
+        _params: Parameters<AppScreenshotRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        crate::mcp::screenshot::capture_webview_screenshot(&self.app_handle).await
+    }
 }
 
 #[tool_handler(router = self.tool_router)]
@@ -539,6 +591,35 @@ fn unwrap_ts_response(response: Value) -> Result<CallToolResult, McpError> {
             .to_string();
         Err(McpError::internal_error(reason, None))
     }
+}
+
+/// TS 側が返す `{ ok, payload: { dataUrl: "data:image/png;base64,..." } }` を
+/// MCP `ImageContent` に変換する。screenshot tool 専用。
+fn unwrap_image_response(response: Value) -> Result<CallToolResult, McpError> {
+    let ok = response
+        .get("ok")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if !ok {
+        let reason = response
+            .get("reason")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ts handler error")
+            .to_string();
+        return Err(McpError::internal_error(reason, None));
+    }
+    let data_url = response
+        .get("payload")
+        .and_then(|p| p.get("dataUrl"))
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| McpError::internal_error("missing dataUrl in response", None))?;
+
+    let base64_data = data_url
+        .strip_prefix("data:image/png;base64,")
+        .unwrap_or(data_url);
+
+    let content = Content::image(base64_data, "image/png");
+    Ok(CallToolResult::success(vec![content]))
 }
 
 /// list_load_errors の実装本体（Rust 内で完結するため test からも直接叩ける）。
@@ -667,5 +748,46 @@ mod tests {
         let resp = json!({ "ok": false, "reason": "missing id" });
         let err = unwrap_ts_response(resp).expect_err("should be err");
         assert!(err.message.contains("missing id"));
+    }
+
+    #[test]
+    fn unwrap_image_response_extracts_base64_from_data_url() {
+        let resp = json!({
+            "ok": true,
+            "payload": { "dataUrl": "data:image/png;base64,AAAA" }
+        });
+        let result = unwrap_image_response(resp).expect("ok");
+        assert_ne!(result.is_error, Some(true));
+        // Content::image wraps base64 data (prefix stripped)
+        let content = &result.content[0];
+        let serialized = serde_json::to_value(content).unwrap();
+        assert_eq!(serialized["data"], "AAAA");
+        assert_eq!(serialized["mimeType"], "image/png");
+    }
+
+    #[test]
+    fn unwrap_image_response_handles_raw_base64_without_prefix() {
+        let resp = json!({
+            "ok": true,
+            "payload": { "dataUrl": "RAWBASE64DATA" }
+        });
+        let result = unwrap_image_response(resp).expect("ok");
+        let content = &result.content[0];
+        let serialized = serde_json::to_value(content).unwrap();
+        assert_eq!(serialized["data"], "RAWBASE64DATA");
+    }
+
+    #[test]
+    fn unwrap_image_response_maps_not_ok_to_error() {
+        let resp = json!({ "ok": false, "reason": "scene not ready" });
+        let err = unwrap_image_response(resp).expect_err("should be err");
+        assert!(err.message.contains("scene not ready"));
+    }
+
+    #[test]
+    fn unwrap_image_response_returns_error_on_missing_data_url() {
+        let resp = json!({ "ok": true, "payload": {} });
+        let err = unwrap_image_response(resp).expect_err("should be err");
+        assert!(err.message.contains("missing dataUrl"));
     }
 }
