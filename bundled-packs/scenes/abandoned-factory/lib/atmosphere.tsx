@@ -1,7 +1,7 @@
 /**
  * 廃工場の大気効果. 浮遊粒子 (DustMotes) と天光柱 (GodRays).
  *
- * leva で sizeMult / alpha / godRays alpha をリアルタイム調整可能.
+ * leva で sizeMult / alpha / dust speed / godRays alpha をリアルタイム調整可能.
  */
 
 import { useFrame } from "@react-three/fiber";
@@ -70,11 +70,12 @@ export function DustMotes() {
 
   const [controls, setControls] = useControls("abandoned-factory", () => ({
     dust: folder({
-      sizeMult: { value: 7, min: 0, max: 30, step: 0.5, label: "size multiplier" },
+      sizeMult: { value: 5, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.28, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
       alphaAmp: { value: 0.04, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
-      moveFreq: { value: 0.0003, min: 0, max: 0.01, step: 0.0001, label: "漂流速度" },
-      moveAmp: { value: 0.5, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
+      moveFreq: { value: 0.0007, min: 0, max: 0.01, step: 0.0001, label: "漂流速度" },
+      moveSpeedMultiplier: { value: 100, min: 0, max: 100, step: 1, label: "漂流速度倍率" },
+      moveAmp: { value: 1.49, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
     }),
   }));
   useControlsBridge("abandoned-factory", controls, setControls);
@@ -125,7 +126,7 @@ export function DustMotes() {
     mat.uniforms.uSizeMult.value = controls.sizeMult;
     mat.uniforms.uAlphaBase.value = controls.alphaBase;
     mat.uniforms.uAlphaAmp.value = controls.alphaAmp;
-    mat.uniforms.uMoveFreq.value = controls.moveFreq;
+    mat.uniforms.uMoveFreq.value = controls.moveFreq * controls.moveSpeedMultiplier;
     mat.uniforms.uMoveAmp.value = controls.moveAmp;
   });
 

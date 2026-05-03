@@ -24,14 +24,15 @@ import {
 import { folder, useControls } from "leva";
 import {
   BlendFunction,
-  ChromaticAberrationEffect,
+  type ChromaticAberrationEffect,
+  Effect,
   EffectPass,
-  NoiseEffect,
-  ScanlineEffect,
+  type NoiseEffect,
+  type ScanlineEffect,
   ToneMappingMode,
 } from "postprocessing";
-import { useContext, useMemo, useRef } from "react";
-import { Vector2 } from "three";
+import { useContext, useEffect, useMemo, useRef } from "react";
+import { Uniform, Vector2 } from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import {
   createGlitchState,
@@ -53,8 +54,8 @@ export function AbandonedFactoryPostProcess() {
   // --- always-on controls ---
   const [bloomControls, setBloom] = useControls("abandoned-factory", () => ({
     bloom: folder({
-      bloomIntensity: { value: 0.85, min: 0, max: 3, step: 0.05 },
-      bloomThreshold: { value: 0.2, min: 0, max: 1, step: 0.01 },
+      bloomIntensity: { value: 1.2, min: 0, max: 3, step: 0.05 },
+      bloomThreshold: { value: 0.14, min: 0, max: 1, step: 0.01 },
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
   }));
@@ -74,7 +75,7 @@ export function AbandonedFactoryPostProcess() {
   const [noiseControls, setNoise] = useControls("abandoned-factory", () => ({
     noise: folder(
       {
-        noiseOpacity: { value: 0.2, min: 0, max: 0.3, step: 0.005 },
+        noiseOpacity: { value: 0.195, min: 0, max: 0.3, step: 0.005 },
       },
       { collapsed: true },
     ),
@@ -106,14 +107,14 @@ export function AbandonedFactoryPostProcess() {
       {
         briefIntervalMin: {
           value: DEFAULT_GLITCH_PARAMS.briefIntervalMin,
-          min: 5,
+          min: 1,
           max: 120,
           step: 1,
           label: "brief 最小間隔(s)",
         },
         briefIntervalMax: {
           value: DEFAULT_GLITCH_PARAMS.briefIntervalMax,
-          min: 10,
+          min: 2,
           max: 180,
           step: 1,
           label: "brief 最大間隔(s)",
@@ -132,6 +133,13 @@ export function AbandonedFactoryPostProcess() {
           step: 0.5,
           label: "brief CA 倍率",
         },
+        briefBlockStrength: {
+          value: DEFAULT_GLITCH_PARAMS.briefBlockStrength,
+          min: 0,
+          max: 3,
+          step: 0.05,
+          label: "brief block 強度",
+        },
         lanternSyncThreshold: {
           value: DEFAULT_GLITCH_PARAMS.lanternSyncThreshold,
           min: 0.1,
@@ -148,16 +156,16 @@ export function AbandonedFactoryPostProcess() {
         },
         heavyIntervalMin: {
           value: DEFAULT_GLITCH_PARAMS.heavyIntervalMin,
-          min: 30,
+          min: 5,
           max: 600,
-          step: 10,
+          step: 1,
           label: "heavy 最小間隔(s)",
         },
         heavyIntervalMax: {
           value: DEFAULT_GLITCH_PARAMS.heavyIntervalMax,
-          min: 60,
+          min: 6,
           max: 900,
-          step: 10,
+          step: 1,
           label: "heavy 最大間隔(s)",
         },
         heavyDuration: {
@@ -181,6 +189,20 @@ export function AbandonedFactoryPostProcess() {
           step: 1,
           label: "heavy scanline 倍率",
         },
+        heavyBlockStrength: {
+          value: DEFAULT_GLITCH_PARAMS.heavyBlockStrength,
+          min: 0,
+          max: 3,
+          step: 0.05,
+          label: "heavy block 強度",
+        },
+        blockColumns: {
+          value: DEFAULT_GLITCH_PARAMS.blockColumns,
+          min: 0.005,
+          max: 0.12,
+          step: 0.005,
+          label: "block 幅",
+        },
       },
       { collapsed: true },
     ),
@@ -201,6 +223,9 @@ export function AbandonedFactoryPostProcess() {
   }));
 
   const caOffset = useMemo(() => new Vector2(caOffsetX, caOffsetY), [caOffsetX, caOffsetY]);
+  const glitchEffect = useMemo(() => new EventGlitchEffect(), []);
+
+  useEffect(() => () => glitchEffect.dispose(), [glitchEffect]);
 
   return (
     <EffectComposer multisampling={0}>
@@ -211,6 +236,7 @@ export function AbandonedFactoryPostProcess() {
         luminanceSmoothing={bloomSmoothing}
         mipmapBlur
       />
+      <primitive object={glitchEffect} dispose={null} />
       <ChromaticAberration offset={caOffset} radialModulation modulationOffset={0.5} />
       <Noise opacity={noiseOpacity} blendFunction={BlendFunction.MULTIPLY} />
       <Scanline density={scanlineDensity} opacity={scanlineOpacity} />
@@ -222,6 +248,7 @@ export function AbandonedFactoryPostProcess() {
         scanlineOpacity={scanlineOpacity}
         glitchControls={glitchControls}
         flickerAmount={lightsControls.flickerAmount}
+        glitchEffect={glitchEffect}
       />
     </EffectComposer>
   );
@@ -234,6 +261,7 @@ interface GlitchModulatorProps {
   readonly scanlineOpacity: number;
   readonly glitchControls: GlitchParams;
   readonly flickerAmount: number;
+  readonly glitchEffect: EventGlitchEffect;
 }
 
 /**
@@ -247,6 +275,7 @@ function GlitchModulator({
   scanlineOpacity,
   glitchControls,
   flickerAmount,
+  glitchEffect,
 }: GlitchModulatorProps) {
   const { composer } = useContext(EffectComposerContext);
 
@@ -263,35 +292,9 @@ function GlitchModulator({
     const t = clock.getElapsedTime();
 
     // effect instances を lazy resolve（passes が構築されてから探す）
-    if (!effectsRef.current.ca) {
-      if (!composer) {
-        console.warn("[glitch] composer is null");
-      } else {
-        console.log(
-          "[glitch] passes:",
-          composer.passes.length,
-          composer.passes.map((p) => p.constructor.name),
-        );
-        for (const pass of composer.passes) {
-          if (!(pass instanceof EffectPass)) {
-            // instanceof check の失敗を確認
-            if (pass.constructor.name === "EffectPass") {
-              console.warn("[glitch] EffectPass instanceof 失敗 — module duplication?");
-            }
-            continue;
-          }
-          const effects = (pass as unknown as { effects: Iterable<unknown> }).effects;
-          for (const effect of effects) {
-            if (effect instanceof ChromaticAberrationEffect) effectsRef.current.ca = effect;
-            else if (effect instanceof NoiseEffect) effectsRef.current.noise = effect;
-            else if (effect instanceof ScanlineEffect) effectsRef.current.scanline = effect;
-          }
-        }
-        console.log("[glitch] resolved:", {
-          ca: !!effectsRef.current.ca,
-          noise: !!effectsRef.current.noise,
-          scanline: !!effectsRef.current.scanline,
-        });
+    if (!effectsRef.current.ca || !effectsRef.current.noise || !effectsRef.current.scanline) {
+      if (composer) {
+        resolveMutableEffects(composer, effectsRef.current);
       }
     }
 
@@ -303,17 +306,9 @@ function GlitchModulator({
     const lanternRaw = computeLanternFlicker(t, flickerParams);
     const output = updateGlitches(t, lanternRaw, glitchState.current, glitchControls);
 
-    // glitch 発火時にログ
-    if (output.briefIntensity > 0 || output.heavyIntensity > 0) {
-      console.log(
-        "[glitch] ACTIVE brief:",
-        output.briefIntensity.toFixed(2),
-        "heavy:",
-        output.heavyIntensity.toFixed(2),
-      );
-    }
-
     const { ca, noise, scanline } = effectsRef.current;
+    const briefIntensity = clamp01(output.briefIntensity);
+    const heavyIntensity = clamp01(output.heavyIntensity);
 
     // --- CA modulation ---
     if (ca) {
@@ -335,7 +330,143 @@ function GlitchModulator({
       const scanMul = 1 + output.heavyIntensity * (glitchControls.heavyScanlineMultiplier - 1);
       scanline.blendMode.opacity.value = scanlineOpacity * scanMul;
     }
+
+    // --- Block / tracking distortion ---
+    const blockIntensity = clamp01(
+      briefIntensity * glitchControls.briefBlockStrength +
+        heavyIntensity * glitchControls.heavyBlockStrength,
+    );
+    glitchEffect.updateUniforms(
+      t,
+      blockIntensity,
+      glitchControls.blockColumns * (1 + heavyIntensity),
+    );
   });
 
   return null;
+}
+
+interface MutablePostEffects {
+  ca: ChromaticAberrationEffect | null;
+  noise: NoiseEffect | null;
+  scanline: ScanlineEffect | null;
+}
+
+interface ComposerWithPasses {
+  readonly passes: readonly unknown[];
+}
+
+function resolveMutableEffects(composer: ComposerWithPasses, effectsRef: MutablePostEffects): void {
+  for (const pass of composer.passes) {
+    const effects = getPassEffects(pass);
+    if (!effects) continue;
+    for (const effect of effects) {
+      if (
+        effectsRef.ca === null &&
+        isEffectNamed<ChromaticAberrationEffect>(effect, "ChromaticAberrationEffect")
+      ) {
+        effectsRef.ca = effect;
+      } else if (effectsRef.noise === null && isEffectNamed<NoiseEffect>(effect, "NoiseEffect")) {
+        effectsRef.noise = effect;
+      } else if (
+        effectsRef.scanline === null &&
+        isEffectNamed<ScanlineEffect>(effect, "ScanlineEffect")
+      ) {
+        effectsRef.scanline = effect;
+      }
+    }
+  }
+}
+
+function getPassEffects(pass: unknown): Iterable<unknown> | null {
+  if (!(pass instanceof EffectPass) && getConstructorName(pass) !== "EffectPass") {
+    return null;
+  }
+
+  const effects = (pass as { effects?: unknown }).effects;
+  return isIterable(effects) ? effects : null;
+}
+
+function isEffectNamed<T>(effect: unknown, name: string): effect is T {
+  return getConstructorName(effect) === name;
+}
+
+function getConstructorName(value: unknown): string | undefined {
+  return (value as { constructor?: { name?: string } } | null)?.constructor?.name;
+}
+
+function isIterable(value: unknown): value is Iterable<unknown> {
+  return typeof (value as { [Symbol.iterator]?: unknown } | null)?.[Symbol.iterator] === "function";
+}
+
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
+
+const EVENT_GLITCH_FRAGMENT_SHADER = /* glsl */ `
+  uniform float intensity;
+  uniform float glitchTime;
+  uniform float columns;
+
+  float eventGlitchHash(float n) {
+    return fract(sin(n) * 43758.5453123);
+  }
+
+  void mainUv(inout vec2 uv) {
+    float amount = clamp(intensity, 0.0, 1.0);
+    if (amount <= 0.001) {
+      return;
+    }
+
+    float tick = floor(glitchTime * 36.0);
+    float bandCount = mix(18.0, 52.0, amount);
+    float band = floor((uv.y + glitchTime * 4.0) * bandCount);
+    float bandHash = eventGlitchHash(band + tick * 13.17);
+    float bandMask = step(0.58, bandHash + amount * 0.35);
+    float bandDir = mix(-1.0, 1.0, step(0.5, eventGlitchHash(band * 7.13 + tick)));
+    float bandShift =
+      bandDir * bandMask * (0.012 + amount * 0.08) * eventGlitchHash(band * 3.77 + tick * 0.31);
+
+    float cellX = floor(uv.x / max(columns, 0.005));
+    float blockHash = eventGlitchHash(cellX * 2.31 + band * 19.17 + tick);
+    float blockMask = step(0.75, blockHash + amount * 0.2);
+    uv.x = fract(uv.x + bandShift + blockMask * bandDir * amount * 0.045);
+  }
+
+  void mainImage(const in vec4 inputColor, const in vec2 uv, out vec4 outputColor) {
+    float amount = clamp(intensity, 0.0, 1.0);
+    float tick = floor(glitchTime * 48.0);
+    float lineMask = step(0.92, eventGlitchHash(floor(uv.y * 180.0) + tick) + amount * 0.14);
+    float dropoutMask =
+      step(0.96, eventGlitchHash(floor(uv.y * 52.0) + tick * 2.71) + amount * 0.22);
+
+    vec3 color = inputColor.rgb;
+    color += lineMask * amount * vec3(0.22, 0.28, 0.32);
+    color *= 1.0 - dropoutMask * amount * 0.55;
+    outputColor = vec4(color, inputColor.a);
+  }
+`;
+
+class EventGlitchEffect extends Effect {
+  constructor() {
+    super("EventGlitchEffect", EVENT_GLITCH_FRAGMENT_SHADER, {
+      blendFunction: BlendFunction.NORMAL,
+      uniforms: new Map<string, Uniform<number>>([
+        ["intensity", new Uniform(0)],
+        ["glitchTime", new Uniform(0)],
+        ["columns", new Uniform(DEFAULT_GLITCH_PARAMS.blockColumns)],
+      ]),
+    });
+  }
+
+  updateUniforms(time: number, intensity: number, columns: number): void {
+    setEffectUniform(this, "glitchTime", time);
+    setEffectUniform(this, "intensity", intensity);
+    setEffectUniform(this, "columns", columns);
+  }
+}
+
+function setEffectUniform(effect: Effect, key: string, value: number): void {
+  const uniform = effect.uniforms.get(key);
+  if (uniform) uniform.value = value;
 }
