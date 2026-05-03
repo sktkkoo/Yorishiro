@@ -33,17 +33,17 @@ import { Vector2 } from "three";
 export function AbandonedFactoryPostProcess() {
   const { bloomIntensity, bloomThreshold, bloomSmoothing } = useControls("abandoned-factory", {
     bloom: folder({
-      bloomIntensity: { value: 0.6, min: 0, max: 3, step: 0.05 },
-      bloomThreshold: { value: 0.5, min: 0, max: 1, step: 0.01 },
-      bloomSmoothing: { value: 0.4, min: 0, max: 1, step: 0.01 },
+      bloomIntensity: { value: 0.85, min: 0, max: 3, step: 0.05 },
+      bloomThreshold: { value: 0.2, min: 0, max: 1, step: 0.01 },
+      bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
   });
 
   const { caOffsetX, caOffsetY } = useControls("abandoned-factory", {
     chromaticAberration: folder(
       {
-        caOffsetX: { value: 0.0008, min: 0, max: 0.01, step: 0.0001 },
-        caOffsetY: { value: 0.0012, min: 0, max: 0.01, step: 0.0001 },
+        caOffsetX: { value: 0.0059, min: 0, max: 0.01, step: 0.0001 },
+        caOffsetY: { value: 0.0059, min: 0, max: 0.01, step: 0.0001 },
       },
       { collapsed: true },
     ),
@@ -52,7 +52,7 @@ export function AbandonedFactoryPostProcess() {
   const { noiseOpacity } = useControls("abandoned-factory", {
     noise: folder(
       {
-        noiseOpacity: { value: 0.06, min: 0, max: 0.3, step: 0.005 },
+        noiseOpacity: { value: 0.2, min: 0, max: 0.3, step: 0.005 },
       },
       { collapsed: true },
     ),
@@ -61,8 +61,8 @@ export function AbandonedFactoryPostProcess() {
   const { scanlineDensity, scanlineOpacity } = useControls("abandoned-factory", {
     scanline: folder(
       {
-        scanlineDensity: { value: 1.25, min: 0.5, max: 5, step: 0.05 },
-        scanlineOpacity: { value: 0.05, min: 0, max: 0.5, step: 0.01 },
+        scanlineDensity: { value: 0.8, min: 0.5, max: 5, step: 0.05 },
+        scanlineOpacity: { value: 0.02, min: 0, max: 0.5, step: 0.01 },
       },
       { collapsed: true },
     ),
@@ -70,8 +70,8 @@ export function AbandonedFactoryPostProcess() {
 
   const { vignetteOffset, vignetteDarkness } = useControls("abandoned-factory", {
     vignette: folder({
-      vignetteOffset: { value: 0.3, min: 0, max: 1, step: 0.01 },
-      vignetteDarkness: { value: 0.7, min: 0, max: 2, step: 0.01 },
+      vignetteOffset: { value: 0.03, min: 0, max: 1, step: 0.01 },
+      vignetteDarkness: { value: 0.8, min: 0, max: 2, step: 0.01 },
     }),
   });
 

@@ -27,10 +27,10 @@ export function Lights() {
   const controls = useControls("abandoned-factory", {
     lights: folder({
       directionalIntensity: { value: 0.6, min: 0, max: 3, step: 0.05, label: "天光 intensity" },
-      lanternScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "ランタン scale" },
-      crtScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "CRT scale" },
-      flickerAmount: { value: 1.0, min: 0, max: 1, step: 0.05, label: "flicker 振幅 (0=安定)" },
-      ambientIntensity: { value: 0.03, min: 0, max: 0.3, step: 0.005, label: "ambient" },
+      lanternScale: { value: 1.1, min: 0, max: 3, step: 0.05, label: "ランタン scale" },
+      crtScale: { value: 1.1, min: 0, max: 3, step: 0.05, label: "CRT scale" },
+      flickerAmount: { value: 0.1, min: 0, max: 1, step: 0.05, label: "flicker 振幅 (0=安定)" },
+      ambientIntensity: { value: 0.05, min: 0, max: 0.3, step: 0.005, label: "ambient" },
     }),
   });
 

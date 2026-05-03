@@ -69,11 +69,11 @@ export function DustMotes() {
 
   const controls = useControls("abandoned-factory", {
     dust: folder({
-      sizeMult: { value: 3.0, min: 0, max: 30, step: 0.5, label: "size multiplier" },
-      alphaBase: { value: 0.16, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
-      alphaAmp: { value: 0.08, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
-      moveFreq: { value: 0.005, min: 0, max: 0.01, step: 0.0001, label: "漂流速度" },
-      moveAmp: { value: 0.08, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
+      sizeMult: { value: 7, min: 0, max: 30, step: 0.5, label: "size multiplier" },
+      alphaBase: { value: 0.28, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
+      alphaAmp: { value: 0.04, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
+      moveFreq: { value: 0.0003, min: 0, max: 0.01, step: 0.0001, label: "漂流速度" },
+      moveAmp: { value: 0.5, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
     }),
   });
 
