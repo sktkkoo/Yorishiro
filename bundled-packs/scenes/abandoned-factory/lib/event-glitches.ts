@@ -48,7 +48,7 @@ export interface GlitchParams {
 
 export const DEFAULT_GLITCH_PARAMS: GlitchParams = {
   briefIntervalMin: 30,
-  briefIntervalMax: 90,
+  briefIntervalMax: 60,
   briefDuration: 0.15,
   briefCaMultiplier: 4.0,
   briefBlockStrength: 0.3,
