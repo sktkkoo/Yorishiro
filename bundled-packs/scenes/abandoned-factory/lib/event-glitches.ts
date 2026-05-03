@@ -41,16 +41,17 @@ export interface GlitchParams {
 }
 
 export const DEFAULT_GLITCH_PARAMS: GlitchParams = {
-  briefIntervalMin: 30,
-  briefIntervalMax: 90,
+  // TODO: 確認用に短縮中。確定後に元の値に戻す (30/90, 120/300)
+  briefIntervalMin: 3,
+  briefIntervalMax: 6,
   briefDuration: 0.15,
   briefCaMultiplier: 4.0,
 
   lanternSyncThreshold: 0.4,
   lanternSyncCaMultiplier: 2.5,
 
-  heavyIntervalMin: 120,
-  heavyIntervalMax: 300,
+  heavyIntervalMin: 8,
+  heavyIntervalMax: 15,
   heavyDuration: 0.3,
   heavyNoiseAdd: 0.4,
   heavyScanlineMultiplier: 8.0,

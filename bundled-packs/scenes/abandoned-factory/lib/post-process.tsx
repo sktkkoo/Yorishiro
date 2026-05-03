@@ -263,15 +263,35 @@ function GlitchModulator({
     const t = clock.getElapsedTime();
 
     // effect instances を lazy resolve（passes が構築されてから探す）
-    if (!effectsRef.current.ca && composer) {
-      for (const pass of composer.passes) {
-        if (!(pass instanceof EffectPass)) continue;
-        const effects = (pass as unknown as { effects: Iterable<unknown> }).effects;
-        for (const effect of effects) {
-          if (effect instanceof ChromaticAberrationEffect) effectsRef.current.ca = effect;
-          else if (effect instanceof NoiseEffect) effectsRef.current.noise = effect;
-          else if (effect instanceof ScanlineEffect) effectsRef.current.scanline = effect;
+    if (!effectsRef.current.ca) {
+      if (!composer) {
+        console.warn("[glitch] composer is null");
+      } else {
+        console.log(
+          "[glitch] passes:",
+          composer.passes.length,
+          composer.passes.map((p) => p.constructor.name),
+        );
+        for (const pass of composer.passes) {
+          if (!(pass instanceof EffectPass)) {
+            // instanceof check の失敗を確認
+            if (pass.constructor.name === "EffectPass") {
+              console.warn("[glitch] EffectPass instanceof 失敗 — module duplication?");
+            }
+            continue;
+          }
+          const effects = (pass as unknown as { effects: Iterable<unknown> }).effects;
+          for (const effect of effects) {
+            if (effect instanceof ChromaticAberrationEffect) effectsRef.current.ca = effect;
+            else if (effect instanceof NoiseEffect) effectsRef.current.noise = effect;
+            else if (effect instanceof ScanlineEffect) effectsRef.current.scanline = effect;
+          }
         }
+        console.log("[glitch] resolved:", {
+          ca: !!effectsRef.current.ca,
+          noise: !!effectsRef.current.noise,
+          scanline: !!effectsRef.current.scanline,
+        });
       }
     }
 
@@ -282,6 +302,16 @@ function GlitchModulator({
 
     const lanternRaw = computeLanternFlicker(t, flickerParams);
     const output = updateGlitches(t, lanternRaw, glitchState.current, glitchControls);
+
+    // glitch 発火時にログ
+    if (output.briefIntensity > 0 || output.heavyIntensity > 0) {
+      console.log(
+        "[glitch] ACTIVE brief:",
+        output.briefIntensity.toFixed(2),
+        "heavy:",
+        output.heavyIntensity.toFixed(2),
+      );
+    }
 
     const { ca, noise, scanline } = effectsRef.current;
 
