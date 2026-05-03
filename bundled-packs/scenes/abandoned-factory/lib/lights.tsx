@@ -11,7 +11,7 @@ import { useFrame } from "@react-three/fiber";
 import { folder, useControls } from "leva";
 import { useRef } from "react";
 import type * as THREE from "three";
-import { computeCrtFlicker, computeLanternFlicker } from "./flicker";
+import { computeCrtFlicker, computeLanternFlicker, type FlickerParams } from "./flicker";
 import { PALETTE } from "./palette";
 
 /** ランタン位置. props.tsx / crt-screen.tsx からも参照される. */
@@ -29,17 +29,21 @@ export function Lights() {
       directionalIntensity: { value: 0.6, min: 0, max: 3, step: 0.05, label: "天光 intensity" },
       lanternScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "ランタン scale" },
       crtScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "CRT scale" },
+      flickerAmount: { value: 1.0, min: 0, max: 1, step: 0.05, label: "flicker 振幅 (0=安定)" },
       ambientIntensity: { value: 0.03, min: 0, max: 0.3, step: 0.005, label: "ambient" },
     }),
   });
 
+  const flickerParams: FlickerParams = { flickerAmount: controls.flickerAmount };
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     if (lanternRef.current) {
-      lanternRef.current.intensity = computeLanternFlicker(t) * controls.lanternScale;
+      lanternRef.current.intensity =
+        computeLanternFlicker(t, flickerParams) * controls.lanternScale;
     }
     if (crtRef.current) {
-      crtRef.current.intensity = computeCrtFlicker(t) * controls.crtScale;
+      crtRef.current.intensity = computeCrtFlicker(t, flickerParams) * controls.crtScale;
     }
   });
 
