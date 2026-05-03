@@ -72,8 +72,8 @@ export function DustMotes() {
       sizeMult: { value: 3.0, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.16, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
       alphaAmp: { value: 0.08, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
-      moveFreq: { value: 0.06, min: 0.01, max: 0.5, step: 0.01, label: "漂流速度" },
-      moveAmp: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "漂流幅" },
+      moveFreq: { value: 0.06, min: 0, max: 0.5, step: 0.0001, label: "漂流速度" },
+      moveAmp: { value: 0.08, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
     }),
   });
 
