@@ -306,6 +306,11 @@ export interface StateGetDeps {
   readonly getTerminalOpacity: () => number;
   readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
   readonly getCameraTracking: () => boolean;
+  readonly getCameraModulationState: () => {
+    readonly enabled: boolean;
+    readonly suspended: boolean;
+    readonly activeKeys: readonly string[];
+  };
   readonly getEffectKinds: () => ReadonlyArray<string>;
   /**
    * 現在 active な single-active pack の id 群（registry 由来、runtime SOT）。
@@ -324,7 +329,16 @@ export interface StateGetResult {
     activeScene: string | null;
     terminalAgent: "claude" | "codex";
   };
-  readonly camera: { position: readonly [number, number, number]; fov: number; tracking: boolean };
+  readonly camera: {
+    position: readonly [number, number, number];
+    fov: number;
+    tracking: boolean;
+    modulation: {
+      enabled: boolean;
+      suspended: boolean;
+      activeKeys: readonly string[];
+    };
+  };
   readonly lighting: { intensity: number; color: string };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
@@ -398,6 +412,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
         position: cam ? [cam.position.x, cam.position.y, cam.position.z] : [0, 0, 0],
         fov: cam && "fov" in cam ? cam.fov : 0,
         tracking: deps.getCameraTracking(),
+        modulation: deps.getCameraModulationState(),
       },
       lighting: {
         intensity: light?.intensity ?? 0,
@@ -548,6 +563,7 @@ export interface SceneCameraSetDeps {
   readonly claimCamera: () => Disposable;
   readonly setCameraTracking: (enabled: boolean) => void;
   readonly getCameraTracking: () => boolean;
+  readonly setCameraBase?: (pos: [number, number, number]) => void;
 }
 
 export interface SceneCameraSetResult {
@@ -670,7 +686,10 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
     activeCameraTweenKeys.clear();
     releaseCameraClaimIfDone();
 
-    if (position) cam.position.set(position[0], position[1], position[2]);
+    if (position) {
+      cam.position.set(position[0], position[1], position[2]);
+      deps.setCameraBase?.([...position]);
+    }
     if (target) cam.lookAt(target[0], target[1], target[2]);
     if (fovValue !== undefined && "fov" in cam) {
       cam.fov = fovValue;
@@ -1113,6 +1132,45 @@ export function createUiActivateHandler(deps: UiActivateDeps) {
     }
     deps.registry.setActiveUi(id);
     return { active: deps.registry.getActiveUiId() };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * scene.camera.modulation
+ * ────────────────────────────────────────────────────────── */
+
+export interface SceneCameraModulationDeps {
+  readonly getCameraModulation: () => {
+    enabled: boolean;
+    readonly activeKeys: readonly string[];
+  };
+  readonly isCameraModulationSuspended: () => boolean;
+}
+
+export interface SceneCameraModulationResult {
+  readonly enabled: boolean;
+  readonly activeKeys: readonly string[];
+  readonly suspended: boolean;
+}
+
+/**
+ * Scene pack の camera modulation を制御する handler。
+ * enabled: false で強制 suspend（claim 無しでも停止）。
+ */
+export function createSceneCameraModulationHandler(deps: SceneCameraModulationDeps) {
+  return async (request: unknown): Promise<SceneCameraModulationResult> => {
+    const r = (request ?? {}) as { enabled?: unknown };
+    const mod = deps.getCameraModulation();
+
+    if (typeof r.enabled === "boolean") {
+      mod.enabled = r.enabled;
+    }
+
+    return {
+      enabled: mod.enabled,
+      activeKeys: [...mod.activeKeys],
+      suspended: deps.isCameraModulationSuspended(),
+    };
   };
 }
 

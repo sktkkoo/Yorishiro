@@ -611,6 +611,8 @@ function App() {
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
+          // Camera modulation
+          createSceneCameraModulationHandler,
           // Screenshot:
           createSceneScreenshotHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
@@ -726,6 +728,14 @@ function App() {
               return { blur: layer?.blur ?? 0, opacity: layer?.opacity ?? 1 };
             },
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
+            getCameraModulationState: () => {
+              const mod = getThreeRuntime().getCameraModulation();
+              return {
+                enabled: mod.enabled,
+                suspended: getThreeRuntime().isCameraModulationSuspended(),
+                activeKeys: [...mod.activeKeys],
+              };
+            },
             getEffectKinds: () => effectDispatcher.getRegisteredKinds(),
             getRuntimeActive: () => ({
               scene: scenePackRegistry.getActiveSceneId(),
@@ -744,6 +754,7 @@ function App() {
             claimCamera: () => claimState.claim("camera"),
             setCameraTracking: (enabled) => getThreeRuntime().setCameraTracking(enabled),
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
+            setCameraBase: (pos) => getThreeRuntime().setCameraBase(pos[0], pos[1], pos[2]),
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),
@@ -816,6 +827,11 @@ function App() {
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
+          }),
+          // ── Camera modulation ─────────────────────────────
+          "scene.camera.modulation": createSceneCameraModulationHandler({
+            getCameraModulation: () => getThreeRuntime().getCameraModulation(),
+            isCameraModulationSuspended: () => getThreeRuntime().isCameraModulationSuspended(),
           }),
           // ── Screenshot ────────────────────────────────────
           "scene.screenshot": createSceneScreenshotHandler({
