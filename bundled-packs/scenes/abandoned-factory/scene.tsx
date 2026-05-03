@@ -11,11 +11,17 @@
  */
 
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { Ceiling } from "./lib/ceiling";
+import { Floor } from "./lib/floor";
+import { Walls } from "./lib/walls";
 
 function AbandonedFactoryScene({ vrmSlot }: ScenePackComponentProps) {
   return (
     <>
       <ambientLight intensity={0.05} color="#1a1f28" />
+      <Floor />
+      <Walls />
+      <Ceiling />
       {vrmSlot}
     </>
   );
