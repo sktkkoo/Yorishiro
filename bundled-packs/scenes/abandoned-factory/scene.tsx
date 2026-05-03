@@ -13,13 +13,15 @@
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
 import { DustMotes, GodRays } from "./lib/atmosphere";
 import { Ceiling } from "./lib/ceiling";
+import { CrtScreen } from "./lib/crt-screen";
 import { DistantPipes } from "./lib/distant-pipes";
 import { Floor } from "./lib/floor";
 import { Lights } from "./lib/lights";
 import { PowerLine } from "./lib/power-line";
+import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
 
-function AbandonedFactoryScene({ vrmSlot }: ScenePackComponentProps) {
+function AbandonedFactoryScene({ vrmSlot, resolveAsset }: ScenePackComponentProps) {
   return (
     <>
       <Lights />
@@ -30,6 +32,8 @@ function AbandonedFactoryScene({ vrmSlot }: ScenePackComponentProps) {
       <GodRays />
       <PowerLine />
       <DistantPipes />
+      <AbandonedFactoryProps resolveAsset={resolveAsset} />
+      <CrtScreen />
       {vrmSlot}
     </>
   );
