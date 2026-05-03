@@ -11,7 +11,10 @@
  */
 
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { folder, useControls } from "leva";
+import { useControlsBridge } from "../../../src/runtime/ui-state-store";
 import { DustMotes } from "./lib/atmosphere";
+import { CameraBreath } from "./lib/camera-breath";
 import { Ceiling } from "./lib/ceiling";
 import { CrtScreen } from "./lib/crt-screen";
 import { DistantPipes } from "./lib/distant-pipes";
@@ -22,7 +25,23 @@ import { PowerLine } from "./lib/power-line";
 import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
 
-function AbandonedFactoryScene({ vrmSlot, resolveAsset }: ScenePackComponentProps) {
+function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackComponentProps) {
+  const [breathControls, setBreath] = useControls("abandoned-factory", () => ({
+    cameraBreath: folder(
+      {
+        freqX: { value: 1.4, min: 0.1, max: 5, step: 0.1 },
+        freqY: { value: 0.9, min: 0.1, max: 5, step: 0.1 },
+        freqZ: { value: 0.6, min: 0.1, max: 5, step: 0.1 },
+        ampX: { value: 0.002, min: 0, max: 0.02, step: 0.001 },
+        ampY: { value: 0.003, min: 0, max: 0.02, step: 0.001 },
+        ampZ: { value: 0.001, min: 0, max: 0.02, step: 0.001 },
+        fovAmp: { value: 0.15, min: 0, max: 1, step: 0.01 },
+      },
+      { collapsed: true },
+    ),
+  }));
+  useControlsBridge("abandoned-factory", breathControls, setBreath);
+
   return (
     <>
       <Lights />
@@ -34,6 +53,16 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset }: ScenePackComponentProp
       <DistantPipes />
       <AbandonedFactoryProps resolveAsset={resolveAsset} />
       <CrtScreen />
+      <CameraBreath
+        camera={camera}
+        freqX={breathControls.freqX}
+        freqY={breathControls.freqY}
+        freqZ={breathControls.freqZ}
+        ampX={breathControls.ampX}
+        ampY={breathControls.ampY}
+        ampZ={breathControls.ampZ}
+        fovAmp={breathControls.fovAmp}
+      />
       {vrmSlot}
       <AbandonedFactoryPostProcess />
     </>

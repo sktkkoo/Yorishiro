@@ -13,6 +13,8 @@
 import { useFrame } from "@react-three/fiber";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
+import type { Disposable, Vec3 } from "../../sdk/context";
+import type { ScenePackCameraAPI } from "../../sdk/scene-pack";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { BUNDLED_ASSETS } from "../scene-pack-registry/asset-resolver";
 import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
@@ -82,7 +84,38 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
     };
   }, []);
 
-  return <Component vrmSlot={null} resolveAsset={resolveAsset} />;
+  const camera = useMemo<ScenePackCameraAPI>(() => {
+    const mod = getThreeRuntime().getCameraModulation();
+    return {
+      addPositionModulation(
+        key: string,
+        evaluate: (elapsed: number, delta: number) => Vec3,
+      ): Disposable {
+        return mod.addPositionModulation(key, evaluate);
+      },
+      addFovModulation(
+        key: string,
+        evaluate: (elapsed: number, delta: number) => number,
+      ): Disposable {
+        return mod.addFovModulation(key, evaluate);
+      },
+      clearAll(): void {
+        mod.clearAll();
+      },
+      get isSuspended(): boolean {
+        return getThreeRuntime().isCameraModulationSuspended();
+      },
+    };
+  }, []);
+
+  // Pack unmount 時に全 modulation を解除
+  useEffect(() => {
+    return () => {
+      getThreeRuntime().getCameraModulation().clearAll();
+    };
+  }, []);
+
+  return <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} />;
 }
 
 function R3fDebugCube() {

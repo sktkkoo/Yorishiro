@@ -13,6 +13,7 @@
  */
 
 import type { ComponentType, ReactNode } from "react";
+import type { Disposable, Vec3 } from "./context";
 import type { SceneSpec } from "./scene";
 
 /**
@@ -67,6 +68,40 @@ export interface ScenePackComponentProps {
   readonly vrmSlot: ReactNode;
   readonly resolveAsset: (relativePath: string) => string;
   readonly controls?: Record<string, unknown>;
+
+  /**
+   * Camera modulation API. Scene pack が VRM 追従 camera に additive な
+   * 微小変調（breath / drift / sway）を加えるための interface.
+   *
+   * 変調は base position への相対 offset として適用される.
+   * MCP / UI pack が camera claim を取得している間は変調の適用が自動 suspend.
+   * Pack unmount 時に全 modulation は自動解除される.
+   *
+   * Internal design-record: specs/2026-05-03-scene-pack-camera-api.md
+   */
+  readonly camera: ScenePackCameraAPI;
+}
+
+/**
+ * Scene pack が camera に continuous modulation を加えるための API.
+ * Base camera 制御（position/fov の absolute 設定）は MCP `scene.camera.set` が担う.
+ * 本 API は base に対する additive な微小変調のみを扱う.
+ */
+export interface ScenePackCameraAPI {
+  /** Position offset modulation を登録する. 毎フレーム evaluate → base に加算. */
+  addPositionModulation(
+    key: string,
+    evaluate: (elapsed: number, delta: number) => Vec3,
+  ): Disposable;
+
+  /** FOV offset modulation を登録する. 毎フレーム evaluate → base FOV に加算. */
+  addFovModulation(key: string, evaluate: (elapsed: number, delta: number) => number): Disposable;
+
+  /** 全 modulation を解除. Pack unmount 時に runtime が自動呼出し. */
+  clearAll(): void;
+
+  /** Claim により modulation が suspend 中か（観察用, read-only）. */
+  readonly isSuspended: boolean;
 }
 
 /**
