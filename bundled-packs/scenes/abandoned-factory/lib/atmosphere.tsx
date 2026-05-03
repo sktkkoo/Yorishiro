@@ -29,6 +29,8 @@ uniform float uTime;
 uniform float uSizeMult;
 uniform float uAlphaBase;
 uniform float uAlphaAmp;
+uniform float uMoveFreq;
+uniform float uMoveAmp;
 
 attribute float aPhase;
 attribute float aSize;
@@ -37,10 +39,9 @@ varying float vAlpha;
 
 void main() {
   vec3 pos = position;
-  float freq = 0.15;
-  pos.x += sin(uTime * freq + aPhase) * 0.3;
-  pos.y += sin(uTime * freq * 0.7 + aPhase * 1.3) * 0.15;
-  pos.z += sin(uTime * freq * 0.5 + aPhase * 0.7) * 0.25;
+  pos.x += sin(uTime * uMoveFreq + aPhase) * uMoveAmp;
+  pos.y += sin(uTime * uMoveFreq * 0.7 + aPhase * 1.3) * uMoveAmp * 0.5;
+  pos.z += sin(uTime * uMoveFreq * 0.5 + aPhase * 0.7) * uMoveAmp * 0.8;
 
   vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPos;
@@ -71,6 +72,8 @@ export function DustMotes() {
       sizeMult: { value: 3.0, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.16, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
       alphaAmp: { value: 0.08, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
+      moveFreq: { value: 0.06, min: 0.01, max: 0.5, step: 0.01, label: "漂流速度" },
+      moveAmp: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "漂流幅" },
     }),
   });
 
@@ -101,6 +104,8 @@ export function DustMotes() {
         uSizeMult: { value: 3.0 },
         uAlphaBase: { value: 0.16 },
         uAlphaAmp: { value: 0.08 },
+        uMoveFreq: { value: 0.06 },
+        uMoveAmp: { value: 0.08 },
       },
       vertexShader: dustVertexShader,
       fragmentShader: dustFragmentShader,
@@ -118,6 +123,8 @@ export function DustMotes() {
     mat.uniforms.uSizeMult.value = controls.sizeMult;
     mat.uniforms.uAlphaBase.value = controls.alphaBase;
     mat.uniforms.uAlphaAmp.value = controls.alphaAmp;
+    mat.uniforms.uMoveFreq.value = controls.moveFreq;
+    mat.uniforms.uMoveAmp.value = controls.moveAmp;
   });
 
   return <primitive ref={pointsRef} object={points} />;
