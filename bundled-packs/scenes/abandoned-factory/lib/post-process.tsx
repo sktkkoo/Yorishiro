@@ -11,16 +11,26 @@
  */
 
 import { useFrame } from "@react-three/fiber";
-import { Bloom, EffectComposer, ToneMapping, Vignette } from "@react-three/postprocessing";
+import {
+  Bloom,
+  ChromaticAberration,
+  EffectComposer,
+  Noise,
+  Scanline,
+  ToneMapping,
+  Vignette,
+} from "@react-three/postprocessing";
 import { folder, useControls } from "leva";
 import {
   BlendFunction,
   ChromaticAberrationEffect,
+  type EffectComposer as EffectComposerImpl,
+  EffectPass,
   NoiseEffect,
   ScanlineEffect,
   ToneMappingMode,
 } from "postprocessing";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Vector2 } from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import {
@@ -191,26 +201,33 @@ export function AbandonedFactoryPostProcess() {
     heavyIntensity: 0,
   });
 
-  // CA / noise / scanline を imperative に生成。
-  // @react-three/postprocessing の wrapEffect は React 19 の ref-as-prop と
-  // JSON.stringify(props) が衝突するため、ref が必要な Effect は primitive で描画する。
-  // Effect は一度だけ生成、以後 useFrame で毎フレーム直接 mutation する。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Effect は mount 時に一度生成。初期値は useFrame が即上書きする
-  const caEffect = useMemo(
-    () =>
-      new ChromaticAberrationEffect({
-        offset: new Vector2(caOffsetX, caOffsetY),
-        radialModulation: true,
-        modulationOffset: 0.5,
-      }),
-    [],
-  );
-  const noiseEffect = useMemo(() => new NoiseEffect({ blendFunction: BlendFunction.MULTIPLY }), []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 同上
-  const scanlineEffect = useMemo(() => new ScanlineEffect({ density: scanlineDensity }), []);
+  // EffectComposer ref 経由で effect instances を取得。
+  // 個別 Effect に ref を渡すと React 19 の ref-as-prop が
+  // wrapEffect 内部の JSON.stringify(props) と衝突するため、
+  // composer.passes → EffectPass → effects で間接取得する。
+  const composerRef = useRef<EffectComposerImpl | null>(null);
+  const effectsRef = useRef<{
+    ca: ChromaticAberrationEffect | null;
+    noise: NoiseEffect | null;
+    scanline: ScanlineEffect | null;
+  }>({ ca: null, noise: null, scanline: null });
+
+  useEffect(() => {
+    const composer = composerRef.current;
+    if (!composer) return;
+    for (const pass of composer.passes) {
+      if (!(pass instanceof EffectPass)) continue;
+      // EffectPass.effects は型上 private だが runtime では iterable
+      const effects = (pass as unknown as { effects: Iterable<unknown> }).effects;
+      for (const effect of effects) {
+        if (effect instanceof ChromaticAberrationEffect) effectsRef.current.ca = effect;
+        else if (effect instanceof NoiseEffect) effectsRef.current.noise = effect;
+        else if (effect instanceof ScanlineEffect) effectsRef.current.scanline = effect;
+      }
+    }
+  });
 
   // lights.tsx と同じ flickerAmount を参照するため leva を購読.
-  // ここでは read-only で良いので useControls の get 側のみ.
   const [lightsControls] = useControls("abandoned-factory", () => ({
     lights: folder({
       flickerAmount: { value: 0.1, min: 0, max: 1, step: 0.05 },
@@ -237,24 +254,34 @@ export function AbandonedFactoryPostProcess() {
     const output = updateGlitches(t, lanternRaw, glitchState.current, glitchControls);
     glitchOutput.current = output;
 
+    const { ca, noise, scanline } = effectsRef.current;
+
     // --- CA modulation ---
-    const caMultiplier =
-      1 +
-      output.briefIntensity * (glitchControls.briefCaMultiplier - 1) +
-      output.lanternSyncIntensity * (glitchControls.lanternSyncCaMultiplier - 1);
-    caEffect.offset.set(caOffsetX * caMultiplier, caOffsetY * caMultiplier);
+    if (ca) {
+      const caMultiplier =
+        1 +
+        output.briefIntensity * (glitchControls.briefCaMultiplier - 1) +
+        output.lanternSyncIntensity * (glitchControls.lanternSyncCaMultiplier - 1);
+      ca.offset.set(caOffsetX * caMultiplier, caOffsetY * caMultiplier);
+    }
 
     // --- Noise modulation ---
-    const noiseAdd = output.heavyIntensity * glitchControls.heavyNoiseAdd;
-    noiseEffect.blendMode.opacity.value = noiseOpacity + noiseAdd;
+    if (noise) {
+      const noiseAdd = output.heavyIntensity * glitchControls.heavyNoiseAdd;
+      noise.blendMode.opacity.value = noiseOpacity + noiseAdd;
+    }
 
     // --- Scanline modulation ---
-    const scanMul = 1 + output.heavyIntensity * (glitchControls.heavyScanlineMultiplier - 1);
-    scanlineEffect.blendMode.opacity.value = scanlineOpacity * scanMul;
+    if (scanline) {
+      const scanMul = 1 + output.heavyIntensity * (glitchControls.heavyScanlineMultiplier - 1);
+      scanline.blendMode.opacity.value = scanlineOpacity * scanMul;
+    }
   });
 
+  const caOffset = useMemo(() => new Vector2(caOffsetX, caOffsetY), [caOffsetX, caOffsetY]);
+
   return (
-    <EffectComposer multisampling={0}>
+    <EffectComposer ref={composerRef} multisampling={0}>
       <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       <Bloom
         intensity={bloomIntensity}
@@ -262,9 +289,9 @@ export function AbandonedFactoryPostProcess() {
         luminanceSmoothing={bloomSmoothing}
         mipmapBlur
       />
-      <primitive object={caEffect} />
-      <primitive object={noiseEffect} />
-      <primitive object={scanlineEffect} />
+      <ChromaticAberration offset={caOffset} radialModulation modulationOffset={0.5} />
+      <Noise opacity={noiseOpacity} blendFunction={BlendFunction.MULTIPLY} />
+      <Scanline density={scanlineDensity} opacity={scanlineOpacity} />
       <Vignette offset={vignetteOffset} darkness={vignetteDarkness} />
     </EffectComposer>
   );
