@@ -29,13 +29,13 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackCompo
   const [breathControls, setBreath] = useControls("abandoned-factory", () => ({
     cameraBreath: folder(
       {
-        freqX: { value: 1.4, min: 0.1, max: 5, step: 0.1 },
-        freqY: { value: 0.9, min: 0.1, max: 5, step: 0.1 },
+        freqX: { value: 1.7, min: 0.1, max: 5, step: 0.1 },
+        freqY: { value: 0.7, min: 0.1, max: 5, step: 0.1 },
         freqZ: { value: 0.6, min: 0.1, max: 5, step: 0.1 },
-        ampX: { value: 0.002, min: 0, max: 0.02, step: 0.001 },
-        ampY: { value: 0.003, min: 0, max: 0.02, step: 0.001 },
-        ampZ: { value: 0.001, min: 0, max: 0.02, step: 0.001 },
-        fovAmp: { value: 0.15, min: 0, max: 1, step: 0.01 },
+        ampX: { value: 0.001, min: 0, max: 0.02, step: 0.001 },
+        ampY: { value: 0.001, min: 0, max: 0.02, step: 0.001 },
+        ampZ: { value: 0, min: 0, max: 0.02, step: 0.001 },
+        fovAmp: { value: 0, min: 0, max: 1, step: 0.01 },
       },
       { collapsed: true },
     ),
