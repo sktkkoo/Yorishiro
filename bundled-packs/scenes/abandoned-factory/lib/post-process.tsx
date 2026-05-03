@@ -15,6 +15,7 @@ import {
   Bloom,
   ChromaticAberration,
   EffectComposer,
+  EffectComposerContext,
   Noise,
   Scanline,
   ToneMapping,
@@ -24,19 +25,18 @@ import { folder, useControls } from "leva";
 import {
   BlendFunction,
   ChromaticAberrationEffect,
-  type EffectComposer as EffectComposerImpl,
   EffectPass,
   NoiseEffect,
   ScanlineEffect,
   ToneMappingMode,
 } from "postprocessing";
-import { useEffect, useMemo, useRef } from "react";
+import { useContext, useMemo, useRef } from "react";
 import { Vector2 } from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import {
   createGlitchState,
   DEFAULT_GLITCH_PARAMS,
-  type GlitchOutput,
+  type GlitchParams,
   type GlitchState,
   updateGlitches,
 } from "./event-glitches";
@@ -193,40 +193,6 @@ export function AbandonedFactoryPostProcess() {
   const { scanlineDensity, scanlineOpacity } = scanlineControls;
   const { vignetteOffset, vignetteDarkness } = vignetteControls;
 
-  // --- glitch state ---
-  const glitchState = useRef<GlitchState | null>(null);
-  const glitchOutput = useRef<GlitchOutput>({
-    briefIntensity: 0,
-    lanternSyncIntensity: 0,
-    heavyIntensity: 0,
-  });
-
-  // EffectComposer ref 経由で effect instances を取得。
-  // 個別 Effect に ref を渡すと React 19 の ref-as-prop が
-  // wrapEffect 内部の JSON.stringify(props) と衝突するため、
-  // composer.passes → EffectPass → effects で間接取得する。
-  const composerRef = useRef<EffectComposerImpl | null>(null);
-  const effectsRef = useRef<{
-    ca: ChromaticAberrationEffect | null;
-    noise: NoiseEffect | null;
-    scanline: ScanlineEffect | null;
-  }>({ ca: null, noise: null, scanline: null });
-
-  useEffect(() => {
-    const composer = composerRef.current;
-    if (!composer) return;
-    for (const pass of composer.passes) {
-      if (!(pass instanceof EffectPass)) continue;
-      // EffectPass.effects は型上 private だが runtime では iterable
-      const effects = (pass as unknown as { effects: Iterable<unknown> }).effects;
-      for (const effect of effects) {
-        if (effect instanceof ChromaticAberrationEffect) effectsRef.current.ca = effect;
-        else if (effect instanceof NoiseEffect) effectsRef.current.noise = effect;
-        else if (effect instanceof ScanlineEffect) effectsRef.current.scanline = effect;
-      }
-    }
-  });
-
   // lights.tsx と同じ flickerAmount を参照するため leva を購読.
   const [lightsControls] = useControls("abandoned-factory", () => ({
     lights: folder({
@@ -234,25 +200,88 @@ export function AbandonedFactoryPostProcess() {
     }),
   }));
 
-  const flickerParams = useMemo<FlickerParams>(
-    () => ({ flickerAmount: lightsControls.flickerAmount }),
-    [lightsControls.flickerAmount],
+  const caOffset = useMemo(() => new Vector2(caOffsetX, caOffsetY), [caOffsetX, caOffsetY]);
+
+  return (
+    <EffectComposer multisampling={0}>
+      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
+      <Bloom
+        intensity={bloomIntensity}
+        luminanceThreshold={bloomThreshold}
+        luminanceSmoothing={bloomSmoothing}
+        mipmapBlur
+      />
+      <ChromaticAberration offset={caOffset} radialModulation modulationOffset={0.5} />
+      <Noise opacity={noiseOpacity} blendFunction={BlendFunction.MULTIPLY} />
+      <Scanline density={scanlineDensity} opacity={scanlineOpacity} />
+      <Vignette offset={vignetteOffset} darkness={vignetteDarkness} />
+      <GlitchModulator
+        caOffsetX={caOffsetX}
+        caOffsetY={caOffsetY}
+        noiseOpacity={noiseOpacity}
+        scanlineOpacity={scanlineOpacity}
+        glitchControls={glitchControls}
+        flickerAmount={lightsControls.flickerAmount}
+      />
+    </EffectComposer>
   );
+}
+
+interface GlitchModulatorProps {
+  readonly caOffsetX: number;
+  readonly caOffsetY: number;
+  readonly noiseOpacity: number;
+  readonly scanlineOpacity: number;
+  readonly glitchControls: GlitchParams;
+  readonly flickerAmount: number;
+}
+
+/**
+ * EffectComposer 内部で context 経由 composer.passes から effect を取得し、
+ * glitch event に応じて per-frame mutation する。
+ */
+function GlitchModulator({
+  caOffsetX,
+  caOffsetY,
+  noiseOpacity,
+  scanlineOpacity,
+  glitchControls,
+  flickerAmount,
+}: GlitchModulatorProps) {
+  const { composer } = useContext(EffectComposerContext);
+
+  const glitchState = useRef<GlitchState | null>(null);
+  const effectsRef = useRef<{
+    ca: ChromaticAberrationEffect | null;
+    noise: NoiseEffect | null;
+    scanline: ScanlineEffect | null;
+  }>({ ca: null, noise: null, scanline: null });
+
+  const flickerParams = useMemo<FlickerParams>(() => ({ flickerAmount }), [flickerAmount]);
 
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
 
-    // glitch state を lazy init (clock は mount 後に進み始めるため)
+    // effect instances を lazy resolve（passes が構築されてから探す）
+    if (!effectsRef.current.ca && composer) {
+      for (const pass of composer.passes) {
+        if (!(pass instanceof EffectPass)) continue;
+        const effects = (pass as unknown as { effects: Iterable<unknown> }).effects;
+        for (const effect of effects) {
+          if (effect instanceof ChromaticAberrationEffect) effectsRef.current.ca = effect;
+          else if (effect instanceof NoiseEffect) effectsRef.current.noise = effect;
+          else if (effect instanceof ScanlineEffect) effectsRef.current.scanline = effect;
+        }
+      }
+    }
+
+    // glitch state を lazy init
     if (!glitchState.current) {
       glitchState.current = createGlitchState(t, glitchControls);
     }
 
-    // lantern flicker を再計算 (lights.tsx と同じ pure function)
     const lanternRaw = computeLanternFlicker(t, flickerParams);
-
-    // glitch 更新
     const output = updateGlitches(t, lanternRaw, glitchState.current, glitchControls);
-    glitchOutput.current = output;
 
     const { ca, noise, scanline } = effectsRef.current;
 
@@ -278,21 +307,5 @@ export function AbandonedFactoryPostProcess() {
     }
   });
 
-  const caOffset = useMemo(() => new Vector2(caOffsetX, caOffsetY), [caOffsetX, caOffsetY]);
-
-  return (
-    <EffectComposer ref={composerRef} multisampling={0}>
-      <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
-      <Bloom
-        intensity={bloomIntensity}
-        luminanceThreshold={bloomThreshold}
-        luminanceSmoothing={bloomSmoothing}
-        mipmapBlur
-      />
-      <ChromaticAberration offset={caOffset} radialModulation modulationOffset={0.5} />
-      <Noise opacity={noiseOpacity} blendFunction={BlendFunction.MULTIPLY} />
-      <Scanline density={scanlineDensity} opacity={scanlineOpacity} />
-      <Vignette offset={vignetteOffset} darkness={vignetteDarkness} />
-    </EffectComposer>
-  );
+  return null;
 }
