@@ -23,6 +23,8 @@ import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
 import claiManifest from "../bundled-packs/personas/clai/manifest.json";
 import claiPack from "../bundled-packs/personas/clai/persona";
+import abandonedFactoryManifest from "../bundled-packs/scenes/abandoned-factory/manifest.json";
+import abandonedFactoryPack from "../bundled-packs/scenes/abandoned-factory/scene";
 import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/manifest.json";
 import mistyGrasslandsPack from "../bundled-packs/scenes/misty-grasslands/scene";
 import simpleRoomManifest from "../bundled-packs/scenes/simple-room/manifest.json";
@@ -448,6 +450,7 @@ function App() {
         }> = [
           { pack: simpleRoomPack, manifest: simpleRoomManifest as ScenePackManifest },
           { pack: mistyGrasslandsPack, manifest: mistyGrasslandsManifest as ScenePackManifest },
+          { pack: abandonedFactoryPack, manifest: abandonedFactoryManifest as ScenePackManifest },
         ];
         for (const { pack, manifest } of bundledScenes) {
           const resolved = await resolveSceneAssets(pack.scene, {
