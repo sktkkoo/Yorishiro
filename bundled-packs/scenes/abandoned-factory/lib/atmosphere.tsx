@@ -1,10 +1,7 @@
 /**
  * 廃工場の大気効果. 浮遊粒子 (DustMotes) と天光柱 (GodRays).
  *
- * leva で sizeMult / alphaBase / alphaAmp / godrays alpha を runtime 調整可能.
- *
- * DustMotes: THREE.Points + additive blending で漂う微粒子.
- * GodRays: ConeGeometry + ShaderMaterial で fake volumetric light pillar.
+ * leva で sizeMult / alpha / godRays alpha をリアルタイム調整可能.
  */
 
 import { useFrame } from "@react-three/fiber";
@@ -14,8 +11,6 @@ import * as THREE from "three";
 import { PALETTE } from "./palette";
 
 /* ---- 決定論的 LCG 乱数 ---- */
-
-const SEED = 0xa11ce;
 
 function createLcg(seed: number) {
   let s = seed | 0;
@@ -41,7 +36,6 @@ attribute float aSize;
 varying float vAlpha;
 
 void main() {
-  /* sin 揺動: 各 mote が独自の phase で緩やかに漂う */
   vec3 pos = position;
   float freq = 0.15;
   pos.x += sin(uTime * freq + aPhase) * 0.3;
@@ -50,12 +44,8 @@ void main() {
 
   vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPos;
-
-  /* size: distance attenuation. 旧 300.0 multiplier は white-out の主因だった.
-     misty-grasslands 同様, 1 / max(1, distance) の自然減衰に sizeMult をかける */
   gl_PointSize = aSize * (uSizeMult / max(1.0, -mvPos.z));
 
-  /* alpha: base + sin による明滅. additive blending で 200 mote 重なるため subtle */
   vAlpha = uAlphaBase + uAlphaAmp * sin(uTime * 0.4 + aPhase * 2.0);
 }
 `;
@@ -73,27 +63,19 @@ void main() {
 }
 `;
 
-/**
- * 浮遊粒子 component. 14x4x14 の空間に 200 個の微粒子を散布.
- *
- * leva controls (folder "abandoned-factory > dust"):
- *   - sizeMult: gl_PointSize の距離減衰係数 (default 3.0)
- *   - alphaBase: alpha の基準値 (default 0.16)
- *   - alphaAmp: alpha の sin 振幅 (default 0.08)
- */
 export function DustMotes() {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const { sizeMult, alphaBase, alphaAmp } = useControls("abandoned-factory", {
+  const controls = useControls("abandoned-factory", {
     dust: folder({
-      sizeMult: { value: 3.0, min: 0, max: 30, step: 0.1 },
-      alphaBase: { value: 0.16, min: 0, max: 0.5, step: 0.01 },
-      alphaAmp: { value: 0.08, min: 0, max: 0.3, step: 0.01 },
+      sizeMult: { value: 3.0, min: 0, max: 30, step: 0.5, label: "size multiplier" },
+      alphaBase: { value: 0.16, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
+      alphaAmp: { value: 0.08, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
     }),
   });
 
   const points = useMemo(() => {
-    const rng = createLcg(SEED);
+    const rng = createLcg(0xa11ce);
 
     const positions = new Float32Array(MOTE_COUNT * 3);
     const phases = new Float32Array(MOTE_COUNT);
@@ -104,7 +86,7 @@ export function DustMotes() {
       positions[i * 3 + 1] = rng() * 4 + 0.5;
       positions[i * 3 + 2] = (rng() - 0.5) * 14;
       phases[i] = rng() * Math.PI * 2;
-      sizes[i] = 6 + rng() * 14; // 6..20 base size (misty-grasslands と同範囲)
+      sizes[i] = 6 + rng() * 14;
     }
 
     const geo = new THREE.BufferGeometry();
@@ -115,10 +97,10 @@ export function DustMotes() {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
+        uColor: { value: PALETTE.hazeColor.clone() },
         uSizeMult: { value: 3.0 },
         uAlphaBase: { value: 0.16 },
         uAlphaAmp: { value: 0.08 },
-        uColor: { value: PALETTE.hazeColor.clone() },
       },
       vertexShader: dustVertexShader,
       fragmentShader: dustFragmentShader,
@@ -133,9 +115,9 @@ export function DustMotes() {
   useFrame((_state, delta) => {
     const mat = points.material as THREE.ShaderMaterial;
     mat.uniforms.uTime.value += delta;
-    mat.uniforms.uSizeMult.value = sizeMult;
-    mat.uniforms.uAlphaBase.value = alphaBase;
-    mat.uniforms.uAlphaAmp.value = alphaAmp;
+    mat.uniforms.uSizeMult.value = controls.sizeMult;
+    mat.uniforms.uAlphaBase.value = controls.alphaBase;
+    mat.uniforms.uAlphaAmp.value = controls.alphaAmp;
   });
 
   return <primitive ref={pointsRef} object={points} />;
@@ -168,34 +150,20 @@ void main() {
 }
 `;
 
-/**
- * 天光柱 component. fake volumetric light.
- *
- * leva controls (folder "abandoned-factory > godrays"):
- *   - alphaMult: 全体 alpha の強さ (default 0.08)
- *   - posX / posZ: 円錐位置 (default -1.5, 0)
- *   - radius: 底面半径 (default 1.2)
- */
 export function GodRays() {
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
-  const { alphaMult, posX, posZ, radius } = useControls("abandoned-factory", {
-    godrays: folder(
-      {
-        alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.005 },
-        posX: { value: -1.5, min: -8, max: 8, step: 0.1 },
-        posZ: { value: 0, min: -8, max: 8, step: 0.1 },
-        radius: { value: 1.2, min: 0.2, max: 5, step: 0.05 },
-      },
-      { collapsed: true },
-    ),
+  const controls = useControls("abandoned-factory", {
+    godRays: folder({
+      alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "alpha multiplier" },
+    }),
   });
 
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uAlphaMult: { value: 0.08 },
       uColor: { value: PALETTE.skylight.clone() },
+      uAlphaMult: { value: 0.08 },
     }),
     [],
   );
@@ -203,13 +171,13 @@ export function GodRays() {
   useFrame((_state, delta) => {
     if (matRef.current) {
       matRef.current.uniforms.uTime.value += delta;
-      matRef.current.uniforms.uAlphaMult.value = alphaMult;
+      matRef.current.uniforms.uAlphaMult.value = controls.alphaMult;
     }
   });
 
   return (
-    <mesh position={[posX, 3, posZ]} rotation={[0, 0, Math.PI * 0.05]}>
-      <coneGeometry args={[radius, 6, 16, 1, true]} />
+    <mesh position={[-1.5, 3, 0]} rotation={[0, 0, Math.PI * 0.05]}>
+      <coneGeometry args={[1.2, 6, 16, 1, true]} />
       <shaderMaterial
         ref={matRef}
         uniforms={uniforms}

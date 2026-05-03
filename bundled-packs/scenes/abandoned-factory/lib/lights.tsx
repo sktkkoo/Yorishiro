@@ -8,6 +8,7 @@
  */
 
 import { useFrame } from "@react-three/fiber";
+import { folder, useControls } from "leva";
 import { useRef } from "react";
 import type * as THREE from "three";
 import { computeCrtFlicker, computeLanternFlicker } from "./flicker";
@@ -23,22 +24,30 @@ export function Lights() {
   const lanternRef = useRef<THREE.PointLight>(null);
   const crtRef = useRef<THREE.PointLight>(null);
 
+  const controls = useControls("abandoned-factory", {
+    lights: folder({
+      directionalIntensity: { value: 0.6, min: 0, max: 3, step: 0.05, label: "天光 intensity" },
+      lanternScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "ランタン scale" },
+      crtScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "CRT scale" },
+      ambientIntensity: { value: 0.03, min: 0, max: 0.3, step: 0.005, label: "ambient" },
+    }),
+  });
+
   useFrame(({ clock }) => {
     const t = clock.getElapsedTime();
     if (lanternRef.current) {
-      lanternRef.current.intensity = computeLanternFlicker(t);
+      lanternRef.current.intensity = computeLanternFlicker(t) * controls.lanternScale;
     }
     if (crtRef.current) {
-      crtRef.current.intensity = computeCrtFlicker(t);
+      crtRef.current.intensity = computeCrtFlicker(t) * controls.crtScale;
     }
   });
 
   return (
     <>
-      {/* 天光: cool daylight が天井の隙間から差す */}
       <directionalLight
         position={[-2, 8, 1]}
-        intensity={0.6}
+        intensity={controls.directionalIntensity}
         color={PALETTE.skylight}
         castShadow
         shadow-mapSize={[2048, 2048]}
@@ -49,8 +58,6 @@ export function Lights() {
         shadow-camera-near={0.1}
         shadow-camera-far={30}
       />
-
-      {/* ランタン: warm flicker, castShadow */}
       <pointLight
         ref={lanternRef}
         position={[...LANTERN_POSITION]}
@@ -60,8 +67,6 @@ export function Lights() {
         castShadow
         shadow-mapSize={[1024, 1024]}
       />
-
-      {/* CRT モニタ: cool signal flicker, shadow なし */}
       <pointLight
         ref={crtRef}
         position={[...CRT_POSITION]}
@@ -70,9 +75,7 @@ export function Lights() {
         decay={2}
         castShadow={false}
       />
-
-      {/* 極微弱 ambient. 完全暗黒を避ける */}
-      <ambientLight intensity={0.03} color="#0a0e14" />
+      <ambientLight intensity={controls.ambientIntensity} color="#0a0e14" />
     </>
   );
 }
