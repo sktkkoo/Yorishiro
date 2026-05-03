@@ -65,6 +65,25 @@ persona 以外の pack は比較的軽量に編集できる。
 
 scene の色・layer 構成、effect の parameter 調整、ui のレイアウト変更、ambient-ui の表示調整など、いずれもこのフローで完結する。
 
+## Scene pack のパラメータをリアルタイム調整する
+
+scene pack が leva パネルにパラメータを公開している場合、ファイル編集なしでリアルタイムに値を変えられる。
+
+### 調整フロー
+
+1. `get_ui_state({ packId: "<scene-id>" })` で現在のパラメータ一覧を取得する
+2. user の要望（「照明もう少し明るくして」「bloom 控えめに」等）に合わせて `set_ui_state({ packId, key, value })` で値を変える。画面に即反映される
+3. user が気に入るまで繰り返す
+4. 「焼き込んで」と言われたら、現在の全パラメータを `get_ui_state` で読み、ソースコードの `useControls` 定義内の `value:` を書き換える（= 次回起動からその値が default になる）
+
+### key 名の対応
+
+key 名は pack ソースの `useControls` 定義に書かれた property 名と一致する（例: `bloomIntensity`, `directionalIntensity`, `moveAmp`）。packId は active scene の id（`state_get()` の `runtime.activeScene` で確認できる）。
+
+### どのパラメータが公開されているか
+
+pack 作者が `useControls` + `useControlsBridge` で登録した値だけが leva パネルに出る。登録していない値はコード内のローカル変数のまま固定される。user が「このパラメータも触りたい」と言ったら、ソースに `useControls` の項目を追加すればよい。
+
 ## Bundled pack の fork
 
 bundled pack は read-only（本体の一部、編集不可）。user が改変したい場合は user pack directory にコピーして独立 pack として管理する。
