@@ -22,6 +22,8 @@ export interface GlitchParams {
   readonly briefDuration: number;
   /** brief glitch 時の CA offset 倍率 */
   readonly briefCaMultiplier: number;
+  /** brief glitch 時の block distortion 強度 */
+  readonly briefBlockStrength: number;
 
   /** lantern dropout threshold (これ以下で CA spike) */
   readonly lanternSyncThreshold: number;
@@ -38,23 +40,29 @@ export interface GlitchParams {
   readonly heavyNoiseAdd: number;
   /** heavy burst 時の scanline opacity 倍率 */
   readonly heavyScanlineMultiplier: number;
+  /** heavy burst 時の block distortion 強度 */
+  readonly heavyBlockStrength: number;
+  /** block distortion の column 幅 */
+  readonly blockColumns: number;
 }
 
 export const DEFAULT_GLITCH_PARAMS: GlitchParams = {
-  // TODO: 確認用に短縮中。確定後に元の値に戻す (30/90, 120/300)
-  briefIntervalMin: 3,
-  briefIntervalMax: 6,
+  briefIntervalMin: 30,
+  briefIntervalMax: 90,
   briefDuration: 0.15,
   briefCaMultiplier: 4.0,
+  briefBlockStrength: 0.3,
 
   lanternSyncThreshold: 0.4,
   lanternSyncCaMultiplier: 2.5,
 
-  heavyIntervalMin: 8,
-  heavyIntervalMax: 15,
+  heavyIntervalMin: 120,
+  heavyIntervalMax: 300,
   heavyDuration: 0.3,
   heavyNoiseAdd: 0.4,
   heavyScanlineMultiplier: 8.0,
+  heavyBlockStrength: 0.7,
+  blockColumns: 0.04,
 };
 
 /** 各 glitch event の current 強度 (0–1). post-process が modulation に使う. */
@@ -73,19 +81,34 @@ export interface GlitchState {
   nextBriefAt: number;
   /** brief glitch が発火した時刻 (-1 で非活性) */
   briefFiredAt: number;
+  /** nextBriefAt を決めた時点の最小間隔 */
+  briefIntervalMin: number;
+  /** nextBriefAt を決めた時点の最大間隔 */
+  briefIntervalMax: number;
   /** 次の heavy burst の発火時刻 */
   nextHeavyAt: number;
   /** heavy burst が発火した時刻 (-1 で非活性) */
   heavyFiredAt: number;
+  /** nextHeavyAt を決めた時点の最小間隔 */
+  heavyIntervalMin: number;
+  /** nextHeavyAt を決めた時点の最大間隔 */
+  heavyIntervalMax: number;
 }
 
 /** glitch state を初期化. scene mount 時に呼ぶ. */
 export function createGlitchState(startTime: number, params: GlitchParams): GlitchState {
+  const briefInterval = normalizeInterval(params.briefIntervalMin, params.briefIntervalMax);
+  const heavyInterval = normalizeInterval(params.heavyIntervalMin, params.heavyIntervalMax);
+
   return {
-    nextBriefAt: startTime + randomRange(params.briefIntervalMin, params.briefIntervalMax),
+    nextBriefAt: startTime + randomRange(briefInterval.min, briefInterval.max),
     briefFiredAt: -1,
-    nextHeavyAt: startTime + randomRange(params.heavyIntervalMin, params.heavyIntervalMax),
+    briefIntervalMin: briefInterval.min,
+    briefIntervalMax: briefInterval.max,
+    nextHeavyAt: startTime + randomRange(heavyInterval.min, heavyInterval.max),
     heavyFiredAt: -1,
+    heavyIntervalMin: heavyInterval.min,
+    heavyIntervalMax: heavyInterval.max,
   };
 }
 
@@ -103,6 +126,8 @@ export function updateGlitches(
   state: GlitchState,
   params: GlitchParams,
 ): GlitchOutput {
+  syncIntervalSchedule(t, state, params);
+
   // --- Brief glitch ---
   let briefIntensity = 0;
   if (t >= state.nextBriefAt && state.briefFiredAt < 0) {
@@ -119,7 +144,7 @@ export function updateGlitches(
     } else {
       // 終了 → 次回スケジュール
       state.briefFiredAt = -1;
-      state.nextBriefAt = t + randomRange(params.briefIntervalMin, params.briefIntervalMax);
+      state.nextBriefAt = t + randomRange(state.briefIntervalMin, state.briefIntervalMax);
     }
   }
 
@@ -149,11 +174,45 @@ export function updateGlitches(
       heavyIntensity *= 0.8 + 0.2 * Math.abs(Math.sin(t * 200));
     } else {
       state.heavyFiredAt = -1;
-      state.nextHeavyAt = t + randomRange(params.heavyIntervalMin, params.heavyIntervalMax);
+      state.nextHeavyAt = t + randomRange(state.heavyIntervalMin, state.heavyIntervalMax);
     }
   }
 
   return { briefIntensity, lanternSyncIntensity, heavyIntensity };
+}
+
+function syncIntervalSchedule(t: number, state: GlitchState, params: GlitchParams): void {
+  const briefInterval = normalizeInterval(params.briefIntervalMin, params.briefIntervalMax);
+  if (
+    state.briefIntervalMin !== briefInterval.min ||
+    state.briefIntervalMax !== briefInterval.max
+  ) {
+    state.briefIntervalMin = briefInterval.min;
+    state.briefIntervalMax = briefInterval.max;
+    if (state.briefFiredAt < 0) {
+      state.nextBriefAt = t + randomRange(briefInterval.min, briefInterval.max);
+    }
+  }
+
+  const heavyInterval = normalizeInterval(params.heavyIntervalMin, params.heavyIntervalMax);
+  if (
+    state.heavyIntervalMin !== heavyInterval.min ||
+    state.heavyIntervalMax !== heavyInterval.max
+  ) {
+    state.heavyIntervalMin = heavyInterval.min;
+    state.heavyIntervalMax = heavyInterval.max;
+    if (state.heavyFiredAt < 0) {
+      state.nextHeavyAt = t + randomRange(heavyInterval.min, heavyInterval.max);
+    }
+  }
+}
+
+function normalizeInterval(min: number, max: number): { min: number; max: number } {
+  const normalizedMin = Math.max(0, Number.isFinite(min) ? min : 0);
+  const normalizedMax = Math.max(0, Number.isFinite(max) ? max : normalizedMin);
+  return normalizedMin <= normalizedMax
+    ? { min: normalizedMin, max: normalizedMax }
+    : { min: normalizedMax, max: normalizedMin };
 }
 
 /** min–max の一様乱数. perlin seed で pseudo-random. */
