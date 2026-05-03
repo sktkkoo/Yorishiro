@@ -380,6 +380,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
     });
@@ -422,6 +423,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
     });
@@ -464,6 +466,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
     });
@@ -490,6 +493,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
     });
@@ -521,6 +525,7 @@ describe("createStateGetHandler", () => {
       getSceneLayerValues: (role) =>
         role === "background" ? { blur: 5, opacity: 0.8 } : { blur: 0, opacity: 1 },
       getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
     });
@@ -553,6 +558,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
     });
@@ -577,6 +583,7 @@ describe("createStateGetHandler", () => {
       getTerminalOpacity: () => 1,
       getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
       getCameraTracking: () => false,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({
         scene: "runtime-scene", // divergence: registry が config と違う

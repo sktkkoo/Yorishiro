@@ -611,6 +611,8 @@ function App() {
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
+          // Camera modulation
+          createSceneCameraModulationHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -724,6 +726,14 @@ function App() {
               return { blur: layer?.blur ?? 0, opacity: layer?.opacity ?? 1 };
             },
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
+            getCameraModulationState: () => {
+              const mod = getThreeRuntime().getCameraModulation();
+              return {
+                enabled: mod.enabled,
+                suspended: getThreeRuntime().isCameraModulationSuspended(),
+                activeKeys: [...mod.activeKeys],
+              };
+            },
             getEffectKinds: () => effectDispatcher.getRegisteredKinds(),
             getRuntimeActive: () => ({
               scene: scenePackRegistry.getActiveSceneId(),
@@ -815,6 +825,11 @@ function App() {
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
+          }),
+          // ── Camera modulation ─────────────────────────────
+          "scene.camera.modulation": createSceneCameraModulationHandler({
+            getCameraModulation: () => getThreeRuntime().getCameraModulation(),
+            isCameraModulationSuspended: () => getThreeRuntime().isCameraModulationSuspended(),
           }),
         };
 
