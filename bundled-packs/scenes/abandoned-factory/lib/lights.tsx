@@ -11,6 +11,7 @@ import { useFrame } from "@react-three/fiber";
 import { folder, useControls } from "leva";
 import { useRef } from "react";
 import type * as THREE from "three";
+import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import { computeCrtFlicker, computeLanternFlicker, type FlickerParams } from "./flicker";
 import { PALETTE } from "./palette";
 
@@ -24,7 +25,7 @@ export function Lights() {
   const lanternRef = useRef<THREE.PointLight>(null);
   const crtRef = useRef<THREE.PointLight>(null);
 
-  const controls = useControls("abandoned-factory", {
+  const [controls, setControls] = useControls("abandoned-factory", () => ({
     lights: folder({
       directionalIntensity: { value: 0.6, min: 0, max: 3, step: 0.05, label: "天光 intensity" },
       lanternScale: { value: 1.1, min: 0, max: 3, step: 0.05, label: "ランタン scale" },
@@ -32,7 +33,8 @@ export function Lights() {
       flickerAmount: { value: 0.1, min: 0, max: 1, step: 0.05, label: "flicker 振幅 (0=安定)" },
       ambientIntensity: { value: 0.05, min: 0, max: 0.3, step: 0.005, label: "ambient" },
     }),
-  });
+  }));
+  useControlsBridge("abandoned-factory", controls, setControls);
 
   const flickerParams: FlickerParams = { flickerAmount: controls.flickerAmount };
 

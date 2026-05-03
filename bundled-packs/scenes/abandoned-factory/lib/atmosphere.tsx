@@ -8,6 +8,7 @@ import { useFrame } from "@react-three/fiber";
 import { folder, useControls } from "leva";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import { PALETTE } from "./palette";
 
 /* ---- 決定論的 LCG 乱数 ---- */
@@ -67,7 +68,7 @@ void main() {
 export function DustMotes() {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const controls = useControls("abandoned-factory", {
+  const [controls, setControls] = useControls("abandoned-factory", () => ({
     dust: folder({
       sizeMult: { value: 7, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.28, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
@@ -75,7 +76,8 @@ export function DustMotes() {
       moveFreq: { value: 0.0003, min: 0, max: 0.01, step: 0.0001, label: "漂流速度" },
       moveAmp: { value: 0.5, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
     }),
-  });
+  }));
+  useControlsBridge("abandoned-factory", controls, setControls);
 
   const points = useMemo(() => {
     const rng = createLcg(0xa11ce);
@@ -160,11 +162,12 @@ void main() {
 export function GodRays() {
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
-  const controls = useControls("abandoned-factory", {
+  const [controls, setControls] = useControls("abandoned-factory", () => ({
     godRays: folder({
       alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "alpha multiplier" },
     }),
-  });
+  }));
+  useControlsBridge("abandoned-factory", controls, setControls);
 
   const uniforms = useMemo(
     () => ({

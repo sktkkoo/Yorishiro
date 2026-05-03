@@ -21,6 +21,7 @@ import {
 import { folder, useControls } from "leva";
 import { BlendFunction, ToneMappingMode } from "postprocessing";
 import { Vector2 } from "three";
+import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 /**
  * always-on の α+β post-process layer.
@@ -31,15 +32,16 @@ import { Vector2 } from "three";
  * 各 effect は leva で intensity / threshold / opacity を runtime 調整可能.
  */
 export function AbandonedFactoryPostProcess() {
-  const { bloomIntensity, bloomThreshold, bloomSmoothing } = useControls("abandoned-factory", {
+  const [bloomControls, setBloom] = useControls("abandoned-factory", () => ({
     bloom: folder({
       bloomIntensity: { value: 0.85, min: 0, max: 3, step: 0.05 },
       bloomThreshold: { value: 0.2, min: 0, max: 1, step: 0.01 },
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
-  });
+  }));
+  useControlsBridge("abandoned-factory", bloomControls, setBloom);
 
-  const { caOffsetX, caOffsetY } = useControls("abandoned-factory", {
+  const [caControls, setCa] = useControls("abandoned-factory", () => ({
     chromaticAberration: folder(
       {
         caOffsetX: { value: 0.0059, min: 0, max: 0.01, step: 0.0001 },
@@ -47,18 +49,20 @@ export function AbandonedFactoryPostProcess() {
       },
       { collapsed: true },
     ),
-  });
+  }));
+  useControlsBridge("abandoned-factory", caControls, setCa);
 
-  const { noiseOpacity } = useControls("abandoned-factory", {
+  const [noiseControls, setNoise] = useControls("abandoned-factory", () => ({
     noise: folder(
       {
         noiseOpacity: { value: 0.2, min: 0, max: 0.3, step: 0.005 },
       },
       { collapsed: true },
     ),
-  });
+  }));
+  useControlsBridge("abandoned-factory", noiseControls, setNoise);
 
-  const { scanlineDensity, scanlineOpacity } = useControls("abandoned-factory", {
+  const [scanlineControls, setScanline] = useControls("abandoned-factory", () => ({
     scanline: folder(
       {
         scanlineDensity: { value: 0.8, min: 0.5, max: 5, step: 0.05 },
@@ -66,14 +70,22 @@ export function AbandonedFactoryPostProcess() {
       },
       { collapsed: true },
     ),
-  });
+  }));
+  useControlsBridge("abandoned-factory", scanlineControls, setScanline);
 
-  const { vignetteOffset, vignetteDarkness } = useControls("abandoned-factory", {
+  const [vignetteControls, setVignette] = useControls("abandoned-factory", () => ({
     vignette: folder({
       vignetteOffset: { value: 0.03, min: 0, max: 1, step: 0.01 },
       vignetteDarkness: { value: 0.8, min: 0, max: 2, step: 0.01 },
     }),
-  });
+  }));
+  useControlsBridge("abandoned-factory", vignetteControls, setVignette);
+
+  const { bloomIntensity, bloomThreshold, bloomSmoothing } = bloomControls;
+  const { caOffsetX, caOffsetY } = caControls;
+  const { noiseOpacity } = noiseControls;
+  const { scanlineDensity, scanlineOpacity } = scanlineControls;
+  const { vignetteOffset, vignetteDarkness } = vignetteControls;
 
   return (
     <EffectComposer multisampling={0}>

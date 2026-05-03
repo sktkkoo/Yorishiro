@@ -12,18 +12,21 @@ import { useFrame } from "@react-three/fiber";
 import { folder, useControls } from "leva";
 import { useRef } from "react";
 import * as THREE from "three";
+import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function CameraRig(): null {
   const baseFovRef = useRef<number | null>(null);
 
-  const { fovBreathAmp } = useControls("abandoned-factory", {
+  const [controls, setControls] = useControls("abandoned-factory", () => ({
     camera: folder(
       {
         fovBreathAmp: { value: 0.15, min: 0, max: 1.0, step: 0.01, label: "FOV breath (°)" },
       },
       { collapsed: true },
     ),
-  });
+  }));
+  useControlsBridge("abandoned-factory", controls, setControls);
+  const { fovBreathAmp } = controls;
 
   useFrame(({ camera, clock }) => {
     if (!(camera instanceof THREE.PerspectiveCamera)) return;
