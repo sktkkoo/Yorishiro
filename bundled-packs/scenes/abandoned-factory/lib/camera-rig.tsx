@@ -1,16 +1,26 @@
 /**
  * Camera modulator: breath + slow drift.
  *
- * Camera は core が所有しているため pack は per-frame offset を加えるだけ.
- * 前フレームで加えた offset を一度引いてから新 offset を加える.
+ * Camera は core (ThreeRuntime) が所有しており, VRM 追従のため毎フレーム
+ * camera.position.y を update + camera.lookAt(0, currentY, 0) を呼ぶ.
+ * このため CameraRig が camera.position.x/y を modulate すると lookAt が
+ * 角度変化として効き「シェイク」として強く感じられる.
+ *
+ * default では FOV breath のみ enabled で position 系は 0. user が leva で
+ * dial up したい場合は positionAmpX/Y や driftAmpX/Y を上げる.
+ *
+ * leva controls (folder "abandoned-factory > camera"):
+ *   - fovBreathAmp: FOV breath の振幅（degrees, default 0.15）
+ *   - positionAmpX/Y: position breath の振幅（meters, default 0）
+ *   - driftAmpX/Y: Perlin drift の振幅（meters, default 0）
  */
 
 import { useFrame } from "@react-three/fiber";
+import { folder, useControls } from "leva";
 import { useRef } from "react";
 import * as THREE from "three";
 import { perlin1d } from "./perlin";
 
-/** 前フレームの breath offset */
 interface BreathOffset {
   x: number;
   y: number;
@@ -22,10 +32,25 @@ export function CameraRig(): null {
   const lastBreathRef = useRef<BreathOffset>({ x: 0, y: 0, fov: 0 });
   const lastDriftRef = useRef(new THREE.Vector3());
 
+  const { fovBreathAmp, positionAmpX, positionAmpY, driftAmpX, driftAmpY } = useControls(
+    "abandoned-factory",
+    {
+      camera: folder(
+        {
+          fovBreathAmp: { value: 0.15, min: 0, max: 1.0, step: 0.01 },
+          positionAmpX: { value: 0, min: 0, max: 0.05, step: 0.001 },
+          positionAmpY: { value: 0, min: 0, max: 0.05, step: 0.001 },
+          driftAmpX: { value: 0, min: 0, max: 0.1, step: 0.001 },
+          driftAmpY: { value: 0, min: 0, max: 0.1, step: 0.001 },
+        },
+        { collapsed: true },
+      ),
+    },
+  );
+
   useFrame(({ camera, clock }) => {
     if (!(camera instanceof THREE.PerspectiveCamera)) return;
 
-    /* 初回フレームで base FOV を記録 */
     if (baseFovRef.current === null) {
       baseFovRef.current = camera.fov;
     }
@@ -42,14 +67,12 @@ export function CameraRig(): null {
     /* --- 新しい offset を計算 --- */
     const t = clock.getElapsedTime();
 
-    // breath: 呼吸のような微細な揺れ（周期 4-5 秒）
-    const breathX = Math.sin(t * 1.4) * 0.005;
-    const breathY = Math.sin(t * 1.1) * 0.003;
-    const breathFov = Math.sin(t * 1.4) * 0.3;
+    const breathX = Math.sin(t * 1.4) * positionAmpX;
+    const breathY = Math.sin(t * 1.1) * positionAmpY;
+    const breathFov = Math.sin(t * 1.4) * fovBreathAmp;
 
-    // drift: Perlin noise による緩やかな漂流（30+ 秒周期）
-    const driftX = perlin1d(t * 0.04) * 0.02;
-    const driftY = perlin1d(t * 0.04 + 100) * 0.015;
+    const driftX = perlin1d(t * 0.04) * driftAmpX;
+    const driftY = perlin1d(t * 0.04 + 100) * driftAmpY;
 
     /* --- 新しい offset を適用 --- */
     camera.position.x += breathX + driftX;
@@ -57,7 +80,6 @@ export function CameraRig(): null {
     camera.fov = baseFov + breathFov;
     camera.updateProjectionMatrix();
 
-    /* --- 次フレーム用に保存 --- */
     lastBreathRef.current = { x: breathX, y: breathY, fov: breathFov };
     lastDrift.set(driftX, driftY, 0);
   });

@@ -51,6 +51,7 @@
     "@xterm/xterm": "^6.0.0",
     "esbuild-wasm": "^0.28.0",
     "howler": "^2.2.4",
+    "leva": "^0.10.1",
     "lucide-react": "^1.14.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

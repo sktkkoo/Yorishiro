@@ -1,15 +1,14 @@
 /**
  * 廃工場の大気効果. 浮遊粒子 (DustMotes) と天光柱 (GodRays).
  *
- * DustMotes: THREE.Points + additive blending で漂う微粒子.
- *   決定論的 LCG 乱数で位置 / phase / size を生成し、
- *   vertex shader で sin 揺動、fragment で soft glow circle を描画.
+ * leva で sizeMult / alphaBase / alphaAmp / godrays alpha を runtime 調整可能.
  *
+ * DustMotes: THREE.Points + additive blending で漂う微粒子.
  * GodRays: ConeGeometry + ShaderMaterial で fake volumetric light pillar.
- *   天井の隙間から差し込む光を表現.
  */
 
 import { useFrame } from "@react-three/fiber";
+import { folder, useControls } from "leva";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { PALETTE } from "./palette";
@@ -18,7 +17,6 @@ import { PALETTE } from "./palette";
 
 const SEED = 0xa11ce;
 
-/** Linear Congruential Generator. state を closure で保持. */
 function createLcg(seed: number) {
   let s = seed | 0;
   return () => {
@@ -33,6 +31,9 @@ const MOTE_COUNT = 200;
 
 const dustVertexShader = /* glsl */ `
 uniform float uTime;
+uniform float uSizeMult;
+uniform float uAlphaBase;
+uniform float uAlphaAmp;
 
 attribute float aPhase;
 attribute float aSize;
@@ -49,10 +50,13 @@ void main() {
 
   vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
   gl_Position = projectionMatrix * mvPos;
-  gl_PointSize = aSize * (300.0 / -mvPos.z);
 
-  /* alpha を sin wave で明滅 */
-  vAlpha = 0.3 + 0.7 * (0.5 + 0.5 * sin(uTime * 0.4 + aPhase * 2.0));
+  /* size: distance attenuation. 旧 300.0 multiplier は white-out の主因だった.
+     misty-grasslands 同様, 1 / max(1, distance) の自然減衰に sizeMult をかける */
+  gl_PointSize = aSize * (uSizeMult / max(1.0, -mvPos.z));
+
+  /* alpha: base + sin による明滅. additive blending で 200 mote 重なるため subtle */
+  vAlpha = uAlphaBase + uAlphaAmp * sin(uTime * 0.4 + aPhase * 2.0);
 }
 `;
 
@@ -62,7 +66,6 @@ uniform vec3 uColor;
 varying float vAlpha;
 
 void main() {
-  /* soft glow circle: 中心から smoothstep で減衰 */
   float dist = length(gl_PointCoord - vec2(0.5));
   float glow = 1.0 - smoothstep(0.0, 0.5, dist);
 
@@ -71,13 +74,23 @@ void main() {
 `;
 
 /**
- * 浮遊粒子 component.
+ * 浮遊粒子 component. 14x4x14 の空間に 200 個の微粒子を散布.
  *
- * 14x4x14 の空間に 200 個の微粒子を散布.
- * additive blending で柔らかく光る.
+ * leva controls (folder "abandoned-factory > dust"):
+ *   - sizeMult: gl_PointSize の距離減衰係数 (default 3.0)
+ *   - alphaBase: alpha の基準値 (default 0.16)
+ *   - alphaAmp: alpha の sin 振幅 (default 0.08)
  */
 export function DustMotes() {
   const pointsRef = useRef<THREE.Points>(null);
+
+  const { sizeMult, alphaBase, alphaAmp } = useControls("abandoned-factory", {
+    dust: folder({
+      sizeMult: { value: 3.0, min: 0, max: 30, step: 0.1 },
+      alphaBase: { value: 0.16, min: 0, max: 0.5, step: 0.01 },
+      alphaAmp: { value: 0.08, min: 0, max: 0.3, step: 0.01 },
+    }),
+  });
 
   const points = useMemo(() => {
     const rng = createLcg(SEED);
@@ -87,12 +100,11 @@ export function DustMotes() {
     const sizes = new Float32Array(MOTE_COUNT);
 
     for (let i = 0; i < MOTE_COUNT; i++) {
-      /* x: -7..+7, y: 0.5..4.5, z: -7..+7 */
       positions[i * 3] = (rng() - 0.5) * 14;
       positions[i * 3 + 1] = rng() * 4 + 0.5;
       positions[i * 3 + 2] = (rng() - 0.5) * 14;
       phases[i] = rng() * Math.PI * 2;
-      sizes[i] = 4 + rng() * 4; // 4..8 pt
+      sizes[i] = 6 + rng() * 14; // 6..20 base size (misty-grasslands と同範囲)
     }
 
     const geo = new THREE.BufferGeometry();
@@ -103,6 +115,9 @@ export function DustMotes() {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
+        uSizeMult: { value: 3.0 },
+        uAlphaBase: { value: 0.16 },
+        uAlphaAmp: { value: 0.08 },
         uColor: { value: PALETTE.hazeColor.clone() },
       },
       vertexShader: dustVertexShader,
@@ -118,6 +133,9 @@ export function DustMotes() {
   useFrame((_state, delta) => {
     const mat = points.material as THREE.ShaderMaterial;
     mat.uniforms.uTime.value += delta;
+    mat.uniforms.uSizeMult.value = sizeMult;
+    mat.uniforms.uAlphaBase.value = alphaBase;
+    mat.uniforms.uAlphaAmp.value = alphaAmp;
   });
 
   return <primitive ref={pointsRef} object={points} />;
@@ -137,15 +155,14 @@ void main() {
 const godRaysFragmentShader = /* glsl */ `
 uniform float uTime;
 uniform vec3 uColor;
+uniform float uAlphaMult;
 
 varying float vY;
 
 void main() {
-  /* 上部から下部へ fade */
   float topFade = smoothstep(3.0, -3.0, vY);
-  /* 微細なノイズで揺らぎ */
   float noise = sin(uTime * 0.3 + vY * 2.0);
-  float alpha = topFade * 0.08 * (0.7 + noise * 0.3);
+  float alpha = topFade * uAlphaMult * (0.7 + noise * 0.3);
 
   gl_FragColor = vec4(uColor, alpha);
 }
@@ -154,15 +171,30 @@ void main() {
 /**
  * 天光柱 component. fake volumetric light.
  *
- * 天井の隙間から差し込む光を ConeGeometry + ShaderMaterial で表現.
- * additive blending + double-sided で柔らかく光る円錐.
+ * leva controls (folder "abandoned-factory > godrays"):
+ *   - alphaMult: 全体 alpha の強さ (default 0.08)
+ *   - posX / posZ: 円錐位置 (default -1.5, 0)
+ *   - radius: 底面半径 (default 1.2)
  */
 export function GodRays() {
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
+  const { alphaMult, posX, posZ, radius } = useControls("abandoned-factory", {
+    godrays: folder(
+      {
+        alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.005 },
+        posX: { value: -1.5, min: -8, max: 8, step: 0.1 },
+        posZ: { value: 0, min: -8, max: 8, step: 0.1 },
+        radius: { value: 1.2, min: 0.2, max: 5, step: 0.05 },
+      },
+      { collapsed: true },
+    ),
+  });
+
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
+      uAlphaMult: { value: 0.08 },
       uColor: { value: PALETTE.skylight.clone() },
     }),
     [],
@@ -171,12 +203,13 @@ export function GodRays() {
   useFrame((_state, delta) => {
     if (matRef.current) {
       matRef.current.uniforms.uTime.value += delta;
+      matRef.current.uniforms.uAlphaMult.value = alphaMult;
     }
   });
 
   return (
-    <mesh position={[-1.5, 3, 0]} rotation={[0, 0, Math.PI * 0.05]}>
-      <coneGeometry args={[1.2, 6, 16, 1, true]} />
+    <mesh position={[posX, 3, posZ]} rotation={[0, 0, Math.PI * 0.05]}>
+      <coneGeometry args={[radius, 6, 16, 1, true]} />
       <shaderMaterial
         ref={matRef}
         uniforms={uniforms}
