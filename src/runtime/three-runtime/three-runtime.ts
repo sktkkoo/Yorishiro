@@ -10,6 +10,7 @@ import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type ClaimState, getClaimState } from "../ui-claim-state";
 import { getVrmCache } from "../vrm-cache";
+import { CameraModulationRegistry } from "./camera-modulation";
 import { R3fHost } from "./r3f-host";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
 import type { ThreeRuntime } from "./types";
@@ -52,6 +53,9 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private trackHead: THREE.Object3D | null = null;
   private loadToken = 0;
   private readonly tweenManager = new TweenManager();
+  private readonly cameraBase = { x: 0, y: 1.35, z: 1.1 };
+  private readonly cameraModulation = new CameraModulationRegistry();
+  private readonly baseFov: number;
   private currentPlaceholder: HTMLElement | null = null;
   private lastRendererW = 0;
   private lastRendererH = 0;
@@ -80,6 +84,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 20);
     this.camera.position.set(0, 1.35, 1.1);
     this.camera.lookAt(0, 1.35, 0);
+    this.baseFov = this.camera.fov;
 
     this.defaultAmbientLight = new THREE.AmbientLight(0xffffff, 0.4);
     this.scene.add(this.defaultAmbientLight);
@@ -189,6 +194,9 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               else headPos.set(0, 1.6, 0);
 
               const targetY = headPos.y - 0.05;
+              this.cameraBase.x = 0;
+              this.cameraBase.y = targetY;
+              this.cameraBase.z = 1.1;
               this.camera.position.set(0, targetY, 1.1);
               this.camera.lookAt(0, targetY, 0);
 
@@ -258,6 +266,20 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.defaultDirLight.visible = enabled;
   }
 
+  getCameraModulation(): CameraModulationRegistry {
+    return this.cameraModulation;
+  }
+
+  setCameraBase(x: number, y: number, z: number): void {
+    this.cameraBase.x = x;
+    this.cameraBase.y = y;
+    this.cameraBase.z = z;
+  }
+
+  isCameraModulationSuspended(): boolean {
+    return this.claimState.isClaimed("camera") || !this.cameraModulation.enabled;
+  }
+
   // ─── private methods ────────────────────────────────────────────
 
   private startRenderLoop(): void {
@@ -275,10 +297,35 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.updateBodyPointerReference();
         this.currentBody.update(delta, elapsed);
 
-        if (this.trackHead && this.cameraTrackingEnabled && !this.claimState.isClaimed("camera")) {
+        const cameraClaimed = this.claimState.isClaimed("camera");
+
+        // Step 1: Base — VRM head tracking（claim 未取得時のみ）
+        if (this.trackHead && this.cameraTrackingEnabled && !cameraClaimed) {
           this.trackHead.getWorldPosition(this.headWorldPos);
           const desiredY = this.headWorldPos.y - 0.05;
-          this.camera.position.y += (desiredY - this.camera.position.y) * Math.min(1.5 * delta, 1);
+          this.cameraBase.y += (desiredY - this.cameraBase.y) * Math.min(1.5 * delta, 1);
+        }
+
+        // Step 2: Modulation 適用（claim 未取得 かつ enabled の場合のみ）
+        if (!cameraClaimed && this.cameraModulation.enabled) {
+          const offset = this.cameraModulation.evaluatePosition(elapsed, delta);
+          this.camera.position.x = this.cameraBase.x + offset.x;
+          this.camera.position.y = this.cameraBase.y + offset.y;
+          this.camera.position.z = this.cameraBase.z + offset.z;
+
+          const fovOffset = this.cameraModulation.evaluateFov(elapsed, delta);
+          if (fovOffset !== 0) {
+            this.camera.fov = this.baseFov + fovOffset;
+            this.camera.updateProjectionMatrix();
+          }
+        } else if (!cameraClaimed) {
+          this.camera.position.x = this.cameraBase.x;
+          this.camera.position.y = this.cameraBase.y;
+          this.camera.position.z = this.cameraBase.z;
+        }
+
+        // Step 3: lookAt — modulation 適用後の position から target を見る
+        if (this.cameraTrackingEnabled && !cameraClaimed) {
           this.camera.lookAt(0, this.camera.position.y, 0);
         }
       }

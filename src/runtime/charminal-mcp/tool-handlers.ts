@@ -548,6 +548,7 @@ export interface SceneCameraSetDeps {
   readonly claimCamera: () => Disposable;
   readonly setCameraTracking: (enabled: boolean) => void;
   readonly getCameraTracking: () => boolean;
+  readonly setCameraBase?: (pos: [number, number, number]) => void;
 }
 
 export interface SceneCameraSetResult {
@@ -670,7 +671,10 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
     activeCameraTweenKeys.clear();
     releaseCameraClaimIfDone();
 
-    if (position) cam.position.set(position[0], position[1], position[2]);
+    if (position) {
+      cam.position.set(position[0], position[1], position[2]);
+      deps.setCameraBase?.([...position]);
+    }
     if (target) cam.lookAt(target[0], target[1], target[2]);
     if (fovValue !== undefined && "fov" in cam) {
       cam.fov = fovValue;

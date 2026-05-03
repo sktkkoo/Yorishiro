@@ -742,6 +742,7 @@ function App() {
             claimCamera: () => claimState.claim("camera"),
             setCameraTracking: (enabled) => getThreeRuntime().setCameraTracking(enabled),
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
+            setCameraBase: (pos) => getThreeRuntime().setCameraBase(pos[0], pos[1], pos[2]),
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),

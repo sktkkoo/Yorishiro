@@ -3,6 +3,7 @@ import type * as THREE from "three";
 import type { Body } from "../../core/body";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { CameraModulationRegistry } from "./camera-modulation";
 
 /**
  * ThreeRuntime の public interface。vrm-viewer.tsx が参照するのはこの型だけ。
@@ -59,4 +60,13 @@ export interface ThreeRuntime {
    * built-in lights (AmbientLight + DirectionalLight) を disable / enable する.
    */
   setDefaultLightsEnabled(enabled: boolean): void;
+
+  /** Scene pack が camera に continuous modulation を登録するための registry。 */
+  getCameraModulation(): CameraModulationRegistry;
+
+  /** cameraBase（modulation 前の pure position）を外部から設定する。MCP instant set 用。 */
+  setCameraBase(x: number, y: number, z: number): void;
+
+  /** camera modulation が suspend 中か（claim 中 or enabled=false）。 */
+  isCameraModulationSuspended(): boolean;
 }
