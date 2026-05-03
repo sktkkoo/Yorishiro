@@ -79,7 +79,7 @@ void main() {
 export function DustMotes() {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const { geometry, material } = useMemo(() => {
+  const points = useMemo(() => {
     const rng = createLcg(SEED);
 
     const positions = new Float32Array(MOTE_COUNT * 3);
@@ -103,7 +103,7 @@ export function DustMotes() {
     const mat = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
-        uColor: { value: PALETTE.hazeColor },
+        uColor: { value: PALETTE.hazeColor.clone() },
       },
       vertexShader: dustVertexShader,
       fragmentShader: dustFragmentShader,
@@ -112,18 +112,15 @@ export function DustMotes() {
       blending: THREE.AdditiveBlending,
     });
 
-    return { geometry: geo, material: mat };
+    return new THREE.Points(geo, mat);
   }, []);
 
   useFrame((_state, delta) => {
-    const points = pointsRef.current;
-    if (points) {
-      const mat = points.material as THREE.ShaderMaterial;
-      mat.uniforms.uTime.value += delta;
-    }
+    const mat = points.material as THREE.ShaderMaterial;
+    mat.uniforms.uTime.value += delta;
   });
 
-  return <primitive ref={pointsRef} object={new THREE.Points(geometry, material)} />;
+  return <primitive ref={pointsRef} object={points} />;
 }
 
 /* ---- GodRays ---- */
@@ -166,7 +163,7 @@ export function GodRays() {
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uColor: { value: PALETTE.skylight },
+      uColor: { value: PALETTE.skylight.clone() },
     }),
     [],
   );

@@ -25,8 +25,3 @@ export const FOG = {
   near: 3.0,
   far: 18.0,
 } as const;
-
-export const FLICKER = {
-  lantern: { baseHz: 0.7, irregularityNoise: 0.45, dropRate: 0.0008 },
-  crt: { baseHz: 12.0, irregularityNoise: 0.25, signalShiftHz: 0.3 },
-} as const;

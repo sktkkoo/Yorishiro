@@ -44,8 +44,8 @@ void main() {
 export function Ceiling() {
   const uniforms = useMemo(
     () => ({
-      uConcreteRoot: { value: PALETTE.concreteRoot },
-      uSkylight: { value: PALETTE.skylight },
+      uConcreteRoot: { value: PALETTE.concreteRoot.clone() },
+      uSkylight: { value: PALETTE.skylight.clone() },
     }),
     [],
   );

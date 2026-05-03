@@ -91,6 +91,10 @@ void main() {
   float puddleMask = smoothstep(0.65, 0.75, noise2(uv * 0.3 + 3.3) * 0.5 + 0.5);
   col = mix(col, uConcreteWet * 1.15, puddleMask * wetMask * 0.7);
 
+  /* Puddle 表面の微弱な interference pattern */
+  float interference = sin(uv.x * 50.0 + uTime * 0.3) * sin(uv.y * 50.0 - uTime * 0.2) * 0.02;
+  col += vec3(interference) * puddleMask;
+
   /* cracks: voronoi cell boundary */
   float voro = voronoi(uv * 1.2);
   float crackMask = 1.0 - smoothstep(0.02, 0.06, voro);
@@ -124,12 +128,12 @@ export function Floor() {
   const uniforms = useMemo(
     () => ({
       uTime: { value: 0 },
-      uConcreteRoot: { value: PALETTE.concreteRoot },
-      uConcreteMid: { value: PALETTE.concreteMid },
-      uConcreteWet: { value: PALETTE.concreteWet },
-      uMossCool: { value: PALETTE.mossCool },
-      uRustCool: { value: PALETTE.rustCool },
-      uHazeColor: { value: PALETTE.hazeColor },
+      uConcreteRoot: { value: PALETTE.concreteRoot.clone() },
+      uConcreteMid: { value: PALETTE.concreteMid.clone() },
+      uConcreteWet: { value: PALETTE.concreteWet.clone() },
+      uMossCool: { value: PALETTE.mossCool.clone() },
+      uRustCool: { value: PALETTE.rustCool.clone() },
+      uHazeColor: { value: PALETTE.hazeColor.clone() },
       uFogNear: { value: FOG.near },
       uFogFar: { value: FOG.far },
     }),

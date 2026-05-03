@@ -50,11 +50,7 @@ export function DistantPipes() {
       const scale = 0.6 + rng() * 0.8; // 0.6..1.4
 
       const m = new THREE.Matrix4();
-      m.compose(
-        new THREE.Vector3(x, y, z),
-        new THREE.Quaternion(),
-        new THREE.Vector3(scale, scale, scale),
-      );
+      m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(1, scale, 1));
       mats.push(m);
     }
 

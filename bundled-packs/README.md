@@ -56,6 +56,13 @@ bundled-packs/
 - **役割**: runtime 内蔵 Three.js procedural renderer `radiant-meadow` を使う high-fidelity scene。外部画像 / 動画 asset なしで、空・山並み・風になびく草・光粒子を描く
 - 詳細：`bundled-packs/scenes/radiant-meadow/README.md`
 
+### scenes/abandoned-factory
+- **Entry**: `scene.tsx`
+- **Files**: `manifest.json`, `README.md`, `lib/`（procedural shader / lights / props / post-process / camera rig 一式）, `assets/`（user 提供 GLTF）
+- **役割**: 鳩羽つぐ × Tarkovsky『ストーカー』(image only) × Serial Experiments Lain (post-process) の三軸を引いた廃工場 R3F-component scene. CLAI がかつてここで誰かと過ごした場所
+- 詳細：`bundled-packs/scenes/abandoned-factory/README.md`
+- 内部設計：`../Charminal-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
+
 ### effects/screen-shake
 - **Entry**: `effect.ts`
 - **役割**: built-in DOM shake on error。`ctx.space.injectEffect({ kind: "screen-shake" })` で persona から呼ばれる

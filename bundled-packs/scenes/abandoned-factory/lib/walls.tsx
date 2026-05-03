@@ -5,9 +5,7 @@
  * puddles / voronoi cracks / moss は省略.
  */
 
-import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
-import type * as THREE from "three";
+import { useMemo } from "react";
 import { FOG, PALETTE } from "./palette";
 
 const vertexShader = /* glsl */ `
@@ -23,7 +21,6 @@ void main() {
 `;
 
 const fragmentShader = /* glsl */ `
-uniform float uTime;
 uniform vec3 uConcreteRoot;
 uniform vec3 uConcreteMid;
 uniform vec3 uStainGrey;
@@ -85,33 +82,23 @@ function WallPlane({
   position: [number, number, number];
   rotation: [number, number, number];
 }) {
-  const matRef = useRef<THREE.ShaderMaterial>(null);
-
   const uniforms = useMemo(
     () => ({
-      uTime: { value: 0 },
-      uConcreteRoot: { value: PALETTE.concreteRoot },
-      uConcreteMid: { value: PALETTE.concreteMid },
-      uStainGrey: { value: PALETTE.stainGrey },
-      uRustCool: { value: PALETTE.rustCool },
-      uHazeColor: { value: PALETTE.hazeColor },
+      uConcreteRoot: { value: PALETTE.concreteRoot.clone() },
+      uConcreteMid: { value: PALETTE.concreteMid.clone() },
+      uStainGrey: { value: PALETTE.stainGrey.clone() },
+      uRustCool: { value: PALETTE.rustCool.clone() },
+      uHazeColor: { value: PALETTE.hazeColor.clone() },
       uFogNear: { value: FOG.near },
       uFogFar: { value: FOG.far },
     }),
     [],
   );
 
-  useFrame((_state, delta) => {
-    if (matRef.current) {
-      matRef.current.uniforms.uTime.value += delta;
-    }
-  });
-
   return (
     <mesh position={position} rotation={rotation} receiveShadow>
       <planeGeometry args={[16, 6, 1, 1]} />
       <shaderMaterial
-        ref={matRef}
         uniforms={uniforms}
         vertexShader={vertexShader}
         fragmentShader={fragmentShader}
