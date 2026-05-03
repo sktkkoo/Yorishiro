@@ -17,6 +17,7 @@ import { CrtScreen } from "./lib/crt-screen";
 import { DistantPipes } from "./lib/distant-pipes";
 import { Floor } from "./lib/floor";
 import { Lights } from "./lib/lights";
+import { AbandonedFactoryPostProcess } from "./lib/post-process";
 import { PowerLine } from "./lib/power-line";
 import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
@@ -35,6 +36,7 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset }: ScenePackComponentProp
       <AbandonedFactoryProps resolveAsset={resolveAsset} />
       <CrtScreen />
       {vrmSlot}
+      <AbandonedFactoryPostProcess />
     </>
   );
 }
