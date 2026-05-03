@@ -608,6 +608,8 @@ function App() {
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
+          // Screenshot:
+          createSceneScreenshotHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
@@ -811,6 +813,13 @@ function App() {
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
+          }),
+          // ── Screenshot ────────────────────────────────────
+          "scene.screenshot": createSceneScreenshotHandler({
+            getCamera: () => getThreeRuntime().getCamera(),
+            getScene: () => getThreeRuntime().getScene(),
+            getRenderer: () => getThreeRuntime().getRenderer(),
+            claimCamera: () => claimState.claim("camera"),
           }),
         };
 
