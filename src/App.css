@@ -203,7 +203,54 @@ body,
   margin-top: 8px;
 }
 
-/* leva debug panel */
+/* ── Leva debug panel — Charminal に埋め込み ── */
+
+#leva__root {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  left: auto !important;
+  width: 300px !important;
+  height: 100vh !important;
+  z-index: 40 !important;
+  pointer-events: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background: var(--charminal-sidebar-bg);
+  border-left: 1px solid var(--charminal-border);
+}
+
+#leva__root > div {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  width: 100% !important;
+}
+
 [class*="leva-"] {
-  --leva-sizes-rootWidth: 340px;
+  --leva-sizes-rootWidth: 100%;
+  --leva-sizes-controlWidth: 60%;
+  --leva-colors-elevation1: var(--charminal-sidebar-bg);
+  --leva-colors-elevation2: var(--charminal-panel-bg);
+  --leva-colors-elevation3: var(--charminal-button-bg);
+  --leva-colors-accent1: var(--charminal-accent);
+  --leva-colors-accent2: var(--charminal-accent);
+  --leva-colors-accent3: var(--charminal-accent-border);
+  --leva-colors-highlight1: var(--charminal-fg);
+  --leva-colors-highlight2: var(--charminal-button-fg);
+  --leva-colors-highlight3: var(--charminal-muted);
+  --leva-colors-vivid1: var(--charminal-accent);
+  --leva-colors-folderWidgetColor: var(--charminal-accent);
+  --leva-colors-folderTextColor: var(--charminal-fg);
+  --leva-colors-toolTipBackground: var(--charminal-panel-bg);
+  --leva-colors-toolTipText: var(--charminal-fg);
+  --leva-fonts-mono: monospace;
+  --leva-fonts-sans: monospace;
+  --leva-fontSizes-root: 11px;
+  --leva-radii-xs: 2px;
+  --leva-radii-sm: 4px;
+  --leva-radii-lg: 6px;
+  --leva-shadows-level1: none;
+  --leva-shadows-level2: none;
 }

@@ -1787,7 +1787,7 @@ function App() {
 
   return (
     <div className="app">
-      <Leva hidden={levaHidden} collapsed={false} />
+      <Leva hidden={levaHidden} collapsed={false} flat titleBar={false} />
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}
