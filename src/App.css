@@ -216,12 +216,12 @@ body,
   max-height: calc(100vh - 16px) !important;
   z-index: 50 !important;
   pointer-events: auto;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden !important;
   background: var(--charminal-sidebar-bg);
   border: 1px solid var(--charminal-border);
   border-radius: 8px;
   padding: 6px 0;
+  transition: width 0.15s ease-out;
 }
 
 #leva__root:empty,
