@@ -1,14 +1,25 @@
 /**
- * Bundled scene pack「光の草原」。
+ * Bundled scene pack「光の草原」.
  *
- * Scene pack は宣言型のまま、runtime 内蔵の Three.js procedural renderer
- * `misty-grasslands` を background として指定する。住人を前景化しすぎず、
- * 画面全体に静かな奥行きと風を作るための scene。
+ * 草原は procedural layer として VRM とは別の rendering context で描画。
+ * VRM のカメラ位置と草原のカメラ位置が独立するため、草の密生具合を
+ * 草原側カメラの奥行きで表現できる。
+ *
+ * component は VRM に当たる lighting のみを leva 経由で提供する。
+ * R3fRuntimeRoot が component を検出し default lights を disable →
+ * 代わりに Lights コンポーネントが VRM を照らす。
+ *
+ * Internal design-record: 2026-04-29-misty-grasslands-mirror-redesign.md
  */
 
-import type { ScenePackDefinition } from "@charminal/sdk";
+import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { Lights } from "./lib/lights";
 
-export default {
+function MistyGrasslandsLighting(_props: ScenePackComponentProps) {
+  return <Lights />;
+}
+
+const definition: ScenePackDefinition = {
   id: "misty-grasslands",
   type: "scene",
   scene: {
@@ -73,7 +84,10 @@ export default {
       glow: "rgba(74, 122, 52, 0.08)",
     },
   },
-} satisfies ScenePackDefinition;
+  component: MistyGrasslandsLighting,
+};
+
+export default definition;
 
 if (import.meta.hot) {
   import.meta.hot.accept(async (newModule) => {

@@ -28,6 +28,7 @@ export function Lights() {
   const [controls, setControls] = useControls("abandoned-factory", () => ({
     lights: folder({
       directionalIntensity: { value: 0.8, min: 0, max: 3, step: 0.05, label: "skylight int." },
+      directionalColor: { value: `#${PALETTE.skylight.getHexString()}`, label: "skylight color" },
       lanternScale: { value: 0.6, min: 0, max: 3, step: 0.05, label: "lantern scale" },
       crtScale: { value: 0.85, min: 0, max: 3, step: 0.05, label: "CRT scale" },
       flickerAmount: { value: 0.15, min: 0, max: 1, step: 0.05, label: "flicker amt (0=stable)" },
@@ -54,7 +55,7 @@ export function Lights() {
       <directionalLight
         position={[-2, 8, 1]}
         intensity={controls.directionalIntensity}
-        color={PALETTE.skylight}
+        color={controls.directionalColor}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-8}
