@@ -240,7 +240,7 @@ body,
 [class*="leva-"] {
   --leva-sizes-rootWidth: var(--leva-panel-width);
   --leva-sizes-controlWidth: 54%;
-  --leva-colors-elevation1: transparent;
+  --leva-colors-elevation1: var(--charminal-sidebar-bg);
   --leva-colors-elevation2: var(--charminal-input-bg);
   --leva-colors-elevation3: var(--charminal-button-bg);
   --leva-colors-accent1: var(--charminal-accent);
@@ -266,8 +266,8 @@ body,
   --leva-space-md: 6px;
 }
 
-/* フォルダヘッダーの三角 SVG を消す */
-#leva__root svg {
+/* フォルダヘッダーの三角 SVG だけ消す（検索アイコンは残す） */
+#leva__root div[role="button"] svg {
   visibility: hidden !important;
   width: 0 !important;
   height: 0 !important;
