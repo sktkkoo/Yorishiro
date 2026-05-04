@@ -816,16 +816,9 @@ function App() {
           }),
           "ui.debugPanel.set": createUiDebugPanelSetHandler({
             setDebugPanelWidth: (px) => {
-              const sidebarWidth =
-                Number.parseFloat(
-                  getComputedStyle(document.documentElement)
-                    .getPropertyValue("--sidebar-width")
-                    .trim(),
-                ) || 280;
-              const maxWidth = Math.max(0, window.innerWidth - sidebarWidth);
-              const clamped = Math.max(0, Math.min(px, maxWidth));
-              document.documentElement.style.setProperty("--leva-panel-width", `${clamped}px`);
-              setLevaHidden(clamped <= 0);
+              const w = Math.max(0, px);
+              document.documentElement.style.setProperty("--leva-panel-width", `${w}px`);
+              setLevaHidden(w <= 0);
             },
             getDebugPanelWidth: () => {
               const raw = getComputedStyle(document.documentElement)
@@ -1787,10 +1780,6 @@ function App() {
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
   const [levaHidden, setLevaHidden] = useState(true);
-
-  useEffect(() => {
-    document.documentElement.style.setProperty("--leva-panel-width", levaHidden ? "0px" : "280px");
-  }, [levaHidden]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

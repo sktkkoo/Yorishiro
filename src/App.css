@@ -1,6 +1,6 @@
 :root {
   --sidebar-width: 280px;
-  --leva-panel-width: 0px;
+  --leva-panel-width: 280px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
   --charminal-bg: #0f1923;
@@ -42,7 +42,7 @@ body,
 .app {
   display: flex;
   height: 100vh;
-  width: calc(100vw - var(--leva-panel-width));
+  width: 100vw;
 }
 
 /* ── Sidebar ────────────────────────────────────────── */
@@ -204,22 +204,24 @@ body,
   margin-top: 8px;
 }
 
-/* ── Leva debug panel — Charminal に埋め込み ── */
+/* ── Leva debug panel — floating overlay + Charminal テーマ追従 ── */
 
 #leva__root {
   position: fixed !important;
-  top: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
+  top: 8px !important;
+  right: 8px !important;
+  bottom: auto !important;
   left: auto !important;
   width: var(--leva-panel-width) !important;
-  height: 100vh !important;
-  z-index: 40 !important;
+  max-height: calc(100vh - 16px) !important;
+  z-index: 50 !important;
   pointer-events: auto;
   overflow-y: auto;
   overflow-x: hidden;
-  background: var(--charminal-sidebar-bg);
-  border-left: 1px solid var(--charminal-border);
+  background: var(--charminal-panel-bg);
+  border: 1px solid var(--charminal-border);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
 }
 
 #leva__root > div {
