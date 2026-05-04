@@ -480,20 +480,6 @@ function App() {
             note: `registered bundled scene '${pack.id}'`,
           });
         }
-        // Ambient audio engine：subscribeActive で active scene の `ambient` 宣言を再生する。
-        // register 時の resolveSceneAssets で URL は解決済みなので、engine は origin を知らずに済む。
-        ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
-        appLog.write({
-          phase: "register",
-          note: "initialized AmbientAudioRuntime",
-        });
-        // Terminal theme：subscribeActive で active scene の `terminal` 宣言をカラーテーマに適用する。
-        // scene が terminal を宣言していなければ DEFAULT_TERMINAL_THEME にフォールバック。
-        initTerminalTheme(scenePackRegistry, getTerminalRuntime());
-        appLog.write({
-          phase: "register",
-          note: "initialized terminal theme wire",
-        });
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -507,17 +493,18 @@ function App() {
       // していた。1 回読み + 両 registry に流す。失敗しても次 step は続行
       // （bundled fallback で動く）。
       let terminalAgent: TerminalAgent = "claude";
+      let ambientAudioMuted = false;
       try {
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
         terminalAgent = config.terminalAgent;
+        ambientAudioMuted = config.ambientAudioMuted;
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
         for (const id of config.activeAmbientUi) {
           getAmbientUiPackRegistry().enable(id);
         }
-        ambientAudioEngineRef.current?.setMuted(config.ambientAudioMuted);
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -525,6 +512,21 @@ function App() {
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }
+
+      // ─ Step 2.5: subscribeActive 系 wire ─
+      // config 反映後に subscribe することで、bundled fallback の alphabetical 先頭
+      // （abandoned-factory）が一瞬 active 扱いになって音が鳴る race を回避する。
+      ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
+      ambientAudioEngineRef.current.setMuted(ambientAudioMuted);
+      appLog.write({
+        phase: "register",
+        note: "initialized AmbientAudioRuntime",
+      });
+      initTerminalTheme(scenePackRegistry, getTerminalRuntime());
+      appLog.write({
+        phase: "register",
+        note: "initialized terminal theme wire",
+      });
 
       // ─ Step 3: user layer load（user pack register、init.js 実行）─
       // user pack の persona が register された時点で、primaryPersona が指している id に
