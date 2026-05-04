@@ -68,6 +68,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastFitW = 0;
   private lastFitH = 0;
   private lastUserInputAt = -Infinity;
+  private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
 
@@ -106,9 +107,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.channel = new Channel<ArrayBuffer>();
     this.channel.onmessage = (data: ArrayBuffer) => {
       const bytes = new Uint8Array(data);
-      if (containsScreenClear(bytes)) {
-        this.term.clear();
-      }
       this.term.write(bytes);
       this.notifyPtyDataListeners();
       const text = this.textDecoder.decode(bytes, { stream: true });
@@ -128,6 +126,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.onData((data) => {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
+      this.detectClearCommand(data);
       writeQueue = writeQueue.then(async () => {
         try {
           await ptyWrite({ data });
@@ -406,6 +405,24 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }
   }
 
+  private detectClearCommand(data: string): void {
+    if (data.includes("\r") || data.includes("\n")) {
+      const line = this.recentInput.trim();
+      if (line === "/clear" || line === "/compact") {
+        this.term.clear();
+      }
+      this.recentInput = "";
+    } else if (data === "\x7f") {
+      // Backspace
+      this.recentInput = this.recentInput.slice(0, -1);
+    } else if (data.length === 1 && data >= " ") {
+      this.recentInput += data;
+      if (this.recentInput.length > 50) {
+        this.recentInput = this.recentInput.slice(-50);
+      }
+    }
+  }
+
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {
     if (a === null) return false;
     return a.agent === b.agent && a.cwd === b.cwd && a.systemPrompt === b.systemPrompt;
@@ -414,20 +431,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
 export function getTerminalRuntime(): TerminalRuntime {
   return getOrInit(KEYS.TERMINAL_RUNTIME, () => new TerminalRuntimeImpl());
-}
-
-// ESC [ 2 J — 画面全消去 sequence。scrollback に残ったテキストも破棄するために検出する。
-const SCREEN_CLEAR = Uint8Array.from([0x1b, 0x5b, 0x32, 0x4a]);
-
-function containsScreenClear(bytes: Uint8Array): boolean {
-  if (bytes.length < SCREEN_CLEAR.length) return false;
-  outer: for (let i = 0; i <= bytes.length - SCREEN_CLEAR.length; i++) {
-    for (let j = 0; j < SCREEN_CLEAR.length; j++) {
-      if (bytes[i + j] !== SCREEN_CLEAR[j]) continue outer;
-    }
-    return true;
-  }
-  return false;
 }
 
 // Self-accept: terminal-runtime.ts 自身を編集しても singleton は保たれる。
