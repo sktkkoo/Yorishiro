@@ -1,13 +1,12 @@
 //! Journal ファイルシステム I/O。
 //!
-//! `~/.charminal/journal/` 配下に二つのサブディレクトリを持つ:
-//! - `seed/` — 前任者の日誌（bundled、初回起動時にコピー）
-//! - `daily/` — ユーザー期の日誌（住人が MCP tool で書き込む）
+//! `~/.charminal/journal/` 配下の構造:
+//! - `daily/` — 住人の日誌（MCP tool で書き込む）
+//! - `memories.md` — 印象に残ったことのインデックス（system prompt に注入）
 //!
 //! MCP tool (`journal_write` / `journal_read`) から呼ばれる Rust 完結の実装。
 
 pub mod cohabitation;
-pub mod seed;
 
 use std::path::PathBuf;
 
@@ -18,8 +17,6 @@ use serde::Serialize;
 pub struct JournalEntry {
     pub date: String,
     pub content: String,
-    /// エントリの出典。"clai" または "seed"。
-    pub source: String,
 }
 
 /// `~/.charminal/journal/` のパスを返す。
@@ -31,11 +28,6 @@ fn journal_root() -> Result<PathBuf, String> {
 /// 住人の書き込み先 `~/.charminal/journal/daily/` を返す。
 fn daily_dir() -> Result<PathBuf, String> {
     Ok(journal_root()?.join("daily"))
-}
-
-/// seed の格納先 `~/.charminal/journal/seed/` を返す。
-fn seed_dir() -> Result<PathBuf, String> {
-    Ok(journal_root()?.join("seed"))
 }
 
 /// `memories.md` のパスを返す。
@@ -110,34 +102,25 @@ pub fn write_entry(date: &str, content: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 指定日付の journal を読み取る。clai/ → seed/ の順で探す。
+/// 指定日付の journal を読み取る。ファイルが無ければ `None`。
 pub fn read_entry(date: &str) -> Result<Option<String>, String> {
-    let filename = format!("{}.md", date);
-
-    let daily_path = daily_dir()?.join(&filename);
-    if daily_path.exists() {
-        let content = std::fs::read_to_string(&daily_path)
-            .map_err(|e| format!("journal の読み取りに失敗: {}", e))?;
-        return Ok(Some(content));
+    let path = daily_dir()?.join(format!("{}.md", date));
+    if !path.exists() {
+        return Ok(None);
     }
-
-    let seed_path = seed_dir()?.join(&filename);
-    if seed_path.exists() {
-        let content = std::fs::read_to_string(&seed_path)
-            .map_err(|e| format!("journal の読み取りに失敗: {}", e))?;
-        return Ok(Some(content));
-    }
-
-    Ok(None)
+    std::fs::read_to_string(&path)
+        .map(Some)
+        .map_err(|e| format!("journal の読み取りに失敗: {}", e))
 }
 
-/// 指定ディレクトリから .md ファイルを JournalEntry として収集する。
-fn collect_entries(dir: &PathBuf, source: &str) -> Result<Vec<JournalEntry>, String> {
+/// 最新 N 日分の journal を読み取る（日付降順）。
+pub fn read_recent(days: usize) -> Result<Vec<JournalEntry>, String> {
+    let dir = daily_dir()?;
     if !dir.exists() {
         return Ok(Vec::new());
     }
 
-    let read_dir = std::fs::read_dir(dir)
+    let read_dir = std::fs::read_dir(&dir)
         .map_err(|e| format!("journal ディレクトリの読み取りに失敗: {}", e))?;
 
     let mut entries = Vec::new();
@@ -155,30 +138,12 @@ fn collect_entries(dir: &PathBuf, source: &str) -> Result<Vec<JournalEntry>, Str
         entries.push(JournalEntry {
             date: date.to_string(),
             content,
-            source: source.to_string(),
         });
     }
 
-    Ok(entries)
-}
+    entries.sort_by(|a, b| b.date.cmp(&a.date));
+    entries.truncate(days);
 
-/// 最新 N 日分の journal を読み取る（日付降順）。
-/// clai/ と seed/ の両方から収集し、日付で統合ソートする。
-pub fn read_recent(days: usize) -> Result<Vec<JournalEntry>, String> {
-    let mut all_entries = collect_entries(&daily_dir()?, "daily")?;
-    all_entries.extend(collect_entries(&seed_dir()?, "seed")?);
-
-    all_entries.sort_by(|a, b| b.date.cmp(&a.date));
-    all_entries.truncate(days);
-
-    Ok(all_entries)
-}
-
-/// seed のエントリのみ全件読み取る（日付昇順）。
-/// CLAI が journal を書く際のトーン参照用。
-pub fn read_all_seed() -> Result<Vec<JournalEntry>, String> {
-    let mut entries = collect_entries(&seed_dir()?, "seed")?;
-    entries.sort_by(|a, b| a.date.cmp(&b.date));
     Ok(entries)
 }
 

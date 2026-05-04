@@ -713,14 +713,6 @@ pub fn run() {
                 }
             }
 
-            // Journal seed の初期化（初回のみ）
-            match journal::seed::initialize_journal_seed(app.handle()) {
-                Ok(()) => {}
-                Err(err) => {
-                    eprintln!("[journal-seed] 初期化スキップ: {}", err);
-                }
-            }
-
             // Cohabitation hours tracking 開始
             let start = journal::cohabitation::start_tracking();
             app.manage(CohabitationStart(std::sync::Mutex::new(Some(start))));

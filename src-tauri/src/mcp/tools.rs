@@ -240,9 +240,6 @@ pub struct JournalReadRequest {
     /// 最新 N 日分を返す。date 指定時は無視される。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub days: Option<u32>,
-    /// true にすると seed エントリのみ全件返す（トーン参照用）。
-    #[serde(default)]
-    pub seed_only: bool,
 }
 
 #[derive(Clone)]
@@ -592,23 +589,13 @@ impl Charminal {
         Ok(CallToolResult::success(vec![content]))
     }
 
-    /// journal エントリを読み取る。日付指定、最新 N 日分、または seed のみ。
-    #[tool(description = "journal エントリを読み取る。日付指定、最新 N 日分、または seed のみ")]
+    /// journal エントリを読み取る。日付指定または最新 N 日分。
+    #[tool(description = "journal エントリを読み取る。日付指定または最新 N 日分")]
     async fn journal_read(
         &self,
         Parameters(req): Parameters<JournalReadRequest>,
     ) -> Result<CallToolResult, McpError> {
-        if req.seed_only {
-            // seed 全件モード（トーン参照用）
-            match crate::journal::read_all_seed() {
-                Ok(entries) => {
-                    let content = Content::json(json!({ "entries": entries }))?;
-                    Ok(CallToolResult::success(vec![content]))
-                }
-                Err(msg) => Err(McpError::internal_error(msg, None)),
-            }
-        } else if let Some(date) = req.date {
-            // 日付指定モード（clai/ → seed/ の順で探索）
+        if let Some(date) = req.date {
             match crate::journal::read_entry(&date) {
                 Ok(Some(text)) => {
                     let content = Content::json(json!({ "date": date, "content": text }))?;
