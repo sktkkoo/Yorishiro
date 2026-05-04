@@ -119,7 +119,6 @@ Presence Harness
   ├─ ICI ← 本ドキュメント
   │   └─ Charminal（ターミナル環境の実装）
   ├─ Ambient Presence
-  ├─ Climatic Presence
   └─ Tactile Presence
 ```
 

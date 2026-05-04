@@ -15,7 +15,7 @@
     "inhabited-interface"
   ],
   "author": "okktks <6031376+sktkkoo@users.noreply.github.com>",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "fetch-assets": "node scripts/fetch-assets.mjs",
     "predev": "node scripts/fetch-assets.mjs",

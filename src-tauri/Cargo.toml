@@ -3,6 +3,7 @@ name = "charminal"
 version = "0.0.1"
 description = "Charminal — someone who lives in your terminal."
 authors = ["okktks"]
+license = "MIT"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
