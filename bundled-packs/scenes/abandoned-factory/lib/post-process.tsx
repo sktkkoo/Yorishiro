@@ -52,16 +52,16 @@ import { computeLanternFlicker, type FlickerParams } from "./flicker";
  */
 export function AbandonedFactoryPostProcess() {
   // --- always-on controls ---
-  const [bloomControls, setBloom] = useControls("abandoned-factory", () => ({
+  const [bloomControls, setBloom] = useControls("post effects", () => ({
     bloom: folder({
       bloomIntensity: { value: 1, min: 0, max: 3, step: 0.05 },
       bloomThreshold: { value: 0.1, min: 0, max: 1, step: 0.01 },
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
   }));
-  useControlsBridge("abandoned-factory", bloomControls, setBloom);
+  useControlsBridge("post effects", bloomControls, setBloom);
 
-  const [caControls, setCa] = useControls("abandoned-factory", () => ({
+  const [caControls, setCa] = useControls("post effects", () => ({
     chromaticAberration: folder(
       {
         caOffsetX: { value: 0.0059, min: 0, max: 0.01, step: 0.0001 },
@@ -70,9 +70,9 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("abandoned-factory", caControls, setCa);
+  useControlsBridge("post effects", caControls, setCa);
 
-  const [noiseControls, setNoise] = useControls("abandoned-factory", () => ({
+  const [noiseControls, setNoise] = useControls("post effects", () => ({
     noise: folder(
       {
         noiseOpacity: { value: 0.195, min: 0, max: 0.3, step: 0.005 },
@@ -80,9 +80,9 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("abandoned-factory", noiseControls, setNoise);
+  useControlsBridge("post effects", noiseControls, setNoise);
 
-  const [scanlineControls, setScanline] = useControls("abandoned-factory", () => ({
+  const [scanlineControls, setScanline] = useControls("post effects", () => ({
     scanline: folder(
       {
         scanlineDensity: { value: 0.6, min: 0.5, max: 5, step: 0.05 },
@@ -91,18 +91,18 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("abandoned-factory", scanlineControls, setScanline);
+  useControlsBridge("post effects", scanlineControls, setScanline);
 
-  const [vignetteControls, setVignette] = useControls("abandoned-factory", () => ({
+  const [vignetteControls, setVignette] = useControls("post effects", () => ({
     vignette: folder({
       vignetteOffset: { value: 0.03, min: 0, max: 1, step: 0.01 },
       vignetteDarkness: { value: 0.8, min: 0, max: 2, step: 0.01 },
     }),
   }));
-  useControlsBridge("abandoned-factory", vignetteControls, setVignette);
+  useControlsBridge("post effects", vignetteControls, setVignette);
 
   // --- glitch controls ---
-  const [glitchControls, setGlitch] = useControls("abandoned-factory", () => ({
+  const [glitchControls, setGlitch] = useControls("post effects", () => ({
     glitch: folder(
       {
         briefIntervalMin: {
@@ -207,7 +207,7 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("abandoned-factory", glitchControls, setGlitch);
+  useControlsBridge("post effects", glitchControls, setGlitch);
 
   const { bloomIntensity, bloomThreshold, bloomSmoothing } = bloomControls;
   const { caOffsetX, caOffsetY } = caControls;
@@ -216,7 +216,7 @@ export function AbandonedFactoryPostProcess() {
   const { vignetteOffset, vignetteDarkness } = vignetteControls;
 
   // lights.tsx と同じ flickerAmount を参照するため leva を購読.
-  const [lightsControls] = useControls("abandoned-factory", () => ({
+  const [lightsControls] = useControls("post effects", () => ({
     lights: folder({
       flickerAmount: { value: 0.1, min: 0, max: 1, step: 0.05 },
     }),

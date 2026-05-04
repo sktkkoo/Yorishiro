@@ -11,6 +11,7 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
+import { Leva } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -1762,11 +1763,17 @@ function App() {
 
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
+  const [levaHidden, setLevaHidden] = useState(true);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         window.location.reload();
+      }
+      if (event.code === "F2") {
+        event.preventDefault();
+        setLevaHidden((prev) => !prev);
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -1780,6 +1787,7 @@ function App() {
 
   return (
     <div className="app">
+      <Leva hidden={levaHidden} collapsed={false} />
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}
