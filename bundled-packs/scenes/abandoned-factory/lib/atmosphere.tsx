@@ -68,7 +68,7 @@ void main() {
 export function DustMotes() {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const [controls, setControls] = useControls("abandoned-factory", () => ({
+  const [controls, setControls] = useControls("effects", () => ({
     dust: folder({
       sizeMult: { value: 5, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.28, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
@@ -77,7 +77,7 @@ export function DustMotes() {
       moveAmp: { value: 1.49, min: 0, max: 2.0, step: 0.01, label: "drift amplitude" },
     }),
   }));
-  useControlsBridge("abandoned-factory", controls, setControls);
+  useControlsBridge("effects", controls, setControls);
 
   const points = useMemo(() => {
     const rng = createLcg(0xa11ce);
@@ -162,12 +162,12 @@ void main() {
 export function GodRays() {
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
-  const [controls, setControls] = useControls("abandoned-factory", () => ({
+  const [controls, setControls] = useControls("effects", () => ({
     godRays: folder({
       alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "alpha multiplier" },
     }),
   }));
-  useControlsBridge("abandoned-factory", controls, setControls);
+  useControlsBridge("effects", controls, setControls);
 
   const uniforms = useMemo(
     () => ({

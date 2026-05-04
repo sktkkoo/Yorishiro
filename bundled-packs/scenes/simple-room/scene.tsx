@@ -27,7 +27,21 @@ const definition: ScenePackDefinition = {
   type: "scene",
   scene: {
     id: "simple-room",
-    layers: [],
+    layers: [
+      {
+        id: "backdrop",
+        role: "background",
+      },
+      {
+        id: "vrm-slot",
+        role: "character",
+        blur: 0,
+      },
+      {
+        id: "fg-vignette",
+        role: "foreground",
+      },
+    ],
     ambient: [],
     terminal: {
       background: "#0f1923",

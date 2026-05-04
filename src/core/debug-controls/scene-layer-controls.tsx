@@ -16,7 +16,11 @@ export function SceneLayerControls() {
   useEffect(() => {
     const registry = getSceneRegistry();
     const sub = registry.subscribeActiveEntry((entry) => {
-      setHasLayers((entry?.scene.layers.length ?? 0) > 0);
+      const layers = entry?.scene.layers ?? [];
+      const hasMediaLayers = layers.some(
+        (l) => (l.role === "background" || l.role === "foreground") && !l.procedural,
+      );
+      setHasLayers(hasMediaLayers);
     });
     return () => sub.dispose();
   }, []);
