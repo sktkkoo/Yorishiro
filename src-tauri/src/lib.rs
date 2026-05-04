@@ -1,3 +1,4 @@
+mod journal;
 mod mcp;
 mod pty;
 
@@ -8,6 +9,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
+
+/// Cohabitation hours tracking の開始時刻を保持する managed state。
+/// `Option` は終了時に `take()` して二重 save を防ぐため。
+struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
 fn find_agent_binary(agent: AgentKind) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -67,6 +72,12 @@ async fn pty_spawn(
         plugin_dir,
         on_output,
     )
+}
+
+/// `~/.charminal/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
+#[tauri::command]
+fn read_journal_memories() -> Result<String, String> {
+    journal::read_memories()
 }
 
 #[tauri::command]
@@ -687,7 +698,8 @@ pub fn run() {
             user_init_script_path,
             watch_charminal_layer,
             stat_file_mtime,
-            mcp_tool_response
+            mcp_tool_response,
+            read_journal_memories
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
@@ -700,10 +712,34 @@ pub fn run() {
                     eprintln!("[charminal-mcp] startup skipped: {}", err);
                 }
             }
+
+            // Cohabitation hours tracking 開始
+            let start = journal::cohabitation::start_tracking();
+            app.manage(CohabitationStart(std::sync::Mutex::new(Some(start))));
+
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // 終了時に cohabitation hours を保存
+                let start_state: State<'_, CohabitationStart> = app.state();
+                let start = start_state
+                    .0
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take();
+                if let Some(start) = start {
+                    // TODO: active persona id は将来的に runtime state から取得する。
+                    // 暫定で "clai" を使う。
+                    let persona_id = "clai";
+                    if let Err(err) = journal::cohabitation::save_hours(start, persona_id) {
+                        eprintln!("[cohabitation] 保存失敗: {}", err);
+                    }
+                }
+            }
+        });
 }
 
 #[cfg(test)]

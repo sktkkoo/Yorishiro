@@ -39,6 +39,8 @@ import charminalSettingsPack, {
 } from "../bundled-packs/ui/charminal-settings/ui";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
+import { buildSystemPrompt } from "./core/global-prompt";
+import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import type { Layer, LayerRole, SceneSpec } from "./core/scene";
@@ -295,6 +297,9 @@ function App() {
       devLog: createSubsystemLog(devLog, "EventBus"),
     });
     const logBridge = new LogBridge({ time });
+    // ── グローバル system prompt フラグメント登録 ────────────────────────
+    registerJournalFragment();
+
     const effectDispatcher = new EffectDispatcher();
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
@@ -1723,6 +1728,24 @@ function App() {
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
+  // ── Global system prompt（persona addition + journal memories 等）──────
+  // persona 変更・初回 mount 時に非同期で組み立てる。
+  // undefined = まだ未解決、null = 空（どちらも非注入）、string = 注入する内容。
+  const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let cancelled = false;
+    const personaAddition = primaryPersona?.thinking?.systemPromptAddition ?? null;
+    buildSystemPrompt(personaAddition).then((prompt) => {
+      if (!cancelled) setResolvedSystemPrompt(prompt);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserLayerReady, primaryPersona]);
+
   // ── Settings: close-requested listener ─────────────────────
 
   useEffect(() => {
@@ -1768,11 +1791,11 @@ function App() {
         bodyDevLog={bodyDevLog}
         scene={renderedSceneEntry}
       />
-      {isUserLayerReady && (
+      {isUserLayerReady && resolvedSystemPrompt !== undefined && (
         <Terminal
           agent={terminalAgent}
           cwd={cwd}
-          systemPrompt={primaryPersona?.thinking?.systemPromptAddition ?? null}
+          systemPrompt={resolvedSystemPrompt}
           perception={perception}
         />
       )}
