@@ -29,6 +29,7 @@ const definition: ScenePackDefinition = {
         id: "misty-grasslands-three",
         role: "background",
         procedural: { kind: "misty-grasslands" },
+        blur: 1,
       },
       {
         id: "vrm-slot",

@@ -10,10 +10,10 @@ import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function Lights() {
   const [controls, setControls] = useControls("lights", () => ({
-    directionalIntensity: { value: 0.6, min: 0, max: 3, step: 0.05, label: "sun int." },
-    directionalColor: { value: "#c8cdd4", label: "sun color" },
-    ambientIntensity: { value: 0.35, min: 0, max: 1, step: 0.02, label: "ambient int." },
-    ambientColor: { value: "#d6d9d2", label: "ambient color" },
+    directionalIntensity: { value: 1.5, min: 0, max: 3, step: 0.05, label: "sun int." },
+    directionalColor: { value: "#ebe9e1", label: "sun color" },
+    ambientIntensity: { value: 0.47, min: 0, max: 1, step: 0.02, label: "ambient int." },
+    ambientColor: { value: "#bfdebe", label: "ambient color" },
   }));
   useControlsBridge("lights", controls, setControls);
 
