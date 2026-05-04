@@ -54,8 +54,8 @@ export function AbandonedFactoryPostProcess() {
   // --- always-on controls ---
   const [bloomControls, setBloom] = useControls("abandoned-factory", () => ({
     bloom: folder({
-      bloomIntensity: { value: 1.3, min: 0, max: 3, step: 0.05 },
-      bloomThreshold: { value: 0.05, min: 0, max: 1, step: 0.01 },
+      bloomIntensity: { value: 1, min: 0, max: 3, step: 0.05 },
+      bloomThreshold: { value: 0.1, min: 0, max: 1, step: 0.01 },
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
   }));
