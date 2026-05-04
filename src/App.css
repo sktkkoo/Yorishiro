@@ -1,5 +1,6 @@
 :root {
   --sidebar-width: 280px;
+  --leva-panel-width: 0px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
   --charminal-bg: #0f1923;
@@ -41,7 +42,7 @@ body,
 .app {
   display: flex;
   height: 100vh;
-  width: 100vw;
+  width: calc(100vw - var(--leva-panel-width));
 }
 
 /* ── Sidebar ────────────────────────────────────────── */
@@ -211,7 +212,7 @@ body,
   right: 0 !important;
   bottom: 0 !important;
   left: auto !important;
-  width: 300px !important;
+  width: 220px !important;
   height: 100vh !important;
   z-index: 40 !important;
   pointer-events: auto;
@@ -229,7 +230,7 @@ body,
 }
 
 [class*="leva-"] {
-  --leva-sizes-rootWidth: 100%;
+  --leva-sizes-rootWidth: 220px;
   --leva-sizes-controlWidth: 60%;
   --leva-colors-elevation1: var(--charminal-sidebar-bg);
   --leva-colors-elevation2: var(--charminal-panel-bg);

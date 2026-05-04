@@ -1766,6 +1766,10 @@ function App() {
   const [levaHidden, setLevaHidden] = useState(true);
 
   useEffect(() => {
+    document.documentElement.style.setProperty("--leva-panel-width", levaHidden ? "0px" : "220px");
+  }, [levaHidden]);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
