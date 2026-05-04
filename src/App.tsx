@@ -818,7 +818,6 @@ function App() {
             setDebugPanelWidth: (px) => {
               const w = Math.max(0, px);
               document.documentElement.style.setProperty("--leva-panel-width", `${w}px`);
-              setLevaHidden(w <= 0);
             },
             getDebugPanelWidth: () => {
               const raw = getComputedStyle(document.documentElement)
@@ -1779,8 +1778,6 @@ function App() {
 
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
-  const [levaHidden, setLevaHidden] = useState(true);
-
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
@@ -1789,7 +1786,14 @@ function App() {
       }
       if (event.code === "F2") {
         event.preventDefault();
-        setLevaHidden((prev) => !prev);
+        const raw = getComputedStyle(document.documentElement)
+          .getPropertyValue("--leva-panel-width")
+          .trim();
+        const current = Number.parseFloat(raw) || 0;
+        document.documentElement.style.setProperty(
+          "--leva-panel-width",
+          current > 0 ? "0px" : "280px",
+        );
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -1803,7 +1807,7 @@ function App() {
 
   return (
     <div className="app">
-      <Leva hidden={levaHidden} collapsed={false} flat titleBar={false} />
+      <Leva hidden={false} collapsed={false} flat titleBar={false} />
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}

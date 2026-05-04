@@ -1,6 +1,6 @@
 :root {
   --sidebar-width: 280px;
-  --leva-panel-width: 280px;
+  --leva-panel-width: 0px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
   --charminal-bg: #0f1923;
@@ -216,12 +216,18 @@ body,
   max-height: calc(100vh - 16px) !important;
   z-index: 50 !important;
   pointer-events: auto;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   background: var(--charminal-panel-bg);
   border: 1px solid var(--charminal-border);
   border-radius: 6px;
   backdrop-filter: blur(8px);
+  opacity: 1;
+  transition: opacity 0.15s;
+}
+
+#leva__root:empty,
+#leva__root[style*="display: none"] {
+  display: block !important;
 }
 
 #leva__root > div {
