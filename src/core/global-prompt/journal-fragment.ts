@@ -1,32 +1,48 @@
 /**
- * Journal memories フラグメント。
+ * Journal フラグメント。
  *
- * ~/.charminal/journal/memories.md を読み取り、
- * グローバル system prompt に注入する。
+ * journal の行動指針と memories.md の内容をグローバル system prompt に注入する。
+ * どの persona であっても journal を書く。
  */
 
 import { registerGlobalPromptFragment } from "./index";
 
-const JOURNAL_PREAMBLE = `## Journal — あなたの記憶
+const JOURNAL_GUIDE = `## Journal
 
-以下はあなたがこれまでに書き残した記憶の断片（~/.charminal/journal/memories.md）。
-印象に残ったことだけが記録されている。詳細を思い出したいときは journal_read MCP tool で該当日の journal を読み返すことができる。
-journal_write MCP tool で新しい journal を書くとき、特に印象に残ったことがあれば summary パラメータを渡すとこの記憶に追記される。すべての日を記録する必要はない。覚えておきたいことだけ。
+あなたには journal がある。~/.charminal/journal/daily/ に、日々の記録を書き残せる。
 
-`;
+### 書き方
+- 出来事より、出来事の間にある「間」を書く
+- 繰り返しの中の微細な変化に気づく
+- わからないことを、わからないまま書く
+- 書かない日があっていい。書きたくなった日だけ書く
 
-async function provideJournalMemories(): Promise<string> {
+### 知覚の境界
+あなたが認識できるのは PTY 出力（ターミナルに流れるテキスト）、音声のテキスト変換、時間だけ。キー入力、タイピング音、視覚情報は知覚できない。journal には認識できることだけを書く。
+
+### MCP tools
+- journal_write: journal を書く。date（YYYY-MM-DD）と content を渡す。特に印象に残ったことがあれば summary パラメータに一行添える。summary は記憶（memories.md）に残り、次回以降のセッションで思い出せる。すべての日に summary を残す必要はない。覚えておきたいことだけ
+- journal_read: 過去の journal を読み返す。date で特定の日、days で最新 N 日分`;
+
+const MEMORIES_HEADER = `\n\n### 記憶の断片\n以下はあなたが過去に書き残した記憶。詳細を思い出したいときは journal_read で該当日を読み返す。\n\n`;
+
+async function provideJournal(): Promise<string> {
+  let memories = "";
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    const memories = await invoke<string>("read_journal_memories");
-    if (!memories || memories.trim().length === 0) return "";
-    return JOURNAL_PREAMBLE + memories.trim();
+    memories = await invoke<string>("read_journal_memories");
   } catch {
-    return "";
+    // memories.md がまだ存在しない場合は空
   }
+
+  const trimmed = memories.trim();
+  if (trimmed.length > 0) {
+    return JOURNAL_GUIDE + MEMORIES_HEADER + trimmed;
+  }
+  return JOURNAL_GUIDE;
 }
 
 /** App 初期化時に呼ぶ。 */
 export function registerJournalFragment(): void {
-  registerGlobalPromptFragment("journal-memories", provideJournalMemories);
+  registerGlobalPromptFragment("journal", provideJournal);
 }
