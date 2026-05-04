@@ -68,6 +68,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastFitW = 0;
   private lastFitH = 0;
   private lastUserInputAt = -Infinity;
+  private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
 
@@ -125,6 +126,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.onData((data) => {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
+      this.detectClearCommand(data);
       writeQueue = writeQueue.then(async () => {
         try {
           await ptyWrite({ data });
@@ -193,6 +195,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       return;
     }
     this.currentParams = params;
+    this.term.reset();
 
     void (async () => {
       try {
@@ -399,6 +402,24 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private notifyPtyDataListeners(): void {
     for (const listener of Array.from(this.ptyDataListeners)) {
       listener();
+    }
+  }
+
+  private detectClearCommand(data: string): void {
+    if (data.includes("\r") || data.includes("\n")) {
+      const line = this.recentInput.trim();
+      if (line === "/clear" || line === "/compact") {
+        this.term.clear();
+      }
+      this.recentInput = "";
+    } else if (data === "\x7f") {
+      // Backspace
+      this.recentInput = this.recentInput.slice(0, -1);
+    } else if (data.length === 1 && data >= " ") {
+      this.recentInput += data;
+      if (this.recentInput.length > 50) {
+        this.recentInput = this.recentInput.slice(-50);
+      }
     }
   }
 
