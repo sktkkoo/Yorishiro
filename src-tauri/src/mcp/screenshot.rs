@@ -6,13 +6,14 @@
 //!
 //! ObjC completion handler → Rust async の橋渡しは oneshot channel。
 
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::CallToolResult;
 use rmcp::ErrorData as McpError;
 use tauri::AppHandle;
 
 #[cfg(target_os = "macos")]
 pub async fn capture_webview_screenshot(app: &AppHandle) -> Result<CallToolResult, McpError> {
     use base64::Engine;
+    use rmcp::model::Content;
     use tauri::Manager;
 
     let webview = app
