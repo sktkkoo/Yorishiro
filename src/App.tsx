@@ -11,6 +11,7 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
+import { Leva } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -29,8 +30,6 @@ import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/ma
 import mistyGrasslandsPack from "../bundled-packs/scenes/misty-grasslands/scene";
 import simpleRoomManifest from "../bundled-packs/scenes/simple-room/manifest.json";
 import simpleRoomPack from "../bundled-packs/scenes/simple-room/scene";
-import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
-import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
 import charminalSettingsPack, {
   PREVIOUS_ACTIVE_UI_KEY,
@@ -44,6 +43,7 @@ import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import type { Layer, LayerRole, SceneSpec } from "./core/scene";
+import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
@@ -374,21 +374,6 @@ function App() {
       note: `registered bundled persona '${claiPack.id}'`,
     });
 
-    // bundled camera-lighting-panel UI pack（Plan 2 reference）。
-    uiPackRegistry.register({
-      id: cameraLightingPanelPack.id,
-      origin: "bundled",
-      manifest: cameraLightingPanelManifest as UiPackManifest,
-      pack: {
-        layout: cameraLightingPanelPack.layout,
-        mount: cameraLightingPanelPack.mount,
-      },
-    });
-    appLog.write({
-      phase: "register",
-      note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
-    });
-
     // bundled charminal-settings UI pack。
     uiPackRegistry.register({
       id: charminalSettingsPack.id,
@@ -615,6 +600,7 @@ function App() {
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
           createUiSidebarSetHandler,
+          createUiDebugPanelSetHandler,
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
@@ -828,6 +814,21 @@ function App() {
             }),
             tweenManager: getThreeRuntime().getTweenManager(),
           }),
+          "ui.debugPanel.set": createUiDebugPanelSetHandler({
+            setDebugPanelWidth: (px) => {
+              const w = Math.max(0, px);
+              document.documentElement.style.setProperty("--leva-panel-width", `${w}px`);
+              setLevaHidden(w <= 0);
+            },
+            getDebugPanelWidth: () => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--leva-panel-width")
+                .trim();
+              return Number.parseFloat(raw) || 0;
+            },
+            getDefaultDebugPanelWidth: () => 280,
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
           // ── Active pack switching ──────────────────────────
           "scene.activate": createSceneActivateHandler({
             registry: scenePackRegistry,
@@ -999,6 +1000,18 @@ function App() {
       listener(renderedScene);
     }
   }, [renderedScene]);
+
+  useEffect(() => {
+    registerSceneLayerBridge({
+      updateLayer: (target, patch) => {
+        setSceneLayerOverrides((prev) => upsertSceneLayerOverride(prev, target, patch));
+      },
+      resetLayer: (target) => {
+        setSceneLayerOverrides((prev) => removeSceneLayerOverride(prev, target));
+      },
+      getScene: () => renderedSceneRef.current,
+    });
+  }, []);
 
   // ── active persona を PersonaRegistryImpl から subscribe ────────────────
   // bundled clai は runtime factory 内で register 済み。
@@ -1796,11 +1809,28 @@ function App() {
 
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
+  const [levaHidden, setLevaHidden] = useState(true);
+
+  useEffect(() => {
+    if (!levaHidden) {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue("--leva-panel-width")
+        .trim();
+      if ((Number.parseFloat(raw) || 0) <= 0) {
+        document.documentElement.style.setProperty("--leva-panel-width", "280px");
+      }
+    }
+  }, [levaHidden]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         window.location.reload();
+      }
+      if (event.code === "F2") {
+        event.preventDefault();
+        setLevaHidden((prev) => !prev);
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -1814,6 +1844,7 @@ function App() {
 
   return (
     <div className="app">
+      <Leva hidden={levaHidden} collapsed={false} flat />
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}

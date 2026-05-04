@@ -15,6 +15,7 @@
 import { useFrame } from "@react-three/fiber";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
+import { CameraControls, SceneLayerControls } from "../../core/debug-controls";
 import type { Disposable, Vec3 } from "../../sdk/context";
 import type { ScenePackCameraAPI } from "../../sdk/scene-pack";
 import { getSceneRegistry } from "../scene-pack-registry";
@@ -56,6 +57,8 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
       {ActiveComponent ? (
         <ActivePackComponent Component={ActiveComponent} entry={activeEntry} />
       ) : null}
+      <CameraControls />
+      <SceneLayerControls />
       {children}
     </>
   );

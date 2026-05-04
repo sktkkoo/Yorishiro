@@ -8,7 +8,7 @@
  */
 
 import { useFrame } from "@react-three/fiber";
-import { folder, useControls } from "leva";
+import { useControls } from "leva";
 import { useRef } from "react";
 import type * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -25,16 +25,15 @@ export function Lights() {
   const lanternRef = useRef<THREE.PointLight>(null);
   const crtRef = useRef<THREE.PointLight>(null);
 
-  const [controls, setControls] = useControls("abandoned-factory", () => ({
-    lights: folder({
-      directionalIntensity: { value: 0.8, min: 0, max: 3, step: 0.05, label: "skylight int." },
-      lanternScale: { value: 0.6, min: 0, max: 3, step: 0.05, label: "lantern scale" },
-      crtScale: { value: 0.85, min: 0, max: 3, step: 0.05, label: "CRT scale" },
-      flickerAmount: { value: 0.15, min: 0, max: 1, step: 0.05, label: "flicker amt (0=stable)" },
-      ambientIntensity: { value: 0.055, min: 0, max: 0.3, step: 0.005, label: "ambient" },
-    }),
+  const [controls, setControls] = useControls("lights", () => ({
+    directionalIntensity: { value: 0.8, min: 0, max: 3, step: 0.05, label: "skylight int." },
+    directionalColor: { value: `#${PALETTE.skylight.getHexString()}`, label: "skylight color" },
+    lanternScale: { value: 0.6, min: 0, max: 3, step: 0.05, label: "lantern scale" },
+    crtScale: { value: 0.85, min: 0, max: 3, step: 0.05, label: "CRT scale" },
+    flickerAmount: { value: 0.15, min: 0, max: 1, step: 0.05, label: "flicker amt (0=stable)" },
+    ambientIntensity: { value: 0.055, min: 0, max: 0.3, step: 0.005, label: "ambient" },
   }));
-  useControlsBridge("abandoned-factory", controls, setControls);
+  useControlsBridge("lights", controls, setControls);
 
   const flickerParams: FlickerParams = { flickerAmount: controls.flickerAmount };
 
@@ -54,7 +53,7 @@ export function Lights() {
       <directionalLight
         position={[-2, 8, 1]}
         intensity={controls.directionalIntensity}
-        color={PALETTE.skylight}
+        color={controls.directionalColor}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-8}

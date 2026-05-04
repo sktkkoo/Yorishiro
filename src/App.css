@@ -1,5 +1,6 @@
 :root {
   --sidebar-width: 280px;
+  --leva-panel-width: 0px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
   --charminal-bg: #0f1923;
@@ -203,7 +204,145 @@ body,
   margin-top: 8px;
 }
 
-/* leva debug panel */
+/* ── Leva panel — Charminal テーマ追従 ─────────────── */
+
+#leva__root {
+  position: fixed !important;
+  top: 8px !important;
+  right: 8px !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: var(--leva-panel-width) !important;
+  max-height: calc(100vh - 16px) !important;
+  z-index: 50 !important;
+  pointer-events: auto;
+  overflow: hidden !important;
+  background: var(--charminal-sidebar-bg);
+  border: 1px solid var(--charminal-border);
+  border-radius: 8px;
+  padding: 6px 0;
+  transition: opacity 0.15s ease-out;
+}
+
+#leva__root > div {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  width: 100% !important;
+}
+
+/* ── leva 変数 override ── */
 [class*="leva-"] {
-  --leva-sizes-rootWidth: 340px;
+  --leva-sizes-rootWidth: var(--leva-panel-width);
+  --leva-sizes-controlWidth: 54%;
+  --leva-colors-elevation1: var(--charminal-sidebar-bg);
+  --leva-colors-elevation2: var(--charminal-input-bg);
+  --leva-colors-elevation3: var(--charminal-button-bg);
+  --leva-colors-accent1: var(--charminal-accent);
+  --leva-colors-accent2: var(--charminal-accent);
+  --leva-colors-accent3: var(--charminal-accent-border);
+  --leva-colors-highlight1: var(--charminal-fg);
+  --leva-colors-highlight2: var(--charminal-fg-dim);
+  --leva-colors-highlight3: var(--charminal-muted);
+  --leva-colors-vivid1: var(--charminal-accent);
+  --leva-colors-folderWidgetColor: var(--charminal-accent);
+  --leva-colors-folderTextColor: var(--charminal-fg-dim);
+  --leva-colors-toolTipBackground: var(--charminal-panel-bg);
+  --leva-colors-toolTipText: var(--charminal-fg);
+  --leva-fonts-mono: monospace;
+  --leva-fonts-sans: monospace;
+  --leva-fontSizes-root: 10px;
+  --leva-radii-xs: 2px;
+  --leva-radii-sm: 3px;
+  --leva-radii-lg: 4px;
+  --leva-shadows-level1: none;
+  --leva-shadows-level2: none;
+  --leva-space-rowGap: 3px;
+  --leva-space-md: 6px;
+}
+
+/* leva 内の全 SVG を一旦非表示にし、titleBar だけ復元 */
+#leva__root svg {
+  visibility: hidden !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  position: absolute !important;
+}
+
+/* titleBar のアイコン（検索・メニュー等）は復元 */
+#leva__root > div:first-child svg {
+  visibility: visible !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  position: static !important;
+}
+
+/* フォルダヘッダーのテキストを Charminal 風に */
+#leva__root div[role="button"] {
+  font-size: 10px !important;
+  letter-spacing: 0.06em !important;
+  text-transform: uppercase !important;
+  color: var(--charminal-fg-dim) !important;
+  padding: 6px 10px 3px !important;
+  background: transparent !important;
+}
+
+/* フォルダ内容の背景・インデントを消す */
+#leva__root div[role="button"] + div {
+  background: transparent !important;
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  border-left: none !important;
+}
+
+/* ラベル */
+#leva__root label {
+  color: var(--charminal-fg-dim) !important;
+  font-weight: normal !important;
+  font-size: 10px !important;
+}
+
+/* number input */
+#leva__root input[type="text"] {
+  background: var(--charminal-input-bg);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--charminal-fg-dim);
+  font-size: 10px;
+}
+
+#leva__root input[type="text"]:focus {
+  border-color: var(--charminal-accent-border);
+}
+
+/* ボタン */
+#leva__root button {
+  background: var(--charminal-button-bg);
+  color: var(--charminal-button-fg);
+  border: 1px solid var(--charminal-border);
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 4px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+#leva__root button:hover {
+  background: var(--charminal-accent-soft);
+  color: var(--charminal-fg);
+}
+
+/* color picker swatch の角丸と border */
+#leva__root div[title][style*="background"] {
+  border-radius: 3px;
+  border: 1px solid var(--charminal-border);
+}
+
+/* トップレベルフォルダ間のセパレータ */
+#leva__root > div > div > div + div {
+  border-top: 1px solid var(--charminal-border);
+  margin-top: 2px;
+  padding-top: 2px;
 }

@@ -78,6 +78,20 @@ vi.mock("../scene-pack-registry/asset-resolver", () => ({
 vi.mock("../three-runtime", () => ({
   getThreeRuntime: () => ({
     setDefaultLightsEnabled: vi.fn(),
+    setCameraTracking: vi.fn(),
+    getCameraTracking: () => true,
+    getCamera: () => ({
+      position: { x: 0, y: 1.35, z: 1.1, set: vi.fn() },
+      fov: 50,
+      lookAt: vi.fn(),
+      updateProjectionMatrix: vi.fn(),
+    }),
+    getCameraModulation: () => ({
+      addPositionModulation: () => ({ dispose: () => {} }),
+      addFovModulation: () => ({ dispose: () => {} }),
+      clearAll: () => {},
+    }),
+    isCameraModulationSuspended: () => false,
   }),
 }));
 
@@ -132,7 +146,7 @@ describe("R3fRuntimeRoot", () => {
       </R3fRuntimeRoot>,
     );
 
-    expect(registry.__subscriberCount()).toBe(1);
+    expect(registry.__subscriberCount()).toBe(2);
     expect(container.querySelector("[data-testid='child']")).not.toBeNull();
 
     unmount();

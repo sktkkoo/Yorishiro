@@ -2,16 +2,13 @@
  * camera-lighting-panel — Plan 2 の reference implementation。
  *
  * Tracking OFF で ctx.three.setCameraTracking(false) を呼び、camera position を
- * UI pack から直接操作する。lighting は scene 内の DirectionalLight を探して直接
- * mutate する。
+ * UI pack から直接操作する。Lighting は scene pack が leva 経由で管理する。
  */
 
 import type { UiContext, UiPackDefinition } from "@charminal/sdk";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import type * as THREE from "three";
-import type { DirectionalLight } from "three";
 
 const PANEL_HEIGHT = "clamp(340px, 42vh, 460px)";
 const DEFAULT_TARGET_X = 0;
@@ -23,8 +20,6 @@ const STATE_KEYS = {
   camY: "camera.y",
   camZ: "camera.z",
   fov: "camera.fov",
-  intensity: "lighting.intensity",
-  color: "lighting.color",
   backgroundBlur: "scene.background.blur",
   backgroundSrc: "scene.background.src",
   backgroundMediaType: "scene.background.mediaType",
@@ -76,30 +71,12 @@ function clearVolatileMediaState(
   ctx.state.set(nameKey, "");
 }
 
-function findDirectionalLight(scene: THREE.Scene): DirectionalLight | null {
-  let found: DirectionalLight | null = null;
-  scene.traverse((obj) => {
-    if (!found && (obj as DirectionalLight).isDirectionalLight) {
-      found = obj as DirectionalLight;
-    }
-  });
-  return found;
-}
-
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [tracking, setTracking] = useState(() => ctx.three.getCameraTracking());
   const [camX, setCamX] = useState(() => ctx.three.camera.position.x);
   const [camY, setCamY] = useState(() => ctx.three.camera.position.y);
   const [camZ, setCamZ] = useState(() => ctx.three.camera.position.z);
   const [fov, setFov] = useState(() => ctx.three.camera.fov);
-  const [intensity, setIntensity] = useState(() => {
-    const light = findDirectionalLight(ctx.three.scene);
-    return light ? light.intensity : 0.8;
-  });
-  const [color, setColor] = useState(() => {
-    const light = findDirectionalLight(ctx.three.scene);
-    return light ? `#${light.color.getHexString()}` : "#ffffff";
-  });
   const [targetLock, setTargetLock] = useState(() =>
     booleanState(ctx, STATE_KEYS.targetLock, true),
   );
@@ -148,12 +125,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       ctx.state.subscribe(STATE_KEYS.fov, (value) => {
         if (typeof value === "number") setFov(value);
       }),
-      ctx.state.subscribe(STATE_KEYS.intensity, (value) => {
-        if (typeof value === "number") setIntensity(value);
-      }),
-      ctx.state.subscribe(STATE_KEYS.color, (value) => {
-        if (typeof value === "string") setColor(value);
-      }),
       ctx.state.subscribe(STATE_KEYS.backgroundBlur, (value) => {
         if (typeof value === "number") setBackgroundBlur(value);
       }),
@@ -196,8 +167,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     ctx.state.set(STATE_KEYS.camY, camY);
     ctx.state.set(STATE_KEYS.camZ, camZ);
     ctx.state.set(STATE_KEYS.fov, fov);
-    ctx.state.set(STATE_KEYS.intensity, intensity);
-    ctx.state.set(STATE_KEYS.color, color);
     ctx.state.set(STATE_KEYS.backgroundBlur, backgroundBlur);
     ctx.state.set(STATE_KEYS.foregroundBlur, foregroundBlur);
     ctx.state.set(STATE_KEYS.backgroundSrc, backgroundSrc);
@@ -213,8 +182,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     camY,
     camZ,
     fov,
-    intensity,
-    color,
     backgroundBlur,
     foregroundBlur,
     backgroundSrc,
@@ -243,14 +210,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     ctx.three.camera.fov = fov;
     ctx.three.camera.updateProjectionMatrix();
   }, [fov, ctx]);
-
-  useEffect(() => {
-    const light = findDirectionalLight(ctx.three.scene);
-    if (light) {
-      light.intensity = intensity;
-      light.color.set(color);
-    }
-  }, [intensity, color, ctx]);
 
   useEffect(() => {
     ctx.scene.updateLayer({ role: "background" }, { blur: backgroundBlur });
@@ -406,7 +365,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         height: PANEL_HEIGHT,
         padding: "12px",
         display: "grid",
-        gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
         gap: "12px",
         pointerEvents: "none",
         boxSizing: "border-box",
@@ -481,24 +440,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             style={rangeStyle}
             onChange={(e) => setFov(Number(e.target.value))}
           />
-        </label>
-      </div>
-      <div style={panelStyle}>
-        <strong>Lighting</strong>
-        <label>
-          Intensity: {intensity.toFixed(2)}
-          <input
-            type="range"
-            min={0}
-            max={3}
-            step={0.01}
-            value={intensity}
-            style={rangeStyle}
-            onChange={(e) => setIntensity(Number(e.target.value))}
-          />
-        </label>
-        <label>
-          Color <input type="color" value={color} onChange={(e) => setColor(e.target.value)} />
         </label>
       </div>
       <div style={panelStyle}>

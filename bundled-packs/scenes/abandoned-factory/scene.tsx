@@ -26,8 +26,8 @@ import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
 
 function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackComponentProps) {
-  const [breathControls, setBreath] = useControls("abandoned-factory", () => ({
-    cameraBreath: folder(
+  const [breathControls, setBreath] = useControls("camera", () => ({
+    breath: folder(
       {
         freqX: { value: 1.7, min: 0.1, max: 5, step: 0.1 },
         freqY: { value: 0.7, min: 0.1, max: 5, step: 0.1 },
@@ -40,7 +40,7 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackCompo
       { collapsed: true },
     ),
   }));
-  useControlsBridge("abandoned-factory", breathControls, setBreath);
+  useControlsBridge("camera", breathControls, setBreath);
 
   return (
     <>

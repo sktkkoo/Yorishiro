@@ -1,23 +1,28 @@
 /**
- * Bundled reference scene pack「静かな部屋」。
+ * Bundled reference scene pack「静かな部屋」.
  *
- * Charminal の reference scene：整った polish を控えめな方向で示す手本
- * （memory: feedback_charminal_presence_over_spectacle.md）。gradient のみ
- * で構成し、動画素材は同梱しない（user が各自の素材で差し替える土台）。
- *
- * layer 構成：
- *   - backdrop: ほんのりした青灰色の gradient + 光の中心。blur なし（gradient
- *     に blur は視覚的に効かない）
- *   - vrm-slot: VRM 本体、blur なし（character は鮮明）
- *   - fg-vignette: 四隅だけ暗くする vignette、blur なし
+ * Charminal の reference scene：整った polish を控えめな方向で示す手本.
+ * gradient + vignette を shader quad で描画し、VRM と同じ 3D space に配置.
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「住まうということ」
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
  */
 
-import type { ScenePackDefinition } from "@charminal/sdk";
+import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { Backdrop } from "./lib/backdrop";
+import { Lights } from "./lib/lights";
 
-export default {
+function SimpleRoomScene({ vrmSlot }: ScenePackComponentProps) {
+  return (
+    <>
+      <Lights />
+      <Backdrop />
+      {vrmSlot}
+    </>
+  );
+}
+
+const definition: ScenePackDefinition = {
   id: "simple-room",
   type: "scene",
   scene: {
@@ -26,8 +31,6 @@ export default {
       {
         id: "backdrop",
         role: "background",
-        backgroundImage:
-          "radial-gradient(ellipse at 50% 30%, rgba(120, 150, 200, 0.18) 0%, transparent 70%), linear-gradient(180deg, #232838 0%, #161a24 100%)",
       },
       {
         id: "vrm-slot",
@@ -37,8 +40,6 @@ export default {
       {
         id: "fg-vignette",
         role: "foreground",
-        backgroundImage:
-          "radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
       },
     ],
     ambient: [],
@@ -83,7 +84,10 @@ export default {
       glow: "rgba(77, 217, 207, 0.06)",
     },
   },
-} satisfies ScenePackDefinition;
+  component: SimpleRoomScene,
+};
+
+export default definition;
 
 if (import.meta.hot) {
   import.meta.hot.accept(async (newModule) => {

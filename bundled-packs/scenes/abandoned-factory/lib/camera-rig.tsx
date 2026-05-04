@@ -17,7 +17,7 @@ import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 export function CameraRig(): null {
   const baseFovRef = useRef<number | null>(null);
 
-  const [controls, setControls] = useControls("abandoned-factory", () => ({
+  const [controls, setControls] = useControls("camera", () => ({
     camera: folder(
       {
         fovBreathAmp: { value: 0.15, min: 0, max: 1.0, step: 0.01, label: "FOV breath (°)" },
@@ -25,7 +25,7 @@ export function CameraRig(): null {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("abandoned-factory", controls, setControls);
+  useControlsBridge("camera", controls, setControls);
   const { fovBreathAmp } = controls;
 
   useFrame(({ camera, clock }) => {

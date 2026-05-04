@@ -1,11 +1,13 @@
 /**
  * SceneRouter — active scene pack の component 有無で DOM 側の振り分けを行う。
  *
- * - entry に component あり: R3F-component path。DOM 側は最小 wrapper のみで、
- *   実際の 3D render は R3F (R3fRuntimeRoot) が registry を subscribe して mount。
- * - entry に component なし: 従来の declarative path。SceneCompositor で
- *   layers を DOM stack 描画。
- * - entry が null: children だけを通す。
+ * 3 つの path:
+ * 1. component あり + layers 空: R3F-only path。DOM は最小 wrapper のみ。
+ *    (例: abandoned-factory, simple-room)
+ * 2. component あり + layers 非空: hybrid path。SceneCompositor で DOM layers を
+ *    描画しつつ、R3fRuntimeRoot が component を R3F canvas 内に mount。
+ *    (例: misty-grasslands — procedural 背景は別 canvas、lighting は R3F 経由)
+ * 3. component なし: 従来の declarative path。SceneCompositor のみ。
  *
  * VRM canvas (children) はどの path でも `.scene-r3f-host` 内 / SceneCompositor の
  * character role layer 内 / 直接親の中、のいずれかに置かれる。ThreeRuntime は
@@ -31,6 +33,9 @@ const r3fHostStyle: CSSProperties = {
 };
 
 export function SceneRouter({ entry, children }: SceneRouterProps) {
+  if (entry?.component && entry.scene.layers.length > 0) {
+    return <SceneCompositor scene={entry.scene}>{children}</SceneCompositor>;
+  }
   if (entry?.component) {
     return (
       <div className="scene-r3f-host" style={r3fHostStyle}>
