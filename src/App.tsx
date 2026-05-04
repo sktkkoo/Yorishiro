@@ -818,8 +818,7 @@ function App() {
             setDebugPanelWidth: (px) => {
               const w = Math.max(0, px);
               document.documentElement.style.setProperty("--leva-panel-width", `${w}px`);
-              const root = document.getElementById("leva__root");
-              if (root) root.style.display = w <= 0 ? "none" : "block";
+              setLevaHidden(w <= 0);
             },
             getDebugPanelWidth: () => {
               const raw = getComputedStyle(document.documentElement)
@@ -1780,6 +1779,19 @@ function App() {
 
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
+  const [levaHidden, setLevaHidden] = useState(true);
+
+  useEffect(() => {
+    if (!levaHidden) {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue("--leva-panel-width")
+        .trim();
+      if ((Number.parseFloat(raw) || 0) <= 0) {
+        document.documentElement.style.setProperty("--leva-panel-width", "280px");
+      }
+    }
+  }, [levaHidden]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
@@ -1788,19 +1800,7 @@ function App() {
       }
       if (event.code === "F2") {
         event.preventDefault();
-        const root = document.getElementById("leva__root");
-        if (root) {
-          const isVisible = root.style.display !== "none";
-          root.style.display = isVisible ? "none" : "block";
-          if (!isVisible) {
-            const raw = getComputedStyle(document.documentElement)
-              .getPropertyValue("--leva-panel-width")
-              .trim();
-            if ((Number.parseFloat(raw) || 0) <= 0) {
-              document.documentElement.style.setProperty("--leva-panel-width", "280px");
-            }
-          }
-        }
+        setLevaHidden((prev) => !prev);
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -1814,7 +1814,7 @@ function App() {
 
   return (
     <div className="app">
-      <Leva hidden={false} collapsed={false} flat />
+      <Leva hidden={levaHidden} collapsed={false} flat />
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}
