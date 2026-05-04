@@ -29,8 +29,6 @@ import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/ma
 import mistyGrasslandsPack from "../bundled-packs/scenes/misty-grasslands/scene";
 import simpleRoomManifest from "../bundled-packs/scenes/simple-room/manifest.json";
 import simpleRoomPack from "../bundled-packs/scenes/simple-room/scene";
-import cameraLightingPanelManifest from "../bundled-packs/ui/camera-lighting-panel/manifest.json";
-import cameraLightingPanelPack from "../bundled-packs/ui/camera-lighting-panel/ui";
 import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
 import charminalSettingsPack, {
   PREVIOUS_ACTIVE_UI_KEY,
@@ -373,21 +371,6 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled persona '${claiPack.id}'`,
-    });
-
-    // bundled camera-lighting-panel UI pack（Plan 2 reference）。
-    uiPackRegistry.register({
-      id: cameraLightingPanelPack.id,
-      origin: "bundled",
-      manifest: cameraLightingPanelManifest as UiPackManifest,
-      pack: {
-        layout: cameraLightingPanelPack.layout,
-        mount: cameraLightingPanelPack.mount,
-      },
-    });
-    appLog.write({
-      phase: "register",
-      note: `registered bundled UI pack '${cameraLightingPanelPack.id}'`,
     });
 
     // bundled charminal-settings UI pack。
