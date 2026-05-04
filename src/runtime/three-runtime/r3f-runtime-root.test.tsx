@@ -78,6 +78,12 @@ vi.mock("../scene-pack-registry/asset-resolver", () => ({
 vi.mock("../three-runtime", () => ({
   getThreeRuntime: () => ({
     setDefaultLightsEnabled: vi.fn(),
+    getCameraModulation: () => ({
+      addPositionModulation: () => ({ dispose: () => {} }),
+      addFovModulation: () => ({ dispose: () => {} }),
+      clearAll: () => {},
+    }),
+    isCameraModulationSuspended: () => false,
   }),
 }));
 

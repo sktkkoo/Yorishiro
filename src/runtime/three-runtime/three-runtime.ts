@@ -249,6 +249,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   setCameraTracking(enabled: boolean): void {
+    if (enabled && !this.cameraTrackingEnabled) {
+      this.cameraBase.x = this.camera.position.x;
+      this.cameraBase.y = this.camera.position.y;
+      this.cameraBase.z = this.camera.position.z;
+    }
     this.cameraTrackingEnabled = enabled;
   }
 
@@ -306,22 +311,25 @@ class ThreeRuntimeImpl implements ThreeRuntime {
           this.cameraBase.y += (desiredY - this.cameraBase.y) * Math.min(1.5 * delta, 1);
         }
 
-        // Step 2: Modulation 適用（claim 未取得 かつ enabled の場合のみ）
-        if (!cameraClaimed && this.cameraModulation.enabled) {
-          const offset = this.cameraModulation.evaluatePosition(elapsed, delta);
-          this.camera.position.x = this.cameraBase.x + offset.x;
-          this.camera.position.y = this.cameraBase.y + offset.y;
-          this.camera.position.z = this.cameraBase.z + offset.z;
+        // Step 2: Position 適用（tracking ON かつ claim 未取得の場合のみ）
+        // tracking OFF 時は外部（UI pack / leva）が直接 camera.position を制御する
+        if (!cameraClaimed && this.cameraTrackingEnabled) {
+          if (this.cameraModulation.enabled) {
+            const offset = this.cameraModulation.evaluatePosition(elapsed, delta);
+            this.camera.position.x = this.cameraBase.x + offset.x;
+            this.camera.position.y = this.cameraBase.y + offset.y;
+            this.camera.position.z = this.cameraBase.z + offset.z;
 
-          const fovOffset = this.cameraModulation.evaluateFov(elapsed, delta);
-          if (fovOffset !== 0) {
-            this.camera.fov = this.baseFov + fovOffset;
-            this.camera.updateProjectionMatrix();
+            const fovOffset = this.cameraModulation.evaluateFov(elapsed, delta);
+            if (fovOffset !== 0) {
+              this.camera.fov = this.baseFov + fovOffset;
+              this.camera.updateProjectionMatrix();
+            }
+          } else {
+            this.camera.position.x = this.cameraBase.x;
+            this.camera.position.y = this.cameraBase.y;
+            this.camera.position.z = this.cameraBase.z;
           }
-        } else if (!cameraClaimed) {
-          this.camera.position.x = this.cameraBase.x;
-          this.camera.position.y = this.cameraBase.y;
-          this.camera.position.z = this.cameraBase.z;
         }
 
         // Step 3: lookAt — modulation 適用後の position から target を見る

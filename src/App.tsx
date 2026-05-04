@@ -44,6 +44,7 @@ import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import type { Layer, LayerRole, SceneSpec } from "./core/scene";
+import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
@@ -969,6 +970,18 @@ function App() {
       listener(renderedScene);
     }
   }, [renderedScene]);
+
+  useEffect(() => {
+    registerSceneLayerBridge({
+      updateLayer: (target, patch) => {
+        setSceneLayerOverrides((prev) => upsertSceneLayerOverride(prev, target, patch));
+      },
+      resetLayer: (target) => {
+        setSceneLayerOverrides((prev) => removeSceneLayerOverride(prev, target));
+      },
+      getScene: () => renderedSceneRef.current,
+    });
+  }, []);
 
   // ── active persona を PersonaRegistryImpl から subscribe ────────────────
   // bundled clai は runtime factory 内で register 済み。
