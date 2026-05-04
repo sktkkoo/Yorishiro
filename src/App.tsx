@@ -816,8 +816,16 @@ function App() {
           }),
           "ui.debugPanel.set": createUiDebugPanelSetHandler({
             setDebugPanelWidth: (px) => {
-              document.documentElement.style.setProperty("--leva-panel-width", `${px}px`);
-              setLevaHidden(px <= 0);
+              const sidebarWidth =
+                Number.parseFloat(
+                  getComputedStyle(document.documentElement)
+                    .getPropertyValue("--sidebar-width")
+                    .trim(),
+                ) || 280;
+              const maxWidth = Math.max(0, window.innerWidth - sidebarWidth);
+              const clamped = Math.max(0, Math.min(px, maxWidth));
+              document.documentElement.style.setProperty("--leva-panel-width", `${clamped}px`);
+              setLevaHidden(clamped <= 0);
             },
             getDebugPanelWidth: () => {
               const raw = getComputedStyle(document.documentElement)
