@@ -511,7 +511,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             type="button"
             onClick={onPickVrm}
             style={{
-              maxWidth: "220px",
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
               background: COLORS.bgInput,
               padding: "6px 10px",
               borderRadius: RADIUS.sm,
@@ -573,7 +575,16 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* グループ 2: Sound（mute icon + volume slider） */}
         <div style={gridStyle}>
           <div style={{ opacity: 0.7 }}>Sound</div>
-          <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SPACING.sm,
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
+            }}
+          >
             <AudioMuteToggle
               muted={ambientMuted ?? false}
               disabled={ambientMuted === null}
