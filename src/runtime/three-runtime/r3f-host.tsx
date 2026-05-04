@@ -97,7 +97,7 @@ export class R3fHost {
   advance(timestampMs: number): boolean {
     const state = this.getState();
     if (!state) return false;
-    state.advance(timestampMs, true);
+    state.advance(timestampMs / 1000, true);
     return true;
   }
 
