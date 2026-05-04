@@ -47,11 +47,11 @@ export interface GlitchParams {
 }
 
 export const DEFAULT_GLITCH_PARAMS: GlitchParams = {
-  briefIntervalMin: 30,
+  briefIntervalMin: 20,
   briefIntervalMax: 60,
   briefDuration: 0.15,
   briefCaMultiplier: 4.0,
-  briefBlockStrength: 0.3,
+  briefBlockStrength: 0.1,
 
   lanternSyncThreshold: 0.4,
   lanternSyncCaMultiplier: 2.5,
@@ -61,8 +61,8 @@ export const DEFAULT_GLITCH_PARAMS: GlitchParams = {
   heavyDuration: 0.3,
   heavyNoiseAdd: 0.4,
   heavyScanlineMultiplier: 8.0,
-  heavyBlockStrength: 0.7,
-  blockColumns: 0.04,
+  heavyBlockStrength: 0.35,
+  blockColumns: 0.02,
 };
 
 /** 各 glitch event の current 強度 (0–1). post-process が modulation に使う. */

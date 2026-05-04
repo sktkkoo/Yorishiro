@@ -202,3 +202,8 @@ body,
   font: inherit;
   margin-top: 8px;
 }
+
+/* leva debug panel */
+[class*="leva-"] {
+  --leva-sizes-rootWidth: 340px;
+}
