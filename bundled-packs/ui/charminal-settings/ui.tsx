@@ -193,57 +193,6 @@ function Select({
   );
 }
 
-interface ButtonProps {
-  readonly variant?: "primary" | "neutral";
-  readonly onClick?: () => void;
-  readonly children: React.ReactNode;
-  readonly ariaLabel?: string;
-  readonly style?: React.CSSProperties;
-  readonly disabled?: boolean;
-}
-
-/**
- * 2 variant の汎用ボタン。
- * - primary: teal accent（accent soft fill + accent border）
- * - neutral: white-wash（bgButton fill + borderMid border）
- *
- * tokens 経由でスタイルを一元管理する。
- */
-function Button(props: ButtonProps): React.JSX.Element {
-  const variant = props.variant ?? "neutral";
-  const variantStyle: React.CSSProperties =
-    variant === "primary"
-      ? {
-          background: COLORS.accentSoft,
-          border: `1px solid ${COLORS.accentBorder}`,
-        }
-      : {
-          background: COLORS.bgButton,
-          border: `1px solid ${COLORS.borderMid}`,
-        };
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      aria-label={props.ariaLabel}
-      disabled={props.disabled}
-      style={{
-        ...variantStyle,
-        color: COLORS.fg,
-        borderRadius: RADIUS.sm,
-        padding: `${SPACING.sm} ${SPACING.md}`,
-        cursor: "pointer",
-        font: "inherit",
-        fontFamily: FONT.family,
-        fontSize: FONT.sizeS,
-        ...props.style,
-      }}
-    >
-      {props.children}
-    </button>
-  );
-}
-
 /**
  * 音量 / ミュート切り替えの icon toggle button。boolean state を画面上で
  * 直接切り替える用途。state ごとに icon と border 色を変え、現在状態が一目で
@@ -558,26 +507,30 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div style={gridStyle}>
           {/* VRM */}
           <div style={{ opacity: 0.7 }}>VRM</div>
-          <div style={{ display: "flex", gap: SPACING.sm }}>
-            <div
-              style={{
-                flex: "0 1 auto",
-                maxWidth: "200px",
-                background: COLORS.bgInput,
-                padding: "6px 10px",
-                borderRadius: RADIUS.sm,
-                border: `1px solid ${COLORS.borderSubtle}`,
-                opacity: 0.85,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-              title={vrmName}
-            >
-              {vrmName || "（未読み込み）"}
-            </div>
-            <Button onClick={onPickVrm}>変更...</Button>
-          </div>
+          <button
+            type="button"
+            onClick={onPickVrm}
+            style={{
+              maxWidth: "220px",
+              background: COLORS.bgInput,
+              padding: "6px 10px",
+              borderRadius: RADIUS.sm,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              opacity: 0.85,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              color: COLORS.fg,
+              font: "inherit",
+              fontFamily: FONT.family,
+              fontSize: FONT.sizeS,
+              textAlign: "left",
+            }}
+            title={vrmName || undefined}
+          >
+            {vrmName || "（未読み込み）"}
+          </button>
 
           {/* Persona */}
           <div style={{ opacity: 0.7 }}>Persona</div>
