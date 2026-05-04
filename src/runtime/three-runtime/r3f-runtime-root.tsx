@@ -5,6 +5,8 @@
  *   - ScenePackRegistry を subscribe し、active pack に component があれば
  *     R3F tree に mount する。
  *   - debug cube は localStorage opt-in の確認用として残す。
+ *     有効化: localStorage.setItem("charminal:r3f-debug", "1") + reload
+ *     無効化: localStorage.removeItem("charminal:r3f-debug") + reload
  *   - VRM は本 phase では imperative のまま。vrmSlot prop は null を渡す。
  *
  * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §4

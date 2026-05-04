@@ -80,17 +80,55 @@ const definition: ScenePackDefinition = {
       { src: "sound:abandoned-factory/crt-static", volume: 0.06 },
     ],
     terminal: {
-      background: "#0a0e14",
-      foreground: "#a0a8b4",
-      cursor: "#7a8c9c",
+      background: "#1a1a19",
+      foreground: "#a0a09a",
+      cursor: "#8a8a80",
+      cursorAccent: "#1a1a19",
+      selectionBackground: "#2e2e2a",
+      selectionForeground: "#c8c8c0",
+      black: "#121211",
+      red: "#c45c5c",
+      green: "#6a9a7b",
+      yellow: "#b89a6a",
+      blue: "#7a8a8a",
+      magenta: "#8a6a7a",
+      cyan: "#6a8a80",
+      white: "#a0a09a",
+      brightBlack: "#3a3a36",
+      brightRed: "#d47a7a",
+      brightGreen: "#7aaa8b",
+      brightYellow: "#ccad7a",
+      brightBlue: "#8a9a98",
+      brightMagenta: "#a07a90",
+      brightCyan: "#7aaa9a",
+      brightWhite: "#c8c8c0",
     },
     ui: {
-      background: "#0a0e14",
-      foreground: "#a0a8b4",
-      foregroundDim: "rgba(160, 168, 180, 0.5)",
+      background: "#181818",
+      foreground: "#9a9a94",
+      foregroundDim: "rgba(154, 154, 148, 0.45)",
+      sidebarBackground: "#141413",
+      panelBackground: "rgba(24, 24, 23, 0.96)",
+      border: "rgba(80, 80, 74, 0.35)",
+      buttonBackground: "#2a2a28",
+      buttonForeground: "#8a8a84",
+      inputBackground: "rgba(255, 255, 255, 0.03)",
+      accent: "rgba(140, 140, 130, 1)",
+      accentSoft: "rgba(140, 140, 130, 0.08)",
+      accentBorder: "rgba(140, 140, 130, 0.25)",
+      muted: "#4a4a46",
+      glow: "rgba(140, 140, 130, 0.05)",
     },
   },
   component: AbandonedFactoryScene,
 };
 
 export default definition;
+
+if (import.meta.hot) {
+  import.meta.hot.accept(async (newModule) => {
+    if (!newModule?.default) return;
+    const { reregisterBundledScene } = await import("../hmr");
+    await reregisterBundledScene(newModule.default);
+  });
+}

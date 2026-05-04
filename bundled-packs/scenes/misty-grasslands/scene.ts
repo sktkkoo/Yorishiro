@@ -74,3 +74,11 @@ export default {
     },
   },
 } satisfies ScenePackDefinition;
+
+if (import.meta.hot) {
+  import.meta.hot.accept(async (newModule) => {
+    if (!newModule?.default) return;
+    const { reregisterBundledScene } = await import("../hmr");
+    await reregisterBundledScene(newModule.default);
+  });
+}
