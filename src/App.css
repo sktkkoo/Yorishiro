@@ -204,7 +204,7 @@ body,
   margin-top: 8px;
 }
 
-/* ── Leva debug panel — floating overlay + Charminal テーマ追従 ── */
+/* ── Leva panel — Charminal テーマ追従 ─────────────── */
 
 #leva__root {
   position: fixed !important;
@@ -216,13 +216,13 @@ body,
   max-height: calc(100vh - 16px) !important;
   z-index: 50 !important;
   pointer-events: auto;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background: var(--charminal-panel-bg);
   border: 1px solid var(--charminal-border);
-  border-radius: 6px;
-  backdrop-filter: blur(8px);
-  opacity: 1;
-  transition: opacity 0.15s;
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  padding: 6px 0;
 }
 
 #leva__root:empty,
@@ -237,29 +237,129 @@ body,
   width: 100% !important;
 }
 
+/* ── leva 変数 override ── */
 [class*="leva-"] {
   --leva-sizes-rootWidth: var(--leva-panel-width);
-  --leva-sizes-controlWidth: 60%;
-  --leva-colors-elevation1: var(--charminal-sidebar-bg);
-  --leva-colors-elevation2: var(--charminal-panel-bg);
+  --leva-sizes-controlWidth: 54%;
+  --leva-colors-elevation1: transparent;
+  --leva-colors-elevation2: var(--charminal-input-bg);
   --leva-colors-elevation3: var(--charminal-button-bg);
   --leva-colors-accent1: var(--charminal-accent);
   --leva-colors-accent2: var(--charminal-accent);
   --leva-colors-accent3: var(--charminal-accent-border);
   --leva-colors-highlight1: var(--charminal-fg);
-  --leva-colors-highlight2: var(--charminal-button-fg);
+  --leva-colors-highlight2: var(--charminal-fg-dim);
   --leva-colors-highlight3: var(--charminal-muted);
   --leva-colors-vivid1: var(--charminal-accent);
   --leva-colors-folderWidgetColor: var(--charminal-accent);
-  --leva-colors-folderTextColor: var(--charminal-fg);
+  --leva-colors-folderTextColor: var(--charminal-fg-dim);
   --leva-colors-toolTipBackground: var(--charminal-panel-bg);
   --leva-colors-toolTipText: var(--charminal-fg);
   --leva-fonts-mono: monospace;
   --leva-fonts-sans: monospace;
-  --leva-fontSizes-root: 11px;
+  --leva-fontSizes-root: 10px;
   --leva-radii-xs: 2px;
-  --leva-radii-sm: 4px;
-  --leva-radii-lg: 6px;
+  --leva-radii-sm: 3px;
+  --leva-radii-lg: 4px;
   --leva-shadows-level1: none;
   --leva-shadows-level2: none;
+  --leva-space-rowGap: 3px;
+  --leva-space-md: 6px;
+}
+
+/* フォルダヘッダー: 三角アイコンを消し、テキストだけの見出しに */
+[class*="leva-"] [class*="StyledFolder"] > [class*="StyledTitle"] svg {
+  display: none;
+}
+
+[class*="leva-"] [class*="StyledTitle"] {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--charminal-fg-dim);
+  padding: 6px 10px 3px;
+  border: none;
+  background: none;
+}
+
+/* フォルダ内容の背景を消す */
+[class*="leva-"] [class*="StyledContent"] {
+  background: transparent;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+}
+
+/* ラベルの色と weight */
+[class*="leva-"] label {
+  color: var(--charminal-fg-dim);
+  font-weight: normal;
+  font-size: 10px;
+}
+
+/* スライダー track を細く */
+[class*="leva-"] [class*="StyledRange"] {
+  height: 3px;
+  border-radius: 1.5px;
+}
+
+/* スライダー scrubber (thumb) を小さく */
+[class*="leva-"] [class*="Scrubber"] {
+  width: 8px;
+  height: 8px;
+}
+
+/* number input を控えめに */
+[class*="leva-"] input[type="number"],
+[class*="leva-"] [class*="StyledInput"] {
+  background: var(--charminal-input-bg);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--charminal-fg-dim);
+  font-size: 10px;
+}
+
+[class*="leva-"] input[type="number"]:focus,
+[class*="leva-"] [class*="StyledInput"]:focus {
+  border-color: var(--charminal-accent-border);
+}
+
+/* ボタンを Charminal スタイルに */
+[class*="leva-"] button[class*="StyledButton"] {
+  background: var(--charminal-button-bg);
+  color: var(--charminal-button-fg);
+  border: 1px solid var(--charminal-border);
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 4px 8px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+[class*="leva-"] button[class*="StyledButton"]:hover {
+  background: var(--charminal-accent-soft);
+  color: var(--charminal-fg);
+}
+
+/* checkbox を accent 色に */
+[class*="leva-"] [class*="StyledInputWrapper"] [class*="StyledCheckbox"] {
+  accent-color: var(--charminal-accent);
+}
+
+/* color picker swatch の角丸 */
+[class*="leva-"] [class*="ColorPreview"] {
+  border-radius: 3px;
+  border: 1px solid var(--charminal-border);
+}
+
+/* 行の padding を広げてゆとりを持たせる */
+[class*="leva-"] [class*="StyledRow"] {
+  padding: 2px 10px;
+}
+
+/* トップレベルフォルダ間のセパレータ */
+#leva__root > div > div > div + div {
+  border-top: 1px solid var(--charminal-border);
+  margin-top: 2px;
+  padding-top: 2px;
 }
