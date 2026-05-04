@@ -27,8 +27,8 @@ export function Lights() {
 
   const [controls, setControls] = useControls("abandoned-factory", () => ({
     lights: folder({
-      directionalIntensity: { value: 0.75, min: 0, max: 3, step: 0.05, label: "skylight int." },
-      lanternScale: { value: 1.0, min: 0, max: 3, step: 0.05, label: "lantern scale" },
+      directionalIntensity: { value: 0.8, min: 0, max: 3, step: 0.05, label: "skylight int." },
+      lanternScale: { value: 0.6, min: 0, max: 3, step: 0.05, label: "lantern scale" },
       crtScale: { value: 0.85, min: 0, max: 3, step: 0.05, label: "CRT scale" },
       flickerAmount: { value: 0.15, min: 0, max: 1, step: 0.05, label: "flicker amt (0=stable)" },
       ambientIntensity: { value: 0.055, min: 0, max: 0.3, step: 0.005, label: "ambient" },

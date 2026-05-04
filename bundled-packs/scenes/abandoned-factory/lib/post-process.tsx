@@ -54,8 +54,8 @@ export function AbandonedFactoryPostProcess() {
   // --- always-on controls ---
   const [bloomControls, setBloom] = useControls("abandoned-factory", () => ({
     bloom: folder({
-      bloomIntensity: { value: 1.2, min: 0, max: 3, step: 0.05 },
-      bloomThreshold: { value: 0.14, min: 0, max: 1, step: 0.01 },
+      bloomIntensity: { value: 1.3, min: 0, max: 3, step: 0.05 },
+      bloomThreshold: { value: 0.05, min: 0, max: 1, step: 0.01 },
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
   }));
@@ -85,7 +85,7 @@ export function AbandonedFactoryPostProcess() {
   const [scanlineControls, setScanline] = useControls("abandoned-factory", () => ({
     scanline: folder(
       {
-        scanlineDensity: { value: 0.8, min: 0.5, max: 5, step: 0.05 },
+        scanlineDensity: { value: 0.6, min: 0.5, max: 5, step: 0.05 },
         scanlineOpacity: { value: 0.02, min: 0, max: 0.5, step: 0.01 },
       },
       { collapsed: true },
