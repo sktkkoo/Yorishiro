@@ -106,6 +106,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.channel = new Channel<ArrayBuffer>();
     this.channel.onmessage = (data: ArrayBuffer) => {
       const bytes = new Uint8Array(data);
+      if (containsScreenClear(bytes)) {
+        this.term.clear();
+      }
       this.term.write(bytes);
       this.notifyPtyDataListeners();
       const text = this.textDecoder.decode(bytes, { stream: true });
@@ -193,6 +196,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       return;
     }
     this.currentParams = params;
+    this.term.reset();
 
     void (async () => {
       try {
@@ -410,6 +414,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
 export function getTerminalRuntime(): TerminalRuntime {
   return getOrInit(KEYS.TERMINAL_RUNTIME, () => new TerminalRuntimeImpl());
+}
+
+// ESC [ 2 J — 画面全消去 sequence。scrollback に残ったテキストも破棄するために検出する。
+const SCREEN_CLEAR = Uint8Array.from([0x1b, 0x5b, 0x32, 0x4a]);
+
+function containsScreenClear(bytes: Uint8Array): boolean {
+  if (bytes.length < SCREEN_CLEAR.length) return false;
+  outer: for (let i = 0; i <= bytes.length - SCREEN_CLEAR.length; i++) {
+    for (let j = 0; j < SCREEN_CLEAR.length; j++) {
+      if (bytes[i + j] !== SCREEN_CLEAR[j]) continue outer;
+    }
+    return true;
+  }
+  return false;
 }
 
 // Self-accept: terminal-runtime.ts 自身を編集しても singleton は保たれる。
