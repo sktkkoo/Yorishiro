@@ -596,6 +596,13 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
   }
   function releaseCameraClaimIfDone(): void {
     if (activeCameraTweenKeys.size === 0 && cameraClaimDisposable) {
+      // tween 完了時に cameraBase を現在の cam.position に同期する。
+      // これがないと claim 解放後に RAF ループが古い cameraBase で position を上書きし、
+      // カメラが tween 前の位置に snap-back する。
+      const cam = deps.getCamera();
+      if (cam) {
+        deps.setCameraBase?.([cam.position.x, cam.position.y, cam.position.z]);
+      }
       cameraClaimDisposable.dispose();
       cameraClaimDisposable = null;
     }
