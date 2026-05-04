@@ -50,3 +50,11 @@ export interface PtyResizeArgs {
 
 /** xterm 側の cols/rows 変化を PTY master に伝える。 */
 export const ptyResize = (args: PtyResizeArgs): Promise<void> => call("pty_resize", args);
+
+// --- Tutorial -------------------------------------------------------
+
+/** `~/.charminal/.tutorial-done` の存在を確認する。 */
+export const checkTutorialDone = (): Promise<boolean> => invoke("check_tutorial_done");
+
+/** `~/.charminal/.tutorial-done` を作成する。 */
+export const markTutorialDone = (): Promise<void> => invoke("mark_tutorial_done");
