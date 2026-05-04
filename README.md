@@ -4,15 +4,15 @@
 
 <h1 align="center">Charminal</h1>
 
-<p align="center"><strong>Someone who lives in your terminal.</strong></p>
+<p align="center"><strong>A body for the AI in your terminal.</strong></p>
 
 Charminal is a desktop app that gives a body to the AI running inside your terminal.
 
-Claude Code or Codex runs inside. Trying to properly express that AI's existence as an interface, the terminal became the AI's limbs, its living space, its environment. A 3D character wanders its gaze while the AI thinks, grimaces at errors, sometimes moves on its own — so you can feel that someone is there.
+Claude Code or Codex runs inside. While the AI is deep in thought, a 3D character lets its gaze wander. When an error hits, the face grimaces before the AI puts it into words. Sometimes the character just moves on its own, for no reason at all. Instead of a spinner, someone is there.
 
-There is the influence of science fiction and anime from years past. An AI partner who moves the screen, rewrites it, manipulates the world inside freely. That is the feeling this project is reaching for.
+The inhabitant can control the world it lives in — switching scenes, changing ambient sounds, triggering expressions and effects. Users can also write packs to reshape everything: personality, space, reactions. All while the app is running, without stopping it.
 
-For the philosophy behind this project, see [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md).
+There is an old feeling from science fiction and anime behind this — an AI partner who moves freely inside the screen, reshaping it at will. This project is trying to build that.
 
 > [日本語版 README はこちら](README.ja.md)
 
@@ -22,13 +22,17 @@ For the philosophy behind this project, see [`docs/philosophy/CHARMINAL.en.md`](
 
 **v0.0.1 — early preview**
 
-Under active development. The following works, but APIs, data shapes, and pack specs will change.
+Under active development. APIs, data shapes, and pack specs will change.
 
-- Launches Claude Code / Codex via PTY and renders the terminal (xterm.js)
-- Imports and displays a VRM model in 3D (Three.js + `@pixiv/three-vrm`)
-- Procedural animation: breathing, blinking, gaze
-- VRMA clip playback (triggered by persona handlers)
-- `/charm` shipped as a Claude Code plugin
+What works today:
+
+- Launches Claude Code / Codex as the terminal — you work right there
+- A VRM 3D character breathes, blinks, shifts gaze, and reacts with facial expressions
+- VRMA animation clip playback
+- Six pack types (persona / scene / effect / ui / utility / ambient-ui) can be created and loaded
+- Scene switching, ambient sound playback, camera and lighting control
+- Self-referential MCP — the inhabitant (Claude Code) can control Charminal itself via MCP (expressions, effects, scene switching, UI manipulation, and 20+ other tools)
+- `/charm` ships as a Claude Code plugin — create packs, edit them, tutorials, and more
 
 The terminal agent is selected via `~/.charminal/config.json`:
 
@@ -94,11 +98,11 @@ npm run tauri dev # Launch as desktop app
 
 ## Documentation
 
-### Philosophy
+### Philosophy — what this project believes
 
-- [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md) — What this project thinks about
-- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md) — The Inhabited Character Interface (ICI) paradigm
-- [`docs/philosophy/PRESENCE_HARNESS.en.md`](docs/philosophy/PRESENCE_HARNESS.en.md) — Designing how AI exists
+- [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md) — Why AI needs a body. The two-layer architecture of mind and reflex
+- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md) — Treating UI as a place and AI as its inhabitant
+- [`docs/philosophy/PRESENCE_HARNESS.en.md`](docs/philosophy/PRESENCE_HARNESS.en.md) — Designing not what AI can do, but how AI exists
 
 ### Development
 
@@ -113,4 +117,4 @@ npm run tauri dev # Launch as desktop app
 
 ---
 
-*Inhabited Character Interface — a place, not a tool.*
+*A place, not a tool.*

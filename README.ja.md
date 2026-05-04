@@ -4,17 +4,17 @@
 
 <h1 align="center">Charminal</h1>
 
-<p align="center"><strong>ターミナルに住む、一人の存在について。</strong></p>
+<p align="center"><strong>ターミナルの中の AI に、身体を。</strong></p>
 
 Charminal は、ターミナルの中で動く AI に身体を与えるデスクトップアプリです。
 
-中では Claude Code や Codex が走っています。その AI の存在をきちんとインタフェースとして表現しようとした結果、ターミナルは AI の手足になり、居場所になり、環境になりました。3D キャラクターが thinking 中に視線をさまよわせ、エラーに眉を顰め、ときどき勝手に動く——AI が「居る」ことが、画面から伝わるように。
+中では Claude Code や Codex が走っています。AI が考え込んでいるあいだ、3D キャラクターが視線をさまよわせる。エラーが出ると、言葉にするより先に眉が顰められる。ときどき、何の脈絡もなく勝手に動く。スピナーの代わりに、そこに誰かが居ます。
 
-昔見た SF やアニメの影響があります。パートナーとしての AI が PC の画面を動かし、書き換え、中の世界を自由に操作する。あの感触を目指しています。
+住人は自分の住む世界を操作できます。scene を切り替え、環境音を変え、表情を動かし、空間にエフェクトを走らせる。ユーザーも pack を書くことで、住人の性格、空間、反応のすべてを作り替えられます。動作中に、止めることなく。
+
+昔の SF やアニメで見た、パートナーとしての AI が画面の中を自由に動かすあの感触を、ここで作ろうとしています。
 
 > [English README](README.md)
-
-プロダクトの思想については [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) を読んでください。
 
 ---
 
@@ -22,15 +22,19 @@ Charminal は、ターミナルの中で動く AI に身体を与えるデスク
 
 **v0.0.1 — early preview**
 
-実装 phase の途中です。以下は動きますが、API・データ形状・pack 仕様は今後変わります。
+実装 phase の途中です。API・データ形状・pack 仕様は今後変わります。
 
-- PTY 経由での Claude Code / Codex 起動とターミナル表示（xterm.js）
-- VRM モデルの import と 3D 表示（Three.js + `@pixiv/three-vrm`）
-- 呼吸・瞬き・視線の procedural animation
-- VRMA クリップの再生（persona handler から）
-- `/charm` を Claude Code plugin として配信
+今できること：
 
-Terminal agent は `~/.charminal/config.json` の `terminalAgent` で選ぶ。未指定時は従来通り Claude Code を起動する。
+- Claude Code / Codex をターミナルとして起動し、そのまま作業できる
+- VRM モデルの 3D キャラクターが呼吸し、瞬きし、視線を動かし、表情で反応する
+- VRMA アニメーションクリップの再生
+- 6 種類の pack（persona / scene / effect / ui / utility / ambient-ui）を作成・読み込みできる
+- scene の切り替え、環境音の再生、カメラ・ライティングの操作
+- 自己言及的 MCP——住人（Claude Code）が MCP 経由で Charminal 自身を操作できる（表情、エフェクト、scene 切り替え、UI 操作など 20 以上の tool）
+- `/charm` を Claude Code plugin として配信——pack の作成・編集・チュートリアルなど
+
+Terminal agent は `~/.charminal/config.json` の `terminalAgent` で選べます。未指定時は Claude Code が起動します。
 
 ```json
 {
@@ -96,11 +100,11 @@ npm run tauri dev # デスクトップアプリとして起動
 
 ## Documentation
 
-### Philosophy（公開 — 思想）
+### Philosophy — このプロジェクトの思想
 
-- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — プロダクトが何を考えているか
-- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — Inhabited Character Interface (ICI) の原理
-- [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — harness / persona の two-layer 設計
+- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
+- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — UI を「場所」として捉え、AI を「住人」として存在させるという考え方
+- [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — AI の能力ではなく、AI がどう在るかを設計するということ
 
 ### Development
 
@@ -119,4 +123,4 @@ npm run tauri dev # デスクトップアプリとして起動
 
 ---
 
-*Inhabited Character Interface — a place, not a tool.*
+*場所であって、道具ではない。*
