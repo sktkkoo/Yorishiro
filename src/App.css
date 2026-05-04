@@ -221,12 +221,7 @@ body,
   border: 1px solid var(--charminal-border);
   border-radius: 8px;
   padding: 6px 0;
-  transition: width 0.15s ease-out;
-}
-
-#leva__root:empty,
-#leva__root[style*="display: none"] {
-  display: block !important;
+  transition: opacity 0.15s ease-out;
 }
 
 #leva__root > div {

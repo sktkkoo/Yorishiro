@@ -818,6 +818,8 @@ function App() {
             setDebugPanelWidth: (px) => {
               const w = Math.max(0, px);
               document.documentElement.style.setProperty("--leva-panel-width", `${w}px`);
+              const root = document.getElementById("leva__root");
+              if (root) root.style.display = w <= 0 ? "none" : "block";
             },
             getDebugPanelWidth: () => {
               const raw = getComputedStyle(document.documentElement)
@@ -1786,14 +1788,19 @@ function App() {
       }
       if (event.code === "F2") {
         event.preventDefault();
-        const raw = getComputedStyle(document.documentElement)
-          .getPropertyValue("--leva-panel-width")
-          .trim();
-        const current = Number.parseFloat(raw) || 0;
-        document.documentElement.style.setProperty(
-          "--leva-panel-width",
-          current > 0 ? "0px" : "280px",
-        );
+        const root = document.getElementById("leva__root");
+        if (root) {
+          const isVisible = root.style.display !== "none";
+          root.style.display = isVisible ? "none" : "block";
+          if (!isVisible) {
+            const raw = getComputedStyle(document.documentElement)
+              .getPropertyValue("--leva-panel-width")
+              .trim();
+            if ((Number.parseFloat(raw) || 0) <= 0) {
+              document.documentElement.style.setProperty("--leva-panel-width", "280px");
+            }
+          }
+        }
       }
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
