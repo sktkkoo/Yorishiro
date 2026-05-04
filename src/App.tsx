@@ -873,6 +873,36 @@ function App() {
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }
+
+      // --- Step 6: 初回起動時の tutorial pre-fill ---
+      // PTY spawn 後に呼ぶ必要があるため、Terminal mount を少し待つ。
+      // ptyWrite は改行なしで送り、Enter はユーザーが押す（PTY observation only に抵触しない）。
+      // フラグは pre-fill 成功直後に立てる（AI の判断に依存しない確実な経路）。
+      try {
+        const { checkTutorialDone } = await import("./bindings/tauri-commands");
+        const done = await checkTutorialDone();
+        if (!done) {
+          setTimeout(async () => {
+            try {
+              const { ptyWrite, markTutorialDone } = await import("./bindings/tauri-commands");
+              await ptyWrite({ data: "/charm:tutorial" });
+              await markTutorialDone();
+            } catch (err) {
+              appLog.write({
+                phase: "tutorial-prefill",
+                note: "pre-fill failed (PTY may not be ready yet)",
+                data: { error: err instanceof Error ? err.message : String(err) },
+              });
+            }
+          }, 2000);
+        }
+      } catch (err) {
+        appLog.write({
+          phase: "tutorial-prefill",
+          note: "tutorial flag check failed",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
     }
 
     // bootstrap を fire-and-forget で起動。runtime singleton は HMR 越しに 1 度しか
