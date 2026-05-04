@@ -212,7 +212,7 @@ body,
   right: 0 !important;
   bottom: 0 !important;
   left: auto !important;
-  width: 220px !important;
+  width: 280px !important;
   height: 100vh !important;
   z-index: 40 !important;
   pointer-events: auto;
@@ -230,7 +230,7 @@ body,
 }
 
 [class*="leva-"] {
-  --leva-sizes-rootWidth: 220px;
+  --leva-sizes-rootWidth: 280px;
   --leva-sizes-controlWidth: 60%;
   --leva-colors-elevation1: var(--charminal-sidebar-bg);
   --leva-colors-elevation2: var(--charminal-panel-bg);

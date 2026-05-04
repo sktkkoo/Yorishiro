@@ -600,6 +600,7 @@ function App() {
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
           createUiSidebarSetHandler,
+          createUiDebugPanelSetHandler,
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
@@ -811,6 +812,20 @@ function App() {
               width: window.innerWidth,
               height: window.innerHeight,
             }),
+            tweenManager: getThreeRuntime().getTweenManager(),
+          }),
+          "ui.debugPanel.set": createUiDebugPanelSetHandler({
+            setDebugPanelWidth: (px) => {
+              document.documentElement.style.setProperty("--leva-panel-width", `${px}px`);
+              setLevaHidden(px <= 0);
+            },
+            getDebugPanelWidth: () => {
+              const raw = getComputedStyle(document.documentElement)
+                .getPropertyValue("--leva-panel-width")
+                .trim();
+              return Number.parseFloat(raw) || 0;
+            },
+            getDefaultDebugPanelWidth: () => 280,
             tweenManager: getThreeRuntime().getTweenManager(),
           }),
           // ── Active pack switching ──────────────────────────
@@ -1766,7 +1781,7 @@ function App() {
   const [levaHidden, setLevaHidden] = useState(true);
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--leva-panel-width", levaHidden ? "0px" : "220px");
+    document.documentElement.style.setProperty("--leva-panel-width", levaHidden ? "0px" : "280px");
   }, [levaHidden]);
 
   useEffect(() => {

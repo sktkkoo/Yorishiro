@@ -220,6 +220,21 @@ pub struct UiSidebarSetRequest {
     pub duration_ms: Option<u32>,
 }
 
+/// `ui_debug_panel_set` の引数。debug panel (leva) の表示/幅を操作する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UiDebugPanelSetRequest {
+    /// true で表示、false で非表示。width と同時指定時は visible を優先。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visible: Option<bool>,
+    /// パネル幅 (px)。0 で非表示。省略時は default (280px)。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<f32>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
 /// `journal_write` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JournalWriteRequest {
@@ -515,6 +530,26 @@ impl Charminal {
             json!({
                 "width": req.width,
                 "widthPercent": req.width_percent,
+                "durationMs": req.duration_ms,
+            }),
+        )
+        .await
+    }
+
+    /// debug panel (leva) の表示/幅を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(
+        description = "Show/hide the debug panel (leva). Use visible:true/false or width in px. Supports smooth interpolation via durationMs."
+    )]
+    async fn ui_debug_panel_set(
+        &self,
+        Parameters(req): Parameters<UiDebugPanelSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "ui.debugPanel.set",
+            json!({
+                "visible": req.visible,
+                "width": req.width,
                 "durationMs": req.duration_ms,
             }),
         )

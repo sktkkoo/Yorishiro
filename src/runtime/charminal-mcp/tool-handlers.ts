@@ -1065,6 +1065,52 @@ export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
+ * ui.debugPanel.set
+ * ────────────────────────────────────────────────────────── */
+
+export interface UiDebugPanelSetDeps {
+  readonly setDebugPanelWidth: (px: number) => void;
+  readonly getDebugPanelWidth: () => number;
+  readonly getDefaultDebugPanelWidth: () => number;
+  readonly tweenManager: TweenManager;
+}
+
+export interface UiDebugPanelSetResult {
+  readonly width?: number;
+  readonly tweening?: boolean;
+}
+
+export function createUiDebugPanelSetHandler(deps: UiDebugPanelSetDeps) {
+  return async (request: unknown): Promise<UiDebugPanelSetResult> => {
+    const r = requestRecord(request);
+    const visible = typeof r.visible === "boolean" ? r.visible : undefined;
+    const width =
+      visible !== undefined
+        ? visible
+          ? deps.getDefaultDebugPanelWidth()
+          : 0
+        : typeof r.width === "number" && Number.isFinite(r.width) && r.width >= 0
+          ? r.width
+          : deps.getDefaultDebugPanelWidth();
+    const durationMs =
+      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
+        ? r.durationMs
+        : 0;
+
+    if (durationMs > 0) {
+      deps.tweenManager.start("ui.debugPanel.width", width, durationMs, deps.setDebugPanelWidth, {
+        from: deps.getDebugPanelWidth(),
+      });
+      return { width, tweening: true };
+    }
+
+    deps.tweenManager.cancel("ui.debugPanel.width");
+    deps.setDebugPanelWidth(width);
+    return { width };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
  * scene.activate
  * ────────────────────────────────────────────────────────── */
 
