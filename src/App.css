@@ -266,13 +266,22 @@ body,
   --leva-space-md: 6px;
 }
 
-/* フォルダヘッダーの三角 SVG だけ消す（検索アイコンは残す） */
-#leva__root div[role="button"] svg {
+/* leva 内の全 SVG を一旦非表示にし、titleBar だけ復元 */
+#leva__root svg {
   visibility: hidden !important;
   width: 0 !important;
   height: 0 !important;
   overflow: hidden !important;
   position: absolute !important;
+}
+
+/* titleBar のアイコン（検索・メニュー等）は復元 */
+#leva__root > div:first-child svg {
+  visibility: visible !important;
+  width: auto !important;
+  height: auto !important;
+  overflow: visible !important;
+  position: static !important;
 }
 
 /* フォルダヘッダーのテキストを Charminal 風に */
