@@ -128,6 +128,10 @@ fn build_hooks_json(port: u16) -> String {
       "matcher": "",
       "hooks": [{{ "type": "command", "command": "{}" }}]
     }}],
+    "PostToolUse": [{{
+      "matcher": "",
+      "hooks": [{{ "type": "command", "command": "{}" }}]
+    }}],
     "PostToolUseFailure": [{{
       "matcher": "",
       "hooks": [{{ "type": "command", "command": "{}" }}]
@@ -140,6 +144,7 @@ fn build_hooks_json(port: u16) -> String {
 }}"#,
         user_prompt_cmd,
         hook_cmd_stdin("/hook/pre-tool-use", "pre-tool-use"),
+        hook_cmd_stdin("/hook/post-tool-use", "post-tool-use"),
         hook_cmd_stdin("/hook/post-tool-failure", "post-tool-failure"),
         hook_cmd(r#"{\"event\":\"stop\"}"#),
     )
@@ -161,9 +166,38 @@ pub fn start_hook_server(_app: AppHandle) {
         };
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
-            let mut buf = vec![0u8; 4096];
-            let n = stream.read(&mut buf).unwrap_or(0);
-            let data = String::from_utf8_lossy(&buf[..n]);
+            let mut buf = Vec::new();
+            let mut tmp = [0u8; 8192];
+            loop {
+                match stream.read(&mut tmp) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&tmp[..n]);
+                        if buf.len() > 512 * 1024 {
+                            break;
+                        }
+                        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                            let hdr = String::from_utf8_lossy(&buf);
+                            let content_len = hdr
+                                .lines()
+                                .find_map(|l| {
+                                    let lower = l.to_ascii_lowercase();
+                                    lower
+                                        .strip_prefix("content-length:")
+                                        .and_then(|v| v.trim().parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            if let Some(body_off) = hdr.find("\r\n\r\n").map(|p| p + 4) {
+                                if buf.len() >= body_off + content_len {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let data = String::from_utf8_lossy(&buf);
 
             let path = data
                 .lines()
@@ -173,11 +207,24 @@ pub fn start_hook_server(_app: AppHandle) {
                 .nth(1)
                 .unwrap_or("/");
 
+            eprintln!(
+                "[hook-server] path={} buf_len={} data_len={}",
+                path,
+                buf.len(),
+                data.len()
+            );
+
             if let Some(body_start) = data.find("\r\n\r\n") {
                 let body = data[body_start + 4..].trim();
+                eprintln!(
+                    "[hook-server] body_len={} body_preview={}",
+                    body.len(),
+                    &body[..body.len().min(200)]
+                );
                 if !body.is_empty() {
                     let event_type = match path {
                         "/hook/pre-tool-use" => Some("pre-tool-use"),
+                        "/hook/post-tool-use" => Some("post-tool-use"),
                         "/hook/post-tool-failure" => Some("post-tool-failure"),
                         "/hook" => None,
                         _ => None,
