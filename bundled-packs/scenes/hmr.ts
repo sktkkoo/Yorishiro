@@ -19,6 +19,7 @@ export async function reregisterBundledScene(newDef: ScenePackDefinition): Promi
       type: "scene",
       version: "0.0.0",
       charminalVersion: "^0.1.0",
+      entry: "scene.ts",
     },
     scene: newDef.scene,
     origin: "bundled",
