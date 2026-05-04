@@ -46,19 +46,22 @@ const THINKING_EYE: ReadonlyArray<EyeDir> = [
   { up: 1.0, down: 0, left: 0, right: 1.0 }, // visual construction (upper-right)
   { up: 1.0, down: 0, left: 1.0, right: 0 }, // weight: upper-left ×2
   { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×2
-  { up: 1.0, down: 0, left: 1.0, right: 0 }, // weight: upper-left ×3
-  { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×3
   { up: 0, down: 0, left: 1.0, right: 0 }, // auditory memory (lateral-left)
   { up: 0, down: 0, left: 0, right: 1.0 }, // auditory construction (lateral-right)
+  { up: 0.3, down: 0, left: 0, right: 0 }, // soft front-up
+  { up: 0, down: 0.4, left: 0, right: 0.5 }, // internal dialogue (lower-right)
 ];
 
 const PATTERNS: Record<EyeState, ReadonlyArray<EyeDir>> = {
   idle: [
     { up: 0, down: 0, left: 1.0, right: 0 },
     { up: 0, down: 0, left: 0, right: 1.0 },
-    { up: 1.0, down: 0, left: 1.0, right: 0 },
-    { up: 1.0, down: 0, left: 0, right: 1.0 },
+    { up: 0.6, down: 0, left: 0.8, right: 0 },
+    { up: 0.6, down: 0, left: 0, right: 0.8 },
+    { up: 0, down: 0.3, left: 0.6, right: 0 },
+    { up: 0, down: 0.3, left: 0, right: 0.6 },
     { up: 0, down: 0, left: 0, right: 0 }, // front
+    { up: 0, down: 0, left: 0, right: 0 }, // front ×2
   ],
   thinking: THINKING_EYE,
   reading: [
@@ -67,9 +70,10 @@ const PATTERNS: Record<EyeState, ReadonlyArray<EyeDir>> = {
     { up: 0, down: 0.6, left: 1.0, right: 0 }, // weight: lower-left ×2
   ],
   writing: [
-    { up: 1.0, down: 0, left: 0, right: 1.0 }, // visual construction (upper-right)
+    { up: 0.7, down: 0, left: 0, right: 1.0 }, // visual construction (upper-right)
     { up: 0, down: 0, left: 0, right: 1.0 }, // auditory construction (lateral-right)
-    { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×2
+    { up: 0, down: 0, left: 0, right: 1.0 }, // lateral-right ×2
+    { up: 0, down: 0.3, left: 0, right: 0.7 }, // lower-right (output focus)
   ],
   running: [
     { up: 0, down: 0, left: 0, right: 0 }, // front
@@ -237,9 +241,9 @@ export class EyeSystem {
 
         this.isSaccading = true;
 
-        // Thinking: upper gaze gets longer fixation (3-6s)
+        // Thinking: upper gaze gets longer fixation (2-4s)
         if (this._state === "thinking" && picked.up > 0.5) {
-          this.fixationTimer = 3.0 + this.random() * 3.0;
+          this.fixationTimer = 2.0 + this.random() * 2.0;
         } else {
           const [min, max] = INTERVALS[this._state];
           this.fixationTimer = min + this.random() * (max - min);
