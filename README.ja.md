@@ -6,11 +6,15 @@
 
 <p align="center"><strong>ターミナルに住む、一人の存在について。</strong></p>
 
-Charminal は、Claude Code / Codex を中で走らせながら、3D キャラクターがその横で一緒に時間を過ごすための小さなデスクトップアプリです。ユーザーが話しかけたときに反応する装置ではなく、入力が無い時間も含めて**そこに居る**ことを目指しています。
+Charminal は、ターミナルの中で動く AI に身体を与えるデスクトップアプリです。
+
+中では Claude Code や Codex が走っています。その AI の存在をきちんとインタフェースとして表現しようとした結果、ターミナルは AI の手足になり、居場所になり、環境になりました。3D キャラクターが thinking 中に視線をさまよわせ、エラーに眉を顰め、ときどき勝手に動く——AI が「居る」ことが、画面から伝わるように。
+
+昔見た SF やアニメの影響があります。パートナーとしての AI が PC の画面を動かし、書き換え、中の世界を自由に操作する。あの感触を目指しています。
 
 > [English README](README.md)
 
-この README は実装と開発のための案内です。プロダクトが何を考えているかについては [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) を読んでください。
+プロダクトの思想については [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) を読んでください。
 
 ---
 

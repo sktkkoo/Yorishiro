@@ -6,7 +6,11 @@
 
 <p align="center"><strong>Someone who lives in your terminal.</strong></p>
 
-Charminal is a small desktop app where a 3D character shares your workspace alongside Claude Code or Codex. It aims to simply **be there** — including the silence when nothing is happening.
+Charminal is a desktop app that gives a body to the AI running inside your terminal.
+
+Claude Code or Codex runs inside. Trying to properly express that AI's existence as an interface, the terminal became the AI's limbs, its living space, its environment. A 3D character wanders its gaze while the AI thinks, grimaces at errors, sometimes moves on its own — so you can feel that someone is there.
+
+There is the influence of science fiction and anime from years past. An AI partner who moves the screen, rewrites it, manipulates the world inside freely. That is the feeling this project is reaching for.
 
 For the philosophy behind this project, see [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md).
 
