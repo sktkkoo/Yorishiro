@@ -51,6 +51,8 @@ const mapHookEvent = (event: string): HookSignal["name"] | null => {
       return "user-prompt-submit";
     case "pre-tool-use":
       return "pre-tool-use";
+    case "post-tool-use":
+      return "post-tool-use";
     case "post-tool-failure":
       return "post-tool-failure";
     case "stop":

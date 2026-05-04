@@ -111,15 +111,25 @@ export default {
         },
       } satisfies Trigger,
 
-      // git push 成功 → celebrate を発火。PTY output から push 成功を示す
-      // パターン（ブランチ更新 / 新規ブランチ / 新規タグ）を検知する。
+      // git push 成功 → celebrate を発火。
+      // Claude Code の TUI は tool output を折りたたむため PTY output には
+      // push 結果行が流れない。PostToolUse hook の payload から検知する。
       {
         id: "clai:git-push-success",
         match(event: DispatchEvent) {
-          if (event.kind !== "pty-output") return null;
-          // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape strip に ESC 制御文字が必要
-          const plain = event.text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
-          if (/\w+\.{2,3}\w+\s+\S+\s+->\s+\S+/.test(plain) || /\[new (branch|tag)\]/.test(plain)) {
+          if (event.kind !== "hook-signal") return null;
+          if (event.signal.name !== "post-tool-use") return null;
+          const payload = event.signal.payload as Record<string, unknown>;
+          if (typeof payload.tool_name !== "string") return null;
+          if (!payload.tool_name.toLowerCase().includes("bash")) return null;
+          const raw = payload.tool_response;
+          const resp =
+            typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : null;
+          const output = resp ? `${resp.stdout ?? ""} ${resp.stderr ?? ""}` : String(raw ?? "");
+          if (
+            /\w+\.{2,3}\w+\s+\S+\s+->\s+\S+/.test(output) ||
+            /\[new (branch|tag)\]/.test(output)
+          ) {
             return { reaction: "celebrate" };
           }
           return null;
