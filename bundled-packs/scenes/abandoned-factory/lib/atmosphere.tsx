@@ -73,8 +73,8 @@ export function DustMotes() {
       sizeMult: { value: 5, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.28, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
       alphaAmp: { value: 0.04, min: 0, max: 0.3, step: 0.01, label: "alpha amplitude" },
-      moveFreq: { value: 0.07, min: 0, max: 1, step: 0.01, label: "漂流速度" },
-      moveAmp: { value: 1.49, min: 0, max: 2.0, step: 0.01, label: "漂流幅" },
+      moveFreq: { value: 0.07, min: 0, max: 1, step: 0.01, label: "drift speed" },
+      moveAmp: { value: 1.49, min: 0, max: 2.0, step: 0.01, label: "drift amplitude" },
     }),
   }));
   useControlsBridge("abandoned-factory", controls, setControls);
