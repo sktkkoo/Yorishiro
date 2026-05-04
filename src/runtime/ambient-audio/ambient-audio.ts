@@ -35,6 +35,7 @@ export class AmbientAudioRuntime {
   private readonly active = new Map<string, ActiveEntry>();
   private readonly fadingOut = new Map<string, FadingOutEntry>();
   private muted = false;
+  private masterVolume = 1.0;
 
   /**
    * Mute / unmute すべての ambient sound。Howl 単位の `mute()` を使うので
@@ -50,12 +51,20 @@ export class AmbientAudioRuntime {
     for (const entry of this.fadingOut.values()) entry.howl.mute(muted);
   }
 
+  /** マスターボリュームを設定する（0.0-1.0）。全 Howl の volume にこの値を乗算する。 */
+  setMasterVolume(volume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, volume));
+    for (const entry of this.active.values()) {
+      entry.howl.volume(entry.volume * this.masterVolume);
+    }
+  }
+
   /**
    * Active から外れる sound を fade out して unload を schedule。
    * 再 add に備えて fadingOut Map に保留しておく。
    */
   private startFadeOut(url: string, entry: ActiveEntry): void {
-    entry.howl.fade(entry.volume, 0, CROSSFADE_MS);
+    entry.howl.fade(entry.volume * this.masterVolume, 0, CROSSFADE_MS);
     const timer = setTimeout(() => {
       entry.howl.unload();
       this.fadingOut.delete(url);
@@ -95,7 +104,11 @@ export class AmbientAudioRuntime {
         // 既存 Howl の今の volume から target まで fade up し直す
         clearTimeout(reviving.timer);
         this.fadingOut.delete(url);
-        reviving.howl.fade(reviving.fromVolume, volume, CROSSFADE_MS);
+        reviving.howl.fade(
+          reviving.fromVolume * this.masterVolume,
+          volume * this.masterVolume,
+          CROSSFADE_MS,
+        );
         this.active.set(url, { howl: reviving.howl, volume });
         continue;
       }
@@ -114,7 +127,7 @@ export class AmbientAudioRuntime {
         });
         if (this.muted) howl.mute(true);
         howl.play();
-        howl.fade(0, volume, CROSSFADE_MS);
+        howl.fade(0, volume * this.masterVolume, CROSSFADE_MS);
         this.active.set(url, { howl, volume });
         continue;
       }
@@ -122,7 +135,11 @@ export class AmbientAudioRuntime {
         // 同 URL + 同 volume → 再生位置を保持するため触らない
         continue;
       }
-      existing.howl.fade(existing.volume, volume, CROSSFADE_MS);
+      existing.howl.fade(
+        existing.volume * this.masterVolume,
+        volume * this.masterVolume,
+        CROSSFADE_MS,
+      );
       this.active.set(url, { howl: existing.howl, volume });
     }
   }

@@ -91,6 +91,7 @@ import {
   parseConfig,
   serializeConfig,
   type TerminalAgent,
+  withActiveAmbientUiSet,
 } from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
@@ -494,11 +495,13 @@ function App() {
       // （bundled fallback で動く）。
       let terminalAgent: TerminalAgent = "claude";
       let ambientAudioMuted = false;
+      let ambientAudioVolume = 1.0;
       try {
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
+        ambientAudioVolume = config.ambientAudioVolume;
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
@@ -518,6 +521,7 @@ function App() {
       // （abandoned-factory）が一瞬 active 扱いになって音が鳴る race を回避する。
       ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
       ambientAudioEngineRef.current.setMuted(ambientAudioMuted);
+      ambientAudioEngineRef.current.setMasterVolume(ambientAudioVolume);
       appLog.write({
         phase: "register",
         note: "initialized AmbientAudioRuntime",
@@ -1067,11 +1071,38 @@ function App() {
         activeScene: string | null;
         terminalAgent: "claude" | "codex";
         ambientAudioMuted: boolean;
+        ambientAudioVolume: number;
       }>,
     ): Promise<void> => {
       const next = pendingConfigWrite.then(async () => {
         const cur = parseConfig(await readCharminalConfigText());
         await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
+      });
+      pendingConfigWrite = next.catch(() => undefined);
+      return next;
+    };
+
+    /**
+     * activeAmbientUi を read-modify-write で更新する config helper。
+     * withActiveAmbientUiSet を使って config を immutable に更新し、
+     * registry 側の enable/disable も同期する。
+     */
+    const updateActiveAmbientUi = (ids: readonly string[]): Promise<void> => {
+      const next = pendingConfigWrite.then(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        const updated = withActiveAmbientUiSet(cur, ids);
+        await writeCharminalConfigText(serializeConfig(updated));
+
+        // registry 側の active set を同期する
+        const ambientUiRegistry = getAmbientUiPackRegistry();
+        const currentActive = new Set(ambientUiRegistry.getActiveSet());
+        const nextActive = new Set(ids);
+        for (const id of currentActive) {
+          if (!nextActive.has(id)) ambientUiRegistry.disable(id);
+        }
+        for (const id of nextActive) {
+          if (!currentActive.has(id)) ambientUiRegistry.enable(id);
+        }
       });
       pendingConfigWrite = next.catch(() => undefined);
       return next;
@@ -1236,6 +1267,13 @@ function App() {
             await updateConfig({ ambientAudioMuted: muted });
             ambientAudioEngineRef.current?.setMuted(muted);
           },
+          setActiveAmbientUi: async (ids) => {
+            await updateActiveAmbientUi(ids);
+          },
+          setAmbientAudioVolume: async (volume) => {
+            await updateConfig({ ambientAudioVolume: volume });
+            ambientAudioEngineRef.current?.setMasterVolume(volume);
+          },
           getConfig: async () => {
             const text = await readCharminalConfigText();
             const cur = parseConfig(text);
@@ -1244,6 +1282,8 @@ function App() {
               activeScene: cur.activeScene,
               terminalAgent: cur.terminalAgent,
               ambientAudioMuted: cur.ambientAudioMuted,
+              ambientAudioVolume: cur.ambientAudioVolume,
+              activeAmbientUi: cur.activeAmbientUi,
             };
           },
         },

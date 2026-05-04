@@ -37,6 +37,8 @@ export interface CharminalConfig {
   readonly terminalAgent: TerminalAgent;
   /** Scene pack の `ambient` 宣言で再生される環境音を mute する。 */
   readonly ambientAudioMuted: boolean;
+  /** 環境音のマスターボリューム（0.0-1.0）。全 Howl の volume にこの値を乗算する。 */
+  readonly ambientAudioVolume: number;
 }
 
 export type TerminalAgent = "claude" | "codex";
@@ -50,6 +52,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   activeAmbientUi: ["attention-aura"],
   terminalAgent: "claude",
   ambientAudioMuted: false,
+  ambientAudioVolume: 1.0,
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -71,6 +74,12 @@ const toTerminalAgent = (value: unknown): TerminalAgent => {
 
 const toBoolean = (value: unknown): boolean => {
   return value === true;
+};
+
+/** 0.0-1.0 の float を返す。無効値は 1.0（default）に fallback。 */
+const toUnitFloat = (value: unknown): number => {
+  if (typeof value !== "number" || !Number.isFinite(value)) return 1.0;
+  return Math.max(0, Math.min(1, value));
 };
 
 /**
@@ -99,6 +108,7 @@ export function parseConfig(text: string): CharminalConfig {
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
     terminalAgent: toTerminalAgent(obj.terminalAgent),
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
+    ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
   };
 }
 
@@ -116,6 +126,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.activeAmbientUi.length > 0) out.activeAmbientUi = [...cfg.activeAmbientUi];
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
+  if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
