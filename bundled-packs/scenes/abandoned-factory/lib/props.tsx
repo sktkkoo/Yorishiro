@@ -176,7 +176,7 @@ export function AbandonedFactoryProps({ resolveAsset }: AbandonedFactoryPropsPro
         // resolveAsset が relPath をそのまま返した = BUNDLED_ASSETS lookup miss.
         // useGLTF を呼ばずに Placeholder のみ.
         if (url === entry.relPath) {
-          return <group key={entry.id}>{placeholder}</group>;
+          return null;
         }
         return (
           <GltfErrorBoundary key={entry.id} fallback={placeholder}>
