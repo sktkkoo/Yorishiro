@@ -71,7 +71,7 @@ fn save_hours_impl(
     // cohabitation セクションを取得 or 初期化
     let cohabitation = config_obj
         .entry("cohabitation")
-        .or_insert_with(|| default_cohabitation());
+        .or_insert_with(default_cohabitation);
 
     let cohab_obj = cohabitation
         .as_object_mut()
