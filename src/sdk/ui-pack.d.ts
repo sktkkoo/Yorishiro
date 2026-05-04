@@ -99,6 +99,10 @@ export interface UiAppAPI {
   setTerminalAgent(agent: "claude" | "codex"): Promise<void>;
   /** Scene pack の環境音を mute / unmute する。 */
   setAmbientAudioMuted(muted: boolean): Promise<void>;
+  /** activeAmbientUi の配列を置き換える。config.json に書き戻す。 */
+  setActiveAmbientUi(ids: readonly string[]): Promise<void>;
+  /** 環境音のマスターボリュームを設定する（0.0-1.0）。config.json に書き戻す。 */
+  setAmbientAudioVolume(volume: number): Promise<void>;
   /**
    * 現 config の snapshot（読み取り専用、初期値表示用）。
    * `~/.charminal/config.json` を fresh に読んで返す async。
@@ -108,6 +112,8 @@ export interface UiAppAPI {
     readonly activeScene: string | null;
     readonly terminalAgent: "claude" | "codex";
     readonly ambientAudioMuted: boolean;
+    readonly ambientAudioVolume: number;
+    readonly activeAmbientUi: readonly string[];
   }>;
 }
 

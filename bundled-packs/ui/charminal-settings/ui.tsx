@@ -14,7 +14,6 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { ptyWrite } from "../../../src/bindings/tauri-commands";
-import { TerminalPromptButton } from "../../../src/sdk/components/terminal-prompt-button";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
@@ -194,57 +193,6 @@ function Select({
   );
 }
 
-interface ButtonProps {
-  readonly variant?: "primary" | "neutral";
-  readonly onClick?: () => void;
-  readonly children: React.ReactNode;
-  readonly ariaLabel?: string;
-  readonly style?: React.CSSProperties;
-  readonly disabled?: boolean;
-}
-
-/**
- * 2 variant の汎用ボタン。
- * - primary: teal accent（accent soft fill + accent border）
- * - neutral: white-wash（bgButton fill + borderMid border）
- *
- * tokens 経由でスタイルを一元管理する。
- */
-function Button(props: ButtonProps): React.JSX.Element {
-  const variant = props.variant ?? "neutral";
-  const variantStyle: React.CSSProperties =
-    variant === "primary"
-      ? {
-          background: COLORS.accentSoft,
-          border: `1px solid ${COLORS.accentBorder}`,
-        }
-      : {
-          background: COLORS.bgButton,
-          border: `1px solid ${COLORS.borderMid}`,
-        };
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      aria-label={props.ariaLabel}
-      disabled={props.disabled}
-      style={{
-        ...variantStyle,
-        color: COLORS.fg,
-        borderRadius: RADIUS.sm,
-        padding: `${SPACING.sm} ${SPACING.md}`,
-        cursor: "pointer",
-        font: "inherit",
-        fontFamily: FONT.family,
-        fontSize: FONT.sizeS,
-        ...props.style,
-      }}
-    >
-      {props.children}
-    </button>
-  );
-}
-
 /**
  * 音量 / ミュート切り替えの icon toggle button。boolean state を画面上で
  * 直接切り替える用途。state ごとに icon と border 色を変え、現在状態が一目で
@@ -292,6 +240,61 @@ function AudioMuteToggle({
   );
 }
 
+/**
+ * シンプルな CSS toggle switch（36x20px）。Aura など boolean 設定向け。
+ */
+function Toggle({
+  checked,
+  disabled,
+  onChange,
+}: {
+  checked: boolean;
+  disabled?: boolean;
+  onChange: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onChange}
+      style={{
+        width: "36px",
+        height: "20px",
+        borderRadius: "10px",
+        border: `1px solid ${checked ? COLORS.accentBorder : COLORS.borderSubtle}`,
+        background: checked ? COLORS.accentSoft : COLORS.bgInput,
+        cursor: disabled ? "default" : "pointer",
+        position: "relative",
+        padding: 0,
+        transition: "background 200ms ease, border-color 200ms ease",
+      }}
+    >
+      <div
+        style={{
+          width: "14px",
+          height: "14px",
+          borderRadius: "50%",
+          background: checked ? COLORS.accent : COLORS.fgDimmer,
+          position: "absolute",
+          top: "2px",
+          left: checked ? "18px" : "2px",
+          transition: "left 200ms ease, background 200ms ease",
+        }}
+      />
+    </button>
+  );
+}
+
+/** grid の label-value pair 用の共通 grid style。 */
+const gridStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "100px 1fr",
+  gap: `${SPACING.sm} ${SPACING.md}`,
+  alignItems: "center",
+};
+
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [vrmName, setVrmName] = useState<string>(() => {
     const stored = localStorage.getItem("charminal:vrm");
@@ -302,6 +305,10 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [agent, setAgent] = useState<"claude" | "codex">("claude");
   // 環境音 mute は config が読まれるまで undecided。getConfig 後に boolean を入れる。
   const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
+  // 環境音ボリューム（0.0-1.0）。config 読み込み前は null。
+  const [ambientVolume, setAmbientVolume] = useState<number | null>(null);
+  // activeAmbientUi（Aura toggle 等の状態管理用）。
+  const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
   const personas = ctx.app.listPersonas();
   const scenes = ctx.app.listScenes();
 
@@ -313,6 +320,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setScene(cur.activeScene);
       setAgent(cur.terminalAgent);
       setAmbientMuted(cur.ambientAudioMuted);
+      setAmbientVolume(cur.ambientAudioVolume);
+      setActiveAmbientUiLocal(cur.activeAmbientUi);
     });
     return () => {
       aborted = true;
@@ -365,6 +374,35 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     });
   };
 
+  const auraEnabled = activeAmbientUi.includes("attention-aura");
+
+  const onAuraToggle = () => {
+    const nextIds = auraEnabled
+      ? activeAmbientUi.filter((id) => id !== "attention-aura")
+      : [...activeAmbientUi, "attention-aura"];
+    void applyConfigUpdate({
+      next: nextIds,
+      prev: [...activeAmbientUi],
+      setLocal: setActiveAmbientUiLocal,
+      write: (ids) => ctx.app.setActiveAmbientUi(ids),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "activeAmbientUi",
+    });
+  };
+
+  const onVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = Number.parseFloat(e.target.value);
+    if (ambientVolume === null) return;
+    void applyConfigUpdate({
+      next,
+      prev: ambientVolume,
+      setLocal: setAmbientVolume,
+      write: (v) => ctx.app.setAmbientAudioVolume(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "ambientAudioVolume",
+    });
+  };
+
   const onPickVrm = async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
@@ -384,7 +422,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     }
   };
 
-  const onClose = () => {
+  /** 設定パネルを閉じる共通 helper。 */
+  const fireCloseRequest = () => {
     const saved = ctx.state.get(PREVIOUS_ACTIVE_UI_KEY);
     const savedStr = typeof saved === "string" ? saved : null;
     const target = savedStr === SETTINGS_PACK_ID ? null : savedStr;
@@ -393,6 +432,21 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         detail: { target },
       }),
     );
+  };
+
+  const onClose = () => {
+    fireCloseRequest();
+  };
+
+  /** Shortcut footer link: 設定を閉じて terminal に /charm:shortcut prompt を pre-fill する。 */
+  const onShortcutClick = async () => {
+    fireCloseRequest();
+    try {
+      await ptyWrite({ data: "/charm:shortcut ショートカットを変更したい" });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      ctx.emitEvent("charminal-settings:write-failed", { field: "shortcut-prompt", reason });
+    }
   };
 
   return (
@@ -412,16 +466,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         flexDirection: "column",
       }}
     >
+      {/* header: close button のみ、right-aligned、border なし */}
       <header
         style={{
           padding: `${SPACING.lg} ${SPACING.xl}`,
-          borderBottom: `1px solid ${COLORS.borderSubtle}`,
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           alignItems: "center",
         }}
       >
-        <span style={{ fontSize: FONT.sizeL, fontWeight: FONT.weightSemibold }}>設定</span>
         <button
           type="button"
           onClick={onClose}
@@ -440,39 +493,50 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           ✕
         </button>
       </header>
+
       <main
         style={{
           flex: 1,
-          padding: SPACING.xl,
+          padding: `0 ${SPACING.xl} ${SPACING.xl}`,
           width: "100%",
           maxWidth: "560px",
           overflowY: "auto",
         }}
       >
-        <Section title="キャラクター">
-          <Field label="VRM body">
-            <div style={{ display: "flex", gap: SPACING.sm }}>
-              <div
-                style={{
-                  flex: "0 1 auto",
-                  maxWidth: "200px",
-                  background: COLORS.bgInput,
-                  padding: `6px 10px`,
-                  borderRadius: RADIUS.sm,
-                  border: `1px solid ${COLORS.borderSubtle}`,
-                  opacity: 0.85,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-                title={vrmName}
-              >
-                {vrmName || "（未読み込み）"}
-              </div>
-              <Button onClick={onPickVrm}>変更...</Button>
-            </div>
-          </Field>
-          <Field label="Persona">
+        {/* グループ 1: VRM / Persona / Scene / Aura */}
+        <div style={gridStyle}>
+          {/* VRM */}
+          <div style={{ opacity: 0.7 }}>VRM</div>
+          <button
+            type="button"
+            onClick={onPickVrm}
+            style={{
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
+              background: COLORS.bgInput,
+              padding: "6px 10px",
+              borderRadius: RADIUS.sm,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              opacity: 0.85,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+              color: COLORS.fg,
+              font: "inherit",
+              fontFamily: FONT.family,
+              fontSize: FONT.sizeS,
+              textAlign: "left",
+            }}
+            title={vrmName || undefined}
+          >
+            {vrmName || "（未読み込み）"}
+          </button>
+
+          {/* Persona */}
+          <div style={{ opacity: 0.7 }}>Persona</div>
+          <div>
             <Select
               value={persona ?? ""}
               onChange={onPersonaChange}
@@ -482,8 +546,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 label: `${p.name ?? p.id}${p.origin === "user" ? " (user)" : ""}`,
               }))}
             />
-          </Field>
-          <Field label="Scene">
+          </div>
+
+          {/* Scene */}
+          <div style={{ opacity: 0.7 }}>Scene</div>
+          <div>
             <Select
               value={scene ?? ""}
               onChange={onSceneChange}
@@ -493,19 +560,67 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 label: `${s.name ?? s.id}${s.origin === "user" ? " (user)" : ""}`,
               }))}
             />
-          </Field>
-        </Section>
-        <Section title="オーディオ">
-          <Field label="環境音">
+          </div>
+
+          {/* Aura */}
+          <div style={{ opacity: 0.7 }}>Aura</div>
+          <div>
+            <Toggle checked={auraEnabled} onChange={onAuraToggle} />
+          </div>
+        </div>
+
+        {/* 24px gap */}
+        <div style={{ height: "24px" }} />
+
+        {/* グループ 2: Sound（mute icon + volume slider） */}
+        <div style={gridStyle}>
+          <div style={{ opacity: 0.7 }}>Sound</div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SPACING.sm,
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
+            }}
+          >
             <AudioMuteToggle
               muted={ambientMuted ?? false}
               disabled={ambientMuted === null}
               onToggle={onAmbientMutedToggle}
             />
-          </Field>
-        </Section>
-        <Section title="ターミナル">
-          <Field label="Coding agent">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={ambientVolume ?? 1}
+              onChange={onVolumeChange}
+              disabled={ambientVolume === null}
+              aria-label="環境音ボリューム"
+              style={{
+                flex: 1,
+                height: "4px",
+                appearance: "none",
+                WebkitAppearance: "none",
+                background: COLORS.borderSubtle,
+                borderRadius: "2px",
+                outline: "none",
+                cursor: ambientVolume === null ? "default" : "pointer",
+                accentColor: COLORS.accent,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* 24px gap */}
+        <div style={{ height: "24px" }} />
+
+        {/* グループ 3: Terminal */}
+        <div style={gridStyle}>
+          <div style={{ opacity: 0.7 }}>Terminal</div>
+          <div>
             <Select
               value={agent}
               onChange={onAgentChange}
@@ -514,129 +629,54 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 { value: "codex", label: "Codex" },
               ]}
             />
-          </Field>
-        </Section>
+          </div>
+        </div>
         <div
           style={{
-            marginTop: `-${SPACING.xl}`,
-            marginBottom: SPACING.xxl,
-            marginLeft: "112px",
+            marginTop: SPACING.xs,
+            marginLeft: `calc(100px + ${SPACING.md})`,
             fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}
         >
           ※ 次の terminal 起動から反映
         </div>
-        <section style={{ marginBottom: SPACING.xxl }}>
-          <div style={sectionLabelStyle}>ショートカット</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: SPACING.sm }}>
-            <TerminalPromptButton
-              text="/charm:shortcut ショートカットを変更したい"
-              label="ショートカットを変更"
-              closeActiveUiBeforeWrite
-              ptyWrite={ptyWrite}
-              closeActiveUi={() => {
-                // close-requested イベントを fire（App.tsx 側 listener が setActiveUi で復元する）
-                const saved = ctx.state.get(PREVIOUS_ACTIVE_UI_KEY);
-                const target =
-                  typeof saved === "string" && saved !== SETTINGS_PACK_ID ? saved : null;
-                window.dispatchEvent(
-                  new CustomEvent("charminal-settings:close-requested", {
-                    detail: { target },
-                  }),
-                );
-              }}
-              onError={(reason) => {
-                ctx.emitEvent("charminal-settings:write-failed", {
-                  field: "shortcut-prompt",
-                  reason,
-                });
-              }}
-              style={{
-                alignSelf: "flex-start",
-                background: COLORS.accentSoft,
-                color: COLORS.fg,
-                padding: `${SPACING.sm} ${SPACING.lg}`,
-                borderRadius: RADIUS.sm,
-                border: `1px solid ${COLORS.accentBorder}`,
-                cursor: "pointer",
-                font: "inherit",
-                fontFamily: FONT.family,
-                fontSize: FONT.sizeS,
-              }}
-            />
-            <div style={{ fontSize: FONT.sizeXs, opacity: 0.55, lineHeight: 1.5 }}>
-              クリックで terminal に{" "}
-              <code
-                style={{
-                  background: COLORS.bgInputHover,
-                  padding: "1px 6px",
-                  borderRadius: "3px",
-                }}
-              >
-                /charm:shortcut ショートカットを変更したい
-              </code>{" "}
-              を入力します。Enter で実行。
-            </div>
-          </div>
-        </section>
+
+        {/* 48px gap before footer links */}
+        <div style={{ height: "48px" }} />
+
+        {/* footer links: License / Shortcut */}
+        <div
+          style={{
+            display: "flex",
+            gap: SPACING.xl,
+            fontSize: FONT.sizeXs,
+            opacity: 0.5,
+          }}
+        >
+          <span style={{ cursor: "default" }}>License</span>
+          <button
+            type="button"
+            onClick={onShortcutClick}
+            style={{
+              background: "none",
+              border: "none",
+              color: "inherit",
+              font: "inherit",
+              fontSize: "inherit",
+              cursor: "pointer",
+              padding: 0,
+              textDecoration: "underline",
+              textDecorationColor: "currentColor",
+              textUnderlineOffset: "2px",
+              opacity: 1,
+            }}
+          >
+            Shortcut
+          </button>
+        </div>
       </main>
-      <footer
-        style={{
-          padding: `${SPACING.md} ${SPACING.xl}`,
-          borderTop: `1px solid ${COLORS.borderSubtle}`,
-          fontSize: FONT.sizeXs,
-          opacity: 0.55,
-        }}
-      >
-        ⌘R / Ctrl+R で Charminal 全体を reload できます
-      </footer>
     </div>
-  );
-}
-
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: FONT.sizeXs,
-  opacity: 0.6,
-  textTransform: "uppercase",
-  letterSpacing: "0.08em",
-  marginBottom: SPACING.md,
-};
-
-const fieldGridStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "100px 1fr",
-  gap: `${SPACING.sm} ${SPACING.md}`,
-  alignItems: "center",
-};
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <section style={{ marginBottom: SPACING.xxl }}>
-      <div style={sectionLabelStyle}>{title}</div>
-      <div style={fieldGridStyle}>{children}</div>
-    </section>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <>
-      <div style={{ opacity: 0.7 }}>{label}</div>
-      <div>{children}</div>
-    </>
   );
 }
 
