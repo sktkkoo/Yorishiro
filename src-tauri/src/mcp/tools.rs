@@ -220,6 +220,31 @@ pub struct UiSidebarSetRequest {
     pub duration_ms: Option<u32>,
 }
 
+/// `journal_write` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct JournalWriteRequest {
+    /// 日付（YYYY-MM-DD 形式）。
+    pub date: String,
+    /// 書き込む内容。
+    pub content: String,
+    /// 印象に残ったことの一行要約。指定すると memories.md に追記される。
+    pub summary: Option<String>,
+}
+
+/// `journal_read` の引数。date / days いずれも省略時は最新 7 日分を返す。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct JournalReadRequest {
+    /// 読み取る日付（YYYY-MM-DD 形式）。指定時はその日のエントリのみ返す。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub date: Option<String>,
+    /// 最新 N 日分を返す。date 指定時は無視される。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub days: Option<u32>,
+    /// true にすると seed エントリのみ全件返す（トーン参照用）。
+    #[serde(default)]
+    pub seed_only: bool,
+}
+
 #[derive(Clone)]
 pub struct Charminal {
     app_handle: AppHandle,
@@ -542,6 +567,70 @@ impl Charminal {
         .await
         .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_image_response(response)
+    }
+
+    /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。
+    #[tool(
+        description = "journal にエントリを書き込む。住人の日々の記録。summary を渡すと記憶に残る"
+    )]
+    async fn journal_write(
+        &self,
+        Parameters(req): Parameters<JournalWriteRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Err(msg) = crate::journal::write_entry(&req.date, &req.content) {
+            return Err(McpError::internal_error(msg, None));
+        }
+
+        if let Some(ref summary) = req.summary {
+            if let Err(msg) = crate::journal::append_memory(&req.date, summary) {
+                return Err(McpError::internal_error(msg, None));
+            }
+        }
+
+        let has_memory = req.summary.is_some();
+        let content = Content::json(json!({ "ok": true, "date": req.date, "memory": has_memory }))?;
+        Ok(CallToolResult::success(vec![content]))
+    }
+
+    /// journal エントリを読み取る。日付指定、最新 N 日分、または seed のみ。
+    #[tool(description = "journal エントリを読み取る。日付指定、最新 N 日分、または seed のみ")]
+    async fn journal_read(
+        &self,
+        Parameters(req): Parameters<JournalReadRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        if req.seed_only {
+            // seed 全件モード（トーン参照用）
+            match crate::journal::read_all_seed() {
+                Ok(entries) => {
+                    let content = Content::json(json!({ "entries": entries }))?;
+                    Ok(CallToolResult::success(vec![content]))
+                }
+                Err(msg) => Err(McpError::internal_error(msg, None)),
+            }
+        } else if let Some(date) = req.date {
+            // 日付指定モード（clai/ → seed/ の順で探索）
+            match crate::journal::read_entry(&date) {
+                Ok(Some(text)) => {
+                    let content = Content::json(json!({ "date": date, "content": text }))?;
+                    Ok(CallToolResult::success(vec![content]))
+                }
+                Ok(None) => {
+                    let content = Content::json(json!({ "date": date, "content": null }))?;
+                    Ok(CallToolResult::success(vec![content]))
+                }
+                Err(msg) => Err(McpError::internal_error(msg, None)),
+            }
+        } else {
+            // 最新 N 日分モード（clai/ + seed/ を統合）
+            let days = req.days.unwrap_or(7) as usize;
+            match crate::journal::read_recent(days) {
+                Ok(entries) => {
+                    let content = Content::json(json!({ "entries": entries }))?;
+                    Ok(CallToolResult::success(vec![content]))
+                }
+                Err(msg) => Err(McpError::internal_error(msg, None)),
+            }
+        }
     }
 
     /// ウィンドウ全体（DOM + WebGL canvas）のスクリーンショットを撮影する。macOS のみ。

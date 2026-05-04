@@ -40,7 +40,8 @@
     "resources": [
       "resources/charminal-plugin/.claude-plugin/plugin.json",
       "resources/charminal-plugin/commands/*",
-      "resources/charminal-plugin/.mcp.json"
+      "resources/charminal-plugin/.mcp.json",
+      "resources/journal-seed/*"
     ]
   }
 }
