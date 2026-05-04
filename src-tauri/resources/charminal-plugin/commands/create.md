@@ -97,9 +97,38 @@ export default {
       { id: "backdrop", role: "background", backgroundColor: "#1a1e28" },
       { id: "vrm-slot", role: "character", blur: 0 },
     ],
+    terminal: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+      cursor: "#8abeb7",
+      // ANSI 16 色は省略可（default にフォールバック）
+    },
+    ui: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+      // 全 14 field は省略可（default にフォールバック）
+    },
   },
 } satisfies ScenePackDefinition;
 ```
+
+### カラーテーマの設計
+
+scene pack は **ターミナルの色と UI の色を一括で宣言** できる。scene 切替時に自動適用されるので、世界観に合った色を一箇所で定義すれば全体が統一される。
+
+**terminal**: xterm.js の ANSI 16 色 + background / foreground / cursor / selection。省略した field は Charminal default にフォールバック。全 field を埋めると scene 固有の完全なカラースキームになる。既存のカラースキーム（Nord, Gruvbox, Catppuccin, Everforest 等）をベースにして scene の世界観に合わせて調整するのが近道。
+
+**ui**: サイドバー・パネル・ボタン等の UI 全体の色。全 14 field（background, foreground, foregroundDim, sidebarBackground, panelBackground, border, buttonBackground, buttonForeground, inputBackground, accent, accentSoft, accentBorder, muted, glow）を定義できる。省略可。
+
+user にテーマ設計を提案するときは：
+1. **scene の世界観から背景色を決める**（暗い場所なら暗色、明るい場所なら明色）
+2. **terminal の ANSI 16 色を scene に合わせて調整**（彩度・色温度を揃える）
+3. **ui は terminal と同じトーンで統一**（accent は cursor 色に揃えると自然）
+
+bundled の参考実装：
+- `bundled-packs/scenes/abandoned-factory/scene.tsx` — コンクリート灰の neutral dark テーマ（ANSI 全色 + ui 全 field）
+- `bundled-packs/scenes/misty-grasslands/scene.ts` — Everforest ベースの light テーマ
+- `bundled-packs/scenes/simple-room/scene.ts` — Nord 系の blue-dark テーマ
 
 どの scene pack を active にするかは `~/.charminal/config.json` の `activeScene` field で user が明示的に picks する（pack 側の自己申告はしない、Design B — config picks）。例：
 
