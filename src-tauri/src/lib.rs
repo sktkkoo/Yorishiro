@@ -81,6 +81,20 @@ fn read_journal_memories() -> Result<String, String> {
 }
 
 #[tauri::command]
+fn check_tutorial_done() -> bool {
+    match charminal_home_path() {
+        Ok(dir) => check_tutorial_done_impl(&dir),
+        Err(_) => false,
+    }
+}
+
+#[tauri::command]
+fn mark_tutorial_done() -> Result<(), String> {
+    let dir = charminal_home_path()?;
+    mark_tutorial_done_impl(&dir)
+}
+
+#[tauri::command]
 async fn pty_write(state: State<'_, PtyState>, data: String) -> Result<(), String> {
     state.write_data(&data)
 }
@@ -139,6 +153,22 @@ const PACK_KINDS: &[&str] = &["effect", "persona", "voice", "body", "scene", "ui
 fn charminal_home_path() -> Result<std::path::PathBuf, String> {
     let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
     Ok(std::path::PathBuf::from(home).join(".charminal"))
+}
+
+/// `.tutorial-done` フラグの有無を返す。テスト用に charminal_dir を引数化。
+fn check_tutorial_done_impl(charminal_dir: &Path) -> bool {
+    charminal_dir.join(".tutorial-done").exists()
+}
+
+/// `.tutorial-done` フラグを作成する。テスト用に charminal_dir を引数化。
+fn mark_tutorial_done_impl(charminal_dir: &Path) -> Result<(), String> {
+    let path = charminal_dir.join(".tutorial-done");
+    if path.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.charminal/ 作成失敗: {}", e))?;
+    std::fs::write(&path, "").map_err(|e| format!(".tutorial-done 作成失敗: {}", e))?;
+    Ok(())
 }
 
 /// user pack の entry を記述する。TS 側 loader に JSON で渡す。
@@ -699,7 +729,9 @@ pub fn run() {
             watch_charminal_layer,
             stat_file_mtime,
             mcp_tool_response,
-            read_journal_memories
+            read_journal_memories,
+            check_tutorial_done,
+            mark_tutorial_done
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
@@ -1028,5 +1060,52 @@ mod user_init_seed_tests {
         assert_eq!(after, existing);
 
         let _ = fs::remove_dir_all(&home);
+    }
+}
+
+#[cfg(test)]
+mod tutorial_tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn fresh_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-tutorial-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("create tmp dir");
+        tmp
+    }
+
+    #[test]
+    fn check_returns_false_when_no_flag() {
+        let dir = fresh_dir("check-false");
+        let result = super::check_tutorial_done_impl(&dir);
+        assert!(!result);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mark_creates_flag_and_check_returns_true() {
+        let dir = fresh_dir("mark-then-check");
+        super::mark_tutorial_done_impl(&dir).expect("mark ok");
+        assert!(dir.join(".tutorial-done").exists());
+        assert!(super::check_tutorial_done_impl(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mark_is_idempotent() {
+        let dir = fresh_dir("mark-idempotent");
+        super::mark_tutorial_done_impl(&dir).expect("mark 1");
+        super::mark_tutorial_done_impl(&dir).expect("mark 2");
+        assert!(super::check_tutorial_done_impl(&dir));
+        let _ = fs::remove_dir_all(&dir);
     }
 }
