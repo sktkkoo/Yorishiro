@@ -15,7 +15,10 @@ function createMockDeps(overrides?: Partial<PresenceIntensityDeps>): PresenceInt
     setSidebarWidth: vi.fn(),
     getSidebarWidth: vi.fn(() => 280),
     getDefaultSidebarWidth: vi.fn(() => 280),
-    tweenManager: { start: vi.fn(), cancel: vi.fn() } as unknown as TweenManager,
+    tweenManager: {
+      start: vi.fn(() => ({ cancel: vi.fn(), completion: Promise.resolve() })),
+      cancel: vi.fn(),
+    } as unknown as TweenManager,
     ambientUiRegistry: {
       enable: vi.fn(),
       disable: vi.fn(),
@@ -99,10 +102,12 @@ describe("PresenceIntensity", () => {
   // VRM visibility
   // -----------------------------------------------------------------------
 
-  it("aura-only / closed では VRM を非表示にする", () => {
+  it("full → aura-only では tween 完了後に VRM を非表示にする", async () => {
     const deps = createMockDeps();
     applyPresenceLevel("aura-only", "mcp", deps);
 
+    // completion.then で非同期実行されるため、microtask を flush
+    await Promise.resolve();
     expect(deps.setCharacterVisible).toHaveBeenCalledWith(false);
   });
 
@@ -155,10 +160,11 @@ describe("PresenceIntensity", () => {
   // 直接遷移（中間状態不要）
   // -----------------------------------------------------------------------
 
-  it("full → closed の直接遷移が中間状態なしで動作する", () => {
+  it("full → closed の直接遷移が中間状態なしで動作する", async () => {
     const deps = createMockDeps();
     applyPresenceLevel("closed", "mcp", deps);
 
+    await Promise.resolve();
     expect(getPresenceState().level).toBe("closed");
     expect(deps.tweenManager.start).toHaveBeenCalledTimes(1);
     expect(deps.setCharacterVisible).toHaveBeenCalledWith(false);
@@ -183,8 +189,8 @@ describe("PresenceIntensity", () => {
       deps.setSidebarWidth,
       { from: 280 },
     );
-    // VRM は非表示のまま
-    expect(deps.setCharacterVisible).toHaveBeenCalledWith(false);
+    // closed → aura-only: どちらも非表示なので setCharacterVisible は呼ばれない
+    expect(deps.setCharacterVisible).not.toHaveBeenCalled();
     // aura は有効化
     expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
   });

@@ -119,7 +119,7 @@ export function applyPresenceLevel(
 
   // Sidebar tween
   const sidebarTarget = level === "full" ? deps.getDefaultSidebarWidth() : 0;
-  deps.tweenManager.start(
+  const handle = deps.tweenManager.start(
     "presence.sidebar.width",
     sidebarTarget,
     SIDEBAR_TWEEN_MS,
@@ -129,12 +129,15 @@ export function applyPresenceLevel(
 
   // VRM visibility
   if (level === "full") {
-    // other → full: tween 開始時に表示
+    // other → full: tween 開始時に表示（sidebar が開くのと同時に現れる）
     deps.setCharacterVisible(true);
-  } else {
-    // full → other: 非表示
-    deps.setCharacterVisible(false);
+  } else if (prevLevel === "full") {
+    // full → other: tween 完了後に非表示（sidebar が閉じきってから消える）
+    handle.completion.then(() => {
+      deps.setCharacterVisible(false);
+    });
   }
+  // aura-only ↔ closed: どちらも非表示のまま、何もしない
 
   // Aura
   if (level === "full" || level === "aura-only") {
