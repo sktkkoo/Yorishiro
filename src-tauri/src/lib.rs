@@ -1,8 +1,10 @@
 mod journal;
 mod mcp;
 mod pty;
+mod sessions;
 
 use pty::{start_hook_server, AgentKind, PtyState};
+use sessions::SessionRegistry;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -704,10 +706,18 @@ async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // SessionRegistry を先に Arc 化して PtyState と Tauri managed state の両方
+    // が同じ instance を share する。registry が PtyState 内の `default-session`
+    // PtySession を所有し、別途 Tauri command（A-5 で追加予定の `session_*`）
+    // も同じ registry に access できる。
+    let registry = Arc::new(SessionRegistry::new());
+    let pty_state = PtyState::new(Arc::clone(&registry));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(PtyState::new())
+        .manage(pty_state)
+        .manage(registry)
         .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
             pty_spawn,

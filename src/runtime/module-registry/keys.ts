@@ -37,6 +37,8 @@ export const KEYS = {
   VRM_CACHE: "vrm:cache",
   /** PresenceIntensity singleton: 住人の存在強度（full / aura-only / closed）を管理する。 */
   PRESENCE_INTENSITY: "presence-intensity:state",
+  /** SessionRegistry singleton: 全 session の descriptor / lifecycle / activity と event dispatch。 */
+  SESSION_REGISTRY: "session:registry",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];

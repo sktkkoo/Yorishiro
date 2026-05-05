@@ -42,6 +42,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -57,6 +58,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -72,6 +74,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -87,6 +90,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -102,6 +106,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -117,6 +122,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -137,6 +143,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      profiles: [],
     });
   });
 
@@ -168,6 +175,8 @@ describe("serializeConfig", () => {
       activeAmbientUi: [],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
+      profiles: [],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -182,6 +191,8 @@ describe("serializeConfig", () => {
       activeAmbientUi: [],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
+      profiles: [],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -201,6 +212,8 @@ describe("serializeConfig", () => {
       activeAmbientUi: [],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
+      profiles: [],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -216,6 +229,7 @@ describe("serializeConfig", () => {
       terminalAgent: "codex",
       ambientAudioMuted: true,
       ambientAudioVolume: 1,
+      profiles: [],
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -251,6 +265,8 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
+      profiles: [],
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -266,6 +282,8 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
+      profiles: [],
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);
@@ -414,5 +432,155 @@ describe("ambientAudioMuted", () => {
   it("writes ambientAudioMuted when true", () => {
     const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], ambientAudioMuted: true };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ ambientAudioMuted: true });
+  });
+});
+
+describe("profiles[]", () => {
+  it("defaults to empty array", () => {
+    expect(EMPTY_CONFIG.profiles).toEqual([]);
+  });
+
+  it("parses a minimal shell profile", () => {
+    const cfg = parseConfig(JSON.stringify({ profiles: [{ id: "shell-fish", kind: "shell" }] }));
+    expect(cfg.profiles).toEqual([
+      {
+        id: "shell-fish",
+        kind: "shell",
+        command: null,
+        args: [],
+        env: {},
+        cwd: null,
+        agent: null,
+        integration: true,
+      },
+    ]);
+  });
+
+  it("parses an agent profile with all optional fields", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        profiles: [
+          {
+            id: "claude-debug",
+            kind: "agent",
+            agent: "claude",
+            command: "claude",
+            args: ["--debug"],
+            env: { LOG_LEVEL: "trace" },
+            cwd: "/tmp/proj",
+            integration: false,
+          },
+        ],
+      }),
+    );
+    expect(cfg.profiles[0]).toEqual({
+      id: "claude-debug",
+      kind: "agent",
+      agent: "claude",
+      command: "claude",
+      args: ["--debug"],
+      env: { LOG_LEVEL: "trace" },
+      cwd: "/tmp/proj",
+      integration: false,
+    });
+  });
+
+  it("skips profile entry missing id", () => {
+    const cfg = parseConfig(JSON.stringify({ profiles: [{ kind: "shell" }] }));
+    expect(cfg.profiles).toEqual([]);
+  });
+
+  it("skips profile entry with unknown kind", () => {
+    const cfg = parseConfig(JSON.stringify({ profiles: [{ id: "x", kind: "wormhole" }] }));
+    expect(cfg.profiles).toEqual([]);
+  });
+
+  it("skips agent profile missing agent field", () => {
+    const cfg = parseConfig(JSON.stringify({ profiles: [{ id: "x", kind: "agent" }] }));
+    expect(cfg.profiles).toEqual([]);
+  });
+
+  it("filters out invalid entries while keeping valid ones", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        profiles: [
+          { id: "good", kind: "shell" },
+          { kind: "shell" }, // missing id
+          { id: "also-good", kind: "agent", agent: "codex" },
+          "not an object",
+        ],
+      }),
+    );
+    expect(cfg.profiles.map((p) => p.id)).toEqual(["good", "also-good"]);
+  });
+
+  it("ignores non-string env values", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        profiles: [
+          {
+            id: "x",
+            kind: "shell",
+            env: { OK: "ok", NUMERIC: 42, NULLISH: null },
+          },
+        ],
+      }),
+    );
+    expect(cfg.profiles[0].env).toEqual({ OK: "ok" });
+  });
+
+  it("treats kind=shell with agent field as agent=null", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        profiles: [{ id: "x", kind: "shell", agent: "claude" }],
+      }),
+    );
+    expect(cfg.profiles[0].agent).toBeNull();
+  });
+
+  it("serializes minimal profile (omits default fields)", () => {
+    const cfg = {
+      ...EMPTY_CONFIG,
+      activeAmbientUi: [],
+      profiles: [
+        {
+          id: "shell-fish",
+          kind: "shell" as const,
+          command: null,
+          args: [],
+          env: {},
+          cwd: null,
+          agent: null,
+          integration: true,
+        },
+      ],
+    };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({
+      profiles: [{ id: "shell-fish", kind: "shell" }],
+    });
+  });
+
+  it("round-trips a profile with all fields populated", () => {
+    const cfg: CharminalConfig = {
+      ...EMPTY_CONFIG,
+      profiles: [
+        {
+          id: "nix-dev",
+          kind: "shell",
+          command: "nix-shell",
+          args: ["--command", "zsh"],
+          env: { NIX_PATH: "/nix" },
+          cwd: "~/projects",
+          agent: null,
+          integration: false,
+        },
+      ],
+    };
+    expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
+  });
+
+  it("omits profiles field when array is empty", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], profiles: [] };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({});
   });
 });

@@ -14,13 +14,17 @@
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
  * - `terminalAgent: "claude" | "codex"`（optional）: Terminal で自動起動する coding agent
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
+ * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
- * Internal design-record: 2026-04-19-persona-single-active.md
+ * Internal design-record: 2026-04-19-persona-single-active.md /
+ *                         2026-05-05-multi-pane-terminal.md（profiles[]）
  */
+
+import type { SessionProfile } from "../sessions/types";
 
 export interface CharminalConfig {
   readonly disabledPacks: ReadonlyArray<string>;
@@ -39,6 +43,8 @@ export interface CharminalConfig {
   readonly ambientAudioMuted: boolean;
   /** 環境音のマスターボリューム（0.0-1.0）。全 Howl の volume にこの値を乗算する。 */
   readonly ambientAudioVolume: number;
+  /** User 定義の session profile。bundled (`shell` / `claude` / `codex`) と同 id なら override。 */
+  readonly profiles: ReadonlyArray<SessionProfile>;
 }
 
 export type TerminalAgent = "claude" | "codex";
@@ -53,6 +59,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   terminalAgent: "claude",
   ambientAudioMuted: false,
   ambientAudioVolume: 1.0,
+  profiles: [],
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -82,6 +89,67 @@ const toUnitFloat = (value: unknown): number => {
   return Math.max(0, Math.min(1, value));
 };
 
+const toStringRecord = (value: unknown): Record<string, string> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string") result[k] = v;
+  }
+  return result;
+};
+
+/**
+ * profile entry 1 つを SessionProfile に変換、不正なら null。
+ * 不正条件: id 欠如 / kind 不正 / kind=agent で agent field 欠如。
+ */
+const toSessionProfile = (value: unknown): SessionProfile | null => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const obj = value as Record<string, unknown>;
+
+  const id = typeof obj.id === "string" && obj.id !== "" ? obj.id : null;
+  if (id === null) return null;
+
+  const kindRaw = obj.kind;
+  const kind: SessionProfile["kind"] | null =
+    kindRaw === "shell" || kindRaw === "agent" ? kindRaw : null;
+  if (kind === null) return null;
+
+  const agent: SessionProfile["agent"] =
+    obj.agent === "claude" || obj.agent === "codex" ? obj.agent : null;
+  if (kind === "agent" && agent === null) return null;
+
+  return {
+    id,
+    kind,
+    command: typeof obj.command === "string" && obj.command !== "" ? obj.command : null,
+    args: toStringArray(obj.args),
+    env: toStringRecord(obj.env),
+    cwd: typeof obj.cwd === "string" && obj.cwd !== "" ? obj.cwd : null,
+    agent: kind === "shell" ? null : agent,
+    integration: typeof obj.integration === "boolean" ? obj.integration : true,
+  };
+};
+
+const toSessionProfiles = (value: unknown): ReadonlyArray<SessionProfile> => {
+  if (!Array.isArray(value)) return [];
+  return value.map(toSessionProfile).filter((p): p is SessionProfile => p !== null);
+};
+
+/**
+ * SessionProfile を JSON object に。default 値の field は omit して config が
+ * 必要以上に肥らないようにする。
+ */
+const serializeProfile = (p: SessionProfile): Record<string, unknown> => {
+  const out: Record<string, unknown> = { id: p.id, kind: p.kind };
+  if (p.command !== null) out.command = p.command;
+  if (p.args.length > 0) out.args = [...p.args];
+  if (Object.keys(p.env).length > 0) out.env = { ...p.env };
+  if (p.cwd !== null) out.cwd = p.cwd;
+  if (p.agent !== null) out.agent = p.agent;
+  if (!p.integration) out.integration = false;
+  return out;
+};
+
 /**
  * text が空 / 不正 JSON / 未知 field を含む場合も EMPTY_CONFIG に近い形に
  * 吸収する（tolerant parsing）。Charminal 本体は config の破損で落ちない。
@@ -109,6 +177,7 @@ export function parseConfig(text: string): CharminalConfig {
     terminalAgent: toTerminalAgent(obj.terminalAgent),
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
     ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
+    profiles: toSessionProfiles(obj.profiles),
   };
 }
 
@@ -127,6 +196,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
+  if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
