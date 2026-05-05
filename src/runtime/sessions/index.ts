@@ -7,6 +7,12 @@
  * Internal design-record: 2026-05-05-multi-pane-terminal.md.
  */
 
+export {
+  getBundledProfile,
+  listAvailableProfiles,
+  listBundledProfiles,
+  resolveProfile,
+} from "./profiles";
 export type {
   SessionActivity,
   SessionDescriptor,
@@ -14,5 +20,6 @@ export type {
   SessionId,
   SessionKind,
   SessionLifecycle,
+  SessionProfile,
 } from "./types";
 export { DEFAULT_SESSION_ID } from "./types";

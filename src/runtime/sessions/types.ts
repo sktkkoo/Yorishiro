@@ -60,3 +60,26 @@ export type SessionEvent =
  * 起動時に存在する default session の id。
  */
 export const DEFAULT_SESSION_ID: SessionId = "default-session";
+
+/**
+ * Session profile — session を起動するための宣言的 spec。`~/.charminal/config.json`
+ * の `profiles[]` に書け、bundled profile (`shell` / `claude` / `codex`) と並ぶ。
+ *
+ * `kind` で観察 / wrapper 注入 / hook 配線が分岐する。
+ * - `shell`: shell binary を spawn、`integration` true で OSC 133 wrapper を被せる
+ * - `agent`: coding agent を spawn、`agent` field で claude / codex を選ぶ
+ *
+ * `command` が null のとき：shell では `$SHELL`、agent では agent 既定 binary。
+ */
+export interface SessionProfile {
+  readonly id: string;
+  readonly kind: SessionKind;
+  readonly command: string | null;
+  readonly args: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string>>;
+  readonly cwd: string | null;
+  /** `kind: "agent"` のとき required、`kind: "shell"` のとき null。 */
+  readonly agent: "claude" | "codex" | null;
+  /** Charminal 側 instrumentation（OSC 133 / hook 注入）の有無。default true。 */
+  readonly integration: boolean;
+}
