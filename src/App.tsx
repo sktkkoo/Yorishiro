@@ -872,14 +872,12 @@ function App() {
                   const raw = getComputedStyle(document.documentElement)
                     .getPropertyValue("--sidebar-width")
                     .trim();
-                  return Number.parseFloat(raw) || 280;
+                  const n = Number.parseFloat(raw);
+                  // 0 は valid な現在値（closed 状態）。NaN のときだけ default に倒す。
+                  return Number.isNaN(n) ? 280 : n;
                 },
-                getDefaultSidebarWidth: () => {
-                  const raw = getComputedStyle(document.documentElement)
-                    .getPropertyValue("--sidebar-width")
-                    .trim();
-                  return Number.parseFloat(raw) || 280;
-                },
+                // App.css の :root --sidebar-width 初期値（280px）と一致させる。
+                getDefaultSidebarWidth: () => 280,
                 tweenManager: getThreeRuntime().getTweenManager(),
                 ambientUiRegistry: getAmbientUiPackRegistry(),
                 setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
