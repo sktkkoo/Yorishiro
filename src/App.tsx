@@ -36,6 +36,7 @@ import charminalSettingsPack, {
   resolveCloseTarget,
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
+import type { SpawnSpec } from "./bindings/tauri-commands";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { buildSystemPrompt } from "./core/global-prompt";
@@ -76,6 +77,7 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
+import { resolveProfile } from "./runtime/sessions";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
@@ -437,8 +439,16 @@ function App() {
     });
     // userLayerReady は Terminal mount を gate する Promise。
     // **Step 3 完了直後** に resolve する（systemPrompt の race / 多重 spawn 回避）。
-    let userLayerReadyResolve!: (terminalAgent: TerminalAgent) => void;
-    const userLayerReady = new Promise<TerminalAgent>((resolve) => {
+    // defaultSpec は config.defaultProfile が shell profile を指していたときに
+    // 構築される SpawnSpec.Shell。null なら従来の terminalAgent fallback で動く。
+    let userLayerReadyResolve!: (init: {
+      terminalAgent: TerminalAgent;
+      defaultSpec: SpawnSpec | null;
+    }) => void;
+    const userLayerReady = new Promise<{
+      terminalAgent: TerminalAgent;
+      defaultSpec: SpawnSpec | null;
+    }>((resolve) => {
       userLayerReadyResolve = resolve;
     });
 
@@ -489,6 +499,7 @@ function App() {
       // していた。1 回読み + 両 registry に流す。失敗しても次 step は続行
       // （bundled fallback で動く）。
       let terminalAgent: TerminalAgent = "claude";
+      let defaultSpec: SpawnSpec | null = null;
       let ambientAudioMuted = false;
       let ambientAudioVolume = 1.0;
       try {
@@ -497,6 +508,15 @@ function App() {
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
+        // defaultProfile が shell profile を指していたら shell spec を build。
+        // agent profile を指している場合は Phase B-1 では terminalAgent fallback で動く
+        // （Phase C で agent profile も defaultProfile から resolve できるようにする）。
+        if (config.defaultProfile !== null) {
+          const profile = resolveProfile(config.defaultProfile, config.profiles);
+          if (profile?.kind === "shell") {
+            defaultSpec = { kind: "shell", command: profile.command };
+          }
+        }
         personaRegistry.setPrimaryPersona(config.primaryPersona);
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
@@ -566,7 +586,7 @@ function App() {
       // ★ Terminal mount 解禁。primaryPersona は確定済（bundled fallback or user pack
       //   register 済）、systemPrompt の race は起きない。以下 step は Terminal とは
       //   独立に走るので、失敗しても Terminal の表示は止まらない。
-      userLayerReadyResolve(terminalAgent);
+      userLayerReadyResolve({ terminalAgent, defaultSpec });
 
       // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
@@ -979,7 +999,7 @@ function App() {
         note: "bootstrap crashed (unexpected)",
         data: { error: err instanceof Error ? err.message : String(err) },
       });
-      userLayerReadyResolve("claude");
+      userLayerReadyResolve({ terminalAgent: "claude", defaultSpec: null });
     });
 
     return {
@@ -1017,11 +1037,13 @@ function App() {
   // prompt overlay で 1 回だけ走る（多重 spawn / null prompt race を回避）。
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
+  const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
   useEffect(() => {
     let cancelled = false;
-    userLayerReady.then((agent) => {
+    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec }) => {
       if (!cancelled) {
         setTerminalAgent(agent);
+        setDefaultSpec(spec);
         setIsUserLayerReady(true);
       }
     });
@@ -1955,9 +1977,14 @@ function App() {
       />
       {isUserLayerReady && resolvedSystemPrompt !== undefined && (
         <Terminal
-          agent={terminalAgent}
+          spec={
+            defaultSpec ?? {
+              kind: "agent",
+              agent: terminalAgent,
+              systemPrompt: resolvedSystemPrompt,
+            }
+          }
           cwd={cwd}
-          systemPrompt={resolvedSystemPrompt}
           perception={perception}
         />
       )}

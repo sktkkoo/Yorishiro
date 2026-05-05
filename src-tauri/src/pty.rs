@@ -6,7 +6,7 @@ use tauri::ipc::Channel;
 use tauri::AppHandle;
 
 use crate::sessions::{
-    PtySession, SessionDescriptor, SessionKind, SessionRegistry, DEFAULT_SESSION_ID,
+    PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec, DEFAULT_SESSION_ID,
 };
 
 /// Queue of hook signals for frontend polling (fallback when Tauri emit doesn't reach webview).
@@ -364,17 +364,13 @@ impl PtyState {
         self.registry.get_pty_session(DEFAULT_SESSION_ID)
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
         app: AppHandle,
         cols: u16,
         rows: u16,
         cwd: Option<String>,
-        agent: AgentKind,
-        agent_binary: &str,
-        system_prompt: Option<String>,
-        plugin_dir: Option<std::path::PathBuf>,
+        spec: &SpawnSpec,
         on_output: Channel,
     ) -> Result<(), String> {
         let id = DEFAULT_SESSION_ID.to_string();
@@ -385,16 +381,20 @@ impl PtyState {
         }
         self.registry.remove(&id);
 
-        // metadata 登録（PtyState は agent driven なので kind=Agent / profile_id
-        // も agent 名）。Phase C で profile-aware 化する際にここを置き換える。
-        let profile_id = match agent {
-            AgentKind::Claude => "claude",
-            AgentKind::Codex => "codex",
+        // metadata 登録。SpawnSpec の variant から profile_id / kind を導出。
+        // user 定義 profile を選んだ場合の profile_id 還元は Phase C で session_*
+        // Tauri command が直接 profile id を受ける形に進化させたとき行う。
+        let (profile_id, kind) = match spec {
+            SpawnSpec::Agent { agent, .. } => match agent {
+                AgentKind::Claude => ("claude", SessionKind::Agent),
+                AgentKind::Codex => ("codex", SessionKind::Agent),
+            },
+            SpawnSpec::Shell { .. } => ("shell", SessionKind::Shell),
         };
         self.registry.add(SessionDescriptor {
             id: id.clone(),
             profile_id: profile_id.to_string(),
-            kind: SessionKind::Agent,
+            kind,
             label: profile_id.to_string(),
             cwd: cwd.clone(),
             started_at: now_millis(),
@@ -403,17 +403,7 @@ impl PtyState {
         // PtySession を build → spawn → registry に attach。spawn の途中で失敗
         // したら registry から外して metadata だけ残らないようにする。
         let session = Arc::new(PtySession::new());
-        if let Err(e) = session.spawn(
-            app,
-            cols,
-            rows,
-            cwd,
-            agent,
-            agent_binary,
-            system_prompt,
-            plugin_dir,
-            on_output,
-        ) {
+        if let Err(e) = session.spawn(app, cols, rows, cwd, spec, on_output) {
             self.registry.remove(&id);
             return Err(e);
         }

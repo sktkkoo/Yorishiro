@@ -4,7 +4,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
-import { ptyResize, ptySpawn, ptyWrite } from "../../bindings/tauri-commands";
+import { ptyResize, ptyWrite, type SpawnSpec, sessionSpawn } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
@@ -199,19 +199,17 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     void (async () => {
       try {
-        await ptySpawn({
-          agent: params.agent,
+        await sessionSpawn({
+          spec: params.spec,
           cols: this.term.cols,
           rows: this.term.rows,
           cwd: params.cwd,
-          systemPrompt: params.systemPrompt,
           onOutput: this.channel,
         });
       } catch (err) {
-        this.term.write(`\x1b[31mFailed to start ${params.agent}: ${err}\x1b[0m\r\n`);
-        this.term.write(
-          `\x1b[90mMake sure ${params.agent} CLI is installed and in your PATH.\x1b[0m\r\n`,
-        );
+        const label = describeSpec(params.spec);
+        this.term.write(`\x1b[31mFailed to start ${label}: ${err}\x1b[0m\r\n`);
+        this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
       }
     })();
   }
@@ -425,8 +423,28 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {
     if (a === null) return false;
-    return a.agent === b.agent && a.cwd === b.cwd && a.systemPrompt === b.systemPrompt;
+    return a.cwd === b.cwd && specEqual(a.spec, b.spec);
   }
+}
+
+function specEqual(a: SpawnSpec, b: SpawnSpec): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "agent" && b.kind === "agent") {
+    return (
+      a.agent === b.agent &&
+      (a.command ?? null) === (b.command ?? null) &&
+      (a.systemPrompt ?? null) === (b.systemPrompt ?? null)
+    );
+  }
+  if (a.kind === "shell" && b.kind === "shell") {
+    return (a.command ?? null) === (b.command ?? null);
+  }
+  return false;
+}
+
+function describeSpec(spec: SpawnSpec): string {
+  if (spec.kind === "agent") return spec.agent;
+  return spec.command ?? "shell";
 }
 
 export function getTerminalRuntime(): TerminalRuntime {

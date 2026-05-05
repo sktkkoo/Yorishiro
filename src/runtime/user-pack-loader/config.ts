@@ -12,9 +12,10 @@
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
- * - `terminalAgent: "claude" | "codex"`（optional）: Terminal で自動起動する coding agent
+ * - `terminalAgent: "claude" | "codex"`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
  * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
+ * - `defaultProfile: string | null`（optional）: 起動時 default-session に使う profile id。bundled (`shell` / `claude` / `codex`) または user `profiles[]` の id。null なら `terminalAgent` を fallback に使う
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
@@ -45,6 +46,8 @@ export interface CharminalConfig {
   readonly ambientAudioVolume: number;
   /** User 定義の session profile。bundled (`shell` / `claude` / `codex`) と同 id なら override。 */
   readonly profiles: ReadonlyArray<SessionProfile>;
+  /** 起動時 default-session に使う profile id。null なら `terminalAgent` を fallback。 */
+  readonly defaultProfile: string | null;
 }
 
 export type TerminalAgent = "claude" | "codex";
@@ -60,6 +63,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   ambientAudioMuted: false,
   ambientAudioVolume: 1.0,
   profiles: [],
+  defaultProfile: null,
 };
 
 const toStringArray = (value: unknown): string[] => {
@@ -178,6 +182,7 @@ export function parseConfig(text: string): CharminalConfig {
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
     ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
     profiles: toSessionProfiles(obj.profiles),
+    defaultProfile: toNullableString(obj.defaultProfile),
   };
 }
 
@@ -197,6 +202,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
+  if (cfg.defaultProfile !== null) out.defaultProfile = cfg.defaultProfile;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 

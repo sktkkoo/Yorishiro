@@ -9,7 +9,7 @@ pub mod pty_session;
 pub mod registry;
 pub mod types;
 
-pub use pty_session::PtySession;
+pub use pty_session::{PtySession, SpawnSpec};
 pub use registry::SessionRegistry;
 pub use types::{SessionDescriptor, SessionKind, DEFAULT_SESSION_ID};
 
