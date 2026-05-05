@@ -56,6 +56,14 @@ export interface ThreeRuntime {
   getCameraTracking(): boolean;
 
   /**
+   * Render loop の pause / resume。paused 時は RAF の中身を skip する
+   * （tweenManager.tick / body.update / renderer.render はすべて休む）。
+   * presence intensity が aura-only / closed のとき CPU/GPU を休ませる用途。
+   */
+  setRenderPaused(paused: boolean): void;
+  isRenderPaused(): boolean;
+
+  /**
    * R3F-component scene pack が独自 lighting を持つ場合に ThreeRuntime の
    * built-in lights (AmbientLight + DirectionalLight) を disable / enable する.
    */

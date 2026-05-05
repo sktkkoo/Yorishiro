@@ -321,6 +321,14 @@ export interface StateGetDeps {
     readonly scene: string | null;
     readonly ui: string | null;
   };
+  /** 存在強度の現在 state を返す。 */
+  readonly getPresenceSnapshot: () => {
+    readonly level: string;
+    readonly levelSince: number;
+    readonly previousLevel: string | null;
+    readonly previousLevelSince: number | null;
+    readonly source: string;
+  };
 }
 
 export interface StateGetResult {
@@ -368,6 +376,16 @@ export interface StateGetResult {
   readonly runtime: {
     readonly activeScene: string | null;
     readonly activeUi: string | null;
+  };
+  /** ISO 8601 形式のローカル時刻。 */
+  readonly localTime: string;
+  /** 存在強度の現在 state。 */
+  readonly presenceState: {
+    readonly level: string;
+    readonly levelSince: number;
+    readonly previousLevel: string | null;
+    readonly previousLevelSince: number | null;
+    readonly source: string;
   };
 }
 
@@ -435,6 +453,8 @@ export function createStateGetHandler(deps: StateGetDeps) {
         activeScene: runtimeActive.scene,
         activeUi: runtimeActive.ui,
       },
+      localTime: new Date().toISOString(),
+      presenceState: deps.getPresenceSnapshot(),
     };
   };
 }
@@ -1304,5 +1324,33 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
       }
       claim.dispose();
     }
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * presence.set-intensity
+ * ────────────────────────────────────────────────────────── */
+
+export interface PresenceSetIntensityDeps {
+  readonly applyPresenceLevel: (level: "full" | "aura-only" | "closed", source: "mcp") => void;
+}
+
+export interface PresenceSetIntensityResult {
+  readonly level: string;
+}
+
+/**
+ * 住人の存在強度レベルを MCP 経由で変更する handler。
+ * applyPresenceLevel に委譲し、sidebar / VRM / aura の side-effect を発火する。
+ */
+export function createPresenceSetIntensityHandler(deps: PresenceSetIntensityDeps) {
+  return async (request: unknown): Promise<PresenceSetIntensityResult> => {
+    const r = requestRecord(request);
+    const level = r.level;
+    if (level !== "full" && level !== "aura-only" && level !== "closed") {
+      throw new Error(`invalid presence level: ${String(level)}`);
+    }
+    deps.applyPresenceLevel(level, "mcp");
+    return { level };
   };
 }
