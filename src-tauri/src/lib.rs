@@ -1,8 +1,10 @@
 mod journal;
 mod mcp;
 mod pty;
+mod sessions;
 
 use pty::{start_hook_server, AgentKind, PtyState};
+use sessions::{SessionDescriptor, SessionKind, SessionRegistry, DEFAULT_SESSION_ID};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -48,6 +50,7 @@ fn build_path_env() -> String {
 async fn pty_spawn(
     app: AppHandle,
     state: State<'_, PtyState>,
+    registry: State<'_, SessionRegistry>,
     agent: AgentKind,
     cols: u16,
     rows: u16,
@@ -65,13 +68,37 @@ async fn pty_spawn(
         app,
         cols,
         rows,
-        cwd,
+        cwd.clone(),
         agent,
         &agent_bin,
         system_prompt,
         plugin_dir,
         on_output,
-    )
+    )?;
+
+    // Phase A-4a: PTY ops 自体は PtyState に残し、SessionRegistry には metadata
+    // のみ記録する。default-session の id 固定。A-4b で PtyState 側の state を
+    // PtySession に移し、registry を sole source of truth にする。
+    let profile_id = match agent {
+        AgentKind::Claude => "claude",
+        AgentKind::Codex => "codex",
+    };
+    registry.add(SessionDescriptor {
+        id: DEFAULT_SESSION_ID.to_string(),
+        profile_id: profile_id.to_string(),
+        kind: SessionKind::Agent,
+        label: profile_id.to_string(),
+        cwd,
+        started_at: now_millis(),
+    });
+    Ok(())
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// `~/.charminal/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
@@ -105,8 +132,13 @@ async fn pty_resize(state: State<'_, PtyState>, cols: u16, rows: u16) -> Result<
 }
 
 #[tauri::command]
-async fn pty_kill(state: State<'_, PtyState>) -> Result<(), String> {
-    state.kill()
+async fn pty_kill(
+    state: State<'_, PtyState>,
+    registry: State<'_, SessionRegistry>,
+) -> Result<(), String> {
+    state.kill()?;
+    registry.remove(DEFAULT_SESSION_ID);
+    Ok(())
 }
 
 /// Reconnect a new Channel to an existing PTY session (WebView HMR reload).
@@ -708,6 +740,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(PtyState::new())
+        .manage(SessionRegistry::new())
         .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
