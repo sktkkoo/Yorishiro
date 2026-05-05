@@ -20,6 +20,54 @@ Much of Charminal's own development is done as a collaboration with the AI runni
 
 ---
 
+## Getting Started
+
+### Prerequisites
+
+Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
+
+- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
+- Charminal never asks for API keys. Instead, it consumes your existing Claude Code / Codex tokens directly
+- The default agent is Claude Code. To use Codex, switch in the settings screen and Reload (Ctrl+R)
+
+### Launch
+
+```bash
+npm install
+npm run tauri dev
+```
+
+On launch, Claude Code starts inside the terminal and a VRM character appears beside it. Use Claude Code as you normally would.
+
+### `/charm` command
+
+Type `/charm` inside Claude Code to activate the Charminal plugin. It lets you create and edit packs, run tutorials, and more — all through conversation.
+
+### Packs
+
+Everything in Charminal is composed of **packs**. There are six types:
+
+| Type | Role |
+|---|---|
+| **persona** | Defines the inhabitant's personality and reaction patterns |
+| **scene** | Composes the background, space, lighting, and ambient sound |
+| **effect** | Temporary visual effects (screen shake, fireworks, etc.) |
+| **ui** | UI panels like camera/lighting controls |
+| **ambient-ui** | Always-visible overlays (gaze visualization, etc.) |
+| **utility** | Background logic with no visual output |
+
+Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape everything: personality, space, and reactions.
+
+### Configuration
+
+Use `~/.charminal/config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
+
+### Self-referential MCP
+
+The inhabitant (Claude Code running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI. This isn't a feature bolt-on; it's the design principle that the inhabitant can touch the place it lives in.
+
+---
+
 ## Status
 
 **v0.0.1 — early preview**
