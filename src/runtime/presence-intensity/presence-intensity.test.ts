@@ -23,7 +23,6 @@ function createMockDeps(overrides?: Partial<PresenceIntensityDeps>): PresenceInt
       enable: vi.fn(),
       disable: vi.fn(),
     } as unknown as AmbientUiPackRegistry,
-    setCharacterVisible: vi.fn(),
     now: vi.fn(() => 1000),
     ...overrides,
   };
@@ -99,27 +98,8 @@ describe("PresenceIntensity", () => {
   });
 
   // -----------------------------------------------------------------------
-  // VRM visibility
+  // VRM visibility は sidebar の display:none に追従させるため、ここでの hook は持たない。
   // -----------------------------------------------------------------------
-
-  it("full → aura-only では tween 完了後に VRM を非表示にする", async () => {
-    const deps = createMockDeps();
-    applyPresenceLevel("aura-only", "mcp", deps);
-
-    // completion.then で非同期実行されるため、microtask を flush
-    await Promise.resolve();
-    expect(deps.setCharacterVisible).toHaveBeenCalledWith(false);
-  });
-
-  it("full では VRM を表示する", () => {
-    const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
-    applyPresenceLevel("full", "default", deps);
-
-    const calls = (deps.setCharacterVisible as ReturnType<typeof vi.fn>).mock.calls;
-    const lastCall = calls[calls.length - 1];
-    expect(lastCall?.[0]).toBe(true);
-  });
 
   // -----------------------------------------------------------------------
   // Aura
@@ -153,7 +133,6 @@ describe("PresenceIntensity", () => {
     expect(state.source).toBe("mcp");
     // tween は呼ばれない
     expect(deps.tweenManager.start).not.toHaveBeenCalled();
-    expect(deps.setCharacterVisible).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
@@ -167,7 +146,6 @@ describe("PresenceIntensity", () => {
     await Promise.resolve();
     expect(getPresenceState().level).toBe("closed");
     expect(deps.tweenManager.start).toHaveBeenCalledTimes(1);
-    expect(deps.setCharacterVisible).toHaveBeenCalledWith(false);
     expect(deps.ambientUiRegistry.disable).toHaveBeenCalledWith("attention-aura");
   });
 
@@ -176,7 +154,6 @@ describe("PresenceIntensity", () => {
     applyPresenceLevel("closed", "mcp", deps);
 
     vi.mocked(deps.tweenManager.start).mockClear();
-    vi.mocked(deps.setCharacterVisible).mockClear();
 
     applyPresenceLevel("aura-only", "mcp", deps);
 
@@ -189,8 +166,6 @@ describe("PresenceIntensity", () => {
       deps.setSidebarWidth,
       { from: 280 },
     );
-    // closed → aura-only: どちらも非表示なので setCharacterVisible は呼ばれない
-    expect(deps.setCharacterVisible).not.toHaveBeenCalled();
     // aura は有効化
     expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
   });
@@ -227,7 +202,6 @@ describe("PresenceIntensity", () => {
     expect(state.previousLevel).toBe("full");
     // full のまま — tween などは呼ばれない
     expect(deps2.tweenManager.start).not.toHaveBeenCalled();
-    expect(deps2.setCharacterVisible).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------

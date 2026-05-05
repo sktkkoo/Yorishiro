@@ -882,10 +882,6 @@ function App() {
                 },
                 tweenManager: getThreeRuntime().getTweenManager(),
                 ambientUiRegistry: getAmbientUiPackRegistry(),
-                setCharacterVisible: (visible) => {
-                  const el = document.querySelector<HTMLElement>(".charactor-container");
-                  if (el) el.style.display = visible ? "" : "none";
-                },
                 now: () => Date.now(),
               };
               applyPresenceLevel(level, source, presenceDeps);

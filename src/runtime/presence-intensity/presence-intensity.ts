@@ -47,7 +47,6 @@ export interface PresenceIntensityDeps {
   readonly getDefaultSidebarWidth: () => number;
   readonly tweenManager: TweenManager;
   readonly ambientUiRegistry: AmbientUiPackRegistry;
-  readonly setCharacterVisible: (visible: boolean) => void;
   readonly now: () => number;
 }
 
@@ -127,17 +126,8 @@ export function applyPresenceLevel(
     { from: deps.getSidebarWidth() },
   );
 
-  // VRM visibility
-  if (level === "full") {
-    // other → full: tween 開始時に表示（sidebar が開くのと同時に現れる）
-    deps.setCharacterVisible(true);
-  } else if (prevLevel === "full") {
-    // full → other: tween 完了後に非表示（sidebar が閉じきってから消える）
-    handle.completion.then(() => {
-      deps.setCharacterVisible(false);
-    });
-  }
-  // aura-only ↔ closed: どちらも非表示のまま、何もしない
+  // VRM visibility は sidebar の display:none に追従するため、ここでは触らない。
+  // .sidebar 自体が px<=0 で display:none になれば、子の VRM canvas も paint されない。
 
   // Aura
   if (level === "full" || level === "aura-only") {
