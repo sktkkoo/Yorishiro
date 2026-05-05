@@ -56,7 +56,7 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **ambient-ui** | Always-visible overlays (gaze visualization, etc.) |
 | **utility** | Background logic with no visual output |
 
-Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape everything: personality, space, and reactions.
+Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape everything: personality, space, and reactions. Packs support hot reload — just save the file and changes take effect immediately without restarting the app.
 
 ### Configuration
 
