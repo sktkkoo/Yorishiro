@@ -14,6 +14,8 @@ Charminal は、ターミナルの中で動く AI に身体を与えるデスク
 
 かつてSF やアニメで見た、パートナーとしての AI が画面の中を自由に動きまわり、UIを操作し、助けてくれる--そんな体験を作り出そうとするプロジェクトです。
 
+Charminal 自体の開発の大部分は、Charminal 上で動く AI との共同作業として行われています。
+
 > [English README](README.md)
 
 ---
@@ -102,8 +104,8 @@ npm run tauri dev # デスクトップアプリとして起動
 
 ### Philosophy — このプロジェクトの思想
 
-- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
 - [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — UI を「場所」として捉え、AI を「住人」として存在させるという考え方
+- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
 - [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — AI の能力ではなく、AI がどう在るかを設計するということ
 
 ### 設定とカスタマイズ

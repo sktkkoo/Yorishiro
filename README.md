@@ -14,6 +14,8 @@ The inhabitant can control the world it lives in — switching scenes, changing 
 
 There is something we once saw in science fiction and anime — an AI partner who moves freely inside the screen, manipulates the UI, and helps you. This project is trying to build that experience.
 
+Much of Charminal's own development is done as a collaboration with the AI running on Charminal itself.
+
 > [日本語版 README はこちら](README.ja.md)
 
 ---
@@ -100,8 +102,8 @@ npm run tauri dev # Launch as desktop app
 
 ### Philosophy — what this project believes
 
-- [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md) — Why AI needs a body. The two-layer architecture of mind and reflex
 - [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md) — Treating UI as a place and AI as its inhabitant
+- [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md) — Why AI needs a body. The two-layer architecture of mind and reflex
 - [`docs/philosophy/PRESENCE_HARNESS.en.md`](docs/philosophy/PRESENCE_HARNESS.en.md) — Designing not what AI can do, but how AI exists
 
 ### Configuration & customization
