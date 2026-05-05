@@ -1,17 +1,19 @@
 import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
+import type { SpawnSpec } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
-import type { TerminalAgent } from "../user-pack-loader/config";
 
 /**
  * PTY 接続パラメータ。差分検出に使う。null 値は「まだ決まっていない」を表す。
- * cwd / systemPrompt は App.tsx の state から渡される。cols / rows は xterm が
- * 決める（FitAddon が container サイズから算出）。
+ * cwd は App.tsx の state から渡される。cols / rows は xterm が決める
+ * （FitAddon が container サイズから算出）。
+ *
+ * spec は profile resolution 後の SpawnSpec。Agent variant のときは
+ * systemPrompt も spec.systemPrompt に乗る。
  */
 export interface PtyParams {
-  readonly agent: TerminalAgent;
+  readonly spec: SpawnSpec;
   readonly cwd: string | null;
-  readonly systemPrompt: string | null;
 }
 
 export interface TerminalCursorClientPosition {

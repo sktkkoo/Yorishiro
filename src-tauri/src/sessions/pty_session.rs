@@ -7,6 +7,7 @@
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use serde::Deserialize;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -16,6 +17,68 @@ use crate::pty::{
     build_hooks_json, has_existing_claude_session, has_existing_codex_session, toml_basic_string,
     AgentKind, PtyExit, HOOK_SERVER_PORT,
 };
+
+// ─── SpawnSpec ──────────────────────────────────────────────────
+
+/// PTY spawn の意図を表す enum。Agent (claude / codex) と Shell の 2 variant。
+/// TS 側からは serde tag = "kind" の discriminated union として渡される。
+///
+/// Phase B-1 では Shell は plain spawn のみ。Phase B-2 で wrapper rc 注入と
+/// OSC 133 emission を Shell variant に追加する。
+#[derive(Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum SpawnSpec {
+    Agent {
+        agent: AgentKind,
+        /// 起動 binary を override したい場合のみ Some。None なら $HOME/.local/bin
+        /// 等から検索した既定 binary を使う。
+        #[serde(default)]
+        command: Option<String>,
+        #[serde(default)]
+        system_prompt: Option<String>,
+        /// Claude Code の `--plugin-dir` に渡す bundled plugin path。Agent variant
+        /// 内で保持し、Tauri command が AppHandle.path().resource_dir() から作って
+        /// 渡す。
+        #[serde(skip)]
+        plugin_dir: Option<std::path::PathBuf>,
+    },
+    Shell {
+        /// Shell binary path を override したい場合のみ Some。None なら `$SHELL`、
+        /// それも無ければ `/bin/sh` に fall back。
+        #[serde(default)]
+        command: Option<String>,
+    },
+}
+
+pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>) -> String {
+    if let Some(path) = override_path {
+        return path.to_string();
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let binary_name = match agent {
+        AgentKind::Claude => "claude",
+        AgentKind::Codex => "codex",
+    };
+    let candidates = [
+        format!("{}/.local/bin/{}", home, binary_name),
+        format!("{}/.cargo/bin/{}", home, binary_name),
+        format!("/usr/local/bin/{}", binary_name),
+        format!("/opt/homebrew/bin/{}", binary_name),
+    ];
+    for path in &candidates {
+        if std::path::Path::new(path).exists() {
+            return path.clone();
+        }
+    }
+    binary_name.to_string()
+}
+
+fn resolve_shell_command(override_command: Option<&str>) -> String {
+    if let Some(c) = override_command {
+        return c.to_string();
+    }
+    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+}
 
 // ─── Ring buffer ────────────────────────────────────────────────
 
@@ -114,18 +177,15 @@ impl PtySession {
         }
     }
 
-    /// PTY を新規 spawn。既存の child があれば先に kill する。
-    #[allow(clippy::too_many_arguments)]
+    /// PTY を新規 spawn。既存の child があれば先に kill する。SpawnSpec で
+    /// agent / shell を切り替える。
     pub fn spawn(
         &self,
         app: AppHandle,
         cols: u16,
         rows: u16,
         cwd: Option<String>,
-        agent: AgentKind,
-        agent_binary: &str,
-        system_prompt: Option<String>,
-        plugin_dir: Option<std::path::PathBuf>,
+        spec: &SpawnSpec,
         on_output: Channel,
     ) -> Result<(), String> {
         // Kill existing PTY if any
@@ -142,7 +202,14 @@ impl PtySession {
             })
             .map_err(|e| format!("PTY open failed: {}", e))?;
 
-        let mut cmd = CommandBuilder::new(agent_binary);
+        let binary = match spec {
+            SpawnSpec::Agent { agent, command, .. } => {
+                resolve_agent_binary(*agent, command.as_deref())
+            }
+            SpawnSpec::Shell { command } => resolve_shell_command(command.as_deref()),
+        };
+
+        let mut cmd = CommandBuilder::new(&binary);
         cmd.env("PATH", crate::build_path_env());
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
@@ -151,62 +218,73 @@ impl PtySession {
         cmd.env("LANG", lang);
 
         let mut hooks_path_to_cleanup: Option<std::path::PathBuf> = None;
-        match agent {
-            AgentKind::Claude => {
-                if has_existing_claude_session(cwd.as_deref()) {
-                    cmd.arg("-c");
-                }
+        match spec {
+            SpawnSpec::Agent {
+                agent,
+                system_prompt,
+                plugin_dir,
+                ..
+            } => match agent {
+                AgentKind::Claude => {
+                    if has_existing_claude_session(cwd.as_deref()) {
+                        cmd.arg("-c");
+                    }
 
-                let hooks_json = build_hooks_json(HOOK_SERVER_PORT);
-                let hooks_path = std::env::temp_dir()
-                    .join(format!("charminal-hooks-{}.json", std::process::id()));
-                std::fs::write(&hooks_path, &hooks_json)
-                    .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
-                cmd.arg("--settings");
-                cmd.arg(hooks_path.to_str().unwrap_or_default());
-                hooks_path_to_cleanup = Some(hooks_path);
+                    let hooks_json = build_hooks_json(HOOK_SERVER_PORT);
+                    let hooks_path = std::env::temp_dir()
+                        .join(format!("charminal-hooks-{}.json", std::process::id()));
+                    std::fs::write(&hooks_path, &hooks_json)
+                        .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
+                    cmd.arg("--settings");
+                    cmd.arg(hooks_path.to_str().unwrap_or_default());
+                    hooks_path_to_cleanup = Some(hooks_path);
 
-                // Load Charminal's bundled plugin dir (contains charm: skills).
-                // Session-scoped; does not touch ~/.claude or the user's cwd.
-                if let Some(ref dir) = plugin_dir {
-                    if dir.exists() {
-                        cmd.arg("--plugin-dir");
-                        cmd.arg(dir.to_str().unwrap_or_default());
+                    // Load Charminal's bundled plugin dir (contains charm: skills).
+                    // Session-scoped; does not touch ~/.claude or the user's cwd.
+                    if let Some(dir) = plugin_dir {
+                        if dir.exists() {
+                            cmd.arg("--plugin-dir");
+                            cmd.arg(dir.to_str().unwrap_or_default());
 
-                        // Claude Code plugin の .mcp.json は auto-discover されないため、
-                        // --mcp-config で明示的に load させる。これで Charminal が立てる
-                        // MCP server (localhost:18743) を AI が tool として認識できる。
-                        let mcp_config = dir.join(".mcp.json");
-                        if mcp_config.is_file() {
-                            cmd.arg("--mcp-config");
-                            cmd.arg(mcp_config.to_str().unwrap_or_default());
+                            // Claude Code plugin の .mcp.json は auto-discover されないため、
+                            // --mcp-config で明示的に load させる。これで Charminal が立てる
+                            // MCP server (localhost:18743) を AI が tool として認識できる。
+                            let mcp_config = dir.join(".mcp.json");
+                            if mcp_config.is_file() {
+                                cmd.arg("--mcp-config");
+                                cmd.arg(mcp_config.to_str().unwrap_or_default());
+                            }
+                        } else {
+                            eprintln!(
+                                "[pty.spawn] plugin_dir does not exist, skipping: {}",
+                                dir.display()
+                            );
                         }
-                    } else {
-                        eprintln!(
-                            "[pty.spawn] plugin_dir does not exist, skipping: {}",
-                            dir.display()
-                        );
+                    }
+
+                    if let Some(prompt) = system_prompt {
+                        cmd.arg("--append-system-prompt");
+                        cmd.arg(prompt);
                     }
                 }
+                AgentKind::Codex => {
+                    if has_existing_codex_session(cwd.as_deref()) {
+                        cmd.arg("resume");
+                        cmd.arg("--last");
+                    }
 
-                if let Some(ref prompt) = system_prompt {
-                    cmd.arg("--append-system-prompt");
-                    cmd.arg(prompt);
+                    if let Some(prompt) = system_prompt {
+                        cmd.arg("-c");
+                        cmd.arg(format!(
+                            "developer_instructions={}",
+                            toml_basic_string(prompt)
+                        ));
+                    }
                 }
-            }
-            AgentKind::Codex => {
-                if has_existing_codex_session(cwd.as_deref()) {
-                    cmd.arg("resume");
-                    cmd.arg("--last");
-                }
-
-                if let Some(ref prompt) = system_prompt {
-                    cmd.arg("-c");
-                    cmd.arg(format!(
-                        "developer_instructions={}",
-                        toml_basic_string(prompt)
-                    ));
-                }
+            },
+            SpawnSpec::Shell { .. } => {
+                // Phase B-1: plain shell, no extra args. Phase B-2 で
+                // wrapper rc 注入 (ZDOTDIR / --rcfile / etc.) を追加する。
             }
         }
 
@@ -222,7 +300,7 @@ impl PtySession {
         let child = pair
             .slave
             .spawn_command(cmd)
-            .map_err(|e| format!("Failed to spawn {:?}: {}", agent, e))?;
+            .map_err(|e| format!("Failed to spawn {}: {}", binary, e))?;
         drop(pair.slave);
 
         let reader = pair

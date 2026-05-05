@@ -22,19 +22,39 @@ import { type Channel, type InvokeArgs, invoke } from "@tauri-apps/api/core";
 const call = <T>(cmd: string, args: object): Promise<T> =>
   invoke<T>(cmd, args as unknown as InvokeArgs);
 
-// ─── PTY ────────────────────────────────────────────────────────
+// ─── Session ────────────────────────────────────────────────────
 
-export interface PtySpawnArgs {
-  readonly agent: "claude" | "codex";
+/**
+ * SpawnSpec — Rust 側 `sessions::SpawnSpec` と 1:1 mirror。Agent / Shell の
+ * discriminated union で、TS 側は SessionProfile から build して渡す。
+ */
+export type SpawnSpec =
+  | {
+      readonly kind: "agent";
+      readonly agent: "claude" | "codex";
+      /** binary 上書き。null で既定の agent binary 検索を使う。 */
+      readonly command?: string | null;
+      readonly systemPrompt?: string | null;
+    }
+  | {
+      readonly kind: "shell";
+      /** shell binary 上書き。null で `$SHELL` を使う。 */
+      readonly command?: string | null;
+    };
+
+export interface SessionSpawnArgs {
+  readonly spec: SpawnSpec;
   readonly cols: number;
   readonly rows: number;
   readonly cwd: string | null;
-  readonly systemPrompt: string | null;
   readonly onOutput: Channel<ArrayBuffer>;
 }
 
-/** coding agent の PTY を起動する。既存セッションが残っていれば kill してから spawn する。 */
-export const ptySpawn = (args: PtySpawnArgs): Promise<void> => call("pty_spawn", args);
+/**
+ * Session を新規 spawn する。default-session を replace する形で動作（Phase
+ * B-1）。Phase C で `sessionId` 引数を取って multi-pane に拡張する。
+ */
+export const sessionSpawn = (args: SessionSpawnArgs): Promise<void> => call("session_spawn", args);
 
 export interface PtyWriteArgs {
   readonly data: string;

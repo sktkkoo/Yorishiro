@@ -3,8 +3,8 @@ mod mcp;
 mod pty;
 mod sessions;
 
-use pty::{start_hook_server, AgentKind, PtyState};
-use sessions::SessionRegistry;
+use pty::{start_hook_server, PtyState};
+use sessions::{SessionRegistry, SpawnSpec};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -16,26 +16,6 @@ use tauri::{AppHandle, Manager, State};
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
 struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
-fn find_agent_binary(agent: AgentKind) -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
-    let binary_name = match agent {
-        AgentKind::Claude => "claude",
-        AgentKind::Codex => "codex",
-    };
-    let candidates = [
-        format!("{}/.local/bin/{}", home, binary_name),
-        format!("{}/.cargo/bin/{}", home, binary_name),
-        format!("/usr/local/bin/{}", binary_name),
-        format!("/opt/homebrew/bin/{}", binary_name),
-    ];
-    for path in &candidates {
-        if std::path::Path::new(path).exists() {
-            return path.clone();
-        }
-    }
-    binary_name.to_string()
-}
-
 fn build_path_env() -> String {
     let home = std::env::var("HOME").unwrap_or_default();
     let current = std::env::var("PATH").unwrap_or_default();
@@ -45,35 +25,45 @@ fn build_path_env() -> String {
     )
 }
 
+/// 新世代の spawn command。SpawnSpec を TS 側で組み立てて渡し、Rust 側は
+/// agent 用の plugin_dir を Tauri context から差し込んで PtyState::spawn に
+/// flow する。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-async fn pty_spawn(
+async fn session_spawn(
     app: AppHandle,
     state: State<'_, PtyState>,
-    agent: AgentKind,
+    spec: SpawnSpec,
     cols: u16,
     rows: u16,
     cwd: Option<String>,
-    system_prompt: Option<String>,
     on_output: Channel,
 ) -> Result<(), String> {
-    let agent_bin = find_agent_binary(agent);
-    let plugin_dir = app
-        .path()
-        .resource_dir()
-        .ok()
-        .map(|p| p.join("resources").join("charminal-plugin"));
-    state.spawn(
-        app,
-        cols,
-        rows,
-        cwd,
-        agent,
-        &agent_bin,
-        system_prompt,
-        plugin_dir,
-        on_output,
-    )
+    // Agent variant のときだけ Tauri resource path から plugin_dir を差し込む。
+    // SpawnSpec::Agent の plugin_dir field は #[serde(skip)] なので TS 側から
+    // は渡って来ず、ここで生成して埋める。
+    let final_spec = match spec {
+        SpawnSpec::Agent {
+            agent,
+            command,
+            system_prompt,
+            ..
+        } => {
+            let plugin_dir = app
+                .path()
+                .resource_dir()
+                .ok()
+                .map(|p| p.join("resources").join("charminal-plugin"));
+            SpawnSpec::Agent {
+                agent,
+                command,
+                system_prompt,
+                plugin_dir,
+            }
+        }
+        shell @ SpawnSpec::Shell { .. } => shell,
+    };
+    state.spawn(app, cols, rows, cwd, &final_spec, on_output)
 }
 
 /// `~/.charminal/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
@@ -720,7 +710,7 @@ pub fn run() {
         .manage(registry)
         .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
-            pty_spawn,
+            session_spawn,
             pty_write,
             pty_resize,
             pty_kill,

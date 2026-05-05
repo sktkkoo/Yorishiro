@@ -43,6 +43,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -59,6 +60,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -75,6 +77,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -91,6 +94,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -107,6 +111,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -123,6 +128,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -144,6 +150,7 @@ describe("parseConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     });
   });
 
@@ -177,6 +184,7 @@ describe("serializeConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -193,6 +201,7 @@ describe("serializeConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -214,6 +223,7 @@ describe("serializeConfig", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -230,6 +240,7 @@ describe("serializeConfig", () => {
       ambientAudioMuted: true,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -267,6 +278,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -284,6 +296,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
       profiles: [],
+      defaultProfile: null,
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);
@@ -582,5 +595,41 @@ describe("profiles[]", () => {
   it("omits profiles field when array is empty", () => {
     const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], profiles: [] };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({});
+  });
+});
+
+describe("defaultProfile", () => {
+  it("defaults to null", () => {
+    expect(EMPTY_CONFIG.defaultProfile).toBeNull();
+  });
+
+  it("parses string defaultProfile", () => {
+    const cfg = parseConfig(JSON.stringify({ defaultProfile: "shell" }));
+    expect(cfg.defaultProfile).toBe("shell");
+  });
+
+  it("treats empty string as null", () => {
+    const cfg = parseConfig(JSON.stringify({ defaultProfile: "" }));
+    expect(cfg.defaultProfile).toBeNull();
+  });
+
+  it("treats non-string as null", () => {
+    const cfg = parseConfig(JSON.stringify({ defaultProfile: 42 }));
+    expect(cfg.defaultProfile).toBeNull();
+  });
+
+  it("serializes when set", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], defaultProfile: "shell" };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ defaultProfile: "shell" });
+  });
+
+  it("omits defaultProfile from output when null", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], defaultProfile: null };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({});
+  });
+
+  it("round-trips when set", () => {
+    const cfg = { ...EMPTY_CONFIG, defaultProfile: "shell" };
+    expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
 });
