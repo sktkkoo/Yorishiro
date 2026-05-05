@@ -50,3 +50,5 @@ Agent ごとの違い：
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 
 Design rationale は [decisions/codex-terminal-agent.md](decisions/codex-terminal-agent.md)。
+
+Terminal session 全体の設計（profile / shell integration / カスタマイズ）は [terminal.md](terminal.md)。

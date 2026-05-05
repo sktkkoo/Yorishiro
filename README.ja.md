@@ -106,6 +106,11 @@ npm run tauri dev # デスクトップアプリとして起動
 - [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — UI を「場所」として捉え、AI を「住人」として存在させるという考え方
 - [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — AI の能力ではなく、AI がどう在るかを設計するということ
 
+### 設定とカスタマイズ
+
+- [`docs/configuration.md`](docs/configuration.md) — `~/.charminal/config.json` の field 一覧
+- [`docs/terminal.md`](docs/terminal.md) — Terminal session の profile / shell カスタマイズ / OSC 133 shell integration
+
 ### Development
 
 - [`CLAUDE.md`](CLAUDE.md) — 開発 convention（coding / workflow / critical constraints）

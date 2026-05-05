@@ -17,6 +17,7 @@
 | 過去に「なぜそう決めたか」を引きたい | [`decisions/README.md`](decisions/README.md) |
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
 | `~/.charminal/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
+| Terminal の session profile / shell integration / カスタマイズを確認したい | [`terminal.md`](terminal.md) |
 | Build / lint / test の動かし方を知りたい | [project root `CLAUDE.md`](../CLAUDE.md) §Linting & formatting |
 | 自動生成された API doc を見たい | `npm run doc && open docs/api/typescript/index.html` |
 
