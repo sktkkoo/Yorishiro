@@ -437,7 +437,10 @@ function specEqual(a: SpawnSpec, b: SpawnSpec): boolean {
     );
   }
   if (a.kind === "shell" && b.kind === "shell") {
-    return (a.command ?? null) === (b.command ?? null);
+    return (
+      (a.command ?? null) === (b.command ?? null) &&
+      (a.integration ?? true) === (b.integration ?? true)
+    );
   }
   return false;
 }

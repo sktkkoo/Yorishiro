@@ -514,7 +514,11 @@ function App() {
         if (config.defaultProfile !== null) {
           const profile = resolveProfile(config.defaultProfile, config.profiles);
           if (profile?.kind === "shell") {
-            defaultSpec = { kind: "shell", command: profile.command };
+            defaultSpec = {
+              kind: "shell",
+              command: profile.command,
+              integration: profile.integration,
+            };
           }
         }
         personaRegistry.setPrimaryPersona(config.primaryPersona);

@@ -402,7 +402,7 @@ impl PtyState {
 
         // PtySession を build → spawn → registry に attach。spawn の途中で失敗
         // したら registry から外して metadata だけ残らないようにする。
-        let session = Arc::new(PtySession::new());
+        let session = Arc::new(PtySession::new(id.clone(), Arc::clone(&self.registry)));
         if let Err(e) = session.spawn(app, cols, rows, cwd, spec, on_output) {
             self.registry.remove(&id);
             return Err(e);

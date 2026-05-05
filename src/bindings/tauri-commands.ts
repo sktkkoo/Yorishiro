@@ -40,6 +40,12 @@ export type SpawnSpec =
       readonly kind: "shell";
       /** shell binary 上書き。null で `$SHELL` を使う。 */
       readonly command?: string | null;
+      /**
+       * Charminal 側 instrumentation（OSC 133 wrapper rc）の有無。default true。
+       * false なら raw shell 起動で、住人は cell 観察のみ（command 単位の status
+       * は読めない）。known でない shell（sh / dash 等）には integration が無視される。
+       */
+      readonly integration?: boolean;
     };
 
 export interface SessionSpawnArgs {
