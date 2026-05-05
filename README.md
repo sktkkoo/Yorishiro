@@ -12,7 +12,7 @@ Claude Code or Codex runs inside. While the AI is deep in thought, a 3D characte
 
 The inhabitant can control the world it lives in — switching scenes, changing ambient sounds, triggering expressions and effects. Users can also write packs to reshape everything: personality, space, reactions. All while the app is running, without stopping it.
 
-There is an old feeling from science fiction and anime behind this — an AI partner who moves freely inside the screen, reshaping it at will. This project is trying to build that.
+There is something we once saw in science fiction and anime — an AI partner who moves freely inside the screen, manipulates the UI, and helps you. This project is trying to build that experience.
 
 > [日本語版 README はこちら](README.ja.md)
 
