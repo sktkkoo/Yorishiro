@@ -341,10 +341,20 @@ function App() {
     effectPackRunner.register(desaturatePack);
     effectPackRunner.register(cameraMovePack);
 
+    // Presence の hook callback は presence-intensity module が dynamic import される
+    // 後でしか buildPresenceDeps が組めないため、ref で late-bind する。
+    // bind 完了前に hook が発火しても no-op で安全側に倒れる。
+    const presenceRestoreRef: { current: () => void } = { current: () => {} };
+    const presenceIdleRef: { current: () => void } = { current: () => {} };
+    const presenceSourceRef: { current: () => string } = { current: () => "default" };
+
     const perception = new Perception({
       bus,
       time,
       devLog: createSubsystemLog(devLog, "Perception"),
+      onPresenceRestore: () => presenceRestoreRef.current(),
+      onPresenceIdle: () => presenceIdleRef.current(),
+      getPresenceSource: () => presenceSourceRef.current(),
     });
 
     // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
@@ -615,7 +625,7 @@ function App() {
           // Presence intensity:
           createPresenceSetIntensityHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
-        const { applyPresenceLevel, getPresenceSnapshot } = await import(
+        const { applyPresenceLevel, getPresenceSnapshot, onUserPromptSubmit } = await import(
           "./runtime/presence-intensity"
         );
         type PresenceIntensityDeps = import("./runtime/presence-intensity").PresenceIntensityDeps;
@@ -642,6 +652,31 @@ function App() {
           }
         };
         // disable/enable で fs から読み直して runtime registry に register し直す経路。
+        // Presence Intensity の deps factory。MCP handler / idle fallback / restore
+        // 全てここを経由する。getThreeRuntime / getAmbientUiPackRegistry は singleton
+        // なので呼び出しのたびに最新の instance を引ける。
+        const buildPresenceDeps = (): PresenceIntensityDeps => ({
+          setSidebarWidth: (px) => {
+            document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+            const el = document.querySelector<HTMLElement>(".sidebar");
+            if (el) el.style.display = px <= 0 ? "none" : "";
+          },
+          getSidebarWidth: () => {
+            const raw = getComputedStyle(document.documentElement)
+              .getPropertyValue("--sidebar-width")
+              .trim();
+            const n = Number.parseFloat(raw);
+            // 0 は valid な現在値（closed 状態）。NaN のときだけ default に倒す。
+            return Number.isNaN(n) ? 280 : n;
+          },
+          // App.css の :root --sidebar-width 初期値（280px）と一致させる。
+          getDefaultSidebarWidth: () => 280,
+          tweenManager: getThreeRuntime().getTweenManager(),
+          ambientUiRegistry: getAmbientUiPackRegistry(),
+          setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
+          now: () => Date.now(),
+        });
+
         const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
         const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
           return reloadSingleUserPack(id, {
@@ -862,31 +897,21 @@ function App() {
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
             applyPresenceLevel: (level, source) => {
-              const presenceDeps: PresenceIntensityDeps = {
-                setSidebarWidth: (px) => {
-                  document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-                  const el = document.querySelector<HTMLElement>(".sidebar");
-                  if (el) el.style.display = px <= 0 ? "none" : "";
-                },
-                getSidebarWidth: () => {
-                  const raw = getComputedStyle(document.documentElement)
-                    .getPropertyValue("--sidebar-width")
-                    .trim();
-                  const n = Number.parseFloat(raw);
-                  // 0 は valid な現在値（closed 状態）。NaN のときだけ default に倒す。
-                  return Number.isNaN(n) ? 280 : n;
-                },
-                // App.css の :root --sidebar-width 初期値（280px）と一致させる。
-                getDefaultSidebarWidth: () => 280,
-                tweenManager: getThreeRuntime().getTweenManager(),
-                ambientUiRegistry: getAmbientUiPackRegistry(),
-                setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
-                now: () => Date.now(),
-              };
-              applyPresenceLevel(level, source, presenceDeps);
+              applyPresenceLevel(level, source, buildPresenceDeps());
             },
           }),
         };
+
+        // Perception の presence callback を late-bind する。
+        // Perception 構築時には presence-intensity module が dynamic import 前のため
+        // ref で空 callback を埋めておき、ここで実体に差し替える。
+        presenceRestoreRef.current = (): void => {
+          onUserPromptSubmit(buildPresenceDeps());
+        };
+        presenceIdleRef.current = (): void => {
+          applyPresenceLevel("aura-only", "idle-fallback", buildPresenceDeps());
+        };
+        presenceSourceRef.current = (): string => getPresenceSnapshot().source;
 
         await listen<{ requestId: string; tool: string; request: unknown }>(
           "mcp:tool-request",
