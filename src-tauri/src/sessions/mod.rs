@@ -5,14 +5,17 @@
 //!
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
+pub mod pty_session;
 pub mod registry;
 pub mod types;
 
+pub use pty_session::PtySession;
 pub use registry::SessionRegistry;
 pub use types::{SessionDescriptor, SessionKind, DEFAULT_SESSION_ID};
 
 // 以下は API surface に存在するが、このコミットでは外部から呼ばれていない。
-// `set_activity` / `SessionActivityChanged` / `SessionLifecycleChanged` の wiring と、
-// `session_list` / `session_status` Tauri command の追加で削除予定。
+// `set_activity` / `SessionActivityChanged` の wiring（Phase B の OSC 133 /
+// hook router）と、`session_list` / `session_status` Tauri command（A-5）の
+// 追加で削除予定。
 #[allow(dead_code, unused_imports)]
 pub use types::{SessionActivity, SessionEvent, SessionId, SessionLifecycle};

@@ -1,20 +1,20 @@
-//! SessionRegistry — Rust 側 session の descriptor + lifecycle / activity 状態を
-//! 管理する。Phase A-4a では metadata 部分のみ。PtySession (実 PTY) との配線は
-//! A-4b で追加する。
+//! SessionRegistry — Rust 側 session の descriptor + lifecycle / activity 状態と
+//! PtySession (実 PTY) を一元管理する。
 //!
-//! TS 側 `src/runtime/sessions/session-registry.ts` と semantics を mirror する。
+//! TS 側 `src/runtime/sessions/session-registry.ts` と semantics を mirror する
+//! が、Rust 側のみ PtySession (PTY resource lifecycle) も保持する。
 //!
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
-// API surface を A-4a で commit するが、外部 wiring（A-4b の PtySession spawn /
-// A-5 の session_list Tauri command / Phase B の OSC 133 listener）は後続 phase
-// で landing するため、dead_code はこの phase 中だけ allow する。subsequent commit
-// で wiring が入るたびに allow が不要になる。
+// API surface の一部は A-5 (session_list 等の Tauri command) と Phase B
+// (OSC 133 listener / set_activity wire) で初めて呼ばれる。それまでの
+// transient state を allow(dead_code) で許容する。
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+use super::pty_session::PtySession;
 use super::types::{SessionActivity, SessionDescriptor, SessionEvent, SessionId, SessionLifecycle};
 
 type Listener = Box<dyn Fn(&SessionEvent) + Send + Sync>;
@@ -31,6 +31,9 @@ struct RegistryInner {
     descriptors: HashMap<SessionId, SessionDescriptor>,
     lifecycles: HashMap<SessionId, SessionLifecycle>,
     activities: HashMap<SessionId, SessionActivity>,
+    /// 実 PTY resource。`attach_pty` で結ばれ、`remove` で drop される。
+    /// metadata-only session は entry を持たない。
+    pty_sessions: HashMap<SessionId, Arc<PtySession>>,
     listeners: Vec<Listener>,
 }
 
@@ -42,6 +45,7 @@ impl SessionRegistry {
                 descriptors: HashMap::new(),
                 lifecycles: HashMap::new(),
                 activities: HashMap::new(),
+                pty_sessions: HashMap::new(),
                 listeners: Vec::new(),
             }),
         }
@@ -70,7 +74,9 @@ impl SessionRegistry {
         Self::emit(&guard.listeners, &event);
     }
 
-    /// 存在しない id の remove は no-op で false を返す。
+    /// 存在しない id の remove は no-op で false を返す。Arc<PtySession> が
+    /// 結ばれていれば外す（caller が事前に kill() を呼んでおく前提；ここで
+    /// は単に Arc を drop して資源解放は PtySession::Drop に任せる）。
     pub fn remove(&self, id: &str) -> bool {
         let mut guard = self.lock();
         if guard.descriptors.remove(id).is_none() {
@@ -78,10 +84,25 @@ impl SessionRegistry {
         }
         guard.lifecycles.remove(id);
         guard.activities.remove(id);
+        guard.pty_sessions.remove(id);
         guard.order.retain(|existing| existing != id);
         let event = SessionEvent::SessionRemoved { id: id.to_string() };
         Self::emit(&guard.listeners, &event);
         true
+    }
+
+    /// 既存 metadata に Arc<PtySession> を結ぶ。同 id への再 attach は新しい
+    /// PtySession で上書きする（caller が事前に旧 session を kill する想定）。
+    pub fn attach_pty(&self, id: &str, session: Arc<PtySession>) {
+        let mut guard = self.lock();
+        if !guard.descriptors.contains_key(id) {
+            return;
+        }
+        guard.pty_sessions.insert(id.to_string(), session);
+    }
+
+    pub fn get_pty_session(&self, id: &str) -> Option<Arc<PtySession>> {
+        self.lock().pty_sessions.get(id).cloned()
     }
 
     pub fn get(&self, id: &str) -> Option<SessionDescriptor> {
