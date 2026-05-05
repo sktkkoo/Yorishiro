@@ -35,6 +35,8 @@ export const KEYS = {
   THREE_RUNTIME: "three:runtime",
   /** VrmCache singleton (Phase 2.5): URL → ArrayBuffer の LRU。 */
   VRM_CACHE: "vrm:cache",
+  /** PresenceIntensity singleton: 住人の存在強度（full / aura-only / closed）を管理する。 */
+  PRESENCE_INTENSITY: "presence-intensity:state",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];

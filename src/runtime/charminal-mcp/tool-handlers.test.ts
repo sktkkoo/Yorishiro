@@ -28,6 +28,7 @@ import {
   createEnablePackHandler,
   createGetPackStateHandler,
   createListPacksHandler,
+  createPresenceSetIntensityHandler,
   createSceneActivateHandler,
   createSceneCameraSetHandler,
   createSceneLightingSetHandler,
@@ -343,6 +344,15 @@ describe("ui_state handlers", () => {
   });
 });
 
+/** テスト用のデフォルト presenceSnapshot。 */
+const defaultPresenceSnapshot = () => ({
+  level: "full" as const,
+  levelSince: 0,
+  previousLevel: null,
+  previousLevelSince: null,
+  source: "default" as const,
+});
+
 describe("createStateGetHandler", () => {
   it("aggregates config + camera + lighting + vrmLoaded + expressions", async () => {
     const handler = createStateGetHandler({
@@ -384,6 +394,7 @@ describe("createStateGetHandler", () => {
       getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -427,6 +438,7 @@ describe("createStateGetHandler", () => {
       getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -470,6 +482,7 @@ describe("createStateGetHandler", () => {
       getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -497,6 +510,7 @@ describe("createStateGetHandler", () => {
       getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
     expect(result.lighting.intensity).toBe(0);
@@ -529,6 +543,7 @@ describe("createStateGetHandler", () => {
       getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
     expect(result.ui.sidebar.width).toBe(350);
@@ -562,6 +577,7 @@ describe("createStateGetHandler", () => {
       getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
     expect(result.tweens.length).toBe(1);
@@ -590,6 +606,7 @@ describe("createStateGetHandler", () => {
         scene: "runtime-scene", // divergence: registry が config と違う
         ui: "runtime-ui",
       }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
     });
 
     const result = await handler({});
@@ -1466,5 +1483,21 @@ describe("scene.screenshot handler", () => {
     // finally block で復元されること
     expect(cam.position.copy).toHaveBeenCalledWith(savedPos);
     expect(cam.quaternion.copy).toHaveBeenCalledWith(savedQuat);
+  });
+});
+
+describe("createPresenceSetIntensityHandler", () => {
+  it("valid level を受け付ける", async () => {
+    const apply = vi.fn();
+    const handler = createPresenceSetIntensityHandler({ applyPresenceLevel: apply });
+    const result = await handler({ level: "aura-only" });
+    expect(result.level).toBe("aura-only");
+    expect(apply).toHaveBeenCalledWith("aura-only", "mcp");
+  });
+
+  it("invalid level で throw する", async () => {
+    const apply = vi.fn();
+    const handler = createPresenceSetIntensityHandler({ applyPresenceLevel: apply });
+    await expect(handler({ level: "invalid" })).rejects.toThrow("invalid presence level");
   });
 });

@@ -612,7 +612,13 @@ function App() {
           createSceneCameraModulationHandler,
           // Screenshot:
           createSceneScreenshotHandler,
+          // Presence intensity:
+          createPresenceSetIntensityHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
+        const { applyPresenceLevel, getPresenceSnapshot } = await import(
+          "./runtime/presence-intensity"
+        );
+        type PresenceIntensityDeps = import("./runtime/presence-intensity").PresenceIntensityDeps;
         const { writeCharminalConfigText, readLastStartupReport } = await import(
           "./runtime/user-pack-loader/charminal-io"
         );
@@ -738,6 +744,7 @@ function App() {
               scene: scenePackRegistry.getActiveSceneId(),
               ui: uiPackRegistry.getActiveUiId(),
             }),
+            getPresenceSnapshot,
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
@@ -851,6 +858,38 @@ function App() {
             getScene: () => getThreeRuntime().getScene(),
             getRenderer: () => getThreeRuntime().getRenderer(),
             claimCamera: () => claimState.claim("camera"),
+          }),
+          // ── Presence intensity ────────────────────────────
+          "presence.set-intensity": createPresenceSetIntensityHandler({
+            applyPresenceLevel: (level, source) => {
+              const presenceDeps: PresenceIntensityDeps = {
+                setSidebarWidth: (px) => {
+                  document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+                  const el = document.querySelector<HTMLElement>(".sidebar");
+                  if (el) el.style.display = px <= 0 ? "none" : "";
+                },
+                getSidebarWidth: () => {
+                  const raw = getComputedStyle(document.documentElement)
+                    .getPropertyValue("--sidebar-width")
+                    .trim();
+                  return Number.parseFloat(raw) || 280;
+                },
+                getDefaultSidebarWidth: () => {
+                  const raw = getComputedStyle(document.documentElement)
+                    .getPropertyValue("--sidebar-width")
+                    .trim();
+                  return Number.parseFloat(raw) || 280;
+                },
+                tweenManager: getThreeRuntime().getTweenManager(),
+                ambientUiRegistry: getAmbientUiPackRegistry(),
+                setCharacterVisible: (visible) => {
+                  const el = document.querySelector<HTMLElement>(".charactor-container");
+                  if (el) el.style.display = visible ? "" : "none";
+                },
+                now: () => Date.now(),
+              };
+              applyPresenceLevel(level, source, presenceDeps);
+            },
           }),
         };
 

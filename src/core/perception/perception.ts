@@ -39,6 +39,14 @@ export interface PerceptionDeps {
    * See docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
    */
   readonly devLog?: SubsystemLog;
+  /** Presence idle fallback の閾値（ms）。Default 30 分。 */
+  readonly presenceIdleThresholdMs?: number;
+  /** user-prompt-submit 検知時に呼ばれる。Presence を full に復帰する。 */
+  readonly onPresenceRestore?: () => void;
+  /** Presence idle fallback 発火時に呼ばれる。Aura-Only に遷移する。 */
+  readonly onPresenceIdle?: () => void;
+  /** 現在の presence source を返す。"mcp" なら idle fallback を抑制。 */
+  readonly getPresenceSource?: () => string;
 }
 
 /**
@@ -90,7 +98,13 @@ export class Perception {
   private readonly time: Time;
   private readonly idleThresholdMs: number;
   private readonly devLog?: SubsystemLog;
+  private readonly presenceIdleThresholdMs: number;
+  private readonly onPresenceRestore?: () => void;
+  private readonly onPresenceIdle?: () => void;
+  private readonly getPresenceSource?: () => string;
   private lastActivityAt: number;
+  private lastUserPromptAt: number;
+  private presenceIdleFired = false;
   private idleTimer: Cancellable | null = null;
   private disposed = false;
 
@@ -99,7 +113,12 @@ export class Perception {
     this.time = deps.time;
     this.idleThresholdMs = deps.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
     this.devLog = deps.devLog;
+    this.presenceIdleThresholdMs = deps.presenceIdleThresholdMs ?? 30 * 60 * 1000;
+    this.onPresenceRestore = deps.onPresenceRestore;
+    this.onPresenceIdle = deps.onPresenceIdle;
+    this.getPresenceSource = deps.getPresenceSource;
     this.lastActivityAt = this.time.now();
+    this.lastUserPromptAt = this.time.now();
 
     const interval = deps.idleCheckIntervalMs ?? DEFAULT_IDLE_CHECK_INTERVAL_MS;
     this.idleTimer = this.time.every(interval, () => {
@@ -156,6 +175,13 @@ export class Perception {
     };
     this.bus.dispatch(event);
 
+    // Presence restore: user が prompt を送信したら full に復帰
+    if (signalName === "user-prompt-submit") {
+      this.lastUserPromptAt = this.time.now();
+      this.presenceIdleFired = false;
+      this.onPresenceRestore?.();
+    }
+
     // Emit ToolActivityEvent for pre-tool-use
     if (eventName === "pre-tool-use" && typeof parsed.tool_name === "string") {
       const activity = inferToolActivity(parsed.tool_name);
@@ -209,6 +235,15 @@ export class Perception {
         timestamp: now,
       };
       this.bus.dispatch(event);
+    }
+
+    // Presence idle fallback
+    if (!this.presenceIdleFired && this.onPresenceIdle && this.getPresenceSource) {
+      const promptElapsed = now - this.lastUserPromptAt;
+      if (promptElapsed >= this.presenceIdleThresholdMs && this.getPresenceSource() !== "mcp") {
+        this.presenceIdleFired = true;
+        this.onPresenceIdle();
+      }
     }
   }
 }
