@@ -35,6 +35,25 @@ const postToolFailure = (toolName: string): HookSignalEvent => ({
   timestamp: 0,
 });
 
+/** tool_name と stdout/stderr を持つ PostToolUse success payload を生成する */
+const postToolUseSuccess = (
+  toolName: string,
+  toolResponse: { stdout?: string; stderr?: string },
+): HookSignalEvent => ({
+  kind: "hook-signal",
+  signal: {
+    name: "post-tool-use",
+    payload: {
+      session_id: "test-session",
+      hook_event_name: "PostToolUse",
+      tool_name: toolName,
+      tool_input: {},
+      tool_response: toolResponse,
+    },
+  },
+  timestamp: 0,
+});
+
 describe("clai persona triggers", () => {
   const triggers = persona.reflex.customTriggers ?? [];
 
@@ -112,28 +131,36 @@ describe("clai persona triggers", () => {
 
     it("matches branch update pattern (abc123..def456 main -> main)", () => {
       if (!trigger) throw new Error("trigger not registered");
-      const match = trigger.match(ptyOutput("   abc1234..def5678  main -> main\n"));
+      const match = trigger.match(
+        postToolUseSuccess("Bash", { stdout: "   abc1234..def5678  main -> main\n" }),
+      );
       expect(match).not.toBeNull();
       expect(match?.reaction).toBe("celebrate");
     });
 
     it("matches force push pattern (abc123...def456 main -> main)", () => {
       if (!trigger) throw new Error("trigger not registered");
-      const match = trigger.match(ptyOutput("   abc1234...def5678  main -> main\n"));
+      const match = trigger.match(
+        postToolUseSuccess("Bash", { stdout: "   abc1234...def5678  main -> main\n" }),
+      );
       expect(match).not.toBeNull();
       expect(match?.reaction).toBe("celebrate");
     });
 
     it("matches [new branch] pattern", () => {
       if (!trigger) throw new Error("trigger not registered");
-      const match = trigger.match(ptyOutput(" * [new branch]      feat/foo -> feat/foo\n"));
+      const match = trigger.match(
+        postToolUseSuccess("Bash", { stderr: " * [new branch]      feat/foo -> feat/foo\n" }),
+      );
       expect(match).not.toBeNull();
       expect(match?.reaction).toBe("celebrate");
     });
 
     it("matches [new tag] pattern", () => {
       if (!trigger) throw new Error("trigger not registered");
-      const match = trigger.match(ptyOutput(" * [new tag]         v1.0.0 -> v1.0.0\n"));
+      const match = trigger.match(
+        postToolUseSuccess("Bash", { stderr: " * [new tag]         v1.0.0 -> v1.0.0\n" }),
+      );
       expect(match).not.toBeNull();
       expect(match?.reaction).toBe("celebrate");
     });

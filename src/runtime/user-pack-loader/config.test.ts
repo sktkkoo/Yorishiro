@@ -41,6 +41,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -55,6 +56,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -69,6 +71,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -83,6 +86,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -97,6 +101,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -111,6 +116,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -130,6 +136,7 @@ describe("parseConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "claude",
       ambientAudioMuted: false,
+      ambientAudioVolume: 1,
     });
   });
 
@@ -208,6 +215,7 @@ describe("serializeConfig", () => {
       activeAmbientUi: ["attention-aura"],
       terminalAgent: "codex",
       ambientAudioMuted: true,
+      ambientAudioVolume: 1,
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
