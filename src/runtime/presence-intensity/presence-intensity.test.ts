@@ -23,6 +23,7 @@ function createMockDeps(overrides?: Partial<PresenceIntensityDeps>): PresenceInt
       enable: vi.fn(),
       disable: vi.fn(),
     } as unknown as AmbientUiPackRegistry,
+    setRenderPaused: vi.fn(),
     now: vi.fn(() => 1000),
     ...overrides,
   };
@@ -118,6 +119,66 @@ describe("PresenceIntensity", () => {
     applyPresenceLevel("closed", "mcp", deps);
 
     expect(deps.ambientUiRegistry.disable).toHaveBeenCalledWith("attention-aura");
+  });
+
+  // -----------------------------------------------------------------------
+  // Render loop pause / resume
+  // -----------------------------------------------------------------------
+
+  it("full → closed: tween 完了後に render を pause する", async () => {
+    const deps = createMockDeps();
+    applyPresenceLevel("closed", "mcp", deps);
+
+    // pause は tween 完了 (completion.then) の microtask で呼ばれる
+    await Promise.resolve();
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(true);
+  });
+
+  it("full → aura-only: tween 完了後に render を pause する", async () => {
+    const deps = createMockDeps();
+    applyPresenceLevel("aura-only", "mcp", deps);
+
+    await Promise.resolve();
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(true);
+  });
+
+  it("closed → full: 即時に render を resume する（tween 開始前）", () => {
+    const deps = createMockDeps();
+    applyPresenceLevel("closed", "mcp", deps);
+    vi.mocked(deps.setRenderPaused).mockClear();
+
+    applyPresenceLevel("full", "default", deps);
+
+    // tween より先に resume が呼ばれる
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(false);
+    const calls = vi.mocked(deps.setRenderPaused).mock.calls;
+    expect(calls[0]?.[0]).toBe(false);
+  });
+
+  it("closed → full の高速 toggle: completion 後に full なら pause しない", async () => {
+    const deps = createMockDeps();
+
+    // completion を手動制御するため manual promise を返すようにする
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((r) => {
+      resolveCompletion = r;
+    });
+    vi.mocked(deps.tweenManager.start).mockReturnValueOnce({
+      cancel: vi.fn(),
+      completion,
+    });
+
+    applyPresenceLevel("closed", "mcp", deps);
+    // tween 完了前に full に戻す
+    applyPresenceLevel("full", "default", deps);
+    // completion を resolve
+    resolveCompletion();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // setRenderPaused(true) は呼ばれていないはず（full に戻っているため）
+    const trueCalls = vi.mocked(deps.setRenderPaused).mock.calls.filter((c) => c[0] === true);
+    expect(trueCalls).toHaveLength(0);
   });
 
   // -----------------------------------------------------------------------

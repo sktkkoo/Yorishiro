@@ -60,6 +60,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private lastRendererW = 0;
   private lastRendererH = 0;
   private cameraTrackingEnabled = true;
+  private renderPaused = false;
 
   constructor() {
     this.claimState = getClaimState();
@@ -262,6 +263,19 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   /**
+   * Render loop の pause / resume。
+   * paused のとき RAF は継続するが、tweenManager.tick / body.update / renderer.render を skip する。
+   * sidebar が display:none の間（presence aura-only / closed）に CPU/GPU を休ませる用途。
+   */
+  setRenderPaused(paused: boolean): void {
+    this.renderPaused = paused;
+  }
+
+  isRenderPaused(): boolean {
+    return this.renderPaused;
+  }
+
+  /**
    * R3F-component scene pack が独自 lighting を持つ場合に ThreeRuntime の
    * built-in lights を disable / enable する. R3fRuntimeRoot が active scene
    * の component 有無に連動して呼ぶ.
@@ -290,6 +304,13 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private startRenderLoop(): void {
     const tick = () => {
       requestAnimationFrame(tick);
+
+      // paused 時は早期 return。clock.getDelta() だけは呼んで oldTime を進めることで
+      // resume 直後の最初の tick で大きな delta jump が起きるのを防ぐ。
+      if (this.renderPaused) {
+        this.clock.getDelta();
+        return;
+      }
 
       const now = performance.now();
       const delta = this.clock.getDelta();

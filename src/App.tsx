@@ -882,6 +882,7 @@ function App() {
                 },
                 tweenManager: getThreeRuntime().getTweenManager(),
                 ambientUiRegistry: getAmbientUiPackRegistry(),
+                setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
                 now: () => Date.now(),
               };
               applyPresenceLevel(level, source, presenceDeps);

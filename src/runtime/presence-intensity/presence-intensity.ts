@@ -47,6 +47,8 @@ export interface PresenceIntensityDeps {
   readonly getDefaultSidebarWidth: () => number;
   readonly tweenManager: TweenManager;
   readonly ambientUiRegistry: AmbientUiPackRegistry;
+  /** ThreeRuntime の render loop pause 制御。aura-only / closed のとき CPU/GPU を休ませる。 */
+  readonly setRenderPaused: (paused: boolean) => void;
   readonly now: () => number;
 }
 
@@ -116,6 +118,13 @@ export function applyPresenceLevel(
 
   // --- Side effects ---
 
+  // Render loop は full に戻る前に必ず resume しておく。
+  // sidebar tween は ThreeRuntime の RAF から駆動されるため、paused のままでは
+  // open アニメーションが動かない。
+  if (level === "full") {
+    deps.setRenderPaused(false);
+  }
+
   // Sidebar tween
   const sidebarTarget = level === "full" ? deps.getDefaultSidebarWidth() : 0;
   const handle = deps.tweenManager.start(
@@ -128,6 +137,16 @@ export function applyPresenceLevel(
 
   // VRM visibility は sidebar の display:none に追従するため、ここでは触らない。
   // .sidebar 自体が px<=0 で display:none になれば、子の VRM canvas も paint されない。
+
+  // aura-only / closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
+  // 完了直前に full に戻されている可能性があるので、適用時に level を再確認する。
+  if (level !== "full") {
+    handle.completion.then(() => {
+      if (getState().level !== "full") {
+        deps.setRenderPaused(true);
+      }
+    });
+  }
 
   // Aura
   if (level === "full" || level === "aura-only") {
