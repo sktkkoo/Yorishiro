@@ -13,6 +13,7 @@ export {
   listBundledProfiles,
   resolveProfile,
 } from "./profiles";
+export { getSessionRegistry, SessionRegistry } from "./session-registry";
 export type {
   SessionActivity,
   SessionDescriptor,
