@@ -4,7 +4,7 @@
 
 Charminal の Terminal は shell（zsh / bash / fish / pwsh）と coding agent（Claude Code / Codex）を session として走らせる。Pane を分割して複数 session を並べ、住人がそれら全体を観察できるようにすることを目指している。
 
-> **現状（v0.0.1）**: §Session profile の **shell / claude / codex bundled profile** と `defaultProfile` 設定は実装済み（Phase B sub-1）。`~/.charminal/config.json` で `defaultProfile: "shell"` を指定すると `$SHELL` が起動する。§Shell integration（OSC 133 / wrapper rc / `user.zsh` chain）と §カスタマイズ の `~/.charminal/shell/` 周辺は **forward-looking reference** で、Phase B sub-2 で landing する。Pane split は §C で別途。
+> **現状（v0.0.1）**: §Session profile（shell / claude / codex bundled profile + `defaultProfile`）と §Shell integration（OSC 133 wrapper rc 注入 + `user.<shell>` chain + `init.<shell>` の OSC 133 emit）は実装済み（Phase B sub-1 / sub-2）。住人は OSC 133 経由で command 単位の status（command 開始 / 終了 / exit code）を読める。`integration: false` profile での raw 起動も対応。**Pane split は Phase C で別途**。pwsh integration は sub-2 では out of scope。
 
 ---
 

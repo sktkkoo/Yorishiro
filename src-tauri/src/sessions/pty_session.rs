@@ -18,6 +18,10 @@ use crate::pty::{
     AgentKind, PtyExit, HOOK_SERVER_PORT,
 };
 
+use super::osc133::{Osc133Parser, OscEvent};
+use super::registry::SessionRegistry;
+use super::types::{SessionActivity, SessionId};
+
 // ─── SpawnSpec ──────────────────────────────────────────────────
 
 /// PTY spawn の意図を表す enum。Agent (claude / codex) と Shell の 2 variant。
@@ -47,7 +51,16 @@ pub enum SpawnSpec {
         /// それも無ければ `/bin/sh` に fall back。
         #[serde(default)]
         command: Option<String>,
+        /// Charminal 側 instrumentation（OSC 133 wrapper rc）の有無。
+        /// true で zsh: ZDOTDIR / bash: --rcfile / fish: -C 経由で wrapper を被せる。
+        /// false なら raw spawn（住人は cell 観察のみ、command 単位の status は読めない）。
+        #[serde(default = "default_true")]
+        integration: bool,
     },
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>) -> String {
@@ -153,6 +166,9 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 ///
 /// 寿命: kill() / Drop で資源解放。registry の slot に居る間は alive。
 pub struct PtySession {
+    /// Reader thread が registry に activity を反映するときに使う。
+    session_id: SessionId,
+    registry: Arc<SessionRegistry>,
     writer: Mutex<Option<Box<dyn Write + Send>>>,
     master: Mutex<Option<Box<dyn portable_pty::MasterPty + Send>>>,
     /// Arc 化することで reader thread が exit code 取得時に独立して lock できる。
@@ -165,8 +181,10 @@ pub struct PtySession {
 }
 
 impl PtySession {
-    pub fn new() -> Self {
+    pub fn new(session_id: SessionId, registry: Arc<SessionRegistry>) -> Self {
         Self {
+            session_id,
+            registry,
             writer: Mutex::new(None),
             master: Mutex::new(None),
             child: Arc::new(Mutex::new(None)),
@@ -206,7 +224,7 @@ impl PtySession {
             SpawnSpec::Agent { agent, command, .. } => {
                 resolve_agent_binary(*agent, command.as_deref())
             }
-            SpawnSpec::Shell { command } => resolve_shell_command(command.as_deref()),
+            SpawnSpec::Shell { command, .. } => resolve_shell_command(command.as_deref()),
         };
 
         let mut cmd = CommandBuilder::new(&binary);
@@ -282,9 +300,17 @@ impl PtySession {
                     }
                 }
             },
-            SpawnSpec::Shell { .. } => {
-                // Phase B-1: plain shell, no extra args. Phase B-2 で
-                // wrapper rc 注入 (ZDOTDIR / --rcfile / etc.) を追加する。
+            SpawnSpec::Shell { integration, .. } => {
+                if *integration {
+                    // ~/.charminal/shell/ に書き出された wrapper rc / init script
+                    // を経由するように env / args を組み立てる。binary が known shell
+                    // でないときは何もしない（apply_integration が detect して skip）。
+                    let charminal_home = std::env::var_os("HOME")
+                        .map(|h| std::path::PathBuf::from(h).join(".charminal"));
+                    if let Some(home) = charminal_home {
+                        super::shell_wrapper::apply_integration(&mut cmd, &binary, &home);
+                    }
+                }
             }
         }
 
@@ -323,14 +349,18 @@ impl PtySession {
         lock_or_recover(&self.ring_buffer).clear();
 
         // Spawn reader thread。child Arc を別途渡すので registry を経由せずに
-        // exit code を取れる。
+        // exit code を取れる。各 chunk を OSC 133 parser に通して、command
+        // start / end の event で SessionRegistry の activity を更新する。
         let app_handle = app.clone();
         let channel_arc = Arc::clone(&self.output_channel);
         let ring_arc = Arc::clone(&self.ring_buffer);
         let child_arc = Arc::clone(&self.child);
+        let registry_for_thread = Arc::clone(&self.registry);
+        let session_id_for_thread = self.session_id.clone();
         std::thread::spawn(move || {
             let mut reader = reader;
             let mut buf = [0u8; 8192];
+            let mut parser = Osc133Parser::new();
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) | Err(_) => break,
@@ -338,6 +368,29 @@ impl PtySession {
                         let chunk = &buf[..n];
                         // Write to ring buffer (always, even if channel is None)
                         lock_or_recover(&ring_arc).write(chunk);
+                        // Feed OSC 133 parser → activity 更新。Phase B-2 では
+                        // CommandStart/End のみ activity 反映。PromptStart/End は
+                        // 検出するが state 更新は Phase C でより細かい AwaitingInput
+                        // を実装するときに使う。
+                        for event in parser.feed_chunk(chunk) {
+                            match event {
+                                OscEvent::CommandStart => {
+                                    registry_for_thread.set_activity(
+                                        &session_id_for_thread,
+                                        SessionActivity::RunningCommand,
+                                    );
+                                }
+                                OscEvent::CommandEnd { .. } => {
+                                    registry_for_thread.set_activity(
+                                        &session_id_for_thread,
+                                        SessionActivity::Idle,
+                                    );
+                                }
+                                OscEvent::PromptStart | OscEvent::PromptEnd => {
+                                    // Phase C で AwaitingInput を入れる時に使う。
+                                }
+                            }
+                        }
                         // Forward to WebView channel
                         let guard = lock_or_recover(&channel_arc);
                         if let Some(ch) = guard.as_ref() {
@@ -434,12 +487,6 @@ impl PtySession {
             let _ = std::fs::remove_file(path);
         }
         Ok(())
-    }
-}
-
-impl Default for PtySession {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

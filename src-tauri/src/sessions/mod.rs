@@ -5,12 +5,15 @@
 //!
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
+pub mod osc133;
 pub mod pty_session;
 pub mod registry;
+pub mod shell_wrapper;
 pub mod types;
 
 pub use pty_session::{PtySession, SpawnSpec};
 pub use registry::SessionRegistry;
+pub use shell_wrapper::ensure_shell_files;
 pub use types::{SessionDescriptor, SessionKind, DEFAULT_SESSION_ID};
 
 // 以下は API surface に存在するが、このコミットでは外部から呼ばれていない。

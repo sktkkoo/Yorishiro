@@ -266,6 +266,11 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     std::fs::write(home.join("sdk.d.ts"), build_bundled_sdk_dts())
         .map_err(|e| format!("Failed to write ~/.charminal/sdk.d.ts: {}", e))?;
     seed_user_init_script_impl(&home)?;
+    // shell integration files (init.zsh / wrapper rc / etc) — idempotent。
+    // 失敗しても他の dir 作成は完了しているので fatal にはせず log のみ。
+    if let Err(e) = sessions::ensure_shell_files(&home) {
+        eprintln!("[ensure_charminal_dirs] shell integration files: {}", e);
+    }
     Ok(())
 }
 
