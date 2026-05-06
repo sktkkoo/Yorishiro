@@ -11,7 +11,7 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
-import { Leva, LevaPanel } from "leva";
+import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -86,6 +86,7 @@ import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-r
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
 import { useRuntimeLevaStore } from "./runtime/three-runtime/runtime-leva-store";
+import { useActiveSceneLevaStore } from "./runtime/three-runtime/scene-pack-leva-store";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
@@ -313,6 +314,7 @@ function App() {
     localStorage.getItem(VRM_STORAGE_KEY),
   );
   const runtimeLevaStore = useRuntimeLevaStore();
+  const activeSceneLevaStore = useActiveSceneLevaStore();
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
 
@@ -2145,12 +2147,16 @@ function App() {
 
   return (
     <div className="app">
-      <Leva
-        hidden={levaHidden}
-        collapsed={false}
-        flat
-        titleBar={{ title: "Scene", drag: true, filter: true, position: { x: 300, y: 0 } }}
-      />
+      {activeSceneLevaStore ? (
+        <LevaPanel
+          key={activeSceneLevaStore.storeId}
+          store={activeSceneLevaStore}
+          hidden={levaHidden}
+          collapsed={false}
+          flat
+          titleBar={{ title: "Scene", drag: true, filter: true, position: { x: 300, y: 0 } }}
+        />
+      ) : null}
       {runtimeLevaStore ? (
         <LevaPanel
           store={runtimeLevaStore}

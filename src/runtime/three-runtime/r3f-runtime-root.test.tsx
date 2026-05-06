@@ -97,6 +97,7 @@ vi.mock("../three-runtime", () => ({
 
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
+import { getActiveSceneLevaStore } from "./scene-pack-leva-store";
 
 function getMockRegistry(): SceneRegistryHarness {
   return getSceneRegistry() as SceneRegistryHarness;
@@ -217,7 +218,7 @@ describe("R3fRuntimeRoot", () => {
     expect(secondRender).not.toHaveBeenCalled();
   });
 
-  it("clears scene pack leva controls on scene switch", () => {
+  it("mounts scene pack leva controls into the active scene store", () => {
     const registry = getMockRegistry();
     const SceneWithLights = () => {
       useControls("lights", () => ({
@@ -231,11 +232,42 @@ describe("R3fRuntimeRoot", () => {
     act(() => {
       registry.__setActive(makeEntry("with-lights", SceneWithLights));
     });
-    expect(levaStore.get("lights.directionalColor")).toBe("#ff8800");
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("lights.directionalColor")).toBe("#ff8800");
+    expect(levaStore.get("lights.directionalColor")).toBeUndefined();
 
     act(() => {
       registry.__setActive(makeEntry("without-component"));
     });
-    expect(levaStore.get("lights.directionalColor")).toBeUndefined();
+    expect(getActiveSceneLevaStore()).toBeNull();
+    expect(sceneStore?.get("lights.directionalColor")).toBeUndefined();
+  });
+
+  it("does not reuse shared leva paths across scene packs", () => {
+    const registry = getMockRegistry();
+    const FirstScene = () => {
+      useControls("lights", () => ({
+        ambientIntensity: { value: 0.05, label: "ambient" },
+      }));
+      return null;
+    };
+    const SecondScene = () => {
+      useControls("lights", () => ({
+        ambientIntensity: { value: 0.4, label: "ambient" },
+      }));
+      return null;
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("first", FirstScene));
+    });
+    expect(getActiveSceneLevaStore()?.get("lights.ambientIntensity")).toBe(0.05);
+
+    act(() => {
+      registry.__setActive(makeEntry("second", SecondScene));
+    });
+    expect(getActiveSceneLevaStore()?.get("lights.ambientIntensity")).toBe(0.4);
   });
 });

@@ -138,8 +138,8 @@ function SceneLayerControlsInner({ store }: SceneLayerControlsProps) {
         }),
       }),
     }),
-    [backgroundName, foregroundName],
     { store },
+    [backgroundName, foregroundName],
   );
 
   return null;

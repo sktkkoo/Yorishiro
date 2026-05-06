@@ -32,8 +32,8 @@ export function CameraControls({ store }: CameraControlsProps) {
         fov: { value: camera.fov, min: 20, max: 120, step: 1, label: "FOV" },
       }),
     }),
-    [],
     { store },
+    [],
   );
 
   useFrame(() => {
