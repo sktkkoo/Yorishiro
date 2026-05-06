@@ -247,4 +247,49 @@ describe("SessionTabManager", () => {
       expect(manager._getRespawnCountForTest()).toBe(0);
     });
   });
+
+  // ── ignoreNextMainExit ────────────────────────────────────────
+
+  describe("ignoreNextMainExit（旧 session kill の pty-exit 無視）", () => {
+    it("constructor 直後の最初の main exit は無視される", () => {
+      const fresh = new SessionTabManager(MAIN);
+      fresh.handleSessionExit(MAIN, 0);
+      // ignore されたので respawnCount は 0 のまま
+      expect(fresh._getRespawnCountForTest()).toBe(0);
+    });
+
+    it("ignore 後の 2 回目の main exit は正常に処理される", () => {
+      const fresh = new SessionTabManager(MAIN);
+      // 1 回目: ignore（旧 session kill）
+      fresh.handleSessionExit(MAIN, 0);
+      expect(fresh._getRespawnCountForTest()).toBe(0);
+      // 2 回目: 新 process が即死 → 正常に respawn logic が走る
+      fresh._setSpawnTimeForTest(Date.now());
+      fresh.handleSessionExit(MAIN, 1);
+      expect(fresh._getRespawnCountForTest()).toBe(1);
+    });
+
+    it("ignore は非 main session には適用されない", () => {
+      const fresh = new SessionTabManager(MAIN);
+      const shellId = fresh.openShell(null);
+      // 非 main の exit は ignore フラグに関係なく close される
+      fresh.handleSessionExit(shellId, 0);
+      expect(fresh.getState().sessions).not.toContain(shellId);
+    });
+
+    it("respawnMain 後も 1 回だけ ignore される", () => {
+      // ignore を消費
+      manager.handleSessionExit(MAIN, 0);
+      // 本物の exit → respawn 発火 → ignoreNextMainExit が再設定される
+      manager._setSpawnTimeForTest(Date.now() - 10_000);
+      manager.handleSessionExit(MAIN, 0);
+      // respawnMain が走ったので再び ignore が有効
+      // 旧 session kill 分の exit を無視
+      manager.handleSessionExit(MAIN, 0);
+      // ignore 消費後の exit は処理される
+      manager._setSpawnTimeForTest(Date.now());
+      manager.handleSessionExit(MAIN, 1);
+      expect(manager._getRespawnCountForTest()).toBe(1);
+    });
+  });
 });
