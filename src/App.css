@@ -346,3 +346,20 @@ body,
   margin-top: 2px;
   padding-top: 2px;
 }
+
+/* ── Tab indicator ─────────────────────────────────── */
+.tab-indicator {
+  display: flex;
+  gap: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  color: #eceff4;
+  opacity: 0.6;
+  user-select: none;
+  pointer-events: none;
+}
+
+.tab-indicator-item.active {
+  opacity: 1;
+}
