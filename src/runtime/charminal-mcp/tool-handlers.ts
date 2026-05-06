@@ -875,6 +875,18 @@ export function createBodyAnimationPlayHandler(deps: BodyAnimationPlayDeps) {
         speed: typeof r.speed === "number" ? r.speed : undefined,
       },
     });
+
+    // clip load 失敗は短時間で completion が "errored" で resolve される。
+    // 1 秒待って検出、正常時は timeout で抜ける。
+    const sentinel = Symbol();
+    const result = await Promise.race([
+      handle.completion,
+      new Promise<typeof sentinel>((resolve) => setTimeout(() => resolve(sentinel), 1000)),
+    ]);
+    if (result !== sentinel && result.reason === "errored") {
+      throw new Error(`animation load failed: ${r.animation}`);
+    }
+
     mcpMotionHandle = handle;
 
     return {

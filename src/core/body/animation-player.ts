@@ -131,13 +131,7 @@ export class AnimationPlayer {
   }> {
     const clip = await this.loadClip(ref);
     if (!clip) {
-      return {
-        id: 0,
-        completion: Promise.resolve(),
-        setWeight: () => {},
-        stop: () => Promise.resolve(),
-        cancel: () => {},
-      };
+      throw new Error(`animation not found: ${ref}`);
     }
 
     const action = this.mixer.clipAction(clip);

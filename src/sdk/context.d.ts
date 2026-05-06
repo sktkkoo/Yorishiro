@@ -418,7 +418,7 @@ export interface MotionRequest {
 }
 
 /** Handle の completion を区別するための reason。 */
-export type MotionCompletionReason = "completed" | "cancelled" | "preempted";
+export type MotionCompletionReason = "completed" | "cancelled" | "preempted" | "errored";
 
 /**
  * `acquireMotionSlot()` が返す handle。caller はこれで motion の release / cancel /
