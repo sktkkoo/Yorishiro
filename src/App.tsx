@@ -679,7 +679,7 @@ function App() {
           setSidebarWidth: (px) => {
             document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
             const el = document.querySelector<HTMLElement>(".sidebar");
-            if (el) el.style.display = px <= 0 ? "none" : "";
+            if (el) el.classList.toggle("presence-closed", px <= 0);
           },
           getSidebarWidth: () => {
             const raw = getComputedStyle(document.documentElement)
@@ -859,7 +859,7 @@ function App() {
             setSidebarWidth: (px) => {
               document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
               const el = document.querySelector<HTMLElement>(".sidebar");
-              if (el) el.style.display = px <= 0 ? "none" : "";
+              if (el) el.classList.toggle("presence-closed", px <= 0);
             },
             getSidebarWidth: () => {
               const raw = getComputedStyle(document.documentElement)
