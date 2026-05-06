@@ -314,100 +314,18 @@ describe("Perception", () => {
     });
   });
 
-  // ── Presence idle fallback ─────────────────────────────────
+  // ── Presence restore ─────────────────────────────────
 
-  describe("Presence idle fallback", () => {
-    it("user-prompt-submit 後に閾値超過で onPresenceIdle が呼ばれる", () => {
-      const onPresenceIdle = vi.fn();
-      const { perception } = createStack({
-        presenceIdleThresholdMs: 5000,
-        onPresenceIdle,
-        onPresenceRestore: vi.fn(),
-        getPresenceSource: () => "default",
-      });
-
-      // user-prompt-submit を送信して lastUserPromptAt をリセット
-      clockMs = 2000;
-      perception.onHookSignal('{"event":"prompt"}');
-
-      // 閾値（5000ms）を超える時刻に進める
-      clockMs = 8000;
-      vi.advanceTimersByTime(1000);
-
-      expect(onPresenceIdle).toHaveBeenCalledTimes(1);
-    });
-
-    it("source が mcp のときは idle fallback を抑制する", () => {
-      const onPresenceIdle = vi.fn();
-      createStack({
-        presenceIdleThresholdMs: 3000,
-        onPresenceIdle,
-        onPresenceRestore: vi.fn(),
-        getPresenceSource: () => "mcp",
-      });
-
-      // 閾値を大幅に超える
-      clockMs = 50_000;
-      vi.advanceTimersByTime(1000);
-
-      expect(onPresenceIdle).not.toHaveBeenCalled();
-    });
-
+  describe("Presence restore", () => {
     it("user-prompt-submit で onPresenceRestore が呼ばれる", () => {
       const onPresenceRestore = vi.fn();
       const { perception } = createStack({
-        presenceIdleThresholdMs: 5000,
         onPresenceRestore,
-        onPresenceIdle: vi.fn(),
-        getPresenceSource: () => "default",
       });
 
       perception.onHookSignal('{"event":"prompt"}');
 
       expect(onPresenceRestore).toHaveBeenCalledTimes(1);
-    });
-
-    it("idle fallback は一度だけ発火する", () => {
-      const onPresenceIdle = vi.fn();
-      createStack({
-        presenceIdleThresholdMs: 3000,
-        onPresenceIdle,
-        onPresenceRestore: vi.fn(),
-        getPresenceSource: () => "default",
-      });
-
-      // 閾値を超えて 2 回 check を走らせる
-      clockMs = 5000;
-      vi.advanceTimersByTime(1000);
-      clockMs = 6000;
-      vi.advanceTimersByTime(1000);
-
-      expect(onPresenceIdle).toHaveBeenCalledTimes(1);
-    });
-
-    it("user-prompt-submit 後に presenceIdleFired がリセットされる", () => {
-      const onPresenceIdle = vi.fn();
-      const { perception } = createStack({
-        presenceIdleThresholdMs: 3000,
-        onPresenceIdle,
-        onPresenceRestore: vi.fn(),
-        getPresenceSource: () => "default",
-      });
-
-      // 1 回目の idle fallback を発火
-      clockMs = 5000;
-      vi.advanceTimersByTime(1000);
-      expect(onPresenceIdle).toHaveBeenCalledTimes(1);
-
-      // user-prompt-submit でリセット
-      clockMs = 6000;
-      perception.onHookSignal('{"event":"prompt"}');
-
-      // 再度閾値を超えたら 2 回目が発火する
-      clockMs = 10_000;
-      vi.advanceTimersByTime(1000);
-
-      expect(onPresenceIdle).toHaveBeenCalledTimes(2);
     });
   });
 });

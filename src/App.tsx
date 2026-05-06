@@ -347,16 +347,12 @@ function App() {
     // 後でしか buildPresenceDeps が組めないため、ref で late-bind する。
     // bind 完了前に hook が発火しても no-op で安全側に倒れる。
     const presenceRestoreRef: { current: () => void } = { current: () => {} };
-    const presenceIdleRef: { current: () => void } = { current: () => {} };
-    const presenceSourceRef: { current: () => string } = { current: () => "default" };
 
     const perception = new Perception({
       bus,
       time,
       devLog: createSubsystemLog(devLog, "Perception"),
       onPresenceRestore: () => presenceRestoreRef.current(),
-      onPresenceIdle: () => presenceIdleRef.current(),
-      getPresenceSource: () => presenceSourceRef.current(),
     });
 
     // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
@@ -932,10 +928,6 @@ function App() {
         presenceRestoreRef.current = (): void => {
           onUserPromptSubmit(buildPresenceDeps());
         };
-        presenceIdleRef.current = (): void => {
-          applyPresenceLevel("aura-only", "idle-fallback", buildPresenceDeps());
-        };
-        presenceSourceRef.current = (): string => getPresenceSnapshot().source;
 
         await listen<{ requestId: string; tool: string; request: unknown }>(
           "mcp:tool-request",

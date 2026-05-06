@@ -9,7 +9,7 @@
  * MCP tool から呼ばれる applyPresenceLevel() と、user prompt 送信時に
  * 自動復帰する onUserPromptSubmit() の 2 つが主要な entry point。
  *
- * Philosophy: docs/philosophy/PRESENCE_INTENSITY.md
+ * Internal design-record: 2026-05-06-presence-intensity.md
  */
 
 import type { TweenManager } from "../../core/tween/tween-manager";
@@ -25,7 +25,7 @@ import { KEYS } from "../module-registry/keys";
 export type PresenceLevel = "full" | "aura-only" | "closed";
 
 /** レベル変更の起因。 */
-export type PresenceSource = "default" | "mcp" | "idle-fallback";
+export type PresenceSource = "default" | "mcp";
 
 /** 存在強度の内部 state。 */
 export interface PresenceState {
