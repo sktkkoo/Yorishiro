@@ -58,7 +58,7 @@ export interface ThreeRuntime {
   /**
    * Render loop の pause / resume。paused 時は RAF の中身を skip する
    * （tweenManager.tick / body.update / renderer.render はすべて休む）。
-   * presence intensity が aura-only / closed のとき CPU/GPU を休ませる用途。
+   * presence intensity が closed のとき CPU/GPU を休ませる用途。
    */
   setRenderPaused(paused: boolean): void;
   isRenderPaused(): boolean;

@@ -35,7 +35,7 @@ export const KEYS = {
   THREE_RUNTIME: "three:runtime",
   /** VrmCache singleton (Phase 2.5): URL → ArrayBuffer の LRU。 */
   VRM_CACHE: "vrm:cache",
-  /** PresenceIntensity singleton: 住人の存在強度（full / aura-only / closed）を管理する。 */
+  /** PresenceIntensity singleton: 住人の存在強度（default / closed）を管理する。 */
   PRESENCE_INTENSITY: "presence-intensity:state",
   /** SessionRegistry singleton: 全 session の descriptor / lifecycle / activity と event dispatch。 */
   SESSION_REGISTRY: "session:registry",

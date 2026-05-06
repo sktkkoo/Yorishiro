@@ -238,7 +238,7 @@ pub struct UiDebugPanelSetRequest {
 /// `presence_set_intensity` の引数。存在濃度の切り替え。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PresenceSetIntensityRequest {
-    /// 存在濃度レベル。"full" = 同じ部屋にいる、"aura-only" = 気配だけ残す、"closed" = 別室でドア閉。
+    /// 存在濃度レベル。"default" = 通常表示、"closed" = すべて非表示。
     pub level: String,
 }
 
@@ -564,9 +564,7 @@ impl Charminal {
     }
 
     /// 住人の存在濃度を切り替える。
-    #[tool(
-        description = "住人の存在濃度を切り替える。full = 同じ部屋にいる、aura-only = 気配だけ残す（隣の部屋でドア開）、closed = 別室でドア閉。"
-    )]
+    #[tool(description = "住人の存在濃度を切り替える。default = 通常表示、closed = すべて非表示。")]
     async fn presence_set_intensity(
         &self,
         Parameters(req): Parameters<PresenceSetIntensityRequest>,

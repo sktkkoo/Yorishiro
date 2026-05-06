@@ -1,15 +1,14 @@
 /**
  * Presence Intensity — 住人の存在強度を管理する state module。
  *
- * 住人は自身の visibility を 3 段階で制御できる:
- * - "full": sidebar + VRM + aura すべて表示
- * - "aura-only": sidebar と VRM を隠し、aura だけを残す
- * - "closed": すべて非表示（完全に閉じる）
+ * 住人は自身の visibility を 2 段階で制御できる:
+ * - "default": sidebar + VRM + aura すべて表示（通常状態）
+ * - "closed": sidebar / VRM / aura すべて非表示
  *
  * MCP tool から呼ばれる applyPresenceLevel() と、user prompt 送信時に
  * 自動復帰する onUserPromptSubmit() の 2 つが主要な entry point。
  *
- * Philosophy: docs/philosophy/PRESENCE_INTENSITY.md
+ * Internal design-record: 2026-05-06-presence-intensity.md
  */
 
 import type { TweenManager } from "../../core/tween/tween-manager";
@@ -22,10 +21,10 @@ import { KEYS } from "../module-registry/keys";
 // ---------------------------------------------------------------------------
 
 /** 住人の存在強度レベル。 */
-export type PresenceLevel = "full" | "aura-only" | "closed";
+export type PresenceLevel = "default" | "closed";
 
 /** レベル変更の起因。 */
-export type PresenceSource = "default" | "mcp" | "idle-fallback";
+export type PresenceSource = "default" | "mcp";
 
 /** 存在強度の内部 state。 */
 export interface PresenceState {
@@ -47,7 +46,7 @@ export interface PresenceIntensityDeps {
   readonly getDefaultSidebarWidth: () => number;
   readonly tweenManager: TweenManager;
   readonly ambientUiRegistry: AmbientUiPackRegistry;
-  /** ThreeRuntime の render loop pause 制御。aura-only / closed のとき CPU/GPU を休ませる。 */
+  /** ThreeRuntime の render loop pause 制御。closed のとき CPU/GPU を休ませる。 */
   readonly setRenderPaused: (paused: boolean) => void;
   readonly now: () => number;
 }
@@ -68,7 +67,7 @@ const AURA_PACK_ID = "attention-aura";
 
 function createInitialState(): PresenceState {
   return {
-    level: "full",
+    level: "default",
     levelSince: 0,
     previousLevel: null,
     previousLevelSince: null,
@@ -118,15 +117,15 @@ export function applyPresenceLevel(
 
   // --- Side effects ---
 
-  // Render loop は full に戻る前に必ず resume しておく。
+  // Render loop は default に戻る前に必ず resume しておく。
   // sidebar tween は ThreeRuntime の RAF から駆動されるため、paused のままでは
   // open アニメーションが動かない。
-  if (level === "full") {
+  if (level === "default") {
     deps.setRenderPaused(false);
   }
 
   // Sidebar tween
-  const sidebarTarget = level === "full" ? deps.getDefaultSidebarWidth() : 0;
+  const sidebarTarget = level === "default" ? deps.getDefaultSidebarWidth() : 0;
   const handle = deps.tweenManager.start(
     "presence.sidebar.width",
     sidebarTarget,
@@ -138,21 +137,20 @@ export function applyPresenceLevel(
   // VRM visibility は sidebar の display:none に追従するため、ここでは触らない。
   // .sidebar 自体が px<=0 で display:none になれば、子の VRM canvas も paint されない。
 
-  // aura-only / closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
-  // 完了直前に full に戻されている可能性があるので、適用時に level を再確認する。
-  if (level !== "full") {
+  // closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
+  // 完了直前に default に戻されている可能性があるので、適用時に level を再確認する。
+  if (level === "closed") {
     handle.completion.then(() => {
-      if (getState().level !== "full") {
+      if (getState().level !== "default") {
         deps.setRenderPaused(true);
       }
     });
   }
 
   // Aura
-  if (level === "full" || level === "aura-only") {
+  if (level === "default") {
     deps.ambientUiRegistry.enable(AURA_PACK_ID);
   } else {
-    // "closed"
     deps.ambientUiRegistry.disable(AURA_PACK_ID);
   }
 }
@@ -160,8 +158,8 @@ export function applyPresenceLevel(
 /**
  * user が prompt を送信したときに呼ばれる。
  *
- * 現在のレベルを previousLevel に保存し、"full" に復帰する。
- * 既に "full" の場合は source を "default" にリセットするだけで effect は不要。
+ * 現在のレベルを previousLevel に保存し、"default" に復帰する。
+ * 既に "default" の場合は source を "default" にリセットするだけで effect は不要。
  */
 export function onUserPromptSubmit(deps: PresenceIntensityDeps): void {
   const state = getState();
@@ -170,13 +168,13 @@ export function onUserPromptSubmit(deps: PresenceIntensityDeps): void {
   state.previousLevel = state.level;
   state.previousLevelSince = state.levelSince;
 
-  if (state.level === "full") {
-    // 既に full — source だけリセット
+  if (state.level === "default") {
+    // 既に default — source だけリセット
     state.source = "default";
     return;
   }
 
-  applyPresenceLevel("full", "default", deps);
+  applyPresenceLevel("default", "default", deps);
 }
 
 /**
