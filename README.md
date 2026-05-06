@@ -55,7 +55,7 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
 | **utility** | Background logic with no visual output |
 
-Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm` command, pack creation and modification is as simple as talking to the inhabitant. Packs support hot reload — just save the file and changes take effect immediately without restarting the app. Note that initialization files like `init.js` are only read at startup, so changes to those require an explicit Reload (Ctrl+R). If hot reload doesn't pick up a change, Ctrl+R will always apply it reliably.
+Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm` command, pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
 ### Configuration
 

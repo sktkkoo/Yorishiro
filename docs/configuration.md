@@ -53,6 +53,12 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 }
 ```
 
+## Pack の hot reload
+
+`~/.charminal/packs/` 以下の pack ファイルは hot reload に対応しており、保存するだけでアプリを再起動せずに反映される。
+
+ただし `init.js` など初期化時に一度だけ読まれるファイルは hot reload の対象外。変更後は Ctrl+R（Reload）で明示的に再読み込みする。hot reload がうまく効かない場合も Ctrl+R で確実に反映できる。
+
 ## Terminal Agent
 
 `terminalAgent` は Terminal に住む coding agent を選ぶ。
