@@ -79,7 +79,7 @@ Three characteristics define this mechanism.
 
 ### Reflex layer
 
-The inhabitant constantly observes terminal output. Errors, test results, command completions — persona pack triggers pick up text flowing through the PTY and react instantly with expressions and motions. These reactions bypass the LLM; the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
+The inhabitant constantly observes terminal output. Hooks and text flowing through the PTY are picked up by persona pack triggers, which react instantly with expressions and motions. These reactions bypass the LLM — the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
 
 ### Journal
 
