@@ -40,7 +40,7 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackCompo
       { collapsed: true },
     ),
   }));
-  useControlsBridge("camera", breathControls, setBreath);
+  useControlsBridge("abandoned-factory", breathControls, setBreath);
 
   return (
     <>

@@ -25,7 +25,7 @@ export function CameraRig(): null {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("camera", controls, setControls);
+  useControlsBridge("abandoned-factory", controls, setControls);
   const { fovBreathAmp } = controls;
 
   useFrame(({ camera, clock }) => {

@@ -33,7 +33,7 @@ export function Lights() {
     flickerAmount: { value: 0.15, min: 0, max: 1, step: 0.05, label: "flicker amt (0=stable)" },
     ambientIntensity: { value: 0.055, min: 0, max: 0.3, step: 0.005, label: "ambient" },
   }));
-  useControlsBridge("lights", controls, setControls);
+  useControlsBridge("abandoned-factory", controls, setControls);
 
   const flickerParams: FlickerParams = { flickerAmount: controls.flickerAmount };
 

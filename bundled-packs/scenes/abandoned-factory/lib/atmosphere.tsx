@@ -77,7 +77,7 @@ export function DustMotes() {
       moveAmp: { value: 1.49, min: 0, max: 2.0, step: 0.01, label: "drift amplitude" },
     }),
   }));
-  useControlsBridge("effects", controls, setControls);
+  useControlsBridge("abandoned-factory", controls, setControls);
 
   const points = useMemo(() => {
     const rng = createLcg(0xa11ce);
@@ -167,7 +167,7 @@ export function GodRays() {
       alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "alpha multiplier" },
     }),
   }));
-  useControlsBridge("effects", controls, setControls);
+  useControlsBridge("abandoned-factory", controls, setControls);
 
   const uniforms = useMemo(
     () => ({

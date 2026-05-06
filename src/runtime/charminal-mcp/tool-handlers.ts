@@ -185,6 +185,7 @@ function requestRecord(request: unknown): Record<string, unknown> {
 
 export interface GetPackStateDeps {
   readonly state: UiStateStore;
+  readonly getActiveSceneId: () => string | null;
 }
 
 export type GetPackStateResponse =
@@ -194,7 +195,7 @@ export type GetPackStateResponse =
 export function createGetPackStateHandler(deps: GetPackStateDeps) {
   return async (request: unknown): Promise<GetPackStateResponse> => {
     const record = requestRecord(request);
-    const packId = requirePackId(record);
+    const packId = resolvePackId(record, deps.getActiveSceneId);
     const key = record.key;
     if (key === undefined || key === null) {
       return { packId, state: deps.state.entries(packId) };
@@ -240,6 +241,17 @@ function requirePackId(record: Record<string, unknown>): string {
     throw new Error("packId is required (pack state is per-pack, not app-level)");
   }
   return requested;
+}
+
+function resolvePackId(
+  record: Record<string, unknown>,
+  getActiveSceneId: () => string | null,
+): string {
+  const requested = record.packId;
+  if (typeof requested === "string" && requested !== "") return requested;
+  const active = getActiveSceneId();
+  if (!active) throw new Error("packId を省略しましたが、active な scene pack がありません");
+  return active;
 }
 
 /* ──────────────────────────────────────────────────────────

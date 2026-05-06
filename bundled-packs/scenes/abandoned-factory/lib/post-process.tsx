@@ -59,7 +59,7 @@ export function AbandonedFactoryPostProcess() {
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
     }),
   }));
-  useControlsBridge("post effects", bloomControls, setBloom);
+  useControlsBridge("abandoned-factory", bloomControls, setBloom);
 
   const [caControls, setCa] = useControls("post effects", () => ({
     chromaticAberration: folder(
@@ -70,7 +70,7 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("post effects", caControls, setCa);
+  useControlsBridge("abandoned-factory", caControls, setCa);
 
   const [noiseControls, setNoise] = useControls("post effects", () => ({
     noise: folder(
@@ -80,7 +80,7 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("post effects", noiseControls, setNoise);
+  useControlsBridge("abandoned-factory", noiseControls, setNoise);
 
   const [scanlineControls, setScanline] = useControls("post effects", () => ({
     scanline: folder(
@@ -91,7 +91,7 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("post effects", scanlineControls, setScanline);
+  useControlsBridge("abandoned-factory", scanlineControls, setScanline);
 
   const [vignetteControls, setVignette] = useControls("post effects", () => ({
     vignette: folder({
@@ -99,7 +99,7 @@ export function AbandonedFactoryPostProcess() {
       vignetteDarkness: { value: 0.8, min: 0, max: 2, step: 0.01 },
     }),
   }));
-  useControlsBridge("post effects", vignetteControls, setVignette);
+  useControlsBridge("abandoned-factory", vignetteControls, setVignette);
 
   // --- glitch controls ---
   const [glitchControls, setGlitch] = useControls("post effects", () => ({
@@ -207,7 +207,7 @@ export function AbandonedFactoryPostProcess() {
       { collapsed: true },
     ),
   }));
-  useControlsBridge("post effects", glitchControls, setGlitch);
+  useControlsBridge("abandoned-factory", glitchControls, setGlitch);
 
   const { bloomIntensity, bloomThreshold, bloomSmoothing } = bloomControls;
   const { caOffsetX, caOffsetY } = caControls;

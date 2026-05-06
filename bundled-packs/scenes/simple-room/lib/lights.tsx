@@ -14,7 +14,7 @@ export function Lights() {
     ambientIntensity: { value: 0.4, min: 0, max: 1, step: 0.02, label: "ambient int." },
     ambientColor: { value: "#ffffff", label: "ambient color" },
   }));
-  useControlsBridge("lights", controls, setControls);
+  useControlsBridge("simple-room", controls, setControls);
 
   return (
     <>

@@ -819,6 +819,7 @@ function App() {
           }),
           "get-ui-state": createGetPackStateHandler({
             state: uiState,
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
           }),
           "set-ui-state": createSetPackStateHandler({
             state: uiState,

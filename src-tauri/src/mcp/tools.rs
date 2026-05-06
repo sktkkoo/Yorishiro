@@ -40,9 +40,9 @@ pub struct ListLoadErrorsRequest {}
 /// `get_ui_state` の引数。pack 内部 state の読み取り。key 省略時は full snapshot を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetUiStateRequest {
-    /// Pack id（必須）。pack 内部 state は pack ごとに分離されている。
+    /// Pack id。省略時は active scene pack の id を使う。
     #[serde(rename = "packId")]
-    pub pack_id: String,
+    pub pack_id: Option<String>,
     /// Optional state key. Omit to retrieve all keys.
     pub key: Option<String>,
 }
@@ -338,7 +338,7 @@ impl Charminal {
     /// get_ui_state: pack 内部 state の読み取り。app-level UI（sidebar 幅等）ではなく、
     /// 個別 pack が ctx.state で保持する key-value。
     #[tool(
-        description = "Read pack internal state by packId. Pass key to read one value, or omit key for all state. This is per-pack state (e.g. slider values), NOT app-level UI (use ui_sidebar_set etc. for that)."
+        description = "Read pack internal state by packId. Pass key to read one value, or omit key for all state. Omit packId to default to the active scene pack. This is per-pack state (e.g. slider values), NOT app-level UI (use ui_sidebar_set etc. for that)."
     )]
     async fn get_ui_state(
         &self,

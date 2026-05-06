@@ -15,7 +15,7 @@ export function Lights() {
     ambientIntensity: { value: 0.47, min: 0, max: 1, step: 0.02, label: "ambient int." },
     ambientColor: { value: "#bfdebe", label: "ambient color" },
   }));
-  useControlsBridge("lights", controls, setControls);
+  useControlsBridge("misty-grasslands", controls, setControls);
 
   return (
     <>
