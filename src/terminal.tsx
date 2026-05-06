@@ -3,6 +3,7 @@ import "@xterm/xterm/css/xterm.css";
 import type { SpawnSpec } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
 
 interface TerminalProps {
   readonly sessionId: string;
@@ -25,6 +26,7 @@ export default function Terminal({ sessionId, visible, spec, cwd, perception }: 
     const runtime = getTerminalRuntime(sessionId);
     if (visible) {
       runtime.attachTo(placeholder);
+      runtime.setTheme(getCurrentTerminalTheme());
       runtime.focus();
     } else {
       runtime.detachContainer();

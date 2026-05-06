@@ -67,18 +67,30 @@ export interface InitTerminalThemeResult {
   readonly dispose: () => void;
 }
 
+/** 現在適用中のターミナルテーマ。新タブ表示時に適用するために保持する。 */
+let currentTerminalTheme: Parameters<TerminalRuntime["setTheme"]>[0] = DEFAULT_TERMINAL_THEME;
+
 /**
- * 全 TerminalRuntime にテーマを適用する関数を返す getter。
- * session タブで runtime が動的に増えるため、適用時に毎回 getter で取得する。
+ * 現在のターミナルテーマを返す。Terminal コンポーネントが visible になった時に
+ * 呼んで setTheme に渡す用途。
+ */
+export function getCurrentTerminalTheme(): Parameters<TerminalRuntime["setTheme"]>[0] {
+  return currentTerminalTheme;
+}
+
+/**
+ * active な TerminalRuntime にテーマを適用し、ScenePackRegistry の active scene
+ * 変化を購読する。新タブには getCurrentTerminalTheme() で個別適用する。
  */
 export function initTerminalTheme(
   registry: ScenePackRegistry,
-  getAllRuntimes: () => ReadonlyArray<TerminalRuntime>,
+  getActiveRuntime: () => TerminalRuntime | null,
 ): InitTerminalThemeResult {
   const apply = (scene: SceneSpec | null): void => {
-    const theme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
-    for (const rt of getAllRuntimes()) {
-      rt.setTheme(theme);
+    currentTerminalTheme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
+    const active = getActiveRuntime();
+    if (active) {
+      active.setTheme(currentTerminalTheme);
     }
     applyUiTheme(scene?.ui);
   };
