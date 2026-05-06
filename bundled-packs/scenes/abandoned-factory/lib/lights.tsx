@@ -25,7 +25,7 @@ export function Lights() {
   const lanternRef = useRef<THREE.PointLight>(null);
   const crtRef = useRef<THREE.PointLight>(null);
 
-  const [controls, setControls] = useControls("abandoned-factory/lights", () => ({
+  const [controls, setControls] = useControls("lights", () => ({
     directionalIntensity: { value: 0.8, min: 0, max: 3, step: 0.05, label: "skylight int." },
     directionalColor: { value: `#${PALETTE.skylight.getHexString()}`, label: "skylight color" },
     lanternScale: { value: 0.6, min: 0, max: 3, step: 0.05, label: "lantern scale" },

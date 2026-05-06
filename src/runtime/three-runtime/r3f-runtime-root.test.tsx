@@ -8,6 +8,7 @@
  */
 
 import { act, cleanup, render } from "@testing-library/react";
+import { levaStore, useControls } from "leva";
 import type { ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ScenePackComponentProps } from "../../sdk/scene-pack";
@@ -125,6 +126,7 @@ function makeEntry(id: string, component?: ComponentType<ScenePackComponentProps
 afterEach(() => {
   cleanup();
   getMockRegistry().__reset();
+  levaStore.dispose();
   vi.clearAllMocks();
 });
 
@@ -213,5 +215,27 @@ describe("R3fRuntimeRoot", () => {
       registry.__setActive(makeEntry("no-component"));
     });
     expect(secondRender).not.toHaveBeenCalled();
+  });
+
+  it("clears scene pack leva controls on scene switch", () => {
+    const registry = getMockRegistry();
+    const SceneWithLights = () => {
+      useControls("lights", () => ({
+        directionalColor: { value: "#ff8800", label: "light color" },
+      }));
+      return null;
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("with-lights", SceneWithLights));
+    });
+    expect(levaStore.get("lights.directionalColor")).toBe("#ff8800");
+
+    act(() => {
+      registry.__setActive(makeEntry("without-component"));
+    });
+    expect(levaStore.get("lights.directionalColor")).toBeUndefined();
   });
 });

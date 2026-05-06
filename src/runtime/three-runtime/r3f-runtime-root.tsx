@@ -13,6 +13,7 @@
  */
 
 import { useFrame } from "@react-three/fiber";
+import { levaStore, useCreateStore } from "leva";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
 import { CameraControls, SceneLayerControls } from "../../core/debug-controls";
@@ -23,6 +24,7 @@ import { BUNDLED_ASSETS } from "../scene-pack-registry/asset-resolver";
 import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
 import type { ScenePackEntry } from "../scene-pack-registry/types";
 import { getThreeRuntime } from "../three-runtime";
+import { setRuntimeLevaStore } from "./runtime-leva-store";
 
 export interface R3fRuntimeRootProps {
   readonly children?: ReactNode;
@@ -30,6 +32,7 @@ export interface R3fRuntimeRootProps {
 
 export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
   const [activeEntry, setActiveEntry] = useState<ScenePackEntry | null>(null);
+  const runtimeLevaStore = useCreateStore();
 
   useEffect(() => {
     const registry = getSceneRegistry();
@@ -49,16 +52,24 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
     }
   }, []);
 
+  useEffect(() => {
+    setRuntimeLevaStore(runtimeLevaStore);
+    return () => {
+      setRuntimeLevaStore(null);
+      runtimeLevaStore.dispose();
+    };
+  }, [runtimeLevaStore]);
+
   const ActiveComponent = activeEntry?.component;
 
   return (
     <>
       {debugEnabled ? <R3fDebugCube /> : null}
       {ActiveComponent ? (
-        <ActivePackComponent Component={ActiveComponent} entry={activeEntry} />
+        <ActivePackComponent key={activeEntry.id} Component={ActiveComponent} entry={activeEntry} />
       ) : null}
-      <CameraControls />
-      <SceneLayerControls />
+      <CameraControls store={runtimeLevaStore} />
+      <SceneLayerControls store={runtimeLevaStore} />
       {children}
     </>
   );
@@ -108,6 +119,12 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
   useEffect(() => {
     return () => {
       getThreeRuntime().getCameraModulation().clearAll();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      levaStore.dispose();
     };
   }, []);
 

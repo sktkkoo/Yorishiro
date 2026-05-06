@@ -11,7 +11,7 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
-import { Leva } from "leva";
+import { Leva, LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -85,6 +85,7 @@ import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
+import { useRuntimeLevaStore } from "./runtime/three-runtime/runtime-leva-store";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
@@ -311,6 +312,7 @@ function App() {
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
+  const runtimeLevaStore = useRuntimeLevaStore();
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
 
@@ -1848,7 +1850,6 @@ function App() {
   // xtermContainer の下に隠れる。
   // ambientLayer を xtermContainer より後に body に append することで、
   // z-index 競合なしに xterm の上に重ねられる（v1 と同じ戦略）。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons + DOM are stable
   useEffect(() => {
     const ambientUiRegistry = getAmbientUiPackRegistry();
     const attention = getAttentionRuntime();
@@ -1908,7 +1909,6 @@ function App() {
   }, []);
 
   // terminal 非依存の attention producer（mouse / dev / focused-dom）。初回のみ起動。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
   useEffect(() => {
     const attention = getAttentionRuntime();
     const disposables: Disposable[] = [];
@@ -1992,13 +1992,11 @@ function App() {
     return () => {
       for (const d of disposables) d.dispose();
     };
-    // biome-ignore lint/correctness/useExhaustiveDependencies: runtime.bus.register は stable reference
   }, [tabState.activeSessionId, runtime.bus.register]);
 
   // mcp attention producer を起動する。
   // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。
   // dynamic import は非同期のため、他 producer の起動を妨げないよう独立した useEffect に分離。
-  // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
   useEffect(() => {
     const attention = getAttentionRuntime();
     let disposed = false;
@@ -2147,7 +2145,26 @@ function App() {
 
   return (
     <div className="app">
-      <Leva hidden={levaHidden} collapsed={false} flat />
+      <Leva
+        hidden={levaHidden}
+        collapsed={false}
+        flat
+        titleBar={{ title: "Scene", drag: true, filter: true, position: { x: 300, y: 0 } }}
+      />
+      {runtimeLevaStore ? (
+        <LevaPanel
+          store={runtimeLevaStore}
+          hidden={levaHidden}
+          collapsed={false}
+          flat
+          titleBar={{
+            title: "Runtime",
+            drag: true,
+            filter: true,
+            position: { x: 0, y: 0 },
+          }}
+        />
+      ) : null}
       <Sidebar
         folderName={folderName}
         onPickFolder={handlePickFolder}

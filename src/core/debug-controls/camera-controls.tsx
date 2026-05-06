@@ -10,8 +10,13 @@ import { useFrame } from "@react-three/fiber";
 import { folder, useControls } from "leva";
 import { useRef } from "react";
 import { getThreeRuntime } from "../../runtime/three-runtime";
+import type { RuntimeLevaStore } from "../../runtime/three-runtime/runtime-leva-store";
 
-export function CameraControls() {
+export interface CameraControlsProps {
+  readonly store?: RuntimeLevaStore;
+}
+
+export function CameraControls({ store }: CameraControlsProps) {
   const runtime = getThreeRuntime();
   const camera = runtime.getCamera();
   const prevTracking = useRef(runtime.getCameraTracking());
@@ -28,6 +33,7 @@ export function CameraControls() {
       }),
     }),
     [],
+    { store },
   );
 
   useFrame(() => {
