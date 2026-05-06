@@ -29,7 +29,15 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 - **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) already set up on your system**
 - Charminal never asks for API keys. Instead, it consumes your existing Claude Code tokens directly
 
-### Launch
+### Install (macOS)
+
+Download the `.dmg` from [Releases](https://github.com/sktkkoo/Charminal/releases) and drag `charminal.app` to `/Applications`. The app is unsigned, so remove the quarantine attribute before first launch:
+
+```bash
+xattr -cr /Applications/charminal.app
+```
+
+### Launch (from source)
 
 ```bash
 npm install

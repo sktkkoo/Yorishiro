@@ -29,7 +29,15 @@ Charminal はユーザーのローカル環境にインストールされた Cla
 - **事前に [Claude Code](https://docs.anthropic.com/en/docs/claude-code) の環境構築が必要です**
 - Charminal が API キーを要求することはありません。代わりに、ユーザー環境の Claude Code の token をそのまま消費します
 
-### 起動
+### インストール（macOS）
+
+[Releases](https://github.com/sktkkoo/Charminal/releases) から `.dmg` をダウンロードし、`charminal.app` を `/Applications` にドラッグしてください。署名されていないため、初回起動前に quarantine 属性を解除します：
+
+```bash
+xattr -cr /Applications/charminal.app
+```
+
+### 起動（ソースから）
 
 ```bash
 npm install
