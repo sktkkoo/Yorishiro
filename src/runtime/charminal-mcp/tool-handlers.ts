@@ -259,7 +259,7 @@ function clamp01(v: number): number {
 function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
   let found: THREE.DirectionalLight | null = null;
   scene.traverse((obj) => {
-    if (!found && (obj as THREE.DirectionalLight).isDirectionalLight) {
+    if (!found && obj.visible && (obj as THREE.DirectionalLight).isDirectionalLight) {
       found = obj as THREE.DirectionalLight;
     }
   });
@@ -298,7 +298,6 @@ export interface BodyLike {
 export interface StateGetDeps {
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly getCamera: () => THREE.PerspectiveCamera | null;
-  readonly getScene: () => THREE.Scene | null;
   readonly getVrm: () => unknown;
   readonly getBody: () => BodyLike | null;
   readonly tweenManager: TweenManager;
@@ -347,7 +346,6 @@ export interface StateGetResult {
       activeKeys: readonly string[];
     };
   };
-  readonly lighting: { intensity: number; color: string };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
   /**
@@ -401,8 +399,6 @@ export function createStateGetHandler(deps: StateGetDeps) {
   return async (_request: unknown): Promise<StateGetResult> => {
     const cfg = await deps.readConfig();
     const cam = deps.getCamera();
-    const scene = deps.getScene();
-    const light = scene ? findDirectionalLight(scene) : null;
     const body = deps.getBody();
     const expressions = body
       ? body.getExpressionSlots().map(
@@ -431,10 +427,6 @@ export function createStateGetHandler(deps: StateGetDeps) {
         fov: cam && "fov" in cam ? cam.fov : 0,
         tracking: deps.getCameraTracking(),
         modulation: deps.getCameraModulationState(),
-      },
-      lighting: {
-        intensity: light?.intensity ?? 0,
-        color: light ? `#${light.color.getHexString()}` : "#ffffff",
       },
       vrmLoaded: deps.getVrm() !== null,
       expressions,

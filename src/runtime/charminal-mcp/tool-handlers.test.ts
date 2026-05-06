@@ -354,7 +354,7 @@ const defaultPresenceSnapshot = () => ({
 });
 
 describe("createStateGetHandler", () => {
-  it("aggregates config + camera + lighting + vrmLoaded + expressions", async () => {
+  it("aggregates config + camera + vrmLoaded + expressions", async () => {
     const handler = createStateGetHandler({
       readConfig: vi.fn().mockResolvedValue({
         primaryPersona: "p1",
@@ -362,15 +362,6 @@ describe("createStateGetHandler", () => {
         terminalAgent: "claude" as const,
       }),
       getCamera: () => ({ position: { x: 1, y: 2, z: 3 }, fov: 45 }) as unknown as CameraLike,
-      getScene: () =>
-        ({
-          traverse: (cb: (obj: SceneObjectLike) => void) =>
-            cb({
-              isDirectionalLight: true,
-              intensity: 0.8,
-              color: { getHexString: () => "ffeecc" },
-            } as unknown as SceneObjectLike),
-        }) as unknown as SceneLike,
       getVrm: () => ({}),
       getBody: () =>
         ({
@@ -400,7 +391,6 @@ describe("createStateGetHandler", () => {
     expect(result).toMatchObject({
       config: { primaryPersona: "p1", activeScene: "s1", terminalAgent: "claude" },
       camera: { position: [1, 2, 3], fov: 45, tracking: true },
-      lighting: { intensity: 0.8, color: "#ffeecc" },
       vrmLoaded: true,
       expressions: [
         {
@@ -427,7 +417,6 @@ describe("createStateGetHandler", () => {
         terminalAgent: "claude" as const,
       }),
       getCamera: () => null,
-      getScene: () => null,
       getVrm: () => null,
       getBody: () => null,
       tweenManager: new TweenManager(),
@@ -442,7 +431,6 @@ describe("createStateGetHandler", () => {
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
-    expect(result.lighting.intensity).toBe(0);
     expect(result.vrmLoaded).toBe(false);
     expect(result.expressions).toEqual([]);
     // body 未生成時は motion も安全な default に落ちる
@@ -466,7 +454,6 @@ describe("createStateGetHandler", () => {
         terminalAgent: "claude" as const,
       }),
       getCamera: () => null,
-      getScene: () => null,
       getVrm: () => null,
       getBody: () =>
         ({
@@ -496,10 +483,6 @@ describe("createStateGetHandler", () => {
         terminalAgent: "claude" as const,
       }),
       getCamera: () => null,
-      getScene: () =>
-        ({
-          traverse: (_cb: (obj: SceneObjectLike) => void) => {},
-        }) as unknown as SceneLike,
       getVrm: () => null,
       getBody: () => null,
       tweenManager: new TweenManager(),
@@ -513,8 +496,6 @@ describe("createStateGetHandler", () => {
       getPresenceSnapshot: defaultPresenceSnapshot,
     });
     const result = await handler({});
-    expect(result.lighting.intensity).toBe(0);
-    expect(result.lighting.color).toBe("#ffffff");
     expect(result.expressions).toEqual([]);
   });
 
@@ -534,7 +515,6 @@ describe("createStateGetHandler", () => {
         defaultProfile: null,
       }),
       getCamera: () => null,
-      getScene: () => null,
       getVrm: () => null,
       getBody: () => null,
       tweenManager: new TweenManager(),
@@ -572,7 +552,6 @@ describe("createStateGetHandler", () => {
         defaultProfile: null,
       }),
       getCamera: () => null,
-      getScene: () => null,
       getVrm: () => null,
       getBody: () => null,
       tweenManager: tm,
@@ -598,7 +577,6 @@ describe("createStateGetHandler", () => {
         terminalAgent: "claude" as const,
       }),
       getCamera: () => null,
-      getScene: () => null,
       getVrm: () => null,
       getBody: () => null,
       tweenManager: new TweenManager(),
@@ -882,6 +860,7 @@ describe("createSceneCameraSetHandler", () => {
 describe("createSceneLightingSetHandler", () => {
   const mockLight = {
     isDirectionalLight: true,
+    visible: true,
     intensity: 0.5,
     color: { set: vi.fn(), getHexString: () => "ff8800" },
   };

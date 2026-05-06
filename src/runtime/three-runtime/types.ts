@@ -63,12 +63,6 @@ export interface ThreeRuntime {
   setRenderPaused(paused: boolean): void;
   isRenderPaused(): boolean;
 
-  /**
-   * R3F-component scene pack が独自 lighting を持つ場合に ThreeRuntime の
-   * built-in lights (AmbientLight + DirectionalLight) を disable / enable する.
-   */
-  setDefaultLightsEnabled(enabled: boolean): void;
-
   /** Scene pack が camera に continuous modulation を登録するための registry。 */
   getCameraModulation(): CameraModulationRegistry;
 

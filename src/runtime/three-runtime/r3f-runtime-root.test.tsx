@@ -77,7 +77,6 @@ vi.mock("../scene-pack-registry/asset-resolver", () => ({
 
 vi.mock("../three-runtime", () => ({
   getThreeRuntime: () => ({
-    setDefaultLightsEnabled: vi.fn(),
     setCameraTracking: vi.fn(),
     getCameraTracking: () => true,
     getCamera: () => ({

@@ -80,15 +80,6 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
     [entry.id, entry.origin],
   );
 
-  // R3F-component pack は独自 lighting を持つので ThreeRuntime の built-in
-  // lights を disable する. unmount 時に restore.
-  useEffect(() => {
-    getThreeRuntime().setDefaultLightsEnabled(false);
-    return () => {
-      getThreeRuntime().setDefaultLightsEnabled(true);
-    };
-  }, []);
-
   const camera = useMemo<ScenePackCameraAPI>(() => {
     const mod = getThreeRuntime().getCameraModulation();
     return {

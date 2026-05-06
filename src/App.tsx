@@ -827,7 +827,6 @@ function App() {
           "state.get": createStateGetHandler({
             readConfig,
             getCamera: () => getThreeRuntime().getCamera(),
-            getScene: () => getThreeRuntime().getScene(),
             getVrm: () => getThreeRuntime().getVrm(),
             getBody: () => getThreeRuntime().getBody(),
             tweenManager: getThreeRuntime().getTweenManager(),
