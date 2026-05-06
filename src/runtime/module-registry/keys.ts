@@ -39,6 +39,8 @@ export const KEYS = {
   PRESENCE_INTENSITY: "presence-intensity:state",
   /** SessionRegistry singleton: 全 session の descriptor / lifecycle / activity と event dispatch。 */
   SESSION_REGISTRY: "session:registry",
+  /** SessionTabManager singleton: session タブの状態管理 + auto-respawn。 */
+  SESSION_TAB_MANAGER: "session-tabs:manager",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];
