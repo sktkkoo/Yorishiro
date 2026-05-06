@@ -73,6 +73,10 @@ Bundled pack がデフォルトで動作します。ユーザーは `~/.charmina
 
 住人は `~/.charminal/journal/daily/` に日々の記録を書き残せます。印象に残った出来事の要約は `memories.md` に蓄積され、次回以降のセッションで思い出として参照されます。セッションをまたいだ長期記憶の仕組みです。
 
+### Session tabs
+
+メインの agent ターミナルとは別に、複数の shell セッションを開けます。`Cmd+T` で新しい shell タブを開き、`Ctrl+Tab` / `Ctrl+Shift+Tab` でタブを切り替え、`Cmd+W` で現在の shell タブを閉じます（メインの agent セッションは保護されており閉じられません）。セッションが 2 つ以上あるとき、画面下部に最小限のインジケーターが表示されます。agent プロセスが予期せず終了した場合、Charminal は exponential backoff 付きで自動的に再起動します。
+
 ### 自己言及的 MCP
 
 住人（ターミナル内の Claude Code）は MCP 経由で Charminal 自身を操作できます——表情を変え、シーンを切り替え、エフェクトを走らせ、UI を操作する。
