@@ -19,6 +19,7 @@ import type {
   TerminalCursorClientPosition,
   TerminalLineRect,
   TerminalRuntime,
+  UpdatePtyOptions,
 } from "./types";
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
@@ -200,12 +201,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }
   }
 
-  updatePtyParams(params: PtyParams): void {
+  updatePtyParams(params: PtyParams, options: UpdatePtyOptions = {}): void {
     if (this.paramsEqual(this.currentParams, params)) {
       return;
     }
     this.currentParams = params;
-    this.startPty(params, { attachFirst: true });
+    this.startPty(params, { attachFirst: options.attachFirst === true });
   }
 
   private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {

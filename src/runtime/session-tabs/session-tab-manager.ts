@@ -25,6 +25,7 @@ export interface SessionTabManagerDeps {
 export class SessionTabManager {
   private state: SessionTabState;
   private readonly sessionCwds = new Map<SessionId, string | null>();
+  private readonly restoredSessionIds = new Set<SessionId>();
   private listeners = new Set<SessionTabListener>();
   private counter = 0;
   private respawnCount = 0;
@@ -93,8 +94,10 @@ export class SessionTabManager {
     if (uniqueSessions.length === 0) return;
 
     this.sessionCwds.clear();
+    this.restoredSessionIds.clear();
     for (const descriptor of descriptors) {
       this.sessionCwds.set(descriptor.id, descriptor.cwd);
+      this.restoredSessionIds.add(descriptor.id);
     }
 
     let maxShellIndex = this.counter;
@@ -123,6 +126,10 @@ export class SessionTabManager {
     return this.sessionCwds.get(sessionId);
   }
 
+  shouldAttachExistingSession(sessionId: SessionId): boolean {
+    return this.restoredSessionIds.has(sessionId);
+  }
+
   /** session を閉じる。main session は閉じられない。 */
   close(sessionId: SessionId): void {
     if (sessionId === this.state.mainSessionId) return;
@@ -131,6 +138,7 @@ export class SessionTabManager {
     void sessionDestroy({ sessionId });
     disposeTerminalRuntime(sessionId);
     this.sessionCwds.delete(sessionId);
+    this.restoredSessionIds.delete(sessionId);
 
     const remaining = this.state.sessions.filter((id) => id !== sessionId);
     let nextActive = this.state.activeSessionId;

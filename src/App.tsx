@@ -1145,6 +1145,7 @@ function App() {
   );
 
   const [tabState, setTabState] = useState<SessionTabState>(() => tabManager.getState());
+  const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
   const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
   if (preferredActiveSessionIdRef.current === undefined) {
     preferredActiveSessionIdRef.current = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
@@ -1165,6 +1166,9 @@ function App() {
       })
       .catch((err) => {
         console.warn("[session-tabs] failed to restore sessions after reload:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setIsSessionRestoreReady(true);
       });
 
     return () => {
@@ -1175,6 +1179,9 @@ function App() {
   useEffect(() => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
   }, [tabState.activeSessionId]);
+
+  const canMountTerminals =
+    isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
 
   // scene 変更時に active session の terminal テーマを更新する。
   // initTerminalTheme は runtime factory 内で DEFAULT_SESSION_ID 固定のため、
@@ -2153,7 +2160,7 @@ function App() {
         bodyDevLog={bodyDevLog}
         scene={renderedSceneEntry}
       />
-      {isUserLayerReady && resolvedSystemPrompt !== undefined && (
+      {canMountTerminals && (
         <>
           {tabState.sessions.map((sessionId) => {
             const sessionCwd = tabManager.getSessionCwd(sessionId);
@@ -2173,6 +2180,7 @@ function App() {
                 }
                 cwd={sessionCwd === undefined ? cwd : sessionCwd}
                 perception={sessionId === tabState.activeSessionId ? perception : null}
+                attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
               />
             );
           })}

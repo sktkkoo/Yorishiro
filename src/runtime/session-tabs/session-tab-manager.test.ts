@@ -53,6 +53,7 @@ describe("SessionTabManager", () => {
       expect(state.activeSessionId).toBe(MAIN);
       expect(state.mainSessionId).toBe(MAIN);
       expect(manager.getSessionCwd(MAIN)).toBeUndefined();
+      expect(manager.shouldAttachExistingSession(MAIN)).toBe(false);
     });
   });
 
@@ -97,6 +98,8 @@ describe("SessionTabManager", () => {
       expect(manager.getSessionCwd(MAIN)).toBe("/work/main");
       expect(manager.getSessionCwd("shell-1")).toBe("/work/a");
       expect(manager.getSessionCwd("shell-2")).toBeNull();
+      expect(manager.shouldAttachExistingSession(MAIN)).toBe(true);
+      expect(manager.shouldAttachExistingSession("shell-1")).toBe(true);
     });
 
     it("preferred active が存在しない場合は現在 active を維持し、無理なら main に戻す", () => {
@@ -151,6 +154,7 @@ describe("SessionTabManager", () => {
       expect(sessionDestroy).toHaveBeenCalledWith({ sessionId: id });
       expect(disposeTerminalRuntime).toHaveBeenCalledWith(id);
       expect(manager.getSessionCwd(id)).toBeUndefined();
+      expect(manager.shouldAttachExistingSession(id)).toBe(false);
     });
   });
 

@@ -16,6 +16,14 @@ export interface PtyParams {
   readonly cwd: string | null;
 }
 
+export interface UpdatePtyOptions {
+  /**
+   * true のとき既存 Rust PTY への attach を先に試す。
+   * WebView reload 後に session_list で復元済みと分かった session にだけ使う。
+   */
+  readonly attachFirst?: boolean;
+}
+
 export interface TerminalCursorClientPosition {
   readonly clientX: number;
   readonly clientY: number;
@@ -81,7 +89,7 @@ export interface TerminalRuntime {
    * 同 params なら no-op（StrictMode double-mount / HMR 再実行で連続呼び出し
    * されても安全）。
    */
-  updatePtyParams(params: PtyParams): void;
+  updatePtyParams(params: PtyParams, options?: UpdatePtyOptions): void;
 
   /**
    * perception prop を singleton に反映する。onmessage / term.onData で MutableRef

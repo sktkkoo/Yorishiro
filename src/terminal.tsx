@@ -11,9 +11,17 @@ interface TerminalProps {
   readonly spec: SpawnSpec;
   readonly cwd: string | null;
   readonly perception: Perception | null;
+  readonly attachFirst?: boolean;
 }
 
-export default function Terminal({ sessionId, visible, spec, cwd, perception }: TerminalProps) {
+export default function Terminal({
+  sessionId,
+  visible,
+  spec,
+  cwd,
+  perception,
+  attachFirst = false,
+}: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
 
   // visible が変わるたびに attach/detach を切り替える。
@@ -33,8 +41,8 @@ export default function Terminal({ sessionId, visible, spec, cwd, perception }: 
   }, [sessionId, visible]);
 
   useEffect(() => {
-    getTerminalRuntime(sessionId).updatePtyParams({ spec, cwd });
-  }, [sessionId, spec, cwd]);
+    getTerminalRuntime(sessionId).updatePtyParams({ spec, cwd }, { attachFirst });
+  }, [sessionId, spec, cwd, attachFirst]);
 
   useEffect(() => {
     getTerminalRuntime(sessionId).setPerception(perception);
