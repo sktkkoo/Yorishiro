@@ -508,6 +508,13 @@ export function getTerminalRuntime(sessionId: string): TerminalRuntime {
 }
 
 /**
+ * 現在生きている全 TerminalRuntime instance を返す。テーマ一括適用などに使う。
+ */
+export function getAllTerminalRuntimes(): ReadonlyArray<TerminalRuntime> {
+  return [...getRuntimeMap().values()];
+}
+
+/**
  * Session が close されたとき呼んで instance を解放する。xterm.dispose / DOM 解放 /
  * channel 破棄を行い Map から外す。同 sessionId が無ければ no-op。
  */

@@ -67,12 +67,19 @@ export interface InitTerminalThemeResult {
   readonly dispose: () => void;
 }
 
+/**
+ * 全 TerminalRuntime にテーマを適用する関数を返す getter。
+ * session タブで runtime が動的に増えるため、適用時に毎回 getter で取得する。
+ */
 export function initTerminalTheme(
   registry: ScenePackRegistry,
-  terminal: TerminalRuntime,
+  getAllRuntimes: () => ReadonlyArray<TerminalRuntime>,
 ): InitTerminalThemeResult {
   const apply = (scene: SceneSpec | null): void => {
-    terminal.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
+    const theme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
+    for (const rt of getAllRuntimes()) {
+      rt.setTheme(theme);
+    }
     applyUiTheme(scene?.ui);
   };
 

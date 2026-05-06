@@ -81,7 +81,7 @@ import {
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
-import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { getAllTerminalRuntimes, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
@@ -548,7 +548,7 @@ function App() {
         phase: "register",
         note: "initialized AmbientAudioRuntime",
       });
-      initTerminalTheme(scenePackRegistry, getTerminalRuntime(DEFAULT_SESSION_ID));
+      initTerminalTheme(scenePackRegistry, getAllTerminalRuntimes);
       appLog.write({
         phase: "register",
         note: "initialized terminal theme wire",

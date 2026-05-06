@@ -12,6 +12,7 @@
 export {
   DEFAULT_TERMINAL_THEME,
   disposeTerminalRuntime,
+  getAllTerminalRuntimes,
   getTerminalRuntime,
 } from "./terminal-runtime";
 export type { PtyParams, TerminalRuntime } from "./types";
