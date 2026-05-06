@@ -342,6 +342,7 @@ pub(crate) fn toml_basic_string(value: &str) -> String {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct PtyExit {
+    pub session_id: String,
     pub code: i32,
 }
 

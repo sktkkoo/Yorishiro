@@ -406,7 +406,13 @@ impl PtySession {
                 .and_then(|c| c.try_wait().ok().flatten().map(|s| s.exit_code() as i32))
                 .unwrap_or(-1);
             drop(child_guard);
-            let _ = app_handle.emit("pty-exit", PtyExit { code });
+            let _ = app_handle.emit(
+                "pty-exit",
+                PtyExit {
+                    session_id: session_id_for_thread,
+                    code,
+                },
+            );
         });
 
         Ok(())
