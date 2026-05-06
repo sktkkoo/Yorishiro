@@ -77,6 +77,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
+  private webglAddon: WebglAddon | null = null;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -103,8 +104,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.open(this.xtermContainer);
 
     try {
-      const webgl = new WebglAddon();
-      this.term.loadAddon(webgl);
+      this.webglAddon = new WebglAddon();
+      this.term.loadAddon(this.webglAddon);
     } catch {
       // Canvas renderer remains active as fallback.
     }
@@ -252,10 +253,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   setTheme(theme: Partial<XTermTheme>): void {
     this.term.options.theme = { ...this.term.options.theme, ...theme };
-    // テーマ変更で xterm 内部の canvas サイズが変わる可能性がある。
-    // lastFit を無効化して次の RAF で fitAddon.fit() を強制実行する。
-    this.lastFitW = 0;
-    this.lastFitH = 0;
+    // WebGL renderer は theme 変更で texture atlas を再構築する。
+    // 即座に描画寸法を再同期しないと canvas 幅が壊れる。
+    this.webglAddon?.clearTextureAtlas();
+    this.fitAddon.fit();
+    this.term.refresh(0, this.term.rows - 1);
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {
