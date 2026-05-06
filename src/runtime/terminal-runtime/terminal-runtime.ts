@@ -252,6 +252,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   setTheme(theme: Partial<XTermTheme>): void {
     this.term.options.theme = { ...this.term.options.theme, ...theme };
+    // テーマ変更で xterm 内部の canvas サイズが変わる可能性がある。
+    // lastFit を無効化して次の RAF で fitAddon.fit() を強制実行する。
+    this.lastFitW = 0;
+    this.lastFitH = 0;
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {
