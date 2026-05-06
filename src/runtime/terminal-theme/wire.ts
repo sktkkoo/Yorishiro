@@ -79,19 +79,13 @@ export function getCurrentTerminalTheme(): Parameters<TerminalRuntime["setTheme"
 }
 
 /**
- * active な TerminalRuntime にテーマを適用し、ScenePackRegistry の active scene
- * 変化を購読する。新タブには getCurrentTerminalTheme() で個別適用する。
+ * ScenePackRegistry の active scene 変化を購読し、CSS vars と currentTerminalTheme
+ * を更新する。TerminalRuntime への setTheme は呼ばない — terminal.tsx の visible
+ * effect と App.tsx の scene subscription が個別に適用する。
  */
-export function initTerminalTheme(
-  registry: ScenePackRegistry,
-  getActiveRuntime: () => TerminalRuntime | null,
-): InitTerminalThemeResult {
+export function initTerminalTheme(registry: ScenePackRegistry): InitTerminalThemeResult {
   const apply = (scene: SceneSpec | null): void => {
     currentTerminalTheme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
-    const active = getActiveRuntime();
-    if (active) {
-      active.setTheme(currentTerminalTheme);
-    }
     applyUiTheme(scene?.ui);
   };
 

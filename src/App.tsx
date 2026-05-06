@@ -548,13 +548,7 @@ function App() {
         phase: "register",
         note: "initialized AmbientAudioRuntime",
       });
-      initTerminalTheme(scenePackRegistry, () => {
-        try {
-          return getTerminalRuntime(DEFAULT_SESSION_ID);
-        } catch {
-          return null;
-        }
-      });
+      initTerminalTheme(scenePackRegistry);
       appLog.write({
         phase: "register",
         note: "initialized terminal theme wire",
