@@ -1332,7 +1332,7 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
  * ────────────────────────────────────────────────────────── */
 
 export interface PresenceSetIntensityDeps {
-  readonly applyPresenceLevel: (level: "full" | "aura-only" | "closed", source: "mcp") => void;
+  readonly applyPresenceLevel: (level: "full" | "aura-only", source: "mcp") => void;
 }
 
 export interface PresenceSetIntensityResult {
@@ -1347,7 +1347,7 @@ export function createPresenceSetIntensityHandler(deps: PresenceSetIntensityDeps
   return async (request: unknown): Promise<PresenceSetIntensityResult> => {
     const r = requestRecord(request);
     const level = r.level;
-    if (level !== "full" && level !== "aura-only" && level !== "closed") {
+    if (level !== "full" && level !== "aura-only") {
       throw new Error(`invalid presence level: ${String(level)}`);
     }
     deps.applyPresenceLevel(level, "mcp");

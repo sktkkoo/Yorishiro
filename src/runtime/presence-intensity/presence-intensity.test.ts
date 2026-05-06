@@ -48,18 +48,9 @@ describe("PresenceIntensity", () => {
     expect(state.levelSince).toBe(1000);
   });
 
-  it("full → closed: state が closed に更新される", () => {
+  it("aura-only → full: state が full に復帰する", () => {
     const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
-
-    const state = getPresenceState();
-    expect(state.level).toBe("closed");
-    expect(state.source).toBe("mcp");
-  });
-
-  it("closed → full: state が full に復帰する", () => {
-    const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
+    applyPresenceLevel("aura-only", "mcp", deps);
     applyPresenceLevel("full", "default", deps);
 
     const state = getPresenceState();
@@ -71,7 +62,7 @@ describe("PresenceIntensity", () => {
   // Sidebar tween
   // -----------------------------------------------------------------------
 
-  it("aura-only / closed では sidebar を 0 に tween する", () => {
+  it("aura-only では sidebar を 0 に tween する", () => {
     const deps = createMockDeps();
     applyPresenceLevel("aura-only", "mcp", deps);
 
@@ -86,7 +77,7 @@ describe("PresenceIntensity", () => {
 
   it("full では sidebar を defaultWidth に tween する", () => {
     const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
+    applyPresenceLevel("aura-only", "mcp", deps);
 
     // full に戻す
     applyPresenceLevel("full", "default", deps);
@@ -114,25 +105,17 @@ describe("PresenceIntensity", () => {
     expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
   });
 
-  it("closed では aura を disable する", () => {
+  it("aura-only でも aura は enable のまま", () => {
     const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
+    applyPresenceLevel("aura-only", "mcp", deps);
 
-    expect(deps.ambientUiRegistry.disable).toHaveBeenCalledWith("attention-aura");
+    expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
+    expect(deps.ambientUiRegistry.disable).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
   // Render loop pause / resume
   // -----------------------------------------------------------------------
-
-  it("full → closed: tween 完了後に render を pause する", async () => {
-    const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
-
-    // pause は tween 完了 (completion.then) の microtask で呼ばれる
-    await Promise.resolve();
-    expect(deps.setRenderPaused).toHaveBeenCalledWith(true);
-  });
 
   it("full → aura-only: tween 完了後に render を pause する", async () => {
     const deps = createMockDeps();
@@ -142,9 +125,9 @@ describe("PresenceIntensity", () => {
     expect(deps.setRenderPaused).toHaveBeenCalledWith(true);
   });
 
-  it("closed → full: 即時に render を resume する（tween 開始前）", () => {
+  it("aura-only → full: 即時に render を resume する（tween 開始前）", () => {
     const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
+    applyPresenceLevel("aura-only", "mcp", deps);
     vi.mocked(deps.setRenderPaused).mockClear();
 
     applyPresenceLevel("full", "default", deps);
@@ -155,7 +138,7 @@ describe("PresenceIntensity", () => {
     expect(calls[0]?.[0]).toBe(false);
   });
 
-  it("closed → full の高速 toggle: completion 後に full なら pause しない", async () => {
+  it("aura-only → full の高速 toggle: completion 後に full なら pause しない", async () => {
     const deps = createMockDeps();
 
     // completion を手動制御するため manual promise を返すようにする
@@ -168,7 +151,7 @@ describe("PresenceIntensity", () => {
       completion,
     });
 
-    applyPresenceLevel("closed", "mcp", deps);
+    applyPresenceLevel("aura-only", "mcp", deps);
     // tween 完了前に full に戻す
     applyPresenceLevel("full", "default", deps);
     // completion を resolve
@@ -194,41 +177,6 @@ describe("PresenceIntensity", () => {
     expect(state.source).toBe("mcp");
     // tween は呼ばれない
     expect(deps.tweenManager.start).not.toHaveBeenCalled();
-  });
-
-  // -----------------------------------------------------------------------
-  // 直接遷移（中間状態不要）
-  // -----------------------------------------------------------------------
-
-  it("full → closed の直接遷移が中間状態なしで動作する", async () => {
-    const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
-
-    await Promise.resolve();
-    expect(getPresenceState().level).toBe("closed");
-    expect(deps.tweenManager.start).toHaveBeenCalledTimes(1);
-    expect(deps.ambientUiRegistry.disable).toHaveBeenCalledWith("attention-aura");
-  });
-
-  it("closed → aura-only の直接遷移が動作する", () => {
-    const deps = createMockDeps();
-    applyPresenceLevel("closed", "mcp", deps);
-
-    vi.mocked(deps.tweenManager.start).mockClear();
-
-    applyPresenceLevel("aura-only", "mcp", deps);
-
-    expect(getPresenceState().level).toBe("aura-only");
-    // aura-only: sidebar は 0 のまま
-    expect(deps.tweenManager.start).toHaveBeenCalledWith(
-      "presence.sidebar.width",
-      0,
-      expect.any(Number),
-      deps.setSidebarWidth,
-      { from: 280 },
-    );
-    // aura は有効化
-    expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
   });
 
   // -----------------------------------------------------------------------
@@ -284,7 +232,7 @@ describe("PresenceIntensity", () => {
 
     // snapshot は state と独立していることを確認
     const state = getPresenceState();
-    state.level = "closed";
+    state.level = "full";
     expect(snapshot.level).toBe("aura-only");
   });
 });

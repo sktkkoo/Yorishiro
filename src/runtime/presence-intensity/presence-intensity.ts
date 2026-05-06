@@ -1,10 +1,9 @@
 /**
  * Presence Intensity — 住人の存在強度を管理する state module。
  *
- * 住人は自身の visibility を 3 段階で制御できる:
+ * 住人は自身の visibility を 2 段階で制御できる:
  * - "full": sidebar + VRM + aura すべて表示
  * - "aura-only": sidebar と VRM を隠し、aura だけを残す
- * - "closed": すべて非表示（完全に閉じる）
  *
  * MCP tool から呼ばれる applyPresenceLevel() と、user prompt 送信時に
  * 自動復帰する onUserPromptSubmit() の 2 つが主要な entry point。
@@ -22,7 +21,7 @@ import { KEYS } from "../module-registry/keys";
 // ---------------------------------------------------------------------------
 
 /** 住人の存在強度レベル。 */
-export type PresenceLevel = "full" | "aura-only" | "closed";
+export type PresenceLevel = "full" | "aura-only";
 
 /** レベル変更の起因。 */
 export type PresenceSource = "default" | "mcp";
@@ -47,7 +46,7 @@ export interface PresenceIntensityDeps {
   readonly getDefaultSidebarWidth: () => number;
   readonly tweenManager: TweenManager;
   readonly ambientUiRegistry: AmbientUiPackRegistry;
-  /** ThreeRuntime の render loop pause 制御。aura-only / closed のとき CPU/GPU を休ませる。 */
+  /** ThreeRuntime の render loop pause 制御。aura-only のとき CPU/GPU を休ませる。 */
   readonly setRenderPaused: (paused: boolean) => void;
   readonly now: () => number;
 }
@@ -138,9 +137,9 @@ export function applyPresenceLevel(
   // VRM visibility は sidebar の display:none に追従するため、ここでは触らない。
   // .sidebar 自体が px<=0 で display:none になれば、子の VRM canvas も paint されない。
 
-  // aura-only / closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
+  // aura-only: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
   // 完了直前に full に戻されている可能性があるので、適用時に level を再確認する。
-  if (level !== "full") {
+  if (level === "aura-only") {
     handle.completion.then(() => {
       if (getState().level !== "full") {
         deps.setRenderPaused(true);
@@ -148,13 +147,8 @@ export function applyPresenceLevel(
     });
   }
 
-  // Aura
-  if (level === "full" || level === "aura-only") {
-    deps.ambientUiRegistry.enable(AURA_PACK_ID);
-  } else {
-    // "closed"
-    deps.ambientUiRegistry.disable(AURA_PACK_ID);
-  }
+  // Aura は両レベルで有効
+  deps.ambientUiRegistry.enable(AURA_PACK_ID);
 }
 
 /**
