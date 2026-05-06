@@ -418,7 +418,7 @@ export interface MotionRequest {
 }
 
 /** Handle の completion を区別するための reason。 */
-export type MotionCompletionReason = "completed" | "cancelled" | "preempted";
+export type MotionCompletionReason = "completed" | "cancelled" | "preempted" | "errored";
 
 /**
  * `acquireMotionSlot()` が返す handle。caller はこれで motion の release / cancel /
@@ -563,7 +563,6 @@ export type SpaceEffectRequest =
       fovOffset?: number;
       lookAt?: Vec3;
     }
-  | { kind: "text-glitch"; durationMs: number; intensity?: number }
   | { kind: "desaturate"; durationMs: number; intensity?: number }
   | { kind: string; [option: string]: unknown }; // user effect への拡張
 

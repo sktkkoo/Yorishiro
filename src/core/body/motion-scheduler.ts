@@ -86,7 +86,7 @@ export interface MotionSnapshot {
 }
 
 /** Handle の completion を区別するための reason。 */
-export type CompletionReason = "completed" | "cancelled" | "preempted";
+export type CompletionReason = "completed" | "cancelled" | "preempted" | "errored";
 
 /**
  * `request()` が返す handle。caller はこれで motion の release / cancel /
@@ -268,16 +268,12 @@ export class MotionScheduler {
         }
       })
       .catch(() => {
-        // load 失敗等。3 種 reason (completed / cancelled / preempted) のどれにも
-        // 厳密には該当しないが、活動 not bumped / not user-cancelled の中で最も近い
-        // semantics として "completed" を採用。Phase γ で MCP 経由 caller に
-        // 失敗を伝える要件が出たら "errored" 4th reason を spec に追加検討。
         if (slot.state === "active") {
           slot.state = "released";
           if (this.currentSlot === slot) {
             this.currentSlot = null;
           }
-          safeResolve({ reason: "completed" });
+          safeResolve({ reason: "errored" });
         }
       });
 

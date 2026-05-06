@@ -525,8 +525,6 @@ Charminal 本体に同梱されている effect（persona から `ctx.space.inje
 | `particles` | generic パーティクル | `origin`, `count`, `durationMs`, `colorScheme` |
 | `fireworks` | 花火 | `origin`, `count`, `durationMs` |
 | `text-physics` | テキスト物理崩壊 | `origin`, `force`, `gravity` |
-| `text-glitch` | テキストグリッチ | `durationMs`, `intensity` |
-
 user Effect Pack も同じ API で呼ばれる（`kind` に pack id を指定）。
 
 ---
