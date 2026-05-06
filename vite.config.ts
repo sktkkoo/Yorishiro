@@ -10,6 +10,10 @@ export default defineConfig(async () => ({
   resolve: {
     alias: [
       {
+        find: /^@charminal\/sdk\/controls$/,
+        replacement: new URL("./src/sdk/controls.ts", import.meta.url).pathname,
+      },
+      {
         find: /^leva$/,
         replacement: new URL("./src/runtime/leva.tsx", import.meta.url).pathname,
       },

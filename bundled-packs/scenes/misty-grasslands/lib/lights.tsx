@@ -5,11 +5,11 @@
  * leva で intensity / color を調整可能.
  */
 
-import { useControls } from "leva";
+import { useCharminalControls } from "@charminal/sdk/controls";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function Lights() {
-  const [controls, setControls] = useControls("lights", () => ({
+  const [controls, setControls] = useCharminalControls("lights", () => ({
     directionalIntensity: { value: 1.5, min: 0, max: 3, step: 0.05, label: "sun int." },
     directionalColor: { value: "#ebe9e1", label: "sun color" },
     ambientIntensity: { value: 0.47, min: 0, max: 1, step: 0.02, label: "ambient int." },

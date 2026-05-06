@@ -10,6 +10,7 @@
  *   各 effect の主要パラメータを runtime 調整可能.
  */
 
+import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
 import { useFrame } from "@react-three/fiber";
 import {
   Bloom,
@@ -21,7 +22,6 @@ import {
   ToneMapping,
   Vignette,
 } from "@react-three/postprocessing";
-import { folder, useControls } from "leva";
 import {
   BlendFunction,
   type ChromaticAberrationEffect,
@@ -52,8 +52,8 @@ import { computeLanternFlicker, type FlickerParams } from "./flicker";
  */
 export function AbandonedFactoryPostProcess() {
   // --- always-on controls ---
-  const [bloomControls, setBloom] = useControls("post effects", () => ({
-    bloom: folder({
+  const [bloomControls, setBloom] = useCharminalControls("post effects", () => ({
+    bloom: controlFolder({
       bloomIntensity: { value: 1, min: 0, max: 3, step: 0.05 },
       bloomThreshold: { value: 0.1, min: 0, max: 1, step: 0.01 },
       bloomSmoothing: { value: 0.5, min: 0, max: 1, step: 0.01 },
@@ -61,8 +61,8 @@ export function AbandonedFactoryPostProcess() {
   }));
   useControlsBridge("abandoned-factory", bloomControls, setBloom);
 
-  const [caControls, setCa] = useControls("post effects", () => ({
-    chromaticAberration: folder(
+  const [caControls, setCa] = useCharminalControls("post effects", () => ({
+    chromaticAberration: controlFolder(
       {
         caOffsetX: { value: 0.0059, min: 0, max: 0.01, step: 0.0001 },
         caOffsetY: { value: 0.0059, min: 0, max: 0.01, step: 0.0001 },
@@ -72,8 +72,8 @@ export function AbandonedFactoryPostProcess() {
   }));
   useControlsBridge("abandoned-factory", caControls, setCa);
 
-  const [noiseControls, setNoise] = useControls("post effects", () => ({
-    noise: folder(
+  const [noiseControls, setNoise] = useCharminalControls("post effects", () => ({
+    noise: controlFolder(
       {
         noiseOpacity: { value: 0.195, min: 0, max: 0.3, step: 0.005 },
       },
@@ -82,8 +82,8 @@ export function AbandonedFactoryPostProcess() {
   }));
   useControlsBridge("abandoned-factory", noiseControls, setNoise);
 
-  const [scanlineControls, setScanline] = useControls("post effects", () => ({
-    scanline: folder(
+  const [scanlineControls, setScanline] = useCharminalControls("post effects", () => ({
+    scanline: controlFolder(
       {
         scanlineDensity: { value: 0.6, min: 0.5, max: 5, step: 0.05 },
         scanlineOpacity: { value: 0.02, min: 0, max: 0.5, step: 0.01 },
@@ -93,8 +93,8 @@ export function AbandonedFactoryPostProcess() {
   }));
   useControlsBridge("abandoned-factory", scanlineControls, setScanline);
 
-  const [vignetteControls, setVignette] = useControls("post effects", () => ({
-    vignette: folder({
+  const [vignetteControls, setVignette] = useCharminalControls("post effects", () => ({
+    vignette: controlFolder({
       vignetteOffset: { value: 0.03, min: 0, max: 1, step: 0.01 },
       vignetteDarkness: { value: 0.8, min: 0, max: 2, step: 0.01 },
     }),
@@ -102,8 +102,8 @@ export function AbandonedFactoryPostProcess() {
   useControlsBridge("abandoned-factory", vignetteControls, setVignette);
 
   // --- glitch controls ---
-  const [glitchControls, setGlitch] = useControls("post effects", () => ({
-    glitch: folder(
+  const [glitchControls, setGlitch] = useCharminalControls("post effects", () => ({
+    glitch: controlFolder(
       {
         briefIntervalMin: {
           value: DEFAULT_GLITCH_PARAMS.briefIntervalMin,
@@ -216,8 +216,8 @@ export function AbandonedFactoryPostProcess() {
   const { vignetteOffset, vignetteDarkness } = vignetteControls;
 
   // lights.tsx と同じ flickerAmount を参照するため leva を購読.
-  const [lightsControls] = useControls("post effects", () => ({
-    lights: folder({
+  const [lightsControls] = useCharminalControls("post effects", () => ({
+    lights: controlFolder({
       flickerAmount: { value: 0.1, min: 0, max: 1, step: 0.05 },
     }),
   }));
