@@ -378,7 +378,10 @@ impl PtyState {
         on_output: Channel,
     ) -> Result<(), String> {
         // 既存同 id session があれば kill + remove して replace。
+        // suppress_exit で reader thread の pty-exit emit を抑制し、
+        // JS 側の auto-respawn が誤発火しないようにする。
         if let Some(existing) = self.session_or_default(session_id) {
+            existing.suppress_exit();
             let _ = existing.kill();
         }
         self.registry.remove(session_id);

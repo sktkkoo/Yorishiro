@@ -178,6 +178,9 @@ pub struct PtySession {
     ring_buffer: Arc<Mutex<RingBuffer>>,
     spawned_cwd: Mutex<Option<String>>,
     hooks_path: Mutex<Option<std::path::PathBuf>>,
+    /// true のとき reader thread は pty-exit event を emit しない。
+    /// session_spawn が旧 session を replace する際に立てる。
+    suppress_exit_event: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl PtySession {
@@ -192,7 +195,15 @@ impl PtySession {
             ring_buffer: Arc::new(Mutex::new(RingBuffer::new())),
             spawned_cwd: Mutex::new(None),
             hooks_path: Mutex::new(None),
+            suppress_exit_event: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
+    }
+
+    /// reader thread が pty-exit event を emit しないようにする。
+    /// session_spawn が旧 session を replace kill する直前に呼ぶ。
+    pub fn suppress_exit(&self) {
+        self.suppress_exit_event
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// PTY を新規 spawn。既存の child があれば先に kill する。SpawnSpec で
@@ -357,6 +368,7 @@ impl PtySession {
         let child_arc = Arc::clone(&self.child);
         let registry_for_thread = Arc::clone(&self.registry);
         let session_id_for_thread = self.session_id.clone();
+        let suppress_exit = Arc::clone(&self.suppress_exit_event);
         std::thread::spawn(move || {
             let mut reader = reader;
             let mut buf = [0u8; 8192];
@@ -406,13 +418,15 @@ impl PtySession {
                 .and_then(|c| c.try_wait().ok().flatten().map(|s| s.exit_code() as i32))
                 .unwrap_or(-1);
             drop(child_guard);
-            let _ = app_handle.emit(
-                "pty-exit",
-                PtyExit {
-                    session_id: session_id_for_thread,
-                    code,
-                },
-            );
+            if !suppress_exit.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = app_handle.emit(
+                    "pty-exit",
+                    PtyExit {
+                        session_id: session_id_for_thread,
+                        code,
+                    },
+                );
+            }
         });
 
         Ok(())
