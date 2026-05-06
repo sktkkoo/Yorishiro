@@ -48,7 +48,21 @@ export type SpawnSpec =
       readonly integration?: boolean;
     };
 
+/**
+ * Tauri 側 SessionDescriptor と 1:1 mirror。session_list の戻り値などで使う。
+ */
+export interface SessionDescriptor {
+  readonly id: string;
+  readonly profileId: string;
+  readonly kind: "shell" | "agent";
+  readonly label: string;
+  readonly cwd: string | null;
+  readonly startedAt: number;
+}
+
 export interface SessionSpawnArgs {
+  /** 任意の session id。null/undefined なら default-session を作る。 */
+  readonly sessionId?: string | null;
   readonly spec: SpawnSpec;
   readonly cols: number;
   readonly rows: number;
@@ -57,10 +71,61 @@ export interface SessionSpawnArgs {
 }
 
 /**
- * Session を新規 spawn する。default-session を replace する形で動作（Phase
- * B-1）。Phase C で `sessionId` 引数を取って multi-pane に拡張する。
+ * Session を新規 spawn する。session_id が省略されると default-session を
+ * 作る（Phase B-1 互換）。pane split で複数 session を持つときは caller が
+ * paneId 由来の session_id を渡す。
  */
 export const sessionSpawn = (args: SessionSpawnArgs): Promise<void> => call("session_spawn", args);
+
+export interface SessionWriteArgs {
+  readonly sessionId: string;
+  readonly data: string;
+}
+
+/** Per-session の stdin 書き込み。 */
+export const sessionWrite = (args: SessionWriteArgs): Promise<void> => call("session_write", args);
+
+export interface SessionResizeArgs {
+  readonly sessionId: string;
+  readonly cols: number;
+  readonly rows: number;
+}
+
+/** Per-session の cols/rows 反映。 */
+export const sessionResize = (args: SessionResizeArgs): Promise<void> =>
+  call("session_resize", args);
+
+export interface SessionDestroyArgs {
+  readonly sessionId: string;
+}
+
+/** Session を kill して registry から外す。 */
+export const sessionDestroy = (args: SessionDestroyArgs): Promise<void> =>
+  call("session_destroy", args);
+
+export interface SessionAttachArgs {
+  readonly sessionId: string;
+  readonly cwd: string | null;
+  readonly onOutput: Channel<ArrayBuffer>;
+}
+
+/**
+ * 既存 session に新しい channel を繋ぎ直す（webview HMR reload など）。
+ * Returns true if re-attached、false なら caller が spawn 必要。
+ */
+export const sessionAttach = (args: SessionAttachArgs): Promise<boolean> =>
+  call("session_attach", args);
+
+export interface SessionDetachArgs {
+  readonly sessionId: string;
+}
+
+/** Channel を外すだけで PTY は kill しない。 */
+export const sessionDetach = (args: SessionDetachArgs): Promise<void> =>
+  call("session_detach", args);
+
+/** Registry に登録されてる全 session の descriptor を返す。 */
+export const sessionList = (): Promise<ReadonlyArray<SessionDescriptor>> => invoke("session_list");
 
 export interface PtyWriteArgs {
   readonly data: string;

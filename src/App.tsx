@@ -36,10 +36,11 @@ import charminalSettingsPack, {
   resolveCloseTarget,
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
-import type { SpawnSpec } from "./bindings/tauri-commands";
+import { type SpawnSpec, sessionList } from "./bindings/tauri-commands";
+import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
-import { buildSystemPrompt } from "./core/global-prompt";
+import { collectGlobalPrompt } from "./core/global-prompt";
 import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
@@ -63,7 +64,7 @@ import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
-import { getModuleRegistry } from "./runtime/module-registry";
+import { getModuleRegistry, KEYS } from "./runtime/module-registry";
 import { PersonaReflexDispatcher } from "./runtime/persona-reflex";
 import type { PersonaEntry } from "./runtime/persona-registry";
 import {
@@ -77,8 +78,10 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
-import { resolveProfile } from "./runtime/sessions";
-import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import type { SessionTabState } from "./runtime/session-tabs";
+import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
+import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
+import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
@@ -102,7 +105,39 @@ import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
 
+function mergeSystemPromptParts(
+  personaAddition: string | null | undefined,
+  globalPrompt: string | null,
+): string | null {
+  const persona = personaAddition?.trim() || null;
+
+  if (!globalPrompt && !persona) return null;
+  if (!globalPrompt) return persona;
+  if (!persona) return globalPrompt;
+  return `${persona}\n\n---\n\n${globalPrompt}`;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+  onTimeout: () => void,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      onTimeout();
+      resolve(fallback);
+    }, timeoutMs);
+  });
+  const result = await Promise.race([promise, timeout]);
+  if (timeoutId !== null) clearTimeout(timeoutId);
+  return result;
+}
+
 const CWD_STORAGE_KEY = "charminal:cwd";
+const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
 
 type SceneLayerOverride = {
@@ -302,6 +337,7 @@ function App() {
     const logBridge = new LogBridge({ time });
     // ── グローバル system prompt フラグメント登録 ────────────────────────
     registerJournalFragment();
+    const globalPromptPromise = collectGlobalPrompt();
 
     const effectDispatcher = new EffectDispatcher();
     const claimState = getClaimState();
@@ -310,7 +346,7 @@ function App() {
     // 揺らす（body の transform は fixed 子孫の containing block を作る）。
     const renderer = new Renderer({
       shakeTarget: document.body,
-      terminalCellExtractor: () => getTerminalRuntime().extractVisibleCells(),
+      terminalCellExtractor: () => getTerminalRuntime(DEFAULT_SESSION_ID).extractVisibleCells(),
       camera: {
         claim: () => claimState.claim("camera"),
         getState: () => {
@@ -440,10 +476,12 @@ function App() {
     let userLayerReadyResolve!: (init: {
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
+      systemPrompt: string | null;
     }) => void;
     const userLayerReady = new Promise<{
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
+      systemPrompt: string | null;
     }>((resolve) => {
       userLayerReadyResolve = resolve;
     });
@@ -541,52 +579,76 @@ function App() {
         phase: "register",
         note: "initialized AmbientAudioRuntime",
       });
-      initTerminalTheme(scenePackRegistry, getTerminalRuntime());
+      initTerminalTheme(scenePackRegistry);
       appLog.write({
         phase: "register",
         note: "initialized terminal theme wire",
       });
 
       // ─ Step 3: user layer load（user pack register、init.js 実行）─
-      // user pack の persona が register された時点で、primaryPersona が指している id に
-      // active が切り替わる（PersonaRegistry の reselect 経由）。失敗しても Terminal は
-      // bundled fallback で動かす（philosophy「壊さないこと」）。
-      let safeMode = false;
-      try {
-        const result = await loadUserLayer({
-          effectPackRunner,
-          personaRegistry,
-          scenePackRegistry,
-          uiPackRegistry,
-          ambientUiPackRegistry: getAmbientUiPackRegistry(),
-          effectDispatcher,
-          emitEvent: (name, payload) => {
-            bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
-          },
-          packRegistry,
-          personaDefaults: claiPack,
-          userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
-          initScriptLog: createSubsystemLog(devLog, "InitScript"),
-          tweenManager: getThreeRuntime().getTweenManager(),
-        });
-        safeMode = result.safeMode;
-        appLog.write({
-          phase: "user-layer",
-          note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
-          data: { packs: result.packs, init: result.init },
-        });
-      } catch (err) {
-        appLog.write({
-          phase: "user-layer",
-          note: "user-layer bootstrap crashed",
-          data: { error: err instanceof Error ? err.message : String(err) },
-        });
-      }
+      // user layer は Terminal 起動の critical path に置かない。短い grace period 内に
+      // 完了すれば user persona も初回 prompt に入るが、pack import / watcher が詰まっても
+      // bundled fallback で Terminal mount と agent spawn を進める。
+      const userLayerPromise = (async (): Promise<Awaited<
+        ReturnType<typeof loadUserLayer>
+      > | null> => {
+        try {
+          const result = await loadUserLayer({
+            effectPackRunner,
+            personaRegistry,
+            scenePackRegistry,
+            uiPackRegistry,
+            ambientUiPackRegistry: getAmbientUiPackRegistry(),
+            effectDispatcher,
+            emitEvent: (name, payload) => {
+              bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
+            },
+            packRegistry,
+            personaDefaults: claiPack,
+            userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+            initScriptLog: createSubsystemLog(devLog, "InitScript"),
+            tweenManager: getThreeRuntime().getTweenManager(),
+          });
+          appLog.write({
+            phase: "user-layer",
+            note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
+            data: { packs: result.packs, init: result.init },
+          });
+          return result;
+        } catch (err) {
+          appLog.write({
+            phase: "user-layer",
+            note: "user-layer bootstrap crashed",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+          return null;
+        }
+      })();
 
-      // ★ Terminal mount 解禁。primaryPersona は確定済（bundled fallback or user pack
-      //   register 済）、systemPrompt の race は起きない。以下 step は Terminal とは
-      //   独立に走るので、失敗しても Terminal の表示は止まらない。
-      userLayerReadyResolve({ terminalAgent, defaultSpec });
+      const [userLayerResult, globalPrompt] = await Promise.all([
+        withTimeout(userLayerPromise, 1200, null, () => {
+          appLog.write({
+            phase: "user-layer",
+            note: "user-layer load timed out; starting terminal with current persona",
+          });
+        }),
+        withTimeout(globalPromptPromise, 1200, null, () => {
+          appLog.write({
+            phase: "global-prompt",
+            note: "global prompt collection timed out; starting terminal without global prompt",
+          });
+        }),
+      ]);
+      const safeMode = userLayerResult?.safeMode ?? false;
+      const systemPrompt = mergeSystemPromptParts(
+        personaRegistry.getActivePersona()?.thinking?.systemPromptAddition,
+        globalPrompt,
+      );
+
+      // ★ Terminal mount 解禁。user layer が grace period 内に終わらなくても、現在
+      //   active な persona（少なくとも bundled fallback）で agent spawn を始める。
+      //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
+      userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt });
 
       // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
@@ -995,7 +1057,7 @@ function App() {
         note: "bootstrap crashed (unexpected)",
         data: { error: err instanceof Error ? err.message : String(err) },
       });
-      userLayerReadyResolve({ terminalAgent: "claude", defaultSpec: null });
+      userLayerReadyResolve({ terminalAgent: "claude", defaultSpec: null, systemPrompt: null });
     });
 
     return {
@@ -1034,12 +1096,17 @@ function App() {
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
+  // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
+  const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
+    undefined,
+  );
   useEffect(() => {
     let cancelled = false;
-    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec }) => {
+    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec, systemPrompt }) => {
       if (!cancelled) {
         setTerminalAgent(agent);
         setDefaultSpec(spec);
+        setResolvedSystemPrompt(systemPrompt);
         setIsUserLayerReady(true);
       }
     });
@@ -1047,6 +1114,80 @@ function App() {
       cancelled = true;
     };
   }, [userLayerReady]);
+
+  // ── Session tab manager（HMR-surviving singleton）───────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runtime は HMR-surviving singleton、bus は stable reference
+  const tabManager = useMemo(
+    () =>
+      getOrInit(
+        KEYS.SESSION_TAB_MANAGER,
+        () =>
+          new SessionTabManager(DEFAULT_SESSION_ID, {
+            onEvent: (name, payload) => {
+              runtime.bus.emitSynthetic(
+                { type: "utility", packId: "charminal:session-tabs" },
+                name,
+                payload,
+                0,
+              );
+            },
+          }),
+      ),
+    [],
+  );
+
+  const [tabState, setTabState] = useState<SessionTabState>(() => tabManager.getState());
+  const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
+  const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
+  if (preferredActiveSessionIdRef.current === undefined) {
+    preferredActiveSessionIdRef.current = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+  }
+
+  useEffect(() => {
+    return tabManager.subscribe(setTabState);
+  }, [tabManager]);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let cancelled = false;
+
+    sessionList()
+      .then((descriptors) => {
+        if (cancelled) return;
+        tabManager.restoreSessions(descriptors, preferredActiveSessionIdRef.current ?? null);
+      })
+      .catch((err) => {
+        console.warn("[session-tabs] failed to restore sessions after reload:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setIsSessionRestoreReady(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserLayerReady, tabManager]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
+  }, [tabState.activeSessionId]);
+
+  const canMountTerminals =
+    isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
+
+  // scene 変更時に active session の terminal テーマを更新する。
+  // initTerminalTheme は runtime factory 内で DEFAULT_SESSION_ID 固定のため、
+  // shell tab が active の場合に scene 変更が反映されない問題を補完する。
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    const sub = scenePackRegistry.subscribeActive((scene) => {
+      const activeId = tabManager.getState().activeSessionId;
+      const rt = getTerminalRuntime(activeId);
+      rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
+      rt.refit();
+    });
+    return () => sub.dispose();
+  }, [isUserLayerReady, scenePackRegistry, tabManager]);
 
   // active scene entry を Registry から subscribe して React state に流す。
   // SceneSpec が必要な UI context 系は entry.scene から既存どおり組み立てる。
@@ -1100,7 +1241,7 @@ function App() {
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
   // （philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md 「観察の境界」）。
   const personaRegistry = getPersonaRegistry();
-  const [primaryPersona, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
+  const [, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
     personaRegistry.getActivePersona(),
   );
   useEffect(() => {
@@ -1139,17 +1280,51 @@ function App() {
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
 
-    const getLayoutTargets = (): LayoutTargets | null => {
-      const terminal = document.querySelector<HTMLElement>(".terminal-container");
+    const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
       const sidebar = document.querySelector<HTMLElement>(".sidebar");
       const character = document.querySelector<HTMLElement>(".charactor-container");
-      if (!terminal || !sidebar || !character) return null;
+      if (!sidebar || !character) return null;
       return {
         root: document.documentElement,
         terminal,
         sidebar,
         character,
       };
+    };
+
+    const getTerminalElements = (): HTMLElement[] => [
+      ...document.querySelectorAll<HTMLElement>(".terminal-container"),
+    ];
+
+    const getLayoutTargets = (): LayoutTargets | null => {
+      const activeSessionId = tabManager.getState().activeSessionId;
+      const activeTerminal =
+        getTerminalElements().find((el) => el.dataset.sessionId === activeSessionId) ??
+        getTerminalElements().find((el) => el.dataset.active === "true") ??
+        null;
+      return activeTerminal ? makeLayoutTargets(activeTerminal) : null;
+    };
+
+    const getAllLayoutTargets = (): LayoutTargets[] =>
+      getTerminalElements().flatMap((terminal) => {
+        const targets = makeLayoutTargets(terminal);
+        return targets ? [targets] : [];
+      });
+
+    const refitActiveTerminal = () => {
+      getTerminalRuntime(tabManager.getState().activeSessionId).refit();
+    };
+
+    const resetLayoutForAllTerminals = (): boolean => {
+      const targetsList = getAllLayoutTargets();
+      for (const targets of targetsList) resetLayout(targets);
+      return targetsList.length > 0;
+    };
+
+    const applyLayoutForAllTerminals = (layout: UiLayout): LayoutTargets | null => {
+      const targetsList = getAllLayoutTargets();
+      for (const targets of targetsList) applyLayout(layout, targets);
+      return getLayoutTargets() ?? targetsList[0] ?? null;
     };
 
     // 設定 write は read-modify-write なので並行 click で race する。
@@ -1198,11 +1373,7 @@ function App() {
       return next;
     };
 
-    const buildUiContext = (
-      packId: string,
-      signal: AbortSignal,
-      targets: LayoutTargets,
-    ): UiContext => {
+    const buildUiContext = (packId: string, signal: AbortSignal): UiContext => {
       const threeRuntime = getThreeRuntime();
 
       // ── tween: pack-scoped TweenAPI ─────────────────────────
@@ -1323,8 +1494,9 @@ function App() {
         signal,
         layout: {
           update: (layout: UiLayout) => {
-            resetLayout(targets);
-            applyLayout(layout, targets);
+            resetLayoutForAllTerminals();
+            applyLayoutForAllTerminals(layout);
+            refitActiveTerminal();
           },
         },
         app: {
@@ -1393,14 +1565,13 @@ function App() {
         currentContainer.remove();
         currentContainer = null;
       }
-      const prevTargets = getLayoutTargets();
-      if (prevTargets) resetLayout(prevTargets);
+      if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
 
       if (!entry) return;
 
-      const targets = getLayoutTargets();
+      const targets = applyLayoutForAllTerminals(entry.pack.layout);
       if (!targets) {
         devLog.write({
           subsystem: "UiPack",
@@ -1409,8 +1580,7 @@ function App() {
         });
         return;
       }
-
-      applyLayout(entry.pack.layout, targets);
+      refitActiveTerminal();
       const container = document.createElement("div");
       container.className = "ui-pack-container";
       container.style.position = "fixed";
@@ -1423,7 +1593,7 @@ function App() {
       currentAbort = abort;
       currentContainer = container;
 
-      const ctx = buildUiContext(entry.id, abort.signal, targets);
+      const ctx = buildUiContext(entry.id, abort.signal);
       try {
         currentDisposable = entry.pack.mount(ctx, container);
       } catch (err) {
@@ -1448,8 +1618,7 @@ function App() {
       if (currentAbort) currentAbort.abort();
       if (currentDisposable) currentDisposable.dispose();
       if (currentContainer) currentContainer.remove();
-      const targets = getLayoutTargets();
-      if (targets) resetLayout(targets);
+      if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
     };
@@ -1466,6 +1635,7 @@ function App() {
     runtime,
     personaRegistry,
     scenePackRegistry,
+    tabManager,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -1670,9 +1840,9 @@ function App() {
   // xterm の xtermContainer も document.body 直下（zIndex: 1）に命令的に append される。
   // React の #root は xterm より先に DOM に存在するため、#root 内の fixed 要素は
   // DOM 順で先行するノードの stacking context に収まり、後から append された
-  // xtermContainer（WebGL canvas あり）の下に隠れる。
+  // xtermContainer の下に隠れる。
   // ambientLayer を xtermContainer より後に body に append することで、
-  // z-index 競合なしに xterm WebGL canvas の上に重ねられる（v1 と同じ戦略）。
+  // z-index 競合なしに xterm の上に重ねられる（v1 と同じ戦略）。
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons + DOM are stable
   useEffect(() => {
     const ambientUiRegistry = getAmbientUiPackRegistry();
@@ -1732,27 +1902,27 @@ function App() {
     };
   }, []);
 
-  // attention producer を起動し、cleanup で dispose する。
-  // terminal は terminal-runtime singleton を渡す。mouse は document-level listener。
-  // dev producer は import.meta.env.DEV で gate され、production では no-op。
+  // terminal 非依存の attention producer（mouse / dev / focused-dom）。初回のみ起動。
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
   useEffect(() => {
     const attention = getAttentionRuntime();
-    const terminal = getTerminalRuntime();
+    const disposables: Disposable[] = [];
+    disposables.push(startMouseAttentionProducer({ attention }));
+    disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
+    disposables.push(startFocusedDomAttentionProducer({ attention }));
+    return () => {
+      for (const d of disposables) d.dispose();
+    };
+  }, []);
+
+  // terminal 依存の attention producer。active tab が変わるたびに再構築する。
+  useEffect(() => {
+    const attention = getAttentionRuntime();
+    const terminal = getTerminalRuntime(tabState.activeSessionId);
 
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
-    disposables.push(startMouseAttentionProducer({ attention }));
-    disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
 
-    // focused-dom producer: document.activeElement を rAF loop で監視する。
-    disposables.push(startFocusedDomAttentionProducer({ attention }));
-
-    // EventBus hook-signal → attention producer adapter。
-    // Trigger は hook-signal event を全通過させ（match は常に non-null）、
-    // ReactionHandler 側で signal.name を取り出して各 producer に渡す。
-    // source は builtin 識別子で固定（pack ではないため packId は "__tool-attention__"）。
-    // input-cursor producer と tool producer の両方で同じ adapter を再利用する。
     const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
       const trigger = {
         id: "builtin:hook-signal-to-tool-attention",
@@ -1776,9 +1946,6 @@ function App() {
       return { dispose: () => reg.dispose() };
     };
 
-    // EventBus tool-activity → tool producer adapter。
-    // v1 では App.tsx の trigger handler が直接 setToolActivityAttention を呼んでいたが、
-    // v2 では producer 層に分離するため EventBus adapter で橋渡しする。
     const subscribeToolActivity = (
       handler: (event: { activity: string; timestamp: number }) => void,
     ): Disposable => {
@@ -1806,7 +1973,6 @@ function App() {
 
     const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
 
-    // input-cursor producer: typing は rAF loop、sent は xterm.onData の \r 検出駆動。
     disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
 
     disposables.push(
@@ -1821,7 +1987,8 @@ function App() {
     return () => {
       for (const d of disposables) d.dispose();
     };
-  }, []);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: runtime.bus.register は stable reference
+  }, [tabState.activeSessionId, runtime.bus.register]);
 
   // mcp attention producer を起動する。
   // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。
@@ -1890,24 +2057,6 @@ function App() {
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
 
-  // ── Global system prompt（persona addition + journal memories 等）──────
-  // persona 変更・初回 mount 時に非同期で組み立てる。
-  // undefined = まだ未解決、null = 空（どちらも非注入）、string = 注入する内容。
-  const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
-    undefined,
-  );
-  useEffect(() => {
-    if (!isUserLayerReady) return;
-    let cancelled = false;
-    const personaAddition = primaryPersona?.thinking?.systemPromptAddition ?? null;
-    buildSystemPrompt(personaAddition).then((prompt) => {
-      if (!cancelled) setResolvedSystemPrompt(prompt);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isUserLayerReady, primaryPersona]);
-
   // ── Settings: close-requested listener ─────────────────────
 
   useEffect(() => {
@@ -1923,6 +2072,38 @@ function App() {
       window.removeEventListener("charminal-settings:close-requested", onCloseRequested);
     };
   }, []);
+
+  // ── Session tab keybindings ────────────────────────────────
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    return installTabKeybindings(tabManager);
+  }, [isUserLayerReady, tabManager]);
+
+  // ── PTY exit → auto-respawn / tab close ────────────────────
+  const ptyExitCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let disposed = false;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
+        if (disposed) return;
+        tabManager.handleSessionExit(event.payload.session_id, event.payload.code);
+      });
+      if (disposed) {
+        unlisten();
+      } else {
+        ptyExitCleanupRef.current = unlisten;
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      ptyExitCleanupRef.current?.();
+    };
+  }, [isUserLayerReady, tabManager]);
 
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
@@ -1971,18 +2152,42 @@ function App() {
         bodyDevLog={bodyDevLog}
         scene={renderedSceneEntry}
       />
-      {isUserLayerReady && resolvedSystemPrompt !== undefined && (
-        <Terminal
-          spec={
-            defaultSpec ?? {
-              kind: "agent",
-              agent: terminalAgent,
-              systemPrompt: resolvedSystemPrompt,
+      {canMountTerminals && (
+        <>
+          {tabState.sessions.map((sessionId) => {
+            const sessionCwd = tabManager.getSessionCwd(sessionId);
+            return (
+              <Terminal
+                key={sessionId}
+                sessionId={sessionId}
+                visible={sessionId === tabState.activeSessionId}
+                spec={
+                  sessionId === DEFAULT_SESSION_ID
+                    ? (defaultSpec ?? {
+                        kind: "agent",
+                        agent: terminalAgent,
+                        systemPrompt: resolvedSystemPrompt,
+                      })
+                    : { kind: "shell", integration: true }
+                }
+                cwd={sessionCwd === undefined ? cwd : sessionCwd}
+                perception={sessionId === tabState.activeSessionId ? perception : null}
+                attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
+              />
+            );
+          })}
+          <TabIndicator
+            state={tabState}
+            labels={
+              new Map([
+                [DEFAULT_SESSION_ID, terminalAgent],
+                ...tabState.sessions
+                  .filter((id) => id !== DEFAULT_SESSION_ID)
+                  .map((id) => [id, id] as const),
+              ])
             }
-          }
-          cwd={cwd}
-          perception={perception}
-        />
+          />
+        </>
       )}
     </div>
   );

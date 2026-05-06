@@ -16,6 +16,14 @@ export interface PtyParams {
   readonly cwd: string | null;
 }
 
+export interface UpdatePtyOptions {
+  /**
+   * true のとき既存 Rust PTY への attach を先に試す。
+   * WebView reload 後に session_list で復元済みと分かった session にだけ使う。
+   */
+  readonly attachFirst?: boolean;
+}
+
 export interface TerminalCursorClientPosition {
   readonly clientX: number;
   readonly clientY: number;
@@ -44,7 +52,7 @@ export interface TerminalLineRect {
  *
  * 寿命: webview lifetime（= hot-data 経由で HMR 越しに同一 instance）。
  * 責務:
- *   - xterm / FitAddon / WebglAddon の保持
+ *   - xterm / FitAddon の保持
  *   - Tauri Channel<ArrayBuffer> の永続保持（React lifecycle と無関係）
  *   - PTY 接続パラメータの差分管理（同じ params なら spawn 呼び出しを抑制）
  *   - perception prop の MutableRef 反映
@@ -70,11 +78,18 @@ export interface TerminalRuntime {
   detachContainer(): void;
 
   /**
+   * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
+   * document から外し、ResizeObserver / RAF を停止する。dispose 後の
+   * runtime instance は再利用しない（再 attach / 再 spawn 不可）。
+   */
+  dispose(): void;
+
+  /**
    * PTY 接続パラメータを更新する。既存と差分があれば `pty_spawn` を 1 回呼ぶ。
    * 同 params なら no-op（StrictMode double-mount / HMR 再実行で連続呼び出し
    * されても安全）。
    */
-  updatePtyParams(params: PtyParams): void;
+  updatePtyParams(params: PtyParams, options?: UpdatePtyOptions): void;
 
   /**
    * perception prop を singleton に反映する。onmessage / term.onData で MutableRef
@@ -109,6 +124,12 @@ export interface TerminalRuntime {
   setTheme(theme: Partial<XTermTheme>): void;
 
   /**
+   * 現在 attach されている React placeholder の rect を読み直し、xterm を fit する。
+   * scene / UI layout 切替直後など ResizeObserver だけでは反映が遅れる経路で使う。
+   */
+  refit(): void;
+
+  /**
    * xterm container の viewport scroll が発生したときに listener を呼ぶ。
    * 引数なし (rect 再計算の trigger 用途)。dispose で listener を外す。
    */
@@ -121,4 +142,13 @@ export interface TerminalRuntime {
    * 意味分類はここではしない（producer 側の責務）。
    */
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
+
+  /** xterm に直接テキストを書き込む（shell ヒントなど）。 */
+  writePlainText(text: string): void;
+
+  /** xterm にキーボードフォーカスを移す。タブ切り替え時に使う。 */
+  focus(): void;
+
+  /** currentParams を無効化し updatePtyParams を再実行する。auto-respawn 用。 */
+  forceRespawn(): void;
 }

@@ -5,9 +5,7 @@ use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
 use tauri::AppHandle;
 
-use crate::sessions::{
-    PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec, DEFAULT_SESSION_ID,
-};
+use crate::sessions::{PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec};
 
 /// Queue of hook signals for frontend polling (fallback when Tauri emit doesn't reach webview).
 static HOOK_SIGNAL_QUEUE: std::sync::LazyLock<Mutex<Vec<String>>> =
@@ -344,6 +342,7 @@ pub(crate) fn toml_basic_string(value: &str) -> String {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct PtyExit {
+    pub session_id: String,
     pub code: i32,
 }
 
@@ -360,30 +359,33 @@ impl PtyState {
         Self { registry }
     }
 
-    fn default_session(&self) -> Option<Arc<PtySession>> {
-        self.registry.get_pty_session(DEFAULT_SESSION_ID)
+    fn session_or_default(&self, id: &str) -> Option<Arc<PtySession>> {
+        self.registry.get_pty_session(id)
     }
 
+    /// 任意 session id で spawn する。同 id の既存 session があれば先に kill +
+    /// remove する（replace semantics）。session_id = DEFAULT_SESSION_ID なら
+    /// 従来の default-session 起動と同じ。
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         &self,
         app: AppHandle,
+        session_id: &str,
         cols: u16,
         rows: u16,
         cwd: Option<String>,
         spec: &SpawnSpec,
         on_output: Channel,
     ) -> Result<(), String> {
-        let id = DEFAULT_SESSION_ID.to_string();
-
-        // 既存 default session があれば kill + remove して replace。
-        if let Some(existing) = self.default_session() {
+        // 既存同 id session があれば kill + remove して replace。
+        // suppress_exit で reader thread の pty-exit emit を抑制し、
+        // JS 側の auto-respawn が誤発火しないようにする。
+        if let Some(existing) = self.session_or_default(session_id) {
+            existing.suppress_exit();
             let _ = existing.kill();
         }
-        self.registry.remove(&id);
+        self.registry.remove(session_id);
 
-        // metadata 登録。SpawnSpec の variant から profile_id / kind を導出。
-        // user 定義 profile を選んだ場合の profile_id 還元は Phase C で session_*
-        // Tauri command が直接 profile id を受ける形に進化させたとき行う。
         let (profile_id, kind) = match spec {
             SpawnSpec::Agent { agent, .. } => match agent {
                 AgentKind::Claude => ("claude", SessionKind::Agent),
@@ -392,7 +394,7 @@ impl PtyState {
             SpawnSpec::Shell { .. } => ("shell", SessionKind::Shell),
         };
         self.registry.add(SessionDescriptor {
-            id: id.clone(),
+            id: session_id.to_string(),
             profile_id: profile_id.to_string(),
             kind,
             label: profile_id.to_string(),
@@ -400,49 +402,50 @@ impl PtyState {
             started_at: now_millis(),
         });
 
-        // PtySession を build → spawn → registry に attach。spawn の途中で失敗
-        // したら registry から外して metadata だけ残らないようにする。
-        let session = Arc::new(PtySession::new(id.clone(), Arc::clone(&self.registry)));
+        let session = Arc::new(PtySession::new(
+            session_id.to_string(),
+            Arc::clone(&self.registry),
+        ));
         if let Err(e) = session.spawn(app, cols, rows, cwd, spec, on_output) {
-            self.registry.remove(&id);
+            self.registry.remove(session_id);
             return Err(e);
         }
-        self.registry.attach_pty(&id, session);
+        self.registry.attach_pty(session_id, session);
         Ok(())
     }
 
-    pub fn attach(&self, cwd: Option<String>, on_output: Channel) -> bool {
-        let Some(session) = self.default_session() else {
+    pub fn attach(&self, session_id: &str, cwd: Option<String>, on_output: Channel) -> bool {
+        let Some(session) = self.session_or_default(session_id) else {
             return false;
         };
         session.attach(cwd, on_output)
     }
 
-    pub fn detach(&self) {
-        if let Some(session) = self.default_session() {
+    pub fn detach(&self, session_id: &str) {
+        if let Some(session) = self.session_or_default(session_id) {
             session.detach();
         }
     }
 
-    pub fn write_data(&self, data: &str) -> Result<(), String> {
-        let Some(session) = self.default_session() else {
+    pub fn write_data(&self, session_id: &str, data: &str) -> Result<(), String> {
+        let Some(session) = self.session_or_default(session_id) else {
             return Ok(());
         };
         session.write_data(data)
     }
 
-    pub fn resize(&self, cols: u16, rows: u16) -> Result<(), String> {
-        let Some(session) = self.default_session() else {
+    pub fn resize(&self, session_id: &str, cols: u16, rows: u16) -> Result<(), String> {
+        let Some(session) = self.session_or_default(session_id) else {
             return Ok(());
         };
         session.resize(cols, rows)
     }
 
-    pub fn kill(&self) -> Result<(), String> {
-        if let Some(session) = self.default_session() {
+    pub fn kill(&self, session_id: &str) -> Result<(), String> {
+        if let Some(session) = self.session_or_default(session_id) {
             let _ = session.kill();
         }
-        self.registry.remove(DEFAULT_SESSION_ID);
+        self.registry.remove(session_id);
         Ok(())
     }
 }

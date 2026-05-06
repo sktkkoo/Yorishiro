@@ -1,10 +1,16 @@
 import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
-import { ptyResize, ptyWrite, type SpawnSpec, sessionSpawn } from "../../bindings/tauri-commands";
+import {
+  type SpawnSpec,
+  sessionAttach,
+  sessionDestroy,
+  sessionResize,
+  sessionSpawn,
+  sessionWrite,
+} from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
@@ -13,6 +19,7 @@ import type {
   TerminalCursorClientPosition,
   TerminalLineRect,
   TerminalRuntime,
+  UpdatePtyOptions,
 } from "./types";
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
@@ -55,6 +62,7 @@ export const DEFAULT_TERMINAL_THEME: XTermTheme = {
  *     連続呼び出しを吸収する。
  */
 class TerminalRuntimeImpl implements TerminalRuntime {
+  private readonly sessionId: string;
   private readonly term: XTerm;
   private readonly fitAddon: FitAddon;
   private readonly xtermContainer: HTMLDivElement;
@@ -63,6 +71,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
 
   private currentParams: PtyParams | null = null;
+  private attachedContainer: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeRafId = 0;
   private lastFitW = 0;
@@ -71,8 +80,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
+  private disposed = false;
+  private startGeneration = 0;
+  private ptyExitUnlisten: (() => void) | null = null;
 
-  constructor() {
+  constructor(sessionId: string) {
+    this.sessionId = sessionId;
     this.term = new XTerm({
       theme: { ...DEFAULT_TERMINAL_THEME },
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
@@ -95,17 +108,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     this.term.open(this.xtermContainer);
 
-    try {
-      const webgl = new WebglAddon();
-      this.term.loadAddon(webgl);
-    } catch {
-      // Canvas renderer remains active as fallback.
-    }
-
     // Channel は webview lifetime の単一 instance。factory が HMR survive するので
     // この callback ID は terminal.tsx の編集で orphan にならない。
     this.channel = new Channel<ArrayBuffer>();
     this.channel.onmessage = (data: ArrayBuffer) => {
+      if (this.disposed) return;
       const bytes = new Uint8Array(data);
       this.term.write(bytes);
       this.notifyPtyDataListeners();
@@ -113,23 +120,31 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.perceptionRef.current?.onPtyOutput(text);
     };
 
-    // PTY exit listener（claude が終了したら terminal に表示）
+    // PTY exit listener（session の process が終了したら terminal に表示）
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      await listen<{ code: number }>("pty-exit", (event) => {
+      const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
+        if (this.disposed) return;
+        if (event.payload.session_id !== this.sessionId) return;
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
+      if (this.disposed) {
+        unlisten();
+      } else {
+        this.ptyExitUnlisten = unlisten;
+      }
     })();
 
     // ユーザー入力を PTY に流す
     let writeQueue: Promise<void> = Promise.resolve();
     this.term.onData((data) => {
+      if (this.disposed) return;
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
       this.detectClearCommand(data);
       writeQueue = writeQueue.then(async () => {
         try {
-          await ptyWrite({ data });
+          await sessionWrite({ sessionId: this.sessionId, data });
         } catch {
           // PTY already closed — silent
         }
@@ -145,40 +160,23 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // xterm 側の cols/rows 変化を Rust に転送
     this.term.onResize(({ cols, rows }) => {
-      void ptyResize({ cols, rows });
+      if (this.disposed) return;
+      void sessionResize({ sessionId: this.sessionId, cols, rows });
     });
   }
 
   attachTo(container: HTMLElement): void {
+    if (this.disposed) return;
+    this.attachedContainer = container;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     cancelAnimationFrame(this.resizeRafId);
 
-    const syncRect = () => {
-      const rect = container.getBoundingClientRect();
-      const cs = getComputedStyle(container);
-      const padLeft = parseFloat(cs.paddingLeft) || 0;
-      const padTop = parseFloat(cs.paddingTop) || 0;
-      const padRight = parseFloat(cs.paddingRight) || 0;
-      const padBottom = parseFloat(cs.paddingBottom) || 0;
-      const w = Math.floor(rect.width - padLeft - padRight);
-      const h = Math.floor(rect.height - padTop - padBottom);
-      this.xtermContainer.style.top = `${rect.top + padTop}px`;
-      this.xtermContainer.style.left = `${rect.left + padLeft}px`;
-      this.xtermContainer.style.width = `${w}px`;
-      this.xtermContainer.style.height = `${h}px`;
-      this.xtermContainer.style.visibility = "visible";
-      if (w !== this.lastFitW || h !== this.lastFitH) {
-        this.lastFitW = w;
-        this.lastFitH = h;
-        this.fitAddon.fit();
-      }
-    };
-
     const tick = () => {
-      syncRect();
+      this.syncAttachedRect();
       this.resizeRafId = requestAnimationFrame(tick);
     };
+    this.syncAttachedRect();
     this.resizeRafId = requestAnimationFrame(tick);
   }
 
@@ -187,26 +185,89 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeObserver = null;
     cancelAnimationFrame(this.resizeRafId);
     this.resizeRafId = 0;
+    this.attachedContainer = null;
     this.xtermContainer.style.visibility = "hidden";
   }
 
-  updatePtyParams(params: PtyParams): void {
+  /**
+   * Session が close されるときに呼ぶ。xterm を dispose し、xterm container を
+   * document.body から外し、ResizeObserver / RAF を停止する。Channel callback
+   * は新規メッセージが来てももう参照しないので残しておいて GC に任せる。
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.startGeneration++;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    cancelAnimationFrame(this.resizeRafId);
+    this.resizeRafId = 0;
+    this.ptyExitUnlisten?.();
+    this.ptyExitUnlisten = null;
+    this.ptyDataListeners.clear();
+    this.scrollListeners.clear();
+    this.term.dispose();
+    if (this.xtermContainer.parentElement) {
+      this.xtermContainer.parentElement.removeChild(this.xtermContainer);
+    }
+  }
+
+  updatePtyParams(params: PtyParams, options: UpdatePtyOptions = {}): void {
+    if (this.disposed) return;
     if (this.paramsEqual(this.currentParams, params)) {
       return;
     }
     this.currentParams = params;
+    this.startPty(params, { attachFirst: options.attachFirst === true });
+  }
+
+  private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {
+    if (this.disposed) return;
+    const generation = ++this.startGeneration;
     this.term.reset();
 
     void (async () => {
       try {
+        if (this.isStaleStart(generation)) return;
+        if (opts.attachFirst) {
+          let attached = false;
+          try {
+            attached = await sessionAttach({
+              sessionId: this.sessionId,
+              cwd: params.cwd,
+              onOutput: this.channel,
+            });
+          } catch {
+            attached = false;
+          }
+          if (this.disposed && attached) {
+            void sessionDestroy({ sessionId: this.sessionId });
+            return;
+          }
+          if (this.isStaleStart(generation)) return;
+          if (attached) {
+            return;
+          }
+        }
+        if (this.attachedContainer) {
+          this.syncAttachedRect();
+        }
+        if (this.isStaleStart(generation)) return;
+        const cols = Math.max(2, this.term.cols || 80);
+        const rows = Math.max(1, this.term.rows || 24);
         await sessionSpawn({
+          sessionId: this.sessionId,
           spec: params.spec,
-          cols: this.term.cols,
-          rows: this.term.rows,
+          cols,
+          rows,
           cwd: params.cwd,
           onOutput: this.channel,
         });
+        if (this.disposed) {
+          void sessionDestroy({ sessionId: this.sessionId });
+        }
       } catch (err) {
+        if (this.isStaleStart(generation)) return;
         const label = describeSpec(params.spec);
         this.term.write(`\x1b[31mFailed to start ${label}: ${err}\x1b[0m\r\n`);
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
@@ -215,6 +276,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   setPerception(perception: Perception | null): void {
+    if (this.disposed) return;
     if (perception === null) {
       console.warn(
         "[terminal-runtime] setPerception(null) — reflex layer input will be suppressed",
@@ -224,7 +286,25 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   setTheme(theme: Partial<XTermTheme>): void {
+    if (this.disposed) return;
     this.term.options.theme = { ...this.term.options.theme, ...theme };
+    // Theme update can leave renderer dimensions stale when scene switches
+    // coincide with layout changes, so force a fresh fit before refresh.
+    this.refit();
+    this.term.refresh(0, this.term.rows - 1);
+  }
+
+  refit(): void {
+    if (this.disposed) return;
+    this.lastFitW = 0;
+    this.lastFitH = 0;
+    this.syncAttachedRect();
+    requestAnimationFrame(() => {
+      this.lastFitW = 0;
+      this.lastFitH = 0;
+      this.syncAttachedRect();
+      this.term.refresh(0, this.term.rows - 1);
+    });
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {
@@ -397,6 +477,26 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  writePlainText(text: string): void {
+    if (this.disposed) return;
+    this.term.write(text);
+  }
+
+  focus(): void {
+    if (this.disposed) return;
+    this.term.focus();
+  }
+
+  forceRespawn(): void {
+    if (this.disposed) return;
+    if (!this.currentParams) return;
+    this.startPty(this.currentParams, { attachFirst: false });
+  }
+
+  private isStaleStart(generation: number): boolean {
+    return this.disposed || generation !== this.startGeneration;
+  }
+
   private notifyPtyDataListeners(): void {
     for (const listener of Array.from(this.ptyDataListeners)) {
       listener();
@@ -418,6 +518,29 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       if (this.recentInput.length > 50) {
         this.recentInput = this.recentInput.slice(-50);
       }
+    }
+  }
+
+  private syncAttachedRect(): void {
+    const container = this.attachedContainer;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cs = getComputedStyle(container);
+    const padLeft = parseFloat(cs.paddingLeft) || 0;
+    const padTop = parseFloat(cs.paddingTop) || 0;
+    const padRight = parseFloat(cs.paddingRight) || 0;
+    const padBottom = parseFloat(cs.paddingBottom) || 0;
+    const w = Math.max(0, Math.floor(rect.width - padLeft - padRight));
+    const h = Math.max(0, Math.floor(rect.height - padTop - padBottom));
+    this.xtermContainer.style.top = `${rect.top + padTop}px`;
+    this.xtermContainer.style.left = `${rect.left + padLeft}px`;
+    this.xtermContainer.style.width = `${w}px`;
+    this.xtermContainer.style.height = `${h}px`;
+    this.xtermContainer.style.visibility = "visible";
+    if (w > 0 && h > 0 && (w !== this.lastFitW || h !== this.lastFitH)) {
+      this.lastFitW = w;
+      this.lastFitH = h;
+      this.fitAddon.fit();
     }
   }
 
@@ -450,12 +573,49 @@ function describeSpec(spec: SpawnSpec): string {
   return spec.command ?? "shell";
 }
 
-export function getTerminalRuntime(): TerminalRuntime {
-  return getOrInit(KEYS.TERMINAL_RUNTIME, () => new TerminalRuntimeImpl());
+/**
+ * Session id でキーされる TerminalRuntime instance の Map。HMR 越しに instance
+ * を保つため hot-data 経由で保持する。
+ */
+function getRuntimeMap(): Map<string, TerminalRuntimeImpl> {
+  return getOrInit(KEYS.TERMINAL_RUNTIME, () => new Map<string, TerminalRuntimeImpl>());
 }
 
-// Self-accept: terminal-runtime.ts 自身を編集しても singleton は保たれる。
-// React 側（terminal.tsx）は影響なく次 mount で同 instance を引く。
+/**
+ * Session に紐づく TerminalRuntime を返す。同 sessionId への二度目の呼び出しは
+ * 同じ instance を返す（webview lifetime singleton per session）。
+ */
+export function getTerminalRuntime(sessionId: string): TerminalRuntime {
+  const map = getRuntimeMap();
+  let runtime = map.get(sessionId);
+  if (!runtime) {
+    runtime = new TerminalRuntimeImpl(sessionId);
+    map.set(sessionId, runtime);
+  }
+  return runtime;
+}
+
+/**
+ * 現在生きている全 TerminalRuntime instance を返す。テーマ一括適用などに使う。
+ */
+export function getAllTerminalRuntimes(): ReadonlyArray<TerminalRuntime> {
+  return [...getRuntimeMap().values()];
+}
+
+/**
+ * Session が close されたとき呼んで instance を解放する。xterm.dispose / DOM 解放 /
+ * channel 破棄を行い Map から外す。同 sessionId が無ければ no-op。
+ */
+export function disposeTerminalRuntime(sessionId: string): void {
+  const map = getRuntimeMap();
+  const runtime = map.get(sessionId);
+  if (!runtime) return;
+  runtime.dispose();
+  map.delete(sessionId);
+}
+
+// Self-accept: terminal-runtime.ts 自身を編集しても Map は保たれる。
+// React 側は影響なく次 mount で同 instance を引く。
 if (import.meta.hot) {
   import.meta.hot.accept();
 }
