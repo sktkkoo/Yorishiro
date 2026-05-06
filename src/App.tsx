@@ -41,6 +41,7 @@ import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
+import { registerEnvironmentFragment } from "./core/global-prompt/environment-fragment";
 import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
@@ -336,6 +337,7 @@ function App() {
     });
     const logBridge = new LogBridge({ time });
     // ── グローバル system prompt フラグメント登録 ────────────────────────
+    registerEnvironmentFragment();
     registerJournalFragment();
     const globalPromptPromise = collectGlobalPrompt();
 
