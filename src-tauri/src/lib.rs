@@ -25,14 +25,15 @@ fn build_path_env() -> String {
     )
 }
 
-/// 新世代の spawn command。SpawnSpec を TS 側で組み立てて渡し、Rust 側は
-/// agent 用の plugin_dir を Tauri context から差し込んで PtyState::spawn に
-/// flow する。
+/// 任意 session id で PTY を spawn する。session_id を省略した legacy 呼び出し
+/// （旧 single-pane flow）は default-session を作る。caller が明示的に id を
+/// 渡せば multi-pane で session を並列に持てる。
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn session_spawn(
     app: AppHandle,
     state: State<'_, PtyState>,
+    session_id: Option<String>,
     spec: SpawnSpec,
     cols: u16,
     rows: u16,
@@ -63,7 +64,55 @@ async fn session_spawn(
         }
         shell @ SpawnSpec::Shell { .. } => shell,
     };
-    state.spawn(app, cols, rows, cwd, &final_spec, on_output)
+    let id = session_id.unwrap_or_else(|| sessions::DEFAULT_SESSION_ID.to_string());
+    state.spawn(app, &id, cols, rows, cwd, &final_spec, on_output)
+}
+
+#[tauri::command]
+async fn session_destroy(state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
+    state.kill(&session_id)
+}
+
+#[tauri::command]
+async fn session_write(
+    state: State<'_, PtyState>,
+    session_id: String,
+    data: String,
+) -> Result<(), String> {
+    state.write_data(&session_id, &data)
+}
+
+#[tauri::command]
+async fn session_resize(
+    state: State<'_, PtyState>,
+    session_id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    state.resize(&session_id, cols, rows)
+}
+
+#[tauri::command]
+async fn session_attach(
+    state: State<'_, PtyState>,
+    session_id: String,
+    cwd: Option<String>,
+    on_output: Channel,
+) -> Result<bool, String> {
+    Ok(state.attach(&session_id, cwd, on_output))
+}
+
+#[tauri::command]
+async fn session_detach(state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
+    state.detach(&session_id);
+    Ok(())
+}
+
+#[tauri::command]
+async fn session_list(
+    registry: State<'_, std::sync::Arc<sessions::SessionRegistry>>,
+) -> Result<Vec<sessions::SessionDescriptor>, String> {
+    Ok(registry.list())
 }
 
 /// `~/.charminal/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
@@ -86,22 +135,28 @@ fn mark_tutorial_done() -> Result<(), String> {
     mark_tutorial_done_impl(&dir)
 }
 
+// ─── Legacy pty_* commands ────────────────────────────────────────
+//
+// session_id を取らない旧 API。default-session に固定 dispatch する shim。
+// 既存 caller (terminal-runtime.ts など) が C-1-3 で session_* に乗り換えれば
+// この群は削除できる。
+
 #[tauri::command]
 async fn pty_write(state: State<'_, PtyState>, data: String) -> Result<(), String> {
-    state.write_data(&data)
+    state.write_data(sessions::DEFAULT_SESSION_ID, &data)
 }
 
 #[tauri::command]
 async fn pty_resize(state: State<'_, PtyState>, cols: u16, rows: u16) -> Result<(), String> {
-    state.resize(cols, rows)
+    state.resize(sessions::DEFAULT_SESSION_ID, cols, rows)
 }
 
 #[tauri::command]
 async fn pty_kill(state: State<'_, PtyState>) -> Result<(), String> {
-    state.kill()
+    state.kill(sessions::DEFAULT_SESSION_ID)
 }
 
-/// Reconnect a new Channel to an existing PTY session (WebView HMR reload).
+/// Reconnect a new Channel to the default-session PTY (WebView HMR reload).
 /// Returns true if the PTY was alive and attached; false means caller should spawn instead.
 #[tauri::command]
 async fn pty_attach(
@@ -109,13 +164,13 @@ async fn pty_attach(
     cwd: Option<String>,
     on_output: Channel,
 ) -> Result<bool, String> {
-    Ok(state.attach(cwd, on_output))
+    Ok(state.attach(sessions::DEFAULT_SESSION_ID, cwd, on_output))
 }
 
-/// Disconnect the output channel without killing the PTY (WebView HMR cleanup).
+/// Disconnect the output channel without killing the default-session PTY (WebView HMR cleanup).
 #[tauri::command]
 async fn pty_detach(state: State<'_, PtyState>) -> Result<(), String> {
-    state.detach();
+    state.detach(sessions::DEFAULT_SESSION_ID);
     Ok(())
 }
 
@@ -716,6 +771,12 @@ pub fn run() {
         .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
             session_spawn,
+            session_destroy,
+            session_write,
+            session_resize,
+            session_attach,
+            session_detach,
+            session_list,
             pty_write,
             pty_resize,
             pty_kill,
