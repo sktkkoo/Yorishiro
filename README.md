@@ -101,7 +101,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.2.0 — early preview**
+**v0.2.0-alpha**
 
 Under active development. APIs, data shapes, and pack specs will change.
 

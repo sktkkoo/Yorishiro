@@ -101,7 +101,7 @@ Bundled pack がデフォルトで動作します。ユーザーは `~/.charmina
 
 ## Status
 
-**v0.2.0 — early preview**
+**v0.2.0-alpha**
 
 実装 phase の途中です。API・データ形状・pack 仕様は今後変わります。
 
