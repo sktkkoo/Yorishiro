@@ -1,7 +1,7 @@
 /**
  * 廃工場の大気効果. 浮遊粒子 (DustMotes) と天光柱 (GodRays).
  *
- * leva で sizeMult / alpha / dust speed / godRays alpha をリアルタイム調整可能.
+ * SDK controls で sizeMult / alpha / dust speed / godRays alpha をリアルタイム調整可能.
  */
 
 import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";

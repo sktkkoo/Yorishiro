@@ -6,7 +6,7 @@
  * 2. Lantern flicker sync — lantern dropout 時に CA も spike
  * 3. Heavy noise burst — VHS dropout 風 (数分に一度)
  *
- * leva controls (folder "abandoned-factory > post" / "abandoned-factory > glitch"):
+ * SDK controls (folder "post effects"):
  *   各 effect の主要パラメータを runtime 調整可能.
  */
 
@@ -215,7 +215,7 @@ export function AbandonedFactoryPostProcess() {
   const { scanlineDensity, scanlineOpacity } = scanlineControls;
   const { vignetteOffset, vignetteDarkness } = vignetteControls;
 
-  // lights.tsx と同じ flickerAmount を参照するため leva を購読.
+  // lights.tsx と同じ flickerAmount を参照するため controls store を購読.
   const [lightsControls] = useCharminalControls("post effects", () => ({
     lights: controlFolder({
       flickerAmount: { value: 0.1, min: 0, max: 1, step: 0.05 },

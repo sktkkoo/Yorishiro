@@ -5,7 +5,7 @@
  * 上書き + lookAt するため, pack 側から触ると oscillation する.
  * camera.fov は ThreeRuntime が触らないので pack が安全に modulate できる.
  *
- * leva で振幅を runtime 調整可能.
+ * SDK controls で振幅を runtime 調整可能.
  */
 
 import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";

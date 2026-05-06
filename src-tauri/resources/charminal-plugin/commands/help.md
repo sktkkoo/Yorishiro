@@ -111,9 +111,9 @@ Charminal が起動中であれば以下の MCP tool が使える。
 | `get_ui_state({packId, key?})` | packId, key（省略可） | pack が公開しているパラメータを読む |
 | `set_ui_state({packId, key, value})` | packId, key, value | pack のパラメータを書く（即反映） |
 
-scene pack は照明・エフェクト・ポストプロセスなどのパラメータを leva パネルに公開している（`useControls` + `useControlsBridge` で登録されたもの）。`set_ui_state` で値を変えると画面に即反映される。user と相談しながらリアルタイムで調整し、「焼き込んで」と言われたら現在の値をソースの default に書き込む（= 次回起動からその値になる）。
+scene pack は照明・エフェクト・ポストプロセスなどのパラメータを SDK controls 経由で F2 controls panel に公開している（`useCharminalControls` + `useControlsBridge` で登録されたもの）。`set_ui_state` で値を変えると画面に即反映される。user と相談しながらリアルタイムで調整し、「焼き込んで」と言われたら現在の値をソースの default に書き込む（= 次回起動からその値になる）。
 
-scene pack は `useControls` + `useControlsBridge` で leva パネルにも同時公開する。ui pack は `ctx.state` で独自の key-value を持ち、同じ MCP tool で読み書きできるが leva パネルには出ない。
+scene pack は `useCharminalControls` + `useControlsBridge` で F2 controls panel にも同時公開する。ui pack は `ctx.state` で独自の key-value を持ち、同じ MCP tool で読み書きできるが F2 controls panel には出ない。
 
 ### キャラクター操作
 

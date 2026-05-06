@@ -2,7 +2,7 @@
  * camera-lighting-panel — Plan 2 の reference implementation。
  *
  * Tracking OFF で ctx.three.setCameraTracking(false) を呼び、camera position を
- * UI pack から直接操作する。Lighting は scene pack が leva 経由で管理する。
+ * UI pack から直接操作する。Lighting は scene pack が SDK controls 経由で管理する。
  */
 
 import type { UiContext, UiPackDefinition } from "@charminal/sdk";

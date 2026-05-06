@@ -1,7 +1,7 @@
 /**
  * simple-room の lighting rig.
  *
- * 静かな部屋の控えめな lighting. leva で intensity / color を調整可能.
+ * 静かな部屋の控えめな lighting. SDK controls で intensity / color を調整可能.
  */
 
 import { useCharminalControls } from "@charminal/sdk/controls";

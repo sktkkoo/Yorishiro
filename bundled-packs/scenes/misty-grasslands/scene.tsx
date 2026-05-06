@@ -5,7 +5,7 @@
  * VRM のカメラ位置と草原のカメラ位置が独立するため、草の密生具合を
  * 草原側カメラの奥行きで表現できる。
  *
- * component は VRM に当たる lighting のみを leva 経由で提供する。
+ * component は VRM に当たる lighting のみを SDK controls 経由で提供する。
  * R3fRuntimeRoot が component を検出し default lights を disable →
  * 代わりに Lights コンポーネントが VRM を照らす。
  *

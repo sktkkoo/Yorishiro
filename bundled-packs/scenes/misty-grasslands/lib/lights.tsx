@@ -2,7 +2,7 @@
  * misty-grasslands の lighting rig.
  *
  * overcast morning の拡散光: 弱い directional + hemisphere ambient.
- * leva で intensity / color を調整可能.
+ * SDK controls で intensity / color を調整可能.
  */
 
 import { useCharminalControls } from "@charminal/sdk/controls";
