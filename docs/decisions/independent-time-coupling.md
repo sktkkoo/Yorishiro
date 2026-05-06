@@ -47,5 +47,5 @@
 
 ## 関連
 
-- `docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`「独立した時間」
-- `docs/philosophy/CHARMINAL.md`「Presence の三条件」
+- `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「独立した時間」
+- `docs/philosophy/CHARMINAL.ja.md`「Presence の三条件」

@@ -11,7 +11,7 @@
 
 ## 何を決めたか
 
-- 「住人が user に応答する」interaction は presence の根拠（[philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md)）
+- 「住人が user に応答する」interaction は presence の根拠（[philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)）
 - ただし「GUI 入力を絞る」「クリック反応を持たせない」は **scope 選択**（実装コスト / MVP 計画）であり、哲学的に禁止されているわけではない
 - **意味のない mechanical reactivity（parallax / hover glow / generic ripple）は採用しない** — 住人の意志が無いただの動きは presence を壊す
 
@@ -29,5 +29,5 @@
 ## 関連 reference
 
 - memory: `feedback_interaction_is_presence.md`
-- philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md)「自発性の原則」
+- philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「自発性の原則」
 - 関連: [`presence-over-spectacle.md`](presence-over-spectacle.md)

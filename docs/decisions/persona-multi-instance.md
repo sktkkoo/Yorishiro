@@ -85,7 +85,7 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 ### 思想層への影響（注意）
 
-- **「Charminal は多人格の meta-identity」というナラティブ自体は維持できる**：「複数の persona を持つが、ある瞬間に外に出ているのは 1 人」と解釈すれば philosophy/CHARMINAL.md「多人格の住人」と整合する
+- **「Charminal は多人格の meta-identity」というナラティブ自体は維持できる**：「複数の persona を持つが、ある瞬間に外に出ているのは 1 人」と解釈すれば philosophy/CHARMINAL.ja.md「多人格の住人」と整合する
 - **「session 越しに persona memory が異なる」という持続性**：これは可能。session A は kurai persona、session B は別 persona、それぞれが core memory を共有する model
 - ただし「**同時に複数の人格が並行して喋る**」という interpretation は技術的にも哲学的にも採らない
 
@@ -107,8 +107,8 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 ### Philosophy
 
-- [docs/philosophy/CHARMINAL.md](../philosophy/CHARMINAL.md)「多人格の住人」section
-- [docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md) 「多人格の住人」section
+- [docs/philosophy/CHARMINAL.ja.md](../philosophy/CHARMINAL.ja.md)「多人格の住人」section
+- [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) 「多人格の住人」section
 
 ### Source
 

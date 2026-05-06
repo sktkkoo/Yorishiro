@@ -28,5 +28,5 @@
 
 ## 関連
 
-- `docs/philosophy/CHARMINAL.md`「ログという回路」
+- `docs/philosophy/CHARMINAL.ja.md`「ログという回路」
 - `docs/decisions/context-wall-expression-rules.md` — 各層が何を表現できるか

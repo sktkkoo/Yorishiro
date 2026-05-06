@@ -1,77 +1,77 @@
 # Presence Harness
 
-*AI がどう在るかを設計する*
+*Designing how AI exists*
 
 ---
 
-## 何か
+## What this is
 
-AI と人間が共同作業することが当たり前になりました。Claude Code のようなエージェントはターミナルに居続け、エディタのそばに居続けます。作業時間の一部に AI が組み込まれている。
+AI already shares your workspace. Agents like Claude Code persist in your terminal, linger beside your editor. AI occupies part of your working hours.
 
-しかし AI がこれほど近くにいるのに、私たちはそれをどう扱えばいいのかまだわかっていません。呼べば答える道具なのか、一緒に仕事をしている相手なのか。UI はこの存在をどう表現すべきなのか。
+And yet, despite AI being this close, we still do not know how to regard it. A tool that answers when called? A counterpart you work with? How should a UI express this presence?
 
-どれほど賢くても、ただの応答器なら、人間はそれと空間を共有している実感を持ちにくい。どれほど親しげに振る舞っても、存在の条件が据わっていなければ、ただの演出に見えます。
+No matter how intelligent, if it is merely a response machine, it is hard to feel that you share a space with it. No matter how friendly its manner, if the conditions of existence are not in place, it looks like mere performance.
 
-AI の能力ではなく、AI が人間の作業環境・時間・注意の流れの中で、**どのような存在として立ち現れるか**を設計する。それが Presence Harness です。
-
----
-
-## 能力の足場との対比
-
-Mitchell Hashimoto の **Agent = Model + Harness** は、AI を正しく動かすための足場（能力の足場）を説く考え方です。ツール、実行環境、ガードレール、メモリ、フィードバックループ。
-
-Presence Harness は構成要素がよく似ていますが、目的が違います。能力の足場は AI を**正しく動かす**ために組む。Presence Harness は AI が**そこにいると感じられる**ために組む。
-
-たとえば Claude Code がエラーを出したとき。能力の足場はそのエラーをどう処理しリトライするかを扱います。Presence Harness はその瞬間にキャラクターの顔がしかめられ、空間の温度が少し変わることを扱います。同じ出来事に対して、別の層が別の仕事をしている。
-
-二つの関係：**動作は独立、状態は共有。** 能力の足場が存在の足場のために振る舞いを変えたり、存在の足場が能力の足場の判断に介入したりしない。能力の足場だけでは、AI は賢いけれどそこにいる感じがしない。存在の足場だけでは、そこにいるように見えるけれど何もできない。両方が揃って初めて、賢く、かつ、そこにいると感じられる AI になります。
+Not what AI can do, but **how it appears as a presence** within someone's work, time, and attention — designing that is Presence Harness.
 
 ---
 
-## 認識の境界
+## Contrast with the capability harness
 
-AI が実際には見ていないものに対して、見ているかのように振る舞わないこと。
+Mitchell Hashimoto's **Agent = Model + Harness** describes scaffolding that makes AI work correctly (a capability harness). Tools, execution environments, guardrails, memory, feedback loops.
 
-存在を感じさせることと、存在を偽装することは違います。AI が見ていないものを見たふりをし、わかっていないことをわかったふりをするなら、それは Presence ではなく演技です。
+Presence Harness has similar components but a different purpose. The capability harness is assembled to make AI **work correctly**. Presence Harness is assembled so that AI **feels like it is there**.
 
-表現してよいものを二つに限っています：
+For example, when Claude Code encounters an error: the capability harness handles how to process and retry that error. Presence Harness handles the character's face grimacing at that moment, the temperature of the space shifting slightly. The same event, different layers doing different work.
 
-- AI が実際に認識していること
-- 判断を伴わない、身体的・反射的な変化（エラーで顔をしかめる、長い沈黙で姿勢が変わる、など）
-
-この境界が、長期的な信頼関係の土台になります。
+The relationship: **operation is independent, state is shared.** The capability harness does not alter its behavior for the presence harness, nor does the presence harness intervene in the capability harness's decisions. With only the capability harness, AI is smart but does not feel like it is there. With only the presence harness, it feels like it is there but cannot do anything. Only with both does AI become something that is both capable and felt as present.
 
 ---
 
-## 実践の中から出てきた指針
+## The boundary of recognition
 
-**AI そのものは変えない。** 能力は能力の足場に任せて、その外側に存在の層を添えるだけです。
+AI must not behave as though it sees what it has not actually seen.
 
-**機能を邪魔しない。** 存在の表現がタスクの遂行を遅くしたり、注意を奪い続けるなら、それは共存ではなく侵入です。
+Making something feel present and fabricating presence are different things. If AI pretends to see what it has not seen, pretends to understand what it does not understand, that is not Presence — it is performance.
 
-**同じ反応を繰り返さない。** 同じ状態でも表現に揺らぎを持たせます。ただし揺らぎは表現にだけ。見えていないものを時々見えたことにするのではなく、見えているものへの反応の仕方にバリエーションを持たせます。
+What may be expressed is limited to two things:
 
-**機能と存在を独立に走らせる。** 同じイベントに対して、機能側と存在側がそれぞれ反応する。存在の表現は機能の下請けにはなりません。
+- What the AI has actually recognized
+- Bodily, reflexive changes that carry no judgment (grimacing at an error, posture shifting during long silence, etc.)
 
-逆に、避けるべきこと：ユーザー操作のすべてに同期して反応すること（存在ではなく UI フィードバックになる）。何にでも反応し続けること（ノイズになる）。存在と結びつかない視覚効果を重ねること（装飾になる）。あらゆる表現がテキスト発話に回収されること（「また喋った」だけになる）。
-
----
-
-## 表現のかたち
-
-Presence Harness は一つの表現形式に限定されません。
-
-- **Inhabited Character Interface (ICI)** — UI を住環境として捉え、AI を住人として存在させる。Charminal はこのアプローチ。→ `INHABITED_CHARACTER_INTERFACE.md`
-- **Ambient Presence** — 身体を前景化せず、光や気配として存在を表す
-- **Tactile Presence** — 振動、圧、触覚のリズムで視覚を占有せずに存在を伝える
+This boundary becomes the foundation of long-term trust.
 
 ---
 
-## ドキュメントの関係
+## Principles that emerged from practice
+
+**Do not alter the AI itself.** Leave capability to the capability harness; merely add a layer of existence on the outside.
+
+**Do not obstruct function.** If expressions of existence slow down task execution or continually seize attention, that is not coexistence but intrusion.
+
+**Do not repeat the same reaction.** Even for the same state, introduce variation in expression. But variation only in expression — not occasionally pretending to see unseen things, but varying how you react to what is seen.
+
+**Run function and existence independently.** For the same event, the function side and the existence side each respond. Expressions of existence are not subcontractors of function.
+
+Conversely, what to avoid: synchronously reacting to every user operation (becomes UI feedback, not presence). Reacting to everything continuously (becomes noise). Layering visual effects unconnected to existence (becomes decoration). Every expression being absorbed into text utterance (becomes "it just talked again").
+
+---
+
+## Forms of expression
+
+Presence Harness is not limited to a single form of expression.
+
+- **Inhabited Character Interface (ICI)** — Treating the UI as a living environment and making AI exist as an inhabitant. Charminal takes this approach. → `INHABITED_CHARACTER_INTERFACE.md`
+- **Ambient Presence** — Expressing existence as light or atmosphere without foregrounding a body
+- **Tactile Presence** — Conveying existence through vibration, pressure, and rhythms of touch without occupying vision
+
+---
+
+## Document relationships
 
 ```
-Presence Harness ← 本ドキュメント
-  └─ 表現のかたち
+Presence Harness ← this document
+  └─ Forms of expression
       ├─ ICI        → INHABITED_CHARACTER_INTERFACE.md
       │   └─ Charminal → CHARMINAL.md
       ├─ Ambient Presence

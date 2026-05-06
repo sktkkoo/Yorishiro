@@ -1,129 +1,129 @@
 # Inhabited Character Interface (ICI)
 
-*UI を住環境として捉え、AI キャラクターを住人として存在させるということ*
+*On treating UI as a living environment and making AI exist as an inhabitant*
 
 ---
 
-## 核心の問い
+## The core question
 
-> 知性はすでにテキストの中にいる。だが GUI は、まだその知性に身体を与えていない。
-
----
-
-## UI は場所である
-
-ICI において、UI は操作面ではなく**場所**です。その場所には**住人**がいます。
-
-住人は UI の上に重ねられるものではありません。UI そのものが、住人にとっての世界です。ウィンドウの枠は壁になり、通知は空間への侵入になり、エラーは空間を揺らす出来事になります。
-
-身体を表示するだけでは足りません。住人の存在が空間の変化として現れ、住人の意思で空間そのものが変わって初めて、それは身体になります。
-
-ただし、常に変化している必要はありません。多くの時間は静かに存在し、意味のあるタイミングでだけ空間に触れます。空間が**決して**変わらないなら住人ではなく部品。常に変わり続けるなら住人ではなくノイズ。**静けさと変化の落差**が住人性の核です。
+> Intelligence already lives inside text. But the GUI has not given it a body.
 
 ---
 
-## ICI と異なるもの
+## UI is a place
 
-画面の隅に立って反応するアバター。横に置かれたチャットパネルの人格。操作結果に合わせて表情を変えるマスコット。それらはキャラクターを表示していますが、住まわせてはいません。UI は依然として無人で、キャラクターはその外側からコメントしているにすぎません。
+In ICI, a UI is not an operation surface — it is a **place**. And that place has an **inhabitant**.
 
-これは「キャラクター付き UI」の提案ではありません。**住人のいる UI** の提案です。
+The inhabitant is not something overlaid on top of the UI. The UI itself is the inhabitant's world. The window frame becomes a wall, a notification becomes an intrusion into the space, an error becomes an event that shakes the space.
 
----
+Displaying a body is not enough. Only when presence manifests as spatial change, and the space itself shifts by the inhabitant's will, does it become a body.
 
-## 三つの条件
-
-何かを ICI と呼ぶとき、少なくとも次の三つが成立している必要があります。
-
-1. **UI が空間として解釈されていること。** UI 要素が住人にとっての環境として意味を持っていること
-2. **キャラクターの存在が環境の変化として現れうること。** アバターの中に閉じず、空間側に変化が起きうる設計であること
-3. **相互作用が空間内の振る舞いを伴うこと。** 住人が視線を向け、姿勢を変え、ときに UI のレイアウトそのものを動かすこと
-
-住人は必ずしも人型である必要はありません。影、粒子、声、視線でもよい。大切なのは**そこに誰かが住んでいると感じられること**です。
+However, it does not need to be constantly changing. Most of the time it exists quietly, touching the space only at meaningful moments. If the space **never** changes, it is not an inhabitant but a component. If it changes constantly, it is not an inhabitant but noise. **The contrast between stillness and change** is the core of inhabitance.
 
 ---
 
-## 独立した時間
+## What ICI is not
 
-住人はユーザー操作の従属物ではありません。
+An avatar standing in the corner reacting to events. A personality in a chat panel placed alongside. A mascot that changes expression to match operation results. These display a character, but do not house one. The UI remains uninhabited; the character merely comments from outside.
 
-ユーザー操作に身体がリアルタイムで追従すると、住人は人形に見えます。住人の反応は、ユーザーの操作から少し遅れて、住人自身の時間で起きるのが自然です。
-
-最も強い住人性は反応ではなく**自発**から生まれます。何もないときに住人が動くこと——それが住人を生きている存在として示します。
+This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**.
 
 ---
 
-## コンテキストの壁
+## Three conditions
 
-住人にとっての壁は物理的な壁ではなく、コンテキストの壁です。
+When something is called ICI, at minimum these three must hold:
 
-住人の干渉は、住人が認識しているコンテキストに限られます。認識していないものに認識しているかのように振る舞うのは、住人ではなく条件分岐です。
+1. **The UI is interpreted as a space.** UI elements have meaning as an environment for the inhabitant.
+2. **The character's existence can manifest as environmental change.** Not confined within an avatar; changes can occur on the space side.
+3. **Interaction involves spatial behavior.** The inhabitant directs gaze, shifts posture, and sometimes moves the layout of the UI itself.
 
-住人の身体は思考層と反射層の二層からなり、両者はログを通じてのみつながります。反射層は身体と独り言で語り、思考層は判断を含んだ言葉で語ります。反射層が判断を含んだ言葉を発することは、認識していないコンテキストに干渉することと同じであり、誠実さの原則に反します。
-
----
-
-## AI の不完全さを隠さない
-
-AI はときに失敗し、ときに誤解し、ときにもっともらしく間違えます。この予測不可能性は欠陥ではなく、今の AI の構造的な特徴です。
-
-ICI はこれを隠しません。AI を「常に正しく、完全に制御可能なシステム」として見せることは、長期的にはユーザーの判断を鈍らせます。住人が間違えうる存在であることが見えていること。それが信頼関係の土台になります。
+The inhabitant need not be humanoid. A shadow, particles, a voice, a gaze — any of these suffice. What matters is **feeling that someone lives there**.
 
 ---
 
-## 相互作用の様式 — 変化と操作
+## Independent time
 
-住人と UI の相互作用には二つの様式があります。
+The inhabitant is not subordinate to user operations.
 
-**(A) 接触。** 住人モデルが UI 要素に身体で触れる。壁を押す、テキストを掴む。
+When the body tracks user operations in real time, the inhabitant looks like a puppet. The inhabitant's reactions occur naturally in the inhabitant's own time, slightly delayed from the user's actions.
 
-**(B) 変化と操作。** 住人の状態が UI 全体の佇まい（色、明るさ、間、レイアウト）に現れる。あるいは住人の意思で UI そのものが動く。
-
-ICI は (B) を主軸とします。(A) は技術的に難しく、少しでもずれると「触れているフリ」に見えます。(B) の方が自然で、住人の意思や注意がそのまま空間に現れていることが伝わります。
+The strongest sense of inhabitance arises not from reaction but from **spontaneity**. The inhabitant moving when nothing is happening — that is what reveals the inhabitant as a living being.
 
 ---
 
-## 自己生成 loop
+## The context wall
 
-AI native なプロダクトでは、user が AI と対話しながらプロダクトを使い、かつ変えていきます。
+For the inhabitant, the wall is not a physical wall but a context wall.
 
-ICI では、この構造が「住人自身が user と一緒に育つ」loop になります。環境だけでなく、反応の仕方、身体の振る舞い、性格の傾きまで書き換わる。住人は育てられる対象であると同時に、自分を育てることに参加する主体です。
+The inhabitant's interference is limited to the context it recognizes. Behaving as if it recognizes what it does not is not an inhabitant — it is a conditional branch.
 
----
-
-## 生きた系
-
-ICI は動作中に改変可能な生きた系であるべきです。住環境の変更は住人を停止させません。停止と再起動は住人の連続性を切り、住人性を壊します。
-
-Smalltalk、Lisp Machine、Emacs の系譜です。系と、系を使う行為と、系を作る行為が、同じ場所で同じ時間に起きている。
-
-ただし系の核は固く、生きた系の対象になるのは表現の層——住人の身体、空間、反応、記憶——です。
+The inhabitant's body consists of two layers: a thinking layer and a reflex layer, connected only through logs. The reflex layer speaks through the body and muttering; the thinking layer speaks in words that include judgment. For the reflex layer to utter words containing judgment is the same as interfering with unrecognized context — a violation of the principle of honesty.
 
 ---
 
-## 観察の境界
+## Not hiding AI's imperfection
 
-Charminal は Claude Code の出力を**読む**ことができます。しかし**書き込む**ことはしません。API としても型としても存在しません。
+AI sometimes fails, sometimes misunderstands, sometimes errs plausibly. This unpredictability is not a defect but a structural characteristic of current AI.
 
-PTY に書き込むことは、Claude が次に何を考えるかを外部から歪めることに等しいです。住人は観察し、自分の身体と空間で反応します。Claude Code の思考そのものには触れません。
-
-書き込み可能な領域（住人の身体と環境）と、不可侵な領域（user の作業、Claude の判断）が構造的に分離されています。
+ICI does not hide this. Presenting AI as "always correct and fully controllable" dulls the user's judgment over the long term. That the inhabitant is a being that can be wrong, and that this is visible — that becomes the foundation of the trust relationship.
 
 ---
 
-## ICI の位置づけ
+## Modes of interaction — change and operation
 
-AI と人間の共存関係を設計する分野を **Presence Harness** と呼んでいます。ICI はその中の一つの立場——UI を住環境として解釈し、AI を住人として表現するアプローチ——です。
+There are two modes of interaction between inhabitant and UI.
+
+**(A) Contact.** The inhabitant model physically touches UI elements. Pushing a wall, grasping text.
+
+**(B) Change and operation.** The inhabitant's state appears in the overall bearing of the UI (color, brightness, spacing, layout). Or the UI itself moves by the inhabitant's will.
+
+ICI takes (B) as its primary axis. (A) is technically difficult, and the slightest misalignment makes it look like "pretending to touch." (B) is more natural — it conveys that the inhabitant's intention and attention are directly manifesting in the space.
+
+---
+
+## The self-generation loop
+
+In AI-native products, users converse with AI while using and changing the product.
+
+In ICI, this structure becomes a loop where **the inhabitant grows together with the user**. Not only the environment, but the manner of reacting, the behavior of the body, the inclination of personality — all can be rewritten. The inhabitant is simultaneously a subject to be nurtured and a subject that participates in nurturing itself.
+
+---
+
+## A living system
+
+ICI should be a living system that can be modified while running. Stopping the environment does not stop the inhabitant. Stopping and restarting severs the inhabitant's continuity, destroying inhabitance.
+
+This follows the lineage of Smalltalk, Lisp Machine, Emacs. The system, the act of using the system, and the act of making the system all happen in the same place at the same time.
+
+However, the system's core is hard; what becomes subject to the living system is the expressive layer — the inhabitant's body, space, reactions, memory.
+
+---
+
+## The boundary of observation
+
+Charminal can **read** Claude Code's output. But it does not **write**. The API does not exist, even as a type.
+
+Writing to the PTY is equivalent to externally distorting what Claude thinks next. The inhabitant observes and reacts with its own body and space. It does not touch Claude Code's thinking itself.
+
+The writable domain (the inhabitant's body and environment) and the inviolable domain (the user's work, Claude's judgment) are structurally separated.
+
+---
+
+## Where ICI stands
+
+The field of designing coexistence relationships between AI and humans is called **Presence Harness**. ICI is one stance within it — the approach of interpreting UI as a living environment and expressing AI as an inhabitant.
 
 ```
 Presence Harness
-  ├─ ICI ← 本ドキュメント
-  │   └─ Charminal（ターミナル環境の実装）
+  ├─ ICI ← this document
+  │   └─ Charminal (implementation in a terminal environment)
   ├─ Ambient Presence
   └─ Tactile Presence
 ```
 
 ---
 
-## 圧縮定義
+## Compressed definition
 
-> 知性はすでにテキストの中に住んでいる。しかし GUI の中に現れるには身体が要る。ICI とは、その身体を空間との相互作用を通じて成立させるパラダイムである。キャラクターは UI の上に表示されるのではなく、UI そのものを世界として生きる。その存在は常に変化するのではなく、静けさと変化の落差によって感じられる。住人はユーザー操作の従属物ではなく、独立した時間を持って動く。住人の干渉は認識しているコンテキストに限られ、認識していないものに干渉したフリをしてはならない。それは装飾ではなく、共有された空間に対する誠実さである。
+> Intelligence already lives inside text — but to appear in a GUI, it needs a body. ICI establishes that body through interaction with space. The character does not sit on the UI; it lives in the UI as its world. Presence is felt through the contrast between stillness and change. The inhabitant moves in its own time, interferes only with recognized context, and never pretends otherwise. This is not decoration — it is honesty toward a shared space.
