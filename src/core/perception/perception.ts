@@ -94,7 +94,6 @@ export class Perception {
   private readonly devLog?: SubsystemLog;
   private readonly onPresenceRestore?: () => void;
   private lastActivityAt: number;
-  private lastUserPromptAt: number;
   private idleTimer: Cancellable | null = null;
   private disposed = false;
 
@@ -105,7 +104,6 @@ export class Perception {
     this.devLog = deps.devLog;
     this.onPresenceRestore = deps.onPresenceRestore;
     this.lastActivityAt = this.time.now();
-    this.lastUserPromptAt = this.time.now();
 
     const interval = deps.idleCheckIntervalMs ?? DEFAULT_IDLE_CHECK_INTERVAL_MS;
     this.idleTimer = this.time.every(interval, () => {
@@ -164,7 +162,6 @@ export class Perception {
 
     // Presence restore: user が prompt を送信したら full に復帰
     if (signalName === "user-prompt-submit") {
-      this.lastUserPromptAt = this.time.now();
       this.onPresenceRestore?.();
     }
 
