@@ -75,7 +75,7 @@ The inhabitant can write daily entries in `~/.charminal/journal/daily/`. Summari
 
 ### Session tabs
 
-Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current shell tab (the main agent session is protected and cannot be closed). A minimal indicator at the bottom shows active tabs when two or more sessions exist. If the agent process exits unexpectedly, Charminal automatically restarts it with exponential backoff.
+Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current tab. The main agent session is protected and cannot be closed — if it exits unexpectedly, Charminal automatically restarts it.
 
 ### Self-referential MCP
 
