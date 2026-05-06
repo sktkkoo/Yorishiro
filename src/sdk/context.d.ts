@@ -563,7 +563,6 @@ export type SpaceEffectRequest =
       fovOffset?: number;
       lookAt?: Vec3;
     }
-  | { kind: "text-glitch"; durationMs: number; intensity?: number }
   | { kind: "desaturate"; durationMs: number; intensity?: number }
   | { kind: string; [option: string]: unknown }; // user effect への拡張
 

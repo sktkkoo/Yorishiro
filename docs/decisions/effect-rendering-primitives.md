@@ -18,7 +18,7 @@ effect の rendering primitive は **種類別に複数並列** で持つ（filt
 | Filter | shake, flash, desaturate | `addShakeFilter` / `addCssFilter` | 両方実装済み |
 | Particle（宣言） | sparkle, snow | `addParticles` | 未実装、**今は足さない** |
 | Canvas 2D | fireworks, brush art | `drawOnCanvas` | 未実装、**次に足す** |
-| DOM manipulation | TextPhysics, text-glitch | `addDomLayer` | 未実装、TextPhysics 着手時 |
+| DOM manipulation | TextPhysics | `addDomLayer` | 未実装、TextPhysics 着手時 |
 | Three.js scene | shader mesh, 3D object | `addThreeLayer` | 未実装、Three.js effect 着手時 |
 | Three.js postprocess | bloom, blur | `addThreePostPass` | 未実装、postprocessing 着手時 |
 
