@@ -1,12 +1,12 @@
 import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
-import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import {
   type SpawnSpec,
   sessionAttach,
+  sessionDestroy,
   sessionResize,
   sessionSpawn,
   sessionWrite,
@@ -80,7 +80,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
-  private webglAddon: WebglAddon | null = null;
+  private disposed = false;
+  private startGeneration = 0;
+  private ptyExitUnlisten: (() => void) | null = null;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -106,17 +108,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     this.term.open(this.xtermContainer);
 
-    try {
-      this.webglAddon = new WebglAddon();
-      this.term.loadAddon(this.webglAddon);
-    } catch {
-      // Canvas renderer remains active as fallback.
-    }
-
     // Channel は webview lifetime の単一 instance。factory が HMR survive するので
     // この callback ID は terminal.tsx の編集で orphan にならない。
     this.channel = new Channel<ArrayBuffer>();
     this.channel.onmessage = (data: ArrayBuffer) => {
+      if (this.disposed) return;
       const bytes = new Uint8Array(data);
       this.term.write(bytes);
       this.notifyPtyDataListeners();
@@ -127,15 +123,22 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     // PTY exit listener（session の process が終了したら terminal に表示）
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
+      const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
+        if (this.disposed) return;
         if (event.payload.session_id !== this.sessionId) return;
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
+      if (this.disposed) {
+        unlisten();
+      } else {
+        this.ptyExitUnlisten = unlisten;
+      }
     })();
 
     // ユーザー入力を PTY に流す
     let writeQueue: Promise<void> = Promise.resolve();
     this.term.onData((data) => {
+      if (this.disposed) return;
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
       this.detectClearCommand(data);
@@ -157,11 +160,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // xterm 側の cols/rows 変化を Rust に転送
     this.term.onResize(({ cols, rows }) => {
+      if (this.disposed) return;
       void sessionResize({ sessionId: this.sessionId, cols, rows });
     });
   }
 
   attachTo(container: HTMLElement): void {
+    if (this.disposed) return;
     this.attachedContainer = container;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
@@ -171,6 +176,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.syncAttachedRect();
       this.resizeRafId = requestAnimationFrame(tick);
     };
+    this.syncAttachedRect();
     this.resizeRafId = requestAnimationFrame(tick);
   }
 
@@ -189,10 +195,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
    * は新規メッセージが来てももう参照しないので残しておいて GC に任せる。
    */
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.startGeneration++;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     cancelAnimationFrame(this.resizeRafId);
     this.resizeRafId = 0;
+    this.ptyExitUnlisten?.();
+    this.ptyExitUnlisten = null;
     this.ptyDataListeners.clear();
     this.scrollListeners.clear();
     this.term.dispose();
@@ -202,6 +213,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   updatePtyParams(params: PtyParams, options: UpdatePtyOptions = {}): void {
+    if (this.disposed) return;
     if (this.paramsEqual(this.currentParams, params)) {
       return;
     }
@@ -210,10 +222,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {
+    if (this.disposed) return;
+    const generation = ++this.startGeneration;
     this.term.reset();
 
     void (async () => {
       try {
+        if (this.isStaleStart(generation)) return;
         if (opts.attachFirst) {
           let attached = false;
           try {
@@ -225,19 +240,34 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           } catch {
             attached = false;
           }
+          if (this.disposed && attached) {
+            void sessionDestroy({ sessionId: this.sessionId });
+            return;
+          }
+          if (this.isStaleStart(generation)) return;
           if (attached) {
             return;
           }
         }
+        if (this.attachedContainer) {
+          this.syncAttachedRect();
+        }
+        if (this.isStaleStart(generation)) return;
+        const cols = Math.max(2, this.term.cols || 80);
+        const rows = Math.max(1, this.term.rows || 24);
         await sessionSpawn({
           sessionId: this.sessionId,
           spec: params.spec,
-          cols: this.term.cols,
-          rows: this.term.rows,
+          cols,
+          rows,
           cwd: params.cwd,
           onOutput: this.channel,
         });
+        if (this.disposed) {
+          void sessionDestroy({ sessionId: this.sessionId });
+        }
       } catch (err) {
+        if (this.isStaleStart(generation)) return;
         const label = describeSpec(params.spec);
         this.term.write(`\x1b[31mFailed to start ${label}: ${err}\x1b[0m\r\n`);
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
@@ -246,6 +276,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   setPerception(perception: Perception | null): void {
+    if (this.disposed) return;
     if (perception === null) {
       console.warn(
         "[terminal-runtime] setPerception(null) — reflex layer input will be suppressed",
@@ -255,15 +286,16 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   setTheme(theme: Partial<XTermTheme>): void {
+    if (this.disposed) return;
     this.term.options.theme = { ...this.term.options.theme, ...theme };
-    // WebGL renderer は theme 変更で texture atlas を再構築する。
-    // 即座に描画寸法を再同期しないと canvas 幅が壊れる。
-    this.webglAddon?.clearTextureAtlas();
+    // Theme update can leave renderer dimensions stale when scene switches
+    // coincide with layout changes, so force a fresh fit before refresh.
     this.refit();
     this.term.refresh(0, this.term.rows - 1);
   }
 
   refit(): void {
+    if (this.disposed) return;
     this.lastFitW = 0;
     this.lastFitH = 0;
     this.syncAttachedRect();
@@ -446,16 +478,23 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   writePlainText(text: string): void {
+    if (this.disposed) return;
     this.term.write(text);
   }
 
   focus(): void {
+    if (this.disposed) return;
     this.term.focus();
   }
 
   forceRespawn(): void {
+    if (this.disposed) return;
     if (!this.currentParams) return;
     this.startPty(this.currentParams, { attachFirst: false });
+  }
+
+  private isStaleStart(generation: number): boolean {
+    return this.disposed || generation !== this.startGeneration;
   }
 
   private notifyPtyDataListeners(): void {

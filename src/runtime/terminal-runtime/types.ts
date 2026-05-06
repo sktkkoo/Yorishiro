@@ -52,7 +52,7 @@ export interface TerminalLineRect {
  *
  * 寿命: webview lifetime（= hot-data 経由で HMR 越しに同一 instance）。
  * 責務:
- *   - xterm / FitAddon / WebglAddon の保持
+ *   - xterm / FitAddon の保持
  *   - Tauri Channel<ArrayBuffer> の永続保持（React lifecycle と無関係）
  *   - PTY 接続パラメータの差分管理（同じ params なら spawn 呼び出しを抑制）
  *   - perception prop の MutableRef 反映

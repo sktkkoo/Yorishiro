@@ -1848,9 +1848,9 @@ function App() {
   // xterm の xtermContainer も document.body 直下（zIndex: 1）に命令的に append される。
   // React の #root は xterm より先に DOM に存在するため、#root 内の fixed 要素は
   // DOM 順で先行するノードの stacking context に収まり、後から append された
-  // xtermContainer（WebGL canvas あり）の下に隠れる。
+  // xtermContainer の下に隠れる。
   // ambientLayer を xtermContainer より後に body に append することで、
-  // z-index 競合なしに xterm WebGL canvas の上に重ねられる（v1 と同じ戦略）。
+  // z-index 競合なしに xterm の上に重ねられる（v1 と同じ戦略）。
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons + DOM are stable
   useEffect(() => {
     const ambientUiRegistry = getAmbientUiPackRegistry();

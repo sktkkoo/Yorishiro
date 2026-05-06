@@ -135,8 +135,8 @@ export class SessionTabManager {
     if (sessionId === this.state.mainSessionId) return;
     if (!this.state.sessions.includes(sessionId)) return;
 
-    void sessionDestroy({ sessionId });
     disposeTerminalRuntime(sessionId);
+    void sessionDestroy({ sessionId });
     this.sessionCwds.delete(sessionId);
     this.restoredSessionIds.delete(sessionId);
 
