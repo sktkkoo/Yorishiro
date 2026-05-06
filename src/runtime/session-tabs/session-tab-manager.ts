@@ -28,6 +28,8 @@ export class SessionTabManager {
   private counter = 0;
   private respawnCount = 0;
   private spawnTime = Date.now();
+  /** sessionSpawn が旧 session を kill した pty-exit を無視するための猶予期間。 */
+  private exitGraceUntil = Date.now() + 3_000;
   private readonly onEvent: ((name: string, payload: Record<string, unknown>) => void) | null;
 
   constructor(mainSessionId: SessionId, deps?: SessionTabManagerDeps) {
@@ -141,6 +143,10 @@ export class SessionTabManager {
       return;
     }
 
+    // sessionSpawn は旧 session を kill してから新 session を起動する。
+    // その kill で emit される pty-exit を無視するための grace period。
+    if (Date.now() < this.exitGraceUntil) return;
+
     const lifetime = Date.now() - this.spawnTime;
     if (lifetime > RESPAWN_LIFETIME_THRESHOLD_MS) {
       // 長命 → count リセットして respawn
@@ -174,6 +180,7 @@ export class SessionTabManager {
   /** main session の respawn 実行。PTY を再起動し spawnTime を更新する。 */
   private respawnMain(): void {
     this.spawnTime = Date.now();
+    this.exitGraceUntil = Date.now() + 3_000;
     const runtime = getTerminalRuntime(this.state.mainSessionId);
     runtime.forceRespawn();
     this.emitEvent("session-respawned", {
@@ -192,9 +199,10 @@ export class SessionTabManager {
 
   // ── テスト用ヘルパー ─────────────────────────────────────────
 
-  /** テスト用: spawnTime を外部から設定する。 */
+  /** テスト用: spawnTime を外部から設定し、grace period を無効化する。 */
   _setSpawnTimeForTest(time: number): void {
     this.spawnTime = time;
+    this.exitGraceUntil = 0;
   }
 
   /** テスト用: 現在の respawnCount を取得する。 */

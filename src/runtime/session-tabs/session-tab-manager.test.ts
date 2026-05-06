@@ -31,6 +31,8 @@ describe("SessionTabManager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     manager = new SessionTabManager(MAIN);
+    // テストでは grace period を無効化して pty-exit を即座に処理可能にする
+    manager._setSpawnTimeForTest(Date.now() - 10_000);
   });
 
   // ── 初期状態 ──────────────────────────────────────────────────
