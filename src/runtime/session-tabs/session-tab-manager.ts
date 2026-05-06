@@ -4,7 +4,7 @@
  */
 
 import { sessionDestroy } from "../../bindings/tauri-commands";
-import type { SessionId } from "../sessions/types";
+import type { SessionDescriptor, SessionId } from "../sessions/types";
 import { disposeTerminalRuntime, getTerminalRuntime } from "../terminal-runtime";
 import type { SessionTabListener, SessionTabState } from "./types";
 
@@ -24,6 +24,7 @@ export interface SessionTabManagerDeps {
 
 export class SessionTabManager {
   private state: SessionTabState;
+  private readonly sessionCwds = new Map<SessionId, string | null>();
   private listeners = new Set<SessionTabListener>();
   private counter = 0;
   private respawnCount = 0;
@@ -60,9 +61,10 @@ export class SessionTabManager {
    * spawn 自体は行わない — state に session を追加すると React が Terminal
    * コンポーネントを mount し、updatePtyParams 経由で sessionSpawn が走る。
    */
-  openShell(_cwd: string | null): SessionId {
+  openShell(cwd: string | null): SessionId {
     this.counter++;
     const sessionId: SessionId = `shell-${this.counter}`;
+    this.sessionCwds.set(sessionId, cwd);
 
     this.setState({
       ...this.state,
@@ -74,6 +76,53 @@ export class SessionTabManager {
     return sessionId;
   }
 
+  /**
+   * Rust registry に残っている session descriptor から tab state を復元する。
+   * WebView reload では PTY は Rust 側に残るため、JS の tab state だけ復元する。
+   */
+  restoreSessions(
+    descriptors: ReadonlyArray<SessionDescriptor>,
+    preferredActiveSessionId: SessionId | null,
+  ): void {
+    const ordered = descriptors.map((descriptor) => descriptor.id);
+    const sessions = [
+      this.state.mainSessionId,
+      ...ordered.filter((id) => id !== this.state.mainSessionId),
+    ];
+    const uniqueSessions = [...new Set(sessions)];
+    if (uniqueSessions.length === 0) return;
+
+    this.sessionCwds.clear();
+    for (const descriptor of descriptors) {
+      this.sessionCwds.set(descriptor.id, descriptor.cwd);
+    }
+
+    let maxShellIndex = this.counter;
+    for (const id of uniqueSessions) {
+      const match = /^shell-(\d+)$/.exec(id);
+      if (match) maxShellIndex = Math.max(maxShellIndex, Number(match[1]));
+    }
+    this.counter = maxShellIndex;
+
+    const currentActive = this.state.activeSessionId;
+    const activeSessionId =
+      preferredActiveSessionId && uniqueSessions.includes(preferredActiveSessionId)
+        ? preferredActiveSessionId
+        : uniqueSessions.includes(currentActive)
+          ? currentActive
+          : this.state.mainSessionId;
+
+    this.setState({
+      ...this.state,
+      sessions: uniqueSessions,
+      activeSessionId,
+    });
+  }
+
+  getSessionCwd(sessionId: SessionId): string | null | undefined {
+    return this.sessionCwds.get(sessionId);
+  }
+
   /** session を閉じる。main session は閉じられない。 */
   close(sessionId: SessionId): void {
     if (sessionId === this.state.mainSessionId) return;
@@ -81,6 +130,7 @@ export class SessionTabManager {
 
     void sessionDestroy({ sessionId });
     disposeTerminalRuntime(sessionId);
+    this.sessionCwds.delete(sessionId);
 
     const remaining = this.state.sessions.filter((id) => id !== sessionId);
     let nextActive = this.state.activeSessionId;

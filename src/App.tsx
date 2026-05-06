@@ -36,7 +36,7 @@ import charminalSettingsPack, {
   resolveCloseTarget,
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
-import type { SpawnSpec } from "./bindings/tauri-commands";
+import { type SpawnSpec, sessionList } from "./bindings/tauri-commands";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -137,6 +137,7 @@ async function withTimeout<T>(
 }
 
 const CWD_STORAGE_KEY = "charminal:cwd";
+const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
 
 type SceneLayerOverride = {
@@ -1144,10 +1145,36 @@ function App() {
   );
 
   const [tabState, setTabState] = useState<SessionTabState>(() => tabManager.getState());
+  const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
+  if (preferredActiveSessionIdRef.current === undefined) {
+    preferredActiveSessionIdRef.current = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
+  }
 
   useEffect(() => {
     return tabManager.subscribe(setTabState);
   }, [tabManager]);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let cancelled = false;
+
+    sessionList()
+      .then((descriptors) => {
+        if (cancelled) return;
+        tabManager.restoreSessions(descriptors, preferredActiveSessionIdRef.current ?? null);
+      })
+      .catch((err) => {
+        console.warn("[session-tabs] failed to restore sessions after reload:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserLayerReady, tabManager]);
+
+  useEffect(() => {
+    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
+  }, [tabState.activeSessionId]);
 
   // scene 変更時に active session の terminal テーマを更新する。
   // initTerminalTheme は runtime factory 内で DEFAULT_SESSION_ID 固定のため、
@@ -2128,24 +2155,27 @@ function App() {
       />
       {isUserLayerReady && resolvedSystemPrompt !== undefined && (
         <>
-          {tabState.sessions.map((sessionId) => (
-            <Terminal
-              key={sessionId}
-              sessionId={sessionId}
-              visible={sessionId === tabState.activeSessionId}
-              spec={
-                sessionId === DEFAULT_SESSION_ID
-                  ? (defaultSpec ?? {
-                      kind: "agent",
-                      agent: terminalAgent,
-                      systemPrompt: resolvedSystemPrompt,
-                    })
-                  : { kind: "shell", integration: true }
-              }
-              cwd={cwd}
-              perception={sessionId === tabState.activeSessionId ? perception : null}
-            />
-          ))}
+          {tabState.sessions.map((sessionId) => {
+            const sessionCwd = tabManager.getSessionCwd(sessionId);
+            return (
+              <Terminal
+                key={sessionId}
+                sessionId={sessionId}
+                visible={sessionId === tabState.activeSessionId}
+                spec={
+                  sessionId === DEFAULT_SESSION_ID
+                    ? (defaultSpec ?? {
+                        kind: "agent",
+                        agent: terminalAgent,
+                        systemPrompt: resolvedSystemPrompt,
+                      })
+                    : { kind: "shell", integration: true }
+                }
+                cwd={sessionCwd === undefined ? cwd : sessionCwd}
+                perception={sessionId === tabState.activeSessionId ? perception : null}
+              />
+            );
+          })}
           <TabIndicator
             state={tabState}
             labels={

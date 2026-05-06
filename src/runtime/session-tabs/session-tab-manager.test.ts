@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionId } from "../sessions/types";
+import type { SessionDescriptor, SessionId } from "../sessions/types";
 
 vi.mock("../../bindings/tauri-commands", () => ({
   sessionDestroy: vi.fn().mockResolvedValue(undefined),
@@ -25,6 +25,17 @@ const { disposeTerminalRuntime } = await import("../terminal-runtime");
 
 const MAIN: SessionId = "default-session";
 
+function descriptor(overrides: Partial<SessionDescriptor> & { id: string }): SessionDescriptor {
+  return {
+    profileId: overrides.id === MAIN ? "claude" : "shell",
+    kind: overrides.id === MAIN ? "agent" : "shell",
+    label: overrides.id,
+    cwd: null,
+    startedAt: 1,
+    ...overrides,
+  };
+}
+
 describe("SessionTabManager", () => {
   let manager: InstanceType<typeof SessionTabManager>;
 
@@ -41,6 +52,7 @@ describe("SessionTabManager", () => {
       expect(state.sessions).toEqual([MAIN]);
       expect(state.activeSessionId).toBe(MAIN);
       expect(state.mainSessionId).toBe(MAIN);
+      expect(manager.getSessionCwd(MAIN)).toBeUndefined();
     });
   });
 
@@ -48,11 +60,12 @@ describe("SessionTabManager", () => {
 
   describe("openShell", () => {
     it("新 session が追加され active が移動する", () => {
-      const id = manager.openShell(null);
+      const id = manager.openShell("/tmp/work");
       const state = manager.getState();
       expect(state.sessions).toContain(id);
       expect(state.activeSessionId).toBe(id);
       expect(state.sessions.length).toBe(2);
+      expect(manager.getSessionCwd(id)).toBe("/tmp/work");
     });
 
     it("連続呼び出しで id が衝突しない", () => {
@@ -60,6 +73,44 @@ describe("SessionTabManager", () => {
       const id2 = manager.openShell(null);
       expect(id1).not.toBe(id2);
       expect(manager.getState().sessions.length).toBe(3);
+    });
+  });
+
+  // ── restoreSessions ─────────────────────────────────────────
+
+  describe("restoreSessions", () => {
+    it("Rust registry の session 一覧から tab state と cwd を復元する", () => {
+      manager.restoreSessions(
+        [
+          descriptor({ id: MAIN, cwd: "/work/main" }),
+          descriptor({ id: "shell-1", cwd: "/work/a" }),
+          descriptor({ id: "shell-2", cwd: null }),
+        ],
+        "shell-2",
+      );
+
+      expect(manager.getState()).toMatchObject({
+        sessions: [MAIN, "shell-1", "shell-2"],
+        activeSessionId: "shell-2",
+        mainSessionId: MAIN,
+      });
+      expect(manager.getSessionCwd(MAIN)).toBe("/work/main");
+      expect(manager.getSessionCwd("shell-1")).toBe("/work/a");
+      expect(manager.getSessionCwd("shell-2")).toBeNull();
+    });
+
+    it("preferred active が存在しない場合は現在 active を維持し、無理なら main に戻す", () => {
+      const shell = manager.openShell("/work/a");
+      manager.restoreSessions([descriptor({ id: MAIN }), descriptor({ id: shell })], "missing");
+      expect(manager.getState().activeSessionId).toBe(shell);
+
+      manager.restoreSessions([descriptor({ id: MAIN })], shell);
+      expect(manager.getState().activeSessionId).toBe(MAIN);
+    });
+
+    it("restore 後の openShell は既存 shell-N と衝突しない", () => {
+      manager.restoreSessions([descriptor({ id: MAIN }), descriptor({ id: "shell-3" })], "shell-3");
+      expect(manager.openShell(null)).toBe("shell-4");
     });
   });
 
@@ -99,6 +150,7 @@ describe("SessionTabManager", () => {
       manager.close(id);
       expect(sessionDestroy).toHaveBeenCalledWith({ sessionId: id });
       expect(disposeTerminalRuntime).toHaveBeenCalledWith(id);
+      expect(manager.getSessionCwd(id)).toBeUndefined();
     });
   });
 

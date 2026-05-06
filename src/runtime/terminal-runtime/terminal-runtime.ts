@@ -6,6 +6,7 @@ import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import {
   type SpawnSpec,
+  sessionAttach,
   sessionResize,
   sessionSpawn,
   sessionWrite,
@@ -204,10 +205,29 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       return;
     }
     this.currentParams = params;
+    this.startPty(params, { attachFirst: true });
+  }
+
+  private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {
     this.term.reset();
 
     void (async () => {
       try {
+        if (opts.attachFirst) {
+          let attached = false;
+          try {
+            attached = await sessionAttach({
+              sessionId: this.sessionId,
+              cwd: params.cwd,
+              onOutput: this.channel,
+            });
+          } catch {
+            attached = false;
+          }
+          if (attached) {
+            return;
+          }
+        }
         await sessionSpawn({
           sessionId: this.sessionId,
           spec: params.spec,
@@ -434,9 +454,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   forceRespawn(): void {
     if (!this.currentParams) return;
-    const params = this.currentParams;
-    this.currentParams = null;
-    this.updatePtyParams(params);
+    this.startPty(this.currentParams, { attachFirst: false });
   }
 
   private notifyPtyDataListeners(): void {
