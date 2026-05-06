@@ -93,13 +93,14 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.1.0 — early preview**
+**v0.2.0 — early preview**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
 What works today:
 
 - Launches Claude Code as the terminal — you work right there
+- Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
 - A VRM 3D character that breathes, blinks, and shifts gaze
 - VRMA animation clip playback
 - Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)

@@ -93,13 +93,14 @@ Bundled pack がデフォルトで動作します。ユーザーは `~/.charmina
 
 ## Status
 
-**v0.1.0 — early preview**
+**v0.2.0 — early preview**
 
 実装 phase の途中です。API・データ形状・pack 仕様は今後変わります。
 
 今できること：
 
 - Claude Code をターミナルとして起動し、そのまま作業できる
+- Session tabs: agent と並行して複数の shell セッションを操作（`Cmd+T` / `Ctrl+Tab`）
 - VRM モデルの 3D キャラクターが呼吸し、瞬きし、視線を動かす
 - VRMA アニメーションクリップの再生
 - 6 種類の pack によるカスタマイズ（persona / scene / effect / ui / utility / ambient-ui）
