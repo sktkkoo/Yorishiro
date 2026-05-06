@@ -37,6 +37,7 @@ import charminalSettingsPack, {
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
 import type { SpawnSpec } from "./bindings/tauri-commands";
+import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { buildSystemPrompt } from "./core/global-prompt";
@@ -63,7 +64,7 @@ import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
-import { getModuleRegistry } from "./runtime/module-registry";
+import { getModuleRegistry, KEYS } from "./runtime/module-registry";
 import { PersonaReflexDispatcher } from "./runtime/persona-reflex";
 import type { PersonaEntry } from "./runtime/persona-registry";
 import {
@@ -77,6 +78,8 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
+import type { SessionTabState } from "./runtime/session-tabs";
+import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
@@ -1056,6 +1059,18 @@ function App() {
     };
   }, [userLayerReady]);
 
+  // ── Session tab manager（HMR-surviving singleton）───────────────────────
+  const tabManager = useMemo(
+    () => getOrInit(KEYS.SESSION_TAB_MANAGER, () => new SessionTabManager(DEFAULT_SESSION_ID)),
+    [],
+  );
+
+  const [tabState, setTabState] = useState<SessionTabState>(() => tabManager.getState());
+
+  useEffect(() => {
+    return tabManager.subscribe(setTabState);
+  }, [tabManager]);
+
   // active scene entry を Registry から subscribe して React state に流す。
   // SceneSpec が必要な UI context 系は entry.scene から既存どおり組み立てる。
   const [activeSceneEntry, setActiveSceneEntryState] = useState<ScenePackEntry | null>(() =>
@@ -1746,7 +1761,7 @@ function App() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
   useEffect(() => {
     const attention = getAttentionRuntime();
-    const terminal = getTerminalRuntime(DEFAULT_SESSION_ID);
+    const terminal = getTerminalRuntime(tabManager.getState().activeSessionId);
 
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
@@ -1932,6 +1947,38 @@ function App() {
     };
   }, []);
 
+  // ── Session tab keybindings ────────────────────────────────
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    return installTabKeybindings(tabManager);
+  }, [isUserLayerReady, tabManager]);
+
+  // ── PTY exit → auto-respawn / tab close ────────────────────
+  const ptyExitCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let disposed = false;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
+        if (disposed) return;
+        tabManager.handleSessionExit(event.payload.session_id, event.payload.code);
+      });
+      if (disposed) {
+        unlisten();
+      } else {
+        ptyExitCleanupRef.current = unlisten;
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      ptyExitCleanupRef.current?.();
+    };
+  }, [isUserLayerReady, tabManager]);
+
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 
   const [levaHidden, setLevaHidden] = useState(true);
@@ -1980,18 +2027,42 @@ function App() {
         scene={renderedSceneEntry}
       />
       {isUserLayerReady && resolvedSystemPrompt !== undefined && (
-        <Terminal
-          sessionId={DEFAULT_SESSION_ID}
-          spec={
-            defaultSpec ?? {
-              kind: "agent",
-              agent: terminalAgent,
-              systemPrompt: resolvedSystemPrompt,
+        <>
+          {tabState.sessions.map((sessionId) => (
+            <div
+              key={sessionId}
+              style={{
+                display: sessionId === tabState.activeSessionId ? "contents" : "none",
+              }}
+            >
+              <Terminal
+                sessionId={sessionId}
+                spec={
+                  sessionId === DEFAULT_SESSION_ID
+                    ? (defaultSpec ?? {
+                        kind: "agent",
+                        agent: terminalAgent,
+                        systemPrompt: resolvedSystemPrompt,
+                      })
+                    : { kind: "shell", integration: true }
+                }
+                cwd={cwd}
+                perception={sessionId === tabState.activeSessionId ? perception : null}
+              />
+            </div>
+          ))}
+          <TabIndicator
+            state={tabState}
+            labels={
+              new Map([
+                [DEFAULT_SESSION_ID, terminalAgent],
+                ...tabState.sessions
+                  .filter((id) => id !== DEFAULT_SESSION_ID)
+                  .map((id) => [id, id] as const),
+              ])
             }
-          }
-          cwd={cwd}
-          perception={perception}
-        />
+          />
+        </>
       )}
     </div>
   );

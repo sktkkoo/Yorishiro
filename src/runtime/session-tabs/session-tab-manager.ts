@@ -72,6 +72,11 @@ export class SessionTabManager {
       sessions: [...this.state.sessions, sessionId],
       activeSessionId: sessionId,
     });
+
+    // 新規 shell タブにキーバインドのヒントを表示する。
+    const rt = getTerminalRuntime(sessionId);
+    rt.writePlainText("\x1b[90m# Charminal: Control+Tab で agent に戻れます\x1b[0m\r\n");
+
     return sessionId;
   }
 
