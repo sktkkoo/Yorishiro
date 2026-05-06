@@ -1060,8 +1060,23 @@ function App() {
   }, [userLayerReady]);
 
   // ── Session tab manager（HMR-surviving singleton）───────────────────────
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runtime は HMR-surviving singleton、bus は stable reference
   const tabManager = useMemo(
-    () => getOrInit(KEYS.SESSION_TAB_MANAGER, () => new SessionTabManager(DEFAULT_SESSION_ID)),
+    () =>
+      getOrInit(
+        KEYS.SESSION_TAB_MANAGER,
+        () =>
+          new SessionTabManager(DEFAULT_SESSION_ID, {
+            onEvent: (name, payload) => {
+              runtime.bus.emitSynthetic(
+                { type: "utility", packId: "charminal:session-tabs" },
+                name,
+                payload,
+                0,
+              );
+            },
+          }),
+      ),
     [],
   );
 

@@ -21,19 +21,26 @@ const RESPAWN_BACKOFF_MS = [0, 2_000, 4_000];
 /** 新規 shell spawn 時のデフォルト spec。 */
 const SHELL_SPEC: SpawnSpec = { kind: "shell", integration: true };
 
+/** ICI 連携用の event callback。EventBus との結合を避けるため callback 形式で注入する。 */
+export interface SessionTabManagerDeps {
+  readonly onEvent?: (name: string, payload: Record<string, unknown>) => void;
+}
+
 export class SessionTabManager {
   private state: SessionTabState;
   private listeners = new Set<SessionTabListener>();
   private counter = 0;
   private respawnCount = 0;
   private spawnTime = Date.now();
+  private readonly onEvent: ((name: string, payload: Record<string, unknown>) => void) | null;
 
-  constructor(mainSessionId: SessionId) {
+  constructor(mainSessionId: SessionId, deps?: SessionTabManagerDeps) {
     this.state = {
       sessions: [mainSessionId],
       activeSessionId: mainSessionId,
       mainSessionId,
     };
+    this.onEvent = deps?.onEvent ?? null;
   }
 
   /** 現在の immutable state を返す。 */
@@ -45,6 +52,11 @@ export class SessionTabManager {
   subscribe(listener: SessionTabListener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** session 操作時に ICI 向けの event を emit する。 */
+  private emitEvent(name: string, payload: Record<string, unknown>): void {
+    this.onEvent?.(name, payload);
   }
 
   /** 新しい shell session を開き、active にする。 */
@@ -72,6 +84,7 @@ export class SessionTabManager {
       sessions: [...this.state.sessions, sessionId],
       activeSessionId: sessionId,
     });
+    this.emitEvent("session-opened", { sessionId, kind: "shell" });
 
     // 新規 shell タブにキーバインドのヒントを表示する。
     const rt = getTerminalRuntime(sessionId);
@@ -100,13 +113,20 @@ export class SessionTabManager {
       sessions: remaining,
       activeSessionId: nextActive,
     });
+    this.emitEvent("session-closed", { sessionId });
   }
 
   /** 指定 session に切り替える。存在しない id は no-op。 */
   switchTo(sessionId: SessionId): void {
     if (!this.state.sessions.includes(sessionId)) return;
     if (this.state.activeSessionId === sessionId) return;
+    const prevActive = this.state.activeSessionId;
     this.setState({ ...this.state, activeSessionId: sessionId });
+    this.emitEvent("session-switched", {
+      from: prevActive,
+      to: sessionId,
+      toKind: sessionId === this.state.mainSessionId ? "agent" : "shell",
+    });
   }
 
   /** 次のタブに循環切替。 */
@@ -152,6 +172,7 @@ export class SessionTabManager {
     this.respawnCount++;
     if (this.respawnCount >= RESPAWN_MAX) {
       // 上限到達 → respawn しない
+      this.emitEvent("session-respawn-failed", { sessionId: this.state.mainSessionId });
       return;
     }
 
@@ -172,6 +193,10 @@ export class SessionTabManager {
   /** main session の respawn 実行。spawnTime を更新する。 */
   private respawnMain(): void {
     this.spawnTime = Date.now();
+    this.emitEvent("session-respawned", {
+      sessionId: this.state.mainSessionId,
+      attempt: this.respawnCount,
+    });
   }
 
   /** state を更新し、全 listener に通知する。 */
