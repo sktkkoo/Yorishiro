@@ -823,6 +823,7 @@ function App() {
           }),
           "set-ui-state": createSetPackStateHandler({
             state: uiState,
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
           }),
           // ── Phase β cosmetic write tools ────────────────────────
           "state.get": createStateGetHandler({

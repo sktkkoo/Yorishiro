@@ -50,9 +50,9 @@ pub struct GetUiStateRequest {
 /// `set_ui_state` の引数。pack 内部 state への書き込み。value は JSON value として TS runtime に渡す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetUiStateRequest {
-    /// Pack id（必須）。pack 内部 state は pack ごとに分離されている。
+    /// Pack id。省略時は active scene pack の id を使う。
     #[serde(rename = "packId")]
-    pub pack_id: String,
+    pub pack_id: Option<String>,
     /// Target state key.
     pub key: String,
     /// JSON value to store.

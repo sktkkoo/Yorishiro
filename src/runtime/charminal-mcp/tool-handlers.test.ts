@@ -243,7 +243,7 @@ describe("enable_pack handler", () => {
 describe("ui_state handlers", () => {
   it("sets and gets a single UI state key", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
     const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
 
     await expect(
@@ -279,7 +279,7 @@ describe("ui_state handlers", () => {
 
   it("rejects empty keys", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
     const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
 
     await expect(set({ packId: "test", key: "", value: 1 })).rejects.toThrow(
@@ -292,7 +292,7 @@ describe("ui_state handlers", () => {
 
   it("requires value for set_ui_state but allows null", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
     const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
 
     await expect(set({ packId: "test", key: "camera.x" })).rejects.toThrow("missing value");
@@ -311,7 +311,7 @@ describe("ui_state handlers", () => {
 
   it("pack state は pack ごとに分離されている", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
     const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
 
     await set({ packId: "pack-a", key: "visible", value: true });
@@ -329,11 +329,26 @@ describe("ui_state handlers", () => {
     });
   });
 
-  it("set_ui_state は packId 省略でエラー", async () => {
+  it("set_ui_state は packId 省略時に active scene で fallback", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => "my-scene" });
 
-    await expect(set({ key: "camera.x", value: 1 })).rejects.toThrow("packId is required");
+    await expect(set({ key: "color", value: "#00ff00" })).resolves.toEqual({
+      ok: true,
+      packId: "my-scene",
+      key: "color",
+      value: "#00ff00",
+    });
+    expect(state.get("my-scene", "color")).toBe("#00ff00");
+  });
+
+  it("set_ui_state は packId 省略 + active scene なしでエラー", async () => {
+    const state = createUiStateStore();
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
+
+    await expect(set({ key: "color", value: "#ff0000" })).rejects.toThrow(
+      "active な scene pack がありません",
+    );
   });
 
   it("get_ui_state は packId 省略時に active scene で fallback", async () => {

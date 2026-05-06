@@ -209,6 +209,7 @@ export function createGetPackStateHandler(deps: GetPackStateDeps) {
 
 export interface SetPackStateDeps {
   readonly state: UiStateStore;
+  readonly getActiveSceneId: () => string | null;
 }
 
 export interface SetPackStateResponse {
@@ -221,7 +222,7 @@ export interface SetPackStateResponse {
 export function createSetPackStateHandler(deps: SetPackStateDeps) {
   return async (request: unknown): Promise<SetPackStateResponse> => {
     const record = requestRecord(request);
-    const packId = requirePackId(record);
+    const packId = resolvePackId(record, deps.getActiveSceneId);
     const key = record.key;
     if (typeof key !== "string" || key === "") {
       throw new Error("key must be a non-empty string");
@@ -233,14 +234,6 @@ export function createSetPackStateHandler(deps: SetPackStateDeps) {
     deps.state.set(packId, key, value);
     return { ok: true, packId, key, value };
   };
-}
-
-function requirePackId(record: Record<string, unknown>): string {
-  const requested = record.packId;
-  if (typeof requested !== "string" || requested === "") {
-    throw new Error("packId is required (pack state is per-pack, not app-level)");
-  }
-  return requested;
 }
 
 function resolvePackId(
