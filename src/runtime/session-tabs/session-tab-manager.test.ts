@@ -14,6 +14,7 @@ vi.mock("../terminal-runtime", () => ({
     setPerception: vi.fn(),
     writePlainText: vi.fn(),
     focus: vi.fn(),
+    forceRespawn: vi.fn(),
   }),
   disposeTerminalRuntime: vi.fn(),
 }));

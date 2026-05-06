@@ -81,7 +81,7 @@ import {
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
-import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
@@ -1092,6 +1092,19 @@ function App() {
     return tabManager.subscribe(setTabState);
   }, [tabManager]);
 
+  // scene 変更時に active session の terminal テーマを更新する。
+  // initTerminalTheme は runtime factory 内で DEFAULT_SESSION_ID 固定のため、
+  // shell tab が active の場合に scene 変更が反映されない問題を補完する。
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    const sub = scenePackRegistry.subscribeActive((scene) => {
+      const activeId = tabManager.getState().activeSessionId;
+      const rt = getTerminalRuntime(activeId);
+      rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
+    });
+    return () => sub.dispose();
+  }, [isUserLayerReady, scenePackRegistry, tabManager]);
+
   // active scene entry を Registry から subscribe して React state に流す。
   // SceneSpec が必要な UI context 系は entry.scene から既存どおり組み立てる。
   const [activeSceneEntry, setActiveSceneEntryState] = useState<ScenePackEntry | null>(() =>
@@ -1776,27 +1789,27 @@ function App() {
     };
   }, []);
 
-  // attention producer を起動し、cleanup で dispose する。
-  // terminal は terminal-runtime singleton を渡す。mouse は document-level listener。
-  // dev producer は import.meta.env.DEV で gate され、production では no-op。
+  // terminal 非依存の attention producer（mouse / dev / focused-dom）。初回のみ起動。
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
   useEffect(() => {
     const attention = getAttentionRuntime();
-    const terminal = getTerminalRuntime(tabManager.getState().activeSessionId);
+    const disposables: Disposable[] = [];
+    disposables.push(startMouseAttentionProducer({ attention }));
+    disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
+    disposables.push(startFocusedDomAttentionProducer({ attention }));
+    return () => {
+      for (const d of disposables) d.dispose();
+    };
+  }, []);
+
+  // terminal 依存の attention producer。active tab が変わるたびに再構築する。
+  useEffect(() => {
+    const attention = getAttentionRuntime();
+    const terminal = getTerminalRuntime(tabState.activeSessionId);
 
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
-    disposables.push(startMouseAttentionProducer({ attention }));
-    disposables.push(startDevAttentionProducer({ attention, isDev: import.meta.env.DEV }));
 
-    // focused-dom producer: document.activeElement を rAF loop で監視する。
-    disposables.push(startFocusedDomAttentionProducer({ attention }));
-
-    // EventBus hook-signal → attention producer adapter。
-    // Trigger は hook-signal event を全通過させ（match は常に non-null）、
-    // ReactionHandler 側で signal.name を取り出して各 producer に渡す。
-    // source は builtin 識別子で固定（pack ではないため packId は "__tool-attention__"）。
-    // input-cursor producer と tool producer の両方で同じ adapter を再利用する。
     const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
       const trigger = {
         id: "builtin:hook-signal-to-tool-attention",
@@ -1820,9 +1833,6 @@ function App() {
       return { dispose: () => reg.dispose() };
     };
 
-    // EventBus tool-activity → tool producer adapter。
-    // v1 では App.tsx の trigger handler が直接 setToolActivityAttention を呼んでいたが、
-    // v2 では producer 層に分離するため EventBus adapter で橋渡しする。
     const subscribeToolActivity = (
       handler: (event: { activity: string; timestamp: number }) => void,
     ): Disposable => {
@@ -1850,7 +1860,6 @@ function App() {
 
     const getCurrentLineRect = () => terminal.getViewportLineRects()[0]?.rect ?? null;
 
-    // input-cursor producer: typing は rAF loop、sent は xterm.onData の \r 検出駆動。
     disposables.push(startInputCursorAttentionProducer({ attention, terminal }));
 
     disposables.push(
@@ -1865,7 +1874,8 @@ function App() {
     return () => {
       for (const d of disposables) d.dispose();
     };
-  }, []);
+    // biome-ignore lint/correctness/useExhaustiveDependencies: runtime.bus.register は stable reference
+  }, [tabState.activeSessionId, runtime.bus.register]);
 
   // mcp attention producer を起動する。
   // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。

@@ -134,4 +134,7 @@ export interface TerminalRuntime {
 
   /** xterm にキーボードフォーカスを移す。タブ切り替え時に使う。 */
   focus(): void;
+
+  /** currentParams を無効化し updatePtyParams を再実行する。auto-respawn 用。 */
+  forceRespawn(): void;
 }

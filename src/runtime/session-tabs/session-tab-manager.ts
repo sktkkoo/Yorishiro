@@ -5,7 +5,7 @@
 
 import { sessionDestroy } from "../../bindings/tauri-commands";
 import type { SessionId } from "../sessions/types";
-import { disposeTerminalRuntime } from "../terminal-runtime";
+import { disposeTerminalRuntime, getTerminalRuntime } from "../terminal-runtime";
 import type { SessionTabListener, SessionTabState } from "./types";
 
 /** 短命 exit の連続回数上限。これを超えると respawn しない。 */
@@ -171,9 +171,11 @@ export class SessionTabManager {
     this.respawnMain();
   }
 
-  /** main session の respawn 実行。spawnTime を更新する。 */
+  /** main session の respawn 実行。PTY を再起動し spawnTime を更新する。 */
   private respawnMain(): void {
     this.spawnTime = Date.now();
+    const runtime = getTerminalRuntime(this.state.mainSessionId);
+    runtime.forceRespawn();
     this.emitEvent("session-respawned", {
       sessionId: this.state.mainSessionId,
       attempt: this.respawnCount,

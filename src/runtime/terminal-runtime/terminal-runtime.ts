@@ -432,6 +432,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.focus();
   }
 
+  forceRespawn(): void {
+    if (!this.currentParams) return;
+    const params = this.currentParams;
+    this.currentParams = null;
+    this.updatePtyParams(params);
+  }
+
   private notifyPtyDataListeners(): void {
     for (const listener of Array.from(this.ptyDataListeners)) {
       listener();
