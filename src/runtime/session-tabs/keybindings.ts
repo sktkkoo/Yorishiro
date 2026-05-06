@@ -18,7 +18,7 @@ export function installTabKeybindings(manager: SessionTabManager): () => void {
     // Cmd+T: 新しい shell タブ
     if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key === "t") {
       consume(e);
-      void manager.openShell(null);
+      manager.openShell(null);
       return;
     }
 

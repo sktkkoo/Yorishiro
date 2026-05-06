@@ -3,10 +3,9 @@
  * React 側は useSyncExternalStore で subscribe する想定。
  */
 
-import { Channel } from "@tauri-apps/api/core";
-import { type SpawnSpec, sessionDestroy, sessionSpawn } from "../../bindings/tauri-commands";
+import { sessionDestroy } from "../../bindings/tauri-commands";
 import type { SessionId } from "../sessions/types";
-import { disposeTerminalRuntime, getTerminalRuntime } from "../terminal-runtime";
+import { disposeTerminalRuntime } from "../terminal-runtime";
 import type { SessionTabListener, SessionTabState } from "./types";
 
 /** 短命 exit の連続回数上限。これを超えると respawn しない。 */
@@ -17,9 +16,6 @@ const RESPAWN_LIFETIME_THRESHOLD_MS = 5_000;
 
 /** 短命 exit 時の backoff（index = respawnCount - 1）。 */
 const RESPAWN_BACKOFF_MS = [0, 2_000, 4_000];
-
-/** 新規 shell spawn 時のデフォルト spec。 */
-const SHELL_SPEC: SpawnSpec = { kind: "shell", integration: true };
 
 /** ICI 連携用の event callback。EventBus との結合を避けるため callback 形式で注入する。 */
 export interface SessionTabManagerDeps {
@@ -59,25 +55,14 @@ export class SessionTabManager {
     this.onEvent?.(name, payload);
   }
 
-  /** 新しい shell session を開き、active にする。 */
-  async openShell(cwd: string | null): Promise<SessionId> {
+  /**
+   * 新しい shell session を開き、active にする。
+   * spawn 自体は行わない — state に session を追加すると React が Terminal
+   * コンポーネントを mount し、updatePtyParams 経由で sessionSpawn が走る。
+   */
+  openShell(_cwd: string | null): SessionId {
     this.counter++;
     const sessionId: SessionId = `shell-${this.counter}`;
-    getTerminalRuntime(sessionId);
-
-    try {
-      await sessionSpawn({
-        sessionId,
-        spec: SHELL_SPEC,
-        cols: 80,
-        rows: 24,
-        cwd,
-        onOutput: new Channel<ArrayBuffer>(),
-      });
-    } catch {
-      disposeTerminalRuntime(sessionId);
-      throw new Error(`shell session ${sessionId} の起動に失敗`);
-    }
 
     this.setState({
       ...this.state,
@@ -85,10 +70,6 @@ export class SessionTabManager {
       activeSessionId: sessionId,
     });
     this.emitEvent("session-opened", { sessionId, kind: "shell" });
-
-    // 新規 shell タブにキーバインドのヒントを表示する。
-    const rt = getTerminalRuntime(sessionId);
-    rt.writePlainText("\x1b[90m# Charminal: Control+Tab で agent に戻れます\x1b[0m\r\n");
 
     return sessionId;
   }
