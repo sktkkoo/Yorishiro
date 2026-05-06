@@ -70,6 +70,13 @@ export interface TerminalRuntime {
   detachContainer(): void;
 
   /**
+   * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
+   * document から外し、ResizeObserver / RAF を停止する。dispose 後の
+   * runtime instance は再利用しない（再 attach / 再 spawn 不可）。
+   */
+  dispose(): void;
+
+  /**
    * PTY 接続パラメータを更新する。既存と差分があれば `pty_spawn` を 1 回呼ぶ。
    * 同 params なら no-op（StrictMode double-mount / HMR 再実行で連続呼び出し
    * されても安全）。
@@ -121,4 +128,7 @@ export interface TerminalRuntime {
    * 意味分類はここではしない（producer 側の責務）。
    */
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
+
+  /** xterm に直接テキストを書き込む（shell ヒントなど）。 */
+  writePlainText(text: string): void;
 }

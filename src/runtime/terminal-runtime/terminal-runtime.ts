@@ -4,7 +4,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
-import { ptyResize, ptyWrite, type SpawnSpec, sessionSpawn } from "../../bindings/tauri-commands";
+import {
+  type SpawnSpec,
+  sessionResize,
+  sessionSpawn,
+  sessionWrite,
+} from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
@@ -55,6 +60,7 @@ export const DEFAULT_TERMINAL_THEME: XTermTheme = {
  *     連続呼び出しを吸収する。
  */
 class TerminalRuntimeImpl implements TerminalRuntime {
+  private readonly sessionId: string;
   private readonly term: XTerm;
   private readonly fitAddon: FitAddon;
   private readonly xtermContainer: HTMLDivElement;
@@ -72,7 +78,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
 
-  constructor() {
+  constructor(sessionId: string) {
+    this.sessionId = sessionId;
     this.term = new XTerm({
       theme: { ...DEFAULT_TERMINAL_THEME },
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
@@ -113,10 +120,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.perceptionRef.current?.onPtyOutput(text);
     };
 
-    // PTY exit listener（claude が終了したら terminal に表示）
+    // PTY exit listener（session の process が終了したら terminal に表示）
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      await listen<{ code: number }>("pty-exit", (event) => {
+      await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
+        if (event.payload.session_id !== this.sessionId) return;
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
     })();
@@ -129,7 +137,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.detectClearCommand(data);
       writeQueue = writeQueue.then(async () => {
         try {
-          await ptyWrite({ data });
+          await sessionWrite({ sessionId: this.sessionId, data });
         } catch {
           // PTY already closed — silent
         }
@@ -145,7 +153,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // xterm 側の cols/rows 変化を Rust に転送
     this.term.onResize(({ cols, rows }) => {
-      void ptyResize({ cols, rows });
+      void sessionResize({ sessionId: this.sessionId, cols, rows });
     });
   }
 
@@ -190,6 +198,24 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.visibility = "hidden";
   }
 
+  /**
+   * Session が close されるときに呼ぶ。xterm を dispose し、xterm container を
+   * document.body から外し、ResizeObserver / RAF を停止する。Channel callback
+   * は新規メッセージが来てももう参照しないので残しておいて GC に任せる。
+   */
+  dispose(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    cancelAnimationFrame(this.resizeRafId);
+    this.resizeRafId = 0;
+    this.ptyDataListeners.clear();
+    this.scrollListeners.clear();
+    this.term.dispose();
+    if (this.xtermContainer.parentElement) {
+      this.xtermContainer.parentElement.removeChild(this.xtermContainer);
+    }
+  }
+
   updatePtyParams(params: PtyParams): void {
     if (this.paramsEqual(this.currentParams, params)) {
       return;
@@ -200,6 +226,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     void (async () => {
       try {
         await sessionSpawn({
+          sessionId: this.sessionId,
           spec: params.spec,
           cols: this.term.cols,
           rows: this.term.rows,
@@ -397,6 +424,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  writePlainText(text: string): void {
+    this.term.write(text);
+  }
+
   private notifyPtyDataListeners(): void {
     for (const listener of Array.from(this.ptyDataListeners)) {
       listener();
@@ -450,12 +481,42 @@ function describeSpec(spec: SpawnSpec): string {
   return spec.command ?? "shell";
 }
 
-export function getTerminalRuntime(): TerminalRuntime {
-  return getOrInit(KEYS.TERMINAL_RUNTIME, () => new TerminalRuntimeImpl());
+/**
+ * Session id でキーされる TerminalRuntime instance の Map。HMR 越しに instance
+ * を保つため hot-data 経由で保持する。
+ */
+function getRuntimeMap(): Map<string, TerminalRuntimeImpl> {
+  return getOrInit(KEYS.TERMINAL_RUNTIME, () => new Map<string, TerminalRuntimeImpl>());
 }
 
-// Self-accept: terminal-runtime.ts 自身を編集しても singleton は保たれる。
-// React 側（terminal.tsx）は影響なく次 mount で同 instance を引く。
+/**
+ * Session に紐づく TerminalRuntime を返す。同 sessionId への二度目の呼び出しは
+ * 同じ instance を返す（webview lifetime singleton per session）。
+ */
+export function getTerminalRuntime(sessionId: string): TerminalRuntime {
+  const map = getRuntimeMap();
+  let runtime = map.get(sessionId);
+  if (!runtime) {
+    runtime = new TerminalRuntimeImpl(sessionId);
+    map.set(sessionId, runtime);
+  }
+  return runtime;
+}
+
+/**
+ * Session が close されたとき呼んで instance を解放する。xterm.dispose / DOM 解放 /
+ * channel 破棄を行い Map から外す。同 sessionId が無ければ no-op。
+ */
+export function disposeTerminalRuntime(sessionId: string): void {
+  const map = getRuntimeMap();
+  const runtime = map.get(sessionId);
+  if (!runtime) return;
+  runtime.dispose();
+  map.delete(sessionId);
+}
+
+// Self-accept: terminal-runtime.ts 自身を編集しても Map は保たれる。
+// React 側は影響なく次 mount で同 instance を引く。
 if (import.meta.hot) {
   import.meta.hot.accept();
 }
