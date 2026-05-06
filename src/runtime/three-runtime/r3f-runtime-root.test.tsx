@@ -95,6 +95,7 @@ vi.mock("../three-runtime", () => ({
   }),
 }));
 
+import { controlFolder, useCharminalControls } from "../../sdk/controls";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
 import { getActiveSceneLevaStore } from "./scene-pack-leva-store";
@@ -269,5 +270,36 @@ describe("R3fRuntimeRoot", () => {
       registry.__setActive(makeEntry("second", SecondScene));
     });
     expect(getActiveSceneLevaStore()?.get("lights.ambientIntensity")).toBe(0.4);
+  });
+
+  it("registers multiple sdk controls folders into the active scene store", () => {
+    const registry = getMockRegistry();
+    const SceneWithSdkControls = () => {
+      useCharminalControls("lights", () => ({
+        directionalIntensity: { value: 0.8, min: 0, max: 3 },
+      }));
+      useCharminalControls("post effects", () => ({
+        bloom: controlFolder({
+          bloomIntensity: { value: 1, min: 0, max: 3 },
+        }),
+      }));
+      useCharminalControls("post effects", () => ({
+        vignette: controlFolder({
+          vignetteDarkness: { value: 0.8, min: 0, max: 2 },
+        }),
+      }));
+      return null;
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("with-sdk-controls", SceneWithSdkControls));
+    });
+
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
+    expect(sceneStore?.get("post effects.bloom.bloomIntensity")).toBe(1);
+    expect(sceneStore?.get("post effects.vignette.vignetteDarkness")).toBe(0.8);
   });
 });
