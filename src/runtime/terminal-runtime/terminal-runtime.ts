@@ -428,6 +428,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.write(text);
   }
 
+  focus(): void {
+    this.term.focus();
+  }
+
   private notifyPtyDataListeners(): void {
     for (const listener of Array.from(this.ptyDataListeners)) {
       listener();

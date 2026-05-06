@@ -2044,27 +2044,22 @@ function App() {
       {isUserLayerReady && resolvedSystemPrompt !== undefined && (
         <>
           {tabState.sessions.map((sessionId) => (
-            <div
+            <Terminal
               key={sessionId}
-              style={{
-                display: sessionId === tabState.activeSessionId ? "contents" : "none",
-              }}
-            >
-              <Terminal
-                sessionId={sessionId}
-                spec={
-                  sessionId === DEFAULT_SESSION_ID
-                    ? (defaultSpec ?? {
-                        kind: "agent",
-                        agent: terminalAgent,
-                        systemPrompt: resolvedSystemPrompt,
-                      })
-                    : { kind: "shell", integration: true }
-                }
-                cwd={cwd}
-                perception={sessionId === tabState.activeSessionId ? perception : null}
-              />
-            </div>
+              sessionId={sessionId}
+              visible={sessionId === tabState.activeSessionId}
+              spec={
+                sessionId === DEFAULT_SESSION_ID
+                  ? (defaultSpec ?? {
+                      kind: "agent",
+                      agent: terminalAgent,
+                      systemPrompt: resolvedSystemPrompt,
+                    })
+                  : { kind: "shell", integration: true }
+              }
+              cwd={cwd}
+              perception={sessionId === tabState.activeSessionId ? perception : null}
+            />
           ))}
           <TabIndicator
             state={tabState}

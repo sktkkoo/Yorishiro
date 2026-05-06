@@ -6,6 +6,7 @@ import { getTerminalRuntime } from "./runtime/terminal-runtime";
 
 interface TerminalProps {
   readonly sessionId: string;
+  readonly visible: boolean;
   readonly spec: SpawnSpec;
   readonly cwd: string | null;
   readonly perception: Perception | null;
@@ -13,16 +14,23 @@ interface TerminalProps {
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
-export default function Terminal({ sessionId, spec, cwd, perception }: TerminalProps) {
+export default function Terminal({ sessionId, visible, spec, cwd, perception }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
 
+  // visible が変わるたびに attach/detach を切り替える。
+  // inactive session は detachContainer() で RAF 停止 + visibility:hidden。
   useEffect(() => {
     const placeholder = placeholderRef.current;
     if (!placeholder) return;
     const runtime = getTerminalRuntime(sessionId);
-    runtime.attachTo(placeholder);
+    if (visible) {
+      runtime.attachTo(placeholder);
+      runtime.focus();
+    } else {
+      runtime.detachContainer();
+    }
     return () => runtime.detachContainer();
-  }, [sessionId]);
+  }, [sessionId, visible]);
 
   useEffect(() => {
     if (!isTauri) return;

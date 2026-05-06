@@ -131,4 +131,7 @@ export interface TerminalRuntime {
 
   /** xterm に直接テキストを書き込む（shell ヒントなど）。 */
   writePlainText(text: string): void;
+
+  /** xterm にキーボードフォーカスを移す。タブ切り替え時に使う。 */
+  focus(): void;
 }
