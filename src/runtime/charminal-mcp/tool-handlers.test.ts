@@ -243,19 +243,18 @@ describe("enable_pack handler", () => {
 describe("ui_state handlers", () => {
   it("sets and gets a single UI state key", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
-    const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
+    const packId = "camera-lighting-panel";
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => packId });
+    const get = createGetPackStateHandler({ state, getActiveSceneId: () => packId });
 
-    await expect(
-      set({ packId: "camera-lighting-panel", key: "camera.x", value: 1.5 }),
-    ).resolves.toEqual({
+    await expect(set({ key: "camera.x", value: 1.5 })).resolves.toEqual({
       ok: true,
-      packId: "camera-lighting-panel",
+      packId,
       key: "camera.x",
       value: 1.5,
     });
-    await expect(get({ packId: "camera-lighting-panel", key: "camera.x" })).resolves.toEqual({
-      packId: "camera-lighting-panel",
+    await expect(get({ key: "camera.x" })).resolves.toEqual({
+      packId,
       key: "camera.x",
       value: 1.5,
     });
@@ -267,8 +266,11 @@ describe("ui_state handlers", () => {
     state.set("camera-lighting-panel", "lighting.color", "#ff8800");
     state.set("secondary-ui", "camera.x", 99);
 
-    const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
-    await expect(get({ packId: "camera-lighting-panel" })).resolves.toEqual({
+    const get = createGetPackStateHandler({
+      state,
+      getActiveSceneId: () => "camera-lighting-panel",
+    });
+    await expect(get({})).resolves.toEqual({
       packId: "camera-lighting-panel",
       state: {
         "camera.x": 1,
@@ -279,30 +281,26 @@ describe("ui_state handlers", () => {
 
   it("rejects empty keys", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
-    const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => "test" });
+    const get = createGetPackStateHandler({ state, getActiveSceneId: () => "test" });
 
-    await expect(set({ packId: "test", key: "", value: 1 })).rejects.toThrow(
-      "key must be a non-empty string",
-    );
-    await expect(get({ packId: "test", key: "" })).rejects.toThrow(
-      "key must be a non-empty string",
-    );
+    await expect(set({ key: "", value: 1 })).rejects.toThrow("key must be a non-empty string");
+    await expect(get({ key: "" })).rejects.toThrow("key must be a non-empty string");
   });
 
   it("requires value for set_ui_state but allows null", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
-    const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => "test" });
+    const get = createGetPackStateHandler({ state, getActiveSceneId: () => "test" });
 
-    await expect(set({ packId: "test", key: "camera.x" })).rejects.toThrow("missing value");
-    await expect(set({ packId: "test", key: "camera.x", value: null })).resolves.toEqual({
+    await expect(set({ key: "camera.x" })).rejects.toThrow("missing value");
+    await expect(set({ key: "camera.x", value: null })).resolves.toEqual({
       ok: true,
       packId: "test",
       key: "camera.x",
       value: null,
     });
-    await expect(get({ packId: "test", key: "camera.x" })).resolves.toEqual({
+    await expect(get({ key: "camera.x" })).resolves.toEqual({
       packId: "test",
       key: "camera.x",
       value: null,
@@ -311,18 +309,22 @@ describe("ui_state handlers", () => {
 
   it("pack state は pack ごとに分離されている", async () => {
     const state = createUiStateStore();
-    const set = createSetPackStateHandler({ state, getActiveSceneId: () => null });
-    const get = createGetPackStateHandler({ state, getActiveSceneId: () => null });
+    let activeScene = "pack-a";
+    const set = createSetPackStateHandler({ state, getActiveSceneId: () => activeScene });
+    const get = createGetPackStateHandler({ state, getActiveSceneId: () => activeScene });
 
-    await set({ packId: "pack-a", key: "visible", value: true });
-    await set({ packId: "pack-b", key: "visible", value: false });
+    await set({ key: "visible", value: true });
+    activeScene = "pack-b";
+    await set({ key: "visible", value: false });
 
-    await expect(get({ packId: "pack-a", key: "visible" })).resolves.toEqual({
+    activeScene = "pack-a";
+    await expect(get({ key: "visible" })).resolves.toEqual({
       packId: "pack-a",
       key: "visible",
       value: true,
     });
-    await expect(get({ packId: "pack-b", key: "visible" })).resolves.toEqual({
+    activeScene = "pack-b";
+    await expect(get({ key: "visible" })).resolves.toEqual({
       packId: "pack-b",
       key: "visible",
       value: false,
@@ -419,6 +421,8 @@ describe("createStateGetHandler", () => {
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
     });
     const result = await handler({});
     expect(result).toMatchObject({
@@ -461,6 +465,8 @@ describe("createStateGetHandler", () => {
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
     });
     const result = await handler({});
     expect(result.camera.position).toEqual([0, 0, 0]);
@@ -503,6 +509,8 @@ describe("createStateGetHandler", () => {
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
     });
     const result = await handler({});
     expect(result.motion).toEqual(motionSnapshot);
@@ -527,6 +535,8 @@ describe("createStateGetHandler", () => {
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
     });
     const result = await handler({});
     expect(result.expressions).toEqual([]);
@@ -560,6 +570,8 @@ describe("createStateGetHandler", () => {
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
     });
     const result = await handler({});
     expect(result.ui.sidebar.width).toBe(350);
@@ -596,6 +608,8 @@ describe("createStateGetHandler", () => {
       getEffectKinds: () => [],
       getRuntimeActive: () => ({ scene: null, ui: null }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
     });
     const result = await handler({});
     expect(result.tweens.length).toBe(1);
@@ -624,6 +638,8 @@ describe("createStateGetHandler", () => {
         ui: "runtime-ui",
       }),
       getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => "runtime-scene",
+      uiState: createUiStateStore(),
     });
 
     const result = await handler({});

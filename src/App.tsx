@@ -865,6 +865,8 @@ function App() {
               ui: uiPackRegistry.getActiveUiId(),
             }),
             getPresenceSnapshot,
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            uiState,
           }),
           "body.expression.set": createBodyExpressionSetHandler({
             getBody: () => getThreeRuntime().getBody(),
