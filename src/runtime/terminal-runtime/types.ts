@@ -116,6 +116,12 @@ export interface TerminalRuntime {
   setTheme(theme: Partial<XTermTheme>): void;
 
   /**
+   * 現在 attach されている React placeholder の rect を読み直し、xterm を fit する。
+   * scene / UI layout 切替直後など ResizeObserver だけでは反映が遅れる経路で使う。
+   */
+  refit(): void;
+
+  /**
    * xterm container の viewport scroll が発生したときに listener を呼ぶ。
    * 引数なし (rect 再計算の trigger 用途)。dispose で listener を外す。
    */

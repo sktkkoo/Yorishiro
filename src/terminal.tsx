@@ -13,8 +13,6 @@ interface TerminalProps {
   readonly perception: Perception | null;
 }
 
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-
 export default function Terminal({ sessionId, visible, spec, cwd, perception }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +33,6 @@ export default function Terminal({ sessionId, visible, spec, cwd, perception }: 
   }, [sessionId, visible]);
 
   useEffect(() => {
-    if (!isTauri) return;
     getTerminalRuntime(sessionId).updatePtyParams({ spec, cwd });
   }, [sessionId, spec, cwd]);
 
@@ -47,7 +44,8 @@ export default function Terminal({ sessionId, visible, spec, cwd, perception }: 
     <div
       ref={placeholderRef}
       className="terminal-container"
-      style={visible ? undefined : { display: "none" }}
+      data-session-id={sessionId}
+      data-active={visible ? "true" : "false"}
     />
   );
 }

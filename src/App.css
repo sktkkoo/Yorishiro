@@ -147,6 +147,10 @@ body,
   padding-left: 10px;
 }
 
+.terminal-container[data-active="false"] {
+  display: none !important;
+}
+
 .terminal-container .xterm {
   height: 100%;
 }

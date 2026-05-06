@@ -40,7 +40,7 @@ import type { SpawnSpec } from "./bindings/tauri-commands";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
-import { buildSystemPrompt } from "./core/global-prompt";
+import { collectGlobalPrompt } from "./core/global-prompt";
 import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
@@ -104,6 +104,37 @@ import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import "./App.css";
+
+function mergeSystemPromptParts(
+  personaAddition: string | null | undefined,
+  globalPrompt: string | null,
+): string | null {
+  const persona = personaAddition?.trim() || null;
+
+  if (!globalPrompt && !persona) return null;
+  if (!globalPrompt) return persona;
+  if (!persona) return globalPrompt;
+  return `${persona}\n\n---\n\n${globalPrompt}`;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  fallback: T,
+  onTimeout: () => void,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => {
+      timeoutId = null;
+      onTimeout();
+      resolve(fallback);
+    }, timeoutMs);
+  });
+  const result = await Promise.race([promise, timeout]);
+  if (timeoutId !== null) clearTimeout(timeoutId);
+  return result;
+}
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const VRM_STORAGE_KEY = "charminal:vrm";
@@ -305,6 +336,7 @@ function App() {
     const logBridge = new LogBridge({ time });
     // ── グローバル system prompt フラグメント登録 ────────────────────────
     registerJournalFragment();
+    const globalPromptPromise = collectGlobalPrompt();
 
     const effectDispatcher = new EffectDispatcher();
     const claimState = getClaimState();
@@ -447,10 +479,12 @@ function App() {
     let userLayerReadyResolve!: (init: {
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
+      systemPrompt: string | null;
     }) => void;
     const userLayerReady = new Promise<{
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
+      systemPrompt: string | null;
     }>((resolve) => {
       userLayerReadyResolve = resolve;
     });
@@ -555,45 +589,69 @@ function App() {
       });
 
       // ─ Step 3: user layer load（user pack register、init.js 実行）─
-      // user pack の persona が register された時点で、primaryPersona が指している id に
-      // active が切り替わる（PersonaRegistry の reselect 経由）。失敗しても Terminal は
-      // bundled fallback で動かす（philosophy「壊さないこと」）。
-      let safeMode = false;
-      try {
-        const result = await loadUserLayer({
-          effectPackRunner,
-          personaRegistry,
-          scenePackRegistry,
-          uiPackRegistry,
-          ambientUiPackRegistry: getAmbientUiPackRegistry(),
-          effectDispatcher,
-          emitEvent: (name, payload) => {
-            bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
-          },
-          packRegistry,
-          personaDefaults: claiPack,
-          userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
-          initScriptLog: createSubsystemLog(devLog, "InitScript"),
-          tweenManager: getThreeRuntime().getTweenManager(),
-        });
-        safeMode = result.safeMode;
-        appLog.write({
-          phase: "user-layer",
-          note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
-          data: { packs: result.packs, init: result.init },
-        });
-      } catch (err) {
-        appLog.write({
-          phase: "user-layer",
-          note: "user-layer bootstrap crashed",
-          data: { error: err instanceof Error ? err.message : String(err) },
-        });
-      }
+      // user layer は Terminal 起動の critical path に置かない。短い grace period 内に
+      // 完了すれば user persona も初回 prompt に入るが、pack import / watcher が詰まっても
+      // bundled fallback で Terminal mount と agent spawn を進める。
+      const userLayerPromise = (async (): Promise<Awaited<
+        ReturnType<typeof loadUserLayer>
+      > | null> => {
+        try {
+          const result = await loadUserLayer({
+            effectPackRunner,
+            personaRegistry,
+            scenePackRegistry,
+            uiPackRegistry,
+            ambientUiPackRegistry: getAmbientUiPackRegistry(),
+            effectDispatcher,
+            emitEvent: (name, payload) => {
+              bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
+            },
+            packRegistry,
+            personaDefaults: claiPack,
+            userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+            initScriptLog: createSubsystemLog(devLog, "InitScript"),
+            tweenManager: getThreeRuntime().getTweenManager(),
+          });
+          appLog.write({
+            phase: "user-layer",
+            note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
+            data: { packs: result.packs, init: result.init },
+          });
+          return result;
+        } catch (err) {
+          appLog.write({
+            phase: "user-layer",
+            note: "user-layer bootstrap crashed",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+          return null;
+        }
+      })();
 
-      // ★ Terminal mount 解禁。primaryPersona は確定済（bundled fallback or user pack
-      //   register 済）、systemPrompt の race は起きない。以下 step は Terminal とは
-      //   独立に走るので、失敗しても Terminal の表示は止まらない。
-      userLayerReadyResolve({ terminalAgent, defaultSpec });
+      const [userLayerResult, globalPrompt] = await Promise.all([
+        withTimeout(userLayerPromise, 1200, null, () => {
+          appLog.write({
+            phase: "user-layer",
+            note: "user-layer load timed out; starting terminal with current persona",
+          });
+        }),
+        withTimeout(globalPromptPromise, 1200, null, () => {
+          appLog.write({
+            phase: "global-prompt",
+            note: "global prompt collection timed out; starting terminal without global prompt",
+          });
+        }),
+      ]);
+      const safeMode = userLayerResult?.safeMode ?? false;
+      const systemPrompt = mergeSystemPromptParts(
+        personaRegistry.getActivePersona()?.thinking?.systemPromptAddition,
+        globalPrompt,
+      );
+
+      // ★ Terminal mount 解禁。user layer が grace period 内に終わらなくても、現在
+      //   active な persona（少なくとも bundled fallback）で agent spawn を始める。
+      //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
+      userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt });
 
       // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
@@ -1006,7 +1064,7 @@ function App() {
         note: "bootstrap crashed (unexpected)",
         data: { error: err instanceof Error ? err.message : String(err) },
       });
-      userLayerReadyResolve({ terminalAgent: "claude", defaultSpec: null });
+      userLayerReadyResolve({ terminalAgent: "claude", defaultSpec: null, systemPrompt: null });
     });
 
     return {
@@ -1045,12 +1103,17 @@ function App() {
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
+  // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
+  const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
+    undefined,
+  );
   useEffect(() => {
     let cancelled = false;
-    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec }) => {
+    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec, systemPrompt }) => {
       if (!cancelled) {
         setTerminalAgent(agent);
         setDefaultSpec(spec);
+        setResolvedSystemPrompt(systemPrompt);
         setIsUserLayerReady(true);
       }
     });
@@ -1095,6 +1158,7 @@ function App() {
       const activeId = tabManager.getState().activeSessionId;
       const rt = getTerminalRuntime(activeId);
       rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
+      rt.refit();
     });
     return () => sub.dispose();
   }, [isUserLayerReady, scenePackRegistry, tabManager]);
@@ -1151,7 +1215,7 @@ function App() {
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
   // （philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md 「観察の境界」）。
   const personaRegistry = getPersonaRegistry();
-  const [primaryPersona, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
+  const [, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
     personaRegistry.getActivePersona(),
   );
   useEffect(() => {
@@ -1190,17 +1254,51 @@ function App() {
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
 
-    const getLayoutTargets = (): LayoutTargets | null => {
-      const terminal = document.querySelector<HTMLElement>(".terminal-container");
+    const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
       const sidebar = document.querySelector<HTMLElement>(".sidebar");
       const character = document.querySelector<HTMLElement>(".charactor-container");
-      if (!terminal || !sidebar || !character) return null;
+      if (!sidebar || !character) return null;
       return {
         root: document.documentElement,
         terminal,
         sidebar,
         character,
       };
+    };
+
+    const getTerminalElements = (): HTMLElement[] => [
+      ...document.querySelectorAll<HTMLElement>(".terminal-container"),
+    ];
+
+    const getLayoutTargets = (): LayoutTargets | null => {
+      const activeSessionId = tabManager.getState().activeSessionId;
+      const activeTerminal =
+        getTerminalElements().find((el) => el.dataset.sessionId === activeSessionId) ??
+        getTerminalElements().find((el) => el.dataset.active === "true") ??
+        null;
+      return activeTerminal ? makeLayoutTargets(activeTerminal) : null;
+    };
+
+    const getAllLayoutTargets = (): LayoutTargets[] =>
+      getTerminalElements().flatMap((terminal) => {
+        const targets = makeLayoutTargets(terminal);
+        return targets ? [targets] : [];
+      });
+
+    const refitActiveTerminal = () => {
+      getTerminalRuntime(tabManager.getState().activeSessionId).refit();
+    };
+
+    const resetLayoutForAllTerminals = (): boolean => {
+      const targetsList = getAllLayoutTargets();
+      for (const targets of targetsList) resetLayout(targets);
+      return targetsList.length > 0;
+    };
+
+    const applyLayoutForAllTerminals = (layout: UiLayout): LayoutTargets | null => {
+      const targetsList = getAllLayoutTargets();
+      for (const targets of targetsList) applyLayout(layout, targets);
+      return getLayoutTargets() ?? targetsList[0] ?? null;
     };
 
     // 設定 write は read-modify-write なので並行 click で race する。
@@ -1249,11 +1347,7 @@ function App() {
       return next;
     };
 
-    const buildUiContext = (
-      packId: string,
-      signal: AbortSignal,
-      targets: LayoutTargets,
-    ): UiContext => {
+    const buildUiContext = (packId: string, signal: AbortSignal): UiContext => {
       const threeRuntime = getThreeRuntime();
 
       // ── tween: pack-scoped TweenAPI ─────────────────────────
@@ -1374,8 +1468,9 @@ function App() {
         signal,
         layout: {
           update: (layout: UiLayout) => {
-            resetLayout(targets);
-            applyLayout(layout, targets);
+            resetLayoutForAllTerminals();
+            applyLayoutForAllTerminals(layout);
+            refitActiveTerminal();
           },
         },
         app: {
@@ -1444,14 +1539,13 @@ function App() {
         currentContainer.remove();
         currentContainer = null;
       }
-      const prevTargets = getLayoutTargets();
-      if (prevTargets) resetLayout(prevTargets);
+      if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
 
       if (!entry) return;
 
-      const targets = getLayoutTargets();
+      const targets = applyLayoutForAllTerminals(entry.pack.layout);
       if (!targets) {
         devLog.write({
           subsystem: "UiPack",
@@ -1460,8 +1554,7 @@ function App() {
         });
         return;
       }
-
-      applyLayout(entry.pack.layout, targets);
+      refitActiveTerminal();
       const container = document.createElement("div");
       container.className = "ui-pack-container";
       container.style.position = "fixed";
@@ -1474,7 +1567,7 @@ function App() {
       currentAbort = abort;
       currentContainer = container;
 
-      const ctx = buildUiContext(entry.id, abort.signal, targets);
+      const ctx = buildUiContext(entry.id, abort.signal);
       try {
         currentDisposable = entry.pack.mount(ctx, container);
       } catch (err) {
@@ -1499,8 +1592,7 @@ function App() {
       if (currentAbort) currentAbort.abort();
       if (currentDisposable) currentDisposable.dispose();
       if (currentContainer) currentContainer.remove();
-      const targets = getLayoutTargets();
-      if (targets) resetLayout(targets);
+      if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
     };
@@ -1517,6 +1609,7 @@ function App() {
     runtime,
     personaRegistry,
     scenePackRegistry,
+    tabManager,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -1937,24 +2030,6 @@ function App() {
   }, []);
 
   const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
-
-  // ── Global system prompt（persona addition + journal memories 等）──────
-  // persona 変更・初回 mount 時に非同期で組み立てる。
-  // undefined = まだ未解決、null = 空（どちらも非注入）、string = 注入する内容。
-  const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
-    undefined,
-  );
-  useEffect(() => {
-    if (!isUserLayerReady) return;
-    let cancelled = false;
-    const personaAddition = primaryPersona?.thinking?.systemPromptAddition ?? null;
-    buildSystemPrompt(personaAddition).then((prompt) => {
-      if (!cancelled) setResolvedSystemPrompt(prompt);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isUserLayerReady, primaryPersona]);
 
   // ── Settings: close-requested listener ─────────────────────
 

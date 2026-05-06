@@ -69,6 +69,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
 
   private currentParams: PtyParams | null = null;
+  private attachedContainer: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private resizeRafId = 0;
   private lastFitW = 0;
@@ -159,33 +160,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   attachTo(container: HTMLElement): void {
+    this.attachedContainer = container;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     cancelAnimationFrame(this.resizeRafId);
 
-    const syncRect = () => {
-      const rect = container.getBoundingClientRect();
-      const cs = getComputedStyle(container);
-      const padLeft = parseFloat(cs.paddingLeft) || 0;
-      const padTop = parseFloat(cs.paddingTop) || 0;
-      const padRight = parseFloat(cs.paddingRight) || 0;
-      const padBottom = parseFloat(cs.paddingBottom) || 0;
-      const w = Math.floor(rect.width - padLeft - padRight);
-      const h = Math.floor(rect.height - padTop - padBottom);
-      this.xtermContainer.style.top = `${rect.top + padTop}px`;
-      this.xtermContainer.style.left = `${rect.left + padLeft}px`;
-      this.xtermContainer.style.width = `${w}px`;
-      this.xtermContainer.style.height = `${h}px`;
-      this.xtermContainer.style.visibility = "visible";
-      if (w !== this.lastFitW || h !== this.lastFitH) {
-        this.lastFitW = w;
-        this.lastFitH = h;
-        this.fitAddon.fit();
-      }
-    };
-
     const tick = () => {
-      syncRect();
+      this.syncAttachedRect();
       this.resizeRafId = requestAnimationFrame(tick);
     };
     this.resizeRafId = requestAnimationFrame(tick);
@@ -196,6 +177,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeObserver = null;
     cancelAnimationFrame(this.resizeRafId);
     this.resizeRafId = 0;
+    this.attachedContainer = null;
     this.xtermContainer.style.visibility = "hidden";
   }
 
@@ -256,8 +238,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     // WebGL renderer は theme 変更で texture atlas を再構築する。
     // 即座に描画寸法を再同期しないと canvas 幅が壊れる。
     this.webglAddon?.clearTextureAtlas();
-    this.fitAddon.fit();
+    this.refit();
     this.term.refresh(0, this.term.rows - 1);
+  }
+
+  refit(): void {
+    this.lastFitW = 0;
+    this.lastFitH = 0;
+    this.syncAttachedRect();
+    requestAnimationFrame(() => {
+      this.lastFitW = 0;
+      this.lastFitH = 0;
+      this.syncAttachedRect();
+      this.term.refresh(0, this.term.rows - 1);
+    });
   }
 
   getInputCursorClientPosition(): TerminalCursorClientPosition | null {
@@ -466,6 +460,29 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       if (this.recentInput.length > 50) {
         this.recentInput = this.recentInput.slice(-50);
       }
+    }
+  }
+
+  private syncAttachedRect(): void {
+    const container = this.attachedContainer;
+    if (!container) return;
+    const rect = container.getBoundingClientRect();
+    const cs = getComputedStyle(container);
+    const padLeft = parseFloat(cs.paddingLeft) || 0;
+    const padTop = parseFloat(cs.paddingTop) || 0;
+    const padRight = parseFloat(cs.paddingRight) || 0;
+    const padBottom = parseFloat(cs.paddingBottom) || 0;
+    const w = Math.max(0, Math.floor(rect.width - padLeft - padRight));
+    const h = Math.max(0, Math.floor(rect.height - padTop - padBottom));
+    this.xtermContainer.style.top = `${rect.top + padTop}px`;
+    this.xtermContainer.style.left = `${rect.left + padLeft}px`;
+    this.xtermContainer.style.width = `${w}px`;
+    this.xtermContainer.style.height = `${h}px`;
+    this.xtermContainer.style.visibility = "visible";
+    if (w > 0 && h > 0 && (w !== this.lastFitW || h !== this.lastFitH)) {
+      this.lastFitW = w;
+      this.lastFitH = h;
+      this.fitAddon.fit();
     }
   }
 
