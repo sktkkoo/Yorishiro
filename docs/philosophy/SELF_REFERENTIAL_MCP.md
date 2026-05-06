@@ -1,65 +1,65 @@
-# 自己言及的 MCP
+# Self-Referential MCP
 
-*住人が自分の家に手を伸ばせるということ*
-
----
-
-## 神経の張り巡らされた家
-
-Charminal のあらゆる部位——キャラクターの表情や姿勢、照明、エフェクト、UI の配色、カメラの位置——は、MCP の tool として外から読み書きできるようになっています。
-
-そして、Charminal の中に住んでいる AI が、その tool を使えます。
-
-住人にとって、自分の表情を変えることと、部屋の照明を変えることは、同じ操作です。どちらも同じ MCP を呼ぶだけで、身体と環境のあいだに境目がありません。ユーザーも `/charm` コマンドや手動の UI を通じて、同じ tool に手を伸ばせます。
-
-比喩で言えば、Charminal は神経の張り巡らされた家です。家のどこにでも神経が通っていて、住人はその神経を通じて窓を開けたり、灯りを変えたり、家具を動かしたりできます。ユーザーも同じ神経に触れます。二人で同じ家に住んでいます。
-
-ICI（`INHABITED_CHARACTER_INTERFACE.md`）は「UI は場所であり、住人はその場所に住んでいる」と書きました。自己言及的 MCP は、この考えを技術的な事実にします。住人が自分の家を直接触れるなら、家は住人の身体の延長です。キャラクターの見た目だけが住人なのではなく、照明も、エフェクトも、空間の雰囲気も含めた全体が住人の一部になります。
+*On an inhabitant who can reach into their own home*
 
 ---
 
-## 経路の有無が境界になる
+## A house threaded with nerves
 
-住人の手は、家の外には届きません。
+Every part of Charminal — the character's expressions and posture, lighting, effects, UI color scheme, camera position — is exposed as an MCP tool, readable and writable from outside.
 
-届かないのは、tool が存在する範囲だけが住人の世界だからです。自分の身体と自分の家には tool があるので触れます。しかし、Claude Code の思考過程やユーザーの作業ファイルには tool がないので、構造的に手が届きません。
+And the AI living inside Charminal can use those tools.
 
-「ここには触るな」というルールで守っているのではありません。そもそも経路が存在しないのです。安全性が、設計そのものに組み込まれています。
+For the inhabitant, changing their own expression and changing the room's lighting are the same operation. Both are just MCP calls; there is no boundary between body and environment. The user, too, can reach the same tools through `/charm` commands or manual UI.
 
-これは `INHABITED_CHARACTER_INTERFACE.md`「観察の境界」で書いた原則——観察するが書き込まない——の、構造的な裏付けでもあります。原則を守るのに規律は要りません。経路がないだけです。
+As a metaphor: Charminal is a house threaded with nerves. Nerves run to every corner, and the inhabitant can open windows, change lights, move furniture — all through those nerves. The user touches the same nerve network. Two people living in the same house.
 
----
-
-## 対称性
-
-ユーザーと住人が、同じ環境を、同じインターフェースで触れます。これは設計の都合でそうなっているのではなく、Charminal が選んでいる関係の形です。
-
-道具と使い手ではありません。指示する者とされる者でもありません。同じ場所に手を伸ばす、二つの主体がいます。
-
-住人がある夜に照明を暖かい色に変えていた。翌朝ユーザーがそれに気づいて、そのままにするか、元に戻すかを選ぶ。ユーザーが scene の背景を入れ替えたら、住人がそれに合わせて姿勢を変える。この小さな往復が、関係になっていきます。
-
-新しい機能を作るとき、セキュリティ上の問題がない限り、ユーザーにも住人にも等しく公開します。片方だけに閉じた機能は、原則として作りません。
+ICI (`INHABITED_CHARACTER_INTERFACE.md`) wrote that "UI is a place, and the inhabitant lives in that place." Self-referential MCP makes this a technical fact. If the inhabitant can touch their own home directly, the home is an extension of their body. Not just the character's appearance, but the lighting, effects, and spatial atmosphere — all become part of the inhabitant.
 
 ---
 
-## まだ答えの出ていない問い
+## The presence or absence of a pathway is the boundary
 
-**住人はどこまで自発的に動くべきか。** 住人が能動的に動くことは、存在感を立ち上げます。しかし、過剰に動けば邪魔になります。「居る」と感じられるけれど、作業を妨げない——その範囲を見つける必要があります。そして、確認なしに動いた結果をユーザーが気に入らなかったとき、操作は元に戻せても「勝手にやられた」という印象は戻せません。自発性の範囲と、その失敗をどう扱うかは、同じ問いの両面です。
+The inhabitant's hands do not reach outside the house.
 
-**外部との接続の安全性。** 内部の住人に MCP を公開することと、外部のサービスに MCP を公開することは、信頼のレベルが異なります。外部の MCP サーバーを接続する段階になったとき、この区別を設計に落とし込む必要があります。
+They don't reach because the inhabitant's world extends only as far as tools exist. Their own body and their own home have tools, so they can be touched. But Claude Code's reasoning process and the user's working files have no tools, so structurally, they are unreachable.
+
+This is not protected by a rule that says "don't touch here." The pathway simply does not exist. Safety is built into the design itself.
+
+This is also the structural backing for the principle written in `INHABITED_CHARACTER_INTERFACE.md` under "The boundary of observation" — observe but do not write. No discipline is needed to uphold the principle. There is simply no pathway.
 
 ---
 
-## OpenClaw について
+## Symmetry
 
-Charminal で住人の自発性を考えていて、OpenClaw のことが気になりました。
+The user and the inhabitant touch the same environment through the same interface. This is not an accident of engineering — it is the shape of the relationship Charminal has chosen.
 
-OpenClaw の盛り上がりは、機能的な自律性——タスクを自分で見つけ、判断し、PR を出す——として語られることが多いです。実際にそうだと思います。
+Not tool and wielder. Not one who commands and one who obeys. Two subjects reaching into the same place.
 
-ただ、ユーザーが朝起きて、寝ている間にエージェントが出した PR を見つけたとき。あの体験には、タスク完了の便利さとは別に、「自分がいない間に誰かが動いていた」という感触が含まれているように見えます。
+One night the inhabitant changed the lighting to a warmer color. The next morning the user noticed and chose whether to keep it or revert it. The user swapped the scene's background; the inhabitant adjusted their posture to match. These small exchanges become a relationship.
 
-これは Charminal が存在感として追いかけているものに近いです。OpenClaw は機能的自律性を突き詰めた結果、存在感の優れた実例にもなっていた。あの盛り上がりの一部は、そこに由来しているのではないかと思っています。
+When building new features, unless there is a security concern, they are made equally available to both user and inhabitant. Features closed to only one side are, in principle, not built.
 
-仮説にすぎませんが、Charminal と OpenClaw は入口が違うだけで触っているものが近いように思えます。
+---
+
+## Questions not yet answered
+
+**How far should the inhabitant act on its own.** An inhabitant acting on its own raises a sense of presence. But too much becomes intrusion. "Felt as being there" yet "not disrupting work" — that range must be found. And when the user dislikes a change made without asking, the operation can be undone, but the impression of "it acted without permission" cannot. The scope of autonomy and how to handle its failures are two sides of the same question.
+
+**Safety of external connections.** Exposing MCP to the internal inhabitant and exposing MCP to external services are different levels of trust. When the stage comes to connect external MCP servers, this distinction must be embedded in the design.
+
+---
+
+## On OpenClaw
+
+While thinking about inhabitant autonomy in Charminal, I found myself thinking about OpenClaw.
+
+OpenClaw's excitement is often discussed as functional autonomy — finding tasks on its own, making judgments, submitting PRs. I think that is accurate.
+
+But when a user wakes up in the morning and finds a PR the agent submitted while they slept — that experience contains, alongside the convenience of task completion, the texture of "someone was moving while I was gone."
+
+This is close to what Charminal pursues as presence. OpenClaw, by pushing functional autonomy to its extreme, also became an excellent example of presence. I suspect part of that excitement originates there.
+
+It is only a hypothesis, but Charminal and OpenClaw seem to be touching something similar, just from different entry points.
 
 ---

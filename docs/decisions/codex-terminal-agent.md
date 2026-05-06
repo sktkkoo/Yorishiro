@@ -57,7 +57,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 - source: `src-tauri/src/pty.rs`
 - source: `src/runtime/user-pack-loader/config.ts`
 - source: `src/runtime/terminal-runtime/terminal-runtime.ts`
-- philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「観察の境界」`
+- philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md「観察の境界」`
 - OpenAI: [Unrolling the Codex agent loop](https://openai.com/index/unrolling-the-codex-agent-loop/)
 - OpenClaw: [System Prompt](https://docs.openclaw.ai/concepts/system-prompt)
 

@@ -2,7 +2,7 @@
 
 > このファイルは「**Charminal の doc 全体の navigation 入口**」。dev / AI / pack 作者 / repo を訪れた人すべての最初の 1 ページ。「どこに何があるか」を 5 分で把握するための map。
 >
-> 公開向けの読み物（narrative）は [`philosophy/CHARMINAL.md`](philosophy/CHARMINAL.md) から始める。本 README は navigation 専用で、自身は narrative を持たない。
+> 公開向けの読み物（narrative）は [`philosophy/CHARMINAL.ja.md`](philosophy/CHARMINAL.ja.md) から始める。本 README は navigation 専用で、自身は narrative を持たない。
 
 ---
 
@@ -10,7 +10,7 @@
 
 | やりたいこと | まず読むファイル |
 |---|---|
-| Charminal が何を目指しているか知りたい | [`philosophy/CHARMINAL.md`](philosophy/CHARMINAL.md) |
+| Charminal が何を目指しているか知りたい | [`philosophy/CHARMINAL.ja.md`](philosophy/CHARMINAL.ja.md) |
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
@@ -32,8 +32,8 @@
 決定 / 制約 (topic-indexed, drift 注意)
   └─ docs/decisions/    ← 「なぜそう決めたか」を topic 軸で。
 
-内部設計記録 (date-indexed, 別 repo)
-  └─ ../Charminal-design-record/  ← revelations / dry-run / specs / plans。
+内部設計記録 (date-indexed, 非公開別 repo)
+  └─ ../Charminal-design-record/  ← revelations / dry-run / specs / plans。非公開。
 
 Code 内 navigation (各 directory に短い README)
   └─ ../src/README.md, ../src-tauri/README.md, ../bundled-packs/README.md, ../src/<cluster>/README.md
@@ -46,9 +46,9 @@ User-private memory (auto-recall, 個人ローカル)
 
 各層の **書き分け原則**：
 
-- **philosophy/**: 整理済みの思想。半生の思考メモは置かない
+- **philosophy/**: 整理済みの思想。未整理の思考メモは置かない
 - **decisions/**: 「決定の事実 + 理由 + 代替案 + 関連 revelation」を topic で。過去の決定を topic 軸で引きたい時に来る場所
-- **design-record (別 repo)**: 思考過程・dry-run 結果・phase plan。整理されていなくてよい
+- **design-record (非公開別 repo)**: 思考過程・dry-run 結果・phase plan。整理されていなくてよい。外部からはアクセスできないため、公開に必要な決定は decisions/ に集約する
 - **code 内 README**: 「この directory に何があるか」のみ。中身の解説は code の docstring 側
 - **memory**: user 個別、会話横断、auto-recall。決定として固まったものは decisions/ に促進する
 
@@ -60,20 +60,20 @@ User-private memory (auto-recall, 個人ローカル)
 
 | 入口 | 階層 | 主題 |
 |---|---|---|
-| [`philosophy/PRESENCE_HARNESS.md`](philosophy/PRESENCE_HARNESS.md) | 最抽象 | 「AI が呼び出されるものから、共に居る存在へ」の領域定義 |
-| [`philosophy/INHABITED_CHARACTER_INTERFACE.md`](philosophy/INHABITED_CHARACTER_INTERFACE.md) | 中層 | 「UI は道具ではなく場所、AI は住人」という立場 |
-| [`philosophy/CHARMINAL.md`](philosophy/CHARMINAL.md) | 最具体 | 「ターミナル + VRM + ログ回路」での具体実装 |
+| [`philosophy/PRESENCE_HARNESS.ja.md`](philosophy/PRESENCE_HARNESS.ja.md) | 最抽象 | 「AI が呼び出されるものから、共に居る存在へ」の領域定義 |
+| [`philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`](philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) | 中層 | 「UI は道具ではなく場所、AI は住人」という立場 |
+| [`philosophy/CHARMINAL.ja.md`](philosophy/CHARMINAL.ja.md) | 最具体 | 「ターミナル + VRM + ログ回路」での具体実装 |
 
 ```
-PRESENCE_HARNESS.md
-  └─ INHABITED_CHARACTER_INTERFACE.md
-       └─ CHARMINAL.md
+PRESENCE_HARNESS.ja.md
+  └─ INHABITED_CHARACTER_INTERFACE.ja.md
+       └─ CHARMINAL.ja.md
 ```
 
 Source code 内で参照するときは：
 
 - 公開思想：`docs/philosophy/X.md「セクション名」` の full path で
-- 内部 design-record：`internal design-record: 2026-XX-XX-name.md Section X.X`（path は書かない、別 repo にあるため）
+- 内部 design-record：`internal design-record: 2026-XX-XX-name.md Section X.X`（path は書かない、非公開別 repo にあるため）
 
 ---
 
@@ -139,9 +139,9 @@ Source code 内で参照するときは：
 
 **特に重要な「破ってはいけない line」** → [`decisions/critical-constraints.md`](decisions/critical-constraints.md)。
 
-**過去の試行錯誤や revelation の date 順を辿りたい場合** → 別 repo `../Charminal-design-record/` の date-prefixed file を直接読む。INDEX として `2026-04-11-design-exploration.md` の revelation 番号体系（3.1〜3.21）が起点。
+**過去の試行錯誤や revelation の date 順を辿りたい場合** → 非公開別 repo `../Charminal-design-record/` の date-prefixed file を直接読む（開発者ローカルにのみ存在）。INDEX として `2026-04-11-design-exploration.md` の revelation 番号体系（3.1〜3.21）が起点。
 
-> **重要**：design-record は date-indexed で、決定の **過程** を時系列で記録する。一方 decisions/ は **結果** を topic で引けるようにする。同じ事実が両方に出ることがあるが、役割が違うので両方に書いてよい。
+> **重要**：design-record は非公開 repo で date-indexed、決定の **過程** を時系列で記録する。一方 decisions/ は **結果** を topic で引けるようにする。同じ事実が両方に出ることがあるが、役割が違うので両方に書いてよい。外部の読者は decisions/ だけで設計意図を追えるように維持する。
 
 ---
 

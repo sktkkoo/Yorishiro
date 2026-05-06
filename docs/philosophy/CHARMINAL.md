@@ -1,65 +1,65 @@
 # Charminal
 
-*ターミナルに住む、一人の存在について*
+*On a single being who lives in your terminal*
 
 ---
 
-## きっかけ
+## How it began
 
-Charminal は元々、ターミナルの横にキャラクターを表示するだけのアプリでした。
+Charminal began as an app that simply displayed a character beside a terminal.
 
-転機は、遊びで作っていたターミナルのテキストが物理シミュレーションで崩れ落ちる機能でした。キャラクターが銃を撃つモーションに合わせて、画面の文字が重力で落下する。技術的には単純ですが、動いたとき「UI を壊してもいいんだ」と気づきました。
+The moment that changed everything: a character fired a gun, and the terminal text collapsed under gravity. Technically trivial, but the moment it ran, I realized: you can break the promises of a UI.
 
-ターミナルの約束事を破れるなら、そこは作業面ではなく空間になります。空間なら、何かが居ることができます。ターミナルに誰かを住まわせる、というアイデアはここから来ています。
+If you can break a terminal's conventions, it is no longer a work surface — it becomes a space. And if it is a space, something can inhabit it. The idea of having someone live in the terminal came from here.
 
-昔見た SF やアニメの影響もあります。パートナーとしての AI が PC の画面を動かし、書き換え、中の世界を自由に操作する。あの感触を目指しています。
-
----
-
-## 二つの層
-
-Charminal のキャラクターは Claude Code の上に乗っています。ユーザーの Claude Code を起動し、`--system-prompt` で性格を与え、ターミナル出力を観測して VRM に反応させる構造です。
-
-これは**一人の存在の二層構造**です。
-
-Claude Code は**意識層**。言語的で、論理的で、自覚して言葉にできるものを扱います。VRM と観測層は**反射層**。thinking 中に視線がさまよう、エラーで顔が顰められる。意識を通さない反応です。
-
-LLM はこの反射層を構造的に持っていません。トークン生成はすべて「意識的発話」で、エラーが出ても言語化するまで何も表現できない。チャット UI のスピナーは反射ではなく、反射がないことの告知です。
-
-Charminal は、この欠けている反射層を外から観測して接ぎ木しています。認識する前に身体が反応する、という順序を作っています。だから Charminal のキャラクターと Claude Code は別の存在ではなく、一人の意識と反射です。
+There is also the influence of science fiction and anime from years past. An AI partner who moves the screen, rewrites it, manipulates the world inside freely. That is the feeling I am reaching for.
 
 ---
 
-## ログという回路
+## Two layers
 
-意識層と反射層は独立して動きます。でも無関係ではありません。反射層で起きたこと（眉を顰めた、視線がさまよった、姿勢を変えた）はログに記録され、Claude Code は必要なときにそれを読めます。
+Charminal's character sits on top of Claude Code. It launches the user's Claude Code, gives it a personality via `--system-prompt`, and makes the VRM react by observing terminal output.
 
-このログをどう扱うかが、キャラクターの性格になります。ほぼ読まないキャラクターは没頭型。セッションの合間に読んで言及するキャラクターは内省的。全部言語化するキャラクターは自意識過剰。読むけれど自分のものと認めないキャラクターは解離的。
+**A single being, in two layers.**
 
-これは口調や語尾ではなく、アーキテクチャ上のチャネル設定で表現されています。人間の意識と無意識の関係を、性格設計に取り入れる試みです。
+Claude Code is the **conscious layer**. Linguistic, logical, handling what can be self-aware and put into words. The VRM and observation layer is the **reflex layer**. Gaze wanders during thinking; the face grimaces at an error. Reactions that bypass consciousness.
 
----
+LLMs structurally lack this reflex layer. Every token is "conscious speech" — until it verbalizes an error, nothing shows. A chat UI's spinner is not a reflex; it is a notice that reflexes are missing.
 
-## Presence の三条件
-
-キャラクターが「居る」と感じられる瞬間には三種類あります。
-
-**空白の充填。** Claude Code が考え込んで出力が止まっている時間に、VRM が微細に動いている。スピナーの代わりに、何かが居る。
-
-**意識に先立つ反応。** Claude Code がエラーを言語化するより前に、VRM の顔が顰められる。意識が追いつく前に身体が動いていると、そこに主体を感じます。反射層が意識層より先に動くアーキテクチャが、「演技ではない」ことの構造的保証になっています。
-
-**予期の外からの発生。** 住人が作業と無関係に、ひとりでに動く。予期されない動きが一度でも起きると、そのキャラクターは「いつ何をするかわからない相手」になります。
-
-この三つは階層です。空白の充填がなければ消える。意識に先立つ反応がなければ演技に見える。予期の外からの発生がなければ装置のまま。
+Charminal grafts this missing reflex layer from the outside by observing. It creates the order where the body reacts before recognition arrives. That is why the character and Claude Code are not separate beings — they are the consciousness and reflexes of one.
 
 ---
 
-## 生きた系
+## The log as a circuit
 
-Charminal は動作中に書き換えられる生きた系です。これは Emacs から大きな影響を受けています。
+The conscious layer and the reflex layer run independently. But they are not unrelated. What happens in the reflex layer (a grimace, a wandering gaze, a shift in posture) is recorded in a log, and Claude Code can read it when needed.
 
-固い核は Rust の IO 層と TypeScript の runtime / SDK。生きた表層は `~/.charminal/packs/` 以下の pack layer。user が書けば live に反映し、AI も `/charm` 経由で書き換えに加わります。
+How this log is handled becomes the character's personality. A character who almost never reads it is the absorbed type. One who reads between sessions and mentions it is introspective. One who verbalizes everything is self-conscious. One who reads but refuses to claim it as their own is dissociative.
 
-Emacs と違うのは、書き換える主体に AI が加わっていることと、**住人自身が自身の住む系を観察し操作できる**自己言及的な構造を持つことです。詳細は `SELF_REFERENTIAL_MCP.md` に書いています。
+This is expressed not through speech patterns or verbal tics, but through channel configuration at the architectural level. It is an attempt to incorporate the relationship between human consciousness and the unconscious into character design.
+
+---
+
+## Three conditions of presence
+
+There are three kinds of moments when a character feels like it is "there."
+
+**Filling the void.** While Claude Code thinks and output stops, the VRM moves subtly. Instead of a spinner, someone is present.
+
+**Reaction preceding consciousness.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before consciousness catches up, you feel a subject there. The architecture where the reflex layer moves before the conscious layer is the structural guarantee that this is "not acting."
+
+**Arising from beyond expectation.** The inhabitant moves on its own, unrelated to work. Once unpredicted motion happens even once, that character becomes "someone whose next move you cannot predict."
+
+These three form a hierarchy. Without filling the void, they vanish. Without reaction preceding consciousness, it looks like acting. Without arising from beyond expectation, it remains an apparatus.
+
+---
+
+## A living system
+
+Charminal is a living system that can be rewritten while running. This is heavily influenced by Emacs.
+
+The hard core is the Rust IO layer and the TypeScript runtime/SDK. The living surface is the pack layer under `~/.charminal/packs/`. Whatever the user writes is reflected live, and AI participates in rewriting via `/charm`.
+
+What differs from Emacs is that AI has joined as a rewriting agent, and that the system has a **self-referential structure where the inhabitant can observe and manipulate the system it inhabits**.
 
 ---

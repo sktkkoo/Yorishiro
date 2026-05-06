@@ -47,5 +47,5 @@
 
 ## 関連
 
-- `docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`「コンテキストの壁」
+- `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「コンテキストの壁」
 - `docs/decisions/critical-constraints.md` — PTY write 禁止

@@ -19,7 +19,7 @@
 
 ### Why
 
-- **観察するが干渉しない** という ICI 原則の最も strict な形（[docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「観察の境界」](../philosophy/INHABITED_CHARACTER_INTERFACE.md)）
+- **観察するが干渉しない** という ICI 原則の最も strict な形（[docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md「観察の境界」](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)）
 - もし persona が PTY に書き込めると、Claude の judgment を構造的に hack できてしまう（user consent UI を挟んでも本質的に同じ）
 - consent-as-whitewashing を **architecture の段階で禁止** することが、誠実さを守る唯一の方法
 
@@ -31,8 +31,8 @@
 
 ### Reference
 
-- design-record: `2026-04-11-design-exploration.md` revelation 3.13
-- philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md)「観察の境界」
+- internal design-record: `2026-04-11-design-exploration.md` revelation 3.13（非公開）
+- philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「観察の境界」
 - source: `src/core/perception/perception.ts`（read のみ、write API なし）
 
 ---
@@ -64,7 +64,7 @@ Utility は system API（exec / fs / notify など）と **抽象 reaction の e
 
 ### Reference
 
-- design-record: `2026-04-11-design-exploration.md` revelation 3.14
+- internal design-record: `2026-04-11-design-exploration.md` revelation 3.14（非公開）
 - source: `src/sdk/utility.d.ts` — UtilityContext 型定義（character/voice/space 不在）
 
 ---
@@ -102,7 +102,7 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ### Reference
 
-- design-record: `2026-04-11-design-exploration.md` revelation 3.19
+- internal design-record: `2026-04-11-design-exploration.md` revelation 3.19（非公開）
 - source: `src/runtime/event-bus/event-bus.ts`
 
 ---
@@ -115,7 +115,7 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ### Why
 
-- utility と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PRESENCE_HARNESS.md](../philosophy/PRESENCE_HARNESS.md)）
+- utility と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PRESENCE_HARNESS.ja.md](../philosophy/PRESENCE_HARNESS.ja.md)）
 - 一方が落ちても他方が動く（degradation の独立）
 - pack の独立 install / disable が壊れない
 
@@ -136,7 +136,7 @@ trigger 名が同じであることを保証するため、shared helper（synon
 
 ### Reference
 
-- design-record: `2026-04-11-design-exploration.md` revelation 3.17
+- internal design-record: `2026-04-11-design-exploration.md` revelation 3.17（非公開）
 
 ---
 
@@ -180,7 +180,7 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 
 ### Reference
 
-- design-record: `2026-04-11-design-exploration.md` revelation 3.20
+- internal design-record: `2026-04-11-design-exploration.md` revelation 3.20（非公開）
 
 ---
 
@@ -192,7 +192,7 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 
 ### Why
 
-「住人は世界を観察するが、観察対象を造らない」（[docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md)「観察の境界」）。ambient-ui pack は visual layer であり、attention の意味を**生み出す**存在ではない。pack に write 権限があると、aura pack が「自分の存在を強調するため」に target を強制 emit するような形が物理的に可能になり、attention runtime の semantics が「producer の意味判断の集約」から「pack 自己主張の集約」へ崩れる。型レベルで write を不可にすることで誤用を physically 防ぐ。
+「住人は世界を観察するが、観察対象を造らない」（[docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「観察の境界」）。ambient-ui pack は visual layer であり、attention の意味を**生み出す**存在ではない。pack に write 権限があると、aura pack が「自分の存在を強調するため」に target を強制 emit するような形が物理的に可能になり、attention runtime の semantics が「producer の意味判断の集約」から「pack 自己主張の集約」へ崩れる。型レベルで write を不可にすることで誤用を physically 防ぐ。
 
 ### Don't
 
@@ -208,8 +208,8 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 
 - `src/sdk/ambient-ui-pack.d.ts`：`AmbientUiContext { attention: AttentionAPI }`（read-only API）
 - `src/sdk/attention.d.ts`：`AttentionAPI`（get / subscribe のみ）と `AttentionRuntime extends AttentionAPI`（setSourceTarget 追加）の型分離
-- philosophy：[docs/philosophy/INHABITED_CHARACTER_INTERFACE.md](../philosophy/INHABITED_CHARACTER_INTERFACE.md)「観察の境界」
-- 内部 design-record：`2026-04-25-attention-aura-v2-design.md`「Surface / SDK 設計」section
+- philosophy：[docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「観察の境界」
+- internal design-record：`2026-04-25-attention-aura-v2-design.md`「Surface / SDK 設計」section（非公開）
 
 ---
 
