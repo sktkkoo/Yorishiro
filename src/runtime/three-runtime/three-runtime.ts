@@ -265,7 +265,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   /**
    * Render loop の pause / resume。
    * paused のとき RAF は継続するが、tweenManager.tick / body.update / renderer.render を skip する。
-   * sidebar が display:none の間（presence aura-only / closed）に CPU/GPU を休ませる用途。
+   * sidebar が display:none の間（presence closed）に CPU/GPU を休ませる用途。
    */
   setRenderPaused(paused: boolean): void {
     this.renderPaused = paused;

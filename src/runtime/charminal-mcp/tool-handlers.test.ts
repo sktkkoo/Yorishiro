@@ -1496,9 +1496,9 @@ describe("createPresenceSetIntensityHandler", () => {
   it("valid level を受け付ける", async () => {
     const apply = vi.fn();
     const handler = createPresenceSetIntensityHandler({ applyPresenceLevel: apply });
-    const result = await handler({ level: "aura-only" });
-    expect(result.level).toBe("aura-only");
-    expect(apply).toHaveBeenCalledWith("aura-only", "mcp");
+    const result = await handler({ level: "closed" });
+    expect(result.level).toBe("closed");
+    expect(apply).toHaveBeenCalledWith("closed", "mcp");
   });
 
   it("invalid level で throw する", async () => {
