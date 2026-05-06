@@ -77,7 +77,7 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
-import { resolveProfile } from "./runtime/sessions";
+import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
@@ -310,7 +310,7 @@ function App() {
     // 揺らす（body の transform は fixed 子孫の containing block を作る）。
     const renderer = new Renderer({
       shakeTarget: document.body,
-      terminalCellExtractor: () => getTerminalRuntime().extractVisibleCells(),
+      terminalCellExtractor: () => getTerminalRuntime(DEFAULT_SESSION_ID).extractVisibleCells(),
       camera: {
         claim: () => claimState.claim("camera"),
         getState: () => {
@@ -545,7 +545,7 @@ function App() {
         phase: "register",
         note: "initialized AmbientAudioRuntime",
       });
-      initTerminalTheme(scenePackRegistry, getTerminalRuntime());
+      initTerminalTheme(scenePackRegistry, getTerminalRuntime(DEFAULT_SESSION_ID));
       appLog.write({
         phase: "register",
         note: "initialized terminal theme wire",
@@ -1746,7 +1746,7 @@ function App() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: singletons are stable
   useEffect(() => {
     const attention = getAttentionRuntime();
-    const terminal = getTerminalRuntime();
+    const terminal = getTerminalRuntime(DEFAULT_SESSION_ID);
 
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
@@ -1981,6 +1981,7 @@ function App() {
       />
       {isUserLayerReady && resolvedSystemPrompt !== undefined && (
         <Terminal
+          sessionId={DEFAULT_SESSION_ID}
           spec={
             defaultSpec ?? {
               kind: "agent",
