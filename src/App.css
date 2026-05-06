@@ -363,3 +363,8 @@ body,
 .tab-indicator-item.active {
   opacity: 1;
 }
+
+.tab-indicator-hint {
+  margin-left: auto;
+  opacity: 0.5;
+}

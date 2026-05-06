@@ -25,6 +25,7 @@ export default function TabIndicator({ state, labels }: TabIndicatorProps) {
           </span>
         );
       })}
+      <span className="tab-indicator-hint">Ctrl+Tab</span>
     </div>
   );
 }
