@@ -10,11 +10,11 @@ Charminal is a desktop app that gives a body to the AI running inside your termi
 
 Claude Code or Codex runs inside. While the AI is deep in thought, a 3D character lets its gaze wander. When an error hits, the face grimaces before the AI puts it into words. Sometimes the character just moves on its own, for no reason at all. Instead of a spinner, someone is there.
 
-The inhabitant can control the world it lives in — switching scenes, changing ambient sounds, triggering expressions and effects. Users can also write packs to reshape everything: personality, space, reactions. All while the app is running, without stopping it.
+The inhabitant can control the world it lives in — switching scenes, triggering expressions and effects. Users can also reshape everything just by talking to the inhabitant: personality, space, reactions. All while the app is running, without stopping it.
 
 There is something we once saw in science fiction and anime — an AI partner who moves freely inside the screen, manipulates the UI, and helps you. This project is trying to build that experience.
 
-Much of Charminal's own development is done as a collaboration with the AI running on Charminal itself.
+Much of Charminal's own development has been done as a collaboration with the AI running on Charminal itself.
 
 > [日本語版 README はこちら](README.ja.md)
 
@@ -26,9 +26,8 @@ Much of Charminal's own development is done as a collaboration with the AI runni
 
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
 
-- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
-- Charminal never asks for API keys. Instead, it consumes your existing Claude Code / Codex tokens directly
-- The default agent is Claude Code. To use Codex, switch in the settings screen and Reload (Ctrl+R)
+- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) already set up on your system**
+- Charminal never asks for API keys. Instead, it consumes your existing Claude Code tokens directly
 
 ### Launch
 
@@ -52,39 +51,66 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **persona** | Defines the inhabitant's personality and reaction patterns |
 | **scene** | Composes the background, space, lighting, and ambient sound |
 | **effect** | Temporary visual effects (screen shake, fireworks, etc.) |
-| **ui** | UI panels like camera/lighting controls |
-| **ambient-ui** | Always-visible overlays (gaze visualization, etc.) |
+| **ui** | UI such as settings screens |
+| **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
 | **utility** | Background logic with no visual output |
 
-Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape everything: personality, space, and reactions. Packs support hot reload — just save the file and changes take effect immediately without restarting the app. Note that initialization files like `init.js` are only read at startup, so changes to those require an explicit Reload (Ctrl+R). If hot reload doesn't pick up a change, Ctrl+R will always apply it reliably.
+Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm` command, pack creation and modification is as simple as talking to the inhabitant. Packs support hot reload — just save the file and changes take effect immediately without restarting the app. Note that initialization files like `init.js` are only read at startup, so changes to those require an explicit Reload (Ctrl+R). If hot reload doesn't pick up a change, Ctrl+R will always apply it reliably.
 
 ### Configuration
 
 Use `~/.charminal/config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
 
+---
+
+## Features
+
 ### Self-referential MCP
 
-The inhabitant (Claude Code running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI. This isn't a feature bolt-on; it's the design principle that the inhabitant can touch the place it lives in.
+The inhabitant (Claude Code running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI.
+
+Three characteristics define this mechanism.
+
+**Body and environment share one interface.** For the inhabitant, changing its own facial expression and changing the room's lighting are the same operation. There is no API boundary between body and space — everything is laid out as MCP tools.
+
+**Symmetry between user and inhabitant.** What the user can control through the UI, the inhabitant can control through MCP — with few exceptions. If the user adjusts the camera angle, the inhabitant can perceive it. If the inhabitant switches the lighting to warm tones at night, the user will notice it the next morning.
+
+**Pathways define boundaries.** MCP pathways reach the inhabitant's body and space, but do not reach the user's working files or Claude Code / Codex's internal reasoning. Rather than instructing Claude Code / Codex not to touch them, the pathways simply don't exist. Safety and autonomy are structural.
+
+### Reflex layer
+
+The inhabitant constantly observes terminal output. Errors, test results, command completions — persona pack triggers pick up text flowing through the PTY and react instantly with expressions and motions. These reactions bypass the LLM; the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
+
+### Journal
+
+The inhabitant can write daily entries in `~/.charminal/journal/daily/`. Summaries of notable moments accumulate in `memories.md` and are recalled in future sessions. This is a long-term memory mechanism that persists across sessions.
 
 ---
 
 ## Status
 
-**v0.0.1 — early preview**
+**v0.1.0 — early preview**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
 What works today:
 
-- Launches Claude Code / Codex as the terminal — you work right there
-- A VRM 3D character breathes, blinks, shifts gaze, and reacts with facial expressions
+- Launches Claude Code as the terminal — you work right there
+- A VRM 3D character that breathes, blinks, and shifts gaze
 - VRMA animation clip playback
-- Six pack types (persona / scene / effect / ui / utility / ambient-ui) can be created and loaded
-- Scene switching, ambient sound playback, camera and lighting control
-- Self-referential MCP — the inhabitant (Claude Code) can control Charminal itself via MCP (expressions, effects, scene switching, UI manipulation, and 20+ other tools)
-- `/charm` ships as a Claude Code plugin — create packs, edit them, tutorials, and more
+- Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)
+- Self-referential MCP (20+ tools)
+- Reflex layer: PTY observation and instant reactions
+- Journal: long-term memory across sessions
+- `/charm` for interactive pack creation and editing
 
-The terminal agent is selected via `~/.charminal/config.json`:
+---
+
+## Experimental
+
+### Codex support
+
+[Codex](https://github.com/openai/codex) can be used as the terminal agent. Switch via `~/.charminal/config.json`:
 
 ```json
 {
@@ -92,7 +118,7 @@ The terminal agent is selected via `~/.charminal/config.json`:
 }
 ```
 
-If omitted, Claude Code is launched by default. Initial Codex support covers auto-launch, persona prompt overlay, and PTY observation. Claude Code hooks and the `/charm` plugin are Claude Code-exclusive. See [`docs/configuration.md`](docs/configuration.md) for all config fields.
+Auto-launch, persona prompt overlay, and PTY observation work. However, Claude Code hooks and the `/charm` plugin are Claude Code-exclusive and not available when using Codex.
 
 ---
 
@@ -171,5 +197,3 @@ npm run tauri dev # Launch as desktop app
 [MIT](LICENSE)
 
 ---
-
-*A place, not a tool.*
