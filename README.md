@@ -65,9 +65,19 @@ Everything in Charminal is composed of **packs**. There are six types:
 
 Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm` command, pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
-### Configuration
+### Data directory
 
-Use `~/.charminal/config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
+Charminal stores all user data in `~/.charminal/`:
+
+```
+~/.charminal/
+├── config.json      # Persona, scene, terminal agent, and other settings
+├── packs/           # User-created packs
+├── journal/         # Inhabitant's daily entries and memories
+└── shell/           # Shell integration scripts (auto-generated)
+```
+
+Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
 
 ---
 
