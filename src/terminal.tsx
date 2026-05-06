@@ -41,5 +41,11 @@ export default function Terminal({ sessionId, visible, spec, cwd, perception }: 
     getTerminalRuntime(sessionId).setPerception(perception);
   }, [sessionId, perception]);
 
-  return <div ref={placeholderRef} className="terminal-container" />;
+  return (
+    <div
+      ref={placeholderRef}
+      className="terminal-container"
+      style={visible ? undefined : { display: "none" }}
+    />
+  );
 }
