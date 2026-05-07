@@ -33,6 +33,4 @@ user pack が同 id の bundled pack を **dispose + 置換** する形で overr
 ## 関連 reference
 
 - source: `src/runtime/persona-registry/persona-registry-impl.ts`、`src/runtime/scene-pack-registry/scene-pack-registry.ts`
-- memory: `feedback_pack_override_pattern.md`
-- internal design-record: `2026-04-18-scene-pack-registry.md`（非公開）
 - 関連: [`bundled-pack-immutability.md`](bundled-pack-immutability.md)、[`single-active-config-picks.md`](single-active-config-picks.md)

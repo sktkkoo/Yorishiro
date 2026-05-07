@@ -34,5 +34,4 @@ Charminal の UGC は AI が書く前提（Agentic UGC）。よって「user 設
 
 ## 関連 reference
 
-- memory: `feedback_explicit_over_implicit_ugc.md`
 - 関連: [`single-active-config-picks.md`](single-active-config-picks.md)

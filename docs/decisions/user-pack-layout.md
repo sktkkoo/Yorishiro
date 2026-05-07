@@ -30,6 +30,5 @@ user pack は **flat layout**：`~/.charminal/packs/<id>/<kind>.{js,md}`、`.js`
 
 ## 関連 reference
 
-- memory: `feedback_user_pack_layout.md`
 - source: `src-tauri/src/lib.rs:list_user_packs`、`src/runtime/user-pack-loader/`
 - 関連: [`bundled-pack-immutability.md`](bundled-pack-immutability.md)、[`separate-distinct-systems.md`](separate-distinct-systems.md)

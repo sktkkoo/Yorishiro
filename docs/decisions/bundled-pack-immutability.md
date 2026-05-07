@@ -34,5 +34,4 @@
 
 ## 関連 reference
 
-- memory: `feedback_bundled_pack_immutability.md`
 - 関連: [`pack-override-pattern.md`](pack-override-pattern.md)、[`user-pack-layout.md`](user-pack-layout.md)

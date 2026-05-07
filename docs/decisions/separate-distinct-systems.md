@@ -34,6 +34,5 @@
 
 ## 関連 reference
 
-- memory: `feedback_separate_conceptually_distinct_systems.md`
 - 適用例: [`user-pack-layout.md`](user-pack-layout.md)、[`pack-override-pattern.md`](pack-override-pattern.md)
 - 関連: [`critical-constraints.md`](critical-constraints.md) §2 Utility motion-free（型レベル境界の例）

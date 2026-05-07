@@ -51,7 +51,7 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 ### A. 複数 persona 並行 active
 
-**初期 design intent**（revelation 3.2「Charminal は複数 persona を持つ単一個体」、`2026-04-17-implementation-log-v0.0.1.md`「複数 persona 並行前提の internal model」）。
+**初期 design intent**（「Charminal は複数 persona を持つ単一個体」という構想、および初期実装での「複数 persona 並行前提の internal model」）。
 
 **却下理由**：
 - system prompt 注入が起動時 1 回のみ → 複数 persona の "thinking layer" を同時に持てない
@@ -81,7 +81,7 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 - 複数 persona pack を同時に install するのは可能（registry に並ぶ）
 - 「どれを active にするか」は config の `activePersona`（または同様の field）で user が picks
-- これは scene pack の `activeScene` semantics（[memory: feedback_single_active_config_picks](../../.claude/projects/-Users-user-Charminal/memory/feedback_single_active_config_picks.md) 参照）と同じ pattern
+- これは scene pack の `activeScene` semantics（[single-active-config-picks.md](single-active-config-picks.md) 参照）と同じ pattern
 
 ### 思想層への影響（注意）
 
@@ -98,13 +98,6 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 ## 関連 reference
 
-### Design records
-
-- `2026-04-11-design-exploration.md` revelation 3.2 — 多人格 meta-identity の original intent
-- `2026-04-11-design-exploration.md` revelation 3.9 — 多人格は観察と反射で存在（能動化は scope 外）
-- `2026-04-17-implementation-log-v0.0.1.md` Arc E — 「複数 persona 並行前提の internal model」(後に修正)
-- `2026-04-19-persona-single-active.md` — 現行設計の根拠
-
 ### Philosophy
 
 - [docs/philosophy/CHARMINAL.ja.md](../philosophy/CHARMINAL.ja.md)「多人格の住人」section
@@ -115,16 +108,11 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 - `src/runtime/persona-registry/persona-registry-impl.ts:PersonaRegistryImpl` — single-active 実装
 - `src/runtime/persona-registry/select-active.ts:computeActivePersona` — active 選択 logic
 
-### Memory
-
-- `feedback_pack_override_pattern.md` — user > bundled override の正規 pattern（scene で確立、persona に retrofit）
-- `feedback_single_active_config_picks.md` — single-active pack の config picks idiom
-
 ---
 
 ## 改訂履歴
 
-- 2026-04-17: 旧設計「複数 persona 並行前提」が implementation log に記録（Arc E）
+- 2026-04-17: 旧設計「複数 persona 並行前提」が初期実装に記録
 - 2026-04-19 commit `e0a84f9`: PersonaPackManifest sdk 追加
 - 2026-04-19 commit `39289df`: single-active registry に修正（current）
-- 2026-04-19 doc 化: 本ファイル作成（user との会話で「複数運用は現実的でない」が明示されたことを契機）
+- 2026-04-19 doc 化: 本ファイル作成（「複数運用は現実的でない」が明確になったことを契機）

@@ -18,7 +18,7 @@
 
 ## なぜそう決めたか
 
-- charm.md で keyboard shortcut の導線を `init.js` 経由で紹介している以上、インストール直後から file が存在している方が barrier が低い（`feedback_explicit_over_implicit_ugc` の「設定編集は AI 前提で barrier にならない」立場でも、file が存在しないと AI が「まず作ってから」と迂回する分 step が増える）
+- charm.md で keyboard shortcut の導線を `init.js` 経由で紹介している以上、インストール直後から file が存在している方が barrier が低い（Agentic UGC 前提の設計方針（[explicit-over-implicit-ugc.md](explicit-over-implicit-ugc.md)）で「設定編集は AI 前提で barrier にならない」立場でも、file が存在しないと AI が「まず作ってから」と迂回する分 step が増える）
 - 一方で「app resource / `public/` に置く」案は **OS signed bundle を user editable にする** ことを意味し、macOS では署名破壊・app update で消滅・sandbox 違反を引き起こす。`~/.emacs.d/` を Emacs のインストール先に置かないのと同じ理屈
 - 「存在すれば触らない」を強制するのは、空 file でも user の意思表示（「何も要らない」）として尊重するため。`~/.charminal/sdk.d.ts` と違い init.js は user の territory
 
