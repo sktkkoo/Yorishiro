@@ -62,27 +62,23 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
     };
   }, [runtimeLevaStore]);
 
-  const ActiveComponent = activeEntry?.component;
-
   return (
     <>
       {debugEnabled ? <R3fDebugCube /> : null}
-      {ActiveComponent ? (
-        <ActivePackComponent key={activeEntry.id} Component={ActiveComponent} entry={activeEntry} />
+      {activeEntry ? (
+        <ActiveSceneControlsBoundary key={activeEntry.id} entry={activeEntry} />
       ) : null}
       <CameraControls store={runtimeLevaStore} />
-      <SceneLayerControls store={runtimeLevaStore} />
       {children}
     </>
   );
 }
 
-interface ActivePackComponentProps {
-  readonly Component: NonNullable<ScenePackEntry["component"]>;
+interface ActiveSceneControlsBoundaryProps {
   readonly entry: ScenePackEntry;
 }
 
-function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
+function ActiveSceneControlsBoundary({ entry }: ActiveSceneControlsBoundaryProps) {
   const sceneLevaStore = useCreateStore();
   const resolveAsset = useMemo(
     () =>
@@ -129,13 +125,15 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
     setActiveSceneLevaStore(sceneLevaStore);
     return () => {
       clearActiveSceneLevaStore(sceneLevaStore);
-      sceneLevaStore.dispose();
     };
   }, [sceneLevaStore]);
 
+  const Component = entry.component;
+
   return (
     <ControlStoreProvider store={sceneLevaStore}>
-      <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} />
+      {Component ? <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} /> : null}
+      <SceneLayerControls store={sceneLevaStore} />
     </ControlStoreProvider>
   );
 }

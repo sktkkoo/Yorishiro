@@ -150,7 +150,7 @@ describe("R3fRuntimeRoot", () => {
       </R3fRuntimeRoot>,
     );
 
-    expect(registry.__subscriberCount()).toBe(2);
+    expect(registry.__subscriberCount()).toBe(1);
     expect(container.querySelector("[data-testid='child']")).not.toBeNull();
 
     unmount();
@@ -239,10 +239,10 @@ describe("R3fRuntimeRoot", () => {
     expect(levaStore.get("lights.directionalColor")).toBeUndefined();
 
     act(() => {
-      registry.__setActive(makeEntry("without-component"));
+      registry.__setActive(null);
     });
     expect(getActiveSceneLevaStore()).toBeNull();
-    expect(sceneStore?.get("lights.directionalColor")).toBeUndefined();
+    expect(sceneStore?.getVisiblePaths()).not.toContain("lights.directionalColor");
   });
 
   it("does not reuse shared leva paths across scene packs", () => {
@@ -317,5 +317,30 @@ describe("R3fRuntimeRoot", () => {
     expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
     expect(sceneStore?.get("lights.ambientIntensity")).toBe(0.4);
     expect(levaStore.get("lights.directionalIntensity")).toBeUndefined();
+  });
+
+  it("registers scene layer controls into the active scene store", () => {
+    const registry = getMockRegistry();
+    const layeredEntry: ScenePackEntry = {
+      ...makeEntry("layered-scene"),
+      scene: {
+        id: "layered-scene",
+        layers: [
+          { id: "background", role: "background" },
+          { id: "foreground", role: "foreground" },
+        ],
+      },
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(layeredEntry);
+    });
+
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("scene layers.backgroundBlur")).toBe(0);
+    expect(sceneStore?.get("scene layers.foregroundBlur")).toBe(0);
+    expect(levaStore.get("scene layers.backgroundBlur")).toBeUndefined();
   });
 });

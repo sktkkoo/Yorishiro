@@ -7,12 +7,12 @@
 
 import { button, folder, useControls } from "leva";
 import { useEffect, useRef, useState } from "react";
+import type { LevaStore } from "../../runtime/leva";
 import { getSceneRegistry } from "../../runtime/scene-pack-registry";
-import type { RuntimeLevaStore } from "../../runtime/three-runtime/runtime-leva-store";
 import { getSceneLayerBridge } from "../scene/scene-layer-bridge";
 
 export interface SceneLayerControlsProps {
-  readonly store?: RuntimeLevaStore;
+  readonly store?: LevaStore;
 }
 
 export function SceneLayerControls({ store }: SceneLayerControlsProps) {

@@ -2154,7 +2154,7 @@ function App() {
           collapsed={false}
           flat
           titleBar={{
-            title: "Runtime",
+            title: "Common",
             drag: true,
             filter: true,
             position: { x: 0, y: 0 },
