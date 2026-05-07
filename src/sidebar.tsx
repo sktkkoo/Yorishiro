@@ -16,6 +16,7 @@ interface SidebarProps {
   readonly bodyDevLog?: SubsystemLog;
   /** Active scene pack の entry。null は未登録状態。 */
   readonly scene: ScenePackEntry | null;
+  readonly settingsLabel: string;
 }
 
 export default function Sidebar({
@@ -26,6 +27,7 @@ export default function Sidebar({
   onBodyReady,
   bodyDevLog,
   scene,
+  settingsLabel,
 }: SidebarProps) {
   const vrmContent = vrmUrl ? (
     <Suspense fallback={<div className="vrm-loading" />}>
@@ -46,8 +48,8 @@ export default function Sidebar({
           type="button"
           className="settings-btn"
           onClick={onOpenSettings}
-          aria-label="設定"
-          title="設定"
+          aria-label={settingsLabel}
+          title={settingsLabel}
         >
           <Settings size={14} aria-hidden="true" />
         </button>

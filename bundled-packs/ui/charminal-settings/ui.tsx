@@ -8,12 +8,13 @@
  * Internal design-record: specs/2026-04-25-settings-screen-design.md
  */
 
-import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
+import type { AppLanguage, Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
 import { ChevronDown, Volume2, VolumeX } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { ptyWrite } from "../../../src/bindings/tauri-commands";
+import { getStrings } from "../../../src/i18n/strings";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
@@ -79,12 +80,14 @@ function Select({
   options,
   onChange,
   loadingPlaceholder,
+  emptyLabel = "(no packs)",
 }: {
   value: string;
   options: readonly SelectOption[];
   onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   /** value === "" の時に表示する disabled option（読み込み中など）。 */
   loadingPlaceholder?: string;
+  emptyLabel?: string;
 }): React.JSX.Element {
   // 0 options: pack が登録されていない
   if (options.length === 0) {
@@ -103,7 +106,7 @@ function Select({
           maxWidth: "360px",
         }}
       >
-        （pack なし）
+        {emptyLabel}
       </div>
     );
   }
@@ -202,10 +205,12 @@ function AudioMuteToggle({
   muted,
   disabled,
   onToggle,
+  labels,
 }: {
   muted: boolean;
   disabled?: boolean;
   onToggle: () => void;
+  labels: { readonly mute: string; readonly unmute: string };
 }): React.JSX.Element {
   return (
     <button
@@ -213,8 +218,8 @@ function AudioMuteToggle({
       onClick={onToggle}
       disabled={disabled}
       aria-pressed={muted}
-      aria-label={muted ? "環境音をミュート解除" : "環境音をミュート"}
-      title={muted ? "環境音をミュート解除" : "環境音をミュート"}
+      aria-label={muted ? labels.unmute : labels.mute}
+      title={muted ? labels.unmute : labels.mute}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -309,8 +314,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [ambientVolume, setAmbientVolume] = useState<number | null>(null);
   // activeAmbientUi（Aura toggle 等の状態管理用）。
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
+  const [language, setLanguage] = useState<AppLanguage>("auto");
+  const [resolvedLanguage, setResolvedLanguage] = useState<"en" | "ja">("en");
   const personas = ctx.app.listPersonas();
   const scenes = ctx.app.listScenes();
+  const strings = getStrings(resolvedLanguage);
 
   useEffect(() => {
     let aborted = false;
@@ -322,6 +330,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setAmbientMuted(cur.ambientAudioMuted);
       setAmbientVolume(cur.ambientAudioVolume);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
+      setLanguage(cur.language);
+      setResolvedLanguage(cur.resolvedLanguage);
     });
     return () => {
       aborted = true;
@@ -359,6 +369,22 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setTerminalAgent(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "terminalAgent",
+    });
+  };
+
+  const onLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value as AppLanguage;
+    void applyConfigUpdate({
+      next,
+      prev: language,
+      setLocal: setLanguage,
+      write: async (v) => {
+        await ctx.app.setLanguage(v);
+        const cur = await ctx.app.getConfig();
+        setResolvedLanguage(cur.resolvedLanguage);
+      },
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "language",
     });
   };
 
@@ -408,7 +434,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const { invoke } = await import("@tauri-apps/api/core");
       const selected = await open({
-        title: "VRM ファイルを選択",
+        title: strings.selectVrmFile,
         filters: [{ name: "VRM", extensions: ["vrm"] }],
       });
       if (!selected) return;
@@ -442,7 +468,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const onShortcutClick = async () => {
     fireCloseRequest();
     try {
-      await ptyWrite({ data: "/charm:shortcut ショートカットを変更したい" });
+      await ptyWrite({ data: strings.shortcutPrompt });
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       ctx.emitEvent("charminal-settings:write-failed", { field: "shortcut-prompt", reason });
@@ -478,7 +504,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <button
           type="button"
           onClick={onClose}
-          aria-label="設定を閉じる"
+          aria-label={strings.closeSettings}
           style={{
             cursor: "pointer",
             opacity: 0.8,
@@ -505,6 +531,20 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       >
         {/* グループ 1: VRM / Persona / Scene / Aura */}
         <div style={gridStyle}>
+          {/* Language */}
+          <div style={{ opacity: 0.7 }}>{strings.language}</div>
+          <div>
+            <Select
+              value={language}
+              onChange={onLanguageChange}
+              options={[
+                { value: "auto", label: strings.languageAuto },
+                { value: "en", label: strings.languageEnglish },
+                { value: "ja", label: strings.languageJapanese },
+              ]}
+            />
+          </div>
+
           {/* VRM */}
           <div style={{ opacity: 0.7 }}>VRM</div>
           <button
@@ -531,7 +571,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             }}
             title={vrmName || undefined}
           >
-            {vrmName || "（未読み込み）"}
+            {vrmName || strings.notLoaded}
           </button>
 
           {/* Persona */}
@@ -540,7 +580,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             <Select
               value={persona ?? ""}
               onChange={onPersonaChange}
-              loadingPlaceholder={persona === null ? "読み込み中..." : undefined}
+              loadingPlaceholder={persona === null ? strings.loading : undefined}
+              emptyLabel={strings.noPacks}
               options={personas.map((p) => ({
                 value: p.id,
                 label: `${p.name ?? p.id}${p.origin === "user" ? " (user)" : ""}`,
@@ -554,7 +595,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             <Select
               value={scene ?? ""}
               onChange={onSceneChange}
-              loadingPlaceholder={scene === null ? "読み込み中..." : undefined}
+              loadingPlaceholder={scene === null ? strings.loading : undefined}
+              emptyLabel={strings.noPacks}
               options={scenes.map((s) => ({
                 value: s.id,
                 label: `${s.name ?? s.id}${s.origin === "user" ? " (user)" : ""}`,
@@ -589,6 +631,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               muted={ambientMuted ?? false}
               disabled={ambientMuted === null}
               onToggle={onAmbientMutedToggle}
+              labels={{ mute: strings.muteAmbient, unmute: strings.unmuteAmbient }}
             />
             <input
               type="range"
@@ -598,7 +641,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               value={ambientVolume ?? 1}
               onChange={onVolumeChange}
               disabled={ambientVolume === null}
-              aria-label="環境音ボリューム"
+              aria-label={strings.ambientVolume}
               style={{
                 flex: 1,
                 height: "4px",
@@ -639,7 +682,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             opacity: 0.5,
           }}
         >
-          ※ 次の terminal 起動から反映
+          {strings.terminalAppliesNextLaunch}
         </div>
 
         {/* 48px gap before footer links */}

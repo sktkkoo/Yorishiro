@@ -45,6 +45,7 @@ export type {
 } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
 export type {
+  AppLanguage,
   UiAppAPI,
   UiAppPackOption,
   UiClaimAPI,
@@ -58,4 +59,5 @@ export type {
   UiSceneLayerTarget,
   UiStateAPI,
   UiThreeAPI,
+  ResolvedLanguage,
 } from "./ui-pack";

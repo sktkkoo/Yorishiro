@@ -21,6 +21,9 @@ import type * as THREE from "three";
 import type { CharacterAPI, Disposable, LogAPI, SpaceAPI, Time, TweenAPI } from "./context";
 import type { LayerRole, SceneSpec } from "./scene";
 
+export type AppLanguage = "auto" | "en" | "ja";
+export type ResolvedLanguage = "en" | "ja";
+
 /**
  * Charminal の layout を UI pack がどう変えるかの宣言。
  * 未指定フィールドは default のまま（非破壊的）。
@@ -103,6 +106,8 @@ export interface UiAppAPI {
   setActiveAmbientUi(ids: readonly string[]): Promise<void>;
   /** 環境音のマスターボリュームを設定する（0.0-1.0）。config.json に書き戻す。 */
   setAmbientAudioVolume(volume: number): Promise<void>;
+  /** UI / persona fallback / command prompt の言語を切り替える。 */
+  setLanguage(language: AppLanguage): Promise<void>;
   /**
    * 現 config の snapshot（読み取り専用、初期値表示用）。
    * `~/.charminal/config.json` を fresh に読んで返す async。
@@ -114,6 +119,8 @@ export interface UiAppAPI {
     readonly ambientAudioMuted: boolean;
     readonly ambientAudioVolume: number;
     readonly activeAmbientUi: readonly string[];
+    readonly language: AppLanguage;
+    readonly resolvedLanguage: ResolvedLanguage;
   }>;
 }
 
