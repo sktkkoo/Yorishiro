@@ -1202,6 +1202,15 @@ function App() {
   const [sceneLayerOverrides, setSceneLayerOverrides] = useState<ReadonlyArray<SceneLayerOverride>>(
     [],
   );
+  // scene 切替で override をリセット。scene が表現を握る原則。
+  // 共通管理の Camera は跨いで持ち越すが、scene-scoped の調整（layer blur 等）は
+  // scene と一緒に切り替わる。
+  // docs/decisions/scene-layer-override-semantics.md
+  const activeSceneId = activeSceneEntry?.id ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeSceneId は effect 本体では読まないが、scene 切替の trigger として意図的に dep に含める
+  useEffect(() => {
+    setSceneLayerOverrides([]);
+  }, [activeSceneId]);
   const renderedScene = useMemo(
     () => applySceneLayerOverrides(activeScene, sceneLayerOverrides),
     [activeScene, sceneLayerOverrides],
