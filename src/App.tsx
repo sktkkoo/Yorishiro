@@ -1929,10 +1929,11 @@ function App() {
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 
-  // Convert filesystem path to Tauri asset URL
+  // Convert filesystem path to Tauri asset URL.
+  // vrmPath が未設定なら組み込みモデルをデフォルトとして使う。
   useEffect(() => {
     if (!vrmPath) {
-      setVrmUrl(null);
+      setVrmUrl("/models/CLAI.vrm");
       return;
     }
     import("@tauri-apps/api/core")

@@ -31,6 +31,7 @@ $DATA/
 bundled-packs/shared/animations/*.vrma
 bundled-packs/shared/voices/
 public/animations/
+public/models/
 public/voice/
 public/bg-test.*
 

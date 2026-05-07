@@ -32,6 +32,15 @@ const TARGETS = [
   },
 ];
 
+// 単体ファイルのコピー定義（directory sync ではなく 1:1 コピー）
+const FILE_TARGETS = [
+  {
+    label: "bundled VRM (CLAI)",
+    from: join(externalRoot, "models", "CLAI.vrm"),
+    to: join(REPO_ROOT, "public", "models", "CLAI.vrm"),
+  },
+];
+
 async function exists(path) {
   try {
     await stat(path);
@@ -39,6 +48,16 @@ async function exists(path) {
   } catch {
     return false;
   }
+}
+
+async function syncFile({ label, from, to }) {
+  if (!(await exists(from))) {
+    console.warn(`  [skip] ${label}: source not found at ${from}`);
+    return;
+  }
+  await mkdir(dirname(to), { recursive: true });
+  await cp(from, to);
+  console.log(`  [ok]   ${label}: → ${to}`);
 }
 
 async function syncDir({ label, from, to }) {
@@ -85,6 +104,10 @@ Or override the location:
 
   for (const target of TARGETS) {
     await syncDir(target);
+  }
+
+  for (const ft of FILE_TARGETS) {
+    await syncFile(ft);
   }
 }
 
