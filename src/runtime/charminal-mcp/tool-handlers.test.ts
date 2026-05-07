@@ -1017,6 +1017,54 @@ describe("createSceneCameraSetHandler", () => {
     expect(result.fov).toBe(30);
   });
 
+  it("reports instant camera changes for Common controls sync", async () => {
+    trackingEnabled = true;
+    const camera = makeMockCamera();
+    const settleEvents: Array<{
+      position: readonly [number, number, number];
+      fov: number;
+      tracking: boolean;
+    }> = [];
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => camera as unknown as CameraLike,
+      tweenManager: new TweenManager(),
+      claimCamera: () => ({ dispose: () => {} }),
+      onCameraSettle: (event) => settleEvents.push(event),
+      ...mockTrackingDeps,
+    });
+
+    await handler({ position: [1, 2, 3], fov: 30, tracking: false });
+
+    expect(settleEvents).toEqual([{ position: [1, 2, 3], fov: 30, tracking: false }]);
+  });
+
+  it("reports tweened camera changes after the tween settles", async () => {
+    trackingEnabled = true;
+    const tm = new TweenManager();
+    const camera = makeMockCamera();
+    const settleEvents: Array<{
+      position: readonly [number, number, number];
+      fov: number;
+      tracking: boolean;
+    }> = [];
+    const handler = createSceneCameraSetHandler({
+      getCamera: () => camera as unknown as CameraLike,
+      tweenManager: tm,
+      claimCamera: () => ({ dispose: () => {} }),
+      onCameraSettle: (event) => settleEvents.push(event),
+      ...mockTrackingDeps,
+    });
+
+    await handler({ position: [1, 2, 3], durationMs: 100, tracking: false });
+    expect(settleEvents).toEqual([]);
+
+    tm.tick(0);
+    tm.tick(100);
+    await Promise.resolve();
+
+    expect(settleEvents).toEqual([{ position: [1, 2, 3], fov: 50, tracking: false }]);
+  });
+
   it("throws when camera not ready", async () => {
     const handler = createSceneCameraSetHandler({
       getCamera: () => null,

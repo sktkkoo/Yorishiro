@@ -758,6 +758,13 @@ export interface SceneCameraSetDeps {
   readonly setCameraTracking: (enabled: boolean) => void;
   readonly getCameraTracking: () => boolean;
   readonly setCameraBase?: (pos: [number, number, number]) => void;
+  readonly onCameraSettle?: (event: SceneCameraSettleEvent) => void;
+}
+
+export interface SceneCameraSettleEvent {
+  readonly position: readonly [number, number, number];
+  readonly fov: number;
+  readonly tracking: boolean;
 }
 
 export interface SceneCameraSetResult {
@@ -785,10 +792,18 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
   let cameraClaimDisposable: Disposable | null = null;
   const activeCameraTweenKeys = new Set<string>();
 
+  function emitCameraSettle(cam: THREE.PerspectiveCamera): void {
+    deps.onCameraSettle?.({
+      position: [cam.position.x, cam.position.y, cam.position.z],
+      fov: "fov" in cam ? cam.fov : 0,
+      tracking: deps.getCameraTracking(),
+    });
+  }
+
   function ensureCameraClaim(): void {
     if (!cameraClaimDisposable) cameraClaimDisposable = deps.claimCamera();
   }
-  function releaseCameraClaimIfDone(): void {
+  function releaseCameraClaimIfDone(options?: { emitSettle?: boolean }): void {
     if (activeCameraTweenKeys.size === 0 && cameraClaimDisposable) {
       // tween 完了時に cameraBase を現在の cam.position に同期する。
       // これがないと claim 解放後に RAF ループが古い cameraBase で position を上書きし、
@@ -796,6 +811,7 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
       const cam = deps.getCamera();
       if (cam) {
         deps.setCameraBase?.([cam.position.x, cam.position.y, cam.position.z]);
+        if (options?.emitSettle !== false) emitCameraSettle(cam);
       }
       cameraClaimDisposable.dispose();
       cameraClaimDisposable = null;
@@ -872,6 +888,8 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
         trackTween("camera.fov", h);
       }
 
+      if (activeCameraTweenKeys.size === 0) emitCameraSettle(cam);
+
       return {
         position: [cam.position.x, cam.position.y, cam.position.z],
         fov: "fov" in cam ? cam.fov : 0,
@@ -885,7 +903,7 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
     deps.tweenManager.cancel("camera.target");
     deps.tweenManager.cancel("camera.fov");
     activeCameraTweenKeys.clear();
-    releaseCameraClaimIfDone();
+    releaseCameraClaimIfDone({ emitSettle: false });
 
     if (position) {
       cam.position.set(position[0], position[1], position[2]);
@@ -896,6 +914,8 @@ export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
       cam.fov = fovValue;
       cam.updateProjectionMatrix();
     }
+
+    emitCameraSettle(cam);
 
     return {
       position: [cam.position.x, cam.position.y, cam.position.z],

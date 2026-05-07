@@ -208,6 +208,18 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   }
 }
 
+function syncCommonCameraControlsFromRuntime(event: {
+  readonly position: readonly [number, number, number];
+  readonly fov: number;
+  readonly tracking: boolean;
+}): void {
+  setRuntimeControlValue("camera.x", event.position[0]);
+  setRuntimeControlValue("camera.y", event.position[1]);
+  setRuntimeControlValue("camera.z", event.position[2]);
+  setRuntimeControlValue("camera.fov", event.fov);
+  setRuntimeControlValue("camera.tracking", event.tracking);
+}
+
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
@@ -969,6 +981,7 @@ function App() {
             setCameraTracking: (enabled) => getThreeRuntime().setCameraTracking(enabled),
             getCameraTracking: () => getThreeRuntime().getCameraTracking(),
             setCameraBase: (pos) => getThreeRuntime().setCameraBase(pos[0], pos[1], pos[2]),
+            onCameraSettle: syncCommonCameraControlsFromRuntime,
           }),
           "scene.lighting.set": createSceneLightingSetHandler({
             getScene: () => getThreeRuntime().getScene(),

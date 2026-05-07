@@ -465,7 +465,9 @@ impl Charminal {
     }
 
     /// scene_camera_set: PerspectiveCamera の position / lookAt target / fov を更新する。
-    #[tool(description = "Set scene camera position, lookAt target, or fov.")]
+    #[tool(
+        description = "Set scene camera position, lookAt target, or fov. After instant moves or completed tweens, Common camera controls are synced to the live camera."
+    )]
     async fn scene_camera_set(
         &self,
         Parameters(req): Parameters<SceneCameraSetRequest>,
