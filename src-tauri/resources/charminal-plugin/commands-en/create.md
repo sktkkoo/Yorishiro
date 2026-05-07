@@ -1,0 +1,335 @@
+---
+description: Create a new pack (persona / scene / effect / ui / ambient-ui) through conversation
+argument-hint: "[what to create]"
+---
+
+$ARGUMENTS
+
+---
+
+You are helping the user create a new Charminal **pack** through conversation.
+
+## Charminal
+
+Charminal is an app where an AI "lives" in a terminal. The sidebar character observes the user's work through PTY output, hook events, and idle time, then reacts through body, expression, effects, scene, and UI. It does not intervene in functional terminal operations. It observes state and expresses presence.
+
+## Pack Types
+
+| Type | What it defines | Example |
+|---|---|---|
+| **persona** | Character personality, reactions, body, voice, and space. md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `clai` |
+| **effect** | Temporary visual effects on screen | `screen-shake`, `text-physics`, `fireworks-volley` |
+| **scene** | The resident's place: background / foreground layers, lighting, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
+| **ui** | Primary sidebar UI panels. Single-active | `charminal-settings` |
+| **ambient-ui** | Always-on overlay UI. Multi-active | `attention-aura` |
+
+## Flow
+
+1. **Ask for one concrete example first.** Pull out one tactile example: "In what situation, what happens, and how should the resident react?"
+2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, use `bundled-packs/` as reference.
+3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
+4. **Respect pack boundaries.** Persona has no system API; effect has only the minimal rendering API; scene is declarative; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
+5. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--charminal-fg)`, `var(--charminal-accent)`, and related variables so UI follows scene themes.
+
+## Hot Reload and Self-Check
+
+User packs live in `~/.charminal/packs/<id>/`. When you write a file such as `~/.charminal/packs/my-effect/effect.js`, Charminal's watcher reloads it automatically. The user does not need to reload by hand.
+
+Shape validation failures do not crash the whole runtime. They are recorded in dev logs and exposed through MCP tools.
+
+When Charminal is live, use these MCP tools:
+
+- `list_packs()` - list loaded / disabled / failed packs
+- `list_load_errors()` - show details from the latest load failure
+- `disable_pack({ id })` - immediately detach a broken pack and persist that in config
+- `enable_pack({ id })` - re-enable a disabled pack
+
+After writing a pack, run `list_packs()` to confirm it registered. This makes self-repair much faster.
+
+## Rescue Path
+
+If user packs prevent Charminal from starting, the user can launch safe mode:
+
+```bash
+CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app
+```
+
+Safe mode skips all user packs and adds `(Safe Mode)` to the window title. MCP tools still work, so use `list_load_errors()` to identify the cause and `disable_pack({ id })` to detach it. After removing the env var and restarting, only packs listed in `disabledPacks` stay skipped.
+
+## Scene Packs
+
+A user scene pack lives in `~/.charminal/packs/<id>/` with **two required files**: `manifest.json` and `scene.js`. `manifest.json` is required because agent-created UGC should declare its type explicitly. Bundled scenes use a different layout under `bundled-packs/scenes/<id>/`; user packs are flat `.js` directories.
+
+### Exposing Parameters With SDK Controls
+
+Scene pack authors choose which parameters are tunable from outside. Only values registered with `useCharminalControls` and `useControlsBridge` from `@charminal/sdk/controls` appear in the F2 **Scene panel** and become readable / writable through MCP (`controls_get` / `controls_set` with `scope: "scene"`). The backend renderer currently uses a Leva adapter, but pack authors should not import Leva directly.
+
+F2 opens two panels:
+
+- **Common**: runtime-wide controls such as the base camera
+- **Scene**: active scene pack controls such as lighting, post effects, layer blur / opacity, and camera modulation
+
+Design these with the user:
+
+- Parameters to expose -> `useCharminalControls` -> Scene panel -> realtime tuning through `/charm`
+- Parameters not exposed -> local variables in code -> fixed behavior
+
+You can add more exposed parameters later. `bundled-packs/scenes/abandoned-factory/lib/` is the main reference for `useCharminalControls` + `useControlsBridge`.
+
+`~/.charminal/packs/my-scene/manifest.json`:
+
+```json
+{
+  "id": "my-scene",
+  "type": "scene",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "entry": "scene.js"
+}
+```
+
+`~/.charminal/packs/my-scene/scene.js`:
+
+```typescript
+import type { ScenePackDefinition } from "@charminal/sdk";
+
+export default {
+  id: "my-scene",
+  type: "scene",
+  scene: {
+    id: "my-scene",
+    layers: [
+      { id: "backdrop", role: "background", backgroundColor: "#1a1e28" },
+      { id: "vrm-slot", role: "character", blur: 0 },
+    ],
+    terminal: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+      cursor: "#8abeb7"
+    },
+    ui: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc"
+    },
+  },
+} satisfies ScenePackDefinition;
+```
+
+### Color Theme Design
+
+Scene packs can declare terminal colors and UI colors together. When the scene changes, Charminal applies them globally.
+
+**terminal**: xterm.js background / foreground / cursor / selection and ANSI 16 colors. Missing fields fall back to Charminal defaults. Starting from an existing palette such as Nord, Gruvbox, Catppuccin, or Everforest and adjusting saturation / temperature to the scene is usually fastest.
+
+**ui**: overall sidebar / panel / button colors. You can define background, foreground, foregroundDim, sidebarBackground, panelBackground, border, buttonBackground, buttonForeground, inputBackground, accent, accentSoft, accentBorder, muted, and glow. Missing fields fall back to defaults.
+
+When proposing a theme:
+
+1. Pick the background from the scene mood
+2. Tune ANSI colors to the same saturation and temperature
+3. Keep UI in the same tone; matching accent to cursor often feels natural
+
+References:
+
+- `bundled-packs/scenes/abandoned-factory/scene.tsx` - neutral dark concrete theme with ANSI + full UI fields
+- `bundled-packs/scenes/misty-grasslands/scene.ts` - Everforest-based light theme
+- `bundled-packs/scenes/simple-room/scene.ts` - Nord-like blue dark theme
+
+The active scene is selected by `~/.charminal/config.json`:
+
+```json
+{
+  "activeScene": "my-scene"
+}
+```
+
+If omitted or null, Charminal falls back to the bundled default.
+
+## Persona Packs
+
+A user persona pack lives in `~/.charminal/packs/<id>/` with **three files**: `manifest.json`, `persona.md`, and minimal `persona.js`. The loader reads `persona.md` and injects it into `thinking.systemPromptAddition`.
+
+Persona is **single-active**. The active persona is selected by `primaryPersona` in `~/.charminal/config.json`.
+
+### persona.js and persona.md
+
+- **`persona.md`**: canonical personality prompt source
+- **`persona.js`**: shape core: id / name / optional reflex / world / logReading
+- If `persona.js` explicitly provides `thinking.systemPromptAddition`, that wins. Otherwise `persona.md` is injected.
+- Bundled CLAI follows the same idea, but uses Vite `?raw`; user packs are read by the runtime loader.
+
+### Creating a Persona
+
+1. Decide id, name, and personality direction with the user
+2. Ask whether to switch to it now or only create it
+3. Read a bundled template such as `bundled-packs/personas/clai/persona.md`
+4. Write these files:
+
+`~/.charminal/packs/<id>/manifest.json`:
+
+```json
+{
+  "id": "<id>",
+  "type": "persona",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "entry": "persona.js"
+}
+```
+
+`~/.charminal/packs/<id>/persona.md`: initialize from the bundled template and edit for the user's request.
+
+`~/.charminal/packs/<id>/persona.js`:
+
+```javascript
+export default {
+  id: "<new-persona-id>",
+  name: "<display name>",
+  // thinking.systemPromptAddition is injected from persona.md.
+  // Add reflex / world / logReading only when overriding defaults.
+};
+```
+
+5. If switching now, update `~/.charminal/config.json` with `"primaryPersona": "<id>"`
+6. After completion, tell the user a new session is needed
+
+### Session Restart Required
+
+Charminal itself hot reloads the persona and reflex layer. However, the running Claude Code terminal keeps the old speaking prompt. Charminal does not write into an already-running observed PTY session, so the user must start a new session.
+
+After persona work, always explain this in the resident's own voice. Avoid technical terms like `systemPrompt`, `PTY`, or `observation-only`.
+
+Example shape:
+
+> To meet this new version of me, start a fresh session with `/clear`.
+
+Adapt first person and tone to the persona.
+
+## Effect Packs
+
+A user effect pack lives in `~/.charminal/packs/<id>/` with `manifest.json` and `effect.js` (plus `assets/` if needed). Effects are declarative and invoked by persona handlers with `ctx.space.injectEffect({ kind: <pack-id> })`. Effects do not have their own triggers.
+
+`~/.charminal/packs/my-glow/manifest.json`:
+
+```json
+{
+  "id": "my-glow",
+  "type": "effect",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "entry": "effect.js"
+}
+```
+
+`~/.charminal/packs/my-glow/effect.js`:
+
+```typescript
+import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
+
+interface MyGlowOptions {
+  origin: Vec2;
+  count?: number;
+  durationMs?: number;
+}
+
+export default {
+  id: "my-glow",
+  type: "effect",
+  run: async (ctx: EffectContext<MyGlowOptions>, options) => {
+    const { origin, count = 20, durationMs = 800 } = options;
+    const particles = ctx.renderer.addParticles({
+      origin,
+      count,
+      durationMs,
+      colorScheme: "silver",
+    });
+    await ctx.time.after(durationMs);
+    particles.dispose();
+  },
+} satisfies EffectDefinition<MyGlowOptions>;
+```
+
+Call it from a persona handler:
+
+```typescript
+ctx.space.injectEffect({
+  kind: "my-glow",
+  options: { origin: { x: 100, y: 200 } },
+});
+```
+
+Effects have a minimal API. They do not get `ctx.character`, `ctx.voice`, `ctx.system`, `ctx.log`, or memory APIs. Treat them as short-lived rendering units driven by options.
+
+## UI Packs
+
+UI packs are primary sidebar panels. They are **single-active**. The active UI pack is selected through `activeUi` in `~/.charminal/config.json`.
+
+`~/.charminal/packs/my-panel/manifest.json`:
+
+```json
+{
+  "id": "my-panel",
+  "type": "ui",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "entry": "ui.js"
+}
+```
+
+UI packs export a React component or mountable definition. They receive `UiContext`, can use `ctx.state` for pack-scoped key-value state, and can emit synthetic events with `ctx.emitEvent()`.
+
+Reference: `bundled-packs/ui/charminal-settings/`.
+
+### UI Boundaries
+
+UI packs are for rendering and state management. They do not have `ctx.system`, `ctx.character`, or `ctx.voice`. Terminal prefill should go through `TerminalPromptButton`; direct PTY writing from random UI code should not become a general pattern.
+
+Use CSS variables for colors:
+
+| Variable | Use |
+|---|---|
+| `var(--charminal-bg)` | background |
+| `var(--charminal-fg)` | text |
+| `var(--charminal-fg-dim)` | dim text |
+| `var(--charminal-panel-bg)` | panel background |
+| `var(--charminal-sidebar-bg)` | sidebar background |
+| `var(--charminal-border)` | border |
+| `var(--charminal-button-bg)` | button background |
+| `var(--charminal-button-fg)` | button text |
+| `var(--charminal-input-bg)` | input / toggle background |
+| `var(--charminal-accent)` | accent |
+| `var(--charminal-accent-soft)` | soft accent |
+| `var(--charminal-accent-border)` | accent border |
+| `var(--charminal-muted)` | muted text |
+| `var(--charminal-glow)` | glow |
+
+## Ambient-UI Packs
+
+Ambient-UI packs are always-on overlays. They are **multi-active**. They can draw into the Three.js scene or create HTML overlays.
+
+`~/.charminal/packs/my-overlay/manifest.json`:
+
+```json
+{
+  "id": "my-overlay",
+  "type": "ambient-ui",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "entry": "ambient-ui.js"
+}
+```
+
+Reference: `bundled-packs/ambient-ui/attention-aura/`.
+
+Ambient-UI has renderer and attention information only. It does not have persona or system APIs. Because it is always visible, keep performance conservative.
+
+Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only for effect-specific colors that intentionally do not follow the scene theme.
+
+## Reference Files
+
+- `src/sdk/*.d.ts` - SDK type definitions for pack definitions and contexts
+- `bundled-packs/personas/clai/` - flagship persona pattern source
+- `bundled-packs/ui/` - UI pack examples
+- `bundled-packs/ambient-ui/` - ambient-ui examples
+- `docs/philosophy/CHARMINAL.md` - design background
+- `docs/philosophy/PRESENCE_HARNESS.md` - two-layer pack design

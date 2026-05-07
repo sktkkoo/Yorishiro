@@ -6,7 +6,9 @@
  * 複数のフラグメントを登録でき、結合した文字列を返す。
  */
 
-type FragmentProvider = () => Promise<string>;
+import type { ResolvedLanguage } from "../../runtime/language/language";
+
+type FragmentProvider = (language: ResolvedLanguage) => Promise<string>;
 
 const providers: Map<string, FragmentProvider> = new Map();
 
@@ -19,12 +21,12 @@ export function registerGlobalPromptFragment(key: string, provider: FragmentProv
  * 登録済みの全フラグメントを収集し、結合した文字列を返す。
  * 各フラグメントは `---` で区切られる。空のフラグメントは除外される。
  */
-export async function collectGlobalPrompt(): Promise<string | null> {
+export async function collectGlobalPrompt(language: ResolvedLanguage): Promise<string | null> {
   const fragments: string[] = [];
 
   for (const [key, provider] of providers) {
     try {
-      const text = await provider();
+      const text = await provider(language);
       const trimmed = text.trim();
       if (trimmed.length > 0) {
         fragments.push(trimmed);
@@ -42,8 +44,11 @@ export async function collectGlobalPrompt(): Promise<string | null> {
  * persona の systemPromptAddition とグローバルフラグメントを結合する。
  * どちらも null/空なら null を返す。
  */
-export async function buildSystemPrompt(personaAddition: string | null): Promise<string | null> {
-  const global = await collectGlobalPrompt();
+export async function buildSystemPrompt(
+  personaAddition: string | null,
+  language: ResolvedLanguage,
+): Promise<string | null> {
+  const global = await collectGlobalPrompt(language);
   const persona = personaAddition?.trim() || null;
 
   if (!global && !persona) return null;

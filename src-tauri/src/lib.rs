@@ -16,6 +16,11 @@ use tauri::{AppHandle, Manager, State};
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
 struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
+static LOCALIZED_PLUGIN_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) static TEST_HOME_ENV_LOCK: Mutex<()> = Mutex::new(());
+
 /// cross-platform な home directory 取得。Windows では USERPROFILE を返す。
 pub(crate) fn home_dir_or_err() -> Result<std::path::PathBuf, String> {
     dirs::home_dir().ok_or_else(|| "home directory not found".to_string())
@@ -34,6 +39,91 @@ fn build_path_env() -> String {
             home, home, current
         )
     }
+}
+
+fn normalized_plugin_language(language: &str) -> &'static str {
+    if language == "ja" {
+        "ja"
+    } else {
+        "en"
+    }
+}
+
+fn copy_file_to_dir(src: &Path, dest_dir: &Path) -> Result<(), String> {
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| format!("invalid resource path: {}", src.display()))?;
+    std::fs::copy(src, dest_dir.join(file_name))
+        .map(|_| ())
+        .map_err(|e| format!("copy {} failed: {}", src.display(), e))
+}
+
+fn prepare_localized_plugin_dir_at(
+    resource_root: &Path,
+    target_root: &Path,
+    language: &str,
+) -> Result<(), String> {
+    let language = normalized_plugin_language(language);
+    let source_commands = resource_root.join(format!("commands-{}", language));
+    if !source_commands.is_dir() {
+        return Err(format!(
+            "localized command directory not found: {}",
+            source_commands.display()
+        ));
+    }
+
+    let target_plugin_meta = target_root.join(".claude-plugin");
+    let target_commands = target_root.join("commands");
+    std::fs::create_dir_all(&target_plugin_meta)
+        .map_err(|e| format!("runtime plugin meta dir create failed: {}", e))?;
+    if target_commands.exists() {
+        std::fs::remove_dir_all(&target_commands)
+            .map_err(|e| format!("runtime plugin commands cleanup failed: {}", e))?;
+    }
+    std::fs::create_dir_all(&target_commands)
+        .map_err(|e| format!("runtime plugin commands dir create failed: {}", e))?;
+
+    copy_file_to_dir(
+        &resource_root.join(".claude-plugin").join("plugin.json"),
+        &target_plugin_meta,
+    )?;
+    std::fs::copy(
+        resource_root.join(".mcp.json"),
+        target_root.join(".mcp.json"),
+    )
+    .map(|_| ())
+    .map_err(|e| format!("copy .mcp.json failed: {}", e))?;
+
+    for entry in std::fs::read_dir(&source_commands)
+        .map_err(|e| format!("read {} failed: {}", source_commands.display(), e))?
+    {
+        let path = entry
+            .map_err(|e| format!("read command dir entry failed: {}", e))?
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+            copy_file_to_dir(&path, &target_commands)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// resolved language に対応する Claude Code plugin dir を生成する。
+/// `~/.charminal/runtime-plugin/` は Charminal 管理領域で、起動ごとに上書きしてよい。
+#[tauri::command]
+fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<String, String> {
+    let _guard = LOCALIZED_PLUGIN_DIR_LOCK
+        .lock()
+        .map_err(|e| format!("runtime plugin dir lock poisoned: {}", e))?;
+    let resource_root = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("resource_dir failed: {}", e))?
+        .join("resources")
+        .join("charminal-plugin");
+    let target_root = home_dir_or_err()?.join(".charminal").join("runtime-plugin");
+    prepare_localized_plugin_dir_at(&resource_root, &target_root, &language)?;
+    Ok(target_root.to_string_lossy().to_string())
 }
 
 /// 任意 session id で PTY を spawn する。session_id を省略した legacy 呼び出し
@@ -59,13 +149,15 @@ async fn session_spawn(
             agent,
             command,
             system_prompt,
+            plugin_dir,
             ..
         } => {
-            let plugin_dir = app
-                .path()
-                .resource_dir()
-                .ok()
-                .map(|p| p.join("resources").join("charminal-plugin"));
+            let plugin_dir = plugin_dir.or_else(|| {
+                app.path()
+                    .resource_dir()
+                    .ok()
+                    .map(|p| p.join("resources").join("charminal-plugin"))
+            });
             SpawnSpec::Agent {
                 agent,
                 command,
@@ -780,6 +872,7 @@ pub fn run() {
         .manage(registry)
         .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
+            prepare_localized_plugin_dir,
             session_spawn,
             session_destroy,
             session_write,
@@ -1048,6 +1141,9 @@ mod layer_scope_tests {
 
     #[test]
     fn write_charminal_file_atomic_writes_file_and_rejects_path_traversal() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let tmp_home = fresh_dir("atomic-write");
         std::env::set_var("HOME", &tmp_home);
 
@@ -1136,6 +1232,124 @@ mod user_init_seed_tests {
         assert_eq!(after, existing);
 
         let _ = fs::remove_dir_all(&home);
+    }
+}
+
+#[cfg(test)]
+mod localized_plugin_dir_tests {
+    use super::prepare_localized_plugin_dir_at;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn fresh_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-localized-plugin-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("create tmp dir");
+        tmp
+    }
+
+    fn write_fixture(root: &Path) {
+        fs::create_dir_all(root.join(".claude-plugin")).expect("create plugin meta");
+        fs::create_dir_all(root.join("commands-en")).expect("create commands-en");
+        fs::create_dir_all(root.join("commands-ja")).expect("create commands-ja");
+        fs::write(
+            root.join(".claude-plugin").join("plugin.json"),
+            "{\"name\":\"charm\"}",
+        )
+        .expect("write plugin json");
+        fs::write(root.join(".mcp.json"), "{\"mcp\":true}").expect("write mcp json");
+        fs::write(root.join("commands-en").join("help.md"), "english help").expect("write en help");
+        fs::write(root.join("commands-en").join("create.md"), "english create")
+            .expect("write en create");
+        fs::write(root.join("commands-ja").join("help.md"), "japanese help")
+            .expect("write ja help");
+    }
+
+    fn command_files(target: &Path) -> Vec<String> {
+        let mut files = fs::read_dir(target.join("commands"))
+            .expect("read commands")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        files
+    }
+
+    #[test]
+    fn copies_selected_language_commands_and_metadata() {
+        let tmp = fresh_dir("ja");
+        let resource = tmp.join("resource");
+        let target = tmp.join("runtime-plugin");
+        write_fixture(&resource);
+
+        prepare_localized_plugin_dir_at(&resource, &target, "ja").expect("prepare ok");
+
+        assert_eq!(
+            fs::read_to_string(target.join(".claude-plugin").join("plugin.json"))
+                .expect("read plugin json"),
+            "{\"name\":\"charm\"}"
+        );
+        assert_eq!(
+            fs::read_to_string(target.join(".mcp.json")).expect("read mcp json"),
+            "{\"mcp\":true}"
+        );
+        assert_eq!(command_files(&target), vec!["help.md"]);
+        assert_eq!(
+            fs::read_to_string(target.join("commands").join("help.md")).expect("read help"),
+            "japanese help"
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn replaces_stale_commands_and_falls_back_to_english() {
+        let tmp = fresh_dir("fallback");
+        let resource = tmp.join("resource");
+        let target = tmp.join("runtime-plugin");
+        write_fixture(&resource);
+        fs::create_dir_all(target.join("commands")).expect("create stale commands");
+        fs::write(target.join("commands").join("old.md"), "stale").expect("write stale");
+
+        prepare_localized_plugin_dir_at(&resource, &target, "fr").expect("prepare ok");
+
+        assert_eq!(command_files(&target), vec!["create.md", "help.md"]);
+        assert_eq!(
+            fs::read_to_string(target.join("commands").join("help.md")).expect("read help"),
+            "english help"
+        );
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn returns_error_when_selected_commands_are_missing() {
+        let tmp = fresh_dir("missing");
+        let resource = tmp.join("resource");
+        let target = tmp.join("runtime-plugin");
+        fs::create_dir_all(resource.join(".claude-plugin")).expect("create plugin meta");
+        fs::write(resource.join(".claude-plugin").join("plugin.json"), "{}")
+            .expect("write plugin json");
+        fs::write(resource.join(".mcp.json"), "{}").expect("write mcp json");
+
+        let err = prepare_localized_plugin_dir_at(&resource, &target, "ja")
+            .expect_err("missing commands should fail");
+        assert!(err.contains("localized command directory not found"));
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }
 

@@ -52,6 +52,10 @@ npm run tauri dev
 
 Claude Code 内で `/charm` と入力すると、Charminal 専用の plugin が起動します。pack の作成・編集・チュートリアルなどを対話的に行えます。
 
+### 言語
+
+Charminal は `language: "auto"` を既定値として、起動時にアプリ言語を自動検出します。日本語環境では日本語 UI、日本語 default persona、日本語の global prompt guidance、日本語の `/charm:*` command prompt を使います。それ以外の環境では英語を使います。設定画面または `~/.charminal/config.json` から変更できます。
+
 ### Pack
 
 Charminal の挙動はすべて **pack** で構成されています。6 種類あります：

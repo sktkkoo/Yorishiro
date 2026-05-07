@@ -24,6 +24,10 @@ import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
 import claiManifest from "../bundled-packs/personas/clai/manifest.json";
 import claiPack from "../bundled-packs/personas/clai/persona";
+import claiEnManifest from "../bundled-packs/personas/clai-en/manifest.json";
+import claiEnPack from "../bundled-packs/personas/clai-en/persona";
+import claiJaManifest from "../bundled-packs/personas/clai-ja/manifest.json";
+import claiJaPack from "../bundled-packs/personas/clai-ja/persona";
 import abandonedFactoryManifest from "../bundled-packs/scenes/abandoned-factory/manifest.json";
 import abandonedFactoryPack from "../bundled-packs/scenes/abandoned-factory/scene";
 import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/manifest.json";
@@ -36,7 +40,7 @@ import charminalSettingsPack, {
   resolveCloseTarget,
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
-import { type SpawnSpec, sessionList } from "./bindings/tauri-commands";
+import { prepareLocalizedPluginDir, type SpawnSpec, sessionList } from "./bindings/tauri-commands";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -50,6 +54,7 @@ import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
+import { getStrings } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import {
@@ -65,6 +70,12 @@ import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
+import {
+  type AppLanguage,
+  getBrowserLocales,
+  type ResolvedLanguage,
+  resolveLanguage,
+} from "./runtime/language/language";
 import { getModuleRegistry, KEYS } from "./runtime/module-registry";
 import { PersonaReflexDispatcher } from "./runtime/persona-reflex";
 import type { PersonaEntry } from "./runtime/persona-registry";
@@ -106,6 +117,7 @@ import {
   serializeConfig,
   type TerminalAgent,
   withActiveAmbientUiSet,
+  withLanguageSet,
 } from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
@@ -407,6 +419,14 @@ function App() {
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
+  const [appLanguage, setAppLanguage] = useState<{
+    configured: AppLanguage;
+    resolved: ResolvedLanguage;
+  }>(() => ({
+    configured: "auto",
+    resolved: resolveLanguage("auto", getBrowserLocales()),
+  }));
+  const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
 
@@ -437,7 +457,6 @@ function App() {
     // ── グローバル system prompt フラグメント登録 ────────────────────────
     registerEnvironmentFragment();
     registerJournalFragment();
-    const globalPromptPromise = collectGlobalPrompt();
 
     const effectDispatcher = new EffectDispatcher();
     const claimState = getClaimState();
@@ -508,16 +527,26 @@ function App() {
     // （memory: feedback_dev_verification_not_enough.md）。
     const appLog = createSubsystemLog(devLog, "App");
     const personaRegistry = getPersonaRegistry();
-    personaRegistry.register({
-      id: claiPack.id,
-      manifest: claiManifest as PersonaPackManifest,
-      persona: claiPack,
-      origin: "bundled",
-    } satisfies PersonaEntry);
-    appLog.write({
-      phase: "register",
-      note: `registered bundled persona '${claiPack.id}'`,
-    });
+    const bundledPersonas: ReadonlyArray<{
+      readonly pack: PersonaDefinition;
+      readonly manifest: PersonaPackManifest;
+    }> = [
+      { pack: claiPack, manifest: claiManifest as PersonaPackManifest },
+      { pack: claiJaPack, manifest: claiJaManifest as PersonaPackManifest },
+      { pack: claiEnPack, manifest: claiEnManifest as PersonaPackManifest },
+    ];
+    for (const { pack, manifest } of bundledPersonas) {
+      personaRegistry.register({
+        id: pack.id,
+        manifest,
+        persona: pack,
+        origin: "bundled",
+      } satisfies PersonaEntry);
+      appLog.write({
+        phase: "register",
+        note: `registered bundled persona '${pack.id}'`,
+      });
+    }
 
     // bundled charminal-settings UI pack。
     uiPackRegistry.register({
@@ -577,11 +606,13 @@ function App() {
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
       systemPrompt: string | null;
+      pluginDir: string | null;
     }) => void;
     const userLayerReady = new Promise<{
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
       systemPrompt: string | null;
+      pluginDir: string | null;
     }>((resolve) => {
       userLayerReadyResolve = resolve;
     });
@@ -636,12 +667,31 @@ function App() {
       let defaultSpec: SpawnSpec | null = null;
       let ambientAudioMuted = false;
       let ambientAudioVolume = 1.0;
+      let configuredLanguage: AppLanguage = "auto";
+      let resolvedLanguage: ResolvedLanguage = resolveLanguage("auto", getBrowserLocales());
+      let pluginDir: string | null = null;
       try {
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
+        configuredLanguage = config.language;
+        resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
+        setAppLanguage({ configured: configuredLanguage, resolved: resolvedLanguage });
+        appLog.write({
+          phase: "language",
+          note: `resolved language '${resolvedLanguage}' (configured '${configuredLanguage}')`,
+        });
+        try {
+          pluginDir = await prepareLocalizedPluginDir({ language: resolvedLanguage });
+        } catch (err) {
+          appLog.write({
+            phase: "language",
+            note: "localized plugin dir preparation failed; falling back to bundled plugin dir",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
         // defaultProfile が shell profile を指していたら shell spec を build。
         // agent profile を指している場合は Phase B-1 では terminalAgent fallback で動く
         // （Phase C で agent profile も defaultProfile から resolve できるようにする）。
@@ -655,7 +705,9 @@ function App() {
             };
           }
         }
-        personaRegistry.setPrimaryPersona(config.primaryPersona);
+        personaRegistry.setPrimaryPersona(
+          config.primaryPersona ?? (resolvedLanguage === "ja" ? "clai-ja" : "clai-en"),
+        );
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
         for (const id of config.activeAmbientUi) {
@@ -684,6 +736,7 @@ function App() {
         phase: "register",
         note: "initialized terminal theme wire",
       });
+      const globalPromptPromise = collectGlobalPrompt(resolvedLanguage);
 
       // ─ Step 3: user layer load（user pack register、init.js 実行）─
       // user layer は Terminal 起動の critical path に置かない。短い grace period 内に
@@ -704,7 +757,7 @@ function App() {
               bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
             },
             packRegistry,
-            personaDefaults: claiPack,
+            personaDefaults: resolvedLanguage === "ja" ? claiJaPack : claiEnPack,
             userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
@@ -748,7 +801,7 @@ function App() {
       // ★ Terminal mount 解禁。user layer が grace period 内に終わらなくても、現在
       //   active な persona（少なくとも bundled fallback）で agent spawn を始める。
       //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
-      userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt });
+      userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt, pluginDir });
 
       // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
@@ -1157,7 +1210,12 @@ function App() {
         note: "bootstrap crashed (unexpected)",
         data: { error: err instanceof Error ? err.message : String(err) },
       });
-      userLayerReadyResolve({ terminalAgent: "claude", defaultSpec: null, systemPrompt: null });
+      userLayerReadyResolve({
+        terminalAgent: "claude",
+        defaultSpec: null,
+        systemPrompt: null,
+        pluginDir: null,
+      });
     });
 
     return {
@@ -1200,13 +1258,15 @@ function App() {
   const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
     undefined,
   );
+  const [localizedPluginDir, setLocalizedPluginDir] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
-    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec, systemPrompt }) => {
+    userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec, systemPrompt, pluginDir }) => {
       if (!cancelled) {
         setTerminalAgent(agent);
         setDefaultSpec(spec);
         setResolvedSystemPrompt(systemPrompt);
+        setLocalizedPluginDir(pluginDir);
         setIsUserLayerReady(true);
       }
     });
@@ -1446,6 +1506,7 @@ function App() {
         terminalAgent: "claude" | "codex";
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
+        language: AppLanguage;
       }>,
     ): Promise<void> => {
       const next = pendingConfigWrite.then(async () => {
@@ -1645,9 +1706,24 @@ function App() {
             await updateConfig({ ambientAudioVolume: volume });
             ambientAudioEngineRef.current?.setMasterVolume(volume);
           },
+          setLanguage: async (language) => {
+            const next = pendingConfigWrite.then(async () => {
+              const cur = parseConfig(await readCharminalConfigText());
+              const updated = withLanguageSet(cur, language);
+              await writeCharminalConfigText(serializeConfig(updated));
+              const resolved = resolveLanguage(language, getBrowserLocales());
+              setAppLanguage({ configured: language, resolved });
+              if (updated.primaryPersona === null) {
+                personaRegistry.setPrimaryPersona(resolved === "ja" ? "clai-ja" : "clai-en");
+              }
+            });
+            pendingConfigWrite = next.catch(() => undefined);
+            return next;
+          },
           getConfig: async () => {
             const text = await readCharminalConfigText();
             const cur = parseConfig(text);
+            const resolvedLanguage = resolveLanguage(cur.language, getBrowserLocales());
             return {
               primaryPersona: cur.primaryPersona,
               activeScene: cur.activeScene,
@@ -1655,6 +1731,8 @@ function App() {
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
               activeAmbientUi: cur.activeAmbientUi,
+              language: cur.language,
+              resolvedLanguage,
             };
           },
         },
@@ -1890,7 +1968,7 @@ function App() {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         directory: true,
-        title: "プロジェクトフォルダを選択",
+        title: strings.selectProjectFolder,
       });
       if (selected) {
         const nextCwd = selected as string;
@@ -1903,7 +1981,7 @@ function App() {
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd]);
+  }, [cwd, strings.selectProjectFolder]);
 
   // ── Settings ─────────────────────────────────────────────
 
@@ -2161,7 +2239,10 @@ function App() {
     };
   }, []);
 
-  const folderName = useMemo(() => (cwd ? cwd.split("/").pop() || cwd : "デフォルト"), [cwd]);
+  const folderName = useMemo(
+    () => (cwd ? cwd.split("/").pop() || cwd : strings.defaultFolderName),
+    [cwd, strings.defaultFolderName],
+  );
 
   // ── Settings: close-requested listener ─────────────────────
 
@@ -2280,6 +2361,7 @@ function App() {
         onBodyReady={handleBodyReady}
         bodyDevLog={bodyDevLog}
         scene={renderedSceneEntry}
+        settingsLabel={strings.settings}
       />
       {canMountTerminals && (
         <>
@@ -2296,6 +2378,7 @@ function App() {
                         kind: "agent",
                         agent: terminalAgent,
                         systemPrompt: resolvedSystemPrompt,
+                        pluginDir: localizedPluginDir,
                       })
                     : { kind: "shell", integration: true }
                 }

@@ -165,6 +165,9 @@ mod tests {
 
     #[test]
     fn resolve_port_falls_back_to_default_when_no_config() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         // HOME を存在しない path に向ければ config 不在扱いになる。
         let orig = std::env::var("HOME").ok();
         std::env::set_var(

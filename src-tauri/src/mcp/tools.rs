@@ -805,11 +805,6 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::PathBuf;
-    use std::sync::Mutex;
-
-    // HOME を書き換える tests は race する。同じ env key を掴む test 同士は
-    // この Mutex で serialize する。
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn tmp_home() -> PathBuf {
         let base = std::env::temp_dir();
@@ -827,7 +822,9 @@ mod tests {
 
     #[test]
     fn list_load_errors_returns_empty_when_no_report() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home();
         std::env::set_var("HOME", &home);
         let r = list_load_errors_sync().expect("ok");
@@ -837,7 +834,9 @@ mod tests {
 
     #[test]
     fn list_load_errors_extracts_failed_entries_only() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home();
         std::env::set_var("HOME", &home);
         fs::write(
