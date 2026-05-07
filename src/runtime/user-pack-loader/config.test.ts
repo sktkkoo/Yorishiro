@@ -11,7 +11,9 @@ import { describe, expect, it } from "vitest";
 import {
   type CharminalConfig,
   EMPTY_CONFIG,
+  localizedClaiPersonaId,
   parseConfig,
+  resolvePrimaryPersonaForLanguage,
   serializeConfig,
   withActiveAmbientUiSet,
   withActiveSceneSet,
@@ -398,6 +400,28 @@ describe("withPrimaryPersonaSet", () => {
     const cfg = { ...EMPTY_CONFIG, primaryPersona: "existing" };
     const next = withPrimaryPersonaSet(cfg, null);
     expect(next.primaryPersona).toBeNull();
+  });
+});
+
+describe("localized CLAI persona defaults", () => {
+  it("maps resolved language to the bundled CLAI persona id", () => {
+    expect(localizedClaiPersonaId("en")).toBe("clai-en");
+    expect(localizedClaiPersonaId("ja")).toBe("clai-ja");
+  });
+
+  it("uses localized CLAI when primaryPersona is unset", () => {
+    expect(resolvePrimaryPersonaForLanguage(null, "en")).toBe("clai-en");
+    expect(resolvePrimaryPersonaForLanguage(null, "ja")).toBe("clai-ja");
+  });
+
+  it("treats legacy and localized CLAI ids as language-following defaults", () => {
+    expect(resolvePrimaryPersonaForLanguage("clai", "en")).toBe("clai-en");
+    expect(resolvePrimaryPersonaForLanguage("clai-en", "ja")).toBe("clai-ja");
+    expect(resolvePrimaryPersonaForLanguage("clai-ja", "en")).toBe("clai-en");
+  });
+
+  it("preserves user-selected non-CLAI persona ids", () => {
+    expect(resolvePrimaryPersonaForLanguage("my-persona", "ja")).toBe("my-persona");
   });
 });
 

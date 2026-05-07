@@ -114,10 +114,12 @@ import {
 } from "./runtime/user-pack-loader/charminal-io";
 import {
   parseConfig,
+  resolvePrimaryPersonaForLanguage,
   serializeConfig,
   type TerminalAgent,
   withActiveAmbientUiSet,
   withLanguageSet,
+  withPrimaryPersonaSet,
 } from "./runtime/user-pack-loader/config";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
@@ -426,9 +428,14 @@ function App() {
     configured: "auto",
     resolved: resolveLanguage("auto", getBrowserLocales()),
   }));
+  const appLanguageRef = useRef(appLanguage);
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+
+  useEffect(() => {
+    appLanguageRef.current = appLanguage;
+  }, [appLanguage]);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
 
@@ -678,6 +685,7 @@ function App() {
         ambientAudioVolume = config.ambientAudioVolume;
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
+        appLanguageRef.current = { configured: configuredLanguage, resolved: resolvedLanguage };
         setAppLanguage({ configured: configuredLanguage, resolved: resolvedLanguage });
         appLog.write({
           phase: "language",
@@ -706,7 +714,7 @@ function App() {
           }
         }
         personaRegistry.setPrimaryPersona(
-          config.primaryPersona ?? (resolvedLanguage === "ja" ? "clai-ja" : "clai-en"),
+          resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
@@ -1685,7 +1693,9 @@ function App() {
             })),
           setPrimaryPersona: async (id) => {
             await updateConfig({ primaryPersona: id });
-            personaRegistry.setPrimaryPersona(id);
+            personaRegistry.setPrimaryPersona(
+              resolvePrimaryPersonaForLanguage(id, appLanguageRef.current.resolved),
+            );
           },
           setActiveScene: async (id) => {
             await updateConfig({ activeScene: id });
@@ -1709,13 +1719,21 @@ function App() {
           setLanguage: async (language) => {
             const next = pendingConfigWrite.then(async () => {
               const cur = parseConfig(await readCharminalConfigText());
-              const updated = withLanguageSet(cur, language);
-              await writeCharminalConfigText(serializeConfig(updated));
               const resolved = resolveLanguage(language, getBrowserLocales());
+              const nextPrimaryPersona = resolvePrimaryPersonaForLanguage(
+                cur.primaryPersona,
+                resolved,
+              );
+              const updated =
+                cur.primaryPersona === nextPrimaryPersona
+                  ? withLanguageSet(cur, language)
+                  : withLanguageSet(withPrimaryPersonaSet(cur, null), language);
+              await writeCharminalConfigText(serializeConfig(updated));
+              appLanguageRef.current = { configured: language, resolved };
               setAppLanguage({ configured: language, resolved });
-              if (updated.primaryPersona === null) {
-                personaRegistry.setPrimaryPersona(resolved === "ja" ? "clai-ja" : "clai-en");
-              }
+              personaRegistry.setPrimaryPersona(
+                resolvePrimaryPersonaForLanguage(updated.primaryPersona, resolved),
+              );
             });
             pendingConfigWrite = next.catch(() => undefined);
             return next;

@@ -8,13 +8,23 @@
  * Internal design-record: specs/2026-04-25-settings-screen-design.md
  */
 
-import type { AppLanguage, Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
+import type {
+  AppLanguage,
+  Disposable,
+  ResolvedLanguage,
+  UiContext,
+  UiPackDefinition,
+} from "@charminal/sdk";
 import { ChevronDown, Volume2, VolumeX } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { ptyWrite } from "../../../src/bindings/tauri-commands";
 import { getStrings } from "../../../src/i18n/strings";
+import {
+  isBundledClaiPersonaId,
+  localizedClaiPersonaId,
+} from "../../../src/runtime/user-pack-loader/config";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
@@ -76,6 +86,27 @@ function formatPackOptionLabel(pack: {
   if (pack.id === "clai") suffixes.push("legacy");
   if (pack.origin === "user") suffixes.push("user");
   return `${pack.name ?? pack.id}${suffixes.length > 0 ? ` (${suffixes.join(", ")})` : ""}`;
+}
+
+export function filterPersonaOptionsForLanguage<T extends { readonly id: string }>(
+  personas: readonly T[],
+  language: ResolvedLanguage,
+): T[] {
+  const claiId = localizedClaiPersonaId(language);
+  return personas.filter((p) => !isBundledClaiPersonaId(p.id) || p.id === claiId);
+}
+
+export function resolvePersonaSelectValue(
+  primaryPersona: string | null,
+  language: ResolvedLanguage,
+): string {
+  return primaryPersona === null || isBundledClaiPersonaId(primaryPersona)
+    ? localizedClaiPersonaId(language)
+    : primaryPersona;
+}
+
+export function configPrimaryPersonaForSelection(id: string): string | null {
+  return isBundledClaiPersonaId(id) ? null : id;
 }
 
 /**
@@ -326,9 +357,13 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   // activeAmbientUi（Aura toggle 等の状態管理用）。
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
   const [language, setLanguage] = useState<AppLanguage>("auto");
-  const [resolvedLanguage, setResolvedLanguage] = useState<"en" | "ja">("en");
+  const [resolvedLanguage, setResolvedLanguage] = useState<ResolvedLanguage>("en");
+  const [configLoaded, setConfigLoaded] = useState(false);
   const personas = ctx.app.listPersonas();
-  const visiblePersonas = personas.filter((p) => p.id !== "clai" || persona === "clai");
+  const visiblePersonas = filterPersonaOptionsForLanguage(personas, resolvedLanguage);
+  const personaSelectValue = configLoaded
+    ? resolvePersonaSelectValue(persona, resolvedLanguage)
+    : "";
   const scenes = ctx.app.listScenes();
   const strings = getStrings(resolvedLanguage);
 
@@ -344,6 +379,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setActiveAmbientUiLocal(cur.activeAmbientUi);
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
+      setConfigLoaded(true);
     });
     return () => {
       aborted = true;
@@ -351,8 +387,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   }, [ctx]);
 
   const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = configPrimaryPersonaForSelection(e.target.value);
     void applyConfigUpdate({
-      next: e.target.value || null,
+      next,
       prev: persona,
       setLocal: setPersona,
       write: (v) => ctx.app.setPrimaryPersona(v),
@@ -393,6 +430,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: async (v) => {
         await ctx.app.setLanguage(v);
         const cur = await ctx.app.getConfig();
+        setPersona(cur.primaryPersona);
         setResolvedLanguage(cur.resolvedLanguage);
       },
       emitEvent: (n, p) => ctx.emitEvent(n, p),
@@ -590,9 +628,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           <div style={{ opacity: 0.7 }}>Persona</div>
           <div>
             <Select
-              value={persona ?? ""}
+              value={personaSelectValue}
               onChange={onPersonaChange}
-              loadingPlaceholder={persona === null ? strings.loading : undefined}
+              loadingPlaceholder={!configLoaded ? strings.loading : undefined}
               emptyLabel={strings.noPacks}
               options={visiblePersonas.map((p) => ({
                 value: p.id,

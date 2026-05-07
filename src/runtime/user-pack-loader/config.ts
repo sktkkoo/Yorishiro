@@ -26,7 +26,12 @@
  *                         2026-05-05-multi-pane-terminal.md（profiles[]）
  */
 
-import { type AppLanguage, DEFAULT_LANGUAGE, toAppLanguage } from "../language/language";
+import {
+  type AppLanguage,
+  DEFAULT_LANGUAGE,
+  type ResolvedLanguage,
+  toAppLanguage,
+} from "../language/language";
 import type { SessionProfile } from "../sessions/types";
 
 export interface CharminalConfig {
@@ -56,6 +61,8 @@ export interface CharminalConfig {
 
 export type TerminalAgent = "claude" | "codex";
 
+const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai", "clai-en", "clai-ja"]);
+
 export const EMPTY_CONFIG: CharminalConfig = {
   disabledPacks: [],
   primaryPersona: null,
@@ -70,6 +77,23 @@ export const EMPTY_CONFIG: CharminalConfig = {
   profiles: [],
   defaultProfile: null,
 };
+
+export function localizedClaiPersonaId(language: ResolvedLanguage): "clai-en" | "clai-ja" {
+  return language === "ja" ? "clai-ja" : "clai-en";
+}
+
+export function isBundledClaiPersonaId(id: string | null): boolean {
+  return id !== null && BUNDLED_CLAI_PERSONA_IDS.has(id);
+}
+
+export function resolvePrimaryPersonaForLanguage(
+  primaryPersona: string | null,
+  language: ResolvedLanguage,
+): string {
+  return primaryPersona === null || isBundledClaiPersonaId(primaryPersona)
+    ? localizedClaiPersonaId(language)
+    : primaryPersona;
+}
 
 const toStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
