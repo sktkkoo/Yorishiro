@@ -7,12 +7,18 @@
  *   ctx.registerEffect(def)    : EffectDefinition を inline で登録
  *   ctx.registerPersona(def)   : PersonaDefinition を inline で登録
  *   ctx.dispatchEffect(request): 登録済み effect を 1 回走らせる
+ *   ctx.setActiveUi(id | null) : active な UI pack を切り替える
  *
  * 初期雛形として以下の keyboard shortcut を仕込んでいる：
  *
+ *   - F1: charminal-settings（設定画面）の表示／非表示を toggle
  *   - Cmd+Shift+F: fireworks-volley（連発花火）
  *   - Cmd+Shift+T: text-physics（文字崩壊 + 復元）
  *   - Cmd+Shift+D: desaturate（モノクロ/カラー トグル）
+ *
+ *   なお F2 は Charminal 本体が握っており、Common / Scene の debug panel
+ *   （base camera / lighting / post effect 等のリアルタイム調整）を toggle する。
+ *   init.js から再 bind しないこと。
  *
  * 不要なら keydown listener ごと削除して良い。option を調整したい場合は
  * 各 effect pack の README.md を参照。
@@ -29,11 +35,18 @@
  */
 
 let desaturated = false;
+let settingsVisible = false;
 
 export default (ctx) => {
   window.addEventListener(
     "keydown",
     (e) => {
+      if (!e.repeat && e.code === "F1") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        settingsVisible = !settingsVisible;
+        ctx.setActiveUi(settingsVisible ? "charminal-settings" : null);
+      }
       if (e.metaKey && e.shiftKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopImmediatePropagation();

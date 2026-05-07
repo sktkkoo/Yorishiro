@@ -7,10 +7,15 @@
 
 import { button, folder, useControls } from "leva";
 import { useEffect, useRef, useState } from "react";
+import type { LevaStore } from "../../runtime/leva";
 import { getSceneRegistry } from "../../runtime/scene-pack-registry";
 import { getSceneLayerBridge } from "../scene/scene-layer-bridge";
 
-export function SceneLayerControls() {
+export interface SceneLayerControlsProps {
+  readonly store?: LevaStore;
+}
+
+export function SceneLayerControls({ store }: SceneLayerControlsProps) {
   const [hasLayers, setHasLayers] = useState(false);
 
   useEffect(() => {
@@ -26,10 +31,10 @@ export function SceneLayerControls() {
   }, []);
 
   if (!hasLayers) return null;
-  return <SceneLayerControlsInner />;
+  return <SceneLayerControlsInner store={store} />;
 }
 
-function SceneLayerControlsInner() {
+function SceneLayerControlsInner({ store }: SceneLayerControlsProps) {
   const backgroundInputRef = useRef<HTMLInputElement | null>(null);
   const foregroundInputRef = useRef<HTMLInputElement | null>(null);
   const [backgroundName, setBackgroundName] = useState("");
@@ -133,6 +138,7 @@ function SceneLayerControlsInner() {
         }),
       }),
     }),
+    { store },
     [backgroundName, foregroundName],
   );
 

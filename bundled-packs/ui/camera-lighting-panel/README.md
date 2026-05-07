@@ -1,14 +1,22 @@
-# camera-lighting-panel — Plan 2/3/5 reference UI pack
+# camera-lighting-panel — UI pack の reference implementation
 
-## 役割
+## 位置づけ
 
-UI pack の `ctx.three` 直接操作、`ctx.claim`、`ctx.scene`、`ctx.state` 機構の reference implementation。slider / toggle / color picker / file picker で Three.js の camera、directional light、active scene layer を runtime で操作し、値を MCP から read/write できるようにする。
+**この UI pack は日常利用を想定していない参考実装。** camera / lighting / scene layer のリアルタイム調整は F2 で開く Common / Scene panel（Charminal 本体側）でやる方針なので、user 向けには推奨しない。
 
-## 起動と切り替え
+残しているのは以下の用途のため：
+
+- UI pack SDK の `ctx.three` 直接操作、`ctx.claim`、`ctx.scene`、`ctx.state` の reference implementation
+- 将来 Leva adapter を Charminal 独自 `ControlsPanel`（[`docs/decisions/scene-controls-api.md`](../../../docs/decisions/scene-controls-api.md)）に置き換えるときの参考コード
+- UI pack 作者が同種の panel を作るときに参考にする例
+
+slider / toggle / color picker / file picker で Three.js の camera、directional light、active scene layer を runtime で操作し、値を MCP から read/write する仕組み一式が一通り揃っている。
+
+## 起動方法（参考）
 
 Charminal の default UI は UI pack なし。`~/.charminal/config.json` の `activeUi` が未指定、または `null` の場合は panel は表示されない。
 
-`~/.charminal/init.js` で `F1` に `ctx.setActiveUi("camera-lighting-panel")` / `ctx.setActiveUi(null)` を割り当てると、panel の表示と UI pack なしを toggle できる。Mac の Touch Bar / キーボード設定によっては `Fn+F1` として入力するが、Charminal 側で見るキーは `F1`。
+確認したいときは `~/.charminal/config.json` で `"activeUi": "camera-lighting-panel"` に一時的に設定するか、`~/.charminal/init.js` で `ctx.setActiveUi("camera-lighting-panel")` を任意の shortcut に割り当てる。**ただし F2 の Common / Scene panel と機能が重複するため、常用は想定していない。**
 
 ## layout
 

@@ -8,6 +8,7 @@
  */
 
 import { act, cleanup, render } from "@testing-library/react";
+import { levaStore } from "leva";
 import type { ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ScenePackComponentProps } from "../../sdk/scene-pack";
@@ -77,7 +78,6 @@ vi.mock("../scene-pack-registry/asset-resolver", () => ({
 
 vi.mock("../three-runtime", () => ({
   getThreeRuntime: () => ({
-    setDefaultLightsEnabled: vi.fn(),
     setCameraTracking: vi.fn(),
     getCameraTracking: () => true,
     getCamera: () => ({
@@ -95,8 +95,11 @@ vi.mock("../three-runtime", () => ({
   }),
 }));
 
+import simpleRoomDefinition from "../../../bundled-packs/scenes/simple-room/scene";
+import { controlFolder, useCharminalControls } from "../../sdk/controls";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
+import { getActiveSceneLevaStore } from "./scene-pack-leva-store";
 
 function getMockRegistry(): SceneRegistryHarness {
   return getSceneRegistry() as SceneRegistryHarness;
@@ -126,6 +129,7 @@ function makeEntry(id: string, component?: ComponentType<ScenePackComponentProps
 afterEach(() => {
   cleanup();
   getMockRegistry().__reset();
+  levaStore.dispose();
   vi.clearAllMocks();
 });
 
@@ -146,7 +150,7 @@ describe("R3fRuntimeRoot", () => {
       </R3fRuntimeRoot>,
     );
 
-    expect(registry.__subscriberCount()).toBe(2);
+    expect(registry.__subscriberCount()).toBe(1);
     expect(container.querySelector("[data-testid='child']")).not.toBeNull();
 
     unmount();
@@ -214,5 +218,129 @@ describe("R3fRuntimeRoot", () => {
       registry.__setActive(makeEntry("no-component"));
     });
     expect(secondRender).not.toHaveBeenCalled();
+  });
+
+  it("mounts scene pack leva controls into the active scene store", () => {
+    const registry = getMockRegistry();
+    const SceneWithLights = () => {
+      useCharminalControls("lights", () => ({
+        directionalColor: { value: "#ff8800", label: "light color" },
+      }));
+      return null;
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("with-lights", SceneWithLights));
+    });
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("lights.directionalColor")).toBe("#ff8800");
+    expect(levaStore.get("lights.directionalColor")).toBeUndefined();
+
+    act(() => {
+      registry.__setActive(null);
+    });
+    expect(getActiveSceneLevaStore()).toBeNull();
+    expect(sceneStore?.getVisiblePaths()).not.toContain("lights.directionalColor");
+  });
+
+  it("does not reuse shared leva paths across scene packs", () => {
+    const registry = getMockRegistry();
+    const FirstScene = () => {
+      useCharminalControls("lights", () => ({
+        ambientIntensity: { value: 0.05, label: "ambient" },
+      }));
+      return null;
+    };
+    const SecondScene = () => {
+      useCharminalControls("lights", () => ({
+        ambientIntensity: { value: 0.4, label: "ambient" },
+      }));
+      return null;
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("first", FirstScene));
+    });
+    expect(getActiveSceneLevaStore()?.get("lights.ambientIntensity")).toBe(0.05);
+
+    act(() => {
+      registry.__setActive(makeEntry("second", SecondScene));
+    });
+    expect(getActiveSceneLevaStore()?.get("lights.ambientIntensity")).toBe(0.4);
+  });
+
+  it("registers multiple sdk controls folders into the active scene store", () => {
+    const registry = getMockRegistry();
+    const SceneWithSdkControls = () => {
+      useCharminalControls("lights", () => ({
+        directionalIntensity: { value: 0.8, min: 0, max: 3 },
+      }));
+      useCharminalControls("post effects", () => ({
+        bloom: controlFolder({
+          bloomIntensity: { value: 1, min: 0, max: 3 },
+        }),
+      }));
+      useCharminalControls("post effects", () => ({
+        vignette: controlFolder({
+          vignetteDarkness: { value: 0.8, min: 0, max: 2 },
+        }),
+      }));
+      return null;
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("with-sdk-controls", SceneWithSdkControls));
+    });
+
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
+    expect(sceneStore?.get("post effects.bloom.bloomIntensity")).toBe(1);
+    expect(sceneStore?.get("post effects.vignette.vignetteDarkness")).toBe(0.8);
+  });
+
+  it("registers sdk controls from bundled scene child components", () => {
+    const registry = getMockRegistry();
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("simple-room", simpleRoomDefinition.component));
+    });
+
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
+    expect(sceneStore?.get("lights.ambientIntensity")).toBe(0.4);
+    expect(levaStore.get("lights.directionalIntensity")).toBeUndefined();
+  });
+
+  it("registers scene layer controls into the active scene store", () => {
+    const registry = getMockRegistry();
+    const layeredEntry: ScenePackEntry = {
+      ...makeEntry("layered-scene"),
+      scene: {
+        id: "layered-scene",
+        layers: [
+          { id: "background", role: "background" },
+          { id: "foreground", role: "foreground" },
+        ],
+      },
+    };
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(layeredEntry);
+    });
+
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("scene layers.backgroundBlur")).toBe(0);
+    expect(sceneStore?.get("scene layers.foregroundBlur")).toBe(0);
+    expect(levaStore.get("scene layers.backgroundBlur")).toBeUndefined();
   });
 });

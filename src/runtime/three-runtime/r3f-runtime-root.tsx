@@ -13,16 +13,20 @@
  */
 
 import { useFrame } from "@react-three/fiber";
+import { useCreateStore } from "leva";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
 import { CameraControls, SceneLayerControls } from "../../core/debug-controls";
 import type { Disposable, Vec3 } from "../../sdk/context";
+import { ControlStoreProvider } from "../../sdk/controls";
 import type { ScenePackCameraAPI } from "../../sdk/scene-pack";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { BUNDLED_ASSETS } from "../scene-pack-registry/asset-resolver";
 import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
 import type { ScenePackEntry } from "../scene-pack-registry/types";
 import { getThreeRuntime } from "../three-runtime";
+import { setRuntimeLevaStore } from "./runtime-leva-store";
+import { clearActiveSceneLevaStore, setActiveSceneLevaStore } from "./scene-pack-leva-store";
 
 export interface R3fRuntimeRootProps {
   readonly children?: ReactNode;
@@ -30,6 +34,7 @@ export interface R3fRuntimeRootProps {
 
 export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
   const [activeEntry, setActiveEntry] = useState<ScenePackEntry | null>(null);
+  const runtimeLevaStore = useCreateStore();
 
   useEffect(() => {
     const registry = getSceneRegistry();
@@ -49,27 +54,32 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
     }
   }, []);
 
-  const ActiveComponent = activeEntry?.component;
+  useEffect(() => {
+    setRuntimeLevaStore(runtimeLevaStore);
+    return () => {
+      setRuntimeLevaStore(null);
+      runtimeLevaStore.dispose();
+    };
+  }, [runtimeLevaStore]);
 
   return (
     <>
       {debugEnabled ? <R3fDebugCube /> : null}
-      {ActiveComponent ? (
-        <ActivePackComponent Component={ActiveComponent} entry={activeEntry} />
+      {activeEntry ? (
+        <ActiveSceneControlsBoundary key={activeEntry.id} entry={activeEntry} />
       ) : null}
-      <CameraControls />
-      <SceneLayerControls />
+      <CameraControls store={runtimeLevaStore} />
       {children}
     </>
   );
 }
 
-interface ActivePackComponentProps {
-  readonly Component: NonNullable<ScenePackEntry["component"]>;
+interface ActiveSceneControlsBoundaryProps {
   readonly entry: ScenePackEntry;
 }
 
-function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
+function ActiveSceneControlsBoundary({ entry }: ActiveSceneControlsBoundaryProps) {
+  const sceneLevaStore = useCreateStore();
   const resolveAsset = useMemo(
     () =>
       makeResolveAsset({
@@ -79,15 +89,6 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
       }),
     [entry.id, entry.origin],
   );
-
-  // R3F-component pack は独自 lighting を持つので ThreeRuntime の built-in
-  // lights を disable する. unmount 時に restore.
-  useEffect(() => {
-    getThreeRuntime().setDefaultLightsEnabled(false);
-    return () => {
-      getThreeRuntime().setDefaultLightsEnabled(true);
-    };
-  }, []);
 
   const camera = useMemo<ScenePackCameraAPI>(() => {
     const mod = getThreeRuntime().getCameraModulation();
@@ -120,7 +121,21 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
     };
   }, []);
 
-  return <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} />;
+  useEffect(() => {
+    setActiveSceneLevaStore(sceneLevaStore);
+    return () => {
+      clearActiveSceneLevaStore(sceneLevaStore);
+    };
+  }, [sceneLevaStore]);
+
+  const Component = entry.component;
+
+  return (
+    <ControlStoreProvider store={sceneLevaStore}>
+      {Component ? <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} /> : null}
+      <SceneLayerControls store={sceneLevaStore} />
+    </ControlStoreProvider>
+  );
 }
 
 function R3fDebugCube() {

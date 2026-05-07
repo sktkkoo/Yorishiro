@@ -10,8 +10,8 @@
  * - specs/2026-05-03-scene-pack-r3f-component.md
  */
 
+import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
-import { folder, useControls } from "leva";
 import { useControlsBridge } from "../../../src/runtime/ui-state-store";
 import { DustMotes } from "./lib/atmosphere";
 import { CameraBreath } from "./lib/camera-breath";
@@ -26,8 +26,8 @@ import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
 
 function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackComponentProps) {
-  const [breathControls, setBreath] = useControls("camera", () => ({
-    breath: folder(
+  const [breathControls, setBreath] = useCharminalControls("camera", () => ({
+    breath: controlFolder(
       {
         freqX: { value: 1.7, min: 0.1, max: 5, step: 0.1 },
         freqY: { value: 0.7, min: 0.1, max: 5, step: 0.1 },
@@ -40,7 +40,7 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackCompo
       { collapsed: true },
     ),
   }));
-  useControlsBridge("camera", breathControls, setBreath);
+  useControlsBridge("abandoned-factory", breathControls, setBreath);
 
   return (
     <>

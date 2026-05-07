@@ -60,16 +60,18 @@ Safe mode では user pack が一切 load されず、window title に ` (Safe M
 
 user scene pack は `~/.charminal/packs/<id>/` に **manifest.json + scene.js の 2 ファイル**を置く。**manifest.json は必須**（Agentic UGC 前提なので explicit な宣言を優先）。bundled の `bundled-packs/scenes/<id>/` とは layout が違う（user 側は flat + .js）。
 
-### パラメータの公開（leva 連携）
+### パラメータの公開（SDK controls）
 
-scene pack の作者は、どのパラメータを外からリアルタイム調整可能にするかを自分で選べる。`useControls` + `useControlsBridge` で登録した値だけが leva パネルに現れ、MCP（`get_ui_state` / `set_ui_state`）経由でも読み書きできるようになる。
+scene pack の作者は、どのパラメータを外からリアルタイム調整可能にするかを自分で選べる。`@charminal/sdk/controls` の `useCharminalControls` と `useControlsBridge` で登録した値だけが F2 の **Scene panel**（active scene pack 固有の panel）に現れ、MCP（`get_ui_state` / `set_ui_state`）経由でも読み書きできるようになる。裏側の renderer は現在 leva adapter だが、pack 作者は leva を直接 import しない。
 
-- 公開したいパラメータ → `useControls` に書く → leva に出る → `/charm` で一緒にリアルタイム調整できる
+F2 で開く panel は **Common（runtime-wide な base camera など）と Scene（active scene pack の controls）** の 2 枚。scene pack の lighting / post effect / camera modulation はすべて Scene 側に登録される。
+
+- 公開したいパラメータ → `useCharminalControls` に書く → Scene panel に出る → `/charm` で一緒にリアルタイム調整できる
 - 公開しないパラメータ → コード内のローカル変数 → 固定値として動く
 
 user に「どのパラメータを外から触れるようにする？」と聞いて一緒に設計する。後から公開パラメータを増やすこともできる。
 
-bundled の `abandoned-factory` が参考実装（`bundled-packs/scenes/abandoned-factory/lib/` の各コンポーネントで `useControls` + `useControlsBridge` を使っている）。
+bundled の `abandoned-factory` が参考実装（`bundled-packs/scenes/abandoned-factory/lib/` の各コンポーネントで `useCharminalControls` + `useControlsBridge` を使っている）。
 
 `~/.charminal/packs/my-scene/manifest.json`:
 

@@ -37,22 +37,16 @@ pub struct ListPacksRequest {}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListLoadErrorsRequest {}
 
-/// `get_ui_state` の引数。pack 内部 state の読み取り。key 省略時は full snapshot を返す。
+/// `get_ui_state` の引数。active scene pack の内部 state を読み取る。key 省略時は full snapshot。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetUiStateRequest {
-    /// Pack id（必須）。pack 内部 state は pack ごとに分離されている。
-    #[serde(rename = "packId")]
-    pub pack_id: String,
     /// Optional state key. Omit to retrieve all keys.
     pub key: Option<String>,
 }
 
-/// `set_ui_state` の引数。pack 内部 state への書き込み。value は JSON value として TS runtime に渡す。
+/// `set_ui_state` の引数。active scene pack の内部 state への書き込み。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SetUiStateRequest {
-    /// Pack id（必須）。pack 内部 state は pack ごとに分離されている。
-    #[serde(rename = "packId")]
-    pub pack_id: String,
     /// Target state key.
     pub key: String,
     /// JSON value to store.
@@ -338,19 +332,15 @@ impl Charminal {
     /// get_ui_state: pack 内部 state の読み取り。app-level UI（sidebar 幅等）ではなく、
     /// 個別 pack が ctx.state で保持する key-value。
     #[tool(
-        description = "Read pack internal state by packId. Pass key to read one value, or omit key for all state. This is per-pack state (e.g. slider values), NOT app-level UI (use ui_sidebar_set etc. for that)."
+        description = "Read pack internal state by packId. Pass key to read one value, or omit key for all state. Omit packId to default to the active scene pack. This is per-pack state (e.g. slider values), NOT app-level UI (use ui_sidebar_set etc. for that)."
     )]
     async fn get_ui_state(
         &self,
         Parameters(req): Parameters<GetUiStateRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let response = emit_tool_event(
-            &self.app_handle,
-            "get-ui-state",
-            json!({ "packId": req.pack_id, "key": req.key }),
-        )
-        .await
-        .map_err(|e| McpError::internal_error(e, None))?;
+        let response = emit_tool_event(&self.app_handle, "get-ui-state", json!({ "key": req.key }))
+            .await
+            .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(response)
     }
 
@@ -363,7 +353,7 @@ impl Charminal {
         let response = emit_tool_event(
             &self.app_handle,
             "set-ui-state",
-            json!({ "packId": req.pack_id, "key": req.key, "value": req.value }),
+            json!({ "key": req.key, "value": req.value }),
         )
         .await
         .map_err(|e| McpError::internal_error(e, None))?;

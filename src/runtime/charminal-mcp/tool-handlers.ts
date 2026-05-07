@@ -185,6 +185,7 @@ function requestRecord(request: unknown): Record<string, unknown> {
 
 export interface GetPackStateDeps {
   readonly state: UiStateStore;
+  readonly getActiveSceneId: () => string | null;
 }
 
 export type GetPackStateResponse =
@@ -194,7 +195,8 @@ export type GetPackStateResponse =
 export function createGetPackStateHandler(deps: GetPackStateDeps) {
   return async (request: unknown): Promise<GetPackStateResponse> => {
     const record = requestRecord(request);
-    const packId = requirePackId(record);
+    const packId = deps.getActiveSceneId();
+    if (!packId) throw new Error("active な scene pack がありません");
     const key = record.key;
     if (key === undefined || key === null) {
       return { packId, state: deps.state.entries(packId) };
@@ -208,6 +210,7 @@ export function createGetPackStateHandler(deps: GetPackStateDeps) {
 
 export interface SetPackStateDeps {
   readonly state: UiStateStore;
+  readonly getActiveSceneId: () => string | null;
 }
 
 export interface SetPackStateResponse {
@@ -220,7 +223,8 @@ export interface SetPackStateResponse {
 export function createSetPackStateHandler(deps: SetPackStateDeps) {
   return async (request: unknown): Promise<SetPackStateResponse> => {
     const record = requestRecord(request);
-    const packId = requirePackId(record);
+    const packId = deps.getActiveSceneId();
+    if (!packId) throw new Error("active な scene pack がありません");
     const key = record.key;
     if (typeof key !== "string" || key === "") {
       throw new Error("key must be a non-empty string");
@@ -234,20 +238,32 @@ export function createSetPackStateHandler(deps: SetPackStateDeps) {
   };
 }
 
-function requirePackId(record: Record<string, unknown>): string {
-  const requested = record.packId;
-  if (typeof requested !== "string" || requested === "") {
-    throw new Error("packId is required (pack state is per-pack, not app-level)");
-  }
-  return requested;
-}
-
 /* ──────────────────────────────────────────────────────────
  * helper（module-level）
  * ────────────────────────────────────────────────────────── */
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
+}
+
+const LIGHTING_KEY_PATTERN = /^(ambient|directional)(Intensity|Color)$/;
+
+/** active scene pack の ui-state から lighting 関連 key を抽出する。 */
+function extractLighting(
+  sceneId: string | null,
+  uiState: UiStateStore,
+): Record<string, unknown> | null {
+  if (!sceneId) return null;
+  const all = uiState.entries(sceneId);
+  const result: Record<string, unknown> = {};
+  let found = false;
+  for (const [k, v] of Object.entries(all)) {
+    if (LIGHTING_KEY_PATTERN.test(k)) {
+      result[k] = v;
+      found = true;
+    }
+  }
+  return found ? result : null;
 }
 
 /**
@@ -259,7 +275,7 @@ function clamp01(v: number): number {
 function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
   let found: THREE.DirectionalLight | null = null;
   scene.traverse((obj) => {
-    if (!found && (obj as THREE.DirectionalLight).isDirectionalLight) {
+    if (!found && obj.visible && (obj as THREE.DirectionalLight).isDirectionalLight) {
       found = obj as THREE.DirectionalLight;
     }
   });
@@ -298,7 +314,6 @@ export interface BodyLike {
 export interface StateGetDeps {
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly getCamera: () => THREE.PerspectiveCamera | null;
-  readonly getScene: () => THREE.Scene | null;
   readonly getVrm: () => unknown;
   readonly getBody: () => BodyLike | null;
   readonly tweenManager: TweenManager;
@@ -329,6 +344,9 @@ export interface StateGetDeps {
     readonly previousLevelSince: number | null;
     readonly source: string;
   };
+  /** active scene pack の ui-state から lighting 情報を引くための依存。 */
+  readonly getActiveSceneId: () => string | null;
+  readonly uiState: UiStateStore;
 }
 
 export interface StateGetResult {
@@ -347,7 +365,6 @@ export interface StateGetResult {
       activeKeys: readonly string[];
     };
   };
-  readonly lighting: { intensity: number; color: string };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
   /**
@@ -379,6 +396,8 @@ export interface StateGetResult {
   };
   /** ISO 8601 形式のローカル時刻。 */
   readonly localTime: string;
+  /** active scene pack の ui-state から抽出した lighting 関連値。scene 未 active 時は null。 */
+  readonly lighting: Record<string, unknown> | null;
   /** 存在強度の現在 state。 */
   readonly presenceState: {
     readonly level: string;
@@ -401,8 +420,6 @@ export function createStateGetHandler(deps: StateGetDeps) {
   return async (_request: unknown): Promise<StateGetResult> => {
     const cfg = await deps.readConfig();
     const cam = deps.getCamera();
-    const scene = deps.getScene();
-    const light = scene ? findDirectionalLight(scene) : null;
     const body = deps.getBody();
     const expressions = body
       ? body.getExpressionSlots().map(
@@ -420,6 +437,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       preempted: [],
     };
     const runtimeActive = deps.getRuntimeActive();
+    const lighting = extractLighting(deps.getActiveSceneId(), deps.uiState);
     return {
       config: {
         primaryPersona: cfg.primaryPersona,
@@ -432,10 +450,6 @@ export function createStateGetHandler(deps: StateGetDeps) {
         tracking: deps.getCameraTracking(),
         modulation: deps.getCameraModulationState(),
       },
-      lighting: {
-        intensity: light?.intensity ?? 0,
-        color: light ? `#${light.color.getHexString()}` : "#ffffff",
-      },
       vrmLoaded: deps.getVrm() !== null,
       expressions,
       motion,
@@ -447,6 +461,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
           foreground: deps.getSceneLayerValues("foreground"),
         },
       },
+      lighting,
       tweens: deps.tweenManager.getActive(),
       effectKinds: deps.getEffectKinds(),
       runtime: {

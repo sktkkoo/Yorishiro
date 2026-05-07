@@ -5,11 +5,11 @@
  * 上書き + lookAt するため, pack 側から触ると oscillation する.
  * camera.fov は ThreeRuntime が触らないので pack が安全に modulate できる.
  *
- * leva で振幅を runtime 調整可能.
+ * SDK controls で振幅を runtime 調整可能.
  */
 
+import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
 import { useFrame } from "@react-three/fiber";
-import { folder, useControls } from "leva";
 import { useRef } from "react";
 import * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -17,15 +17,15 @@ import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 export function CameraRig(): null {
   const baseFovRef = useRef<number | null>(null);
 
-  const [controls, setControls] = useControls("camera", () => ({
-    camera: folder(
+  const [controls, setControls] = useCharminalControls("camera", () => ({
+    camera: controlFolder(
       {
         fovBreathAmp: { value: 0.15, min: 0, max: 1.0, step: 0.01, label: "FOV breath (°)" },
       },
       { collapsed: true },
     ),
   }));
-  useControlsBridge("camera", controls, setControls);
+  useControlsBridge("abandoned-factory", controls, setControls);
   const { fovBreathAmp } = controls;
 
   useFrame(({ camera, clock }) => {

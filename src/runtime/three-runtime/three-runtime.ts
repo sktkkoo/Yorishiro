@@ -37,8 +37,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly loader: GLTFLoader;
   private readonly claimState: ClaimState;
   private readonly r3fHost: R3fHost;
-  private readonly defaultAmbientLight: THREE.AmbientLight;
-  private readonly defaultDirLight: THREE.DirectionalLight;
 
   private readonly bodyListenerRef: {
     current: ((body: Body | null) => void) | null;
@@ -80,18 +78,13 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.canvas.style.height = "100%";
     this.canvasContainer.appendChild(this.canvas);
 
-    // ── Scene / Camera / Lights ───────────────────────────────────
+    // ── Scene / Camera ─────────────────────────────────────────────
+    // Lighting は scene pack が専有する。ThreeRuntime は light を持たない。
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(35, 1, 0.1, 20);
     this.camera.position.set(0, 1.35, 1.1);
     this.camera.lookAt(0, 1.35, 0);
     this.baseFov = this.camera.fov;
-
-    this.defaultAmbientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    this.scene.add(this.defaultAmbientLight);
-    this.defaultDirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    this.defaultDirLight.position.set(1, 2, 2);
-    this.scene.add(this.defaultDirLight);
 
     // ── Renderer ──────────────────────────────────────────────────
     this.renderer = new THREE.WebGLRenderer({
@@ -273,16 +266,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
   isRenderPaused(): boolean {
     return this.renderPaused;
-  }
-
-  /**
-   * R3F-component scene pack が独自 lighting を持つ場合に ThreeRuntime の
-   * built-in lights を disable / enable する. R3fRuntimeRoot が active scene
-   * の component 有無に連動して呼ぶ.
-   */
-  setDefaultLightsEnabled(enabled: boolean): void {
-    this.defaultAmbientLight.visible = enabled;
-    this.defaultDirLight.visible = enabled;
   }
 
   getCameraModulation(): CameraModulationRegistry {

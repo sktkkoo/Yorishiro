@@ -12,7 +12,7 @@
 
 import { perlin1d } from "./perlin";
 
-/** glitch 系パラメータ. leva controls で runtime 調整. */
+/** glitch 系パラメータ. SDK controls で runtime 調整. */
 export interface GlitchParams {
   /** brief glitch の最小間隔 (秒) */
   readonly briefIntervalMin: number;
@@ -118,7 +118,7 @@ export function createGlitchState(startTime: number, params: GlitchParams): Glit
  * @param t - clock.getElapsedTime()
  * @param lanternIntensity - 現フレームの lantern flicker 生値
  * @param state - mutable state (ref で保持)
- * @param params - leva から取得した glitch パラメータ
+ * @param params - SDK controls から取得した glitch パラメータ
  */
 export function updateGlitches(
   t: number,
