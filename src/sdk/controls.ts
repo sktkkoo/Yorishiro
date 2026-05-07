@@ -1,4 +1,8 @@
-import { folder as levaFolder, type useCreateStore, useControls as useLevaControls } from "leva";
+import {
+  folder as levaFolder,
+  type useCreateStore,
+  useControls as useLevaControls,
+} from "../runtime/leva";
 
 export type ControlSchema = Record<string, unknown>;
 export type ControlSet = (values: Record<string, unknown>) => void;
