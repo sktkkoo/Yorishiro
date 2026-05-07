@@ -1,6 +1,6 @@
 # Scene layer override の semantics — scene が握る、override は patch のみ
 
-> このファイルは「**ctx.scene.updateLayer / ui.scene-layer.set MCP / leva debug controls** が
+> このファイルは「**ctx.scene.updateLayer / controls_set MCP / leva debug controls** が
 > どのように scene の layer 構造に作用するか」を決めるときに読む。対象：dev / AI / pack 作者。
 
 **Status**: active
@@ -9,7 +9,7 @@
 ## TL;DR
 
 - **Scene が layer 構造を握る**。pack 作者が `SceneSpec.layers` に宣言した layer 集合が「真」。
-- Override（`ctx.scene.updateLayer` / MCP `ui.scene-layer.set` / leva debug controls）は**既存 layer に patch を当てるだけ**。target が match しなければ no-op + warn。**新 layer は作らない**。
+- Override（`ctx.scene.updateLayer` / MCP controls API / leva debug controls）は**既存 layer に patch を当てるだけ**。target が match しなければ no-op + warn。**新 layer は作らない**。
 - Scene を切り替えると `sceneLayerOverrides` は clear される（scene-scoped）。共通管理の Camera だけが scene を跨いで持ち越される。
 
 ## 何を決めたか
@@ -89,9 +89,9 @@ User の方針（2026-05-07 の対話）：
 - bg image を user に差し替えさせたい UI なら、対象 scene が bg layer を持つことを前提にする（無ければ UI を出さない）
 - Scene 切替で override が clear されることを念頭に置く（永続化したい設定は `ctx.state` 経由）
 
-### MCP 経由（AI / `ui.scene-layer.set`）
+### MCP 経由（AI / controls API）
 
-- AI が `ui_scene_layer_set` で background blur を設定しても、scene が bg layer を持たなければ warn が出て効果は無い
+- AI が `controls_set({ scope: "scene", path, value })` や `controls_transition({ scope: "scene", values, durationMs })` で background blur を設定しても、scene が bg layer を持たなければ warn が出て効果は無い
 - Scene を切り替えた瞬間に AI が設定した値は消える（共通管理 Camera は除く）
 
 ### Test fixture
