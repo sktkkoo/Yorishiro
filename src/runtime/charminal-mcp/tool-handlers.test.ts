@@ -21,9 +21,12 @@ import {
   __resetMcpExpressionSlotsForTesting,
   __resetMcpMotionHandleForTesting,
   type BodyLike,
+  type ControlStoreLike,
   createBodyAnimationPlayHandler,
   createBodyExpressionSetHandler,
   createBodyMotionCancelHandler,
+  createControlsGetHandler,
+  createControlsSetHandler,
   createDisablePackHandler,
   createEnablePackHandler,
   createGetPackStateHandler,
@@ -49,6 +52,24 @@ import {
 type SceneLike = THREE.Scene;
 type CameraLike = THREE.PerspectiveCamera;
 type SceneObjectLike = THREE.Object3D;
+
+function makeControlStore(
+  inputs: Record<string, Record<string, unknown>>,
+  visiblePaths = Object.keys(inputs),
+): ControlStoreLike & {
+  readonly writes: Array<{ path: string; value: unknown; fromPanel: boolean }>;
+} {
+  const writes: Array<{ path: string; value: unknown; fromPanel: boolean }> = [];
+  return {
+    writes,
+    getVisiblePaths: () => [...visiblePaths],
+    getData: () => inputs,
+    setValueAtPath: (path, value, fromPanel) => {
+      writes.push({ path, value, fromPanel });
+      if (inputs[path]) inputs[path].value = value;
+    },
+  };
+}
 
 describe("list_packs handler", () => {
   it("merges registry / disabledPacks / load-report.failed under their invariants", async () => {
@@ -376,6 +397,126 @@ describe("ui_state handlers", () => {
     });
 
     await expect(get({ key: "color" })).rejects.toThrow("active な scene pack がありません");
+  });
+});
+
+describe("controls handlers", () => {
+  it("reads active scene controls as normalized entries", async () => {
+    const sceneStore = makeControlStore({
+      "lights.intensity": {
+        type: "NUMBER",
+        value: 0.8,
+        label: "light int.",
+        disabled: false,
+      },
+      "post effects.bloom.amount": {
+        type: "NUMBER",
+        value: 1.2,
+        label: "amount",
+        disabled: false,
+      },
+    });
+    const get = createControlsGetHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+    });
+
+    await expect(get({ scope: "scene" })).resolves.toEqual({
+      scope: "scene",
+      activeSceneId: "simple-room",
+      controls: [
+        {
+          path: "lights.intensity",
+          value: 0.8,
+          type: "NUMBER",
+          label: "light int.",
+          disabled: false,
+        },
+        {
+          path: "post effects.bloom.amount",
+          value: 1.2,
+          type: "NUMBER",
+          label: "amount",
+          disabled: false,
+        },
+      ],
+    });
+  });
+
+  it("reads and writes common controls", async () => {
+    const commonStore = makeControlStore({
+      "camera.lookAtCharacter": {
+        type: "BOOLEAN",
+        value: true,
+        label: "look at character",
+        disabled: false,
+      },
+    });
+    const deps = {
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+    };
+    const get = createControlsGetHandler(deps);
+    const set = createControlsSetHandler(deps);
+
+    await expect(get({ scope: "common", path: "camera.lookAtCharacter" })).resolves.toEqual({
+      scope: "common",
+      activeSceneId: undefined,
+      control: {
+        path: "camera.lookAtCharacter",
+        value: true,
+        type: "BOOLEAN",
+        label: "look at character",
+        disabled: false,
+      },
+    });
+    await expect(
+      set({ scope: "common", path: "camera.lookAtCharacter", value: false }),
+    ).resolves.toEqual({
+      ok: true,
+      scope: "common",
+      activeSceneId: undefined,
+      path: "camera.lookAtCharacter",
+      value: false,
+    });
+    expect(commonStore.writes).toEqual([
+      { path: "camera.lookAtCharacter", value: false, fromPanel: false },
+    ]);
+    await expect(get({ scope: "common", path: "camera.lookAtCharacter" })).resolves.toMatchObject({
+      control: { value: false },
+    });
+  });
+
+  it("defaults scope to scene and rejects missing active scene", async () => {
+    const get = createControlsGetHandler({
+      getSceneStore: () => null,
+      getCommonStore: () => null,
+      getActiveSceneId: () => null,
+    });
+
+    await expect(get({})).rejects.toThrow("active な scene pack がありません");
+  });
+
+  it("rejects unknown control paths", async () => {
+    const sceneStore = makeControlStore({
+      "lights.intensity": {
+        type: "NUMBER",
+        value: 0.8,
+        label: "light int.",
+        disabled: false,
+      },
+    });
+    const set = createControlsSetHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+    });
+
+    await expect(set({ path: "lights.missing", value: 1 })).rejects.toThrow(
+      "control path not found: lights.missing",
+    );
   });
 });
 

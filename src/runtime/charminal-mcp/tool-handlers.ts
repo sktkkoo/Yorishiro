@@ -239,6 +239,156 @@ export function createSetPackStateHandler(deps: SetPackStateDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
+ * controls.get / controls.set
+ * ────────────────────────────────────────────────────────── */
+
+export type ControlScope = "scene" | "common";
+
+export interface ControlStoreLike {
+  readonly getVisiblePaths: () => string[];
+  readonly getData: () => Record<string, unknown>;
+  readonly setValueAtPath: (path: string, value: unknown, fromPanel: boolean) => void;
+}
+
+export interface ControlEntry {
+  readonly path: string;
+  readonly value: unknown;
+  readonly type: string;
+  readonly label: string;
+  readonly disabled: boolean;
+}
+
+export type ControlsGetResponse =
+  | {
+      readonly scope: ControlScope;
+      readonly activeSceneId?: string | null;
+      readonly controls: ReadonlyArray<ControlEntry>;
+    }
+  | {
+      readonly scope: ControlScope;
+      readonly activeSceneId?: string | null;
+      readonly control: ControlEntry;
+    };
+
+export interface ControlsSetResponse {
+  readonly ok: true;
+  readonly scope: ControlScope;
+  readonly activeSceneId?: string | null;
+  readonly path: string;
+  readonly value: unknown;
+}
+
+export interface ControlsDeps {
+  readonly getSceneStore: () => ControlStoreLike | null;
+  readonly getCommonStore: () => ControlStoreLike | null;
+  readonly getActiveSceneId: () => string | null;
+}
+
+function parseControlScope(value: unknown): ControlScope {
+  if (value === undefined || value === null) return "scene";
+  if (value === "scene" || value === "common") return value;
+  throw new Error('scope must be "scene" or "common"');
+}
+
+function resolveControlStore(
+  deps: ControlsDeps,
+  scope: ControlScope,
+): { store: ControlStoreLike; activeSceneId?: string | null } {
+  if (scope === "common") {
+    const store = deps.getCommonStore();
+    if (store === null) throw new Error("common controls are not available");
+    return { store };
+  }
+  const activeSceneId = deps.getActiveSceneId();
+  if (!activeSceneId) throw new Error("active な scene pack がありません");
+  const store = deps.getSceneStore();
+  if (store === null) throw new Error("scene controls are not available");
+  return { store, activeSceneId };
+}
+
+function controlInputRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function labelForControl(path: string, input: Record<string, unknown>): string {
+  const label = input.label;
+  if (typeof label === "string" && label !== "") return label;
+  const segments = path.split(".");
+  return segments[segments.length - 1] ?? path;
+}
+
+function controlEntryFromStore(store: ControlStoreLike, path: string): ControlEntry {
+  const data = store.getData();
+  const input = controlInputRecord(data[path]);
+  if (input === null || !("value" in input)) {
+    throw new Error(`control path not found: ${path}`);
+  }
+  const type = input.type;
+  return {
+    path,
+    value: input.value,
+    type: typeof type === "string" ? type : "unknown",
+    label: labelForControl(path, input),
+    disabled: input.disabled === true,
+  };
+}
+
+function visibleControlEntries(store: ControlStoreLike): ReadonlyArray<ControlEntry> {
+  return store
+    .getVisiblePaths()
+    .map((path) => {
+      try {
+        return controlEntryFromStore(store, path);
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry): entry is ControlEntry => entry !== null);
+}
+
+export function createControlsGetHandler(deps: ControlsDeps) {
+  return async (request: unknown): Promise<ControlsGetResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const path = record.path;
+    if (path === undefined || path === null) {
+      return { scope, activeSceneId, controls: visibleControlEntries(store) };
+    }
+    if (typeof path !== "string" || path === "") {
+      throw new Error("path must be a non-empty string");
+    }
+    if (!store.getVisiblePaths().includes(path)) {
+      throw new Error(`control path not found: ${path}`);
+    }
+    return { scope, activeSceneId, control: controlEntryFromStore(store, path) };
+  };
+}
+
+export function createControlsSetHandler(deps: ControlsDeps) {
+  return async (request: unknown): Promise<ControlsSetResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const path = record.path;
+    if (typeof path !== "string" || path === "") {
+      throw new Error("path must be a non-empty string");
+    }
+    if (!("value" in record)) {
+      throw new Error("missing value");
+    }
+    if (!store.getVisiblePaths().includes(path)) {
+      throw new Error(`control path not found: ${path}`);
+    }
+    controlEntryFromStore(store, path);
+    const value = record.value;
+    store.setValueAtPath(path, value, false);
+    return { ok: true, scope, activeSceneId, path, value };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
  * helper（module-level）
  * ────────────────────────────────────────────────────────── */
 
