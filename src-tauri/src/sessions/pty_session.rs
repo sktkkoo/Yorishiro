@@ -72,13 +72,11 @@ pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>
         AgentKind::Claude => "claude",
         AgentKind::Codex => "codex",
     };
-    let exe_name = if cfg!(windows) {
-        format!("{}.exe", binary_name)
-    } else {
-        binary_name.to_string()
-    };
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if cfg!(windows) {
+        let exe_name = format!("{}.exe", binary_name);
+        let cmd_name = format!("{}.cmd", binary_name);
+        let ps1_name = format!("{}.ps1", binary_name);
         candidates.push(home.join(".cargo").join("bin").join(&exe_name));
         candidates.push(
             home.join("AppData")
@@ -86,13 +84,12 @@ pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>
                 .join("Programs")
                 .join(&exe_name),
         );
-        candidates.push(
-            home.join("AppData")
-                .join("Roaming")
-                .join("npm")
-                .join(&exe_name),
-        );
+        let npm_dir = home.join("AppData").join("Roaming").join("npm");
+        candidates.push(npm_dir.join(&cmd_name));
+        candidates.push(npm_dir.join(&exe_name));
+        candidates.push(npm_dir.join(&ps1_name));
     } else {
+        let exe_name = binary_name.to_string();
         candidates.push(home.join(".local").join("bin").join(&exe_name));
         candidates.push(home.join(".cargo").join("bin").join(&exe_name));
         candidates.push(std::path::PathBuf::from("/usr/local/bin").join(&exe_name));

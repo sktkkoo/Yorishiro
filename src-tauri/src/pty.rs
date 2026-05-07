@@ -31,56 +31,64 @@ pub enum AgentKind {
     Codex,
 }
 
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn powershell_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn build_hook_command(port: u16, body: &str, windows: bool) -> String {
+    if windows {
+        format!(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Method Post -Uri {} -Body {} | Out-Null\"",
+            powershell_single_quote(&format!("http://127.0.0.1:{}/hook", port)),
+            powershell_single_quote(body),
+        )
+    } else {
+        format!(
+            "curl -s -m 1 -X POST -d {} {}",
+            sh_single_quote(body),
+            sh_single_quote(&format!("http://127.0.0.1:{}/hook", port)),
+        )
+    }
+}
+
+fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String {
+    let url = format!("http://127.0.0.1:{}{}", port, endpoint);
+    if windows {
+        format!(
+            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$body = [Console]::In.ReadToEnd(); Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Method Post -Uri {} -Body $body | Out-Null\"",
+            powershell_single_quote(&url),
+        )
+    } else {
+        format!("cat | curl -s -m 1 -X POST -d @- {}", sh_single_quote(&url),)
+    }
+}
+
 pub(crate) fn build_hooks_json(port: u16) -> String {
-    // Each hook command: write to debug log AND curl the hook server
-    let hook_cmd = |body: &str| -> String {
-        format!(
-            "echo '$(date +%H:%M:%S) {}' >> /tmp/charminal-hook-test.log; curl -s -m 1 -X POST -d '{}' http://127.0.0.1:{}/hook",
-            body, body, port
-        )
-    };
-    let hook_cmd_stdin = |endpoint: &str, label: &str| -> String {
-        format!(
-            "echo '$(date +%H:%M:%S) {}' >> /tmp/charminal-hook-test.log; cat | curl -s -m 1 -X POST -d @- http://127.0.0.1:{}{}",
-            label, port, endpoint
-        )
-    };
     // UserPromptSubmit: just a generic prompt event for Perception.
     // `/charm` is handled by Claude Code's own custom-command pipeline
     // (bundled-packs/charminal-plugin/commands/charm.md loaded via --plugin-dir)
     // so no special detection or blocking is needed here anymore.
-    let user_prompt_cmd = hook_cmd(r#"{\"event\":\"prompt\"}"#);
-    format!(
-        r#"{{
-  "hooks": {{
-    "UserPromptSubmit": [{{
-      "matcher": "",
-      "hooks": [{{ "type": "command", "command": "{}" }}]
-    }}],
-    "PreToolUse": [{{
-      "matcher": "",
-      "hooks": [{{ "type": "command", "command": "{}" }}]
-    }}],
-    "PostToolUse": [{{
-      "matcher": "",
-      "hooks": [{{ "type": "command", "command": "{}" }}]
-    }}],
-    "PostToolUseFailure": [{{
-      "matcher": "",
-      "hooks": [{{ "type": "command", "command": "{}" }}]
-    }}],
-    "Stop": [{{
-      "matcher": "",
-      "hooks": [{{ "type": "command", "command": "{}" }}]
-    }}]
-  }}
-}}"#,
-        user_prompt_cmd,
-        hook_cmd_stdin("/hook/pre-tool-use", "pre-tool-use"),
-        hook_cmd_stdin("/hook/post-tool-use", "post-tool-use"),
-        hook_cmd_stdin("/hook/post-tool-failure", "post-tool-failure"),
-        hook_cmd(r#"{\"event\":\"stop\"}"#),
-    )
+    let windows = cfg!(windows);
+    let command_hook = |command: String| {
+        serde_json::json!([{
+            "matcher": "",
+            "hooks": [{ "type": "command", "command": command }]
+        }])
+    };
+    serde_json::json!({
+        "hooks": {
+            "UserPromptSubmit": command_hook(build_hook_command(port, r#"{"event":"prompt"}"#, windows)),
+            "PreToolUse": command_hook(build_hook_stdin_command(port, "/hook/pre-tool-use", windows)),
+            "PostToolUse": command_hook(build_hook_stdin_command(port, "/hook/post-tool-use", windows)),
+            "PostToolUseFailure": command_hook(build_hook_stdin_command(port, "/hook/post-tool-failure", windows)),
+            "Stop": command_hook(build_hook_command(port, r#"{"event":"stop"}"#, windows)),
+        }
+    })
+    .to_string()
 }
 
 /// Start a minimal HTTP server that receives hook signals from Claude Code.
@@ -196,15 +204,22 @@ pub fn start_hook_server(_app: AppHandle) {
 ///
 /// Empirically, Claude Code stores per-project session state at
 /// `~/.claude/projects/<encoded>/` where `<encoded>` is the canonicalized
-/// cwd with `/` replaced by `-` (verified by inspecting actual entries —
+/// cwd with path separators replaced by `-` (verified by inspecting actual entries —
 /// e.g. a session opened at `/tmp/x` on macOS becomes `-private-tmp-x`,
-/// confirming both symlink resolution and `/`→`-` substitution).
+/// confirming both symlink resolution and `/`→`-` substitution). Windows drive
+/// separators are also replaced so the encoded name is never interpreted as an
+/// absolute path by `Path::join`.
 ///
-/// Returns `None` if the path can't be expressed as UTF-8. Windows uses
-/// `\` and may also encode `:`; not handled here. The caller treats `None`
-/// as "no session" — degraded but safe.
+/// Returns `None` if the path can't be expressed as UTF-8. The caller treats
+/// `None` as "no session" — degraded but safe.
 fn encode_project_dir_name(resolved: &std::path::Path) -> Option<String> {
-    resolved.to_str().map(|s| s.replace('/', "-"))
+    let mut path = resolved.to_str()?.to_string();
+    if let Some(stripped) = path.strip_prefix(r"\\?\UNC\") {
+        path = format!(r"\\{}", stripped);
+    } else if let Some(stripped) = path.strip_prefix(r"\\?\") {
+        path = stripped.to_string();
+    }
+    Some(path.replace(['/', '\\', ':'], "-"))
 }
 
 /// True if Claude Code has an existing session for `cwd` that `-c` can resume.
@@ -480,6 +495,22 @@ mod tests {
     }
 
     #[test]
+    fn encode_project_dir_name_windows_path_is_relative_safe() {
+        assert_eq!(
+            encode_project_dir_name(std::path::Path::new(r"C:\Users\foo\Charminal")),
+            Some("C--Users-foo-Charminal".to_string())
+        );
+    }
+
+    #[test]
+    fn encode_project_dir_name_strips_windows_verbatim_prefix() {
+        assert_eq!(
+            encode_project_dir_name(std::path::Path::new(r"\\?\C:\Users\foo\Charminal")),
+            Some("C--Users-foo-Charminal".to_string())
+        );
+    }
+
+    #[test]
     fn has_existing_claude_session_false_for_nonexistent_cwd() {
         // canonicalize fails on a path that doesn't exist → safe default.
         assert!(!has_existing_claude_session(Some(
@@ -589,5 +620,17 @@ mod tests {
         assert!(hooks.contains_key("PreToolUse"));
         assert!(hooks.contains_key("PostToolUseFailure"));
         assert!(hooks.contains_key("Stop"));
+    }
+
+    #[test]
+    fn build_windows_hook_commands_use_powershell() {
+        let prompt = build_hook_command(19001, r#"{"event":"prompt"}"#, true);
+        assert!(prompt.contains("powershell.exe"));
+        assert!(prompt.contains("Invoke-WebRequest"));
+        assert!(prompt.contains("http://127.0.0.1:19001/hook"));
+
+        let stdin = build_hook_stdin_command(19001, "/hook/pre-tool-use", true);
+        assert!(stdin.contains("[Console]::In.ReadToEnd()"));
+        assert!(stdin.contains("http://127.0.0.1:19001/hook/pre-tool-use"));
     }
 }
