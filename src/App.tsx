@@ -164,6 +164,27 @@ function setRuntimeControlValue(path: string, value: unknown): void {
   store.setValueAtPath(path, value, false);
 }
 
+function readNumberRuntimeControlValue(path: string, fallback: number): number {
+  const value = readRuntimeControlValue(path);
+  return isFiniteNumber(value) ? value : fallback;
+}
+
+function lookAtCommonCameraTarget(camera: {
+  readonly position: { readonly y: number };
+  readonly lookAt: (x: number, y: number, z: number) => void;
+}): void {
+  camera.lookAt(
+    readNumberRuntimeControlValue("camera.targetX", 0),
+    readNumberRuntimeControlValue("camera.targetY", camera.position.y),
+    readNumberRuntimeControlValue("camera.targetZ", 0),
+  );
+}
+
+function disableCommonCameraTracking(): void {
+  getThreeRuntime().setCameraTracking(false);
+  setRuntimeControlValue("camera.tracking", false);
+}
+
 function applyCommonCameraControlSet(path: string, value: unknown): void {
   if (!path.startsWith(COMMON_CAMERA_CONTROL_PREFIX)) return;
 
@@ -177,7 +198,11 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   }
 
   if (key === "lookAtCharacter") {
-    if (value === true) camera.lookAt(0, camera.position.y, 0);
+    if (value === true) {
+      camera.lookAt(0, camera.position.y, 0);
+    } else if (value === false) {
+      lookAtCommonCameraTarget(camera);
+    }
     return;
   }
 
@@ -188,11 +213,18 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
     return;
   }
 
+  if (key === "targetX" || key === "targetY" || key === "targetZ") {
+    if (!isFiniteNumber(value)) return;
+    disableCommonCameraTracking();
+    setRuntimeControlValue("camera.lookAtCharacter", false);
+    lookAtCommonCameraTarget(camera);
+    return;
+  }
+
   if (key !== "x" && key !== "y" && key !== "z") return;
   if (!isFiniteNumber(value)) return;
 
-  runtime.setCameraTracking(false);
-  setRuntimeControlValue("camera.tracking", false);
+  disableCommonCameraTracking();
 
   const next = {
     x: camera.position.x,
@@ -203,7 +235,9 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   camera.position.set(next.x, next.y, next.z);
   runtime.setCameraBase(next.x, next.y, next.z);
 
-  if (readRuntimeControlValue("camera.lookAtCharacter") !== false) {
+  if (readRuntimeControlValue("camera.lookAtCharacter") === false) {
+    lookAtCommonCameraTarget(camera);
+  } else {
     camera.lookAt(0, next.y, 0);
   }
 }
@@ -780,7 +814,9 @@ function App() {
           createBodyAnimationPlayHandler,
           createBodyMotionCancelHandler,
           createControlsGetHandler,
+          createControlsSetManyHandler,
           createControlsSetHandler,
+          createControlsTransitionHandler,
           // UI tween tools：
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
@@ -921,6 +957,25 @@ function App() {
             getSceneStore: () => getActiveSceneLevaStore(),
             getCommonStore: () => getRuntimeLevaStore(),
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            onControlSet: ({ scope, path, value }) => {
+              if (scope === "common") applyCommonCameraControlSet(path, value);
+            },
+          }),
+          "controls.set_many": createControlsSetManyHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            onControlSet: ({ scope, path, value }) => {
+              if (scope === "common") applyCommonCameraControlSet(path, value);
+            },
+          }),
+          "controls.transition": createControlsTransitionHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            tweenManager: getThreeRuntime().getTweenManager(),
             onControlSet: ({ scope, path, value }) => {
               if (scope === "common") applyCommonCameraControlSet(path, value);
             },

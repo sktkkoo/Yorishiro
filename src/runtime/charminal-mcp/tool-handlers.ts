@@ -278,6 +278,18 @@ export interface ControlsSetResponse {
   readonly value: unknown;
 }
 
+export interface ControlsSetManyResponse {
+  readonly ok: true;
+  readonly scope: ControlScope;
+  readonly activeSceneId?: string | null;
+  readonly values: Record<string, unknown>;
+}
+
+export interface ControlsTransitionResponse extends ControlsSetManyResponse {
+  readonly durationMs: number;
+  readonly tweening: boolean;
+}
+
 export interface ControlsDeps {
   readonly getSceneStore: () => ControlStoreLike | null;
   readonly getCommonStore: () => ControlStoreLike | null;
@@ -285,11 +297,16 @@ export interface ControlsDeps {
 }
 
 export interface ControlsSetDeps extends ControlsDeps {
+  readonly tweenManager?: TweenManager;
   readonly onControlSet?: (event: {
     readonly scope: ControlScope;
     readonly path: string;
     readonly value: unknown;
   }) => void;
+}
+
+export interface ControlsTransitionDeps extends ControlsSetDeps {
+  readonly tweenManager: TweenManager;
 }
 
 function parseControlScope(value: unknown): ControlScope {
@@ -316,6 +333,13 @@ function resolveControlStore(
 
 function controlInputRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function controlValuesRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("values must be an object");
+  }
   return value as Record<string, unknown>;
 }
 
@@ -355,6 +379,33 @@ function visibleControlEntries(store: ControlStoreLike): ReadonlyArray<ControlEn
     .filter((entry): entry is ControlEntry => entry !== null);
 }
 
+function controlTweenKey(scope: ControlScope, path: string): string {
+  return `controls.${scope}.${path}`;
+}
+
+function validateControlWrite(store: ControlStoreLike, path: string): ControlEntry {
+  if (typeof path !== "string" || path === "") {
+    throw new Error("path must be a non-empty string");
+  }
+  if (!store.getVisiblePaths().includes(path)) {
+    throw new Error(`control path not found: ${path}`);
+  }
+  return controlEntryFromStore(store, path);
+}
+
+function applyControlValue(
+  deps: ControlsSetDeps,
+  scope: ControlScope,
+  path: string,
+  value: unknown,
+  store: ControlStoreLike,
+  options?: { cancelTween?: boolean },
+): void {
+  if (options?.cancelTween !== false) deps.tweenManager?.cancel(controlTweenKey(scope, path));
+  store.setValueAtPath(path, value, false);
+  deps.onControlSet?.({ scope, path, value });
+}
+
 export function createControlsGetHandler(deps: ControlsDeps) {
   return async (request: unknown): Promise<ControlsGetResponse> => {
     const record = requestRecord(request);
@@ -386,14 +437,76 @@ export function createControlsSetHandler(deps: ControlsSetDeps) {
     if (!("value" in record)) {
       throw new Error("missing value");
     }
-    if (!store.getVisiblePaths().includes(path)) {
-      throw new Error(`control path not found: ${path}`);
-    }
-    controlEntryFromStore(store, path);
+    validateControlWrite(store, path);
     const value = record.value;
-    store.setValueAtPath(path, value, false);
-    deps.onControlSet?.({ scope, path, value });
+    applyControlValue(deps, scope, path, value, store);
     return { ok: true, scope, activeSceneId, path, value };
+  };
+}
+
+export function createControlsSetManyHandler(deps: ControlsSetDeps) {
+  return async (request: unknown): Promise<ControlsSetManyResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const values = controlValuesRecord(record.values);
+    const entries = Object.entries(values);
+    if (entries.length === 0) throw new Error("values must not be empty");
+
+    for (const [path] of entries) validateControlWrite(store, path);
+    for (const [path, value] of entries) applyControlValue(deps, scope, path, value, store);
+
+    return { ok: true, scope, activeSceneId, values: { ...values } };
+  };
+}
+
+export function createControlsTransitionHandler(deps: ControlsTransitionDeps) {
+  return async (request: unknown): Promise<ControlsTransitionResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const values = controlValuesRecord(record.values);
+    const entries = Object.entries(values);
+    if (entries.length === 0) throw new Error("values must not be empty");
+
+    const durationMs =
+      typeof record.durationMs === "number" &&
+      Number.isFinite(record.durationMs) &&
+      record.durationMs > 0
+        ? record.durationMs
+        : 0;
+
+    const currentEntries = new Map<string, ControlEntry>();
+    for (const [path] of entries) currentEntries.set(path, validateControlWrite(store, path));
+
+    if (durationMs === 0) {
+      for (const [path, value] of entries) applyControlValue(deps, scope, path, value, store);
+      return { ok: true, scope, activeSceneId, values: { ...values }, durationMs, tweening: false };
+    }
+
+    let tweening = false;
+    for (const [path, value] of entries) {
+      const current = currentEntries.get(path)?.value;
+      if (
+        typeof current === "number" &&
+        Number.isFinite(current) &&
+        typeof value === "number" &&
+        Number.isFinite(value)
+      ) {
+        tweening = true;
+        deps.tweenManager.start(
+          controlTweenKey(scope, path),
+          value,
+          durationMs,
+          (next) => applyControlValue(deps, scope, path, next, store, { cancelTween: false }),
+          { from: current },
+        );
+      } else {
+        applyControlValue(deps, scope, path, value, store);
+      }
+    }
+
+    return { ok: true, scope, activeSceneId, values: { ...values }, durationMs, tweening };
   };
 }
 

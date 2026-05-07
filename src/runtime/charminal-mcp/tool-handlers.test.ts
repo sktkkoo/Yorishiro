@@ -27,6 +27,8 @@ import {
   createBodyMotionCancelHandler,
   createControlsGetHandler,
   createControlsSetHandler,
+  createControlsSetManyHandler,
+  createControlsTransitionHandler,
   createDisablePackHandler,
   createEnablePackHandler,
   createGetPackStateHandler,
@@ -514,6 +516,137 @@ describe("controls handlers", () => {
     });
     expect(commonStore.writes).toEqual([{ path: "camera.x", value: 1.25, fromPanel: false }]);
     expect(sideEffects).toEqual([{ scope: "common", path: "camera.x", value: 1.25 }]);
+  });
+
+  it("writes multiple controls at once", async () => {
+    const sceneStore = makeControlStore({
+      "lights.intensity": {
+        type: "NUMBER",
+        value: 0.8,
+        label: "light int.",
+        disabled: false,
+      },
+      "post effects.bloom.amount": {
+        type: "NUMBER",
+        value: 1.2,
+        label: "amount",
+        disabled: false,
+      },
+    });
+    const setMany = createControlsSetManyHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+    });
+
+    await expect(
+      setMany({
+        scope: "scene",
+        values: {
+          "lights.intensity": 0.5,
+          "post effects.bloom.amount": 0.1,
+        },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      scope: "scene",
+      activeSceneId: "simple-room",
+      values: {
+        "lights.intensity": 0.5,
+        "post effects.bloom.amount": 0.1,
+      },
+    });
+    expect(sceneStore.writes).toEqual([
+      { path: "lights.intensity", value: 0.5, fromPanel: false },
+      { path: "post effects.bloom.amount", value: 0.1, fromPanel: false },
+    ]);
+  });
+
+  it("transitions numeric controls and applies nonnumeric controls immediately", async () => {
+    const tm = new TweenManager();
+    const commonStore = makeControlStore({
+      "camera.x": {
+        type: "NUMBER",
+        value: 0,
+        label: "x",
+        disabled: false,
+      },
+      "camera.tracking": {
+        type: "BOOLEAN",
+        value: true,
+        label: "tracking",
+        disabled: false,
+      },
+    });
+    const sideEffects: Array<{ scope: string; path: string; value: unknown }> = [];
+    const transition = createControlsTransitionHandler({
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+      tweenManager: tm,
+      onControlSet: (event) => sideEffects.push(event),
+    });
+
+    await expect(
+      transition({
+        scope: "common",
+        durationMs: 100,
+        values: {
+          "camera.tracking": false,
+          "camera.x": 10,
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      scope: "common",
+      durationMs: 100,
+      tweening: true,
+    });
+
+    expect(commonStore.writes).toEqual([
+      { path: "camera.tracking", value: false, fromPanel: false },
+    ]);
+    tm.tick(0);
+    tm.tick(50);
+    tm.tick(100);
+
+    expect(commonStore.writes).toEqual([
+      { path: "camera.tracking", value: false, fromPanel: false },
+      { path: "camera.x", value: 0, fromPanel: false },
+      { path: "camera.x", value: 5, fromPanel: false },
+      { path: "camera.x", value: 10, fromPanel: false },
+    ]);
+    expect(sideEffects).toEqual([
+      { scope: "common", path: "camera.tracking", value: false },
+      { scope: "common", path: "camera.x", value: 0 },
+      { scope: "common", path: "camera.x", value: 5 },
+      { scope: "common", path: "camera.x", value: 10 },
+    ]);
+  });
+
+  it("controls.set cancels active transitions on the same path", async () => {
+    const tm = new TweenManager();
+    const commonStore = makeControlStore({
+      "camera.x": {
+        type: "NUMBER",
+        value: 0,
+        label: "x",
+        disabled: false,
+      },
+    });
+    const deps = {
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+      tweenManager: tm,
+    };
+    const transition = createControlsTransitionHandler(deps);
+    const set = createControlsSetHandler(deps);
+
+    await transition({ scope: "common", durationMs: 100, values: { "camera.x": 10 } });
+    expect(tm.isActive("controls.common.camera.x")).toBe(true);
+    await set({ scope: "common", path: "camera.x", value: 2 });
+    expect(tm.isActive("controls.common.camera.x")).toBe(false);
   });
 
   it("defaults scope to scene and rejects missing active scene", async () => {

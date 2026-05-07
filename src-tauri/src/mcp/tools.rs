@@ -6,7 +6,7 @@
 //! session ごとに `Charminal::new(app_handle)` が呼ばれる（LocalSessionManager
 //! が session lifecycle を管理する都合）。
 
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -74,6 +74,30 @@ pub struct ControlsSetRequest {
     pub path: String,
     /// JSON value to set.
     pub value: Value,
+}
+
+/// `controls_set_many` の引数。複数の F2 controls panel 値をまとめて書き換える。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsSetManyRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Map of full control path to JSON value.
+    pub values: BTreeMap<String, Value>,
+}
+
+/// `controls_transition` の引数。数値 control は durationMs で補間し、それ以外は即時反映する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsTransitionRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Map of full control path to target JSON value.
+    pub values: BTreeMap<String, Value>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
 }
 
 /// `state_get` の引数。空 object。
@@ -401,7 +425,7 @@ impl Charminal {
 
     /// controls_set: F2 controls panel に表示されている値を書き換える。
     #[tool(
-        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Common camera.x/y/z writes disable tracking and apply to the live camera immediately; use scene_camera_set for smooth camera demos."
+        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Common camera.x/y/z and camera.targetX/Y/Z writes disable tracking and apply to the live camera immediately."
     )]
     async fn controls_set(
         &self,
@@ -411,6 +435,38 @@ impl Charminal {
             &self.app_handle,
             "controls.set",
             json!({ "scope": req.scope, "path": req.path, "value": req.value }),
+        )
+        .await
+    }
+
+    /// controls_set_many: F2 controls panel に表示されている複数値をまとめて書き換える。
+    #[tool(
+        description = "Set multiple visible F2 control values at once. scope defaults to scene. Use controls_get first to discover paths."
+    )]
+    async fn controls_set_many(
+        &self,
+        Parameters(req): Parameters<ControlsSetManyRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.set_many",
+            json!({ "scope": req.scope, "values": req.values }),
+        )
+        .await
+    }
+
+    /// controls_transition: F2 controls panel に表示されている値を補間する。
+    #[tool(
+        description = "Transition visible F2 control values. Numeric controls tween over durationMs; nonnumeric controls apply immediately. Use this for camera moves and smooth scene parameter demos."
+    )]
+    async fn controls_transition(
+        &self,
+        Parameters(req): Parameters<ControlsTransitionRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.transition",
+            json!({ "scope": req.scope, "values": req.values, "durationMs": req.duration_ms }),
         )
         .await
     }

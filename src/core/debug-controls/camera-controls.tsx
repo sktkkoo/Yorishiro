@@ -1,7 +1,7 @@
 /**
  * Camera debug controls (leva).
  *
- * R3fRuntimeRoot 内で常時 mount される。tracking / position / FOV / lookAt を
+ * R3fRuntimeRoot 内で常時 mount される。tracking / position / target / FOV / lookAt を
  * leva 経由で操作する。tracking OFF 時は ThreeRuntime の render loop が
  * camera.position を上書きしないため、leva の値がそのまま反映される。
  */
@@ -29,6 +29,9 @@ export function CameraControls({ store }: CameraControlsProps) {
         x: { value: camera.position.x, min: -5, max: 5, step: 0.01, label: "x" },
         y: { value: camera.position.y, min: -2, max: 5, step: 0.01, label: "y" },
         z: { value: camera.position.z, min: 0.1, max: 10, step: 0.01, label: "z" },
+        targetX: { value: 0, min: -5, max: 5, step: 0.01, label: "target x" },
+        targetY: { value: camera.position.y, min: -2, max: 5, step: 0.01, label: "target y" },
+        targetZ: { value: 0, min: -5, max: 5, step: 0.01, label: "target z" },
         fov: { value: camera.fov, min: 20, max: 120, step: 1, label: "FOV" },
       }),
     }),
@@ -46,6 +49,8 @@ export function CameraControls({ store }: CameraControlsProps) {
       camera.position.set(controls.x, controls.y, controls.z);
       if (controls.lookAtCharacter) {
         camera.lookAt(0, controls.y, 0);
+      } else {
+        camera.lookAt(controls.targetX, controls.targetY, controls.targetZ);
       }
     }
 

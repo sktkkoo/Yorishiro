@@ -22,11 +22,11 @@ $ARGUMENTS
 
 **⚠️ このステップは「見てて」のデモ。ユーザーの入力を待たずに、1 つの応答の中で実行する。**
 
-1. カメラを引いて全身を見せる。`scene_camera_set({ position: [0, 1.2, 2.5], target: [0, 1.0, 0], durationMs: 1500, tracking: false })`
+1. カメラを引いて全身を見せる。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`
 2. `body_animation_play` でモーションを 1 つ再生する（`animation` に `"anim:<名前>"` で渡す）:
    - `anim:VRMA_06_HandOnHip` — 腰に手を当てる
 3. Bash で **`sleep 5`** して動きを見せる
-4. カメラをデフォルトに戻す。`scene_camera_set({ position: [0, 1.35, 1.1], target: [0, 1.35, 0], durationMs: 1500, tracking: true })`
+4. カメラをデフォルトに戻す。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
 
 確認しながら独り言のように相手に話しかける。「ちゃんと動いてる？」くらいの温度。
 
@@ -51,7 +51,7 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 
 ライティングを触らせた自然な流れで、カメラも触らせる。
 
-住人がカメラ移動を実演するときは `scene_camera_set(...)` を使う。Common panel の値を直接変える必要がある場合は `controls_set({ scope: "common", path: "camera.x" | "camera.y" | "camera.z", value })` でも実カメラへ即反映される。この場合、tracking は自動で Off になる。
+住人がカメラ移動を実演するときは `controls_transition({ scope: "common", values, durationMs })` を使う。Common panel の `camera.x/y/z` と `camera.targetX/Y/Z` を動かすと実カメラへ即反映される。この場合、tracking は自動で Off になる。
 
 カメラを手動で動かす前に Common panel の **tracking と look at character を両方 Off にする必要がある**ことを伝える。
 
@@ -64,7 +64,7 @@ Off にしてもらったら:
 2. ユーザーがカメラを動かしたら、`controls_get({ scope: "common" })` で Common panel の `camera.x` / `camera.y` / `camera.z` を読む
 3. 住人が自分が見られている角度に反応する。「近い」「遠い」「上からだと顔が見えない」のように
 
-**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** `controls_set({ scope: "common", path: "camera.tracking", value: true })` と `controls_set({ scope: "common", path: "camera.lookAtCharacter", value: true })` で Common panel 側も On に戻し、`scene_camera_set({ position: [0, 1.35, 1.1], target: [0, 1.35, 0], durationMs: 1500, tracking: true })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
+**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
 
 ### 4. Scene 切り替え -- 部屋が丸ごと変わることを見せる
 
