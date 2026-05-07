@@ -162,6 +162,25 @@ export class ExpressionManager {
     }));
   }
 
+  /**
+   * Returns true while a non-idle mood expression is actually affecting the face.
+   * Body uses this to suspend idle-only overlays such as relaxed/squint so
+   * intentional smiles or frowns do not get diluted by ambient idle expressions.
+   */
+  hasActiveNonIdleMood(): boolean {
+    for (const slot of this.slots.values()) {
+      if (
+        slot.kind === "mood" &&
+        slot.source !== "idle" &&
+        slot.requestedWeight > 0 &&
+        slot.effectiveWeight > 0
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Number of active slots. */
   get size(): number {
     return this.slots.size;

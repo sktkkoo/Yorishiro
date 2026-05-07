@@ -202,6 +202,26 @@ describe("ExpressionManager", () => {
     expect(happy?.effectiveWeight).toBeCloseTo(0.7 / 1.1);
     expect(blink?.effectiveWeight).toBeCloseTo(0.4 / 1.1);
   });
+
+  it("detects active non-idle mood so Body can suspend idle overlays", () => {
+    const mgr = new ExpressionManager();
+    mgr.addSlot("idle", "mood", "neutral", 1);
+    mgr.addSlot("idle", "custom", "relaxed", 0.4);
+    expect(mgr.hasActiveNonIdleMood()).toBe(false);
+
+    const happy = mgr.addSlot("persona", "mood", "happy", 0.6);
+    expect(mgr.getEffectiveWeight(happy)).toBeCloseTo(0.6);
+    expect(mgr.hasActiveNonIdleMood()).toBe(true);
+  });
+
+  it("ignores suppressed persona mood when a higher-priority mood owns the face", () => {
+    const mgr = new ExpressionManager();
+    const happy = mgr.addSlot("persona", "mood", "happy", 0.6);
+    mgr.addSlot("mcp", "mood", "sad", 0.4);
+
+    expect(mgr.getEffectiveWeight(happy)).toBe(0);
+    expect(mgr.hasActiveNonIdleMood()).toBe(true);
+  });
 });
 
 // ─── expressionTargetToName ──────────────────────────────
