@@ -1,37 +1,34 @@
 /**
- * ~/.charminal/init.js — Charminal の startup script (Emacs の init.el 相当)。
+ * ~/.charminal/init.js — Charminal startup script, similar to Emacs init.el.
  *
- * default export された関数は、Charminal 起動時に一度だけ呼ばれる。
- * ctx が提供する API:
+ * The default-exported function runs once when Charminal starts.
+ * ctx provides:
  *
- *   ctx.registerEffect(def)    : EffectDefinition を inline で登録
- *   ctx.registerPersona(def)   : PersonaDefinition を inline で登録
- *   ctx.dispatchEffect(request): 登録済み effect を 1 回走らせる
- *   ctx.setActiveUi(id | null) : active な UI pack を切り替える
+ *   ctx.registerEffect(def)    : register an inline EffectDefinition
+ *   ctx.registerPersona(def)   : register an inline PersonaDefinition
+ *   ctx.dispatchEffect(request): run a registered effect once
+ *   ctx.setActiveUi(id | null) : switch the active UI pack
  *
- * 初期雛形として以下の keyboard shortcut を仕込んでいる：
+ * This template installs a few starter keyboard shortcuts:
  *
- *   - F1: charminal-settings（設定画面）の表示／非表示を toggle
- *   - Cmd+Shift+F: fireworks-volley（連発花火）
- *   - Cmd+Shift+T: text-physics（文字崩壊 + 復元）
- *   - Cmd+Shift+D: desaturate（モノクロ/カラー トグル）
+ *   - F1: toggle charminal-settings
+ *   - Cmd+Shift+F: fireworks-volley
+ *   - Cmd+Shift+T: text-physics
+ *   - Cmd+Shift+D: desaturate toggle
  *
- *   なお F2 は Charminal 本体が握っており、Common / Scene の debug panel
- *   （base camera / lighting / post effect 等のリアルタイム調整）を toggle する。
- *   init.js から再 bind しないこと。
+ *   F2 is reserved by Charminal for the Common / Scene debug panels.
+ *   Do not rebind it from init.js.
  *
- * 不要なら keydown listener ごと削除して良い。option を調整したい場合は
- * 各 effect pack の README.md を参照。
+ * Delete the keydown listener if you do not want these shortcuts.
+ * See each effect pack README.md for tunable options.
  *
- * keyboard shortcut API は pack SDK に無いので window の keydown を直接
- * subscribe するのが唯一の手段。使い方の相談は `/charm` から AI と対話する
- * か、Charminal repo の
- * `src-tauri/resources/charminal-plugin/commands/charm.md`「init.js」section を
- * 参照。init.js は hot reload されない（Phase 1-c で扱う予定）ので、変更したら
- * Charminal を再起動すること。
+ * There is no dedicated keyboard shortcut API in the pack SDK, so direct
+ * window keydown subscription is the supported path. Ask through `/charm`
+ * or read the Charminal plugin command docs for examples.
+ * init.js is not hot reloaded; restart Charminal after editing.
  *
- * 本 file は Charminal が初回起動時に雛形として置いたもの。以降 Charminal
- * が上書きすることはないので、自由に編集して良い。
+ * Charminal writes this file only when it does not exist. After that, it is
+ * yours to edit.
  */
 
 let desaturated = false;

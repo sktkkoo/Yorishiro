@@ -9,6 +9,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 ```json
 {
   "terminalAgent": "codex",
+  "language": "auto",
   "primaryPersona": "my-persona",
   "activeScene": "quiet-room",
   "activeUi": "minimal-badge",
@@ -23,12 +24,35 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 |---|---|---|---|
 | `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
 | `terminalAgent` | `"claude"` or `"codex"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
+| `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / `/charm:*` command prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
 | `activeScene` | `string` or `null` | `null` | active scene pack の user pick。`null` なら bundled fallback |
 | `activeUi` | `string` or `null` | `null` | active UI pack の user pick。`null` なら UI pack なし |
 | `mcpPort` | `number` | `18743` | Rust MCP server の listen port |
 | `disabledPacks` | `string[]` | `[]` | rescue 用。指定 id の user pack を load しない |
+
+### Language
+
+`language` controls the user-facing language surfaces:
+
+- UI labels
+- bundled persona fallback (`primaryPersona: null`)
+- global system prompt natural-language guidance
+- `/charm:*` command prompt bodies
+- first-run / settings prefill text
+
+```json
+{
+  "language": "auto"
+}
+```
+
+`auto` detects the WebView locale at startup. Japanese locales resolve to `ja`; all other locales resolve to `en`. Explicit values (`"en"` / `"ja"`) always win over detection.
+
+Identifiers are not localized: command ids (`/charm:create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
+
+If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Charminal chooses `clai-ja` for Japanese and `clai-en` otherwise.
 
 ### Default profile（shell を起動する）
 

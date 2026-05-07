@@ -50,6 +50,10 @@ On launch, Claude Code starts inside the terminal and a VRM character appears be
 
 Type `/charm` inside Claude Code to activate the Charminal plugin. It lets you create and edit packs, run tutorials, and more — all through conversation.
 
+### Language
+
+Charminal starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/charm:*` command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.charminal/config.json`.
+
 ### Packs
 
 Everything in Charminal is composed of **packs**. There are six types:
