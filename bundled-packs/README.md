@@ -21,8 +21,7 @@ bundled-packs/
 ├── effects/
 │   └── screen-shake/        — DOM shake on error
 ├── ui/
-│   ├── charminal-settings/    — 設定画面（F1 で開く）
-│   └── camera-lighting-panel/ — UI pack SDK reference impl（常用非推奨、F2 panel で代替）
+│   └── charminal-settings/    — 設定画面（F1 で開く）
 ├── ambient-ui/              — overlay 系 pack（Phase 1c で同梱済み）
 │   └── attention-aura/      — 視線追跡を overlay で可視化（multi-active 対応 ambient-ui pack）
 └── shared/                  — 共有 asset library
@@ -98,7 +97,6 @@ bundled-packs/
 UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
 - **charminal-settings** — Charminal の設定画面（avatar / persona / scene / agent / shortcut の入口）。F1（init.js seed の binding）またはサイドバーから開く
-- **camera-lighting-panel** — UI pack 作者向けの reference implementation（**user 向けには非推奨**）。camera tracking toggle / position X/Y/Z / FOV / directional light intensity / color / scene background・foreground media / blur を panel から操作。`ctx.three` / `ctx.claim.camera()` / `ctx.scene` / `ctx.state` 機構の実例。同等機能は F2 の Common / Scene panel で代替されたため、利用は想定していない。leva → 独自 `ControlsPanel` 移行（[`docs/decisions/scene-controls-api.md`](../docs/decisions/scene-controls-api.md)）の参考コードとして残す
 
 ## ambient-ui/（Phase 1c 同梱済み）
 

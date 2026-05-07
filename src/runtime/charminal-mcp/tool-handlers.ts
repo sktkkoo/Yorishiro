@@ -268,8 +268,7 @@ function extractLighting(
 
 /**
  * scene 内の最初の DirectionalLight を 1 個取り出す。
- * camera-lighting-panel 既存実装と同 logic。pack 依存を MCP 層に持ち込まないため
- * 同じ helper を独立に持つ（3 行重複は abstraction より良い、
+ * pack 依存を MCP 層に持ち込まないため独立に持つ（3 行重複は abstraction より良い、
  * CLAUDE.md「premature abstraction を避ける」）。
  */
 function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
