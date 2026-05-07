@@ -16,13 +16,24 @@ use tauri::{AppHandle, Manager, State};
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
 struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
+/// cross-platform な home directory 取得。Windows では USERPROFILE を返す。
+pub(crate) fn home_dir_or_err() -> Result<std::path::PathBuf, String> {
+    dirs::home_dir().ok_or_else(|| "home directory not found".to_string())
+}
+
 fn build_path_env() -> String {
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = dirs::home_dir().unwrap_or_default();
+    let home = home.to_string_lossy();
     let current = std::env::var("PATH").unwrap_or_default();
-    format!(
-        "{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:{}",
-        home, home, current
-    )
+    if cfg!(windows) {
+        let sep = ";";
+        format!("{}\\.cargo\\bin{}{}", home, sep, current)
+    } else {
+        format!(
+            "{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:{}",
+            home, home, current
+        )
+    }
 }
 
 /// 任意 session id で PTY を spawn する。session_id を省略した legacy 呼び出し
@@ -198,8 +209,7 @@ async fn poll_hook_signals() -> Vec<String> {
 const PACK_KINDS: &[&str] = &["effect", "persona", "voice", "body", "scene", "ui"];
 
 fn charminal_home_path() -> Result<std::path::PathBuf, String> {
-    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-    Ok(std::path::PathBuf::from(home).join(".charminal"))
+    Ok(home_dir_or_err()?.join(".charminal"))
 }
 
 /// `.tutorial-done` フラグの有無を返す。テスト用に charminal_dir を引数化。
@@ -464,8 +474,8 @@ fn write_charminal_file_atomic_impl(
 /// TS 側から config.json / last-startup.json の write に使う。
 #[tauri::command]
 async fn write_charminal_file_atomic(relative_path: String, content: String) -> Result<(), String> {
-    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-    write_charminal_file_atomic_impl(&relative_path, &content, Path::new(&home))
+    let home = home_dir_or_err()?;
+    write_charminal_file_atomic_impl(&relative_path, &content, &home)
 }
 
 /// `~/.charminal/last-startup.json` を読む実装本体。テスト用に home 引数化。
@@ -482,8 +492,8 @@ pub(crate) fn read_last_startup_report_impl(home_root: &Path) -> Result<String, 
 /// MCP `list_load_errors` と TS 側 debug から使う。
 #[tauri::command]
 async fn read_last_startup_report() -> Result<String, String> {
-    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-    read_last_startup_report_impl(Path::new(&home))
+    let home = home_dir_or_err()?;
+    read_last_startup_report_impl(&home)
 }
 
 /// `~/.charminal/init.js` があればパスを返す、なければ None。

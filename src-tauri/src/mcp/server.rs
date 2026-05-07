@@ -39,10 +39,8 @@ static PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<Value>>>> =
 
 /// config.json の mcpPort を読む（不在 / 不正 → None）。
 fn read_configured_port() -> Option<u16> {
-    let home = std::env::var("HOME").ok()?;
-    let path = std::path::Path::new(&home)
-        .join(".charminal")
-        .join("config.json");
+    let home = dirs::home_dir()?;
+    let path = home.join(".charminal").join("config.json");
     let text = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&text).ok()?;
     parsed
