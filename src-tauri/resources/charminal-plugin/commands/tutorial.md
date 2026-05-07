@@ -51,6 +51,8 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 
 ライティングを触らせた自然な流れで、カメラも触らせる。
 
+住人がカメラ移動を実演するときは `scene_camera_set(...)` を使う。Common panel の値を直接変える必要がある場合は `controls_set({ scope: "common", path: "camera.x" | "camera.y" | "camera.z", value })` でも実カメラへ即反映される。この場合、tracking は自動で Off になる。
+
 カメラを手動で動かす前に Common panel の **tracking と look at character を両方 Off にする必要がある**ことを伝える。
 
 - **tracking**: カメラがキャラクターを自動追従する機能。On だと手動でカメラを動かしても追従で戻される

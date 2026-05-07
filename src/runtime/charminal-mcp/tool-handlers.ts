@@ -284,6 +284,14 @@ export interface ControlsDeps {
   readonly getActiveSceneId: () => string | null;
 }
 
+export interface ControlsSetDeps extends ControlsDeps {
+  readonly onControlSet?: (event: {
+    readonly scope: ControlScope;
+    readonly path: string;
+    readonly value: unknown;
+  }) => void;
+}
+
 function parseControlScope(value: unknown): ControlScope {
   if (value === undefined || value === null) return "scene";
   if (value === "scene" || value === "common") return value;
@@ -366,7 +374,7 @@ export function createControlsGetHandler(deps: ControlsDeps) {
   };
 }
 
-export function createControlsSetHandler(deps: ControlsDeps) {
+export function createControlsSetHandler(deps: ControlsSetDeps) {
   return async (request: unknown): Promise<ControlsSetResponse> => {
     const record = requestRecord(request);
     const scope = parseControlScope(record.scope);
@@ -384,6 +392,7 @@ export function createControlsSetHandler(deps: ControlsDeps) {
     controlEntryFromStore(store, path);
     const value = record.value;
     store.setValueAtPath(path, value, false);
+    deps.onControlSet?.({ scope, path, value });
     return { ok: true, scope, activeSceneId, path, value };
   };
 }

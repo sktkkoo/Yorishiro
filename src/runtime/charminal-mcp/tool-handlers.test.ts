@@ -489,6 +489,33 @@ describe("controls handlers", () => {
     });
   });
 
+  it("runs a side effect after a successful controls.set", async () => {
+    const commonStore = makeControlStore({
+      "camera.x": {
+        type: "NUMBER",
+        value: 0,
+        label: "x",
+        disabled: false,
+      },
+    });
+    const sideEffects: Array<{ scope: string; path: string; value: unknown }> = [];
+    const set = createControlsSetHandler({
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+      onControlSet: (event) => sideEffects.push(event),
+    });
+
+    await expect(set({ scope: "common", path: "camera.x", value: 1.25 })).resolves.toMatchObject({
+      ok: true,
+      scope: "common",
+      path: "camera.x",
+      value: 1.25,
+    });
+    expect(commonStore.writes).toEqual([{ path: "camera.x", value: 1.25, fromPanel: false }]);
+    expect(sideEffects).toEqual([{ scope: "common", path: "camera.x", value: 1.25 }]);
+  });
+
   it("defaults scope to scene and rejects missing active scene", async () => {
     const get = createControlsGetHandler({
       getSceneStore: () => null,

@@ -145,6 +145,69 @@ async function withTimeout<T>(
   return result;
 }
 
+const COMMON_CAMERA_CONTROL_PREFIX = "camera.";
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function readRuntimeControlValue(path: string): unknown {
+  const store = getRuntimeLevaStore();
+  const input = store?.getData()[path];
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined;
+  return "value" in input ? input.value : undefined;
+}
+
+function setRuntimeControlValue(path: string, value: unknown): void {
+  const store = getRuntimeLevaStore();
+  if (!store?.getVisiblePaths().includes(path)) return;
+  store.setValueAtPath(path, value, false);
+}
+
+function applyCommonCameraControlSet(path: string, value: unknown): void {
+  if (!path.startsWith(COMMON_CAMERA_CONTROL_PREFIX)) return;
+
+  const key = path.slice(COMMON_CAMERA_CONTROL_PREFIX.length);
+  const runtime = getThreeRuntime();
+  const camera = runtime.getCamera();
+
+  if (key === "tracking") {
+    if (typeof value === "boolean") runtime.setCameraTracking(value);
+    return;
+  }
+
+  if (key === "lookAtCharacter") {
+    if (value === true) camera.lookAt(0, camera.position.y, 0);
+    return;
+  }
+
+  if (key === "fov") {
+    if (!isFiniteNumber(value)) return;
+    camera.fov = value;
+    camera.updateProjectionMatrix();
+    return;
+  }
+
+  if (key !== "x" && key !== "y" && key !== "z") return;
+  if (!isFiniteNumber(value)) return;
+
+  runtime.setCameraTracking(false);
+  setRuntimeControlValue("camera.tracking", false);
+
+  const next = {
+    x: camera.position.x,
+    y: camera.position.y,
+    z: camera.position.z,
+    [key]: value,
+  };
+  camera.position.set(next.x, next.y, next.z);
+  runtime.setCameraBase(next.x, next.y, next.z);
+
+  if (readRuntimeControlValue("camera.lookAtCharacter") !== false) {
+    camera.lookAt(0, next.y, 0);
+  }
+}
+
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
@@ -846,6 +909,9 @@ function App() {
             getSceneStore: () => getActiveSceneLevaStore(),
             getCommonStore: () => getRuntimeLevaStore(),
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            onControlSet: ({ scope, path, value }) => {
+              if (scope === "common") applyCommonCameraControlSet(path, value);
+            },
           }),
           // ── Phase β cosmetic write tools ────────────────────────
           "state.get": createStateGetHandler({

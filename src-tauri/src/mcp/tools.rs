@@ -401,7 +401,7 @@ impl Charminal {
 
     /// controls_set: F2 controls panel に表示されている値を書き換える。
     #[tool(
-        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Examples: scene lights.directionalIntensity, common camera.lookAtCharacter."
+        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Common camera.x/y/z writes disable tracking and apply to the live camera immediately; use scene_camera_set for smooth camera demos."
     )]
     async fn controls_set(
         &self,
