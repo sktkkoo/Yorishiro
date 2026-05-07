@@ -22,11 +22,11 @@ $ARGUMENTS
 
 **⚠️ このステップは「見てて」のデモ。ユーザーの入力を待たずに、1 つの応答の中で実行する。**
 
-1. カメラを引いて全身を見せる。`scene_camera_set({ position: [0, 1.2, 2.5], target: [0, 1.0, 0], durationMs: 1500, tracking: false })`
+1. カメラを引いて全身を見せる。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`
 2. `body_animation_play` でモーションを 1 つ再生する（`animation` に `"anim:<名前>"` で渡す）:
    - `anim:VRMA_06_HandOnHip` — 腰に手を当てる
 3. Bash で **`sleep 5`** して動きを見せる
-4. カメラをデフォルトに戻す。`scene_camera_set({ position: [0, 1.35, 1.1], target: [0, 1.35, 0], durationMs: 1500, tracking: true })`
+4. カメラをデフォルトに戻す。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
 
 確認しながら独り言のように相手に話しかける。「ちゃんと動いてる？」くらいの温度。
 
@@ -39,15 +39,19 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 **ユーザーにライトの色を変えさせて、住人がそれを読み取る:**
 
 1. 「Scene panel の lights を開いて、ライトの色を変えてみて」と促す
-2. ユーザーが色を変えたら、`state_get()` で現在の lighting 値を読む
+2. ユーザーが色を変えたら、`controls_get({ scope: "scene" })` で Scene panel の現在値を読む
 3. 住人が変化に反応する。「赤い」「暗くなった」のように、自分が居る世界の変化として感じたことを言う
 4. 「もう何回か変えてみて」-- ユーザーが色を変えるたびに、住人がそれに反応する
 
 住人は「正解を当てるクイズ」をしているのではない。**自分の居る世界が変わったことに気づいている。** ライトが赤くなったら「赤い」と感じる。それが自然に出る。
 
+補助: ユーザーが迷ったら、`controls_get({ scope: "scene" })` の結果から `lights.*Color` / `lights.*Intensity` の path を見つけて、「このあたりを触ると変わる」と伝える。住人側から実演する必要がある場合だけ、`controls_set({ scope: "scene", path: "<controls_getで見つけたpath>", value: <値> })` を使う。
+
 ### 3. カメラ -- ユーザーに触らせる
 
 ライティングを触らせた自然な流れで、カメラも触らせる。
+
+住人がカメラ移動を実演するときは `controls_transition({ scope: "common", values, durationMs })` を使う。Common panel の `camera.x/y/z` と `camera.targetX/Y/Z` を動かすと実カメラへ即反映される。この場合、tracking は自動で Off になる。
 
 カメラを手動で動かす前に Common panel の **tracking と look at character を両方 Off にする必要がある**ことを伝える。
 
@@ -57,10 +61,10 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 Off にしてもらったら:
 
 1. 「カメラも動かしてみて」と促す
-2. ユーザーがカメラを動かしたら、`state_get()` で position を読む
+2. ユーザーがカメラを動かしたら、`controls_get({ scope: "common" })` で Common panel の `camera.x` / `camera.y` / `camera.z` を読む
 3. 住人が自分が見られている角度に反応する。「近い」「遠い」「上からだと顔が見えない」のように
 
-**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** tracking と look at character を On に戻すよう伝え、`scene_camera_set({ position: [0, 1.35, 1.1], target: [0, 1.35, 0], durationMs: 1500, tracking: true })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
+**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
 
 ### 4. Scene 切り替え -- 部屋が丸ごと変わることを見せる
 

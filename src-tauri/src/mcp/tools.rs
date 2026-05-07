@@ -6,7 +6,7 @@
 //! session ごとに `Charminal::new(app_handle)` が呼ばれる（LocalSessionManager
 //! が session lifecycle を管理する都合）。
 
-use std::path::Path;
+use std::{collections::BTreeMap, path::Path};
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -53,6 +53,53 @@ pub struct SetUiStateRequest {
     pub value: Value,
 }
 
+/// `controls_get` の引数。F2 controls panel の現在値を読む。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsGetRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Optional full Leva-style control path. Omit to retrieve all visible controls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+/// `controls_set` の引数。F2 controls panel の値を書き換える。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsSetRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Full control path, e.g. "lights.directionalIntensity" or "camera.lookAtCharacter".
+    pub path: String,
+    /// JSON value to set.
+    pub value: Value,
+}
+
+/// `controls_set_many` の引数。複数の F2 controls panel 値をまとめて書き換える。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsSetManyRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Map of full control path to JSON value.
+    pub values: BTreeMap<String, Value>,
+}
+
+/// `controls_transition` の引数。数値 control は durationMs で補間し、それ以外は即時反映する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsTransitionRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Map of full control path to target JSON value.
+    pub values: BTreeMap<String, Value>,
+    /// 補間時間（ms）。省略 / 0 で即時反映。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+}
+
 /// `state_get` の引数。空 object。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StateGetRequest {}
@@ -75,38 +122,6 @@ pub struct SpaceEffectPlayRequest {
     /// effect handler が解釈する任意 payload。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<Value>,
-}
-
-/// `scene_camera_set` の引数。すべて optional、与えた field のみ更新。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SceneCameraSetRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub position: Option<[f32; 3]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<[f32; 3]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fov: Option<f32>,
-    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
-    #[serde(rename = "durationMs")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u32>,
-    /// カメラ自動追従（head tracking）の有効/無効。省略で変更なし。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tracking: Option<bool>,
-}
-
-/// `scene_lighting_set` の引数。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SceneLightingSetRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub intensity: Option<f32>,
-    /// "#rrggbb" hex string
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
-    #[serde(rename = "durationMs")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u32>,
 }
 
 /// `body_animation_play` の引数。
@@ -167,23 +182,6 @@ pub struct SceneActivateRequest {
 pub struct UiActivateRequest {
     /// Pack id（null で active を clear）。registry のみ更新、config.json は触らない。
     pub id: Option<String>,
-}
-
-/// `ui_scene_layer_set` の引数。scene layer の blur / opacity を操作する。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct UiSceneLayerSetRequest {
-    /// Layer role: "background" or "foreground"
-    pub role: String,
-    /// Blur radius (px)。null でリセット（= blur なし）。省略は変更なし。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub blur: Option<f32>,
-    /// Opacity 0-1。null でリセット（= 1）。省略は変更なし。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub opacity: Option<f32>,
-    /// 補間時間（ms）。省略 / 0 で即時反映。
-    #[serde(rename = "durationMs")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u32>,
 }
 
 /// `ui_terminal_set` の引数。terminal container の opacity を操作する。
@@ -360,6 +358,70 @@ impl Charminal {
         unwrap_ts_response(response)
     }
 
+    /// controls_get: F2 controls panel に表示されている値を読む。
+    #[tool(
+        description = "Read visible F2 controls. scope defaults to scene. Use scope='scene' for active scene pack controls (lights/post effects/scene layers) and scope='common' for app-common controls (camera). Pass path to read one control, or omit path for all visible controls."
+    )]
+    async fn controls_get(
+        &self,
+        Parameters(req): Parameters<ControlsGetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.get",
+            json!({ "scope": req.scope, "path": req.path }),
+        )
+        .await
+    }
+
+    /// controls_set: F2 controls panel に表示されている値を書き換える。
+    #[tool(
+        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Common camera.x/y/z and camera.targetX/Y/Z writes disable tracking and apply to the live camera immediately."
+    )]
+    async fn controls_set(
+        &self,
+        Parameters(req): Parameters<ControlsSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.set",
+            json!({ "scope": req.scope, "path": req.path, "value": req.value }),
+        )
+        .await
+    }
+
+    /// controls_set_many: F2 controls panel に表示されている複数値をまとめて書き換える。
+    #[tool(
+        description = "Set multiple visible F2 control values at once. scope defaults to scene. Use controls_get first to discover paths."
+    )]
+    async fn controls_set_many(
+        &self,
+        Parameters(req): Parameters<ControlsSetManyRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.set_many",
+            json!({ "scope": req.scope, "values": req.values }),
+        )
+        .await
+    }
+
+    /// controls_transition: F2 controls panel に表示されている値を補間する。
+    #[tool(
+        description = "Transition visible F2 control values. Numeric controls tween over durationMs; nonnumeric controls apply immediately. Use this for camera moves and smooth scene parameter demos."
+    )]
+    async fn controls_transition(
+        &self,
+        Parameters(req): Parameters<ControlsTransitionRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.transition",
+            json!({ "scope": req.scope, "values": req.values, "durationMs": req.duration_ms }),
+        )
+        .await
+    }
+
     // 以下 5 tool は dot.notation の dispatch key を使う。既存 kebab key との
     // dual convention は Phase γ で actions registry 抽出時に再考
     // （specs/2026-04-28-mcp-mvp-design.md §Tool naming）。
@@ -409,40 +471,6 @@ impl Charminal {
         .await
     }
 
-    /// scene_camera_set: PerspectiveCamera の position / lookAt target / fov を更新する。
-    #[tool(description = "Set scene camera position, lookAt target, or fov.")]
-    async fn scene_camera_set(
-        &self,
-        Parameters(req): Parameters<SceneCameraSetRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        emit_to(
-            &self.app_handle,
-            "scene.camera.set",
-            json!({
-                "position": req.position,
-                "target": req.target,
-                "fov": req.fov,
-                "durationMs": req.duration_ms,
-                "tracking": req.tracking,
-            }),
-        )
-        .await
-    }
-
-    /// scene_lighting_set: scene の DirectionalLight の intensity / color を更新する。
-    #[tool(description = "Set scene DirectionalLight intensity and/or color (#rrggbb).")]
-    async fn scene_lighting_set(
-        &self,
-        Parameters(req): Parameters<SceneLightingSetRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        emit_to(
-            &self.app_handle,
-            "scene.lighting.set",
-            json!({ "intensity": req.intensity, "color": req.color, "durationMs": req.duration_ms }),
-        )
-        .await
-    }
-
     /// 住人 AI が意識的に body animation を再生する（priority mcp-conscious）。
     #[tool(
         description = "Play a body animation at mcp-conscious priority. Preempts lower-priority motions (persona/state/idle). Re-calling replaces the current MCP animation."
@@ -475,27 +503,6 @@ impl Charminal {
         _params: Parameters<BodyMotionCancelRequest>,
     ) -> Result<CallToolResult, McpError> {
         emit_to(&self.app_handle, "body.motion.cancel", json!({})).await
-    }
-
-    /// scene layer の blur / opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
-    #[tool(
-        description = "Set scene layer blur and/or opacity. Supports smooth interpolation via durationMs."
-    )]
-    async fn ui_scene_layer_set(
-        &self,
-        Parameters(req): Parameters<UiSceneLayerSetRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        emit_to(
-            &self.app_handle,
-            "ui.scene-layer.set",
-            json!({
-                "role": req.role,
-                "blur": req.blur,
-                "opacity": req.opacity,
-                "durationMs": req.duration_ms,
-            }),
-        )
-        .await
     }
 
     /// terminal container の opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。

@@ -16,7 +16,6 @@ import type {
 } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
-import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { UiStateStore } from "../ui-state-store";
 import {
@@ -239,6 +238,278 @@ export function createSetPackStateHandler(deps: SetPackStateDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
+ * controls.get / controls.set / controls.set_many / controls.transition
+ * ────────────────────────────────────────────────────────── */
+
+export type ControlScope = "scene" | "common";
+
+export interface ControlStoreLike {
+  readonly getVisiblePaths: () => string[];
+  readonly getData: () => Record<string, unknown>;
+  readonly setValueAtPath: (path: string, value: unknown, fromPanel: boolean) => void;
+}
+
+export interface ControlEntry {
+  readonly path: string;
+  readonly value: unknown;
+  readonly type: string;
+  readonly label: string;
+  readonly disabled: boolean;
+}
+
+export type ControlsGetResponse =
+  | {
+      readonly scope: ControlScope;
+      readonly activeSceneId?: string | null;
+      readonly controls: ReadonlyArray<ControlEntry>;
+    }
+  | {
+      readonly scope: ControlScope;
+      readonly activeSceneId?: string | null;
+      readonly control: ControlEntry;
+    };
+
+export interface ControlsSetResponse {
+  readonly ok: true;
+  readonly scope: ControlScope;
+  readonly activeSceneId?: string | null;
+  readonly path: string;
+  readonly value: unknown;
+}
+
+export interface ControlsSetManyResponse {
+  readonly ok: true;
+  readonly scope: ControlScope;
+  readonly activeSceneId?: string | null;
+  readonly values: Record<string, unknown>;
+}
+
+export interface ControlsTransitionResponse extends ControlsSetManyResponse {
+  readonly durationMs: number;
+  readonly tweening: boolean;
+}
+
+export interface ControlsDeps {
+  readonly getSceneStore: () => ControlStoreLike | null;
+  readonly getCommonStore: () => ControlStoreLike | null;
+  readonly getActiveSceneId: () => string | null;
+}
+
+export interface ControlsSetDeps extends ControlsDeps {
+  readonly tweenManager?: TweenManager;
+  readonly onControlSet?: (event: {
+    readonly scope: ControlScope;
+    readonly path: string;
+    readonly value: unknown;
+  }) => void;
+}
+
+export interface ControlsTransitionDeps extends ControlsSetDeps {
+  readonly tweenManager: TweenManager;
+}
+
+function parseControlScope(value: unknown): ControlScope {
+  if (value === undefined || value === null) return "scene";
+  if (value === "scene" || value === "common") return value;
+  throw new Error('scope must be "scene" or "common"');
+}
+
+function resolveControlStore(
+  deps: ControlsDeps,
+  scope: ControlScope,
+): { store: ControlStoreLike; activeSceneId?: string | null } {
+  if (scope === "common") {
+    const store = deps.getCommonStore();
+    if (store === null) throw new Error("common controls are not available");
+    return { store };
+  }
+  const activeSceneId = deps.getActiveSceneId();
+  if (!activeSceneId) throw new Error("active な scene pack がありません");
+  const store = deps.getSceneStore();
+  if (store === null) throw new Error("scene controls are not available");
+  return { store, activeSceneId };
+}
+
+function controlInputRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function controlValuesRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("values must be an object");
+  }
+  return value as Record<string, unknown>;
+}
+
+function labelForControl(path: string, input: Record<string, unknown>): string {
+  const label = input.label;
+  if (typeof label === "string" && label !== "") return label;
+  const segments = path.split(".");
+  return segments[segments.length - 1] ?? path;
+}
+
+function controlEntryFromStore(store: ControlStoreLike, path: string): ControlEntry {
+  const data = store.getData();
+  const input = controlInputRecord(data[path]);
+  if (input === null || !("value" in input)) {
+    throw new Error(`control path not found: ${path}`);
+  }
+  const type = input.type;
+  return {
+    path,
+    value: input.value,
+    type: typeof type === "string" ? type : "unknown",
+    label: labelForControl(path, input),
+    disabled: input.disabled === true,
+  };
+}
+
+function visibleControlEntries(store: ControlStoreLike): ReadonlyArray<ControlEntry> {
+  return store
+    .getVisiblePaths()
+    .map((path) => {
+      try {
+        return controlEntryFromStore(store, path);
+      } catch {
+        return null;
+      }
+    })
+    .filter((entry): entry is ControlEntry => entry !== null);
+}
+
+function controlTweenKey(scope: ControlScope, path: string): string {
+  return `controls.${scope}.${path}`;
+}
+
+function validateControlWrite(store: ControlStoreLike, path: string): ControlEntry {
+  if (typeof path !== "string" || path === "") {
+    throw new Error("path must be a non-empty string");
+  }
+  if (!store.getVisiblePaths().includes(path)) {
+    throw new Error(`control path not found: ${path}`);
+  }
+  return controlEntryFromStore(store, path);
+}
+
+function applyControlValue(
+  deps: ControlsSetDeps,
+  scope: ControlScope,
+  path: string,
+  value: unknown,
+  store: ControlStoreLike,
+  options?: { cancelTween?: boolean },
+): void {
+  if (options?.cancelTween !== false) deps.tweenManager?.cancel(controlTweenKey(scope, path));
+  store.setValueAtPath(path, value, false);
+  deps.onControlSet?.({ scope, path, value });
+}
+
+export function createControlsGetHandler(deps: ControlsDeps) {
+  return async (request: unknown): Promise<ControlsGetResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const path = record.path;
+    if (path === undefined || path === null) {
+      return { scope, activeSceneId, controls: visibleControlEntries(store) };
+    }
+    if (typeof path !== "string" || path === "") {
+      throw new Error("path must be a non-empty string");
+    }
+    if (!store.getVisiblePaths().includes(path)) {
+      throw new Error(`control path not found: ${path}`);
+    }
+    return { scope, activeSceneId, control: controlEntryFromStore(store, path) };
+  };
+}
+
+export function createControlsSetHandler(deps: ControlsSetDeps) {
+  return async (request: unknown): Promise<ControlsSetResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const path = record.path;
+    if (typeof path !== "string" || path === "") {
+      throw new Error("path must be a non-empty string");
+    }
+    if (!("value" in record)) {
+      throw new Error("missing value");
+    }
+    validateControlWrite(store, path);
+    const value = record.value;
+    applyControlValue(deps, scope, path, value, store);
+    return { ok: true, scope, activeSceneId, path, value };
+  };
+}
+
+export function createControlsSetManyHandler(deps: ControlsSetDeps) {
+  return async (request: unknown): Promise<ControlsSetManyResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const values = controlValuesRecord(record.values);
+    const entries = Object.entries(values);
+    if (entries.length === 0) throw new Error("values must not be empty");
+
+    for (const [path] of entries) validateControlWrite(store, path);
+    for (const [path, value] of entries) applyControlValue(deps, scope, path, value, store);
+
+    return { ok: true, scope, activeSceneId, values: { ...values } };
+  };
+}
+
+export function createControlsTransitionHandler(deps: ControlsTransitionDeps) {
+  return async (request: unknown): Promise<ControlsTransitionResponse> => {
+    const record = requestRecord(request);
+    const scope = parseControlScope(record.scope);
+    const { store, activeSceneId } = resolveControlStore(deps, scope);
+    const values = controlValuesRecord(record.values);
+    const entries = Object.entries(values);
+    if (entries.length === 0) throw new Error("values must not be empty");
+
+    const durationMs =
+      typeof record.durationMs === "number" &&
+      Number.isFinite(record.durationMs) &&
+      record.durationMs > 0
+        ? record.durationMs
+        : 0;
+
+    const currentEntries = new Map<string, ControlEntry>();
+    for (const [path] of entries) currentEntries.set(path, validateControlWrite(store, path));
+
+    if (durationMs === 0) {
+      for (const [path, value] of entries) applyControlValue(deps, scope, path, value, store);
+      return { ok: true, scope, activeSceneId, values: { ...values }, durationMs, tweening: false };
+    }
+
+    let tweening = false;
+    for (const [path, value] of entries) {
+      const current = currentEntries.get(path)?.value;
+      if (
+        typeof current === "number" &&
+        Number.isFinite(current) &&
+        typeof value === "number" &&
+        Number.isFinite(value)
+      ) {
+        tweening = true;
+        deps.tweenManager.start(
+          controlTweenKey(scope, path),
+          value,
+          durationMs,
+          (next) => applyControlValue(deps, scope, path, next, store, { cancelTween: false }),
+          { from: current },
+        );
+      } else {
+        applyControlValue(deps, scope, path, value, store);
+      }
+    }
+
+    return { ok: true, scope, activeSceneId, values: { ...values }, durationMs, tweening };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
  * helper（module-level）
  * ────────────────────────────────────────────────────────── */
 
@@ -264,21 +535,6 @@ function extractLighting(
     }
   }
   return found ? result : null;
-}
-
-/**
- * scene 内の最初の DirectionalLight を 1 個取り出す。
- * pack 依存を MCP 層に持ち込まないため独立に持つ（3 行重複は abstraction より良い、
- * CLAUDE.md「premature abstraction を避ける」）。
- */
-function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
-  let found: THREE.DirectionalLight | null = null;
-  scene.traverse((obj) => {
-    if (!found && obj.visible && (obj as THREE.DirectionalLight).isDirectionalLight) {
-      found = obj as THREE.DirectionalLight;
-    }
-  });
-  return found;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -587,244 +843,10 @@ export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
   };
 }
 
-/* ──────────────────────────────────────────────────────────
- * scene.camera.set
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneCameraSetDeps {
-  readonly getCamera: () => THREE.PerspectiveCamera | null;
-  readonly tweenManager: TweenManager;
-  readonly claimCamera: () => Disposable;
-  readonly setCameraTracking: (enabled: boolean) => void;
-  readonly getCameraTracking: () => boolean;
-  readonly setCameraBase?: (pos: [number, number, number]) => void;
-}
-
-export interface SceneCameraSetResult {
-  readonly position: readonly [number, number, number];
-  readonly fov: number;
-  readonly tweening?: boolean;
-  readonly tracking?: boolean;
-}
-
 function parseVec3(v: unknown): readonly [number, number, number] | undefined {
   if (!Array.isArray(v) || v.length !== 3) return undefined;
   if (!v.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
   return [v[0] as number, v[1] as number, v[2] as number];
-}
-
-/**
- * camera の position / target (lookAt) / fov を opportunistic に更新する handler。
- * 与えられなかった field は変更しない。camera 未準備時は throw する。
- *
- * durationMs > 0 の場合は TweenManager で per-frame 補間を行い、補間中は
- * claimCamera() で head-tracking を suspend する。durationMs 省略 / 0 は即時反映
- * （後方互換）。
- */
-export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
-  let cameraClaimDisposable: Disposable | null = null;
-  const activeCameraTweenKeys = new Set<string>();
-
-  function ensureCameraClaim(): void {
-    if (!cameraClaimDisposable) cameraClaimDisposable = deps.claimCamera();
-  }
-  function releaseCameraClaimIfDone(): void {
-    if (activeCameraTweenKeys.size === 0 && cameraClaimDisposable) {
-      // tween 完了時に cameraBase を現在の cam.position に同期する。
-      // これがないと claim 解放後に RAF ループが古い cameraBase で position を上書きし、
-      // カメラが tween 前の位置に snap-back する。
-      const cam = deps.getCamera();
-      if (cam) {
-        deps.setCameraBase?.([cam.position.x, cam.position.y, cam.position.z]);
-      }
-      cameraClaimDisposable.dispose();
-      cameraClaimDisposable = null;
-    }
-  }
-  function trackTween(key: string, handle: { completion: Promise<void> }): void {
-    activeCameraTweenKeys.add(key);
-    handle.completion.then(() => {
-      activeCameraTweenKeys.delete(key);
-      releaseCameraClaimIfDone();
-    });
-  }
-
-  return async (request: unknown): Promise<SceneCameraSetResult> => {
-    const r = (request ?? {}) as {
-      position?: unknown;
-      target?: unknown;
-      fov?: unknown;
-      durationMs?: unknown;
-      tracking?: unknown;
-    };
-    const cam = deps.getCamera();
-    if (!cam) throw new Error("camera not ready");
-
-    const position = parseVec3(r.position);
-    const target = parseVec3(r.target);
-    const fovValue = typeof r.fov === "number" && Number.isFinite(r.fov) ? r.fov : undefined;
-    const durationMs =
-      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
-        ? r.durationMs
-        : 0;
-    const trackingValue = typeof r.tracking === "boolean" ? r.tracking : undefined;
-
-    if (trackingValue !== undefined) {
-      deps.setCameraTracking(trackingValue);
-    }
-
-    if (durationMs > 0) {
-      ensureCameraClaim();
-
-      if (position) {
-        const h = deps.tweenManager.startVec3(
-          "camera.position",
-          position,
-          durationMs,
-          (v) => cam.position.set(v[0], v[1], v[2]),
-          { from: [cam.position.x, cam.position.y, cam.position.z] },
-        );
-        trackTween("camera.position", h);
-      }
-      if (target) {
-        // camera.lookAt target は PerspectiveCamera に保持されないため
-        // "from" は [0, cam.position.y, 0] で近似（正面向き前提）
-        const h = deps.tweenManager.startVec3(
-          "camera.target",
-          target,
-          durationMs,
-          (v) => cam.lookAt(v[0], v[1], v[2]),
-          { from: [0, cam.position.y, 0] },
-        );
-        trackTween("camera.target", h);
-      }
-      if (fovValue !== undefined && "fov" in cam) {
-        const h = deps.tweenManager.start(
-          "camera.fov",
-          fovValue,
-          durationMs,
-          (v) => {
-            cam.fov = v;
-            cam.updateProjectionMatrix();
-          },
-          { from: cam.fov },
-        );
-        trackTween("camera.fov", h);
-      }
-
-      return {
-        position: [cam.position.x, cam.position.y, cam.position.z],
-        fov: "fov" in cam ? cam.fov : 0,
-        tweening: true,
-        tracking: deps.getCameraTracking(),
-      };
-    }
-
-    // Instant mode: cancel active tweens + direct set（既存動作）
-    deps.tweenManager.cancel("camera.position");
-    deps.tweenManager.cancel("camera.target");
-    deps.tweenManager.cancel("camera.fov");
-    activeCameraTweenKeys.clear();
-    releaseCameraClaimIfDone();
-
-    if (position) {
-      cam.position.set(position[0], position[1], position[2]);
-      deps.setCameraBase?.([...position]);
-    }
-    if (target) cam.lookAt(target[0], target[1], target[2]);
-    if (fovValue !== undefined && "fov" in cam) {
-      cam.fov = fovValue;
-      cam.updateProjectionMatrix();
-    }
-
-    return {
-      position: [cam.position.x, cam.position.y, cam.position.z],
-      fov: "fov" in cam ? cam.fov : 0,
-      tracking: deps.getCameraTracking(),
-    };
-  };
-}
-
-/* ──────────────────────────────────────────────────────────
- * scene.lighting.set
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneLightingSetDeps {
-  readonly getScene: () => THREE.Scene | null;
-  readonly tweenManager: TweenManager;
-}
-
-export interface SceneLightingSetResult {
-  readonly intensity: number;
-  readonly color: string;
-  readonly tweening?: boolean;
-}
-
-/**
- * scene 内の最初の DirectionalLight に intensity / color を opportunistic に
- * 適用する handler。light が無い場合は throw する。
- * durationMs > 0 の場合は TweenManager で per-frame 補間を行う。
- * durationMs 省略 / 0 は即時反映（後方互換）。
- */
-export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
-  return async (request: unknown): Promise<SceneLightingSetResult> => {
-    const r = (request ?? {}) as { intensity?: unknown; color?: unknown; durationMs?: unknown };
-    const scene = deps.getScene();
-    if (!scene) throw new Error("scene not ready");
-    const light = findDirectionalLight(scene);
-    if (!light) throw new Error("no DirectionalLight in scene");
-
-    const intensityVal =
-      typeof r.intensity === "number" && Number.isFinite(r.intensity) ? r.intensity : undefined;
-    const colorVal = typeof r.color === "string" ? r.color : undefined;
-    const durationMs =
-      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
-        ? r.durationMs
-        : 0;
-
-    if (durationMs > 0) {
-      if (intensityVal !== undefined) {
-        deps.tweenManager.start(
-          "lighting.intensity",
-          intensityVal,
-          durationMs,
-          (v) => {
-            light.intensity = v;
-          },
-          { from: light.intensity },
-        );
-      }
-      if (colorVal !== undefined) {
-        deps.tweenManager.startWithLerp(
-          "lighting.color",
-          `#${light.color.getHexString()}`,
-          colorVal,
-          durationMs,
-          colorLerp,
-          (v) => light.color.set(v),
-        );
-      }
-      return {
-        intensity: light.intensity,
-        color: `#${light.color.getHexString()}`,
-        tweening: true,
-      };
-    }
-
-    // Instant mode: cancel active tweens + direct set（既存動作）
-    deps.tweenManager.cancel("lighting.intensity");
-    deps.tweenManager.cancel("lighting.color");
-    if (intensityVal !== undefined) {
-      light.intensity = intensityVal;
-    }
-    if (colorVal !== undefined) {
-      light.color.set(colorVal);
-    }
-    return {
-      intensity: light.intensity,
-      color: `#${light.color.getHexString()}`,
-    };
-  };
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -943,78 +965,6 @@ export function __resetMcpMotionHandleForTesting(): void {
     mcpMotionHandle.release(0);
     mcpMotionHandle = null;
   }
-}
-
-/* ──────────────────────────────────────────────────────────
- * ui.scene-layer.set
- * ────────────────────────────────────────────────────────── */
-
-export interface UiSceneLayerSetDeps {
-  readonly updateSceneLayer: (
-    target: { role: string },
-    patch: { blur?: number | null; opacity?: number | null },
-  ) => void;
-  readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
-  readonly tweenManager: TweenManager;
-}
-
-export interface UiSceneLayerSetResult {
-  readonly role: string;
-  readonly blur?: number | null;
-  readonly opacity?: number | null;
-  readonly tweening?: boolean;
-}
-
-export function createUiSceneLayerSetHandler(deps: UiSceneLayerSetDeps) {
-  return async (request: unknown): Promise<UiSceneLayerSetResult> => {
-    const r = requestRecord(request);
-    const role = r.role;
-    if (role !== "background" && role !== "foreground") {
-      throw new Error('role must be "background" or "foreground"');
-    }
-    const blur = typeof r.blur === "number" && Number.isFinite(r.blur) ? r.blur : undefined;
-    const opacity =
-      typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
-    const durationMs =
-      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
-        ? r.durationMs
-        : 0;
-
-    if (durationMs > 0) {
-      const current = deps.getSceneLayerValues(role);
-      if (blur !== undefined) {
-        deps.tweenManager.start(
-          `scene.layer.blur.${role}`,
-          blur,
-          durationMs,
-          (v) => deps.updateSceneLayer({ role }, { blur: v }),
-          { from: current.blur },
-        );
-      }
-      if (opacity !== undefined) {
-        deps.tweenManager.start(
-          `scene.layer.opacity.${role}`,
-          opacity,
-          durationMs,
-          (v) => deps.updateSceneLayer({ role }, { opacity: v }),
-          { from: current.opacity },
-        );
-      }
-      return { role, blur, opacity, tweening: true };
-    }
-
-    // 即時: active な tween を cancel + 直接 set
-    deps.tweenManager.cancel(`scene.layer.blur.${role}`);
-    deps.tweenManager.cancel(`scene.layer.opacity.${role}`);
-    const patch: { blur?: number | null; opacity?: number | null } = {};
-    if (blur !== undefined) patch.blur = blur;
-    if (opacity !== undefined) patch.opacity = opacity;
-    // null reset のサポート: raw request に明示的 null があるかチェック
-    if (r.blur === null) patch.blur = null;
-    if (r.opacity === null) patch.opacity = null;
-    deps.updateSceneLayer({ role }, patch);
-    return { role, blur, opacity };
-  };
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -1231,45 +1181,6 @@ export function createUiActivateHandler(deps: UiActivateDeps) {
     }
     deps.registry.setActiveUi(id);
     return { active: deps.registry.getActiveUiId() };
-  };
-}
-
-/* ──────────────────────────────────────────────────────────
- * scene.camera.modulation
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneCameraModulationDeps {
-  readonly getCameraModulation: () => {
-    enabled: boolean;
-    readonly activeKeys: readonly string[];
-  };
-  readonly isCameraModulationSuspended: () => boolean;
-}
-
-export interface SceneCameraModulationResult {
-  readonly enabled: boolean;
-  readonly activeKeys: readonly string[];
-  readonly suspended: boolean;
-}
-
-/**
- * Scene pack の camera modulation を制御する handler。
- * enabled: false で強制 suspend（claim 無しでも停止）。
- */
-export function createSceneCameraModulationHandler(deps: SceneCameraModulationDeps) {
-  return async (request: unknown): Promise<SceneCameraModulationResult> => {
-    const r = (request ?? {}) as { enabled?: unknown };
-    const mod = deps.getCameraModulation();
-
-    if (typeof r.enabled === "boolean") {
-      mod.enabled = r.enabled;
-    }
-
-    return {
-      enabled: mod.enabled,
-      activeKeys: [...mod.activeKeys],
-      suspended: deps.isCameraModulationSuspended(),
-    };
   };
 }
 

@@ -84,7 +84,8 @@ export interface ScenePackComponentProps {
 
 /**
  * Scene pack が camera に continuous modulation を加えるための API.
- * Base camera 制御（position/fov の absolute 設定）は MCP `scene.camera.set` が担う.
+ * Base camera 制御（position/target/fov の absolute 設定）は Common controls
+ * (`controls_set` / `controls_transition`) が担う.
  * 本 API は base に対する additive な微小変調のみを扱う.
  */
 export interface ScenePackCameraAPI {

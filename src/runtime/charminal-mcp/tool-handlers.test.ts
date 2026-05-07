@@ -21,23 +21,25 @@ import {
   __resetMcpExpressionSlotsForTesting,
   __resetMcpMotionHandleForTesting,
   type BodyLike,
+  type ControlStoreLike,
   createBodyAnimationPlayHandler,
   createBodyExpressionSetHandler,
   createBodyMotionCancelHandler,
+  createControlsGetHandler,
+  createControlsSetHandler,
+  createControlsSetManyHandler,
+  createControlsTransitionHandler,
   createDisablePackHandler,
   createEnablePackHandler,
   createGetPackStateHandler,
   createListPacksHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
-  createSceneCameraSetHandler,
-  createSceneLightingSetHandler,
   createSceneScreenshotHandler,
   createSetPackStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
   createUiActivateHandler,
-  createUiSceneLayerSetHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
 } from "./tool-handlers";
@@ -46,9 +48,25 @@ import {
  * Three.js / VRM 型のフルセットを mock で再現するのは過剰なので、
  * test 内で必要な subset を `as unknown as <T>` で narrow する。
  */
-type SceneLike = THREE.Scene;
 type CameraLike = THREE.PerspectiveCamera;
-type SceneObjectLike = THREE.Object3D;
+
+function makeControlStore(
+  inputs: Record<string, Record<string, unknown>>,
+  visiblePaths = Object.keys(inputs),
+): ControlStoreLike & {
+  readonly writes: Array<{ path: string; value: unknown; fromPanel: boolean }>;
+} {
+  const writes: Array<{ path: string; value: unknown; fromPanel: boolean }> = [];
+  return {
+    writes,
+    getVisiblePaths: () => [...visiblePaths],
+    getData: () => inputs,
+    setValueAtPath: (path, value, fromPanel) => {
+      writes.push({ path, value, fromPanel });
+      if (inputs[path]) inputs[path].value = value;
+    },
+  };
+}
 
 describe("list_packs handler", () => {
   it("merges registry / disabledPacks / load-report.failed under their invariants", async () => {
@@ -376,6 +394,284 @@ describe("ui_state handlers", () => {
     });
 
     await expect(get({ key: "color" })).rejects.toThrow("active な scene pack がありません");
+  });
+});
+
+describe("controls handlers", () => {
+  it("reads active scene controls as normalized entries", async () => {
+    const sceneStore = makeControlStore({
+      "lights.intensity": {
+        type: "NUMBER",
+        value: 0.8,
+        label: "light int.",
+        disabled: false,
+      },
+      "post effects.bloom.amount": {
+        type: "NUMBER",
+        value: 1.2,
+        label: "amount",
+        disabled: false,
+      },
+    });
+    const get = createControlsGetHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+    });
+
+    await expect(get({ scope: "scene" })).resolves.toEqual({
+      scope: "scene",
+      activeSceneId: "simple-room",
+      controls: [
+        {
+          path: "lights.intensity",
+          value: 0.8,
+          type: "NUMBER",
+          label: "light int.",
+          disabled: false,
+        },
+        {
+          path: "post effects.bloom.amount",
+          value: 1.2,
+          type: "NUMBER",
+          label: "amount",
+          disabled: false,
+        },
+      ],
+    });
+  });
+
+  it("reads and writes common controls", async () => {
+    const commonStore = makeControlStore({
+      "camera.lookAtCharacter": {
+        type: "BOOLEAN",
+        value: true,
+        label: "look at character",
+        disabled: false,
+      },
+    });
+    const deps = {
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+    };
+    const get = createControlsGetHandler(deps);
+    const set = createControlsSetHandler(deps);
+
+    await expect(get({ scope: "common", path: "camera.lookAtCharacter" })).resolves.toEqual({
+      scope: "common",
+      activeSceneId: undefined,
+      control: {
+        path: "camera.lookAtCharacter",
+        value: true,
+        type: "BOOLEAN",
+        label: "look at character",
+        disabled: false,
+      },
+    });
+    await expect(
+      set({ scope: "common", path: "camera.lookAtCharacter", value: false }),
+    ).resolves.toEqual({
+      ok: true,
+      scope: "common",
+      activeSceneId: undefined,
+      path: "camera.lookAtCharacter",
+      value: false,
+    });
+    expect(commonStore.writes).toEqual([
+      { path: "camera.lookAtCharacter", value: false, fromPanel: false },
+    ]);
+    await expect(get({ scope: "common", path: "camera.lookAtCharacter" })).resolves.toMatchObject({
+      control: { value: false },
+    });
+  });
+
+  it("runs a side effect after a successful controls.set", async () => {
+    const commonStore = makeControlStore({
+      "camera.x": {
+        type: "NUMBER",
+        value: 0,
+        label: "x",
+        disabled: false,
+      },
+    });
+    const sideEffects: Array<{ scope: string; path: string; value: unknown }> = [];
+    const set = createControlsSetHandler({
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+      onControlSet: (event) => sideEffects.push(event),
+    });
+
+    await expect(set({ scope: "common", path: "camera.x", value: 1.25 })).resolves.toMatchObject({
+      ok: true,
+      scope: "common",
+      path: "camera.x",
+      value: 1.25,
+    });
+    expect(commonStore.writes).toEqual([{ path: "camera.x", value: 1.25, fromPanel: false }]);
+    expect(sideEffects).toEqual([{ scope: "common", path: "camera.x", value: 1.25 }]);
+  });
+
+  it("writes multiple controls at once", async () => {
+    const sceneStore = makeControlStore({
+      "lights.intensity": {
+        type: "NUMBER",
+        value: 0.8,
+        label: "light int.",
+        disabled: false,
+      },
+      "post effects.bloom.amount": {
+        type: "NUMBER",
+        value: 1.2,
+        label: "amount",
+        disabled: false,
+      },
+    });
+    const setMany = createControlsSetManyHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+    });
+
+    await expect(
+      setMany({
+        scope: "scene",
+        values: {
+          "lights.intensity": 0.5,
+          "post effects.bloom.amount": 0.1,
+        },
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      scope: "scene",
+      activeSceneId: "simple-room",
+      values: {
+        "lights.intensity": 0.5,
+        "post effects.bloom.amount": 0.1,
+      },
+    });
+    expect(sceneStore.writes).toEqual([
+      { path: "lights.intensity", value: 0.5, fromPanel: false },
+      { path: "post effects.bloom.amount", value: 0.1, fromPanel: false },
+    ]);
+  });
+
+  it("transitions numeric controls and applies nonnumeric controls immediately", async () => {
+    const tm = new TweenManager();
+    const commonStore = makeControlStore({
+      "camera.x": {
+        type: "NUMBER",
+        value: 0,
+        label: "x",
+        disabled: false,
+      },
+      "camera.tracking": {
+        type: "BOOLEAN",
+        value: true,
+        label: "tracking",
+        disabled: false,
+      },
+    });
+    const sideEffects: Array<{ scope: string; path: string; value: unknown }> = [];
+    const transition = createControlsTransitionHandler({
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+      tweenManager: tm,
+      onControlSet: (event) => sideEffects.push(event),
+    });
+
+    await expect(
+      transition({
+        scope: "common",
+        durationMs: 100,
+        values: {
+          "camera.tracking": false,
+          "camera.x": 10,
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      scope: "common",
+      durationMs: 100,
+      tweening: true,
+    });
+
+    expect(commonStore.writes).toEqual([
+      { path: "camera.tracking", value: false, fromPanel: false },
+    ]);
+    tm.tick(0);
+    tm.tick(50);
+    tm.tick(100);
+
+    expect(commonStore.writes).toEqual([
+      { path: "camera.tracking", value: false, fromPanel: false },
+      { path: "camera.x", value: 0, fromPanel: false },
+      { path: "camera.x", value: 5, fromPanel: false },
+      { path: "camera.x", value: 10, fromPanel: false },
+    ]);
+    expect(sideEffects).toEqual([
+      { scope: "common", path: "camera.tracking", value: false },
+      { scope: "common", path: "camera.x", value: 0 },
+      { scope: "common", path: "camera.x", value: 5 },
+      { scope: "common", path: "camera.x", value: 10 },
+    ]);
+  });
+
+  it("controls.set cancels active transitions on the same path", async () => {
+    const tm = new TweenManager();
+    const commonStore = makeControlStore({
+      "camera.x": {
+        type: "NUMBER",
+        value: 0,
+        label: "x",
+        disabled: false,
+      },
+    });
+    const deps = {
+      getSceneStore: () => null,
+      getCommonStore: () => commonStore,
+      getActiveSceneId: () => null,
+      tweenManager: tm,
+    };
+    const transition = createControlsTransitionHandler(deps);
+    const set = createControlsSetHandler(deps);
+
+    await transition({ scope: "common", durationMs: 100, values: { "camera.x": 10 } });
+    expect(tm.isActive("controls.common.camera.x")).toBe(true);
+    await set({ scope: "common", path: "camera.x", value: 2 });
+    expect(tm.isActive("controls.common.camera.x")).toBe(false);
+  });
+
+  it("defaults scope to scene and rejects missing active scene", async () => {
+    const get = createControlsGetHandler({
+      getSceneStore: () => null,
+      getCommonStore: () => null,
+      getActiveSceneId: () => null,
+    });
+
+    await expect(get({})).rejects.toThrow("active な scene pack がありません");
+  });
+
+  it("rejects unknown control paths", async () => {
+    const sceneStore = makeControlStore({
+      "lights.intensity": {
+        type: "NUMBER",
+        value: 0.8,
+        label: "light int.",
+        disabled: false,
+      },
+    });
+    const set = createControlsSetHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+    });
+
+    await expect(set({ path: "lights.missing", value: 1 })).rejects.toThrow(
+      "control path not found: lights.missing",
+    );
   });
 });
 
@@ -801,173 +1097,6 @@ describe("createSpaceEffectPlayHandler", () => {
   });
 });
 
-describe("createSceneCameraSetHandler", () => {
-  let trackingEnabled = true;
-  const mockTrackingDeps = {
-    setCameraTracking: (enabled: boolean) => {
-      trackingEnabled = enabled;
-    },
-    getCameraTracking: () => trackingEnabled,
-  };
-
-  function makeMockCamera() {
-    return {
-      position: {
-        x: 0,
-        y: 0,
-        z: 0,
-        set: vi.fn(function (
-          this: { x: number; y: number; z: number },
-          x: number,
-          y: number,
-          z: number,
-        ) {
-          this.x = x;
-          this.y = y;
-          this.z = z;
-        }),
-      },
-      lookAt: vi.fn(),
-      fov: 50,
-      updateProjectionMatrix: vi.fn(),
-    };
-  }
-
-  it("sets position / target / fov when given", async () => {
-    const camera = makeMockCamera();
-    const handler = createSceneCameraSetHandler({
-      getCamera: () => camera as unknown as CameraLike,
-      tweenManager: new TweenManager(),
-      claimCamera: () => ({ dispose: () => {} }),
-      ...mockTrackingDeps,
-    });
-    const result = await handler({ position: [1, 2, 3], target: [4, 5, 6], fov: 30 });
-    expect(camera.position.set).toHaveBeenCalledWith(1, 2, 3);
-    expect(camera.lookAt).toHaveBeenCalledWith(4, 5, 6);
-    expect(camera.fov).toBe(30);
-    expect(camera.updateProjectionMatrix).toHaveBeenCalled();
-    expect(result.fov).toBe(30);
-  });
-
-  it("throws when camera not ready", async () => {
-    const handler = createSceneCameraSetHandler({
-      getCamera: () => null,
-      tweenManager: new TweenManager(),
-      claimCamera: () => ({ dispose: () => {} }),
-      ...mockTrackingDeps,
-    });
-    await expect(handler({ position: [1, 2, 3] })).rejects.toThrow(/camera not ready/);
-  });
-
-  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
-    const tm = new TweenManager();
-    const mockCamera = makeMockCamera();
-    const handler = createSceneCameraSetHandler({
-      getCamera: () => mockCamera as unknown as CameraLike,
-      tweenManager: tm,
-      claimCamera: () => ({ dispose: () => {} }),
-      ...mockTrackingDeps,
-    });
-    const result = await handler({
-      position: [1.5, 1.3, 0],
-      durationMs: 1000,
-    });
-    expect(result.tweening).toBe(true);
-    expect(tm.isActive("camera.position")).toBe(true);
-  });
-
-  it("durationMs 省略で即時反映（後方互換）", async () => {
-    const tm = new TweenManager();
-    const mockCamera = makeMockCamera();
-    const handler = createSceneCameraSetHandler({
-      getCamera: () => mockCamera as unknown as CameraLike,
-      tweenManager: tm,
-      claimCamera: () => ({ dispose: () => {} }),
-      ...mockTrackingDeps,
-    });
-    const result = await handler({ position: [1, 2, 3] });
-    expect(result.tweening).toBeUndefined();
-    expect(mockCamera.position.x).toBe(1);
-  });
-
-  it("instant set が active tween を cancel", async () => {
-    const tm = new TweenManager();
-    const mockCamera = makeMockCamera();
-    const handler = createSceneCameraSetHandler({
-      getCamera: () => mockCamera as unknown as CameraLike,
-      tweenManager: tm,
-      claimCamera: () => ({ dispose: () => {} }),
-      ...mockTrackingDeps,
-    });
-    await handler({ position: [1, 1, 1], durationMs: 1000 });
-    expect(tm.isActive("camera.position")).toBe(true);
-    await handler({ position: [2, 2, 2] });
-    expect(tm.isActive("camera.position")).toBe(false);
-  });
-});
-
-describe("createSceneLightingSetHandler", () => {
-  const mockLight = {
-    isDirectionalLight: true,
-    visible: true,
-    intensity: 0.5,
-    color: { set: vi.fn(), getHexString: () => "ff8800" },
-  };
-  const mockScene = {
-    traverse: (cb: (obj: SceneObjectLike) => void) => cb(mockLight as unknown as SceneObjectLike),
-  };
-
-  beforeEach(() => {
-    mockLight.intensity = 0.5;
-    mockLight.color.set = vi.fn();
-    mockLight.color.getHexString = () => "ff8800";
-  });
-
-  it("sets intensity and color on DirectionalLight", async () => {
-    const handler = createSceneLightingSetHandler({
-      getScene: () => mockScene as unknown as SceneLike,
-      tweenManager: new TweenManager(),
-    });
-    const result = await handler({ intensity: 0.9, color: "#ff8800" });
-    expect(mockLight.intensity).toBe(0.9);
-    expect(mockLight.color.set).toHaveBeenCalledWith("#ff8800");
-    expect(result).toEqual({ intensity: 0.9, color: "#ff8800" });
-  });
-
-  it("throws when no DirectionalLight in scene", async () => {
-    const handler = createSceneLightingSetHandler({
-      getScene: () =>
-        ({
-          traverse: (_cb: (obj: SceneObjectLike) => void) => {},
-        }) as unknown as SceneLike,
-      tweenManager: new TweenManager(),
-    });
-    await expect(handler({ intensity: 0.5 })).rejects.toThrow(/no DirectionalLight/);
-  });
-
-  it("durationMs > 0 で tween 登録", async () => {
-    const tm = new TweenManager();
-    const handler = createSceneLightingSetHandler({
-      getScene: () => mockScene as unknown as SceneLike,
-      tweenManager: tm,
-    });
-    const result = await handler({ intensity: 0.5, durationMs: 800 });
-    expect(result.tweening).toBe(true);
-    expect(tm.isActive("lighting.intensity")).toBe(true);
-  });
-
-  it("durationMs 省略で即時反映（後方互換）", async () => {
-    const tm = new TweenManager();
-    const handler = createSceneLightingSetHandler({
-      getScene: () => mockScene as unknown as SceneLike,
-      tweenManager: tm,
-    });
-    const result = await handler({ intensity: 0.3 });
-    expect(result.tweening).toBeUndefined();
-    expect(mockLight.intensity).toBe(0.3);
-  });
-});
-
 describe("createBodyAnimationPlayHandler", () => {
   afterEach(() => {
     __resetMcpMotionHandleForTesting();
@@ -1093,57 +1222,6 @@ describe("createBodyMotionCancelHandler", () => {
     const result = await cancelHandler({});
     expect(result).toEqual({ cancelled: true });
     expect(release).toHaveBeenCalledWith(200);
-  });
-});
-
-describe("createUiSceneLayerSetHandler", () => {
-  it("durationMs > 0 で tween 登録 + tweening: true", async () => {
-    const tm = new TweenManager();
-    const patches: Array<{ role: string; patch: Record<string, unknown> }> = [];
-    const handler = createUiSceneLayerSetHandler({
-      updateSceneLayer: (target, patch) => patches.push({ role: target.role, patch }),
-      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
-      tweenManager: tm,
-    });
-    const result = await handler({ role: "background", blur: 8, durationMs: 600 });
-    expect(result.tweening).toBe(true);
-    expect(tm.isActive("scene.layer.blur.background")).toBe(true);
-  });
-
-  it("durationMs 省略で即時反映", async () => {
-    const tm = new TweenManager();
-    const patches: Array<{ role: string; patch: Record<string, unknown> }> = [];
-    const handler = createUiSceneLayerSetHandler({
-      updateSceneLayer: (target, patch) => patches.push({ role: target.role, patch }),
-      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
-      tweenManager: tm,
-    });
-    const result = await handler({ role: "background", blur: 5 });
-    expect(result.tweening).toBeUndefined();
-    expect(patches.length).toBe(1);
-    expect(patches[0].patch).toEqual({ blur: 5 });
-  });
-
-  it("不正な role で throw", async () => {
-    const tm = new TweenManager();
-    const handler = createUiSceneLayerSetHandler({
-      updateSceneLayer: () => {},
-      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
-      tweenManager: tm,
-    });
-    await expect(handler({ role: "invalid" })).rejects.toThrow("role");
-  });
-
-  it("blur のみ指定で opacity は変更しない", async () => {
-    const tm = new TweenManager();
-    const patches: Array<Record<string, unknown>> = [];
-    const handler = createUiSceneLayerSetHandler({
-      updateSceneLayer: (_target, patch) => patches.push(patch),
-      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
-      tweenManager: tm,
-    });
-    await handler({ role: "foreground", blur: 3 });
-    expect(patches[0]).toEqual({ blur: 3 });
   });
 });
 

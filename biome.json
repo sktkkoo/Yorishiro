@@ -39,6 +39,9 @@
       "style": {
         "useConst": "error",
         "noNonNullAssertion": "error"
+      },
+      "complexity": {
+        "noImportantStyles": "off"
       }
     }
   },

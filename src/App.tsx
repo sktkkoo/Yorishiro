@@ -85,8 +85,14 @@ import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
-import { useRuntimeLevaStore } from "./runtime/three-runtime/runtime-leva-store";
-import { useActiveSceneLevaStore } from "./runtime/three-runtime/scene-pack-leva-store";
+import {
+  getRuntimeLevaStore,
+  useRuntimeLevaStore,
+} from "./runtime/three-runtime/runtime-leva-store";
+import {
+  getActiveSceneLevaStore,
+  useActiveSceneLevaStore,
+} from "./runtime/three-runtime/scene-pack-leva-store";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
@@ -137,6 +143,103 @@ async function withTimeout<T>(
   const result = await Promise.race([promise, timeout]);
   if (timeoutId !== null) clearTimeout(timeoutId);
   return result;
+}
+
+const COMMON_CAMERA_CONTROL_PREFIX = "camera.";
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function readRuntimeControlValue(path: string): unknown {
+  const store = getRuntimeLevaStore();
+  const input = store?.getData()[path];
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined;
+  return "value" in input ? input.value : undefined;
+}
+
+function setRuntimeControlValue(path: string, value: unknown): void {
+  const store = getRuntimeLevaStore();
+  if (!store?.getVisiblePaths().includes(path)) return;
+  store.setValueAtPath(path, value, false);
+}
+
+function readNumberRuntimeControlValue(path: string, fallback: number): number {
+  const value = readRuntimeControlValue(path);
+  return isFiniteNumber(value) ? value : fallback;
+}
+
+function lookAtCommonCameraTarget(camera: {
+  readonly position: { readonly y: number };
+  readonly lookAt: (x: number, y: number, z: number) => void;
+}): void {
+  camera.lookAt(
+    readNumberRuntimeControlValue("camera.targetX", 0),
+    readNumberRuntimeControlValue("camera.targetY", camera.position.y),
+    readNumberRuntimeControlValue("camera.targetZ", 0),
+  );
+}
+
+function disableCommonCameraTracking(): void {
+  getThreeRuntime().setCameraTracking(false);
+  setRuntimeControlValue("camera.tracking", false);
+}
+
+function applyCommonCameraControlSet(path: string, value: unknown): void {
+  if (!path.startsWith(COMMON_CAMERA_CONTROL_PREFIX)) return;
+
+  const key = path.slice(COMMON_CAMERA_CONTROL_PREFIX.length);
+  const runtime = getThreeRuntime();
+  const camera = runtime.getCamera();
+
+  if (key === "tracking") {
+    if (typeof value === "boolean") runtime.setCameraTracking(value);
+    return;
+  }
+
+  if (key === "lookAtCharacter") {
+    if (value === true) {
+      camera.lookAt(0, camera.position.y, 0);
+    } else if (value === false) {
+      lookAtCommonCameraTarget(camera);
+    }
+    return;
+  }
+
+  if (key === "fov") {
+    if (!isFiniteNumber(value)) return;
+    camera.fov = value;
+    camera.updateProjectionMatrix();
+    return;
+  }
+
+  if (key === "targetX" || key === "targetY" || key === "targetZ") {
+    if (!isFiniteNumber(value)) return;
+    disableCommonCameraTracking();
+    setRuntimeControlValue("camera.lookAtCharacter", false);
+    lookAtCommonCameraTarget(camera);
+    return;
+  }
+
+  if (key !== "x" && key !== "y" && key !== "z") return;
+  if (!isFiniteNumber(value)) return;
+
+  disableCommonCameraTracking();
+
+  const next = {
+    x: camera.position.x,
+    y: camera.position.y,
+    z: camera.position.z,
+    [key]: value,
+  };
+  camera.position.set(next.x, next.y, next.z);
+  runtime.setCameraBase(next.x, next.y, next.z);
+
+  if (readRuntimeControlValue("camera.lookAtCharacter") === false) {
+    lookAtCommonCameraTarget(camera);
+  } else {
+    camera.lookAt(0, next.y, 0);
+  }
 }
 
 const CWD_STORAGE_KEY = "charminal:cwd";
@@ -684,21 +787,20 @@ function App() {
           createStateGetHandler,
           createBodyExpressionSetHandler,
           createSpaceEffectPlayHandler,
-          createSceneCameraSetHandler,
-          createSceneLightingSetHandler,
           // Phase γ motion tools：
           createBodyAnimationPlayHandler,
           createBodyMotionCancelHandler,
+          createControlsGetHandler,
+          createControlsSetManyHandler,
+          createControlsSetHandler,
+          createControlsTransitionHandler,
           // UI tween tools：
-          createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
           createUiSidebarSetHandler,
           createUiDebugPanelSetHandler,
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
-          // Camera modulation
-          createSceneCameraModulationHandler,
           // Screenshot:
           createSceneScreenshotHandler,
           // Presence intensity:
@@ -820,6 +922,38 @@ function App() {
             state: uiState,
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
           }),
+          "controls.get": createControlsGetHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+          }),
+          "controls.set": createControlsSetHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            onControlSet: ({ scope, path, value }) => {
+              if (scope === "common") applyCommonCameraControlSet(path, value);
+            },
+          }),
+          "controls.set_many": createControlsSetManyHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            onControlSet: ({ scope, path, value }) => {
+              if (scope === "common") applyCommonCameraControlSet(path, value);
+            },
+          }),
+          "controls.transition": createControlsTransitionHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+            tweenManager: getThreeRuntime().getTweenManager(),
+            onControlSet: ({ scope, path, value }) => {
+              if (scope === "common") applyCommonCameraControlSet(path, value);
+            },
+          }),
           // ── Phase β cosmetic write tools ────────────────────────
           "state.get": createStateGetHandler({
             readConfig,
@@ -869,41 +1003,12 @@ function App() {
           "space.effect.play": createSpaceEffectPlayHandler({
             effectDispatcher,
           }),
-          "scene.camera.set": createSceneCameraSetHandler({
-            getCamera: () => getThreeRuntime().getCamera(),
-            tweenManager: getThreeRuntime().getTweenManager(),
-            claimCamera: () => claimState.claim("camera"),
-            setCameraTracking: (enabled) => getThreeRuntime().setCameraTracking(enabled),
-            getCameraTracking: () => getThreeRuntime().getCameraTracking(),
-            setCameraBase: (pos) => getThreeRuntime().setCameraBase(pos[0], pos[1], pos[2]),
-          }),
-          "scene.lighting.set": createSceneLightingSetHandler({
-            getScene: () => getThreeRuntime().getScene(),
-            tweenManager: getThreeRuntime().getTweenManager(),
-          }),
           // ── Phase γ motion tools ────────────────────────
           "body.animation.play": createBodyAnimationPlayHandler({
             getBody: () => getThreeRuntime().getBody(),
           }),
           "body.motion.cancel": createBodyMotionCancelHandler(),
           // ── UI tween tools ─────────────────────────────────
-          "ui.scene-layer.set": createUiSceneLayerSetHandler({
-            updateSceneLayer: (target, patch) => {
-              setSceneLayerOverrides((prev) =>
-                upsertSceneLayerOverride(prev, { role: target.role as LayerRole }, patch),
-              );
-            },
-            getSceneLayerValues: (role) => {
-              const scene = renderedSceneRef.current;
-              if (!scene) return { blur: 0, opacity: 1 };
-              const layer = scene.layers.find((l) => l.role === role);
-              return {
-                blur: layer?.blur ?? 0,
-                opacity: layer?.opacity ?? 1,
-              };
-            },
-            tweenManager: getThreeRuntime().getTweenManager(),
-          }),
           "ui.terminal.set": createUiTerminalSetHandler({
             setTerminalOpacity: (value) => {
               const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
@@ -963,11 +1068,6 @@ function App() {
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
-          }),
-          // ── Camera modulation ─────────────────────────────
-          "scene.camera.modulation": createSceneCameraModulationHandler({
-            getCameraModulation: () => getThreeRuntime().getCameraModulation(),
-            isCameraModulationSuspended: () => getThreeRuntime().isCameraModulationSuspended(),
           }),
           // ── Screenshot ────────────────────────────────────
           "scene.screenshot": createSceneScreenshotHandler({
