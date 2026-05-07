@@ -63,7 +63,7 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
     if (t.position === "hidden") {
       targets.terminal.style.display = "none";
     } else if (t.position === "bottom") {
-      // 画面下 40%、sidebar 右側に配置する shortcut。camera-lighting-panel 等で使う
+      // 画面下 40%、sidebar 右側に配置する shortcut。下半分パネル系の UI pack 用
       targets.terminal.style.position = "fixed";
       targets.terminal.style.top = "60%";
       targets.terminal.style.left = "var(--sidebar-width)";
