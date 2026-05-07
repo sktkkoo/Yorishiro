@@ -6,6 +6,8 @@
 
 <p align="center"><strong>A body for the AI in your terminal.</strong></p>
 
+<p align="center"><sub><strong>Charm</strong>inal = <strong>Char</strong>acter + Ter<strong>minal</strong> + <strong>Charm</strong></sub></p>
+
 Charminal is a desktop app that gives a body to the AI running inside your terminal.
 
 Claude Code or Codex runs inside. While the AI is deep in thought, a 3D character lets its gaze wander. When an error hits, the face grimaces before the AI puts it into words. Sometimes the character just moves on its own, for no reason at all. Instead of a spinner, someone is there.

@@ -6,6 +6,8 @@
 
 <p align="center"><strong>ターミナルの中の AI に、身体を。</strong></p>
 
+<p align="center"><sub><strong>Charm</strong>inal = <strong>Char</strong>acter + Ter<strong>minal</strong> + <strong>Charm</strong></sub></p>
+
 Charminal は、ターミナルの中で動く AI に身体を与えるデスクトップアプリです。
 
 中では Claude Code や Codex が走っています。AI が考え込んでいるあいだ、3D キャラクターが視線をさまよわせる。エラーが出ると、言葉にするより先に眉が顰められる。ときどき、何の脈絡もなく勝手に動く。スピナーの代わりに、そこに誰かが居ます。
