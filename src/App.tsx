@@ -85,8 +85,14 @@ import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
-import { useRuntimeLevaStore } from "./runtime/three-runtime/runtime-leva-store";
-import { useActiveSceneLevaStore } from "./runtime/three-runtime/scene-pack-leva-store";
+import {
+  getRuntimeLevaStore,
+  useRuntimeLevaStore,
+} from "./runtime/three-runtime/runtime-leva-store";
+import {
+  getActiveSceneLevaStore,
+  useActiveSceneLevaStore,
+} from "./runtime/three-runtime/scene-pack-leva-store";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
@@ -724,10 +730,6 @@ function App() {
         );
         const { serializeConfig } = await import("./runtime/user-pack-loader/config");
         const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
-        const { getActiveSceneLevaStore } = await import(
-          "./runtime/three-runtime/scene-pack-leva-store"
-        );
-        const { getRuntimeLevaStore } = await import("./runtime/three-runtime/runtime-leva-store");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
