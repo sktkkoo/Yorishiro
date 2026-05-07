@@ -174,8 +174,8 @@ describe("parseConfig", () => {
 });
 
 describe("serializeConfig", () => {
-  it("omits empty arrays and null fields for minimal JSON", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG, activeAmbientUi: [] };
+  it("omits default arrays and null fields for minimal JSON", () => {
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG };
     const text = serializeConfig(cfg);
     expect(JSON.parse(text)).toEqual({});
   });
@@ -187,7 +187,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: [],
+      activeAmbientUi: ["attention-aura"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -205,7 +205,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: [],
+      activeAmbientUi: ["attention-aura"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -217,7 +217,7 @@ describe("serializeConfig", () => {
   });
 
   it("omits primaryPersona when null", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG, primaryPersona: null, activeAmbientUi: [] };
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG, primaryPersona: null };
     expect(serializeConfig(cfg)).toBe("{}\n");
   });
 
@@ -228,7 +228,7 @@ describe("serializeConfig", () => {
       mcpPort: 18743,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: [],
+      activeAmbientUi: ["attention-aura"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -259,10 +259,7 @@ describe("serializeConfig", () => {
 
   it("writes terminalAgent when codex is selected", () => {
     const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
-    expect(JSON.parse(serializeConfig(cfg))).toEqual({
-      activeAmbientUi: ["attention-aura"],
-      terminalAgent: "codex",
-    });
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ terminalAgent: "codex" });
   });
 });
 
@@ -339,7 +336,7 @@ describe("activeScene", () => {
   });
 
   it("serializeConfig omits activeScene when null", () => {
-    const cfg = { ...EMPTY_CONFIG, activeScene: null, activeAmbientUi: [] };
+    const cfg = { ...EMPTY_CONFIG, activeScene: null };
     expect(serializeConfig(cfg)).toBe("{}\n");
   });
 
@@ -427,6 +424,12 @@ describe("activeAmbientUi", () => {
     expect(out.activeAmbientUi).toEqual(["a", "b"]);
   });
 
+  it("serializes explicit empty array to keep Aura disabled", () => {
+    const cfg = withActiveAmbientUiSet(EMPTY_CONFIG, []);
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ activeAmbientUi: [] });
+    expect(parseConfig(serializeConfig(cfg)).activeAmbientUi).toEqual([]);
+  });
+
   it("withActiveAmbientUiSet replaces the array", () => {
     const next = withActiveAmbientUiSet(EMPTY_CONFIG, ["x", "y"]);
     expect(next.activeAmbientUi).toEqual(["x", "y"]);
@@ -452,12 +455,12 @@ describe("ambientAudioMuted", () => {
   });
 
   it("omits ambientAudioMuted from serialized output when false (default)", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [] };
+    const cfg = { ...EMPTY_CONFIG };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({});
   });
 
   it("writes ambientAudioMuted when true", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], ambientAudioMuted: true };
+    const cfg = { ...EMPTY_CONFIG, ambientAudioMuted: true };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ ambientAudioMuted: true });
   });
 });
@@ -568,7 +571,6 @@ describe("profiles[]", () => {
   it("serializes minimal profile (omits default fields)", () => {
     const cfg = {
       ...EMPTY_CONFIG,
-      activeAmbientUi: [],
       profiles: [
         {
           id: "shell-fish",
@@ -607,7 +609,7 @@ describe("profiles[]", () => {
   });
 
   it("omits profiles field when array is empty", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], profiles: [] };
+    const cfg = { ...EMPTY_CONFIG, profiles: [] };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({});
   });
 });
@@ -633,12 +635,12 @@ describe("defaultProfile", () => {
   });
 
   it("serializes when set", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], defaultProfile: "shell" };
+    const cfg = { ...EMPTY_CONFIG, defaultProfile: "shell" };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ defaultProfile: "shell" });
   });
 
   it("omits defaultProfile from output when null", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], defaultProfile: null };
+    const cfg = { ...EMPTY_CONFIG, defaultProfile: null };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({});
   });
 
@@ -666,12 +668,12 @@ describe("language", () => {
   });
 
   it("omits auto from serialized output", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], language: "auto" as const };
+    const cfg = { ...EMPTY_CONFIG, language: "auto" as const };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({});
   });
 
   it("serializes explicit language", () => {
-    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], language: "en" as const };
+    const cfg = { ...EMPTY_CONFIG, language: "en" as const };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ language: "en" });
   });
 

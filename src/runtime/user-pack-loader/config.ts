@@ -76,6 +76,10 @@ const toStringArray = (value: unknown): string[] => {
   return value.filter((v): v is string => typeof v === "string");
 };
 
+const stringArraysEqual = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean => {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+};
+
 const toPort = (value: unknown): number | null => {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 };
@@ -203,7 +207,9 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
-  if (cfg.activeAmbientUi.length > 0) out.activeAmbientUi = [...cfg.activeAmbientUi];
+  if (!stringArraysEqual(cfg.activeAmbientUi, EMPTY_CONFIG.activeAmbientUi)) {
+    out.activeAmbientUi = [...cfg.activeAmbientUi];
+  }
   if (cfg.language !== DEFAULT_LANGUAGE) out.language = cfg.language;
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
