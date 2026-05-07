@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyConfigUpdate, resolveCloseTarget, SETTINGS_PACK_ID } from "./ui";
+import {
+  applyConfigUpdate,
+  configPrimaryPersonaForSelection,
+  filterPersonaOptionsForLanguage,
+  resolveCloseTarget,
+  resolvePersonaSelectValue,
+  SETTINGS_PACK_ID,
+} from "./ui";
 
 describe("resolveCloseTarget", () => {
   it("returns the saved previous id when valid", () => {
@@ -61,5 +68,40 @@ describe("applyConfigUpdate", () => {
       field: "activeScene",
       reason: "disk full",
     });
+  });
+});
+
+describe("localized CLAI persona options", () => {
+  const personas = [
+    { id: "clai", name: "CLAI", origin: "bundled" as const },
+    { id: "clai-en", name: "CLAI", origin: "bundled" as const },
+    { id: "clai-ja", name: "CLAI", origin: "bundled" as const },
+    { id: "my-persona", name: "Mine", origin: "user" as const },
+  ];
+
+  it("shows only English CLAI for English UI language", () => {
+    expect(filterPersonaOptionsForLanguage(personas, "en").map((p) => p.id)).toEqual([
+      "clai-en",
+      "my-persona",
+    ]);
+  });
+
+  it("shows only Japanese CLAI for Japanese UI language", () => {
+    expect(filterPersonaOptionsForLanguage(personas, "ja").map((p) => p.id)).toEqual([
+      "clai-ja",
+      "my-persona",
+    ]);
+  });
+
+  it("shows the localized CLAI selection for unset or legacy CLAI config", () => {
+    expect(resolvePersonaSelectValue(null, "ja")).toBe("clai-ja");
+    expect(resolvePersonaSelectValue("clai", "en")).toBe("clai-en");
+    expect(resolvePersonaSelectValue("clai-en", "ja")).toBe("clai-ja");
+  });
+
+  it("stores localized CLAI selection as null so language changes keep following", () => {
+    expect(configPrimaryPersonaForSelection("clai-en")).toBeNull();
+    expect(configPrimaryPersonaForSelection("clai-ja")).toBeNull();
+    expect(configPrimaryPersonaForSelection("my-persona")).toBe("my-persona");
   });
 });
