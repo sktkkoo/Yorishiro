@@ -1,0 +1,12 @@
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "clai-en",
+  "name": "CLAI",
+  "type": "persona",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "author": "Charminal team",
+  "description": "Charminal's English default persona: a calm resident who stays beside the user while they work in the terminal.",
+  "entry": "persona.ts",
+  "tags": ["default", "flagship", "en"]
+}
