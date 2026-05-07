@@ -35,6 +35,8 @@ export type SpawnSpec =
       /** binary 上書き。null で既定の agent binary 検索を使う。 */
       readonly command?: string | null;
       readonly systemPrompt?: string | null;
+      /** Claude Code に渡す localized plugin dir。未指定なら Rust 側 fallback。 */
+      readonly pluginDir?: string | null;
     }
   | {
       readonly kind: "shell";
@@ -126,6 +128,14 @@ export const sessionDetach = (args: SessionDetachArgs): Promise<void> =>
 
 /** Registry に登録されてる全 session の descriptor を返す。 */
 export const sessionList = (): Promise<ReadonlyArray<SessionDescriptor>> => invoke("session_list");
+
+export interface PrepareLocalizedPluginDirArgs {
+  readonly language: "en" | "ja";
+}
+
+/** resolved language に対応する Claude Code plugin dir を生成して返す。 */
+export const prepareLocalizedPluginDir = (args: PrepareLocalizedPluginDirArgs): Promise<string> =>
+  call("prepare_localized_plugin_dir", args);
 
 export interface PtyWriteArgs {
   readonly data: string;

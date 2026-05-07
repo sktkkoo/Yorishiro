@@ -40,10 +40,9 @@ pub enum SpawnSpec {
         command: Option<String>,
         #[serde(default)]
         system_prompt: Option<String>,
-        /// Claude Code の `--plugin-dir` に渡す bundled plugin path。Agent variant
-        /// 内で保持し、Tauri command が AppHandle.path().resource_dir() から作って
-        /// 渡す。
-        #[serde(skip)]
+        /// Claude Code の `--plugin-dir` に渡す plugin path。TS 側が resolved
+        /// language に合わせて生成した runtime plugin dir を渡せる。
+        #[serde(default)]
         plugin_dir: Option<std::path::PathBuf>,
     },
     Shell {

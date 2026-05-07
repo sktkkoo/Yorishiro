@@ -36,6 +36,79 @@ fn build_path_env() -> String {
     }
 }
 
+fn normalized_plugin_language(language: &str) -> &'static str {
+    if language == "ja" {
+        "ja"
+    } else {
+        "en"
+    }
+}
+
+fn copy_file_to_dir(src: &Path, dest_dir: &Path) -> Result<(), String> {
+    let file_name = src
+        .file_name()
+        .ok_or_else(|| format!("invalid resource path: {}", src.display()))?;
+    std::fs::copy(src, dest_dir.join(file_name))
+        .map(|_| ())
+        .map_err(|e| format!("copy {} failed: {}", src.display(), e))
+}
+
+/// resolved language に対応する Claude Code plugin dir を生成する。
+/// `~/.charminal/runtime-plugin/` は Charminal 管理領域で、起動ごとに上書きしてよい。
+#[tauri::command]
+fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<String, String> {
+    let language = normalized_plugin_language(&language);
+    let resource_root = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("resource_dir failed: {}", e))?
+        .join("resources")
+        .join("charminal-plugin");
+    let source_commands = resource_root.join(format!("commands-{}", language));
+    if !source_commands.is_dir() {
+        return Err(format!(
+            "localized command directory not found: {}",
+            source_commands.display()
+        ));
+    }
+
+    let target_root = home_dir_or_err()?.join(".charminal").join("runtime-plugin");
+    let target_plugin_meta = target_root.join(".claude-plugin");
+    let target_commands = target_root.join("commands");
+    std::fs::create_dir_all(&target_plugin_meta)
+        .map_err(|e| format!("runtime plugin meta dir create failed: {}", e))?;
+    if target_commands.exists() {
+        std::fs::remove_dir_all(&target_commands)
+            .map_err(|e| format!("runtime plugin commands cleanup failed: {}", e))?;
+    }
+    std::fs::create_dir_all(&target_commands)
+        .map_err(|e| format!("runtime plugin commands dir create failed: {}", e))?;
+
+    copy_file_to_dir(
+        &resource_root.join(".claude-plugin").join("plugin.json"),
+        &target_plugin_meta,
+    )?;
+    std::fs::copy(
+        resource_root.join(".mcp.json"),
+        target_root.join(".mcp.json"),
+    )
+    .map(|_| ())
+    .map_err(|e| format!("copy .mcp.json failed: {}", e))?;
+
+    for entry in std::fs::read_dir(&source_commands)
+        .map_err(|e| format!("read {} failed: {}", source_commands.display(), e))?
+    {
+        let path = entry
+            .map_err(|e| format!("read command dir entry failed: {}", e))?
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+            copy_file_to_dir(&path, &target_commands)?;
+        }
+    }
+
+    Ok(target_root.to_string_lossy().to_string())
+}
+
 /// 任意 session id で PTY を spawn する。session_id を省略した legacy 呼び出し
 /// （旧 single-pane flow）は default-session を作る。caller が明示的に id を
 /// 渡せば multi-pane で session を並列に持てる。
@@ -59,13 +132,15 @@ async fn session_spawn(
             agent,
             command,
             system_prompt,
+            plugin_dir,
             ..
         } => {
-            let plugin_dir = app
-                .path()
-                .resource_dir()
-                .ok()
-                .map(|p| p.join("resources").join("charminal-plugin"));
+            let plugin_dir = plugin_dir.or_else(|| {
+                app.path()
+                    .resource_dir()
+                    .ok()
+                    .map(|p| p.join("resources").join("charminal-plugin"))
+            });
             SpawnSpec::Agent {
                 agent,
                 command,
@@ -780,6 +855,7 @@ pub fn run() {
         .manage(registry)
         .manage(WatcherState::new())
         .invoke_handler(tauri::generate_handler![
+            prepare_localized_plugin_dir,
             session_spawn,
             session_destroy,
             session_write,
