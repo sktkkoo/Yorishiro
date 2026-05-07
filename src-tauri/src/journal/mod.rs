@@ -150,9 +150,6 @@ pub fn read_recent(days: usize) -> Result<Vec<JournalEntry>, String> {
 mod tests {
     use super::*;
     use std::fs;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn tmp_home(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
@@ -171,7 +168,9 @@ mod tests {
 
     #[test]
     fn write_creates_new_entry() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home("write-new");
         std::env::set_var("HOME", &home);
 
@@ -188,7 +187,9 @@ mod tests {
 
     #[test]
     fn write_appends_to_existing_entry() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home("write-append");
         std::env::set_var("HOME", &home);
 
@@ -206,7 +207,9 @@ mod tests {
 
     #[test]
     fn read_entry_returns_none_when_missing() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home("read-missing");
         std::env::set_var("HOME", &home);
 
@@ -218,7 +221,9 @@ mod tests {
 
     #[test]
     fn read_entry_returns_content_when_present() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home("read-present");
         std::env::set_var("HOME", &home);
 
@@ -232,7 +237,9 @@ mod tests {
 
     #[test]
     fn read_recent_returns_entries_in_descending_order() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home("read-recent");
         std::env::set_var("HOME", &home);
 
@@ -250,7 +257,9 @@ mod tests {
 
     #[test]
     fn read_recent_returns_empty_when_no_journal_dir() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home("read-recent-empty");
         std::env::set_var("HOME", &home);
 

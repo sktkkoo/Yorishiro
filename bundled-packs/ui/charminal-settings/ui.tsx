@@ -67,6 +67,17 @@ interface SelectOption {
   readonly label: string;
 }
 
+function formatPackOptionLabel(pack: {
+  readonly id: string;
+  readonly name?: string;
+  readonly origin: "bundled" | "user";
+}): string {
+  const suffixes: string[] = [];
+  if (pack.id === "clai") suffixes.push("legacy");
+  if (pack.origin === "user") suffixes.push("user");
+  return `${pack.name ?? pack.id}${suffixes.length > 0 ? ` (${suffixes.join(", ")})` : ""}`;
+}
+
 /**
  * `appearance: none` + カスタム chevron SVG を持つ select component。
  * tokens 経由でスタイルを一元管理する。
@@ -317,6 +328,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [language, setLanguage] = useState<AppLanguage>("auto");
   const [resolvedLanguage, setResolvedLanguage] = useState<"en" | "ja">("en");
   const personas = ctx.app.listPersonas();
+  const visiblePersonas = personas.filter((p) => p.id !== "clai" || persona === "clai");
   const scenes = ctx.app.listScenes();
   const strings = getStrings(resolvedLanguage);
 
@@ -582,9 +594,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               onChange={onPersonaChange}
               loadingPlaceholder={persona === null ? strings.loading : undefined}
               emptyLabel={strings.noPacks}
-              options={personas.map((p) => ({
+              options={visiblePersonas.map((p) => ({
                 value: p.id,
-                label: `${p.name ?? p.id}${p.origin === "user" ? " (user)" : ""}`,
+                label: formatPackOptionLabel(p),
               }))}
             />
           </div>

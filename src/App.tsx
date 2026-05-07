@@ -757,7 +757,7 @@ function App() {
               bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
             },
             packRegistry,
-            personaDefaults: claiJaPack,
+            personaDefaults: resolvedLanguage === "ja" ? claiJaPack : claiEnPack,
             userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),

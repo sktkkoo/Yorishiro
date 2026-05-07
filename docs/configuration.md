@@ -54,6 +54,8 @@ Identifiers are not localized: command ids (`/charm:create`), MCP tool names (`j
 
 If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Charminal chooses `clai-ja` for Japanese and `clai-en` otherwise.
 
+Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and `/charm:*` command language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
+
 ### Default profile（shell を起動する）
 
 通常 shell を Charminal で起動するには `defaultProfile: "shell"` を指定する：
