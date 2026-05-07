@@ -2,7 +2,7 @@
  * Scene layer debug controls (leva).
  *
  * Active scene に DOM layers がある場合のみ表示される。
- * background / foreground の blur と media (image/video) の読み込み・クリアを提供。
+ * background / foreground の blur / opacity と media (image/video) の読み込み・クリアを提供。
  */
 
 import { button, folder, useControls } from "leva";
@@ -100,6 +100,16 @@ function SceneLayerControlsInner({ store }: SceneLayerControlsProps) {
             getSceneLayerBridge()?.updateLayer({ role: "background" }, { blur: v });
           },
         },
+        backgroundOpacity: {
+          value: 1,
+          min: 0,
+          max: 1,
+          step: 0.01,
+          label: "bg opacity",
+          onChange: (v: number) => {
+            getSceneLayerBridge()?.updateLayer({ role: "background" }, { opacity: v });
+          },
+        },
         backgroundFile: {
           value: backgroundName || "(none)",
           editable: false,
@@ -121,6 +131,16 @@ function SceneLayerControlsInner({ store }: SceneLayerControlsProps) {
           label: "fg blur",
           onChange: (v: number) => {
             getSceneLayerBridge()?.updateLayer({ role: "foreground" }, { blur: v });
+          },
+        },
+        foregroundOpacity: {
+          value: 1,
+          min: 0,
+          max: 1,
+          step: 0.01,
+          label: "fg opacity",
+          onChange: (v: number) => {
+            getSceneLayerBridge()?.updateLayer({ role: "foreground" }, { opacity: v });
           },
         },
         foregroundFile: {

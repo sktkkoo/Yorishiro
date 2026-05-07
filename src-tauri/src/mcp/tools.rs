@@ -124,38 +124,6 @@ pub struct SpaceEffectPlayRequest {
     pub payload: Option<Value>,
 }
 
-/// `scene_camera_set` の引数。すべて optional、与えた field のみ更新。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SceneCameraSetRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub position: Option<[f32; 3]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<[f32; 3]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fov: Option<f32>,
-    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
-    #[serde(rename = "durationMs")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u32>,
-    /// カメラ自動追従（head tracking）の有効/無効。省略で変更なし。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tracking: Option<bool>,
-}
-
-/// `scene_lighting_set` の引数。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SceneLightingSetRequest {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub intensity: Option<f32>,
-    /// "#rrggbb" hex string
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    /// 補間時間（ms）。省略 / 0 で即時反映（既存動作）。
-    #[serde(rename = "durationMs")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u32>,
-}
-
 /// `body_animation_play` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyAnimationPlayRequest {
@@ -214,23 +182,6 @@ pub struct SceneActivateRequest {
 pub struct UiActivateRequest {
     /// Pack id（null で active を clear）。registry のみ更新、config.json は触らない。
     pub id: Option<String>,
-}
-
-/// `ui_scene_layer_set` の引数。scene layer の blur / opacity を操作する。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct UiSceneLayerSetRequest {
-    /// Layer role: "background" or "foreground"
-    pub role: String,
-    /// Blur radius (px)。null でリセット（= blur なし）。省略は変更なし。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub blur: Option<f32>,
-    /// Opacity 0-1。null でリセット（= 1）。省略は変更なし。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub opacity: Option<f32>,
-    /// 補間時間（ms）。省略 / 0 で即時反映。
-    #[serde(rename = "durationMs")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration_ms: Option<u32>,
 }
 
 /// `ui_terminal_set` の引数。terminal container の opacity を操作する。
@@ -520,42 +471,6 @@ impl Charminal {
         .await
     }
 
-    /// scene_camera_set: PerspectiveCamera の position / lookAt target / fov を更新する。
-    #[tool(
-        description = "Set scene camera position, lookAt target, or fov. After instant moves or completed tweens, Common camera controls are synced to the live camera."
-    )]
-    async fn scene_camera_set(
-        &self,
-        Parameters(req): Parameters<SceneCameraSetRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        emit_to(
-            &self.app_handle,
-            "scene.camera.set",
-            json!({
-                "position": req.position,
-                "target": req.target,
-                "fov": req.fov,
-                "durationMs": req.duration_ms,
-                "tracking": req.tracking,
-            }),
-        )
-        .await
-    }
-
-    /// scene_lighting_set: scene の DirectionalLight の intensity / color を更新する。
-    #[tool(description = "Set scene DirectionalLight intensity and/or color (#rrggbb).")]
-    async fn scene_lighting_set(
-        &self,
-        Parameters(req): Parameters<SceneLightingSetRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        emit_to(
-            &self.app_handle,
-            "scene.lighting.set",
-            json!({ "intensity": req.intensity, "color": req.color, "durationMs": req.duration_ms }),
-        )
-        .await
-    }
-
     /// 住人 AI が意識的に body animation を再生する（priority mcp-conscious）。
     #[tool(
         description = "Play a body animation at mcp-conscious priority. Preempts lower-priority motions (persona/state/idle). Re-calling replaces the current MCP animation."
@@ -588,27 +503,6 @@ impl Charminal {
         _params: Parameters<BodyMotionCancelRequest>,
     ) -> Result<CallToolResult, McpError> {
         emit_to(&self.app_handle, "body.motion.cancel", json!({})).await
-    }
-
-    /// scene layer の blur / opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
-    #[tool(
-        description = "Set scene layer blur and/or opacity. Supports smooth interpolation via durationMs."
-    )]
-    async fn ui_scene_layer_set(
-        &self,
-        Parameters(req): Parameters<UiSceneLayerSetRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        emit_to(
-            &self.app_handle,
-            "ui.scene-layer.set",
-            json!({
-                "role": req.role,
-                "blur": req.blur,
-                "opacity": req.opacity,
-                "durationMs": req.duration_ms,
-            }),
-        )
-        .await
     }
 
     /// terminal container の opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。

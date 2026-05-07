@@ -242,18 +242,6 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   }
 }
 
-function syncCommonCameraControlsFromRuntime(event: {
-  readonly position: readonly [number, number, number];
-  readonly fov: number;
-  readonly tracking: boolean;
-}): void {
-  setRuntimeControlValue("camera.x", event.position[0]);
-  setRuntimeControlValue("camera.y", event.position[1]);
-  setRuntimeControlValue("camera.z", event.position[2]);
-  setRuntimeControlValue("camera.fov", event.fov);
-  setRuntimeControlValue("camera.tracking", event.tracking);
-}
-
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
@@ -808,8 +796,6 @@ function App() {
           createStateGetHandler,
           createBodyExpressionSetHandler,
           createSpaceEffectPlayHandler,
-          createSceneCameraSetHandler,
-          createSceneLightingSetHandler,
           // Phase γ motion tools：
           createBodyAnimationPlayHandler,
           createBodyMotionCancelHandler,
@@ -818,15 +804,12 @@ function App() {
           createControlsSetHandler,
           createControlsTransitionHandler,
           // UI tween tools：
-          createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
           createUiSidebarSetHandler,
           createUiDebugPanelSetHandler,
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
-          // Camera modulation
-          createSceneCameraModulationHandler,
           // Screenshot:
           createSceneScreenshotHandler,
           // Presence intensity:
@@ -1029,42 +1012,12 @@ function App() {
           "space.effect.play": createSpaceEffectPlayHandler({
             effectDispatcher,
           }),
-          "scene.camera.set": createSceneCameraSetHandler({
-            getCamera: () => getThreeRuntime().getCamera(),
-            tweenManager: getThreeRuntime().getTweenManager(),
-            claimCamera: () => claimState.claim("camera"),
-            setCameraTracking: (enabled) => getThreeRuntime().setCameraTracking(enabled),
-            getCameraTracking: () => getThreeRuntime().getCameraTracking(),
-            setCameraBase: (pos) => getThreeRuntime().setCameraBase(pos[0], pos[1], pos[2]),
-            onCameraSettle: syncCommonCameraControlsFromRuntime,
-          }),
-          "scene.lighting.set": createSceneLightingSetHandler({
-            getScene: () => getThreeRuntime().getScene(),
-            tweenManager: getThreeRuntime().getTweenManager(),
-          }),
           // ── Phase γ motion tools ────────────────────────
           "body.animation.play": createBodyAnimationPlayHandler({
             getBody: () => getThreeRuntime().getBody(),
           }),
           "body.motion.cancel": createBodyMotionCancelHandler(),
           // ── UI tween tools ─────────────────────────────────
-          "ui.scene-layer.set": createUiSceneLayerSetHandler({
-            updateSceneLayer: (target, patch) => {
-              setSceneLayerOverrides((prev) =>
-                upsertSceneLayerOverride(prev, { role: target.role as LayerRole }, patch),
-              );
-            },
-            getSceneLayerValues: (role) => {
-              const scene = renderedSceneRef.current;
-              if (!scene) return { blur: 0, opacity: 1 };
-              const layer = scene.layers.find((l) => l.role === role);
-              return {
-                blur: layer?.blur ?? 0,
-                opacity: layer?.opacity ?? 1,
-              };
-            },
-            tweenManager: getThreeRuntime().getTweenManager(),
-          }),
           "ui.terminal.set": createUiTerminalSetHandler({
             setTerminalOpacity: (value) => {
               const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
@@ -1124,11 +1077,6 @@ function App() {
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
-          }),
-          // ── Camera modulation ─────────────────────────────
-          "scene.camera.modulation": createSceneCameraModulationHandler({
-            getCameraModulation: () => getThreeRuntime().getCameraModulation(),
-            isCameraModulationSuspended: () => getThreeRuntime().isCameraModulationSuspended(),
           }),
           // ── Screenshot ────────────────────────────────────
           "scene.screenshot": createSceneScreenshotHandler({

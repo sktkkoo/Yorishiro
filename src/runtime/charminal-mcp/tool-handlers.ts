@@ -16,7 +16,6 @@ import type {
 } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
-import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { UiStateStore } from "../ui-state-store";
 import {
@@ -239,7 +238,7 @@ export function createSetPackStateHandler(deps: SetPackStateDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
- * controls.get / controls.set
+ * controls.get / controls.set / controls.set_many / controls.transition
  * ────────────────────────────────────────────────────────── */
 
 export type ControlScope = "scene" | "common";
@@ -536,22 +535,6 @@ function extractLighting(
     }
   }
   return found ? result : null;
-}
-
-/**
- * scene 内の最初の DirectionalLight を 1 個取り出す。
- * camera-lighting-panel 既存実装と同 logic。pack 依存を MCP 層に持ち込まないため
- * 同じ helper を独立に持つ（3 行重複は abstraction より良い、
- * CLAUDE.md「premature abstraction を避ける」）。
- */
-function findDirectionalLight(scene: THREE.Scene): THREE.DirectionalLight | null {
-  let found: THREE.DirectionalLight | null = null;
-  scene.traverse((obj) => {
-    if (!found && obj.visible && (obj as THREE.DirectionalLight).isDirectionalLight) {
-      found = obj as THREE.DirectionalLight;
-    }
-  });
-  return found;
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -860,264 +843,10 @@ export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
   };
 }
 
-/* ──────────────────────────────────────────────────────────
- * scene.camera.set
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneCameraSetDeps {
-  readonly getCamera: () => THREE.PerspectiveCamera | null;
-  readonly tweenManager: TweenManager;
-  readonly claimCamera: () => Disposable;
-  readonly setCameraTracking: (enabled: boolean) => void;
-  readonly getCameraTracking: () => boolean;
-  readonly setCameraBase?: (pos: [number, number, number]) => void;
-  readonly onCameraSettle?: (event: SceneCameraSettleEvent) => void;
-}
-
-export interface SceneCameraSettleEvent {
-  readonly position: readonly [number, number, number];
-  readonly fov: number;
-  readonly tracking: boolean;
-}
-
-export interface SceneCameraSetResult {
-  readonly position: readonly [number, number, number];
-  readonly fov: number;
-  readonly tweening?: boolean;
-  readonly tracking?: boolean;
-}
-
 function parseVec3(v: unknown): readonly [number, number, number] | undefined {
   if (!Array.isArray(v) || v.length !== 3) return undefined;
   if (!v.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
   return [v[0] as number, v[1] as number, v[2] as number];
-}
-
-/**
- * camera の position / target (lookAt) / fov を opportunistic に更新する handler。
- * 与えられなかった field は変更しない。camera 未準備時は throw する。
- *
- * durationMs > 0 の場合は TweenManager で per-frame 補間を行い、補間中は
- * claimCamera() で head-tracking を suspend する。durationMs 省略 / 0 は即時反映
- * （後方互換）。
- */
-export function createSceneCameraSetHandler(deps: SceneCameraSetDeps) {
-  let cameraClaimDisposable: Disposable | null = null;
-  const activeCameraTweenKeys = new Set<string>();
-
-  function emitCameraSettle(cam: THREE.PerspectiveCamera): void {
-    deps.onCameraSettle?.({
-      position: [cam.position.x, cam.position.y, cam.position.z],
-      fov: "fov" in cam ? cam.fov : 0,
-      tracking: deps.getCameraTracking(),
-    });
-  }
-
-  function ensureCameraClaim(): void {
-    if (!cameraClaimDisposable) cameraClaimDisposable = deps.claimCamera();
-  }
-  function releaseCameraClaimIfDone(options?: { emitSettle?: boolean }): void {
-    if (activeCameraTweenKeys.size === 0 && cameraClaimDisposable) {
-      // tween 完了時に cameraBase を現在の cam.position に同期する。
-      // これがないと claim 解放後に RAF ループが古い cameraBase で position を上書きし、
-      // カメラが tween 前の位置に snap-back する。
-      const cam = deps.getCamera();
-      if (cam) {
-        deps.setCameraBase?.([cam.position.x, cam.position.y, cam.position.z]);
-        if (options?.emitSettle !== false) emitCameraSettle(cam);
-      }
-      cameraClaimDisposable.dispose();
-      cameraClaimDisposable = null;
-    }
-  }
-  function trackTween(key: string, handle: { completion: Promise<void> }): void {
-    activeCameraTweenKeys.add(key);
-    handle.completion.then(() => {
-      activeCameraTweenKeys.delete(key);
-      releaseCameraClaimIfDone();
-    });
-  }
-
-  return async (request: unknown): Promise<SceneCameraSetResult> => {
-    const r = (request ?? {}) as {
-      position?: unknown;
-      target?: unknown;
-      fov?: unknown;
-      durationMs?: unknown;
-      tracking?: unknown;
-    };
-    const cam = deps.getCamera();
-    if (!cam) throw new Error("camera not ready");
-
-    const position = parseVec3(r.position);
-    const target = parseVec3(r.target);
-    const fovValue = typeof r.fov === "number" && Number.isFinite(r.fov) ? r.fov : undefined;
-    const durationMs =
-      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
-        ? r.durationMs
-        : 0;
-    const trackingValue = typeof r.tracking === "boolean" ? r.tracking : undefined;
-
-    if (trackingValue !== undefined) {
-      deps.setCameraTracking(trackingValue);
-    }
-
-    if (durationMs > 0) {
-      ensureCameraClaim();
-
-      if (position) {
-        const h = deps.tweenManager.startVec3(
-          "camera.position",
-          position,
-          durationMs,
-          (v) => cam.position.set(v[0], v[1], v[2]),
-          { from: [cam.position.x, cam.position.y, cam.position.z] },
-        );
-        trackTween("camera.position", h);
-      }
-      if (target) {
-        // camera.lookAt target は PerspectiveCamera に保持されないため
-        // "from" は [0, cam.position.y, 0] で近似（正面向き前提）
-        const h = deps.tweenManager.startVec3(
-          "camera.target",
-          target,
-          durationMs,
-          (v) => cam.lookAt(v[0], v[1], v[2]),
-          { from: [0, cam.position.y, 0] },
-        );
-        trackTween("camera.target", h);
-      }
-      if (fovValue !== undefined && "fov" in cam) {
-        const h = deps.tweenManager.start(
-          "camera.fov",
-          fovValue,
-          durationMs,
-          (v) => {
-            cam.fov = v;
-            cam.updateProjectionMatrix();
-          },
-          { from: cam.fov },
-        );
-        trackTween("camera.fov", h);
-      }
-
-      if (activeCameraTweenKeys.size === 0) emitCameraSettle(cam);
-
-      return {
-        position: [cam.position.x, cam.position.y, cam.position.z],
-        fov: "fov" in cam ? cam.fov : 0,
-        tweening: true,
-        tracking: deps.getCameraTracking(),
-      };
-    }
-
-    // Instant mode: cancel active tweens + direct set（既存動作）
-    deps.tweenManager.cancel("camera.position");
-    deps.tweenManager.cancel("camera.target");
-    deps.tweenManager.cancel("camera.fov");
-    activeCameraTweenKeys.clear();
-    releaseCameraClaimIfDone({ emitSettle: false });
-
-    if (position) {
-      cam.position.set(position[0], position[1], position[2]);
-      deps.setCameraBase?.([...position]);
-    }
-    if (target) cam.lookAt(target[0], target[1], target[2]);
-    if (fovValue !== undefined && "fov" in cam) {
-      cam.fov = fovValue;
-      cam.updateProjectionMatrix();
-    }
-
-    emitCameraSettle(cam);
-
-    return {
-      position: [cam.position.x, cam.position.y, cam.position.z],
-      fov: "fov" in cam ? cam.fov : 0,
-      tracking: deps.getCameraTracking(),
-    };
-  };
-}
-
-/* ──────────────────────────────────────────────────────────
- * scene.lighting.set
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneLightingSetDeps {
-  readonly getScene: () => THREE.Scene | null;
-  readonly tweenManager: TweenManager;
-}
-
-export interface SceneLightingSetResult {
-  readonly intensity: number;
-  readonly color: string;
-  readonly tweening?: boolean;
-}
-
-/**
- * scene 内の最初の DirectionalLight に intensity / color を opportunistic に
- * 適用する handler。light が無い場合は throw する。
- * durationMs > 0 の場合は TweenManager で per-frame 補間を行う。
- * durationMs 省略 / 0 は即時反映（後方互換）。
- */
-export function createSceneLightingSetHandler(deps: SceneLightingSetDeps) {
-  return async (request: unknown): Promise<SceneLightingSetResult> => {
-    const r = (request ?? {}) as { intensity?: unknown; color?: unknown; durationMs?: unknown };
-    const scene = deps.getScene();
-    if (!scene) throw new Error("scene not ready");
-    const light = findDirectionalLight(scene);
-    if (!light) throw new Error("no DirectionalLight in scene");
-
-    const intensityVal =
-      typeof r.intensity === "number" && Number.isFinite(r.intensity) ? r.intensity : undefined;
-    const colorVal = typeof r.color === "string" ? r.color : undefined;
-    const durationMs =
-      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
-        ? r.durationMs
-        : 0;
-
-    if (durationMs > 0) {
-      if (intensityVal !== undefined) {
-        deps.tweenManager.start(
-          "lighting.intensity",
-          intensityVal,
-          durationMs,
-          (v) => {
-            light.intensity = v;
-          },
-          { from: light.intensity },
-        );
-      }
-      if (colorVal !== undefined) {
-        deps.tweenManager.startWithLerp(
-          "lighting.color",
-          `#${light.color.getHexString()}`,
-          colorVal,
-          durationMs,
-          colorLerp,
-          (v) => light.color.set(v),
-        );
-      }
-      return {
-        intensity: light.intensity,
-        color: `#${light.color.getHexString()}`,
-        tweening: true,
-      };
-    }
-
-    // Instant mode: cancel active tweens + direct set（既存動作）
-    deps.tweenManager.cancel("lighting.intensity");
-    deps.tweenManager.cancel("lighting.color");
-    if (intensityVal !== undefined) {
-      light.intensity = intensityVal;
-    }
-    if (colorVal !== undefined) {
-      light.color.set(colorVal);
-    }
-    return {
-      intensity: light.intensity,
-      color: `#${light.color.getHexString()}`,
-    };
-  };
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -1236,78 +965,6 @@ export function __resetMcpMotionHandleForTesting(): void {
     mcpMotionHandle.release(0);
     mcpMotionHandle = null;
   }
-}
-
-/* ──────────────────────────────────────────────────────────
- * ui.scene-layer.set
- * ────────────────────────────────────────────────────────── */
-
-export interface UiSceneLayerSetDeps {
-  readonly updateSceneLayer: (
-    target: { role: string },
-    patch: { blur?: number | null; opacity?: number | null },
-  ) => void;
-  readonly getSceneLayerValues: (role: string) => { blur: number; opacity: number };
-  readonly tweenManager: TweenManager;
-}
-
-export interface UiSceneLayerSetResult {
-  readonly role: string;
-  readonly blur?: number | null;
-  readonly opacity?: number | null;
-  readonly tweening?: boolean;
-}
-
-export function createUiSceneLayerSetHandler(deps: UiSceneLayerSetDeps) {
-  return async (request: unknown): Promise<UiSceneLayerSetResult> => {
-    const r = requestRecord(request);
-    const role = r.role;
-    if (role !== "background" && role !== "foreground") {
-      throw new Error('role must be "background" or "foreground"');
-    }
-    const blur = typeof r.blur === "number" && Number.isFinite(r.blur) ? r.blur : undefined;
-    const opacity =
-      typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
-    const durationMs =
-      typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
-        ? r.durationMs
-        : 0;
-
-    if (durationMs > 0) {
-      const current = deps.getSceneLayerValues(role);
-      if (blur !== undefined) {
-        deps.tweenManager.start(
-          `scene.layer.blur.${role}`,
-          blur,
-          durationMs,
-          (v) => deps.updateSceneLayer({ role }, { blur: v }),
-          { from: current.blur },
-        );
-      }
-      if (opacity !== undefined) {
-        deps.tweenManager.start(
-          `scene.layer.opacity.${role}`,
-          opacity,
-          durationMs,
-          (v) => deps.updateSceneLayer({ role }, { opacity: v }),
-          { from: current.opacity },
-        );
-      }
-      return { role, blur, opacity, tweening: true };
-    }
-
-    // 即時: active な tween を cancel + 直接 set
-    deps.tweenManager.cancel(`scene.layer.blur.${role}`);
-    deps.tweenManager.cancel(`scene.layer.opacity.${role}`);
-    const patch: { blur?: number | null; opacity?: number | null } = {};
-    if (blur !== undefined) patch.blur = blur;
-    if (opacity !== undefined) patch.opacity = opacity;
-    // null reset のサポート: raw request に明示的 null があるかチェック
-    if (r.blur === null) patch.blur = null;
-    if (r.opacity === null) patch.opacity = null;
-    deps.updateSceneLayer({ role }, patch);
-    return { role, blur, opacity };
-  };
 }
 
 /* ──────────────────────────────────────────────────────────
@@ -1524,45 +1181,6 @@ export function createUiActivateHandler(deps: UiActivateDeps) {
     }
     deps.registry.setActiveUi(id);
     return { active: deps.registry.getActiveUiId() };
-  };
-}
-
-/* ──────────────────────────────────────────────────────────
- * scene.camera.modulation
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneCameraModulationDeps {
-  readonly getCameraModulation: () => {
-    enabled: boolean;
-    readonly activeKeys: readonly string[];
-  };
-  readonly isCameraModulationSuspended: () => boolean;
-}
-
-export interface SceneCameraModulationResult {
-  readonly enabled: boolean;
-  readonly activeKeys: readonly string[];
-  readonly suspended: boolean;
-}
-
-/**
- * Scene pack の camera modulation を制御する handler。
- * enabled: false で強制 suspend（claim 無しでも停止）。
- */
-export function createSceneCameraModulationHandler(deps: SceneCameraModulationDeps) {
-  return async (request: unknown): Promise<SceneCameraModulationResult> => {
-    const r = (request ?? {}) as { enabled?: unknown };
-    const mod = deps.getCameraModulation();
-
-    if (typeof r.enabled === "boolean") {
-      mod.enabled = r.enabled;
-    }
-
-    return {
-      enabled: mod.enabled,
-      activeKeys: [...mod.activeKeys],
-      suspended: deps.isCameraModulationSuspended(),
-    };
   };
 }
 

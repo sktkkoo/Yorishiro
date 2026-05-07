@@ -134,8 +134,9 @@ ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set
 | tool | 引数 | 説明 |
 |---|---|---|
 | `space_effect_play(...)` | effect params | 視覚エフェクト再生 |
-| `scene_camera_set(...)` | camera params, durationMs? | カメラ位置調整（durationMs で滑らか補間）。完了後 Common panel に反映 |
-| `scene_lighting_set(...)` | lighting params, durationMs? | ライティング調整（durationMs で滑らか補間） |
+| `scene_screenshot(...)` | camera override? | scene canvas を撮影 |
+
+カメラ移動は `controls_transition({ scope: "common", values, durationMs })` を使う。lighting / post effect / scene layer blur・opacity / camera modulation は `controls_get({ scope: "scene" })` で path を確認し、`controls_set` / `controls_transition` で調整する。
 
 ### UI 操作
 
@@ -143,7 +144,6 @@ ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set
 |---|---|---|
 | `ui_sidebar_set(...)` | width, durationMs? | サイドバー幅を設定（px、durationMs で滑らか補間） |
 | `ui_terminal_set(...)` | opacity, durationMs? | ターミナル透明度を設定（durationMs で滑らか補間） |
-| `ui_scene_layer_set(...)` | role, blur?, opacity?, durationMs? | 背景・前景のぼかし/透明度（durationMs で滑らか補間） |
 
 ### 全体 state
 
