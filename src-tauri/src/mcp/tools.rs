@@ -53,6 +53,29 @@ pub struct SetUiStateRequest {
     pub value: Value,
 }
 
+/// `controls_get` の引数。F2 controls panel の現在値を読む。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsGetRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Optional full Leva-style control path. Omit to retrieve all visible controls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+/// `controls_set` の引数。F2 controls panel の値を書き換える。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ControlsSetRequest {
+    /// Control scope: "scene" (default) or "common".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// Full control path, e.g. "lights.directionalIntensity" or "camera.lookAtCharacter".
+    pub path: String,
+    /// JSON value to set.
+    pub value: Value,
+}
+
 /// `state_get` の引数。空 object。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StateGetRequest {}
@@ -358,6 +381,38 @@ impl Charminal {
         .await
         .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(response)
+    }
+
+    /// controls_get: F2 controls panel に表示されている値を読む。
+    #[tool(
+        description = "Read visible F2 controls. scope defaults to scene. Use scope='scene' for active scene pack controls (lights/post effects/scene layers) and scope='common' for app-common controls (camera). Pass path to read one control, or omit path for all visible controls."
+    )]
+    async fn controls_get(
+        &self,
+        Parameters(req): Parameters<ControlsGetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.get",
+            json!({ "scope": req.scope, "path": req.path }),
+        )
+        .await
+    }
+
+    /// controls_set: F2 controls panel に表示されている値を書き換える。
+    #[tool(
+        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Examples: scene lights.directionalIntensity, common camera.lookAtCharacter."
+    )]
+    async fn controls_set(
+        &self,
+        Parameters(req): Parameters<ControlsSetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "controls.set",
+            json!({ "scope": req.scope, "path": req.path, "value": req.value }),
+        )
+        .await
     }
 
     // 以下 5 tool は dot.notation の dispatch key を使う。既存 kebab key との

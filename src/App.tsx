@@ -698,6 +698,8 @@ function App() {
           // Phase γ motion tools：
           createBodyAnimationPlayHandler,
           createBodyMotionCancelHandler,
+          createControlsGetHandler,
+          createControlsSetHandler,
           // UI tween tools：
           createUiSceneLayerSetHandler,
           createUiTerminalSetHandler,
@@ -722,6 +724,10 @@ function App() {
         );
         const { serializeConfig } = await import("./runtime/user-pack-loader/config");
         const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
+        const { getActiveSceneLevaStore } = await import(
+          "./runtime/three-runtime/scene-pack-leva-store"
+        );
+        const { getRuntimeLevaStore } = await import("./runtime/three-runtime/runtime-leva-store");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
@@ -827,6 +833,16 @@ function App() {
           }),
           "set-ui-state": createSetPackStateHandler({
             state: uiState,
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+          }),
+          "controls.get": createControlsGetHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+          }),
+          "controls.set": createControlsSetHandler({
+            getSceneStore: () => getActiveSceneLevaStore(),
+            getCommonStore: () => getRuntimeLevaStore(),
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
           }),
           // ── Phase β cosmetic write tools ────────────────────────
