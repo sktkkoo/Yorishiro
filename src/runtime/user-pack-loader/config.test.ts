@@ -18,6 +18,7 @@ import {
   withActiveUiSet,
   withDisabledPackAdded,
   withDisabledPackRemoved,
+  withLanguageSet,
   withPrimaryPersonaSet,
 } from "./config";
 
@@ -39,6 +40,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -56,6 +58,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -73,6 +76,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -90,6 +94,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -107,6 +112,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -124,6 +130,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -146,6 +153,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -180,6 +188,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: [],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -197,6 +206,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: [],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -219,6 +229,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: [],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -236,6 +247,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "codex",
       ambientAudioMuted: true,
       ambientAudioVolume: 1,
@@ -274,6 +286,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -292,6 +305,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura"],
+      language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
@@ -631,5 +645,39 @@ describe("defaultProfile", () => {
   it("round-trips when set", () => {
     const cfg = { ...EMPTY_CONFIG, defaultProfile: "shell" };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
+  });
+});
+
+describe("language", () => {
+  it("defaults to auto", () => {
+    expect(EMPTY_CONFIG.language).toBe("auto");
+    expect(parseConfig("").language).toBe("auto");
+  });
+
+  it("parses supported language values", () => {
+    expect(parseConfig('{"language":"auto"}').language).toBe("auto");
+    expect(parseConfig('{"language":"en"}').language).toBe("en");
+    expect(parseConfig('{"language":"ja"}').language).toBe("ja");
+  });
+
+  it("falls back to auto for unsupported language values", () => {
+    expect(parseConfig('{"language":"fr"}').language).toBe("auto");
+    expect(parseConfig('{"language":42}').language).toBe("auto");
+  });
+
+  it("omits auto from serialized output", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], language: "auto" as const };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({});
+  });
+
+  it("serializes explicit language", () => {
+    const cfg = { ...EMPTY_CONFIG, activeAmbientUi: [], language: "en" as const };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ language: "en" });
+  });
+
+  it("sets language immutably", () => {
+    const next = withLanguageSet(EMPTY_CONFIG, "ja");
+    expect(next.language).toBe("ja");
+    expect(EMPTY_CONFIG.language).toBe("auto");
   });
 });

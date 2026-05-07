@@ -12,6 +12,7 @@
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
+ * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
  * - `terminalAgent: "claude" | "codex"`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
  * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
@@ -25,6 +26,7 @@
  *                         2026-05-05-multi-pane-terminal.md（profiles[]）
  */
 
+import { type AppLanguage, DEFAULT_LANGUAGE, toAppLanguage } from "../language/language";
 import type { SessionProfile } from "../sessions/types";
 
 export interface CharminalConfig {
@@ -38,6 +40,8 @@ export interface CharminalConfig {
   readonly activeUi: string | null;
   /** 同時有効化される ambient-ui pack の id 一覧。複数 active 可。 */
   readonly activeAmbientUi: ReadonlyArray<string>;
+  /** UI / persona fallback / command prompt の言語。`auto` なら起動時 locale から解決する。 */
+  readonly language: AppLanguage;
   /** Terminal で自動起動する coding agent。未指定なら Claude Code。 */
   readonly terminalAgent: TerminalAgent;
   /** Scene pack の `ambient` 宣言で再生される環境音を mute する。 */
@@ -59,6 +63,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   activeScene: null,
   activeUi: null,
   activeAmbientUi: ["attention-aura"],
+  language: DEFAULT_LANGUAGE,
   terminalAgent: "claude",
   ambientAudioMuted: false,
   ambientAudioVolume: 1.0,
@@ -178,6 +183,7 @@ export function parseConfig(text: string): CharminalConfig {
     activeUi: toNullableString(obj.activeUi),
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
+    language: toAppLanguage(obj.language),
     terminalAgent: toTerminalAgent(obj.terminalAgent),
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
     ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
@@ -198,6 +204,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
   if (cfg.activeAmbientUi.length > 0) out.activeAmbientUi = [...cfg.activeAmbientUi];
+  if (cfg.language !== DEFAULT_LANGUAGE) out.language = cfg.language;
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
@@ -250,4 +257,8 @@ export function withActiveAmbientUiSet(
   ids: ReadonlyArray<string>,
 ): CharminalConfig {
   return { ...cfg, activeAmbientUi: [...ids] };
+}
+
+export function withLanguageSet(cfg: CharminalConfig, language: AppLanguage): CharminalConfig {
+  return { ...cfg, language };
 }
