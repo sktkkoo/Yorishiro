@@ -111,7 +111,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ## Status
 
-**v0.2.0-alpha**
+**v0.3.0-alpha**
 
 実装 phase の途中です。API・データ形状・pack 仕様は今後変わります。
 
@@ -119,13 +119,14 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 - Claude Code をターミナルとして起動し、そのまま作業できる
 - Session tabs: agent と並行して複数の shell セッションを操作（`Cmd+T` / `Ctrl+Tab`）
-- VRM モデルの 3D キャラクターが呼吸し、瞬きし、視線を動かす
+- VRM モデルの 3D キャラクターが呼吸し、瞬きし、視線を動かす（デフォルトモデル同梱）
 - VRMA アニメーションクリップの再生
 - 6 種類の pack によるカスタマイズ（persona / scene / effect / ui / utility / ambient-ui）
-- 自己言及的 MCP（20 以上の tool）
+- 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
 - 反射層による PTY 観察と即時反応
 - Journal による長期記憶
 - `/charm` による pack の対話的な作成・編集
+- Windows ビルド対応（準備済み、動作未確認）
 
 ---
 
@@ -162,7 +163,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - **Lint / format**: Biome（TS）+ rustfmt + clippy（Rust）
 - **Git hooks**: lefthook
 
-詳しくは [`CLAUDE.md`](CLAUDE.md) を参照。
+詳しくは [`CONTRIBUTING.md`](CONTRIBUTING.md) を参照。
 
 ---
 
@@ -212,7 +213,7 @@ npm run tauri dev # デスクトップアプリとして起動
 
 ### Development
 
-- [`CLAUDE.md`](CLAUDE.md) — 開発 convention（coding / workflow / critical constraints）
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — 開発 convention（tech stack / coding / workflow）
 - [`CREDITS.md`](CREDITS.md) — 使っている OSS と asset のクレジット
 
 ### Design record（内部 — 別 repo）
