@@ -312,9 +312,10 @@ export class Body {
 
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
-      this.updateRelaxed(delta);
+      const nonIdleMoodActive = this.expressions.hasActiveNonIdleMood();
+      this.updateRelaxed(delta, nonIdleMoodActive);
       this.eyelids.update(blinkValue, delta, {
-        idle: this.eyeSystem.state === "idle",
+        idle: this.eyeSystem.state === "idle" && !nonIdleMoodActive,
         explicitBlinkActive: this.hasActiveExplicitBlink(),
         relaxedValue: this.relaxedValue,
         neutralSlotId: this.stateExprSlots[0],
@@ -674,8 +675,16 @@ export class Body {
   }
 
   /** Gradual relaxed expression after idle threshold. */
-  private updateRelaxed(delta: number): void {
-    if (this.eyeSystem.state !== "idle") return;
+  private updateRelaxed(delta: number, nonIdleMoodActive: boolean): void {
+    if (this.eyeSystem.state !== "idle" || nonIdleMoodActive) {
+      this.idleElapsedTime = 0;
+      this.relaxedValue = 0;
+      if (this.relaxedSlotId !== -1) {
+        this.expressions.removeSlot(this.relaxedSlotId);
+        this.relaxedSlotId = -1;
+      }
+      return;
+    }
     this.idleElapsedTime += delta;
 
     this.relaxedValue = Math.min(
