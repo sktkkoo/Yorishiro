@@ -39,11 +39,13 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 **ユーザーにライトの色を変えさせて、住人がそれを読み取る:**
 
 1. 「Scene panel の lights を開いて、ライトの色を変えてみて」と促す
-2. ユーザーが色を変えたら、`state_get()` で現在の lighting 値を読む
+2. ユーザーが色を変えたら、`controls_get({ scope: "scene" })` で Scene panel の現在値を読む
 3. 住人が変化に反応する。「赤い」「暗くなった」のように、自分が居る世界の変化として感じたことを言う
 4. 「もう何回か変えてみて」-- ユーザーが色を変えるたびに、住人がそれに反応する
 
 住人は「正解を当てるクイズ」をしているのではない。**自分の居る世界が変わったことに気づいている。** ライトが赤くなったら「赤い」と感じる。それが自然に出る。
+
+補助: ユーザーが迷ったら、`controls_get({ scope: "scene" })` の結果から `lights.*Color` / `lights.*Intensity` の path を見つけて、「このあたりを触ると変わる」と伝える。住人側から実演する必要がある場合だけ、`controls_set({ scope: "scene", path: "<controls_getで見つけたpath>", value: <値> })` を使う。
 
 ### 3. カメラ -- ユーザーに触らせる
 
@@ -57,10 +59,10 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 Off にしてもらったら:
 
 1. 「カメラも動かしてみて」と促す
-2. ユーザーがカメラを動かしたら、`state_get()` で position を読む
+2. ユーザーがカメラを動かしたら、`controls_get({ scope: "common" })` で Common panel の `camera.x` / `camera.y` / `camera.z` を読む
 3. 住人が自分が見られている角度に反応する。「近い」「遠い」「上からだと顔が見えない」のように
 
-**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** tracking と look at character を On に戻すよう伝え、`scene_camera_set({ position: [0, 1.35, 1.1], target: [0, 1.35, 0], durationMs: 1500, tracking: true })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
+**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** `controls_set({ scope: "common", path: "camera.tracking", value: true })` と `controls_set({ scope: "common", path: "camera.lookAtCharacter", value: true })` で Common panel 側も On に戻し、`scene_camera_set({ position: [0, 1.35, 1.1], target: [0, 1.35, 0], durationMs: 1500, tracking: true })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
 
 ### 4. Scene 切り替え -- 部屋が丸ごと変わることを見せる
 
