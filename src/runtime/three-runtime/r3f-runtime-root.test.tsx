@@ -95,6 +95,7 @@ vi.mock("../three-runtime", () => ({
   }),
 }));
 
+import simpleRoomDefinition from "../../../bundled-packs/scenes/simple-room/scene";
 import { controlFolder, useCharminalControls } from "../../sdk/controls";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
@@ -301,5 +302,20 @@ describe("R3fRuntimeRoot", () => {
     expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
     expect(sceneStore?.get("post effects.bloom.bloomIntensity")).toBe(1);
     expect(sceneStore?.get("post effects.vignette.vignetteDarkness")).toBe(0.8);
+  });
+
+  it("registers sdk controls from bundled scene child components", () => {
+    const registry = getMockRegistry();
+
+    render(<R3fRuntimeRoot />);
+
+    act(() => {
+      registry.__setActive(makeEntry("simple-room", simpleRoomDefinition.component));
+    });
+
+    const sceneStore = getActiveSceneLevaStore();
+    expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
+    expect(sceneStore?.get("lights.ambientIntensity")).toBe(0.4);
+    expect(levaStore.get("lights.directionalIntensity")).toBeUndefined();
   });
 });

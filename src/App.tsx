@@ -2147,16 +2147,6 @@ function App() {
 
   return (
     <div className="app">
-      {activeSceneLevaStore ? (
-        <LevaPanel
-          key={activeSceneLevaStore.storeId}
-          store={activeSceneLevaStore}
-          hidden={levaHidden}
-          collapsed={false}
-          flat
-          titleBar={{ title: "Scene", drag: true, filter: true, position: { x: 300, y: 0 } }}
-        />
-      ) : null}
       {runtimeLevaStore ? (
         <LevaPanel
           store={runtimeLevaStore}
@@ -2169,6 +2159,16 @@ function App() {
             filter: true,
             position: { x: 0, y: 0 },
           }}
+        />
+      ) : null}
+      {activeSceneLevaStore ? (
+        <LevaPanel
+          key={activeSceneLevaStore.storeId}
+          store={activeSceneLevaStore}
+          hidden={levaHidden}
+          collapsed={false}
+          flat
+          titleBar={{ title: "Scene", drag: true, filter: true, position: { x: -300, y: 0 } }}
         />
       ) : null}
       <Sidebar
