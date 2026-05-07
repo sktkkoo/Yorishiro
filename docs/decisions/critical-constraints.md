@@ -31,7 +31,6 @@
 
 ### Reference
 
-- internal design-record: `2026-04-11-design-exploration.md` revelation 3.13（非公開）
 - philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「観察の境界」
 - source: `src/core/perception/perception.ts`（read のみ、write API なし）
 
@@ -52,7 +51,7 @@ Utility は system API（exec / fs / notify など）と **抽象 reaction の e
 ### Don't
 
 - utility pack の中で `ctx.character.expressTrue(...)` のような motion API を呼ばない（型 error になる）
-- 「便利だから utility にも一時的に motion API を生やす」→ NO。型レベル境界を壊すと revelation 3.17 の Twin-trigger co-emission idiom が成立しなくなる
+- 「便利だから utility にも一時的に motion API を生やす」→ NO。型レベル境界を壊すと Twin-trigger co-emission idiom が成立しなくなる
 
 ### How to apply（境界が曖昧な場面）
 
@@ -64,7 +63,6 @@ Utility は system API（exec / fs / notify など）と **抽象 reaction の e
 
 ### Reference
 
-- internal design-record: `2026-04-11-design-exploration.md` revelation 3.14（非公開）
 - source: `src/sdk/utility.d.ts` — UtilityContext 型定義（character/voice/space 不在）
 
 ---
@@ -102,7 +100,6 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ### Reference
 
-- internal design-record: `2026-04-11-design-exploration.md` revelation 3.19（非公開）
 - source: `src/runtime/event-bus/event-bus.ts`
 
 ---
@@ -136,7 +133,7 @@ trigger 名が同じであることを保証するため、shared helper（synon
 
 ### Reference
 
-- internal design-record: `2026-04-11-design-exploration.md` revelation 3.17（非公開）
+- philosophy: [docs/philosophy/PRESENCE_HARNESS.ja.md](../philosophy/PRESENCE_HARNESS.ja.md) 原則 6
 
 ---
 
@@ -180,8 +177,6 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 
 ### Reference
 
-- internal design-record: `2026-04-11-design-exploration.md` revelation 3.20（非公開）
-
 ---
 
 ## 6. Ambient-ui pack に attention の write 権限を渡さない
@@ -209,7 +204,6 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 - `src/sdk/ambient-ui-pack.d.ts`：`AmbientUiContext { attention: AttentionAPI }`（read-only API）
 - `src/sdk/attention.d.ts`：`AttentionAPI`（get / subscribe のみ）と `AttentionRuntime extends AttentionAPI`（setSourceTarget 追加）の型分離
 - philosophy：[docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「観察の境界」
-- internal design-record：`2026-04-25-attention-aura-v2-design.md`「Surface / SDK 設計」section（非公開）
 
 ---
 

@@ -28,6 +28,5 @@
 
 ## 関連 reference
 
-- memory: `feedback_interaction_is_presence.md`
 - philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「自発性の原則」
 - 関連: [`presence-over-spectacle.md`](presence-over-spectacle.md)

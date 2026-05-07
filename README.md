@@ -6,6 +6,8 @@
 
 <p align="center"><strong>A body for the AI in your terminal.</strong></p>
 
+<p align="center"><sub><strong>Charm</strong>inal = <strong>Char</strong>acter + Ter<strong>minal</strong> + <strong>Charm</strong></sub></p>
+
 Charminal is a desktop app that gives a body to the AI running inside your terminal.
 
 Claude Code or Codex runs inside. While the AI is deep in thought, a 3D character lets its gaze wander. When an error hits, the face grimaces before the AI puts it into words. Sometimes the character just moves on its own, for no reason at all. Instead of a spinner, someone is there.
@@ -115,7 +117,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.2.0-alpha**
+**v0.3.0-alpha**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -123,13 +125,14 @@ What works today:
 
 - Launches Claude Code as the terminal — you work right there
 - Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
-- A VRM 3D character that breathes, blinks, and shifts gaze
+- A VRM 3D character that breathes, blinks, and shifts gaze (default model bundled)
 - VRMA animation clip playback
 - Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)
-- Self-referential MCP (20+ tools)
+- Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Journal: long-term memory across sessions
 - `/charm` for interactive pack creation and editing
+- Windows build support (prepared, not yet verified)
 
 ---
 
@@ -214,7 +217,7 @@ npm run tauri dev # Launch as desktop app
 
 ### Development
 
-- [`CLAUDE.md`](CLAUDE.md) — Coding conventions, workflow, critical constraints
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Coding conventions, tech stack, development workflow
 - [`CREDITS.md`](CREDITS.md) — OSS and asset credits
 
 ---

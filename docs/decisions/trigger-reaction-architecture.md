@@ -347,10 +347,6 @@ responses: {
 - [docs/philosophy/PRESENCE_HARNESS.ja.md](../philosophy/PRESENCE_HARNESS.ja.md) — Twin-trigger co-emission、Synthetic event
 - [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) — 観察の境界
 
-### Internal design-record
-
-- `2026-04-11-design-exploration.md` revelation 3.17（Twin-trigger）、3.19（Synthetic event contract）（非公開）
-
 ---
 
 ## 改訂履歴

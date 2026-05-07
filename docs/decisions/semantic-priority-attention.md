@@ -91,9 +91,7 @@ v1 では typing は priority 2 相当の低優先だった。v2 では priority
 
 - fix commits: 5ebfd0d (aura visual) / 032700c (mouse active window) / 5581df1 (body triggerCursorAttention) / d0d9ba5 (input-cursor rAF) / fed792c (terminal rAF + bottom-first) / 1560b85 (focused-dom + tool/mcp v1 parity) / c714c27 (ambient-layer z-index) / c0ecb23 (terminal transient + typing priority 5)
 - producer 実装: `src/runtime/attention-producers/`（mouse.ts / terminal.ts / input-cursor.ts / tool.ts / mcp.ts / focused-dom.ts）
-- internal design-record: `2026-04-25-attention-aura-v2-design.md`「v2 の根幹原則」「v1 で何が壊れていたか」（非公開）
 - Philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」
-- Memory: `feedback_charminal_presence_over_spectacle.md`、`feedback_interaction_is_presence.md`
 
 ## 関連 critical constraints
 

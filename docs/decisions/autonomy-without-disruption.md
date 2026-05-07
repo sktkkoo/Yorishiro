@@ -111,10 +111,6 @@
 - [presence-over-spectacle.md](presence-over-spectacle.md) — visual layer は実在感の増幅が第一
 - [interaction-as-presence.md](interaction-as-presence.md) — 意味ある interaction は presence の核
 
-### Memory
-
-- `feedback_autonomy_without_disruption.md` — 本決定の lens summary
-
 ---
 
 ## 改訂履歴

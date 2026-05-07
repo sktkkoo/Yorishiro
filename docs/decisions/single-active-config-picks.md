@@ -34,6 +34,5 @@ scene / persona など single-active な pack 種別では、**active 選択は 
 
 ## 関連 reference
 
-- memory: `feedback_single_active_config_picks.md`、`feedback_explicit_over_implicit_ugc.md`
 - source: `src/runtime/scene-pack-registry/`、`src/runtime/persona-registry/persona-registry-impl.ts`
 - 関連: [`persona-multi-instance.md`](persona-multi-instance.md)、[`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md)
