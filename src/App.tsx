@@ -220,24 +220,17 @@ function applySceneLayerPatch(layer: Layer, patch: UiSceneLayerPatch): Layer {
   return next;
 }
 
-function createSceneLayerForTarget(target: UiSceneLayerTarget): Layer | null {
-  if (target.role === "background") return { id: "ui-background", role: "background" };
-  if (target.role === "foreground") return { id: "ui-foreground", role: "foreground" };
-  if (target.id !== undefined && target.id.length > 0) return { id: target.id };
-  return null;
-}
-
-function insertSceneLayer(layers: ReadonlyArray<Layer>, layer: Layer): ReadonlyArray<Layer> {
-  if (layer.role === "background") {
-    const characterIndex = layers.findIndex((candidate) => candidate.role === "character");
-    if (characterIndex >= 0) {
-      return [...layers.slice(0, characterIndex), layer, ...layers.slice(characterIndex)];
-    }
-    return [layer, ...layers];
-  }
-  return [...layers, layer];
-}
-
+/**
+ * Override を scene の既存 layer に当てる。target が match しないときは
+ * **新規 layer を作らず no-op + warn**。
+ *
+ * Scene が layer 構造を握る原則（docs/decisions/scene-layer-override-semantics.md）。
+ * 過去には auto-create を行っていたが、character role layer が無い scene
+ * （例: abandoned-factory のように R3F-component で全描画する scene）に
+ * background/foreground 系 override が当たると ghost layer が生成されて
+ * SceneRouter が path 1 を選び、結果として VrmViewer slot が消失する事故を
+ * 起こしていた。layer 構造は scene が宣言したもの以外は作らない。
+ */
 function applySceneLayerOverride(scene: SceneSpec, override: SceneLayerOverride): SceneSpec {
   let found = false;
   const layers = scene.layers.map((layer) => {
@@ -247,12 +240,10 @@ function applySceneLayerOverride(scene: SceneSpec, override: SceneLayerOverride)
   });
   if (found) return { ...scene, layers };
 
-  const created = createSceneLayerForTarget(override.target);
-  if (created === null) return scene;
-  return {
-    ...scene,
-    layers: insertSceneLayer(layers, applySceneLayerPatch(created, override.patch)),
-  };
+  console.warn(
+    `[scene-layer] override target ${JSON.stringify(override.target)} has no matching layer in scene "${scene.id}" — ignored (scene が layer を握る原則)`,
+  );
+  return scene;
 }
 
 function applySceneLayerOverrides(
