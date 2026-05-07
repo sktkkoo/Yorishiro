@@ -6,7 +6,7 @@
 //! session ごとに `Charminal::new(app_handle)` が呼ばれる（LocalSessionManager
 //! が session lifecycle を管理する都合）。
 
-use std::{collections::BTreeMap, path::Path};
+use std::collections::BTreeMap;
 
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -753,8 +753,8 @@ fn unwrap_image_response(response: Value) -> Result<CallToolResult, McpError> {
 
 /// list_load_errors の実装本体（Rust 内で完結するため test からも直接叩ける）。
 pub(crate) fn list_load_errors_sync() -> Result<ListLoadErrorsResponse, String> {
-    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-    let text = read_last_startup_report_impl(Path::new(&home))?;
+    let home = crate::home_dir_or_err()?;
+    let text = read_last_startup_report_impl(&home)?;
     if text.is_empty() {
         return Ok(ListLoadErrorsResponse { errors: vec![] });
     }

@@ -230,15 +230,11 @@ pub(crate) fn has_existing_claude_session(cwd: Option<&str>) -> bool {
         return false;
     };
 
-    let Some(home) = std::env::var_os("HOME") else {
+    let Some(home) = dirs::home_dir() else {
         return false;
     };
 
-    std::path::PathBuf::from(home)
-        .join(".claude")
-        .join("projects")
-        .join(encoded)
-        .is_dir()
+    home.join(".claude").join("projects").join(encoded).is_dir()
 }
 
 fn codex_session_file_matches_cwd(path: &std::path::Path, resolved_cwd: &std::path::Path) -> bool {
@@ -309,16 +305,11 @@ pub(crate) fn has_existing_codex_session(cwd: Option<&str>) -> bool {
         return false;
     };
 
-    let Some(home) = std::env::var_os("HOME") else {
+    let Some(home) = dirs::home_dir() else {
         return false;
     };
 
-    has_existing_codex_session_in(
-        &std::path::PathBuf::from(home)
-            .join(".codex")
-            .join("sessions"),
-        &resolved,
-    )
+    has_existing_codex_session_in(&home.join(".codex").join("sessions"), &resolved)
 }
 
 pub(crate) fn toml_basic_string(value: &str) -> String {

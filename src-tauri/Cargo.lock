@@ -514,6 +514,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "block2",
+ "dirs",
  "notify",
  "objc2",
  "objc2-app-kit",

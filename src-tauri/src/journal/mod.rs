@@ -21,8 +21,7 @@ pub struct JournalEntry {
 
 /// `~/.charminal/journal/` のパスを返す。
 fn journal_root() -> Result<PathBuf, String> {
-    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-    Ok(PathBuf::from(home).join(".charminal").join("journal"))
+    Ok(crate::home_dir_or_err()?.join(".charminal").join("journal"))
 }
 
 /// 住人の書き込み先 `~/.charminal/journal/daily/` を返す。

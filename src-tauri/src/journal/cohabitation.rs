@@ -39,8 +39,7 @@ fn default_cohabitation() -> serde_json::Value {
 /// - `per_persona[active_persona_id]` に経過時間を加算
 /// - `last_shutdown` に現在の ISO 8601 タイムスタンプを記録
 pub fn save_hours(start: Instant, active_persona_id: &str) -> Result<(), String> {
-    let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-    let charminal_dir = std::path::PathBuf::from(&home).join(".charminal");
+    let charminal_dir = crate::home_dir_or_err()?.join(".charminal");
     save_hours_impl(start, active_persona_id, &charminal_dir)
 }
 

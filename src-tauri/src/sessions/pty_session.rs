@@ -67,20 +67,40 @@ pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>
     if let Some(path) = override_path {
         return path.to_string();
     }
-    let home = std::env::var("HOME").unwrap_or_default();
+    let home = dirs::home_dir().unwrap_or_default();
     let binary_name = match agent {
         AgentKind::Claude => "claude",
         AgentKind::Codex => "codex",
     };
-    let candidates = [
-        format!("{}/.local/bin/{}", home, binary_name),
-        format!("{}/.cargo/bin/{}", home, binary_name),
-        format!("/usr/local/bin/{}", binary_name),
-        format!("/opt/homebrew/bin/{}", binary_name),
-    ];
+    let exe_name = if cfg!(windows) {
+        format!("{}.exe", binary_name)
+    } else {
+        binary_name.to_string()
+    };
+    let mut candidates: Vec<std::path::PathBuf> = Vec::new();
+    if cfg!(windows) {
+        candidates.push(home.join(".cargo").join("bin").join(&exe_name));
+        candidates.push(
+            home.join("AppData")
+                .join("Local")
+                .join("Programs")
+                .join(&exe_name),
+        );
+        candidates.push(
+            home.join("AppData")
+                .join("Roaming")
+                .join("npm")
+                .join(&exe_name),
+        );
+    } else {
+        candidates.push(home.join(".local").join("bin").join(&exe_name));
+        candidates.push(home.join(".cargo").join("bin").join(&exe_name));
+        candidates.push(std::path::PathBuf::from("/usr/local/bin").join(&exe_name));
+        candidates.push(std::path::PathBuf::from("/opt/homebrew/bin").join(&exe_name));
+    }
     for path in &candidates {
-        if std::path::Path::new(path).exists() {
-            return path.clone();
+        if path.exists() {
+            return path.to_string_lossy().into_owned();
         }
     }
     binary_name.to_string()
@@ -90,7 +110,11 @@ fn resolve_shell_command(override_command: Option<&str>) -> String {
     if let Some(c) = override_command {
         return c.to_string();
     }
-    std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+    if cfg!(windows) {
+        std::env::var("COMSPEC").unwrap_or_else(|_| "powershell.exe".to_string())
+    } else {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
+    }
 }
 
 // ─── Ring buffer ────────────────────────────────────────────────
@@ -313,11 +337,7 @@ impl PtySession {
             },
             SpawnSpec::Shell { integration, .. } => {
                 if *integration {
-                    // ~/.charminal/shell/ に書き出された wrapper rc / init script
-                    // を経由するように env / args を組み立てる。binary が known shell
-                    // でないときは何もしない（apply_integration が detect して skip）。
-                    let charminal_home = std::env::var_os("HOME")
-                        .map(|h| std::path::PathBuf::from(h).join(".charminal"));
+                    let charminal_home = dirs::home_dir().map(|h| h.join(".charminal"));
                     if let Some(home) = charminal_home {
                         super::shell_wrapper::apply_integration(&mut cmd, &binary, &home);
                     }
