@@ -8,7 +8,7 @@
  */
 
 import { act, cleanup, render } from "@testing-library/react";
-import { levaStore, useControls } from "leva";
+import { levaStore } from "leva";
 import type { ComponentType } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ScenePackComponentProps } from "../../sdk/scene-pack";
@@ -222,7 +222,7 @@ describe("R3fRuntimeRoot", () => {
   it("mounts scene pack leva controls into the active scene store", () => {
     const registry = getMockRegistry();
     const SceneWithLights = () => {
-      useControls("lights", () => ({
+      useCharminalControls("lights", () => ({
         directionalColor: { value: "#ff8800", label: "light color" },
       }));
       return null;
@@ -247,13 +247,13 @@ describe("R3fRuntimeRoot", () => {
   it("does not reuse shared leva paths across scene packs", () => {
     const registry = getMockRegistry();
     const FirstScene = () => {
-      useControls("lights", () => ({
+      useCharminalControls("lights", () => ({
         ambientIntensity: { value: 0.05, label: "ambient" },
       }));
       return null;
     };
     const SecondScene = () => {
-      useControls("lights", () => ({
+      useCharminalControls("lights", () => ({
         ambientIntensity: { value: 0.4, label: "ambient" },
       }));
       return null;

@@ -18,8 +18,8 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
 import { CameraControls, SceneLayerControls } from "../../core/debug-controls";
 import type { Disposable, Vec3 } from "../../sdk/context";
+import { ControlStoreProvider } from "../../sdk/controls";
 import type { ScenePackCameraAPI } from "../../sdk/scene-pack";
-import { SceneLevaStoreProvider } from "../leva";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { BUNDLED_ASSETS } from "../scene-pack-registry/asset-resolver";
 import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
@@ -134,9 +134,9 @@ function ActivePackComponent({ Component, entry }: ActivePackComponentProps) {
   }, [sceneLevaStore]);
 
   return (
-    <SceneLevaStoreProvider store={sceneLevaStore}>
+    <ControlStoreProvider store={sceneLevaStore}>
       <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} />
-    </SceneLevaStoreProvider>
+    </ControlStoreProvider>
   );
 }
 
