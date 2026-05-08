@@ -725,7 +725,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         {/* グループ 3: Terminal */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>Terminal</div>
+          <div style={{ opacity: 0.7 }}>Agent</div>
           <div>
             <Select
               value={agent}
@@ -745,7 +745,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             opacity: 0.5,
           }}
         >
-          {strings.terminalAppliesNextLaunch}
+          {strings.agentAppliesNextLaunch}
         </div>
 
         {/* 48px gap before footer links */}
