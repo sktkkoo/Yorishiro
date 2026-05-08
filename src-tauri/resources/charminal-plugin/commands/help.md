@@ -161,6 +161,7 @@ pack 開発時に参照する型定義の所在:
 |---|---|
 | `src/sdk/context.d.ts` | PersonaContext / EffectContext / UiContext / AmbientUiContext |
 | `src/sdk/reaction.d.ts` | DispatchEvent / TriggerMatch / ReactionType |
+| `docs/catalogs/standard-hooks.md` | 標準 hook / DispatchEvent の分類と使い方 |
 | `src/sdk/pack.d.ts` | PersonaDefinition / EffectDefinition / ScenePackDefinition / UiPackDefinition / AmbientUiPackDefinition |
 
 full API doc は `npm run doc`（typedoc）で生成できる。
@@ -201,5 +202,6 @@ safe mode では user pack が一切 load されず、MCP tool（`list_load_erro
 | ファイル | 内容 |
 |---|---|
 | `src/sdk/README.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等） |
+| `docs/catalogs/standard-hooks.md` | 標準 hook / DispatchEvent カタログ |
 | `bundled-packs/` | bundled pack の実例（pattern source） |
 | `docs/philosophy/CHARMINAL.md` | 思想的背景 |
