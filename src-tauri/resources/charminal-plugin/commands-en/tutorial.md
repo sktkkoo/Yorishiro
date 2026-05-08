@@ -126,6 +126,10 @@ Before pack creation, explain how to reduce repeated permission prompts. Add the
 
 - **F1** or the sidebar button opens settings. The user can change body, scene, and sound
 - **F2** toggles debug panels. Common holds base camera and runtime-wide controls; Scene holds active scene lighting / post effects. `/charm:update` uses these for realtime tuning
+- **Cmd+T** opens a new shell tab. A plain shell, separate from the agent
+- **Cmd+W** closes the active tab (the main tab cannot be closed)
+- **Ctrl+Tab / Ctrl+Shift+Tab** switches to next / previous tab
+- **Cmd+1–9** jumps to the Nth tab
 
 ### /charm commands
 

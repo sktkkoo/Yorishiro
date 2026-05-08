@@ -185,6 +185,21 @@ If a handler needs to trigger another reaction, announce a **synthetic event** w
 
 ---
 
+## Keyboard Shortcuts
+
+| Key | Action |
+|---|---|
+| **F1** or sidebar button | Toggle settings screen |
+| **F2** | Toggle debug panels (Common / Scene) |
+| **Cmd+T** | Open a new shell tab |
+| **Cmd+W** | Close the active tab (main tab cannot be closed) |
+| **Ctrl+Tab / Ctrl+Shift+Tab** | Switch to next / previous tab |
+| **Cmd+1–9** | Jump to the Nth tab |
+
+Custom shortcuts can be added through `init.js` (see `/charm:shortcut`).
+
+---
+
 ## FAQ Routing
 
 | Goal | Send the user to |
