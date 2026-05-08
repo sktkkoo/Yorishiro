@@ -17,7 +17,6 @@
  *
  *   - F1: toggle charminal-settings
  *   - Cmd+Shift+F: fireworks-volley
- *   - Cmd+Shift+T: text-physics
  *   - Cmd+Shift+D: desaturate toggle
  *
  *   F2 is reserved by Charminal for the Common / Scene debug panels.
@@ -60,15 +59,6 @@ export default (ctx) => {
         e.preventDefault();
         e.stopImmediatePropagation();
         ctx.dispatchEffect({ kind: "fireworks-volley" });
-      }
-      if (e.metaKey && e.shiftKey && e.code === "KeyT") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        ctx.dispatchEffect({
-          kind: "text-physics",
-          origin: { x: 0.5, y: 0.7 },
-          force: 100,
-        });
       }
       if (e.metaKey && e.shiftKey && e.code === "KeyD") {
         e.preventDefault();
