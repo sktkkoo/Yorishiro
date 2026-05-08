@@ -162,6 +162,7 @@ Useful type definition files for pack development:
 |---|---|
 | `src/sdk/context.d.ts` | `PersonaContext` / `EffectContext` / `UiContext` / `AmbientUiContext` |
 | `src/sdk/reaction.d.ts` | `DispatchEvent` / `TriggerMatch` / `ReactionType` |
+| `docs/catalogs/standard-hooks.md` | Standard hook / DispatchEvent classes and usage notes |
 | `src/sdk/pack.d.ts` | `PersonaDefinition` / `EffectDefinition` / `ScenePackDefinition` / `UiPackDefinition` / `AmbientUiPackDefinition` |
 
 Generate the full API docs with `npm run doc`.
@@ -202,5 +203,6 @@ Safe mode skips all user packs and lets the user inspect / disable the failing p
 | File | Contents |
 |---|---|
 | `src/sdk/README.md` | SDK documentation, including the twin-trigger co-emission idiom |
+| `docs/catalogs/standard-hooks.md` | Standard hook / DispatchEvent catalog |
 | `bundled-packs/` | Bundled pack examples and implementation patterns |
 | `docs/philosophy/CHARMINAL.md` | Charminal's design background |

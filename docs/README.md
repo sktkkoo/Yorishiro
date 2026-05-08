@@ -14,6 +14,7 @@
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
+| 標準 hook / DispatchEvent の語彙を確認したい | [`catalogs/standard-hooks.md`](catalogs/standard-hooks.md) |
 | 過去に「なぜそう決めたか」を引きたい | [`decisions/README.md`](decisions/README.md) |
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
 | `~/.charminal/config.json` の field を確認したい | [`configuration.md`](configuration.md) |

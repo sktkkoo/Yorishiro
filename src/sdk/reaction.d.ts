@@ -40,11 +40,13 @@ export type ReactionType = StandardReactionType | (string & {});
  * custom trigger の match 関数の入力として渡される。
  *
  * 「Dispatch」は runtime が dispatcher 経由で trigger match に流すという
- * 意味。event の発信源は runtime（外来 event）と handler（synthetic event）
- * の両方を含む：
+ * 意味。event の発信源は runtime が外部から観測した event、runtime が観測結果から
+ * 派生させた event、handler が announce する synthetic event に分かれる：
  *
- * - **外来 event**: PTY 出力、hook signal、user 入力、idle 検知、window、
- *   scene 変化、`/charm` command など、runtime が観測して生成するもの
+ * - **ObservedEvent**: PTY 出力、hook signal、user 入力、window、scene 変化、
+ *   `/charm` command など、runtime が外部から観測したもの
+ * - **DerivedEvent**: idle 検知、tool activity など、runtime が観測結果から
+ *   pack 作者向けに生成する便利 event
  * - **`SyntheticEvent`**: runtime ではなく persona / utility の handler が
  *   自ら `ctx.emitEvent()` で発行する合成 event。handler が「観察したこと」
  *   を announce するために使う。詳細は SyntheticEvent の JSDoc 参照
@@ -56,16 +58,26 @@ export type ReactionType = StandardReactionType | (string & {});
  * 環境由来ではないため名前が不正確になった。2026-04-12 に `DispatchEvent`
  * へ rename（revelation 3.19 の implementation contract に記載）。
  */
-export type DispatchEvent =
+export type DispatchEvent = ObservedEvent | DerivedEvent | SyntheticEvent;
+
+/**
+ * Runtime が外部 source から直接観測した event。
+ * まだ「何を意味するか」は persona / utility の trigger が解釈する。
+ */
+export type ObservedEvent =
   | PtyOutputEvent
   | HookSignalEvent
   | UserInputEvent
-  | IdleEvent
-  | ToolActivityEvent
   | WindowEvent
   | SceneChangeEvent
-  | CharmCommandEvent
-  | SyntheticEvent;
+  | CharmCommandEvent;
+
+/**
+ * Runtime が観測結果から生成する便利 event。
+ * 元 event より pack 作者が扱いやすい粒度に寄せているため、厳密な upstream event
+ * ではなく Charminal runtime の解釈を含む。
+ */
+export type DerivedEvent = IdleEvent | ToolActivityEvent;
 
 export interface PtyOutputEvent {
   readonly kind: "pty-output";
