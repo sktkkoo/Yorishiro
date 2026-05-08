@@ -126,7 +126,7 @@ UI packs can keep their own key-value state through `ctx.state`; that state is a
 
 | Tool | Arguments | Purpose |
 |---|---|---|
-| `body_expression_set(...)` | expression params | Set the character expression |
+| `body_expression_set(...)` | preset, intensity?, durationMs?, hold? | Set a facial expression. Omit durationMs for a short transient expression; use durationMs: 0 or hold: true to keep it |
 | `body_animation_play(...)` | animation params | Play an animation |
 | `body_motion_cancel()` | - | Cancel the current motion |
 

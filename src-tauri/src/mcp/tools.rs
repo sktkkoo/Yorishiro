@@ -112,6 +112,13 @@ pub struct BodyExpressionSetRequest {
     /// 0-1, default 1。0 で表情解除。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intensity: Option<f32>,
+    /// 表情の保持時間（ms）。省略時は短い transient 表情として自動解除。0 で永続。
+    #[serde(rename = "durationMs")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+    /// true で明示解除まで表情を保持する。durationMs: 0 と同義。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hold: Option<bool>,
 }
 
 /// `space_effect_play` の引数。
@@ -440,7 +447,7 @@ impl Charminal {
     /// body_expression_set: VRM expression preset を設定（意識層 → 身体の path のみ、
     /// 反射層は別の non-MCP path を使う）。
     #[tool(
-        description = "Set the resident's facial expression preset (conscious-layer path; reflex-driven expressions use a separate non-MCP path)."
+        description = "Set the resident's facial expression preset. Defaults to a short transient expression that auto-releases; pass durationMs:0 or hold:true to keep it until explicitly released."
     )]
     async fn body_expression_set(
         &self,
@@ -449,7 +456,12 @@ impl Charminal {
         emit_to(
             &self.app_handle,
             "body.expression.set",
-            json!({ "preset": req.preset, "intensity": req.intensity }),
+            json!({
+                "preset": req.preset,
+                "intensity": req.intensity,
+                "durationMs": req.duration_ms,
+                "hold": req.hold
+            }),
         )
         .await
     }

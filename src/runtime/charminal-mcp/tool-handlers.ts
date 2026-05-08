@@ -740,6 +740,8 @@ export interface BodyExpressionSetDeps {
 export interface BodyExpressionSetResult {
   readonly preset: string;
   readonly intensity: number;
+  readonly durationMs: number | null;
+  readonly transient: boolean;
 }
 
 /**
@@ -751,13 +753,32 @@ export interface BodyExpressionSetResult {
  * Phase β は kind = "mood" のみ公開なので Map に入る entry も実質 1 つだが、
  * 将来 eye / lip / custom を解放した時のために kind 軸で持っておく。
  */
-const mcpExpressionSlots = new Map<ExpressionKind, ExpressionHandle>();
+const DEFAULT_MCP_EXPRESSION_DURATION_MS = 1500;
+
+interface ActiveMcpExpressionSlot {
+  readonly handle: ExpressionHandle;
+  readonly timeoutId: ReturnType<typeof setTimeout> | null;
+}
+
+const mcpExpressionSlots = new Map<ExpressionKind, ActiveMcpExpressionSlot>();
+
+function releaseMcpExpressionSlot(kind: ExpressionKind): void {
+  const active = mcpExpressionSlots.get(kind);
+  if (!active) return;
+  if (active.timeoutId !== null) {
+    clearTimeout(active.timeoutId);
+  }
+  active.handle.release();
+  mcpExpressionSlots.delete(kind);
+}
 
 /**
  * Body の expression mixer に MCP source として slot を acquire / release する
- * handler。intensity を omit すると 1、範囲外は 0-1 に clamp する。intensity が
- * 0 の場合は前 slot の release のみ行い、新規 acquire はしない。Body 未生成
- * （VRM 未 load）の場合は throw する。
+ * handler。intensity を omit すると 1、範囲外は 0-1 に clamp する。
+ * durationMs を omit すると短い transient 表情として自動 release する。
+ * durationMs: 0 または hold: true は永続 slot として残し、intensity: 0 は
+ * 前 slot の release のみ行って新規 acquire しない。Body 未生成（VRM 未 load）
+ * の場合は throw する。
  *
  * frame-loop overwrite 問題: 旧実装は `vrm.expressionManager.setValue()` を
  * 直接呼んでいたが、これは Body.applyExpressions() が毎 frame 全 expression を
@@ -767,7 +788,12 @@ const mcpExpressionSlots = new Map<ExpressionKind, ExpressionHandle>();
  */
 export function createBodyExpressionSetHandler(deps: BodyExpressionSetDeps) {
   return async (request: unknown): Promise<BodyExpressionSetResult> => {
-    const r = (request ?? {}) as { preset?: unknown; intensity?: unknown };
+    const r = (request ?? {}) as {
+      preset?: unknown;
+      intensity?: unknown;
+      durationMs?: unknown;
+      hold?: unknown;
+    };
     if (typeof r.preset !== "string" || r.preset === "") {
       throw new Error("missing preset");
     }
@@ -782,20 +808,34 @@ export function createBodyExpressionSetHandler(deps: BodyExpressionSetDeps) {
     const kind: ExpressionKind = "mood";
 
     // 既存 MCP slot があれば release（per-kind 単 slot）
-    const previousHandle = mcpExpressionSlots.get(kind);
-    if (previousHandle) {
-      previousHandle.release();
-      mcpExpressionSlots.delete(kind);
-    }
+    releaseMcpExpressionSlot(kind);
 
     if (intensity === 0) {
       // intensity 0 は release のみ、新規 acquire しない
-      return { preset: r.preset, intensity: 0 };
+      return { preset: r.preset, intensity: 0, durationMs: null, transient: false };
     }
 
+    const hold = r.hold === true;
+    const rawDurationMs = r.durationMs;
+    const durationMs =
+      hold || rawDurationMs === 0
+        ? null
+        : typeof rawDurationMs === "number" && Number.isFinite(rawDurationMs) && rawDurationMs > 0
+          ? rawDurationMs
+          : DEFAULT_MCP_EXPRESSION_DURATION_MS;
+    const transient = durationMs !== null;
     const handle = body.acquireExpressionSlot("mcp", kind, r.preset, intensity);
-    mcpExpressionSlots.set(kind, handle);
-    return { preset: r.preset, intensity };
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    if (transient) {
+      timeoutId = setTimeout(() => {
+        const active = mcpExpressionSlots.get(kind);
+        if (active?.handle !== handle) return;
+        active.handle.release();
+        mcpExpressionSlots.delete(kind);
+      }, durationMs);
+    }
+    mcpExpressionSlots.set(kind, { handle, timeoutId });
+    return { preset: r.preset, intensity, durationMs, transient };
   };
 }
 
@@ -805,6 +845,11 @@ export function createBodyExpressionSetHandler(deps: BodyExpressionSetDeps) {
  * される場合に、test 同士の slot 漏れを防ぐ。
  */
 export function __resetMcpExpressionSlotsForTesting(): void {
+  for (const active of mcpExpressionSlots.values()) {
+    if (active.timeoutId !== null) {
+      clearTimeout(active.timeoutId);
+    }
+  }
   mcpExpressionSlots.clear();
 }
 

@@ -125,7 +125,7 @@ ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set
 
 | tool | 引数 | 説明 |
 |---|---|---|
-| `body_expression_set(...)` | expression params | キャラの表情を設定 |
+| `body_expression_set(...)` | preset, intensity?, durationMs?, hold? | 表情を設定。durationMs 省略時は短時間だけ出て戻る。durationMs: 0 または hold: true で保持 |
 | `body_animation_play(...)` | animation params | アニメーション再生 |
 | `body_motion_cancel()` | — | モーション中止 |
 
