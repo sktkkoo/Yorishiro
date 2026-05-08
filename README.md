@@ -78,9 +78,11 @@ Charminal stores all user data in `~/.charminal/`:
 ```
 ~/.charminal/
 ├── config.json      # Persona, scene, terminal agent, and other settings
+├── init.js          # User startup script, runs on launch (like Emacs init.el)
 ├── packs/           # User-created packs
 ├── journal/         # Inhabitant's daily entries and memories
-└── shell/           # Shell integration scripts (auto-generated)
+├── shell/           # Shell integration scripts (auto-generated)
+└── sdk.d.ts         # Charminal SDK type definitions (auto-generated, do not edit)
 ```
 
 Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.

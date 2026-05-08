@@ -78,9 +78,11 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 ```
 ~/.charminal/
 ├── config.json      # Persona・scene・terminal agent などの設定
+├── init.js          # 起動時に実行されるユーザースクリプト（Emacs の init.el 相当）
 ├── packs/           # ユーザー作成の pack
 ├── journal/         # 住人の日々の記録と記憶
-└── shell/           # Shell integration スクリプト（自動生成）
+├── shell/           # Shell integration スクリプト（自動生成）
+└── sdk.d.ts         # Charminal SDK の型定義（自動生成、編集不要）
 ```
 
 `config.json` で persona・scene・terminal agent などを切り替えられます。詳細は [`docs/configuration.md`](docs/configuration.md)。
