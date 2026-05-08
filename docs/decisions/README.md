@@ -1,5 +1,7 @@
 # Decisions — topic-indexed 決定 / 制約 log
 
+> **Note for international readers:** This directory contains internal design decision records written in Japanese. It is intended for active development and is not translated. Key constraints are summarized in English in [`critical-constraints.md`](critical-constraints.md) and [`CLAUDE.md`](/CLAUDE.md).
+
 > このファイルは「**topic から最新の決定を 1 ページで掴みたい**」時の入口。対象：dev / AI。各 entry は「結論 + 理由 + 代替案 + 改訂履歴」を 1 ページに集約。
 
 このディレクトリは、Charminal の設計上の **決定** と **制約** を **topic 軸**で引けるようにした index。内部設計記録（非公開、date-indexed）を補完する。外部の読者はこのディレクトリだけで設計意図を追える。
