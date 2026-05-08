@@ -14,7 +14,7 @@ export interface UiStrings {
   readonly muteAmbient: string;
   readonly ambientVolume: string;
   readonly selectVrmFile: string;
-  readonly terminalAppliesNextLaunch: string;
+  readonly agentAppliesNextLaunch: string;
   readonly shortcutPrompt: string;
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
@@ -34,7 +34,7 @@ const EN: UiStrings = {
   muteAmbient: "Mute ambient sound",
   ambientVolume: "Ambient volume",
   selectVrmFile: "Select VRM file",
-  terminalAppliesNextLaunch: "Applies from the next terminal launch",
+  agentAppliesNextLaunch: "Applies from the next agent launch",
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
@@ -54,7 +54,7 @@ const JA: UiStrings = {
   muteAmbient: "環境音をミュート",
   ambientVolume: "環境音ボリューム",
   selectVrmFile: "VRM ファイルを選択",
-  terminalAppliesNextLaunch: "※ 次の terminal 起動から反映",
+  agentAppliesNextLaunch: "※ 次の agent 起動から反映",
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",

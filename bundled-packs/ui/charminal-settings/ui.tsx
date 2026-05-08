@@ -15,7 +15,7 @@ import type {
   UiContext,
   UiPackDefinition,
 } from "@charminal/sdk";
-import { ChevronDown, Volume2, VolumeX } from "lucide-react";
+import { ChevronDown, FolderOpen, Volume2, VolumeX } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -601,11 +601,12 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             type="button"
             onClick={onPickVrm}
             style={{
+              position: "relative",
               width: "100%",
               minWidth: "220px",
               maxWidth: "360px",
               background: COLORS.bgInput,
-              padding: "6px 10px",
+              padding: `6px ${SPACING.xl} 6px 10px`,
               borderRadius: RADIUS.sm,
               border: `1px solid ${COLORS.borderSubtle}`,
               opacity: 0.85,
@@ -622,6 +623,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             title={vrmName || undefined}
           >
             {vrmName || strings.notLoaded}
+            <FolderOpen
+              size={12}
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                right: SPACING.sm,
+                top: "50%",
+                transform: "translateY(-50%)",
+                pointerEvents: "none",
+                color: COLORS.fgDimmer,
+              }}
+            />
           </button>
 
           {/* Persona */}
@@ -712,7 +725,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         {/* グループ 3: Terminal */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>Terminal</div>
+          <div style={{ opacity: 0.7 }}>Agent</div>
           <div>
             <Select
               value={agent}
@@ -732,22 +745,19 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             opacity: 0.5,
           }}
         >
-          {strings.terminalAppliesNextLaunch}
+          {strings.agentAppliesNextLaunch}
         </div>
 
         {/* 48px gap before footer links */}
         <div style={{ height: "48px" }} />
 
-        {/* footer links: License / Shortcut */}
+        {/* footer link */}
         <div
           style={{
-            display: "flex",
-            gap: SPACING.xl,
             fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}
         >
-          <span style={{ cursor: "default" }}>License</span>
           <button
             type="button"
             onClick={onShortcutClick}
