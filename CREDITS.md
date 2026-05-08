@@ -2,7 +2,7 @@
 
 Charminal exists because of the work that came before it — built, published, and shared. This document records the OSS, specifications, and assets that Charminal depends on.
 
-*This document is a living record. If you find anything missing or incorrect, please open a PR or issue.*
+*This document is a living record. If you find anything missing or incorrect, please open an issue.*
 
 ---
 
@@ -123,9 +123,10 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 
 ## Inspiration / prior art
 
-- Claude Code (Anthropic) — the inhabitant Charminal is built around
+- Claude Code (Anthropic) — the system Charminal gives a body to
 - VRoid / VRM ecosystem (pixiv / VRM Consortium) — the foundation for character expression
-- Original Charminal prototype (self-hosted) — experiments with procedural faces and physics-based falling
+- Emacs — for the user-extensible runtime model and the `init.el` pattern (`~/.charminal/init.js` is its direct lineage)
+- VRChat — UGC platform built around 3D avatar-mediated presence; "inhabiting a virtual space"
 
 ---
 

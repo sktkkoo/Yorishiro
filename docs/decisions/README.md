@@ -1,6 +1,6 @@
 # Decisions — topic-indexed 決定 / 制約 log
 
-> **Note for international readers:** This directory contains internal design decision records written in Japanese. It is intended for active development and is not translated. Key constraints are summarized in English in [`critical-constraints.md`](critical-constraints.md) and [`CLAUDE.md`](/CLAUDE.md).
+> **Note for international readers:** This directory contains internal design decision records written in Japanese. It is intended for active development and is not translated. For an English overview of the project's design philosophy, see [`docs/philosophy/`](../philosophy/) (the `*.md` files are English; `*.ja.md` are Japanese).
 
 > このファイルは「**topic から最新の決定を 1 ページで掴みたい**」時の入口。対象：dev / AI。各 entry は「結論 + 理由 + 代替案 + 改訂履歴」を 1 ページに集約。
 

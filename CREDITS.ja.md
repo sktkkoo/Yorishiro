@@ -2,7 +2,7 @@
 
 Charminal が成り立っているのは、先に作られ、公開され、共有された多くの仕事のおかげです。ここでは Charminal が依存している OSS・仕様・asset をまとめて記録します。
 
-*このドキュメントは生きています。抜け・誤りを見つけたら PR / issue で指摘してください。*
+*このドキュメントは生きています。抜け・誤りを見つけたら issue で指摘してください。*
 
 ---
 
@@ -124,9 +124,10 @@ VRMA アニメーションと voice WAV は third-party 由来で **git repo に
 
 ## Inspiration / prior art
 
-- Claude Code（Anthropic）— Charminal の宿主
+- Claude Code（Anthropic）— Charminal が身体を与える対象
 - VRoid / VRM エコシステム（pixiv / VRM Consortium）— キャラクター表現の前提
-- 旧 Charminal（self-hosted prototype）— procedural face / 物理落下の実験
+- Emacs — ユーザーが拡張する runtime のモデル、`init.el` パターン（`~/.charminal/init.js` はその直系）
+- VRChat — UGCと3Dアバターによる交流プラットフォーム。「仮想空間に居る」とは
 
 ---
 
