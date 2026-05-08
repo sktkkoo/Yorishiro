@@ -199,6 +199,8 @@ npm run tauri dev # Launch as desktop app
 | `npm run test` | Vitest (watch) |
 | `npm run test:run` | Vitest (one-shot) |
 | `npm run test:rust` | `cargo test` |
+| `npm run doc` | Generate TypeScript SDK API docs |
+| `npm run doc:rust` | Generate Rust API docs |
 
 ---
 
