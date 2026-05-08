@@ -326,7 +326,7 @@ export function createClaiPersona(args: {
           handlers: [
             {
               label: "gun-fire-text-physics",
-              cooldownMs: 180000,
+              cooldownMs: 3_600_000,
               handler: runShootTimeline,
             },
           ],
