@@ -738,16 +738,13 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 48px gap before footer links */}
         <div style={{ height: "48px" }} />
 
-        {/* footer links: License / Shortcut */}
+        {/* footer link */}
         <div
           style={{
-            display: "flex",
-            gap: SPACING.xl,
             fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}
         >
-          <span style={{ cursor: "default" }}>License</span>
           <button
             type="button"
             onClick={onShortcutClick}
