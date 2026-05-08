@@ -46,7 +46,7 @@ npm install
 npm run tauri dev
 ```
 
-On launch, Claude Code starts inside the terminal and a VRM character appears beside it. Use Claude Code as you normally would.
+On launch, Claude Code starts inside the terminal and **CLAI**, the bundled VRM character, appears beside it. Use Claude Code as you normally would.
 
 ### `/charm` command
 
@@ -125,7 +125,7 @@ What works today:
 
 - Launches Claude Code as the terminal — you work right there
 - Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
-- A VRM 3D character that breathes, blinks, and shifts gaze (default model bundled)
+- CLAI, a VRM 3D character that breathes, blinks, and shifts gaze (bundled)
 - VRMA animation clip playback
 - Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
@@ -220,7 +220,7 @@ npm run tauri dev # Launch as desktop app
 ### Development
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Coding conventions, tech stack, development workflow
-- [`CREDITS.md`](CREDITS.md) — OSS and asset credits
+- [`CREDITS.md`](CREDITS.md) — OSS and asset credits ([日本語](CREDITS.ja.md))
 
 ---
 

@@ -46,7 +46,7 @@ npm install
 npm run tauri dev
 ```
 
-起動すると Claude Code がターミナル内で立ち上がり、VRM キャラクターが隣に表示されます。普段通りに Claude Code を使えます。
+起動すると Claude Code がターミナル内で立ち上がり、同梱の VRM キャラクター **CLAI**（クライ）が隣に表示されます。普段通りに Claude Code を使えます。
 
 ### `/charm` コマンド
 
@@ -125,7 +125,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 - Claude Code をターミナルとして起動し、そのまま作業できる
 - Session tabs: agent と並行して複数の shell セッションを操作（`Cmd+T` / `Ctrl+Tab`）
-- VRM モデルの 3D キャラクターが呼吸し、瞬きし、視線を動かす（デフォルトモデル同梱）
+- VRM の 3D キャラクター CLAI が呼吸し、瞬きし、視線を動かす（同梱）
 - VRMA アニメーションクリップの再生
 - 6 種類の pack によるカスタマイズ（persona / scene / effect / ui / utility / ambient-ui）
 - 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
@@ -220,7 +220,7 @@ npm run tauri dev # デスクトップアプリとして起動
 ### Development
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — 開発 convention（tech stack / coding / workflow）
-- [`CREDITS.md`](CREDITS.md) — 使っている OSS と asset のクレジット
+- [`CREDITS.ja.md`](CREDITS.ja.md) — 使っている OSS と asset のクレジット ([English](CREDITS.md))
 
 ### Design record（内部 — 別 repo）
 
