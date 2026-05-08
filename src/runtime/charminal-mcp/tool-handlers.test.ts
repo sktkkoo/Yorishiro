@@ -988,12 +988,22 @@ describe("createBodyExpressionSetHandler", () => {
     __resetMcpExpressionSlotsForTesting();
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+    __resetMcpExpressionSlotsForTesting();
+  });
+
   it("acquires expression slot via Body.acquireExpressionSlot with mcp source / mood kind", async () => {
     const { body, acquireExpressionSlot } = makeMockBody();
     const handler = createBodyExpressionSetHandler({ getBody: () => body });
     const result = await handler({ preset: "happy", intensity: 0.7 });
     expect(acquireExpressionSlot).toHaveBeenCalledWith("mcp", "mood", "happy", 0.7);
-    expect(result).toEqual({ preset: "happy", intensity: 0.7 });
+    expect(result).toEqual({
+      preset: "happy",
+      intensity: 0.7,
+      durationMs: 1500,
+      transient: true,
+    });
   });
 
   it("defaults intensity to 1 when omitted", async () => {
@@ -1040,7 +1050,84 @@ describe("createBodyExpressionSetHandler", () => {
     expect(handles[0].release).toHaveBeenCalledTimes(1);
     // intensity 0 は acquire しない
     expect(acquireExpressionSlot).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ preset: "happy", intensity: 0 });
+    expect(result).toEqual({
+      preset: "happy",
+      intensity: 0,
+      durationMs: null,
+      transient: false,
+    });
+  });
+
+  it("defaults to transient expression and releases after 1500ms", async () => {
+    vi.useFakeTimers();
+    const { body, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    await handler({ preset: "happy", intensity: 0.5 });
+    expect(handles[0].release).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1499);
+    expect(handles[0].release).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses requested durationMs for transient expression", async () => {
+    vi.useFakeTimers();
+    const { body, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    const result = await handler({ preset: "happy", intensity: 0.5, durationMs: 250 });
+    expect(result).toEqual({
+      preset: "happy",
+      intensity: 0.5,
+      durationMs: 250,
+      transient: true,
+    });
+
+    vi.advanceTimersByTime(249);
+    expect(handles[0].release).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+  });
+
+  it("durationMs 0 keeps the expression until explicitly released", async () => {
+    vi.useFakeTimers();
+    const { body, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    const result = await handler({ preset: "happy", intensity: 0.5, durationMs: 0 });
+    expect(result).toEqual({
+      preset: "happy",
+      intensity: 0.5,
+      durationMs: null,
+      transient: false,
+    });
+
+    vi.advanceTimersByTime(10_000);
+    expect(handles[0].release).not.toHaveBeenCalled();
+
+    await handler({ preset: "happy", intensity: 0 });
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+  });
+
+  it("hold true keeps the expression until explicitly released", async () => {
+    vi.useFakeTimers();
+    const { body, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    const result = await handler({ preset: "sad", intensity: 0.5, hold: true });
+    expect(result).toEqual({
+      preset: "sad",
+      intensity: 0.5,
+      durationMs: null,
+      transient: false,
+    });
+
+    vi.advanceTimersByTime(10_000);
+    expect(handles[0].release).not.toHaveBeenCalled();
   });
 
   it("throws when Body not available", async () => {
@@ -1052,6 +1139,21 @@ describe("createBodyExpressionSetHandler", () => {
     const { body } = makeMockBody();
     const handler = createBodyExpressionSetHandler({ getBody: () => body });
     await expect(handler({})).rejects.toThrow(/preset/);
+  });
+
+  it("does not let an old transient timer release a newer expression", async () => {
+    vi.useFakeTimers();
+    const { body, handles } = makeMockBody();
+    const handler = createBodyExpressionSetHandler({ getBody: () => body });
+
+    await handler({ preset: "happy", intensity: 0.5, durationMs: 1000 });
+    await handler({ preset: "sad", intensity: 0.5, durationMs: 1000 });
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+    expect(handles[1].release).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1000);
+    expect(handles[0].release).toHaveBeenCalledTimes(1);
+    expect(handles[1].release).toHaveBeenCalledTimes(1);
   });
 });
 
