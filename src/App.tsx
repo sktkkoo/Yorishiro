@@ -868,6 +868,8 @@ function App() {
           createSceneScreenshotHandler,
           // Presence intensity:
           createPresenceSetIntensityHandler,
+          // Voice:
+          createVoiceSayHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { applyPresenceLevel, getPresenceSnapshot, onUserPromptSubmit } = await import(
           "./runtime/presence-intensity"
@@ -1143,6 +1145,12 @@ function App() {
           "presence.set-intensity": createPresenceSetIntensityHandler({
             applyPresenceLevel: (level, source) => {
               applyPresenceLevel(level, source, buildPresenceDeps());
+            },
+          }),
+          // ── Voice ─────────────────────────────────────────
+          "voice.say": createVoiceSayHandler({
+            speak: (text) => {
+              voicePlayer.createVoiceAPI().say(text);
             },
           }),
         };

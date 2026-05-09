@@ -234,6 +234,16 @@ pub struct UiDebugPanelSetRequest {
     pub duration_ms: Option<u32>,
 }
 
+/// `voice_say` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct VoiceSayRequest {
+    /// 声に出すテキスト。
+    pub text: String,
+    /// 音声名（省略時は OS デフォルト）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice: Option<String>,
+}
+
 /// `presence_set_intensity` の引数。存在濃度の切り替え。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PresenceSetIntensityRequest {
@@ -582,6 +592,23 @@ impl Charminal {
             &self.app_handle,
             "presence.set-intensity",
             json!({ "level": req.level }),
+        )
+        .await
+    }
+
+    /// voice_say: TTS でテキストを発話する。住人 AI がキャラクターとして
+    /// 声に出したいセリフにのみ使う（全テキスト出力に使うものではない）。
+    #[tool(
+        description = "Speak text aloud using text-to-speech. Use this to say something out loud as the character — only call this for dialogue you intend to be heard, not for all text output."
+    )]
+    async fn voice_say(
+        &self,
+        Parameters(req): Parameters<VoiceSayRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "voice.say",
+            json!({ "text": req.text, "voice": req.voice }),
         )
         .await
     }
