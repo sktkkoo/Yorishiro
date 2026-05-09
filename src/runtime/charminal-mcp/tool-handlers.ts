@@ -1310,6 +1310,35 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
+ * voice.say
+ * ────────────────────────────────────────────────────────── */
+
+export interface VoiceSayDeps {
+  readonly speak: (text: string, voice?: string) => void;
+}
+
+export interface VoiceSayResult {
+  readonly spoken: boolean;
+}
+
+/**
+ * TTS でテキストを発話する handler。VoicePlayer に委譲する。
+ * text が空の場合は spoken: false を返す。
+ */
+export function createVoiceSayHandler(deps: VoiceSayDeps) {
+  return async (request: unknown): Promise<VoiceSayResult> => {
+    const r = requestRecord(request);
+    const text = r.text;
+    if (typeof text !== "string" || text === "") {
+      return { spoken: false };
+    }
+    const voice = typeof r.voice === "string" ? r.voice : undefined;
+    deps.speak(text, voice);
+    return { spoken: true };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
  * presence.set-intensity
  * ────────────────────────────────────────────────────────── */
 

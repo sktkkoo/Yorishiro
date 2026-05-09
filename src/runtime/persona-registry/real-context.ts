@@ -32,6 +32,7 @@ import type { Body } from "../../core/body";
 import type { LogBridge } from "../../core/log-bridge";
 import { createLogAPI } from "../../core/log-bridge";
 import type { EffectDispatcher } from "../../core/space";
+import type { VoicePlayer } from "../../core/voice";
 import type { PersonaContextFactory, PersonaContextInputs } from "./stub-context";
 
 export interface RealContextDeps {
@@ -41,6 +42,8 @@ export interface RealContextDeps {
   readonly logBridge: LogBridge;
   /** EffectDispatcher for SpaceAPI.injectEffect. */
   readonly effectDispatcher: EffectDispatcher;
+  /** VoicePlayer for VoiceAPI（省略時は stub fallback）。 */
+  readonly voicePlayer?: VoicePlayer;
 }
 
 /**
@@ -64,7 +67,7 @@ export function createRealPersonaContextFactory(deps: RealContextDeps): PersonaC
     log: createLogAPI(deps.logBridge, inputs.persona.id),
     space: spaceAPI,
 
-    voice: createStubVoiceAPI(),
+    voice: deps.voicePlayer?.createVoiceAPI() ?? createStubVoiceAPI(),
     memory: createStubMemoryAPI(),
     terminal: createStubTerminalAPI(),
     charm: stubCharm,

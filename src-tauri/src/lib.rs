@@ -2,6 +2,7 @@ mod journal;
 mod mcp;
 mod pty;
 mod sessions;
+mod tts;
 
 use pty::{start_hook_server, PtyState};
 use sessions::{SessionRegistry, SpawnSpec};
@@ -871,6 +872,7 @@ pub fn run() {
         .manage(pty_state)
         .manage(registry)
         .manage(WatcherState::new())
+        .manage(tts::TtsState::new())
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
             session_spawn,
@@ -900,7 +902,9 @@ pub fn run() {
             mcp_tool_response,
             read_journal_memories,
             check_tutorial_done,
-            mark_tutorial_done
+            mark_tutorial_done,
+            tts::tts_speak,
+            tts::tts_stop
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());
