@@ -54,6 +54,7 @@ import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
+import { VoicePlayer } from "./core/voice";
 import { getStrings } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
@@ -466,6 +467,7 @@ function App() {
     registerJournalFragment();
 
     const effectDispatcher = new EffectDispatcher();
+    const voicePlayer = new VoicePlayer();
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
@@ -1234,6 +1236,7 @@ function App() {
       logBridge,
       devLog,
       effectDispatcher,
+      voicePlayer,
       scenePackRegistry,
       uiPackRegistry,
       claimState,
@@ -1248,6 +1251,7 @@ function App() {
     logBridge,
     devLog,
     effectDispatcher,
+    voicePlayer,
     scenePackRegistry,
     uiPackRegistry,
     claimState,
@@ -1857,7 +1861,7 @@ function App() {
       if (body) {
         body.initAttention();
         dispatcher.setContextFactory(
-          createRealPersonaContextFactory({ body, logBridge, effectDispatcher }),
+          createRealPersonaContextFactory({ body, logBridge, effectDispatcher, voicePlayer }),
         );
         if (!greetedRef.current) {
           greetedRef.current = true;
@@ -1876,7 +1880,7 @@ function App() {
         dispatcher.setContextFactory(createStubPersonaContextFactory());
       }
     },
-    [dispatcher, logBridge, effectDispatcher],
+    [dispatcher, logBridge, effectDispatcher, voicePlayer],
   );
 
   // ── Tool-activity → Body state wiring ─────────────────────
