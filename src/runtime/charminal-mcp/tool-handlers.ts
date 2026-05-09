@@ -1314,7 +1314,7 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
  * ────────────────────────────────────────────────────────── */
 
 export interface VoiceSayDeps {
-  readonly speak: (text: string) => void;
+  readonly speak: (text: string, voice?: string) => void;
 }
 
 export interface VoiceSayResult {
@@ -1332,7 +1332,8 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
     if (typeof text !== "string" || text === "") {
       return { spoken: false };
     }
-    deps.speak(text);
+    const voice = typeof r.voice === "string" ? r.voice : undefined;
+    deps.speak(text, voice);
     return { spoken: true };
   };
 }
