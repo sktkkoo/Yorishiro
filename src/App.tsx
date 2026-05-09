@@ -467,7 +467,7 @@ function App() {
     registerJournalFragment();
 
     const effectDispatcher = new EffectDispatcher();
-    const voicePlayer = new VoicePlayer();
+    const voicePlayer = new VoicePlayer("Kyoko");
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
