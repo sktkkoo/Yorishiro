@@ -233,7 +233,7 @@ export function createClaiPersona(args: {
             {
               label: "fireworks-and-smile",
               handler: async (ctx: PersonaContext) => {
-                const expr = ctx.character.express({ kind: "mood", preset: "happy" }, 1);
+                const expr = ctx.character.express({ kind: "mood", preset: "relaxed" }, 0.7);
                 ctx.space.injectEffect({ kind: "fireworks-volley" });
                 await ctx.time.after(4000);
                 if (ctx.signal.aborted) return;
