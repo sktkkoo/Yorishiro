@@ -38,6 +38,7 @@ schemars = "1"
 uuid = { version = "1", features = ["v4"] }
 # screenshot: WKWebView native capture (macOS) + base64 encoding
 base64 = "0.22"
+tempfile = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

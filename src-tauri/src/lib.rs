@@ -904,7 +904,8 @@ pub fn run() {
             check_tutorial_done,
             mark_tutorial_done,
             tts::tts_speak,
-            tts::tts_stop
+            tts::tts_stop,
+            tts::tts_synthesize
         ])
         .setup(|app| {
             start_hook_server(app.handle().clone());

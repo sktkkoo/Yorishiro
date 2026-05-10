@@ -55,7 +55,7 @@ import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
-import { VoicePlayer } from "./core/voice";
+import { SayTtsEngine, VoicePlayer } from "./core/voice";
 import { getStrings } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
@@ -470,7 +470,7 @@ function App() {
     registerVoiceFragment();
 
     const effectDispatcher = new EffectDispatcher();
-    const voicePlayer = new VoicePlayer("Kyoko");
+    const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
@@ -681,7 +681,7 @@ function App() {
       let ambientAudioVolume = 1.0;
       let configuredLanguage: AppLanguage = "auto";
       let resolvedLanguage: ResolvedLanguage = resolveLanguage("auto", getBrowserLocales());
-      let voiceEnabled = true;
+      let voiceFrequency: "none" | "low" | "high" = "high";
       let pluginDir: string | null = null;
       try {
         const configText = await readCharminalConfigText();
@@ -689,7 +689,7 @@ function App() {
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
-        voiceEnabled = config.voiceFrequency !== "none";
+        voiceFrequency = config.voiceFrequency;
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
         appLanguageRef.current = { configured: configuredLanguage, resolved: resolvedLanguage };
@@ -1154,10 +1154,10 @@ function App() {
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
-            speak: (text, voice) => {
-              invoke("tts_speak", { text, voice: voice ?? null });
+            speak: (text) => {
+              voicePlayer.createVoiceAPI().say(text);
             },
-            isEnabled: () => voiceEnabled,
+            getFrequency: () => voiceFrequency,
           }),
         };
 
@@ -1877,6 +1877,7 @@ function App() {
       bodyRef.current = body;
       if (body) {
         body.initAttention();
+        body.setLipSyncSource(voicePlayer);
         dispatcher.setContextFactory(
           createRealPersonaContextFactory({ body, logBridge, effectDispatcher, voicePlayer }),
         );
@@ -1894,6 +1895,7 @@ function App() {
           }, 3000);
         }
       } else {
+        bodyRef.current?.setLipSyncSource(null);
         dispatcher.setContextFactory(createStubPersonaContextFactory());
       }
     },
