@@ -4,7 +4,6 @@ use base64::Engine as _;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::State;
-use tempfile::NamedTempFile;
 
 /// 再生中の TTS プロセスを管理する state。
 /// 同時発話は 1 つだけ（新しい speak が来たら前のを kill）。
