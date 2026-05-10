@@ -7,14 +7,17 @@ import { MOUTH_KEYS, type MouthValues, ZERO_MOUTH } from "./mouth-values";
 /** EMA 係数 (0 = 変化なし, 1 = 即追従) */
 const SMOOTHING_ALPHA = 0.35;
 
+/** volume がこれ以下なら無音扱い */
+const SILENCE_THRESHOLD = 0.05;
+
 /** 帯域バイト値合計がこれ以下ならフォルマント推定せず waveform 音量だけを使う */
 const SPECTRUM_FORMANT_THRESHOLD = 240;
 
 /** RMS → 0–1 正規化用 */
-const SPECTRUM_VOLUME_SCALE = 80;
+const SPECTRUM_VOLUME_SCALE = 120;
 
 /** time-domain RMS → 0–1 正規化用 */
-const TIME_DOMAIN_VOLUME_SCALE = 0.16;
+const TIME_DOMAIN_VOLUME_SCALE = 0.25;
 
 /**
  * 各母音の理想 F1/F2 位置 (正規化 0–1)。
@@ -119,7 +122,7 @@ export class LipSyncAnalyser {
     const spectrumVolume = Math.min(rms / SPECTRUM_VOLUME_SCALE, 1.0);
     const waveformVolume = Math.min(timeRms / TIME_DOMAIN_VOLUME_SCALE, 1.0);
     const volume = Math.max(spectrumVolume, waveformVolume);
-    if (volume === 0) {
+    if (volume < SILENCE_THRESHOLD) {
       this.smoothed = { ...ZERO_MOUTH };
       return { ...ZERO_MOUTH };
     }

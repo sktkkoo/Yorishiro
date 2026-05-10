@@ -13,7 +13,7 @@ import { ZERO_MOUTH } from "./mouth-values";
 import type { TtsEngine } from "./tts-engine";
 
 const FADE_OUT_MS = 150;
-const ANALYSIS_GAIN = 10;
+const ANALYSIS_GAIN = 1;
 const BUFFER_ANALYSIS_WINDOW_MS = 32;
 const BUFFER_ANALYSIS_VOLUME_SCALE = 0.12;
 
@@ -231,7 +231,7 @@ export class VoicePlayer {
 
     const rms = count > 0 ? Math.sqrt(squareSum / count) : 0;
     const volume = Math.min(Math.max(rms, peak * 0.5) / BUFFER_ANALYSIS_VOLUME_SCALE, 1);
-    if (volume <= 0) return { ...ZERO_MOUTH };
+    if (volume < 0.05) return { ...ZERO_MOUTH };
 
     return { aa: volume, ih: 0, ou: 0, ee: 0, oh: 0 };
   }
