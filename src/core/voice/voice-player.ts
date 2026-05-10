@@ -13,9 +13,9 @@ import { ZERO_MOUTH } from "./mouth-values";
 import type { TtsEngine } from "./tts-engine";
 
 const FADE_OUT_MS = 150;
-const ANALYSIS_GAIN = 1;
 const BUFFER_ANALYSIS_WINDOW_MS = 32;
 const BUFFER_ANALYSIS_VOLUME_SCALE = 0.12;
+const BUFFER_SILENCE_THRESHOLD = 0.05;
 
 /** post-MVP 用スタブハンドル（clip 再生は未実装） */
 const stubHandle = (): VoiceHandle => ({
@@ -36,8 +36,7 @@ export class VoicePlayer {
 
   // Web Audio graph (engine 使用時のみ構築)
   private analyserNode: AnalyserNode | null = null;
-  private analysisGainNode: GainNode | null = null;
-  private analysisSinkNode: GainNode | null = null;
+  private silentSinkNode: GainNode | null = null;
   private gainNode: GainNode | null = null;
   private lipSync: LipSyncAnalyser | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
@@ -139,15 +138,12 @@ export class VoicePlayer {
     if (this.analyserNode) return;
 
     this.analyserNode = LipSyncAnalyser.createAnalyserNode(ctx);
-    this.analysisGainNode = ctx.createGain();
-    this.analysisGainNode.gain.value = ANALYSIS_GAIN;
-    this.analysisSinkNode = ctx.createGain();
-    this.analysisSinkNode.gain.value = 0;
+    this.silentSinkNode = ctx.createGain();
+    this.silentSinkNode.gain.value = 0;
     this.gainNode = ctx.createGain();
 
-    this.analysisGainNode.connect(this.analyserNode);
-    this.analyserNode.connect(this.analysisSinkNode);
-    this.analysisSinkNode.connect(ctx.destination);
+    this.analyserNode.connect(this.silentSinkNode);
+    this.silentSinkNode.connect(ctx.destination);
     this.gainNode.connect(ctx.destination);
     this.lipSync = new LipSyncAnalyser(this.analyserNode);
   }
@@ -158,7 +154,7 @@ export class VoicePlayer {
     return new Promise((resolve) => {
       const source = ctx.createBufferSource();
       source.buffer = buffer;
-      source.connect(this.analysisGainNode as GainNode);
+      source.connect(this.analyserNode as AnalyserNode);
       source.connect(this.gainNode as GainNode);
       this.currentSource = source;
       this.gainNode?.gain.setValueAtTime(1, ctx.currentTime);
@@ -231,7 +227,7 @@ export class VoicePlayer {
 
     const rms = count > 0 ? Math.sqrt(squareSum / count) : 0;
     const volume = Math.min(Math.max(rms, peak * 0.5) / BUFFER_ANALYSIS_VOLUME_SCALE, 1);
-    if (volume < 0.05) return { ...ZERO_MOUTH };
+    if (volume < BUFFER_SILENCE_THRESHOLD) return { ...ZERO_MOUTH };
 
     return { aa: volume, ih: 0, ou: 0, ee: 0, oh: 0 };
   }

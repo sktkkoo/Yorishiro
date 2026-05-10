@@ -182,6 +182,8 @@ fn strip_fllr_chunk(wav: &[u8]) -> Vec<u8> {
 fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String> {
     let mut cmd = Command::new("powershell");
     cmd.arg("-NoProfile").arg("-Command");
+    // PowerShell の single-quoted string 内では ' 以外の特殊文字 ($, `, () 等) は
+    // リテラル扱いされるため、' → '' のエスケープのみで安全。
     let escaped = text.replace('\'', "''");
     let ps_script = if let Some(v) = voice {
         let v_escaped = v.replace('\'', "''");

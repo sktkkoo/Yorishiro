@@ -246,7 +246,7 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(mockAudioContext.decodeAudioData).not.toHaveBeenCalled();
   });
 
-  it("スピーカー出力とは別に解析用 signal を 10 倍して AnalyserNode へ渡す", async () => {
+  it("解析用 AnalyserNode は silent sink 経由で destination に接続される", async () => {
     const engine = createMockEngine();
     const player = new VoicePlayer(undefined, engine);
     const api = player.createVoiceAPI();
@@ -256,18 +256,15 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     await Promise.resolve();
 
     const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
-    const analysisGain = mockAudioContext.createGain.mock.results[0].value;
-    const analysisSink = mockAudioContext.createGain.mock.results[1].value;
-    const outputGain = mockAudioContext.createGain.mock.results[2].value;
+    const silentSink = mockAudioContext.createGain.mock.results[0].value;
+    const outputGain = mockAudioContext.createGain.mock.results[1].value;
     const source = mockAudioContext.createBufferSource.mock.results[0].value;
 
-    expect(analysisGain.gain.value).toBe(10);
-    expect(analysisSink.gain.value).toBe(0);
-    expect(analysisGain.connect).toHaveBeenCalledWith(analyser);
-    expect(analyser.connect).toHaveBeenCalledWith(analysisSink);
-    expect(analysisSink.connect).toHaveBeenCalledWith(mockAudioContext.destination);
+    expect(silentSink.gain.value).toBe(0);
+    expect(analyser.connect).toHaveBeenCalledWith(silentSink);
+    expect(silentSink.connect).toHaveBeenCalledWith(mockAudioContext.destination);
     expect(outputGain.connect).toHaveBeenCalledWith(mockAudioContext.destination);
-    expect(source.connect).toHaveBeenCalledWith(analysisGain);
+    expect(source.connect).toHaveBeenCalledWith(analyser);
     expect(source.connect).toHaveBeenCalledWith(outputGain);
   });
 
