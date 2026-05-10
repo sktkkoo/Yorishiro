@@ -1154,8 +1154,8 @@ function App() {
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
-            speak: (text, voice) => {
-              invoke("tts_speak", { text, voice: voice ?? null });
+            speak: (text) => {
+              voicePlayer.createVoiceAPI().say(text);
             },
             getFrequency: () => voiceFrequency,
           }),
