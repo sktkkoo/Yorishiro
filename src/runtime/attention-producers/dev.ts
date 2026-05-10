@@ -49,18 +49,16 @@ export function startDevAttentionProducer(opts: StartOptions): Disposable {
   let lastLoggedKey: string | null = null;
   const sub = attention.subscribe((snapshot) => {
     const target = snapshot.target;
-    const key =
-      target === null
-        ? "null"
-        : `${target.source}:${target.kind}:${target.reason ?? "none"}:${Math.round(target.priority * 100)}`;
-    if (key === lastLoggedKey) return;
-    lastLoggedKey = key;
     if (target === null) {
-      // biome-ignore lint/suspicious/noConsole: dev-mode diagnostic
-      console.info("[attention] cleared");
+      if (lastLoggedKey !== "null") {
+        lastLoggedKey = "null";
+        console.info("[attention] cleared");
+      }
       return;
     }
-    // biome-ignore lint/suspicious/noConsole: dev-mode diagnostic
+    const key = `${target.source}:${target.kind}:${target.reason ?? "none"}:${Math.round(target.priority * 100)}`;
+    if (key === lastLoggedKey) return;
+    lastLoggedKey = key;
     console.info("[attention] active", {
       source: target.source,
       kind: target.kind,
