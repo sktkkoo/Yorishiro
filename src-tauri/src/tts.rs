@@ -99,15 +99,22 @@ pub fn tts_synthesize(text: String, voice: Option<String>) -> Result<String, Str
 }
 
 fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<String, String> {
-    let tmp = NamedTempFile::new().map_err(|e| format!("tmpfile: {}", e))?;
-    let tmp_path = tmp.path().to_owned();
+    // say は出力先を新規作成するため、先に空ファイルを消しておく。
+    // .wav suffix 必須 — say は拡張子なしファイルに .wav を自動付与するため、
+    // suffix なしだと読み取り先とずれて ENOENT になる。
+    let raw_tmp = tempfile::Builder::new()
+        .suffix(".wav")
+        .tempfile()
+        .map_err(|e| format!("tmpfile: {}", e))?;
+    let raw_path = raw_tmp.path().to_owned();
+    drop(raw_tmp);
 
     let mut cmd = Command::new("say");
     if let Some(v) = voice {
         cmd.arg("-v").arg(v);
     }
     cmd.arg("-o")
-        .arg(&tmp_path)
+        .arg(&raw_path)
         .arg("--file-format=WAVE")
         .arg("--data-format=LEI16@24000")
         .arg("--")
@@ -120,8 +127,57 @@ fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<String, String> {
         return Err(format!("say failed: {}", stderr));
     }
 
-    let wav = std::fs::read(&tmp_path).map_err(|e| format!("read wav: {}", e))?;
+    // macOS say は FLLR チャンクを含む WAV を出力する。
+    // WebKit の decodeAudioData はこれをパースできないため除去する。
+    let raw_wav = std::fs::read(&raw_path).map_err(|e| format!("read wav: {}", e))?;
+    let _ = std::fs::remove_file(&raw_path);
+    if raw_wav.is_empty() {
+        return Err(format!("say produced empty file at {:?}", raw_path));
+    }
+    let wav = strip_fllr_chunk(&raw_wav);
     Ok(base64::engine::general_purpose::STANDARD.encode(&wav))
+}
+
+fn strip_fllr_chunk(wav: &[u8]) -> Vec<u8> {
+    if wav.len() < 12 || &wav[0..4] != b"RIFF" || &wav[8..12] != b"WAVE" {
+        return wav.to_vec();
+    }
+
+    let mut stripped = Vec::with_capacity(wav.len());
+    stripped.extend_from_slice(&wav[..12]);
+
+    let mut offset = 12;
+    while offset + 8 <= wav.len() {
+        let chunk_start = offset;
+        let chunk_id = &wav[offset..offset + 4];
+        let chunk_size = u32::from_le_bytes([
+            wav[offset + 4],
+            wav[offset + 5],
+            wav[offset + 6],
+            wav[offset + 7],
+        ]) as usize;
+        offset += 8;
+
+        let padded_size = chunk_size + (chunk_size % 2);
+        let chunk_end = match offset.checked_add(padded_size) {
+            Some(end) if end <= wav.len() => end,
+            _ => return wav.to_vec(),
+        };
+
+        if chunk_id != b"FLLR" {
+            stripped.extend_from_slice(&wav[chunk_start..chunk_end]);
+        }
+
+        offset = chunk_end;
+    }
+
+    if offset != wav.len() {
+        return wav.to_vec();
+    }
+
+    let riff_size = (stripped.len() - 8) as u32;
+    stripped[4..8].copy_from_slice(&riff_size.to_le_bytes());
+    stripped
 }
 
 fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String> {
@@ -162,4 +218,60 @@ fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String>
     }
 
     Ok(base64::engine::general_purpose::STANDARD.encode(&output.stdout))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_fllr_chunk;
+
+    fn riff_with_chunks(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&0u32.to_le_bytes());
+        wav.extend_from_slice(b"WAVE");
+
+        for (id, data) in chunks {
+            wav.extend_from_slice(*id);
+            wav.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            wav.extend_from_slice(data);
+            if data.len() % 2 == 1 {
+                wav.push(0);
+            }
+        }
+
+        let riff_size = (wav.len() - 8) as u32;
+        wav[4..8].copy_from_slice(&riff_size.to_le_bytes());
+        wav
+    }
+
+    #[test]
+    fn strips_fllr_chunk_and_updates_riff_size() {
+        let wav = riff_with_chunks(&[
+            (b"fmt ", &[1, 2, 3, 4]),
+            (b"FLLR", &[9, 9, 9]),
+            (b"data", &[5, 6]),
+        ]);
+
+        let stripped = strip_fllr_chunk(&wav);
+
+        assert_eq!(&stripped[0..4], b"RIFF");
+        assert_eq!(&stripped[8..12], b"WAVE");
+        assert_eq!(
+            u32::from_le_bytes(stripped[4..8].try_into().unwrap()) as usize,
+            stripped.len() - 8
+        );
+        assert_eq!(
+            stripped,
+            riff_with_chunks(&[(b"fmt ", &[1, 2, 3, 4]), (b"data", &[5, 6])])
+        );
+    }
+
+    #[test]
+    fn leaves_invalid_or_chunk_truncated_input_unchanged() {
+        assert_eq!(strip_fllr_chunk(b"not a wav"), b"not a wav");
+
+        let mut truncated = riff_with_chunks(&[(b"FLLR", &[1, 2, 3, 4])]);
+        truncated.pop();
+        assert_eq!(strip_fllr_chunk(&truncated), truncated);
+    }
 }
