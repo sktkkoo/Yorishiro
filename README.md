@@ -8,7 +8,7 @@
 
 <p align="center"><sub><strong>Charm</strong>inal = <strong>Char</strong>acter + Ter<strong>minal</strong> + <strong>Charm</strong></sub></p>
 
-Charminal is a desktop app that gives a body to the AI running inside your terminal.
+Charminal is a desktop app that gives a body to the AI running inside your terminal. The entire app — terminal included — is treated as the character's living space.
 
 Claude Code or Codex runs inside. While the AI is deep in thought, a 3D character lets its gaze wander. When an error hits, the face grimaces before the AI puts it into words. Sometimes the character just moves on its own, for no reason at all. Instead of a spinner, someone is there.
 
@@ -95,7 +95,7 @@ Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs
 
 The inhabitant constantly observes terminal output. Hooks and text flowing through the PTY are picked up by persona pack triggers, which react instantly with expressions and motions. These reactions bypass the LLM — the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
 
-### Journal
+### Journal [in development]
 
 The inhabitant can write daily entries in `~/.charminal/journal/daily/`. Summaries of notable moments accumulate in `memories.md` and are recalled in future sessions. This is a long-term memory mechanism that persists across sessions.
 
@@ -132,7 +132,7 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
-- Journal: long-term memory across sessions
+- Journal: long-term memory across sessions [in development]
 - `/charm` for interactive pack creation and editing
 - Windows build support (prepared, not yet verified)
 

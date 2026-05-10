@@ -31,7 +31,7 @@
 - Auto Color Correction（shoost の「背景基準で前景を染める」）
 - Camera filter（diffusion / glow 等）
 
-scene を試すには bundled / user scene pack を登録し、`~/.charminal/config.json` の `activeScene` で選ぶ。config が空なら bundled `quiet-room` が fallback になる。
+scene を試すには bundled / user scene pack を登録し、`~/.charminal/config.json` の `activeScene` で選ぶ。config が空なら bundled `simple-room` が fallback になる。
 
 ---
 

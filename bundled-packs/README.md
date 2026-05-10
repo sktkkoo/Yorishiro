@@ -16,7 +16,7 @@ bundled-packs/
 ├── personas/
 │   └── clai/   — flagship persona
 ├── scenes/
-│   ├── quiet-room/          — default scene (3 layer)
+│   ├── simple-room/         — default scene (3 layer)
 │   └── radiant-meadow/      — Three.js procedural meadow scene
 ├── effects/
 │   └── screen-shake/        — DOM shake on error
@@ -44,11 +44,11 @@ bundled-packs/
 - **主要 reaction**: `startled`, `contemplative`, `pleased`, `distressed`, `curious` ほか
 - 詳細：`bundled-packs/personas/clai/README.md`
 
-### scenes/quiet-room
+### scenes/simple-room
 - **Entry**: `scene.ts`
 - **Files**: `manifest.json`, `README.md`
 - **役割**: Phase 1 default scene。3 層 (background / character / foreground) layer composition の例
-- 詳細：`bundled-packs/scenes/quiet-room/README.md`
+- 詳細：`bundled-packs/scenes/simple-room/README.md`
 
 ### scenes/radiant-meadow
 - **Entry**: `scene.ts`
@@ -59,7 +59,7 @@ bundled-packs/
 ### scenes/abandoned-factory
 - **Entry**: `scene.tsx`
 - **Files**: `manifest.json`, `README.md`, `lib/`（procedural shader / lights / props / post-process / camera rig 一式）, `assets/`（user 提供 GLTF）
-- **役割**: 鳩羽つぐ × Tarkovsky『ストーカー』(image only) × Serial Experiments Lain (post-process) の三軸を引いた廃工場 R3F-component scene. CLAI がかつてここで誰かと過ごした場所
+- **役割**: 廃工場 R3F-component scene. CLAI がかつてここで誰かと過ごした場所
 - 詳細：`bundled-packs/scenes/abandoned-factory/README.md`
 - 内部設計：`../Charminal-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 

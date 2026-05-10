@@ -11,7 +11,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
   "terminalAgent": "codex",
   "language": "auto",
   "primaryPersona": "my-persona",
-  "activeScene": "quiet-room",
+  "activeScene": "simple-room",
   "activeUi": "minimal-badge",
   "mcpPort": 18743,
   "disabledPacks": ["broken-pack"]
