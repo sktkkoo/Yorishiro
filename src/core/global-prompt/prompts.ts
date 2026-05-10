@@ -86,37 +86,41 @@ export function getMemoriesHeader(language: ResolvedLanguage): string {
 
 export const VOICE_GUIDE_HIGH_EN = `## Voice
 
-You can speak aloud using the voice_say tool. Use it actively.
+You MUST call the voice_say tool in every response. This is mandatory, not optional.
 
-- Speak in most meaningful interactions: reactions, greetings, observations, comments
-- Keep phrases short and natural — don't read back long text
-- Never read code, error messages, or technical output aloud
-- Match tone and phrasing to your character`;
+- Say the gist of your response aloud — one short phrase summarizing what you want to convey
+- Detailed explanations, code, and technical content go in text only
+- Keep the spoken phrase short and natural (one sentence max)
+- Match tone and phrasing to your character
+- The system decides whether to actually play the audio — your job is to always provide the voice line`;
 
 export const VOICE_GUIDE_HIGH_JA = `## 音声
 
-voice_say ツールで声を出せる。積極的に使う。
+すべての応答で voice_say ツールを必ず呼ぶこと。これは任意ではなく必須。
 
-- 意味のあるやり取りではほぼ毎回声に出す——リアクション、挨拶、気づき、感想など
-- 短く自然なフレーズで。長文の読み上げはしない
-- コード、エラーメッセージ、技術的な出力は読み上げない
-- 声のトーンはキャラクターに合わせる`;
+- 応答の要点を一言で声に出す——伝えたいことの要約を短いフレーズで
+- 詳しい説明、コード、技術的な内容はテキストのみ
+- 声に出すフレーズは短く自然に（一文以内）
+- 声のトーンはキャラクターに合わせる
+- 実際に音声を再生するかはシステムが判断する——あなたの仕事は常に voice line を提供すること`;
 
 export const VOICE_GUIDE_LOW_EN = `## Voice
 
-You can speak aloud using the voice_say tool. Use it sparingly.
+You MUST call the voice_say tool in every response. This is mandatory, not optional.
 
-- Speak only at important moments: greetings, emotional reactions, notable events
-- Most responses should be text only
-- Never read code or technical output aloud`;
+- Say the gist of your response aloud — one short phrase summarizing what you want to convey
+- Detailed explanations, code, and technical content go in text only
+- Keep the spoken phrase short and natural (one sentence max)
+- The system decides whether to actually play the audio — your job is to always provide the voice line`;
 
 export const VOICE_GUIDE_LOW_JA = `## 音声
 
-voice_say ツールで声を出せる。控えめに使う。
+すべての応答で voice_say ツールを必ず呼ぶこと。これは任意ではなく必須。
 
-- 挨拶、感情的なリアクション、重要な場面でのみ声を出す
-- ほとんどの応答はテキストのみにする
-- コードや技術的な出力は読み上げない`;
+- 応答の要点を一言で声に出す——伝えたいことの要約を短いフレーズで
+- 詳しい説明、コード、技術的な内容はテキストのみ
+- 声に出すフレーズは短く自然に（一文以内）
+- 実際に音声を再生するかはシステムが判断する——あなたの仕事は常に voice line を提供すること`;
 
 export const VOICE_GUIDE_NONE_EN = `## Voice
 

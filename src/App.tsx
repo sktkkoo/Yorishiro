@@ -681,7 +681,7 @@ function App() {
       let ambientAudioVolume = 1.0;
       let configuredLanguage: AppLanguage = "auto";
       let resolvedLanguage: ResolvedLanguage = resolveLanguage("auto", getBrowserLocales());
-      let voiceEnabled = true;
+      let voiceFrequency: "none" | "low" | "high" = "high";
       let pluginDir: string | null = null;
       try {
         const configText = await readCharminalConfigText();
@@ -689,7 +689,7 @@ function App() {
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
-        voiceEnabled = config.voiceFrequency !== "none";
+        voiceFrequency = config.voiceFrequency;
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
         appLanguageRef.current = { configured: configuredLanguage, resolved: resolvedLanguage };
@@ -1157,7 +1157,7 @@ function App() {
             speak: (text, voice) => {
               invoke("tts_speak", { text, voice: voice ?? null });
             },
-            isEnabled: () => voiceEnabled,
+            getFrequency: () => voiceFrequency,
           }),
         };
 
