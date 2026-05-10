@@ -34,6 +34,8 @@ import type { VRM } from "@pixiv/three-vrm";
 import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
+import type { MouthValues } from "../voice/mouth-values";
+import { MOUTH_KEYS } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
@@ -54,6 +56,11 @@ import {
 import { ProceduralBones } from "./procedural-bones";
 
 // ─── Constants ───────────────────────────────────────────
+
+/** Body が lip sync 値を pull するためのインターフェース。 */
+export interface LipSyncSource {
+  sampleMouth(): MouthValues;
+}
 
 const BREATHING_AMPLITUDE = 0.005;
 const BREATHING_FREQUENCY = 0.8;
@@ -132,6 +139,9 @@ export class Body {
 
   /** 直前の attention snapshot の source。source 変化検知に使用。 */
   private lastAttentionSource: string | null = null;
+
+  /** LipSync 音声解析ソース。再生中に毎フレーム sampleMouth() を pull する。 */
+  private lipSyncSource: LipSyncSource | null = null;
 
   /** VRM head の screen 座標（three-runtime が毎 frame setHeadClientReference で更新）。 */
   private headClientX = 0;
@@ -223,6 +233,10 @@ export class Body {
    * Set the activity state. Affects eye patterns, head drift, and expressions.
    * Called by Perception (via tool-activity events) or handler logic.
    */
+  setLipSyncSource(source: LipSyncSource | null): void {
+    this.lipSyncSource = source;
+  }
+
   setState(state: EyeState): void {
     // const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);
@@ -603,6 +617,17 @@ export class Body {
 
     for (const [name, weight] of resolved) {
       exprMgr.setValue(name, weight);
+    }
+
+    // LipSync: 音声再生中は解析値で lip を上書きする
+    if (this.lipSyncSource) {
+      const mouth = this.lipSyncSource.sampleMouth();
+      const hasSignal = MOUTH_KEYS.some((k) => mouth[k] > 0);
+      if (hasSignal) {
+        for (const k of MOUTH_KEYS) {
+          exprMgr.setValue(k, mouth[k]);
+        }
+      }
     }
   }
 
