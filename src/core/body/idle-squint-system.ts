@@ -5,11 +5,11 @@
  * Kept separate from BlinkSystem so it does not fight autonomous blinks.
  */
 
-const NEXT_MIN_S = 6;
-const NEXT_MAX_S = 18;
-const DURATION_MIN_S = 0.7;
-const DURATION_MAX_S = 1.8;
-const FADE_S = 0.22;
+const NEXT_MIN_S = 8;
+const NEXT_MAX_S = 22;
+const DURATION_MIN_S = 0.4;
+const DURATION_MAX_S = 1.0;
+const FADE_S = 0.15;
 const WEIGHT_MIN = 0.1;
 const WEIGHT_MAX = 0.3;
 

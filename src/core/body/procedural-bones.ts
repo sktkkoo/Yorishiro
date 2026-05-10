@@ -89,8 +89,8 @@ export class ProceduralBones {
     if (this.headBone) {
       this.headDriftTimer -= delta;
       if (this.headDriftTimer <= 0) {
-        const ampZ = this.isThinking ? HEAD_DRIFT_AMP_Z * 2.8 : HEAD_DRIFT_AMP_Z;
-        const ampY = this.isThinking ? HEAD_DRIFT_AMP_Y * 2.8 : HEAD_DRIFT_AMP_Y;
+        const ampZ = this.isThinking ? HEAD_DRIFT_AMP_Z * 1.8 : HEAD_DRIFT_AMP_Z;
+        const ampY = this.isThinking ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y;
         this.headDriftTargetZ = (this.random() - 0.5) * 2 * ampZ;
         this.headDriftTargetY = (this.random() - 0.5) * 2 * ampY;
         this.headDriftTimer = this.isThinking

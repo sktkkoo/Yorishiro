@@ -42,22 +42,22 @@ function clamp(value: number, min: number, max: number): number {
 export type EyeState = "idle" | "thinking" | "reading" | "writing" | "running";
 
 const THINKING_EYE: ReadonlyArray<EyeDir> = [
-  { up: 1.0, down: 0, left: 1.0, right: 0 }, // visual memory (upper-left)
-  { up: 1.0, down: 0, left: 0, right: 1.0 }, // visual construction (upper-right)
-  { up: 1.0, down: 0, left: 1.0, right: 0 }, // weight: upper-left ×2
-  { up: 1.0, down: 0, left: 0, right: 1.0 }, // weight: upper-right ×2
+  { up: 0.5, down: 0, left: 0.8, right: 0 }, // visual memory (upper-left)
+  { up: 0.5, down: 0, left: 0, right: 0.8 }, // visual construction (upper-right)
   { up: 0, down: 0, left: 1.0, right: 0 }, // auditory memory (lateral-left)
   { up: 0, down: 0, left: 0, right: 1.0 }, // auditory construction (lateral-right)
-  { up: 0.3, down: 0, left: 0, right: 0 }, // soft front-up
+  { up: 0.2, down: 0, left: 0.3, right: 0 }, // soft front-up
   { up: 0, down: 0.4, left: 0, right: 0.5 }, // internal dialogue (lower-right)
+  { up: 0, down: 0.3, left: 0.5, right: 0 }, // lower-left (kinesthetic)
+  { up: 0, down: 0, left: 0, right: 0 }, // front (neutral reset)
 ];
 
 const PATTERNS: Record<EyeState, ReadonlyArray<EyeDir>> = {
   idle: [
     { up: 0, down: 0, left: 1.0, right: 0 },
     { up: 0, down: 0, left: 0, right: 1.0 },
-    { up: 0.6, down: 0, left: 0.8, right: 0 },
-    { up: 0.6, down: 0, left: 0, right: 0.8 },
+    { up: 0.3, down: 0, left: 0.8, right: 0 },
+    { up: 0.3, down: 0, left: 0, right: 0.8 },
     { up: 0, down: 0.3, left: 0.6, right: 0 },
     { up: 0, down: 0.3, left: 0, right: 0.6 },
     { up: 0, down: 0, left: 0, right: 0 }, // front
@@ -241,9 +241,9 @@ export class EyeSystem {
 
         this.isSaccading = true;
 
-        // Thinking: upper gaze gets longer fixation (2-4s)
-        if (this._state === "thinking" && picked.up > 0.5) {
-          this.fixationTimer = 2.0 + this.random() * 2.0;
+        // Thinking: upper gaze gets slightly longer fixation
+        if (this._state === "thinking" && picked.up > 0.3) {
+          this.fixationTimer = 1.2 + this.random() * 1.0;
         } else {
           const [min, max] = INTERVALS[this._state];
           this.fixationTimer = min + this.random() * (max - min);
