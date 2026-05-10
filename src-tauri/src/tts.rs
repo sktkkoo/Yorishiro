@@ -1,6 +1,7 @@
 // src-tauri/src/tts.rs
 
-use std::process::{Child, Command};
+use base64::Engine as _;
+use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::State;
 
@@ -78,4 +79,73 @@ pub fn tts_speak(
 pub fn tts_stop(state: State<'_, TtsState>) -> Result<(), String> {
     stop_inner(&state);
     Ok(())
+}
+
+/// テキストから WAV 音声を合成し、base64 文字列で返す。
+/// フロントエンド側で decodeAudioData → Web Audio 再生する。
+#[tauri::command]
+pub fn tts_synthesize(text: String, voice: Option<String>) -> Result<String, String> {
+    let output = build_synth_command(&text, voice.as_deref())
+        .ok_or_else(|| "TTS synthesize: unsupported platform".to_string())?
+        .output()
+        .map_err(|e| format!("TTS synthesize: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("TTS synthesize failed: {}", stderr));
+    }
+
+    Ok(base64::engine::general_purpose::STANDARD.encode(&output.stdout))
+}
+
+/// 音声合成 → stdout に WAV を出力するコマンドを組み立てる。
+fn build_synth_command(text: &str, voice: Option<&str>) -> Option<Command> {
+    if cfg!(target_os = "macos") {
+        let mut cmd = Command::new("say");
+        if let Some(v) = voice {
+            cmd.arg("-v").arg(v);
+        }
+        cmd.arg("-o")
+            .arg("/dev/stdout")
+            .arg("--file-format=WAVE")
+            .arg("--data-format=LEI16@24000")
+            .arg("--")
+            .arg(text);
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        Some(cmd)
+    } else if cfg!(target_os = "windows") {
+        let mut cmd = Command::new("powershell");
+        cmd.arg("-NoProfile").arg("-Command");
+        let escaped = text.replace('\'', "''");
+        let ps_script = if let Some(v) = voice {
+            let v_escaped = v.replace('\'', "''");
+            format!(
+                "Add-Type -AssemblyName System.Speech; \
+                 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
+                 $s.SelectVoice('{}'); \
+                 $ms = New-Object System.IO.MemoryStream; \
+                 $s.SetOutputToWaveStream($ms); \
+                 $s.Speak('{}'); \
+                 [Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)",
+                v_escaped, escaped
+            )
+        } else {
+            format!(
+                "Add-Type -AssemblyName System.Speech; \
+                 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
+                 $ms = New-Object System.IO.MemoryStream; \
+                 $s.SetOutputToWaveStream($ms); \
+                 $s.Speak('{}'); \
+                 [Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)",
+                escaped
+            )
+        };
+        cmd.arg(&ps_script);
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+        Some(cmd)
+    } else {
+        None
+    }
 }
