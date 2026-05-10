@@ -25,6 +25,7 @@ dist-ssr
 
 # Worktrees (local dev only)
 .worktrees/
+.claude/worktrees/
 
 # Charminal-specific
 .charminal/cache/

@@ -358,6 +358,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
   const [language, setLanguage] = useState<AppLanguage>("auto");
   const [resolvedLanguage, setResolvedLanguage] = useState<ResolvedLanguage>("en");
+  const [voiceFrequency, setVoiceFrequency] = useState<"none" | "low" | "high">("high");
   const [configLoaded, setConfigLoaded] = useState(false);
   const personas = ctx.app.listPersonas();
   const visiblePersonas = filterPersonaOptionsForLanguage(personas, resolvedLanguage);
@@ -379,6 +380,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setActiveAmbientUiLocal(cur.activeAmbientUi);
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
+      setVoiceFrequency(cur.voiceFrequency ?? "high");
       setConfigLoaded(true);
     });
     return () => {
@@ -435,6 +437,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       },
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "language",
+    });
+  };
+
+  const onVoiceFrequencyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = e.target.value as "none" | "low" | "high";
+    void applyConfigUpdate({
+      next,
+      prev: voiceFrequency,
+      setLocal: setVoiceFrequency,
+      write: (v) => ctx.app.setVoiceFrequency(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "voiceFrequency",
     });
   };
 
@@ -746,6 +760,32 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           }}
         >
           {strings.agentAppliesNextLaunch}
+        </div>
+
+        {/* グループ 4: Voice */}
+        <div style={{ ...gridStyle, marginTop: SPACING.lg }}>
+          <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
+          <div>
+            <Select
+              value={voiceFrequency}
+              onChange={onVoiceFrequencyChange}
+              options={[
+                { value: "high", label: strings.voiceHigh },
+                { value: "low", label: strings.voiceLow },
+                { value: "none", label: strings.voiceNone },
+              ]}
+            />
+          </div>
+        </div>
+        <div
+          style={{
+            marginTop: SPACING.xs,
+            marginLeft: `calc(100px + ${SPACING.md})`,
+            fontSize: FONT.sizeXs,
+            opacity: 0.5,
+          }}
+        >
+          {strings.voiceAppliesNextSession}
         </div>
 
         {/* 48px gap before footer links */}

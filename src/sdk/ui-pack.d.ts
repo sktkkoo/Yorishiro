@@ -108,6 +108,8 @@ export interface UiAppAPI {
   setAmbientAudioVolume(volume: number): Promise<void>;
   /** UI / persona fallback / command prompt の言語を切り替える。 */
   setLanguage(language: AppLanguage): Promise<void>;
+  /** TTS 音声の利用頻度を設定する。次回セッションから反映。 */
+  setVoiceFrequency(voiceFrequency: "none" | "low" | "high"): Promise<void>;
   /**
    * 現 config の snapshot（読み取り専用、初期値表示用）。
    * `~/.charminal/config.json` を fresh に読んで返す async。
@@ -121,6 +123,7 @@ export interface UiAppAPI {
     readonly activeAmbientUi: readonly string[];
     readonly language: AppLanguage;
     readonly resolvedLanguage: ResolvedLanguage;
+    readonly voiceFrequency: "none" | "low" | "high";
   }>;
 }
 

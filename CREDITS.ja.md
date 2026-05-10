@@ -75,19 +75,14 @@ VRMA アニメーションと voice WAV は third-party 由来で **git repo に
 
 #### CLAI（同梱デフォルトキャラクター）
 
-キャラクターデザイン・VRMモデル制作：LUGAS（[@lucas_VTuber](https://x.com/lucas_VTuber)）
+キャラクターデザイン・VRMモデル制作：LUCAS（[@lucas_VTuber](https://x.com/lucas_VTuber)）
 
-本モデルの著作権は Charminal プロジェクトに譲渡されています。著作人格権は LUGAS 様に帰属します。
+本モデルの著作権は Charminal プロジェクトに譲渡されています。著作人格権は LUCAS 様に帰属します。
 
-素晴らしいデザインとモデルによって CLAI に命を吹き込んでくださった LUGAS 様に、深く感謝申し上げます。
+素晴らしいデザインとモデルによって CLAI に命を吹き込んでくださった LUCAS 様に、深く感謝申し上げます。
 
-> LUGAS 様は Charminal プロジェクトとは無関係です。
-> 本アプリケーションに関するお問い合わせを LUGAS 様へ行うことはお控えください。
-
-#### ユーザー持ち込みモデル
-
-- **出所**: ユーザー自身の持ち込み。VRoid Studio / Booth / VRM Consortium の sample モデル等
-- **License**: 各モデルの license に従ってください。商用利用・改変・再配布の可否はモデルごとに異なります
+> LUCAS 様は Charminal プロジェクトとは無関係です。
+> 本アプリケーションに関するお問い合わせを LUCAS 様へ行うことはお控えください。
 
 ### VRMA animations
 

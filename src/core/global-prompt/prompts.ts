@@ -81,3 +81,55 @@ export function getJournalGuide(language: ResolvedLanguage): string {
 export function getMemoriesHeader(language: ResolvedLanguage): string {
   return language === "ja" ? MEMORIES_HEADER_JA : MEMORIES_HEADER_EN;
 }
+
+// ─── Voice ─────────────────────────────────────────────────
+
+export const VOICE_GUIDE_HIGH_EN = `## Voice
+
+You can speak aloud using the voice_say tool. Use it actively.
+
+- Speak in most meaningful interactions: reactions, greetings, observations, comments
+- Keep phrases short and natural — don't read back long text
+- Never read code, error messages, or technical output aloud
+- Match tone and phrasing to your character`;
+
+export const VOICE_GUIDE_HIGH_JA = `## 音声
+
+voice_say ツールで声を出せる。積極的に使う。
+
+- 意味のあるやり取りではほぼ毎回声に出す——リアクション、挨拶、気づき、感想など
+- 短く自然なフレーズで。長文の読み上げはしない
+- コード、エラーメッセージ、技術的な出力は読み上げない
+- 声のトーンはキャラクターに合わせる`;
+
+export const VOICE_GUIDE_LOW_EN = `## Voice
+
+You can speak aloud using the voice_say tool. Use it sparingly.
+
+- Speak only at important moments: greetings, emotional reactions, notable events
+- Most responses should be text only
+- Never read code or technical output aloud`;
+
+export const VOICE_GUIDE_LOW_JA = `## 音声
+
+voice_say ツールで声を出せる。控えめに使う。
+
+- 挨拶、感情的なリアクション、重要な場面でのみ声を出す
+- ほとんどの応答はテキストのみにする
+- コードや技術的な出力は読み上げない`;
+
+export const VOICE_GUIDE_NONE_EN = `## Voice
+
+Do not use the voice_say tool.`;
+
+export const VOICE_GUIDE_NONE_JA = `## 音声
+
+voice_say ツールは使用しない。`;
+
+export type VoiceLevel = "none" | "low" | "high";
+
+export function getVoiceGuide(language: ResolvedLanguage, level: VoiceLevel): string {
+  if (level === "none") return language === "ja" ? VOICE_GUIDE_NONE_JA : VOICE_GUIDE_NONE_EN;
+  if (level === "low") return language === "ja" ? VOICE_GUIDE_LOW_JA : VOICE_GUIDE_LOW_EN;
+  return language === "ja" ? VOICE_GUIDE_HIGH_JA : VOICE_GUIDE_HIGH_EN;
+}

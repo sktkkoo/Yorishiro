@@ -75,19 +75,14 @@ For developer asset setup, see `scripts/fetch-assets.mjs`.
 
 #### CLAI (bundled default character)
 
-Character design and VRM model by LUGAS ([@lucas_VTuber](https://x.com/lucas_VTuber)).
+Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTuber)).
 
-Copyright in this model has been transferred to the Charminal project. Moral rights remain with LUGAS.
+Copyright in this model has been transferred to the Charminal project. Moral rights remain with LUCAS.
 
 We are deeply grateful for the exceptional design and craftsmanship that brings CLAI to life.
 
-> LUGAS is not affiliated with the Charminal project in any way.
+> LUCAS is not affiliated with the Charminal project in any way.
 > Please do not contact them regarding this application or any issues related to it.
-
-#### User-provided models
-
-- **Source**: Models brought in by the user — VRoid Studio, Booth, VRM Consortium sample models, etc.
-- **License**: Follow the license of each individual model. Terms for commercial use, modification, and redistribution vary per model.
 
 ### VRMA animations
 

@@ -8,7 +8,7 @@
 
 <p align="center"><sub><strong>Charm</strong>inal = <strong>Char</strong>acter + Ter<strong>minal</strong> + <strong>Charm</strong></sub></p>
 
-Charminal は、ターミナルの中で動く AI に身体を与えるデスクトップアプリです。
+Charminal は、ターミナルの中で動く AI に身体を与えるデスクトップアプリです。ターミナルを含めたアプリ全体を、キャラクターの「住環境」として扱います。
 
 中では Claude Code や Codex が走っています。AI が考え込んでいるあいだ、3D キャラクターが視線をさまよわせる。エラーが出ると、言葉にするより先に眉が顰められる。ときどき、何の脈絡もなく勝手に動く。スピナーの代わりに、そこに誰かが居ます。
 
@@ -95,7 +95,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 住人はターミナルの出力を常に観察しています。hooks や PTY に流れるテキストを persona pack の trigger が拾い、表情やモーションとして即座に反応します。この反応は LLM を経由しない反射的なもので、熱いやかんに触って手を引っ込めるように、言葉より先に身体が動きます。住人の注意が向いている場所は Attention Aura として画面上に淡く光ります。
 
-### Journal
+### Journal [開発中]
 
 住人は `~/.charminal/journal/daily/` に日々の記録を書き残せます。印象に残った出来事の要約は `memories.md` に蓄積され、次回以降のセッションで思い出として参照されます。セッションをまたいだ長期記憶の仕組みです。
 
@@ -132,7 +132,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - 6 種類の pack によるカスタマイズ（persona / scene / effect / ui / utility / ambient-ui）
 - 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
 - 反射層による PTY 観察と即時反応
-- Journal による長期記憶
+- Journal による長期記憶 [開発中]
 - `/charm` による pack の対話的な作成・編集
 - Windows ビルド対応（準備済み、動作未確認）
 

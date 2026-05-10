@@ -47,6 +47,7 @@ import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
 import { registerEnvironmentFragment } from "./core/global-prompt/environment-fragment";
 import { registerJournalFragment } from "./core/global-prompt/journal-fragment";
+import { registerVoiceFragment } from "./core/global-prompt/voice-fragment";
 import { createLogAPI, LogBridge } from "./core/log-bridge";
 import { Perception } from "./core/perception";
 import type { Layer, LayerRole, SceneSpec } from "./core/scene";
@@ -118,6 +119,7 @@ import {
   resolvePrimaryPersonaForLanguage,
   serializeConfig,
   type TerminalAgent,
+  type VoiceFrequency,
   withActiveAmbientUiSet,
   withLanguageSet,
   withPrimaryPersonaSet,
@@ -465,6 +467,7 @@ function App() {
     // ── グローバル system prompt フラグメント登録 ────────────────────────
     registerEnvironmentFragment();
     registerJournalFragment();
+    registerVoiceFragment();
 
     const effectDispatcher = new EffectDispatcher();
     const voicePlayer = new VoicePlayer("Kyoko");
@@ -678,6 +681,7 @@ function App() {
       let ambientAudioVolume = 1.0;
       let configuredLanguage: AppLanguage = "auto";
       let resolvedLanguage: ResolvedLanguage = resolveLanguage("auto", getBrowserLocales());
+      let voiceEnabled = true;
       let pluginDir: string | null = null;
       try {
         const configText = await readCharminalConfigText();
@@ -685,6 +689,7 @@ function App() {
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
+        voiceEnabled = config.voiceFrequency !== "none";
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
         appLanguageRef.current = { configured: configuredLanguage, resolved: resolvedLanguage };
@@ -1152,6 +1157,7 @@ function App() {
             speak: (text, voice) => {
               invoke("tts_speak", { text, voice: voice ?? null });
             },
+            isEnabled: () => voiceEnabled,
           }),
         };
 
@@ -1527,6 +1533,7 @@ function App() {
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
         language: AppLanguage;
+        voiceFrequency: VoiceFrequency;
       }>,
     ): Promise<void> => {
       const next = pendingConfigWrite.then(async () => {
@@ -1750,6 +1757,7 @@ function App() {
             pendingConfigWrite = next.catch(() => undefined);
             return next;
           },
+          setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
           getConfig: async () => {
             const text = await readCharminalConfigText();
             const cur = parseConfig(text);
@@ -1763,6 +1771,7 @@ function App() {
               activeAmbientUi: cur.activeAmbientUi,
               language: cur.language,
               resolvedLanguage,
+              voiceFrequency: cur.voiceFrequency,
             };
           },
         },

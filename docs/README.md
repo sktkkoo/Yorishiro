@@ -111,7 +111,7 @@ Source code 内で参照するときは：
 | Pack | Kind | 詳細 |
 |---|---|---|
 | `bundled-packs/personas/clai/` | persona | flagship reference implementation |
-| `bundled-packs/scenes/quiet-room/` | scene | Phase 1 default scene（3 layer composition） |
+| `bundled-packs/scenes/simple-room/` | scene | Phase 1 default scene（3 layer composition） |
 | `bundled-packs/effects/screen-shake/` | effect | DOM shake on error |
 | `bundled-packs/ui/charminal-settings/` | ui | 設定画面（F1 で開く default UI pack） |
 | `bundled-packs/ui/camera-lighting-panel/` | ui | UI pack SDK の reference implementation。常用は非推奨（F2 panel で代替） |

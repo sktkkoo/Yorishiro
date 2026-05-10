@@ -66,8 +66,10 @@ Scene pack authors choose which parameters are tunable from outside. Only values
 
 F2 opens two panels:
 
-- **Common**: runtime-wide controls such as the base camera
-- **Scene**: active scene pack controls such as lighting, post effects, layer blur / opacity, and camera modulation
+- **Common**: runtime-wide controls such as base camera position / FOV / target / tracking. **Persists across scene switches.** Owned by the ThreeRuntime singleton.
+- **Scene**: active scene pack controls such as lighting, post effects, layer blur / opacity, and camera modulation. Reset on scene switch.
+
+Scene pack authors register **only on the Scene side**. The base camera lives in Common (owned by ThreeRuntime) and should not be touched from a scene pack. Camera breath / shake / sway are **modulations registered on the Scene side**, additively composed onto the base camera by CameraModulationRegistry.
 
 Design these with the user:
 
