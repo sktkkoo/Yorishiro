@@ -309,10 +309,10 @@ export class VoicePlayer {
 async function decodeAudioData(ctx: AudioContext, audioData: ArrayBuffer): Promise<AudioBuffer> {
   try {
     return decodePcm16Wav(ctx, audioData);
-  } catch (pcmError) {
+  } catch {
     try {
       return await ctx.decodeAudioData(audioData.slice(0));
-    } catch (decodeError) {
+    } catch {
       throw new Error(`Unable to decode synthesized audio (${audioData.byteLength} bytes)`);
     }
   }
