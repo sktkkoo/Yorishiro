@@ -4,6 +4,7 @@ use base64::Engine as _;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::State;
+use tempfile::NamedTempFile;
 
 /// 再生中の TTS プロセスを管理する state。
 /// 同時発話は 1 つだけ（新しい speak が来たら前のを kill）。
@@ -83,69 +84,82 @@ pub fn tts_stop(state: State<'_, TtsState>) -> Result<(), String> {
 
 /// テキストから WAV 音声を合成し、base64 文字列で返す。
 /// フロントエンド側で decodeAudioData → Web Audio 再生する。
+///
+/// macOS の `say` は /dev/stdout への出力をサポートしないため、
+/// tmpfile 経由で WAV を取得する。tmpfile は読み取り後自動削除。
 #[tauri::command]
 pub fn tts_synthesize(text: String, voice: Option<String>) -> Result<String, String> {
-    let output = build_synth_command(&text, voice.as_deref())
-        .ok_or_else(|| "TTS synthesize: unsupported platform".to_string())?
-        .output()
-        .map_err(|e| format!("TTS synthesize: {}", e))?;
+    if cfg!(target_os = "macos") {
+        synthesize_macos(&text, voice.as_deref())
+    } else if cfg!(target_os = "windows") {
+        synthesize_windows(&text, voice.as_deref())
+    } else {
+        Err("TTS synthesize: unsupported platform".to_string())
+    }
+}
 
+fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<String, String> {
+    let tmp = NamedTempFile::new().map_err(|e| format!("tmpfile: {}", e))?;
+    let tmp_path = tmp.path().to_owned();
+
+    let mut cmd = Command::new("say");
+    if let Some(v) = voice {
+        cmd.arg("-v").arg(v);
+    }
+    cmd.arg("-o")
+        .arg(&tmp_path)
+        .arg("--file-format=WAVE")
+        .arg("--data-format=LEI16@24000")
+        .arg("--")
+        .arg(text);
+    cmd.stderr(Stdio::piped());
+
+    let output = cmd.output().map_err(|e| format!("say: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("TTS synthesize failed: {}", stderr));
+        return Err(format!("say failed: {}", stderr));
+    }
+
+    let wav = std::fs::read(&tmp_path).map_err(|e| format!("read wav: {}", e))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(&wav))
+}
+
+fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String> {
+    let mut cmd = Command::new("powershell");
+    cmd.arg("-NoProfile").arg("-Command");
+    let escaped = text.replace('\'', "''");
+    let ps_script = if let Some(v) = voice {
+        let v_escaped = v.replace('\'', "''");
+        format!(
+            "Add-Type -AssemblyName System.Speech; \
+             $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
+             $s.SelectVoice('{}'); \
+             $ms = New-Object System.IO.MemoryStream; \
+             $s.SetOutputToWaveStream($ms); \
+             $s.Speak('{}'); \
+             [Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)",
+            v_escaped, escaped
+        )
+    } else {
+        format!(
+            "Add-Type -AssemblyName System.Speech; \
+             $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
+             $ms = New-Object System.IO.MemoryStream; \
+             $s.SetOutputToWaveStream($ms); \
+             $s.Speak('{}'); \
+             [Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)",
+            escaped
+        )
+    };
+    cmd.arg(&ps_script);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    let output = cmd.output().map_err(|e| format!("powershell: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("TTS failed: {}", stderr));
     }
 
     Ok(base64::engine::general_purpose::STANDARD.encode(&output.stdout))
-}
-
-/// 音声合成 → stdout に WAV を出力するコマンドを組み立てる。
-fn build_synth_command(text: &str, voice: Option<&str>) -> Option<Command> {
-    if cfg!(target_os = "macos") {
-        let mut cmd = Command::new("say");
-        if let Some(v) = voice {
-            cmd.arg("-v").arg(v);
-        }
-        cmd.arg("-o")
-            .arg("/dev/stdout")
-            .arg("--file-format=WAVE")
-            .arg("--data-format=LEI16@24000")
-            .arg("--")
-            .arg(text);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-        Some(cmd)
-    } else if cfg!(target_os = "windows") {
-        let mut cmd = Command::new("powershell");
-        cmd.arg("-NoProfile").arg("-Command");
-        let escaped = text.replace('\'', "''");
-        let ps_script = if let Some(v) = voice {
-            let v_escaped = v.replace('\'', "''");
-            format!(
-                "Add-Type -AssemblyName System.Speech; \
-                 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
-                 $s.SelectVoice('{}'); \
-                 $ms = New-Object System.IO.MemoryStream; \
-                 $s.SetOutputToWaveStream($ms); \
-                 $s.Speak('{}'); \
-                 [Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)",
-                v_escaped, escaped
-            )
-        } else {
-            format!(
-                "Add-Type -AssemblyName System.Speech; \
-                 $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \
-                 $ms = New-Object System.IO.MemoryStream; \
-                 $s.SetOutputToWaveStream($ms); \
-                 $s.Speak('{}'); \
-                 [Console]::OpenStandardOutput().Write($ms.ToArray(), 0, $ms.Length)",
-                escaped
-            )
-        };
-        cmd.arg(&ps_script);
-        cmd.stdout(Stdio::piped());
-        cmd.stderr(Stdio::piped());
-        Some(cmd)
-    } else {
-        None
-    }
 }
