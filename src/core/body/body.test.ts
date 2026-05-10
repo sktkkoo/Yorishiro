@@ -563,13 +563,13 @@ describe("IdleSquintSystem", () => {
   it("starts a subtle squint after a randomized idle delay", () => {
     const squint = new IdleSquintSystem(() => 1);
 
-    expect(squint.update(17.9, true)).toBe(0);
+    expect(squint.update(21.9, true)).toBe(0);
     expect(squint.isActive).toBe(false);
 
     expect(squint.update(0.2, true)).toBe(0);
     expect(squint.isActive).toBe(true);
 
-    const value = squint.update(0.11, true);
+    const value = squint.update(0.08, true);
     expect(value).toBeGreaterThan(0);
     expect(value).toBeLessThanOrEqual(0.3);
   });
@@ -578,21 +578,21 @@ describe("IdleSquintSystem", () => {
     const values = [0, 0, 0, 0, 0, 1];
     const squint = new IdleSquintSystem(() => values.shift() ?? 0);
 
-    squint.update(6.1, true);
-    squint.update(0.3, true);
+    squint.update(8.1, true);
+    squint.update(0.2, true);
     expect(squint.value).toBeCloseTo(0.1);
 
-    squint.update(0.5, true);
-    squint.update(6.1, true);
     squint.update(0.3, true);
+    squint.update(8.1, true);
+    squint.update(0.2, true);
     expect(squint.value).toBeCloseTo(0.3);
   });
 
   it("clears immediately when idle is disabled", () => {
     const squint = new IdleSquintSystem(() => 0);
 
-    squint.update(6.1, true);
-    squint.update(0.2, true);
+    squint.update(8.1, true);
+    squint.update(0.1, true);
     expect(squint.value).toBeGreaterThan(0);
 
     expect(squint.update(0.1, false)).toBe(0);
@@ -603,11 +603,11 @@ describe("IdleSquintSystem", () => {
   it("fades out and schedules another episode after duration", () => {
     const squint = new IdleSquintSystem(() => 0);
 
-    squint.update(6.1, true);
-    squint.update(0.3, true);
+    squint.update(8.1, true);
+    squint.update(0.1, true);
     expect(squint.value).toBeGreaterThan(0);
 
-    expect(squint.update(0.5, true)).toBe(0);
+    expect(squint.update(0.4, true)).toBe(0);
     expect(squint.isActive).toBe(false);
   });
 });
@@ -622,13 +622,13 @@ describe("EyelidExpressionController", () => {
     const eyelids = new EyelidExpressionController(expressions, blink, squint);
     const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
 
-    eyelids.update(0, 6.1, {
+    eyelids.update(0, 8.1, {
       idle: true,
       explicitBlinkActive: false,
       relaxedValue: 0,
       neutralSlotId: neutralSlot,
     });
-    eyelids.update(0, 0.3, {
+    eyelids.update(0, 0.2, {
       idle: true,
       explicitBlinkActive: false,
       relaxedValue: 0,
