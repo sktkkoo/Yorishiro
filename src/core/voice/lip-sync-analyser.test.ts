@@ -13,6 +13,22 @@ function createStubAnalyser(bins: Uint8Array): AnalyserNode {
     getByteFrequencyData(out: Uint8Array) {
       out.set(bins);
     },
+    getByteTimeDomainData(out: Uint8Array) {
+      out.fill(128);
+    },
+  } as unknown as AnalyserNode;
+}
+
+function createStubAnalyserWithWaveform(bins: Uint8Array, waveform: Uint8Array): AnalyserNode {
+  return {
+    frequencyBinCount: bins.length,
+    fftSize: waveform.length,
+    getByteFrequencyData(out: Uint8Array) {
+      out.set(bins);
+    },
+    getByteTimeDomainData(out: Uint8Array) {
+      out.set(waveform);
+    },
   } as unknown as AnalyserNode;
 }
 
@@ -41,6 +57,18 @@ describe("LipSyncAnalyser", () => {
 
     const total = MOUTH_KEYS.reduce((sum, k) => sum + result[k], 0);
     expect(total).toBeGreaterThan(0);
+  });
+
+  it("周波数 bins が小さくても waveform に音量があれば口を動かす", () => {
+    const bins = makeBins();
+    const waveform = new Uint8Array(256);
+    for (let i = 0; i < waveform.length; i++) {
+      waveform[i] = i % 2 === 0 ? 96 : 160;
+    }
+    const analyser = new LipSyncAnalyser(createStubAnalyserWithWaveform(bins, waveform));
+    const result = analyser.sample();
+
+    expect(result.aa).toBeGreaterThan(0);
   });
 
   it("全 key の合計は 1 を超えない", () => {
