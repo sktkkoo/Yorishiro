@@ -57,9 +57,14 @@ export interface CharminalConfig {
   readonly profiles: ReadonlyArray<SessionProfile>;
   /** 起動時 default-session に使う profile id。null なら `terminalAgent` を fallback。 */
   readonly defaultProfile: string | null;
+  /** TTS 音声の利用頻度。 */
+  readonly voiceFrequency: VoiceFrequency;
 }
 
 export type TerminalAgent = "claude" | "codex";
+
+/** TTS 音声の利用頻度。"none" は voice_say を使わない、"low" は控えめ、"high" は積極的。 */
+export type VoiceFrequency = "none" | "low" | "high";
 
 const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai", "clai-en", "clai-ja"]);
 
@@ -76,6 +81,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   ambientAudioVolume: 1.0,
   profiles: [],
   defaultProfile: null,
+  voiceFrequency: "high",
 };
 
 export function localizedClaiPersonaId(language: ResolvedLanguage): "clai-en" | "clai-ja" {
@@ -118,6 +124,10 @@ const toTerminalAgent = (value: unknown): TerminalAgent => {
 
 const toBoolean = (value: unknown): boolean => {
   return value === true;
+};
+
+const toVoiceFrequency = (value: unknown): VoiceFrequency => {
+  return value === "none" || value === "low" ? value : "high";
 };
 
 /** 0.0-1.0 の float を返す。無効値は 1.0（default）に fallback。 */
@@ -217,6 +227,7 @@ export function parseConfig(text: string): CharminalConfig {
     ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
     profiles: toSessionProfiles(obj.profiles),
     defaultProfile: toNullableString(obj.defaultProfile),
+    voiceFrequency: toVoiceFrequency(obj.voiceFrequency),
   };
 }
 
@@ -240,6 +251,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
   if (cfg.defaultProfile !== null) out.defaultProfile = cfg.defaultProfile;
+  if (cfg.voiceFrequency !== "high") out.voiceFrequency = cfg.voiceFrequency;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
@@ -291,4 +303,11 @@ export function withActiveAmbientUiSet(
 
 export function withLanguageSet(cfg: CharminalConfig, language: AppLanguage): CharminalConfig {
   return { ...cfg, language };
+}
+
+export function withVoiceFrequencySet(
+  cfg: CharminalConfig,
+  voiceFrequency: VoiceFrequency,
+): CharminalConfig {
+  return { ...cfg, voiceFrequency };
 }

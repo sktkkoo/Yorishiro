@@ -18,6 +18,11 @@ export interface UiStrings {
   readonly shortcutPrompt: string;
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
+  readonly voiceFrequency: string;
+  readonly voiceNone: string;
+  readonly voiceLow: string;
+  readonly voiceHigh: string;
+  readonly voiceAppliesNextSession: string;
 }
 
 const EN: UiStrings = {
@@ -38,6 +43,11 @@ const EN: UiStrings = {
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
+  voiceFrequency: "Voice",
+  voiceNone: "Off",
+  voiceLow: "Occasional",
+  voiceHigh: "Frequent",
+  voiceAppliesNextSession: "Applies from the next session",
 };
 
 const JA: UiStrings = {
@@ -58,6 +68,11 @@ const JA: UiStrings = {
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",
+  voiceFrequency: "音声",
+  voiceNone: "なし",
+  voiceLow: "少なめ",
+  voiceHigh: "多め",
+  voiceAppliesNextSession: "※ 次のセッションから反映",
 };
 
 export function getStrings(language: ResolvedLanguage): UiStrings {

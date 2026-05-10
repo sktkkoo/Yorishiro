@@ -1315,6 +1315,7 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
 
 export interface VoiceSayDeps {
   readonly speak: (text: string, voice?: string) => void;
+  readonly isEnabled: () => boolean;
 }
 
 export interface VoiceSayResult {
@@ -1323,10 +1324,11 @@ export interface VoiceSayResult {
 
 /**
  * TTS でテキストを発話する handler。VoicePlayer に委譲する。
- * text が空の場合は spoken: false を返す。
+ * voiceFrequency が "none" の場合は無条件で spoken: false を返す。
  */
 export function createVoiceSayHandler(deps: VoiceSayDeps) {
   return async (request: unknown): Promise<VoiceSayResult> => {
+    if (!deps.isEnabled()) return { spoken: false };
     const r = requestRecord(request);
     const text = r.text;
     if (typeof text !== "string" || text === "") {
