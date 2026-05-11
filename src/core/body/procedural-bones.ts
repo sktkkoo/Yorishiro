@@ -48,8 +48,24 @@ export class ProceduralBones {
   private headLookAtAppliedY = 0;
   private restPose: VrmRestPose | null = null;
 
-  /** When true, head drift amplitude increases ×2.8 and interval shortens. */
-  isThinking = false;
+  /** When true, head drift amplitude increases ×1.8 and interval shortens. */
+  private _isThinking = false;
+
+  get isThinking(): boolean {
+    return this._isThinking;
+  }
+
+  set isThinking(value: boolean) {
+    if (this._isThinking === value) return;
+    this._isThinking = value;
+    if (!value) {
+      // thinking → idle: drift target を即リセットして頭が素早く正面に戻るようにする。
+      // 旧実装では amplified drift position からの復帰が遅い lerp で 3-6 秒かかっていた。
+      this.headDriftTargetZ = 0;
+      this.headDriftTargetY = 0;
+      this.headDriftTimer = 0.5 + Math.random() * 1.0;
+    }
+  }
 
   private readonly random: () => number;
 

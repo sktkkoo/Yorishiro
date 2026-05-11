@@ -142,7 +142,24 @@ export class EyeSystem {
   /** Set the activity state. Changes gaze patterns and saccade intervals. */
   setState(state: EyeState): void {
     if (state === this._state) return;
+    const prev = this._state;
     this._state = state;
+
+    if (state === "idle" && prev !== "idle") {
+      // thinking/reading/running → idle: 視線を即座に正面に戻す。
+      // 旧実装では current が thinking の上方パターンを保持したまま次の
+      // saccade まで上を向き続けていた。
+      this.current.up = 0;
+      this.current.down = 0;
+      this.current.left = 0;
+      this.current.right = 0;
+      this.target.up = 0;
+      this.target.down = 0;
+      this.target.left = 0;
+      this.target.right = 0;
+      this.isSaccading = false;
+    }
+
     // Force a saccade on next fixation check to adopt new pattern quickly
     this.fixationTimer = Math.min(this.fixationTimer, 0.3);
   }

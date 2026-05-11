@@ -8,9 +8,20 @@
 import { describe, expect, it } from "vitest";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
-import { ExpressionManager, expressionTargetToName } from "./expression-manager";
+import {
+  ExpressionManager,
+  ExpressionSinkTracker,
+  expressionTargetToName,
+} from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
+import {
+  IdleMicroexpressionSystem,
+  MICRO_BROW_POOL,
+  MICRO_EYE_POOL,
+  MICRO_MORPH_POOL,
+  MICRO_MOUTH_POOL,
+} from "./idle-microexpression-system";
 import { IdleSquintSystem } from "./idle-squint-system";
 
 // ─── ExpressionManager ───────────────────────────────────
@@ -224,6 +235,109 @@ describe("ExpressionManager", () => {
   });
 });
 
+// ─── ExpressionSinkTracker ───────────────────────────────
+//
+// Body.applyExpressions の reset bug 対策。前 frame で書いた expression 名のうち、
+// 今 frame の resolved に居ないものを sink 経由で 0 に戻す責務を担う。
+// VRM 1.0 preset / viseme に限らず任意の blendshape 名（Fcl_* 等）も等しく扱う。
+
+describe("ExpressionSinkTracker", () => {
+  function recorder() {
+    const writes: Array<[string, number]> = [];
+    const sink = (name: string, weight: number) => {
+      writes.push([name, weight]);
+    };
+    return { writes, sink };
+  }
+
+  it("first apply: writes every name in the batch", () => {
+    const tracker = new ExpressionSinkTracker();
+    const { writes, sink } = recorder();
+    tracker.apply(
+      new Map([
+        ["happy", 0.5],
+        ["aa", 0.3],
+      ]),
+      sink,
+    );
+    expect(writes).toHaveLength(2);
+    expect(writes).toContainEqual(["happy", 0.5]);
+    expect(writes).toContainEqual(["aa", 0.3]);
+  });
+
+  it("name dropped from batch on next apply gets zeroed via the sink", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(
+      new Map([
+        ["happy", 0.5],
+        ["Fcl_BRW_Sorrow", 0.4],
+      ]),
+      () => {},
+    );
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map([["happy", 0.5]]), sink);
+
+    expect(writes).toContainEqual(["Fcl_BRW_Sorrow", 0]);
+    expect(writes).toContainEqual(["happy", 0.5]);
+  });
+
+  it("name kept across frames is rewritten, never spuriously zeroed", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(new Map([["happy", 0.5]]), () => {});
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map([["happy", 0.3]]), sink);
+
+    expect(writes).toEqual([["happy", 0.3]]);
+  });
+
+  it("empty batch after non-empty: zeroes everything written last frame", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(
+      new Map([
+        ["happy", 0.5],
+        ["Fcl_BRW_Sorrow", 0.4],
+      ]),
+      () => {},
+    );
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map(), sink);
+
+    expect(writes).toHaveLength(2);
+    expect(writes).toContainEqual(["happy", 0]);
+    expect(writes).toContainEqual(["Fcl_BRW_Sorrow", 0]);
+  });
+
+  it("custom Fcl_* blendshapes are tracked the same as VRM 1.0 presets (regression)", () => {
+    // ── Regression for the reset bug ─────────────────────────────────────
+    // 旧 Body.applyExpressions は reset list が VRM 1.0 preset + visemes に
+    // hardcode されており、Fcl_* 系 custom blendshape は slot release 後も
+    // 直前の値を保持してしまっていた。tracker は名前を識別せず last-frame
+    // tracking で zeroing するので、custom 名も等しく扱える。
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(new Map([["Fcl_EYE_Spread", 0.7]]), () => {});
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map(), sink);
+
+    expect(writes).toEqual([["Fcl_EYE_Spread", 0]]);
+  });
+
+  it("re-adding a name after zeroing it works without leaking state", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(new Map([["Fcl_BRW_Joy", 0.6]]), () => {});
+    tracker.apply(new Map(), () => {}); // zeroed here
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map([["Fcl_BRW_Joy", 0.4]]), sink);
+
+    // 再 apply 時は zeroing は不要、新値だけ書く
+    expect(writes).toEqual([["Fcl_BRW_Joy", 0.4]]);
+  });
+});
+
 // ─── expressionTargetToName ──────────────────────────────
 
 describe("expressionTargetToName", () => {
@@ -243,6 +357,37 @@ describe("expressionTargetToName", () => {
 
   it("maps custom blendShapeName", () => {
     expect(expressionTargetToName({ kind: "custom", blendShapeName: "pout" })).toBe("pout");
+  });
+
+  it("maps part region+emotion to the Hana Tool Fcl_*_* morph name", () => {
+    // 単発の sanity check
+    expect(expressionTargetToName({ kind: "part", region: "brow", emotion: "sorrow" })).toBe(
+      "Fcl_BRW_Sorrow",
+    );
+    expect(expressionTargetToName({ kind: "part", region: "eye", emotion: "joy" })).toBe(
+      "Fcl_EYE_Joy",
+    );
+    expect(expressionTargetToName({ kind: "part", region: "mouth", emotion: "surprised" })).toBe(
+      "Fcl_MTH_Surprised",
+    );
+  });
+
+  it("part: every (region × emotion) combination resolves to the canonical Fcl_*_* name", () => {
+    // 部位 prefix と emotion suffix の table と突き合わせる exhaustive check
+    const REGION_PREFIX = { brow: "BRW", eye: "EYE", mouth: "MTH" } as const;
+    const EMOTION_SUFFIX = {
+      angry: "Angry",
+      fun: "Fun",
+      joy: "Joy",
+      sorrow: "Sorrow",
+      surprised: "Surprised",
+    } as const;
+    for (const region of ["brow", "eye", "mouth"] as const) {
+      for (const emotion of ["angry", "fun", "joy", "sorrow", "surprised"] as const) {
+        const name = expressionTargetToName({ kind: "part", region, emotion });
+        expect(name).toBe(`Fcl_${REGION_PREFIX[region]}_${EMOTION_SUFFIX[emotion]}`);
+      }
+    }
   });
 });
 
@@ -609,6 +754,162 @@ describe("IdleSquintSystem", () => {
 
     expect(squint.update(0.4, true)).toBe(0);
     expect(squint.isActive).toBe(false);
+  });
+});
+
+// ─── IdleMicroexpressionSystem ──────────────────────────
+//
+// Idle 中の Fcl_* morph 微震えで「神経の入った顔」を作る反射層。
+// IdleSquintSystem に近いが、複数 morph を pool から選ぶ点と、
+// (source, kind, name) ではなく event 形 ({morph, weight}) を返す点が違う。
+
+describe("IdleMicroexpressionSystem", () => {
+  it("starts inactive, only emits after the cooldown elapses", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    // random=0 → cooldown=NEXT_MIN_S 相当
+    expect(micro.update(0.5, true)).toBeNull();
+    // cooldown を十分越える delta
+    const event = micro.update(2.0, true);
+    expect(event).not.toBeNull();
+  });
+
+  it("emits a morph from the configured pool", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    micro.update(2.0, true);
+    const event = micro.update(0.05, true);
+    expect(event).not.toBeNull();
+    if (event) {
+      expect(MICRO_MORPH_POOL).toContain(event.morph);
+    }
+  });
+
+  it("weight is positive during the episode and stays within configured bounds", () => {
+    // random sequence で「最大 weight、最大 duration、最後の morph」を狙う
+    const values = [0.999, 0.999, 0.999, 0.999];
+    const micro = new IdleMicroexpressionSystem(() => values.shift() ?? 0);
+    micro.update(4.1, true); // 越えれば始まる
+    const event = micro.update(0.15, true); // fade window 内
+    expect(event).not.toBeNull();
+    if (event) {
+      expect(event.weight).toBeGreaterThan(0);
+      // 振幅上限は WEIGHT_MAX (=0.22)。fade window 中なので fade 倍率 ≤ 1。
+      expect(event.weight).toBeLessThanOrEqual(0.22);
+    }
+  });
+
+  it("disabling immediately clears any active event", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    micro.update(2.0, true);
+    micro.update(0.1, true);
+    expect(micro.value).not.toBeNull();
+
+    const next = micro.update(0.05, false);
+    expect(next).toBeNull();
+    expect(micro.value).toBeNull();
+  });
+
+  it("emits null after the episode duration elapses and schedules another", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    micro.update(2.0, true); // start
+    expect(micro.value).not.toBeNull();
+    // random=0 → DURATION_MIN_S 短め (=0.25s)。十分越えれば終了。
+    const after = micro.update(0.4, true);
+    expect(after).toBeNull();
+  });
+
+  it("picks different morphs across episodes when randomness varies", () => {
+    // 2 episode 観察: 1 回目は morph index=0、2 回目は最終 index
+    const values = [
+      0, // cooldown1
+      0, // duration1
+      0, // weight1
+      0, // morph idx1 = 0
+      0, // cooldown2
+      0, // duration2
+      0, // weight2
+      0.99, // morph idx2 = pool.length-1
+    ];
+    const micro = new IdleMicroexpressionSystem(() => values.shift() ?? 0);
+
+    micro.update(2.0, true);
+    const first = micro.update(0.05, true);
+    expect(first?.morph).toBe(MICRO_MORPH_POOL[0]);
+
+    // 1 回目終了 + 2 回目開始
+    micro.update(0.4, true);
+    micro.update(2.0, true);
+    const second = micro.update(0.05, true);
+    expect(second?.morph).toBe(MICRO_MORPH_POOL[MICRO_MORPH_POOL.length - 1]);
+  });
+});
+
+// ─── MICRO_*_POOL composition ────────────────────────────
+//
+// Pool 自体の中身が user-facing な振る舞いを決める（眉だけ動く、目だけ動く、口だけ動く、
+// asymmetric が出る等）。各 region で「必須 morph が含まれている」ことを test として
+// 固定する。Pool を入れ替えた時にここで気づける。
+
+describe("MICRO_BROW_POOL", () => {
+  it("contains Fcl_BRW_* emotion variants only", () => {
+    for (const name of MICRO_BROW_POOL) {
+      expect(name.startsWith("Fcl_BRW_")).toBe(true);
+    }
+  });
+});
+
+describe("MICRO_EYE_POOL", () => {
+  it("contains Fcl_EYE_* variants only", () => {
+    for (const name of MICRO_EYE_POOL) {
+      expect(name.startsWith("Fcl_EYE_")).toBe(true);
+    }
+  });
+
+  it("includes asymmetric L/R variants for wink-like twitches", () => {
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Close_L");
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Close_R");
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Joy_L");
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Joy_R");
+  });
+});
+
+describe("MICRO_MOUTH_POOL", () => {
+  it("contains Fcl_MTH_* variants only", () => {
+    for (const name of MICRO_MOUTH_POOL) {
+      expect(name.startsWith("Fcl_MTH_")).toBe(true);
+    }
+  });
+
+  it("includes shapes for silent mouth life: small / close / up / down", () => {
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Small");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Close");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Up");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Down");
+  });
+
+  it("includes への字 morph (Fcl_MTH_Angry) and a slight-smile morph (Fcl_MTH_Joy)", () => {
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Angry");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Joy");
+  });
+
+  it("includes asymmetric SkinFung L/R for one-sided smirk", () => {
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_SkinFung_L");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_SkinFung_R");
+  });
+
+  it("does not include visemes (aa/ih/ou/ee/oh) — lip sync owns those", () => {
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_A");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_I");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_U");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_E");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_O");
+  });
+});
+
+describe("MICRO_MORPH_POOL (backward-compat aggregate)", () => {
+  it("is the union of the three region pools", () => {
+    const expected = new Set([...MICRO_BROW_POOL, ...MICRO_EYE_POOL, ...MICRO_MOUTH_POOL]);
+    const actual = new Set(MICRO_MORPH_POOL);
+    expect(actual).toEqual(expected);
   });
 });
 

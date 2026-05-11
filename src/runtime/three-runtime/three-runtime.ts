@@ -3,6 +3,7 @@ import { createElement } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { Body } from "../../core/body";
+import { registerOrphanMorphs } from "../../core/body/register-orphan-morphs";
 import { applyVrmRestPose } from "../../core/body/vrm-rest-pose";
 import type { SubsystemLog } from "../../core/dev-log";
 import { TweenManager } from "../../core/tween/tween-manager";
@@ -168,6 +169,17 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               VRMUtils.rotateVRM0(vrm);
               applyVrmRestPose(vrm);
               vrm.humanoid?.update();
+
+              // BlendShapeMaster に wired されていない orphan morph (Hana Tool /
+              // Perfect Sync 系) を synthetic VRMExpression として登録し、
+              // expressionManager.setValue(<morph名>, w) で駆動可能にする。
+              // Body 構築前に必ず終わらせる（slot mixer が name を resolve する前提のため）。
+              const orphans = registerOrphanMorphs(vrm);
+              if (orphans.registered.length > 0) {
+                console.debug(
+                  `[three-runtime] registered ${orphans.registered.length} orphan morphs as synthetic expressions`,
+                );
+              }
 
               this.scene.add(vrm.scene);
               this.currentVrm = vrm;

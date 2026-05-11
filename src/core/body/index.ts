@@ -42,12 +42,21 @@ import { CursorAttentionSystem } from "./cursor-attention";
 import {
   type ExpressionKind,
   ExpressionManager,
+  ExpressionSinkTracker,
   type ExpressionSource,
+  expressionTargetToKind,
   expressionTargetToName,
   type SlotSnapshot,
 } from "./expression-manager";
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
+import {
+  IdleMicroexpressionSystem,
+  MICRO_BROW_POOL,
+  MICRO_EYE_POOL,
+  MICRO_MOUTH_POOL,
+  type MicroexpressionEvent,
+} from "./idle-microexpression-system";
 import {
   type MotionHandle as InternalMotionHandle,
   type MotionRequest as InternalMotionRequest,
@@ -85,9 +94,24 @@ const RELAXED_MAX = 0.4; // cap to avoid sleepy-looking eyes
 export class Body {
   private readonly vrm: VRM;
   private readonly expressions: ExpressionManager;
+  /**
+   * VRM expressionManager への書き込みを last-frame tracking で管理する sink。
+   * VRM 1.0 preset 以外の custom blendshape (Fcl_*, Perfect Sync 等) も
+   * slot release 時に確実に 0 へ戻す。
+   */
+  private readonly expressionSink = new ExpressionSinkTracker();
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
   private readonly eyelids: EyelidExpressionController;
+  /**
+   * Idle 中の Fcl_* morph 微震えで実在性を立ち上げる反射層。Region 別に独立
+   * instance を持つ：brow / eye / mouth の 3 layer が独立タイマー・独立 morph
+   * 選択で並走する。人形っぽさを消す key。
+   *
+   * VRM に存在しない morph は構築時に pool から filter（Perfect Sync 版 VRM で
+   * Hana 名が無い region は空 pool になり no-op 化する）。
+   */
+  private readonly microChannels: ReadonlyArray<MicroChannel>;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -157,6 +181,28 @@ export class Body {
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
+    // Region 別 micro layer — 各 instance は独立タイマー・独立 morph 選択で並走する。
+    // VRM に存在しない morph は region 単位で filter（Perfect Sync 移行や別 VRM で
+    // pool が空になっても system は no-op 化するだけで動作は壊れない）。
+    const filterPool = (pool: ReadonlyArray<string>): ReadonlyArray<string> =>
+      pool.filter((name) => vrm.expressionManager?.getExpression(name) !== null);
+    this.microChannels = [
+      new MicroChannel(
+        "brow",
+        new IdleMicroexpressionSystem(undefined, filterPool(MICRO_BROW_POOL)),
+        this.expressions,
+      ),
+      new MicroChannel(
+        "eye",
+        new IdleMicroexpressionSystem(undefined, filterPool(MICRO_EYE_POOL)),
+        this.expressions,
+      ),
+      new MicroChannel(
+        "mouth",
+        new IdleMicroexpressionSystem(undefined, filterPool(MICRO_MOUTH_POOL)),
+        this.expressions,
+      ),
+    ];
     this.cursorAttention = new CursorAttentionSystem(
       /* random */ undefined,
       /* onEvent */ (event) => {
@@ -324,6 +370,11 @@ export class Body {
     // 4. Eye system (state-dependent patterns)
     this.eyeSystem.update(delta);
 
+    // 5 で 5b と 6 の両方で lip sync 値が要るので、ここで 1 度だけ pull してキャッシュ。
+    // LipSyncAnalyser.sample() の smoothing が二重に進まないようにする目的もある。
+    const lipSyncMouth = this.lipSyncSource ? this.lipSyncSource.sampleMouth() : null;
+    const lipSyncHasSignal = lipSyncMouth ? MOUTH_KEYS.some((k) => lipSyncMouth[k] > 0) : false;
+
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
       const nonIdleMoodActive = this.expressions.hasActiveNonIdleMood();
@@ -334,13 +385,27 @@ export class Body {
         relaxedValue: this.relaxedValue,
         neutralSlotId: this.stateExprSlots[0],
       });
+
+      // 5b. Region 別 idle micro layer — brow / eye / mouth が独立 instance で並走。
+      //     mouth だけは lip sync 中は suspend（visemes と競合させない）。
+      const microBaseEnabled = !nonIdleMoodActive;
+      for (const ch of this.microChannels) {
+        const enabled = microBaseEnabled && (ch.region !== "mouth" || !lipSyncHasSignal);
+        const event = ch.system.update(delta, enabled);
+        ch.flush(event);
+      }
     } else {
       this.eyelids.clearIdleSquint();
+      // claim 中は全 channel を clear して内部 timer を reset しておく
+      for (const ch of this.microChannels) {
+        ch.system.update(delta, false);
+        ch.flush(null);
+      }
     }
 
     // 6. Apply expressions to VRM
     if (!expressionClaimed) {
-      this.applyExpressions();
+      this.applyExpressions(lipSyncMouth);
     }
 
     // 7. Apply eye gaze to VRM
@@ -470,7 +535,10 @@ export class Body {
 
   private express(target: ExpressionTarget, intensity: number): ExpressionHandle {
     const expressionName = expressionTargetToName(target);
-    const slotId = this.expressions.addSlot("persona", target.kind, expressionName, intensity);
+    // kind:"part" は region 別の `part-${region}` 内部 kind に展開する。
+    // 他の kind は public と internal で一致するので透過。
+    const internalKind = expressionTargetToKind(target);
+    const slotId = this.expressions.addSlot("persona", internalKind, expressionName, intensity);
 
     const blinkSuppressionToken =
       expressionName === BLINK_EXPRESSION_NAME ? this.blinkSystem.suppress() : null;
@@ -590,45 +658,28 @@ export class Body {
 
   // ─── Internal apply methods ───────────────────────────
 
-  private applyExpressions(): void {
+  private applyExpressions(lipSyncMouth: MouthValues | null): void {
     const resolved = this.expressions.getResolved();
     const exprMgr = this.vrm.expressionManager;
     if (!exprMgr) return;
 
-    // Reset all expressions to 0 first, then set active ones
-    // This ensures released expressions don't linger
-    exprMgr.setValue("happy", 0);
-    exprMgr.setValue("angry", 0);
-    exprMgr.setValue("sad", 0);
-    exprMgr.setValue("relaxed", 0);
-    exprMgr.setValue("surprised", 0);
-    exprMgr.setValue("blink", 0);
-    exprMgr.setValue("blinkLeft", 0);
-    exprMgr.setValue("blinkRight", 0);
-    exprMgr.setValue("lookLeft", 0);
-    exprMgr.setValue("lookRight", 0);
-    exprMgr.setValue("lookUp", 0);
-    exprMgr.setValue("lookDown", 0);
-    exprMgr.setValue("aa", 0);
-    exprMgr.setValue("ih", 0);
-    exprMgr.setValue("ou", 0);
-    exprMgr.setValue("ee", 0);
-    exprMgr.setValue("oh", 0);
+    // 今 frame に書く名前と値を batch にまとめる。LipSync は同名 viseme を
+    // 上書きする（音声解析値が slot 由来の lip 値より優先）。
+    // ExpressionSinkTracker が前 frame との差分を取って drop された名前を 0 へ戻す。
+    const batch = new Map(resolved);
 
-    for (const [name, weight] of resolved) {
-      exprMgr.setValue(name, weight);
-    }
-
-    // LipSync: 音声再生中は解析値で lip を上書きする
-    if (this.lipSyncSource) {
-      const mouth = this.lipSyncSource.sampleMouth();
-      const hasSignal = MOUTH_KEYS.some((k) => mouth[k] > 0);
+    if (lipSyncMouth) {
+      const hasSignal = MOUTH_KEYS.some((k) => lipSyncMouth[k] > 0);
       if (hasSignal) {
         for (const k of MOUTH_KEYS) {
-          exprMgr.setValue(k, mouth[k]);
+          batch.set(k, lipSyncMouth[k]);
         }
       }
     }
+
+    this.expressionSink.apply(batch, (name, weight) => {
+      exprMgr.setValue(name, weight);
+    });
   }
 
   private applyGaze(): void {
@@ -748,6 +799,52 @@ export class Body {
   }
 }
 
+// ─── Idle micro channel ─────────────────────────────────
+//
+// Region (brow / eye / mouth) ごとの IdleMicroexpressionSystem と、その出力を
+// ExpressionManager slot に流し込む state を 1 unit に束ねた helper。
+// Body は region 別に 3 instance 持って並走させ、人形っぽさを消す。
+
+type MicroRegion = "brow" | "eye" | "mouth";
+
+class MicroChannel {
+  private slotId = -1;
+  private slotMorph: string | null = null;
+
+  constructor(
+    readonly region: MicroRegion,
+    readonly system: IdleMicroexpressionSystem,
+    private readonly expressions: ExpressionManager,
+  ) {}
+
+  /**
+   * 直前の system.update() の戻り値をそのまま渡す。
+   * - event=null なら slot を release
+   * - 同 morph なら weight だけ更新
+   * - 異 morph なら release + 新規 acquire
+   * Slot は (source:"idle", kind:"custom") を取り、name 別 dedup により他の
+   * idle/custom slot (relaxed や他 region の micro) と並存できる。
+   */
+  flush(event: MicroexpressionEvent | null): void {
+    if (event === null || event.weight <= 0) {
+      if (this.slotId !== -1) {
+        this.expressions.removeSlot(this.slotId);
+        this.slotId = -1;
+        this.slotMorph = null;
+      }
+      return;
+    }
+
+    if (event.morph !== this.slotMorph) {
+      if (this.slotId !== -1) this.expressions.removeSlot(this.slotId);
+      this.slotId = this.expressions.addSlot("idle", "custom", event.morph, event.weight);
+      this.slotMorph = event.morph;
+    } else {
+      this.expressions.setWeight(this.slotId, event.weight);
+    }
+  }
+}
+
 // ─── Handle implementations ─────────────────────────────
 
 class BodyExpressionHandle implements ExpressionHandle {
@@ -856,6 +953,16 @@ class BodyGazeHandle implements GazeHandle {
  * narrow させる（SDK 型の externals は緩めに扱う）。
  */
 function buildExpressionTarget(kind: ExpressionKind, expressionName: string): ExpressionTarget {
+  // 内部 kind が `part-${region}` の場合、handle の表面 SDK 形は kind:"custom" に
+  // 落とす。expressionName (= "Fcl_BRW_Sorrow" 等) から region/emotion を逆引きする
+  // 不可逆 lossy なので、外向き観察用としては raw morph 名を持つ "custom" の方が誠実。
+  // SDK 経由で取得した handle.target は acquire 元の意味を完全に保つ必要はない。
+  if (kind === "part-brow" || kind === "part-eye" || kind === "part-mouth") {
+    return {
+      kind: "custom",
+      blendShapeName: expressionName,
+    };
+  }
   switch (kind) {
     case "mood":
       return {
