@@ -1325,33 +1325,24 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
 
 export interface VoiceSayDeps {
   readonly speak: (text: string, voice?: string) => void;
-  readonly getFrequency: () => "none" | "low" | "high";
+  readonly getFrequency: () => "on" | "off";
 }
 
 export interface VoiceSayResult {
   readonly spoken: boolean;
 }
 
-/** low モードの再生確率 */
-const LOW_SPEAK_PROBABILITY = 0.3;
-
 /**
  * TTS でテキストを発話する handler。VoicePlayer に委譲する。
- * AI は毎回呼び出す前提。再生判断は voiceFrequency で program 側が決める。
- * - "high": 常に再生
- * - "low": 確率的に再生
- * - "none": 常に破棄
+ * - "on": 常に再生
+ * - "off": 常に破棄（global prompt で voice_say を呼ばないよう指示済み）
  */
 export function createVoiceSayHandler(deps: VoiceSayDeps) {
   return async (request: unknown): Promise<VoiceSayResult> => {
-    const freq = deps.getFrequency();
-    if (freq === "none") return { spoken: false };
+    if (deps.getFrequency() === "off") return { spoken: false };
     const r = requestRecord(request);
     const text = r.text;
     if (typeof text !== "string" || text === "") {
-      return { spoken: false };
-    }
-    if (freq === "low" && Math.random() > LOW_SPEAK_PROBABILITY) {
       return { spoken: false };
     }
     const voice = typeof r.voice === "string" ? r.voice : undefined;

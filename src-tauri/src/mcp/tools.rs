@@ -307,7 +307,9 @@ impl Charminal {
     }
 
     /// list_packs: TS runtime に委譲。`{ packs: PackStatus[] }` を返す。
-    #[tool(description = "List user packs with their current status")]
+    #[tool(
+        description = "List user packs (~/.charminal/packs/) with their current status. User packs use flat layout: <id>/<kind>.js. Bundled packs are listed separately and are immutable."
+    )]
     async fn list_packs(
         &self,
         _params: Parameters<ListPacksRequest>,
@@ -320,7 +322,9 @@ impl Charminal {
 
     /// disable_pack: TS runtime に委譲。config.json に id を書いて registry
     /// から該当 kind を dispose する。
-    #[tool(description = "Disable a user pack by id")]
+    #[tool(
+        description = "Disable a user pack by id. Only works on user packs (~/.charminal/packs/); bundled packs are immutable and cannot be disabled via MCP. Modifies config.json."
+    )]
     async fn disable_pack(
         &self,
         Parameters(req): Parameters<PackIdRequest>,
@@ -333,7 +337,9 @@ impl Charminal {
 
     /// enable_pack: TS runtime に委譲。config.json から id を外して reload を
     /// 依頼する。
-    #[tool(description = "Enable a previously disabled user pack by id")]
+    #[tool(
+        description = "Enable a previously disabled user pack by id. Only works on user packs (~/.charminal/packs/); bundled packs are immutable and cannot be modified via MCP. Modifies config.json."
+    )]
     async fn enable_pack(
         &self,
         Parameters(req): Parameters<PackIdRequest>,
@@ -377,7 +383,7 @@ impl Charminal {
 
     /// controls_get: F2 controls panel に表示されている値を読む。
     #[tool(
-        description = "Read visible F2 controls. scope defaults to scene. Use scope='scene' for active scene pack controls (lights/post effects/scene layers) and scope='common' for app-common controls (camera). Pass path to read one control, or omit path for all visible controls."
+        description = "Read visible F2 controls. scope defaults to scene. Use scope='scene' for active scene pack controls (lights/post effects/scene layers) and scope='common' for app-common controls (camera). Pass path to read one control, or omit path for all visible controls. Lighting controls are scene-pack-owned; available paths depend on the active scene pack."
     )]
     async fn controls_get(
         &self,
@@ -393,7 +399,7 @@ impl Charminal {
 
     /// controls_set: F2 controls panel に表示されている値を書き換える。
     #[tool(
-        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths. Common camera.x/y/z and camera.targetX/Y/Z writes disable tracking and apply to the live camera immediately."
+        description = "Set one visible F2 control value immediately (no interpolation). Prefer controls_transition instead for smooth changes. scope defaults to scene. Use controls_get first to discover paths — available paths depend on the active scene pack."
     )]
     async fn controls_set(
         &self,
@@ -409,7 +415,7 @@ impl Charminal {
 
     /// controls_set_many: F2 controls panel に表示されている複数値をまとめて書き換える。
     #[tool(
-        description = "Set multiple visible F2 control values at once. scope defaults to scene. Use controls_get first to discover paths."
+        description = "Set multiple visible F2 control values at once immediately (no interpolation). Prefer controls_transition instead for smooth changes. scope defaults to scene. Use controls_get first to discover paths — available paths depend on the active scene pack."
     )]
     async fn controls_set_many(
         &self,
@@ -425,7 +431,7 @@ impl Charminal {
 
     /// controls_transition: F2 controls panel に表示されている値を補間する。
     #[tool(
-        description = "Transition visible F2 control values. Numeric controls tween over durationMs; nonnumeric controls apply immediately. Use this for camera moves and smooth scene parameter demos."
+        description = "Transition visible F2 control values. Numeric controls tween over durationMs; nonnumeric controls apply immediately. Use controls_get first to discover paths — available paths depend on the active scene pack. Use this for camera moves and smooth scene parameter demos."
     )]
     async fn controls_transition(
         &self,
@@ -615,7 +621,7 @@ impl Charminal {
 
     /// scene pack の active を runtime-only で切り替える。config.json は触らない。
     #[tool(
-        description = "Switch the active scene pack at runtime (registry only; does not persist to config.json). Pass null id to clear. Use list_packs to discover available scene pack ids."
+        description = "Switch the active scene pack at runtime (registry only; does not persist to config.json). Persistent activation is via config.json activeScene field, not this tool. Pass null id to clear. Use list_packs to discover available scene pack ids."
     )]
     async fn scene_activate(
         &self,
@@ -626,7 +632,7 @@ impl Charminal {
 
     /// UI pack の active を runtime-only で切り替える。config.json は触らない。
     #[tool(
-        description = "Switch the active UI pack at runtime (registry only; does not persist to config.json). Pass null id to clear. Use list_packs to discover available ui pack ids."
+        description = "Switch the active UI pack at runtime (registry only; does not persist to config.json). Persistent activation is via config.json activeUI field, not this tool. Pass null id to clear. Use list_packs to discover available ui pack ids."
     )]
     async fn ui_activate(
         &self,
@@ -660,7 +666,7 @@ impl Charminal {
 
     /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。
     #[tool(
-        description = "journal にエントリを書き込む。住人の日々の記録。summary を渡すと記憶に残る"
+        description = "journal にエントリを書き込む。住人の日々の記録。機械的なログではなく情緒的な思い出を書く。summary を渡すと記憶に残る"
     )]
     async fn journal_write(
         &self,
@@ -728,7 +734,24 @@ impl Charminal {
 impl ServerHandler for Charminal {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions("Charminal user-layer inspection tools")
+            .with_instructions(concat!(
+                "Charminal — 住人の身体・声・環境を操作する MCP ツール群。\n",
+                "\n",
+                "## ツール選択ガイド\n",
+                "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
+                "- 現在の状態確認 → state_get\n",
+                "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
+                "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",
+                "- 表情だけ変える → body_expression_set\n",
+                "- ポーズ・ジェスチャーだけ → body_animation_play\n",
+                "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
+                "\n",
+                "## 重要ルール\n",
+                "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
+                "- bundled pack は不可変。disable_pack / enable_pack は user pack のみ\n",
+                "- scene_activate / ui_activate は runtime 限定。永続切替は config.json の activeScene / activeUI\n",
+                "- journal は機械的ログではなく情緒的な思い出を書く\n",
+            ))
     }
 }
 
