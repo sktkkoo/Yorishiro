@@ -8,7 +8,11 @@
 import { describe, expect, it } from "vitest";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
-import { ExpressionManager, expressionTargetToName } from "./expression-manager";
+import {
+  ExpressionManager,
+  ExpressionSinkTracker,
+  expressionTargetToName,
+} from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
 import { IdleSquintSystem } from "./idle-squint-system";
@@ -221,6 +225,109 @@ describe("ExpressionManager", () => {
 
     expect(mgr.getEffectiveWeight(happy)).toBe(0);
     expect(mgr.hasActiveNonIdleMood()).toBe(true);
+  });
+});
+
+// ─── ExpressionSinkTracker ───────────────────────────────
+//
+// Body.applyExpressions の reset bug 対策。前 frame で書いた expression 名のうち、
+// 今 frame の resolved に居ないものを sink 経由で 0 に戻す責務を担う。
+// VRM 1.0 preset / viseme に限らず任意の blendshape 名（Fcl_* 等）も等しく扱う。
+
+describe("ExpressionSinkTracker", () => {
+  function recorder() {
+    const writes: Array<[string, number]> = [];
+    const sink = (name: string, weight: number) => {
+      writes.push([name, weight]);
+    };
+    return { writes, sink };
+  }
+
+  it("first apply: writes every name in the batch", () => {
+    const tracker = new ExpressionSinkTracker();
+    const { writes, sink } = recorder();
+    tracker.apply(
+      new Map([
+        ["happy", 0.5],
+        ["aa", 0.3],
+      ]),
+      sink,
+    );
+    expect(writes).toHaveLength(2);
+    expect(writes).toContainEqual(["happy", 0.5]);
+    expect(writes).toContainEqual(["aa", 0.3]);
+  });
+
+  it("name dropped from batch on next apply gets zeroed via the sink", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(
+      new Map([
+        ["happy", 0.5],
+        ["Fcl_BRW_Sorrow", 0.4],
+      ]),
+      () => {},
+    );
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map([["happy", 0.5]]), sink);
+
+    expect(writes).toContainEqual(["Fcl_BRW_Sorrow", 0]);
+    expect(writes).toContainEqual(["happy", 0.5]);
+  });
+
+  it("name kept across frames is rewritten, never spuriously zeroed", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(new Map([["happy", 0.5]]), () => {});
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map([["happy", 0.3]]), sink);
+
+    expect(writes).toEqual([["happy", 0.3]]);
+  });
+
+  it("empty batch after non-empty: zeroes everything written last frame", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(
+      new Map([
+        ["happy", 0.5],
+        ["Fcl_BRW_Sorrow", 0.4],
+      ]),
+      () => {},
+    );
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map(), sink);
+
+    expect(writes).toHaveLength(2);
+    expect(writes).toContainEqual(["happy", 0]);
+    expect(writes).toContainEqual(["Fcl_BRW_Sorrow", 0]);
+  });
+
+  it("custom Fcl_* blendshapes are tracked the same as VRM 1.0 presets (regression)", () => {
+    // ── Regression for the reset bug ─────────────────────────────────────
+    // 旧 Body.applyExpressions は reset list が VRM 1.0 preset + visemes に
+    // hardcode されており、Fcl_* 系 custom blendshape は slot release 後も
+    // 直前の値を保持してしまっていた。tracker は名前を識別せず last-frame
+    // tracking で zeroing するので、custom 名も等しく扱える。
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(new Map([["Fcl_EYE_Spread", 0.7]]), () => {});
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map(), sink);
+
+    expect(writes).toEqual([["Fcl_EYE_Spread", 0]]);
+  });
+
+  it("re-adding a name after zeroing it works without leaking state", () => {
+    const tracker = new ExpressionSinkTracker();
+    tracker.apply(new Map([["Fcl_BRW_Joy", 0.6]]), () => {});
+    tracker.apply(new Map(), () => {}); // zeroed here
+
+    const { writes, sink } = recorder();
+    tracker.apply(new Map([["Fcl_BRW_Joy", 0.4]]), sink);
+
+    // 再 apply 時は zeroing は不要、新値だけ書く
+    expect(writes).toEqual([["Fcl_BRW_Joy", 0.4]]);
   });
 });
 

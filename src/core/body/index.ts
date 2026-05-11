@@ -42,6 +42,7 @@ import { CursorAttentionSystem } from "./cursor-attention";
 import {
   type ExpressionKind,
   ExpressionManager,
+  ExpressionSinkTracker,
   type ExpressionSource,
   expressionTargetToName,
   type SlotSnapshot,
@@ -85,6 +86,12 @@ const RELAXED_MAX = 0.4; // cap to avoid sleepy-looking eyes
 export class Body {
   private readonly vrm: VRM;
   private readonly expressions: ExpressionManager;
+  /**
+   * VRM expressionManager への書き込みを last-frame tracking で管理する sink。
+   * VRM 1.0 preset 以外の custom blendshape (Fcl_*, Perfect Sync 等) も
+   * slot release 時に確実に 0 へ戻す。
+   */
+  private readonly expressionSink = new ExpressionSinkTracker();
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
   private readonly eyelids: EyelidExpressionController;
@@ -595,40 +602,24 @@ export class Body {
     const exprMgr = this.vrm.expressionManager;
     if (!exprMgr) return;
 
-    // Reset all expressions to 0 first, then set active ones
-    // This ensures released expressions don't linger
-    exprMgr.setValue("happy", 0);
-    exprMgr.setValue("angry", 0);
-    exprMgr.setValue("sad", 0);
-    exprMgr.setValue("relaxed", 0);
-    exprMgr.setValue("surprised", 0);
-    exprMgr.setValue("blink", 0);
-    exprMgr.setValue("blinkLeft", 0);
-    exprMgr.setValue("blinkRight", 0);
-    exprMgr.setValue("lookLeft", 0);
-    exprMgr.setValue("lookRight", 0);
-    exprMgr.setValue("lookUp", 0);
-    exprMgr.setValue("lookDown", 0);
-    exprMgr.setValue("aa", 0);
-    exprMgr.setValue("ih", 0);
-    exprMgr.setValue("ou", 0);
-    exprMgr.setValue("ee", 0);
-    exprMgr.setValue("oh", 0);
+    // 今 frame に書く名前と値を batch にまとめる。LipSync は同名 viseme を
+    // 上書きする（音声解析値が slot 由来の lip 値より優先）。
+    // ExpressionSinkTracker が前 frame との差分を取って drop された名前を 0 へ戻す。
+    const batch = new Map(resolved);
 
-    for (const [name, weight] of resolved) {
-      exprMgr.setValue(name, weight);
-    }
-
-    // LipSync: 音声再生中は解析値で lip を上書きする
     if (this.lipSyncSource) {
       const mouth = this.lipSyncSource.sampleMouth();
       const hasSignal = MOUTH_KEYS.some((k) => mouth[k] > 0);
       if (hasSignal) {
         for (const k of MOUTH_KEYS) {
-          exprMgr.setValue(k, mouth[k]);
+          batch.set(k, mouth[k]);
         }
       }
     }
+
+    this.expressionSink.apply(batch, (name, weight) => {
+      exprMgr.setValue(name, weight);
+    });
   }
 
   private applyGaze(): void {
