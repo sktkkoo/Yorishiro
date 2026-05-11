@@ -182,22 +182,6 @@ function setRuntimeControlValue(path: string, value: unknown): void {
   store.setValueAtPath(path, value, false);
 }
 
-function readNumberRuntimeControlValue(path: string, fallback: number): number {
-  const value = readRuntimeControlValue(path);
-  return isFiniteNumber(value) ? value : fallback;
-}
-
-function lookAtCommonCameraTarget(camera: {
-  readonly position: { readonly y: number };
-  readonly lookAt: (x: number, y: number, z: number) => void;
-}): void {
-  camera.lookAt(
-    readNumberRuntimeControlValue("camera.targetX", 0),
-    readNumberRuntimeControlValue("camera.targetY", camera.position.y),
-    readNumberRuntimeControlValue("camera.targetZ", 0),
-  );
-}
-
 function disableCommonCameraTracking(): void {
   getThreeRuntime().setCameraTracking(false);
   setRuntimeControlValue("camera.tracking", false);
@@ -218,9 +202,8 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   if (key === "lookAtCharacter") {
     if (value === true) {
       camera.lookAt(0, camera.position.y, 0);
-    } else if (value === false) {
-      lookAtCommonCameraTarget(camera);
     }
+    // lookAt OFF 時は yaw/pitch が useFrame 内で制御するので即時操作は不要。
     return;
   }
 
@@ -231,11 +214,19 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
     return;
   }
 
-  if (key === "targetX" || key === "targetY" || key === "targetZ") {
-    if (!isFiniteNumber(value)) return;
-    disableCommonCameraTracking();
-    setRuntimeControlValue("camera.lookAtCharacter", false);
-    lookAtCommonCameraTarget(camera);
+  // offset.offsetX / offset.offsetY / offset.offsetZ は tracking 中の
+  // カメラ位置オフセット。useFrame 内で毎フレーム加算されるので、
+  // ここでは leva store 書き込みだけで十分（side-effect 不要）。
+  if (
+    key === "tracking offset.offsetX" ||
+    key === "tracking offset.offsetY" ||
+    key === "tracking offset.offsetZ"
+  ) {
+    return;
+  }
+
+  // rotationX / rotationY は useFrame 内で適用されるので side-effect 不要。
+  if (key === "rotationX" || key === "rotationY") {
     return;
   }
 
@@ -253,9 +244,7 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   camera.position.set(next.x, next.y, next.z);
   runtime.setCameraBase(next.x, next.y, next.z);
 
-  if (readRuntimeControlValue("camera.lookAtCharacter") === false) {
-    lookAtCommonCameraTarget(camera);
-  } else {
+  if (readRuntimeControlValue("camera.lookAtCharacter") !== false) {
     camera.lookAt(0, next.y, 0);
   }
 }
