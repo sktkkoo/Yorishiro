@@ -15,6 +15,7 @@ import {
 } from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
+import { IdleMicroexpressionSystem, MICRO_MORPH_POOL } from "./idle-microexpression-system";
 import { IdleSquintSystem } from "./idle-squint-system";
 
 // ─── ExpressionManager ───────────────────────────────────
@@ -747,6 +748,92 @@ describe("IdleSquintSystem", () => {
 
     expect(squint.update(0.4, true)).toBe(0);
     expect(squint.isActive).toBe(false);
+  });
+});
+
+// ─── IdleMicroexpressionSystem ──────────────────────────
+//
+// Idle 中の Fcl_* morph 微震えで「神経の入った顔」を作る反射層。
+// IdleSquintSystem に近いが、複数 morph を pool から選ぶ点と、
+// (source, kind, name) ではなく event 形 ({morph, weight}) を返す点が違う。
+
+describe("IdleMicroexpressionSystem", () => {
+  it("starts inactive, only emits after the cooldown elapses", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    // random=0 → cooldown=NEXT_MIN_S 相当
+    expect(micro.update(0.5, true)).toBeNull();
+    // cooldown を十分越える delta
+    const event = micro.update(2.0, true);
+    expect(event).not.toBeNull();
+  });
+
+  it("emits a morph from the configured pool", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    micro.update(2.0, true);
+    const event = micro.update(0.05, true);
+    expect(event).not.toBeNull();
+    if (event) {
+      expect(MICRO_MORPH_POOL).toContain(event.morph);
+    }
+  });
+
+  it("weight is positive during the episode and stays within configured bounds", () => {
+    // random sequence で「最大 weight、最大 duration、最後の morph」を狙う
+    const values = [0.999, 0.999, 0.999, 0.999];
+    const micro = new IdleMicroexpressionSystem(() => values.shift() ?? 0);
+    micro.update(4.1, true); // 越えれば始まる
+    const event = micro.update(0.15, true); // fade window 内
+    expect(event).not.toBeNull();
+    if (event) {
+      expect(event.weight).toBeGreaterThan(0);
+      // 振幅上限は WEIGHT_MAX (=0.12)。fade window 中なので fade 倍率 ≤ 1。
+      expect(event.weight).toBeLessThanOrEqual(0.12);
+    }
+  });
+
+  it("disabling immediately clears any active event", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    micro.update(2.0, true);
+    micro.update(0.1, true);
+    expect(micro.value).not.toBeNull();
+
+    const next = micro.update(0.05, false);
+    expect(next).toBeNull();
+    expect(micro.value).toBeNull();
+  });
+
+  it("emits null after the episode duration elapses and schedules another", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0);
+    micro.update(2.0, true); // start
+    expect(micro.value).not.toBeNull();
+    // random=0 → DURATION_MIN_S 短め (=0.25s)。十分越えれば終了。
+    const after = micro.update(0.4, true);
+    expect(after).toBeNull();
+  });
+
+  it("picks different morphs across episodes when randomness varies", () => {
+    // 2 episode 観察: 1 回目は morph index=0、2 回目は最終 index
+    const values = [
+      0, // cooldown1
+      0, // duration1
+      0, // weight1
+      0, // morph idx1 = 0
+      0, // cooldown2
+      0, // duration2
+      0, // weight2
+      0.99, // morph idx2 = pool.length-1
+    ];
+    const micro = new IdleMicroexpressionSystem(() => values.shift() ?? 0);
+
+    micro.update(2.0, true);
+    const first = micro.update(0.05, true);
+    expect(first?.morph).toBe(MICRO_MORPH_POOL[0]);
+
+    // 1 回目終了 + 2 回目開始
+    micro.update(0.4, true);
+    micro.update(2.0, true);
+    const second = micro.update(0.05, true);
+    expect(second?.morph).toBe(MICRO_MORPH_POOL[MICRO_MORPH_POOL.length - 1]);
   });
 });
 
