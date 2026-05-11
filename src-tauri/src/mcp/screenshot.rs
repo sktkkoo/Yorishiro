@@ -14,7 +14,7 @@ use tauri::AppHandle;
 pub async fn capture_webview_screenshot(app: &AppHandle) -> Result<CallToolResult, McpError> {
     use base64::Engine;
     use rmcp::model::Content;
-    use tauri::Manager;
+    use tauri::{Emitter, Manager};
 
     let webview = app
         .get_webview_window("main")
@@ -32,6 +32,10 @@ pub async fn capture_webview_screenshot(app: &AppHandle) -> Result<CallToolResul
         .await
         .map_err(|_| McpError::internal_error("screenshot channel dropped", None))?
         .map_err(|e| McpError::internal_error(e, None))?;
+
+    // 撮影が完了して PNG bytes を握った後に JS 側へ flash 発火を通知する。
+    // 撮影 → bytes 確定 → emit の順序なので flash 自体は撮影画像に写り込まない。
+    let _ = app.emit("charminal:screen-flash", ());
 
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
     let content = Content::image(base64_data, "image/png");
