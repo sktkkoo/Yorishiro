@@ -44,6 +44,7 @@ import {
   ExpressionManager,
   ExpressionSinkTracker,
   type ExpressionSource,
+  expressionTargetToKind,
   expressionTargetToName,
   type SlotSnapshot,
 } from "./expression-manager";
@@ -477,7 +478,10 @@ export class Body {
 
   private express(target: ExpressionTarget, intensity: number): ExpressionHandle {
     const expressionName = expressionTargetToName(target);
-    const slotId = this.expressions.addSlot("persona", target.kind, expressionName, intensity);
+    // kind:"part" は region 別の `part-${region}` 内部 kind に展開する。
+    // 他の kind は public と internal で一致するので透過。
+    const internalKind = expressionTargetToKind(target);
+    const slotId = this.expressions.addSlot("persona", internalKind, expressionName, intensity);
 
     const blinkSuppressionToken =
       expressionName === BLINK_EXPRESSION_NAME ? this.blinkSystem.suppress() : null;
@@ -847,6 +851,16 @@ class BodyGazeHandle implements GazeHandle {
  * narrow させる（SDK 型の externals は緩めに扱う）。
  */
 function buildExpressionTarget(kind: ExpressionKind, expressionName: string): ExpressionTarget {
+  // 内部 kind が `part-${region}` の場合、handle の表面 SDK 形は kind:"custom" に
+  // 落とす。expressionName (= "Fcl_BRW_Sorrow" 等) から region/emotion を逆引きする
+  // 不可逆 lossy なので、外向き観察用としては raw morph 名を持つ "custom" の方が誠実。
+  // SDK 経由で取得した handle.target は acquire 元の意味を完全に保つ必要はない。
+  if (kind === "part-brow" || kind === "part-eye" || kind === "part-mouth") {
+    return {
+      kind: "custom",
+      blendShapeName: expressionName,
+    };
+  }
   switch (kind) {
     case "mood":
       return {

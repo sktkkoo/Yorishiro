@@ -336,10 +336,31 @@ export interface AnimationHandle {
   readonly completion: Promise<void>;
 }
 
+/**
+ * 部位別表情を author する region 識別子。Hana Tool / VRoid 系 VRM の
+ * `Fcl_{BRW|EYE|MTH}_*` morph 体系に対応する。眉 / 目 / 口を独立 weight で
+ * 動かしたいときに使う。
+ */
+export type PartRegion = "brow" | "eye" | "mouth";
+
+/**
+ * 部位別 emotion 識別子。VRM 0.x 標準 6 group のうち Neutral を除いた 5 種。
+ * `Fcl_{BRW|EYE|MTH}_{Angry|Fun|Joy|Sorrow|Surprised}` に対応する。
+ */
+export type PartEmotion = "angry" | "fun" | "joy" | "sorrow" | "surprised";
+
 export type ExpressionTarget =
   | { kind: "mood"; preset: "happy" | "sad" | "angry" | "relaxed" | "surprised" }
   | { kind: "eye"; variant: "blink" | "blinkL" | "blinkR" | "lookup" | "lookdown" }
   | { kind: "lip"; phoneme: "aa" | "ih" | "ou" | "ee" | "oh" }
+  /**
+   * 部位 × emotion を 1 つの morph に解決する curated channel。
+   * 例: `{ region: "brow", emotion: "sorrow" }` は `Fcl_BRW_Sorrow` を駆動する。
+   * region 別の internal slot kind に分解されるため、同 source から
+   * 「眉=sorrow / 目=sorrow / 口=sorrow」の 3 slot を並走させて部位合成
+   * sadness を author できる。
+   */
+  | { kind: "part"; region: PartRegion; emotion: PartEmotion }
   | { kind: "custom"; blendShapeName: string };
 
 export interface ExpressionHandle {

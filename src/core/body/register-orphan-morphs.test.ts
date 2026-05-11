@@ -260,4 +260,40 @@ describe("SDK kind:custom end-to-end (Fcl_* orphan morphs)", () => {
       "Fcl_EYE_Spread",
     );
   });
+
+  it("part kinds let a single source compose brow+eye+mouth simultaneously", () => {
+    // Phase C で persona pack が「眉=sorrow / 目=sorrow / 口=sorrow」のように
+    // 部位ごとに独立 weight で sadness を構成できることを保証する。
+    // 内部 kind が `part-brow / part-eye / part-mouth` に分かれているため
+    // (source, kind) dedup の対象にならず、同一 source から 3 slot 並走できる。
+    const { mesh, exprMgr, flush } = buildPipeline({
+      Fcl_BRW_Sorrow: 0,
+      Fcl_EYE_Sorrow: 1,
+      Fcl_MTH_Sorrow: 2,
+    });
+
+    // 合計 0.3 + 0.2 + 0.4 = 0.9 で全 active 合算 budget 1.0 を超えないので
+    // proportional scale-down は発生せず、各値はそのまま morph に書かれる。
+    exprMgr.addSlot("persona", "part-brow", "Fcl_BRW_Sorrow", 0.3);
+    exprMgr.addSlot("persona", "part-eye", "Fcl_EYE_Sorrow", 0.2);
+    exprMgr.addSlot("persona", "part-mouth", "Fcl_MTH_Sorrow", 0.4);
+    flush();
+
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0.3);
+    expect(mesh.morphTargetInfluences?.[1]).toBeCloseTo(0.2);
+    expect(mesh.morphTargetInfluences?.[2]).toBeCloseTo(0.4);
+  });
+
+  it("same part-region from two sources still suppresses lower priority (per-kind arbitration)", () => {
+    // part-brow など region 内では従来通り source priority arbitration が効く。
+    // mcp が出した sorrow が persona の joy を上書きする。
+    const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Joy: 0, Fcl_BRW_Sorrow: 1 });
+
+    exprMgr.addSlot("persona", "part-brow", "Fcl_BRW_Joy", 0.5);
+    exprMgr.addSlot("mcp", "part-brow", "Fcl_BRW_Sorrow", 0.4);
+    flush();
+
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
+    expect(mesh.morphTargetInfluences?.[1]).toBeCloseTo(0.4);
+  });
 });

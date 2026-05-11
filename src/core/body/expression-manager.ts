@@ -26,15 +26,30 @@
 export type ExpressionSource = "reflex" | "persona" | "idle" | "mcp" | "thinking" | "system";
 
 /**
+ * 部位別表情を author するときの region 識別子。Hana Tool (VRoid) 由来の
+ * `Fcl_{BRW|EYE|MTH}_*` morph 体系に対応する。
+ */
+export type PartRegion = "brow" | "eye" | "mouth";
+
+/**
+ * 部位別 emotion 識別子。VRM 0.x 標準 6 group のうち Neutral を除いた 5 種。
+ * Hana Tool の `Fcl_{BRW|EYE|MTH}_{Angry|Fun|Joy|Sorrow|Surprised}` に対応。
+ */
+export type PartEmotion = "angry" | "fun" | "joy" | "sorrow" | "surprised";
+
+/**
  * Expression slot の論理的 channel。同一 (source, kind) は dedup され、
  * 後勝ちで前 slot を release する。
  *
- * - mood: happy / sad / surprised 等の感情 preset
+ * - mood: happy / sad / surprised 等の感情 preset（全顔）
  * - eye: blink / blinkL / blinkR / lookup / lookdown 等の eyelid・gaze 系
  * - lip: aa / ih / ou / ee / oh の口形素
- * - custom: 上記に当てはまらない blendShape
+ * - part-{brow,eye,mouth}: 部位別 emotion (Fcl_BRW_*, Fcl_EYE_*, Fcl_MTH_*)。
+ *   region 別 kind に分けてあるので、同 source から「眉=sorrow / 目=sorrow /
+ *   口=sorrow」を同時 author できる
+ * - custom: 上記に当てはまらない任意 blendShape の raw 名直叩き
  */
-export type ExpressionKind = "mood" | "eye" | "lip" | "custom";
+export type ExpressionKind = "mood" | "eye" | "lip" | `part-${PartRegion}` | "custom";
 
 /** Internal slot tracking a single active expression request. */
 interface ExpressionSlot {
@@ -266,7 +281,22 @@ export type ExpressionTargetLike =
   | { kind: "mood"; preset: string }
   | { kind: "eye"; variant: string }
   | { kind: "lip"; phoneme: string }
+  | { kind: "part"; region: PartRegion; emotion: PartEmotion }
   | { kind: "custom"; blendShapeName: string };
+
+const PART_REGION_PREFIX: Record<PartRegion, string> = {
+  brow: "BRW",
+  eye: "EYE",
+  mouth: "MTH",
+};
+
+const PART_EMOTION_SUFFIX: Record<PartEmotion, string> = {
+  angry: "Angry",
+  fun: "Fun",
+  joy: "Joy",
+  sorrow: "Sorrow",
+  surprised: "Surprised",
+};
 
 export function expressionTargetToName(target: ExpressionTargetLike): string {
   switch (target.kind) {
@@ -276,7 +306,20 @@ export function expressionTargetToName(target: ExpressionTargetLike): string {
       return target.variant;
     case "lip":
       return target.phoneme;
+    case "part":
+      // 例: { region: "brow", emotion: "sorrow" } -> "Fcl_BRW_Sorrow"
+      return `Fcl_${PART_REGION_PREFIX[target.region]}_${PART_EMOTION_SUFFIX[target.emotion]}`;
     case "custom":
       return target.blendShapeName;
   }
+}
+
+/**
+ * 公開 SDK の ExpressionTarget から内部 ExpressionKind を導出する。
+ * kind:"part" は region 別の `part-${region}` kind に展開して、source per kind
+ * dedup の対象範囲を絞る（眉と目を同時に書ける）。
+ */
+export function expressionTargetToKind(target: ExpressionTargetLike): ExpressionKind {
+  if (target.kind === "part") return `part-${target.region}`;
+  return target.kind;
 }

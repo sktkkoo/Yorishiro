@@ -351,6 +351,37 @@ describe("expressionTargetToName", () => {
   it("maps custom blendShapeName", () => {
     expect(expressionTargetToName({ kind: "custom", blendShapeName: "pout" })).toBe("pout");
   });
+
+  it("maps part region+emotion to the Hana Tool Fcl_*_* morph name", () => {
+    // 単発の sanity check
+    expect(expressionTargetToName({ kind: "part", region: "brow", emotion: "sorrow" })).toBe(
+      "Fcl_BRW_Sorrow",
+    );
+    expect(expressionTargetToName({ kind: "part", region: "eye", emotion: "joy" })).toBe(
+      "Fcl_EYE_Joy",
+    );
+    expect(expressionTargetToName({ kind: "part", region: "mouth", emotion: "surprised" })).toBe(
+      "Fcl_MTH_Surprised",
+    );
+  });
+
+  it("part: every (region × emotion) combination resolves to the canonical Fcl_*_* name", () => {
+    // 部位 prefix と emotion suffix の table と突き合わせる exhaustive check
+    const REGION_PREFIX = { brow: "BRW", eye: "EYE", mouth: "MTH" } as const;
+    const EMOTION_SUFFIX = {
+      angry: "Angry",
+      fun: "Fun",
+      joy: "Joy",
+      sorrow: "Sorrow",
+      surprised: "Surprised",
+    } as const;
+    for (const region of ["brow", "eye", "mouth"] as const) {
+      for (const emotion of ["angry", "fun", "joy", "sorrow", "surprised"] as const) {
+        const name = expressionTargetToName({ kind: "part", region, emotion });
+        expect(name).toBe(`Fcl_${REGION_PREFIX[region]}_${EMOTION_SUFFIX[emotion]}`);
+      }
+    }
+  });
 });
 
 // ─── EyeSystem ───────────────────────────────────────────
