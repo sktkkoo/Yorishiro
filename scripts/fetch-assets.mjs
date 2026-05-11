@@ -87,6 +87,10 @@ async function main() {
   console.log(`fetch-assets: external store = ${externalRoot}`);
 
   if (!(await exists(externalRoot))) {
+    if (process.env.CI) {
+      console.warn("fetch-assets: CI mode — external asset store not found, skipping.");
+      return;
+    }
     console.error(`
 fetch-assets: external asset store not found.
 

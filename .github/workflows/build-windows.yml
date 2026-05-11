@@ -1,0 +1,41 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - run: npm run tauri build
+        env:
+          CI: "true"
+
+      - name: Upload MSI installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: charminal-windows-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: charminal-windows-nsis
+          path: src-tauri/target/release/bundle/nsis/*.exe
