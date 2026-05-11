@@ -358,7 +358,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
   const [language, setLanguage] = useState<AppLanguage>("auto");
   const [resolvedLanguage, setResolvedLanguage] = useState<ResolvedLanguage>("en");
-  const [voiceFrequency, setVoiceFrequency] = useState<"none" | "low" | "high">("high");
+  const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
   const [configLoaded, setConfigLoaded] = useState(false);
   const personas = ctx.app.listPersonas();
   const visiblePersonas = filterPersonaOptionsForLanguage(personas, resolvedLanguage);
@@ -380,7 +380,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setActiveAmbientUiLocal(cur.activeAmbientUi);
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
-      setVoiceFrequency(cur.voiceFrequency ?? "high");
+      setVoiceFrequency(cur.voiceFrequency ?? "on");
       setConfigLoaded(true);
     });
     return () => {
@@ -440,8 +440,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     });
   };
 
-  const onVoiceFrequencyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as "none" | "low" | "high";
+  const onVoiceToggle = () => {
+    const next: "on" | "off" = voiceFrequency === "on" ? "off" : "on";
     void applyConfigUpdate({
       next,
       prev: voiceFrequency,
@@ -734,6 +734,24 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
         </div>
 
+        {/* Summary Voice（Sound の直下） */}
+        <div style={{ ...gridStyle, marginTop: SPACING.md }}>
+          <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
+          <div>
+            <Toggle checked={voiceFrequency === "on"} onChange={onVoiceToggle} />
+          </div>
+        </div>
+        <div
+          style={{
+            marginTop: SPACING.xs,
+            marginLeft: `calc(100px + ${SPACING.md})`,
+            fontSize: FONT.sizeXs,
+            opacity: 0.5,
+          }}
+        >
+          {strings.voiceAppliesNextSession}
+        </div>
+
         {/* 24px gap */}
         <div style={{ height: "24px" }} />
 
@@ -760,32 +778,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           }}
         >
           {strings.agentAppliesNextLaunch}
-        </div>
-
-        {/* グループ 4: Voice */}
-        <div style={{ ...gridStyle, marginTop: SPACING.lg }}>
-          <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
-          <div>
-            <Select
-              value={voiceFrequency}
-              onChange={onVoiceFrequencyChange}
-              options={[
-                { value: "high", label: strings.voiceHigh },
-                { value: "low", label: strings.voiceLow },
-                { value: "none", label: strings.voiceNone },
-              ]}
-            />
-          </div>
-        </div>
-        <div
-          style={{
-            marginTop: SPACING.xs,
-            marginLeft: `calc(100px + ${SPACING.md})`,
-            fontSize: FONT.sizeXs,
-            opacity: 0.5,
-          }}
-        >
-          {strings.voiceAppliesNextSession}
         </div>
 
         {/* 48px gap before footer links */}

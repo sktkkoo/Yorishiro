@@ -19,9 +19,8 @@ export interface UiStrings {
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
   readonly voiceFrequency: string;
-  readonly voiceNone: string;
-  readonly voiceLow: string;
-  readonly voiceHigh: string;
+  readonly voiceOn: string;
+  readonly voiceOff: string;
   readonly voiceAppliesNextSession: string;
 }
 
@@ -43,10 +42,9 @@ const EN: UiStrings = {
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
-  voiceFrequency: "Voice",
-  voiceNone: "Off",
-  voiceLow: "Occasional",
-  voiceHigh: "Frequent",
+  voiceFrequency: "Summary Voice",
+  voiceOn: "On",
+  voiceOff: "Off",
   voiceAppliesNextSession: "Applies from the next session",
 };
 
@@ -68,10 +66,9 @@ const JA: UiStrings = {
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",
-  voiceFrequency: "音声",
-  voiceNone: "なし",
-  voiceLow: "少なめ",
-  voiceHigh: "多め",
+  voiceFrequency: "要約読み上げ",
+  voiceOn: "On",
+  voiceOff: "Off",
   voiceAppliesNextSession: "※ 次のセッションから反映",
 };
 
