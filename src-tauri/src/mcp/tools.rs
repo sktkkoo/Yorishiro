@@ -399,7 +399,7 @@ impl Charminal {
 
     /// controls_set: F2 controls panel に表示されている値を書き換える。
     #[tool(
-        description = "Set one visible F2 control value. scope defaults to scene. Use controls_get first to discover paths — available paths depend on the active scene pack. Common camera.x/y/z and camera.targetX/Y/Z writes disable tracking and apply to the live camera immediately."
+        description = "Set one visible F2 control value immediately (no interpolation). Prefer controls_transition instead for smooth changes. scope defaults to scene. Use controls_get first to discover paths — available paths depend on the active scene pack."
     )]
     async fn controls_set(
         &self,
@@ -415,7 +415,7 @@ impl Charminal {
 
     /// controls_set_many: F2 controls panel に表示されている複数値をまとめて書き換える。
     #[tool(
-        description = "Set multiple visible F2 control values at once. scope defaults to scene. Use controls_get first to discover paths — available paths depend on the active scene pack."
+        description = "Set multiple visible F2 control values at once immediately (no interpolation). Prefer controls_transition instead for smooth changes. scope defaults to scene. Use controls_get first to discover paths — available paths depend on the active scene pack."
     )]
     async fn controls_set_many(
         &self,
@@ -741,7 +741,7 @@ impl ServerHandler for Charminal {
                 "- 声に出す → voice_say。応答が 200 文字を超える場合は必ず summary を住人自身の口調で voice_say する。200 文字以下の短い応答のみ省略可。挨拶や呼びかけには必ず voice_say で反応する\n",
                 "- 現在の状態確認 → state_get\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
-                "- 照明・カメラ等を変更 → controls_set / controls_transition\n",
+                "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",
                 "- 表情だけ変える → body_expression_set\n",
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
