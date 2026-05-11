@@ -792,8 +792,8 @@ describe("IdleMicroexpressionSystem", () => {
     expect(event).not.toBeNull();
     if (event) {
       expect(event.weight).toBeGreaterThan(0);
-      // 振幅上限は WEIGHT_MAX (=0.12)。fade window 中なので fade 倍率 ≤ 1。
-      expect(event.weight).toBeLessThanOrEqual(0.12);
+      // 振幅上限は WEIGHT_MAX (=0.22)。fade window 中なので fade 倍率 ≤ 1。
+      expect(event.weight).toBeLessThanOrEqual(0.22);
     }
   });
 

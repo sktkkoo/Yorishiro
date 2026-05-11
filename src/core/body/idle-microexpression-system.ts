@@ -25,9 +25,9 @@ const DURATION_MAX_S = 0.5;
 // fade window。fade in と fade out が三角形を作る。
 const FADE_S = 0.12;
 
-// 振幅範囲。雄弁化を避けるため意図的に低く抑える。
-const WEIGHT_MIN = 0.04;
-const WEIGHT_MAX = 0.12;
+// 振幅範囲。「神経の入った顔」として視認できる程度の強さ。
+const WEIGHT_MIN = 0.08;
+const WEIGHT_MAX = 0.22;
 
 /**
  * 微震え対象の morph pool — region 別。
