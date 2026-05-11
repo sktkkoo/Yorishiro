@@ -20,6 +20,7 @@ import cameraMovePack from "../bundled-packs/effects/camera-move/effect";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
+import screenFlashPack from "../bundled-packs/effects/screen-flash/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
 import claiManifest from "../bundled-packs/personas/clai/manifest.json";
@@ -504,6 +505,7 @@ function App() {
       time,
     });
     effectPackRunner.register(screenShakePack);
+    effectPackRunner.register(screenFlashPack);
     effectPackRunner.register(fireworksPack);
     effectPackRunner.register(fireworksVolleyPack);
     effectPackRunner.register(textPhysicsPack);
@@ -1145,6 +1147,9 @@ function App() {
             getScene: () => getThreeRuntime().getScene(),
             getRenderer: () => getThreeRuntime().getRenderer(),
             claimCamera: () => claimState.claim("camera"),
+            onAfterCapture: () => {
+              effectDispatcher.dispatch({ kind: "screen-flash" });
+            },
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
@@ -2332,6 +2337,33 @@ function App() {
       ptyExitCleanupRef.current?.();
     };
   }, [isUserLayerReady, tabManager]);
+
+  // Rust 側の app_screenshot は撮影完了後に "charminal:screen-flash" を emit する。
+  // ここで listen して screen-flash effect を dispatch することで、
+  // OS-level screenshot 撮影直後の視覚フィードバックを提供する。
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen("charminal:screen-flash", () => {
+        if (disposed) return;
+        effectDispatcher.dispatch({ kind: "screen-flash" });
+      });
+      if (disposed) {
+        unlisten();
+      } else {
+        cleanup = unlisten;
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, [isUserLayerReady, effectDispatcher]);
 
   // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
 

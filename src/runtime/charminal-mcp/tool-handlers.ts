@@ -1238,6 +1238,8 @@ export interface SceneScreenshotDeps {
   readonly getScene: () => THREE.Scene | null;
   readonly getRenderer: () => THREE.WebGLRenderer | null;
   readonly claimCamera: () => Disposable;
+  /** 撮影完了後に呼ばれる任意の hook。screen-flash effect の発火等に使う。 */
+  readonly onAfterCapture?: () => void;
 }
 
 export interface SceneScreenshotResult {
@@ -1291,6 +1293,14 @@ export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
 
       renderer.render(scene, cam);
       const dataUrl = renderer.domElement.toDataURL("image/png");
+
+      // 撮影が完了して dataUrl を握った後に flash を発火する。
+      // dataUrl 確定後なので flash 自身が screenshot に写り込むことはない。
+      try {
+        deps.onAfterCapture?.();
+      } catch {
+        // hook 失敗は screenshot を壊さない方針: silent に握りつぶす。
+      }
 
       return {
         dataUrl,
