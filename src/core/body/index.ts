@@ -52,7 +52,9 @@ import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
 import {
   IdleMicroexpressionSystem,
-  MICRO_MORPH_POOL,
+  MICRO_BROW_POOL,
+  MICRO_EYE_POOL,
+  MICRO_MOUTH_POOL,
   type MicroexpressionEvent,
 } from "./idle-microexpression-system";
 import {
@@ -102,14 +104,14 @@ export class Body {
   private readonly eyeSystem: EyeSystem;
   private readonly eyelids: EyelidExpressionController;
   /**
-   * Idle 中の Fcl_* morph 微震えで実在性を立ち上げる反射層。
-   * VRM に存在しない morph は pool から事前 filter（Perfect Sync 版 VRM で
-   * Hana 名が無い場合は空 pool になり no-op 化する）。
+   * Idle 中の Fcl_* morph 微震えで実在性を立ち上げる反射層。Region 別に独立
+   * instance を持つ：brow / eye / mouth の 3 layer が独立タイマー・独立 morph
+   * 選択で並走する。人形っぽさを消す key。
+   *
+   * VRM に存在しない morph は構築時に pool から filter（Perfect Sync 版 VRM で
+   * Hana 名が無い region は空 pool になり no-op 化する）。
    */
-  private readonly idleMicroexpressionSystem: IdleMicroexpressionSystem;
-  /** 上 system が emit した event を ExpressionManager slot にする state。 */
-  private microSlotId = -1;
-  private microSlotMorph: string | null = null;
+  private readonly microChannels: ReadonlyArray<MicroChannel>;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -179,11 +181,28 @@ export class Body {
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
-    // VRM に存在する morph だけ pool に残す（orphan registration 後の expressionMap 前提）
-    const availableMicroPool = MICRO_MORPH_POOL.filter(
-      (name) => vrm.expressionManager?.getExpression(name) !== null,
-    );
-    this.idleMicroexpressionSystem = new IdleMicroexpressionSystem(undefined, availableMicroPool);
+    // Region 別 micro layer — 各 instance は独立タイマー・独立 morph 選択で並走する。
+    // VRM に存在しない morph は region 単位で filter（Perfect Sync 移行や別 VRM で
+    // pool が空になっても system は no-op 化するだけで動作は壊れない）。
+    const filterPool = (pool: ReadonlyArray<string>): ReadonlyArray<string> =>
+      pool.filter((name) => vrm.expressionManager?.getExpression(name) !== null);
+    this.microChannels = [
+      new MicroChannel(
+        "brow",
+        new IdleMicroexpressionSystem(undefined, filterPool(MICRO_BROW_POOL)),
+        this.expressions,
+      ),
+      new MicroChannel(
+        "eye",
+        new IdleMicroexpressionSystem(undefined, filterPool(MICRO_EYE_POOL)),
+        this.expressions,
+      ),
+      new MicroChannel(
+        "mouth",
+        new IdleMicroexpressionSystem(undefined, filterPool(MICRO_MOUTH_POOL)),
+        this.expressions,
+      ),
+    ];
     this.cursorAttention = new CursorAttentionSystem(
       /* random */ undefined,
       /* onEvent */ (event) => {
@@ -351,6 +370,11 @@ export class Body {
     // 4. Eye system (state-dependent patterns)
     this.eyeSystem.update(delta);
 
+    // 5 で 5b と 6 の両方で lip sync 値が要るので、ここで 1 度だけ pull してキャッシュ。
+    // LipSyncAnalyser.sample() の smoothing が二重に進まないようにする目的もある。
+    const lipSyncMouth = this.lipSyncSource ? this.lipSyncSource.sampleMouth() : null;
+    const lipSyncHasSignal = lipSyncMouth ? MOUTH_KEYS.some((k) => lipSyncMouth[k] > 0) : false;
+
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
       const nonIdleMoodActive = this.expressions.hasActiveNonIdleMood();
@@ -362,20 +386,26 @@ export class Body {
         neutralSlotId: this.stateExprSlots[0],
       });
 
-      // 5b. Idle microexpression — Fcl_BRW_* / Fcl_EYE_Spread を低振幅で micro 振動。
-      //     意図的 mood が立っているときは雑音にならないよう suspend する。
-      const microEvent = this.idleMicroexpressionSystem.update(delta, !nonIdleMoodActive);
-      this.updateMicroexpressionSlot(microEvent);
+      // 5b. Region 別 idle micro layer — brow / eye / mouth が独立 instance で並走。
+      //     mouth だけは lip sync 中は suspend（visemes と競合させない）。
+      const microBaseEnabled = !nonIdleMoodActive;
+      for (const ch of this.microChannels) {
+        const enabled = microBaseEnabled && (ch.region !== "mouth" || !lipSyncHasSignal);
+        const event = ch.system.update(delta, enabled);
+        ch.flush(event);
+      }
     } else {
       this.eyelids.clearIdleSquint();
-      // claim 中は system も clear して内部 timer を reset しておく
-      this.idleMicroexpressionSystem.update(delta, false);
-      this.updateMicroexpressionSlot(null);
+      // claim 中は全 channel を clear して内部 timer を reset しておく
+      for (const ch of this.microChannels) {
+        ch.system.update(delta, false);
+        ch.flush(null);
+      }
     }
 
     // 6. Apply expressions to VRM
     if (!expressionClaimed) {
-      this.applyExpressions();
+      this.applyExpressions(lipSyncMouth);
     }
 
     // 7. Apply eye gaze to VRM
@@ -628,7 +658,7 @@ export class Body {
 
   // ─── Internal apply methods ───────────────────────────
 
-  private applyExpressions(): void {
+  private applyExpressions(lipSyncMouth: MouthValues | null): void {
     const resolved = this.expressions.getResolved();
     const exprMgr = this.vrm.expressionManager;
     if (!exprMgr) return;
@@ -638,12 +668,11 @@ export class Body {
     // ExpressionSinkTracker が前 frame との差分を取って drop された名前を 0 へ戻す。
     const batch = new Map(resolved);
 
-    if (this.lipSyncSource) {
-      const mouth = this.lipSyncSource.sampleMouth();
-      const hasSignal = MOUTH_KEYS.some((k) => mouth[k] > 0);
+    if (lipSyncMouth) {
+      const hasSignal = MOUTH_KEYS.some((k) => lipSyncMouth[k] > 0);
       if (hasSignal) {
         for (const k of MOUTH_KEYS) {
-          batch.set(k, mouth[k]);
+          batch.set(k, lipSyncMouth[k]);
         }
       }
     }
@@ -768,30 +797,50 @@ export class Body {
     }
     return false;
   }
+}
+
+// ─── Idle micro channel ─────────────────────────────────
+//
+// Region (brow / eye / mouth) ごとの IdleMicroexpressionSystem と、その出力を
+// ExpressionManager slot に流し込む state を 1 unit に束ねた helper。
+// Body は region 別に 3 instance 持って並走させ、人形っぽさを消す。
+
+type MicroRegion = "brow" | "eye" | "mouth";
+
+class MicroChannel {
+  private slotId = -1;
+  private slotMorph: string | null = null;
+
+  constructor(
+    readonly region: MicroRegion,
+    readonly system: IdleMicroexpressionSystem,
+    private readonly expressions: ExpressionManager,
+  ) {}
 
   /**
-   * IdleMicroexpressionSystem の出力を ExpressionManager slot に反映する。
-   * event=null（cooldown 中・disabled）なら slot を release。
-   * morph が同じなら weight だけ update、異なれば再 acquire。
-   * Slot は (source:"idle", kind:"custom") を取るので、relaxed の同 (source, kind)
-   * とは name 別 dedup（expression-manager.ts addSlot の custom 分岐）で並存する。
+   * 直前の system.update() の戻り値をそのまま渡す。
+   * - event=null なら slot を release
+   * - 同 morph なら weight だけ更新
+   * - 異 morph なら release + 新規 acquire
+   * Slot は (source:"idle", kind:"custom") を取り、name 別 dedup により他の
+   * idle/custom slot (relaxed や他 region の micro) と並存できる。
    */
-  private updateMicroexpressionSlot(event: MicroexpressionEvent | null): void {
+  flush(event: MicroexpressionEvent | null): void {
     if (event === null || event.weight <= 0) {
-      if (this.microSlotId !== -1) {
-        this.expressions.removeSlot(this.microSlotId);
-        this.microSlotId = -1;
-        this.microSlotMorph = null;
+      if (this.slotId !== -1) {
+        this.expressions.removeSlot(this.slotId);
+        this.slotId = -1;
+        this.slotMorph = null;
       }
       return;
     }
 
-    if (event.morph !== this.microSlotMorph) {
-      if (this.microSlotId !== -1) this.expressions.removeSlot(this.microSlotId);
-      this.microSlotId = this.expressions.addSlot("idle", "custom", event.morph, event.weight);
-      this.microSlotMorph = event.morph;
+    if (event.morph !== this.slotMorph) {
+      if (this.slotId !== -1) this.expressions.removeSlot(this.slotId);
+      this.slotId = this.expressions.addSlot("idle", "custom", event.morph, event.weight);
+      this.slotMorph = event.morph;
     } else {
-      this.expressions.setWeight(this.microSlotId, event.weight);
+      this.expressions.setWeight(this.slotId, event.weight);
     }
   }
 }

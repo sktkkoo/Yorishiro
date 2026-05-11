@@ -15,7 +15,13 @@ import {
 } from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
-import { IdleMicroexpressionSystem, MICRO_MORPH_POOL } from "./idle-microexpression-system";
+import {
+  IdleMicroexpressionSystem,
+  MICRO_BROW_POOL,
+  MICRO_EYE_POOL,
+  MICRO_MORPH_POOL,
+  MICRO_MOUTH_POOL,
+} from "./idle-microexpression-system";
 import { IdleSquintSystem } from "./idle-squint-system";
 
 // ─── ExpressionManager ───────────────────────────────────
@@ -834,6 +840,76 @@ describe("IdleMicroexpressionSystem", () => {
     micro.update(2.0, true);
     const second = micro.update(0.05, true);
     expect(second?.morph).toBe(MICRO_MORPH_POOL[MICRO_MORPH_POOL.length - 1]);
+  });
+});
+
+// ─── MICRO_*_POOL composition ────────────────────────────
+//
+// Pool 自体の中身が user-facing な振る舞いを決める（眉だけ動く、目だけ動く、口だけ動く、
+// asymmetric が出る等）。各 region で「必須 morph が含まれている」ことを test として
+// 固定する。Pool を入れ替えた時にここで気づける。
+
+describe("MICRO_BROW_POOL", () => {
+  it("contains Fcl_BRW_* emotion variants only", () => {
+    for (const name of MICRO_BROW_POOL) {
+      expect(name.startsWith("Fcl_BRW_")).toBe(true);
+    }
+  });
+});
+
+describe("MICRO_EYE_POOL", () => {
+  it("contains Fcl_EYE_* variants only", () => {
+    for (const name of MICRO_EYE_POOL) {
+      expect(name.startsWith("Fcl_EYE_")).toBe(true);
+    }
+  });
+
+  it("includes asymmetric L/R variants for wink-like twitches", () => {
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Close_L");
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Close_R");
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Joy_L");
+    expect(MICRO_EYE_POOL).toContain("Fcl_EYE_Joy_R");
+  });
+});
+
+describe("MICRO_MOUTH_POOL", () => {
+  it("contains Fcl_MTH_* variants only", () => {
+    for (const name of MICRO_MOUTH_POOL) {
+      expect(name.startsWith("Fcl_MTH_")).toBe(true);
+    }
+  });
+
+  it("includes shapes for silent mouth life: small / close / up / down", () => {
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Small");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Close");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Up");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Down");
+  });
+
+  it("includes への字 morph (Fcl_MTH_Angry) and a slight-smile morph (Fcl_MTH_Joy)", () => {
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Angry");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_Joy");
+  });
+
+  it("includes asymmetric SkinFung L/R for one-sided smirk", () => {
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_SkinFung_L");
+    expect(MICRO_MOUTH_POOL).toContain("Fcl_MTH_SkinFung_R");
+  });
+
+  it("does not include visemes (aa/ih/ou/ee/oh) — lip sync owns those", () => {
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_A");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_I");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_U");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_E");
+    expect(MICRO_MOUTH_POOL).not.toContain("Fcl_MTH_O");
+  });
+});
+
+describe("MICRO_MORPH_POOL (backward-compat aggregate)", () => {
+  it("is the union of the three region pools", () => {
+    const expected = new Set([...MICRO_BROW_POOL, ...MICRO_EYE_POOL, ...MICRO_MOUTH_POOL]);
+    const actual = new Set(MICRO_MORPH_POOL);
+    expect(actual).toEqual(expected);
   });
 });
 

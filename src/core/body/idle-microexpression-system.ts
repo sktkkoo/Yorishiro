@@ -30,17 +30,59 @@ const WEIGHT_MIN = 0.04;
 const WEIGHT_MAX = 0.12;
 
 /**
- * 微震え対象の morph pool。
- * - Fcl_BRW_*: 眉が部位だけ微小に動く（思案・気付き・関心・驚きの萌芽）
- * - Fcl_EYE_Spread: 目の見開き微増（注目の予兆）
- * 表情として読み取れない振幅で使う前提。
+ * 微震え対象の morph pool — region 別。
+ *
+ * Body は brow / eye / mouth ごとに独立した IdleMicroexpressionSystem を持ち、
+ * それぞれ独立したタイマー・randomness で micro event を emit する。実際の顔は
+ * 各部位の筋肉が独立に微振動するので、3 region 並列が「人形っぽさ」を消す key。
+ *
+ * Asymmetric (左右非対称) を意図的に含める：
+ * - 目: Fcl_EYE_Close_L/R, Fcl_EYE_Joy_L/R で片目だけの動き
+ * - 口: Fcl_MTH_SkinFung_L/R で片側だけの smirk
+ *
+ * Mouth pool は viseme (Fcl_MTH_A/I/U/E/O) を含まない。それは lip sync の責務。
+ * 代わりに muscle-level (Small/Close/Up/Down) と emotion (Joy/Angry) を採用し、
+ * 音声がない時の「口の生きてる感」を作る。
  */
-export const MICRO_MORPH_POOL: ReadonlyArray<string> = [
+
+/** 眉領域 — 思案 / 気付き / 関心 / 驚きの萌芽。 */
+export const MICRO_BROW_POOL: ReadonlyArray<string> = [
   "Fcl_BRW_Angry",
   "Fcl_BRW_Joy",
   "Fcl_BRW_Sorrow",
   "Fcl_BRW_Surprised",
+];
+
+/** 目領域 — 見開き、軽い squint、片目だけの動きで asymmetric を作る。 */
+export const MICRO_EYE_POOL: ReadonlyArray<string> = [
   "Fcl_EYE_Spread",
+  "Fcl_EYE_Sorrow",
+  "Fcl_EYE_Close_L",
+  "Fcl_EYE_Close_R",
+  "Fcl_EYE_Joy_L",
+  "Fcl_EYE_Joy_R",
+];
+
+/** 口領域 — silent な口の動き。への字 / 微笑 / 片側 smirk を含む。 */
+export const MICRO_MOUTH_POOL: ReadonlyArray<string> = [
+  "Fcl_MTH_Small",
+  "Fcl_MTH_Close",
+  "Fcl_MTH_Up",
+  "Fcl_MTH_Down",
+  "Fcl_MTH_Joy",
+  "Fcl_MTH_Angry",
+  "Fcl_MTH_SkinFung_L",
+  "Fcl_MTH_SkinFung_R",
+];
+
+/**
+ * Backward-compat aggregate — 既存 import 互換のため残す。
+ * 新規 callsite は region 別 pool を使うこと。
+ */
+export const MICRO_MORPH_POOL: ReadonlyArray<string> = [
+  ...MICRO_BROW_POOL,
+  ...MICRO_EYE_POOL,
+  ...MICRO_MOUTH_POOL,
 ];
 
 export interface MicroexpressionEvent {
