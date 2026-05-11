@@ -24,15 +24,11 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run tauri build
+      # MSI (WiX) は pre-release identifier に数値のみ許容するため、
+      # alpha/beta 版では NSIS のみ生成する
+      - run: npm run tauri build -- --bundles nsis
         env:
           CI: "true"
-
-      - name: Upload MSI installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: charminal-windows-msi
-          path: src-tauri/target/release/bundle/msi/*.msi
 
       - name: Upload NSIS installer
         uses: actions/upload-artifact@v4
