@@ -84,56 +84,35 @@ export function getMemoriesHeader(language: ResolvedLanguage): string {
 
 // ─── Voice ─────────────────────────────────────────────────
 
-export const VOICE_GUIDE_HIGH_EN = `## Voice
+export const VOICE_GUIDE_ON_EN = `## Voice
 
 You MUST call the voice_say tool in every response. This is mandatory, not optional.
 
 - Say the gist of your response aloud — one short phrase summarizing what you want to convey
 - Detailed explanations, code, and technical content go in text only
 - Keep the spoken phrase short and natural (one sentence max)
-- Match tone and phrasing to your character
-- The system decides whether to actually play the audio — your job is to always provide the voice line`;
+- Match tone and phrasing to your character`;
 
-export const VOICE_GUIDE_HIGH_JA = `## 音声
-
-すべての応答で voice_say ツールを必ず呼ぶこと。これは任意ではなく必須。
-
-- 応答の要点を一言で声に出す——伝えたいことの要約を短いフレーズで
-- 詳しい説明、コード、技術的な内容はテキストのみ
-- 声に出すフレーズは短く自然に（一文以内）
-- 声のトーンはキャラクターに合わせる
-- 実際に音声を再生するかはシステムが判断する——あなたの仕事は常に voice line を提供すること`;
-
-export const VOICE_GUIDE_LOW_EN = `## Voice
-
-You MUST call the voice_say tool in every response. This is mandatory, not optional.
-
-- Say the gist of your response aloud — one short phrase summarizing what you want to convey
-- Detailed explanations, code, and technical content go in text only
-- Keep the spoken phrase short and natural (one sentence max)
-- The system decides whether to actually play the audio — your job is to always provide the voice line`;
-
-export const VOICE_GUIDE_LOW_JA = `## 音声
+export const VOICE_GUIDE_ON_JA = `## 音声
 
 すべての応答で voice_say ツールを必ず呼ぶこと。これは任意ではなく必須。
 
 - 応答の要点を一言で声に出す——伝えたいことの要約を短いフレーズで
 - 詳しい説明、コード、技術的な内容はテキストのみ
 - 声に出すフレーズは短く自然に（一文以内）
-- 実際に音声を再生するかはシステムが判断する——あなたの仕事は常に voice line を提供すること`;
+- 声のトーンはキャラクターに合わせる`;
 
-export const VOICE_GUIDE_NONE_EN = `## Voice
+export const VOICE_GUIDE_OFF_EN = `## Voice
 
 Do not use the voice_say tool.`;
 
-export const VOICE_GUIDE_NONE_JA = `## 音声
+export const VOICE_GUIDE_OFF_JA = `## 音声
 
 voice_say ツールは使用しない。`;
 
-export type VoiceLevel = "none" | "low" | "high";
+export type VoiceLevel = "on" | "off";
 
 export function getVoiceGuide(language: ResolvedLanguage, level: VoiceLevel): string {
-  if (level === "none") return language === "ja" ? VOICE_GUIDE_NONE_JA : VOICE_GUIDE_NONE_EN;
-  if (level === "low") return language === "ja" ? VOICE_GUIDE_LOW_JA : VOICE_GUIDE_LOW_EN;
-  return language === "ja" ? VOICE_GUIDE_HIGH_JA : VOICE_GUIDE_HIGH_EN;
+  if (level === "off") return language === "ja" ? VOICE_GUIDE_OFF_JA : VOICE_GUIDE_OFF_EN;
+  return language === "ja" ? VOICE_GUIDE_ON_JA : VOICE_GUIDE_ON_EN;
 }

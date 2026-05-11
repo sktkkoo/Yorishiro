@@ -63,8 +63,8 @@ export interface CharminalConfig {
 
 export type TerminalAgent = "claude" | "codex";
 
-/** TTS 音声の利用頻度。"none" は voice_say を使わない、"low" は控えめ、"high" は積極的。 */
-export type VoiceFrequency = "none" | "low" | "high";
+/** Summary Voice の On/Off。"on" は毎回発話、"off" は voice_say を使わない（token 消費なし）。 */
+export type VoiceFrequency = "on" | "off";
 
 const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai", "clai-en", "clai-ja"]);
 
@@ -81,7 +81,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   ambientAudioVolume: 1.0,
   profiles: [],
   defaultProfile: null,
-  voiceFrequency: "high",
+  voiceFrequency: "on",
 };
 
 export function localizedClaiPersonaId(language: ResolvedLanguage): "clai-en" | "clai-ja" {
@@ -127,7 +127,8 @@ const toBoolean = (value: unknown): boolean => {
 };
 
 const toVoiceFrequency = (value: unknown): VoiceFrequency => {
-  return value === "none" || value === "low" ? value : "high";
+  if (value === "off" || value === "none") return "off";
+  return "on";
 };
 
 /** 0.0-1.0 の float を返す。無効値は 1.0（default）に fallback。 */
@@ -251,7 +252,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
   if (cfg.defaultProfile !== null) out.defaultProfile = cfg.defaultProfile;
-  if (cfg.voiceFrequency !== "high") out.voiceFrequency = cfg.voiceFrequency;
+  if (cfg.voiceFrequency !== "on") out.voiceFrequency = cfg.voiceFrequency;
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 

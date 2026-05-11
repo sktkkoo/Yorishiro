@@ -48,7 +48,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -67,7 +67,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -86,7 +86,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -105,7 +105,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -124,7 +124,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -143,7 +143,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -167,7 +167,7 @@ describe("parseConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     });
   });
 
@@ -203,7 +203,7 @@ describe("serializeConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -222,7 +222,7 @@ describe("serializeConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -246,7 +246,7 @@ describe("serializeConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -265,7 +265,7 @@ describe("serializeConfig", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -302,7 +302,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -322,7 +322,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       ambientAudioVolume: 1,
       profiles: [],
       defaultProfile: null,
-      voiceFrequency: "high",
+      voiceFrequency: "on",
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);

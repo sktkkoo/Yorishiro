@@ -672,7 +672,7 @@ function App() {
       let ambientAudioVolume = 1.0;
       let configuredLanguage: AppLanguage = "auto";
       let resolvedLanguage: ResolvedLanguage = resolveLanguage("auto", getBrowserLocales());
-      let voiceFrequency: "none" | "low" | "high" = "high";
+      let voiceFrequency: "on" | "off" = "on";
       let pluginDir: string | null = null;
       try {
         const configText = await readCharminalConfigText();
