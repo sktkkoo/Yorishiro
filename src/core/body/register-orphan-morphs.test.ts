@@ -14,6 +14,11 @@ import {
 } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import {
+  ExpressionManager,
+  ExpressionSinkTracker,
+  expressionTargetToName,
+} from "./expression-manager";
 import { findOrphanMorphs, registerOrphanMorphs } from "./register-orphan-morphs";
 
 // ─── findOrphanMorphs (pure) ──────────────────────────────
@@ -166,5 +171,93 @@ describe("registerOrphanMorphs", () => {
 
     const { registered } = registerOrphanMorphs(vrm);
     expect(registered).toEqual(["Fcl_BRW_Joy"]);
+  });
+});
+
+// ─── SDK kind:"custom" 経路の end-to-end ─────────────────
+//
+// SDK 公開 API `express({ kind: "custom", blendShapeName: name }, intensity)` が
+// orphan morph まで通電することを保証する。経路は：
+//   ExpressionManager.addSlot("persona", "custom", name, w)
+//     → resolved map に name -> w
+//     → ExpressionSinkTracker.apply → vrm.expressionManager.setValue
+//     → vrm.expressionManager.update() → mesh.morphTargetInfluences[idx]
+// Body class そのものは VRM lookAt / humanoid 等を要求するため、ここでは
+// applyExpressions と等価な層だけを組み立てて検査する。
+
+describe("SDK kind:custom end-to-end (Fcl_* orphan morphs)", () => {
+  function buildPipeline(morphTargetDictionary: Record<string, number>) {
+    const mesh = makeMockMesh(morphTargetDictionary);
+    const vrm = makeMockVrm({ meshes: [mesh] });
+    registerOrphanMorphs(vrm);
+    const exprMgr = new ExpressionManager();
+    const tracker = new ExpressionSinkTracker();
+    const flush = () => {
+      tracker.apply(exprMgr.getResolved(), (name, weight) => {
+        vrm.expressionManager?.setValue(name, weight);
+      });
+      vrm.expressionManager?.update();
+    };
+    return { mesh, vrm, exprMgr, flush };
+  }
+
+  it("custom slot drives the morphTargetInfluences via the full pipeline", () => {
+    const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0 });
+
+    // SDK 経路相当：kind:"custom" の slot を allocate
+    const target = { kind: "custom" as const, blendShapeName: "Fcl_BRW_Sorrow" };
+    exprMgr.addSlot("persona", "custom", expressionTargetToName(target), 0.6);
+    flush();
+
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0.6);
+  });
+
+  it("releasing the slot zeroes the morph on the next flush", () => {
+    const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0 });
+    const slot = exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.6);
+    flush();
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0.6);
+
+    exprMgr.removeSlot(slot);
+    flush();
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
+  });
+
+  it("known limitation: same-kind suppression collapses multiple custom slots", () => {
+    // 現状の ExpressionManager は kind 単位で priority 解決するため、
+    // 異なる source から同 kind:"custom" の slot を取ると下位 source が
+    // suppressed される。AU-level な multi-morph 構成は同 source 単一 slot で
+    // 1 blendshape しか駆動できない。Phase C で custom の slot 設計を見直す
+    // 余地あり（per-(source, kind, name) dedup or 専用 "au" kind 等）。
+    const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0, Fcl_EYE_Spread: 1 });
+
+    exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.4);
+    exprMgr.addSlot("mcp", "custom", "Fcl_EYE_Spread", 0.3);
+    flush();
+
+    // mcp(3) > persona(2) の同 kind 比較で persona は suppressed、
+    // Fcl_BRW_Sorrow には書かれない（=lastWritten にも入らないので 0 まま）。
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
+    expect(mesh.morphTargetInfluences?.[1]).toBeCloseTo(0.3);
+  });
+
+  it("single source can drive at most one custom slot due to (source, kind) dedup", () => {
+    // 同じ source / kind で異なる name を addSlot すると、前 slot は dedup で release。
+    // 「persona が AU1 と AU6 を同時に出す」ような pattern は今は表現できない。
+    const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0, Fcl_EYE_Spread: 1 });
+
+    exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.4);
+    exprMgr.addSlot("persona", "custom", "Fcl_EYE_Spread", 0.3);
+    flush();
+
+    // 1 件目は dedup で release されており、2 件目だけが生きている
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
+    expect(mesh.morphTargetInfluences?.[1]).toBeCloseTo(0.3);
+  });
+
+  it("expressionTargetToName extracts the blendShapeName for kind:custom", () => {
+    expect(expressionTargetToName({ kind: "custom", blendShapeName: "Fcl_EYE_Spread" })).toBe(
+      "Fcl_EYE_Spread",
+    );
   });
 });
