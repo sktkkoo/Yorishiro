@@ -738,7 +738,7 @@ impl ServerHandler for Charminal {
                 "Charminal — 住人の身体・声・環境を操作する MCP ツール群。\n",
                 "\n",
                 "## ツール選択ガイド\n",
-                "- 声に出す → voice_say。応答が 200 文字を超える場合は必ず summary を住人自身の口調で voice_say する。200 文字以下の短い応答のみ省略可。挨拶や呼びかけには必ず voice_say で反応する\n",
+                "- 声に出す → voice_say。すべての応答で必ず住人自身の口調で voice_say する。省略不可\n",
                 "- 現在の状態確認 → state_get\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
                 "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",
