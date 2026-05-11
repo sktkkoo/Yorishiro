@@ -51,6 +51,11 @@ import {
 import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
 import {
+  IdleMicroexpressionSystem,
+  MICRO_MORPH_POOL,
+  type MicroexpressionEvent,
+} from "./idle-microexpression-system";
+import {
   type MotionHandle as InternalMotionHandle,
   type MotionRequest as InternalMotionRequest,
   MotionScheduler,
@@ -96,6 +101,15 @@ export class Body {
   private readonly blinkSystem: BlinkSystem;
   private readonly eyeSystem: EyeSystem;
   private readonly eyelids: EyelidExpressionController;
+  /**
+   * Idle 中の Fcl_* morph 微震えで実在性を立ち上げる反射層。
+   * VRM に存在しない morph は pool から事前 filter（Perfect Sync 版 VRM で
+   * Hana 名が無い場合は空 pool になり no-op 化する）。
+   */
+  private readonly idleMicroexpressionSystem: IdleMicroexpressionSystem;
+  /** 上 system が emit した event を ExpressionManager slot にする state。 */
+  private microSlotId = -1;
+  private microSlotMorph: string | null = null;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -165,6 +179,11 @@ export class Body {
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
+    // VRM に存在する morph だけ pool に残す（orphan registration 後の expressionMap 前提）
+    const availableMicroPool = MICRO_MORPH_POOL.filter(
+      (name) => vrm.expressionManager?.getExpression(name) !== null,
+    );
+    this.idleMicroexpressionSystem = new IdleMicroexpressionSystem(undefined, availableMicroPool);
     this.cursorAttention = new CursorAttentionSystem(
       /* random */ undefined,
       /* onEvent */ (event) => {
@@ -342,8 +361,16 @@ export class Body {
         relaxedValue: this.relaxedValue,
         neutralSlotId: this.stateExprSlots[0],
       });
+
+      // 5b. Idle microexpression — Fcl_BRW_* / Fcl_EYE_Spread を低振幅で micro 振動。
+      //     意図的 mood が立っているときは雑音にならないよう suspend する。
+      const microEvent = this.idleMicroexpressionSystem.update(delta, !nonIdleMoodActive);
+      this.updateMicroexpressionSlot(microEvent);
     } else {
       this.eyelids.clearIdleSquint();
+      // claim 中は system も clear して内部 timer を reset しておく
+      this.idleMicroexpressionSystem.update(delta, false);
+      this.updateMicroexpressionSlot(null);
     }
 
     // 6. Apply expressions to VRM
@@ -740,6 +767,32 @@ export class Body {
       if (handle.expressionName === BLINK_EXPRESSION_NAME) return true;
     }
     return false;
+  }
+
+  /**
+   * IdleMicroexpressionSystem の出力を ExpressionManager slot に反映する。
+   * event=null（cooldown 中・disabled）なら slot を release。
+   * morph が同じなら weight だけ update、異なれば再 acquire。
+   * Slot は (source:"idle", kind:"custom") を取るので、relaxed の同 (source, kind)
+   * とは name 別 dedup（expression-manager.ts addSlot の custom 分岐）で並存する。
+   */
+  private updateMicroexpressionSlot(event: MicroexpressionEvent | null): void {
+    if (event === null || event.weight <= 0) {
+      if (this.microSlotId !== -1) {
+        this.expressions.removeSlot(this.microSlotId);
+        this.microSlotId = -1;
+        this.microSlotMorph = null;
+      }
+      return;
+    }
+
+    if (event.morph !== this.microSlotMorph) {
+      if (this.microSlotId !== -1) this.expressions.removeSlot(this.microSlotId);
+      this.microSlotId = this.expressions.addSlot("idle", "custom", event.morph, event.weight);
+      this.microSlotMorph = event.morph;
+    } else {
+      this.expressions.setWeight(this.microSlotId, event.weight);
+    }
   }
 }
 
