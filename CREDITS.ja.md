@@ -97,6 +97,14 @@ VRMA アニメーションと voice WAV は third-party 由来で **git repo に
 - 利用規約: 個人 / 法人の商用利用可、改変可。**上記クレジットの表記が必須**（アプリの About / クレジット画面で表示する想定）
 - **取り出せる状態での再配布は禁止** → public git repo に raw file を置くのは NG。アプリバンドル内に組み込むのは OK（asset pack として単体取り回しできる形ではないため）
 
+#### Rokoko「10 Free Everyday Idle Animations」
+
+`Idle Arguing.vrma` / `Idle Chatting.vrma` / `Idle Chatting 2.vrma` / `Idle Conversation.vrma` / `Idle Leaning On Wall.vrma` / `Idle Listening To Music.vrma` / `Idle Looking Around.vrma` / `Idle Looking Around 2.vrma` / `Idle Pointing.vrma` / `Idle Watching Something.vrma`
+
+- 出所: [Rokoko — 10 Free Everyday Idle Animations](https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations)（モーションキャプチャ: Sam Lazarus / Marco Mori / Jon Noorlander）
+- 利用規約: [Rokoko Studio EULA v2](https://cdn.rokoko.com/legal/rokoko-studio/rokoko_studio_eula_v2.pdf) に従う。完成品内での商用利用可。**raw アニメーションファイルの再配布は禁止** → public git repo に raw file を置くのは NG、アプリバンドル内に組み込んだ状態での配布は OK。EULA に明示的なクレジット表記義務はないが、出所と制作者を courtesy として記載する。
+- 備考: 元の FBX ファイルを VRMAConverter で VRMA 形式に変換したもの。
+
 #### Mixamo 由来の VRMA 群
 
 `Angry.vrma` / `Button Pushing.vrma` / `Idle.vrma` / `Jog In Circle.vrma` / `Leaning.vrma` / `Right Turn.vrma` / `Talking On Phone.vrma` / `Thankful.vrma` / `Typing.vrma`

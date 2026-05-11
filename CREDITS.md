@@ -96,6 +96,14 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 - Terms: Commercial use permitted (individuals and companies), modification permitted. **The above credit is required** (intended to be displayed in the app's About / Credits screen).
 - **Redistribution of extracted files is prohibited** — placing raw files in a public git repo is not permitted. Embedding in an application bundle is permitted (as the files are not separately accessible as a standalone asset pack).
 
+#### Rokoko "10 Free Everyday Idle Animations"
+
+`Idle Arguing.vrma` / `Idle Chatting.vrma` / `Idle Chatting 2.vrma` / `Idle Conversation.vrma` / `Idle Leaning On Wall.vrma` / `Idle Listening To Music.vrma` / `Idle Looking Around.vrma` / `Idle Looking Around 2.vrma` / `Idle Pointing.vrma` / `Idle Watching Something.vrma`
+
+- Source: [Rokoko — 10 Free Everyday Idle Animations](https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations) (motion capture by Sam Lazarus / Marco Mori / Jon Noorlander)
+- Terms: Subject to the [Rokoko Studio EULA v2](https://cdn.rokoko.com/legal/rokoko-studio/rokoko_studio_eula_v2.pdf). Commercial use in finished products is permitted. **Redistribution of raw animation files is prohibited** — placing raw files in a public git repo is not permitted; embedding converted data in an application bundle as an integrated component is permitted. No explicit attribution requirement exists in the EULA, but we credit the source and capture artists here out of courtesy.
+- Note: Original FBX files converted to VRMA format via VRMAConverter.
+
 #### Mixamo-derived VRMA clips
 
 `Angry.vrma` / `Button Pushing.vrma` / `Idle.vrma` / `Jog In Circle.vrma` / `Leaning.vrma` / `Right Turn.vrma` / `Talking On Phone.vrma` / `Thankful.vrma` / `Typing.vrma`
