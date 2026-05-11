@@ -223,36 +223,45 @@ describe("SDK kind:custom end-to-end (Fcl_* orphan morphs)", () => {
     expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
   });
 
-  it("known limitation: same-kind suppression collapses multiple custom slots", () => {
-    // 現状の ExpressionManager は kind 単位で priority 解決するため、
-    // 異なる source から同 kind:"custom" の slot を取ると下位 source が
-    // suppressed される。AU-level な multi-morph 構成は同 source 単一 slot で
-    // 1 blendshape しか駆動できない。Phase C で custom の slot 設計を見直す
-    // 余地あり（per-(source, kind, name) dedup or 専用 "au" kind 等）。
+  it("cross-source same-kind:custom: lower priority source is still suppressed (per-kind arbitration)", () => {
+    // kind:"custom" の cross-source priority arbitration は維持されている。
+    // mcp が同 kind に slot を持つと persona の custom slot は suppressed され、
+    // morphTargetInfluences には書かれない。これは「mcp が意図的な custom 表情を
+    // 出している間は persona 側の custom 演出を諦める」という従来通りの semantics。
     const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0, Fcl_EYE_Spread: 1 });
 
     exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.4);
     exprMgr.addSlot("mcp", "custom", "Fcl_EYE_Spread", 0.3);
     flush();
 
-    // mcp(3) > persona(2) の同 kind 比較で persona は suppressed、
-    // Fcl_BRW_Sorrow には書かれない（=lastWritten にも入らないので 0 まま）。
     expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
     expect(mesh.morphTargetInfluences?.[1]).toBeCloseTo(0.3);
   });
 
-  it("single source can drive at most one custom slot due to (source, kind) dedup", () => {
-    // 同じ source / kind で異なる name を addSlot すると、前 slot は dedup で release。
-    // 「persona が AU1 と AU6 を同時に出す」ような pattern は今は表現できない。
+  it("single source can hold multiple custom slots with different blendShape names", () => {
+    // custom kind の dedup key は (source, kind, name) なので、同じ source から
+    // 異なる morph 名を addSlot すれば並存する。これにより persona が複数 AU
+    // 風 morph を同時駆動して合成表情を author できる。
     const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0, Fcl_EYE_Spread: 1 });
 
     exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.4);
     exprMgr.addSlot("persona", "custom", "Fcl_EYE_Spread", 0.3);
     flush();
 
-    // 1 件目は dedup で release されており、2 件目だけが生きている
-    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0);
+    // 両方とも生きている（dedup されない）
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0.4);
     expect(mesh.morphTargetInfluences?.[1]).toBeCloseTo(0.3);
+  });
+
+  it("custom slot with same source+name re-acquire releases the previous slot", () => {
+    // 同 name を re-add したときは依然 dedup される（後勝ち）。
+    const { mesh, exprMgr, flush } = buildPipeline({ Fcl_BRW_Sorrow: 0 });
+
+    exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.6);
+    exprMgr.addSlot("persona", "custom", "Fcl_BRW_Sorrow", 0.2);
+    flush();
+
+    expect(mesh.morphTargetInfluences?.[0]).toBeCloseTo(0.2);
   });
 
   it("expressionTargetToName extracts the blendShapeName for kind:custom", () => {

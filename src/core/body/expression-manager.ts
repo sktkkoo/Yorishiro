@@ -92,9 +92,13 @@ export class ExpressionManager {
    * Add an expression slot. Returns a slot ID for later weight adjustment
    * or removal. Triggers immediate weight recomputation.
    *
-   * 同一 (source, kind) の slot が既にある場合は、それを release してから
-   * 新 slot を追加する（per-(source, kind) single-slot enforcement）。
-   * これにより同 source の同 channel は常に最新 1 件のみが active になる。
+   * Dedup rule:
+   * - mood / eye / lip / part-{brow,eye,mouth}: 同 (source, kind) で 1 slot のみ。
+   *   例えば persona の mood は happy か sad のどちらか 1 つしか持てない（categorical
+   *   choice なので）。後勝ちで前 slot を release する。
+   * - custom: 同 (source, kind, name) で 1 slot。異なる blendShape 名は別 channel として
+   *   並存できる。idle 層の relaxed と microexpression、persona 側の同時 raw morph 駆動
+   *   (AU 風合成) を許容する。
    */
   addSlot(
     source: ExpressionSource,
@@ -102,11 +106,11 @@ export class ExpressionManager {
     expressionName: string,
     weight: number,
   ): number {
-    // Per-(source, kind) dedup: 既存の同 (source, kind) slot を退避
+    // Dedup: kind:"custom" は name を含む 3-tuple、それ以外は 2-tuple
     for (const [id, slot] of this.slots) {
-      if (slot.source === source && slot.kind === kind) {
-        this.slots.delete(id);
-      }
+      if (slot.source !== source || slot.kind !== kind) continue;
+      if (kind === "custom" && slot.expressionName !== expressionName) continue;
+      this.slots.delete(id);
     }
     const id = nextSlotId++;
     this.slots.set(id, {
