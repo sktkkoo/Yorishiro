@@ -150,7 +150,7 @@ What works today:
 }
 ```
 
-Auto-launch, persona prompt overlay, and PTY observation work. However, Claude Code hooks and the `/charm` plugin are Claude Code-exclusive and not available when using Codex.
+Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. Claude Code hooks and the `/charm` plugin remain Claude Code-exclusive and are not available when using Codex.
 
 ---
 
