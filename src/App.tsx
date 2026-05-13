@@ -72,6 +72,7 @@ import {
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
+import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import {
@@ -591,6 +592,29 @@ function App() {
       note: "registered bundled ambient-UI pack 'attention-aura'",
     });
 
+    // ── Bundled amenity pack 登録（pomodoro）──────────────────────────────
+    registerBundledPomodoro({
+      registry: getAmenityPackRegistry(),
+      tweenManager: getThreeRuntime().getTweenManager(),
+      setTerminalOpacity: (value) => {
+        const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
+        if (el) el.style.opacity = String(value);
+      },
+      getTerminalOpacity: () => {
+        const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
+        if (!el) return 1;
+        const raw = el.style.opacity;
+        return raw === "" ? 1 : Number(raw);
+      },
+      emitEvent: (name, payload) => {
+        bus.emitSynthetic({ type: "utility", packId: "pomodoro" }, name, payload, 0);
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: "registered bundled amenity pack 'pomodoro'",
+    });
+
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
     // 旧来は 3 つの fire-and-forget IIFE で並行実行していたが、互いに strict な
     // 順序依存（bundled scene → config 反映 → user pack load）があり race で
@@ -868,6 +892,10 @@ function App() {
           createPresenceSetIntensityHandler,
           // Voice:
           createVoiceSayHandler,
+          // Pomodoro:
+          createPomodoroStartHandler,
+          createPomodoroStopHandler,
+          createPomodoroStatusHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { applyPresenceLevel, getPresenceSnapshot, onUserPromptSubmit } = await import(
           "./runtime/presence-intensity"
@@ -1155,6 +1183,16 @@ function App() {
               voicePlayer.createVoiceAPI().say(text);
             },
             getFrequency: () => voiceFrequency,
+          }),
+          // ── Pomodoro ─────────────────────────────────────
+          "pomodoro.start": createPomodoroStartHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          "pomodoro.stop": createPomodoroStopHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          "pomodoro.status": createPomodoroStatusHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
           }),
         };
 

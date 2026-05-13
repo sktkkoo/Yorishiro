@@ -1378,3 +1378,37 @@ export function createPresenceSetIntensityHandler(deps: PresenceSetIntensityDeps
     return { level };
   };
 }
+
+/* ──────────────────────────────────────────────────────────
+ * pomodoro.start / pomodoro.stop / pomodoro.status
+ * ────────────────────────────────────────────────────────── */
+
+import type { AmenityPackRegistry } from "../amenity-pack-registry";
+
+export interface PomodoroDeps {
+  readonly amenityPackRegistry: AmenityPackRegistry;
+}
+
+export function createPomodoroStartHandler(deps: PomodoroDeps) {
+  return async (request: unknown): Promise<unknown> => {
+    const handle = deps.amenityPackRegistry.getActiveHandle("pomodoro");
+    if (!handle) throw new Error("pomodoro amenity is not active");
+    return handle.tools.pomodoro_start(request);
+  };
+}
+
+export function createPomodoroStopHandler(deps: PomodoroDeps) {
+  return async (_request: unknown): Promise<unknown> => {
+    const handle = deps.amenityPackRegistry.getActiveHandle("pomodoro");
+    if (!handle) throw new Error("pomodoro amenity is not active");
+    return handle.tools.pomodoro_stop({});
+  };
+}
+
+export function createPomodoroStatusHandler(deps: PomodoroDeps) {
+  return async (_request: unknown): Promise<unknown> => {
+    const handle = deps.amenityPackRegistry.getActiveHandle("pomodoro");
+    if (!handle) throw new Error("pomodoro amenity is not active");
+    return handle.tools.pomodoro_status({});
+  };
+}
