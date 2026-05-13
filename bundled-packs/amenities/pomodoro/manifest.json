@@ -1,0 +1,10 @@
+{
+  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "id": "pomodoro",
+  "name": "Pomodoro Timer",
+  "type": "amenity",
+  "version": "0.1.0",
+  "charminalVersion": "^0.3.0",
+  "entry": "amenity.ts",
+  "description": "Pomodoro timer amenity with terminal dimming during breaks"
+}

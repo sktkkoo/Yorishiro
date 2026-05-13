@@ -173,6 +173,31 @@ pub struct SceneScreenshotRequest {
     pub fov: Option<f32>,
 }
 
+/// `pomodoro_start` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PomodoroStartRequest {
+    /// 作業フェーズの長さ（ミリ秒）。省略時はフロント側デフォルト。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_ms: Option<u64>,
+    /// 短い休憩の長さ（ミリ秒）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_break_ms: Option<u64>,
+    /// 長い休憩の長さ（ミリ秒）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_break_ms: Option<u64>,
+    /// ラウンド数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rounds: Option<u32>,
+}
+
+/// `pomodoro_stop` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PomodoroStopRequest {}
+
+/// `pomodoro_status` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PomodoroStatusRequest {}
+
 /// `app_screenshot` の引数。空 object。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppScreenshotRequest {}
@@ -716,6 +741,47 @@ impl Charminal {
                 Err(msg) => Err(McpError::internal_error(msg, None)),
             }
         }
+    }
+
+    /// ポモドーロタイマーを開始する。
+    #[tool(
+        description = "Start a pomodoro session. Configurable work/break durations and rounds. Emits phase-change events for persona reactions and dims the terminal during breaks."
+    )]
+    async fn pomodoro_start(
+        &self,
+        Parameters(req): Parameters<PomodoroStartRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "pomodoro.start",
+            json!({
+                "workMs": req.work_ms,
+                "shortBreakMs": req.short_break_ms,
+                "longBreakMs": req.long_break_ms,
+                "rounds": req.rounds,
+            }),
+        )
+        .await
+    }
+
+    /// ポモドーロタイマーを中断する。
+    #[tool(description = "Stop the current pomodoro session.")]
+    async fn pomodoro_stop(
+        &self,
+        _params: Parameters<PomodoroStopRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "pomodoro.stop", json!({})).await
+    }
+
+    /// ポモドーロの現在状態を取得する。
+    #[tool(
+        description = "Get current pomodoro status: phase (idle/work/short-break/long-break), round, remaining time."
+    )]
+    async fn pomodoro_status(
+        &self,
+        _params: Parameters<PomodoroStatusRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "pomodoro.status", json!({})).await
     }
 
     /// ウィンドウ全体（DOM + WebGL canvas）のスクリーンショットを撮影する。macOS のみ。

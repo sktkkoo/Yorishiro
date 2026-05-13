@@ -15,6 +15,7 @@
 
 import type {
   AmbientUiPackDefinition,
+  AmenityPackDefinition,
   EffectDefinition,
   PersonaDefinition,
   UiPackDefinition,
@@ -94,6 +95,21 @@ export function validateAmbientUiPackDefinition(pack: unknown): AmbientUiPackDef
   requireField(pack, "type", (v) => v === "ambient-ui", '"ambient-ui"', ctx);
   requireField(pack, "mount", (v) => typeof v === "function", "a function", ctx);
   return pack as unknown as AmbientUiPackDefinition;
+}
+
+/**
+ * AmenityPackDefinition の shape を検証する。
+ * 必須 field: `id: string`、`name: string`、`activate: function`。
+ */
+export function validateAmenityDefinition(pack: unknown): AmenityPackDefinition {
+  if (!isObject(pack)) {
+    throw new PackValidationError(`AmenityPackDefinition must be an object (got ${typeof pack})`);
+  }
+  const ctx = "AmenityPackDefinition";
+  requireField(pack, "id", (v) => typeof v === "string", "a string", ctx);
+  requireField(pack, "name", (v) => typeof v === "string", "a string", ctx);
+  requireField(pack, "activate", (v) => typeof v === "function", "a function", ctx);
+  return pack as unknown as AmenityPackDefinition;
 }
 
 /**

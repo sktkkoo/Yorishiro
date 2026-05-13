@@ -60,6 +60,7 @@ import { SayTtsEngine, VoicePlayer } from "./core/voice";
 import { getStrings } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
 import {
   startDevAttentionProducer,
   startFocusedDomAttentionProducer,
@@ -71,6 +72,8 @@ import {
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
+import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
+import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import {
@@ -585,9 +588,33 @@ function App() {
     // registry.enable() を呼んでも「unknown id」警告が出ない。
     const ambientUiRegistry = getAmbientUiPackRegistry();
     registerBundledAttentionAura({ registry: ambientUiRegistry });
+    registerBundledPomodoroUi({ registry: ambientUiRegistry });
     appLog.write({
       phase: "register",
-      note: "registered bundled ambient-UI pack 'attention-aura'",
+      note: "registered bundled ambient-UI packs 'attention-aura', 'pomodoro-ui'",
+    });
+
+    // ── Bundled amenity pack 登録（pomodoro）──────────────────────────────
+    registerBundledPomodoro({
+      registry: getAmenityPackRegistry(),
+      tweenManager: getThreeRuntime().getTweenManager(),
+      setTerminalOpacity: (value) => {
+        const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
+        if (el) el.style.opacity = String(value);
+      },
+      getTerminalOpacity: () => {
+        const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
+        if (!el) return 1;
+        const raw = el.style.opacity;
+        return raw === "" ? 1 : Number(raw);
+      },
+      emitEvent: (name, payload) => {
+        bus.emitSynthetic({ type: "utility", packId: "pomodoro" }, name, payload, 0);
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: "registered bundled amenity pack 'pomodoro'",
     });
 
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
@@ -758,6 +785,7 @@ function App() {
             scenePackRegistry,
             uiPackRegistry,
             ambientUiPackRegistry: getAmbientUiPackRegistry(),
+            amenityPackRegistry: getAmenityPackRegistry(),
             effectDispatcher,
             emitEvent: (name, payload) => {
               bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
@@ -866,6 +894,10 @@ function App() {
           createPresenceSetIntensityHandler,
           // Voice:
           createVoiceSayHandler,
+          // Pomodoro:
+          createPomodoroStartHandler,
+          createPomodoroStopHandler,
+          createPomodoroStatusHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         const { applyPresenceLevel, getPresenceSnapshot, onUserPromptSubmit } = await import(
           "./runtime/presence-intensity"
@@ -927,6 +959,7 @@ function App() {
             scenePackRegistry,
             uiPackRegistry,
             ambientUiPackRegistry: getAmbientUiPackRegistry(),
+            amenityPackRegistry: getAmenityPackRegistry(),
             packRegistry,
             userPackLog,
           });
@@ -1152,6 +1185,16 @@ function App() {
               voicePlayer.createVoiceAPI().say(text);
             },
             getFrequency: () => voiceFrequency,
+          }),
+          // ── Pomodoro ─────────────────────────────────────
+          "pomodoro.start": createPomodoroStartHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          "pomodoro.stop": createPomodoroStopHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          "pomodoro.status": createPomodoroStatusHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
           }),
         };
 

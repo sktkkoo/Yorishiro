@@ -21,11 +21,13 @@ import type { SubsystemLog } from "../../core/dev-log";
 import {
   PackValidationError,
   validateAmbientUiPackDefinition,
+  validateAmenityDefinition,
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
 } from "../../sdk/validators";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
+import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
@@ -63,6 +65,7 @@ export interface LoadUserPacksDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry?: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
+  readonly amenityPackRegistry: AmenityPackRegistry;
   readonly devLog: SubsystemLog;
   /**
    * Hot-reload 用の idempotency 層。register 結果の Disposable をここに格納し、
@@ -124,6 +127,7 @@ export interface LoadSingleUserPackDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry?: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
+  readonly amenityPackRegistry: AmenityPackRegistry;
   readonly packRegistry: UserPackRegistry;
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
@@ -172,6 +176,7 @@ export async function loadSingleUserPack(
     scenePackRegistry,
     uiPackRegistry,
     ambientUiPackRegistry,
+    amenityPackRegistry,
     packRegistry,
     personaDefaults,
     devLog,
@@ -342,6 +347,15 @@ export async function loadSingleUserPack(
       devLog.write({ phase: "register", note: `registered ambient-ui '${pack.id}'` });
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
+    if (entry.kind === "amenity") {
+      const pack = validateAmenityDefinition(def);
+      void amenityPackRegistry;
+      devLog.write({
+        phase: "register",
+        note: `validated amenity '${pack.id}' (user amenity activate is deferred)`,
+      });
+      return { status: "loaded", id: entry.id, kind: entry.kind };
+    }
     // SUPPORTED_PACK_KINDS に含まれるが分岐にない kind が来た場合の fallback。
     const error = `handler missing for kind '${entry.kind}'`;
     return { status: "failed", id: entry.id, kind: entry.kind, error };
@@ -375,6 +389,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     scenePackRegistry,
     uiPackRegistry,
     ambientUiPackRegistry,
+    amenityPackRegistry,
     devLog,
     packRegistry,
     personaDefaults,
@@ -430,6 +445,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
       scenePackRegistry,
       uiPackRegistry,
       ambientUiPackRegistry,
+      amenityPackRegistry,
       packRegistry,
       personaDefaults,
       devLog,
