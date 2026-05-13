@@ -49,7 +49,7 @@ fn read_configured_port() -> Option<u16> {
         .and_then(|n| u16::try_from(n).ok())
 }
 
-fn resolve_port() -> u16 {
+pub(crate) fn resolve_port() -> u16 {
     read_configured_port().unwrap_or(DEFAULT_PORT)
 }
 
