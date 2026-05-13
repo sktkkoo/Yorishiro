@@ -60,6 +60,7 @@ import { SayTtsEngine, VoicePlayer } from "./core/voice";
 import { getStrings } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
 import {
   startDevAttentionProducer,
   startFocusedDomAttentionProducer,
@@ -758,6 +759,7 @@ function App() {
             scenePackRegistry,
             uiPackRegistry,
             ambientUiPackRegistry: getAmbientUiPackRegistry(),
+            amenityPackRegistry: getAmenityPackRegistry(),
             effectDispatcher,
             emitEvent: (name, payload) => {
               bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
@@ -927,6 +929,7 @@ function App() {
             scenePackRegistry,
             uiPackRegistry,
             ambientUiPackRegistry: getAmbientUiPackRegistry(),
+            amenityPackRegistry: getAmenityPackRegistry(),
             packRegistry,
             userPackLog,
           });

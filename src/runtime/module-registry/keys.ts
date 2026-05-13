@@ -17,6 +17,8 @@ export const KEYS = {
   ATTENTION_RUNTIME: "attention:runtime",
   /** AmbientUiPackRegistry singleton: ambient-ui pack の登録と active 集合（multi-active）を管理する。 */
   AMBIENT_UI_PACK_REGISTRY: "ambient-ui-pack:registry",
+  /** AmenityPackRegistry singleton: amenity pack の登録と active 集合（multi-active）を管理する。 */
+  AMENITY_PACK_REGISTRY: "amenity-pack:registry",
   /** ModuleRegistry singleton (Phase 1). */
   MODULE_REGISTRY: "registry:module",
   /** PersonaRegistry singleton (persona single-active plan): 登録済み persona と active state。 */

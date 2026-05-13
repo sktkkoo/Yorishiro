@@ -19,6 +19,13 @@ export * from "./persona";
 export * from "./utility";
 export * from "./effect";
 export type {
+  AmenityHandle,
+  AmenityPackDefinition,
+  AmenityPackManifest,
+  AmenityToolHandler,
+  AmenityToolMeta,
+} from "./amenity";
+export type {
   AmbientUiContext,
   AmbientUiPackDefinition,
   AmbientUiPackManifest,

@@ -18,4 +18,5 @@ export const SUPPORTED_PACK_KINDS: ReadonlySet<string> = new Set([
   "scene",
   "ui",
   "ambient-ui",
+  "amenity",
 ]);

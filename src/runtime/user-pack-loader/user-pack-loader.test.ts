@@ -19,6 +19,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import type { AmbientUiPackEntry, AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
+import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackEntry, UiPackRegistry } from "../ui-pack-registry";
@@ -179,6 +180,18 @@ function makeFakeAmbientUiPackRegistry(): AmbientUiPackRegistry & {
   };
 }
 
+function makeFakeAmenityPackRegistry(): AmenityPackRegistry {
+  return {
+    register: () => ({ dispose: () => {} }),
+    listEntries: () => [],
+    enable: () => {},
+    disable: () => {},
+    getActiveSet: () => [],
+    getActiveHandle: () => null,
+    subscribeActiveSet: () => ({ dispose: () => {} }),
+  };
+}
+
 // ─── tests ────────────────────────────────────────────────────────
 
 describe("loadUserPacks", () => {
@@ -200,6 +213,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -235,6 +249,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -263,6 +278,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -289,6 +305,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -341,6 +358,7 @@ describe("loadUserPacks", () => {
         personaRegistry: personaReg,
         scenePackRegistry: fakeScenePackRegistry,
         ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+        amenityPackRegistry: makeFakeAmenityPackRegistry(),
         packRegistry: new UserPackRegistry(),
         devLog: subsystem,
         fetchPackEntries: async () => entries,
@@ -378,6 +396,7 @@ describe("loadUserPacks", () => {
       scenePackRegistry: makeFakeScenePackRegistry(),
       uiPackRegistry: uiRegistry,
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -410,6 +429,7 @@ describe("loadUserPacks", () => {
       scenePackRegistry: makeFakeScenePackRegistry(),
       uiPackRegistry: uiRegistry,
       ambientUiPackRegistry: ambientUiRegistry,
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -444,6 +464,7 @@ describe("loadUserPacks", () => {
       scenePackRegistry: makeFakeScenePackRegistry(),
       uiPackRegistry: uiRegistry,
       ambientUiPackRegistry: ambientUiRegistry,
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -470,6 +491,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry: new UserPackRegistry(),
       devLog: subsystem,
       fetchPackEntries: async () => entries,
@@ -500,6 +522,7 @@ describe("loadUserPacks", () => {
         personaRegistry: personaReg,
         scenePackRegistry: makeFakeScenePackRegistry(),
         ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+        amenityPackRegistry: makeFakeAmenityPackRegistry(),
         packRegistry: new UserPackRegistry(),
         devLog: subsystem,
         fetchPackEntries: async () => entries,
@@ -532,6 +555,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -555,6 +579,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => {
@@ -583,6 +608,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: new UserPackRegistry(),
       fetchPackEntries: async () => entries,
@@ -611,6 +637,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -625,6 +652,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -649,6 +677,7 @@ describe("loadUserPacks", () => {
       personaRegistry,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       disabledPacks: ["disabled-pack"],
@@ -708,6 +737,7 @@ describe("loadUserPacks", () => {
       personaRegistry,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       fetchPackEntries: async () => [],
@@ -756,6 +786,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -767,6 +798,7 @@ describe("loadUserPacks", () => {
       personaRegistry: personaReg,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       devLog: subsystem,
       packRegistry: registry,
       fetchPackEntries: async () => entries,
@@ -802,6 +834,7 @@ describe("loadSingleUserPack", () => {
       personaRegistry: persona,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => ({
@@ -824,6 +857,7 @@ describe("loadSingleUserPack", () => {
       personaRegistry: persona,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => {
@@ -848,6 +882,7 @@ describe("loadSingleUserPack", () => {
       personaRegistry: persona,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => ({ default: {} }),
@@ -883,6 +918,7 @@ describe("loadSingleUserPack", () => {
       personaRegistry: persona,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => personaModule,
@@ -895,6 +931,7 @@ describe("loadSingleUserPack", () => {
       personaRegistry: persona,
       scenePackRegistry: makeFakeScenePackRegistry(),
       ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+      amenityPackRegistry: makeFakeAmenityPackRegistry(),
       packRegistry,
       devLog,
       importModule: async () => personaModule,
@@ -934,6 +971,7 @@ describe("loadSingleUserPack", () => {
           personaRegistry: persona,
           scenePackRegistry: makeFakeScenePackRegistry(),
           ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+          amenityPackRegistry: makeFakeAmenityPackRegistry(),
           packRegistry,
           devLog,
           importModule: async () => ({
@@ -985,6 +1023,7 @@ describe("loadSingleUserPack", () => {
           personaRegistry: persona,
           scenePackRegistry: makeFakeScenePackRegistry(),
           ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+          amenityPackRegistry: makeFakeAmenityPackRegistry(),
           packRegistry,
           devLog,
           importModule: async () => ({
@@ -1030,6 +1069,7 @@ describe("loadSingleUserPack", () => {
           personaRegistry: persona,
           scenePackRegistry: makeFakeScenePackRegistry(),
           ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+          amenityPackRegistry: makeFakeAmenityPackRegistry(),
           packRegistry,
           devLog,
           importModule: async () => ({
@@ -1080,6 +1120,7 @@ describe("loadSingleUserPack", () => {
           personaRegistry: persona,
           scenePackRegistry: makeFakeScenePackRegistry(),
           ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+          amenityPackRegistry: makeFakeAmenityPackRegistry(),
           packRegistry,
           devLog,
           importModule: async () => ({
@@ -1149,6 +1190,7 @@ describe("loadSingleUserPack", () => {
           personaRegistry: persona,
           scenePackRegistry: makeFakeScenePackRegistry(),
           ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+          amenityPackRegistry: makeFakeAmenityPackRegistry(),
           packRegistry,
           personaDefaults: defaults,
           devLog,

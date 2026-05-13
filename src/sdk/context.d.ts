@@ -183,6 +183,45 @@ export interface UtilityContext {
   // presence を出したいなら persona handler を書くこと
 }
 
+// ─── AmenityContext ────────────────────────────────────────
+
+/**
+ * Amenity の activate 関数が受け取る context。
+ * system API と共有 utility を持つが、presence API は一切持たない。
+ *
+ * UtilityContext との主な違い：
+ * - `event: ReactionEvent` を持たない（activate は event-driven ではない）
+ * - activate の lifecycle に紐づく signal を持つ（disable 時に abort）
+ *
+ * Amenity は機能設備の提供に専念する。
+ * キャラクターの表現は `emitEvent()` → persona reflex 経由で委ねる。
+ */
+export interface AmenityContext {
+  readonly time: Time;
+  readonly persona: PersonaRef;
+
+  /**
+   * Synthetic event を runtime に投入する。
+   * UtilityContext.emitEvent と同じ contract。amenity が「何が起きたか」を
+   * 述べるだけで、「どう反応するか」は persona の reflex が決める。
+   *
+   * @param name synthetic event の名前。`'<amenityId>:<eventName>'` 形式を推奨
+   * @param payload 任意の付加情報
+   */
+  emitEvent(name: string, payload?: unknown): void;
+
+  readonly tween: TweenAPI;
+  readonly system: SystemAPI;
+  readonly log: LogAPI;
+  readonly memory: MemoryAPI;
+  readonly terminal: TerminalAPI;
+  readonly charm: CharmAPI;
+  readonly signal: AbortSignal;
+
+  // NOTE: character / voice / space は意図的に存在しない (motion-free)
+  // NOTE: event: ReactionEvent も存在しない (activate は event-driven ではない)
+}
+
 // ─── EffectContext ─────────────────────────────────────────
 
 /**
