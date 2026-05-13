@@ -14,7 +14,6 @@
  */
 
 import type { AmenityContext } from "./context";
-import type { Disposable } from "./context";
 import type { Trigger } from "./reaction";
 
 // ─── AmenityHandle ───────────────────────────────────────

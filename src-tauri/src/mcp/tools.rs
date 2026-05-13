@@ -287,18 +287,6 @@ pub struct JournalWriteRequest {
     pub summary: Option<String>,
 }
 
-/// `amenity_invoke` の引数。amenity pack が公開する tool を汎用的に呼び出す。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct AmenityInvokeRequest {
-    /// 呼び出す amenity の id（例: "pomodoro"）。
-    pub amenity_id: String,
-    /// 呼び出す tool 名（例: "pomodoro_start"）。
-    pub tool: String,
-    /// tool に渡すパラメータ（任意の JSON）。
-    #[serde(default)]
-    pub params: Value,
-}
-
 /// `journal_read` の引数。date / days いずれも省略時は最新 7 日分を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JournalReadRequest {
