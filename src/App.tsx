@@ -73,6 +73,7 @@ import {
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
+import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { getOrInit } from "./runtime/hot-data";
 import {
@@ -587,9 +588,10 @@ function App() {
     // registry.enable() を呼んでも「unknown id」警告が出ない。
     const ambientUiRegistry = getAmbientUiPackRegistry();
     registerBundledAttentionAura({ registry: ambientUiRegistry });
+    registerBundledPomodoroUi({ registry: ambientUiRegistry });
     appLog.write({
       phase: "register",
-      note: "registered bundled ambient-UI pack 'attention-aura'",
+      note: "registered bundled ambient-UI packs 'attention-aura', 'pomodoro-ui'",
     });
 
     // ── Bundled amenity pack 登録（pomodoro）──────────────────────────────

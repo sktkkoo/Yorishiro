@@ -173,6 +173,31 @@ pub struct SceneScreenshotRequest {
     pub fov: Option<f32>,
 }
 
+/// `pomodoro_start` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PomodoroStartRequest {
+    /// 作業フェーズの長さ（ミリ秒）。省略時はフロント側デフォルト。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub work_ms: Option<u64>,
+    /// 短い休憩の長さ（ミリ秒）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub short_break_ms: Option<u64>,
+    /// 長い休憩の長さ（ミリ秒）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub long_break_ms: Option<u64>,
+    /// ラウンド数。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rounds: Option<u32>,
+}
+
+/// `pomodoro_stop` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PomodoroStopRequest {}
+
+/// `pomodoro_status` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PomodoroStatusRequest {}
+
 /// `app_screenshot` の引数。空 object。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AppScreenshotRequest {}
@@ -262,30 +287,17 @@ pub struct JournalWriteRequest {
     pub summary: Option<String>,
 }
 
-/// `pomodoro_start` の引数。
+/// `amenity_invoke` の引数。amenity pack が公開する tool を汎用的に呼び出す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PomodoroStartRequest {
-    /// 作業時間（ms）。省略時は 25 分。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub work_ms: Option<u64>,
-    /// 短い休憩（ms）。省略時は 5 分。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub short_break_ms: Option<u64>,
-    /// 長い休憩（ms）。省略時は 15 分。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub long_break_ms: Option<u64>,
-    /// ラウンド数。省略時は 4。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rounds: Option<u32>,
+pub struct AmenityInvokeRequest {
+    /// 呼び出す amenity の id（例: "pomodoro"）。
+    pub amenity_id: String,
+    /// 呼び出す tool 名（例: "pomodoro_start"）。
+    pub tool: String,
+    /// tool に渡すパラメータ（任意の JSON）。
+    #[serde(default)]
+    pub params: Value,
 }
-
-/// `pomodoro_stop` の引数（空）。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PomodoroStopRequest {}
-
-/// `pomodoro_status` の引数（空）。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PomodoroStatusRequest {}
 
 /// `journal_read` の引数。date / days いずれも省略時は最新 7 日分を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

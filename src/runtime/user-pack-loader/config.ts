@@ -74,7 +74,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   mcpPort: null,
   activeScene: null,
   activeUi: null,
-  activeAmbientUi: ["attention-aura"],
+  activeAmbientUi: ["attention-aura", "pomodoro-ui"],
   language: DEFAULT_LANGUAGE,
   terminalAgent: "claude",
   ambientAudioMuted: false,
