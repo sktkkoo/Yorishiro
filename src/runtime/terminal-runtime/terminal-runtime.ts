@@ -790,8 +790,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     for (const point of polygon.slice(1)) {
       ctx.lineTo(point.x, point.y);
     }
+    ctx.closePath();
     if (closed) {
-      ctx.closePath();
       ctx.fill();
     }
     ctx.stroke();
