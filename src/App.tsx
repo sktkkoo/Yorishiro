@@ -870,6 +870,7 @@ function App() {
           createEnablePackHandler,
           createGetPackStateHandler,
           createSetPackStateHandler,
+          createTerminalContextGetHandler,
           // Phase β cosmetic write tools：
           createStateGetHandler,
           createBodyExpressionSetHandler,
@@ -1015,6 +1016,10 @@ function App() {
           "set-ui-state": createSetPackStateHandler({
             state: uiState,
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+          }),
+          "terminal.context.get": createTerminalContextGetHandler({
+            getLatestRegionContext: () =>
+              getTerminalRuntime(tabManager.getState().activeSessionId).getLatestRegionContext(),
           }),
           "controls.get": createControlsGetHandler({
             getSceneStore: () => getActiveSceneLevaStore(),
