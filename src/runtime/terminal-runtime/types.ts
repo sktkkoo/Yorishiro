@@ -171,13 +171,13 @@ export interface TerminalRuntime {
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
 
   /**
-   * Option+Shift+drag で user が囲った最新 terminal context を返す。
+   * Option+Shift+drag で user が矩形選択した最新 terminal context を返す。
    * 未選択 / 空選択なら null。
    */
   getLatestRegionContext(): TerminalRegionContext | null;
 
   /**
-   * Option+Shift+drag の terminal context 確定時に listener を呼ぶ。
+   * Option+Shift+drag の矩形 terminal context 確定時に listener を呼ぶ。
    * attention producer / UI feedback 用。dispose で listener を外す。
    */
   subscribeRegionContext(listener: (context: TerminalRegionContext) => void): Disposable;

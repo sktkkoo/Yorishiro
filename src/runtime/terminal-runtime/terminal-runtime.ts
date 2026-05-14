@@ -90,7 +90,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private ptyExitUnlisten: (() => void) | null = null;
   private regionDrag: {
     readonly pointerId: number;
-    readonly polygon: RegionPoint[];
+    readonly start: RegionPoint;
+    current: RegionPoint;
   } | null = null;
   private clearRegionCanvasTimeout: number | null = null;
   private latestRegionContext: TerminalRegionContext | null = null;
@@ -617,11 +618,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         event.stopPropagation();
         this.regionDrag = {
           pointerId: event.pointerId,
-          polygon: [point],
+          start: point,
+          current: point,
         };
         this.xtermContainer.setPointerCapture(event.pointerId);
         this.clearRegionCanvasNow();
-        this.drawRegionPolygon(this.regionDrag.polygon, false);
+        this.drawRegionRectangle(this.regionDrag.start, this.regionDrag.current, false);
       },
       { capture: true },
     );
@@ -636,12 +638,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
         event.preventDefault();
         event.stopPropagation();
-        const previous = drag.polygon[drag.polygon.length - 1];
-        const dx = point.x - previous.x;
-        const dy = point.y - previous.y;
+        const dx = point.x - drag.current.x;
+        const dy = point.y - drag.current.y;
         if (dx * dx + dy * dy >= 9) {
-          drag.polygon.push(point);
-          this.drawRegionPolygon(drag.polygon, false);
+          drag.current = point;
+          this.drawRegionRectangle(drag.start, drag.current, false);
         }
       },
       { capture: true },
@@ -683,13 +684,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private finishRegionDrag(): void {
     const drag = this.regionDrag;
     this.regionDrag = null;
-    if (!drag || drag.polygon.length < 3) {
+    if (!drag) {
       this.scheduleRegionCanvasClear();
       return;
     }
 
-    this.drawRegionPolygon(drag.polygon, true);
-    const context = this.extractRegionContext(drag.polygon);
+    const polygon = rectanglePolygon(drag.start, drag.current);
+    const bounds = polygonBounds(polygon);
+    if (!bounds || bounds.width === 0 || bounds.height === 0) {
+      this.scheduleRegionCanvasClear();
+      return;
+    }
+
+    this.drawRegionRectangle(drag.start, drag.current, true);
+    const context = this.extractRegionContext(polygon);
     if (!context) {
       this.scheduleRegionCanvasClear();
       return;
@@ -810,6 +818,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }, 900);
   }
 
+  private drawRegionRectangle(start: RegionPoint, current: RegionPoint, filled: boolean): void {
+    this.drawRegionPolygon(rectanglePolygon(start, current), filled);
+  }
+
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {
     if (a === null) return false;
     return a.cwd === b.cwd && specEqual(a.spec, b.spec);
@@ -838,6 +850,19 @@ function specEqual(a: SpawnSpec, b: SpawnSpec): boolean {
 function describeSpec(spec: SpawnSpec): string {
   if (spec.kind === "agent") return spec.agent;
   return spec.command ?? "shell";
+}
+
+function rectanglePolygon(start: RegionPoint, current: RegionPoint): ReadonlyArray<RegionPoint> {
+  const left = Math.min(start.x, current.x);
+  const right = Math.max(start.x, current.x);
+  const top = Math.min(start.y, current.y);
+  const bottom = Math.max(start.y, current.y);
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
 }
 
 /**

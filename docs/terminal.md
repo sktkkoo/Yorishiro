@@ -54,7 +54,7 @@ User profile は同じ id を上書きできる。
 
 ## Terminal context selection
 
-Terminal 上で `Option+Shift+drag` すると、囲った範囲の表示テキストを Charminal が
+Terminal 上で `Option+Shift+drag` すると、ドラッグした矩形範囲の表示テキストを Charminal が
 xterm.js buffer から抽出し、最新の「ユーザーが指し示した terminal context」として
 保持する。これは PTY へ入力を書き込む操作ではなく、住人の perception / MCP 経路に
 「ここを見て」という context を渡すための gesture。

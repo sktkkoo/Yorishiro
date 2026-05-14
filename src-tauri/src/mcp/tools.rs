@@ -489,9 +489,9 @@ impl Charminal {
         emit_to(&self.app_handle, "state.get", json!({})).await
     }
 
-    /// terminal_context_get: user が Option+Shift+drag で囲った最新 terminal context を返す。
+    /// terminal_context_get: user が Option+Shift+drag で矩形選択した最新 terminal context を返す。
     #[tool(
-        description = "Return the latest terminal text region the user pointed at with Option+Shift+drag. Returns null when no region has been selected yet. Use this when the user says 'this', 'here', or points at terminal output."
+        description = "Return the latest rectangular terminal text region the user pointed at with Option+Shift+drag. Returns null when no region has been selected yet. Use this when the user says 'this', 'here', or points at terminal output."
     )]
     async fn terminal_context_get(
         &self,
