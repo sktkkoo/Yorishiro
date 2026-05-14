@@ -14,10 +14,12 @@ import {
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
 import type {
   PtyParams,
   TerminalCursorClientPosition,
   TerminalLineRect,
+  TerminalRegionContext,
   TerminalRuntime,
   UpdatePtyOptions,
 } from "./types";
@@ -66,6 +68,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly term: XTerm;
   private readonly fitAddon: FitAddon;
   private readonly xtermContainer: HTMLDivElement;
+  private readonly regionCanvas: HTMLCanvasElement | null;
+  private readonly regionCtx: CanvasRenderingContext2D | null;
   private readonly channel: Channel<ArrayBuffer>;
   private readonly perceptionRef: { current: Perception | null } = { current: null };
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
@@ -80,9 +84,16 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly scrollListeners = new Set<() => void>();
+  private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
   private disposed = false;
   private startGeneration = 0;
   private ptyExitUnlisten: (() => void) | null = null;
+  private regionDrag: {
+    readonly pointerId: number;
+    readonly polygon: RegionPoint[];
+  } | null = null;
+  private clearRegionCanvasTimeout: number | null = null;
+  private latestRegionContext: TerminalRegionContext | null = null;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -107,6 +118,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     document.body.appendChild(this.xtermContainer);
 
     this.term.open(this.xtermContainer);
+
+    const regionCtx = this.createRegionCanvas();
+    this.regionCanvas = regionCtx?.canvas ?? null;
+    this.regionCtx = regionCtx?.context ?? null;
+    if (regionCtx) {
+      this.installRegionSelectionHandlers();
+    }
 
     // Channel は webview lifetime の単一 instance。factory が HMR survive するので
     // この callback ID は terminal.tsx の編集で orphan にならない。
@@ -206,6 +224,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.ptyExitUnlisten = null;
     this.ptyDataListeners.clear();
     this.scrollListeners.clear();
+    this.regionContextListeners.clear();
+    if (this.clearRegionCanvasTimeout !== null) {
+      window.clearTimeout(this.clearRegionCanvasTimeout);
+      this.clearRegionCanvasTimeout = null;
+    }
     this.term.dispose();
     if (this.xtermContainer.parentElement) {
       this.xtermContainer.parentElement.removeChild(this.xtermContainer);
@@ -459,6 +482,19 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return result;
   }
 
+  getLatestRegionContext(): TerminalRegionContext | null {
+    return this.latestRegionContext;
+  }
+
+  subscribeRegionContext(listener: (context: TerminalRegionContext) => void): Disposable {
+    this.regionContextListeners.add(listener);
+    return {
+      dispose: () => {
+        this.regionContextListeners.delete(listener);
+      },
+    };
+  }
+
   subscribePtyData(listener: () => void): Disposable {
     this.ptyDataListeners.add(listener);
     return {
@@ -536,12 +572,242 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.left = `${rect.left + padLeft}px`;
     this.xtermContainer.style.width = `${w}px`;
     this.xtermContainer.style.height = `${h}px`;
+    this.resizeRegionCanvas(w, h);
     this.xtermContainer.style.visibility = "visible";
     if (w > 0 && h > 0 && (w !== this.lastFitW || h !== this.lastFitH)) {
       this.lastFitW = w;
       this.lastFitH = h;
       this.fitAddon.fit();
     }
+  }
+
+  private createRegionCanvas(): {
+    readonly canvas: HTMLCanvasElement;
+    readonly context: CanvasRenderingContext2D;
+  } | null {
+    const canvas = document.createElement("canvas");
+    canvas.className = "terminal-region-selection-canvas";
+    canvas.style.position = "absolute";
+    canvas.style.inset = "0";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    canvas.style.pointerEvents = "none";
+    canvas.style.zIndex = "5";
+    canvas.setAttribute("aria-hidden", "true");
+    this.xtermContainer.appendChild(canvas);
+
+    const context = canvas.getContext("2d");
+    if (!context) {
+      canvas.remove();
+      return null;
+    }
+    return { canvas, context };
+  }
+
+  private installRegionSelectionHandlers(): void {
+    this.xtermContainer.addEventListener(
+      "pointerdown",
+      (event) => {
+        if (this.disposed) return;
+        if (!event.altKey || !event.shiftKey || event.button !== 0) return;
+        const point = this.regionPointFromEvent(event);
+        if (!point) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        this.regionDrag = {
+          pointerId: event.pointerId,
+          polygon: [point],
+        };
+        this.xtermContainer.setPointerCapture(event.pointerId);
+        this.clearRegionCanvasNow();
+        this.drawRegionPolygon(this.regionDrag.polygon, false);
+      },
+      { capture: true },
+    );
+
+    this.xtermContainer.addEventListener(
+      "pointermove",
+      (event) => {
+        const drag = this.regionDrag;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+        const point = this.regionPointFromEvent(event);
+        if (!point) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        const previous = drag.polygon[drag.polygon.length - 1];
+        const dx = point.x - previous.x;
+        const dy = point.y - previous.y;
+        if (dx * dx + dy * dy >= 9) {
+          drag.polygon.push(point);
+          this.drawRegionPolygon(drag.polygon, false);
+        }
+      },
+      { capture: true },
+    );
+
+    this.xtermContainer.addEventListener(
+      "pointerup",
+      (event) => {
+        if (!this.regionDrag || this.regionDrag.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.finishRegionDrag();
+      },
+      { capture: true },
+    );
+
+    this.xtermContainer.addEventListener(
+      "pointercancel",
+      (event) => {
+        if (!this.regionDrag || this.regionDrag.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.regionDrag = null;
+        this.scheduleRegionCanvasClear();
+      },
+      { capture: true },
+    );
+  }
+
+  private regionPointFromEvent(event: PointerEvent): RegionPoint | null {
+    const rect = this.xtermContainer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    return {
+      x: Math.max(0, Math.min(rect.width, event.clientX - rect.left)),
+      y: Math.max(0, Math.min(rect.height, event.clientY - rect.top)),
+    };
+  }
+
+  private finishRegionDrag(): void {
+    const drag = this.regionDrag;
+    this.regionDrag = null;
+    if (!drag || drag.polygon.length < 3) {
+      this.scheduleRegionCanvasClear();
+      return;
+    }
+
+    this.drawRegionPolygon(drag.polygon, true);
+    const context = this.extractRegionContext(drag.polygon);
+    if (!context) {
+      this.scheduleRegionCanvasClear();
+      return;
+    }
+    this.latestRegionContext = context;
+    for (const listener of Array.from(this.regionContextListeners)) {
+      listener(context);
+    }
+    this.scheduleRegionCanvasClear();
+  }
+
+  private extractRegionContext(polygon: ReadonlyArray<RegionPoint>): TerminalRegionContext | null {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return null;
+
+    const rect = this.xtermContainer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    const cellWidth = rect.width / this.term.cols;
+    const cellHeight = rect.height / this.term.rows;
+    const extracted = extractRegionText({
+      rows: this.term.rows,
+      cols: this.term.cols,
+      cellWidth,
+      cellHeight,
+      polygon,
+      getCell: (row, col) => {
+        const line = buffer.getLine(buffer.viewportY + row);
+        const cell = line?.getCell(col);
+        return cell?.getChars() || " ";
+      },
+    });
+    if (!extracted || extracted.text === "") return null;
+
+    const bounds = polygonBounds(polygon);
+    if (!bounds) return null;
+
+    return {
+      kind: "terminal-region-context",
+      sessionId: this.sessionId,
+      text: extracted.text,
+      capturedAt: Date.now(),
+      gesture: "option-shift-drag",
+      viewport: {
+        viewportY: buffer.viewportY,
+        rows: this.term.rows,
+        cols: this.term.cols,
+      },
+      range: {
+        startRow: extracted.startRow,
+        endRow: extracted.endRow,
+        startCol: extracted.startCol,
+        endCol: extracted.endCol,
+      },
+      rect: {
+        x: rect.left + bounds.x,
+        y: rect.top + bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+      },
+      polygon: polygon.map((point) => ({ ...point })),
+    };
+  }
+
+  private resizeRegionCanvas(width: number, height: number): void {
+    if (!this.regionCanvas || !this.regionCtx) return;
+    const dpr = window.devicePixelRatio || 1;
+    const nextWidth = Math.max(1, Math.floor(width * dpr));
+    const nextHeight = Math.max(1, Math.floor(height * dpr));
+    if (this.regionCanvas.width === nextWidth && this.regionCanvas.height === nextHeight) return;
+    this.regionCanvas.width = nextWidth;
+    this.regionCanvas.height = nextHeight;
+    this.regionCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  private drawRegionPolygon(polygon: ReadonlyArray<RegionPoint>, closed: boolean): void {
+    if (!this.regionCtx) return;
+    this.clearRegionCanvasNow();
+    if (polygon.length === 0) return;
+
+    const ctx = this.regionCtx;
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(77, 217, 207, 0.95)";
+    ctx.fillStyle = "rgba(77, 217, 207, 0.14)";
+    ctx.shadowColor = "rgba(77, 217, 207, 0.6)";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(polygon[0].x, polygon[0].y);
+    for (const point of polygon.slice(1)) {
+      ctx.lineTo(point.x, point.y);
+    }
+    if (closed) {
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  private clearRegionCanvasNow(): void {
+    if (!this.regionCtx) return;
+    if (this.clearRegionCanvasTimeout !== null) {
+      window.clearTimeout(this.clearRegionCanvasTimeout);
+      this.clearRegionCanvasTimeout = null;
+    }
+    const rect = this.xtermContainer.getBoundingClientRect();
+    this.regionCtx.clearRect(0, 0, rect.width, rect.height);
+  }
+
+  private scheduleRegionCanvasClear(): void {
+    if (this.clearRegionCanvasTimeout !== null) {
+      window.clearTimeout(this.clearRegionCanvasTimeout);
+    }
+    this.clearRegionCanvasTimeout = window.setTimeout(() => {
+      this.clearRegionCanvasTimeout = null;
+      this.clearRegionCanvasNow();
+    }, 900);
   }
 
   private paramsEqual(a: PtyParams | null, b: PtyParams): boolean {

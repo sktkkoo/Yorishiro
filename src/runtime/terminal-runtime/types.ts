@@ -2,6 +2,7 @@ import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import type { SpawnSpec } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
+import type { RegionPoint } from "./region-selection";
 
 /**
  * PTY 接続パラメータ。差分検出に使う。null 値は「まだ決まっていない」を表す。
@@ -45,6 +46,32 @@ export interface TerminalLineRect {
     readonly width: number;
     readonly height: number;
   };
+}
+
+export interface TerminalRegionContext {
+  readonly kind: "terminal-region-context";
+  readonly sessionId: string;
+  readonly text: string;
+  readonly capturedAt: number;
+  readonly gesture: "option-shift-drag";
+  readonly viewport: {
+    readonly viewportY: number;
+    readonly rows: number;
+    readonly cols: number;
+  };
+  readonly range: {
+    readonly startRow: number;
+    readonly endRow: number;
+    readonly startCol: number;
+    readonly endCol: number;
+  };
+  readonly rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly polygon: ReadonlyArray<RegionPoint>;
 }
 
 /**
@@ -142,6 +169,18 @@ export interface TerminalRuntime {
    * 意味分類はここではしない（producer 側の責務）。
    */
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
+
+  /**
+   * Option+Shift+drag で user が囲った最新 terminal context を返す。
+   * 未選択 / 空選択なら null。
+   */
+  getLatestRegionContext(): TerminalRegionContext | null;
+
+  /**
+   * Option+Shift+drag の terminal context 確定時に listener を呼ぶ。
+   * attention producer / UI feedback 用。dispose で listener を外す。
+   */
+  subscribeRegionContext(listener: (context: TerminalRegionContext) => void): Disposable;
 
   /** xterm に直接テキストを書き込む（shell ヒントなど）。 */
   writePlainText(text: string): void;
