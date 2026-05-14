@@ -46,7 +46,7 @@ session の正体は profile で定義する。`~/.charminal/config.json` の `p
 
 - `shell` — `$SHELL` を起動、shell integration あり
 - `claude` — Claude Code を起動、hook + `/charm` plugin 注入
-- `codex` — Codex を起動、PTY 観察のみ
+- `codex` — Codex を起動、Charminal MCP config + PTY 観察あり
 
 User profile は同じ id を上書きできる。
 

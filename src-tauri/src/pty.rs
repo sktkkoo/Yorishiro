@@ -344,6 +344,11 @@ pub(crate) fn toml_basic_string(value: &str) -> String {
     out
 }
 
+pub(crate) fn codex_charminal_mcp_config_arg(port: u16) -> String {
+    let url = format!("http://127.0.0.1:{}/mcp", port);
+    format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
+}
+
 // ─── PTY state (facade) ─────────────────────────────────────────
 
 #[derive(Debug, Serialize, Clone)]
@@ -608,6 +613,14 @@ mod tests {
         assert_eq!(
             toml_basic_string("a \"quote\"\npath\\tail"),
             "\"a \\\"quote\\\"\\npath\\\\tail\""
+        );
+    }
+
+    #[test]
+    fn codex_charminal_mcp_config_arg_points_to_streamable_http_server() {
+        assert_eq!(
+            codex_charminal_mcp_config_arg(18743),
+            "mcp_servers.charminal.url=\"http://127.0.0.1:18743/mcp\""
         );
     }
 

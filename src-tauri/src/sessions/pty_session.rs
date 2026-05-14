@@ -14,8 +14,8 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::pty::{
-    build_hooks_json, has_existing_claude_session, has_existing_codex_session, toml_basic_string,
-    AgentKind, PtyExit, HOOK_SERVER_PORT,
+    build_hooks_json, codex_charminal_mcp_config_arg, has_existing_claude_session,
+    has_existing_codex_session, toml_basic_string, AgentKind, PtyExit, HOOK_SERVER_PORT,
 };
 
 use super::osc133::{Osc133Parser, OscEvent};
@@ -321,6 +321,11 @@ impl PtySession {
                         cmd.arg("resume");
                         cmd.arg("--last");
                     }
+
+                    cmd.arg("-c");
+                    cmd.arg(codex_charminal_mcp_config_arg(
+                        crate::mcp::server::resolve_port(),
+                    ));
 
                     if let Some(prompt) = system_prompt {
                         cmd.arg("-c");

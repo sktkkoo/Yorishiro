@@ -150,7 +150,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 }
 ```
 
-自動起動・persona prompt overlay・PTY observation が動作します。ただし Claude Code hooks と `/charm` plugin は Claude Code 専用のため、Codex 使用時は利用できません。
+自動起動・persona prompt overlay・PTY observation・Charminal MCP access が動作します。ただし Claude Code hooks と `/charm` plugin は Claude Code 専用のため、Codex 使用時は利用できません。
 
 ---
 

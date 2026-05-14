@@ -102,7 +102,7 @@ Agent ごとの違い：
 | Agent | 起動 | Prompt overlay | Hook / command support |
 |---|---|---|---|
 | `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm` plugin、Charminal MCP config を session-scoped に渡す |
-| `codex` | `codex --cd <cwd>` | `-c developer_instructions=...` | 初期対応は PTY output / user input / idle の observation のみ |
+| `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config を session-scoped に渡す。Claude hooks / `/charm` plugin は非対応 |
 
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 
