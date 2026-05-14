@@ -2,21 +2,21 @@
  * Bundled reference scene pack「静かな部屋」.
  *
  * Charminal の reference scene：整った polish を控えめな方向で示す手本.
- * gradient + vignette を shader quad で描画し、VRM と同じ 3D space に配置.
+ * 背景・vignette は DOM layer (CSS gradient) で描画し、lighting のみ R3F component
+ * が担当する hybrid 構成。DOM layer が SceneCompositor を通るため debug controls
+ * の "load bg" / "load fg" でメディア差し替えが効く。
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「住まうということ」
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
  */
 
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
-import { Backdrop } from "./lib/backdrop";
 import { Lights } from "./lib/lights";
 
 function SimpleRoomScene({ vrmSlot }: ScenePackComponentProps) {
   return (
     <>
       <Lights />
-      <Backdrop />
       {vrmSlot}
     </>
   );
@@ -31,6 +31,8 @@ const definition: ScenePackDefinition = {
       {
         id: "backdrop",
         role: "background",
+        backgroundImage:
+          "radial-gradient(ellipse at 50% 30%, rgba(120, 150, 200, 0.18) 0%, transparent 70%), linear-gradient(180deg, #232838 0%, #161a24 100%)",
       },
       {
         id: "vrm-slot",
@@ -40,6 +42,8 @@ const definition: ScenePackDefinition = {
       {
         id: "fg-vignette",
         role: "foreground",
+        backgroundImage:
+          "radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
       },
     ],
     ambient: [],
