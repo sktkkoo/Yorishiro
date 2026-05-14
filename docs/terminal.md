@@ -52,6 +52,22 @@ User profile は同じ id を上書きできる。
 
 ---
 
+## Terminal context selection
+
+Terminal 上で `Option+Shift+drag` すると、ドラッグした矩形範囲の表示テキストを Charminal が
+xterm.js buffer から抽出し、最新の「ユーザーが指し示した terminal context」として
+保持する。これは PTY へ入力を書き込む操作ではなく、住人の perception / MCP 経路に
+「ここを見て」という context を渡すための gesture。
+
+AI は MCP tool `terminal_context_get` で最新の選択範囲を読める。未選択または空選択の
+場合は `context: null` を返す。選択完了時には attention source
+`terminal:user-selection` も短く発火する。
+
+実装上は xterm.js の DOM ではなく Buffer API を読む。canvas / WebGL renderer でも
+表示テキストは buffer に残るため、renderer には依存しない。
+
+---
+
 ## カスタマイズ
 
 ### 普段使ってる shell 設定（一切触らない）

@@ -870,6 +870,7 @@ function App() {
           createEnablePackHandler,
           createGetPackStateHandler,
           createSetPackStateHandler,
+          createTerminalContextGetHandler,
           // Phase β cosmetic write tools：
           createStateGetHandler,
           createBodyExpressionSetHandler,
@@ -1015,6 +1016,10 @@ function App() {
           "set-ui-state": createSetPackStateHandler({
             state: uiState,
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
+          }),
+          "terminal.context.get": createTerminalContextGetHandler({
+            getLatestRegionContext: () =>
+              getTerminalRuntime(tabManager.getState().activeSessionId).getLatestRegionContext(),
           }),
           "controls.get": createControlsGetHandler({
             getSceneStore: () => getActiveSceneLevaStore(),
@@ -2186,6 +2191,26 @@ function App() {
 
     const disposables: Disposable[] = [];
     disposables.push(startTerminalAttentionProducer({ attention, terminal }));
+    let regionContextTimer: number | null = null;
+    disposables.push(
+      terminal.subscribeRegionContext((context) => {
+        const source = "terminal:user-selection";
+        if (regionContextTimer !== null) window.clearTimeout(regionContextTimer);
+        attention.setSourceTarget(source, {
+          kind: "terminal-region",
+          source,
+          rect: context.rect,
+          confidence: 0.9,
+          priority: 7,
+          timestamp: performance.now(),
+          reason: "user-pointed",
+        });
+        regionContextTimer = window.setTimeout(() => {
+          regionContextTimer = null;
+          attention.setSourceTarget(source, null);
+        }, 3000);
+      }),
+    );
 
     const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
       const trigger = {
@@ -2249,6 +2274,10 @@ function App() {
     );
 
     return () => {
+      if (regionContextTimer !== null) {
+        window.clearTimeout(regionContextTimer);
+        attention.setSourceTarget("terminal:user-selection", null);
+      }
       for (const d of disposables) d.dispose();
     };
   }, [tabState.activeSessionId, runtime.bus.register]);

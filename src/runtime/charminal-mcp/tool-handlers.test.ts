@@ -39,6 +39,7 @@ import {
   createSetPackStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
+  createTerminalContextGetHandler,
   createUiActivateHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
@@ -67,6 +68,39 @@ function makeControlStore(
     },
   };
 }
+
+describe("createTerminalContextGetHandler", () => {
+  it("returns the latest user-pointed terminal context", async () => {
+    const context = {
+      kind: "terminal-region-context" as const,
+      sessionId: "default-session",
+      text: "build failed",
+      capturedAt: 1,
+      gesture: "option-shift-drag" as const,
+      viewport: { viewportY: 10, rows: 24, cols: 80 },
+      range: { startRow: 2, endRow: 2, startCol: 0, endCol: 11 },
+      rect: { x: 10, y: 20, width: 120, height: 18 },
+      polygon: [
+        { x: 0, y: 0 },
+        { x: 120, y: 0 },
+        { x: 120, y: 18 },
+      ],
+    };
+    const handler = createTerminalContextGetHandler({
+      getLatestRegionContext: () => context,
+    });
+
+    await expect(handler({})).resolves.toEqual({ context });
+  });
+
+  it("returns null when the user has not pointed at terminal text", async () => {
+    const handler = createTerminalContextGetHandler({
+      getLatestRegionContext: () => null,
+    });
+
+    await expect(handler({})).resolves.toEqual({ context: null });
+  });
+});
 
 describe("list_packs handler", () => {
   it("merges registry / disabledPacks / load-report.failed under their invariants", async () => {
