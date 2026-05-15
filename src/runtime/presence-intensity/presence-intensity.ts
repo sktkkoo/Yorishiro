@@ -11,6 +11,7 @@
  * Internal design-record: 2026-05-06-presence-intensity.md
  */
 
+import { easeInOutCubic } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry/types";
 import { getOrInit } from "../hot-data";
@@ -131,7 +132,7 @@ export function applyPresenceLevel(
     sidebarTarget,
     SIDEBAR_TWEEN_MS,
     deps.setSidebarWidth,
-    { from: deps.getSidebarWidth() },
+    { from: deps.getSidebarWidth(), easing: easeInOutCubic },
   );
 
   // VRM visibility は sidebar の display:none に追従するため、ここでは触らない。

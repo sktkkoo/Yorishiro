@@ -1,4 +1,4 @@
-import { numberLerp, vec3Lerp } from "./lerp";
+import { type EasingFn, easeLinear, numberLerp, vec3Lerp } from "./lerp";
 
 /** アクティブな tween のスナップショット情報。 */
 export interface TweenEntry {
@@ -18,6 +18,7 @@ interface ActiveTween {
   readonly key: string;
   startTime: number;
   readonly durationMs: number;
+  readonly easing: EasingFn;
   readonly lerp: (a: unknown, b: unknown, t: number) => unknown;
   readonly from: unknown;
   readonly to: unknown;
@@ -46,9 +47,17 @@ export class TweenManager {
     to: number,
     durationMs: number,
     apply: (value: number) => void,
-    options?: { from?: number },
+    options?: { from?: number; easing?: EasingFn },
   ): TweenHandle {
-    return this._register(key, options?.from ?? to, to, durationMs, numberLerp, apply);
+    return this._register(
+      key,
+      options?.from ?? to,
+      to,
+      durationMs,
+      numberLerp,
+      apply,
+      options?.easing,
+    );
   }
 
   /**
@@ -64,13 +73,13 @@ export class TweenManager {
     to: readonly [number, number, number],
     durationMs: number,
     apply: (value: [number, number, number]) => void,
-    options?: { from?: readonly [number, number, number] },
+    options?: { from?: readonly [number, number, number]; easing?: EasingFn },
   ): TweenHandle {
     const fromVal: [number, number, number] = options?.from
       ? [options.from[0], options.from[1], options.from[2]]
       : [to[0], to[1], to[2]];
     const toVal: [number, number, number] = [to[0], to[1], to[2]];
-    return this._register(key, fromVal, toVal, durationMs, vec3Lerp, apply);
+    return this._register(key, fromVal, toVal, durationMs, vec3Lerp, apply, options?.easing);
   }
 
   /**
@@ -124,9 +133,10 @@ export class TweenManager {
   tick(now: number): void {
     for (const [key, entry] of this.active) {
       if (entry.startTime < 0) entry.startTime = now;
-      const t = Math.min((now - entry.startTime) / entry.durationMs, 1);
+      const raw = Math.min((now - entry.startTime) / entry.durationMs, 1);
+      const t = entry.easing(raw);
       entry.apply(entry.lerp(entry.from, entry.to, t));
-      if (t >= 1) {
+      if (raw >= 1) {
         this.active.delete(key);
         entry.resolve();
       }
@@ -154,6 +164,7 @@ export class TweenManager {
     durationMs: number,
     lerp: (a: T, b: T, t: number) => T,
     apply: (v: T) => void,
+    easing?: EasingFn,
   ): TweenHandle {
     // durationMs=0 の場合は即時 apply して resolve（division-by-zero / zombie tween 防止）
     if (durationMs <= 0) {
@@ -184,6 +195,7 @@ export class TweenManager {
       key,
       startTime: -1,
       durationMs,
+      easing: easing ?? easeLinear,
       lerp: lerp as (a: unknown, b: unknown, t: number) => unknown,
       from,
       to,

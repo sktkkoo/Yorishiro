@@ -906,7 +906,7 @@ export interface TweenAPI {
     to: number,
     durationMs: number,
     apply: (value: number) => void,
-    options?: { from?: number },
+    options?: { from?: number; easing?: (t: number) => number },
   ): TweenHandle;
 
   /** Vec3 の smooth transition。 */
@@ -915,7 +915,7 @@ export interface TweenAPI {
     to: readonly [number, number, number],
     durationMs: number,
     apply: (value: [number, number, number]) => void,
-    options?: { from?: readonly [number, number, number] },
+    options?: { from?: readonly [number, number, number]; easing?: (t: number) => number },
   ): TweenHandle;
 
   /** Active tween を key で cancel。 */
