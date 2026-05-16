@@ -9,7 +9,7 @@ const SHOOT_CAMERA_HOLD_MS = 8000;
 // 銃撃時のカメラ引き量（camera +z へのオフセット）。camera-move の
 // default は 0.28 と控えめなので、shoot ではより大きく引いて画面を広く見せる。
 // 感触 parameter — 実機で観察して調整する。
-const SHOOT_CAMERA_PULL_Z = 0.7;
+const SHOOT_CAMERA_PULL_Z = 1.2;
 // gun_fire アニメーション完了後、text-physics の cascade/rest/restore が
 // 一巡するまで motion slot を保持する。完了したら明示的に stop して idle に
 // preempt 権を譲る（clampWhenFinished で natural completion が発火しないため）。
