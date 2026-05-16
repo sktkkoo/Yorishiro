@@ -71,7 +71,7 @@ describe("PresenceIntensity", () => {
       0,
       expect.any(Number),
       deps.setSidebarWidth,
-      { from: 280 },
+      { from: 280, easing: expect.any(Function) },
     );
   });
 
