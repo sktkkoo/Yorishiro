@@ -3,6 +3,7 @@ import type { Layer, SceneSpec } from "../../sdk/scene";
 import type { LayerResolvers, ResolveOptions } from "./asset-resolver";
 import {
   isAbsoluteUrl,
+  isSafeUserPackRelativePath,
   normalizeRelativePath,
   resolveBundledAsset,
   resolveLayerAssetWith,
@@ -54,6 +55,21 @@ describe("normalizeRelativePath", () => {
 
   it("returns empty string for empty input", () => {
     expect(normalizeRelativePath("")).toBe("");
+  });
+});
+
+describe("isSafeUserPackRelativePath", () => {
+  it("allows pack-relative paths", () => {
+    expect(isSafeUserPackRelativePath("./assets/bg.mp4")).toBe(true);
+    expect(isSafeUserPackRelativePath("assets/bg.mp4")).toBe(true);
+  });
+
+  it("rejects remote URLs, data URLs, absolute paths, and traversal", () => {
+    expect(isSafeUserPackRelativePath("https://example.com/bg.mp4")).toBe(false);
+    expect(isSafeUserPackRelativePath("data:image/png;base64,xxx")).toBe(false);
+    expect(isSafeUserPackRelativePath("/tmp/bg.mp4")).toBe(false);
+    expect(isSafeUserPackRelativePath("../other/bg.mp4")).toBe(false);
+    expect(isSafeUserPackRelativePath("assets/../other/bg.mp4")).toBe(false);
   });
 });
 
@@ -140,6 +156,51 @@ describe("resolveLayerAssetWith", () => {
     const layer = makeLayer("/public/bg.mp4");
     const result = await resolveLayerAssetWith(layer, bundledOptions(), fakeResolvers);
     expect(result).toBe(layer);
+  });
+
+  it("user + 絶対 URL は拒否される", async () => {
+    const onMissing = vi.fn();
+    const layer = makeLayer("https://cdn.example.com/bg.mp4");
+    const result = await resolveLayerAssetWith(layer, userOptions({ onMissing }), fakeResolvers);
+    expect(result.src).toBeUndefined();
+    expect(onMissing).toHaveBeenCalledWith("layer-a", "https://cdn.example.com/bg.mp4");
+  });
+
+  it("user + data URL は拒否される", async () => {
+    const onMissing = vi.fn();
+    const layer = makeLayer("data:image/png;base64,xxx");
+    const result = await resolveLayerAssetWith(layer, userOptions({ onMissing }), fakeResolvers);
+    expect(result.src).toBeUndefined();
+    expect(onMissing).toHaveBeenCalledWith("layer-a", "data:image/png;base64,xxx");
+  });
+
+  it("user + absolute path は拒否される", async () => {
+    const onMissing = vi.fn();
+    const layer = makeLayer("/tmp/bg.mp4");
+    const result = await resolveLayerAssetWith(layer, userOptions({ onMissing }), fakeResolvers);
+    expect(result.src).toBeUndefined();
+    expect(onMissing).toHaveBeenCalledWith("layer-a", "/tmp/bg.mp4");
+  });
+
+  it("user + path traversal は拒否される", async () => {
+    const onMissing = vi.fn();
+    const layer = makeLayer("../outside/bg.mp4");
+    const result = await resolveLayerAssetWith(layer, userOptions({ onMissing }), fakeResolvers);
+    expect(result.src).toBeUndefined();
+    expect(onMissing).toHaveBeenCalledWith("layer-a", "../outside/bg.mp4");
+  });
+
+  it("user + backgroundImage url(...) は削除される", async () => {
+    const onMissing = vi.fn();
+    const layer: Layer = {
+      id: "layer-a",
+      backgroundImage: "url(https://example.com/bg.png)",
+      src: "bg.mp4",
+    };
+    const result = await resolveLayerAssetWith(layer, userOptions({ onMissing }), fakeResolvers);
+    expect(result.backgroundImage).toBeUndefined();
+    expect(result.src).toBe("asset:///home/user/.charminal/packs/test-pack/bg.mp4");
+    expect(onMissing).toHaveBeenCalledWith("layer-a", "url(https://example.com/bg.png)");
   });
 
   it("bundled + resolver が URL を返すとき layer.src が更新される", async () => {
@@ -260,6 +321,23 @@ describe("resolveSceneAssets", () => {
       packId: "any",
     });
     expect(result.ambient).toEqual([{ src: "asset://localhost/x.mp3", volume: 0.3 }]);
+  });
+
+  it("user ambient remote URL is dropped", async () => {
+    const onMissing = vi.fn();
+    const scene: SceneSpec = {
+      id: "test",
+      layers: [],
+      ambient: [{ src: "https://cdn.example.com/abs.mp3", volume: 1.0 }],
+    };
+    const result = await resolveSceneAssets(scene, {
+      origin: "user",
+      packId: "any",
+      packDir: "/home/user/.charminal/packs/test-pack",
+      onMissing,
+    });
+    expect(result.ambient).toEqual([]);
+    expect(onMissing).toHaveBeenCalledWith("ambient", "https://cdn.example.com/abs.mp3");
   });
 
   it("leaves ambient undefined when scene declares no ambient", async () => {
