@@ -1,3 +1,36 @@
+# Utility pack — superseded by amenity
+
+**Status**: superseded
+**Last updated**: 2026-05-16
+
+## TL;DR
+
+The `utility` pack type was renamed from `harness` (PR #28, 2026-04-29) and frozen
+type-only. It was superseded by the `amenity` pack framework on 2026-05-14
+(commit `01e8c41`, "既存 utility pack を置き換える"). The dead `utility` type was
+removed on 2026-05-16. The name is freed for a later local resident-tools concept.
+
+## Lineage
+
+- pre-2026-04-29: `harness`
+- 2026-04-29 (PR #28): renamed `harness` → `utility`, frozen type-only, removed from charm commands
+- 2026-05-14 (commit `01e8c41`): `amenity` framework introduced as the live successor — same motion-free + system-capability + synthetic-event/twin-trigger boundary, execution model reshaped to `activate()` lifecycle + MCP tools
+- 2026-05-16 (branch `retire-utility-pack`): `utility` pack type deleted; provenance source `"utility"` renamed `"system"`; constraints reframed to `amenity`
+
+## Why amenity supersedes utility
+
+`amenity` inherits the exact conceptual boundary: motion-free (no character / voice /
+space), system capability, synthetic-event emission so persona expresses
+(twin-trigger co-emission). `utility` had zero implementations, so nothing was
+migrated and no capability was lost. The utility-pack-deferred bundled candidate
+`pomodoro` shipped as the bundled `amenity`.
+
+## Archived original spec
+
+> The content below is the original `utility-pack-deferred.md` spec, preserved
+> verbatim for archeological value. It describes the frozen `utility` design as it
+> stood on 2026-04-29. It is historical; the live successor is `amenity`.
+
 # Utility Pack（旧 Harness Pack）— deferred
 
 ## Status
@@ -113,3 +146,8 @@ stamp / figlet は LLM が呼んでテキスト出力する形だったが、タ
 2. `help.md`: pack 種類テーブル・境界ルール表・SDK 型一覧に utility を追加
 3. `shortcut.md`: `emitEvent` の説明に "persona / utility" を復元、境界セクションに utility pack への誘導を復元
 4. `update.md`: 「Scene / Effect / UI / Ambient-UI の編集」セクションに utility を追加、fork セクションに utility のパスを追加
+
+## 改訂履歴
+
+- 2026-05-16: superseded by amenity; utility pack type removed; rewritten as a lineage / supersession record. Original frozen spec retained as appendix.
+- 2026-04-29: 初版（harness→utility rename に伴う仕様凍結）。
