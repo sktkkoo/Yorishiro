@@ -41,7 +41,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -60,7 +60,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -79,7 +79,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -98,7 +98,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -117,7 +117,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -136,7 +136,7 @@ describe("parseConfig", () => {
       mcpPort: 12345,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -160,7 +160,7 @@ describe("parseConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -196,7 +196,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -215,7 +215,7 @@ describe("serializeConfig", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -234,19 +234,8 @@ describe("serializeConfig", () => {
 
   it("writes mcpPort when set", () => {
     const cfg: CharminalConfig = {
-      disabledPacks: [],
-      primaryPersona: null,
+      ...EMPTY_CONFIG,
       mcpPort: 18743,
-      activeScene: null,
-      activeUi: null,
-      activeAmbientUi: ["attention-aura"],
-      language: "auto",
-      terminalAgent: "claude",
-      ambientAudioMuted: false,
-      ambientAudioVolume: 1,
-      profiles: [],
-      defaultProfile: null,
-      voiceFrequency: "on",
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ mcpPort: 18743 });
   });
@@ -258,7 +247,7 @@ describe("serializeConfig", () => {
       mcpPort: 18743,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "codex",
       ambientAudioMuted: true,
@@ -295,7 +284,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -315,7 +304,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       mcpPort: null,
       activeScene: null,
       activeUi: null,
-      activeAmbientUi: ["attention-aura"],
+      activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -439,8 +428,8 @@ describe("localized CLAI persona defaults", () => {
 });
 
 describe("activeAmbientUi", () => {
-  it("defaults to ['attention-aura']", () => {
-    expect(EMPTY_CONFIG.activeAmbientUi).toEqual(["attention-aura"]);
+  it("defaults to ['attention-aura', 'pomodoro-ui']", () => {
+    expect(EMPTY_CONFIG.activeAmbientUi).toEqual(["attention-aura", "pomodoro-ui"]);
   });
 
   it("parses array of strings from JSON", () => {

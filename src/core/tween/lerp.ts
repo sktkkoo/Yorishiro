@@ -3,6 +3,15 @@ export function numberLerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
 }
 
+// ─── Easing functions ────────────────────────────────────────
+
+export type EasingFn = (t: number) => number;
+
+export const easeLinear: EasingFn = (t) => t;
+export const easeOutCubic: EasingFn = (t) => 1 - (1 - t) ** 3;
+export const easeInOutCubic: EasingFn = (t) =>
+  t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
+
 /** [x, y, z] の component-wise 線形補間。 */
 export function vec3Lerp(
   a: readonly [number, number, number],
