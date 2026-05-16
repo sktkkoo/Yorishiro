@@ -658,6 +658,72 @@ describe("controls handlers", () => {
     ]);
   });
 
+  it("transitions hex color controls through intermediate values", async () => {
+    const tm = new TweenManager();
+    const sceneStore = makeControlStore({
+      "lights.ambientColor": {
+        type: "COLOR",
+        value: "#000000",
+        label: "ambient color",
+        disabled: false,
+      },
+    });
+    const transition = createControlsTransitionHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+      tweenManager: tm,
+    });
+
+    await expect(
+      transition({
+        scope: "scene",
+        durationMs: 100,
+        values: { "lights.ambientColor": "#ffffff" },
+      }),
+    ).resolves.toMatchObject({ ok: true, scope: "scene", durationMs: 100, tweening: true });
+
+    tm.tick(0);
+    tm.tick(50);
+    tm.tick(100);
+
+    expect(sceneStore.writes).toEqual([
+      { path: "lights.ambientColor", value: "#000000", fromPanel: false },
+      { path: "lights.ambientColor", value: "#808080", fromPanel: false },
+      { path: "lights.ambientColor", value: "#ffffff", fromPanel: false },
+    ]);
+  });
+
+  it("applies non-hex string controls immediately without tweening", async () => {
+    const tm = new TweenManager();
+    const sceneStore = makeControlStore({
+      "scene layers.backgroundFile": {
+        type: "STRING",
+        value: "(none)",
+        label: "bg media",
+        disabled: false,
+      },
+    });
+    const transition = createControlsTransitionHandler({
+      getSceneStore: () => sceneStore,
+      getCommonStore: () => null,
+      getActiveSceneId: () => "simple-room",
+      tweenManager: tm,
+    });
+
+    await expect(
+      transition({
+        scope: "scene",
+        durationMs: 100,
+        values: { "scene layers.backgroundFile": "room.png" },
+      }),
+    ).resolves.toMatchObject({ ok: true, tweening: false });
+
+    expect(sceneStore.writes).toEqual([
+      { path: "scene layers.backgroundFile", value: "room.png", fromPanel: false },
+    ]);
+  });
+
   it("controls.set cancels active transitions on the same path", async () => {
     const tm = new TweenManager();
     const commonStore = makeControlStore({
