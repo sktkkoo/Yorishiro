@@ -103,6 +103,10 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 メインの agent ターミナルとは別に、複数の shell セッションを開けます。`Cmd+T` で新しい shell タブを開き、`Ctrl+Tab` / `Ctrl+Shift+Tab` でタブを切り替え、`Cmd+W` で現在のタブを閉じます。メインの agent セッションは保護されており閉じられません——予期せず終了した場合は自動的に再起動します。
 
+### コンテキスト共有
+
+画面に見えているものと AI が知っていることのギャップを埋める小さな機能群です。**Terminal Reference Marker** は、ターミナル上の行を Cmd+click（または Option+Shift+drag で矩形選択）すると `[#Term1]` のようなマーカーが入力に挿入され、AI が参照テキストを解決できる仕組みです。**Voice Summary** は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声は macOS では `say`、Windows では `System.Speech.Synthesis.SpeechSynthesizer` を使用。他の音声エンジンへの対応も検討中です。
+
 ### 自己言及的 MCP
 
 住人（ターミナル内の Claude Code）は MCP 経由で Charminal 自身を操作できます——表情を変え、シーンを切り替え、エフェクトを走らせ、UI を操作する。
@@ -132,6 +136,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - 6 種類の pack によるカスタマイズ（persona / scene / effect / ui / utility / ambient-ui）
 - 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
 - 反射層による PTY 観察と即時反応
+- コンテキスト共有: Terminal Reference Marker（Cmd+click / Option+Shift+drag）と Voice Summary
 - Journal による長期記憶 [開発中]
 - `/charm` による pack の対話的な作成・編集
 - Windows ビルド対応（準備済み、動作未確認）
