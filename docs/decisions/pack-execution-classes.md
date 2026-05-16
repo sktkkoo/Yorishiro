@@ -212,9 +212,51 @@ Utility pack は将来的にユーザー配布可能にする。ただし utilit
 
 - `declarative` artifact の data loader / schema registry
 - `permissions` manifest schema と enforcement
+- `/charm:prepare-publish` 相当の local trusted pack → public artifact 変換 flow
 - Web Worker / iframe / sidecar + SES runtime
 - capability RPC / audit log / rate limit
 - install UX の permission diff / local responsibility notice
+
+## `/charm:create` と公開配布の関係
+
+`/charm:create` は user が自分の環境で素早く試すための authoring flow であり、生成物は default で `source: "local"` + `executionClass: "trusted-main-thread-js"` として扱う。これは「user が自分の `~/.charminal/packs/` に置いた code を自分で信頼して動かす」経路であり、community 公開配布の安全基準を満たすことを意味しない。
+
+したがって `/charm:create` で作った pack を公開したい場合は、そのまま registry に載せず、別 flow で publish 用 artifact へ変換する。仮称は `/charm:prepare-publish` とする。
+
+`prepare-publish` の責務：
+
+1. local pack の manifest / entry / assets を読む
+2. `trusted-main-thread-js` のまま community 公開できない理由を user に明示する
+3. `declarative` に落とせる部分を検出する
+4. publish 用 directory / artifact を生成する
+5. manifest を public 用に変更する
+6. JS entry、unsafe asset、remote URL、schema 外 field、prototype pollution key を reject する
+7. schema validation と review rule を通す
+8. artifact hash / size / permission diff / executionClass diff を表示する
+9. registry review に送る前の checklist を出す
+
+変換例：
+
+| local authoring pack | public artifact | 備考 |
+|---|---|---|
+| `scene.js` | `scene.json` or manifest 内 `scene` field | JS を評価しない `declarative` scene に落とす |
+| `persona.js` + `persona.md` | persona data JSON + `persona.md` | prompt / reflex mapping / world 設定だけを schema 化 |
+| `effect.js` | effect recipe JSON | runtime primitive で表現できる演出だけ公開可能 |
+| `utility.js` | 将来の `isolated-js` bundle | capability permission と RPC API に合わせる。MVP では公開しない |
+| `ui.js` / `ui.tsx` / `ambient-ui.js` | 原則変換不可 | 将来 isolated UI または curated trusted review が必要 |
+
+`declarative` へ変換できないもの：
+
+- custom JS logic
+- React / DOM / Three.js / R3F component
+- timer / event listener
+- arbitrary `fetch`
+- dynamic asset loading
+- direct `AudioContext`
+- `fs` / `net` / `system.exec` / Tauri IPC
+- PTY write / terminal prefill 相当
+
+公開配布の基本 UX は「local で自由に試す → publish 前に constrained artifact へ変換する」である。これは Figma / VRChat / MetaMask 的な「authoring は便利、distribution は制限」というバランスを取るための分離であり、local trusted pack を community trusted pack に昇格する抜け道にしない。
 
 ## Integrity model
 
@@ -250,9 +292,10 @@ MVP ではこの限界を明示し、少なくとも以下を守る：
 ## MVP 推奨
 
 1. `declarative` を先に実装する
-2. 公開 registry は `declarative` に限定する。運用余力があれば curated trusted visual を追加する
-3. `isolated-js` は Web Worker + SES + capability RPC で始める
-4. utility 公開配布は `isolated-js` runtime と permission UX が完成してから解禁する
+2. `/charm:prepare-publish` で local trusted pack を publish 用 `declarative` artifact に変換できるようにする
+3. 公開 registry は `declarative` に限定する。運用余力があれば curated trusted visual を追加する
+4. `isolated-js` は Web Worker + SES + capability RPC で始める
+5. utility 公開配布は `isolated-js` runtime と permission UX が完成してから解禁する
 
 ## Review rules
 
@@ -267,6 +310,7 @@ Registry は以下を reject / block する。
 - `isolated-js` の capability RPC payload が schema / size / depth / rate limit を超える
 - permissions 宣言と code の capability request が一致しない
 - hash が review 済み metadata と一致しない
+- `/charm:create` 由来の local `trusted-main-thread-js` pack を変換なしで community publish しようとしている
 - `system.exec` が shell string を要求する
 - PTY write 相当の API を要求する
 - `terminal_prefill` / `write_terminal_input` 相当の MCP tool 呼び出しを要求する（[`mcp-trust-tiers.md`](mcp-trust-tiers.md) 参照）
@@ -303,7 +347,7 @@ PTY 系 tool（`terminal_prefill` / `write_terminal_input` 等）は当面 **全
 
 ## 改訂履歴
 
-- 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデルを追記。
+- 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデル、`/charm:create` と publish 用変換 flow の関係を追記。
 - 2026-05-03: R3F scene pack class を追加。初期 scope は bundled-only、execution class は `trusted-main-thread-js`。
 - 2026-04-24: 初版。実行速度・自由度・セキュリティの三軸で execution class を定義し、Utility pack 公開配布を `isolated-js` 完成後の future scope として位置づけ。
 - 2026-04-27: self-referential MCP 計画との整合を追記。PTY write 条項を MCP tool に拡張、`mcp-trust-tiers.md` を新規 decision として参照。Review rule に terminal_prefill 系 tool 要求を reject 条件として追加。
