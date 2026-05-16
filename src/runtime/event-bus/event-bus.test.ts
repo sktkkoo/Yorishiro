@@ -301,7 +301,7 @@ describe("EventBus", () => {
       const handler = vi.fn<ReactionHandler>();
       const emitSource: PackSource = { type: "persona", packId: "alice" };
       // Register on a different source so we can observe the emit source wins.
-      bus.register(syntheticMatch("note"), handler, { type: "utility", packId: "utility-x" });
+      bus.register(syntheticMatch("note"), handler, { type: "system", packId: "utility-x" });
 
       bus.emitSynthetic(emitSource, "note", undefined, 1);
 

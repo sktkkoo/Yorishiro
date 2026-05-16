@@ -39,7 +39,7 @@ const noopLogger: EventBusLogger = {
  * g.4 PersonaRegistry / UtilityRegistry が pack load 時に closure-bind して渡す。
  */
 export interface PackSource {
-  readonly type: "persona" | "utility";
+  readonly type: "persona" | "system";
   readonly packId: string;
 }
 

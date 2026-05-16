@@ -218,7 +218,7 @@ describe("clai persona triggers", () => {
 
       const match = trigger.match({
         kind: "synthetic",
-        source: { type: "utility", packId: "user-init" },
+        source: { type: "system", packId: "user-init" },
         name: "clai:shoot",
         payload,
         timestamp: 1000,
@@ -235,7 +235,7 @@ describe("clai persona triggers", () => {
       expect(
         trigger.match({
           kind: "synthetic",
-          source: { type: "utility", packId: "user-init" },
+          source: { type: "system", packId: "user-init" },
           name: "other:shoot",
           timestamp: 1000,
         }),
@@ -256,7 +256,7 @@ describe("clai persona triggers", () => {
 
       const match = trigger.match({
         kind: "synthetic",
-        source: { type: "utility", packId: "charminal-settings" },
+        source: { type: "system", packId: "charminal-settings" },
         name: "charminal-settings:write-failed",
         payload,
         timestamp: 1000,
@@ -273,7 +273,7 @@ describe("clai persona triggers", () => {
       expect(
         trigger.match({
           kind: "synthetic",
-          source: { type: "utility", packId: "charminal-settings" },
+          source: { type: "system", packId: "charminal-settings" },
           name: "other:event",
           timestamp: 1000,
         }),

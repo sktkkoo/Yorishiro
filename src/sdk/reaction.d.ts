@@ -3,8 +3,8 @@
  *
  * 反応の語彙と trigger system の型定義。
  *
- * ReactionType は persona と utility の共通 contract。
- * utility が custom trigger で event を ReactionType に変換し、
+ * ReactionType は persona と amenity の共通 contract。
+ * amenity が custom trigger で event を ReactionType に変換し、
  * persona が reflex.responses でその ReactionType を handle する。
  */
 
@@ -234,7 +234,7 @@ export interface SyntheticEvent {
    * pack の追跡・debugging・log attribution に使う。
    */
   readonly source: {
-    readonly type: "utility" | "persona";
+    readonly type: "persona" | "system";
     readonly packId: string;
   };
   /**
@@ -262,9 +262,9 @@ export interface SyntheticEvent {
 // ─── Trigger system ────────────────────────────────────────
 
 /**
- * Custom trigger 定義。persona / utility が独自に追加できる。
+ * Custom trigger 定義。persona / amenity が独自に追加できる。
  *
- * Persona の reflex.customTriggers と Utility の customTriggers の両方で使う。
+ * Persona の reflex.customTriggers と Amenity の customTriggers の両方で使う。
  * 環境 event を受けて、match すれば反応を発火する。
  */
 export interface Trigger {
