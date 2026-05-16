@@ -451,6 +451,7 @@ describe("clai persona triggers", () => {
       expect(injectEffect).toHaveBeenNthCalledWith(1, {
         kind: "camera-move",
         holdMs: 8000,
+        offset: { z: 0.7 },
       });
       expect(after).toHaveBeenNthCalledWith(1, 1500);
       expect(injectEffect).toHaveBeenNthCalledWith(2, {
@@ -509,6 +510,7 @@ describe("clai persona triggers", () => {
       expect(injectEffect).toHaveBeenCalledWith({
         kind: "camera-move",
         holdMs: 8000,
+        offset: { z: 0.7 },
       });
       expect(cancel).toHaveBeenCalledOnce();
     });
