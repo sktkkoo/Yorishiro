@@ -88,12 +88,6 @@ fn prepare_localized_plugin_dir_at(
         &resource_root.join(".claude-plugin").join("plugin.json"),
         &target_plugin_meta,
     )?;
-    std::fs::copy(
-        resource_root.join(".mcp.json"),
-        target_root.join(".mcp.json"),
-    )
-    .map(|_| ())
-    .map_err(|e| format!("copy .mcp.json failed: {}", e))?;
 
     for entry in std::fs::read_dir(&source_commands)
         .map_err(|e| format!("read {} failed: {}", source_commands.display(), e))?
@@ -1271,7 +1265,6 @@ mod localized_plugin_dir_tests {
             "{\"name\":\"charm\"}",
         )
         .expect("write plugin json");
-        fs::write(root.join(".mcp.json"), "{\"mcp\":true}").expect("write mcp json");
         fs::write(root.join("commands-en").join("help.md"), "english help").expect("write en help");
         fs::write(root.join("commands-en").join("create.md"), "english create")
             .expect("write en create");
@@ -1308,10 +1301,7 @@ mod localized_plugin_dir_tests {
                 .expect("read plugin json"),
             "{\"name\":\"charm\"}"
         );
-        assert_eq!(
-            fs::read_to_string(target.join(".mcp.json")).expect("read mcp json"),
-            "{\"mcp\":true}"
-        );
+        assert!(!target.join(".mcp.json").exists());
         assert_eq!(command_files(&target), vec!["help.md"]);
         assert_eq!(
             fs::read_to_string(target.join("commands").join("help.md")).expect("read help"),
@@ -1349,8 +1339,6 @@ mod localized_plugin_dir_tests {
         fs::create_dir_all(resource.join(".claude-plugin")).expect("create plugin meta");
         fs::write(resource.join(".claude-plugin").join("plugin.json"), "{}")
             .expect("write plugin json");
-        fs::write(resource.join(".mcp.json"), "{}").expect("write mcp json");
-
         let err = prepare_localized_plugin_dir_at(&resource, &target, "ja")
             .expect_err("missing commands should fail");
         assert!(err.contains("localized command directory not found"));
