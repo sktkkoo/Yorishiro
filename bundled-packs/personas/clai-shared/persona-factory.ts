@@ -1,7 +1,5 @@
 import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@charminal/sdk";
 
-const SHOOT_IDLE_THRESHOLD_MS = 90_000;
-const SHOOT_IDLE_PROBABILITY = 0.3;
 const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
 const SHOOT_TEXT_PHYSICS_ORIGIN = { x: 0.5, y: 0.7 } as const;
@@ -17,7 +15,6 @@ const SHOOT_MOTION_RELEASE_DELAY_MS = 6000;
 const SHOOT_MOTION_FADE_OUT_MS = 400;
 const SHOOT_CAMERA_MOVE_KIND = "camera-move";
 const SHOOT_SYNTHETIC_EVENT = "clai:shoot";
-const SHOOT_REACTION = "mischievous-shoot";
 const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
 
 const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
@@ -27,7 +24,7 @@ const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
     data: ctx.event.payload,
   });
 
-  ctx.character.interrupt(SHOOT_REACTION);
+  ctx.character.interrupt(SHOOT_SHORTCUT_REACTION);
   const motionHandle = ctx.character.play("anim:VRMA_gun_fire", {
     fadeInMs: 300,
     fadeOutMs: 300,
@@ -148,22 +145,9 @@ export function createClaiPersona(args: {
           },
         } satisfies Trigger,
 
-        // 旧 Charminal の shoot sequence 相当：
-        // idle が長く続いた時だけ、低確率で mischievous-shoot を発火する。
-        // 実際の motion/effect 同期は response handler 側で 1 つの timeline として扱う。
-        {
-          id: "clai:idle-shoot",
-          match(event: DispatchEvent) {
-            if (event.kind !== "idle") return null;
-            if (event.durationMs < SHOOT_IDLE_THRESHOLD_MS) return null;
-            if (Math.random() >= SHOOT_IDLE_PROBABILITY) return null;
-            return {
-              reaction: "mischievous-shoot",
-              payload: { durationMs: event.durationMs },
-            };
-          },
-        } satisfies Trigger,
-
+        // shoot sequence は user が init.js のショートカットで明示発火する時だけ
+        // 走る。かつて idle 継続 + 低確率で自動発火していたが廃止した
+        // （docs/decisions/idle-text-physics-removed.md）。
         // User shortcuts can announce an explicit shoot request through init.js.
         // The motion/effect timeline still lives in the response handler below.
         {
@@ -327,18 +311,9 @@ export function createClaiPersona(args: {
           ],
         },
 
-        // Effect Pack は passive rendering unit
-        // なので、銃撃 motion と TextPhysics の tightly-synchronized timeline は
-        // persona handler が持つ。
-        [SHOOT_REACTION]: {
-          handlers: [
-            {
-              label: "gun-fire-text-physics",
-              cooldownMs: 3_600_000,
-              handler: runShootTimeline,
-            },
-          ],
-        },
+        // Effect Pack は passive rendering unit なので、銃撃 motion と
+        // TextPhysics の tightly-synchronized timeline は persona handler が持つ。
+        // shortcut 発火専用（idle 自動発火は廃止 — cooldown 不要）。
         [SHOOT_SHORTCUT_REACTION]: {
           handlers: [
             {

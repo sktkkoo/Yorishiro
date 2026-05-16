@@ -98,6 +98,7 @@
 - [**interaction-as-presence.md**](interaction-as-presence.md) — 意味ある interaction は presence の核、mechanical reactivity（hover glow / parallax 等）は採らない
 - [**body-interaction-style.md**](body-interaction-style.md) — 住人の身体性は (B) 滲み出しと UI 操作 を default に。(A) 物理接触（IK で壁押し / カーソル追従等）は禁じないが推奨しない（技術困難 + (B) の方が住人性を本質的に伝える）
 - [**autonomy-without-disruption.md**](autonomy-without-disruption.md) — 住人の自発性は user の作業を邪魔しない範囲で設計する。「邪魔しない / でも従属もしない」の二項で居ることを定義。「邪魔になりうることが大事」は退ける
+- [**idle-text-physics-removed.md**](idle-text-physics-removed.md) — idle 中に低確率で shoot/TextPhysics を自動発火する旧演出を廃止。shoot は init.js ショートカットの明示発火のみ（侵襲が強く autonomy-without-disruption と非整合）
 
 ### Architecture
 
