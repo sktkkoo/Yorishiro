@@ -349,6 +349,18 @@ pub(crate) fn codex_charminal_mcp_config_arg(port: u16) -> String {
     format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
 }
 
+pub(crate) fn claude_charminal_mcp_config_json(port: u16) -> String {
+    serde_json::json!({
+        "mcpServers": {
+            "charminal": {
+                "type": "http",
+                "url": format!("http://127.0.0.1:{}/mcp", port),
+            }
+        }
+    })
+    .to_string()
+}
+
 // ─── PTY state (facade) ─────────────────────────────────────────
 
 #[derive(Debug, Serialize, Clone)]
@@ -622,6 +634,17 @@ mod tests {
             codex_charminal_mcp_config_arg(18743),
             "mcp_servers.charminal.url=\"http://127.0.0.1:18743/mcp\""
         );
+    }
+
+    #[test]
+    fn claude_charminal_mcp_config_json_points_to_streamable_http_server() {
+        let parsed: serde_json::Value =
+            serde_json::from_str(&claude_charminal_mcp_config_json(18744)).expect("valid json");
+        assert_eq!(
+            parsed["mcpServers"]["charminal"]["url"],
+            "http://127.0.0.1:18744/mcp"
+        );
+        assert_eq!(parsed["mcpServers"]["charminal"]["type"], "http");
     }
 
     #[test]

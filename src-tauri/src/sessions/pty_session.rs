@@ -1,7 +1,7 @@
 //! PtySession — 1 session 分の PTY resource lifecycle。
 //!
 //! pty.rs の PtyState から writer / master / child / output_channel /
-//! ring_buffer / cwd / hooks_path を引き取り、registry が所有する形にする。
+//! ring_buffer / cwd / temp_config_paths を引き取り、registry が所有する形にする。
 //! PtyState は Arc<SessionRegistry> を保持する thin facade になる。
 //!
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
@@ -113,6 +113,20 @@ fn resolve_shell_command(override_command: Option<&str>) -> String {
     }
 }
 
+fn temp_config_path(prefix: &str, extension: &str) -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "charminal-{}-{}-{}.{}",
+        prefix,
+        std::process::id(),
+        stamp,
+        extension
+    ))
+}
+
 // ─── Ring buffer ────────────────────────────────────────────────
 
 /// Fixed-size circular byte buffer for PTY output replay on WebView reconnect.
@@ -197,7 +211,7 @@ pub struct PtySession {
     output_channel: Arc<Mutex<Option<Channel>>>,
     ring_buffer: Arc<Mutex<RingBuffer>>,
     spawned_cwd: Mutex<Option<String>>,
-    hooks_path: Mutex<Option<std::path::PathBuf>>,
+    temp_config_paths: Mutex<Vec<std::path::PathBuf>>,
     /// true のとき reader thread は pty-exit event を emit しない。
     /// session_spawn が旧 session を replace する際に立てる。
     suppress_exit_event: Arc<std::sync::atomic::AtomicBool>,
@@ -214,7 +228,7 @@ impl PtySession {
             output_channel: Arc::new(Mutex::new(None)),
             ring_buffer: Arc::new(Mutex::new(RingBuffer::new())),
             spawned_cwd: Mutex::new(None),
-            hooks_path: Mutex::new(None),
+            temp_config_paths: Mutex::new(Vec::new()),
             suppress_exit_event: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -266,7 +280,7 @@ impl PtySession {
         let lang = std::env::var("LANG").unwrap_or_else(|_| "ja_JP.UTF-8".to_string());
         cmd.env("LANG", lang);
 
-        let mut hooks_path_to_cleanup: Option<std::path::PathBuf> = None;
+        let mut temp_paths_to_cleanup: Vec<std::path::PathBuf> = Vec::new();
         match spec {
             SpawnSpec::Agent {
                 agent,
@@ -280,13 +294,27 @@ impl PtySession {
                     }
 
                     let hooks_json = build_hooks_json(HOOK_SERVER_PORT);
-                    let hooks_path = std::env::temp_dir()
-                        .join(format!("charminal-hooks-{}.json", std::process::id()));
+                    let hooks_path = temp_config_path("hooks", "json");
                     std::fs::write(&hooks_path, &hooks_json)
                         .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
                     cmd.arg("--settings");
                     cmd.arg(hooks_path.to_str().unwrap_or_default());
-                    hooks_path_to_cleanup = Some(hooks_path);
+                    temp_paths_to_cleanup.push(hooks_path);
+
+                    // Claude Code plugin 配下の .mcp.json は auto-discover されない。
+                    // さらに静的 config では ~/.charminal/config.json の mcpPort と
+                    // ずれるため、起動ごとに実 port を反映した config を生成する。
+                    // 127.0.0.1 固定にして、localhost が ::1 に解決される環境でも
+                    // Rust 側 bind address と一致させる。
+                    let mcp_config_json = crate::pty::claude_charminal_mcp_config_json(
+                        crate::mcp::server::resolve_port(),
+                    );
+                    let mcp_config_path = temp_config_path("mcp", "json");
+                    std::fs::write(&mcp_config_path, &mcp_config_json)
+                        .map_err(|e| format!("Failed to write MCP config: {}", e))?;
+                    cmd.arg("--mcp-config");
+                    cmd.arg(mcp_config_path.to_str().unwrap_or_default());
+                    temp_paths_to_cleanup.push(mcp_config_path);
 
                     // Load Charminal's bundled plugin dir (contains charm: skills).
                     // Session-scoped; does not touch ~/.claude or the user's cwd.
@@ -294,15 +322,6 @@ impl PtySession {
                         if dir.exists() {
                             cmd.arg("--plugin-dir");
                             cmd.arg(dir.to_str().unwrap_or_default());
-
-                            // Claude Code plugin の .mcp.json は auto-discover されないため、
-                            // --mcp-config で明示的に load させる。これで Charminal が立てる
-                            // MCP server (localhost:18743) を AI が tool として認識できる。
-                            let mcp_config = dir.join(".mcp.json");
-                            if mcp_config.is_file() {
-                                cmd.arg("--mcp-config");
-                                cmd.arg(mcp_config.to_str().unwrap_or_default());
-                            }
                         } else {
                             eprintln!(
                                 "[pty.spawn] plugin_dir does not exist, skipping: {}",
@@ -377,7 +396,7 @@ impl PtySession {
 
         *lock_or_recover(&self.output_channel) = Some(on_output);
         *lock_or_recover(&self.spawned_cwd) = cwd;
-        *lock_or_recover(&self.hooks_path) = hooks_path_to_cleanup;
+        *lock_or_recover(&self.temp_config_paths) = temp_paths_to_cleanup;
         lock_or_recover(&self.ring_buffer).clear();
 
         // Spawn reader thread。child Arc を別途渡すので registry を経由せずに
@@ -524,7 +543,7 @@ impl PtySession {
         *lock_or_recover(&self.output_channel) = None;
         *lock_or_recover(&self.spawned_cwd) = None;
         lock_or_recover(&self.ring_buffer).clear();
-        if let Some(path) = lock_or_recover(&self.hooks_path).take() {
+        for path in lock_or_recover(&self.temp_config_paths).drain(..) {
             let _ = std::fs::remove_file(path);
         }
         Ok(())
@@ -537,6 +556,14 @@ impl Drop for PtySession {
         if let Some(mut child) = child_opt {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        for path in self
+            .temp_config_paths
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .drain(..)
+        {
+            let _ = std::fs::remove_file(path);
         }
     }
 }

@@ -41,8 +41,7 @@
       "resources/charminal-plugin/.claude-plugin/plugin.json",
       "resources/charminal-plugin/commands/*",
       "resources/charminal-plugin/commands-en/*",
-      "resources/charminal-plugin/commands-ja/*",
-      "resources/charminal-plugin/.mcp.json"
+      "resources/charminal-plugin/commands-ja/*"
     ]
   }
 }
