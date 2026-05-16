@@ -24,13 +24,13 @@ assertType<Equals<AllowedKindFor<"system">, "trigger-handler">>(true);
 
 // ─── 排他: system は procedural-module を含まない ─────────────────
 
-type UtilityAllowsProcedural = "procedural-module" extends AllowedKindFor<"system"> ? true : false;
-assertType<Equals<UtilityAllowsProcedural, false>>(true);
+type SystemAllowsProcedural = "procedural-module" extends AllowedKindFor<"system"> ? true : false;
+assertType<Equals<SystemAllowsProcedural, false>>(true);
 
 // ─── 排他: system は animation-provider を含まない ───────────────
 
-type UtilityAllowsAnimation = "animation-provider" extends AllowedKindFor<"system"> ? true : false;
-assertType<Equals<UtilityAllowsAnimation, false>>(true);
+type SystemAllowsAnimation = "animation-provider" extends AllowedKindFor<"system"> ? true : false;
+assertType<Equals<SystemAllowsAnimation, false>>(true);
 
 // ─── Provenance 構造の必須 field ─────────────────────────────────
 

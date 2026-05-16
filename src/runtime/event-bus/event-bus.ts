@@ -36,7 +36,7 @@ const noopLogger: EventBusLogger = {
 
 /**
  * Pack identity bound at registration / emit time。bus はこれを生成しない。
- * g.4 PersonaRegistry / UtilityRegistry が pack load 時に closure-bind して渡す。
+ * g.4 PersonaRegistry / システム側 (system source) が pack load 時に closure-bind して渡す。
  */
 export interface PackSource {
   readonly type: "persona" | "system";
@@ -44,7 +44,7 @@ export interface PackSource {
 }
 
 /**
- * Bus-facing handler。PersonaRegistry (g.4) が persona / utility の reflex handler を
+ * Bus-facing handler。PersonaRegistry (g.4) が persona / system の reflex handler を
  * context creation + cooldown + weighted selection で wrap してから register する。
  *
  * `depth` は dispatch chain の現在深度。handler の bound emitEvent closure が child
