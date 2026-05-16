@@ -26,7 +26,7 @@ import type { ReactionEvent } from "./reaction";
  *
  * Persona はキャラクター identity の表現に専念する。
  * 環境への functional な作用（ファイル書き込み、shell 実行、OS 通知）は
- * utility に任せる（型レベルで強制される）。
+ * amenity に任せる（AmenityContext が担う、型レベルで強制される）。
  */
 export interface PersonaContext {
   /** 発火した reaction event */
@@ -549,7 +549,7 @@ export interface SpaceEffectHandle {
   cancel(): void;
 }
 
-// ─── SystemAPI (utility only) ──────────────────────────────
+// ─── SystemAPI (amenity only) ──────────────────────────────
 
 export interface SystemAPI {
   /** shell コマンドを実行して完了を待つ */
