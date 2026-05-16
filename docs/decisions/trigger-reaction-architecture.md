@@ -124,7 +124,7 @@ interface Trigger {
 
 interface TriggerMatch {
   readonly reaction: ReactionType;         // 標準 10 種 + custom string
-  readonly payload?: unknown;              // utility → persona の情報伝達
+  readonly payload?: unknown;              // amenity → persona の情報伝達
 }
 ```
 
@@ -208,11 +208,11 @@ Active persona の `reflex`（`customTriggers` + `responses`）を EventBus に 
 
 ---
 
-## Context API 境界 — persona と utility の分離
+## Context API 境界 — persona と amenity の分離
 
 型定義: `src/sdk/context.d.ts`
 
-| API | PersonaContext | UtilityContext |
+| API | PersonaContext | AmenityContext |
 |---|---|---|
 | `character`（animation / expression / gaze） | あり | **なし** |
 | `voice`（TTS / clips） | あり | **なし** |
@@ -222,7 +222,7 @@ Active persona の `reflex`（`customTriggers` + `responses`）を EventBus に 
 | `time` / `log` / `memory` / `terminal` / `charm` | あり | あり |
 | `signal`（AbortSignal） | あり | あり |
 
-型レベルで強制されており、utility が motion を触る経路は物理的に存在しない。詳細: [critical-constraints.md](critical-constraints.md) §2
+型レベルで強制されており、amenity が motion を触る経路は物理的に存在しない。詳細: [critical-constraints.md](critical-constraints.md) §2
 
 ---
 
@@ -230,7 +230,7 @@ Active persona の `reflex`（`customTriggers` + `responses`）を EventBus に 
 
 ### Twin-trigger co-emission
 
-同じ環境 event に utility の機能反応と persona の存在反応を共存させたい場合、**同じ trigger を二つの pack に独立に書く**。utility から persona を直接呼ぶ API は提供しない。
+同じ環境 event に amenity の機能反応と persona の存在反応を共存させたい場合、**同じ trigger を二つの pack に独立に書く**。amenity から persona を直接呼ぶ API は提供しない。
 
 詳細: [critical-constraints.md](critical-constraints.md) §4
 
@@ -328,7 +328,7 @@ responses: {
 | EventBus | `src/runtime/event-bus/event-bus.ts` | Trigger dispatch engine（match + schedule + depth protection） |
 | PersonaReflexDispatcher | `src/runtime/persona-reflex/persona-reflex-dispatcher.ts` | Active persona の reflex を bus に bridge |
 | Perception | `src/core/perception/perception.ts` | 外部 event（PTY / hooks / idle）の収集 |
-| Context 型定義 | `src/sdk/context.d.ts` | PersonaContext / UtilityContext の API 境界 |
+| Context 型定義 | `src/sdk/context.d.ts` | PersonaContext / AmenityContext の API 境界 |
 | PersonaRegistry | `src/runtime/persona-registry/` | Single-active persona の状態管理 |
 | CLAI persona | `bundled-packs/personas/clai/persona.ts` | Trigger + response の reference implementation |
 

@@ -37,7 +37,7 @@ describe("ModuleRegistry", () => {
     ).not.toThrow();
   });
 
-  it("rejects utility registering procedural-module at runtime (defense in depth)", () => {
+  it("rejects system registering procedural-module at runtime (defense in depth)", () => {
     const registry = new ModuleRegistry();
     const badRegister = () =>
       (
@@ -49,7 +49,7 @@ describe("ModuleRegistry", () => {
         }
       ).register("procedural-module", {
         id: "x",
-        provenance: { source: "utility", packId: "evil" },
+        provenance: { source: "system", packId: "evil" },
         instance: { id: "x" },
       });
     expect(badRegister).toThrow(/cannot register/);

@@ -1,6 +1,6 @@
 # Pack execution classes
 
-> Read this when thinking about **safe execution models for publicly distributed packs / sandboxing / the boundary between utility and scene packs**. Audience: dev / AI.
+> Read this when thinking about **safe execution models for publicly distributed packs / sandboxing / the boundary between amenity and scene packs**. Audience: dev / AI.
 
 **Status**: active
 **Last updated**: 2026-05-16
@@ -9,15 +9,15 @@
 
 ## TL;DR
 
-Pack `type` is product semantics, not a security boundary. For public distribution, packs carry an `executionClass` in their manifest, separate from `persona` / `scene` / `effect` / `utility` / `ui`.
+Pack `type` is product semantics, not a security boundary. For public distribution, packs carry an `executionClass` in their manifest, separate from `persona` / `scene` / `effect` / `amenity` / `ui`.
 
 | executionClass | Speed | Freedom | Security | Public distribution policy |
 |---|---:|---:|---:|---|
 | `declarative` | High | Low–Med | High | MVP default. Data-only, no JS evaluation |
-| `isolated-js` | Med | Med | Med–High | Required for utility distribution. Killable boundary + SES + capability RPC |
+| `isolated-js` | Med | Med | Med–High | Required for amenity distribution. Killable boundary + SES + capability RPC |
 | `trusted-main-thread-js` | Highest | Highest | Low | Bundled / local / curated only. Never labeled as sandboxed |
 
-Utility packs will eventually be user-distributable. However, publicly distributed utilities must default to `isolated-js`, with `system.exec` / `fs` / `net` / `notify` etc. running as host-mediated capabilities. If the isolated runtime and permission UX are not ready for MVP, **public utility distribution is deferred past MVP**.
+Amenity packs will eventually be user-distributable. However, publicly distributed amenities must default to `isolated-js`, with `system.exec` / `fs` / `net` / `notify` etc. running as host-mediated capabilities. If the isolated runtime and permission UX are not ready for MVP, **public amenity distribution is deferred past MVP**.
 
 `source` is also an input to security policy. `executionClass` answers "how is it executed"; `source` answers "where did it come from" — two independent axes.
 
@@ -34,11 +34,11 @@ Utility packs will eventually be user-distributable. However, publicly distribut
 
 ### 1. Separate pack type from execution class
 
-`scene` / `effect` / `persona` / `utility` / `ui` describe what the pack means in Charminal. They do not restrict JavaScript execution permissions.
+`scene` / `effect` / `persona` / `amenity` / `ui` describe what the pack means in Charminal. They do not restrict JavaScript execution permissions.
 
 Any JS loaded via `dynamic import()` on the main thread can execute network access, timers, DOM access, global mutation, prototype pollution, and interference with the loader or runtime objects at module top-level.
 
-Therefore "scene packs are safe" and "only utility packs are dangerous" are not valid classifications. Public distribution must always consider `executionClass` separately from `type`.
+Therefore "scene packs are safe" and "only amenity packs are dangerous" are not valid classifications. Public distribution must always consider `executionClass` separately from `type`.
 
 ### 2. `declarative` means data-only
 
@@ -104,14 +104,14 @@ Defense is therefore three-layered: SES object-capability restriction + killable
 
 ### `isolated-js` initiation gate
 
-If `isolated-js` remains unimplemented for too long, community pack authors will push for `trusted-main-thread-js` access. Work on `isolated-js` MVP begins when any of the following occurs, even before utility public distribution:
+If `isolated-js` remains unimplemented for too long, community pack authors will push for `trusted-main-thread-js` access. Work on `isolated-js` MVP begins when any of the following occurs, even before amenity public distribution:
 
 - Pack requests that `declarative` cannot express appear consistently on the public registry
 - Curated `trusted-main-thread-js` exceptions grow, blurring the curated / community boundary operationally
 - Demand emerges for pure-compute / transform packs (JS execution needed, but no system capabilities)
 - A minimal permission UX, audit log, and pack disable / kill UI become feasible
 
-The minimal MVP may start with Worker + host-mediated capability RPC + strict global removal, but a state without SES must not be labeled `isolated-js` for safety purposes. A pre-SES stage is treated as an internal milestone (`worker-js-experimental` equivalent) and does not gate community utility release.
+The minimal MVP may start with Worker + host-mediated capability RPC + strict global removal, but a state without SES must not be labeled `isolated-js` for safety purposes. A pre-SES stage is treated as an internal milestone (`worker-js-experimental` equivalent) and does not gate community amenity release.
 
 ### Capability RPC validation
 
@@ -151,15 +151,15 @@ In that case, the pack is never presented as sandboxed. It is treated as `truste
 | `scene` (R3F component) | Bundled-only | `trusted-main-thread-js`. User pack support in separate spec | Main-thread React + Three.js context. R3F host integration required |
 | `effect` | `declarative` recipe or curated `trusted-main-thread-js` | `declarative` if renderer primitives suffice; custom renderer is trusted | Visual expressiveness and security conflict easily |
 | `persona` | `declarative` persona data | `isolated-js` if handler JS needed; main thread is trusted | Push prompt / reflex mapping toward data-only |
-| `utility` | Not publicly distributed in MVP | `isolated-js` default | Deferred until permission UX is complete due to system capabilities |
+| `amenity` | Not publicly distributed in MVP | `isolated-js` default | Deferred until permission UX is complete due to system capabilities |
 | `ui` | Not publicly distributed in MVP, or curated only | Mostly `trusted-main-thread-js`; isolated UI explored later | Direct React / DOM access cannot be a safety boundary |
 | `init.js` | Not publicly distributed | Not publicly distributed | Local user's free-form layer. Not listed in pack registry |
 
-## Utility pack handling
+## Amenity pack handling
 
-Utility packs will eventually be user-distributable. However, utilities are functional automation and carry higher risk than Presence Harness expression layers.
+Amenity packs will eventually be user-distributable. However, amenities are functional automation and carry higher risk than Presence Harness expression layers.
 
-Prerequisites for public utility distribution:
+Prerequisites for public amenity distribution:
 
 - `executionClass: "isolated-js"` is implemented
 - `system.exec` uses argv, not shell strings
@@ -171,7 +171,7 @@ Prerequisites for public utility distribution:
 - Pack disable / kill / safe mode available in both UI and CLI
 - PTY write API remains nonexistent. MCP tool equivalents (`terminal_prefill` / `write_terminal_input`) are also prohibited for now ([`mcp-trust-tiers.md`](mcp-trust-tiers.md) "PTY tool handling")
 
-If these are not in place, public utility distribution is excluded from MVP.
+If these are not in place, public amenity distribution is excluded from MVP.
 
 ## Manifest design
 
@@ -181,7 +181,7 @@ If these are not in place, public utility distribution is excluded from MVP.
 {
   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
   "id": "workspace-backup",
-  "type": "utility",
+  "type": "amenity",
   "executionClass": "isolated-js",
   "version": "1.0.0",
   "charminalVersion": "^0.1.0",
@@ -208,7 +208,7 @@ Implemented:
 - `isolated-js` halted as reserved / unsupported
 - `community` source `trusted-main-thread-js` blocked by default
 - User scene assets allow pack-relative paths only; remote URLs / `data:` / `file:` / absolute paths / traversal / CSS `url(...)` are rejected
-- `/charm:create` / `/charm:update` generate/edit `.js` / `.tsx` packs as local-only `trusted-main-thread-js`, with prompts explicitly preventing public utility / `isolated-js` / unsafe asset / PTY write creation
+- `/charm:create` / `/charm:update` generate/edit `.js` / `.tsx` packs as local-only `trusted-main-thread-js`, with prompts explicitly preventing public amenity / `isolated-js` / unsafe asset / PTY write creation
 
 Not yet implemented:
 
@@ -272,7 +272,7 @@ Conversion examples:
 | `scene.js` | `scene.json` or manifest `scene` field | Convert to `declarative` scene without JS evaluation |
 | `persona.js` + `persona.md` | Persona data JSON + `persona.md` | Schema-ize only prompt / reflex mapping / world settings |
 | `effect.js` | Effect recipe JSON | Only effects expressible via runtime primitives are publishable |
-| `utility.js` | Future `isolated-js` bundle | Aligned to capability permission and RPC API. Not published in MVP |
+| `amenity.js` | Future `isolated-js` bundle | Aligned to capability permission and RPC API. Not published in MVP |
 | `ui.js` / `ui.tsx` / `ambient-ui.js` | Generally not convertible | Requires future isolated UI or curated trusted review |
 
 Items that cannot be converted to `declarative`:
@@ -328,7 +328,7 @@ The following is the implementation order before enabling the currently unavaila
 3. Share `scripts/check-pack`–equivalent machine checker across CLI / `/charm:prepare-publish` / registry CI
 4. Limit public registry to `declarative`. Add curated trusted visuals if operational capacity allows
 5. Start `isolated-js` with Web Worker + SES + capability RPC
-6. Enable utility public distribution after `isolated-js` runtime and permission UX are complete
+6. Enable amenity public distribution after `isolated-js` runtime and permission UX are complete
 
 ## Review rules
 
@@ -383,5 +383,5 @@ PTY tools (`terminal_prefill` / `write_terminal_input` etc.) are **prohibited ac
 
 - 2026-05-16: Added source classification, declarative hostile data checklist, isolated-js initiation gate, capability RPC validation, registry trust limitation, SES bypass defense model, `/charm:create` and publish conversion flow, machine checker relationship, and note that public distribution is not yet available.
 - 2026-05-03: Added R3F scene pack class. Initial scope is bundled-only, execution class is `trusted-main-thread-js`.
-- 2026-04-24: Initial version. Defined execution classes along three axes (speed / freedom / security), positioned utility public distribution as future scope after `isolated-js` completion.
+- 2026-04-24: Initial version. Defined execution classes along three axes (speed / freedom / security), positioned amenity public distribution as future scope after `isolated-js` completion.
 - 2026-04-27: Added alignment with self-referential MCP plan. Extended PTY write clause to MCP tools, referenced `mcp-trust-tiers.md` as a new decision. Added terminal_prefill tool request as a registry reject condition.

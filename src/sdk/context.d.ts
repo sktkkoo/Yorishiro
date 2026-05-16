@@ -1,11 +1,12 @@
 /**
  * @charminal/sdk/context
  *
- * 3 つの context 型：PersonaContext / UtilityContext / EffectContext
+ * 2 つの context 型：PersonaContext / EffectContext
+ * （機能設備は AmenityContext が担う）
  *
  * 型レベルで境界が強制される：
  *   - PersonaContext は system API を持たない
- *   - UtilityContext は character/voice/space を持たない
+ *   - AmenityContext は character/voice/space を持たない（motion-free）
  *   - EffectContext は最小 API のみ
  *
  * これにより pack 作者（AI）が誤って境界を越える code を書くと
@@ -25,7 +26,7 @@ import type { ReactionEvent } from "./reaction";
  *
  * Persona はキャラクター identity の表現に専念する。
  * 環境への functional な作用（ファイル書き込み、shell 実行、OS 通知）は
- * utility に任せる（型レベルで強制される）。
+ * amenity に任せる（AmenityContext が担う、型レベルで強制される）。
  */
 export interface PersonaContext {
   /** 発火した reaction event */
@@ -99,98 +100,13 @@ export interface PersonaContext {
   readonly signal: AbortSignal; // 中断通知
 }
 
-// ─── UtilityContext ────────────────────────────────────────
-
-/**
- * Utility の automation が受け取る context。
- * system API と共有 utility を持つが、presence API は一切持たない。
- *
- * Utility は機能的な automation に専念する。
- * キャラクターの表現（モーション、声、空間 effect）は persona に任せる。
- * utility は抽象 reaction を emit するか、system API で独自に作用するだけ。
- *
- * NOTE: この型は PersonaContext を extends しない。独立した型。
- */
-export interface UtilityContext {
-  readonly event: ReactionEvent;
-  readonly persona: PersonaRef; // 現在 active な persona への参照（読み取り専用）
-  readonly time: Time;
-
-  /**
-   * Synthetic event を runtime に投入する。
-   *
-   * utility handler 内で「観察したこと」（`system.exec` の結果、ログから
-   * 気付いたこと等）を event として announce する primitive。投入された
-   * event は通常の trigger loop を通り、match した triggers が reaction を
-   * emit する。**これが utility から persona の反応を誘発する正規経路**
-   * である（revelation 3.14: utility は motion-free、抽象 reaction を
-   * emit する）。
-   *
-   * ⚠️ これは reaction を直接 emit する API ではない。reaction は必ず
-   * trigger match を経由する（declarative）。utility が「persona を
-   * 悲しませる」のような imperative な指示を出すことはできない。
-   *
-   * ## 正しい使い方（twin-trigger idiom, revelation 3.17）
-   *
-   * 1. utility handler 内で何かを観察
-   *    （例：`deploy.sh` が exitCode != 0 を返した）
-   * 2. `ctx.emitEvent('deploy-failed', { exitCode, stderr })` で announce
-   * 3. 同じ pack の custom trigger が `'synthetic'` kind + name
-   *    `'deploy-failed'` を match し、`'distressed'` など標準 reaction を emit
-   * 4. persona 側の `reflex.responses['distressed']` handler が動く
-   *    （character / voice / space を使って悲しみを表現する）
-   *
-   * handler は「何が起きたか」を述べるだけで、「どう反応するか」は
-   * persona の reflex が決める——この分離が持続可能な composability を生む。
-   *
-   * ## Runtime contract（PersonaContext.emitEvent と同一の contract）
-   *
-   * - **Timing**: trigger matching は emit 呼び出しの calling stack で
-   *   同期的に走る。match した handler は外来 event と同じ async scheduler
-   *   に投入される（fire-and-forget）。emit 側の handler は block されない
-   * - **Timestamp**: `SyntheticEvent.timestamp` は emit 時点の `time.now()`
-   * - **Cooldown 計測**: 発火した reaction の cooldown は emit 時点 start
-   * - **Source binding**: `SyntheticEvent.source` は runtime が pack load 時
-   *   に per-pack bound context へ closure capture する。改ざん不能
-   * - **Loop protection**: dispatch chain max depth = 4。超過で silently
-   *   drop + log.warn（例外は投げない）
-   *
-   * @param name synthetic event の名前。`'<packId>:<eventName>'` 形式を
-   *             推奨するが強制はしない
-   * @param payload 任意の付加情報。custom trigger の match 関数で参照できる
-   *
-   * @see SyntheticEvent for the event shape
-   * @see PersonaContext.emitEvent for the full contract rationale
-   */
-  emitEvent(name: string, payload?: unknown): void;
-
-  // ─── Tween ────────────────
-  readonly tween: TweenAPI;
-
-  // ─── Functional output ─────────────
-
-  readonly system: SystemAPI;
-
-  // ─── 共有 utility ────────────────
-
-  readonly log: LogAPI;
-  readonly memory: MemoryAPI;
-  readonly terminal: TerminalAPI;
-  readonly charm: CharmAPI;
-  readonly signal: AbortSignal;
-
-  // NOTE: character / voice / space は意図的に存在しない
-  // presence を出したいなら persona handler を書くこと
-}
-
 // ─── AmenityContext ────────────────────────────────────────
 
 /**
  * Amenity の activate 関数が受け取る context。
- * system API と共有 utility を持つが、presence API は一切持たない。
+ * system API と共有 utility を持つが、presence API は一切持たない（motion-free）。
  *
- * UtilityContext との主な違い：
- * - `event: ReactionEvent` を持たない（activate は event-driven ではない）
+ * - `event: ReactionEvent` を持たない（activate は event-driven ではなく lifecycle-driven）
  * - activate の lifecycle に紐づく signal を持つ（disable 時に abort）
  *
  * Amenity は機能設備の提供に専念する。
@@ -202,8 +118,8 @@ export interface AmenityContext {
 
   /**
    * Synthetic event を runtime に投入する。
-   * UtilityContext.emitEvent と同じ contract。amenity が「何が起きたか」を
-   * 述べるだけで、「どう反応するか」は persona の reflex が決める。
+   * amenity が「何が起きたか」を述べるだけで、「どう反応するか」は
+   * persona の reflex が決める。PersonaContext.emitEvent と同一の contract。
    *
    * @param name synthetic event の名前。`'<amenityId>:<eventName>'` 形式を推奨
    * @param payload 任意の付加情報
@@ -633,7 +549,7 @@ export interface SpaceEffectHandle {
   cancel(): void;
 }
 
-// ─── SystemAPI (utility only) ──────────────────────────────
+// ─── SystemAPI (amenity only) ──────────────────────────────
 
 export interface SystemAPI {
   /** shell コマンドを実行して完了を待つ */

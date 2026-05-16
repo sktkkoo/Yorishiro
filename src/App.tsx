@@ -609,7 +609,7 @@ function App() {
         return raw === "" ? 1 : Number(raw);
       },
       emitEvent: (name, payload) => {
-        bus.emitSynthetic({ type: "utility", packId: "pomodoro" }, name, payload, 0);
+        bus.emitSynthetic({ type: "system", packId: "pomodoro" }, name, payload, 0);
       },
     });
     appLog.write({
@@ -788,7 +788,7 @@ function App() {
             amenityPackRegistry: getAmenityPackRegistry(),
             effectDispatcher,
             emitEvent: (name, payload) => {
-              bus.emitSynthetic({ type: "utility", packId: "user-init" }, name, payload, 0);
+              bus.emitSynthetic({ type: "system", packId: "user-init" }, name, payload, 0);
             },
             packRegistry,
             personaDefaults: resolvedLanguage === "ja" ? claiJaPack : claiEnPack,
@@ -1355,7 +1355,7 @@ function App() {
           new SessionTabManager(DEFAULT_SESSION_ID, {
             onEvent: (name, payload) => {
               runtime.bus.emitSynthetic(
-                { type: "utility", packId: "charminal:session-tabs" },
+                { type: "system", packId: "charminal:session-tabs" },
                 name,
                 payload,
                 0,
@@ -1820,7 +1820,7 @@ function App() {
           },
         },
         emitEvent: (name: string, payload?: unknown) => {
-          runtime.bus.emitSynthetic({ type: "utility", packId }, name, payload, 0);
+          runtime.bus.emitSynthetic({ type: "system", packId }, name, payload, 0);
         },
       };
     };

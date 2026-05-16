@@ -18,19 +18,19 @@ assertType<
   Equals<AllowedKindFor<"persona">, "trigger-handler" | "procedural-module" | "animation-provider">
 >(true);
 
-// ─── utility: trigger-handler のみ ───────────────────────────────
+// ─── system: trigger-handler のみ ───────────────────────────────
 
-assertType<Equals<AllowedKindFor<"utility">, "trigger-handler">>(true);
+assertType<Equals<AllowedKindFor<"system">, "trigger-handler">>(true);
 
-// ─── 排他: utility は procedural-module を含まない ─────────────────
+// ─── 排他: system は procedural-module を含まない ─────────────────
 
-type UtilityAllowsProcedural = "procedural-module" extends AllowedKindFor<"utility"> ? true : false;
-assertType<Equals<UtilityAllowsProcedural, false>>(true);
+type SystemAllowsProcedural = "procedural-module" extends AllowedKindFor<"system"> ? true : false;
+assertType<Equals<SystemAllowsProcedural, false>>(true);
 
-// ─── 排他: utility は animation-provider を含まない ───────────────
+// ─── 排他: system は animation-provider を含まない ───────────────
 
-type UtilityAllowsAnimation = "animation-provider" extends AllowedKindFor<"utility"> ? true : false;
-assertType<Equals<UtilityAllowsAnimation, false>>(true);
+type SystemAllowsAnimation = "animation-provider" extends AllowedKindFor<"system"> ? true : false;
+assertType<Equals<SystemAllowsAnimation, false>>(true);
 
 // ─── Provenance 構造の必須 field ─────────────────────────────────
 
@@ -39,7 +39,7 @@ if (builtin.source === "persona") {
   // packId が必須であることの確認
   assertType<Equals<typeof builtin.packId, string>>(true);
 }
-if (builtin.source === "utility") {
+if (builtin.source === "system") {
   assertType<Equals<typeof builtin.packId, string>>(true);
 }
 if (builtin.source === "builtin") {
