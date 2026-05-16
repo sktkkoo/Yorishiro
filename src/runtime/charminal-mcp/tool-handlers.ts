@@ -16,6 +16,7 @@ import type {
 } from "@charminal/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
+import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
 import type { UiStateStore } from "../ui-state-store";
@@ -520,6 +521,16 @@ export function createControlsTransitionHandler(deps: ControlsTransitionDeps) {
           (next) => applyControlValue(deps, scope, path, next, store, { cancelTween: false }),
           { from: current },
         );
+      } else if (isHexColor(current) && isHexColor(value)) {
+        tweening = true;
+        deps.tweenManager.startWithLerp(
+          controlTweenKey(scope, path),
+          current,
+          value,
+          durationMs,
+          colorLerp,
+          (next) => applyControlValue(deps, scope, path, next, store, { cancelTween: false }),
+        );
       } else {
         applyControlValue(deps, scope, path, value, store);
       }
@@ -535,6 +546,11 @@ export function createControlsTransitionHandler(deps: ControlsTransitionDeps) {
 
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
+}
+
+/** colorLerp が解釈できる "#rrggbb" 形式かどうか。 */
+function isHexColor(v: unknown): v is string {
+  return typeof v === "string" && /^#[0-9a-fA-F]{6}$/.test(v);
 }
 
 const LIGHTING_KEY_PATTERN = /^(ambient|directional)(Intensity|Color)$/;

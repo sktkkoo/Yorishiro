@@ -86,7 +86,7 @@ pub struct ControlsSetManyRequest {
     pub values: BTreeMap<String, Value>,
 }
 
-/// `controls_transition` の引数。数値 control は durationMs で補間し、それ以外は即時反映する。
+/// `controls_transition` の引数。数値 control と "#rrggbb" hex color は durationMs で補間し、それ以外は即時反映する。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ControlsTransitionRequest {
     /// Control scope: "scene" (default) or "common".
@@ -460,7 +460,7 @@ impl Charminal {
 
     /// controls_transition: F2 controls panel に表示されている値を補間する。
     #[tool(
-        description = "Transition visible F2 control values. Numeric controls tween over durationMs; nonnumeric controls apply immediately. Use controls_get first to discover paths — available paths depend on the active scene pack. Use this for camera moves and smooth scene parameter demos."
+        description = "Transition visible F2 control values. Numeric controls and \"#rrggbb\" hex colors tween over durationMs; other nonnumeric controls apply immediately. Use controls_get first to discover paths — available paths depend on the active scene pack. Use this for camera moves and smooth scene/lighting demos."
     )]
     async fn controls_transition(
         &self,
