@@ -235,6 +235,32 @@ Utility pack は将来的にユーザー配布可能にする。ただし utilit
 8. artifact hash / size / permission diff / executionClass diff を表示する
 9. registry review に送る前の checklist を出す
 
+`prepare-publish` は machine-check first にする。人間 review は「機械で確定できない判断」に限定し、CLI / `/charm:prepare-publish` / registry CI で同じ checker を再利用する。checker は pure module として実装し、local で通った candidate が registry 側で別判定にならないようにする。
+
+自動 checker の分類：
+
+| category | hard reject | warning / info |
+|---|---|---|
+| Manifest / policy | schema invalid、`declarative` + JS entry、community `trusted-main-thread-js`、未実装 `isolated-js`、executionClass downgrade / unsafe change | description 欠落、古い `charminalVersion` range |
+| Declarative data | unknown field、prototype pollution key、depth / array length / string length / file size cap 超過、CSS free-form / `url(...)` / unsafe URL | unused field candidate、値が default と同じ |
+| Assets | pack dir 外参照、symlink escape、extension / MIME 不一致、size cap 超過、image dimension cap 超過、SVG 未許可、video MVP reject | unused asset、duplicate asset、圧縮余地 |
+| JS / TS static scan | publish candidate に JS entry が残る、forbidden global / import / dynamic import / eval / DOM / Tauri / Node builtin / `fetch` / timer / AudioContext / React / Three.js 使用 | 変換不能理由の説明、manual rewrite suggestion |
+| Integrity | artifact hash mismatch、lockfile mismatch、review metadata mismatch | hash diff / permission diff / size diff の user-visible 表示 |
+| Future `isolated-js` | forbidden global、permission と capability request 不一致、bundle size cap 超過、dependency policy violation | dependency license / vulnerability warning |
+
+JS / TS static scan は正規表現ではなく AST で行う。`import`, dynamic `import()`, `eval`, `Function`, `fetch`, `XMLHttpRequest`, `WebSocket`, `setTimeout`, `setInterval`, `requestAnimationFrame`, `document`, `window`, `localStorage`, `AudioContext`, `@tauri-apps/api`, `node:*`, `fs`, `child_process`, `process`, `Buffer`, JSX / React / Three.js / R3F usage を検出する。
+
+機械チェックの限界：
+
+- social engineering 的な文言
+- deceptive UI
+- 過剰に不快な演出
+- 著作権 / ライセンス / ブランド類似
+- review 回避のための難読化
+- schema 上は valid だが意味的に危険な値
+
+これらは registry review の対象に残す。hard reject が 0 でない pack は registry review に送れない。warning は user に説明し、可能なら `/charm:prepare-publish` が修正案を出す。
+
 変換例：
 
 | local authoring pack | public artifact | 備考 |
@@ -293,9 +319,10 @@ MVP ではこの限界を明示し、少なくとも以下を守る：
 
 1. `declarative` を先に実装する
 2. `/charm:prepare-publish` で local trusted pack を publish 用 `declarative` artifact に変換できるようにする
-3. 公開 registry は `declarative` に限定する。運用余力があれば curated trusted visual を追加する
-4. `isolated-js` は Web Worker + SES + capability RPC で始める
-5. utility 公開配布は `isolated-js` runtime と permission UX が完成してから解禁する
+3. `scripts/check-pack` 相当の machine checker を CLI / `/charm:prepare-publish` / registry CI で共有する
+4. 公開 registry は `declarative` に限定する。運用余力があれば curated trusted visual を追加する
+5. `isolated-js` は Web Worker + SES + capability RPC で始める
+6. utility 公開配布は `isolated-js` runtime と permission UX が完成してから解禁する
 
 ## Review rules
 
@@ -311,6 +338,7 @@ Registry は以下を reject / block する。
 - permissions 宣言と code の capability request が一致しない
 - hash が review 済み metadata と一致しない
 - `/charm:create` 由来の local `trusted-main-thread-js` pack を変換なしで community publish しようとしている
+- `prepare-publish` machine checker の hard reject が残っている
 - `system.exec` が shell string を要求する
 - PTY write 相当の API を要求する
 - `terminal_prefill` / `write_terminal_input` 相当の MCP tool 呼び出しを要求する（[`mcp-trust-tiers.md`](mcp-trust-tiers.md) 参照）
@@ -347,7 +375,7 @@ PTY 系 tool（`terminal_prefill` / `write_terminal_input` 等）は当面 **全
 
 ## 改訂履歴
 
-- 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデル、`/charm:create` と publish 用変換 flow の関係を追記。
+- 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデル、`/charm:create` と publish 用変換 flow、machine checker の関係を追記。
 - 2026-05-03: R3F scene pack class を追加。初期 scope は bundled-only、execution class は `trusted-main-thread-js`。
 - 2026-04-24: 初版。実行速度・自由度・セキュリティの三軸で execution class を定義し、Utility pack 公開配布を `isolated-js` 完成後の future scope として位置づけ。
 - 2026-04-27: self-referential MCP 計画との整合を追記。PTY write 条項を MCP tool に拡張、`mcp-trust-tiers.md` を新規 decision として参照。Review rule に terminal_prefill 系 tool 要求を reject 条件として追加。
