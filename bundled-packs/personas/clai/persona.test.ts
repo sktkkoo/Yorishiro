@@ -177,31 +177,9 @@ describe("clai persona triggers", () => {
     });
   });
 
-  describe("idle → mischievous-shoot trigger", () => {
-    const trigger = triggers.find((t) => t.id === "clai:idle-shoot");
-
-    it("is registered in customTriggers", () => {
-      expect(trigger).toBeDefined();
-    });
-
-    it("matches idle >= 90s when probability passes", () => {
-      if (!trigger) throw new Error("trigger not registered");
-      vi.spyOn(Math, "random").mockReturnValue(0.29);
-
-      const match = trigger.match({ kind: "idle", durationMs: 90_000, timestamp: 1000 });
-
-      expect(match).toEqual({
-        reaction: "mischievous-shoot",
-        payload: { durationMs: 90_000 },
-      });
-    });
-
-    it("does not match short idle or failed probability", () => {
-      if (!trigger) throw new Error("trigger not registered");
-      vi.spyOn(Math, "random").mockReturnValue(0.3);
-
-      expect(trigger.match({ kind: "idle", durationMs: 89_999, timestamp: 1000 })).toBeNull();
-      expect(trigger.match({ kind: "idle", durationMs: 90_000, timestamp: 1000 })).toBeNull();
+  describe("idle-shoot trigger is removed", () => {
+    it("no longer registers clai:idle-shoot (idle 自動発火は廃止)", () => {
+      expect(triggers.find((t) => t.id === "clai:idle-shoot")).toBeUndefined();
     });
   });
 
@@ -396,11 +374,18 @@ describe("clai persona triggers", () => {
     });
   });
 
-  describe("mischievous-shoot handler", () => {
-    const handler = persona.reflex.responses["mischievous-shoot"]?.handlers[0]?.handler;
+  describe("mischievous-shoot-shortcut handler (shoot timeline)", () => {
+    const shortcutHandler = persona.reflex.responses["mischievous-shoot-shortcut"]?.handlers[0] as
+      | WeightedPersonaHandler
+      | undefined;
+    const handler = shortcutHandler?.handler;
 
     it("is registered", () => {
       expect(handler).toBeDefined();
+    });
+
+    it("has no cooldown so explicit shortcuts can repeat (idle 自動発火は廃止)", () => {
+      expect(shortcutHandler?.cooldownMs).toBeUndefined();
     });
 
     it("plays gun-fire animation, zooms out, waits, injects text-physics, then releases motion", async () => {
@@ -428,9 +413,9 @@ describe("clai persona triggers", () => {
 
       const ctx = {
         event: {
-          reaction: "mischievous-shoot",
-          triggeredBy: { kind: "idle", durationMs: 90_000, timestamp: 1000 },
-          payload: { durationMs: 90_000 },
+          reaction: "mischievous-shoot-shortcut",
+          triggeredBy: { kind: "synthetic", name: "clai:shoot", timestamp: 1000 },
+          payload: { source: "shortcut" },
           trigger: null,
         },
         character: { play, express: vi.fn(), gaze: vi.fn(), interrupt },
@@ -442,7 +427,7 @@ describe("clai persona triggers", () => {
 
       await handler(ctx);
 
-      expect(interrupt).toHaveBeenCalledWith("mischievous-shoot");
+      expect(interrupt).toHaveBeenCalledWith("mischievous-shoot-shortcut");
       expect(play).toHaveBeenCalledWith("anim:VRMA_gun_fire", {
         fadeInMs: 300,
         fadeOutMs: 300,
@@ -451,6 +436,7 @@ describe("clai persona triggers", () => {
       expect(injectEffect).toHaveBeenNthCalledWith(1, {
         kind: "camera-move",
         holdMs: 8000,
+        offset: { z: 1.2 },
       });
       expect(after).toHaveBeenNthCalledWith(1, 1500);
       expect(injectEffect).toHaveBeenNthCalledWith(2, {
@@ -491,9 +477,9 @@ describe("clai persona triggers", () => {
 
       const ctx = {
         event: {
-          reaction: "mischievous-shoot",
-          triggeredBy: { kind: "idle", durationMs: 90_000, timestamp: 1000 },
-          payload: { durationMs: 90_000 },
+          reaction: "mischievous-shoot-shortcut",
+          triggeredBy: { kind: "synthetic", name: "clai:shoot", timestamp: 1000 },
+          payload: { source: "shortcut" },
           trigger: null,
         },
         character: { play, express: vi.fn(), gaze: vi.fn(), interrupt: vi.fn() },
@@ -509,21 +495,9 @@ describe("clai persona triggers", () => {
       expect(injectEffect).toHaveBeenCalledWith({
         kind: "camera-move",
         holdMs: 8000,
+        offset: { z: 1.2 },
       });
       expect(cancel).toHaveBeenCalledOnce();
-    });
-  });
-
-  describe("mischievous-shoot-shortcut handler", () => {
-    const handler = persona.reflex.responses["mischievous-shoot-shortcut"]?.handlers[0] as
-      | WeightedPersonaHandler
-      | undefined;
-
-    it("reuses the shoot timeline without cooldown so explicit shortcuts can repeat", () => {
-      expect(handler?.handler).toBe(
-        persona.reflex.responses["mischievous-shoot"]?.handlers[0]?.handler,
-      );
-      expect(handler?.cooldownMs).toBeUndefined();
     });
   });
 });
