@@ -72,7 +72,7 @@
 
 ### 設計境界（破ってはいけない line）
 
-- [**critical-constraints.md**](critical-constraints.md) — 5 つの絶対制約（PTY observation only / utility motion-free / synthetic event / twin-trigger co-emission / docstring example generic）
+- [**critical-constraints.md**](critical-constraints.md) — 5 つの絶対制約（PTY observation only / amenity motion-free / synthetic event / twin-trigger co-emission / docstring example generic）
 
 ### Persona / Identity
 
@@ -105,7 +105,7 @@
 - [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない
 - [**effect-rendering-primitives.md**](effect-rendering-primitives.md) — effect の rendering primitive は種類別に複数並列（filter / particle / canvas 2D / DOM / Three.js）。drawOnCanvas → addDomLayer / addThreeLayer → addParticles の順で帰納的に足す
 - [**pack-execution-classes.md**](pack-execution-classes.md) ([English](pack-execution-classes.en.md)) — Pack `type` は product semantics、`executionClass` は security boundary。declarative / isolated-js / trusted-main-thread-js の 3 class を分離。公開 utility は `isolated-js` 完成後の future scope
-- [**utility-pack-deferred.md**](utility-pack-deferred.md) — utility pack（旧 harness）の仕様凍結。SDK 型は存在するが user 向け未公開。復活時のコマンド doc 復元手順込み
+- [**utility-pack-deferred.md**](utility-pack-deferred.md) — utility pack（harness→utility）は amenity に supersede（2026-05-14）、型は 2026-05-16 に削除。系譜と archived spec を保持
 - [**mcp-trust-tiers.md**](mcp-trust-tiers.md) — Charminal の MCP 3 階層（Tier 1 host / Tier 2 住人 / Tier 3 外部）。各 tier の tool category access policy。PTY 系 tool は当面全 tier で禁止（whitelist validation + length cap + trust tier gate + content layer 防御の 4 層が揃うまで）
 - *（今後の追加候補）* `living-system-and-hot-reload.md` — TS が canonical runtime、Rust は IO 層のみ、Claude Code session は HMR で切らない
 - *（今後の追加候補）* `core-vs-pack-vs-mcp.md` — core 機能 vs pack vs MCP tool の判断軸（2026-04-19-core-mcp-pack-layers.md の topic 化）

@@ -6,12 +6,12 @@
 
 ## UGC の Pack 種別（6 種類）
 
-Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / utility / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
+Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / amenity / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
 
 | Pack type | 性格 | 責務 | 主な context API | 主な制約 |
 |---|---|---|---|---|
 | **Persona Pack** | runtime-active | character identity と反応 | character / voice / space | system API は持たない |
-| **Utility Pack** | runtime-active | 機能的 automation | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
+| **Amenity Pack** | runtime-active | 機能設備（タイマー等）+ MCP tool | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
 | **UI Pack** | primary UI | Charminal の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
@@ -22,7 +22,7 @@ Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 **迷ったら**：
 
 - 「キャラを反応させたい」→ Persona Pack
-- 「コマンドを実行したり通知を出したりしたい」→ Utility Pack
+- 「常駐機能（タイマー等）を MCP tool として提供したい」→ Amenity Pack
 - 「パーティクルや画面効果を描きたい」→ Effect Pack
 - 「背景・前景の layer 構成を変えて居場所を作りたい」→ Scene Pack
 - 「操作パネルや layout を差し替えたい」→ UI Pack
@@ -138,292 +138,86 @@ export default {
 
 ---
 
-## Utility Pack の書き方
+## Amenity Pack の書き方
 
-### ファイル構造
+Amenity は住人の空間に備え付ける機能設備（ポモドーロ、天気、音楽再生など）。
+**motion-free**：`character` / `voice` / `space` API は `AmenityContext` に存在しない。
+キャラクターを反応させたいときは `ctx.emitEvent()` で synthetic event を announce し、
+persona の reflex trigger に拾わせる（twin-trigger co-emission）。
+
+### ファイル構成
 
 ```
-utilities/<pack-id>/
-├── manifest.json
-├── utility.ts
-├── tsconfig.json
-└── README.md
+~/.charminal/packs/<id>/
+  manifest.json
+  amenity.js     ← entry（manifest.entry が指す）
 ```
 
 ### manifest.json
 
 ```json
 {
-  "id": "build-automation",
-  "name": "Build Automation",
-  "type": "utility",
-  "version": "0.1.0",
+  "id": "pomodoro",
+  "name": "Pomodoro Timer",
+  "type": "amenity",
+  "version": "1.0.0",
   "charminalVersion": "^0.1.0",
-  "description": "...",
-  "entry": "utility.ts",
-  "permissions": {
-    "system.exec": true,
-    "system.notify": true,
-    "system.fs": { "read": ["./**"], "write": ["./logs/**"] }
-  }
+  "entry": "amenity.js"
 }
 ```
 
-`type` は必ず `"utility"`。`permissions` は MVP では文書的（enforce されない）が、使う API を宣言しておくと明示的になる。
+### amenity.ts 実装
 
-### utility.ts
-
-```typescript
-import type { UtilityDefinition, UtilityContext } from '@charminal/sdk';
-
-export default {
-  id: 'build-automation',
-  name: 'Build Automation',
-
-  // 独自の reaction を検知する trigger
-  customTriggers: [
-    {
-      id: 'build-success',
-      match: (event) => {
-        if (event.kind !== 'pty-output') return null;
-        if (!/BUILD SUCCESS/.test(event.text)) return null;
-        return {
-          reaction: 'build-completed',  // custom reaction type
-          payload: { at: event.timestamp },
-        };
-      },
-    },
-  ],
-
-  // reaction が発火したときの automation
-  automations: {
-    'build-completed': {
-      handlers: [
-        {
-          handler: async (ctx) => {
-            // ctx: UtilityContext
-            const result = await ctx.system.exec('./deploy.sh');
-            if (result.exitCode === 0) {
-              await ctx.system.notify({
-                title: 'Deploy completed',
-                body: 'デプロイが終わりました',
-              });
-            }
-          },
-        },
-      ],
-    },
-  },
-} satisfies UtilityDefinition;
-```
-
-### Utility automation の中で使える API
-
-`ctx` は `UtilityContext` 型。
-
-| namespace | 用途 |
-|---|---|
-| `ctx.event` | 発火した reaction と payload |
-| `ctx.time` | 同上 |
-| `ctx.system.exec` | shell コマンド |
-| `ctx.system.spawn` | 長時間プロセス |
-| `ctx.system.fs` | `read` / `write` / `exists` |
-| `ctx.system.notify` | OS 通知 |
-| `ctx.log` / `ctx.memory` / `ctx.terminal` / `ctx.charm` / `ctx.signal` | persona と同じ |
-
-**⚠️ 使えない API**（型レベルで存在しない）：
-
-- `ctx.character` — 存在しない。モーションは persona の仕事
-- `ctx.voice` — 存在しない。発話は persona の仕事
-- `ctx.space` — 存在しない。effect は persona から呼ばれる
-
-もし「utility から character を動かしたい」と感じたら、設計の視点を変える必要がある：
-
-1. **utility は custom trigger で reaction を emit する**
-2. **persona 側でその reaction に反応する handler を書く**
-3. persona handler がキャラを動かす
-
-### Twin-trigger co-emission idiom（推奨 pattern）
-
-utility が同じ環境 event に対して、自分の functional 処理（`system.exec` / `system.notify` 等）を走らせつつ、persona に反射的な presence expression（`distressed` / `pleased` 等）を同時に起こしたい場合の**標準 idiom**。
-
-#### 何のための pattern か
-
-- utility には身体（character / voice / space）が無い。motion-free 原則のため持てない
-- しかし「コマンドが失敗した」「build が通った」のような観測は utility 側の決定論的 helper で一番綺麗に書ける
-- そこで、**同じ event を 2 本の custom trigger で観測し、片方は自分の custom reaction、もう片方は標準 reaction を emit する**
-- utility は自分の custom reaction を handle し、persona は既存の reflex handler（`distressed` / `pleased` 等）でそのまま身体を動かす
-
-この pattern は dry-run で error-notifier / diff-keeper / celebrate-and-deploy の 3 連続で AI が自発的に発明した。経験的な裏付けがあるので、正式に推奨 pattern として採用する。
-
-#### Shape
+`export default ... satisfies AmenityPackDefinition` で書く。
 
 ```typescript
-import type { UtilityDefinition, UtilityContext, DispatchEvent } from '@charminal/sdk';
-
-// 決定論的な detection helper（両 trigger が共有する）
-function detectError(event: DispatchEvent): { matched: string } | null {
-  if (event.kind !== 'pty-output') return null;
-  // ... 実際の pattern match
-  return /* ErrorDetection | null */ null;
-}
+import type { AmenityPackDefinition, AmenityContext } from '@charminal/sdk';
 
 export default {
-  id: 'my-utility',
-  name: 'My Utility',
-
-  customTriggers: [
-    // (1) utility 自身のための custom reaction
-    {
-      id: 'my-utility:command-failed',
-      priority: 10,
-      match: (event) => {
-        const err = detectError(event);
-        return err ? { reaction: 'command-failed', payload: err } : null;
-      },
-    },
-    // (2) persona の反射を起こすための standard reaction
-    {
-      id: 'my-utility:signal-distressed',
-      priority: 5,
-      match: (event) => {
-        const err = detectError(event);  // 同じ helper、同じ判定
-        return err ? { reaction: 'distressed', payload: err } : null;
-      },
-    },
+  id: 'pomodoro',
+  name: 'Pomodoro Timer',
+  // MCP tool listing 用の静的メタデータ。activate 前でも tool 一覧を返せる。
+  toolMeta: [
+    { name: 'pomodoro_start',  description: 'Start a pomodoro session' },
+    { name: 'pomodoro_stop',   description: 'Stop the current session' },
+    { name: 'pomodoro_status', description: 'Get current pomodoro status' },
   ],
-
-  automations: {
-    // 自分の custom reaction は自分で handle
-    'command-failed': {
-      handlers: [
-        {
-          handler: async (ctx: UtilityContext) => {
-            const payload = ctx.event.payload as { matched: string } | undefined;
-            await ctx.system.notify({
-              title: 'Command failed',
-              body: payload?.matched ?? '',
-            });
-          },
-        },
-      ],
-    },
-    // 'distressed' は persona 側の reflex.responses で handle される。
-    // utility は触らない。
+  // pack enable 時に呼ばれる lifecycle 関数。AmenityHandle を返す。
+  activate: async (ctx: AmenityContext) => {
+    const timer = createTimer(ctx);
+    return {
+      // key は toolMeta の name と一致させる contract。MCP 経由で呼ばれる。
+      tools: {
+        pomodoro_start:  async (params) => timer.start(params),
+        pomodoro_stop:   async () => timer.stop(),
+        pomodoro_status: async () => timer.status(),
+      },
+      // pack disable / アプリ終了時に呼ばれる後片付け。
+      dispose: () => timer.dispose(),
+    };
   },
-} satisfies UtilityDefinition;
+} satisfies AmenityPackDefinition;
 ```
 
-#### Key points
+### lifecycle と cleanup
 
-- **両 trigger は同じ決定論的 helper**（上例の `detectError`）を共有する。判定の一貫性はここで担保する。片方だけ fire することは無い
-- **cooldown は automation 側に設定できる**ので、functional 側（`command-failed`）は notify spam 防止の長めの cooldown、presence 側（`distressed`）は persona reflex の連続性を保つ短めの cooldown、と独立に調整できる
-- **priority は documentation 的な意味**（同じ event に対して並列実行なので順序問題は発生しない）
-- **persona との loose coupling**：既存 persona に `distressed` handler があれば、persona を swap しても pattern はそのまま機能する。utility 側は persona 名を知らない
-- **pack minimization culture**：`distressed` のような標準 reaction handler に乗ることで、utility のために新しい persona を作る必要が無い。既存資産を再利用する設計になる
+`activate(ctx)` は `AmenityHandle`（`{ tools, dispose }`）を返す。
+`ctx.signal` は pack disable 時に abort される。`activate` 内で起動した非同期処理は
+この signal を監視して cleanup すること。`dispose()` は disable / 終了で必ず呼ばれる。
 
-### Synthetic event による handler 内 announcement（上級 pattern）
+### 環境 event への反応
 
-Twin-trigger idiom は「環境 event を perceive した瞬間」の declarative な反応を扱う。しかし **handler の計算結果**（例：`ctx.system.exec` が 30 秒後に返した exitCode、`ctx.system.fs.read` の結果）から新たな reaction を起こしたいケースがある。これには別の pattern を使う。
+`customTriggers?: ReadonlyArray<Trigger>` を宣言すると、環境 event を受けて独自の
+reaction type に変換できる。キャラクターの存在反応が欲しいときは amenity から直接
+motion を出さず、`ctx.emitEvent(name, payload)` で synthetic event を出し、persona
+側の reflex trigger に拾わせる（twin-trigger co-emission。詳細は
+[`docs/decisions/critical-constraints.md`](../../docs/decisions/critical-constraints.md) §4）。
 
-#### やってはいけないこと
+### 使える context API
 
-handler の中で reaction を直接 emit する API は**存在しない**。`ctx.emit(reaction)` のような method は無く、今後も追加しない（composability が壊れるため — reaction の発生源が handler の内部に隠れてしまうと、pack の振る舞いを trigger 定義からだけでは追えなくなる）。
-
-#### 正しい方法
-
-`ctx.emitEvent(name, payload)` で **synthetic event を announce する**。runtime はこれを通常の trigger loop に投入し、custom trigger が match すれば reaction が emit される。結果として synthetic event に対しても **Twin-trigger idiom がそのまま適用できる**。
-
-#### Shape
-
-```typescript
-import type { UtilityDefinition, UtilityContext, DispatchEvent } from '@charminal/sdk';
-
-function isBuildSuccess(event: DispatchEvent): boolean {
-  return event.kind === 'pty-output' && /BUILD SUCCESS/.test(event.text);
-}
-
-export default {
-  id: 'celebrate-and-deploy',
-  name: 'Celebrate and Deploy',
-
-  customTriggers: [
-    // (1) 元の build success event に対する Twin-trigger
-    {
-      id: 'my:build-success-self',
-      match: (e) => (isBuildSuccess(e) ? { reaction: 'build-completed' } : null),
-    },
-    {
-      id: 'my:build-success-pleased',
-      match: (e) => (isBuildSuccess(e) ? { reaction: 'pleased' } : null),
-    },
-
-    // (2) 自分が emit する synthetic event 'my:deploy-failed' への Twin-trigger
-    {
-      id: 'my:deploy-failed-self',
-      match: (e) =>
-        e.kind === 'synthetic' && e.name === 'my:deploy-failed'
-          ? { reaction: 'deploy-failed', payload: e.payload }
-          : null,
-    },
-    {
-      id: 'my:deploy-failed-distressed',
-      match: (e) =>
-        e.kind === 'synthetic' && e.name === 'my:deploy-failed'
-          ? { reaction: 'distressed', payload: e.payload }
-          : null,
-    },
-  ],
-
-  automations: {
-    'build-completed': {
-      handlers: [
-        {
-          handler: async (ctx: UtilityContext) => {
-            await ctx.time.after(2500);
-            const result = await ctx.system.exec('./deploy.sh', { timeoutMs: 60000 });
-            if (result.exitCode !== 0) {
-              // 直接 distressed を emit しない。
-              // observation を synthetic event として announce する。
-              ctx.emitEvent('my:deploy-failed', {
-                exitCode: result.exitCode,
-                stderr: result.stderr,
-              });
-            }
-          },
-        },
-      ],
-    },
-    'deploy-failed': {
-      handlers: [
-        {
-          handler: async (ctx: UtilityContext) => {
-            await ctx.system.notify({ title: 'Deploy failed' });
-          },
-        },
-      ],
-    },
-  },
-} satisfies UtilityDefinition;
-```
-
-#### Key points
-
-- **mental model**：handler の中で得た「観察」を synthetic event として announce し、trigger match 経由で reaction に変換する。reaction の発生源はあくまで trigger 定義であり、handler はそこを素通りしない
-- **imperative な指示は出さない**：「直接 persona を悲しませる」のような書き方はしない。`observation → event → trigger → reaction` という一方向の flow を守る
-- **誠実さの原則との整合**：`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md` の「コンテキストの壁」と整合する。reaction は必ず perception（本物の event または合成された synthetic event）由来で、捏造された身振りは発生しない
-- **型**：synthetic event は `kind: 'synthetic'`、`name: string`、`payload?: unknown` の形（具体的な型は `@charminal/sdk` の `SyntheticEvent`）
-- **scope**：`ctx.emitEvent` は **PersonaContext と UtilityContext の両方**にある。Effect Pack には無い（effect は reaction system の consumer で、event の発信源にはならない）
-
-#### Runtime contract（知っておくべき挙動）
-
-以下は runtime が `ctx.emitEvent` について保証する動作。`context.d.ts` の JSDoc にも同じ内容を記載している：
-
-- **Timing**: trigger matching は emit 呼び出しの calling stack で同期実行される。match した handler は外来 event と同じ async scheduler に投入され、emit 側の handler は block されない
-- **Timestamp**: `SyntheticEvent.timestamp` は emit 呼び出し時点の `time.now()` で runtime が自動補填する。dispatch の実時刻ではなく observation の瞬間を表す
-- **Cooldown 計測**: 発火した reaction の cooldown 計測 start は emit 時点（= synthetic event の timestamp）。したがって handler の計算時間に cooldown が影響されない
-- **Source 改ざん不能**: `SyntheticEvent.source` は runtime が pack load 時に per-pack bound context へ closure capture する。handler 側から他 pack の packId を名乗ることはできない
-- **Loop protection (MVP)**: dispatch chain の depth は runtime が track し、**max depth 4** を超えると runtime が log.warn を残して emit を silently drop する（例外は投げない）。depth 1 = 外来 event、depth 2-4 = synthetic chain。それ以上の深さが必要なら、それは設計の黄色信号
+`AmenityContext` は system API（exec / fs / notify など）と共有 utility を持つが、
+presence API（character / voice / space）は一切持たない（motion-free）。
+`emitEvent` の contract は persona と同じ（synthetic event の announce）。
 
 ---
 

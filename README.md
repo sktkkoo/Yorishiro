@@ -67,7 +67,7 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **effect** | Temporary visual effects (screen shake, fireworks, etc.) |
 | **ui** | UI such as settings screens |
 | **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
-| **utility** | Background logic with no visual output |
+| **amenity** | Runtime-active functional fixtures (timers, etc.) with MCP tools, no visual output |
 
 Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm` command, pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
@@ -141,7 +141,7 @@ What works today:
 - Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
 - CLAI, a VRM 3D character that breathes, blinks, and shifts gaze (bundled)
 - VRMA animation clip playback
-- Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)
+- Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
