@@ -11,7 +11,7 @@
  *
  * 型レベルで意図的に排除している field：
  * - layout.update    — ambient は primary layout を変えない
- * - character        — ambient は body を動かさない (utility motion-free と同型)
+ * - character        — ambient は body を動かさない (amenity motion-free と同型)
  * - voice / space    — 同様
  * - setSourceTarget  — pack には attention の write 権限を渡さない
  *                      (observation-only の境界)

@@ -40,7 +40,7 @@ export interface EffectRequester {
  *   内部で通す契約なので、型を外れた値を渡すと synchronously throw する。
  * - dispatchEffect: 既に register 済みの effect を 1 回走らせる。keyboard
  *   shortcut や startup animation など、persona の reflex 外の発火経路で使う。
- * - emitEvent: persona / utility trigger loop に synthetic event を流す。
+ * - emitEvent: persona / amenity trigger loop に synthetic event を流す。
  * - setActiveUi: keyboard shortcut などから active UI pack を切り替える。
  */
 export interface CharminalInitContext {
