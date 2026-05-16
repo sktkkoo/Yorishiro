@@ -151,6 +151,6 @@ bundled-packs は Charminal 本体の一部として扱う：
 ## 関連 doc
 
 - pack 作者向け：[../src/sdk/README.md](../src/sdk/README.md)
-- 制約（PTY / utility / synthetic event）：[../docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
-- design-record（pack 三軸 = persona / utility / effect の確定）：`../Charminal-design-record/2026-04-11-design-exploration.md` revelation 3.12, 3.15
+- 制約（PTY / amenity / synthetic event）：[../docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
+- design-record（pack 三軸 = persona / amenity / effect の確定。utility は amenity に supersede）：`../Charminal-design-record/2026-04-11-design-exploration.md` revelation 3.12, 3.15
 - design-record（scene pack の追加 = declarative・single-active）：`../Charminal-design-record/specs/2026-04-18-scene-pack-registry.md`

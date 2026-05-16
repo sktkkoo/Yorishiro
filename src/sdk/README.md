@@ -133,7 +133,7 @@ export default {
 
 **⚠️ 使えない API**（型レベルで存在しない）：
 
-- `ctx.system` — 存在しない。shell 実行やファイル操作は utility の仕事
+- `ctx.system` — 存在しない。shell 実行やファイル操作は amenity の仕事
 - `ctx.terminal.input` — 存在しない。PTY には書き込めない
 
 ---
@@ -325,7 +325,7 @@ user Effect Pack も同じ API で呼ばれる（`kind` に pack id を指定）
 
 ## Scene Pack の書き方
 
-scene は **declarative**（runtime handler を持たない）。pack の宣言が **そのまま画面を規定し続ける** 存在で、event-driven な persona / utility / effect とは性格が根本的に違う。
+scene は **declarative**（runtime handler を持たない）。pack の宣言が **そのまま画面を規定し続ける** 存在で、event-driven な persona / amenity / effect とは性格が根本的に違う。
 
 ### ファイル構造
 
@@ -461,7 +461,7 @@ export default {
 
 ### Scene Pack には Context API が無い
 
-- persona / utility / effect は handler を持ち、それぞれ Context API（`PersonaContext` / `UtilityContext` / `EffectContext`）で runtime にアクセスする
+- persona / amenity / effect は handler を持ち、それぞれ Context API（`PersonaContext` / `AmenityContext` / `EffectContext`）で runtime にアクセスする
 - **scene は handler を持たない**（pure data）。よって scene 用の `SceneContext` 型は存在しない、追加もしない
 - 動的に変えたい場合は **新しい scene pack に切り替える**（config で `activeScene` を書き換え → hot reload）
 
@@ -545,7 +545,7 @@ pack 内のファイルを相対パスで参照：
 { reaction: 'build-completed', payload: { ... } }
 ```
 
-persona の reflex.responses や utility の automations でも同じ文字列で参照する：
+persona の reflex.responses や amenity の customTriggers / handler でも同じ文字列で参照する：
 
 ```typescript
 responses: {
@@ -566,18 +566,18 @@ async (ctx) => {
 }
 ```
 
-**正しい**：utility を別に作って automation を書く。persona は反応の表現だけ担当。
+**正しい**：amenity を別に作って handler を書く。persona は反応の表現だけ担当。
 
-### ❌ Utility で character を動かす
+### ❌ Amenity で character を動かす
 
 ```typescript
-// utility automation
+// amenity handler
 async (ctx) => {
-  ctx.character.play('VRMA_celebrate');  // ERROR: character は UtilityContext に存在しない
+  ctx.character.play('VRMA_celebrate');  // ERROR: character は AmenityContext に存在しない
 }
 ```
 
-**正しい**：utility は custom trigger で reaction を emit し、persona 側でそれに反応する handler を書く。
+**正しい**：amenity は `customTriggers` で reaction を emit する（または handler 内で `ctx.emitEvent()` で synthetic event を announce する）。persona 側でそれに反応する handler を書く。
 
 ### ❌ Effect で system に触れる
 
@@ -588,7 +588,7 @@ async (ctx, options) => {
 }
 ```
 
-**正しい**：effect は passive な rendering 単位。state も system access も持たない。必要なら utility に移すか、options として persona から渡す。
+**正しい**：effect は passive な rendering 単位。state も system access も持たない。必要なら amenity に移すか、options として persona から渡す。
 
 ### ❌ 存在しない reaction type を使う
 
@@ -609,7 +609,7 @@ ctx.terminal.input('...');  // ERROR: input method は存在しない
 ### ❌ handler 内で reaction を直接 emit しようとする
 
 ```typescript
-// utility automation
+// amenity handler
 async (ctx) => {
   const result = await ctx.system.exec('./deploy.sh');
   if (result.exitCode !== 0) {
