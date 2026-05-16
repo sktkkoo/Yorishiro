@@ -73,6 +73,12 @@ Bundled pack がデフォルトで動作します。ユーザーは `~/.charmina
 
 ユーザー作成 pack は **local trusted code** として扱われます。sandbox 済み・review 済み・public registry 用 artifact ではありません。現時点の Charminal は public pack registry、in-app community pack install、`/charm:prepare-publish` をまだ提供していません。GitHub 等で pack の source code を共有することはできますが、手動で導入する利用者は local trusted code として自己責任で実行する扱いです。
 
+source checkout から作業している場合は、共有やデバッグの前に local pack checker を実行できます：
+
+```bash
+npm run check:pack -- ~/.charminal/packs/<pack-id>
+```
+
 ### データディレクトリ
 
 Charminal のユーザーデータは `~/.charminal/` に保存されます：

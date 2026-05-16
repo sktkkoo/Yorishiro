@@ -71,6 +71,7 @@ persona 以外の pack は比較的軽量に編集できる。
 2. user の要望に合わせて修正し、Write する
 3. hot reload で即反映される（再起動不要）
 4. 編集後 `list_packs()` で status を確認する
+5. 現在の workspace が Charminal source checkout なら `npm run check:pack -- ~/.charminal/packs/<id>` を実行し、checker error を修正する
 
 scene の色・layer 構成、effect の parameter 調整、ui のレイアウト変更、ambient-ui の表示調整など、いずれもこのフローで完結する。
 

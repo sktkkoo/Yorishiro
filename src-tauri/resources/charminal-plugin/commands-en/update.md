@@ -73,6 +73,7 @@ For non-persona packs:
 2. Edit according to the user's request
 3. Let hot reload apply it
 4. Use `list_packs()` to confirm the status
+5. If the current workspace is a Charminal source checkout, run `npm run check:pack -- ~/.charminal/packs/<id>` and fix checker errors
 
 Scene colors, layer structure, effect parameters, UI layout, and ambient overlay tuning can usually be handled in this flow.
 

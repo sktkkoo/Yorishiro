@@ -56,6 +56,14 @@ When Charminal is live, use these MCP tools:
 
 After writing a pack, run `list_packs()` to confirm it registered. This makes self-repair much faster.
 
+If the current workspace is a Charminal source checkout, also run:
+
+```bash
+npm run check:pack -- ~/.charminal/packs/<id>
+```
+
+Treat checker errors as fixes to make before presenting the pack as done. Warnings must be explained to the user.
+
 Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Charminal does not yet provide a public registry or `/charm:prepare-publish`.
 
 ## Rescue Path

@@ -73,6 +73,12 @@ Bundled packs work out of the box. Users can place custom packs in `~/.charminal
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
 
+When working from a source checkout, run the local pack checker before sharing or debugging a user pack:
+
+```bash
+npm run check:pack -- ~/.charminal/packs/<pack-id>
+```
+
 ### Data directory
 
 Charminal stores all user data in `~/.charminal/`:
