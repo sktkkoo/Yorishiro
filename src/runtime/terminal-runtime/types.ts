@@ -48,12 +48,21 @@ export interface TerminalLineRect {
   };
 }
 
+/**
+ * 参照マーカー付きの terminal text reference。
+ * Command+click や Option+Shift+drag で capture → `[#Term<N>]` として入力欄に挿入される。
+ */
+export interface TerminalReference {
+  readonly id: string;
+  readonly context: TerminalRegionContext;
+}
+
 export interface TerminalRegionContext {
   readonly kind: "terminal-region-context";
   readonly sessionId: string;
   readonly text: string;
   readonly capturedAt: number;
-  readonly gesture: "option-shift-drag";
+  readonly gesture: "option-shift-drag" | "meta-click";
   readonly viewport: {
     readonly viewportY: number;
     readonly rows: number;
@@ -171,16 +180,25 @@ export interface TerminalRuntime {
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
 
   /**
-   * Option+Shift+drag で user が矩形選択した最新 terminal context を返す。
+   * Option+Shift+drag / Command+click で capture した最新 terminal context を返す。
    * 未選択 / 空選択なら null。
    */
   getLatestRegionContext(): TerminalRegionContext | null;
 
   /**
-   * Option+Shift+drag の矩形 terminal context 確定時に listener を呼ぶ。
+   * Option+Shift+drag / Command+click の terminal context 確定時に listener を呼ぶ。
    * attention producer / UI feedback 用。dispose で listener を外す。
    */
   subscribeRegionContext(listener: (context: TerminalRegionContext) => void): Disposable;
+
+  /**
+   * `[#Term<N>]` マーカー付きで蓄積された terminal text reference の一覧。
+   * Command+click や Option+Shift+drag で capture → 入力に marker 挿入される。
+   */
+  getTerminalReferences(): ReadonlyArray<TerminalReference>;
+
+  /** 蓄積された terminal reference をすべて消去する。 */
+  clearTerminalReferences(): void;
 
   /** xterm に直接テキストを書き込む（shell ヒントなど）。 */
   writePlainText(text: string): void;

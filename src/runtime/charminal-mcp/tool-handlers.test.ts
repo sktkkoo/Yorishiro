@@ -88,17 +88,22 @@ describe("createTerminalContextGetHandler", () => {
     };
     const handler = createTerminalContextGetHandler({
       getLatestRegionContext: () => context,
+      getTerminalReferences: () => [{ id: "Term1", context }],
     });
 
-    await expect(handler({})).resolves.toEqual({ context });
+    await expect(handler({})).resolves.toEqual({
+      context,
+      references: [{ id: "Term1", context }],
+    });
   });
 
   it("returns null when the user has not pointed at terminal text", async () => {
     const handler = createTerminalContextGetHandler({
       getLatestRegionContext: () => null,
+      getTerminalReferences: () => [],
     });
 
-    await expect(handler({})).resolves.toEqual({ context: null });
+    await expect(handler({})).resolves.toEqual({ context: null, references: [] });
   });
 });
 
