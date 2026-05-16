@@ -1063,6 +1063,41 @@ mod user_pack_discovery_tests {
 
         let _ = fs::remove_dir_all(&packs);
     }
+
+    #[test]
+    fn includes_manifest_execution_class_summary_when_present() {
+        let packs = fresh_packs_dir("manifest-summary");
+        let pack_dir = packs.join("my-effect");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("effect.js"), "export default {};\n").expect("write effect.js");
+        fs::write(
+            pack_dir.join("manifest.json"),
+            r#"{
+              "id": "my-effect",
+              "type": "effect",
+              "version": "0.1.0",
+              "charminalVersion": "^0.1.0",
+              "executionClass": "trusted-main-thread-js",
+              "entry": "effect.js"
+            }"#,
+        )
+        .expect("write manifest");
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].source, "local");
+        let manifest = entries[0].manifest.as_ref().expect("manifest summary");
+        assert_eq!(manifest.id, "my-effect");
+        assert_eq!(manifest.kind, "effect");
+        assert_eq!(manifest.entry, "effect.js");
+        assert_eq!(
+            manifest.execution_class.as_deref(),
+            Some("trusted-main-thread-js")
+        );
+
+        let _ = fs::remove_dir_all(&packs);
+    }
 }
 
 #[cfg(test)]

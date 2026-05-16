@@ -145,6 +145,8 @@ Utility pack は将来的にユーザー配布可能にする。ただし utilit
 - `declarative` + JS-like entry を import 前に reject
 - `isolated-js` は reserved / unsupported として止める
 - `community` source の `trusted-main-thread-js` を default block
+- user scene asset は pack-relative path のみ許可し、remote URL / `data:` / `file:` / absolute path / traversal / CSS `url(...)` を reject
+- `/charm:create` / `/charm:update` は `.js` / `.tsx` pack を local-only `trusted-main-thread-js` として生成・編集し、公開 utility / `isolated-js` / unsafe asset / PTY write を作らないよう prompt で明示
 
 未実装：
 
