@@ -15,7 +15,7 @@
 
 ### Rule
 
-`claude.input` のような **PTY に書き込む API は存在しない**。perception primitive は PTY output を **読むだけ** で、persona / utility / runtime のどこからも write できない。型レベルで強制されている（API がそもそも生えていない）。
+`claude.input` のような **PTY に書き込む API は存在しない**。perception primitive は PTY output を **読むだけ** で、persona / amenity / runtime のどこからも write できない。型レベルで強制されている（API がそもそも生えていない）。
 
 ### Why
 
@@ -27,7 +27,7 @@
 
 - 「user の許可を取れば書き込んでいいのでは」→ NO。user consent は誠実さを担保しない（白塗り化する）
 - 「特定の trigger に限定して write API を生やす」→ NO。grey zone を作らない
-- utility / persona から「key を送る」「command を流す」ような副作用を持つ API を追加しない
+- amenity / persona から「key を送る」「command を流す」ような副作用を持つ API を追加しない
 
 ### Reference
 
@@ -36,34 +36,34 @@
 
 ---
 
-## 2. Utility は motion-free
+## 2. Amenity は motion-free
 
 ### Rule
 
-Utility は system API（exec / fs / notify など）と **抽象 reaction の emit** のみ。`character` / `voice` / `space` の motion 系 API は **UtilityContext に型ごと存在しない**。身体表現は persona 専属。
+Amenity は system API（exec / fs / notify など）と **抽象 reaction の emit** のみ。`character` / `voice` / `space` の motion 系 API は **AmenityContext に型ごと存在しない**。身体表現は persona 専属。
 
 ### Why
 
-- Persona と utility の **責務の clean separation**：utility は「機能的な automation」、persona は「キャラクターの存在感」
-- もし utility が motion を触れると、複数 utility と persona の motion 衝突 resolution が指数増大（augment / exclusive / priority …）
+- Persona と amenity の **責務の clean separation**：amenity は「機能的な automation」、persona は「キャラクターの存在感」
+- もし amenity が motion を触れると、複数 amenity と persona の motion 衝突 resolution が指数増大（augment / exclusive / priority …）
 - 結果として **BodyScheduler が必要になる場面が persona 内に閉じる** → MVP で BodyScheduler を defer できる正当化
 
 ### Don't
 
-- utility pack の中で `ctx.character.expressTrue(...)` のような motion API を呼ばない（型 error になる）
-- 「便利だから utility にも一時的に motion API を生やす」→ NO。型レベル境界を壊すと Twin-trigger co-emission idiom が成立しなくなる
+- amenity pack の中で `ctx.character.expressTrue(...)` のような motion API を呼ばない（型 error になる）
+- 「便利だから amenity にも一時的に motion API を生やす」→ NO。型レベル境界を壊すと Twin-trigger co-emission idiom が成立しなくなる
 
 ### How to apply（境界が曖昧な場面）
 
-「これは utility か persona か」迷う場面では：
+「これは amenity か persona か」迷う場面では：
 
-- **機能的副作用（exec, fs, notify, log）が主目的** → utility
+- **機能的副作用（exec, fs, notify, log）が主目的** → amenity
 - **キャラクターの内面 / 身体表現が主目的** → persona
-- **両方** → utility で機能を実行 + 完了時に **synthetic event を emit** → persona がそれに反応して motion を出す（= Twin-trigger co-emission）
+- **両方** → amenity で機能を実行 + 完了時に **synthetic event を emit** → persona がそれに反応して motion を出す（= Twin-trigger co-emission）
 
 ### Reference
 
-- source: `src/sdk/utility.d.ts` — UtilityContext 型定義（character/voice/space 不在）
+- source: `src/sdk/amenity.d.ts` — AmenityContext 型定義（character/voice/space 不在）
 
 ---
 
@@ -104,28 +104,28 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ---
 
-## 4. Twin-trigger co-emission（utility ↔ persona の正規 idiom）
+## 4. Twin-trigger co-emission（amenity ↔ persona の正規 idiom）
 
 ### Rule
 
-同じ環境 event に対して **utility の機能反応 + persona の存在反応** を emit したい時は、**同じ trigger を二つの pack に独立に書く**（utility 側と persona 側）。utility が persona を直接呼ぶ API は提供しない。
+同じ環境 event に対して **amenity の機能反応 + persona の存在反応** を emit したい時は、**同じ trigger を二つの pack に独立に書く**（amenity 側と persona 側）。amenity が persona を直接呼ぶ API は提供しない。
 
 ### Why
 
-- utility と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PRESENCE_HARNESS.ja.md](../philosophy/PRESENCE_HARNESS.ja.md)）
+- amenity と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PRESENCE_HARNESS.ja.md](../philosophy/PRESENCE_HARNESS.ja.md)）
 - 一方が落ちても他方が動く（degradation の独立）
 - pack の独立 install / disable が壊れない
 
 ### Don't
 
-- utility から persona の reaction を直接 trigger する API を追加しない
-- utility と persona の trigger を「shared subscription」として 1 個にまとめない
+- amenity から persona の reaction を直接 trigger する API を追加しない
+- amenity と persona の trigger を「shared subscription」として 1 個にまとめない
 
 ### How to apply
 
 「ファイル保存時に backup を取りつつ Charminal を pleased にしたい」場合：
 
-- utility pack：`onFileSave` trigger → `system.exec("cp ...")` で backup
+- amenity pack：`onFileSave` trigger → `system.exec("cp ...")` で backup
 - persona pack：`onFileSave` trigger → `pleased` reaction
 - 両方を user が install すれば co-emission される。片方だけでも動く
 
@@ -212,7 +212,7 @@ SDK の docstring example は **generic name / generic value** で書く。**tes
 ```
 PTY observation only ─┐
                       ├─ → 「観察するが干渉しない」原則の三段適用
-Utility motion-free ──┤    （utility が persona の領域に踏み込まない、
+Amenity motion-free ──┤    （amenity が persona の領域に踏み込まない、
                       │     persona が PTY に踏み込まない、
 Ambient-ui write-free ┘     pack が attention を造らない）
 

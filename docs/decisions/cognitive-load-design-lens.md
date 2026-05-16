@@ -56,7 +56,7 @@
 ## 逆に abstraction が正しい場合
 
 - **真の duplication**：同型コードが 2 箇所以上で、形が同期する必要がある（→ DRY base が正解、SingleActiveRegistry の例）
-- **domain boundary を型レベルで強制**：`PersonaContext` / `UtilityContext` は意図的に別型 — 型エラーで境界違反を検出（critical-constraints §2 「Utility は motion-free」の根拠）
+- **domain boundary を型レベルで強制**：`PersonaContext` / `AmenityContext` は意図的に別型 — 型エラーで境界違反を検出（critical-constraints §2 「Amenity は motion-free」の根拠）
 - **public contract**：SDK 公開型は impl が 1 つでも interface で書く価値がある（pack 作者が見る surface の安定性）
 
 ## audit 提案を受ける時の checklist

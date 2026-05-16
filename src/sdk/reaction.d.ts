@@ -28,7 +28,7 @@ export type StandardReactionType =
 
 /**
  * 反応タイプ。標準 vocabulary + 任意の custom 文字列。
- * utility が独自 reaction を定義する場合は custom 文字列を使う。
+ * amenity が独自 reaction を定義する場合は custom 文字列を使う。
  * 例: 'build-completed', 'test-passed', 'deploy-failed'
  */
 export type ReactionType = StandardReactionType | (string & {});
@@ -47,7 +47,7 @@ export type ReactionType = StandardReactionType | (string & {});
  *   `/charm` command など、runtime が外部から観測したもの
  * - **DerivedEvent**: idle 検知、tool activity など、runtime が観測結果から
  *   pack 作者向けに生成する便利 event
- * - **`SyntheticEvent`**: runtime ではなく persona / utility の handler が
+ * - **`SyntheticEvent`**: runtime ではなく persona / amenity の handler が
  *   自ら `ctx.emitEvent()` で発行する合成 event。handler が「観察したこと」
  *   を announce するために使う。詳細は SyntheticEvent の JSDoc 参照
  *
@@ -62,7 +62,7 @@ export type DispatchEvent = ObservedEvent | DerivedEvent | SyntheticEvent;
 
 /**
  * Runtime が外部 source から直接観測した event。
- * まだ「何を意味するか」は persona / utility の trigger が解釈する。
+ * まだ「何を意味するか」は persona / amenity の trigger が解釈する。
  */
 export type ObservedEvent =
   | PtyOutputEvent
@@ -184,7 +184,7 @@ export interface CharmCommandEvent {
 
 /**
  * Handler 発 event。runtime が観測する環境 event ではなく、
- * persona / utility の handler が `ctx.emitEvent(name, payload)` で
+ * persona / amenity の handler が `ctx.emitEvent(name, payload)` で
  * 自ら runtime に投入する「合成 event」。
  *
  * ## なぜ存在するのか
@@ -196,7 +196,7 @@ export interface CharmCommandEvent {
  * trigger の composability（複数 pack が同じ event を独立に解釈できる性質）
  * が壊れるため。
  *
- * では、utility handler が `system.exec` の結果から「deploy が失敗した」と
+ * では、amenity handler が `system.exec` の結果から「deploy が失敗した」と
  * 気付いたとき、どうやって persona を悲しませるのか？
  * → handler は直接「悲しませる」のではなく、**観察した事実を announce** する。
  * `ctx.emitEvent('deploy-failed', { exitCode, stderr })` を呼ぶと、runtime は
@@ -285,13 +285,13 @@ export interface Trigger {
 
 /**
  * Trigger match の結果。reaction type と、optional な payload を含む。
- * payload は utility → persona の情報伝達チャネル。
+ * payload は amenity → persona の情報伝達チャネル。
  */
 export interface TriggerMatch {
   readonly reaction: ReactionType;
   /**
    * 任意の付加情報。persona handler は ctx.event.payload で受け取れる。
-   * 型は utility が自由に定義できるので `unknown`。
+   * 型は amenity が自由に定義できるので `unknown`。
    * 使う側は自分で cast する必要がある（付随課題: 型安全性は TBD）。
    */
   readonly payload?: unknown;

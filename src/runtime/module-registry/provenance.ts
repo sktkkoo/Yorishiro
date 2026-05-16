@@ -5,7 +5,7 @@
  * - persona : persona pack 由来（packId で識別）
  * - system : システム由来（packId で識別）
  *
- * 用途は (1) revelation 3.14（utility motion-free）等の不変量を型で強制する材料、
+ * 用途は (1) revelation 3.14（amenity motion-free）等の不変量を型で強制する材料、
  * (2) UGC UI で「誰の実装か」を区別表示する根拠、(3) debug log の origin tag。
  */
 export type Provenance =

@@ -51,7 +51,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 - `terminalAgent` の切り替えは次の Terminal session 起動時に反映する。既存 PTY session へ注入し直さない。
 - Codex support の範囲は「自動起動 + persona prompt overlay + Charminal MCP + PTY observation」。`/charm` 相当の Codex slash command integration は別決定にする。
 - Codex の Charminal MCP は `~/.codex/config.toml` を変更せず、起動時の `-c mcp_servers.charminal.url="http://127.0.0.1:<mcpPort>/mcp"` で注入する。
-- PTY observation-only 制約は変わらない。agent が Claude でも Codex でも、persona / utility から PTY に書き込む API は追加しない。
+- PTY observation-only 制約は変わらない。agent が Claude でも Codex でも、persona / amenity から PTY に書き込む API は追加しない。
 
 ## 関連 reference
 
