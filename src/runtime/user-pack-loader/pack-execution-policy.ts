@@ -57,10 +57,6 @@ export function validatePackExecutionPolicy(entry: UserPackEntry): string | null
     return `unsupported executionClass "${executionClass}"`;
   }
 
-  if (entry.kind === "utility") {
-    return "utility pack distribution is disabled until isolated-js runtime is implemented";
-  }
-
   if (executionClass === "declarative") {
     if (isJsLikeEntry(manifest.entry)) {
       return `declarative pack entry "${manifest.entry}" must not be JavaScript`;

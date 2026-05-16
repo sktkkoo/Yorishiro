@@ -362,7 +362,6 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("reaction.d.ts", include_str!("../../src/sdk/reaction.d.ts")),
     ("context.d.ts", include_str!("../../src/sdk/context.d.ts")),
     ("persona.d.ts", include_str!("../../src/sdk/persona.d.ts")),
-    ("utility.d.ts", include_str!("../../src/sdk/utility.d.ts")),
     ("amenity.d.ts", include_str!("../../src/sdk/amenity.d.ts")),
     ("effect.d.ts", include_str!("../../src/sdk/effect.d.ts")),
     ("scene.d.ts", include_str!("../../src/sdk/scene.d.ts")),

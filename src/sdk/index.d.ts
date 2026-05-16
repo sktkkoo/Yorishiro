@@ -6,7 +6,6 @@
  * 使い方：
  * ```typescript
  * import type { PersonaDefinition } from '@charminal/sdk';
- * import type { UtilityDefinition } from '@charminal/sdk';
  * import type { EffectDefinition, EffectContext } from '@charminal/sdk';
  * ```
  *
@@ -16,7 +15,6 @@
 export * from "./reaction";
 export * from "./context";
 export * from "./persona";
-export * from "./utility";
 export * from "./effect";
 export type {
   AmenityHandle,

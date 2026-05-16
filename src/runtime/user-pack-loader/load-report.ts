@@ -14,7 +14,7 @@
 
 import type { FailedPackInfo, LoadedPackInfo, LoadUserPacksResult } from "./user-pack-loader";
 
-export type PackKind = "persona" | "effect" | "utility";
+export type PackKind = "persona" | "effect";
 
 export interface LoadResultEntry {
   readonly id: string;
