@@ -5,6 +5,8 @@
 **Status**: active
 **Last updated**: 2026-05-16
 
+**Implementation note**: `pack` の public registry / community 公開配布機能と `/charm:prepare-publish` はまだ準備中であり、現行 release で利用できる機能ではない。この文書の publish flow / registry review / machine checker は、公開配布を解禁する前に満たすべき設計要件として扱う。
+
 ## TL;DR
 
 Pack `type` は product semantics であり、security boundary ではない。公開配布では `persona` / `scene` / `effect` / `utility` / `ui` とは別に、`executionClass` を manifest に持たせる。
@@ -223,6 +225,8 @@ Utility pack は将来的にユーザー配布可能にする。ただし utilit
 
 したがって `/charm:create` で作った pack を公開したい場合は、そのまま registry に載せず、別 flow で publish 用 artifact へ変換する。仮称は `/charm:prepare-publish` とする。
 
+ただし `/charm:prepare-publish` と pack 公開 UI / registry submission はまだ未提供である。現時点では local authoring pack を公開可能形式へ自動変換・提出できないため、ここで定義する責務は公開配布機能を実装する際の acceptance criteria とする。
+
 `prepare-publish` の責務：
 
 1. local pack の manifest / entry / assets を読む
@@ -317,6 +321,8 @@ MVP ではこの限界を明示し、少なくとも以下を守る：
 
 ## MVP 推奨
 
+以下は未提供の公開配布機能を解禁する前の実装順序である。
+
 1. `declarative` を先に実装する
 2. `/charm:prepare-publish` で local trusted pack を publish 用 `declarative` artifact に変換できるようにする
 3. `scripts/check-pack` 相当の machine checker を CLI / `/charm:prepare-publish` / registry CI で共有する
@@ -375,7 +381,7 @@ PTY 系 tool（`terminal_prefill` / `write_terminal_input` 等）は当面 **全
 
 ## 改訂履歴
 
-- 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデル、`/charm:create` と publish 用変換 flow、machine checker の関係を追記。
+- 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデル、`/charm:create` と publish 用変換 flow、machine checker の関係、公開配布機能が未提供であることを追記。
 - 2026-05-03: R3F scene pack class を追加。初期 scope は bundled-only、execution class は `trusted-main-thread-js`。
 - 2026-04-24: 初版。実行速度・自由度・セキュリティの三軸で execution class を定義し、Utility pack 公開配布を `isolated-js` 完成後の future scope として位置づけ。
 - 2026-04-27: self-referential MCP 計画との整合を追記。PTY write 条項を MCP tool に拡張、`mcp-trust-tiers.md` を新規 decision として参照。Review rule に terminal_prefill 系 tool 要求を reject 条件として追加。
