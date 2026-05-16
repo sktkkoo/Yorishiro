@@ -1020,6 +1020,8 @@ function App() {
           "terminal.context.get": createTerminalContextGetHandler({
             getLatestRegionContext: () =>
               getTerminalRuntime(tabManager.getState().activeSessionId).getLatestRegionContext(),
+            getTerminalReferences: () =>
+              getTerminalRuntime(tabManager.getState().activeSessionId).getTerminalReferences(),
           }),
           "controls.get": createControlsGetHandler({
             getSceneStore: () => getActiveSceneLevaStore(),

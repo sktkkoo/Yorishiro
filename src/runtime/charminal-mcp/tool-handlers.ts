@@ -17,7 +17,7 @@ import type {
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import type { TweenManager } from "../../core/tween/tween-manager";
-import type { TerminalRegionContext } from "../terminal-runtime/types";
+import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
 import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
@@ -240,15 +240,20 @@ export function createSetPackStateHandler(deps: SetPackStateDeps) {
 
 export interface TerminalContextGetDeps {
   readonly getLatestRegionContext: () => TerminalRegionContext | null;
+  readonly getTerminalReferences: () => ReadonlyArray<TerminalReference>;
 }
 
 export interface TerminalContextGetResponse {
   readonly context: TerminalRegionContext | null;
+  readonly references: ReadonlyArray<TerminalReference>;
 }
 
 export function createTerminalContextGetHandler(deps: TerminalContextGetDeps) {
   return async (_request: unknown): Promise<TerminalContextGetResponse> => {
-    return { context: deps.getLatestRegionContext() };
+    return {
+      context: deps.getLatestRegionContext(),
+      references: deps.getTerminalReferences(),
+    };
   };
 }
 

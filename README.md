@@ -103,6 +103,10 @@ The inhabitant can write daily entries in `~/.charminal/journal/daily/`. Summari
 
 Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current tab. The main agent session is protected and cannot be closed — if it exits unexpectedly, Charminal automatically restarts it.
 
+### Context sharing
+
+A few small features help bridge the gap between what you see on screen and what the AI knows. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say` or Windows `System.Speech.Synthesis.SpeechSynthesizer`; support for additional speech engines is planned.
+
 ### Self-referential MCP
 
 The inhabitant (Claude Code running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI.
@@ -132,6 +136,7 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / utility / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
+- Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
 - Journal: long-term memory across sessions [in development]
 - `/charm` for interactive pack creation and editing
 - Windows build support (prepared, not yet verified)

@@ -19,6 +19,7 @@ import type {
   PtyParams,
   TerminalCursorClientPosition,
   TerminalLineRect,
+  TerminalReference,
   TerminalRegionContext,
   TerminalRuntime,
   UpdatePtyOptions,
@@ -95,6 +96,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   } | null = null;
   private clearRegionCanvasTimeout: number | null = null;
   private latestRegionContext: TerminalRegionContext | null = null;
+  private terminalReferenceCounter = 0;
+  private readonly terminalReferences = new Map<string, TerminalReference>();
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -161,6 +164,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
       this.detectClearCommand(data);
+      if (data.includes("\r") || data.includes("\n")) {
+        this.terminalReferences.clear();
+        this.terminalReferenceCounter = 0;
+      }
       writeQueue = writeQueue.then(async () => {
         try {
           await sessionWrite({ sessionId: this.sessionId, data });
@@ -496,6 +503,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  getTerminalReferences(): ReadonlyArray<TerminalReference> {
+    return Array.from(this.terminalReferences.values());
+  }
+
+  clearTerminalReferences(): void {
+    this.terminalReferences.clear();
+    this.terminalReferenceCounter = 0;
+  }
+
   subscribePtyData(listener: () => void): Disposable {
     this.ptyDataListeners.add(listener);
     return {
@@ -605,7 +621,93 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return { canvas, context };
   }
 
+  private handleMetaClick(event: MouseEvent): void {
+    if (this.disposed) return;
+    if (!event.metaKey || event.altKey || event.shiftKey || event.button !== 0) return;
+
+    const buffer = this.term.buffer.active;
+    if (!buffer) return;
+
+    const containerRect = this.xtermContainer.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) return;
+
+    const cellWidth = containerRect.width / this.term.cols;
+    const cellHeight = containerRect.height / this.term.rows;
+    const row = Math.floor((event.clientY - containerRect.top) / cellHeight);
+    if (row < 0 || row >= this.term.rows) return;
+
+    const line = buffer.getLine(buffer.viewportY + row);
+    if (!line) return;
+
+    let startCol = -1;
+    let endCol = -1;
+    for (let col = 0; col < this.term.cols; col++) {
+      const cell = line.getCell(col);
+      const ch = cell?.getChars() ?? "";
+      if (ch !== "" && ch !== " ") {
+        if (startCol === -1) startCol = col;
+        endCol = col;
+      }
+    }
+    if (startCol === -1 || endCol === -1) return;
+
+    const text = line.translateToString(true).trim();
+    if (text === "") return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const lineRect = {
+      x: containerRect.left + startCol * cellWidth,
+      y: containerRect.top + row * cellHeight,
+      width: (endCol - startCol + 1) * cellWidth,
+      height: cellHeight,
+    };
+
+    const polygon: ReadonlyArray<RegionPoint> = [
+      { x: startCol * cellWidth, y: row * cellHeight },
+      { x: (endCol + 1) * cellWidth, y: row * cellHeight },
+      { x: (endCol + 1) * cellWidth, y: (row + 1) * cellHeight },
+      { x: startCol * cellWidth, y: (row + 1) * cellHeight },
+    ];
+
+    const context: TerminalRegionContext = {
+      kind: "terminal-region-context",
+      sessionId: this.sessionId,
+      text,
+      capturedAt: Date.now(),
+      gesture: "meta-click",
+      viewport: {
+        viewportY: buffer.viewportY,
+        rows: this.term.rows,
+        cols: this.term.cols,
+      },
+      range: {
+        startRow: row,
+        endRow: row,
+        startCol,
+        endCol,
+      },
+      rect: lineRect,
+      polygon: polygon.map((p) => ({ ...p })),
+    };
+
+    this.latestRegionContext = context;
+    this.addTerminalReference(context);
+
+    this.drawRegionHighlight(polygon);
+    this.scheduleRegionCanvasClear();
+
+    for (const listener of Array.from(this.regionContextListeners)) {
+      listener(context);
+    }
+  }
+
   private installRegionSelectionHandlers(): void {
+    this.xtermContainer.addEventListener("click", (event) => this.handleMetaClick(event), {
+      capture: true,
+    });
+
     this.xtermContainer.addEventListener(
       "pointerdown",
       (event) => {
@@ -681,6 +783,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  private addTerminalReference(context: TerminalRegionContext): string {
+    this.terminalReferenceCounter++;
+    const id = `Term${this.terminalReferenceCounter}`;
+    this.terminalReferences.set(id, { id, context });
+    const marker = `[#${id}] `;
+    void sessionWrite({ sessionId: this.sessionId, data: marker }).catch(() => {});
+    return id;
+  }
+
   private finishRegionDrag(): void {
     const drag = this.regionDrag;
     this.regionDrag = null;
@@ -703,6 +814,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       return;
     }
     this.latestRegionContext = context;
+    this.addTerminalReference(context);
     for (const listener of Array.from(this.regionContextListeners)) {
       listener(context);
     }
@@ -795,6 +907,25 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       ctx.fill();
     }
     ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Command+click 用: 囲み線なしの fill のみハイライト。 */
+  private drawRegionHighlight(polygon: ReadonlyArray<RegionPoint>): void {
+    if (!this.regionCtx) return;
+    this.clearRegionCanvasNow();
+    if (polygon.length === 0) return;
+
+    const ctx = this.regionCtx;
+    ctx.save();
+    ctx.fillStyle = "rgba(77, 217, 207, 0.22)";
+    ctx.beginPath();
+    ctx.moveTo(polygon[0].x, polygon[0].y);
+    for (const point of polygon.slice(1)) {
+      ctx.lineTo(point.x, point.y);
+    }
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
   }
 
