@@ -2,7 +2,13 @@
 
 import { lstat, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { checkPackFiles } from "./lib/pack-checker.mjs";
+import {
+  checkPackFiles,
+  createPackBinaryFile,
+  createPackSymlinkFile,
+  createPackTextFile,
+  shouldReadPackTextFile,
+} from "./lib/pack-checker.mjs";
 
 const args = process.argv.slice(2);
 const { mode, packDir } = parseArgs(args);
@@ -11,9 +17,14 @@ if (packDir === null) {
   printUsage();
   process.exitCode = 2;
 } else {
-  const result = await run(packDir, mode);
-  printResult(packDir, result);
-  process.exitCode = result.ok ? 0 : 1;
+  try {
+    const result = await run(packDir, mode);
+    printResult(packDir, result);
+    process.exitCode = result.ok ? 0 : 1;
+  } catch (error) {
+    console.error(`ERROR check-pack: ${message(error)}`);
+    process.exitCode = 2;
+  }
 }
 
 async function run(packDir, mode) {
@@ -65,7 +76,7 @@ async function walk(rootDir, relativeDir, files) {
     const stat = await lstat(absolutePath);
 
     if (stat.isSymbolicLink()) {
-      files.set(relativePath, "__CHARMINAL_CHECK_PACK_SYMLINK__");
+      files.set(relativePath, createPackSymlinkFile(stat.size));
       continue;
     }
     if (entry.isDirectory()) {
@@ -73,7 +84,14 @@ async function walk(rootDir, relativeDir, files) {
       continue;
     }
     if (entry.isFile()) {
-      files.set(relativePath, await readFile(absolutePath, "utf8"));
+      if (shouldReadPackTextFile(relativePath, stat.size)) {
+        files.set(
+          relativePath,
+          createPackTextFile(await readFile(absolutePath, "utf8"), stat.size),
+        );
+      } else {
+        files.set(relativePath, createPackBinaryFile(stat.size));
+      }
     }
   }
 }
@@ -99,4 +117,8 @@ function printUsage() {
 
 function normalizePath(filePath) {
   return filePath.split(path.sep).join("/");
+}
+
+function message(error) {
+  return error instanceof Error ? error.message : String(error);
 }

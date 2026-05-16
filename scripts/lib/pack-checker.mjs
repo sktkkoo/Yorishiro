@@ -9,6 +9,8 @@ const SUPPORTED_PACK_TYPES = new Set([
 ]);
 const EXECUTION_CLASSES = new Set(["declarative", "isolated-js", "trusted-main-thread-js"]);
 const JS_LIKE_EXTENSIONS = [".js", ".mjs", ".ts", ".tsx"];
+const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".mjs", ".ts", ".tsx"]);
+const STYLE_EXTENSIONS = new Set([".css", ".html"]);
 const TEXT_EXTENSIONS = new Set([
   ".css",
   ".html",
@@ -21,6 +23,8 @@ const TEXT_EXTENSIONS = new Set([
   ".tsx",
   ".txt",
 ]);
+export const MAX_PACK_FILE_BYTES = 100 * 1024 * 1024;
+export const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 const FORBIDDEN_SOURCE_PATTERNS = [
   ["forbidden-fetch", /\bfetch\s*\(/],
   ["forbidden-xhr", /\bXMLHttpRequest\b/],
@@ -38,16 +42,53 @@ const FORBIDDEN_SOURCE_PATTERNS = [
   ["forbidden-system-exec", /\bsystem\.exec\b/],
   ["forbidden-pty-write", /\b(?:ptyWrite|write_terminal_input|terminal_prefill)\b/],
 ];
-const UNSAFE_URL_PATTERN = /\b(?:https?|data|file|blob):/i;
+const UNSAFE_URL_PATTERN = /\b(?:https?|javascript|data|file|blob):/i;
 const CSS_URL_PATTERN = /url\s*\(/i;
 const PROTOTYPE_POLLUTION_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
+export function createPackTextFile(text, size = text.length) {
+  return { kind: "text", text, size };
+}
+
+export function createPackBinaryFile(size) {
+  return { kind: "binary", size };
+}
+
+export function createPackSymlinkFile(size = 0) {
+  return { kind: "symlink", size };
+}
+
+export function shouldReadPackTextFile(path, size) {
+  return isTextPath(path) && size <= MAX_TEXT_FILE_BYTES;
+}
+
 export function checkPackFiles({ files, packDirName, mode = "local-authoring" }) {
   const diagnostics = [];
-  const manifestText = files.get("manifest.json");
+  const manifestFile = fileRecord(files.get("manifest.json"));
 
-  if (manifestText === undefined) {
+  if (manifestFile === undefined) {
     add(diagnostics, "error", "missing-manifest", "manifest.json is required");
+    return result(mode, diagnostics);
+  }
+
+  scanFileMetadata(files, diagnostics);
+  if (mode === "publish-candidate") {
+    add(
+      diagnostics,
+      "warning",
+      "publish-candidate-preview",
+      "publish-candidate mode is a preview; official registry submission is not implemented and JS/TS scanning is heuristic",
+    );
+  }
+
+  const manifestText = textFromFile(manifestFile);
+  if (manifestText === null) {
+    add(
+      diagnostics,
+      "error",
+      "manifest-not-readable",
+      "manifest.json must be a readable UTF-8 text file within the text size limit",
+    );
     return result(mode, diagnostics);
   }
 
@@ -170,28 +211,124 @@ function validateEntry({ entry, executionClass, files, mode, diagnostics }) {
 }
 
 function scanTextFiles(files, diagnostics) {
-  for (const [path, text] of files) {
-    if (text === "__CHARMINAL_CHECK_PACK_SYMLINK__") {
+  for (const [path, rawFile] of files) {
+    const file = fileRecord(rawFile);
+    if (file === undefined || file.kind !== "text") continue;
+    if (path === "manifest.json") continue;
+    if (isSourcePath(path)) {
+      scanSourceFile(path, file.text, diagnostics);
+      continue;
+    }
+    if (isStylePath(path)) {
+      scanStyleFile(path, file.text, diagnostics);
+      continue;
+    }
+    if (isJsonPath(path)) {
+      scanJsonFile(path, file.text, diagnostics);
+    }
+  }
+}
+
+function scanFileMetadata(files, diagnostics) {
+  for (const [path, rawFile] of files) {
+    const file = fileRecord(rawFile);
+    if (file === undefined) continue;
+    if (file.kind === "symlink") {
       add(diagnostics, "error", "symlink-entry", `${path} is a symlink`);
       continue;
     }
-    if (path === "manifest.json") continue;
-    if (!isTextPath(path)) continue;
-    if (UNSAFE_URL_PATTERN.test(text)) {
-      add(diagnostics, "error", "unsafe-url", `${path} contains http/data/file/blob URL usage`);
+    if (file.size > MAX_PACK_FILE_BYTES) {
+      add(
+        diagnostics,
+        "error",
+        "file-too-large",
+        `${path} exceeds the ${formatBytes(MAX_PACK_FILE_BYTES)} file size limit`,
+      );
     }
-    if (CSS_URL_PATTERN.test(text)) {
-      add(diagnostics, "error", "css-url", `${path} contains CSS url(...) usage`);
-    }
-    if (text.includes("../") || text.includes("..\\")) {
-      add(diagnostics, "error", "path-traversal", `${path} contains parent-directory traversal`);
-    }
-    for (const [code, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
-      if (pattern.test(text)) {
-        add(diagnostics, "error", code, `${path} contains ${code.replace("forbidden-", "")}`);
-      }
+    if (isTextPath(path) && file.kind !== "text" && file.size > MAX_TEXT_FILE_BYTES) {
+      add(
+        diagnostics,
+        "error",
+        "text-file-too-large",
+        `${path} exceeds the ${formatBytes(MAX_TEXT_FILE_BYTES)} text scan limit`,
+      );
     }
   }
+}
+
+function scanSourceFile(path, text, diagnostics) {
+  if (UNSAFE_URL_PATTERN.test(text)) {
+    add(diagnostics, "error", "unsafe-url", `${path} contains http/data/file/blob URL usage`);
+  }
+  if (CSS_URL_PATTERN.test(text)) {
+    add(diagnostics, "error", "css-url", `${path} contains CSS url(...) usage`);
+  }
+  if (text.includes("../") || text.includes("..\\")) {
+    add(diagnostics, "error", "path-traversal", `${path} contains parent-directory traversal`);
+  }
+  for (const [code, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
+    if (pattern.test(text)) {
+      add(diagnostics, "error", code, `${path} contains ${code.replace("forbidden-", "")}`);
+    }
+  }
+}
+
+function scanStyleFile(path, text, diagnostics) {
+  if (UNSAFE_URL_PATTERN.test(text)) {
+    add(diagnostics, "error", "unsafe-url", `${path} contains http/data/file/blob URL usage`);
+  }
+  if (CSS_URL_PATTERN.test(text)) {
+    add(diagnostics, "error", "css-url", `${path} contains CSS url(...) usage`);
+  }
+  if (text.includes("../") || text.includes("..\\")) {
+    add(diagnostics, "error", "path-traversal", `${path} contains parent-directory traversal`);
+  }
+}
+
+function scanJsonFile(path, text, diagnostics) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    add(diagnostics, "warning", "invalid-json-sidecar", `${path} is not valid JSON`);
+    return;
+  }
+  scanPrototypePollutionKeys(parsed, path, diagnostics);
+}
+
+function fileRecord(rawFile) {
+  if (rawFile === undefined) return undefined;
+  if (rawFile === "__CHARMINAL_CHECK_PACK_SYMLINK__") {
+    return createPackSymlinkFile();
+  }
+  if (typeof rawFile === "string") {
+    return createPackTextFile(rawFile);
+  }
+  if (!isPlainObject(rawFile) || typeof rawFile.kind !== "string") {
+    return undefined;
+  }
+  if (rawFile.kind === "text" && typeof rawFile.text === "string") {
+    return createPackTextFile(rawFile.text, numberOrZero(rawFile.size));
+  }
+  if (rawFile.kind === "binary") {
+    return createPackBinaryFile(numberOrZero(rawFile.size));
+  }
+  if (rawFile.kind === "symlink") {
+    return createPackSymlinkFile(numberOrZero(rawFile.size));
+  }
+  return undefined;
+}
+
+function textFromFile(file) {
+  return file.kind === "text" ? file.text : null;
+}
+
+function numberOrZero(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function formatBytes(bytes) {
+  return `${Math.round(bytes / 1024 / 1024)} MiB`;
 }
 
 function scanPrototypePollutionKeys(value, path, diagnostics) {
@@ -240,6 +377,22 @@ function isTextPath(path) {
   const dot = path.lastIndexOf(".");
   if (dot === -1) return false;
   return TEXT_EXTENSIONS.has(path.slice(dot).toLowerCase());
+}
+
+function isSourcePath(path) {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1) return false;
+  return SOURCE_EXTENSIONS.has(path.slice(dot).toLowerCase());
+}
+
+function isStylePath(path) {
+  const dot = path.lastIndexOf(".");
+  if (dot === -1) return false;
+  return STYLE_EXTENSIONS.has(path.slice(dot).toLowerCase());
+}
+
+function isJsonPath(path) {
+  return path.toLowerCase().endsWith(".json");
 }
 
 function isPlainObject(value) {

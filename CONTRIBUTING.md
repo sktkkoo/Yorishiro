@@ -129,4 +129,4 @@ npm run check:pack -- ~/.charminal/packs/<pack-id>
 npm run check:pack -- --mode publish-candidate ~/.charminal/packs/<pack-id>
 ```
 
-`local-authoring` mode は `/charm:create` 生成物向け、`publish-candidate` mode は将来の registry review 前チェック向け。後者は現時点では設計準備用で、実際の公開提出機能はまだ無い。
+`local-authoring` mode は `/charm:create` 生成物向け。`publish-candidate` mode は将来の registry review 前チェックの preview であり、現時点では正式な公開 gate ではない。公開提出機能はまだ無く、JS / TS scan も AST 実装前の heuristic に留まる。
