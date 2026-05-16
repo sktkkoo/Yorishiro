@@ -620,7 +620,7 @@ async (ctx) => {
 
 **正しい**：`ctx.emitEvent('deploy-failed', { exitCode: result.exitCode })` で synthetic event を announce し、その synthetic event を match する custom trigger で `'distressed'` を emit する（Twin-trigger idiom を synthetic event にも適用する）。
 
-理由：reaction の発生は必ず trigger match を経由することで、pack の振る舞いが trigger 定義を読むだけで分かる。handler の中に reaction 発火を隠さない。これは upper 層の Synthetic event pattern subsection で詳しく説明している。
+理由：reaction の発生は必ず trigger match を経由することで、pack の振る舞いが trigger 定義を読むだけで分かる。handler の中に reaction 発火を隠さない。
 
 ---
 
