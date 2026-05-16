@@ -164,10 +164,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
       this.detectClearCommand(data);
-      if (data.includes("\r") || data.includes("\n")) {
-        this.terminalReferences.clear();
-        this.terminalReferenceCounter = 0;
-      }
       writeQueue = writeQueue.then(async () => {
         try {
           await sessionWrite({ sessionId: this.sessionId, data });
