@@ -293,7 +293,16 @@ async fn poll_hook_signals() -> Vec<String> {
 // Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
 // Internal design-record: 2026-04-18-user-layer-runtime.md
 
-const PACK_KINDS: &[&str] = &["effect", "persona", "voice", "body", "scene", "ui"];
+const PACK_KINDS: &[&str] = &[
+    "effect",
+    "persona",
+    "voice",
+    "body",
+    "scene",
+    "ui",
+    "ambient-ui",
+    "amenity",
+];
 
 fn charminal_home_path() -> Result<std::path::PathBuf, String> {
     Ok(home_dir_or_err()?.join(".charminal"))
@@ -322,6 +331,19 @@ struct UserPackEntry {
     kind: String,
     #[serde(rename = "entryPath")]
     entry_path: String,
+    source: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    manifest: Option<UserPackManifestSummary>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+struct UserPackManifestSummary {
+    id: String,
+    #[serde(rename = "type")]
+    kind: String,
+    entry: String,
+    #[serde(rename = "executionClass", skip_serializing_if = "Option::is_none")]
+    execution_class: Option<String>,
 }
 
 /// Absolute path to ~/.charminal/. Does not create it.
@@ -453,6 +475,12 @@ fn entry_file_for_kind(pack_dir: &Path, kind: &str) -> Option<PathBuf> {
     None
 }
 
+fn read_user_pack_manifest_summary(pack_dir: &Path) -> Option<UserPackManifestSummary> {
+    let path = pack_dir.join("manifest.json");
+    let text = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str::<UserPackManifestSummary>(&text).ok()
+}
+
 fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, String> {
     if !packs_dir.exists() {
         return Ok(Vec::new());
@@ -469,12 +497,20 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
         if id.starts_with('.') {
             continue;
         }
+        let manifest = read_user_pack_manifest_summary(&pack_dir);
         for kind in PACK_KINDS {
             if let Some(entry_file) = entry_file_for_kind(&pack_dir, kind) {
                 entries.push(UserPackEntry {
                     id: id.clone(),
                     kind: (*kind).to_string(),
                     entry_path: entry_file.to_string_lossy().to_string(),
+                    source: "local",
+                    manifest: manifest.as_ref().map(|m| UserPackManifestSummary {
+                        id: m.id.clone(),
+                        kind: m.kind.clone(),
+                        entry: m.entry.clone(),
+                        execution_class: m.execution_class.clone(),
+                    }),
                 });
             }
         }
