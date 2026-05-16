@@ -119,3 +119,14 @@ worktree を切らず main で直接作業していいケース:
 ## Pack Development
 
 Pack の書き方は [`src/sdk/README.md`](src/sdk/README.md) を参照。bundled pack（[`bundled-packs/`](bundled-packs/)）がリファレンス実装として参照可能。
+
+ユーザー作成 pack は local trusted code として扱う。公開 registry / in-app community install / `/charm:prepare-publish` は未提供なので、`/charm:create` 生成物を sandbox 済み・review 済み・公開配布可能 artifact と説明しない。
+
+source checkout で user pack を検査する場合：
+
+```bash
+npm run check:pack -- ~/.charminal/packs/<pack-id>
+npm run check:pack -- --mode publish-candidate ~/.charminal/packs/<pack-id>
+```
+
+`local-authoring` mode は `/charm:create` 生成物向け。`publish-candidate` mode は将来の registry review 前チェックの preview であり、現時点では正式な公開 gate ではない。公開提出機能はまだ無く、JS / TS scan も AST 実装前の heuristic に留まる。

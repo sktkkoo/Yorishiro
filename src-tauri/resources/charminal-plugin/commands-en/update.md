@@ -19,6 +19,15 @@ This is the editing flow for existing packs. Use it when the user says they want
 2. User packs live in `~/.charminal/packs/<id>/` with flat layout: `manifest.json` + `<kind>.js` + optional extra files
 3. **Do not edit bundled packs in place**. Bundled packs are part of the app and can be overwritten by Charminal updates. If the user wants to change one, guide them to fork it into a user pack
 
+## Security Boundary
+
+- If `manifest.json` has `executionClass: "isolated-js"`, do not enable it by editing. The runtime is not implemented yet, so public utility / isolated packs stay out of scope.
+- Treat user packs with `.js` / `.tsx` entries as local trusted `trusted-main-thread-js`. Do not describe them as sandboxed, reviewed, or Charminal public-distribution packs.
+- Sharing source code on GitHub or elsewhere is allowed, but manual installation means the user is choosing to run local trusted code.
+- Do not put `executionClass: "declarative"` on `.js` / `.tsx` entries. Declarative means data-only with no JS evaluation.
+- Do not add `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes inside packs.
+- Scene assets must stay pack-relative. Do not add `https:`, `data:`, `file:`, absolute paths, `../`, or CSS `url(...)`.
+
 ## Persona Editing: Backup Then Edit
 
 Persona editing is high impact. Do not destructively overwrite personality text without a snapshot. Always back up to `backup/` with a timestamp before editing.
@@ -64,6 +73,7 @@ For non-persona packs:
 2. Edit according to the user's request
 3. Let hot reload apply it
 4. Use `list_packs()` to confirm the status
+5. If the current workspace is a Charminal source checkout, run `npm run check:pack -- ~/.charminal/packs/<id>` and fix checker errors
 
 Scene colors, layer structure, effect parameters, UI layout, and ambient overlay tuning can usually be handled in this flow.
 
@@ -107,7 +117,7 @@ Bundled packs are read-only for user customization. If the user wants to modify 
    - ui: `bundled-packs/ui/<id>/`
    - ambient-ui: `bundled-packs/ambient-ui/<id>/`
 2. Create `~/.charminal/packs/<new-id>/` with `manifest.json` and the entry file
-3. Change `manifest.json` id to `<new-id>` so it does not collide with the bundled pack
+3. Change `manifest.json` id to `<new-id>` and add `"executionClass": "trusted-main-thread-js"` for `.js` / `.tsx` entries, so it does not collide with the bundled pack and remains clearly local trusted code
 4. Change the entry file's exported `id` to `<new-id>`
 5. If needed, update `~/.charminal/config.json`:
    - scene: `"activeScene": "<new-id>"`

@@ -3,11 +3,12 @@
  *
  * pack 作者は bundled / user どちらでも同じ書き方：
  *   - `src: "./assets/foo.mp4"` (pack-relative)
- *   - `src: "https://cdn.example.com/foo.mp4"` (絶対 URL)
+ *   - bundled pack のみ `src: "https://cdn.example.com/foo.mp4"` (絶対 URL)
  *
  * Loader がここで pack 出自に応じて変換：
  *   - bundled: Vite の import.meta.glob で build 時に asset URL を取得
- *   - user: Tauri の convertFileSrc で asset:// URL に
+ *   - user: Tauri の convertFileSrc で asset:// URL に。公開配布前提では
+ *           remote URL / data URL / file URL / absolute path / traversal を拒否する。
  *
  * Internal design-record: specs/2026-04-18-scene-pack-registry.md §5
  */
@@ -39,7 +40,7 @@ export function isAbsoluteUrl(src: string): boolean {
  * 相対 path の leading `./` を剥がして返す。
  */
 export function normalizeRelativePath(src: string): string {
-  return src.replace(/^\.\//, "");
+  return src.replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
 /**
@@ -71,6 +72,9 @@ export function resolveBundledAsset(packId: string, relativePath: string): strin
 export async function resolveUserAsset(packDir: string, relativePath: string): Promise<string> {
   const { convertFileSrc } = await import("@tauri-apps/api/core");
   const clean = normalizeRelativePath(relativePath);
+  if (!isSafeUserPackRelativePath(clean)) {
+    throw new Error(`unsafe user pack asset path: ${relativePath}`);
+  }
   const absolutePath = `${packDir}/${clean}`;
   return convertFileSrc(absolutePath);
 }
@@ -95,6 +99,24 @@ export interface LayerResolvers {
   readonly resolveUser: (packDir: string, relativePath: string) => Promise<string>;
 }
 
+export function isSafeUserPackRelativePath(src: string): boolean {
+  if (src === "") return false;
+  if (src.startsWith("/") || src.startsWith("~")) return false;
+  if (isAbsoluteUrl(src)) return false;
+  const clean = normalizeRelativePath(src);
+  if (clean === "" || clean === "." || clean === "..") return false;
+  return !clean.startsWith("../") && !clean.includes("/../");
+}
+
+function stripUnsafeUserLayerFields(layer: Layer, options: ResolveOptions): Layer {
+  if (options.origin !== "user") return layer;
+  if (layer.backgroundImage === undefined || !/url\s*\(/i.test(layer.backgroundImage)) {
+    return layer;
+  }
+  options.onMissing?.(layer.id, layer.backgroundImage);
+  return { ...layer, backgroundImage: undefined };
+}
+
 /**
  * 1 つの layer の src を絶対 URL に解決する純粋 walker。
  * resolver は外から注入するためテスト可能。
@@ -105,35 +127,40 @@ export async function resolveLayerAssetWith(
   options: ResolveOptions,
   resolvers: LayerResolvers,
 ): Promise<Layer> {
-  if (layer.src === undefined) return layer;
-  if (isAbsoluteUrl(layer.src)) return layer;
+  const sanitized = stripUnsafeUserLayerFields(layer, options);
+  if (sanitized.src === undefined) return sanitized;
+  if (options.origin === "user" && !isSafeUserPackRelativePath(sanitized.src)) {
+    options.onMissing?.(sanitized.id, sanitized.src);
+    return { ...sanitized, src: undefined };
+  }
+  if (isAbsoluteUrl(sanitized.src)) return sanitized;
 
-  if (layer.src.startsWith("/")) {
-    // Vite public/ 扱い — bundled でも user でも通す
-    return layer;
+  if (sanitized.src.startsWith("/")) {
+    // Vite public/ 扱い。user origin は上の guard で拒否済み。
+    return sanitized;
   }
 
   try {
     let resolved: string | null = null;
     if (options.origin === "bundled") {
-      resolved = resolvers.resolveBundled(options.packId, layer.src);
+      resolved = resolvers.resolveBundled(options.packId, sanitized.src);
     } else {
       if (options.packDir === undefined) {
-        options.onMissing?.(layer.id, layer.src);
-        return { ...layer, src: undefined };
+        options.onMissing?.(sanitized.id, sanitized.src);
+        return { ...sanitized, src: undefined };
       }
-      resolved = await resolvers.resolveUser(options.packDir, layer.src);
+      resolved = await resolvers.resolveUser(options.packDir, sanitized.src);
     }
 
     if (resolved === null) {
-      options.onMissing?.(layer.id, layer.src);
-      return { ...layer, src: undefined };
+      options.onMissing?.(sanitized.id, sanitized.src);
+      return { ...sanitized, src: undefined };
     }
-    return { ...layer, src: resolved };
+    return { ...sanitized, src: resolved };
   } catch {
     // convertFileSrc 等が unexpected throw したらここで吸収
-    options.onMissing?.(layer.id, layer.src);
-    return { ...layer, src: undefined };
+    options.onMissing?.(sanitized.id, sanitized.src);
+    return { ...sanitized, src: undefined };
   }
 }
 
@@ -190,6 +217,11 @@ async function resolveAmbientSound(
       return null;
     }
     return { ...ambient, src: resolved };
+  }
+
+  if (options.origin === "user" && !isSafeUserPackRelativePath(ambient.src)) {
+    options.onMissing?.("ambient", ambient.src);
+    return null;
   }
 
   if (isAbsoluteUrl(ambient.src)) return ambient;

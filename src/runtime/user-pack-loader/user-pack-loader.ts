@@ -32,6 +32,7 @@ import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import { buildLoadReport, type LoadReport } from "./load-report";
+import { validatePackExecutionPolicy } from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
@@ -43,6 +44,13 @@ export interface UserPackEntry {
   readonly id: string;
   readonly kind: string;
   readonly entryPath: string;
+  readonly source?: "local" | "community" | "curated" | "bundled";
+  readonly manifest?: {
+    readonly id: string;
+    readonly type: string;
+    readonly entry: string;
+    readonly executionClass?: string;
+  };
 }
 
 /** EffectPackRunner が満たす最小構造。loader は dispose を保持しないが将来の hot reload で使う。 */
@@ -190,6 +198,16 @@ export async function loadSingleUserPack(
       note: `skipping unsupported kind '${entry.kind}' for pack '${entry.id}'`,
     });
     return { status: "failed", id: entry.id, kind: entry.kind, error };
+  }
+
+  const policyError = validatePackExecutionPolicy(entry);
+  if (policyError !== null) {
+    devLog.write({
+      phase: "policy",
+      note: `blocked '${entry.id}' (${entry.kind}): ${policyError}`,
+      data: { entryPath: entry.entryPath, source: entry.source ?? "local" },
+    });
+    return { status: "failed", id: entry.id, kind: entry.kind, error: policyError };
   }
 
   let mod: unknown;

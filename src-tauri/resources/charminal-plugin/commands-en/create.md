@@ -23,6 +23,16 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 | **ui** | Primary sidebar UI panels. Single-active | `charminal-settings` |
 | **ambient-ui** | Always-on overlay UI. Multi-active | `attention-aura` |
 
+## Security Boundary
+
+- `.js` / `.tsx` packs created by `/charm:create` are **local trusted `trusted-main-thread-js`**. They are not Charminal public-registry artifacts and must not be presented as sandboxed, reviewed, or public-distribution packs.
+- Sharing the source on GitHub or elsewhere is allowed. Make clear that anyone installing it manually is choosing to run local trusted code.
+- Every generated manifest must include `"executionClass": "trusted-main-thread-js"`. Never label a `.js` / `.tsx` entry as `"declarative"`.
+- Do not create `utility` packs. They stay out of distribution until the `isolated-js` runtime and permission UX exist.
+- Do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes inside packs. If one is needed, design it as a host capability first.
+- Scene assets must be pack-relative paths such as `./assets/bg.png`. Do not use `https:`, `data:`, `file:`, absolute paths, `../`, or CSS `url(...)`.
+- UI / ambient-ui packs must not write directly to the terminal. Prompting must use the existing safe UI path.
+
 ## Flow
 
 1. **Ask for one concrete example first.** Pull out one tactile example: "In what situation, what happens, and how should the resident react?"
@@ -45,6 +55,16 @@ When Charminal is live, use these MCP tools:
 - `enable_pack({ id })` - re-enable a disabled pack
 
 After writing a pack, run `list_packs()` to confirm it registered. This makes self-repair much faster.
+
+If the current workspace is a Charminal source checkout, also run:
+
+```bash
+npm run check:pack -- ~/.charminal/packs/<id>
+```
+
+Treat checker errors as fixes to make before presenting the pack as done. Warnings must be explained to the user.
+
+Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Charminal does not yet provide a public registry or `/charm:prepare-publish`.
 
 ## Rescue Path
 
@@ -86,6 +106,7 @@ You can add more exposed parameters later. `bundled-packs/scenes/abandoned-facto
   "type": "scene",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
   "entry": "scene.js"
 }
 ```
@@ -175,6 +196,7 @@ Persona is **single-active**. The active persona is selected by `primaryPersona`
   "type": "persona",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
   "entry": "persona.js"
 }
 ```
@@ -219,6 +241,7 @@ A user effect pack lives in `~/.charminal/packs/<id>/` with `manifest.json` and 
   "type": "effect",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
   "entry": "effect.js"
 }
 ```
@@ -274,6 +297,7 @@ UI packs are primary sidebar panels. They are **single-active**. The active UI p
   "type": "ui",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
   "entry": "ui.js"
 }
 ```
@@ -317,6 +341,7 @@ Ambient-UI packs are always-on overlays. They are **multi-active**. They can dra
   "type": "ambient-ui",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
   "entry": "ambient-ui.js"
 }
 ```

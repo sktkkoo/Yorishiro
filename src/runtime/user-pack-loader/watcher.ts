@@ -22,6 +22,7 @@ import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import { readManifestForEntry, validatePackExecutionPolicy } from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
@@ -148,6 +149,25 @@ async function reloadPack(
   deps: StartPackWatcherDeps,
   tauri: TauriBindings,
 ): Promise<void> {
+  const manifest = await readManifestForEntry(action.entryPath, {
+    convertFileSrc: tauri.convertFileSrc,
+  });
+  const policyError = validatePackExecutionPolicy({
+    id: action.id,
+    kind: action.kind,
+    entryPath: action.entryPath,
+    source: "local",
+    manifest,
+  });
+  if (policyError !== null) {
+    deps.userPackLog.write({
+      phase: "policy",
+      note: `blocked reload for '${action.id}' (${action.kind}): ${policyError}`,
+      data: { entryPath: action.entryPath },
+    });
+    return;
+  }
+
   // ?v=<mtime> で engine の module registry を bust しないと、同じ URL で 2 度目
   // の import は cache hit を返す（pitfall #11）。watcher からの mtimeMs が 0
   // だった場合は stat_file_mtime で取り直す。
