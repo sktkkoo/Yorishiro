@@ -22,7 +22,8 @@ This is the editing flow for existing packs. Use it when the user says they want
 ## Security Boundary
 
 - If `manifest.json` has `executionClass: "isolated-js"`, do not enable it by editing. The runtime is not implemented yet, so public utility / isolated packs stay out of scope.
-- Treat user packs with `.js` / `.tsx` entries as local-only `trusted-main-thread-js`. Do not describe them as public-distribution packs.
+- Treat user packs with `.js` / `.tsx` entries as local trusted `trusted-main-thread-js`. Do not describe them as sandboxed, reviewed, or Charminal public-distribution packs.
+- Sharing source code on GitHub or elsewhere is allowed, but manual installation means the user is choosing to run local trusted code.
 - Do not put `executionClass: "declarative"` on `.js` / `.tsx` entries. Declarative means data-only with no JS evaluation.
 - Do not add `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes inside packs.
 - Scene assets must stay pack-relative. Do not add `https:`, `data:`, `file:`, absolute paths, `../`, or CSS `url(...)`.

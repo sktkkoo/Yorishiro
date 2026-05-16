@@ -25,7 +25,8 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 
 ## Security Boundary
 
-- `.js` / `.tsx` packs created by `/charm:create` are **local-only `trusted-main-thread-js`**. Do not present them as public-distribution packs.
+- `.js` / `.tsx` packs created by `/charm:create` are **local trusted `trusted-main-thread-js`**. They are not Charminal public-registry artifacts and must not be presented as sandboxed, reviewed, or public-distribution packs.
+- Sharing the source on GitHub or elsewhere is allowed. Make clear that anyone installing it manually is choosing to run local trusted code.
 - Every generated manifest must include `"executionClass": "trusted-main-thread-js"`. Never label a `.js` / `.tsx` entry as `"declarative"`.
 - Do not create `utility` packs. They stay out of distribution until the `isolated-js` runtime and permission UX exist.
 - Do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes inside packs. If one is needed, design it as a host capability first.
@@ -54,6 +55,8 @@ When Charminal is live, use these MCP tools:
 - `enable_pack({ id })` - re-enable a disabled pack
 
 After writing a pack, run `list_packs()` to confirm it registered. This makes self-repair much faster.
+
+Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Charminal does not yet provide a public registry or `/charm:prepare-publish`.
 
 ## Rescue Path
 

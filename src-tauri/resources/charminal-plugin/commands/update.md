@@ -22,7 +22,8 @@ $ARGUMENTS
 ## セキュリティ境界
 
 - `manifest.json` の `executionClass` が `isolated-js` なら、runtime 未実装なので編集で有効化しない。公開 utility / isolated pack はまだ対象外
-- `.js` / `.tsx` entry を持つ user pack は local-only の `trusted-main-thread-js` として扱う。公開配布可能と案内しない
+- `.js` / `.tsx` entry を持つ user pack は local trusted の `trusted-main-thread-js` として扱う。sandbox 済み・review 済み・Charminal 公開配布用 pack と案内しない
+- GitHub 等で source code として共有することは妨げない。ただし手動導入する利用者は local trusted code として自己責任で実行する扱い
 - `.js` / `.tsx` entry に `executionClass: "declarative"` を付けない。declarative は JS 評価なしの data-only artifact 用
 - pack 内に `fetch` / `fs` / `system.exec` / Tauri API / Node builtin / PTY write を追加しない
 - scene asset は pack 内の相対 path のみ。`https:`, `data:`, `file:`, absolute path, `../`, CSS `url(...)` を追加しない
