@@ -283,6 +283,13 @@ function scanStyleFile(path, text, diagnostics) {
   if (text.includes("../") || text.includes("..\\")) {
     add(diagnostics, "error", "path-traversal", `${path} contains parent-directory traversal`);
   }
+  // HTML can carry inline <script> / event-handler attributes, so style files are
+  // still scanned for forbidden APIs (CSS has no realistic false positives here).
+  for (const [code, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
+    if (pattern.test(text)) {
+      add(diagnostics, "error", code, `${path} contains ${code.replace("forbidden-", "")}`);
+    }
+  }
 }
 
 function scanJsonFile(path, text, diagnostics) {

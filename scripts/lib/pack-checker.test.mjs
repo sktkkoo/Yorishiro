@@ -105,6 +105,28 @@ describe("checkPackFiles", () => {
     );
   });
 
+  it("rejects forbidden APIs hidden in HTML assets", () => {
+    const result = checkPackFiles({
+      packDirName: "my-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "my-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.js",
+          }),
+        ],
+        ["scene.js", "export default { id: 'my-scene', type: 'scene' };"],
+        ["assets/overlay.html", "<div><script>eval(atob('ZmV0Y2g='))</script></div>"],
+      ]),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-eval");
+  });
+
   it("does not hard reject natural-language URLs in persona markdown", () => {
     const result = checkPackFiles({
       packDirName: "my-persona",
