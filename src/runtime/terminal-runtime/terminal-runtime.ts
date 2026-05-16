@@ -98,7 +98,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private latestRegionContext: TerminalRegionContext | null = null;
   private terminalReferenceCounter = 0;
   private readonly terminalReferences = new Map<string, TerminalReference>();
-  private enterSinceLastReference = false;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -165,9 +164,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
       this.detectClearCommand(data);
-      if (data.includes("\r") || data.includes("\n")) {
-        this.enterSinceLastReference = true;
-      }
       writeQueue = writeQueue.then(async () => {
         try {
           await sessionWrite({ sessionId: this.sessionId, data });
@@ -510,7 +506,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   clearTerminalReferences(): void {
     this.terminalReferences.clear();
     this.terminalReferenceCounter = 0;
-    this.enterSinceLastReference = false;
   }
 
   subscribePtyData(listener: () => void): Disposable {
@@ -785,11 +780,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private addTerminalReference(context: TerminalRegionContext): string {
-    if (this.enterSinceLastReference) {
-      this.terminalReferences.clear();
-      this.terminalReferenceCounter = 0;
-      this.enterSinceLastReference = false;
-    }
     this.terminalReferenceCounter++;
     const id = `Term${this.terminalReferenceCounter}`;
     this.terminalReferences.set(id, { id, context });
