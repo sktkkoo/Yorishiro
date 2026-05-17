@@ -12,8 +12,6 @@ Charminal does not currently provide a public pack registry, in-app community pa
 
 Please report vulnerabilities privately by opening a GitHub security advisory.
 
-Before the OSS announcement, add a dedicated security contact email here.
-
 Include:
 
 - affected version or commit
