@@ -14,8 +14,6 @@ Please report vulnerabilities privately by opening a GitHub security advisory.
 
 Before the OSS announcement, add a dedicated security contact email here.
 
-We aim to acknowledge reports within 5 business days. Charminal is pre-1.0, so fix and release timelines may vary by impact and available maintainer time.
-
 Include:
 
 - affected version or commit
