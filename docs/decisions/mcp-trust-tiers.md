@@ -203,17 +203,15 @@ pre-fill: "/charm:update 設定をリセット"
 
 L1 + L2 + L3 + L4 が全て揃うまで、PTY 系 tool は registry / SDK のいずれにも出さない。
 
-### 既存 `bundled-packs/ui/charminal-settings/TerminalPromptButton` の扱い
+### 既存 bundled-settings の `pty_write` 直叩き leak と安全 subset
 
-bundled-settings の "ショートカットを変更" button は内部的に `pty_write` を呼ぶが、これは **MCP tool ではない** ── bundled UI pack 内の Tier 1 行動として、user が click した時のみ pre-fill する。
+`bundled-packs/ui/charminal-settings/ui.tsx` の "ショートカット変更" button は `src/bindings/tauri-commands` から `ptyWrite` を相対 import して `pty_write` を直接呼ぶ。これは **MCP tool ではない**が、**pack 層のコードが Tauri IPC を直叩きしている SDK leak** であり解消対象。
 
-ただし上記 trust tier 整理が固まるにつれ、TerminalPromptButton 自体も将来的に削除候補となる。理由：
+> 旧版はこの leak を `TerminalPromptButton` の挙動と記述していたが誤同定。実体は上記 `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではない。
 
-- pack-execution-classes の "PTY write API は存在しないまま維持" 条項と整合させるため
-- bundled-settings の SDK leak（`ptyWrite` を `src/bindings/tauri-commands` から直接 import する path）を解消するため
-- 同等の UX が `/charm` command の自然な発話で代替可能
+解消の方向は [`input-prefill-boundary.md`](input-prefill-boundary.md) で確定：pack/AI に任意テキスト書込み API を露出せず、(A) host/bundled 所有の固定文字列 verb（SDK + MCP 対称、user pack は参照のみ）と (B) 既存 Reference Marker（write 経路は固定 token `[#TermN]`、可変内容は MCP read で解決）の 2 経路のみ。
 
-具体的な削除タイミングは別 thread で議論する。
+これにより本節の **PTY-prefill 全面禁止は精緻化される**：固定 verb / 固定 token という安全 subset は L1/L4 が build 時テーブル review に縮退するため出せる。任意 `terminal_prefill` / `write_terminal_input` は依然 L1+L2+L3+L4 が揃うまで全 tier 禁止のまま。interim では (A) verb 実装前でも `ptyWrite` 直 import を外し host backed の固定文字列 helper に差し替えて leak を閉じる。
 
 ## pack-execution-classes との接続
 

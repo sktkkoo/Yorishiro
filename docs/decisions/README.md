@@ -108,6 +108,7 @@
 - [**pack-execution-classes.md**](pack-execution-classes.md) ([English](pack-execution-classes.en.md)) — Pack `type` は product semantics、`executionClass` は security boundary。declarative / isolated-js / trusted-main-thread-js の 3 class を分離。公開 amenity は `isolated-js` 完成後の future scope
 - [**utility-pack-deferred.md**](utility-pack-deferred.md) — utility pack（harness→utility）は amenity に supersede（2026-05-14）、型は 2026-05-16 に削除。系譜と archived spec を保持
 - [**mcp-trust-tiers.md**](mcp-trust-tiers.md) — Charminal の MCP 3 階層（Tier 1 host / Tier 2 住人 / Tier 3 外部）。各 tier の tool category access policy。PTY 系 tool は当面全 tier で禁止（whitelist validation + length cap + trust tier gate + content layer 防御の 4 層が揃うまで）
+- [**input-prefill-boundary.md**](input-prefill-boundary.md) — pack/AI に任意テキスト書込み API を露出しない。(A) host 所有の固定文字列 verb（SDK + MCP 対称、user pack は参照のみ）+ (B) 既存 Reference Marker（write は固定 token、可変内容は MCP read で解決）。mcp-trust-tiers の PTY-prefill 保留条項を安全 subset 分だけ精緻化
 - *（今後の追加候補）* `living-system-and-hot-reload.md` — TS が canonical runtime、Rust は IO 層のみ、Claude Code session は HMR で切らない
 - *（今後の追加候補）* `core-vs-pack-vs-mcp.md` — core 機能 vs pack vs MCP tool の判断軸（2026-04-19-core-mcp-pack-layers.md の topic 化）
 
