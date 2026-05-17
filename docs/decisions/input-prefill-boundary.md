@@ -44,7 +44,8 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 
 - pack/AI 経路が任意テキストを PTY に書けないことが**型レベルで保証**される（SDK は enumerated verb / 固定 token のみ公開、`write(string)` を公開しない）。§1 はこの primitive 追加後も成立。
 - (A) テーブルは bundled に閉じる。user pack 拡張は任意注入の再来なので別途厳密設計が前提。
-- (B) の resolve 内容は秘密を含みうる（画面に出ていた物）。**Tier 3（外部 client）では sensitive-read 扱い**で blanket default-open にしない。`mcp-trust-tiers.md` の Read 行が機微度の異なる read を一括りにしている粒度の見直しが follow-up。
+- (B) の resolve 内容は秘密を含みうる（画面に出ていた物）。**Tier 3（外部 client）では sensitive-read 扱い**で blanket default-open にしない。→ 2026-05-18 実施済み：`mcp-trust-tiers.md` に Sensitive-read 行を分離 + 不変条件（実装検証済み）+ 前向きガード（user-pointed selection 限定、AI 任意 region/scrollback を生やさない）を記録。
+- (B) の不変条件（mapping は host-private + user gesture のみ生成 / token は固定形 host 採番 / resolve は read-only）は 2026-05-18 にコードで検証済み。コード変更不要。詳細は `mcp-trust-tiers.md`「Terminal reference の不変条件」。
 - **interim**：(A) verb 実装前でも、charminal-settings の leak は「`ptyWrite` 直 import を外し host backed の固定文字列 helper に差し替え」で閉じられる（OSS ブロッカー回避）。interim を恒久化しない。
 - `mcp-trust-tiers.md` の leak 元記述（`TerminalPromptButton` が `pty_write` を呼ぶ）は **誤同定**。実体は `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではない。当該 doc を訂正する。
 
