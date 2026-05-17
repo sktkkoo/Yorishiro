@@ -230,6 +230,11 @@ npm run tauri dev # Launch as desktop app
 - [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — Designing not what AI can do, but how AI exists
 - [`docs/philosophy/SELF_REFERENTIAL_MCP.md`](docs/philosophy/SELF_REFERENTIAL_MCP.md) — An inhabitant who can reach into their own home: body and environment as one MCP surface
 
+### Security
+
+- [`docs/security.md`](docs/security.md) — Trust boundaries and attack surface map
+- [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability reporting
+
 ### Configuration & customization
 
 - [`docs/configuration.md`](docs/configuration.md) — Fields of `~/.charminal/config.json`

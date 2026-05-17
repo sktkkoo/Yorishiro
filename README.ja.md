@@ -230,6 +230,11 @@ npm run tauri dev # デスクトップアプリとして起動
 - [`docs/philosophy/PRESENCE_HARNESS.ja.md`](docs/philosophy/PRESENCE_HARNESS.ja.md) — AI の能力ではなく、AI がどう在るかを設計するということ
 - [`docs/philosophy/SELF_REFERENTIAL_MCP.ja.md`](docs/philosophy/SELF_REFERENTIAL_MCP.ja.md) — 住人が自分の家に手を伸ばせるということ。身体と環境を同じ MCP 面として扱う
 
+### Security
+
+- [`docs/security.md`](docs/security.md) — 信頼境界と attack surface の地図
+- [`SECURITY.md`](SECURITY.md) — セキュリティポリシーと脆弱性報告
+
 ### 設定とカスタマイズ
 
 - [`docs/configuration.md`](docs/configuration.md) — `~/.charminal/config.json` の field 一覧

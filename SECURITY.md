@@ -1,5 +1,7 @@
 # Security Policy
 
+For the trust-boundary and attack-surface map, see [`docs/security.md`](docs/security.md).
+
 ## Supported Scope
 
 Charminal is still pre-1.0. Security fixes target the current `main` branch and the latest public release when one is available.
