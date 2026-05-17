@@ -171,7 +171,7 @@ Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access w
 
 This is a personal project in active development. Issues and discussions are welcome. **Pull requests are not accepted at this time.**
 
-For security reporting and supported vulnerability intake, see [SECURITY.md](SECURITY.md).
+For security reporting, see [SECURITY.md](SECURITY.md).
 
 ---
 
