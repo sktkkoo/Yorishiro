@@ -34,6 +34,9 @@ export default function CharacterSurface({
 }: CharacterSurfaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // NOTE: React StrictMode の effect 二重実行は cleanup→re-register の順で進み、
+  // 同一 el identity なので unregister が中間で外しても直後の register が復元する。
+  // 最終状態は常に登録済み。
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -51,6 +54,7 @@ export default function CharacterSurface({
   );
 
   return (
+    /* クラス名は既存 CSS 一致のため意図的な表記（typo 由来。改名時は App.css も同時に） */
     <div className="charactor-container" ref={containerRef}>
       <SceneRouter entry={scene}>{vrmContent}</SceneRouter>
     </div>

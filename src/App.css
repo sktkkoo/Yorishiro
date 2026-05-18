@@ -45,20 +45,26 @@ body,
   width: 100vw;
 }
 
-/* ── Sidebar ────────────────────────────────────────── */
-.sidebar {
+/* ── Shell column（width / collapse を所有する縦カラム）─────── */
+.shell-column {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   background: var(--charminal-sidebar-bg);
   border-right: 1px solid var(--charminal-border);
-  padding: 12px;
   overflow: hidden;
 }
 
-.sidebar.presence-closed {
+.shell-column.presence-closed {
   display: none;
+}
+
+/* ── Sidebar（chrome 行のみ）────────────────────────── */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
 }
 
 .folder-btn {
@@ -97,8 +103,7 @@ body,
 .charactor-container {
   flex: 1;
   min-height: 0;
-  width: calc(100% + 24px);
-  margin: 0 -12px -12px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;

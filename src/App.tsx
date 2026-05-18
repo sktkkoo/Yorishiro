@@ -42,6 +42,7 @@ import charminalSettingsPack, {
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
 import { prepareLocalizedPluginDir, type SpawnSpec, sessionList } from "./bindings/tauri-commands";
+import CharacterSurface from "./character-surface";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -99,6 +100,7 @@ import {
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
+import { getSurfaceRegistry } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
@@ -933,7 +935,9 @@ function App() {
         const buildPresenceDeps = (): PresenceIntensityDeps => ({
           setSidebarWidth: (px) => {
             document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-            const el = document.querySelector<HTMLElement>(".sidebar");
+            const el =
+              getSurfaceRegistry().get("shell") ??
+              document.querySelector<HTMLElement>(".shell-column");
             if (el) el.classList.toggle("presence-closed", px <= 0);
           },
           getSidebarWidth: () => {
@@ -1126,7 +1130,9 @@ function App() {
           "ui.sidebar.set": createUiSidebarSetHandler({
             setSidebarWidth: (px) => {
               document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-              const el = document.querySelector<HTMLElement>(".sidebar");
+              const el =
+                getSurfaceRegistry().get("shell") ??
+                document.querySelector<HTMLElement>(".shell-column");
               if (el) el.classList.toggle("presence-closed", px <= 0);
             },
             getSidebarWidth: () => {
@@ -1520,8 +1526,10 @@ function App() {
     let currentAbort: AbortController | null = null;
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
-      const sidebar = document.querySelector<HTMLElement>(".sidebar");
-      const character = document.querySelector<HTMLElement>(".charactor-container");
+      const reg = getSurfaceRegistry();
+      const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
+      const character =
+        reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
       if (!sidebar || !character) return null;
       return {
         root: document.documentElement,
@@ -2497,16 +2505,25 @@ function App() {
           titleBar={{ title: "Scene", drag: true, filter: true, position: { x: -300, y: 0 } }}
         />
       ) : null}
-      <Sidebar
-        folderName={folderName}
-        onPickFolder={handlePickFolder}
-        vrmUrl={vrmUrl}
-        onOpenSettings={handleOpenSettings}
-        onBodyReady={handleBodyReady}
-        bodyDevLog={bodyDevLog}
-        scene={renderedSceneEntry}
-        settingsLabel={strings.settings}
-      />
+      <div
+        className="shell-column"
+        ref={(el) => {
+          if (el) getSurfaceRegistry().register("shell", el);
+        }}
+      >
+        <Sidebar
+          folderName={folderName}
+          onPickFolder={handlePickFolder}
+          onOpenSettings={handleOpenSettings}
+          settingsLabel={strings.settings}
+        />
+        <CharacterSurface
+          vrmUrl={vrmUrl}
+          onBodyReady={handleBodyReady}
+          bodyDevLog={bodyDevLog}
+          scene={renderedSceneEntry}
+        />
+      </div>
       {canMountTerminals && (
         <>
           {tabState.sessions.map((sessionId) => {
