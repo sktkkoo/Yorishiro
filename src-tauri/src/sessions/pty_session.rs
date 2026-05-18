@@ -14,8 +14,9 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::pty::{
-    build_hooks_json, codex_charminal_mcp_config_arg, has_existing_claude_session,
-    has_existing_codex_session, toml_basic_string, AgentKind, PtyExit, HOOK_SERVER_PORT,
+    build_hooks_json, codex_charminal_mcp_config_arg, codex_charminal_plugin_config_args,
+    has_existing_claude_session, has_existing_codex_session, toml_basic_string, AgentKind, PtyExit,
+    HOOK_SERVER_PORT,
 };
 
 use super::osc133::{Osc133Parser, OscEvent};
@@ -40,8 +41,8 @@ pub enum SpawnSpec {
         command: Option<String>,
         #[serde(default)]
         system_prompt: Option<String>,
-        /// Claude Code の `--plugin-dir` に渡す plugin path。TS 側が resolved
-        /// language に合わせて生成した runtime plugin dir を渡せる。
+        /// TS 側が resolved language に合わせて生成した runtime plugin dir。
+        /// Claude Code では `--plugin-dir`、Codex では local marketplace root として渡す。
         #[serde(default)]
         plugin_dir: Option<std::path::PathBuf>,
     },
@@ -345,6 +346,25 @@ impl PtySession {
                     cmd.arg(codex_charminal_mcp_config_arg(
                         crate::mcp::server::resolve_port(),
                     ));
+
+                    if let Some(dir) = plugin_dir {
+                        if dir
+                            .join(".agents")
+                            .join("plugins")
+                            .join("marketplace.json")
+                            .exists()
+                        {
+                            for config_arg in codex_charminal_plugin_config_args(dir) {
+                                cmd.arg("-c");
+                                cmd.arg(config_arg);
+                            }
+                        } else {
+                            eprintln!(
+                                "[pty.spawn] codex plugin marketplace does not exist, skipping: {}",
+                                dir.display()
+                            );
+                        }
+                    }
 
                     if let Some(prompt) = system_prompt {
                         cmd.arg("-c");

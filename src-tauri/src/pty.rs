@@ -69,8 +69,8 @@ fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String 
 
 pub(crate) fn build_hooks_json(port: u16) -> String {
     // UserPromptSubmit: just a generic prompt event for Perception.
-    // `/charm` is handled by Claude Code's own custom-command pipeline
-    // (bundled-packs/charminal-plugin/commands/charm.md loaded via --plugin-dir)
+    // `/charm` is handled by agent-specific custom-command pipelines
+    // (Claude Code --plugin-dir / Codex local marketplace plugin).
     // so no special detection or blocking is needed here anymore.
     let windows = cfg!(windows);
     let command_hook = |command: String| {
@@ -347,6 +347,18 @@ pub(crate) fn toml_basic_string(value: &str) -> String {
 pub(crate) fn codex_charminal_mcp_config_arg(port: u16) -> String {
     let url = format!("http://127.0.0.1:{}/mcp", port);
     format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
+}
+
+pub(crate) fn codex_charminal_plugin_config_args(plugin_root: &std::path::Path) -> Vec<String> {
+    let source = plugin_root.to_string_lossy();
+    vec![
+        "marketplaces.charminal-local.source_type=\"local\"".to_string(),
+        format!(
+            "marketplaces.charminal-local.source={}",
+            toml_basic_string(&source)
+        ),
+        "plugins.\"charm@charminal-local\".enabled=true".to_string(),
+    ]
 }
 
 pub(crate) fn claude_charminal_mcp_config_json(port: u16) -> String {
@@ -633,6 +645,18 @@ mod tests {
         assert_eq!(
             codex_charminal_mcp_config_arg(18743),
             "mcp_servers.charminal.url=\"http://127.0.0.1:18743/mcp\""
+        );
+    }
+
+    #[test]
+    fn codex_charminal_plugin_config_args_point_to_local_marketplace() {
+        assert_eq!(
+            codex_charminal_plugin_config_args(std::path::Path::new("/tmp/charminal plugin")),
+            vec![
+                "marketplaces.charminal-local.source_type=\"local\"".to_string(),
+                "marketplaces.charminal-local.source=\"/tmp/charminal plugin\"".to_string(),
+                "plugins.\"charm@charminal-local\".enabled=true".to_string(),
+            ]
         );
     }
 

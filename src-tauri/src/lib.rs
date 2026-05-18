@@ -59,6 +59,20 @@ fn copy_file_to_dir(src: &Path, dest_dir: &Path) -> Result<(), String> {
         .map_err(|e| format!("copy {} failed: {}", src.display(), e))
 }
 
+fn copy_markdown_files_to_dir(src_dir: &Path, dest_dir: &Path) -> Result<(), String> {
+    for entry in std::fs::read_dir(src_dir)
+        .map_err(|e| format!("read {} failed: {}", src_dir.display(), e))?
+    {
+        let path = entry
+            .map_err(|e| format!("read command dir entry failed: {}", e))?
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
+            copy_file_to_dir(&path, dest_dir)?;
+        }
+    }
+    Ok(())
+}
+
 fn prepare_localized_plugin_dir_at(
     resource_root: &Path,
     target_root: &Path,
@@ -75,6 +89,10 @@ fn prepare_localized_plugin_dir_at(
 
     let target_plugin_meta = target_root.join(".claude-plugin");
     let target_commands = target_root.join("commands");
+    let target_codex_marketplace_dir = target_root.join(".agents").join("plugins");
+    let target_codex_plugin_root = target_root.join("plugins").join("charm");
+    let target_codex_plugin_meta = target_codex_plugin_root.join(".codex-plugin");
+    let target_codex_commands = target_codex_plugin_root.join("commands");
     std::fs::create_dir_all(&target_plugin_meta)
         .map_err(|e| format!("runtime plugin meta dir create failed: {}", e))?;
     if target_commands.exists() {
@@ -83,27 +101,57 @@ fn prepare_localized_plugin_dir_at(
     }
     std::fs::create_dir_all(&target_commands)
         .map_err(|e| format!("runtime plugin commands dir create failed: {}", e))?;
+    std::fs::create_dir_all(&target_codex_marketplace_dir)
+        .map_err(|e| format!("runtime codex marketplace dir create failed: {}", e))?;
+    std::fs::create_dir_all(&target_codex_plugin_meta)
+        .map_err(|e| format!("runtime codex plugin meta dir create failed: {}", e))?;
+    if target_codex_commands.exists() {
+        std::fs::remove_dir_all(&target_codex_commands)
+            .map_err(|e| format!("runtime codex plugin commands cleanup failed: {}", e))?;
+    }
+    std::fs::create_dir_all(&target_codex_commands)
+        .map_err(|e| format!("runtime codex plugin commands dir create failed: {}", e))?;
 
     copy_file_to_dir(
         &resource_root.join(".claude-plugin").join("plugin.json"),
         &target_plugin_meta,
     )?;
+    copy_file_to_dir(
+        &resource_root.join(".codex-plugin").join("plugin.json"),
+        &target_codex_plugin_meta,
+    )?;
 
-    for entry in std::fs::read_dir(&source_commands)
-        .map_err(|e| format!("read {} failed: {}", source_commands.display(), e))?
-    {
-        let path = entry
-            .map_err(|e| format!("read command dir entry failed: {}", e))?
-            .path();
-        if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
-            copy_file_to_dir(&path, &target_commands)?;
-        }
-    }
+    copy_markdown_files_to_dir(&source_commands, &target_commands)?;
+    copy_markdown_files_to_dir(&source_commands, &target_codex_commands)?;
+
+    let marketplace_json = serde_json::json!({
+        "name": "charminal-local",
+        "interface": {
+            "displayName": "Charminal Local"
+        },
+        "plugins": [{
+            "name": "charm",
+            "source": {
+                "source": "local",
+                "path": "./plugins/charm"
+            },
+            "policy": {
+                "installation": "INSTALLED_BY_DEFAULT",
+                "authentication": "ON_INSTALL"
+            },
+            "category": "Productivity"
+        }]
+    });
+    std::fs::write(
+        target_codex_marketplace_dir.join("marketplace.json"),
+        marketplace_json.to_string(),
+    )
+    .map_err(|e| format!("runtime codex marketplace write failed: {}", e))?;
 
     Ok(())
 }
 
-/// resolved language に対応する Claude Code plugin dir を生成する。
+/// resolved language に対応する agent plugin runtime dir を生成する。
 /// `~/.charminal/runtime-plugin/` は Charminal 管理領域で、起動ごとに上書きしてよい。
 #[tauri::command]
 fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<String, String> {
@@ -137,8 +185,7 @@ async fn session_spawn(
     on_output: Channel,
 ) -> Result<(), String> {
     // Agent variant のときだけ Tauri resource path から plugin_dir を差し込む。
-    // SpawnSpec::Agent の plugin_dir field は #[serde(skip)] なので TS 側から
-    // は渡って来ず、ここで生成して埋める。
+    // Claude Code では --plugin-dir、Codex では local marketplace root として使う。
     let final_spec = match spec {
         SpawnSpec::Agent {
             agent,
@@ -1328,6 +1375,7 @@ mod localized_plugin_dir_tests {
 
     fn write_fixture(root: &Path) {
         fs::create_dir_all(root.join(".claude-plugin")).expect("create plugin meta");
+        fs::create_dir_all(root.join(".codex-plugin")).expect("create codex plugin meta");
         fs::create_dir_all(root.join("commands-en")).expect("create commands-en");
         fs::create_dir_all(root.join("commands-ja")).expect("create commands-ja");
         fs::write(
@@ -1335,6 +1383,11 @@ mod localized_plugin_dir_tests {
             "{\"name\":\"charm\"}",
         )
         .expect("write plugin json");
+        fs::write(
+            root.join(".codex-plugin").join("plugin.json"),
+            "{\"name\":\"charm\"}",
+        )
+        .expect("write codex plugin json");
         fs::write(root.join("commands-en").join("help.md"), "english help").expect("write en help");
         fs::write(root.join("commands-en").join("create.md"), "english create")
             .expect("write en create");
@@ -1345,6 +1398,21 @@ mod localized_plugin_dir_tests {
     fn command_files(target: &Path) -> Vec<String> {
         let mut files = fs::read_dir(target.join("commands"))
             .expect("read commands")
+            .map(|entry| {
+                entry
+                    .expect("entry")
+                    .file_name()
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+        files
+    }
+
+    fn codex_command_files(target: &Path) -> Vec<String> {
+        let mut files = fs::read_dir(target.join("plugins").join("charm").join("commands"))
+            .expect("read codex commands")
             .map(|entry| {
                 entry
                     .expect("entry")
@@ -1374,8 +1442,36 @@ mod localized_plugin_dir_tests {
         assert!(!target.join(".mcp.json").exists());
         assert_eq!(command_files(&target), vec!["help.md"]);
         assert_eq!(
+            fs::read_to_string(
+                target
+                    .join("plugins")
+                    .join("charm")
+                    .join(".codex-plugin")
+                    .join("plugin.json")
+            )
+            .expect("read codex plugin json"),
+            "{\"name\":\"charm\"}"
+        );
+        assert_eq!(codex_command_files(&target), vec!["help.md"]);
+        assert_eq!(
             fs::read_to_string(target.join("commands").join("help.md")).expect("read help"),
             "japanese help"
+        );
+        let marketplace: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(
+                target
+                    .join(".agents")
+                    .join("plugins")
+                    .join("marketplace.json"),
+            )
+            .unwrap(),
+        )
+        .expect("marketplace json");
+        assert_eq!(marketplace["name"], "charminal-local");
+        assert_eq!(marketplace["plugins"][0]["name"], "charm");
+        assert_eq!(
+            marketplace["plugins"][0]["source"]["path"],
+            "./plugins/charm"
         );
 
         let _ = fs::remove_dir_all(&tmp);
@@ -1389,10 +1485,22 @@ mod localized_plugin_dir_tests {
         write_fixture(&resource);
         fs::create_dir_all(target.join("commands")).expect("create stale commands");
         fs::write(target.join("commands").join("old.md"), "stale").expect("write stale");
+        fs::create_dir_all(target.join("plugins").join("charm").join("commands"))
+            .expect("create stale codex commands");
+        fs::write(
+            target
+                .join("plugins")
+                .join("charm")
+                .join("commands")
+                .join("old.md"),
+            "stale",
+        )
+        .expect("write stale codex");
 
         prepare_localized_plugin_dir_at(&resource, &target, "fr").expect("prepare ok");
 
         assert_eq!(command_files(&target), vec!["create.md", "help.md"]);
+        assert_eq!(codex_command_files(&target), vec!["create.md", "help.md"]);
         assert_eq!(
             fs::read_to_string(target.join("commands").join("help.md")).expect("read help"),
             "english help"

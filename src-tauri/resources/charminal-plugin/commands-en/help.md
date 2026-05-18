@@ -13,7 +13,7 @@ Charminal `/charm:*` command reference. If the user asks about a specific topic 
 
 ## First-time setup
 
-To let the agent write packs through `/charm:create` or `/charm:update` without repeated permission prompts, add these entries to `~/.claude/settings.json` under `permissions.allow`:
+When using Claude Code, you can reduce repeated permission prompts for `/charm:create` and `/charm:update` by adding these entries to `~/.claude/settings.json` under `permissions.allow`:
 
 ```json
 {
@@ -30,7 +30,7 @@ To let the agent write packs through `/charm:create` or `/charm:update` without 
 
 Only add the four lines to the existing `allow` array. Do not change unrelated settings. `init.js` is the startup script used for keyboard shortcuts and similar hooks; see `/charm:shortcut`.
 
-This setup is optional. Without it, Claude Code will ask for permission each time.
+This setup is optional and Claude Code-specific. Codex uses its own approval policy and does not read `~/.claude/settings.json`.
 
 ---
 
