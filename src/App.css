@@ -179,6 +179,17 @@ body,
   background-color: var(--charminal-bg);
 }
 
+/* layout 由来：terminal 背景のみ透明化（文字は不透明のまま、背後の
+   character/scene が透ける）。runtime が container に xterm-bg-transparent を
+   付けたときだけ各 background-painting layer を透過。通常 terminal は不変。 */
+.xterm-singleton-container.xterm-bg-transparent,
+.xterm-singleton-container.xterm-bg-transparent .xterm,
+.xterm-singleton-container.xterm-bg-transparent .xterm-viewport,
+.xterm-singleton-container.xterm-bg-transparent .xterm-screen,
+.xterm-singleton-container.xterm-bg-transparent .composition-view {
+  background: transparent !important;
+}
+
 /* ── Sidebar top row ────────────────────────────────── */
 .sidebar-top-row {
   display: flex;

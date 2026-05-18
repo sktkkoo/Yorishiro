@@ -269,4 +269,47 @@ describe("TerminalRuntime", () => {
     runtime.detachContainer();
     stub.remove();
   });
+
+  // setBackgroundTransparent — 背景のみ透明・文字は不透明のまま。
+  // theme.background の値と、container に付く scoped class の両方を確認する。
+  const themeBg = (): unknown => {
+    const term = mockState.terminals[0] as unknown as { options: { theme?: unknown } };
+    return (term.options.theme as { background?: unknown } | undefined)?.background;
+  };
+
+  it("setBackgroundTransparent(true) で theme.background が透明色になり class が付く", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundTransparent(true);
+
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
+  });
+
+  it("bgTransparent 中の setTheme は不透明 background を上書きしない（flag-reassert）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundTransparent(true);
+    runtime.setTheme({ background: "#123456" });
+
+    // scene 由来の不透明 background は透明で再上書きされる
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
+  });
+
+  it("setBackgroundTransparent(false) で直近 theme の background へ復帰し class が外れる", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setTheme({ background: "#123456" });
+    runtime.setBackgroundTransparent(true);
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+
+    runtime.setBackgroundTransparent(false);
+    expect(themeBg()).toBe("#123456");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
+  });
+
+  it("setBackgroundTransparent しなければ透明化されず class も付かない（既定）", () => {
+    getTerminalRuntime("shell-1"); // runtime/terminal を生成（呼ばずに既定を確認）
+
+    expect(themeBg()).toBe("#0f1923");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
+  });
 });

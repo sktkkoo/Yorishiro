@@ -89,6 +89,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private disposed = false;
   private hidden = false;
   private opacity = 1;
+  private bgTransparent = false;
+  /** 直近 setTheme でマージされた背景色。bgTransparent 解除時の復帰先。 */
+  private currentThemeBackground: string | undefined;
   private startGeneration = 0;
   private ptyExitUnlisten: (() => void) | null = null;
   private regionDrag: {
@@ -109,6 +112,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       fontSize: 13,
       cursorBlink: true,
       allowProposedApi: true,
+      // 透明 background を合成可能にする。不透明 background のときは描画結果が
+      // 同一（無害）で、setBackgroundTransparent(true) で初めて効く。
+      allowTransparency: true,
       scrollback: 5000,
     });
 
@@ -234,6 +240,35 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   /**
+   * layout 由来：terminal の背景のみ透明にする（文字は前景色で不透明のまま）。
+   * xterm theme.background を透明色にし、singleton container の CSS 背景も透明化する。
+   * setTheme は scene 由来の不透明 background を上書きするため、bgTransparent 中は
+   * setTheme 後に再適用する（hidden/opacity の flag-reassert と同型）。
+   */
+  setBackgroundTransparent(transparent: boolean): void {
+    this.bgTransparent = transparent;
+    this.applyBackgroundTransparency();
+  }
+
+  /**
+   * bgTransparent フラグを theme.background と container の見た目に反映する。
+   * 透明時は theme.background を rgba(0,0,0,0) にし、背景を塗る各 xterm child を
+   * scoped class で透過させる。解除時は直近 setTheme の背景色（無ければ既定）へ戻す。
+   */
+  private applyBackgroundTransparency(): void {
+    if (this.bgTransparent) {
+      this.term.options.theme = { ...this.term.options.theme, background: "rgba(0,0,0,0)" };
+      this.xtermContainer.style.background = "transparent";
+    } else {
+      const restored = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
+      this.term.options.theme = { ...this.term.options.theme, background: restored };
+      // 空文字で inline 背景を外し CSS（--charminal-bg）へ戻す。
+      this.xtermContainer.style.background = "";
+    }
+    this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgTransparent);
+  }
+
+  /**
    * Session が close されるときに呼ぶ。xterm を dispose し、xterm container を
    * document.body から外し、ResizeObserver / RAF を停止する。Channel callback
    * は新規メッセージが来てももう参照しないので残しておいて GC に任せる。
@@ -337,6 +372,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   setTheme(theme: Partial<XTermTheme>): void {
     if (this.disposed) return;
     this.term.options.theme = { ...this.term.options.theme, ...theme };
+    // bgTransparent 解除時の復帰先として、マージ後の意図された背景色を控える。
+    const mergedBg = (this.term.options.theme as { background?: string }).background;
+    if (typeof mergedBg === "string") this.currentThemeBackground = mergedBg;
+    // bgTransparent が立っているなら scene 由来の不透明 background を透明で
+    // 再上書きする（hidden/opacity の flag-reassert と同型）。
+    this.applyBackgroundTransparency();
     // Theme update can leave renderer dimensions stale when scene switches
     // coincide with layout changes, so force a fresh fit before refresh.
     this.refit();

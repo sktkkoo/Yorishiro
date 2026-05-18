@@ -126,6 +126,12 @@ export interface TerminalRuntime {
   setOpacity(opacity: number): void;
 
   /**
+   * layout 由来：terminal の背景のみ透明化する（文字は不透明のまま）。
+   * scene の theme 変更をまたいでもフラグから再適用され、戻らない。
+   */
+  setBackgroundTransparent(transparent: boolean): void;
+
+  /**
    * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
    * document から外し、ResizeObserver / RAF を停止する。dispose 後の
    * runtime instance は再利用しない（再 attach / 再 spawn 不可）。
