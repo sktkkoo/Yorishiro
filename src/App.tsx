@@ -57,7 +57,7 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { SayTtsEngine, VoicePlayer } from "./core/voice";
-import { getStrings } from "./i18n/strings";
+import { getStrings, resolveFixedTerminalPrompt } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -1746,9 +1746,7 @@ function App() {
           // 選べない）。改行なし＝user が Enter するまで実行されない。
           // 設計境界: docs/decisions/input-prefill-boundary.md
           insertFixedPrompt: async (key) => {
-            const fixed = getStrings(appLanguageRef.current.resolved);
-            const data = key === "shortcut" ? fixed.shortcutPrompt : null;
-            if (data === null) return;
+            const data = resolveFixedTerminalPrompt(key, appLanguageRef.current.resolved);
             const { ptyWrite } = await import("./bindings/tauri-commands");
             await ptyWrite({ data });
           },

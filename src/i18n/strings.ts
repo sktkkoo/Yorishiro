@@ -1,3 +1,4 @@
+import type { FixedTerminalPromptKey } from "@charminal/sdk";
 import type { ResolvedLanguage } from "../runtime/language/language";
 
 export interface UiStrings {
@@ -74,4 +75,24 @@ const JA: UiStrings = {
 
 export function getStrings(language: ResolvedLanguage): UiStrings {
   return language === "ja" ? JA : EN;
+}
+
+/**
+ * `FixedTerminalPromptKey` → `UiStrings` の対応表。新しい key を
+ * `FixedTerminalPromptKey` に足してここに対応を書かないと型エラーになる
+ * （無言 no-op を防ぐ網羅性）。設計境界: docs/decisions/input-prefill-boundary.md
+ */
+const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
+  shortcut: "shortcutPrompt",
+};
+
+/**
+ * host 所有の固定プロンプトを現在の言語で解決する pure 関数。
+ * pack はこの結果を選べない（key → host 所有文字列）。
+ */
+export function resolveFixedTerminalPrompt(
+  key: FixedTerminalPromptKey,
+  language: ResolvedLanguage,
+): string {
+  return getStrings(language)[FIXED_PROMPT_STRING[key]];
 }

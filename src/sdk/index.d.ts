@@ -51,6 +51,7 @@ export type {
 export type { PersonaPackManifest } from "./persona-pack";
 export type {
   AppLanguage,
+  FixedTerminalPromptKey,
   UiAppAPI,
   UiAppPackOption,
   UiClaimAPI,
