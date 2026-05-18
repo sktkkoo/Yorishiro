@@ -60,11 +60,16 @@ body,
   display: none;
 }
 
-/* ── Sidebar（chrome 行のみ）────────────────────────── */
+/* ── Sidebar（chrome 行のみ）──────────────────────────
+ * 下 padding は持たない：旧構造では .sidebar の下 padding は
+ * カラム最下部にあり .charactor-container の負 margin で相殺され
+ * chrome↔キャラ間には効いていなかった。chrome を分離した今、
+ * 下 padding を残すと余分な縦余白になる。gap は top-row の
+ * margin-bottom が担う（旧来の間隔に一致）。 */
 .sidebar {
   display: flex;
   flex-direction: column;
-  padding: 12px;
+  padding: 12px 12px 0;
 }
 
 .folder-btn {
