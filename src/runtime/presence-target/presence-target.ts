@@ -49,14 +49,16 @@ export function resolvePresence(
   active: ActiveUiPresence,
   registry: Pick<SurfaceRegistry, "get">,
 ): PresenceResolution {
-  const decl: PresenceDecl | undefined =
-    active.kind === "none" ? HOST_DEFAULT_PRESENCE : active.presence;
-  if (decl === undefined) {
-    const id = active.kind === "pack" ? active.id : "?";
+  let decl: PresenceDecl;
+  if (active.kind === "none") {
+    decl = HOST_DEFAULT_PRESENCE;
+  } else if (active.presence === undefined) {
     return {
       ok: false,
-      reason: `active UI pack '${id}' declares no presence target`,
+      reason: `active UI pack '${active.id}' declares no presence target`,
     };
+  } else {
+    decl = active.presence;
   }
   const el = registry.get(decl.target);
   if (el === null) {
