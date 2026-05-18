@@ -239,7 +239,6 @@ describe("PresenceIntensity", () => {
   // -----------------------------------------------------------------------
 
   it("presence unavailable のとき applyPresenceLevel は no-op + typed unavailable", () => {
-    _resetForTest();
     let sidebarCalls = 0;
     const deps = createMockDeps({
       setSidebarWidth: () => {
@@ -251,12 +250,11 @@ describe("PresenceIntensity", () => {
     expect(result).toEqual({ unavailable: true, reason: "no presence target" });
     expect(sidebarCalls).toBe(0);
     expect(getPresenceState().level).toBe("default"); // state 不変
+    expect(getPresenceState().source).toBe("default");
   });
 
   it("presence available のとき applyPresenceLevel は従来通り適用し { applied: true }", () => {
-    _resetForTest();
     const deps = createMockDeps({
-      // el は applyPresenceLevel の実装では使われないため stub で十分。
       resolvePresence: () => ({ ok: true, el: {} as HTMLElement, target: "shell" }),
     });
     const result = applyPresenceLevel("closed", "mcp", deps);
