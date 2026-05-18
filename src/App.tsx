@@ -1612,8 +1612,11 @@ function App() {
       for (const targets of targetsList) resetLayout(targets);
       // singleton xterm を layout-hidden から復帰させる（placeholder の
       // display 解除だけでは per-frame visibility 強制が解けないため）。
+      // opacity も既定（完全不透明）へ戻す。
       for (const sessionId of getMountedSessionIds()) {
-        getTerminalRuntime(sessionId).setHidden(false);
+        const runtime = getTerminalRuntime(sessionId);
+        runtime.setHidden(false);
+        runtime.setOpacity(1);
       }
       return targetsList.length > 0;
     };
@@ -1625,8 +1628,16 @@ function App() {
       // 隠せない（syncAttachedRect が毎フレーム visibility を上書きする）。
       // setHidden で runtime 側のフラグを立てて確実に隠す。
       const terminalHidden = layout.terminal?.position === "hidden";
+      // opacity<1 で背後の character/scene を透かす。syncAttachedRect は
+      // opacity を触らないので runtime 側に保持させれば per-frame で戻らない。
+      const terminalOpacity =
+        typeof layout.terminal?.opacity === "number"
+          ? Math.min(1, Math.max(0, layout.terminal.opacity))
+          : 1;
       for (const sessionId of getMountedSessionIds()) {
-        getTerminalRuntime(sessionId).setHidden(terminalHidden);
+        const runtime = getTerminalRuntime(sessionId);
+        runtime.setHidden(terminalHidden);
+        runtime.setOpacity(terminalOpacity);
       }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };

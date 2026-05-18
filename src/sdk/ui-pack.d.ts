@@ -53,6 +53,8 @@ export interface UiLayout {
           readonly width: string;
           readonly height: string;
         };
+    /** terminal 全体の不透明度 0-1。1=不透明（既定）。<1 で背後の character/scene が透ける。MCP `ui.terminal.set {opacity}` と対称。 */
+    readonly opacity?: number;
   };
   readonly character?: {
     /** false にすると Three.js canvas を非表示 */
