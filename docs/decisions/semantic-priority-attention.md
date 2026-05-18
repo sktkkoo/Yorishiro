@@ -65,7 +65,7 @@ v1 では typing は priority 2 相当の低優先だった。v2 では priority
 | terminal:file-link | terminal-region | 5 | 0.7 | file-link | 検出行の rect | 新規行検出時 emit + 3000ms pulse (commit c0ecb23) |
 | tool-diagnostic | terminal-region | 6 | 0.8 | diagnostic | 最終 viewport 行 rect ±6px expand | resolver TTL（hook signal stop / 次の tool-activity none で clear） |
 | tool-activity | terminal-region | 4 | 0.72 | tool-reading / tool-writing / tool-running | 最終 viewport 行 rect ±6px expand | tool-activity none / stop hook で clear |
-| mcp-tool-request | mcp-ui | 4 | 0.72 | tool-writing (set-ui-state) / tool-reading (その他) | `.ui-pack-container:not(.ambient)` または `.sidebar` ±8px expand | 1200ms timeout で手動 clear |
+| mcp-tool-request | mcp-ui | 4 | 0.72 | tool-writing (set-ui-state) / tool-reading (その他) | `.ui-pack-container:not(.ambient)` または `.shell-column`（"shell" surface）±8px expand | 1200ms timeout で手動 clear |
 | focused-dom | focused-dom | 5 | 0.7 | focus | activeElement bounding rect ±10px expand | rAF poll で focus 変化を検出し null clear |
 | input-cursor:typing | input-cursor | 5 | 1.0 | typing | xterm cursor cell rect（拡張なし） | rAF poll（lastUserInputAt gate）+ TTL 2000ms |
 

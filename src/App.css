@@ -45,20 +45,31 @@ body,
   width: 100vw;
 }
 
-/* ── Sidebar ────────────────────────────────────────── */
-.sidebar {
+/* ── Shell column（width / collapse を所有する縦カラム）─────── */
+.shell-column {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   background: var(--charminal-sidebar-bg);
   border-right: 1px solid var(--charminal-border);
-  padding: 12px;
   overflow: hidden;
 }
 
-.sidebar.presence-closed {
+.shell-column.presence-closed {
   display: none;
+}
+
+/* ── Sidebar（chrome 行のみ）──────────────────────────
+ * 下 padding は持たない：旧構造では .sidebar の下 padding は
+ * カラム最下部にあり .charactor-container の負 margin で相殺され
+ * chrome↔キャラ間には効いていなかった。chrome を分離した今、
+ * 下 padding を残すと余分な縦余白になる。gap は top-row の
+ * margin-bottom が担う（旧来の間隔に一致）。 */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px 0;
 }
 
 .folder-btn {
@@ -97,8 +108,7 @@ body,
 .charactor-container {
   flex: 1;
   min-height: 0;
-  width: calc(100% + 24px);
-  margin: 0 -12px -12px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -167,6 +177,17 @@ body,
 
 .xterm .xterm-viewport {
   background-color: var(--charminal-bg);
+}
+
+/* layout 由来：terminal 背景のみ透明化（文字は不透明のまま、背後の
+   character/scene が透ける）。runtime が container に xterm-bg-transparent を
+   付けたときだけ各 background-painting layer を透過。通常 terminal は不変。 */
+.xterm-singleton-container.xterm-bg-transparent,
+.xterm-singleton-container.xterm-bg-transparent .xterm,
+.xterm-singleton-container.xterm-bg-transparent .xterm-viewport,
+.xterm-singleton-container.xterm-bg-transparent .xterm-screen,
+.xterm-singleton-container.xterm-bg-transparent .composition-view {
+  background: transparent !important;
 }
 
 /* ── Sidebar top row ────────────────────────────────── */

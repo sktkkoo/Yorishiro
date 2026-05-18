@@ -31,6 +31,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `bundled-attention-aura/` | bundled `attention-aura` ambient-ui pack の register helper。Phase 1d で App.tsx boot path から呼ぶ | `index.ts` | Phase 1c で新設 |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
+| `surface-registry/` | host 所有の named surface → DOM HTMLElement 対応表（"shell" / "character" / "chrome"）。layout / MCP / presence の DOM 解決を querySelector 直依存から名前ベースへ（shell named-surfaces P1 / chrome は P3） | `index.ts` | |
 
 ---
 

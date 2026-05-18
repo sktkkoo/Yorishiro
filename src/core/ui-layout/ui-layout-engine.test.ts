@@ -37,6 +37,7 @@ const makeTargets = (): LayoutTargets => ({
   terminal: makeStubElement(),
   sidebar: makeStubElement(),
   character: makeStubElement(),
+  chrome: makeStubElement(),
 });
 
 describe("applyLayout", () => {
@@ -90,6 +91,28 @@ describe("applyLayout", () => {
     expect(targets.sidebar.style.minWidth).toBe("100vw");
   });
 
+  it("sidebar position=overlay は fixed で viewport 全体を占有する", () => {
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen", position: "overlay" } }, targets);
+    expect(targets.sidebar.style.position).toBe("fixed");
+    expect(targets.sidebar.style.zIndex).toBe("100");
+    // fixed 要素は top/left/height が無いと縦に潰れる（子の character viewport が 0 高さ）。
+    expect(targets.sidebar.style.top).toBe("0");
+    expect(targets.sidebar.style.left).toBe("0");
+    expect(targets.sidebar.style.height).toBe("100vh");
+    expect(targets.sidebar.style.width).toBe("100vw");
+  });
+
+  it("resetLayout は overlay の top/left/height も空に戻す", () => {
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen", position: "overlay" } }, targets);
+    resetLayout(targets);
+    expect(targets.sidebar.style.position).toBe("");
+    expect(targets.sidebar.style.top).toBe("");
+    expect(targets.sidebar.style.left).toBe("");
+    expect(targets.sidebar.style.height).toBe("");
+  });
+
   it("sidebar 数値指定で px", () => {
     const targets = makeTargets();
     applyLayout({ sidebar: { width: 400 } }, targets);
@@ -137,5 +160,26 @@ describe("full-replace semantics（update で前の値が残らない）", () =>
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);
     expect(targets.terminal.style.display).toBe("");
     expect(targets.sidebar.style.width).toBe("100vw");
+  });
+});
+
+describe("applyLayout chrome", () => {
+  it("chrome.visible:false で chrome を display:none", () => {
+    const t = makeTargets();
+    applyLayout({ chrome: { visible: false } }, t);
+    expect(t.chrome.style.display).toBe("none");
+  });
+
+  it("chrome 未指定では chrome を触らない", () => {
+    const t = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen" } }, t);
+    expect(t.chrome.style.display).toBe("");
+  });
+
+  it("resetLayout は chrome の display を空に戻す", () => {
+    const t = makeTargets();
+    applyLayout({ chrome: { visible: false } }, t);
+    resetLayout(t);
+    expect(t.chrome.style.display).toBe("");
   });
 });

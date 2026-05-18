@@ -1,44 +1,34 @@
 import { Folder, Settings } from "lucide-react";
-import { lazy, Suspense } from "react";
-import type { Body } from "./core/body";
-import type { SubsystemLog } from "./core/dev-log";
-import { SceneRouter } from "./core/scene";
-import type { ScenePackEntry } from "./runtime/scene-pack-registry/types";
-
-const VrmViewer = lazy(() => import("./vrm-viewer"));
+import { useEffect, useRef } from "react";
+import { getSurfaceRegistry } from "./runtime/surface-registry";
 
 interface SidebarProps {
   readonly folderName: string;
   readonly onPickFolder: () => void;
-  readonly vrmUrl: string | null;
   readonly onOpenSettings: () => void;
-  readonly onBodyReady?: (body: Body | null) => void;
-  readonly bodyDevLog?: SubsystemLog;
-  /** Active scene pack の entry。null は未登録状態。 */
-  readonly scene: ScenePackEntry | null;
   readonly settingsLabel: string;
 }
 
 export default function Sidebar({
   folderName,
   onPickFolder,
-  vrmUrl,
   onOpenSettings,
-  onBodyReady,
-  bodyDevLog,
-  scene,
   settingsLabel,
 }: SidebarProps) {
-  const vrmContent = vrmUrl ? (
-    <Suspense fallback={<div className="vrm-loading" />}>
-      <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
-    </Suspense>
-  ) : (
-    <div className="vrm-placeholder" />
-  );
+  const ref = useRef<HTMLDivElement>(null);
+
+  // NOTE: React StrictMode の effect 二重実行は cleanup→re-register の順で進み、
+  // 同一 el identity なので unregister が中間で外しても直後の register が復元する。
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const reg = getSurfaceRegistry();
+    reg.register("chrome", el);
+    return () => reg.unregister("chrome", el);
+  }, []);
 
   return (
-    <div className="sidebar">
+    <div className="sidebar" ref={ref}>
       <div className="sidebar-top-row">
         <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
           <Folder className="folder-icon" size={14} aria-hidden="true" />
@@ -53,10 +43,6 @@ export default function Sidebar({
         >
           <Settings size={14} aria-hidden="true" />
         </button>
-      </div>
-
-      <div className="charactor-container">
-        <SceneRouter entry={scene}>{vrmContent}</SceneRouter>
       </div>
     </div>
   );

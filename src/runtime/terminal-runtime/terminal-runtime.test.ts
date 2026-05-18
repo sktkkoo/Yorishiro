@@ -197,4 +197,153 @@ describe("TerminalRuntime", () => {
     expect(terminal.disposed).toBe(true);
     expect(terminal.writes).toHaveLength(1);
   });
+
+  // attachTo は同期的に syncAttachedRect を 1 回呼ぶ（RAF を回さなくても
+  // per-frame visibility 強制経路を踏める）。singleton xtermContainer は
+  // document.body 直下にいるので dataset 経由で引く。
+  const xtermSingleton = (): HTMLElement => {
+    const el = document.body.querySelector<HTMLElement>(".xterm-singleton-container");
+    if (!el) throw new Error("xterm singleton container not found");
+    return el;
+  };
+
+  it("syncAttachedRect は setHidden(true) のとき visibility:visible を強制しない", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setHidden(true);
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    // attachTo が内部で syncAttachedRect を 1 回呼ぶ（root cause の経路）
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.visibility).toBe("hidden");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  it("setHidden しなければ syncAttachedRect で visibility:visible になる（既存挙動）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.visibility).toBe("visible");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  it("setOpacity(0.5) で .xterm-singleton-container の style.opacity が 0.5 になる", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setOpacity(0.5);
+    expect(xtermSingleton().style.opacity).toBe("0.5");
+  });
+
+  it("setOpacity は attachTo + syncAttachedRect をまたいでも維持される（per-frame sync が opacity を戻さない）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setOpacity(0.5);
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    // attachTo が内部で syncAttachedRect を 1 回呼ぶ（per-frame 経路）
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.opacity).toBe("0.5");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  it("setOpacity しなければ opacity は未設定（既定で完全不透明）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    runtime.attachTo(stub);
+
+    // 一度も setOpacity していなければ inline style.opacity は触られない
+    expect(xtermSingleton().style.opacity).toBe("");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  // setBackgroundTransparent — 背景のみ透明・文字は不透明のまま。
+  // theme.background の値と、container に付く scoped class の両方を確認する。
+  const themeBg = (): unknown => {
+    const term = mockState.terminals[0] as unknown as { options: { theme?: unknown } };
+    return (term.options.theme as { background?: unknown } | undefined)?.background;
+  };
+
+  it("setBackgroundTransparent(true) で theme.background が透明色になり class が付く", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundTransparent(true);
+
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
+  });
+
+  it("bgTransparent 中の setTheme は不透明 background を上書きしない（flag-reassert）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundTransparent(true);
+    runtime.setTheme({ background: "#123456" });
+
+    // scene 由来の不透明 background は透明で再上書きされる
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
+  });
+
+  it("setBackgroundTransparent(false) で直近 theme の background へ復帰し class が外れる", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setTheme({ background: "#123456" });
+    runtime.setBackgroundTransparent(true);
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+
+    runtime.setBackgroundTransparent(false);
+    expect(themeBg()).toBe("#123456");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
+  });
+
+  // production の正規順序：transparent(true) → scene が full theme を setTheme →
+  // transparent(false) で復帰したとき scene の background へ戻る（既定でも透明でもなく）。
+  it("bgTransparent 中の full setTheme 後に解除すると scene の background へ復帰する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundTransparent(true);
+    runtime.setTheme({
+      background: "#abcdef",
+      foreground: "#101010",
+      cursor: "#202020",
+      black: "#000000",
+      white: "#ffffff",
+    });
+    // bgTransparent 中は flag-reassert で透明のまま
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+
+    runtime.setBackgroundTransparent(false);
+    expect(themeBg()).toBe("#abcdef");
+  });
+
+  // fix #1 の回帰ガード：background キーを持たない partial setTheme が
+  // bgTransparent 中に来ても、復帰先に stale な "rgba(0,0,0,0)" を焼き込まない。
+  it("bgTransparent 中の background なし partial setTheme は復帰先を汚染しない", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setTheme({ background: "#123456" });
+    runtime.setBackgroundTransparent(true);
+    // background キーなし（merged theme は stale な "rgba(0,0,0,0)"）
+    runtime.setTheme({ foreground: "#ffffff" });
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+
+    runtime.setBackgroundTransparent(false);
+    // 直近の「本物の」background へ戻る（透明を焼き込んでいない）
+    expect(themeBg()).toBe("#123456");
+  });
+
+  it("setBackgroundTransparent しなければ透明化されず class も付かない（既定）", () => {
+    getTerminalRuntime("shell-1"); // runtime/terminal を生成（呼ばずに既定を確認）
+
+    expect(themeBg()).toBe("#0f1923");
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
+  });
 });

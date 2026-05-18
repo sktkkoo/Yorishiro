@@ -135,8 +135,8 @@ export function applyPresenceLevel(
     { from: deps.getSidebarWidth(), easing: easeInOutCubic },
   );
 
-  // VRM visibility は sidebar の display:none に追従するため、ここでは触らない。
-  // .sidebar 自体が px<=0 で display:none になれば、子の VRM canvas も paint されない。
+  // VRM visibility は shell column の display:none に追従するため、ここでは触らない。
+  // .shell-column 自体が px<=0 で display:none になれば、その子孫の VRM canvas も paint されない。
 
   // closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
   // 完了直前に default に戻されている可能性があるので、適用時に level を再確認する。

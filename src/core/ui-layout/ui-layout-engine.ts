@@ -16,6 +16,7 @@ export interface LayoutTargets {
   readonly terminal: HTMLElement;
   readonly sidebar: HTMLElement;
   readonly character: HTMLElement;
+  readonly chrome: HTMLElement;
 }
 
 /** 本モジュールが touch する全 style プロパティ（resetLayout の loop で参照） */
@@ -48,8 +49,15 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
     // "default" は何もしない（元の CSS が効く）
 
     if (s.position === "overlay") {
+      // fixed 要素は top/left/height を与えないと縦に潰れる（高さ＝内容依存）。
+      // P1 で overlay target は .shell-column になり、chrome 非表示時は
+      // 子の character viewport が flex:1 で親高さ 0 を継承 → キャラ不可視に
+      // なるため、viewport 全体（top/left/height）を明示して占有させる。
       targets.sidebar.style.position = "fixed";
       targets.sidebar.style.zIndex = "100";
+      targets.sidebar.style.top = "0";
+      targets.sidebar.style.left = "0";
+      targets.sidebar.style.height = "100vh";
     }
     if (s.transparent) {
       targets.sidebar.style.background = "transparent";
@@ -85,11 +93,24 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
       targets.character.style.display = "none";
     }
   }
+
+  // chrome
+  if (layout.chrome) {
+    if (layout.chrome.visible === false) {
+      targets.chrome.style.display = "none";
+    }
+  }
 }
 
 /** applyLayout が touch する全 style プロパティを空文字に戻す。 */
 export function resetLayout(targets: LayoutTargets): void {
-  for (const target of [targets.root, targets.sidebar, targets.terminal, targets.character]) {
+  for (const target of [
+    targets.root,
+    targets.sidebar,
+    targets.terminal,
+    targets.character,
+    targets.chrome,
+  ]) {
     for (const key of MANAGED_STYLE_KEYS) {
       (target.style as unknown as Record<string, string>)[key] = "";
     }

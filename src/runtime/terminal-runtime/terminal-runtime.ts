@@ -87,6 +87,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly scrollListeners = new Set<() => void>();
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
   private disposed = false;
+  private hidden = false;
+  private opacity = 1;
+  private bgTransparent = false;
+  /** 直近 setTheme でマージされた背景色。bgTransparent 解除時の復帰先。 */
+  private currentThemeBackground: string | undefined;
   private startGeneration = 0;
   private ptyExitUnlisten: (() => void) | null = null;
   private regionDrag: {
@@ -107,6 +112,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       fontSize: 13,
       cursorBlink: true,
       allowProposedApi: true,
+      // 透明 background を合成可能にする。不透明 background のときは描画結果が
+      // 同一（無害）で、setBackgroundTransparent(true) で初めて効く。
+      allowTransparency: true,
       scrollback: 5000,
     });
 
@@ -209,6 +217,55 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeRafId = 0;
     this.attachedContainer = null;
     this.xtermContainer.style.visibility = "hidden";
+  }
+
+  /**
+   * layout 由来の表示/非表示。session active 状態（attach/detach）とは独立。
+   * hidden 中は singleton xtermContainer を visibility:hidden に固定し、
+   * syncAttachedRect の per-frame visibility 強制もこのフラグに従う。
+   */
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden;
+    this.xtermContainer.style.visibility = hidden ? "hidden" : "visible";
+  }
+
+  /**
+   * layout 由来の terminal 全体不透明度（0-1）。1 で完全不透明。
+   * .xterm-singleton-container の style.opacity を直接設定し、フラグも保持する
+   * （attach/detach をまたいで維持。syncAttachedRect は opacity を触らないので安全）。
+   */
+  setOpacity(opacity: number): void {
+    this.opacity = opacity;
+    this.xtermContainer.style.opacity = String(opacity);
+  }
+
+  /**
+   * layout 由来：terminal の背景のみ透明にする（文字は前景色で不透明のまま）。
+   * xterm theme.background を透明色にし、singleton container の CSS 背景も透明化する。
+   * setTheme は scene 由来の不透明 background を上書きするため、bgTransparent 中は
+   * setTheme 後に再適用する（hidden/opacity の flag-reassert と同型）。
+   */
+  setBackgroundTransparent(transparent: boolean): void {
+    this.bgTransparent = transparent;
+    this.applyBackgroundTransparency();
+  }
+
+  /**
+   * bgTransparent フラグを theme.background と container の見た目に反映する。
+   * 透明時は theme.background を rgba(0,0,0,0) にし、背景を塗る各 xterm child を
+   * scoped class で透過させる。解除時は直近 setTheme の背景色（無ければ既定）へ戻す。
+   */
+  private applyBackgroundTransparency(): void {
+    if (this.bgTransparent) {
+      this.term.options.theme = { ...this.term.options.theme, background: "rgba(0,0,0,0)" };
+      this.xtermContainer.style.background = "transparent";
+    } else {
+      const restored = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
+      this.term.options.theme = { ...this.term.options.theme, background: restored };
+      // 空文字で inline 背景を外し CSS（--charminal-bg）へ戻す。
+      this.xtermContainer.style.background = "";
+    }
+    this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgTransparent);
   }
 
   /**
@@ -315,6 +372,16 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   setTheme(theme: Partial<XTermTheme>): void {
     if (this.disposed) return;
     this.term.options.theme = { ...this.term.options.theme, ...theme };
+    // bgTransparent 解除時の復帰先。merged theme から拾うと、bgTransparent 中に
+    // background キーを持たない partial setTheme が来たとき stale な
+    // "rgba(0,0,0,0)" を復帰先に焼き込んでしまう（stuck-transparent）。
+    // 引数 theme が明示的に string background を運んだときだけ更新する。
+    if (typeof theme.background === "string") {
+      this.currentThemeBackground = theme.background;
+    }
+    // bgTransparent が立っているなら scene 由来の不透明 background を透明で
+    // 再上書きする（hidden/opacity の flag-reassert と同型）。
+    this.applyBackgroundTransparency();
     // Theme update can leave renderer dimensions stale when scene switches
     // coincide with layout changes, so force a fresh fit before refresh.
     this.refit();
@@ -586,7 +653,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.width = `${w}px`;
     this.xtermContainer.style.height = `${h}px`;
     this.resizeRegionCanvas(w, h);
-    this.xtermContainer.style.visibility = "visible";
+    this.xtermContainer.style.visibility = this.hidden ? "hidden" : "visible";
+    // opacity は per-frame で触らないのが既定だが、layout で <1 が宣言されている
+    // ときだけフラグから再適用して attach 経路の取りこぼしを防ぐ（既定 1 では
+    // inline style を一切付けず「素の不透明」を保つ）。
+    if (this.opacity !== 1) this.xtermContainer.style.opacity = String(this.opacity);
     if (w > 0 && h > 0 && (w !== this.lastFitW || h !== this.lastFitH)) {
       this.lastFitW = w;
       this.lastFitH = h;

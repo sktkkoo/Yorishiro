@@ -114,6 +114,24 @@ export interface TerminalRuntime {
   detachContainer(): void;
 
   /**
+   * layout 由来の表示/非表示を切り替える。attach/detach（session active 状態）
+   * とは独立。hidden 中は per-frame の rect 同期でも visibility を上書きしない。
+   */
+  setHidden(hidden: boolean): void;
+
+  /**
+   * layout 由来の terminal 全体不透明度（0-1）を設定する。1=完全不透明（既定）。
+   * attach/detach をまたいで維持され、per-frame の rect 同期では上書きされない。
+   */
+  setOpacity(opacity: number): void;
+
+  /**
+   * layout 由来：terminal の背景のみ透明化する（文字は不透明のまま）。
+   * scene の theme 変更をまたいでもフラグから再適用され、戻らない。
+   */
+  setBackgroundTransparent(transparent: boolean): void;
+
+  /**
    * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
    * document から外し、ResizeObserver / RAF を停止する。dispose 後の
    * runtime instance は再利用しない（再 attach / 再 spawn 不可）。

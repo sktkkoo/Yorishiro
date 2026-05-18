@@ -41,7 +41,12 @@ import charminalSettingsPack, {
   resolveCloseTarget,
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
+import immersiveManifest from "../bundled-packs/ui/immersive/manifest.json";
+import immersivePack from "../bundled-packs/ui/immersive/ui";
+import theaterManifest from "../bundled-packs/ui/theater/manifest.json";
+import theaterPack from "../bundled-packs/ui/theater/ui";
 import { prepareLocalizedPluginDir, type SpawnSpec, sessionList } from "./bindings/tauri-commands";
+import CharacterSurface from "./character-surface";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -99,6 +104,7 @@ import {
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
+import { getSurfaceRegistry } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import { getThreeRuntime } from "./runtime/three-runtime";
@@ -569,6 +575,36 @@ function App() {
       note: `registered bundled UI pack '${charminalSettingsPack.id}'`,
     });
 
+    // bundled immersive UI pack（chrome 隠し + キャラ全画面、terminal は背後に残る）。
+    uiPackRegistry.register({
+      id: immersivePack.id,
+      origin: "bundled",
+      manifest: immersiveManifest as UiPackManifest,
+      pack: {
+        layout: immersivePack.layout,
+        mount: immersivePack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${immersivePack.id}'`,
+    });
+
+    // bundled theater UI pack（chrome・terminal 隠し + キャラだけ全画面）。
+    uiPackRegistry.register({
+      id: theaterPack.id,
+      origin: "bundled",
+      manifest: theaterManifest as UiPackManifest,
+      pack: {
+        layout: theaterPack.layout,
+        mount: theaterPack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${theaterPack.id}'`,
+    });
+
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
     // active persona の reflex（customTriggers + responses）を EventBus に bridge する。
     // subscribeActive は登録時に現 active を同期 fire するので、bundled persona の
@@ -933,7 +969,9 @@ function App() {
         const buildPresenceDeps = (): PresenceIntensityDeps => ({
           setSidebarWidth: (px) => {
             document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-            const el = document.querySelector<HTMLElement>(".sidebar");
+            const el =
+              getSurfaceRegistry().get("shell") ??
+              document.querySelector<HTMLElement>(".shell-column");
             if (el) el.classList.toggle("presence-closed", px <= 0);
           },
           getSidebarWidth: () => {
@@ -1126,7 +1164,9 @@ function App() {
           "ui.sidebar.set": createUiSidebarSetHandler({
             setSidebarWidth: (px) => {
               document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-              const el = document.querySelector<HTMLElement>(".sidebar");
+              const el =
+                getSurfaceRegistry().get("shell") ??
+                document.querySelector<HTMLElement>(".shell-column");
               if (el) el.classList.toggle("presence-closed", px <= 0);
             },
             getSidebarWidth: () => {
@@ -1520,14 +1560,19 @@ function App() {
     let currentAbort: AbortController | null = null;
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
-      const sidebar = document.querySelector<HTMLElement>(".sidebar");
-      const character = document.querySelector<HTMLElement>(".charactor-container");
-      if (!sidebar || !character) return null;
+      const reg = getSurfaceRegistry();
+      const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
+      const character =
+        reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
+      // "chrome" surface は Sidebar が自己登録する（P3）。未登録時は DOM class ".sidebar" にフォールバック
+      const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
+      if (!sidebar || !character || !chrome) return null;
       return {
         root: document.documentElement,
         terminal,
         sidebar,
         character,
+        chrome,
       };
     };
 
@@ -1554,15 +1599,51 @@ function App() {
       getTerminalRuntime(tabManager.getState().activeSessionId).refit();
     };
 
+    // mount 済み terminal の session id を placeholder の data-session-id から引く。
+    // layout target の収集と同じ source なので食い違わない。
+    const getMountedSessionIds = (): string[] =>
+      getTerminalElements().flatMap((el) => {
+        const id = el.dataset.sessionId;
+        return id ? [id] : [];
+      });
+
     const resetLayoutForAllTerminals = (): boolean => {
       const targetsList = getAllLayoutTargets();
       for (const targets of targetsList) resetLayout(targets);
+      // singleton xterm を layout-hidden から復帰させる（placeholder の
+      // display 解除だけでは per-frame visibility 強制が解けないため）。
+      // opacity も既定（完全不透明）へ、背景透明化も解除する。
+      for (const sessionId of getMountedSessionIds()) {
+        const runtime = getTerminalRuntime(sessionId);
+        runtime.setHidden(false);
+        runtime.setOpacity(1);
+        runtime.setBackgroundTransparent(false);
+      }
       return targetsList.length > 0;
     };
 
     const applyLayoutForAllTerminals = (layout: UiLayout): LayoutTargets | null => {
       const targetsList = getAllLayoutTargets();
       for (const targets of targetsList) applyLayout(layout, targets);
+      // placeholder の display:none だけでは body 直下の singleton xterm を
+      // 隠せない（syncAttachedRect が毎フレーム visibility を上書きする）。
+      // setHidden で runtime 側のフラグを立てて確実に隠す。
+      const terminalHidden = layout.terminal?.position === "hidden";
+      // opacity<1 で背後の character/scene を透かす。syncAttachedRect は
+      // opacity を触らないので runtime 側に保持させれば per-frame で戻らない。
+      const terminalOpacity =
+        typeof layout.terminal?.opacity === "number"
+          ? Math.min(1, Math.max(0, layout.terminal.opacity))
+          : 1;
+      // 背景のみ透明化（文字は不透明のまま）。setTheme をまたいでも runtime 側の
+      // フラグから再適用されるので scene 切替で戻らない。
+      const termBgTransparent = layout.terminal?.transparentBackground === true;
+      for (const sessionId of getMountedSessionIds()) {
+        const runtime = getTerminalRuntime(sessionId);
+        runtime.setHidden(terminalHidden);
+        runtime.setOpacity(terminalOpacity);
+        runtime.setBackgroundTransparent(termBgTransparent);
+      }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
 
@@ -2326,12 +2407,14 @@ function App() {
 
       // v1 `setMcpRequestAttention` と同じ rect 選択ロジック。
       // get-ui-state / set-ui-state → activeUi（非 ambient UI コンテナ）、
-      // それ以外 → sidebar。両方なければ null を返す。
+      // それ以外 → "shell" surface（.shell-column = 全カラム）。
+      // 両方なければ null を返す。
       const getTargetRect = (tool: string) => {
         const activeUi = document.querySelector<HTMLElement>(
           ".ui-pack-container:not(.ui-pack-container--ambient)",
         );
-        const sidebar = document.querySelector<HTMLElement>(".sidebar");
+        const reg = getSurfaceRegistry();
+        const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
         const targetElement =
           tool === "get-ui-state" || tool === "set-ui-state" ? (activeUi ?? sidebar) : sidebar;
         const r = targetElement?.getBoundingClientRect();
@@ -2497,16 +2580,27 @@ function App() {
           titleBar={{ title: "Scene", drag: true, filter: true, position: { x: -300, y: 0 } }}
         />
       ) : null}
-      <Sidebar
-        folderName={folderName}
-        onPickFolder={handlePickFolder}
-        vrmUrl={vrmUrl}
-        onOpenSettings={handleOpenSettings}
-        onBodyReady={handleBodyReady}
-        bodyDevLog={bodyDevLog}
-        scene={renderedSceneEntry}
-        settingsLabel={strings.settings}
-      />
+      <div
+        className="shell-column"
+        // .shell-column は App と同寿命で条件 unmount しない。register は置換
+        // semantics、ref が null で呼ばれても if(el) で no-op なので unregister 不要。
+        ref={(el) => {
+          if (el) getSurfaceRegistry().register("shell", el);
+        }}
+      >
+        <Sidebar
+          folderName={folderName}
+          onPickFolder={handlePickFolder}
+          onOpenSettings={handleOpenSettings}
+          settingsLabel={strings.settings}
+        />
+        <CharacterSurface
+          vrmUrl={vrmUrl}
+          onBodyReady={handleBodyReady}
+          bodyDevLog={bodyDevLog}
+          scene={renderedSceneEntry}
+        />
+      </div>
       {canMountTerminals && (
         <>
           {tabState.sessions.map((sessionId) => {
