@@ -1742,6 +1742,16 @@ function App() {
         },
         app: {
           setVrm: (path: string | null) => applyVrmPath(path),
+          // host 所有の固定プロンプトのみ解決して pre-fill する（pack はバイトを
+          // 選べない）。改行なし＝user が Enter するまで実行されない。
+          // 設計境界: docs/decisions/input-prefill-boundary.md
+          insertFixedPrompt: async (key) => {
+            const fixed = getStrings(appLanguageRef.current.resolved);
+            const data = key === "shortcut" ? fixed.shortcutPrompt : null;
+            if (data === null) return;
+            const { ptyWrite } = await import("./bindings/tauri-commands");
+            await ptyWrite({ data });
+          },
           listPersonas: () =>
             personaRegistry.listEntries().map((e) => ({
               id: e.id,

@@ -171,6 +171,8 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 個人プロジェクトとして開発中です。Issue や Discussion は歓迎します。**Pull request は現在受け付けていません。**
 
+セキュリティ報告は [SECURITY.md](SECURITY.md) を参照してください。
+
 ---
 
 ## Tech stack
@@ -223,9 +225,15 @@ npm run tauri dev # デスクトップアプリとして起動
 
 ### Philosophy — このプロジェクトの思想
 
-- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — UI を「場所」として捉え、AI を「住人」として存在させるという考え方
-- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
-- [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — AI の能力ではなく、AI がどう在るかを設計するということ
+- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) — UI を「場所」として捉え、AI を「住人」として存在させるという考え方
+- [`docs/philosophy/CHARMINAL.ja.md`](docs/philosophy/CHARMINAL.ja.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
+- [`docs/philosophy/PRESENCE_HARNESS.ja.md`](docs/philosophy/PRESENCE_HARNESS.ja.md) — AI の能力ではなく、AI がどう在るかを設計するということ
+- [`docs/philosophy/SELF_REFERENTIAL_MCP.ja.md`](docs/philosophy/SELF_REFERENTIAL_MCP.ja.md) — 住人が自分の家に手を伸ばせるということ。身体と環境を同じ MCP 面として扱う
+
+### Security
+
+- [`docs/security.md`](docs/security.md) — 信頼境界と attack surface の地図
+- [`SECURITY.md`](SECURITY.md) — セキュリティポリシーと脆弱性報告
 
 ### 設定とカスタマイズ
 

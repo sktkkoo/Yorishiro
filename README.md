@@ -171,6 +171,8 @@ Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access w
 
 This is a personal project in active development. Issues and discussions are welcome. **Pull requests are not accepted at this time.**
 
+For security reporting, see [SECURITY.md](SECURITY.md).
+
 ---
 
 ## Tech stack
@@ -223,9 +225,15 @@ npm run tauri dev # Launch as desktop app
 
 ### Philosophy — what this project believes
 
-- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.en.md) — Treating UI as a place and AI as its inhabitant
-- [`docs/philosophy/CHARMINAL.en.md`](docs/philosophy/CHARMINAL.en.md) — Why AI needs a body. The two-layer architecture of mind and reflex
-- [`docs/philosophy/PRESENCE_HARNESS.en.md`](docs/philosophy/PRESENCE_HARNESS.en.md) — Designing not what AI can do, but how AI exists
+- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — Treating UI as a place and AI as its inhabitant
+- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — Why AI needs a body. The two-layer architecture of mind and reflex
+- [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — Designing not what AI can do, but how AI exists
+- [`docs/philosophy/SELF_REFERENTIAL_MCP.md`](docs/philosophy/SELF_REFERENTIAL_MCP.md) — An inhabitant who can reach into their own home: body and environment as one MCP surface
+
+### Security
+
+- [`docs/security.md`](docs/security.md) — Trust boundaries and attack surface map
+- [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability reporting
 
 ### Configuration & customization
 

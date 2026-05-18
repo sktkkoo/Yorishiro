@@ -19,7 +19,6 @@ import { ChevronDown, FolderOpen, Volume2, VolumeX } from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { ptyWrite } from "../../../src/bindings/tauri-commands";
 import { getStrings } from "../../../src/i18n/strings";
 import {
   isBundledClaiPersonaId,
@@ -532,7 +531,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const onShortcutClick = async () => {
     fireCloseRequest();
     try {
-      await ptyWrite({ data: strings.shortcutPrompt });
+      // pack は文字列を渡さない。host 所有の固定プロンプトを key で指す。
+      // 設計境界: docs/decisions/input-prefill-boundary.md
+      await ctx.app.insertFixedPrompt("shortcut");
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       ctx.emitEvent("charminal-settings:write-failed", { field: "shortcut-prompt", reason });

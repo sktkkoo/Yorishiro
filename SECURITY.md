@@ -1,5 +1,7 @@
 # Security Policy
 
+For the trust-boundary and attack-surface map, see [`docs/security.md`](docs/security.md).
+
 ## Supported Scope
 
 Charminal is still pre-1.0. Security fixes target the current `main` branch and the latest public release when one is available.
@@ -11,10 +13,6 @@ Charminal does not currently provide a public pack registry, in-app community pa
 ## Reporting a Vulnerability
 
 Please report vulnerabilities privately by opening a GitHub security advisory.
-
-Before the OSS announcement, add a dedicated security contact email here.
-
-We aim to acknowledge reports within 5 business days. Charminal is pre-1.0, so fix and release timelines may vary by impact and available maintainer time.
 
 Include:
 

@@ -33,6 +33,7 @@
 
 - philosophy: [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)「観察の境界」
 - source: `src/core/perception/perception.ts`（read のみ、write API なし）
+- 適用 decision: [`input-prefill-boundary.md`](input-prefill-boundary.md)（pack/AI は任意テキストを書けず、host 所有の固定プロンプト verb と user-gesture gated な reference marker のみ）
 
 ---
 

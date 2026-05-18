@@ -86,6 +86,16 @@ export interface UiAppPackOption {
 }
 
 /**
+ * `insertFixedPrompt` が受け付ける固定プロンプトの key。
+ *
+ * pack は文字列ではなくこの key を渡す。実際に terminal へ入る文言は host 所有
+ * の i18n テーブルで解決される（pack はバイトを選べない）。任意テキストを
+ * terminal/PTY に書く API は型ごと存在しない。
+ * 設計境界: docs/decisions/input-prefill-boundary.md / critical-constraints.md §1
+ */
+export type FixedTerminalPromptKey = "shortcut";
+
+/**
  * UI pack から App-level state を変更するための API namespace。
  * 将来 app-level の他 state を expose する余地を残すため namespace を切る。
  */
@@ -95,6 +105,15 @@ export interface UiAppAPI {
    * 反映を行う。`null` で VRM 未読み込み状態に戻す。
    */
   setVrm(path: string | null): void;
+  /**
+   * host 所有の固定プロンプトを terminal の入力行に pre-fill する。
+   *
+   * pack は `key` のみ渡し、文言は host が現在の言語で解決する。改行は付けず、
+   * 実行するかどうかは user の Enter に委ねる（PTY observation only に抵触しない）。
+   * 任意テキストの書き込み口は提供しない（leak 防止、対称性は固定 key 集合の側で保つ）。
+   * 設計境界: docs/decisions/input-prefill-boundary.md
+   */
+  insertFixedPrompt(key: FixedTerminalPromptKey): Promise<void>;
   /** 利用可能な persona pack の一覧（dropdown 用）。 */
   listPersonas(): readonly UiAppPackOption[];
   /** 利用可能な scene pack の一覧。 */
