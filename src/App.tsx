@@ -96,6 +96,11 @@ import {
   getPersonaRegistry,
 } from "./runtime/persona-registry";
 import {
+  type ActiveUiPresence,
+  type PresenceResolution,
+  resolvePresence,
+} from "./runtime/presence-target";
+import {
   getSceneRegistry,
   resolveSceneAssets,
   type ScenePackEntry,
@@ -408,6 +413,31 @@ declare global {
 globalThis.__CHARMINAL_REACT__ = React;
 globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
+
+// presence 契約の単一解決点（spec §4 loud-unavailable）。
+// active UI pack の presence 宣言（無ければ host 既定 = classic shell）から
+// surface を解決。?? querySelector の silent fallback を構造的に置換する。
+// module-level: getUiRegistry()/getSurfaceRegistry() は HMR singleton なので
+// どの closure からでも同一 registry を引ける（App.tsx 既存の getUiRegistry() 再取得と同方針）。
+function resolvePresenceSurface(): PresenceResolution {
+  const active = getUiRegistry().getActiveUi();
+  const a: ActiveUiPresence = active
+    ? { kind: "pack", id: active.id, presence: active.pack.layout.presence }
+    : { kind: "none" };
+  return resolvePresence(a, getSurfaceRegistry());
+}
+
+// presence による sidebar 幅 mutation の単一 writer。
+// --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
+// presence-closed class は解決された surface に対してのみ toggle。
+// 解決不能（loud-unavailable）時は一切書き込まず resolution を返す。
+function applyPresenceWidth(px: number): PresenceResolution {
+  const res = resolvePresenceSurface();
+  if (!res.ok) return res;
+  document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+  res.el.classList.toggle("presence-closed", px <= 0);
+  return res;
+}
 
 function App() {
   // ── State placement rule ────────────────────────────────────
@@ -968,11 +998,7 @@ function App() {
         // なので呼び出しのたびに最新の instance を引ける。
         const buildPresenceDeps = (): PresenceIntensityDeps => ({
           setSidebarWidth: (px) => {
-            document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-            const el =
-              getSurfaceRegistry().get("shell") ??
-              document.querySelector<HTMLElement>(".shell-column");
-            if (el) el.classList.toggle("presence-closed", px <= 0);
+            applyPresenceWidth(px);
           },
           getSidebarWidth: () => {
             const raw = getComputedStyle(document.documentElement)
@@ -1163,11 +1189,7 @@ function App() {
           }),
           "ui.sidebar.set": createUiSidebarSetHandler({
             setSidebarWidth: (px) => {
-              document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-              const el =
-                getSurfaceRegistry().get("shell") ??
-                document.querySelector<HTMLElement>(".shell-column");
-              if (el) el.classList.toggle("presence-closed", px <= 0);
+              applyPresenceWidth(px);
             },
             getSidebarWidth: () => {
               const raw = getComputedStyle(document.documentElement)
@@ -2413,8 +2435,8 @@ function App() {
         const activeUi = document.querySelector<HTMLElement>(
           ".ui-pack-container:not(.ui-pack-container--ambient)",
         );
-        const reg = getSurfaceRegistry();
-        const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
+        const presence = resolvePresenceSurface();
+        const sidebar = presence.ok ? presence.el : null;
         const targetElement =
           tool === "get-ui-state" || tool === "set-ui-state" ? (activeUi ?? sidebar) : sidebar;
         const r = targetElement?.getBoundingClientRect();
