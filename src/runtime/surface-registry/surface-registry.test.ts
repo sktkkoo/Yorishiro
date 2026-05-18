@@ -50,4 +50,14 @@ describe("SurfaceRegistry", () => {
     expect(reg.get("shell")).toBe(a);
     expect(reg.get("character")).toBe(b);
   });
+
+  it("chrome surface は shell/character と独立", () => {
+    const c = document.createElement("div");
+    reg.register("shell", a);
+    reg.register("character", b);
+    reg.register("chrome", c);
+    expect(reg.get("shell")).toBe(a);
+    expect(reg.get("character")).toBe(b);
+    expect(reg.get("chrome")).toBe(c);
+  });
 });
