@@ -11,8 +11,8 @@
  * - priority: 4 / confidence: 0.72 / kind: mcp-ui
  * - reason: set-ui-state → "tool-writing"、それ以外 → "tool-reading"
  * - TTL: 1200ms の setTimeout で手動 clear（resolver maxAge には任せない）
- * - rect: `.ui-pack-container:not(.ui-pack-container--ambient)` または `.sidebar`
- *   を getTargetRect injection で取得する
+ * - rect: `.ui-pack-container:not(.ui-pack-container--ambient)` または
+ *   `.shell-column`（"shell" surface = 全カラム）を getTargetRect injection で取得する
  *
  * listen factory は injectable: 本番では `@tauri-apps/api/event` の
  * `listen` を adapter で wrap して渡す。test では fake を渡す。

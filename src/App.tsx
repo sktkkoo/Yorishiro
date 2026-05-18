@@ -2334,12 +2334,14 @@ function App() {
 
       // v1 `setMcpRequestAttention` と同じ rect 選択ロジック。
       // get-ui-state / set-ui-state → activeUi（非 ambient UI コンテナ）、
-      // それ以外 → sidebar。両方なければ null を返す。
+      // それ以外 → "shell" surface（.shell-column = 全カラム）。
+      // 両方なければ null を返す。
       const getTargetRect = (tool: string) => {
         const activeUi = document.querySelector<HTMLElement>(
           ".ui-pack-container:not(.ui-pack-container--ambient)",
         );
-        const sidebar = document.querySelector<HTMLElement>(".sidebar");
+        const reg = getSurfaceRegistry();
+        const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
         const targetElement =
           tool === "get-ui-state" || tool === "set-ui-state" ? (activeUi ?? sidebar) : sidebar;
         const r = targetElement?.getBoundingClientRect();
@@ -2507,6 +2509,8 @@ function App() {
       ) : null}
       <div
         className="shell-column"
+        // .shell-column は App と同寿命で条件 unmount しない。register は置換
+        // semantics、ref が null で呼ばれても if(el) で no-op なので unregister 不要。
         ref={(el) => {
           if (el) getSurfaceRegistry().register("shell", el);
         }}
