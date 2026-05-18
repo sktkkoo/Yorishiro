@@ -41,6 +41,10 @@ import charminalSettingsPack, {
   resolveCloseTarget,
   SETTINGS_PACK_ID,
 } from "../bundled-packs/ui/charminal-settings/ui";
+import immersiveManifest from "../bundled-packs/ui/immersive/manifest.json";
+import immersivePack from "../bundled-packs/ui/immersive/ui";
+import theaterManifest from "../bundled-packs/ui/theater/manifest.json";
+import theaterPack from "../bundled-packs/ui/theater/ui";
 import { prepareLocalizedPluginDir, type SpawnSpec, sessionList } from "./bindings/tauri-commands";
 import CharacterSurface from "./character-surface";
 import TabIndicator from "./components/TabIndicator";
@@ -569,6 +573,36 @@ function App() {
     appLog.write({
       phase: "register",
       note: `registered bundled UI pack '${charminalSettingsPack.id}'`,
+    });
+
+    // bundled immersive UI pack（chrome 隠し + キャラ全画面、terminal は背後に残る）。
+    uiPackRegistry.register({
+      id: immersivePack.id,
+      origin: "bundled",
+      manifest: immersiveManifest as UiPackManifest,
+      pack: {
+        layout: immersivePack.layout,
+        mount: immersivePack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${immersivePack.id}'`,
+    });
+
+    // bundled theater UI pack（chrome・terminal 隠し + キャラだけ全画面）。
+    uiPackRegistry.register({
+      id: theaterPack.id,
+      origin: "bundled",
+      manifest: theaterManifest as UiPackManifest,
+      pack: {
+        layout: theaterPack.layout,
+        mount: theaterPack.mount,
+      },
+    });
+    appLog.write({
+      phase: "register",
+      note: `registered bundled UI pack '${theaterPack.id}'`,
     });
 
     // ── PersonaReflexDispatcher を構築 ───────────────────────────────────────
