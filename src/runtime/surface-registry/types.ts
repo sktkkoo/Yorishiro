@@ -6,7 +6,7 @@
  * 「複数 writer が同一 DOM を奪い合う」競合を構造的に消す。
  *
  * P1 が登録する surface:
- *   - "shell"     : width / collapse を所有する縦カラム（.shell-column）
+ *   - "shell"     : width / collapse を所有する縦カラム（P1 で .sidebar を包む .shell-column wrapper として導入）
  *   - "character" : Three/VRM/Scene viewport の mount node（.charactor-container）
  * 後続 phase で "chrome" / "terminal" を追加する。
  *

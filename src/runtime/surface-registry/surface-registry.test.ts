@@ -39,6 +39,11 @@ describe("SurfaceRegistry", () => {
     expect(reg.get("character")).toBeNull();
   });
 
+  it("未登録の surface への unregister は no-op", () => {
+    reg.unregister("character", a);
+    expect(reg.get("character")).toBeNull();
+  });
+
   it("surface 名は独立（shell と character は干渉しない）", () => {
     reg.register("shell", a);
     reg.register("character", b);
