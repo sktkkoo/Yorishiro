@@ -1530,12 +1530,15 @@ function App() {
       const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
       const character =
         reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
-      if (!sidebar || !character) return null;
+      // "chrome" surface は Sidebar が自己登録する（P3）。未登録時は DOM class ".sidebar" にフォールバック
+      const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
+      if (!sidebar || !character || !chrome) return null;
       return {
         root: document.documentElement,
         terminal,
         sidebar,
         character,
+        chrome,
       };
     };
 
