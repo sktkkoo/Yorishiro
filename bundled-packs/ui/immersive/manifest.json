@@ -5,6 +5,6 @@
   "type": "ui",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
-  "description": "chrome を隠し scene 背景を抑えてキャラを terminal の上に全画面 overlay（terminal は背後に透ける）",
+  "description": "terminal を半透明で前面に置き、背後に character と scene が透ける没入モード",
   "entry": "ui.tsx"
 }

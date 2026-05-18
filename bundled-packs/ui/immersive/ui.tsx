@@ -1,43 +1,49 @@
 /**
- * immersive — chrome を隠し、キャラを terminal の上に全画面 overlay で重ねる UI pack。
- * sidebar を fullscreen overlay（position:"overlay" = position:fixed）にし、
- * active scene の background / foreground レイヤを opacity 0 に抑制することで、
- * 透過するキャラ canvas 越しに背後の terminal が透ける（作業と住人の共存）。
+ * immersive — terminal を半透明で前面に全画面配置し、背後に character と scene が透ける没入モード。
  *
- * caveat: 不透明な 3D 環境を WebGL canvas に直接描く scene（DOM レイヤでなく
- * R3F geometry 主体の scene）では terminal でなくその環境が透ける。これは
- * 仕様（その場合も没入表現として妥当）。
+ * 【構成】
+ * - sidebar を fullscreen に広げ、shell-column（character + scene）を全画面バックドロップにする。
+ *   position:"overlay" / transparent:true は使わない——scene/character を背景として
+ *   "見せたい" ため、不透明な shell-column の背後を透かす必要はない。
+ * - terminal を固定配置（position オブジェクト）で全画面に展開し、
+ *   opacity 0.6 で半透明にする。これにより terminal 越しに背後の character / scene が透けて見える。
+ * - chrome（folder/gear 行）を非表示。
+ * - mount は何も描画せず空の Disposable を返す。
+ *   前バージョンの ctx.scene.updateLayer / resetAll による scene 抑制は撤去——
+ *   scene は抑制せずバックドロップとして活かす。
  *
- * terminal も消したい場合は theater pack。
+ * 【前バージョンとの対比】
+ * 旧: sidebar overlay + transparent + scene layer 抑制 → キャラを terminal の上に浮かせ、terminal が背後に透けた
+ * 新: sidebar fullscreen（バックドロップ）+ terminal 前面・半透明 → terminal 越しにキャラ/scene が透ける
+ *
+ * terminal を完全に消したい場合は theater pack。
+ * terminal opacity の実値は MCP `ui.terminal.set {opacity}` でライブ調整可能（対称）。
  * Internal design-record: specs/2026-05-18-shell-named-surfaces-design.md §5-P3
  */
 
 import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
 
-/** 抑制する scene レイヤ role。character は表示したままにする。 */
-const SUPPRESSED_ROLES = ["background", "foreground"] as const;
-
 const immersive: UiPackDefinition = {
   id: "immersive",
   type: "ui",
   layout: {
-    // transparent:true で .shell-column 自体の不透明 sidebar 背景を消す。
-    // これが無いと scene レイヤを抑制しても shell-column 背景が terminal を遮る。
-    sidebar: { width: "fullscreen", position: "overlay", transparent: true },
+    // shell-column（character + scene）を全画面バックドロップとして展開する。
+    // overlay / transparent は使わない——scene を不透明に描画したいため。
+    sidebar: { width: "fullscreen" },
+    // folder / gear 行を非表示。
     chrome: { visible: false },
+    // terminal を画面全体に固定配置し、opacity 0.6 で半透明にする。
+    // これにより terminal 越しに背後の character + scene が透ける。
+    // opacity の実値はライブ調整前提（MCP controls_transition / ui.terminal.set で変更可能）。
+    terminal: {
+      position: { top: "0", left: "0", width: "100vw", height: "100vh" },
+      opacity: 0.6,
+    },
   },
-  mount(ctx: UiContext, _container: HTMLDivElement): Disposable {
-    // active scene の background / foreground レイヤを opacity 0 に落とし、
-    // Three.js の透過 canvas 越しに terminal が透けて見えるようにする
-    for (const role of SUPPRESSED_ROLES) {
-      ctx.scene.updateLayer({ role }, { opacity: 0 });
-    }
-    return {
-      dispose() {
-        // pack 非アクティブ化時にレイヤ override を全リセット（scene を元の状態に戻す）
-        ctx.scene.resetAll();
-      },
-    };
+  mount(_ctx: UiContext, _container: HTMLDivElement): Disposable {
+    // container には何も描画しない。layout 宣言だけで構成が完結する。
+    // scene の updateLayer / resetAll は呼ばない——バックドロップとして活かすため。
+    return { dispose() {} };
   },
 };
 
