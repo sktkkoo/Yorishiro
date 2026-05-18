@@ -73,11 +73,26 @@ Bundled packs work out of the box. Users can place custom packs in `~/.charminal
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
 
+To install a pack shared through GitHub or another source, place it under the user pack directory:
+
+```text
+~/.charminal/packs/<pack-id>/
+├── manifest.json
+├── scene.js       # example: scene pack entry
+├── persona.js     # example: persona pack entry
+├── effect.js      # example: effect pack entry
+└── assets/        # optional pack-local assets
+```
+
+Only one entry file is needed, and `manifest.json` decides which one is used. The manifest `id` should match `<pack-id>`, and user packs use this flat layout with `.js` entries. If a shared pack is written in TypeScript, build it first and install the generated JavaScript.
+
 When working from a source checkout, run the local pack checker before sharing or debugging a user pack:
 
 ```bash
 npm run check:pack -- ~/.charminal/packs/<pack-id>
 ```
+
+The checker helps catch packaging mistakes; it is not a sandbox or a security review.
 
 ### Data directory
 
@@ -238,6 +253,7 @@ npm run tauri dev # Launch as desktop app
 ### Configuration & customization
 
 - [`docs/configuration.md`](docs/configuration.md) — Fields of `~/.charminal/config.json`
+- [`docs/decisions/scene-execution-sandbox.md`](docs/decisions/scene-execution-sandbox.md) — Local trusted pack sharing and scene execution boundaries
 - [`docs/terminal.md`](docs/terminal.md) — Terminal session profiles, shell customization, OSC 133 shell integration
 
 ### Development
