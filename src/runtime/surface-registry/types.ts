@@ -8,12 +8,13 @@
  * P1 が登録する surface:
  *   - "shell"     : width / collapse を所有する縦カラム（P1 で .sidebar を包む .shell-column wrapper として導入）
  *   - "character" : Three/VRM/Scene viewport の mount node（.charactor-container）
- * 後続 phase で "chrome" / "terminal" を追加する。
+ *   - "chrome"    : folder/gear の chrome 行（.sidebar）。P3 で単独非表示可能に
+ * 後続 phase で "terminal" を追加する。
  *
  * Internal design-record: specs/2026-05-18-shell-named-surfaces-design.md §1/§2
  */
 
-export type SurfaceName = "shell" | "character";
+export type SurfaceName = "shell" | "character" | "chrome";
 
 export interface SurfaceRegistry {
   /** surface 名に DOM node を結び付ける。既存登録があれば置換する。 */
