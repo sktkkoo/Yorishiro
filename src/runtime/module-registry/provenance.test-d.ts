@@ -1,12 +1,5 @@
+import { assertType, type Equals } from "../../test-utils/type-assert";
 import type { AllowedKindFor, ModuleKind, Provenance } from "./provenance";
-
-// ─── Type assertion utility ─────────────────────────────────────
-
-type Equals<X, Y> =
-  (<T>() => T extends X ? 1 : 2) extends <T>() => T extends Y ? 1 : 2 ? true : false;
-
-// `assertType<true>(value)` のように使い、value の型が true でなければ tsc が落ちる。
-declare function assertType<T extends true>(value: T): void;
 
 // ─── builtin: 全 kind を許可 ─────────────────────────────────────
 

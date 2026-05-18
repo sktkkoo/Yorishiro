@@ -1,9 +1,7 @@
 // @vitest-environment jsdom
 
-import type { UiLayout } from "@charminal/sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createSurfaceRegistry } from "./surface-registry";
-import type { SurfaceName } from "./types";
 
 describe("SurfaceRegistry", () => {
   let reg: ReturnType<typeof createSurfaceRegistry>;
@@ -61,16 +59,5 @@ describe("SurfaceRegistry", () => {
     expect(reg.get("shell")).toBe(a);
     expect(reg.get("character")).toBe(b);
     expect(reg.get("chrome")).toBe(c);
-  });
-
-  // SDK UiLayout.presence.target は runtime SurfaceName と完全一致していること。
-  // 片方だけ surface を増減すると presence 契約と registry が食い違うのでコンパイルで止める。
-  it("UiLayout.presence.target は SurfaceName と双方向に代入可能", () => {
-    type PresenceTarget = NonNullable<UiLayout["presence"]>["target"];
-    const aToB: SurfaceName = null as unknown as PresenceTarget;
-    const bToA: PresenceTarget = null as unknown as SurfaceName;
-    void aToB;
-    void bToA;
-    expect(true).toBe(true);
   });
 });

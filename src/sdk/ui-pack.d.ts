@@ -73,8 +73,8 @@ export interface UiLayout {
    * typed `unavailable` を AI に返す（loud-unavailable, spec §4）。
    * default-shell（host 既定 = classic）は `"shell"` を宣言するので既定では常に available。
    *
-   * target は host 所有 surface registry の登録名。"shell" / "character" / "chrome"。
-   * （runtime の `SurfaceName` と同期。surface-registry.test.ts に sync 型 assertion）
+   * target は host 所有 surface registry の登録名（runtime の `SurfaceName` と同期。
+   * surface-registry.test-d.ts に sync 型 assertion）。
    */
   readonly presence?: {
     readonly target: "shell" | "character" | "chrome";
