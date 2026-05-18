@@ -39,6 +39,8 @@ export const KEYS = {
   VRM_CACHE: "vrm:cache",
   /** PresenceIntensity singleton: 住人の存在強度（default / closed）を管理する。 */
   PRESENCE_INTENSITY: "presence-intensity:state",
+  /** SurfaceRegistry singleton (shell named-surfaces P1): named surface → DOM mount node の対応表。 */
+  SURFACE_REGISTRY: "surface:registry",
   /** SessionRegistry singleton: 全 session の descriptor / lifecycle / activity と event dispatch。 */
   SESSION_REGISTRY: "session:registry",
   /** SessionTabManager singleton: session タブの状態管理 + auto-respawn。 */
