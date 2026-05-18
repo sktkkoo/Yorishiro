@@ -66,6 +66,19 @@ export interface UiLayout {
     /** false にすると chrome 行（folder/gear, .sidebar）を非表示。"キャラだけ全画面" 等に使う */
     readonly visible?: boolean;
   };
+  /**
+   * AI の存在強度 / `ui.sidebar.set` 相当の mutation がどの surface を動かすかの宣言。
+   *
+   * これを宣言しない UI pack では presence/sidebar 系の MCP tool は
+   * typed `unavailable` を AI に返す（loud-unavailable, spec §4）。
+   * default-shell（host 既定 = classic）は `"shell"` を宣言するので既定では常に available。
+   *
+   * target は host 所有 surface registry の登録名。"shell" / "character" / "chrome"。
+   * （runtime の `SurfaceName` と同期。surface-registry.test.ts に sync 型 assertion）
+   */
+  readonly presence?: {
+    readonly target: "shell" | "character" | "chrome";
+  };
 }
 
 export interface UiPackManifest {
