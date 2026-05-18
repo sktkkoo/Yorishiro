@@ -234,4 +234,39 @@ describe("TerminalRuntime", () => {
     runtime.detachContainer();
     stub.remove();
   });
+
+  it("setOpacity(0.5) で .xterm-singleton-container の style.opacity が 0.5 になる", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setOpacity(0.5);
+    expect(xtermSingleton().style.opacity).toBe("0.5");
+  });
+
+  it("setOpacity は attachTo + syncAttachedRect をまたいでも維持される（per-frame sync が opacity を戻さない）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setOpacity(0.5);
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    // attachTo が内部で syncAttachedRect を 1 回呼ぶ（per-frame 経路）
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.opacity).toBe("0.5");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  it("setOpacity しなければ opacity は未設定（既定で完全不透明）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    runtime.attachTo(stub);
+
+    // 一度も setOpacity していなければ inline style.opacity は触られない
+    expect(xtermSingleton().style.opacity).toBe("");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
 });

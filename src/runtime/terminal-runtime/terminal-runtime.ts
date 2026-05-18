@@ -88,6 +88,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
   private disposed = false;
   private hidden = false;
+  private opacity = 1;
   private startGeneration = 0;
   private ptyExitUnlisten: (() => void) | null = null;
   private regionDrag: {
@@ -220,6 +221,16 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   setHidden(hidden: boolean): void {
     this.hidden = hidden;
     this.xtermContainer.style.visibility = hidden ? "hidden" : "visible";
+  }
+
+  /**
+   * layout 由来の terminal 全体不透明度（0-1）。1 で完全不透明。
+   * .xterm-singleton-container の style.opacity を直接設定し、フラグも保持する
+   * （attach/detach をまたいで維持。syncAttachedRect は opacity を触らないので安全）。
+   */
+  setOpacity(opacity: number): void {
+    this.opacity = opacity;
+    this.xtermContainer.style.opacity = String(opacity);
   }
 
   /**
@@ -598,6 +609,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.height = `${h}px`;
     this.resizeRegionCanvas(w, h);
     this.xtermContainer.style.visibility = this.hidden ? "hidden" : "visible";
+    // opacity は per-frame で触らないのが既定だが、layout で <1 が宣言されている
+    // ときだけフラグから再適用して attach 経路の取りこぼしを防ぐ（既定 1 では
+    // inline style を一切付けず「素の不透明」を保つ）。
+    if (this.opacity !== 1) this.xtermContainer.style.opacity = String(this.opacity);
     if (w > 0 && h > 0 && (w !== this.lastFitW || h !== this.lastFitH)) {
       this.lastFitW = w;
       this.lastFitH = h;

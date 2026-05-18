@@ -120,6 +120,12 @@ export interface TerminalRuntime {
   setHidden(hidden: boolean): void;
 
   /**
+   * layout 由来の terminal 全体不透明度（0-1）を設定する。1=完全不透明（既定）。
+   * attach/detach をまたいで維持され、per-frame の rect 同期では上書きされない。
+   */
+  setOpacity(opacity: number): void;
+
+  /**
    * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
    * document から外し、ResizeObserver / RAF を停止する。dispose 後の
    * runtime instance は再利用しない（再 attach / 再 spawn 不可）。
