@@ -73,11 +73,26 @@ Bundled pack がデフォルトで動作します。ユーザーは `~/.charmina
 
 ユーザー作成 pack は **local trusted code** として扱われます。sandbox 済み・review 済み・public registry 用 artifact ではありません。現時点の Charminal は public pack registry、in-app community pack install、`/charm:prepare-publish` をまだ提供していません。GitHub 等で pack の source code を共有することはできますが、手動で導入する利用者は local trusted code として自己責任で実行する扱いです。
 
+GitHub 等で共有された pack を導入する場合は、user pack directory に配置します：
+
+```text
+~/.charminal/packs/<pack-id>/
+├── manifest.json
+├── scene.js       # 例: scene pack entry
+├── persona.js     # 例: persona pack entry
+├── effect.js      # 例: effect pack entry
+└── assets/        # 任意の pack-local assets
+```
+
+必要な entry file は 1 つだけで、どれを使うかは `manifest.json` が決めます。manifest の `id` は `<pack-id>` と一致させ、user pack はこの flat layout と `.js` entry を使います。共有 pack が TypeScript で書かれている場合は、先に build して生成された JavaScript を配置してください。
+
 source checkout から作業している場合は、共有やデバッグの前に local pack checker を実行できます：
 
 ```bash
 npm run check:pack -- ~/.charminal/packs/<pack-id>
 ```
+
+checker は packaging mistake を見つけるためのものです。sandbox や security review の代替ではありません。
 
 ### データディレクトリ
 
@@ -238,6 +253,7 @@ npm run tauri dev # デスクトップアプリとして起動
 ### 設定とカスタマイズ
 
 - [`docs/configuration.md`](docs/configuration.md) — `~/.charminal/config.json` の field 一覧
+- [`docs/decisions/scene-execution-sandbox.md`](docs/decisions/scene-execution-sandbox.md) — local trusted pack 共有と scene 実行境界
 - [`docs/terminal.md`](docs/terminal.md) — Terminal session の profile / shell カスタマイズ / OSC 133 shell integration
 
 ### Development
