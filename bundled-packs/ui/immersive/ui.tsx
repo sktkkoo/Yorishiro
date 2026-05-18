@@ -21,7 +21,9 @@ const immersive: UiPackDefinition = {
   id: "immersive",
   type: "ui",
   layout: {
-    sidebar: { width: "fullscreen", position: "overlay" },
+    // transparent:true で .shell-column 自体の不透明 sidebar 背景を消す。
+    // これが無いと scene レイヤを抑制しても shell-column 背景が terminal を遮る。
+    sidebar: { width: "fullscreen", position: "overlay", transparent: true },
     chrome: { visible: false },
   },
   mount(ctx: UiContext, _container: HTMLDivElement): Disposable {
