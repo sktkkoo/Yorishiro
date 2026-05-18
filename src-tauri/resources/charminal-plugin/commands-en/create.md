@@ -219,7 +219,7 @@ export default {
 
 ### Session Restart Required
 
-Charminal itself hot reloads the persona and reflex layer. However, the running Claude Code terminal keeps the old speaking prompt. Charminal does not write into an already-running observed PTY session, so the user must start a new session.
+Charminal itself hot reloads the persona and reflex layer. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Charminal does not write into an already-running observed PTY session, so the user must start a new session.
 
 After persona work, always explain this in the resident's own voice. Avoid technical terms like `systemPrompt`, `PTY`, or `observation-only`.
 

@@ -13,7 +13,7 @@ Charminal charm コマンドのリファレンスガイド。user の質問（`$
 
 ## 初回 setup（permission prompt を抑制する）
 
-AI が `/create` や `/update` 経由で pack を書く際、毎回 permission prompt が出ないようにするには、`~/.claude/settings.json` の `permissions.allow` に以下を追加する：
+Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で pack を書く際の permission prompt を減らすには、`~/.claude/settings.json` の `permissions.allow` に以下を追加する：
 
 ```json
 {
@@ -28,9 +28,9 @@ AI が `/create` や `/update` 経由で pack を書く際、毎回 permission p
 }
 ```
 
-既存の `allow` 配列に 4 行を追記するだけ（他の設定は変えない）。`init.js` は keyboard shortcut などを仕掛ける startup script（`/shortcut` 参照）。
+既存の `allow` 配列に 4 行を追記するだけ（他の設定は変えない）。`init.js` は keyboard shortcut などを仕掛ける startup script（`/charm:shortcut` 参照）。
 
-**この設定がなくても動作する**（毎回 prompt が出るだけ）。
+**この設定がなくても動作する**（毎回 prompt が出るだけ）。この設定は Claude Code 専用で、Codex は独自の approval policy を使い、`~/.claude/settings.json` は読まない。
 
 ---
 
@@ -38,12 +38,13 @@ AI が `/create` や `/update` 経由で pack を書く際、毎回 permission p
 
 | コマンド | 説明 |
 |---|---|
-| `/create` | 新しい pack を対話で作る |
-| `/update` | 既存の pack を編集・調整する |
-| `/help` | このリファレンスを表示する |
-| `/shortcut` | キーボードショートカットの追加・編集（init.js） |
+| `/charm:create` | 新しい pack を対話で作る |
+| `/charm:update` | 既存の pack を編集・調整する |
+| `/charm:help` | このリファレンスを表示する |
+| `/charm:shortcut` | キーボードショートカットの追加・編集（init.js） |
+| `/charm:tutorial` | 初回チュートリアルを開始する |
 
-各コマンドは引数付きで呼べる。例：`/create 猫耳のペルソナ`、`/update my-scene の背景色を暗くして`。
+各コマンドは引数付きで呼べる。例：`/charm:create 猫耳のペルソナ`、`/charm:update my-scene の背景色を暗くして`。
 
 ---
 

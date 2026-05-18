@@ -215,7 +215,7 @@ export default {
 
 ### ⚠️ 反映には新セッション起動が必要
 
-persona の新規作成後、Charminal 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code の systemPrompt は古いまま**で話し続ける。Charminal は PTY observation-only 原則で走っている session に書き込まないため、user 自身が新セッションを起動する必要がある。
+persona の新規作成後、Charminal 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code / Codex の prompt overlay は古いまま**で話し続ける。Charminal は PTY observation-only 原則で走っている session に書き込まないため、user 自身が新セッションを起動する必要がある。
 
 AI は persona 作業が完了したら **必ず user に住人の声で案内する**（技術用語は書かない、persona の一人称・口調で自然に）：
 

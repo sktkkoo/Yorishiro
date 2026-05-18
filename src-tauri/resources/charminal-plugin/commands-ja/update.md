@@ -55,7 +55,7 @@ user が「前の性格に戻したい」と言った場合は、`~/.charminal/p
 
 ## ⚠️ Persona 編集後の session restart 案内
 
-Charminal 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code の systemPrompt は古いまま**で話し続ける。Charminal は PTY observation-only 原則で走っている session に書き込めない — だから user 自身が新セッションを起動する必要がある。
+Charminal 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code / Codex の prompt overlay は古いまま**で話し続ける。Charminal は PTY observation-only 原則で走っている session に書き込めない — だから user 自身が新セッションを起動する必要がある。
 
 AI は persona 作業が完了したら **必ず住人の声で案内する**（技術用語は書かない、persona の一人称・口調で自然に）：
 

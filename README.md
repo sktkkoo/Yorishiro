@@ -28,8 +28,8 @@ Much of Charminal's own development has been done as a collaboration with the AI
 
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
 
-- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) already set up on your system**
-- Charminal never asks for API keys. Instead, it consumes your existing Claude Code tokens directly
+- **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
+- Charminal never asks for API keys. Instead, it uses the terminal agent already authenticated on your machine
 
 ### Install (macOS)
 
@@ -46,11 +46,11 @@ npm install
 npm run tauri dev
 ```
 
-On launch, Claude Code starts inside the terminal and **CLAI**, the bundled VRM character, appears beside it. Use Claude Code as you normally would.
+On launch, the configured terminal agent starts inside the terminal and **CLAI**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
 
-### `/charm` command
+### `/charm:*` commands
 
-Type `/charm` inside Claude Code to activate the Charminal plugin. It lets you create and edit packs, run tutorials, and more — all through conversation.
+Type `/charm:help`, `/charm:create`, or another `/charm:*` command inside Claude Code or Codex to activate the Charminal commands. They let you create and edit packs, run tutorials, and more — all through conversation.
 
 ### Language
 
@@ -69,7 +69,7 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
 | **amenity** | Runtime-active functional fixtures (timers, etc.) with MCP tools, no visual output |
 
-Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm` command, pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
+Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands, pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
 
@@ -132,7 +132,7 @@ A few small features help bridge the gap between what you see on screen and what
 
 ### Self-referential MCP
 
-The inhabitant (Claude Code running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI.
+The inhabitant (Claude Code or Codex running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI.
 
 Three characteristics define this mechanism.
 
@@ -152,7 +152,7 @@ Under active development. APIs, data shapes, and pack specs will change.
 
 What works today:
 
-- Launches Claude Code as the terminal — you work right there
+- Launches Claude Code or Codex as the terminal — you work right there
 - Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
 - CLAI, a VRM 3D character that breathes, blinks, and shifts gaze (bundled)
 - VRMA animation clip playback
@@ -161,7 +161,7 @@ What works today:
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
 - Journal: long-term memory across sessions [in development]
-- `/charm` for interactive pack creation and editing
+- `/charm:*` commands for interactive pack creation and editing
 - Windows build support (prepared, not yet verified)
 
 ---
@@ -178,7 +178,7 @@ What works today:
 }
 ```
 
-Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. Claude Code hooks and the `/charm` plugin remain Claude Code-exclusive and are not available when using Codex.
+Auto-launch, persona prompt overlay, PTY observation, Charminal MCP access, and `/charm:*` commands work. Claude Code hooks remain Claude Code-exclusive, so Codex does not emit the same tool lifecycle hook events.
 
 ---
 

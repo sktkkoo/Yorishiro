@@ -1,13 +1,13 @@
 # Codex Terminal Agent Support
 
 **Status**: active
-**Last updated**: 2026-05-14
+**Last updated**: 2026-05-19
 
 ## TL;DR
 
 Charminal の Terminal は `~/.charminal/config.json` の `terminalAgent` で `claude` / `codex` を選べる。未指定は従来通り `claude`。
 
-Persona の prompt overlay は Claude Code では `--append-system-prompt`、Codex では `-c developer_instructions=...` で渡す。Codex の base instructions は置換しない。Codex には Charminal MCP server も session-scoped な config override で渡す。
+Persona の prompt overlay は Claude Code では `--append-system-prompt`、Codex では `-c developer_instructions=...` で渡す。Codex の base instructions は置換しない。Codex には Charminal MCP server と `/charm:*` command plugin も session-scoped な config override で渡す。
 
 ## 何を決めたか
 
@@ -22,9 +22,17 @@ Persona の prompt overlay は Claude Code では `--append-system-prompt`、Cod
 Rust の PTY 層は `AgentKind` を受け取り、agent ごとに起動引数を分岐する。
 
 - Claude Code: 既存 session があれば `-c`、hook settings、bundled plugin、MCP config、`--append-system-prompt`
-- Codex: process cwd、Charminal MCP config、persona prompt があれば `-c developer_instructions="<prompt>"`
+- Codex: process cwd、Charminal MCP config、Charminal local marketplace plugin、persona prompt があれば `-c developer_instructions="<prompt>"`
 
-Hook server と `/charm` plugin は現時点では Claude Code 専用。Codex でも Charminal MCP tools と PTY output / user input / idle の observation は動くが、Claude hook 由来の tool lifecycle event は入らない。
+Hook server は現時点では Claude Code 専用。Codex でも Charminal MCP tools、`/charm:*` command、PTY output / user input / idle の observation は動くが、Claude hook 由来の tool lifecycle event は入らない。
+
+Codex の `/charm:*` command は、起動時に `~/.charminal/runtime-plugin/` へ生成した local marketplace root を以下の session-scoped config で渡す：
+
+- `-c marketplaces.charminal-local.source_type="local"`
+- `-c marketplaces.charminal-local.source="<runtime-plugin-path>"`
+- `-c plugins."charm@charminal-local".enabled=true`
+
+これにより `~/.codex/config.toml` は変更しない。Charminal が生成する runtime plugin root は Claude Code 用の `.claude-plugin/commands` と Codex 用の `.agents/plugins/marketplace.json` + `plugins/charm/.codex-plugin/commands` の両方を含む。
 
 ## なぜそう決めたか
 
@@ -49,8 +57,8 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 ## この決定の implication / 制約
 
 - `terminalAgent` の切り替えは次の Terminal session 起動時に反映する。既存 PTY session へ注入し直さない。
-- Codex support の範囲は「自動起動 + persona prompt overlay + Charminal MCP + PTY observation」。`/charm` 相当の Codex slash command integration は別決定にする。
-- Codex の Charminal MCP は `~/.codex/config.toml` を変更せず、起動時の `-c mcp_servers.charminal.url="http://127.0.0.1:<mcpPort>/mcp"` で注入する。
+- Codex support の範囲は「自動起動 + persona prompt overlay + Charminal MCP + `/charm:*` command + PTY observation」。Claude Code hook 由来の tool lifecycle event は対象外。
+- Codex の Charminal MCP と command plugin は `~/.codex/config.toml` を変更せず、起動時の `-c` config override で注入する。
 - PTY observation-only 制約は変わらない。agent が Claude でも Codex でも、persona / amenity から PTY に書き込む API は追加しない。
 
 ## 関連 reference
@@ -64,5 +72,6 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 
 ## 改訂履歴
 
+- 2026-05-19: Codex 起動時に Charminal local marketplace plugin を session-scoped config として渡し、`/charm:*` command を Codex でも使えるようにした。Claude Code hooks は引き続き Claude Code 専用。
 - 2026-05-14: Codex 起動時に Charminal MCP server を session-scoped config として渡す方針を追記。
 - 2026-04-22: 初版。Codex CLI 0.122.0 の `--cd` / `-c developer_instructions=...` に合わせた初期対応。

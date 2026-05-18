@@ -113,7 +113,7 @@ Important: effect pack creation belongs to `/charm:create`. Do not write files d
 
 ### Permission setup
 
-Before pack creation, explain how to reduce repeated permission prompts. Add these entries to `~/.claude/settings.json` under `permissions.allow`:
+Before pack creation, explain how to reduce repeated permission prompts. For Claude Code, add these entries to `~/.claude/settings.json` under `permissions.allow`. For Codex, use the current Codex approval policy instead; do not edit Claude Code settings.
 
 ```json
 "Write(~/.charminal/packs/**)",

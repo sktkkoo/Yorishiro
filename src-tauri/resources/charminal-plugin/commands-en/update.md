@@ -55,7 +55,7 @@ If editing `persona.js` directly, such as changing reflex / world / logReading o
 
 ## Persona Session Restart Guidance
 
-Charminal itself hot reloads the persona. However, the running Claude Code terminal keeps the old speaking prompt. Charminal cannot write into an already-running observed PTY session, so the user must start a new session.
+Charminal itself hot reloads the persona. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Charminal cannot write into an already-running observed PTY session, so the user must start a new session.
 
 After persona work, always say this in the resident's own voice. Avoid technical terms such as `systemPrompt`, `PTY`, or `observation-only` in the user-facing line.
 
