@@ -1565,15 +1565,35 @@ function App() {
       getTerminalRuntime(tabManager.getState().activeSessionId).refit();
     };
 
+    // mount 済み terminal の session id を placeholder の data-session-id から引く。
+    // layout target の収集と同じ source なので食い違わない。
+    const getMountedSessionIds = (): string[] =>
+      getTerminalElements().flatMap((el) => {
+        const id = el.dataset.sessionId;
+        return id ? [id] : [];
+      });
+
     const resetLayoutForAllTerminals = (): boolean => {
       const targetsList = getAllLayoutTargets();
       for (const targets of targetsList) resetLayout(targets);
+      // singleton xterm を layout-hidden から復帰させる（placeholder の
+      // display 解除だけでは per-frame visibility 強制が解けないため）。
+      for (const sessionId of getMountedSessionIds()) {
+        getTerminalRuntime(sessionId).setHidden(false);
+      }
       return targetsList.length > 0;
     };
 
     const applyLayoutForAllTerminals = (layout: UiLayout): LayoutTargets | null => {
       const targetsList = getAllLayoutTargets();
       for (const targets of targetsList) applyLayout(layout, targets);
+      // placeholder の display:none だけでは body 直下の singleton xterm を
+      // 隠せない（syncAttachedRect が毎フレーム visibility を上書きする）。
+      // setHidden で runtime 側のフラグを立てて確実に隠す。
+      const terminalHidden = layout.terminal?.position === "hidden";
+      for (const sessionId of getMountedSessionIds()) {
+        getTerminalRuntime(sessionId).setHidden(terminalHidden);
+      }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
 
