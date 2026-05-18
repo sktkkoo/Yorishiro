@@ -427,6 +427,13 @@ function resolvePresenceSurface(): PresenceResolution {
   return resolvePresence(a, getSurfaceRegistry());
 }
 
+/** mount 済み terminal session id を DOM placeholder から引く（single-writer 用の共有 helper）。 */
+function queryMountedSessionIds(): string[] {
+  return [...document.querySelectorAll<HTMLElement>(".terminal-container")].flatMap((el) =>
+    el.dataset.sessionId ? [el.dataset.sessionId] : [],
+  );
+}
+
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // presence-closed class は解決された surface に対してのみ toggle。
@@ -665,14 +672,11 @@ function App() {
       registry: getAmenityPackRegistry(),
       tweenManager: getThreeRuntime().getTweenManager(),
       setTerminalOpacity: (value) => {
-        const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
-        if (el) el.style.opacity = String(value);
+        for (const id of queryMountedSessionIds()) getTerminalRuntime(id).setOpacity(value);
       },
       getTerminalOpacity: () => {
-        const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
-        if (!el) return 1;
-        const raw = el.style.opacity;
-        return raw === "" ? 1 : Number(raw);
+        const ids = queryMountedSessionIds();
+        return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getOpacity();
       },
       emitEvent: (name, payload) => {
         bus.emitSynthetic({ type: "system", packId: "pomodoro" }, name, payload, 0);
@@ -1134,10 +1138,8 @@ function App() {
               return Number.parseFloat(raw) || 280;
             },
             getTerminalOpacity: () => {
-              const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
-              if (!el) return 1;
-              const raw = el.style.opacity;
-              return raw === "" ? 1 : Number(raw);
+              const ids = queryMountedSessionIds();
+              return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getOpacity();
             },
             getSceneLayerValues: (role) => {
               const scene = renderedSceneRef.current;
@@ -1177,14 +1179,11 @@ function App() {
           // ── UI tween tools ─────────────────────────────────
           "ui.terminal.set": createUiTerminalSetHandler({
             setTerminalOpacity: (value) => {
-              const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
-              if (el) el.style.opacity = String(value);
+              for (const id of queryMountedSessionIds()) getTerminalRuntime(id).setOpacity(value);
             },
             getTerminalOpacity: () => {
-              const el = document.querySelector<HTMLElement>(".xterm-singleton-container");
-              if (!el) return 1;
-              const raw = el.style.opacity;
-              return raw === "" ? 1 : Number(raw);
+              const ids = queryMountedSessionIds();
+              return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getOpacity();
             },
             tweenManager: getThreeRuntime().getTweenManager(),
           }),
@@ -1624,11 +1623,7 @@ function App() {
 
     // mount 済み terminal の session id を placeholder の data-session-id から引く。
     // layout target の収集と同じ source なので食い違わない。
-    const getMountedSessionIds = (): string[] =>
-      getTerminalElements().flatMap((el) => {
-        const id = el.dataset.sessionId;
-        return id ? [id] : [];
-      });
+    const getMountedSessionIds = (): string[] => queryMountedSessionIds();
 
     const resetLayoutForAllTerminals = (): boolean => {
       const targetsList = getAllLayoutTargets();
