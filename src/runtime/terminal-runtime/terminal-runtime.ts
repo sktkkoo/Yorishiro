@@ -372,9 +372,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   setTheme(theme: Partial<XTermTheme>): void {
     if (this.disposed) return;
     this.term.options.theme = { ...this.term.options.theme, ...theme };
-    // bgTransparent 解除時の復帰先として、マージ後の意図された背景色を控える。
-    const mergedBg = (this.term.options.theme as { background?: string }).background;
-    if (typeof mergedBg === "string") this.currentThemeBackground = mergedBg;
+    // bgTransparent 解除時の復帰先。merged theme から拾うと、bgTransparent 中に
+    // background キーを持たない partial setTheme が来たとき stale な
+    // "rgba(0,0,0,0)" を復帰先に焼き込んでしまう（stuck-transparent）。
+    // 引数 theme が明示的に string background を運んだときだけ更新する。
+    if (typeof theme.background === "string") {
+      this.currentThemeBackground = theme.background;
+    }
     // bgTransparent が立っているなら scene 由来の不透明 background を透明で
     // 再上書きする（hidden/opacity の flag-reassert と同型）。
     this.applyBackgroundTransparency();

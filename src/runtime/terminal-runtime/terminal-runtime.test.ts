@@ -306,6 +306,40 @@ describe("TerminalRuntime", () => {
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
   });
 
+  // production の正規順序：transparent(true) → scene が full theme を setTheme →
+  // transparent(false) で復帰したとき scene の background へ戻る（既定でも透明でもなく）。
+  it("bgTransparent 中の full setTheme 後に解除すると scene の background へ復帰する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundTransparent(true);
+    runtime.setTheme({
+      background: "#abcdef",
+      foreground: "#101010",
+      cursor: "#202020",
+      black: "#000000",
+      white: "#ffffff",
+    });
+    // bgTransparent 中は flag-reassert で透明のまま
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+
+    runtime.setBackgroundTransparent(false);
+    expect(themeBg()).toBe("#abcdef");
+  });
+
+  // fix #1 の回帰ガード：background キーを持たない partial setTheme が
+  // bgTransparent 中に来ても、復帰先に stale な "rgba(0,0,0,0)" を焼き込まない。
+  it("bgTransparent 中の background なし partial setTheme は復帰先を汚染しない", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setTheme({ background: "#123456" });
+    runtime.setBackgroundTransparent(true);
+    // background キーなし（merged theme は stale な "rgba(0,0,0,0)"）
+    runtime.setTheme({ foreground: "#ffffff" });
+    expect(themeBg()).toBe("rgba(0,0,0,0)");
+
+    runtime.setBackgroundTransparent(false);
+    // 直近の「本物の」background へ戻る（透明を焼き込んでいない）
+    expect(themeBg()).toBe("#123456");
+  });
+
   it("setBackgroundTransparent しなければ透明化されず class も付かない（既定）", () => {
     getTerminalRuntime("shell-1"); // runtime/terminal を生成（呼ばずに既定を確認）
 
