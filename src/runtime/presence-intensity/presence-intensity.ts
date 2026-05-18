@@ -16,6 +16,7 @@ import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry/types";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import type { PresenceResolution } from "../presence-target";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +41,11 @@ export interface PresenceState {
   source: PresenceSource;
 }
 
+/** applyPresenceLevel の結果。unavailable=loud-unavailable（spec §4）。 */
+export type ApplyPresenceResult =
+  | { readonly applied: true }
+  | { readonly unavailable: true; readonly reason: string };
+
 /** applyPresenceLevel に注入する依存。App.tsx の wiring 時に構築する。 */
 export interface PresenceIntensityDeps {
   readonly setSidebarWidth: (px: number) => void;
@@ -50,6 +56,8 @@ export interface PresenceIntensityDeps {
   /** ThreeRuntime の render loop pause 制御。closed のとき CPU/GPU を休ませる。 */
   readonly setRenderPaused: (paused: boolean) => void;
   readonly now: () => number;
+  /** presence surface の解決（loud-unavailable 判定）。App.tsx で resolvePresenceSurface を注入。 */
+  readonly resolvePresence: () => PresenceResolution;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,21 +103,30 @@ export function getPresenceState(): PresenceState {
  * 存在強度レベルを変更し、対応する side-effect を発火する。
  *
  * 同一レベルへの適用は effect をスキップするが、source は更新する。
+ * presence が解決できない場合（custom pack 未宣言等）は loud-unavailable として
+ * state / side-effect を一切変更せず { unavailable, reason } を返す（spec §4）。
  */
 export function applyPresenceLevel(
   level: PresenceLevel,
   source: PresenceSource,
   deps: PresenceIntensityDeps,
-): void {
+): ApplyPresenceResult {
   const state = getState();
   const prevLevel = state.level;
+
+  // presence が解決できない（custom pack が未宣言 等）→ loud-unavailable。
+  // state も side-effect も触らず、AI が別 channel を選べるよう reason を返す（spec §4）。
+  const res = deps.resolvePresence();
+  if (!res.ok) {
+    return { unavailable: true, reason: res.reason };
+  }
 
   // source は常に更新
   state.source = source;
 
   if (level === prevLevel) {
     // 同一レベル — effect 不要
-    return;
+    return { applied: true };
   }
 
   // state 更新
@@ -154,6 +171,8 @@ export function applyPresenceLevel(
   } else {
     deps.ambientUiRegistry.disable(AURA_PACK_ID);
   }
+
+  return { applied: true };
 }
 
 /**

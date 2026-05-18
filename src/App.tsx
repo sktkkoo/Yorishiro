@@ -1014,6 +1014,7 @@ function App() {
           ambientUiRegistry: getAmbientUiPackRegistry(),
           setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
           now: () => Date.now(),
+          resolvePresence: () => resolvePresenceSurface(),
         });
 
         const userPackLog = createSubsystemLog(devLog, "UserPackLoader");

@@ -25,6 +25,9 @@ function createMockDeps(overrides?: Partial<PresenceIntensityDeps>): PresenceInt
     } as unknown as AmbientUiPackRegistry,
     setRenderPaused: vi.fn(),
     now: vi.fn(() => 1000),
+    // デフォルトは available（既存テストの挙動を維持）。
+    // el は applyPresenceLevel の実装では使われないため stub で十分。
+    resolvePresence: () => ({ ok: true, el: {} as HTMLElement, target: "shell" }),
     ...overrides,
   };
 }
@@ -229,5 +232,35 @@ describe("PresenceIntensity", () => {
     const state = getPresenceState();
     state.level = "default";
     expect(snapshot.level).toBe("closed");
+  });
+
+  // -----------------------------------------------------------------------
+  // loud-unavailable（spec §4）— resolvePresence が失敗するとき
+  // -----------------------------------------------------------------------
+
+  it("presence unavailable のとき applyPresenceLevel は no-op + typed unavailable", () => {
+    _resetForTest();
+    let sidebarCalls = 0;
+    const deps = createMockDeps({
+      setSidebarWidth: () => {
+        sidebarCalls++;
+      },
+      resolvePresence: () => ({ ok: false, reason: "no presence target" }),
+    });
+    const result = applyPresenceLevel("closed", "mcp", deps);
+    expect(result).toEqual({ unavailable: true, reason: "no presence target" });
+    expect(sidebarCalls).toBe(0);
+    expect(getPresenceState().level).toBe("default"); // state 不変
+  });
+
+  it("presence available のとき applyPresenceLevel は従来通り適用し { applied: true }", () => {
+    _resetForTest();
+    const deps = createMockDeps({
+      // el は applyPresenceLevel の実装では使われないため stub で十分。
+      resolvePresence: () => ({ ok: true, el: {} as HTMLElement, target: "shell" }),
+    });
+    const result = applyPresenceLevel("closed", "mcp", deps);
+    expect(result).toEqual({ applied: true });
+    expect(getPresenceState().level).toBe("closed");
   });
 });
