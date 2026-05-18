@@ -37,6 +37,7 @@ const makeTargets = (): LayoutTargets => ({
   terminal: makeStubElement(),
   sidebar: makeStubElement(),
   character: makeStubElement(),
+  chrome: makeStubElement(),
 });
 
 describe("applyLayout", () => {
@@ -137,5 +138,26 @@ describe("full-replace semantics（update で前の値が残らない）", () =>
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);
     expect(targets.terminal.style.display).toBe("");
     expect(targets.sidebar.style.width).toBe("100vw");
+  });
+});
+
+describe("applyLayout chrome", () => {
+  it("chrome.visible:false で chrome を display:none", () => {
+    const t = makeTargets();
+    applyLayout({ chrome: { visible: false } }, t);
+    expect(t.chrome.style.display).toBe("none");
+  });
+
+  it("chrome 未指定では chrome を触らない", () => {
+    const t = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen" } }, t);
+    expect(t.chrome.style.display).toBe("");
+  });
+
+  it("resetLayout は chrome の display を空に戻す", () => {
+    const t = makeTargets();
+    applyLayout({ chrome: { visible: false } }, t);
+    resetLayout(t);
+    expect(t.chrome.style.display).toBe("");
   });
 });
