@@ -87,6 +87,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly scrollListeners = new Set<() => void>();
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
   private disposed = false;
+  private hidden = false;
   private startGeneration = 0;
   private ptyExitUnlisten: (() => void) | null = null;
   private regionDrag: {
@@ -209,6 +210,16 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeRafId = 0;
     this.attachedContainer = null;
     this.xtermContainer.style.visibility = "hidden";
+  }
+
+  /**
+   * layout 由来の表示/非表示。session active 状態（attach/detach）とは独立。
+   * hidden 中は singleton xtermContainer を visibility:hidden に固定し、
+   * syncAttachedRect の per-frame visibility 強制もこのフラグに従う。
+   */
+  setHidden(hidden: boolean): void {
+    this.hidden = hidden;
+    this.xtermContainer.style.visibility = hidden ? "hidden" : "visible";
   }
 
   /**
@@ -586,7 +597,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.width = `${w}px`;
     this.xtermContainer.style.height = `${h}px`;
     this.resizeRegionCanvas(w, h);
-    this.xtermContainer.style.visibility = "visible";
+    this.xtermContainer.style.visibility = this.hidden ? "hidden" : "visible";
     if (w > 0 && h > 0 && (w !== this.lastFitW || h !== this.lastFitH)) {
       this.lastFitW = w;
       this.lastFitH = h;

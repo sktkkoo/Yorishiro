@@ -197,4 +197,41 @@ describe("TerminalRuntime", () => {
     expect(terminal.disposed).toBe(true);
     expect(terminal.writes).toHaveLength(1);
   });
+
+  // attachTo は同期的に syncAttachedRect を 1 回呼ぶ（RAF を回さなくても
+  // per-frame visibility 強制経路を踏める）。singleton xtermContainer は
+  // document.body 直下にいるので dataset 経由で引く。
+  const xtermSingleton = (): HTMLElement => {
+    const el = document.body.querySelector<HTMLElement>(".xterm-singleton-container");
+    if (!el) throw new Error("xterm singleton container not found");
+    return el;
+  };
+
+  it("syncAttachedRect は setHidden(true) のとき visibility:visible を強制しない", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setHidden(true);
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    // attachTo が内部で syncAttachedRect を 1 回呼ぶ（root cause の経路）
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.visibility).toBe("hidden");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  it("setHidden しなければ syncAttachedRect で visibility:visible になる（既存挙動）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.visibility).toBe("visible");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
 });

@@ -114,6 +114,12 @@ export interface TerminalRuntime {
   detachContainer(): void;
 
   /**
+   * layout 由来の表示/非表示を切り替える。attach/detach（session active 状態）
+   * とは独立。hidden 中は per-frame の rect 同期でも visibility を上書きしない。
+   */
+  setHidden(hidden: boolean): void;
+
+  /**
    * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
    * document から外し、ResizeObserver / RAF を停止する。dispose 後の
    * runtime instance は再利用しない（再 attach / 再 spawn 不可）。
