@@ -1612,11 +1612,12 @@ function App() {
       for (const targets of targetsList) resetLayout(targets);
       // singleton xterm を layout-hidden から復帰させる（placeholder の
       // display 解除だけでは per-frame visibility 強制が解けないため）。
-      // opacity も既定（完全不透明）へ戻す。
+      // opacity も既定（完全不透明）へ、背景透明化も解除する。
       for (const sessionId of getMountedSessionIds()) {
         const runtime = getTerminalRuntime(sessionId);
         runtime.setHidden(false);
         runtime.setOpacity(1);
+        runtime.setBackgroundTransparent(false);
       }
       return targetsList.length > 0;
     };
@@ -1634,10 +1635,14 @@ function App() {
         typeof layout.terminal?.opacity === "number"
           ? Math.min(1, Math.max(0, layout.terminal.opacity))
           : 1;
+      // 背景のみ透明化（文字は不透明のまま）。setTheme をまたいでも runtime 側の
+      // フラグから再適用されるので scene 切替で戻らない。
+      const termBgTransparent = layout.terminal?.transparentBackground === true;
       for (const sessionId of getMountedSessionIds()) {
         const runtime = getTerminalRuntime(sessionId);
         runtime.setHidden(terminalHidden);
         runtime.setOpacity(terminalOpacity);
+        runtime.setBackgroundTransparent(termBgTransparent);
       }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
