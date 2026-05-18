@@ -14,7 +14,7 @@ use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
 use crate::pty::{
-    build_hooks_json, codex_charminal_mcp_config_arg, codex_charminal_plugin_config_args,
+    build_hooks_json, codex_charminal_mcp_config_arg, codex_charminal_plugin_enable_arg,
     has_existing_claude_session, has_existing_codex_session, toml_basic_string, AgentKind, PtyExit,
     HOOK_SERVER_PORT,
 };
@@ -347,24 +347,11 @@ impl PtySession {
                         crate::mcp::server::resolve_port(),
                     ));
 
-                    if let Some(dir) = plugin_dir {
-                        if dir
-                            .join(".agents")
-                            .join("plugins")
-                            .join("marketplace.json")
-                            .exists()
-                        {
-                            for config_arg in codex_charminal_plugin_config_args(dir) {
-                                cmd.arg("-c");
-                                cmd.arg(config_arg);
-                            }
-                        } else {
-                            eprintln!(
-                                "[pty.spawn] codex plugin marketplace does not exist, skipping: {}",
-                                dir.display()
-                            );
-                        }
-                    }
+                    // プラグインは prepare_localized_plugin_dir で
+                    // ~/.codex/plugins/cache/ にインストール済み。
+                    // 有効化フラグだけ渡す。
+                    cmd.arg("-c");
+                    cmd.arg(codex_charminal_plugin_enable_arg());
 
                     if let Some(prompt) = system_prompt {
                         cmd.arg("-c");

@@ -26,13 +26,9 @@ Rust の PTY 層は `AgentKind` を受け取り、agent ごとに起動引数を
 
 Hook server は現時点では Claude Code 専用。Codex でも Charminal MCP tools、`/charm:*` command、PTY output / user input / idle の observation は動くが、Claude hook 由来の tool lifecycle event は入らない。
 
-Codex の `/charm:*` command は、起動時に `~/.charminal/runtime-plugin/` へ生成した local marketplace root を以下の session-scoped config で渡す：
+Codex の `/charm:*` command は、起動時に `~/.codex/plugins/cache/charminal-local/charm/current/` へプラグインを直接インストールし、session-scoped config `-c plugins."charm@charminal-local".enabled=true` で有効化する。コマンドファイルは Claude Code の YAML frontmatter 形式から Codex の `# /command-name` ヘッダー形式に自動変換される。
 
-- `-c marketplaces.charminal-local.source_type="local"`
-- `-c marketplaces.charminal-local.source="<runtime-plugin-path>"`
-- `-c plugins."charm@charminal-local".enabled=true`
-
-これにより `~/.codex/config.toml` は変更しない。Charminal が生成する runtime plugin root は Claude Code 用の `.claude-plugin/commands` と Codex 用の `.agents/plugins/marketplace.json` + `plugins/charm/.codex-plugin/commands` の両方を含む。
+初版の marketplace config override 方式（`-c marketplaces.charminal-local.source=...`）は Codex がキャッシュへのインストールを行わず、プラグインが発見されなかったため廃止。
 
 ## なぜそう決めたか
 
@@ -72,6 +68,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 
 ## 改訂履歴
 
+- 2026-05-19: marketplace config override 方式を廃止し、Codex プラグインキャッシュ直接インストール + コマンド形式変換（YAML frontmatter → `# /name` ヘッダー）に切替。
 - 2026-05-19: Codex 起動時に Charminal local marketplace plugin を session-scoped config として渡し、`/charm:*` command を Codex でも使えるようにした。Claude Code hooks は引き続き Claude Code 専用。
 - 2026-05-14: Codex 起動時に Charminal MCP server を session-scoped config として渡す方針を追記。
 - 2026-04-22: 初版。Codex CLI 0.122.0 の `--cd` / `-c developer_instructions=...` に合わせた初期対応。
