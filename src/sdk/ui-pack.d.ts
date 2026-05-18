@@ -58,6 +58,10 @@ export interface UiLayout {
     /** false にすると Three.js canvas を非表示 */
     readonly visible?: boolean;
   };
+  readonly chrome?: {
+    /** false にすると chrome 行（folder/gear, .sidebar）を非表示。"キャラだけ全画面" 等に使う */
+    readonly visible?: boolean;
+  };
 }
 
 export interface UiPackManifest {
