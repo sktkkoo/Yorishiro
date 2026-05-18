@@ -1210,6 +1210,7 @@ function App() {
               height: window.innerHeight,
             }),
             tweenManager: getThreeRuntime().getTweenManager(),
+            precheckPresence: () => resolvePresenceSurface(),
           }),
           "ui.debugPanel.set": createUiDebugPanelSetHandler({
             setDebugPanelWidth: (px) => {
@@ -1245,9 +1246,8 @@ function App() {
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
-            applyPresenceLevel: (level, source) => {
-              applyPresenceLevel(level, source, buildPresenceDeps());
-            },
+            applyPresenceLevel: (level, source) =>
+              applyPresenceLevel(level, source, buildPresenceDeps()),
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
