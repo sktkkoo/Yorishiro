@@ -50,11 +50,13 @@ On launch, the configured terminal agent starts inside the terminal and **CLAI**
 
 ### `/charm:*` commands
 
-Type `/charm:help`, `/charm:create`, or another `/charm:*` command inside Claude Code or Codex to activate the Charminal commands. They let you create and edit packs, run tutorials, and more — all through conversation.
+Type `/charm:help`, `/charm:create`, or another `/charm:*` command inside Claude Code to activate the Charminal commands. They let you create and edit packs, run tutorials, and more — all through conversation.
+
+In Codex, use `$charm-help`, `$charm-create`, etc. (Codex does not support custom `/` commands, so Charminal registers them as `$charm-*` skills instead.)
 
 ### Language
 
-Charminal starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/charm:*` command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.charminal/config.json`.
+Charminal starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/charm:*` (`$charm-*` in Codex) command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.charminal/config.json`.
 
 ### Packs
 
@@ -69,7 +71,7 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
 | **amenity** | Runtime-active functional fixtures (timers, etc.) with MCP tools, no visual output |
 
-Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands, pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
+Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands (`$charm-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
 
@@ -178,7 +180,7 @@ What works today:
 }
 ```
 
-Auto-launch, persona prompt overlay, PTY observation, Charminal MCP access, and `/charm:*` commands work. Claude Code hooks remain Claude Code-exclusive, so Codex does not emit the same tool lifecycle hook events.
+Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks remain Claude Code-exclusive, so Codex does not emit the same tool lifecycle hook events.
 
 ---
 
