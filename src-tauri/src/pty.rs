@@ -349,16 +349,11 @@ pub(crate) fn codex_charminal_mcp_config_arg(port: u16) -> String {
     format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
 }
 
-pub(crate) fn codex_charminal_plugin_config_args(plugin_root: &std::path::Path) -> Vec<String> {
-    let source = plugin_root.to_string_lossy();
-    vec![
-        "marketplaces.charminal-local.source_type=\"local\"".to_string(),
-        format!(
-            "marketplaces.charminal-local.source={}",
-            toml_basic_string(&source)
-        ),
-        "plugins.\"charm@charminal-local\".enabled=true".to_string(),
-    ]
+/// Codex の charm プラグイン有効化に必要な -c config override を返す。
+/// プラグイン自体は prepare_localized_plugin_dir で Codex のキャッシュに
+/// 直接インストール済み。ここでは有効化フラグだけ渡す。
+pub(crate) fn codex_charminal_plugin_enable_arg() -> String {
+    "plugins.\"charm@charminal-local\".enabled=true".to_string()
 }
 
 pub(crate) fn claude_charminal_mcp_config_json(port: u16) -> String {
@@ -649,14 +644,10 @@ mod tests {
     }
 
     #[test]
-    fn codex_charminal_plugin_config_args_point_to_local_marketplace() {
+    fn codex_charminal_plugin_enable_arg_returns_enable_flag() {
         assert_eq!(
-            codex_charminal_plugin_config_args(std::path::Path::new("/tmp/charminal plugin")),
-            vec![
-                "marketplaces.charminal-local.source_type=\"local\"".to_string(),
-                "marketplaces.charminal-local.source=\"/tmp/charminal plugin\"".to_string(),
-                "plugins.\"charm@charminal-local\".enabled=true".to_string(),
-            ]
+            codex_charminal_plugin_enable_arg(),
+            "plugins.\"charm@charminal-local\".enabled=true"
         );
     }
 
