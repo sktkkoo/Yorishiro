@@ -1064,6 +1064,9 @@ pub fn run() {
             tts::tts_synthesize
         ])
         .setup(|app| {
+            if let Err(e) = pty::ensure_reminder_script() {
+                eprintln!("[reminder] script 配置失敗: {e}");
+            }
             start_hook_server(app.handle().clone());
             let mcp_handle = app.handle().clone();
             match mcp::spawn_server(mcp_handle) {
