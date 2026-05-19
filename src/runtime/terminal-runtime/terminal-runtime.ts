@@ -239,6 +239,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.opacity = String(opacity);
   }
 
+  getOpacity(): number {
+    return this.opacity;
+  }
+
   /**
    * layout 由来：terminal の背景のみ透明にする（文字は前景色で不透明のまま）。
    * xterm theme.background を透明色にし、singleton container の CSS 背景も透明化する。

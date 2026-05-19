@@ -18,6 +18,8 @@ import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
+import type { PresenceResolution } from "../presence-target";
 import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
 import type { UiStateStore } from "../ui-state-store";
 import {
@@ -1095,6 +1097,12 @@ export function createUiTerminalSetHandler(deps: UiTerminalSetDeps) {
  * ui.sidebar.set
  * ────────────────────────────────────────────────────────── */
 
+/** MCP tool が presence 操作不能を AI に typed で返す形（loud-unavailable, spec §4）。 */
+export interface ToolUnavailable {
+  readonly unavailable: true;
+  readonly reason: string;
+}
+
 export interface WindowSize {
   readonly width: number;
   readonly height: number;
@@ -1106,15 +1114,21 @@ export interface UiSidebarSetDeps {
   readonly getDefaultSidebarWidth: () => number;
   readonly getWindowSize: () => WindowSize;
   readonly tweenManager: TweenManager;
+  /** presence surface の事前確認（loud-unavailable 判定）。 */
+  readonly precheckPresence: () => PresenceResolution;
 }
 
-export interface UiSidebarSetResult {
-  readonly width?: number;
-  readonly tweening?: boolean;
-}
+export type UiSidebarSetResult =
+  | { readonly width?: number; readonly tweening?: boolean }
+  | ToolUnavailable;
 
 export function createUiSidebarSetHandler(deps: UiSidebarSetDeps) {
   return async (request: unknown): Promise<UiSidebarSetResult> => {
+    // presence が解決できない場合は typed unavailable を返し、width 書き込みはしない（spec §4）。
+    const presence = deps.precheckPresence();
+    if (!presence.ok) {
+      return { unavailable: true, reason: presence.reason };
+    }
     const r = requestRecord(request);
     const widthPercent =
       typeof r.widthPercent === "number" &&
@@ -1392,16 +1406,15 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
  * ────────────────────────────────────────────────────────── */
 
 export interface PresenceSetIntensityDeps {
-  readonly applyPresenceLevel: (level: "default" | "closed", source: "mcp") => void;
+  readonly applyPresenceLevel: (level: "default" | "closed", source: "mcp") => ApplyPresenceResult;
 }
 
-export interface PresenceSetIntensityResult {
-  readonly level: string;
-}
+export type PresenceSetIntensityResult = { readonly level: string } | ToolUnavailable;
 
 /**
  * 住人の存在強度レベルを MCP 経由で変更する handler。
  * applyPresenceLevel に委譲し、sidebar / VRM / aura の side-effect を発火する。
+ * presence が解決できない場合は typed unavailable を AI に返す（loud-unavailable, spec §4）。
  */
 export function createPresenceSetIntensityHandler(deps: PresenceSetIntensityDeps) {
   return async (request: unknown): Promise<PresenceSetIntensityResult> => {
@@ -1410,7 +1423,10 @@ export function createPresenceSetIntensityHandler(deps: PresenceSetIntensityDeps
     if (level !== "default" && level !== "closed") {
       throw new Error(`invalid presence level: ${String(level)}`);
     }
-    deps.applyPresenceLevel(level, "mcp");
+    const result = deps.applyPresenceLevel(level, "mcp");
+    if ("unavailable" in result) {
+      return { unavailable: true, reason: result.reason };
+    }
     return { level };
   };
 }

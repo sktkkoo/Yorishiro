@@ -256,6 +256,13 @@ describe("TerminalRuntime", () => {
     stub.remove();
   });
 
+  it("getOpacity は setOpacity で設定した値を返す（未設定時は 1）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    expect(runtime.getOpacity()).toBe(1);
+    runtime.setOpacity(0.4);
+    expect(runtime.getOpacity()).toBe(0.4);
+  });
+
   it("setOpacity しなければ opacity は未設定（既定で完全不透明）", () => {
     const runtime = getTerminalRuntime("shell-1");
 

@@ -125,6 +125,9 @@ export interface TerminalRuntime {
    */
   setOpacity(opacity: number): void;
 
+  /** 現在の layout 由来 opacity（single-writer 読み取り用）。未設定時は 1。 */
+  getOpacity(): number;
+
   /**
    * layout 由来：terminal の背景のみ透明化する（文字は不透明のまま）。
    * scene の theme 変更をまたいでもフラグから再適用され、戻らない。

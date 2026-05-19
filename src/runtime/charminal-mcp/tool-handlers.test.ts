@@ -1465,8 +1465,13 @@ describe("createUiTerminalSetHandler", () => {
   });
 });
 
+/** createUiSidebarSetHandler 既存テスト用 helper 型。presence ok 確定時の width 分岐。 */
+type SidebarWidthResult = { readonly width?: number; readonly tweening?: boolean };
+
 describe("createUiSidebarSetHandler", () => {
   const windowSize = { width: 1200, height: 800 };
+  /** 既存テスト用: presence は常に解決可能とみなす ok stub。 */
+  const precheckOk = () => ({ ok: true as const, el: {} as HTMLElement, target: "shell" as const });
 
   it("durationMs > 0 で tween 登録 + tweening: true", async () => {
     const tm = new TweenManager();
@@ -1476,8 +1481,9 @@ describe("createUiSidebarSetHandler", () => {
       getDefaultSidebarWidth: () => 280,
       getWindowSize: () => windowSize,
       tweenManager: tm,
+      precheckPresence: precheckOk,
     });
-    const result = await handler({ width: 350, durationMs: 800 });
+    const result = (await handler({ width: 350, durationMs: 800 })) as SidebarWidthResult;
     expect(result.tweening).toBe(true);
     expect(tm.isActive("ui.sidebar.width")).toBe(true);
   });
@@ -1493,8 +1499,9 @@ describe("createUiSidebarSetHandler", () => {
       getDefaultSidebarWidth: () => 280,
       getWindowSize: () => windowSize,
       tweenManager: tm,
+      precheckPresence: precheckOk,
     });
-    const result = await handler({ width: 350 });
+    const result = (await handler({ width: 350 })) as SidebarWidthResult;
     expect(result.tweening).toBeUndefined();
     expect(setTo).toBe(350);
   });
@@ -1510,8 +1517,9 @@ describe("createUiSidebarSetHandler", () => {
       getDefaultSidebarWidth: () => 280,
       getWindowSize: () => windowSize,
       tweenManager: tm,
+      precheckPresence: precheckOk,
     });
-    const result = await handler({ width: 0 });
+    const result = (await handler({ width: 0 })) as SidebarWidthResult;
     expect(setTo).toBe(0);
     expect(result.width).toBe(0);
   });
@@ -1527,8 +1535,9 @@ describe("createUiSidebarSetHandler", () => {
       getDefaultSidebarWidth: () => 280,
       getWindowSize: () => windowSize,
       tweenManager: tm,
+      precheckPresence: precheckOk,
     });
-    const result = await handler({ widthPercent: 50 });
+    const result = (await handler({ widthPercent: 50 })) as SidebarWidthResult;
     expect(setTo).toBe(600);
     expect(result.width).toBe(600);
   });
@@ -1544,8 +1553,9 @@ describe("createUiSidebarSetHandler", () => {
       getDefaultSidebarWidth: () => 280,
       getWindowSize: () => windowSize,
       tweenManager: tm,
+      precheckPresence: precheckOk,
     });
-    const result = await handler({ width: 400, widthPercent: 80 });
+    const result = (await handler({ width: 400, widthPercent: 80 })) as SidebarWidthResult;
     expect(setTo).toBe(960);
     expect(result.width).toBe(960);
   });
@@ -1561,8 +1571,9 @@ describe("createUiSidebarSetHandler", () => {
       getDefaultSidebarWidth: () => 280,
       getWindowSize: () => windowSize,
       tweenManager: tm,
+      precheckPresence: precheckOk,
     });
-    const result = await handler({});
+    const result = (await handler({})) as SidebarWidthResult;
     expect(setTo).toBe(280);
     expect(result.width).toBe(280);
   });
@@ -1811,16 +1822,73 @@ describe("scene.screenshot handler", () => {
 
 describe("createPresenceSetIntensityHandler", () => {
   it("valid level を受け付ける", async () => {
-    const apply = vi.fn();
+    const apply = vi.fn().mockReturnValue({ applied: true });
     const handler = createPresenceSetIntensityHandler({ applyPresenceLevel: apply });
     const result = await handler({ level: "closed" });
-    expect(result.level).toBe("closed");
+    expect((result as { level: string }).level).toBe("closed");
     expect(apply).toHaveBeenCalledWith("closed", "mcp");
   });
 
   it("invalid level で throw する", async () => {
-    const apply = vi.fn();
+    const apply = vi.fn().mockReturnValue({ applied: true });
     const handler = createPresenceSetIntensityHandler({ applyPresenceLevel: apply });
     await expect(handler({ level: "invalid" })).rejects.toThrow("invalid presence level");
+  });
+
+  // loud-unavailable: presence 解決不能時、presence.set-intensity は typed unavailable を返す（spec §4）。
+  it("applyPresenceLevel が unavailable を返すと typed unavailable を返す", async () => {
+    const handler = createPresenceSetIntensityHandler({
+      applyPresenceLevel: () => ({ unavailable: true, reason: "no presence target" }),
+    });
+    const r = await handler({ level: "closed" });
+    expect(r).toEqual({ unavailable: true, reason: "no presence target" });
+  });
+
+  it("applyPresenceLevel が applied:true を返すと { level } を返す", async () => {
+    const handler = createPresenceSetIntensityHandler({
+      applyPresenceLevel: () => ({ applied: true }),
+    });
+    const r = await handler({ level: "closed" });
+    expect(r).toEqual({ level: "closed" });
+  });
+});
+
+/* ──────────────────────────────────────────────────────────
+ * createUiSidebarSetHandler — loud-unavailable
+ * ────────────────────────────────────────────────────────── */
+
+describe("createUiSidebarSetHandler loud-unavailable", () => {
+  // loud-unavailable: presence 解決不能時、ui.sidebar.set は width を書かず
+  // { unavailable:true, reason } を返す（spec §4、silent no-op にしない）。
+  it("precheckPresence が ok:false のとき typed unavailable を返し setSidebarWidth を呼ばない", async () => {
+    const tm = new TweenManager();
+    let setCalls = 0;
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: () => {
+        setCalls++;
+      },
+      getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => ({ width: 1000, height: 800 }),
+      tweenManager: tm,
+      precheckPresence: () => ({ ok: false, reason: "no presence target" }),
+    });
+    const r = await handler({ width: 0 });
+    expect(r).toEqual({ unavailable: true, reason: "no presence target" });
+    expect(setCalls).toBe(0);
+  });
+
+  it("precheckPresence が ok:true なら従来通り width を返す", async () => {
+    const tm = new TweenManager();
+    const handler = createUiSidebarSetHandler({
+      setSidebarWidth: () => {},
+      getSidebarWidth: () => 280,
+      getDefaultSidebarWidth: () => 280,
+      getWindowSize: () => ({ width: 1000, height: 800 }),
+      tweenManager: tm,
+      precheckPresence: () => ({ ok: true, el: {} as HTMLElement, target: "shell" as const }),
+    });
+    const r = await handler({ width: 123 });
+    expect(r).toEqual({ width: 123 });
   });
 });
