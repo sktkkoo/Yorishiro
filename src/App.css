@@ -185,8 +185,7 @@ body,
 .xterm-singleton-container.xterm-bg-transparent,
 .xterm-singleton-container.xterm-bg-transparent .xterm,
 .xterm-singleton-container.xterm-bg-transparent .xterm-viewport,
-.xterm-singleton-container.xterm-bg-transparent .xterm-screen,
-.xterm-singleton-container.xterm-bg-transparent .composition-view {
+.xterm-singleton-container.xterm-bg-transparent .xterm-screen {
   background: transparent !important;
 }
 
