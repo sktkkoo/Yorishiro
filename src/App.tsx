@@ -1631,9 +1631,11 @@ function App() {
       // singleton xterm を layout-hidden から復帰させる（placeholder の
       // display 解除だけでは per-frame visibility 強制が解けないため）。
       // opacity も既定（完全不透明）へ、背景透明化も解除する。
+      // 非アクティブタブは hidden を維持する（重なり防止）。
+      const activeSessionId = tabManager.getState().activeSessionId;
       for (const sessionId of getMountedSessionIds()) {
         const runtime = getTerminalRuntime(sessionId);
-        runtime.setHidden(false);
+        runtime.setHidden(sessionId !== activeSessionId);
         runtime.setOpacity(1);
         runtime.setBackgroundTransparent(false);
       }
@@ -1656,11 +1658,17 @@ function App() {
       // 背景のみ透明化（文字は不透明のまま）。setTheme をまたいでも runtime 側の
       // フラグから再適用されるので scene 切替で戻らない。
       const termBgTransparent = layout.terminal?.transparentBackground === true;
+      // 非アクティブタブは常に hidden を維持し、レイアウト変更で表示されないようにする。
+      const activeSessionId = tabManager.getState().activeSessionId;
       for (const sessionId of getMountedSessionIds()) {
         const runtime = getTerminalRuntime(sessionId);
-        runtime.setHidden(terminalHidden);
-        runtime.setOpacity(terminalOpacity);
-        runtime.setBackgroundTransparent(termBgTransparent);
+        if (sessionId === activeSessionId) {
+          runtime.setHidden(terminalHidden);
+          runtime.setOpacity(terminalOpacity);
+          runtime.setBackgroundTransparent(termBgTransparent);
+        } else {
+          runtime.setHidden(true);
+        }
       }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
