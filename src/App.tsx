@@ -1462,6 +1462,11 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
+    // UI pack 解除後もタブ切替で setHidden が正しく更新されるようにする。
+    // UI pack active 時は RAF 後に applyLayoutForAllTerminals が上書きするので衝突しない。
+    for (const sessionId of queryMountedSessionIds()) {
+      getTerminalRuntime(sessionId).setHidden(sessionId !== tabState.activeSessionId);
+    }
   }, [tabState.activeSessionId]);
 
   const canMountTerminals =
@@ -1580,6 +1585,7 @@ function App() {
     let currentDisposable: Disposable | null = null;
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
+    let currentLayout: UiLayout | null = null;
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
       const reg = getSurfaceRegistry();
@@ -1631,9 +1637,11 @@ function App() {
       // singleton xterm を layout-hidden から復帰させる（placeholder の
       // display 解除だけでは per-frame visibility 強制が解けないため）。
       // opacity も既定（完全不透明）へ、背景透明化も解除する。
+      // 非アクティブタブは hidden を維持する（重なり防止）。
+      const activeSessionId = tabManager.getState().activeSessionId;
       for (const sessionId of getMountedSessionIds()) {
         const runtime = getTerminalRuntime(sessionId);
-        runtime.setHidden(false);
+        runtime.setHidden(sessionId !== activeSessionId);
         runtime.setOpacity(1);
         runtime.setBackgroundTransparent(false);
       }
@@ -1656,11 +1664,17 @@ function App() {
       // 背景のみ透明化（文字は不透明のまま）。setTheme をまたいでも runtime 側の
       // フラグから再適用されるので scene 切替で戻らない。
       const termBgTransparent = layout.terminal?.transparentBackground === true;
+      // 非アクティブタブは常に hidden を維持し、レイアウト変更で表示されないようにする。
+      const activeSessionId = tabManager.getState().activeSessionId;
       for (const sessionId of getMountedSessionIds()) {
         const runtime = getTerminalRuntime(sessionId);
-        runtime.setHidden(terminalHidden);
-        runtime.setOpacity(terminalOpacity);
-        runtime.setBackgroundTransparent(termBgTransparent);
+        if (sessionId === activeSessionId) {
+          runtime.setHidden(terminalHidden);
+          runtime.setOpacity(terminalOpacity);
+          runtime.setBackgroundTransparent(termBgTransparent);
+        } else {
+          runtime.setHidden(true);
+        }
       }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
@@ -1836,6 +1850,7 @@ function App() {
           update: (layout: UiLayout) => {
             resetLayoutForAllTerminals();
             applyLayoutForAllTerminals(layout);
+            currentLayout = layout;
             refitActiveTerminal();
           },
         },
@@ -1942,6 +1957,7 @@ function App() {
         currentContainer.remove();
         currentContainer = null;
       }
+      currentLayout = null;
       if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
@@ -1949,6 +1965,7 @@ function App() {
       if (!entry) return;
 
       const targets = applyLayoutForAllTerminals(entry.pack.layout);
+      currentLayout = entry.pack.layout;
       if (!targets) {
         devLog.write({
           subsystem: "UiPack",
@@ -1990,11 +2007,35 @@ function App() {
 
     const sub = uiPackRegistry.subscribeActive(activateEntry);
 
+    // タブ切替・追加時に active UI pack のレイアウトを新ターミナルにも適用する。
+    // React の DOM commit を待つため requestAnimationFrame で遅延させる。
+    let prevActiveId = tabManager.getState().activeSessionId;
+    let pendingRaf: number | null = null;
+    const unsubTabs = tabManager.subscribe(() => {
+      const nextActiveId = tabManager.getState().activeSessionId;
+      if (!currentLayout || nextActiveId === prevActiveId) {
+        prevActiveId = nextActiveId;
+        return;
+      }
+      prevActiveId = nextActiveId;
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+      pendingRaf = requestAnimationFrame(() => {
+        pendingRaf = null;
+        if (currentLayout) {
+          applyLayoutForAllTerminals(currentLayout);
+          refitActiveTerminal();
+        }
+      });
+    });
+
     return () => {
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+      unsubTabs();
       sub.dispose();
       if (currentAbort) currentAbort.abort();
       if (currentDisposable) currentDisposable.dispose();
       if (currentContainer) currentContainer.remove();
+      currentLayout = null;
       if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
