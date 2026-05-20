@@ -1580,6 +1580,7 @@ function App() {
     let currentDisposable: Disposable | null = null;
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
+    let currentLayout: UiLayout | null = null;
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
       const reg = getSurfaceRegistry();
@@ -1844,6 +1845,7 @@ function App() {
           update: (layout: UiLayout) => {
             resetLayoutForAllTerminals();
             applyLayoutForAllTerminals(layout);
+            currentLayout = layout;
             refitActiveTerminal();
           },
         },
@@ -1950,6 +1952,7 @@ function App() {
         currentContainer.remove();
         currentContainer = null;
       }
+      currentLayout = null;
       if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
@@ -1957,6 +1960,7 @@ function App() {
       if (!entry) return;
 
       const targets = applyLayoutForAllTerminals(entry.pack.layout);
+      currentLayout = entry.pack.layout;
       if (!targets) {
         devLog.write({
           subsystem: "UiPack",
@@ -1998,11 +2002,35 @@ function App() {
 
     const sub = uiPackRegistry.subscribeActive(activateEntry);
 
+    // タブ切替・追加時に active UI pack のレイアウトを新ターミナルにも適用する。
+    // React の DOM commit を待つため requestAnimationFrame で遅延させる。
+    let prevActiveId = tabManager.getState().activeSessionId;
+    let pendingRaf: number | null = null;
+    const unsubTabs = tabManager.subscribe(() => {
+      const nextActiveId = tabManager.getState().activeSessionId;
+      if (!currentLayout || nextActiveId === prevActiveId) {
+        prevActiveId = nextActiveId;
+        return;
+      }
+      prevActiveId = nextActiveId;
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+      pendingRaf = requestAnimationFrame(() => {
+        pendingRaf = null;
+        if (currentLayout) {
+          applyLayoutForAllTerminals(currentLayout);
+          refitActiveTerminal();
+        }
+      });
+    });
+
     return () => {
+      if (pendingRaf !== null) cancelAnimationFrame(pendingRaf);
+      unsubTabs();
       sub.dispose();
       if (currentAbort) currentAbort.abort();
       if (currentDisposable) currentDisposable.dispose();
       if (currentContainer) currentContainer.remove();
+      currentLayout = null;
       if (resetLayoutForAllTerminals()) refitActiveTerminal();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
