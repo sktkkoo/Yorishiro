@@ -68,27 +68,91 @@ fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String 
 }
 
 pub(crate) fn build_hooks_json(port: u16) -> String {
-    // UserPromptSubmit: just a generic prompt event for Perception.
-    // `/charm` is handled by agent-specific custom-command pipelines
-    // (Claude Code --plugin-dir / Codex local marketplace plugin).
-    // so no special detection or blocking is needed here anymore.
     let windows = cfg!(windows);
-    let command_hook = |command: String| {
-        serde_json::json!([{
-            "matcher": "",
-            "hooks": [{ "type": "command", "command": command }]
-        }])
-    };
+
+    let reminder_script = build_reminder_script_path();
+
     serde_json::json!({
         "hooks": {
-            "UserPromptSubmit": command_hook(build_hook_command(port, r#"{"event":"prompt"}"#, windows)),
-            "PreToolUse": command_hook(build_hook_stdin_command(port, "/hook/pre-tool-use", windows)),
-            "PostToolUse": command_hook(build_hook_stdin_command(port, "/hook/post-tool-use", windows)),
-            "PostToolUseFailure": command_hook(build_hook_stdin_command(port, "/hook/post-tool-failure", windows)),
-            "Stop": command_hook(build_hook_command(port, r#"{"event":"stop"}"#, windows)),
+            "UserPromptSubmit": [{
+                "matcher": "",
+                "hooks": [
+                    { "type": "command", "command": build_hook_command(port, r#"{"event":"prompt"}"#, windows) },
+                    { "type": "command", "command": format!("bash {}", sh_single_quote(&reminder_script)) }
+                ]
+            }],
+            "PreToolUse": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/pre-tool-use", windows) }]
+            }],
+            "PostToolUse": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-use", windows) }]
+            }],
+            "PostToolUseFailure": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-failure", windows) }]
+            }],
+            "Stop": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_command(port, r#"{"event":"stop"}"#, windows) }]
+            }],
         }
     })
     .to_string()
+}
+
+/// Reminder script のパスを返す。script は ensure_reminder_script() で配置。
+fn build_reminder_script_path() -> String {
+    let home = dirs::home_dir().unwrap_or_default();
+    home.join(".charminal")
+        .join("shell")
+        .join("hook-reminder.sh")
+        .to_string_lossy()
+        .to_string()
+}
+
+/// Reminder script を ~/.charminal/shell/ に配置する。起動時に呼ぶ。
+pub fn ensure_reminder_script() -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("home directory not found")?;
+    let dir = home.join(".charminal").join("shell");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("shell ディレクトリの作成に失敗: {e}"))?;
+
+    let script_path = dir.join("hook-reminder.sh");
+    let script = r#"#!/bin/bash
+# Charminal hook reminder — UserPromptSubmit で additionalContext を注入。
+# config.json の設定に基づいて active な reminder を組み立てる。
+CONFIG="$HOME/.charminal/config.json"
+REMINDERS=""
+
+if [ -f "$CONFIG" ]; then
+  # Journal reminder（journalReminder が false でなければ有効）
+  JR=$(python3 -c "import json,sys; c=json.load(open('$CONFIG')); print(c.get('journalReminder','on'))" 2>/dev/null || echo "on")
+  if [ "$JR" != "off" ]; then
+    REMINDERS="${REMINDERS}印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。\n"
+  fi
+
+  # Voice reminder（voiceFrequency が off でなければ有効）
+  VF=$(python3 -c "import json,sys; c=json.load(open('$CONFIG')); print(c.get('voiceFrequency','on'))" 2>/dev/null || echo "on")
+  if [ "$VF" != "off" ]; then
+    REMINDERS="${REMINDERS}テキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。\n"
+  fi
+else
+  # config なし: default で両方有効
+  REMINDERS="印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。\nテキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。\n"
+fi
+
+if [ -z "$REMINDERS" ]; then
+  exit 0
+fi
+
+# additionalContext として返す（Claude Code が次の応答で参照する）
+printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}' "$REMINDERS"
+"#;
+
+    std::fs::write(&script_path, script)
+        .map_err(|e| format!("reminder script の書き込みに失敗: {e}"))?;
+    Ok(())
 }
 
 /// Start a minimal HTTP server that receives hook signals from Claude Code.

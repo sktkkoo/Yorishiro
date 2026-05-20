@@ -345,6 +345,12 @@ fn read_journal_memories() -> Result<String, String> {
     journal::read_memories()
 }
 
+/// 直近 N 日分の journal エントリを返す。
+#[tauri::command]
+fn read_journal_recent(days: usize) -> Result<Vec<journal::JournalEntry>, String> {
+    journal::read_recent(days)
+}
+
 #[tauri::command]
 fn check_tutorial_done() -> bool {
     match charminal_home_path() {
@@ -1057,6 +1063,7 @@ pub fn run() {
             stat_file_mtime,
             mcp_tool_response,
             read_journal_memories,
+            read_journal_recent,
             check_tutorial_done,
             mark_tutorial_done,
             tts::tts_speak,
@@ -1064,6 +1071,9 @@ pub fn run() {
             tts::tts_synthesize
         ])
         .setup(|app| {
+            if let Err(e) = pty::ensure_reminder_script() {
+                eprintln!("[reminder] script 配置失敗: {e}");
+            }
             start_hook_server(app.handle().clone());
             let mcp_handle = app.handle().clone();
             match mcp::spawn_server(mcp_handle) {

@@ -7,23 +7,43 @@
 
 import type { ResolvedLanguage } from "../../runtime/language/language";
 import { registerGlobalPromptFragment } from "./index";
-import { getJournalGuide, getMemoriesHeader } from "./prompts";
+import { getJournalGuide, getMemoriesHeader, getRecentJournalHeader } from "./prompts";
+
+interface JournalEntry {
+  date: string;
+  content: string;
+}
 
 async function provideJournal(language: ResolvedLanguage): Promise<string> {
+  const { invoke } = await import("@tauri-apps/api/core");
+
   let memories = "";
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
     memories = await invoke<string>("read_journal_memories");
   } catch {
     // memories.md がまだ存在しない場合は空
   }
 
-  const trimmed = memories.trim();
-  const guide = getJournalGuide(language);
-  if (trimmed.length > 0) {
-    return guide + getMemoriesHeader(language) + trimmed;
+  let recentEntries: JournalEntry[] = [];
+  try {
+    recentEntries = await invoke<JournalEntry[]>("read_journal_recent", { days: 3 });
+  } catch {
+    // journal がまだない場合は空
   }
-  return guide;
+
+  let result = getJournalGuide(language);
+
+  const trimmedMemories = memories.trim();
+  if (trimmedMemories.length > 0) {
+    result += getMemoriesHeader(language) + trimmedMemories;
+  }
+
+  if (recentEntries.length > 0) {
+    const entries = recentEntries.map((e) => `${e.date}:\n${e.content.trim()}`).join("\n\n");
+    result += getRecentJournalHeader(language) + entries;
+  }
+
+  return result;
 }
 
 /** App 初期化時に呼ぶ。 */

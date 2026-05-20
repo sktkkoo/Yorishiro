@@ -70,6 +70,15 @@ export const MEMORIES_HEADER_EN =
 export const MEMORIES_HEADER_JA =
   "\n\n### 記憶の断片\n以下はあなたが過去に書き残した記憶。詳細を思い出したいときは journal_read で該当日を読み返す。\n\n";
 
+export const RECENT_JOURNAL_HEADER_EN =
+  "\n\n### Recent journal entries\nThese are your recent journal entries.\n\n";
+
+export const RECENT_JOURNAL_HEADER_JA = "\n\n### 直近の日記\n以下はあなたが最近書いた日記。\n\n";
+
+export function getRecentJournalHeader(language: ResolvedLanguage): string {
+  return language === "ja" ? RECENT_JOURNAL_HEADER_JA : RECENT_JOURNAL_HEADER_EN;
+}
+
 export function getEnvironmentGuide(language: ResolvedLanguage): string {
   return language === "ja" ? ENVIRONMENT_GUIDE_JA : ENVIRONMENT_GUIDE_EN;
 }
