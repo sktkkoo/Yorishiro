@@ -5,6 +5,13 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use tauri::State;
 
+/// Windows で PowerShell ウィンドウを表示させないためのフラグ。
+#[cfg(target_os = "windows")]
+fn hide_window(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+}
+
 /// 再生中の TTS プロセスを管理する state。
 /// 同時発話は 1 つだけ（新しい speak が来たら前のを kill）。
 pub struct TtsState {
@@ -30,6 +37,8 @@ fn build_tts_command(text: &str, voice: Option<&str>) -> Option<Command> {
         Some(cmd)
     } else if cfg!(target_os = "windows") {
         let mut cmd = Command::new("powershell");
+        #[cfg(target_os = "windows")]
+        hide_window(&mut cmd);
         cmd.arg("-NoProfile").arg("-Command");
         let escaped = text.replace('\'', "''");
         let ps_script = if let Some(v) = voice {
@@ -181,6 +190,8 @@ fn strip_fllr_chunk(wav: &[u8]) -> Vec<u8> {
 
 fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String> {
     let mut cmd = Command::new("powershell");
+    #[cfg(target_os = "windows")]
+    hide_window(&mut cmd);
     cmd.arg("-NoProfile").arg("-Command");
     // PowerShell の single-quoted string 内では ' 以外の特殊文字 ($, `, () 等) は
     // リテラル扱いされるため、' → '' のエスケープのみで安全。
