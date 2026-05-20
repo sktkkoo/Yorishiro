@@ -1462,6 +1462,11 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
+    // UI pack 解除後もタブ切替で setHidden が正しく更新されるようにする。
+    // UI pack active 時は RAF 後に applyLayoutForAllTerminals が上書きするので衝突しない。
+    for (const sessionId of queryMountedSessionIds()) {
+      getTerminalRuntime(sessionId).setHidden(sessionId !== tabState.activeSessionId);
+    }
   }, [tabState.activeSessionId]);
 
   const canMountTerminals =
