@@ -11,13 +11,17 @@
  *   ctx.registerPersona(def)   : register an inline PersonaDefinition
  *   ctx.dispatchEffect(request): run a registered effect once
  *   ctx.setActiveUi(id | null) : switch the active UI pack
+ *   ctx.emitEvent(name, payload): emit a synthetic event to persona/amenity triggers
  *
  * This template installs starter keyboard shortcuts.
  * このテンプレートでは最初からいくつかのショートカットを登録します。
  *
  *   - F1: toggle charminal-settings
+ *   - F3: toggle theater (chrome+terminal hidden, character fullscreen)
+ *   - F4: toggle immersive (terminal background transparent, character behind text)
  *   - Cmd+Shift+F: fireworks-volley
- *   - Cmd+Shift+D: desaturate toggle
+ *   - Cmd+Shift+G: desaturate toggle
+ *   - Cmd+Shift+P: clai:shoot (gun motion + text physics)
  *
  *   F2 is reserved by Charminal for the Common / Scene debug panels.
  *   Do not rebind it from init.js.
@@ -44,6 +48,8 @@
 
 let desaturated = false;
 let settingsVisible = false;
+let theaterVisible = false;
+let immersiveVisible = false;
 
 export default (ctx) => {
   window.addEventListener(
@@ -55,16 +61,39 @@ export default (ctx) => {
         settingsVisible = !settingsVisible;
         ctx.setActiveUi(settingsVisible ? "charminal-settings" : null);
       }
+      if (!e.repeat && e.code === "F3") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        theaterVisible = !theaterVisible;
+        ctx.setActiveUi(theaterVisible ? "theater" : null);
+      }
+      if (!e.repeat && e.code === "F4") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        immersiveVisible = !immersiveVisible;
+        ctx.setActiveUi(immersiveVisible ? "immersive" : null);
+      }
       if (e.metaKey && e.shiftKey && e.code === "KeyF") {
         e.preventDefault();
         e.stopImmediatePropagation();
         ctx.dispatchEffect({ kind: "fireworks-volley" });
       }
-      if (e.metaKey && e.shiftKey && e.code === "KeyD") {
+      if (e.metaKey && e.shiftKey && e.code === "KeyG") {
         e.preventDefault();
         e.stopImmediatePropagation();
         desaturated = !desaturated;
-        ctx.dispatchEffect({ kind: "desaturate", durationMs: desaturated ? 86400000 : 1 });
+        ctx.dispatchEffect({
+          kind: "desaturate",
+          durationMs: desaturated ? 86400000 : 1,
+        });
+      }
+      if (e.metaKey && e.shiftKey && e.code === "KeyP") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        ctx.emitEvent("clai:shoot", {
+          source: "shortcut",
+          key: "Cmd+Shift+P",
+        });
       }
     },
     { capture: true },
