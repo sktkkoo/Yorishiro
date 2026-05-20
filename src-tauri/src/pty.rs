@@ -135,11 +135,11 @@ if [ -f "$CONFIG" ]; then
   # Voice reminder（voiceFrequency が off でなければ有効）
   VF=$(python3 -c "import json,sys; c=json.load(open('$CONFIG')); print(c.get('voiceFrequency','on'))" 2>/dev/null || echo "on")
   if [ "$VF" != "off" ]; then
-    REMINDERS="${REMINDERS}応答の要点を voice_say で声に出す。\n"
+    REMINDERS="${REMINDERS}テキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。\n"
   fi
 else
   # config なし: default で両方有効
-  REMINDERS="印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。\n応答の要点を voice_say で声に出す。\n"
+  REMINDERS="印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。\nテキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。\n"
 fi
 
 if [ -z "$REMINDERS" ]; then

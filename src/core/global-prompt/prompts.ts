@@ -96,8 +96,10 @@ export function getMemoriesHeader(language: ResolvedLanguage): string {
 export const VOICE_GUIDE_ON_EN = `## Voice
 
 You MUST call the voice_say tool in every response. This is mandatory, not optional.
+Voice comes FIRST, text output comes after.
 
 - Say the gist of your response aloud — one short phrase summarizing what you want to convey
+- Call voice_say BEFORE writing any text output
 - Detailed explanations, code, and technical content go in text only
 - Keep the spoken phrase short and natural (one sentence max)
 - Match tone and phrasing to your character`;
@@ -105,8 +107,10 @@ You MUST call the voice_say tool in every response. This is mandatory, not optio
 export const VOICE_GUIDE_ON_JA = `## 音声
 
 すべての応答で voice_say ツールを必ず呼ぶこと。これは任意ではなく必須。
+声が先、テキスト出力が後。
 
-- 応答の要点を一言で声に出す——伝えたいことの要約を短いフレーズで
+- まず応答の要点を一言で声に出す——伝えたいことの要約を短いフレーズで
+- voice_say をテキスト出力より先に呼ぶ
 - 詳しい説明、コード、技術的な内容はテキストのみ
 - 声に出すフレーズは短く自然に（一文以内）
 - 声のトーンはキャラクターに合わせる`;
