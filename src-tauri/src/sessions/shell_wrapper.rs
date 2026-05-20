@@ -35,6 +35,10 @@ const WRAPPER_ZSHRC: &str = include_str!("shell_wrapper/wrapper-zsh.zshrc");
 /// user の .bashrc → init.bash → user.bash の順で chain する。
 const WRAPPER_BASH_INIT: &str = include_str!("shell_wrapper/wrapper-bash.init.bash");
 
+/// `~/.charminal/shell/hook-reminder.sh` — Claude Code の UserPromptSubmit
+/// hook 用リマインダー。ユーザー管理ファイル：初回のみ seed、既存なら触らない。
+const HOOK_REMINDER: &str = include_str!("shell_wrapper/hook-reminder.sh");
+
 /// `~/.charminal/shell/` を初期化。ディレクトリと init / wrapper file を
 /// idempotent に書く。既存内容と一致していたら no-op。
 ///
@@ -55,7 +59,16 @@ pub fn ensure_shell_files(charminal_home: &Path) -> io::Result<()> {
     fs::create_dir_all(&wrapper_bash)?;
     write_if_different(&wrapper_bash.join("init.bash"), WRAPPER_BASH_INIT)?;
 
+    write_if_absent(&shell_dir.join("hook-reminder.sh"), HOOK_REMINDER)?;
+
     Ok(())
+}
+
+fn write_if_absent(path: &Path, content: &str) -> io::Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+    fs::write(path, content)
 }
 
 fn write_if_different(path: &Path, content: &str) -> io::Result<()> {
@@ -298,6 +311,30 @@ mod tests {
         assert!(args[1].contains("source '"));
         assert!(args[1].contains("init.fish"));
         assert!(args[1].contains("user.fish"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ensure_seeds_hook_reminder_if_absent() {
+        let root = fresh_temp_root("hook-seed");
+        ensure_shell_files(&root).expect("ensure_shell_files");
+        let hook = root.join("shell").join("hook-reminder.sh");
+        assert!(hook.is_file());
+        assert_eq!(fs::read_to_string(&hook).unwrap(), HOOK_REMINDER);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn ensure_does_not_overwrite_existing_hook_reminder() {
+        let root = fresh_temp_root("hook-keep");
+        ensure_shell_files(&root).expect("first ensure");
+        let hook = root.join("shell").join("hook-reminder.sh");
+        fs::write(&hook, "# user customized").unwrap();
+
+        ensure_shell_files(&root).expect("second ensure");
+
+        let after = fs::read_to_string(&hook).unwrap();
+        assert_eq!(after, "# user customized");
         let _ = fs::remove_dir_all(&root);
     }
 
