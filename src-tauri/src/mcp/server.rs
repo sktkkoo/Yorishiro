@@ -4,8 +4,9 @@
 //! port は `~/.charminal/config.json` の mcpPort か default 18743。bind fail
 //! は log に書いて server 起動を skip、Charminal 本体は継続させる。
 //!
-//! rmcp 1.5.0 の `transport-streamable-http-server` feature を `axum` の
+//! rmcp 1.7.0 の `transport-streamable-http-server` feature を `axum` の
 //! Router に nest してもらい、`tokio::spawn` で background に流す。
+//! keep_alive は無制限（ローカル 1:1 接続のため session timeout 不要）。
 //!
 //! tool call が来ると `list_load_errors` 以外は `emit_tool_event` 経由で
 //! Tauri event `mcp:tool-request` を emit し、TS 側 listener が handler を
@@ -134,7 +135,12 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
             let app = app_handle.clone();
             move || Ok(Charminal::new(app.clone()))
         },
-        LocalSessionManager::default().into(),
+        {
+            let mut mgr = LocalSessionManager::default();
+            mgr.session_config.keep_alive = None;
+            mgr
+        }
+        .into(),
         Default::default(),
     );
     let router = axum::Router::new().nest_service("/mcp", service);
