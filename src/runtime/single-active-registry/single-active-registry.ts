@@ -9,7 +9,8 @@
  * 共通する semantic：
  *   - same id collision 解決：user > bundled、bundled-over-user は warn して ignore、
  *     bundled-over-bundled は後勝ち + warn（dev mistake 相当）
- *   - active 選択：明示 id (config picks) > bundled の alphabetical 先頭 > null
+ *   - active 選択：明示 id (config picks) > defaultBundledId（指定があれば） >
+ *     bundled の alphabetical 先頭 > null
  *   - user が同 id で bundled を override すると active を user に promote
  *     （Design B: user pack は「自薦」しないが、override の意図がある時だけ昇格）
  *   - promotion 由来の active は、その entry が dispose されたら null に戻す
@@ -48,12 +49,14 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
   private readonly warn: (msg: string) => void;
   private readonly nullMeansNoActive: boolean;
   private readonly warnOnMultipleBundled: boolean;
+  private readonly defaultBundledId: string | null;
 
   constructor(opts: SingleActiveRegistryOptions<TEntry, TValue>) {
     this.extractValue = opts.extractValue;
     this.warn = opts.warn ?? ((msg) => console.warn(`[${opts.label}] ${msg}`));
     this.nullMeansNoActive = opts.nullMeansNoActive ?? false;
     this.warnOnMultipleBundled = opts.warnOnMultipleBundled ?? false;
+    this.defaultBundledId = opts.defaultBundledId ?? null;
   }
 
   register(entry: TEntry): Disposable {
@@ -164,8 +167,9 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
    * Priority:
    *   1. activeId が entries に hit → それ
    *   2. activeId が null かつ nullMeansNoActive=true → null
-   *   3. 無ければ bundled tier の alphabetical 先頭（fresh install fallback）
-   *   4. bundled なし → null
+   *   3. defaultBundledId が指定されていて該当 bundled entry が存在 → それ
+   *   4. 無ければ bundled tier の alphabetical 先頭（fresh install fallback）
+   *   5. bundled なし → null
    *
    * user tier を自動選択しない。pack 自己申告の `defaultActive` も使わない
    * （Design B: docs/decisions/single-active-config-picks.md）。
@@ -177,6 +181,10 @@ export class SingleActiveRegistry<TEntry extends SingleActiveEntry, TValue> {
     }
     if (this.activeId === null && this.nullMeansNoActive) {
       return null;
+    }
+    if (this.defaultBundledId !== null) {
+      const preferred = this.entries.get(this.defaultBundledId);
+      if (preferred !== undefined && preferred.origin === "bundled") return preferred;
     }
     const bundled = Array.from(this.entries.values())
       .filter((e) => e.origin === "bundled")

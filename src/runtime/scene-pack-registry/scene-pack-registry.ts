@@ -29,6 +29,13 @@ export interface ScenePackRegistryOptions {
   readonly warn?: (msg: string) => void;
 }
 
+/**
+ * fresh-install / activeScene 未指定時に選ぶ既定 bundled scene の id。
+ * 落ち着いた抽象空間で「住人がいる場所」を最小限の演出で出すため、
+ * alphabetical 先頭ではなく明示的に指定する。
+ */
+export const DEFAULT_BUNDLED_SCENE_ID = "simple-room";
+
 export class ScenePackRegistryImpl
   extends SingleActiveRegistry<ScenePackEntry, SceneSpec>
   implements ScenePackRegistryInterface
@@ -38,8 +45,9 @@ export class ScenePackRegistryImpl
       extractValue: (entry) => entry.scene,
       label: "ScenePackRegistry",
       warn: opts.warn,
-      // bundled scene は複数の標準選択肢を持てる。fallback は alphabetical 先頭。
+      // bundled scene は複数の標準選択肢を持てる。fallback は明示 default → alphabetical 先頭。
       warnOnMultipleBundled: false,
+      defaultBundledId: DEFAULT_BUNDLED_SCENE_ID,
     });
   }
 

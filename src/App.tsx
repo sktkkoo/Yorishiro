@@ -825,8 +825,8 @@ function App() {
       }
 
       // ─ Step 2.5: subscribeActive 系 wire ─
-      // config 反映後に subscribe することで、bundled fallback の alphabetical 先頭
-      // （abandoned-factory）が一瞬 active 扱いになって音が鳴る race を回避する。
+      // config 反映後に subscribe することで、bundled fallback の default scene
+      // が一瞬 active 扱いになって音が鳴る race を回避する。
       ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
       ambientAudioEngineRef.current.setMuted(ambientAudioMuted);
       ambientAudioEngineRef.current.setMasterVolume(ambientAudioVolume);
