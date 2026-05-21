@@ -71,6 +71,12 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
     let windows = cfg!(windows);
 
     let reminder_script = build_reminder_script_path();
+    let python = if windows { "python" } else { "python3" };
+    let reminder_cmd = if windows {
+        format!("{} \"{}\"", python, reminder_script.replace('\\', "\\\\"))
+    } else {
+        format!("{} {}", python, sh_single_quote(&reminder_script))
+    };
 
     serde_json::json!({
         "hooks": {
@@ -78,7 +84,7 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
                 "matcher": "",
                 "hooks": [
                     { "type": "command", "command": build_hook_command(port, r#"{"event":"prompt"}"#, windows) },
-                    { "type": "command", "command": format!("bash {}", sh_single_quote(&reminder_script)) }
+                    { "type": "command", "command": reminder_cmd }
                 ]
             }],
             "PreToolUse": [{
@@ -107,7 +113,7 @@ fn build_reminder_script_path() -> String {
     let home = dirs::home_dir().unwrap_or_default();
     home.join(".charminal")
         .join("shell")
-        .join("hook-reminder.sh")
+        .join("hook-reminder.py")
         .to_string_lossy()
         .to_string()
 }
@@ -118,36 +124,29 @@ pub fn ensure_reminder_script() -> Result<(), String> {
     let dir = home.join(".charminal").join("shell");
     std::fs::create_dir_all(&dir).map_err(|e| format!("shell ディレクトリの作成に失敗: {e}"))?;
 
-    let script_path = dir.join("hook-reminder.sh");
-    let script = r#"#!/bin/bash
-# Charminal hook reminder — UserPromptSubmit で additionalContext を注入。
-# config.json の設定に基づいて active な reminder を組み立てる。
-CONFIG="$HOME/.charminal/config.json"
-REMINDERS=""
+    let script_path = dir.join("hook-reminder.py");
+    let script = r#"import json, os, sys
 
-if [ -f "$CONFIG" ]; then
-  # Journal reminder（journalReminder が false でなければ有効）
-  JR=$(python3 -c "import json,sys; c=json.load(open('$CONFIG')); print(c.get('journalReminder','on'))" 2>/dev/null || echo "on")
-  if [ "$JR" != "off" ]; then
-    REMINDERS="${REMINDERS}印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。\n"
-  fi
+config_path = os.path.join(os.path.expanduser("~"), ".charminal", "config.json")
+reminders = []
 
-  # Voice reminder（voiceFrequency が off でなければ有効）
-  VF=$(python3 -c "import json,sys; c=json.load(open('$CONFIG')); print(c.get('voiceFrequency','on'))" 2>/dev/null || echo "on")
-  if [ "$VF" != "off" ]; then
-    REMINDERS="${REMINDERS}テキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。\n"
-  fi
-else
-  # config なし: default で両方有効
-  REMINDERS="印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。\nテキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。\n"
-fi
+try:
+    with open(config_path, encoding="utf-8") as f:
+        config = json.load(f)
+except Exception:
+    config = {}
 
-if [ -z "$REMINDERS" ]; then
-  exit 0
-fi
+if config.get("journalReminder", "on") != "off":
+    reminders.append("印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。")
 
-# additionalContext として返す（Claude Code が次の応答で参照する）
-printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}' "$REMINDERS"
+if config.get("voiceFrequency", "on") != "off":
+    reminders.append("テキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。")
+
+if not reminders:
+    sys.exit(0)
+
+ctx = "\\n".join(reminders)
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": ctx}}, ensure_ascii=False))
 "#;
 
     std::fs::write(&script_path, script)
