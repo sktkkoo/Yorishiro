@@ -28,6 +28,16 @@ pub struct PackIdRequest {
     pub id: String,
 }
 
+/// `pack_diagnose` の引数。kind 省略時は同 id の全 kind を診断する。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PackDiagnoseRequest {
+    /// Target pack id.
+    pub id: String,
+    /// Optional pack kind filter, e.g. "scene" or "effect".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
+}
+
 /// `list_packs` の引数。現状 body を取らないが、MCP の call_tool は object を
 /// 期待するため、空 struct で受ける。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -346,6 +356,25 @@ impl Charminal {
         let response = emit_tool_event(&self.app_handle, "list-packs", json!({}))
             .await
             .map_err(|e| McpError::internal_error(e, None))?;
+        unwrap_ts_response(response)
+    }
+
+    /// pack_diagnose: TS runtime に委譲。pack 作成 / 編集後の自己修復用に
+    /// runtime 状態、manifest summary、load error を 1 件にまとめて返す。
+    #[tool(
+        description = "Diagnose one pack by id. Returns loaded/failed/disabled status, active state, manifest summary, latest load error, and repair recommendations. Use after creating or editing a pack before reporting it as done."
+    )]
+    async fn pack_diagnose(
+        &self,
+        Parameters(req): Parameters<PackDiagnoseRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let response = emit_tool_event(
+            &self.app_handle,
+            "pack-diagnose",
+            json!({ "id": req.id, "kind": req.kind }),
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(response)
     }
 

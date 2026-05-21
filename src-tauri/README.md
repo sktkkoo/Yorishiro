@@ -17,7 +17,7 @@ src-tauri/src/
 └── mcp/
     ├── mod.rs     — re-exports (4 lines)
     ├── server.rs  — MCP HTTP server (port 18743 default) / spawn / round-trip
-    ├── tools.rs   — MCP tool 実装 (list_load_errors / list_packs / enable_pack / disable_pack / get_ui_state / set_ui_state)
+    ├── tools.rs   — MCP tool 実装 (pack diagnostics / pack enable-disable / state / controls / presence tools)
     └── types.rs   — DTO 定義（TS と shared shape の document 役割）
 ```
 

@@ -28,6 +28,7 @@ import {
   withDisabledPackRemoved,
 } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
+import type { UserPackEntry } from "../user-pack-loader/user-pack-loader";
 import type { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 
 export interface PackStatusEntry {
@@ -60,69 +61,285 @@ export interface ListPacksDeps {
 
 export function createListPacksHandler(deps: ListPacksDeps) {
   return async (_request: unknown): Promise<ListPacksResponse> => {
-    const activeIds = deps.getActiveIds();
-    const isActiveFor = (kind: string, id: string): boolean => {
-      if (kind === "scene") return id === activeIds.scene;
-      if (kind === "ui") return id === activeIds.ui;
-      if (kind === "persona") return id === activeIds.persona;
-      return false;
-    };
+    return buildListPacksResponse({
+      registryEntries: deps.readRegistry(),
+      bundledPacks: deps.readBundledPacks(),
+      config: await deps.readConfig(),
+      loadReport: await deps.readLoadReport(),
+      activeIds: deps.getActiveIds(),
+    });
+  };
+}
 
-    const bundled = deps.readBundledPacks().map(
-      (e): PackStatusEntry => ({
-        id: e.id,
-        kind: e.kind,
-        origin: "bundled",
-        status: "loaded" as const,
-        isActive: isActiveFor(e.kind, e.id),
-      }),
-    );
+interface BuildListPacksInput {
+  readonly registryEntries: Array<{ id: string; kind: string }>;
+  readonly bundledPacks: Array<{ id: string; kind: string }>;
+  readonly config: CharminalConfig;
+  readonly loadReport: LoadReport | null;
+  readonly activeIds: {
+    readonly scene: string | null;
+    readonly ui: string | null;
+    readonly persona: string | null;
+  };
+}
 
-    const loaded = deps.readRegistry().map(
-      (e): PackStatusEntry => ({
-        id: e.id,
-        kind: e.kind,
+function buildListPacksResponse(input: BuildListPacksInput): ListPacksResponse {
+  const isActiveFor = (kind: string, id: string): boolean => {
+    if (kind === "scene") return id === input.activeIds.scene;
+    if (kind === "ui") return id === input.activeIds.ui;
+    if (kind === "persona") return id === input.activeIds.persona;
+    return false;
+  };
+
+  const bundled = input.bundledPacks.map(
+    (e): PackStatusEntry => ({
+      id: e.id,
+      kind: e.kind,
+      origin: "bundled",
+      status: "loaded" as const,
+      isActive: isActiveFor(e.kind, e.id),
+    }),
+  );
+
+  const loaded = input.registryEntries.map(
+    (e): PackStatusEntry => ({
+      id: e.id,
+      kind: e.kind,
+      origin: "user",
+      status: "loaded" as const,
+      isActive: isActiveFor(e.kind, e.id),
+    }),
+  );
+  const loadedKey = new Set(loaded.map((e) => `${e.kind}:${e.id}`));
+
+  const disabled = input.config.disabledPacks
+    .filter((id) => {
+      return !loaded.some((e) => e.id === id);
+    })
+    .map(
+      (id): PackStatusEntry => ({
+        id,
+        kind: "",
         origin: "user",
-        status: "loaded" as const,
-        isActive: isActiveFor(e.kind, e.id),
+        status: "disabled" as const,
+        isActive: false,
       }),
     );
-    const loadedKey = new Set(loaded.map((e) => `${e.kind}:${e.id}`));
+  const disabledKey = new Set(disabled.map((e) => `${e.kind}:${e.id}`));
 
-    const config = await deps.readConfig();
-    const disabled = config.disabledPacks
-      .filter((id) => {
-        return !loaded.some((e) => e.id === id);
-      })
-      .map(
-        (id): PackStatusEntry => ({
-          id,
-          kind: "",
-          origin: "user",
-          status: "disabled" as const,
-          isActive: false,
-        }),
+  const failed: PackStatusEntry[] = [];
+  if (input.loadReport !== null) {
+    for (const entry of input.loadReport.loadResults) {
+      if (entry.status !== "failed") continue;
+      const key = `${entry.kind}:${entry.id}`;
+      if (loadedKey.has(key) || disabledKey.has(key)) continue;
+      failed.push({
+        id: entry.id,
+        kind: entry.kind,
+        origin: "user",
+        status: "failed",
+        isActive: false,
+      });
+    }
+  }
+
+  return { packs: [...bundled, ...loaded, ...disabled, ...failed] };
+}
+
+export interface PackDiagnoseDeps extends ListPacksDeps {
+  readonly readUserPackEntries: () => Promise<ReadonlyArray<UserPackEntry>>;
+}
+
+export interface PackDiagnoseRequest {
+  readonly id?: string;
+  readonly kind?: string;
+}
+
+export interface PackDiagnosis {
+  readonly id: string;
+  readonly kind: string;
+  readonly origin: "bundled" | "user" | "unknown";
+  readonly status: "loaded" | "disabled" | "failed" | "missing";
+  readonly isActive: boolean;
+  readonly entryPath?: string;
+  readonly manifest?: UserPackEntry["manifest"];
+  readonly loadError?: {
+    readonly phase: "import" | "validate";
+    readonly message: string;
+  };
+}
+
+export interface PackDiagnoseResponse {
+  readonly id: string;
+  readonly ok: boolean;
+  readonly diagnoses: ReadonlyArray<PackDiagnosis>;
+  readonly diagnostics: ReadonlyArray<{
+    readonly severity: "info" | "warning" | "error";
+    readonly code: string;
+    readonly message: string;
+  }>;
+  readonly recommendations: ReadonlyArray<string>;
+}
+
+export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
+  return async (request: unknown): Promise<PackDiagnoseResponse> => {
+    const record = requestRecord(request);
+    const id = record.id;
+    if (typeof id !== "string" || id === "") {
+      throw new Error("id must be a non-empty string");
+    }
+    const requestedKind =
+      typeof record.kind === "string" && record.kind !== "" ? record.kind : null;
+
+    const [config, loadReport, userEntries] = await Promise.all([
+      deps.readConfig(),
+      deps.readLoadReport(),
+      deps.readUserPackEntries(),
+    ]);
+    const activeIds = deps.getActiveIds();
+    const list = buildListPacksResponse({
+      registryEntries: deps.readRegistry(),
+      bundledPacks: deps.readBundledPacks(),
+      config,
+      loadReport,
+      activeIds,
+    });
+
+    const statuses = list.packs.filter(
+      (entry) => entry.id === id && (requestedKind === null || entry.kind === requestedKind),
+    );
+    const entries = userEntries.filter(
+      (entry) => entry.id === id && (requestedKind === null || entry.kind === requestedKind),
+    );
+    const failedEntries =
+      loadReport?.loadResults.filter(
+        (entry) =>
+          entry.id === id &&
+          entry.status === "failed" &&
+          (requestedKind === null || entry.kind === requestedKind),
+      ) ?? [];
+
+    const byKind = new Map<string, PackDiagnosis>();
+    for (const status of statuses) {
+      byKind.set(status.kind, {
+        id,
+        kind: status.kind,
+        origin: status.origin,
+        status: status.status,
+        isActive: status.isActive,
+      });
+    }
+    for (const entry of entries) {
+      const existing = byKind.get(entry.kind);
+      byKind.set(entry.kind, {
+        id,
+        kind: entry.kind,
+        origin: existing?.origin ?? "user",
+        status: existing?.status ?? "missing",
+        isActive: existing?.isActive ?? false,
+        entryPath: entry.entryPath,
+        manifest: entry.manifest,
+      });
+    }
+    for (const failed of failedEntries) {
+      const existing = byKind.get(failed.kind);
+      byKind.set(failed.kind, {
+        id,
+        kind: failed.kind,
+        origin: existing?.origin ?? "user",
+        status: existing?.status === "loaded" ? "loaded" : "failed",
+        isActive: existing?.isActive ?? false,
+        entryPath: existing?.entryPath,
+        manifest: existing?.manifest,
+        loadError: failed.error,
+      });
+    }
+
+    const diagnoses = [...byKind.values()].sort((a, b) => a.kind.localeCompare(b.kind));
+    const diagnostics: PackDiagnoseResponse["diagnostics"] = [];
+    const recommendations: string[] = [];
+
+    if (diagnoses.length === 0) {
+      diagnostics.push({
+        severity: "error",
+        code: "pack-not-found",
+        message:
+          requestedKind === null
+            ? `pack '${id}' was not found`
+            : `pack '${id}' (${requestedKind}) was not found`,
+      });
+      recommendations.push(
+        "Create the pack under ~/.charminal/packs/<id>/ or check the id spelling.",
       );
-    const disabledKey = new Set(disabled.map((e) => `${e.kind}:${e.id}`));
+    }
 
-    const report = await deps.readLoadReport();
-    const failed: PackStatusEntry[] = [];
-    if (report !== null) {
-      for (const entry of report.loadResults) {
-        if (entry.status !== "failed") continue;
-        const key = `${entry.kind}:${entry.id}`;
-        if (loadedKey.has(key) || disabledKey.has(key)) continue;
-        failed.push({
-          id: entry.id,
-          kind: entry.kind,
-          origin: "user",
-          status: "failed",
-          isActive: false,
+    if (config.disabledPacks.includes(id)) {
+      diagnostics.push({
+        severity: "warning",
+        code: "pack-disabled",
+        message: `pack '${id}' is listed in config.disabledPacks`,
+      });
+      recommendations.push(`Use enable_pack({ id: "${id}" }) after fixing any load errors.`);
+    }
+
+    for (const diagnosis of diagnoses) {
+      if (diagnosis.origin === "bundled") {
+        diagnostics.push({
+          severity: "info",
+          code: "bundled-immutable",
+          message: `bundled pack '${id}' is immutable; fork it before editing`,
         });
+      }
+      if (diagnosis.status === "loaded") {
+        diagnostics.push({
+          severity: "info",
+          code: "pack-loaded",
+          message: `${diagnosis.kind} pack '${id}' is loaded${diagnosis.isActive ? " and active" : ""}`,
+        });
+      }
+      if (diagnosis.status === "failed") {
+        diagnostics.push({
+          severity: "error",
+          code: "pack-load-failed",
+          message: diagnosis.loadError?.message ?? `${diagnosis.kind} pack '${id}' failed to load`,
+        });
+        recommendations.push(
+          "Inspect the entry file and manifest, fix the load error, then let hot reload run or call enable_pack if it was disabled.",
+        );
+      }
+      if (diagnosis.manifest !== undefined) {
+        if (diagnosis.manifest.id !== id) {
+          diagnostics.push({
+            severity: "warning",
+            code: "manifest-id-mismatch",
+            message: `manifest id '${diagnosis.manifest.id}' does not match pack directory '${id}'`,
+          });
+        }
+        if (diagnosis.manifest.type !== diagnosis.kind) {
+          diagnostics.push({
+            severity: "warning",
+            code: "manifest-type-mismatch",
+            message: `manifest type '${diagnosis.manifest.type}' does not match discovered kind '${diagnosis.kind}'`,
+          });
+        }
+        if (diagnosis.manifest.executionClass === "trusted-main-thread-js") {
+          diagnostics.push({
+            severity: "info",
+            code: "local-trusted-code",
+            message: `pack '${id}' runs as local trusted code`,
+          });
+        }
       }
     }
 
-    return { packs: [...bundled, ...loaded, ...disabled, ...failed] };
+    const hasError = diagnostics.some((diagnostic) => diagnostic.severity === "error");
+    return {
+      id,
+      ok: !hasError,
+      diagnoses,
+      diagnostics,
+      recommendations: [...new Set(recommendations)],
+    };
   };
 }
 

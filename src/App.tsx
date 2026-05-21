@@ -936,6 +936,7 @@ function App() {
         const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
         const {
           createListPacksHandler,
+          createPackDiagnoseHandler,
           createDisablePackHandler,
           createEnablePackHandler,
           createGetPackStateHandler,
@@ -981,6 +982,7 @@ function App() {
         const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
+        type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
         type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
 
         const readConfig = async (): Promise<CharminalConfig> =>
@@ -1034,32 +1036,33 @@ function App() {
             userPackLog,
           });
         };
+        const readBundledPacks = (): Array<{ id: string; kind: string }> => [
+          ...personaRegistry
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "persona" })),
+          ...scenePackRegistry
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "scene" })),
+          ...uiPackRegistry
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "ui" })),
+          ...[
+            cameraMovePack,
+            desaturatePack,
+            fireworksPack,
+            fireworksVolleyPack,
+            screenShakePack,
+            textPhysicsPack,
+          ].map((p) => ({ id: p.id, kind: "effect" })),
+        ];
 
         const handlers: ToolHandlerMap = {
           "list-packs": createListPacksHandler({
             readRegistry: () => packRegistry.listEntries(),
-            readBundledPacks: () => [
-              ...personaRegistry
-                .listEntries()
-                .filter((e) => e.origin === "bundled")
-                .map((e) => ({ id: e.id, kind: "persona" })),
-              ...scenePackRegistry
-                .listEntries()
-                .filter((e) => e.origin === "bundled")
-                .map((e) => ({ id: e.id, kind: "scene" })),
-              ...uiPackRegistry
-                .listEntries()
-                .filter((e) => e.origin === "bundled")
-                .map((e) => ({ id: e.id, kind: "ui" })),
-              ...[
-                cameraMovePack,
-                desaturatePack,
-                fireworksPack,
-                fireworksVolleyPack,
-                screenShakePack,
-                textPhysicsPack,
-              ].map((p) => ({ id: p.id, kind: "effect" })),
-            ],
+            readBundledPacks,
             readConfig,
             readLoadReport,
             getActiveIds: () => ({
@@ -1067,6 +1070,18 @@ function App() {
               ui: uiPackRegistry.getActiveUiId(),
               persona: personaRegistry.getActivePersonaId(),
             }),
+          }),
+          "pack-diagnose": createPackDiagnoseHandler({
+            readRegistry: () => packRegistry.listEntries(),
+            readBundledPacks,
+            readConfig,
+            readLoadReport,
+            getActiveIds: () => ({
+              scene: scenePackRegistry.getActiveSceneId(),
+              ui: uiPackRegistry.getActiveUiId(),
+              persona: personaRegistry.getActivePersonaId(),
+            }),
+            readUserPackEntries: async () => invoke<UserPackEntry[]>("list_user_packs"),
           }),
           "disable-pack": createDisablePackHandler({
             readConfig,

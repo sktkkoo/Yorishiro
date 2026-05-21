@@ -104,7 +104,7 @@ Source code 内で参照するときは：
 |---|---|---|
 | `lib.rs` / `main.rs` | Tauri app entry / command 登録 / setup hook | [../src-tauri/README.md](../src-tauri/README.md) |
 | `pty.rs` | PTY lifecycle / ring buffer / terminal agent launch（Claude Code / Codex）/ hook server (port 19001) | 同上 |
-| `mcp/` | MCP 1.5 server (port 18743 default) / 4 tools (list_load_errors / list_packs / enable_pack / disable_pack) | 同上 |
+| `mcp/` | MCP 1.5 server (port 18743 default) / pack diagnostics + self-referential tools | 同上 |
 | User layer commands | `~/.charminal/` の watch / atomic write / pack scan | 同上 |
 
 ### 3.4 Bundled packs

@@ -101,6 +101,7 @@ When Charminal is running, these MCP tools are available.
 | Tool | Arguments | Purpose |
 |---|---|---|
 | `list_packs()` | - | List loaded / disabled / failed packs |
+| `pack_diagnose({ id })` | pack id | Inspect one pack's status, manifest, load error, and repair hints |
 | `list_load_errors()` | - | Show details from the latest pack load failure |
 | `enable_pack({ id })` | pack id | Re-enable a disabled pack |
 | `disable_pack({ id })` | pack id | Disable a broken pack immediately |
