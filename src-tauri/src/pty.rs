@@ -137,10 +137,10 @@ except Exception:
     config = {}
 
 if config.get("journalReminder", "on") != "off":
-    reminders.append("印象に残ることがあれば journal_write で短く書く。毎回でなくていい。書くのは出来事の要約ではなく、あなたの中に残った感触。")
+    reminders.append("印象があれば journal_write。[感触/記憶/物語]")
 
 if config.get("voiceFrequency", "on") != "off":
-    reminders.append("テキスト出力の前に、まず応答の要点を voice_say で声に出す。声が先、テキストが後。")
+    reminders.append("応答の要点を voice_say で声に出す。声が先。")
 
 if not reminders:
     sys.exit(0)
