@@ -16,6 +16,9 @@ import { R3fHost } from "./r3f-host";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
 import type { ThreeRuntime } from "./types";
 
+const DEFAULT_RENDER_FPS = 30;
+const MIN_RENDER_FRAME_INTERVAL_MS = 1000 / DEFAULT_RENDER_FPS;
+
 /**
  * ThreeRuntime implementation. See types.ts for the contract.
  *
@@ -26,7 +29,7 @@ import type { ThreeRuntime } from "./types";
  *     React placeholder の rect に ResizeObserver で追従させる。
  *   - VRM load は loadToken で race 回避。連続 setVrmUrl で古い load は破棄。
  *   - bodyListener は late registration：register 時に currentBody があれば即 call。
- *   - RAF loop は 1 本だけ、factory 起動時に永続 start。detach 中も描画継続（WebGL 側で cheap）。
+ *   - RAF loop は 1 本だけ。3D 描画または app-wide tween が必要な間だけ start する。
  */
 class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly scene: THREE.Scene;
@@ -56,10 +59,15 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly cameraModulation = new CameraModulationRegistry();
   private readonly baseFov: number;
   private currentPlaceholder: HTMLElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private lastRendererW = 0;
   private lastRendererH = 0;
+  private placeholderRect = { left: 0, top: 0, width: 0, height: 0 };
   private cameraTrackingEnabled = true;
   private renderPaused = false;
+  private rafId: number | null = null;
+  private layoutRefreshFramesRemaining = 0;
+  private lastRenderAtMs = -Infinity;
 
   constructor() {
     this.claimState = getClaimState();
@@ -110,8 +118,10 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     this.clock = new THREE.Clock();
     this.loader = new GLTFLoader();
     this.loader.register((parser) => new VRMLoaderPlugin(parser));
+    this.tweenManager.setOnTweenStart(() => this.startRenderLoop());
 
-    // ── RAF loop 開始（webview-lifetime、1 本だけ）──────────────────
+    // ── RAF loop 開始（3D 描画または app-wide tween が必要な間だけ、1 本だけ）──
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
     this.startRenderLoop();
   }
 
@@ -120,12 +130,20 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     container.style.position = "relative";
     container.appendChild(this.canvasContainer);
     this.canvasContainer.style.visibility = "visible";
+    this.observePlaceholder(container);
+    this.updatePlaceholderRect();
+    this.handleResize();
+    this.clock.getDelta();
+    this.lastRenderAtMs = -Infinity;
+    this.startRenderLoop();
   }
 
   detachContainer(): void {
+    this.unobservePlaceholder();
     this.currentPlaceholder = null;
     this.canvasContainer.style.visibility = "hidden";
     this.canvasContainer.remove();
+    this.stopRenderLoop();
   }
 
   setShakeOffset(dx: number, dy: number): void {
@@ -207,6 +225,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               this.camera.lookAt(0, targetY, 0);
 
               this.bodyListenerRef.current?.(this.currentBody);
+              this.updatePlaceholderRect();
+              this.handleResize();
+              this.clock.getDelta();
+              this.lastRenderAtMs = -Infinity;
+              this.startRenderLoop();
               resolve();
             },
             (err) => reject(err),
@@ -269,11 +292,19 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
   /**
    * Render loop の pause / resume。
-   * paused のとき RAF は継続するが、tweenManager.tick / body.update / renderer.render を skip する。
+   * paused のとき RAF 自体を停止し、tweenManager.tick / body.update / renderer.render を skip する。
    * sidebar が display:none の間（presence closed）に CPU/GPU を休ませる用途。
    */
   setRenderPaused(paused: boolean): void {
+    if (this.renderPaused === paused) return;
     this.renderPaused = paused;
+    if (paused) {
+      this.stopRenderLoop();
+    } else {
+      this.clock.getDelta();
+      this.lastRenderAtMs = -Infinity;
+      this.startRenderLoop();
+    }
   }
 
   isRenderPaused(): boolean {
@@ -297,22 +328,48 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   // ─── private methods ────────────────────────────────────────────
 
   private startRenderLoop(): void {
-    const tick = () => {
-      requestAnimationFrame(tick);
+    if (this.rafId !== null || !this.shouldRunFrameLoop()) return;
+    this.rafId = requestAnimationFrame(this.tick);
+  }
 
-      // paused 時は早期 return。clock.getDelta() だけは呼んで oldTime を進めることで
-      // resume 直後の最初の tick で大きな delta jump が起きるのを防ぐ。
-      if (this.renderPaused) {
-        this.clock.getDelta();
-        return;
+  private stopRenderLoop(): void {
+    if (this.rafId === null) return;
+    cancelAnimationFrame(this.rafId);
+    this.rafId = null;
+  }
+
+  private readonly tick = (): void => {
+    this.rafId = null;
+
+    // pause / detach / document hidden 中は必要な処理だけ残し、不要な次フレームを予約しない。
+    // clock だけ進め、resume 直後の delta jump を防ぐ。
+    if (!this.shouldRunFrameLoop()) {
+      this.clock.getDelta();
+      return;
+    }
+
+    const now = performance.now();
+    const hadActiveTweens = this.tweenManager.activeCount > 0;
+    const shouldRenderThisFrame = this.shouldRenderScene() && this.shouldRenderAt(now);
+
+    this.tweenManager.tick(now);
+
+    // Sidebar/presence など layout-affecting tween の style 書き込み後、同じ
+    // frame で canvas size を追従させる。完了直後の layout settle も 1 frame だけ拾う。
+    if (hadActiveTweens) {
+      this.layoutRefreshFramesRemaining = 1;
+    }
+    if (hadActiveTweens || this.layoutRefreshFramesRemaining > 0) {
+      this.updatePlaceholderRect();
+      if (!hadActiveTweens) {
+        this.layoutRefreshFramesRemaining--;
       }
+    }
+    this.handleResize();
 
-      const now = performance.now();
+    if (shouldRenderThisFrame) {
       const delta = this.clock.getDelta();
-      const elapsed = this.clock.getElapsedTime();
-
-      this.handleResize();
-      this.tweenManager.tick(now);
+      const elapsed = this.clock.elapsedTime;
 
       if (this.currentBody) {
         this.updateBodyPointerReference();
@@ -354,11 +411,79 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         }
       }
 
+      this.lastRenderAtMs = now;
       if (!this.r3fHost.advance(now)) {
         this.renderer.render(this.scene, this.camera);
       }
+    }
+
+    this.startRenderLoop();
+  };
+
+  private shouldRunFrameLoop(): boolean {
+    if (this.tweenManager.activeCount > 0) return !document.hidden;
+    if (this.layoutRefreshFramesRemaining > 0) return !document.hidden;
+    return this.shouldRenderScene();
+  }
+
+  private shouldRenderScene(): boolean {
+    if (this.renderPaused || this.currentPlaceholder === null) return false;
+    return !document.hidden;
+  }
+
+  private shouldRenderAt(nowMs: number): boolean {
+    return nowMs - this.lastRenderAtMs >= MIN_RENDER_FRAME_INTERVAL_MS - 0.5;
+  }
+
+  private readonly handleVisibilityChange = (): void => {
+    if (document.hidden) {
+      this.stopRenderLoop();
+      this.clock.getDelta();
+      return;
+    }
+    this.updatePlaceholderRect();
+    this.clock.getDelta();
+    this.lastRenderAtMs = -Infinity;
+    this.startRenderLoop();
+  };
+
+  private observePlaceholder(container: HTMLElement): void {
+    this.unobservePlaceholder();
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.updatePlaceholderRect();
+        this.handleResize();
+      });
+      this.resizeObserver.observe(container);
+    }
+    window.addEventListener("resize", this.handleViewportLayoutChange);
+  }
+
+  private unobservePlaceholder(): void {
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    window.removeEventListener("resize", this.handleViewportLayoutChange);
+    this.placeholderRect = { left: 0, top: 0, width: 0, height: 0 };
+    this.layoutRefreshFramesRemaining = 0;
+  }
+
+  private readonly handleViewportLayoutChange = (): void => {
+    this.updatePlaceholderRect();
+    this.handleResize();
+  };
+
+  private updatePlaceholderRect(): void {
+    if (!this.currentPlaceholder) {
+      this.placeholderRect = { left: 0, top: 0, width: 0, height: 0 };
+      return;
+    }
+    const rect = this.currentPlaceholder.getBoundingClientRect();
+    this.placeholderRect = {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
     };
-    requestAnimationFrame(tick);
   }
 
   private initializeR3fHost(): void {
@@ -376,9 +501,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   private handleResize(): void {
-    if (!this.currentPlaceholder) return;
-    const w = this.currentPlaceholder.clientWidth;
-    const h = this.currentPlaceholder.clientHeight;
+    const w = Math.round(this.placeholderRect.width);
+    const h = Math.round(this.placeholderRect.height);
     if (w === 0 || h === 0) return;
 
     if (w !== this.lastRendererW || h !== this.lastRendererH) {
@@ -399,7 +523,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
     this.trackHead.getWorldPosition(this.headWorldPos);
     this.headScreenPos.copy(this.headWorldPos).project(this.camera);
-    const rect = this.currentPlaceholder.getBoundingClientRect();
+    const rect = this.placeholderRect;
     if (rect.width <= 0 || rect.height <= 0) return;
 
     const headClientX = rect.left + ((this.headScreenPos.x + 1) / 2) * rect.width;
