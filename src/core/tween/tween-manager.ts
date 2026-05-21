@@ -33,6 +33,16 @@ interface ActiveTween {
  */
 export class TweenManager {
   private readonly active = new Map<string, ActiveTween>();
+  private onTweenStart: (() => void) | null = null;
+
+  /**
+   * tween 登録時の scheduler hook。
+   * ThreeRuntime など、外側の frame loop が停止している可能性がある owner が
+   * `tick()` を再開するために使う。純粋ロジックとしての tween 結果には影響しない。
+   */
+  setOnTweenStart(listener: (() => void) | null): void {
+    this.onTweenStart = listener;
+  }
 
   /**
    * 数値の tween を開始する。同一 key が存在する場合は上書きされる（last-write-wins）。
@@ -203,6 +213,7 @@ export class TweenManager {
       resolve,
     };
     this.active.set(key, entry);
+    this.onTweenStart?.();
     return {
       cancel: () => {
         if (this.active.get(key) === entry) {

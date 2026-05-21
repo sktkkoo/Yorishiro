@@ -76,6 +76,9 @@ const hostStyle: CSSProperties = {
   display: "block",
 };
 
+const DEFAULT_RENDER_FPS = 30;
+const MIN_RENDER_FRAME_INTERVAL_MS = 1000 / DEFAULT_RENDER_FPS;
+
 type DisposableObject = {
   dispose: () => void;
 };
@@ -261,7 +264,31 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
   resize();
 
   let frame = 0;
-  const tick = () => {
+  let lastRenderAtMs = -Infinity;
+  const requestFrame = () => {
+    if (frame === 0 && !document.hidden) {
+      frame = requestAnimationFrame(tick);
+    }
+  };
+  const handleVisibilityChange = () => {
+    if (document.hidden) {
+      if (frame !== 0) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      return;
+    }
+    lastRenderAtMs = -Infinity;
+    requestFrame();
+  };
+  const tick = (nowMs: number) => {
+    frame = 0;
+    if (document.hidden) return;
+    requestFrame();
+
+    if (nowMs - lastRenderAtMs < MIN_RENDER_FRAME_INTERVAL_MS - 0.5) return;
+    lastRenderAtMs = nowMs;
+
     const elapsed = clock.getElapsedTime();
     sky.uniforms.uTime.value = elapsed;
     grass.uniforms.uTime.value = elapsed;
@@ -269,8 +296,6 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     wildflowers.uniforms.uTime.value = elapsed;
     motes.uniforms.uTime.value = elapsed;
     postUniforms.uTime.value = elapsed;
-    frame = requestAnimationFrame(tick);
-    resize();
 
     // 1) scene → renderTarget。既存の renderOrder / depthWrite はそのまま効く
     //    （RT も color + depth を持つ通常の framebuffer 相当）
@@ -281,10 +306,12 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     renderer.setRenderTarget(null);
     renderer.render(postScene, postCamera);
   };
-  frame = requestAnimationFrame(tick);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  requestFrame();
 
   return () => {
-    cancelAnimationFrame(frame);
+    if (frame !== 0) cancelAnimationFrame(frame);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     resizeObserver.disconnect();
     for (const object of objects) object.dispose();
     // Post pass の resources を解放

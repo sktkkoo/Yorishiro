@@ -235,6 +235,21 @@ describe("TerminalRuntime", () => {
     stub.remove();
   });
 
+  it("attachTo は常駐 resize RAF を開始しない", () => {
+    const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 42);
+    const runtime = getTerminalRuntime("shell-1");
+
+    const stub = document.createElement("div");
+    document.body.appendChild(stub);
+    runtime.attachTo(stub);
+
+    expect(rafSpy).not.toHaveBeenCalled();
+
+    runtime.detachContainer();
+    stub.remove();
+    rafSpy.mockRestore();
+  });
+
   it("setOpacity(0.5) で .xterm-singleton-container の style.opacity が 0.5 になる", () => {
     const runtime = getTerminalRuntime("shell-1");
     runtime.setOpacity(0.5);

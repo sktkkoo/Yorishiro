@@ -201,18 +201,22 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     cancelAnimationFrame(this.resizeRafId);
+    this.resizeRafId = 0;
 
-    const tick = () => {
-      this.syncAttachedRect();
-      this.resizeRafId = requestAnimationFrame(tick);
-    };
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => {
+        this.syncAttachedRect();
+      });
+      this.resizeObserver.observe(container);
+    }
+    window.addEventListener("resize", this.handleViewportResize);
     this.syncAttachedRect();
-    this.resizeRafId = requestAnimationFrame(tick);
   }
 
   detachContainer(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    window.removeEventListener("resize", this.handleViewportResize);
     cancelAnimationFrame(this.resizeRafId);
     this.resizeRafId = 0;
     this.attachedContainer = null;
@@ -283,6 +287,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.startGeneration++;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    window.removeEventListener("resize", this.handleViewportResize);
     cancelAnimationFrame(this.resizeRafId);
     this.resizeRafId = 0;
     this.ptyExitUnlisten?.();
@@ -397,7 +402,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.lastFitW = 0;
     this.lastFitH = 0;
     this.syncAttachedRect();
-    requestAnimationFrame(() => {
+    cancelAnimationFrame(this.resizeRafId);
+    this.resizeRafId = requestAnimationFrame(() => {
+      this.resizeRafId = 0;
       this.lastFitW = 0;
       this.lastFitH = 0;
       this.syncAttachedRect();
@@ -622,6 +629,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       listener();
     }
   }
+
+  private readonly handleViewportResize = (): void => {
+    this.syncAttachedRect();
+  };
 
   private detectClearCommand(data: string): void {
     if (data.includes("\r") || data.includes("\n")) {
