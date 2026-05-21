@@ -14,6 +14,7 @@ export {
   resolveUserAsset,
 } from "./asset-resolver";
 export {
+  DEFAULT_BUNDLED_SCENE_ID,
   getSceneRegistry,
   ScenePackRegistryImpl,
   type ScenePackRegistryOptions,
