@@ -374,6 +374,171 @@ function sortPackStatuses(packs: readonly UiAppPackStatusEntry[]): UiAppPackStat
   });
 }
 
+export function summarizePackDiagnosis(diagnosis: UiAppPackDiagnoseResponse): {
+  readonly state: "healthy" | "warning" | "error";
+  readonly title: string;
+  readonly detail: string;
+} {
+  const error = diagnosis.diagnostics.find((item) => item.severity === "error");
+  if (error !== undefined) {
+    return {
+      state: "error",
+      title: "Pack needs attention",
+      detail: error.message,
+    };
+  }
+
+  const warning = diagnosis.diagnostics.find((item) => item.severity === "warning");
+  if (warning !== undefined) {
+    return {
+      state: "warning",
+      title: "Pack has warnings",
+      detail: warning.message,
+    };
+  }
+
+  return {
+    state: "healthy",
+    title: "Pack looks healthy",
+    detail: diagnosis.diagnoses.some((item) => item.isActive)
+      ? "The pack is loaded and active."
+      : "The pack is loaded.",
+  };
+}
+
+function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseResponse }) {
+  const summary = summarizePackDiagnosis(diagnosis);
+  const iconColor =
+    summary.state === "error"
+      ? COLORS.accent
+      : summary.state === "warning"
+        ? COLORS.fgDim
+        : COLORS.fgDimmer;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "18px minmax(0, 1fr)",
+        gap: SPACING.sm,
+        alignItems: "start",
+        padding: `${SPACING.sm} 0`,
+        borderTop: `1px solid ${COLORS.borderSubtle}`,
+        borderBottom: `1px solid ${COLORS.borderSubtle}`,
+      }}
+    >
+      {summary.state === "healthy" ? (
+        <CheckCircle2 size={15} color={iconColor} aria-hidden="true" />
+      ) : (
+        <AlertTriangle size={15} color={iconColor} aria-hidden="true" />
+      )}
+      <div style={{ minWidth: 0 }}>
+        <div
+          style={{
+            fontSize: FONT.sizeS,
+            fontWeight: FONT.weightSemibold,
+            color: summary.state === "error" ? COLORS.accent : COLORS.fg,
+          }}
+        >
+          {summary.title}
+        </div>
+        <div
+          style={{
+            marginTop: "2px",
+            color: COLORS.fgDimmer,
+            fontSize: FONT.sizeXs,
+            lineHeight: 1.45,
+          }}
+        >
+          {summary.detail}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PackDiagnosticRow({ item }: { item: UiAppPackDiagnoseResponse["diagnostics"][number] }) {
+  const color =
+    item.severity === "error"
+      ? COLORS.accent
+      : item.severity === "warning"
+        ? COLORS.fgDim
+        : COLORS.fgDimmer;
+
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "112px minmax(0, 1fr)",
+        gap: SPACING.sm,
+        alignItems: "baseline",
+        color: COLORS.fgDim,
+        fontSize: FONT.sizeXs,
+        lineHeight: 1.45,
+      }}
+    >
+      <span
+        style={{
+          minWidth: 0,
+          padding: "1px 6px",
+          borderRadius: RADIUS.sm,
+          border: `1px solid ${COLORS.borderSubtle}`,
+          color,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+        title={item.code}
+      >
+        {item.code}
+      </span>
+      <span
+        style={{ minWidth: 0, color: item.severity === "error" ? COLORS.accent : COLORS.fgDim }}
+      >
+        {item.message}
+      </span>
+    </div>
+  );
+}
+
+function PackRecommendationRow({ text }: { text: string }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "112px minmax(0, 1fr)",
+        gap: SPACING.sm,
+        fontSize: FONT.sizeXs,
+        lineHeight: 1.45,
+      }}
+    >
+      <span />
+      <span style={{ minWidth: 0, color: COLORS.fgDimmer }}>{text}</span>
+    </div>
+  );
+}
+
+function PackStatusBadge({ status }: { status: UiAppPackStatusEntry["status"] }) {
+  const color =
+    status === "failed" ? COLORS.accent : status === "disabled" ? COLORS.fgDimmer : COLORS.fgDim;
+
+  return (
+    <span
+      style={{
+        color,
+        fontSize: FONT.sizeXs,
+        padding: "1px 6px",
+        borderRadius: RADIUS.sm,
+        border: `1px solid ${COLORS.borderSubtle}`,
+        background: COLORS.bgInput,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {status}
+    </span>
+  );
+}
+
 function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [packs, setPacks] = useState<readonly UiAppPackStatusEntry[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -575,9 +740,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                       {pack.isActive ? " · active" : ""}
                     </span>
                   </span>
-                  <span style={{ color: statusColor(pack.status), fontSize: FONT.sizeXs }}>
-                    {pack.status}
-                  </span>
+                  <PackStatusBadge status={pack.status} />
                 </button>
               );
             })
@@ -651,17 +814,9 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 <div style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>Diagnosing</div>
               ) : (
                 <div style={{ display: "grid", gap: SPACING.sm }}>
+                  <PackDiagnosisSummary diagnosis={diagnosis} />
                   {diagnosis.diagnostics.map((item) => (
-                    <div
-                      key={`${item.code}:${item.message}`}
-                      style={{
-                        color: item.severity === "error" ? COLORS.accent : COLORS.fgDim,
-                        fontSize: FONT.sizeXs,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {item.code}: {item.message}
-                    </div>
+                    <PackDiagnosticRow key={`${item.code}:${item.message}`} item={item} />
                   ))}
                   {diagnosis.diagnoses[0]?.entryPath && (
                     <div
@@ -678,9 +833,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                     </div>
                   )}
                   {diagnosis.recommendations.map((text) => (
-                    <div key={text} style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
-                      {text}
-                    </div>
+                    <PackRecommendationRow key={text} text={text} />
                   ))}
                 </div>
               )}
@@ -1145,11 +1298,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           {strings.agentAppliesNextLaunch}
         </div>
 
-        {/* 32px gap */}
-        <div style={{ height: "32px" }} />
-
-        <PackWorkbench ctx={ctx} />
-
         {/* 48px gap before footer links */}
         <div style={{ height: "48px" }} />
 
@@ -1180,6 +1328,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             Shortcut
           </button>
         </div>
+
+        {/* 32px gap */}
+        <div style={{ height: "32px" }} />
+
+        <PackWorkbench ctx={ctx} />
       </main>
     </div>
   );

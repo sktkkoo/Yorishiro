@@ -9,6 +9,7 @@ import {
   resolvePersonaSelectValue,
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
+  summarizePackDiagnosis,
 } from "./ui";
 
 describe("resolveCloseTarget", () => {
@@ -136,5 +137,57 @@ describe("Pack Workbench helpers", () => {
 
   it("selects the first problem pack when previous selection is gone", () => {
     expect(selectWorkbenchPack("scene:missing", packs)).toBe("effect:broken-effect");
+  });
+
+  it("summarizes diagnosis errors for the detail panel", () => {
+    expect(
+      summarizePackDiagnosis({
+        id: "broken-effect",
+        ok: false,
+        diagnoses: [],
+        diagnostics: [
+          {
+            severity: "error",
+            code: "pack-load-failed",
+            message: "module has no default export",
+          },
+        ],
+        recommendations: [],
+      }),
+    ).toEqual({
+      state: "error",
+      title: "Pack needs attention",
+      detail: "module has no default export",
+    });
+  });
+
+  it("summarizes active healthy packs", () => {
+    expect(
+      summarizePackDiagnosis({
+        id: "ok-scene",
+        ok: true,
+        diagnoses: [
+          {
+            id: "ok-scene",
+            kind: "scene",
+            origin: "user",
+            status: "loaded",
+            isActive: true,
+          },
+        ],
+        diagnostics: [
+          {
+            severity: "info",
+            code: "pack-loaded",
+            message: "scene pack 'ok-scene' is loaded and active",
+          },
+        ],
+        recommendations: [],
+      }),
+    ).toEqual({
+      state: "healthy",
+      title: "Pack looks healthy",
+      detail: "The pack is loaded and active.",
+    });
   });
 });
