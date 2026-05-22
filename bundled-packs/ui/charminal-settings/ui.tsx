@@ -23,14 +23,12 @@ import {
   ChevronDown,
   FolderOpen,
   Package,
-  Power,
-  PowerOff,
   RefreshCw,
   Volume2,
   VolumeX,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { getStrings } from "../../../src/i18n/strings";
 import {
@@ -76,6 +74,7 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
   args.setLocal(args.next);
   try {
     await args.write(args.next);
+    window.dispatchEvent(new CustomEvent("charminal-settings:config-changed"));
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`[charminal-settings] ${args.field} write failed:`, reason);
@@ -518,25 +517,93 @@ function PackRecommendationRow({ text }: { text: string }) {
   );
 }
 
-function PackStatusBadge({ status }: { status: UiAppPackStatusEntry["status"] }) {
-  const color =
-    status === "failed" ? COLORS.accent : status === "disabled" ? COLORS.fgDimmer : COLORS.fgDim;
-
+function PackStatusIndicator({ status }: { status: UiAppPackStatusEntry["status"] }) {
+  if (status === "failed") {
+    return <AlertTriangle size={12} color={COLORS.accent} aria-hidden="true" />;
+  }
+  const color = status === "disabled" ? COLORS.borderSubtle : COLORS.accent;
   return (
     <span
       style={{
-        color,
-        fontSize: FONT.sizeXs,
-        padding: "1px 6px",
-        borderRadius: RADIUS.sm,
-        border: `1px solid ${COLORS.borderSubtle}`,
-        background: COLORS.bgInput,
-        whiteSpace: "nowrap",
+        display: "inline-block",
+        width: "6px",
+        height: "6px",
+        borderRadius: "50%",
+        background: color,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+function PackToggle({
+  pack,
+  busy,
+  onToggle,
+}: {
+  pack: UiAppPackStatusEntry;
+  busy: boolean;
+  onToggle: (action: "enable" | "disable") => void;
+}) {
+  if (pack.origin !== "user") return null;
+  const enabled = pack.status !== "disabled";
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      disabled={busy}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(enabled ? "disable" : "enable");
+      }}
+      style={{
+        width: "28px",
+        height: "16px",
+        borderRadius: "8px",
+        border: `1px solid ${enabled ? COLORS.accentBorder : COLORS.borderSubtle}`,
+        background: enabled ? COLORS.accentSoft : COLORS.bgInput,
+        cursor: busy ? "default" : "pointer",
+        position: "relative",
+        padding: 0,
+        flexShrink: 0,
+        transition: "background 200ms ease, border-color 200ms ease",
       }}
     >
-      {status}
-    </span>
+      <div
+        style={{
+          width: "10px",
+          height: "10px",
+          borderRadius: "50%",
+          background: enabled ? COLORS.accent : COLORS.fgDimmer,
+          position: "absolute",
+          top: "2px",
+          left: enabled ? "14px" : "2px",
+          transition: "left 200ms ease, background 200ms ease",
+        }}
+      />
+    </button>
   );
+}
+
+function groupPacksByKind(
+  packs: readonly UiAppPackStatusEntry[],
+): { kind: string; packs: UiAppPackStatusEntry[] }[] {
+  const map = new Map<string, UiAppPackStatusEntry[]>();
+  for (const pack of packs) {
+    const kind = pack.kind || "other";
+    const group = map.get(kind);
+    if (group) group.push(pack);
+    else map.set(kind, [pack]);
+  }
+  const kindOrder = ["persona", "scene", "voice", "effect", "ambient", "ui"];
+  return [...map.entries()]
+    .sort(([a], [b]) => {
+      const ai = kindOrder.indexOf(a);
+      const bi = kindOrder.indexOf(b);
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    })
+    .map(([kind, packs]) => ({ kind, packs }));
 }
 
 function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
@@ -549,7 +616,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const selectedPack = packs.find((pack) => packWorkbenchKey(pack) === selectedKey) ?? null;
 
-  const refreshPacks = async () => {
+  const refreshPacks = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -564,7 +631,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
     } finally {
       setLoading(false);
     }
-  };
+  }, [ctx]);
 
   useEffect(() => {
     let aborted = false;
@@ -591,6 +658,12 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
   }, [ctx]);
 
   useEffect(() => {
+    const onConfigChanged = () => void refreshPacks();
+    window.addEventListener("charminal-settings:config-changed", onConfigChanged);
+    return () => window.removeEventListener("charminal-settings:config-changed", onConfigChanged);
+  }, [refreshPacks]);
+
+  useEffect(() => {
     if (selectedPack === null) {
       setDiagnosis(null);
       return;
@@ -613,15 +686,18 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
     };
   }, [ctx, selectedPack]);
 
-  const runPackAction = async (action: "enable" | "disable") => {
-    if (selectedPack === null || selectedPack.origin !== "user") return;
+  const runPackAction = async (action: "enable" | "disable", packId?: string) => {
+    const targetId = packId ?? selectedPack?.id;
+    if (targetId === undefined) return;
+    const target = packs.find((p) => p.id === targetId);
+    if (target === undefined || target.origin !== "user") return;
     setBusy(action);
     setError(null);
     try {
       const result =
         action === "enable"
-          ? await ctx.app.enablePack(selectedPack.id)
-          : await ctx.app.disablePack(selectedPack.id);
+          ? await ctx.app.enablePack(targetId)
+          : await ctx.app.disablePack(targetId);
       if (!result.ok) throw new Error(result.reason ?? `${action} failed`);
       await refreshPacks();
     } catch (err) {
@@ -633,25 +709,29 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
     }
   };
 
-  const statusColor = (status: UiAppPackStatusEntry["status"]): string => {
-    if (status === "failed") return COLORS.accent;
-    if (status === "disabled") return COLORS.fgDimmer;
-    return COLORS.fgDim;
+  const groups = groupPacksByKind(packs);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  const selectPack = (key: string) => {
+    setSelectedKey(key);
   };
 
   return (
-    <section>
+    <section ref={sectionRef}>
       <div
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: SPACING.sm,
+          marginBottom: SPACING.md,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, opacity: 0.78 }}>
           <Package size={14} aria-hidden="true" />
           <span>Packs</span>
+          {packs.length > 0 && (
+            <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>{packs.length}</span>
+          )}
         </div>
         <button
           type="button"
@@ -660,21 +740,21 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
           aria-label="Refresh packs"
           title="Refresh packs"
           style={{
-            width: "28px",
-            height: "28px",
+            width: "26px",
+            height: "26px",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            border: `1px solid ${COLORS.borderSubtle}`,
+            border: "none",
             borderRadius: RADIUS.sm,
-            background: COLORS.bgInput,
-            color: COLORS.fgDim,
+            background: "transparent",
+            color: COLORS.fgDimmer,
             cursor: loading ? "default" : "pointer",
-            opacity: loading ? 0.5 : 1,
+            opacity: loading ? 0.4 : 0.7,
             padding: 0,
           }}
         >
-          <RefreshCw size={14} aria-hidden="true" />
+          <RefreshCw size={13} aria-hidden="true" />
         </button>
       </div>
 
@@ -686,132 +766,171 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
           maxWidth: "520px",
         }}
       >
-        <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+        <div style={{ maxHeight: "260px", overflowY: "auto" }}>
           {packs.length === 0 ? (
-            <div style={{ padding: SPACING.md, color: COLORS.fgDimmer }}>
-              {loading ? "Loading packs" : "No packs"}
+            <div
+              style={{
+                padding: `${SPACING.lg} ${SPACING.md}`,
+                color: COLORS.fgDimmer,
+                fontSize: FONT.sizeXs,
+                textAlign: "center",
+              }}
+            >
+              {loading ? "Loading packs…" : "No packs installed"}
             </div>
           ) : (
-            packs.map((pack) => {
-              const key = packWorkbenchKey(pack);
-              const selected = key === selectedKey;
-              return (
-                <button
-                  type="button"
-                  key={key}
-                  onClick={() => setSelectedKey(key)}
+            groups.map((group) => (
+              <div key={group.kind}>
+                <div
                   style={{
-                    width: "100%",
-                    minHeight: "40px",
-                    display: "grid",
-                    gridTemplateColumns: "18px minmax(0, 1fr) auto",
-                    alignItems: "center",
-                    gap: SPACING.sm,
-                    padding: `${SPACING.sm} ${SPACING.md}`,
-                    border: "none",
+                    padding: `${SPACING.xs} ${SPACING.md}`,
+                    fontSize: "10px",
+                    fontWeight: FONT.weightSemibold,
+                    color: COLORS.fgDimmer,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.06em",
+                    background: COLORS.bgInput,
                     borderBottom: `1px solid ${COLORS.borderSubtle}`,
-                    background: selected ? COLORS.accentSoft : COLORS.bgPanel,
-                    color: COLORS.fg,
-                    cursor: "pointer",
-                    textAlign: "left",
-                    font: "inherit",
                   }}
                 >
-                  {pack.status === "failed" ? (
-                    <AlertTriangle size={14} color={COLORS.accent} aria-hidden="true" />
-                  ) : (
-                    <CheckCircle2 size={14} color={statusColor(pack.status)} aria-hidden="true" />
-                  )}
-                  <span style={{ minWidth: 0 }}>
-                    <span
+                  {group.kind}
+                </div>
+                {group.packs.map((pack) => {
+                  const key = packWorkbenchKey(pack);
+                  const selected = key === selectedKey;
+                  const isDisabled = pack.status === "disabled";
+                  return (
+                    <button
+                      type="button"
+                      key={key}
+                      onClick={() => selectPack(key)}
                       style={{
-                        display: "block",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: SPACING.sm,
+                        padding: `6px ${SPACING.md}`,
+                        border: "none",
+                        borderLeft: pack.isActive
+                          ? `3px solid ${COLORS.accent}`
+                          : "3px solid transparent",
+                        borderBottom: `1px solid ${COLORS.borderSubtle}`,
+                        background: selected ? COLORS.accentSoft : COLORS.bgPanel,
+                        color: isDisabled ? COLORS.fgDim : COLORS.fg,
+                        cursor: "pointer",
+                        textAlign: "left",
+                        font: "inherit",
+                        fontSize: FONT.sizeS,
+                        opacity: isDisabled ? 0.7 : 1,
                       }}
                     >
-                      {pack.id}
-                    </span>
-                    <span
-                      style={{ display: "block", fontSize: FONT.sizeXs, color: COLORS.fgDimmer }}
-                    >
-                      {pack.kind || "pack"} · {pack.origin}
-                      {pack.isActive ? " · active" : ""}
-                    </span>
-                  </span>
-                  <PackStatusBadge status={pack.status} />
-                </button>
-              );
-            })
+                      <PackStatusIndicator status={pack.status} />
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          textDecoration: isDisabled ? "line-through" : "none",
+                        }}
+                      >
+                        {pack.id}
+                      </span>
+                      {pack.origin === "user" && (
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            color: COLORS.fgDimmer,
+                            padding: "1px 5px",
+                            borderRadius: "3px",
+                            border: `1px solid ${COLORS.borderSubtle}`,
+                          }}
+                        >
+                          user
+                        </span>
+                      )}
+                      <PackToggle
+                        pack={pack}
+                        busy={busy !== null}
+                        onToggle={(action) => {
+                          selectPack(key);
+                          void runPackAction(action, pack.id);
+                        }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            ))
           )}
         </div>
 
-        <div style={{ padding: SPACING.md, background: COLORS.bgInput }}>
+        <div
+          style={{
+            padding: `${SPACING.md} ${SPACING.md}`,
+            background: COLORS.bgInput,
+            borderTop: `1px solid ${COLORS.borderSubtle}`,
+            height: "140px",
+            overflowY: "auto",
+          }}
+        >
           {selectedPack === null ? (
-            <div style={{ color: COLORS.fgDimmer }}>Select a pack</div>
+            <div
+              style={{
+                color: COLORS.fgDimmer,
+                fontSize: FONT.sizeXs,
+                padding: `${SPACING.xs} 0`,
+              }}
+            >
+              Select a pack
+            </div>
           ) : (
             <>
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: SPACING.md,
+                  gap: SPACING.sm,
                   marginBottom: SPACING.sm,
                 }}
               >
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: FONT.sizeM,
-                      fontWeight: FONT.weightSemibold,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {selectedPack.id}
-                  </div>
-                  <div style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
-                    {selectedPack.kind || "pack"} · {selectedPack.origin}
-                  </div>
-                </div>
-                {selectedPack.origin === "user" && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      runPackAction(selectedPack.status === "disabled" ? "enable" : "disable")
-                    }
-                    disabled={busy !== null}
-                    title={selectedPack.status === "disabled" ? "Enable pack" : "Disable pack"}
-                    aria-label={selectedPack.status === "disabled" ? "Enable pack" : "Disable pack"}
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      border: `1px solid ${COLORS.borderSubtle}`,
-                      borderRadius: RADIUS.sm,
-                      background: COLORS.bgPanel,
-                      color: COLORS.fgDim,
-                      cursor: busy === null ? "pointer" : "default",
-                      opacity: busy === null ? 1 : 0.5,
-                      padding: 0,
-                    }}
-                  >
-                    {selectedPack.status === "disabled" ? (
-                      <Power size={15} aria-hidden="true" />
-                    ) : (
-                      <PowerOff size={15} aria-hidden="true" />
-                    )}
-                  </button>
-                )}
+                <span
+                  style={{
+                    fontSize: FONT.sizeM,
+                    fontWeight: FONT.weightSemibold,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                  }}
+                >
+                  {selectedPack.id}
+                </span>
+                <span
+                  style={{
+                    fontSize: "10px",
+                    color: COLORS.fgDimmer,
+                    padding: "1px 5px",
+                    borderRadius: "3px",
+                    background: COLORS.bgPanel,
+                    flexShrink: 0,
+                  }}
+                >
+                  {selectedPack.origin}
+                </span>
               </div>
 
               {diagnosis === null ? (
-                <div style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>Diagnosing</div>
+                <div
+                  style={{
+                    color: COLORS.fgDimmer,
+                    fontSize: FONT.sizeXs,
+                    padding: `${SPACING.xs} 0`,
+                  }}
+                >
+                  Diagnosing…
+                </div>
               ) : (
                 <div style={{ display: "grid", gap: SPACING.sm }}>
                   <PackDiagnosisSummary diagnosis={diagnosis} />
@@ -827,6 +946,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        opacity: 0.7,
                       }}
                     >
                       {diagnosis.diagnoses[0].entryPath}
