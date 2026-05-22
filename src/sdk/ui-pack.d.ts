@@ -106,6 +106,45 @@ export interface UiAppPackOption {
   readonly origin: "bundled" | "user";
 }
 
+export interface UiAppPackStatusEntry {
+  readonly id: string;
+  readonly kind: string;
+  readonly origin: "bundled" | "user";
+  readonly status: "loaded" | "disabled" | "failed";
+  readonly isActive: boolean;
+}
+
+export interface UiAppPackDiagnosis {
+  readonly id: string;
+  readonly kind: string;
+  readonly origin: "bundled" | "user" | "unknown";
+  readonly status: "loaded" | "disabled" | "failed" | "missing";
+  readonly isActive: boolean;
+  readonly entryPath?: string;
+  readonly manifest?: {
+    readonly id: string;
+    readonly type: string;
+    readonly entry: string;
+    readonly executionClass?: string;
+  };
+  readonly loadError?: {
+    readonly phase: "import" | "validate";
+    readonly message: string;
+  };
+}
+
+export interface UiAppPackDiagnoseResponse {
+  readonly id: string;
+  readonly ok: boolean;
+  readonly diagnoses: readonly UiAppPackDiagnosis[];
+  readonly diagnostics: readonly {
+    readonly severity: "info" | "warning" | "error";
+    readonly code: string;
+    readonly message: string;
+  }[];
+  readonly recommendations: readonly string[];
+}
+
 /**
  * `insertFixedPrompt` が受け付ける固定プロンプトの key。
  *
@@ -139,6 +178,14 @@ export interface UiAppAPI {
   listPersonas(): readonly UiAppPackOption[];
   /** 利用可能な scene pack の一覧。 */
   listScenes(): readonly UiAppPackOption[];
+  /** Pack Workbench 用: 現在の pack 状態一覧。 */
+  listPacks(): Promise<{ readonly packs: readonly UiAppPackStatusEntry[] }>;
+  /** Pack Workbench 用: 1 pack の詳細診断。 */
+  diagnosePack(id: string, kind?: string): Promise<UiAppPackDiagnoseResponse>;
+  /** User pack を無効化する。bundled pack は対象外。 */
+  disablePack(id: string): Promise<{ readonly ok: boolean; readonly reason?: string }>;
+  /** 無効化された user pack を再読み込みして有効化する。 */
+  enablePack(id: string): Promise<{ readonly ok: boolean; readonly reason?: string }>;
   /** primaryPersona を切り替える。`config.json` に書き戻す責務もここ。 */
   setPrimaryPersona(id: string | null): Promise<void>;
   /** activeScene を切り替える。 */

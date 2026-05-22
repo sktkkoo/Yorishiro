@@ -50,11 +50,12 @@ Shape validation failures do not crash the whole runtime. They are recorded in d
 When Charminal is live, use these MCP tools:
 
 - `list_packs()` - list loaded / disabled / failed packs
+- `pack_diagnose({ id })` - inspect one pack's status, manifest, load error, and repair hints
 - `list_load_errors()` - show details from the latest load failure
 - `disable_pack({ id })` - immediately detach a broken pack and persist that in config
 - `enable_pack({ id })` - re-enable a disabled pack
 
-After writing a pack, run `list_packs()` to confirm it registered. This makes self-repair much faster.
+After writing a pack, run `pack_diagnose({ id: "<id>" })` to confirm it registered and catch validation or manifest issues. This makes self-repair much faster.
 
 If the current workspace is a Charminal source checkout, also run:
 

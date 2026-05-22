@@ -72,7 +72,7 @@ For non-persona packs:
 1. Read `manifest.json` and the entry file (`scene.js`, `effect.js`, `ui.js`, or `ambient-ui.js`)
 2. Edit according to the user's request
 3. Let hot reload apply it
-4. Use `list_packs()` to confirm the status
+4. Use `pack_diagnose({ id: "<id>" })` to confirm status, manifest, and load errors
 5. If the current workspace is a Charminal source checkout, run `npm run check:pack -- ~/.charminal/packs/<id>` and fix checker errors
 
 Scene colors, layer structure, effect parameters, UI layout, and ambient overlay tuning can usually be handled in this flow.
@@ -154,6 +154,7 @@ If `config.json` does not exist, create `{}` and add only the needed fields. If 
 After editing, verify with MCP tools:
 
 - `list_packs()` - confirm loaded / disabled / failed status
+- `pack_diagnose({ id })` - inspect one pack's status, manifest, load error, and repair hints
 - `list_load_errors()` - inspect validation or import failures
 - `disable_pack({ id })` - detach a broken pack while debugging
 - `enable_pack({ id })` - re-enable a disabled pack

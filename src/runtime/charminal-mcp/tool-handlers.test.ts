@@ -33,6 +33,7 @@ import {
   createEnablePackHandler,
   createGetPackStateHandler,
   createListPacksHandler,
+  createPackDiagnoseHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
   createSceneScreenshotHandler,
@@ -211,6 +212,173 @@ describe("list_packs handler", () => {
     expect(byId.get("ui:bundled-ui")?.isActive).toBe(true);
     expect(byId.get("persona:bundled-persona")?.isActive).toBe(false);
     expect(byId.get("effect:bundled-effect")?.isActive).toBe(false);
+  });
+});
+
+describe("pack_diagnose handler", () => {
+  it("returns loaded status, manifest summary, and active state for a user pack", async () => {
+    const registry = new UserPackRegistry();
+    registry.register("user-scene", "scene", { dispose: () => {} });
+
+    const handler = createPackDiagnoseHandler({
+      readRegistry: () => registry.listEntries(),
+      readBundledPacks: () => [],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => null,
+      getActiveIds: () => ({ scene: "user-scene", ui: null, persona: null }),
+      readUserPackEntries: async () => [
+        {
+          id: "user-scene",
+          kind: "scene",
+          entryPath: "/Users/me/.charminal/packs/user-scene/scene.js",
+          source: "local",
+          manifest: {
+            id: "user-scene",
+            type: "scene",
+            entry: "scene.js",
+            executionClass: "trusted-main-thread-js",
+          },
+        },
+      ],
+    });
+
+    const result = await handler({ id: "user-scene" });
+
+    expect(result.ok).toBe(true);
+    expect(result.diagnoses).toEqual([
+      {
+        id: "user-scene",
+        kind: "scene",
+        origin: "user",
+        status: "loaded",
+        isActive: true,
+        entryPath: "/Users/me/.charminal/packs/user-scene/scene.js",
+        manifest: {
+          id: "user-scene",
+          type: "scene",
+          entry: "scene.js",
+          executionClass: "trusted-main-thread-js",
+        },
+      },
+    ]);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "info",
+          code: "pack-loaded",
+          message: "scene pack 'user-scene' is loaded and active",
+        },
+        {
+          severity: "info",
+          code: "local-trusted-code",
+          message: "pack 'user-scene' runs as local trusted code",
+        },
+      ]),
+    );
+  });
+
+  it("returns load failure details from the latest load report", async () => {
+    const report: LoadReport = {
+      timestamp: "2026-04-18T00:00:00.000Z",
+      safeMode: false,
+      loadResults: [
+        {
+          id: "broken",
+          kind: "effect",
+          status: "failed",
+          error: { phase: "validate", message: "module has no default export" },
+        },
+      ],
+    };
+
+    const handler = createPackDiagnoseHandler({
+      readRegistry: () => [],
+      readBundledPacks: () => [],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => report,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
+      readUserPackEntries: async () => [],
+    });
+
+    const result = await handler({ id: "broken" });
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnoses).toEqual([
+      {
+        id: "broken",
+        kind: "effect",
+        origin: "user",
+        status: "failed",
+        isActive: false,
+        loadError: { phase: "validate", message: "module has no default export" },
+      },
+    ]);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "error",
+          code: "pack-load-failed",
+          message: "module has no default export",
+        },
+      ]),
+    );
+  });
+
+  it("flags disabled packs", async () => {
+    const handler = createPackDiagnoseHandler({
+      readRegistry: () => [],
+      readBundledPacks: () => [],
+      readConfig: async () => ({ ...EMPTY_CONFIG, disabledPacks: ["missing"] }),
+      readLoadReport: async () => null,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
+      readUserPackEntries: async () => [],
+    });
+
+    const result = await handler({ id: "missing" });
+
+    expect(result.ok).toBe(true);
+    expect(result.diagnoses).toEqual([
+      {
+        id: "missing",
+        kind: "",
+        origin: "user",
+        status: "disabled",
+        isActive: false,
+      },
+    ]);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "warning",
+          code: "pack-disabled",
+          message: "pack 'missing' is listed in config.disabledPacks",
+        },
+      ]),
+    );
+  });
+
+  it("flags missing packs", async () => {
+    const handler = createPackDiagnoseHandler({
+      readRegistry: () => [],
+      readBundledPacks: () => [],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => null,
+      getActiveIds: () => ({ scene: null, ui: null, persona: null }),
+      readUserPackEntries: async () => [],
+    });
+
+    const result = await handler({ id: "missing" });
+
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "error",
+          code: "pack-not-found",
+          message: "pack 'missing' was not found",
+        },
+      ]),
+    );
   });
 });
 

@@ -4,9 +4,11 @@ import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
   filterPersonaOptionsForLanguage,
+  packWorkbenchKey,
   resolveCloseTarget,
   resolvePersonaSelectValue,
   SETTINGS_PACK_ID,
+  selectWorkbenchPack,
 } from "./ui";
 
 describe("resolveCloseTarget", () => {
@@ -103,5 +105,36 @@ describe("localized CLAI persona options", () => {
     expect(configPrimaryPersonaForSelection("clai-en")).toBeNull();
     expect(configPrimaryPersonaForSelection("clai-ja")).toBeNull();
     expect(configPrimaryPersonaForSelection("my-persona")).toBe("my-persona");
+  });
+});
+
+describe("Pack Workbench helpers", () => {
+  const packs = [
+    {
+      id: "ok-scene",
+      kind: "scene",
+      origin: "user" as const,
+      status: "loaded" as const,
+      isActive: false,
+    },
+    {
+      id: "broken-effect",
+      kind: "effect",
+      origin: "user" as const,
+      status: "failed" as const,
+      isActive: false,
+    },
+  ];
+
+  it("builds stable row keys from kind and id", () => {
+    expect(packWorkbenchKey(packs[0])).toBe("scene:ok-scene");
+  });
+
+  it("keeps the previous selection when it still exists", () => {
+    expect(selectWorkbenchPack("scene:ok-scene", packs)).toBe("scene:ok-scene");
+  });
+
+  it("selects the first problem pack when previous selection is gone", () => {
+    expect(selectWorkbenchPack("scene:missing", packs)).toBe("effect:broken-effect");
   });
 });

@@ -12,10 +12,23 @@ import type {
   AppLanguage,
   Disposable,
   ResolvedLanguage,
+  UiAppPackDiagnoseResponse,
+  UiAppPackStatusEntry,
   UiContext,
   UiPackDefinition,
 } from "@charminal/sdk";
-import { ChevronDown, FolderOpen, Volume2, VolumeX } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  FolderOpen,
+  Package,
+  Power,
+  PowerOff,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -330,6 +343,357 @@ function Toggle({
         }}
       />
     </button>
+  );
+}
+
+export function packWorkbenchKey(pack: Pick<UiAppPackStatusEntry, "id" | "kind">): string {
+  return `${pack.kind || "unknown"}:${pack.id}`;
+}
+
+export function selectWorkbenchPack(
+  previous: string | null,
+  packs: readonly UiAppPackStatusEntry[],
+): string | null {
+  const keys = new Set(packs.map(packWorkbenchKey));
+  if (previous !== null && keys.has(previous)) return previous;
+  const firstProblem = packs.find((pack) => pack.status !== "loaded");
+  return firstProblem
+    ? packWorkbenchKey(firstProblem)
+    : (packs[0] && packWorkbenchKey(packs[0])) || null;
+}
+
+function sortPackStatuses(packs: readonly UiAppPackStatusEntry[]): UiAppPackStatusEntry[] {
+  const statusRank = { failed: 0, disabled: 1, loaded: 2 } as const;
+  const originRank = { user: 0, bundled: 1 } as const;
+  return [...packs].sort((a, b) => {
+    const byStatus = statusRank[a.status] - statusRank[b.status];
+    if (byStatus !== 0) return byStatus;
+    const byOrigin = originRank[a.origin] - originRank[b.origin];
+    if (byOrigin !== 0) return byOrigin;
+    return `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`);
+  });
+}
+
+function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
+  const [packs, setPacks] = useState<readonly UiAppPackStatusEntry[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [diagnosis, setDiagnosis] = useState<UiAppPackDiagnoseResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState<"enable" | "disable" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const selectedPack = packs.find((pack) => packWorkbenchKey(pack) === selectedKey) ?? null;
+
+  const refreshPacks = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await ctx.app.listPacks();
+      const next = sortPackStatuses(result.packs);
+      setPacks(next);
+      setSelectedKey((previous) => selectWorkbenchPack(previous, next));
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(reason);
+      ctx.emitEvent("charminal-settings:write-failed", { field: "pack-workbench", reason });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    let aborted = false;
+    setLoading(true);
+    void ctx.app
+      .listPacks()
+      .then((result) => {
+        if (aborted) return;
+        const next = sortPackStatuses(result.packs);
+        setPacks(next);
+        setSelectedKey((previous) => selectWorkbenchPack(previous, next));
+      })
+      .catch((err) => {
+        if (aborted) return;
+        const reason = err instanceof Error ? err.message : String(err);
+        setError(reason);
+      })
+      .finally(() => {
+        if (!aborted) setLoading(false);
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [ctx]);
+
+  useEffect(() => {
+    if (selectedPack === null) {
+      setDiagnosis(null);
+      return;
+    }
+    let aborted = false;
+    setDiagnosis(null);
+    void ctx.app
+      .diagnosePack(selectedPack.id, selectedPack.kind || undefined)
+      .then((result) => {
+        if (!aborted) setDiagnosis(result);
+      })
+      .catch((err) => {
+        if (aborted) return;
+        const reason = err instanceof Error ? err.message : String(err);
+        setError(reason);
+        ctx.emitEvent("charminal-settings:write-failed", { field: "pack-diagnose", reason });
+      });
+    return () => {
+      aborted = true;
+    };
+  }, [ctx, selectedPack]);
+
+  const runPackAction = async (action: "enable" | "disable") => {
+    if (selectedPack === null || selectedPack.origin !== "user") return;
+    setBusy(action);
+    setError(null);
+    try {
+      const result =
+        action === "enable"
+          ? await ctx.app.enablePack(selectedPack.id)
+          : await ctx.app.disablePack(selectedPack.id);
+      if (!result.ok) throw new Error(result.reason ?? `${action} failed`);
+      await refreshPacks();
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(reason);
+      ctx.emitEvent("charminal-settings:write-failed", { field: `pack-${action}`, reason });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const statusColor = (status: UiAppPackStatusEntry["status"]): string => {
+    if (status === "failed") return COLORS.accent;
+    if (status === "disabled") return COLORS.fgDimmer;
+    return COLORS.fgDim;
+  };
+
+  return (
+    <section>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: SPACING.sm,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, opacity: 0.78 }}>
+          <Package size={14} aria-hidden="true" />
+          <span>Packs</span>
+        </div>
+        <button
+          type="button"
+          onClick={refreshPacks}
+          disabled={loading}
+          aria-label="Refresh packs"
+          title="Refresh packs"
+          style={{
+            width: "28px",
+            height: "28px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: `1px solid ${COLORS.borderSubtle}`,
+            borderRadius: RADIUS.sm,
+            background: COLORS.bgInput,
+            color: COLORS.fgDim,
+            cursor: loading ? "default" : "pointer",
+            opacity: loading ? 0.5 : 1,
+            padding: 0,
+          }}
+        >
+          <RefreshCw size={14} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div
+        style={{
+          border: `1px solid ${COLORS.borderSubtle}`,
+          borderRadius: RADIUS.md,
+          overflow: "hidden",
+          maxWidth: "520px",
+        }}
+      >
+        <div style={{ maxHeight: "220px", overflowY: "auto" }}>
+          {packs.length === 0 ? (
+            <div style={{ padding: SPACING.md, color: COLORS.fgDimmer }}>
+              {loading ? "Loading packs" : "No packs"}
+            </div>
+          ) : (
+            packs.map((pack) => {
+              const key = packWorkbenchKey(pack);
+              const selected = key === selectedKey;
+              return (
+                <button
+                  type="button"
+                  key={key}
+                  onClick={() => setSelectedKey(key)}
+                  style={{
+                    width: "100%",
+                    minHeight: "40px",
+                    display: "grid",
+                    gridTemplateColumns: "18px minmax(0, 1fr) auto",
+                    alignItems: "center",
+                    gap: SPACING.sm,
+                    padding: `${SPACING.sm} ${SPACING.md}`,
+                    border: "none",
+                    borderBottom: `1px solid ${COLORS.borderSubtle}`,
+                    background: selected ? COLORS.accentSoft : COLORS.bgPanel,
+                    color: COLORS.fg,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    font: "inherit",
+                  }}
+                >
+                  {pack.status === "failed" ? (
+                    <AlertTriangle size={14} color={COLORS.accent} aria-hidden="true" />
+                  ) : (
+                    <CheckCircle2 size={14} color={statusColor(pack.status)} aria-hidden="true" />
+                  )}
+                  <span style={{ minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {pack.id}
+                    </span>
+                    <span
+                      style={{ display: "block", fontSize: FONT.sizeXs, color: COLORS.fgDimmer }}
+                    >
+                      {pack.kind || "pack"} · {pack.origin}
+                      {pack.isActive ? " · active" : ""}
+                    </span>
+                  </span>
+                  <span style={{ color: statusColor(pack.status), fontSize: FONT.sizeXs }}>
+                    {pack.status}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div style={{ padding: SPACING.md, background: COLORS.bgInput }}>
+          {selectedPack === null ? (
+            <div style={{ color: COLORS.fgDimmer }}>Select a pack</div>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: SPACING.md,
+                  marginBottom: SPACING.sm,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: FONT.sizeM,
+                      fontWeight: FONT.weightSemibold,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {selectedPack.id}
+                  </div>
+                  <div style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+                    {selectedPack.kind || "pack"} · {selectedPack.origin}
+                  </div>
+                </div>
+                {selectedPack.origin === "user" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      runPackAction(selectedPack.status === "disabled" ? "enable" : "disable")
+                    }
+                    disabled={busy !== null}
+                    title={selectedPack.status === "disabled" ? "Enable pack" : "Disable pack"}
+                    aria-label={selectedPack.status === "disabled" ? "Enable pack" : "Disable pack"}
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      border: `1px solid ${COLORS.borderSubtle}`,
+                      borderRadius: RADIUS.sm,
+                      background: COLORS.bgPanel,
+                      color: COLORS.fgDim,
+                      cursor: busy === null ? "pointer" : "default",
+                      opacity: busy === null ? 1 : 0.5,
+                      padding: 0,
+                    }}
+                  >
+                    {selectedPack.status === "disabled" ? (
+                      <Power size={15} aria-hidden="true" />
+                    ) : (
+                      <PowerOff size={15} aria-hidden="true" />
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {diagnosis === null ? (
+                <div style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>Diagnosing</div>
+              ) : (
+                <div style={{ display: "grid", gap: SPACING.sm }}>
+                  {diagnosis.diagnostics.map((item) => (
+                    <div
+                      key={`${item.code}:${item.message}`}
+                      style={{
+                        color: item.severity === "error" ? COLORS.accent : COLORS.fgDim,
+                        fontSize: FONT.sizeXs,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {item.code}: {item.message}
+                    </div>
+                  ))}
+                  {diagnosis.diagnoses[0]?.entryPath && (
+                    <div
+                      title={diagnosis.diagnoses[0].entryPath}
+                      style={{
+                        color: COLORS.fgDimmer,
+                        fontSize: FONT.sizeXs,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {diagnosis.diagnoses[0].entryPath}
+                    </div>
+                  )}
+                  {diagnosis.recommendations.map((text) => (
+                    <div key={text} style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+                      {text}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {error && (
+                <div style={{ marginTop: SPACING.sm, color: COLORS.accent, fontSize: FONT.sizeXs }}>
+                  {error}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -780,6 +1144,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         >
           {strings.agentAppliesNextLaunch}
         </div>
+
+        {/* 32px gap */}
+        <div style={{ height: "32px" }} />
+
+        <PackWorkbench ctx={ctx} />
 
         {/* 48px gap before footer links */}
         <div style={{ height: "48px" }} />

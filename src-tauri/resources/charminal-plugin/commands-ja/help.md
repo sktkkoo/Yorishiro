@@ -101,6 +101,7 @@ Charminal が起動中であれば以下の MCP tool が使える。
 | tool | 引数 | 説明 |
 |---|---|---|
 | `list_packs()` | — | loaded / disabled / failed な pack を列挙 |
+| `pack_diagnose({id})` | pack id | 1 つの pack の status / manifest / load error / 修復ヒントをまとめて確認 |
 | `list_load_errors()` | — | 直近 load で失敗した pack の error 詳細 |
 | `enable_pack({id})` | pack id | 切り離した pack を復帰 |
 | `disable_pack({id})` | pack id | 壊れた pack を即時切り離し |
