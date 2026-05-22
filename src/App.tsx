@@ -1371,9 +1371,11 @@ function App() {
       logBridge,
       devLog,
       effectDispatcher,
+      effectPackRunner,
       voicePlayer,
       scenePackRegistry,
       uiPackRegistry,
+      packRegistry,
       claimState,
       uiState,
       userLayerReady,
@@ -1386,9 +1388,11 @@ function App() {
     logBridge,
     devLog,
     effectDispatcher,
+    effectPackRunner,
     voicePlayer,
     scenePackRegistry,
     uiPackRegistry,
+    packRegistry,
     claimState,
     uiState,
     time,
@@ -1742,6 +1746,77 @@ function App() {
       return next;
     };
 
+    const readBundledPacks = (): Array<{ id: string; kind: string }> => [
+      ...personaRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => ({ id: e.id, kind: "persona" })),
+      ...scenePackRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => ({ id: e.id, kind: "scene" })),
+      ...uiPackRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => ({ id: e.id, kind: "ui" })),
+      ...[
+        cameraMovePack,
+        desaturatePack,
+        fireworksPack,
+        fireworksVolleyPack,
+        screenShakePack,
+        textPhysicsPack,
+      ].map((p) => ({ id: p.id, kind: "effect" })),
+    ];
+
+    const readLoadReportForPackTools = async () => {
+      const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
+      const text = await readLastStartupReport();
+      if (text === "") return null;
+      try {
+        return JSON.parse(text);
+      } catch {
+        return null;
+      }
+    };
+
+    const readUserPackEntriesForPackTools = async () => {
+      const { invoke } = await import("@tauri-apps/api/core");
+      type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
+      return invoke<UserPackEntry[]>("list_user_packs");
+    };
+
+    const reloadPackForPackTools = async (
+      id: string,
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
+      return reloadSingleUserPack(id, {
+        effectPackRunner,
+        personaRegistry,
+        scenePackRegistry,
+        uiPackRegistry,
+        ambientUiPackRegistry: getAmbientUiPackRegistry(),
+        amenityPackRegistry: getAmenityPackRegistry(),
+        packRegistry,
+        userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+      });
+    };
+
+    const buildPackToolDeps = () => ({
+      readRegistry: () => packRegistry.listEntries(),
+      readBundledPacks,
+      readConfig: async () => parseConfig(await readCharminalConfigText()),
+      writeConfig: async (next: ReturnType<typeof parseConfig>) => {
+        await writeCharminalConfigText(serializeConfig(next));
+      },
+      readLoadReport: readLoadReportForPackTools,
+      getActiveIds: () => ({
+        scene: scenePackRegistry.getActiveSceneId(),
+        ui: uiPackRegistry.getActiveUiId(),
+        persona: personaRegistry.getActivePersonaId(),
+      }),
+    });
+
     const buildUiContext = (packId: string, signal: AbortSignal): UiContext => {
       const threeRuntime = getThreeRuntime();
 
@@ -1891,6 +1966,54 @@ function App() {
               name: e.manifest.name,
               origin: e.origin,
             })),
+          listPacks: async () => {
+            const { createListPacksHandler } = await import(
+              "./runtime/charminal-mcp/tool-handlers"
+            );
+            const { writeConfig: _writeConfig, ...deps } = buildPackToolDeps();
+            const result = await createListPacksHandler(deps)({});
+            const userEntries = await readUserPackEntriesForPackTools().catch(() => []);
+            return {
+              packs: result.packs.flatMap((pack) => {
+                if (pack.status !== "disabled" || pack.kind !== "") return [pack];
+                const matchingEntries = userEntries.filter((entry) => entry.id === pack.id);
+                if (matchingEntries.length === 0) return [pack];
+                return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
+              }),
+            };
+          },
+          diagnosePack: async (id, kind) => {
+            const { createPackDiagnoseHandler } = await import(
+              "./runtime/charminal-mcp/tool-handlers"
+            );
+            const { writeConfig: _writeConfig, ...deps } = buildPackToolDeps();
+            return createPackDiagnoseHandler({
+              ...deps,
+              readUserPackEntries: readUserPackEntriesForPackTools,
+            })({ id, kind });
+          },
+          disablePack: async (id) => {
+            const { createDisablePackHandler } = await import(
+              "./runtime/charminal-mcp/tool-handlers"
+            );
+            const deps = buildPackToolDeps();
+            return createDisablePackHandler({
+              readConfig: deps.readConfig,
+              writeConfig: deps.writeConfig,
+              registry: packRegistry,
+            })({ id });
+          },
+          enablePack: async (id) => {
+            const { createEnablePackHandler } = await import(
+              "./runtime/charminal-mcp/tool-handlers"
+            );
+            const deps = buildPackToolDeps();
+            return createEnablePackHandler({
+              readConfig: deps.readConfig,
+              writeConfig: deps.writeConfig,
+              reloadPack: reloadPackForPackTools,
+            })({ id });
+          },
           setPrimaryPersona: async (id) => {
             await updateConfig({ primaryPersona: id });
             personaRegistry.setPrimaryPersona(
@@ -2069,6 +2192,8 @@ function App() {
     personaRegistry,
     scenePackRegistry,
     tabManager,
+    effectPackRunner,
+    packRegistry,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

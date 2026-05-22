@@ -256,7 +256,7 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
     }
 
     const diagnoses = [...byKind.values()].sort((a, b) => a.kind.localeCompare(b.kind));
-    const diagnostics: PackDiagnoseResponse["diagnostics"] = [];
+    const diagnostics: Array<PackDiagnoseResponse["diagnostics"][number]> = [];
     const recommendations: string[] = [];
 
     if (diagnoses.length === 0) {
