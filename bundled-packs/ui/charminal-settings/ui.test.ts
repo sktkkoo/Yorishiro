@@ -39,18 +39,33 @@ describe("applyConfigUpdate", () => {
     const setLocal = vi.fn();
     const write = vi.fn().mockResolvedValue(undefined);
     const emitEvent = vi.fn();
-    await applyConfigUpdate({
-      next: "scene-a",
-      prev: null,
-      setLocal,
-      write,
-      emitEvent,
-      field: "activeScene",
+    const dispatched: unknown[] = [];
+    vi.stubGlobal("window", {
+      dispatchEvent: (event: Event) => {
+        dispatched.push(event);
+        return true;
+      },
     });
-    expect(setLocal).toHaveBeenCalledWith("scene-a");
-    expect(setLocal).toHaveBeenCalledTimes(1);
-    expect(write).toHaveBeenCalledWith("scene-a");
-    expect(emitEvent).not.toHaveBeenCalled();
+    try {
+      await applyConfigUpdate({
+        next: "scene-a",
+        prev: null,
+        setLocal,
+        write,
+        emitEvent,
+        field: "activeScene",
+      });
+      expect(setLocal).toHaveBeenCalledWith("scene-a");
+      expect(setLocal).toHaveBeenCalledTimes(1);
+      expect(write).toHaveBeenCalledWith("scene-a");
+      expect(emitEvent).not.toHaveBeenCalled();
+      expect(dispatched).toHaveLength(1);
+      expect(dispatched[0]).toBeInstanceOf(CustomEvent);
+      expect((dispatched[0] as CustomEvent).type).toBe("charminal-settings:config-changed");
+      expect((dispatched[0] as CustomEvent).detail).toEqual({ field: "activeScene" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("rolls back and emits write-failed when write rejects", async () => {
