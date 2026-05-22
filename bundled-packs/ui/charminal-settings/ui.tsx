@@ -74,7 +74,9 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
   args.setLocal(args.next);
   try {
     await args.write(args.next);
-    window.dispatchEvent(new CustomEvent("charminal-settings:config-changed"));
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("charminal-settings:config-changed"));
+    }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`[charminal-settings] ${args.field} write failed:`, reason);
