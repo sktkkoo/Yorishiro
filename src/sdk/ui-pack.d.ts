@@ -126,6 +126,8 @@ export interface UiAppPackDiagnosis {
     readonly type: string;
     readonly entry: string;
     readonly executionClass?: string;
+    readonly description?: string;
+    readonly author?: string;
   };
   readonly loadError?: {
     readonly phase: "import" | "validate";

@@ -5,6 +5,7 @@
   "type": "scene",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "author": "Charminal team",
   "description": "Three.js procedural renderer で描く、朝光・山並み・風になびく草・光粒子を重ねた高品質 scene。",
   "entry": "scene.tsx"
 }

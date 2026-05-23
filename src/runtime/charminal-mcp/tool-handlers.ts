@@ -43,9 +43,16 @@ export interface ListPacksResponse {
   readonly packs: ReadonlyArray<PackStatusEntry>;
 }
 
+export interface BundledPackEntry {
+  readonly id: string;
+  readonly kind: string;
+  readonly description?: string;
+  readonly author?: string;
+}
+
 export interface ListPacksDeps {
   readonly readRegistry: () => Array<{ id: string; kind: string }>;
-  readonly readBundledPacks: () => Array<{ id: string; kind: string }>;
+  readonly readBundledPacks: () => Array<BundledPackEntry>;
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
   /**
@@ -205,6 +212,7 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
       activeIds,
     });
 
+    const bundledPacks = deps.readBundledPacks();
     const statuses = list.packs.filter(
       (entry) => entry.id === id && (requestedKind === null || entry.kind === requestedKind),
     );
@@ -221,12 +229,23 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
 
     const byKind = new Map<string, PackDiagnosis>();
     for (const status of statuses) {
+      const bundled = bundledPacks.find((b) => b.id === id && b.kind === status.kind);
       byKind.set(status.kind, {
         id,
         kind: status.kind,
         origin: status.origin,
         status: status.status,
         isActive: status.isActive,
+        manifest:
+          bundled?.description || bundled?.author
+            ? {
+                id,
+                type: status.kind,
+                entry: "",
+                description: bundled.description,
+                author: bundled.author,
+              }
+            : undefined,
       });
     }
     for (const entry of entries) {

@@ -1,10 +1,10 @@
 {
   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
-  "id": "desaturate",
+  "id": "screen-flash",
   "type": "effect",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "画面全体の彩度を一時的に落とす演出 effect。",
+  "description": "画面を一瞬フラッシュさせる演出 effect。",
   "entry": "effect.ts"
 }

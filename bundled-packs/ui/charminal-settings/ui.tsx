@@ -527,6 +527,48 @@ function PackRecommendationRow({ text }: { text: string }) {
   );
 }
 
+function trustLabel(origin: string, executionClass?: string): string {
+  if (origin === "bundled") return "Bundled with Charminal";
+  if (executionClass === "trusted-main-thread-js") return "Local trusted code";
+  if (executionClass === "isolated-js") return "Isolated sandbox";
+  if (executionClass === "declarative") return "Declarative (no code)";
+  return "Local";
+}
+
+function PackMetadata({
+  diagnosis,
+  origin,
+}: {
+  diagnosis: UiAppPackDiagnoseResponse | null;
+  origin: string;
+}): React.JSX.Element | null {
+  const manifest = diagnosis?.diagnoses[0]?.manifest;
+  const description = manifest?.description;
+  const author = manifest?.author;
+  const execClass = manifest?.executionClass;
+  const trust = trustLabel(origin, execClass);
+
+  if (!description && !author && origin === "bundled") return null;
+
+  return (
+    <div
+      style={{
+        marginBottom: SPACING.sm,
+        paddingBottom: SPACING.sm,
+        borderBottom: `1px solid ${COLORS.borderSubtle}`,
+        fontSize: FONT.sizeXs,
+        lineHeight: 1.45,
+      }}
+    >
+      {description && <div style={{ color: COLORS.fgDim, marginBottom: "3px" }}>{description}</div>}
+      <div style={{ color: COLORS.fgDimmer }}>
+        {author && <span>{author} · </span>}
+        <span>{trust}</span>
+      </div>
+    </div>
+  );
+}
+
 function PackStatusIndicator({ status }: { status: UiAppPackStatusEntry["status"] }) {
   if (status === "failed") {
     return <AlertTriangle size={12} color={COLORS.statusError} aria-hidden="true" />;
@@ -1126,7 +1168,8 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
             padding: `${SPACING.md} ${SPACING.md}`,
             background: COLORS.bgInput,
             borderTop: `1px solid ${COLORS.borderSubtle}`,
-            height: "140px",
+            minHeight: "140px",
+            maxHeight: "220px",
             overflowY: "auto",
           }}
         >
@@ -1175,6 +1218,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                   {selectedPack.origin}
                 </span>
               </div>
+              <PackMetadata diagnosis={diagnosis} origin={selectedPack.origin} />
 
               {diagnosis === null ? (
                 <div
@@ -1189,9 +1233,11 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
               ) : (
                 <div style={{ display: "grid", gap: SPACING.sm }}>
                   <PackDiagnosisSummary diagnosis={diagnosis} />
-                  {diagnosis.diagnostics.map((item) => (
-                    <PackDiagnosticRow key={`${item.code}:${item.message}`} item={item} />
-                  ))}
+                  {diagnosis.diagnostics
+                    .filter((item) => item.severity !== "info")
+                    .map((item) => (
+                      <PackDiagnosticRow key={`${item.code}:${item.message}`} item={item} />
+                    ))}
                   {diagnosis.diagnoses[0]?.entryPath && (
                     <div
                       title={diagnosis.diagnoses[0].entryPath}

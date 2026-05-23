@@ -18,12 +18,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
 import cameraMovePack from "../bundled-packs/effects/camera-move/effect";
+import cameraMoveManifest from "../bundled-packs/effects/camera-move/manifest.json";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
+import desaturateManifest from "../bundled-packs/effects/desaturate/manifest.json";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
+import fireworksManifest from "../bundled-packs/effects/fireworks/manifest.json";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
+import fireworksVolleyManifest from "../bundled-packs/effects/fireworks-volley/manifest.json";
 import screenFlashPack from "../bundled-packs/effects/screen-flash/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
+import screenShakeManifest from "../bundled-packs/effects/screen-shake/manifest.json";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
+import textPhysicsManifest from "../bundled-packs/effects/text-physics/manifest.json";
 import claiManifest from "../bundled-packs/personas/clai/manifest.json";
 import claiPack from "../bundled-packs/personas/clai/persona";
 import claiEnManifest from "../bundled-packs/personas/clai-en/manifest.json";
@@ -1668,21 +1674,53 @@ function App() {
     }
   }, []);
 
-  const listPacksForHealth = useCallback(async () => {
-    const { createListPacksHandler } = await import("./runtime/charminal-mcp/tool-handlers");
-    const readBundledPacks = (): Array<{ id: string; kind: string }> => [
+  const bundledManifestMap = useMemo(
+    () =>
+      new Map(
+        [
+          claiManifest,
+          claiEnManifest,
+          claiJaManifest,
+          abandonedFactoryManifest,
+          mistyGrasslandsManifest,
+          simpleRoomManifest,
+          charminalSettingsManifest,
+          immersiveManifest,
+          theaterManifest,
+          cameraMoveManifest,
+          desaturateManifest,
+          fireworksManifest,
+          fireworksVolleyManifest,
+          screenShakeManifest,
+          textPhysicsManifest,
+        ].map((m) => [m.id, m] as const),
+      ),
+    [],
+  );
+
+  const readBundledPacks = useCallback(() => {
+    const withMeta = (id: string, kind: string) => {
+      const m = bundledManifestMap.get(id) as Record<string, unknown> | undefined;
+      return {
+        id,
+        kind,
+        description: m?.description as string | undefined,
+        author: m?.author as string | undefined,
+      };
+    };
+    return [
       ...personaRegistry
         .listEntries()
         .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "persona" })),
+        .map((e) => withMeta(e.id, "persona")),
       ...scenePackRegistry
         .listEntries()
         .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "scene" })),
+        .map((e) => withMeta(e.id, "scene")),
       ...uiPackRegistry
         .listEntries()
         .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "ui" })),
+        .map((e) => withMeta(e.id, "ui")),
       ...[
         cameraMovePack,
         desaturatePack,
@@ -1690,8 +1728,12 @@ function App() {
         fireworksVolleyPack,
         screenShakePack,
         textPhysicsPack,
-      ].map((p) => ({ id: p.id, kind: "effect" })),
+      ].map((p) => withMeta(p.id, "effect")),
     ];
+  }, [bundledManifestMap, personaRegistry, scenePackRegistry, uiPackRegistry]);
+
+  const listPacksForHealth = useCallback(async () => {
+    const { createListPacksHandler } = await import("./runtime/charminal-mcp/tool-handlers");
     const result = await createListPacksHandler({
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
@@ -1723,7 +1765,7 @@ function App() {
         return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
       }),
     };
-  }, [packRegistry, personaRegistry, scenePackRegistry, uiPackRegistry]);
+  }, [packRegistry, personaRegistry, scenePackRegistry, uiPackRegistry, readBundledPacks]);
 
   const collectAppHealthReport = useCallback(
     () => collectHealthReport({ listPacks: listPacksForHealth }),
@@ -1907,29 +1949,6 @@ function App() {
       pendingConfigWrite = next.catch(() => undefined);
       return next;
     };
-
-    const readBundledPacks = (): Array<{ id: string; kind: string }> => [
-      ...personaRegistry
-        .listEntries()
-        .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "persona" })),
-      ...scenePackRegistry
-        .listEntries()
-        .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "scene" })),
-      ...uiPackRegistry
-        .listEntries()
-        .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "ui" })),
-      ...[
-        cameraMovePack,
-        desaturatePack,
-        fireworksPack,
-        fireworksVolleyPack,
-        screenShakePack,
-        textPhysicsPack,
-      ].map((p) => ({ id: p.id, kind: "effect" })),
-    ];
 
     const readLoadReportForPackTools = async () => {
       const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
@@ -2344,6 +2363,7 @@ function App() {
     packRegistry,
     listPacksForHealth,
     collectAppHealthReport,
+    readBundledPacks,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

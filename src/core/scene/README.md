@@ -6,9 +6,9 @@
 
 ## scene とは何か
 
-`CHARMINAL.md`「住まうということ」の実体化。住人（VRM）が**どういう場に居るか**を決める layer stack。shoost の「複数レイヤーによる撮影処理」を参考にしているが、目的は違う：
+`CHARMINAL.md`「住まうということ」の実体化。住人（VRM）が**どういう場に居るか**を決める layer stack。複数レイヤーによる合成処理を使うが、目的は「一枚の構図を綺麗に見せる」ことではない：
 
-- shoost の目的：**一枚の構図を綺麗に見せる**（frame）
+- 映像作品の layer stack の目的：**一枚の構図を綺麗に見せる**（frame）
 - Charminal の目的：**住人がその場に居る実在感を増幅する**（place）
 
 この違いが design compass になる。詳細は後半「設計 compass」で。
@@ -28,7 +28,7 @@
 **まだできないこと（Phase 2 以降）:**
 
 - terminal 状態に応じて色や blur が変わる ambient binding（β channel）
-- Auto Color Correction（shoost の「背景基準で前景を染める」）
+- Auto Color Correction（背景基準で前景を染める）
 - Camera filter（diffusion / glow 等）
 
 scene を試すには bundled / user scene pack を登録し、`~/.charminal/config.json` の `activeScene` で選ぶ。config が空なら bundled `simple-room` が fallback になる。

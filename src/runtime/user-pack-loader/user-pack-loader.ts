@@ -50,6 +50,8 @@ export interface UserPackEntry {
     readonly type: string;
     readonly entry: string;
     readonly executionClass?: string;
+    readonly description?: string;
+    readonly author?: string;
   };
 }
 

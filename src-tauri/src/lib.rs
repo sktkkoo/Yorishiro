@@ -515,6 +515,10 @@ struct UserPackManifestSummary {
     entry: String,
     #[serde(rename = "executionClass", skip_serializing_if = "Option::is_none")]
     execution_class: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author: Option<String>,
 }
 
 /// Absolute path to ~/.charminal/. Does not create it.
@@ -699,6 +703,8 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                         kind: m.kind.clone(),
                         entry: m.entry.clone(),
                         execution_class: m.execution_class.clone(),
+                        description: m.description.clone(),
+                        author: m.author.clone(),
                     }),
                 });
             }

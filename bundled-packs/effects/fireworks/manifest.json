@@ -4,5 +4,7 @@
   "type": "effect",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "author": "Charminal team",
+  "description": "パーティクルの花火を打ち上げる演出 effect。",
   "entry": "effect.ts"
 }
