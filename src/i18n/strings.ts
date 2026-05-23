@@ -16,7 +16,11 @@ export interface UiStrings {
   readonly ambientVolume: string;
   readonly selectVrmFile: string;
   readonly agentAppliesNextLaunch: string;
+  readonly helpPrompt: string;
+  readonly tutorialPrompt: string;
   readonly shortcutPrompt: string;
+  readonly createPackPrompt: string;
+  readonly pomodoroPrompt: string;
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
   readonly voiceFrequency: string;
@@ -40,7 +44,11 @@ const EN: UiStrings = {
   ambientVolume: "Ambient volume",
   selectVrmFile: "Select VRM file",
   agentAppliesNextLaunch: "Applies from the next agent launch",
+  helpPrompt: "/charm:help",
+  tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
+  createPackPrompt: "/charm:create I want to create a pack",
+  pomodoroPrompt: "/charm:help I want to use Pomodoro",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
   voiceFrequency: "Summary Voice",
@@ -64,7 +72,11 @@ const JA: UiStrings = {
   ambientVolume: "環境音ボリューム",
   selectVrmFile: "VRM ファイルを選択",
   agentAppliesNextLaunch: "※ 次の agent 起動から反映",
+  helpPrompt: "/charm:help",
+  tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
+  createPackPrompt: "/charm:create pack を作りたい",
+  pomodoroPrompt: "/charm:help Pomodoro を使いたい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",
   voiceFrequency: "要約読み上げ",
@@ -83,7 +95,11 @@ export function getStrings(language: ResolvedLanguage): UiStrings {
  * （無言 no-op を防ぐ網羅性）。設計境界: docs/decisions/input-prefill-boundary.md
  */
 const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
+  help: "helpPrompt",
+  tutorial: "tutorialPrompt",
   shortcut: "shortcutPrompt",
+  "create-pack": "createPackPrompt",
+  pomodoro: "pomodoroPrompt",
 };
 
 /**

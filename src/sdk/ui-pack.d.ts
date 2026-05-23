@@ -179,7 +179,7 @@ export interface UiHealthReport {
  * terminal/PTY に書く API は型ごと存在しない。
  * 設計境界: docs/decisions/input-prefill-boundary.md / critical-constraints.md §1
  */
-export type FixedTerminalPromptKey = "shortcut";
+export type FixedTerminalPromptKey = "help" | "tutorial" | "shortcut" | "create-pack" | "pomodoro";
 
 /**
  * UI pack から App-level state を変更するための API namespace。

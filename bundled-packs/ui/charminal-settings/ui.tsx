@@ -11,6 +11,7 @@
 import type {
   AppLanguage,
   Disposable,
+  FixedTerminalPromptKey,
   ResolvedLanguage,
   UiAppPackDiagnoseResponse,
   UiAppPackStatusEntry,
@@ -40,6 +41,17 @@ import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
+
+const QUICK_ACTIONS: ReadonlyArray<{
+  readonly label: string;
+  readonly key: FixedTerminalPromptKey;
+}> = [
+  { label: "Help", key: "help" },
+  { label: "Tutorial", key: "tutorial" },
+  { label: "Shortcut", key: "shortcut" },
+  { label: "Create Pack", key: "create-pack" },
+  { label: "Pomodoro", key: "pomodoro" },
+];
 
 export interface ResolveCloseTargetArgs {
   readonly saved: string | null;
@@ -1471,16 +1483,19 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     fireCloseRequest();
   };
 
-  /** Shortcut footer link: 設定を閉じて terminal に /charm:shortcut prompt を pre-fill する。 */
-  const onShortcutClick = async () => {
+  /** Quick action: 設定を閉じて terminal に host 所有の固定 prompt を pre-fill する。 */
+  const onQuickActionClick = async (key: FixedTerminalPromptKey) => {
     fireCloseRequest();
     try {
       // pack は文字列を渡さない。host 所有の固定プロンプトを key で指す。
       // 設計境界: docs/decisions/input-prefill-boundary.md
-      await ctx.app.insertFixedPrompt("shortcut");
+      await ctx.app.insertFixedPrompt(key);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      ctx.emitEvent("charminal-settings:write-failed", { field: "shortcut-prompt", reason });
+      ctx.emitEvent("charminal-settings:write-failed", {
+        field: `fixed-prompt-${key}`,
+        reason,
+      });
     }
   };
 
@@ -1728,32 +1743,52 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 48px gap before footer links */}
         <div style={{ height: "48px" }} />
 
-        {/* footer link */}
+        {/* footer quick actions */}
         <div
           style={{
             fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}
         >
-          <button
-            type="button"
-            onClick={onShortcutClick}
+          <div
             style={{
-              background: "none",
-              border: "none",
-              color: "inherit",
-              font: "inherit",
-              fontSize: "inherit",
-              cursor: "pointer",
-              padding: 0,
-              textDecoration: "underline",
-              textDecorationColor: "currentColor",
-              textUnderlineOffset: "2px",
-              opacity: 1,
+              marginBottom: SPACING.xs,
             }}
           >
-            Shortcut
-          </button>
+            Quick Actions
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: `${SPACING.xs} ${SPACING.md}`,
+            }}
+          >
+            {QUICK_ACTIONS.map((action) => (
+              <button
+                key={action.key}
+                type="button"
+                onClick={() => {
+                  void onQuickActionClick(action.key);
+                }}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "inherit",
+                  font: "inherit",
+                  fontSize: "inherit",
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline",
+                  textDecorationColor: "currentColor",
+                  textUnderlineOffset: "2px",
+                  opacity: 1,
+                }}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* 32px gap */}
