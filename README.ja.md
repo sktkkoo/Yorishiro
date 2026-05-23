@@ -33,6 +33,8 @@ Charminal はユーザーのローカル環境にインストールされた Cla
 
 ### インストール（macOS）
 
+現在の alpha build は macOS を主対象にしています。
+
 [Releases](https://github.com/sktkkoo/Charminal/releases) から `.dmg` をダウンロードし、`charminal.app` を `/Applications` にドラッグしてください。署名されていないため、初回起動前に quarantine 属性を解除します：
 
 ```bash
@@ -47,6 +49,8 @@ npm run tauri dev
 ```
 
 起動すると設定済みの terminal agent がターミナル内で立ち上がり、同梱の VRM キャラクター **CLAI**（クライ）が隣に表示されます。普段通りに Claude Code または Codex を使えます。
+
+初回起動時には、選択中の agent、ユーザーデータディレクトリ、safe mode、pack、startup report を確認する health check が表示されます。同じ内容は後から Settings → Health でも確認できます。
 
 ### `/charm:*` コマンド
 
@@ -103,12 +107,15 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 ├── config.json      # Persona・scene・terminal agent などの設定
 ├── init.js          # 起動時に実行されるユーザースクリプト（Emacs の init.el 相当）
 ├── packs/           # ユーザー作成の pack
+├── last-startup.json # 最新の user pack load report
 ├── journal/         # 住人の日々の記録と記憶
 ├── shell/           # Shell integration スクリプト（自動生成）
 └── sdk.d.ts         # Charminal SDK の型定義（自動生成、編集不要）
 ```
 
 `config.json` で persona・scene・terminal agent などを切り替えられます。詳細は [`docs/configuration.md`](docs/configuration.md)。
+
+復旧手順、safe mode、issue 報告時に必要な情報は [`docs/troubleshooting.md`](docs/troubleshooting.md) を参照してください。
 
 ---
 
@@ -160,9 +167,10 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
 - 反射層による PTY 観察と即時反応
 - コンテキスト共有: Terminal Reference Marker（Cmd+click / Option+Shift+drag）と Voice Summary
+- First-run と Settings の health diagnostics（agent setup / safe mode / pack / startup report）
 - Journal による長期記憶 [開発中]
 - `/charm:*` command による pack の対話的な作成・編集
-- Windows ビルド対応（準備済み、動作未確認）
+- Windows ビルド対応 [experimental、未手動検証]
 
 ---
 
@@ -221,6 +229,8 @@ npm run tauri dev # デスクトップアプリとして起動
 ```
 
 > **Note:** 一部の asset（VRMA アニメーション、音声 WAV）は third-party 由来でリポジトリに同梱されていません。asset がなくてもアプリは起動しますが、キャラクターのアニメーションと音声が制限されます。
+>
+> OSS と asset のクレジットは [`CREDITS.ja.md`](CREDITS.ja.md) を参照してください。
 
 ### Scripts
 
@@ -233,6 +243,8 @@ npm run tauri dev # デスクトップアプリとして起動
 | `npm run test` | Vitest（watch） |
 | `npm run test:run` | Vitest（one-shot） |
 | `npm run test:rust` | `cargo test` |
+
+build を公開する前の smoke test には [`docs/release-checklist.md`](docs/release-checklist.md) を使います。
 
 ---
 
