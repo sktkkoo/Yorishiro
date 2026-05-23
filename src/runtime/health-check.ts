@@ -134,8 +134,12 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
     healthItem(
       "packs",
       "Packs",
-      failedPacks.length > 0 ? "error" : disabledPacks.length > 0 ? "warning" : "ok",
-      `${packs.length} known, ${failedPacks.length} failed, ${disabledPacks.length} disabled`,
+      failedPacks.length > 0 ? "error" : "ok",
+      failedPacks.length > 0
+        ? `${packs.length} known, ${failedPacks.length} failed, ${disabledPacks.length} disabled`
+        : disabledPacks.length > 0
+          ? `${packs.length} known, ${disabledPacks.length} disabled`
+          : `${packs.length} known`,
       failedPacks.length > 0 ? "Open Packs above and diagnose the failed entries." : undefined,
     ),
   );

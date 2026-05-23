@@ -275,11 +275,10 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
 
     if (config.disabledPacks.includes(id)) {
       diagnostics.push({
-        severity: "warning",
+        severity: "info",
         code: "pack-disabled",
         message: `pack '${id}' is listed in config.disabledPacks`,
       });
-      recommendations.push(`Use enable_pack({ id: "${id}" }) after fixing any load errors.`);
     }
 
     for (const diagnosis of diagnoses) {

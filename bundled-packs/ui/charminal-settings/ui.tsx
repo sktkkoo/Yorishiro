@@ -19,14 +19,12 @@ import type {
   UiPackDefinition,
 } from "@charminal/sdk";
 import {
-  Activity,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
   FolderOpen,
   Package,
   RefreshCw,
-  ShieldAlert,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -533,7 +531,7 @@ function PackStatusIndicator({ status }: { status: UiAppPackStatusEntry["status"
   if (status === "failed") {
     return <AlertTriangle size={12} color={COLORS.statusError} aria-hidden="true" />;
   }
-  const color = status === "disabled" ? COLORS.statusWarning : COLORS.accent;
+  const color = status === "disabled" ? COLORS.fgDimmer : COLORS.accent;
   return (
     <span
       style={{
@@ -634,15 +632,19 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [report, setReport] = useState<UiHealthReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setReport(await ctx.app.getHealthReport());
+      const next = await ctx.app.getHealthReport();
+      setReport(next);
+      if (next.summary === "error") setOpen(true);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       setError(reason);
+      setOpen(true);
       ctx.emitEvent("charminal-settings:write-failed", { field: "health-report", reason });
     } finally {
       setLoading(false);
@@ -653,12 +655,19 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
     void refresh();
   }, [refresh]);
 
+  const summaryStatus = report?.summary ?? (error ? "error" : null);
   const title =
-    report?.summary === "error"
+    summaryStatus === "error"
       ? "Needs attention"
-      : report?.summary === "warning"
+      : summaryStatus === "warning"
         ? "Warnings"
         : "Healthy";
+  const titleColor =
+    summaryStatus === "error"
+      ? COLORS.statusError
+      : summaryStatus === "warning"
+        ? COLORS.statusWarning
+        : COLORS.fgDimmer;
 
   return (
     <section>
@@ -667,18 +676,43 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          marginBottom: SPACING.md,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, opacity: 0.78 }}>
-          {report?.safeMode ? (
-            <ShieldAlert size={14} aria-hidden="true" />
-          ) : (
-            <Activity size={14} aria-hidden="true" />
-          )}
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: SPACING.sm,
+            opacity: 0.78,
+            border: "none",
+            background: "transparent",
+            color: COLORS.fg,
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: "inherit",
+            padding: 0,
+          }}
+        >
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            style={{
+              transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+              transition: "transform 0.15s ease",
+            }}
+          />
+          {summaryStatus !== null && summaryStatus !== "ok" ? (
+            <HealthStatusIcon status={summaryStatus} />
+          ) : report ? (
+            <CheckCircle2 size={14} color={COLORS.accent} aria-hidden="true" />
+          ) : null}
           <span>Health</span>
-          {report && <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>{title}</span>}
-        </div>
+          {summaryStatus !== null && (
+            <span style={{ color: titleColor, fontSize: FONT.sizeXs }}>{title}</span>
+          )}
+        </button>
         <button
           type="button"
           onClick={refresh}
@@ -704,84 +738,87 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
         </button>
       </div>
 
-      <div
-        style={{
-          border: `1px solid ${COLORS.borderSubtle}`,
-          borderRadius: RADIUS.md,
-          overflow: "hidden",
-          maxWidth: "520px",
-          background: COLORS.bgInput,
-        }}
-      >
-        {report === null ? (
-          <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
-            {error ?? "Checking…"}
-          </div>
-        ) : (
-          <>
-            {report.items.map((item) => (
-              <div
-                key={item.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "18px minmax(0, 1fr)",
-                  gap: SPACING.sm,
-                  padding: `${SPACING.sm} ${SPACING.md}`,
-                  borderBottom: `1px solid ${COLORS.borderSubtle}`,
-                }}
-              >
-                <HealthStatusIcon status={item.status} />
-                <div style={{ minWidth: 0 }}>
-                  <div
-                    style={{
-                      fontSize: FONT.sizeS,
-                      fontWeight: FONT.weightSemibold,
-                      color: item.status === "error" ? COLORS.statusError : COLORS.fg,
-                    }}
-                  >
-                    {item.label}
-                  </div>
-                  <div
-                    style={{
-                      marginTop: "2px",
-                      color: COLORS.fgDimmer,
-                      fontSize: FONT.sizeXs,
-                      lineHeight: 1.45,
-                      overflowWrap: "anywhere",
-                    }}
-                  >
-                    {item.detail}
-                  </div>
-                  {item.action && (
+      {open && (
+        <div
+          style={{
+            marginTop: SPACING.md,
+            border: `1px solid ${COLORS.borderSubtle}`,
+            borderRadius: RADIUS.md,
+            overflow: "hidden",
+            maxWidth: "520px",
+            background: COLORS.bgInput,
+          }}
+        >
+          {report === null ? (
+            <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+              {error ?? "Checking…"}
+            </div>
+          ) : (
+            <>
+              {report.items.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "18px minmax(0, 1fr)",
+                    gap: SPACING.sm,
+                    padding: `${SPACING.sm} ${SPACING.md}`,
+                    borderBottom: `1px solid ${COLORS.borderSubtle}`,
+                  }}
+                >
+                  <HealthStatusIcon status={item.status} />
+                  <div style={{ minWidth: 0 }}>
                     <div
                       style={{
-                        marginTop: "3px",
-                        color: COLORS.fgDim,
-                        fontSize: FONT.sizeXs,
-                        lineHeight: 1.45,
+                        fontSize: FONT.sizeS,
+                        fontWeight: FONT.weightSemibold,
+                        color: item.status === "error" ? COLORS.statusError : COLORS.fg,
                       }}
                     >
-                      {item.action}
+                      {item.label}
                     </div>
-                  )}
+                    <div
+                      style={{
+                        marginTop: "2px",
+                        color: COLORS.fgDimmer,
+                        fontSize: FONT.sizeXs,
+                        lineHeight: 1.45,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {item.detail}
+                    </div>
+                    {item.action && (
+                      <div
+                        style={{
+                          marginTop: "3px",
+                          color: COLORS.fgDim,
+                          fontSize: FONT.sizeXs,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {item.action}
+                      </div>
+                    )}
+                  </div>
                 </div>
+              ))}
+              <div
+                style={{
+                  padding: `${SPACING.sm} ${SPACING.md}`,
+                  color: COLORS.fgDimmer,
+                  fontSize: FONT.sizeXs,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                <div>Config: {report.paths.config}</div>
+                <div>Startup report: {report.paths.startupReport}</div>
               </div>
-            ))}
-            <div
-              style={{
-                padding: `${SPACING.sm} ${SPACING.md}`,
-                color: COLORS.fgDimmer,
-                fontSize: FONT.sizeXs,
-                lineHeight: 1.45,
-                overflowWrap: "anywhere",
-              }}
-            >
-              <div>Config: {report.paths.config}</div>
-              <div>Startup report: {report.paths.startupReport}</div>
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -1676,12 +1713,12 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <PackWorkbench ctx={ctx} />
+        <HealthDiagnostics ctx={ctx} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <HealthDiagnostics ctx={ctx} />
+        <PackWorkbench ctx={ctx} />
       </main>
     </div>
   );
