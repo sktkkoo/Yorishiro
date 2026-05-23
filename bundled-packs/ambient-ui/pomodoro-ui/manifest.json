@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "ポモドーロタイマーの残り時間と操作ボタンを画面右下に表示する ambient UI pack。",
+  "description": "Shows the pomodoro timer and controls in the bottom-right corner.",
   "entry": "ui.tsx"
 }

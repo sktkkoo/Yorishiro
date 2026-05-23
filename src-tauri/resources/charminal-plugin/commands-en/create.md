@@ -38,7 +38,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 1. **Ask for one concrete example first.** Pull out one tactile example: "In what situation, what happens, and how should the resident react?"
 2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, use `bundled-packs/` as reference.
 3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
-4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
+4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences in English explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
 5. **Respect pack boundaries.** Persona has no system API; effect has only the minimal rendering API; scene is declarative; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
 6. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--charminal-fg)`, `var(--charminal-accent)`, and related variables so UI follows scene themes.
 

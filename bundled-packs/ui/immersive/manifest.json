@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "terminal の背景のみ透明化（文字は不透明のまま）、背後に character と scene が鮮明に透ける没入モード",
+  "description": "Transparent terminal background so the character and scene show through clearly.",
   "entry": "ui.tsx"
 }

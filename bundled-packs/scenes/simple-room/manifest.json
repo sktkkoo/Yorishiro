@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "落ち着いた気配の抽象空間。背景/前景の読み込みによる自由なシーンの作成とブラーによるぼかしで、住人の居場所を作る実在感のためのベースライン。",
+  "description": "A quiet abstract space. Background and foreground layers with blur create a baseline for presence.",
   "entry": "scene.tsx"
 }

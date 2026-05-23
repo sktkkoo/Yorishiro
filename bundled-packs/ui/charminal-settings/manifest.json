@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "Charminal の設定画面（avatar / persona / scene / coding agent / shortcut 入口）。activeUi を一時 swap して開閉する。",
+  "description": "Settings panel for avatar, persona, scene, terminal agent, and shortcuts.",
   "entry": "ui.tsx"
 }

@@ -5,6 +5,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "画面全体の彩度を一時的に落とす演出 effect。",
+  "description": "Temporarily desaturates the entire screen.",
   "entry": "effect.ts"
 }

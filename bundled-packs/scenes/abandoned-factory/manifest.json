@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "誰かが灯を残していった廃工場。CLAI が時々ここに戻ってくる。",
+  "description": "A dimly lit abandoned factory. Someone left the lights on.",
   "entry": "scene.tsx"
 }

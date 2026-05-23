@@ -5,6 +5,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "カメラ位置や視線を一時的に移動する演出 effect。",
+  "description": "Temporarily shifts the camera position or look target.",
   "entry": "effect.ts"
 }

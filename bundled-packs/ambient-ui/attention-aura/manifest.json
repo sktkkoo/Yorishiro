@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "観察対象の rect を淡い光の帯で示す bundled ambient UI pack。",
+  "description": "Highlights the observed region with a soft glow band.",
   "entry": "ui.tsx"
 }

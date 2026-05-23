@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "chrome と terminal を隠しキャラだけ全画面化",
+  "description": "Fullscreen character view — hides the terminal and chrome.",
   "entry": "ui.tsx"
 }
