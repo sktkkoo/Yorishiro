@@ -45,6 +45,104 @@ body,
   width: 100vw;
 }
 
+/* ── Runtime crash recovery ─────────────────────────── */
+.app-error-boundary {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--charminal-bg);
+  color: var(--charminal-fg);
+}
+
+.app-error-boundary-panel {
+  width: min(680px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--charminal-border);
+  border-radius: 8px;
+  background: var(--charminal-panel-bg);
+  padding: 24px;
+}
+
+.app-error-boundary-kicker {
+  color: #ff756f;
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.app-error-boundary h1 {
+  margin-top: 8px;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 650;
+}
+
+.app-error-boundary p {
+  margin-top: 12px;
+  color: var(--charminal-fg-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.app-error-boundary-grid {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px 14px;
+  margin-top: 18px;
+  padding: 14px 0;
+  border-top: 1px solid var(--charminal-border);
+  border-bottom: 1px solid var(--charminal-border);
+  color: var(--charminal-fg-dim);
+  font-size: 12px;
+}
+
+.app-error-boundary code {
+  color: var(--charminal-fg);
+  overflow-wrap: anywhere;
+}
+
+.app-error-boundary details {
+  margin-top: 16px;
+  font-size: 12px;
+}
+
+.app-error-boundary summary {
+  cursor: pointer;
+  color: var(--charminal-fg-dim);
+}
+
+.app-error-boundary pre {
+  margin-top: 10px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  background: var(--charminal-input-bg);
+  padding: 12px;
+  color: var(--charminal-fg-dim);
+  white-space: pre-wrap;
+}
+
+.app-error-boundary-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.app-error-boundary-actions button {
+  border-radius: 8px;
+  border: 1px solid var(--charminal-border);
+  padding: 8px 12px;
+  background: var(--charminal-button-bg);
+  color: var(--charminal-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 /* ── Shell column（width / collapse を所有する縦カラム）─────── */
 .shell-column {
   width: var(--sidebar-width);
