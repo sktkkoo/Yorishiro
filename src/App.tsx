@@ -33,8 +33,6 @@ import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
 import screenShakeManifest from "../bundled-packs/effects/screen-shake/manifest.json";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
 import textPhysicsManifest from "../bundled-packs/effects/text-physics/manifest.json";
-import claiManifest from "../bundled-packs/personas/clai/manifest.json";
-import claiPack from "../bundled-packs/personas/clai/persona";
 import claiEnManifest from "../bundled-packs/personas/clai-en/manifest.json";
 import claiEnPack from "../bundled-packs/personas/clai-en/persona";
 import claiJaManifest from "../bundled-packs/personas/clai-ja/manifest.json";
@@ -670,7 +668,6 @@ function App() {
       readonly pack: PersonaDefinition;
       readonly manifest: PersonaPackManifest;
     }> = [
-      { pack: claiPack, manifest: claiManifest as PersonaPackManifest },
       { pack: claiJaPack, manifest: claiJaManifest as PersonaPackManifest },
       { pack: claiEnPack, manifest: claiEnManifest as PersonaPackManifest },
     ];
@@ -1689,7 +1686,6 @@ function App() {
     () =>
       new Map(
         [
-          claiManifest,
           claiEnManifest,
           claiJaManifest,
           abandonedFactoryManifest,

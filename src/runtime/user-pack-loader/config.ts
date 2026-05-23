@@ -66,7 +66,7 @@ export type TerminalAgent = "claude" | "codex";
 /** Voice Summary の On/Off。"on" は毎回発話、"off" は voice_say を使わない（token 消費なし）。 */
 export type VoiceFrequency = "on" | "off";
 
-const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai", "clai-en", "clai-ja"]);
+const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai-en", "clai-ja"]);
 
 export const EMPTY_CONFIG: CharminalConfig = {
   disabledPacks: [],

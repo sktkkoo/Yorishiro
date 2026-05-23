@@ -416,8 +416,7 @@ describe("localized CLAI persona defaults", () => {
     expect(resolvePrimaryPersonaForLanguage(null, "ja")).toBe("clai-ja");
   });
 
-  it("treats legacy and localized CLAI ids as language-following defaults", () => {
-    expect(resolvePrimaryPersonaForLanguage("clai", "en")).toBe("clai-en");
+  it("treats localized CLAI ids as language-following defaults", () => {
     expect(resolvePrimaryPersonaForLanguage("clai-en", "ja")).toBe("clai-ja");
     expect(resolvePrimaryPersonaForLanguage("clai-ja", "en")).toBe("clai-en");
   });

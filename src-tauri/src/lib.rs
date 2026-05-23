@@ -1183,8 +1183,7 @@ pub fn run() {
                     .take();
                 if let Some(start) = start {
                     // TODO: active persona id は将来的に runtime state から取得する。
-                    // 暫定で "clai" を使う。
-                    let persona_id = "clai";
+                    let persona_id = "clai-ja";
                     if let Err(err) = journal::cohabitation::save_hours(start, persona_id) {
                         eprintln!("[cohabitation] 保存失敗: {}", err);
                     }

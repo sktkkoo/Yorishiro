@@ -112,10 +112,8 @@ function formatPackOptionLabel(pack: {
   readonly name?: string;
   readonly origin: "bundled" | "user";
 }): string {
-  const suffixes: string[] = [];
-  if (pack.id === "clai") suffixes.push("legacy");
-  if (pack.origin === "user") suffixes.push("user");
-  return `${pack.name ?? pack.id}${suffixes.length > 0 ? ` (${suffixes.join(", ")})` : ""}`;
+  const suffix = pack.origin === "user" ? " (user)" : "";
+  return `${pack.name ?? pack.id}${suffix}`;
 }
 
 export function filterPersonaOptionsForLanguage<T extends { readonly id: string }>(
