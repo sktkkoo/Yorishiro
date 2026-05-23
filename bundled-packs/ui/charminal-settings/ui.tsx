@@ -1553,6 +1553,43 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           overflowY: "auto",
         }}
       >
+        {/* Quick Actions */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: `${SPACING.xs} ${SPACING.md}`,
+            fontSize: FONT.sizeXs,
+            opacity: 0.5,
+            marginBottom: SPACING.xl,
+          }}
+        >
+          {QUICK_ACTIONS.map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              onClick={() => {
+                void onQuickActionClick(action.key);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "inherit",
+                font: "inherit",
+                fontSize: "inherit",
+                cursor: "pointer",
+                padding: 0,
+                textDecoration: "underline",
+                textDecorationColor: "currentColor",
+                textUnderlineOffset: "2px",
+                opacity: 1,
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+
         {/* グループ 1: VRM / Persona / Scene / Aura */}
         <div style={gridStyle}>
           {/* Language */}
@@ -1738,57 +1775,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           }}
         >
           {strings.agentAppliesNextLaunch}
-        </div>
-
-        {/* 48px gap before footer links */}
-        <div style={{ height: "48px" }} />
-
-        {/* footer quick actions */}
-        <div
-          style={{
-            fontSize: FONT.sizeXs,
-            opacity: 0.5,
-          }}
-        >
-          <div
-            style={{
-              marginBottom: SPACING.xs,
-            }}
-          >
-            Quick Actions
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: `${SPACING.xs} ${SPACING.md}`,
-            }}
-          >
-            {QUICK_ACTIONS.map((action) => (
-              <button
-                key={action.key}
-                type="button"
-                onClick={() => {
-                  void onQuickActionClick(action.key);
-                }}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "inherit",
-                  font: "inherit",
-                  fontSize: "inherit",
-                  cursor: "pointer",
-                  padding: 0,
-                  textDecoration: "underline",
-                  textDecorationColor: "currentColor",
-                  textUnderlineOffset: "2px",
-                  opacity: 1,
-                }}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* 32px gap */}
