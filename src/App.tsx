@@ -17,6 +17,9 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
+import attentionAuraManifest from "../bundled-packs/ambient-ui/attention-aura/manifest.json";
+import pomodoroUiManifest from "../bundled-packs/ambient-ui/pomodoro-ui/manifest.json";
+import pomodoroManifest from "../bundled-packs/amenities/pomodoro/manifest.json";
 import cameraMovePack from "../bundled-packs/effects/camera-move/effect";
 import cameraMoveManifest from "../bundled-packs/effects/camera-move/manifest.json";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
@@ -1144,6 +1147,14 @@ function App() {
             screenShakePack,
             textPhysicsPack,
           ].map((p) => ({ id: p.id, kind: "effect" })),
+          ...getAmbientUiPackRegistry()
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "ambient-ui" })),
+          ...getAmenityPackRegistry()
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "amenity" })),
         ];
 
         const handlers: ToolHandlerMap = {
@@ -1693,6 +1704,9 @@ function App() {
           fireworksVolleyManifest,
           screenShakeManifest,
           textPhysicsManifest,
+          attentionAuraManifest,
+          pomodoroUiManifest,
+          pomodoroManifest,
         ].map((m) => [m.id, m] as const),
       ),
     [],
@@ -1729,6 +1743,14 @@ function App() {
         screenShakePack,
         textPhysicsPack,
       ].map((p) => withMeta(p.id, "effect")),
+      ...getAmbientUiPackRegistry()
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "ambient-ui")),
+      ...getAmenityPackRegistry()
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "amenity")),
     ];
   }, [bundledManifestMap, personaRegistry, scenePackRegistry, uiPackRegistry]);
 
