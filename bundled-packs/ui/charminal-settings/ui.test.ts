@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-
+import { resolvePackRepairPrompt } from "../../../src/i18n/strings";
 import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
@@ -202,5 +202,28 @@ describe("Pack Workbench helpers", () => {
       title: "Pack looks healthy",
       detail: "The pack is loaded and active.",
     });
+  });
+
+  it("formats a host-owned repair prompt for pack handoff", () => {
+    expect(
+      resolvePackRepairPrompt({
+        id: "broken-effect",
+        kind: "effect",
+        action: "repair",
+        language: "en",
+      }),
+    ).toBe(
+      '/charm:update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
+    );
+    expect(
+      resolvePackRepairPrompt({
+        id: "ok-scene",
+        kind: "scene",
+        action: "improve",
+        language: "ja",
+      }),
+    ).toBe(
+      '/charm:update ok-scene (scene) を診断して、改善してください。まず pack_diagnose({ id: "ok-scene" }) で状態を確認してください。',
+    );
   });
 });

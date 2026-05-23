@@ -44,6 +44,10 @@ export interface UiStrings {
   readonly noPacksInstalled: string;
   readonly selectPack: string;
   readonly diagnosing: string;
+  readonly repairPack: string;
+  readonly improvePack: string;
+  readonly repairPromptInserted: string;
+  readonly revealPackEntry: string;
   readonly quickHelp: string;
   readonly quickTutorial: string;
   readonly quickShortcut: string;
@@ -94,6 +98,10 @@ const EN: UiStrings = {
   noPacksInstalled: "No packs installed",
   selectPack: "Select a pack",
   diagnosing: "Diagnosing…",
+  repairPack: "Repair with /charm:update",
+  improvePack: "Improve with /charm:update",
+  repairPromptInserted: "Repair prompt inserted",
+  revealPackEntry: "Reveal entry file",
   quickHelp: "Help",
   quickTutorial: "Tutorial",
   quickShortcut: "Shortcut",
@@ -144,6 +152,10 @@ const JA: UiStrings = {
   noPacksInstalled: "パックなし",
   selectPack: "パックを選択",
   diagnosing: "診断中…",
+  repairPack: "/charm:update で修理",
+  improvePack: "/charm:update で改善",
+  repairPromptInserted: "修理プロンプトを入力済み",
+  revealPackEntry: "entry file を表示",
   quickHelp: "ヘルプ",
   quickTutorial: "チュートリアル",
   quickShortcut: "ショートカット",
@@ -177,4 +189,19 @@ export function resolveFixedTerminalPrompt(
   language: ResolvedLanguage,
 ): string {
   return getStrings(language)[FIXED_PROMPT_STRING[key]];
+}
+
+export function resolvePackRepairPrompt(args: {
+  readonly id: string;
+  readonly kind?: string;
+  readonly action: "repair" | "improve";
+  readonly language: ResolvedLanguage;
+}): string {
+  const kindPart = args.kind ? ` (${args.kind})` : "";
+  if (args.language === "ja") {
+    const actionText = args.action === "repair" ? "修正" : "改善";
+    return `/charm:update ${args.id}${kindPart} を診断して、${actionText}してください。まず pack_diagnose({ id: "${args.id}" }) で状態を確認してください。`;
+  }
+  const actionText = args.action === "repair" ? "repair" : "improve";
+  return `/charm:update Diagnose and ${actionText} ${args.id}${kindPart}. Start with pack_diagnose({ id: "${args.id}" }).`;
 }

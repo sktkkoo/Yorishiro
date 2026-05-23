@@ -200,6 +200,22 @@ export interface UiAppAPI {
    * 設計境界: docs/decisions/input-prefill-boundary.md
    */
   insertFixedPrompt(key: FixedTerminalPromptKey): Promise<void>;
+  /**
+   * Pack Workbench 用: 構造化された pack id/kind から、host 所有の
+   * `/charm:update` 修理プロンプトを terminal に pre-fill する。
+   * 任意テキストは受け取らない。
+   */
+  insertPackRepairPrompt(
+    id: string,
+    kind: string | undefined,
+    action: "repair" | "improve",
+  ): Promise<void>;
+  /**
+   * Pack Workbench 用: user pack の entry file または pack folder を OS の
+   * file explorer で開く。任意パスは受け取らず、id から user pack folder を
+   * host が解決する。
+   */
+  openPackLocation(id: string, entryPath?: string): Promise<void>;
   /** 利用可能な persona pack の一覧（dropdown 用）。 */
   listPersonas(): readonly UiAppPackOption[];
   /** 利用可能な scene pack の一覧。 */

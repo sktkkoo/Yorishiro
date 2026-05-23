@@ -70,7 +70,7 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { SayTtsEngine, VoicePlayer } from "./core/voice";
-import { getStrings, resolveFixedTerminalPrompt } from "./i18n/strings";
+import { getStrings, resolveFixedTerminalPrompt, resolvePackRepairPrompt } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -2152,6 +2152,34 @@ function App() {
             const data = resolveFixedTerminalPrompt(key, appLanguageRef.current.resolved);
             const { ptyWrite } = await import("./bindings/tauri-commands");
             await ptyWrite({ data });
+          },
+          insertPackRepairPrompt: async (id, kind, action) => {
+            const data = resolvePackRepairPrompt({
+              id,
+              kind,
+              action,
+              language: appLanguageRef.current.resolved,
+            });
+            const { ptyWrite } = await import("./bindings/tauri-commands");
+            await ptyWrite({ data });
+          },
+          openPackLocation: async (id, entryPath) => {
+            if (id.includes("/") || id.includes("\\") || id === "." || id === "..") {
+              throw new Error("invalid pack id");
+            }
+            const { invoke } = await import("@tauri-apps/api/core");
+            const { openPath, revealItemInDir } = await import("@tauri-apps/plugin-opener");
+            const home = await invoke<string>("charminal_home_dir");
+            const packDir = `${home.replace(/[\\/]$/, "")}/packs/${id}`;
+            if (entryPath !== undefined && entryPath !== "") {
+              try {
+                await revealItemInDir(entryPath);
+                return;
+              } catch {
+                // Fall back to opening the user pack folder below.
+              }
+            }
+            await openPath(packDir);
           },
           listPersonas: () =>
             personaRegistry.listEntries().map((e) => ({
