@@ -5,6 +5,7 @@
   "type": "scene",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
-  "description": "落ち着いた気配の抽象空間。ぼんやりした青灰色の奥行きと、四隅の vignette で住人の居場所を作る。shoost 的な演出ではなく、実在感のためのベースライン。",
+  "author": "Charminal team",
+  "description": "A quiet abstract space. Background and foreground layers with blur create a baseline for presence.",
   "entry": "scene.tsx"
 }

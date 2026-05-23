@@ -17,6 +17,15 @@ use tauri::{AppHandle, Manager, State};
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
 struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
+#[derive(Clone, Default, serde::Serialize)]
+struct McpServerStatusSnapshot {
+    port: Option<u16>,
+    error: Option<String>,
+}
+
+#[derive(Default)]
+struct McpServerStatus(Mutex<McpServerStatusSnapshot>);
+
 static LOCALIZED_PLUGIN_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
@@ -40,6 +49,36 @@ fn build_path_env() -> String {
             home, home, current
         )
     }
+}
+
+fn command_candidate_names(command: &str) -> Vec<String> {
+    if !cfg!(windows) || Path::new(command).extension().is_some() {
+        return vec![command.to_string()];
+    }
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+    pathext
+        .split(';')
+        .filter(|ext| !ext.trim().is_empty())
+        .map(|ext| format!("{}{}", command, ext.to_ascii_lowercase()))
+        .chain(std::iter::once(command.to_string()))
+        .collect()
+}
+
+fn resolve_command_path_impl(command: &str) -> Option<String> {
+    if command.trim().is_empty() || command.contains('/') || command.contains('\\') {
+        return None;
+    }
+    let path_env = build_path_env();
+    let candidates = command_candidate_names(command);
+    for dir in std::env::split_paths(&path_env) {
+        for candidate in &candidates {
+            let path = dir.join(candidate);
+            if path.is_file() {
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
 }
 
 fn normalized_plugin_language(language: &str) -> &'static str {
@@ -476,12 +515,35 @@ struct UserPackManifestSummary {
     entry: String,
     #[serde(rename = "executionClass", skip_serializing_if = "Option::is_none")]
     execution_class: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    author: Option<String>,
 }
 
 /// Absolute path to ~/.charminal/. Does not create it.
 #[tauri::command]
 async fn charminal_home_dir() -> Result<String, String> {
     Ok(charminal_home_path()?.to_string_lossy().to_string())
+}
+
+/// Resolve a command through Charminal's launch PATH. Used by first-run health
+/// checks to explain missing Claude Code / Codex binaries before PTY spawn.
+#[tauri::command]
+async fn resolve_command_path(command: String) -> Result<Option<String>, String> {
+    Ok(resolve_command_path_impl(&command))
+}
+
+/// Return the MCP server startup result captured during Tauri setup.
+#[tauri::command]
+async fn mcp_server_status(
+    state: State<'_, McpServerStatus>,
+) -> Result<McpServerStatusSnapshot, String> {
+    state
+        .0
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|_| "mcp status lock poisoned".to_string())
 }
 
 /// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
@@ -641,6 +703,8 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                         kind: m.kind.clone(),
                         entry: m.entry.clone(),
                         execution_class: m.execution_class.clone(),
+                        description: m.description.clone(),
+                        author: m.author.clone(),
                     }),
                 });
             }
@@ -1035,8 +1099,11 @@ pub fn run() {
         .manage(registry)
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
+        .manage(McpServerStatus::default())
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
+            resolve_command_path,
+            mcp_server_status,
             session_spawn,
             session_destroy,
             session_write,
@@ -1078,9 +1145,21 @@ pub fn run() {
             let mcp_handle = app.handle().clone();
             match mcp::spawn_server(mcp_handle) {
                 Ok(port) => {
+                    if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
+                        *status = McpServerStatusSnapshot {
+                            port: Some(port),
+                            error: None,
+                        };
+                    }
                     eprintln!("[charminal-mcp] listening on localhost:{}", port);
                 }
                 Err(err) => {
+                    if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
+                        *status = McpServerStatusSnapshot {
+                            port: None,
+                            error: Some(err.clone()),
+                        };
+                    }
                     eprintln!("[charminal-mcp] startup skipped: {}", err);
                 }
             }
@@ -1104,8 +1183,7 @@ pub fn run() {
                     .take();
                 if let Some(start) = start {
                     // TODO: active persona id は将来的に runtime state から取得する。
-                    // 暫定で "clai" を使う。
-                    let persona_id = "clai";
+                    let persona_id = "clai-ja";
                     if let Err(err) = journal::cohabitation::save_hours(start, persona_id) {
                         eprintln!("[cohabitation] 保存失敗: {}", err);
                     }
@@ -1238,7 +1316,8 @@ mod user_pack_discovery_tests {
 #[cfg(test)]
 mod layer_scope_tests {
     use super::{
-        is_safe_mode_value, layer_event_label, read_last_startup_report_impl, stat_mtime_in_scope,
+        command_candidate_names, is_safe_mode_value, layer_event_label,
+        read_last_startup_report_impl, resolve_command_path_impl, stat_mtime_in_scope,
         write_charminal_file_atomic_impl,
     };
     use std::fs;
@@ -1302,6 +1381,19 @@ mod layer_scope_tests {
         );
 
         let _ = fs::remove_dir_all(&scope);
+    }
+
+    #[test]
+    fn resolve_command_path_rejects_empty_or_path_like_commands() {
+        assert_eq!(resolve_command_path_impl(""), None);
+        assert_eq!(resolve_command_path_impl("  "), None);
+        assert_eq!(resolve_command_path_impl("bin/claude"), None);
+        assert_eq!(resolve_command_path_impl("bin\\claude"), None);
+    }
+
+    #[test]
+    fn command_candidate_names_keeps_plain_command_on_unix() {
+        assert_eq!(command_candidate_names("codex"), vec!["codex".to_string()]);
     }
 
     #[test]

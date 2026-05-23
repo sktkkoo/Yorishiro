@@ -33,6 +33,8 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 ### Install (macOS)
 
+macOS is the primary target for the current alpha builds.
+
 Download the `.dmg` from [Releases](https://github.com/sktkkoo/Charminal/releases) and drag `charminal.app` to `/Applications`. The app is unsigned, so remove the quarantine attribute before first launch:
 
 ```bash
@@ -47,6 +49,8 @@ npm run tauri dev
 ```
 
 On launch, the configured terminal agent starts inside the terminal and **CLAI**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
+
+The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from Settings → Health.
 
 ### `/charm:*` commands
 
@@ -105,12 +109,15 @@ Charminal stores all user data in `~/.charminal/`:
 ├── config.json      # Persona, scene, terminal agent, and other settings
 ├── init.js          # User startup script, runs on launch (like Emacs init.el)
 ├── packs/           # User-created packs
+├── last-startup.json # Latest user pack load report
 ├── journal/         # Inhabitant's daily entries and memories
 ├── shell/           # Shell integration scripts (auto-generated)
 └── sdk.d.ts         # Charminal SDK type definitions (auto-generated, do not edit)
 ```
 
 Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
+
+For recovery paths, safe mode, and issue report details, see [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
 ---
 
@@ -162,9 +169,10 @@ What works today:
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
+- First-run and Settings health diagnostics for agent setup, safe mode, packs, and startup reports
 - Journal: long-term memory across sessions [in development]
 - `/charm:*` commands for interactive pack creation and editing
-- Windows build support (prepared, not yet verified)
+- Windows build support [experimental, not yet manually verified]
 
 ---
 
@@ -221,6 +229,8 @@ npm run tauri dev # Launch as desktop app
 ```
 
 > **Note:** Some assets (VRMA animations, voice WAVs) are third-party and not included in this repository. The app runs without them, but character animation and voice will be limited.
+>
+> See [`CREDITS.md`](CREDITS.md) for OSS and asset credits.
 
 ### Scripts
 
@@ -235,6 +245,8 @@ npm run tauri dev # Launch as desktop app
 | `npm run test:rust` | `cargo test` |
 | `npm run doc` | Generate TypeScript SDK API docs |
 | `npm run doc:rust` | Generate Rust API docs |
+
+Before publishing a build, use [`docs/release-checklist.md`](docs/release-checklist.md).
 
 ---
 

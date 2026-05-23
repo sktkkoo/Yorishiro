@@ -16,8 +16,8 @@
  * ```json
  * {
  *   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
- *   "id": "clai",
- *   "name": "Charminal",
+ *   "id": "my-persona",
+ *   "name": "My Persona",
  *   "type": "persona",
  *   "version": "0.1.0",
  *   "charminalVersion": "^0.1.0",

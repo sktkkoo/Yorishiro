@@ -16,13 +16,39 @@ export interface UiStrings {
   readonly ambientVolume: string;
   readonly selectVrmFile: string;
   readonly agentAppliesNextLaunch: string;
+  readonly helpPrompt: string;
+  readonly tutorialPrompt: string;
   readonly shortcutPrompt: string;
+  readonly createPackPrompt: string;
+  readonly pomodoroPrompt: string;
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
   readonly voiceAppliesNextSession: string;
+  readonly labelPersona: string;
+  readonly labelScene: string;
+  readonly labelSound: string;
+  readonly labelAgent: string;
+  readonly labelAura: string;
+  readonly labelHealth: string;
+  readonly labelPacks: string;
+  readonly healthHealthy: string;
+  readonly healthWarnings: string;
+  readonly healthNeedsAttention: string;
+  readonly packHealthy: string;
+  readonly packWarnings: string;
+  readonly packNeedsAttention: string;
+  readonly loadingPacks: string;
+  readonly noPacksInstalled: string;
+  readonly selectPack: string;
+  readonly diagnosing: string;
+  readonly quickHelp: string;
+  readonly quickTutorial: string;
+  readonly quickShortcut: string;
+  readonly quickCreatePack: string;
+  readonly quickPomodoro: string;
 }
 
 const EN: UiStrings = {
@@ -40,13 +66,39 @@ const EN: UiStrings = {
   ambientVolume: "Ambient volume",
   selectVrmFile: "Select VRM file",
   agentAppliesNextLaunch: "Applies from the next agent launch",
+  helpPrompt: "/charm:help",
+  tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
+  createPackPrompt: "/charm:create I want to create a pack",
+  pomodoroPrompt: "/charm:help I want to use Pomodoro",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
-  voiceFrequency: "Summary Voice",
+  voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
   voiceAppliesNextSession: "Applies from the next session",
+  labelPersona: "Persona",
+  labelScene: "Scene",
+  labelSound: "Sound",
+  labelAgent: "Agent",
+  labelAura: "Aura",
+  labelHealth: "Status",
+  labelPacks: "Packs",
+  healthHealthy: "Healthy",
+  healthWarnings: "Warnings",
+  healthNeedsAttention: "Needs attention",
+  packHealthy: "Pack looks healthy",
+  packWarnings: "Pack has warnings",
+  packNeedsAttention: "Pack needs attention",
+  loadingPacks: "Loading packs…",
+  noPacksInstalled: "No packs installed",
+  selectPack: "Select a pack",
+  diagnosing: "Diagnosing…",
+  quickHelp: "Help",
+  quickTutorial: "Tutorial",
+  quickShortcut: "Shortcut",
+  quickCreatePack: "Create Pack",
+  quickPomodoro: "Pomodoro",
 };
 
 const JA: UiStrings = {
@@ -58,19 +110,45 @@ const JA: UiStrings = {
   languageJapanese: "日本語",
   notLoaded: "（未読み込み）",
   loading: "読み込み中...",
-  noPacks: "（pack なし）",
+  noPacks: "（パックなし）",
   unmuteAmbient: "環境音をミュート解除",
   muteAmbient: "環境音をミュート",
   ambientVolume: "環境音ボリューム",
   selectVrmFile: "VRM ファイルを選択",
-  agentAppliesNextLaunch: "※ 次の agent 起動から反映",
+  agentAppliesNextLaunch: "※ 次回起動時に反映",
+  helpPrompt: "/charm:help",
+  tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
+  createPackPrompt: "/charm:create pack を作りたい",
+  pomodoroPrompt: "/charm:help Pomodoro を使いたい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",
-  voiceFrequency: "要約読み上げ",
+  voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  voiceAppliesNextSession: "※ 次のセッションから反映",
+  voiceAppliesNextSession: "※ 次回セッションから反映",
+  labelPersona: "Persona",
+  labelScene: "Scene",
+  labelSound: "Sound",
+  labelAgent: "Agent",
+  labelAura: "Aura",
+  labelHealth: "Status",
+  labelPacks: "Packs",
+  healthHealthy: "正常",
+  healthWarnings: "警告あり",
+  healthNeedsAttention: "対応が必要",
+  packHealthy: "正常",
+  packWarnings: "警告あり",
+  packNeedsAttention: "対応が必要",
+  loadingPacks: "読み込み中…",
+  noPacksInstalled: "パックなし",
+  selectPack: "パックを選択",
+  diagnosing: "診断中…",
+  quickHelp: "ヘルプ",
+  quickTutorial: "チュートリアル",
+  quickShortcut: "ショートカット",
+  quickCreatePack: "パック作成",
+  quickPomodoro: "ポモドーロ",
 };
 
 export function getStrings(language: ResolvedLanguage): UiStrings {
@@ -83,7 +161,11 @@ export function getStrings(language: ResolvedLanguage): UiStrings {
  * （無言 no-op を防ぐ網羅性）。設計境界: docs/decisions/input-prefill-boundary.md
  */
 const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
+  help: "helpPrompt",
+  tutorial: "tutorialPrompt",
   shortcut: "shortcutPrompt",
+  "create-pack": "createPackPrompt",
+  pomodoro: "pomodoroPrompt",
 };
 
 /**

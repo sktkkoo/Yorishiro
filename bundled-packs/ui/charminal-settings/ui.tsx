@@ -11,10 +11,12 @@
 import type {
   AppLanguage,
   Disposable,
+  FixedTerminalPromptKey,
   ResolvedLanguage,
   UiAppPackDiagnoseResponse,
   UiAppPackStatusEntry,
   UiContext,
+  UiHealthReport,
   UiPackDefinition,
 } from "@charminal/sdk";
 import {
@@ -30,7 +32,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { getStrings } from "../../../src/i18n/strings";
+import { getStrings, type UiStrings } from "../../../src/i18n/strings";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
@@ -39,6 +41,17 @@ import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
+
+const QUICK_ACTION_KEYS: ReadonlyArray<{
+  readonly key: FixedTerminalPromptKey;
+  readonly stringKey: keyof UiStrings;
+}> = [
+  { key: "help", stringKey: "quickHelp" },
+  { key: "tutorial", stringKey: "quickTutorial" },
+  { key: "shortcut", stringKey: "quickShortcut" },
+  { key: "create-pack", stringKey: "quickCreatePack" },
+  { key: "pomodoro", stringKey: "quickPomodoro" },
+];
 
 export interface ResolveCloseTargetArgs {
   readonly saved: string | null;
@@ -99,10 +112,8 @@ function formatPackOptionLabel(pack: {
   readonly name?: string;
   readonly origin: "bundled" | "user";
 }): string {
-  const suffixes: string[] = [];
-  if (pack.id === "clai") suffixes.push("legacy");
-  if (pack.origin === "user") suffixes.push("user");
-  return `${pack.name ?? pack.id}${suffixes.length > 0 ? ` (${suffixes.join(", ")})` : ""}`;
+  const suffix = pack.origin === "user" ? " (user)" : "";
+  return `${pack.name ?? pack.id}${suffix}`;
 }
 
 export function filterPersonaOptionsForLanguage<T extends { readonly id: string }>(
@@ -411,14 +422,26 @@ export function summarizePackDiagnosis(diagnosis: UiAppPackDiagnoseResponse): {
   };
 }
 
-function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseResponse }) {
+function PackDiagnosisSummary({
+  diagnosis,
+  strings,
+}: {
+  diagnosis: UiAppPackDiagnoseResponse;
+  strings: UiStrings;
+}) {
   const summary = summarizePackDiagnosis(diagnosis);
+  const localizedTitle =
+    summary.state === "error"
+      ? strings.packNeedsAttention
+      : summary.state === "warning"
+        ? strings.packWarnings
+        : strings.packHealthy;
   const iconColor =
     summary.state === "error"
-      ? COLORS.accent
+      ? COLORS.statusError
       : summary.state === "warning"
-        ? COLORS.fgDim
-        : COLORS.fgDimmer;
+        ? COLORS.statusWarning
+        : COLORS.accent;
 
   return (
     <div
@@ -442,10 +465,10 @@ function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseRespo
           style={{
             fontSize: FONT.sizeS,
             fontWeight: FONT.weightSemibold,
-            color: summary.state === "error" ? COLORS.accent : COLORS.fg,
+            color: summary.state === "error" ? COLORS.statusError : COLORS.fg,
           }}
         >
-          {summary.title}
+          {localizedTitle}
         </div>
         <div
           style={{
@@ -465,9 +488,9 @@ function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseRespo
 function PackDiagnosticRow({ item }: { item: UiAppPackDiagnoseResponse["diagnostics"][number] }) {
   const color =
     item.severity === "error"
-      ? COLORS.accent
+      ? COLORS.statusError
       : item.severity === "warning"
-        ? COLORS.fgDim
+        ? COLORS.statusWarning
         : COLORS.fgDimmer;
 
   return (
@@ -498,7 +521,10 @@ function PackDiagnosticRow({ item }: { item: UiAppPackDiagnoseResponse["diagnost
         {item.code}
       </span>
       <span
-        style={{ minWidth: 0, color: item.severity === "error" ? COLORS.accent : COLORS.fgDim }}
+        style={{
+          minWidth: 0,
+          color: item.severity === "error" ? COLORS.statusError : COLORS.fgDim,
+        }}
       >
         {item.message}
       </span>
@@ -523,11 +549,53 @@ function PackRecommendationRow({ text }: { text: string }) {
   );
 }
 
+function trustLabel(origin: string, executionClass?: string): string {
+  if (origin === "bundled") return "Bundled with Charminal";
+  if (executionClass === "trusted-main-thread-js") return "Local trusted code";
+  if (executionClass === "isolated-js") return "Isolated sandbox";
+  if (executionClass === "declarative") return "Declarative (no code)";
+  return "Local";
+}
+
+function PackMetadata({
+  diagnosis,
+  origin,
+}: {
+  diagnosis: UiAppPackDiagnoseResponse | null;
+  origin: string;
+}): React.JSX.Element | null {
+  const manifest = diagnosis?.diagnoses[0]?.manifest;
+  const description = manifest?.description;
+  const author = manifest?.author;
+  const execClass = manifest?.executionClass;
+  const trust = trustLabel(origin, execClass);
+
+  if (!description && !author && origin === "bundled") return null;
+
+  return (
+    <div
+      style={{
+        marginBottom: SPACING.sm,
+        paddingBottom: SPACING.sm,
+        borderBottom: `1px solid ${COLORS.borderSubtle}`,
+        fontSize: FONT.sizeXs,
+        lineHeight: 1.45,
+      }}
+    >
+      {description && <div style={{ color: COLORS.fgDim, marginBottom: "3px" }}>{description}</div>}
+      <div style={{ color: COLORS.fgDimmer }}>
+        {author && <span>{author} · </span>}
+        <span>{trust}</span>
+      </div>
+    </div>
+  );
+}
+
 function PackStatusIndicator({ status }: { status: UiAppPackStatusEntry["status"] }) {
   if (status === "failed") {
-    return <AlertTriangle size={12} color={COLORS.accent} aria-hidden="true" />;
+    return <AlertTriangle size={12} color={COLORS.statusError} aria-hidden="true" />;
   }
-  const color = status === "disabled" ? COLORS.borderSubtle : COLORS.accent;
+  const color = status === "disabled" ? COLORS.fgDimmer : COLORS.accent;
   return (
     <span
       style={{
@@ -613,7 +681,225 @@ function groupPacksByKind(
     .map(([kind, packs]) => ({ kind, packs }));
 }
 
-function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
+function HealthStatusIcon({ status }: { status: "ok" | "warning" | "error" }) {
+  if (status === "ok") return <CheckCircle2 size={14} color={COLORS.accent} aria-hidden="true" />;
+  return (
+    <AlertTriangle
+      size={14}
+      color={status === "warning" ? COLORS.statusWarning : COLORS.statusError}
+      aria-hidden="true"
+    />
+  );
+}
+
+function HealthDiagnostics({
+  ctx,
+  strings,
+}: {
+  ctx: UiContext;
+  strings: UiStrings;
+}): React.JSX.Element {
+  const [report, setReport] = useState<UiHealthReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await ctx.app.getHealthReport();
+      setReport(next);
+      if (next.summary === "error") setOpen(true);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(reason);
+      setOpen(true);
+      ctx.emitEvent("charminal-settings:write-failed", { field: "health-report", reason });
+    } finally {
+      setLoading(false);
+    }
+  }, [ctx]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const summaryStatus = report?.summary ?? (error ? "error" : null);
+  const title =
+    summaryStatus === "error"
+      ? strings.healthNeedsAttention
+      : summaryStatus === "warning"
+        ? strings.healthWarnings
+        : strings.healthHealthy;
+  const titleColor =
+    summaryStatus === "error"
+      ? COLORS.statusError
+      : summaryStatus === "warning"
+        ? COLORS.statusWarning
+        : COLORS.fgDimmer;
+
+  return (
+    <section>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: SPACING.sm,
+            opacity: 0.78,
+            border: "none",
+            background: "transparent",
+            color: COLORS.fg,
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: "inherit",
+            padding: 0,
+          }}
+        >
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            style={{
+              transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+              transition: "transform 0.15s ease",
+            }}
+          />
+          {summaryStatus !== null && summaryStatus !== "ok" ? (
+            <HealthStatusIcon status={summaryStatus} />
+          ) : report ? (
+            <CheckCircle2 size={14} color={COLORS.accent} aria-hidden="true" />
+          ) : null}
+          <span>{strings.labelHealth}</span>
+          {summaryStatus !== null && (
+            <span style={{ color: titleColor, fontSize: FONT.sizeXs }}>{title}</span>
+          )}
+        </button>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={loading}
+          aria-label="Refresh health"
+          title="Refresh health"
+          style={{
+            width: "26px",
+            height: "26px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "none",
+            borderRadius: RADIUS.sm,
+            background: "transparent",
+            color: COLORS.fgDimmer,
+            cursor: loading ? "default" : "pointer",
+            opacity: loading ? 0.4 : 0.7,
+            padding: 0,
+          }}
+        >
+          <RefreshCw size={13} aria-hidden="true" />
+        </button>
+      </div>
+
+      {open && (
+        <div
+          style={{
+            marginTop: SPACING.md,
+            border: `1px solid ${COLORS.borderSubtle}`,
+            borderRadius: RADIUS.md,
+            overflow: "hidden",
+            maxWidth: "520px",
+            background: COLORS.bgInput,
+          }}
+        >
+          {report === null ? (
+            <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+              {error ?? "Checking…"}
+            </div>
+          ) : (
+            <>
+              {report.items.map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "18px minmax(0, 1fr)",
+                    gap: SPACING.sm,
+                    padding: `${SPACING.sm} ${SPACING.md}`,
+                    borderBottom: `1px solid ${COLORS.borderSubtle}`,
+                  }}
+                >
+                  <HealthStatusIcon status={item.status} />
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: FONT.sizeS,
+                        fontWeight: FONT.weightSemibold,
+                        color: item.status === "error" ? COLORS.statusError : COLORS.fg,
+                      }}
+                    >
+                      {item.label}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: "2px",
+                        color: COLORS.fgDimmer,
+                        fontSize: FONT.sizeXs,
+                        lineHeight: 1.45,
+                        overflowWrap: "anywhere",
+                      }}
+                    >
+                      {item.detail}
+                    </div>
+                    {item.action && (
+                      <div
+                        style={{
+                          marginTop: "3px",
+                          color: COLORS.fgDim,
+                          fontSize: FONT.sizeXs,
+                          lineHeight: 1.45,
+                        }}
+                      >
+                        {item.action}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              <div
+                style={{
+                  padding: `${SPACING.sm} ${SPACING.md}`,
+                  color: COLORS.fgDimmer,
+                  fontSize: FONT.sizeXs,
+                  lineHeight: 1.45,
+                  overflowWrap: "anywhere",
+                }}
+              >
+                <div>Config: {report.paths.config}</div>
+                <div>Startup report: {report.paths.startupReport}</div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PackWorkbench({
+  ctx,
+  strings,
+}: {
+  ctx: UiContext;
+  strings: UiStrings;
+}): React.JSX.Element {
   const [packs, setPacks] = useState<readonly UiAppPackStatusEntry[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [diagnosis, setDiagnosis] = useState<UiAppPackDiagnoseResponse | null>(null);
@@ -748,7 +1034,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
       >
         <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, opacity: 0.78 }}>
           <Package size={14} aria-hidden="true" />
-          <span>Packs</span>
+          <span>{strings.labelPacks}</span>
           {packs.length > 0 && (
             <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>{packs.length}</span>
           )}
@@ -796,7 +1082,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 textAlign: "center",
               }}
             >
-              {loading ? "Loading packs…" : "No packs installed"}
+              {loading ? strings.loadingPacks : strings.noPacksInstalled}
             </div>
           ) : (
             groups.map((group) => (
@@ -820,56 +1106,81 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                   const selected = key === selectedKey;
                   const isDisabled = pack.status === "disabled";
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={key}
-                      onClick={() => selectPack(key)}
                       style={{
                         width: "100%",
                         display: "flex",
                         alignItems: "center",
                         gap: SPACING.sm,
                         padding: `6px ${SPACING.md}`,
-                        border: "none",
                         borderLeft: pack.isActive
                           ? `3px solid ${COLORS.accent}`
                           : "3px solid transparent",
                         borderBottom: `1px solid ${COLORS.borderSubtle}`,
                         background: selected ? COLORS.accentSoft : COLORS.bgPanel,
                         color: isDisabled ? COLORS.fgDim : COLORS.fg,
-                        cursor: "pointer",
                         textAlign: "left",
                         font: "inherit",
                         fontSize: FONT.sizeS,
                         opacity: isDisabled ? 0.7 : 1,
                       }}
                     >
-                      <PackStatusIndicator status={pack.status} />
-                      <span
+                      <button
+                        type="button"
+                        onClick={() => selectPack(key)}
                         style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: SPACING.sm,
                           flex: 1,
                           minWidth: 0,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          textDecoration: isDisabled ? "line-through" : "none",
+                          border: "none",
+                          background: "transparent",
+                          color: "inherit",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          font: "inherit",
+                          fontSize: "inherit",
+                          padding: 0,
                         }}
                       >
-                        {pack.id}
-                      </span>
-                      {pack.origin === "user" && (
                         <span
                           style={{
-                            fontSize: "10px",
-                            color: COLORS.fgDimmer,
-                            padding: "1px 5px",
-                            borderRadius: "3px",
-                            border: `1px solid ${COLORS.borderSubtle}`,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            flexShrink: 0,
                           }}
                         >
-                          user
+                          <PackStatusIndicator status={pack.status} />
                         </span>
-                      )}
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            textDecoration: isDisabled ? "line-through" : "none",
+                          }}
+                        >
+                          {pack.id}
+                        </span>
+                        {pack.origin === "user" && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              color: COLORS.fgDimmer,
+                              padding: "1px 5px",
+                              borderRadius: "3px",
+                              border: `1px solid ${COLORS.borderSubtle}`,
+                              flexShrink: 0,
+                            }}
+                          >
+                            user
+                          </span>
+                        )}
+                      </button>
                       <PackToggle
                         pack={pack}
                         busy={busy !== null}
@@ -878,7 +1189,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                           void runPackAction(action, pack.id);
                         }}
                       />
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -891,7 +1202,8 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
             padding: `${SPACING.md} ${SPACING.md}`,
             background: COLORS.bgInput,
             borderTop: `1px solid ${COLORS.borderSubtle}`,
-            height: "140px",
+            minHeight: "140px",
+            maxHeight: "220px",
             overflowY: "auto",
           }}
         >
@@ -903,7 +1215,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 padding: `${SPACING.xs} 0`,
               }}
             >
-              Select a pack
+              {strings.selectPack}
             </div>
           ) : (
             <>
@@ -940,6 +1252,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                   {selectedPack.origin}
                 </span>
               </div>
+              <PackMetadata diagnosis={diagnosis} origin={selectedPack.origin} />
 
               {diagnosis === null ? (
                 <div
@@ -949,14 +1262,16 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                     padding: `${SPACING.xs} 0`,
                   }}
                 >
-                  Diagnosing…
+                  {strings.diagnosing}
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: SPACING.sm }}>
-                  <PackDiagnosisSummary diagnosis={diagnosis} />
-                  {diagnosis.diagnostics.map((item) => (
-                    <PackDiagnosticRow key={`${item.code}:${item.message}`} item={item} />
-                  ))}
+                  <PackDiagnosisSummary diagnosis={diagnosis} strings={strings} />
+                  {diagnosis.diagnostics
+                    .filter((item) => item.severity !== "info")
+                    .map((item) => (
+                      <PackDiagnosticRow key={`${item.code}:${item.message}`} item={item} />
+                    ))}
                   {diagnosis.diagnoses[0]?.entryPath && (
                     <div
                       title={diagnosis.diagnoses[0].entryPath}
@@ -978,7 +1293,13 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 </div>
               )}
               {error && (
-                <div style={{ marginTop: SPACING.sm, color: COLORS.accent, fontSize: FONT.sizeXs }}>
+                <div
+                  style={{
+                    marginTop: SPACING.sm,
+                    color: COLORS.statusError,
+                    fontSize: FONT.sizeXs,
+                  }}
+                >
                   {error}
                 </div>
               )}
@@ -1184,16 +1505,19 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     fireCloseRequest();
   };
 
-  /** Shortcut footer link: 設定を閉じて terminal に /charm:shortcut prompt を pre-fill する。 */
-  const onShortcutClick = async () => {
+  /** Quick action: 設定を閉じて terminal に host 所有の固定 prompt を pre-fill する。 */
+  const onQuickActionClick = async (key: FixedTerminalPromptKey) => {
     fireCloseRequest();
     try {
       // pack は文字列を渡さない。host 所有の固定プロンプトを key で指す。
       // 設計境界: docs/decisions/input-prefill-boundary.md
-      await ctx.app.insertFixedPrompt("shortcut");
+      await ctx.app.insertFixedPrompt(key);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      ctx.emitEvent("charminal-settings:write-failed", { field: "shortcut-prompt", reason });
+      ctx.emitEvent("charminal-settings:write-failed", {
+        field: `fixed-prompt-${key}`,
+        reason,
+      });
     }
   };
 
@@ -1251,6 +1575,43 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           overflowY: "auto",
         }}
       >
+        {/* Quick Actions */}
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: `${SPACING.xs} ${SPACING.md}`,
+            fontSize: FONT.sizeXs,
+            opacity: 0.5,
+            marginBottom: SPACING.xl,
+          }}
+        >
+          {QUICK_ACTION_KEYS.map((action) => (
+            <button
+              key={action.key}
+              type="button"
+              onClick={() => {
+                void onQuickActionClick(action.key);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                color: "inherit",
+                font: "inherit",
+                fontSize: "inherit",
+                cursor: "pointer",
+                padding: 0,
+                textDecoration: "underline",
+                textDecorationColor: "currentColor",
+                textUnderlineOffset: "2px",
+                opacity: 1,
+              }}
+            >
+              {strings[action.stringKey]}
+            </button>
+          ))}
+        </div>
+
         {/* グループ 1: VRM / Persona / Scene / Aura */}
         <div style={gridStyle}>
           {/* Language */}
@@ -1310,7 +1671,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </button>
 
           {/* Persona */}
-          <div style={{ opacity: 0.7 }}>Persona</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelPersona}</div>
           <div>
             <Select
               value={personaSelectValue}
@@ -1325,7 +1686,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
 
           {/* Scene */}
-          <div style={{ opacity: 0.7 }}>Scene</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelScene}</div>
           <div>
             <Select
               value={scene ?? ""}
@@ -1340,7 +1701,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
 
           {/* Aura */}
-          <div style={{ opacity: 0.7 }}>Aura</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelAura}</div>
           <div>
             <Toggle checked={auraEnabled} onChange={onAuraToggle} />
           </div>
@@ -1351,7 +1712,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         {/* グループ 2: Sound（mute icon + volume slider） */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>Sound</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelSound}</div>
           <div
             style={{
               display: "flex",
@@ -1392,7 +1753,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
         </div>
 
-        {/* Summary Voice（Sound の直下） */}
+        {/* Voice Summary（Sound の直下） */}
         <div style={{ ...gridStyle, marginTop: SPACING.md }}>
           <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
           <div>
@@ -1415,7 +1776,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         {/* グループ 3: Terminal */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>Agent</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelAgent}</div>
           <div>
             <Select
               value={agent}
@@ -1438,41 +1799,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           {strings.agentAppliesNextLaunch}
         </div>
 
-        {/* 48px gap before footer links */}
-        <div style={{ height: "48px" }} />
+        {/* 32px gap */}
+        <div style={{ height: "32px" }} />
 
-        {/* footer link */}
-        <div
-          style={{
-            fontSize: FONT.sizeXs,
-            opacity: 0.5,
-          }}
-        >
-          <button
-            type="button"
-            onClick={onShortcutClick}
-            style={{
-              background: "none",
-              border: "none",
-              color: "inherit",
-              font: "inherit",
-              fontSize: "inherit",
-              cursor: "pointer",
-              padding: 0,
-              textDecoration: "underline",
-              textDecorationColor: "currentColor",
-              textUnderlineOffset: "2px",
-              opacity: 1,
-            }}
-          >
-            Shortcut
-          </button>
-        </div>
+        <HealthDiagnostics ctx={ctx} strings={strings} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <PackWorkbench ctx={ctx} />
+        <PackWorkbench ctx={ctx} strings={strings} />
       </main>
     </div>
   );

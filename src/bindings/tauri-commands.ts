@@ -137,6 +137,22 @@ export interface PrepareLocalizedPluginDirArgs {
 export const prepareLocalizedPluginDir = (args: PrepareLocalizedPluginDirArgs): Promise<string> =>
   call("prepare_localized_plugin_dir", args);
 
+export interface ResolveCommandPathArgs {
+  readonly command: string;
+}
+
+/** Charminal の launch PATH 上で command が解決できるかを返す。 */
+export const resolveCommandPath = (args: ResolveCommandPathArgs): Promise<string | null> =>
+  call("resolve_command_path", args);
+
+export interface McpServerStatus {
+  readonly port: number | null;
+  readonly error: string | null;
+}
+
+/** MCP server の startup 結果を返す。 */
+export const mcpServerStatus = (): Promise<McpServerStatus> => invoke("mcp_server_status");
+
 export interface PtyWriteArgs {
   readonly data: string;
 }

@@ -4,5 +4,7 @@
   "type": "effect",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "author": "Charminal team",
+  "description": "Temporarily shifts the camera position or look target.",
   "entry": "effect.ts"
 }

@@ -94,7 +94,7 @@
 
 - [**cognitive-load-design-lens.md**](cognitive-load-design-lens.md) — 設計 / refactor 判断の lens：「読者が追跡する layer を減らす / 保持する state を減らす」の 2 原則。over-abstraction を見抜く判定軸込み
 - [**separate-distinct-systems.md**](separate-distinct-systems.md) — 表面的類似で統合しない、動作モデルが違えば別 concept で
-- [**presence-over-spectacle.md**](presence-over-spectacle.md) — visual layer は実在感の増幅が第一、shoost 的な過剰演出は合わない
+- [**presence-over-spectacle.md**](presence-over-spectacle.md) — visual layer は実在感の増幅が第一、過剰演出は合わない
 - [**interaction-as-presence.md**](interaction-as-presence.md) — 意味ある interaction は presence の核、mechanical reactivity（hover glow / parallax 等）は採らない
 - [**body-interaction-style.md**](body-interaction-style.md) — 住人の身体性は (B) 滲み出しと UI 操作 を default に。(A) 物理接触（IK で壁押し / カーソル追従等）は禁じないが推奨しない（技術困難 + (B) の方が住人性を本質的に伝える）
 - [**autonomy-without-disruption.md**](autonomy-without-disruption.md) — 住人の自発性は user の作業を邪魔しない範囲で設計する。「邪魔しない / でも従属もしない」の二項で居ることを定義。「邪魔になりうることが大事」は退ける

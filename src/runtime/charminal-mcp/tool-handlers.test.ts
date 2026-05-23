@@ -349,7 +349,7 @@ describe("pack_diagnose handler", () => {
     expect(result.diagnostics).toEqual(
       expect.arrayContaining([
         {
-          severity: "warning",
+          severity: "info",
           code: "pack-disabled",
           message: "pack 'missing' is listed in config.disabledPacks",
         },

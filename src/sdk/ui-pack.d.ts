@@ -126,6 +126,8 @@ export interface UiAppPackDiagnosis {
     readonly type: string;
     readonly entry: string;
     readonly executionClass?: string;
+    readonly description?: string;
+    readonly author?: string;
   };
   readonly loadError?: {
     readonly phase: "import" | "validate";
@@ -145,6 +147,30 @@ export interface UiAppPackDiagnoseResponse {
   readonly recommendations: readonly string[];
 }
 
+export interface UiHealthItem {
+  readonly id: string;
+  readonly label: string;
+  readonly status: "ok" | "warning" | "error";
+  readonly detail: string;
+  readonly action?: string;
+}
+
+export interface UiHealthReport {
+  readonly generatedAt: string;
+  readonly summary: "ok" | "warning" | "error";
+  readonly selectedAgent: "claude" | "codex";
+  readonly safeMode: boolean;
+  readonly homeDir: string;
+  readonly paths: {
+    readonly config: string;
+    readonly init: string;
+    readonly packs: string;
+    readonly startupReport: string;
+  };
+  readonly items: readonly UiHealthItem[];
+  readonly recommendations: readonly string[];
+}
+
 /**
  * `insertFixedPrompt` が受け付ける固定プロンプトの key。
  *
@@ -153,7 +179,7 @@ export interface UiAppPackDiagnoseResponse {
  * terminal/PTY に書く API は型ごと存在しない。
  * 設計境界: docs/decisions/input-prefill-boundary.md / critical-constraints.md §1
  */
-export type FixedTerminalPromptKey = "shortcut";
+export type FixedTerminalPromptKey = "help" | "tutorial" | "shortcut" | "create-pack" | "pomodoro";
 
 /**
  * UI pack から App-level state を変更するための API namespace。
@@ -186,6 +212,8 @@ export interface UiAppAPI {
   disablePack(id: string): Promise<{ readonly ok: boolean; readonly reason?: string }>;
   /** 無効化された user pack を再読み込みして有効化する。 */
   enablePack(id: string): Promise<{ readonly ok: boolean; readonly reason?: string }>;
+  /** First-run / Diagnostics 用の host health report。 */
+  getHealthReport(): Promise<UiHealthReport>;
   /** primaryPersona を切り替える。`config.json` に書き戻す責務もここ。 */
   setPrimaryPersona(id: string | null): Promise<void>;
   /** activeScene を切り替える。 */

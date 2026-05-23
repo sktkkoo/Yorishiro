@@ -5,6 +5,7 @@ import type {
   TweenAPI,
   UiClaimAPI,
   UiContext,
+  UiHealthReport,
   UiLayout,
   UiPackManifest,
   UiSceneLayerPatch,
@@ -16,15 +17,22 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
+import attentionAuraManifest from "../bundled-packs/ambient-ui/attention-aura/manifest.json";
+import pomodoroUiManifest from "../bundled-packs/ambient-ui/pomodoro-ui/manifest.json";
+import pomodoroManifest from "../bundled-packs/amenities/pomodoro/manifest.json";
 import cameraMovePack from "../bundled-packs/effects/camera-move/effect";
+import cameraMoveManifest from "../bundled-packs/effects/camera-move/manifest.json";
 import desaturatePack from "../bundled-packs/effects/desaturate/effect";
+import desaturateManifest from "../bundled-packs/effects/desaturate/manifest.json";
 import fireworksPack from "../bundled-packs/effects/fireworks/effect";
+import fireworksManifest from "../bundled-packs/effects/fireworks/manifest.json";
 import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
+import fireworksVolleyManifest from "../bundled-packs/effects/fireworks-volley/manifest.json";
 import screenFlashPack from "../bundled-packs/effects/screen-flash/effect";
 import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
+import screenShakeManifest from "../bundled-packs/effects/screen-shake/manifest.json";
 import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
-import claiManifest from "../bundled-packs/personas/clai/manifest.json";
-import claiPack from "../bundled-packs/personas/clai/persona";
+import textPhysicsManifest from "../bundled-packs/effects/text-physics/manifest.json";
 import claiEnManifest from "../bundled-packs/personas/clai-en/manifest.json";
 import claiEnPack from "../bundled-packs/personas/clai-en/persona";
 import claiJaManifest from "../bundled-packs/personas/clai-ja/manifest.json";
@@ -80,6 +88,7 @@ import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
+import { collectHealthReport } from "./runtime/health-check";
 import { getOrInit } from "./runtime/hot-data";
 import {
   type AppLanguage,
@@ -446,6 +455,85 @@ function applyPresenceWidth(px: number): PresenceResolution {
   return res;
 }
 
+const FIRST_RUN_HEALTH_SEEN_KEY = "charminal:first-run-health-seen";
+
+function FirstRunHealthPanel({
+  report,
+  onOpenSettings,
+  onDismiss,
+}: {
+  readonly report: UiHealthReport;
+  readonly onOpenSettings: () => void;
+  readonly onDismiss: () => void;
+}): React.JSX.Element {
+  const title =
+    report.summary === "error"
+      ? "Charminal needs setup"
+      : report.summary === "warning"
+        ? "Charminal is almost ready"
+        : "Charminal is ready";
+  const visibleItems = report.items.filter(
+    (item) => item.status !== "ok" || item.id === "agent" || item.id === "home",
+  );
+  const continueLabel =
+    report.summary === "error"
+      ? report.selectedAgent === "claude"
+        ? "Continue without Claude Code"
+        : "Continue without Codex"
+      : "Continue";
+
+  return (
+    <div
+      className="first-run-health"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="health-title"
+    >
+      <div className="first-run-health-panel">
+        <div className="first-run-health-kicker">First run check</div>
+        <h1 id="health-title">{title}</h1>
+        <div className="first-run-health-body">
+          {visibleItems.map((item) => (
+            <div className="first-run-health-row" data-status={item.status} key={item.id}>
+              <span className="first-run-health-dot" aria-hidden="true" />
+              <div>
+                <div className="first-run-health-label">{item.label}</div>
+                <div className="first-run-health-detail">{item.detail}</div>
+                {item.action && <div className="first-run-health-action">{item.action}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="first-run-health-paths">
+          <div>Config: {report.paths.config}</div>
+          <div>Startup report: {report.paths.startupReport}</div>
+        </div>
+        {report.summary === "error" && (
+          <div className="first-run-health-note">
+            The terminal may already be trying to start in the background. Open Settings to switch
+            agents or continue after reviewing the issue.
+          </div>
+        )}
+        <div className="first-run-health-actions">
+          <button
+            type="button"
+            className="first-run-health-secondary"
+            onClick={() => {
+              onOpenSettings();
+              onDismiss();
+            }}
+          >
+            Open settings
+          </button>
+          <button type="button" className="first-run-health-primary" onClick={onDismiss}>
+            {continueLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
@@ -580,7 +668,6 @@ function App() {
       readonly pack: PersonaDefinition;
       readonly manifest: PersonaPackManifest;
     }> = [
-      { pack: claiPack, manifest: claiManifest as PersonaPackManifest },
       { pack: claiJaPack, manifest: claiJaManifest as PersonaPackManifest },
       { pack: claiEnPack, manifest: claiEnManifest as PersonaPackManifest },
     ];
@@ -1057,6 +1144,14 @@ function App() {
             screenShakePack,
             textPhysicsPack,
           ].map((p) => ({ id: p.id, kind: "effect" })),
+          ...getAmbientUiPackRegistry()
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "ambient-ui" })),
+          ...getAmenityPackRegistry()
+            .listEntries()
+            .filter((e) => e.origin === "bundled")
+            .map((e) => ({ id: e.id, kind: "amenity" })),
         ];
 
         const handlers: ToolHandlerMap = {
@@ -1587,6 +1682,133 @@ function App() {
     }
   }, []);
 
+  const bundledManifestMap = useMemo(
+    () =>
+      new Map(
+        [
+          claiEnManifest,
+          claiJaManifest,
+          abandonedFactoryManifest,
+          mistyGrasslandsManifest,
+          simpleRoomManifest,
+          charminalSettingsManifest,
+          immersiveManifest,
+          theaterManifest,
+          cameraMoveManifest,
+          desaturateManifest,
+          fireworksManifest,
+          fireworksVolleyManifest,
+          screenShakeManifest,
+          textPhysicsManifest,
+          attentionAuraManifest,
+          pomodoroUiManifest,
+          pomodoroManifest,
+        ].map((m) => [m.id, m] as const),
+      ),
+    [],
+  );
+
+  const readBundledPacks = useCallback(() => {
+    const withMeta = (id: string, kind: string) => {
+      const m = bundledManifestMap.get(id) as Record<string, unknown> | undefined;
+      return {
+        id,
+        kind,
+        description: m?.description as string | undefined,
+        author: m?.author as string | undefined,
+      };
+    };
+    return [
+      ...personaRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "persona")),
+      ...scenePackRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "scene")),
+      ...uiPackRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "ui")),
+      ...[
+        cameraMovePack,
+        desaturatePack,
+        fireworksPack,
+        fireworksVolleyPack,
+        screenShakePack,
+        textPhysicsPack,
+      ].map((p) => withMeta(p.id, "effect")),
+      ...getAmbientUiPackRegistry()
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "ambient-ui")),
+      ...getAmenityPackRegistry()
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => withMeta(e.id, "amenity")),
+    ];
+  }, [bundledManifestMap, personaRegistry, scenePackRegistry, uiPackRegistry]);
+
+  const listPacksForHealth = useCallback(async () => {
+    const { createListPacksHandler } = await import("./runtime/charminal-mcp/tool-handlers");
+    const result = await createListPacksHandler({
+      readRegistry: () => packRegistry.listEntries(),
+      readBundledPacks,
+      readConfig: async () => parseConfig(await readCharminalConfigText()),
+      readLoadReport: async () => {
+        const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
+        const text = await readLastStartupReport();
+        if (text === "") return null;
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      },
+      getActiveIds: () => ({
+        scene: scenePackRegistry.getActiveSceneId(),
+        ui: uiPackRegistry.getActiveUiId(),
+        persona: personaRegistry.getActivePersonaId(),
+      }),
+    })({});
+    const { invoke } = await import("@tauri-apps/api/core");
+    type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
+    const userEntries = await invoke<UserPackEntry[]>("list_user_packs").catch(() => []);
+    return {
+      packs: result.packs.flatMap((pack) => {
+        if (pack.status !== "disabled" || pack.kind !== "") return [pack];
+        const matchingEntries = userEntries.filter((entry) => entry.id === pack.id);
+        if (matchingEntries.length === 0) return [pack];
+        return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
+      }),
+    };
+  }, [packRegistry, personaRegistry, scenePackRegistry, uiPackRegistry, readBundledPacks]);
+
+  const collectAppHealthReport = useCallback(
+    () => collectHealthReport({ listPacks: listPacksForHealth }),
+    [listPacksForHealth],
+  );
+
+  const [firstRunHealth, setFirstRunHealth] = useState<UiHealthReport | null>(null);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    if (localStorage.getItem(FIRST_RUN_HEALTH_SEEN_KEY) === "1") return;
+    let cancelled = false;
+    void collectAppHealthReport().then((report) => {
+      if (!cancelled) setFirstRunHealth(report);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserLayerReady, collectAppHealthReport]);
+
+  const dismissFirstRunHealth = useCallback(() => {
+    localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
+    setFirstRunHealth(null);
+  }, []);
+
   // ── UI pack: subscribe + mount / dispose lifecycle ────────────────────
   // active UI pack が切り替わるたびに前の pack を teardown（dispose + container remove +
   // layout reset）してから新しい pack の layout を apply、container を body 直下に挿入、
@@ -1745,29 +1967,6 @@ function App() {
       pendingConfigWrite = next.catch(() => undefined);
       return next;
     };
-
-    const readBundledPacks = (): Array<{ id: string; kind: string }> => [
-      ...personaRegistry
-        .listEntries()
-        .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "persona" })),
-      ...scenePackRegistry
-        .listEntries()
-        .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "scene" })),
-      ...uiPackRegistry
-        .listEntries()
-        .filter((e) => e.origin === "bundled")
-        .map((e) => ({ id: e.id, kind: "ui" })),
-      ...[
-        cameraMovePack,
-        desaturatePack,
-        fireworksPack,
-        fireworksVolleyPack,
-        screenShakePack,
-        textPhysicsPack,
-      ].map((p) => ({ id: p.id, kind: "effect" })),
-    ];
 
     const readLoadReportForPackTools = async () => {
       const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
@@ -1966,22 +2165,7 @@ function App() {
               name: e.manifest.name,
               origin: e.origin,
             })),
-          listPacks: async () => {
-            const { createListPacksHandler } = await import(
-              "./runtime/charminal-mcp/tool-handlers"
-            );
-            const { writeConfig: _writeConfig, ...deps } = buildPackToolDeps();
-            const result = await createListPacksHandler(deps)({});
-            const userEntries = await readUserPackEntriesForPackTools().catch(() => []);
-            return {
-              packs: result.packs.flatMap((pack) => {
-                if (pack.status !== "disabled" || pack.kind !== "") return [pack];
-                const matchingEntries = userEntries.filter((entry) => entry.id === pack.id);
-                if (matchingEntries.length === 0) return [pack];
-                return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
-              }),
-            };
-          },
+          listPacks: listPacksForHealth,
           diagnosePack: async (id, kind) => {
             const { createPackDiagnoseHandler } = await import(
               "./runtime/charminal-mcp/tool-handlers"
@@ -2014,6 +2198,7 @@ function App() {
               reloadPack: reloadPackForPackTools,
             })({ id });
           },
+          getHealthReport: collectAppHealthReport,
           setPrimaryPersona: async (id) => {
             await updateConfig({ primaryPersona: id });
             personaRegistry.setPrimaryPersona(
@@ -2194,6 +2379,9 @@ function App() {
     tabManager,
     effectPackRunner,
     packRegistry,
+    listPacksForHealth,
+    collectAppHealthReport,
+    readBundledPacks,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -2837,6 +3025,13 @@ function App() {
             }
           />
         </>
+      )}
+      {firstRunHealth && (
+        <FirstRunHealthPanel
+          report={firstRunHealth}
+          onOpenSettings={handleOpenSettings}
+          onDismiss={dismissFirstRunHealth}
+        />
       )}
     </div>
   );

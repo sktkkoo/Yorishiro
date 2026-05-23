@@ -91,7 +91,6 @@ describe("applyConfigUpdate", () => {
 
 describe("localized CLAI persona options", () => {
   const personas = [
-    { id: "clai", name: "CLAI", origin: "bundled" as const },
     { id: "clai-en", name: "CLAI", origin: "bundled" as const },
     { id: "clai-ja", name: "CLAI", origin: "bundled" as const },
     { id: "my-persona", name: "Mine", origin: "user" as const },
@@ -111,9 +110,8 @@ describe("localized CLAI persona options", () => {
     ]);
   });
 
-  it("shows the localized CLAI selection for unset or legacy CLAI config", () => {
+  it("shows the localized CLAI selection for unset config", () => {
     expect(resolvePersonaSelectValue(null, "ja")).toBe("clai-ja");
-    expect(resolvePersonaSelectValue("clai", "en")).toBe("clai-en");
     expect(resolvePersonaSelectValue("clai-en", "ja")).toBe("clai-ja");
   });
 

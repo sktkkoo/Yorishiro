@@ -4,5 +4,7 @@
   "type": "effect",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
+  "author": "Charminal team",
+  "description": "Temporarily desaturates the entire screen.",
   "entry": "effect.ts"
 }
