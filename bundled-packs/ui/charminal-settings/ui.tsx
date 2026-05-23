@@ -75,7 +75,11 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
   try {
     await args.write(args.next);
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("charminal-settings:config-changed"));
+      window.dispatchEvent(
+        new CustomEvent("charminal-settings:config-changed", {
+          detail: { field: args.field },
+        }),
+      );
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
@@ -554,6 +558,7 @@ function PackToggle({
       type="button"
       role="switch"
       aria-checked={enabled}
+      aria-label={`${enabled ? "Disable" : "Enable"} pack ${pack.id}`}
       disabled={busy}
       onClick={(e) => {
         e.stopPropagation();
@@ -598,7 +603,7 @@ function groupPacksByKind(
     if (group) group.push(pack);
     else map.set(kind, [pack]);
   }
-  const kindOrder = ["persona", "scene", "voice", "effect", "ambient", "ui"];
+  const kindOrder = ["persona", "scene", "effect", "ui", "ambient-ui", "amenity", "other"];
   return [...map.entries()]
     .sort(([a], [b]) => {
       const ai = kindOrder.indexOf(a);
@@ -660,7 +665,20 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
   }, [ctx]);
 
   useEffect(() => {
-    const onConfigChanged = () => void refreshPacks();
+    const packRelatedFields = new Set([
+      "activeAmbientUi",
+      "activeScene",
+      "primaryPersona",
+      "activeUi",
+      "disabledPacks",
+    ]);
+    const onConfigChanged = (event: Event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      const field = typeof detail?.field === "string" ? detail.field : null;
+      if (field === null || field.startsWith("pack-") || packRelatedFields.has(field)) {
+        void refreshPacks();
+      }
+    };
     window.addEventListener("charminal-settings:config-changed", onConfigChanged);
     return () => window.removeEventListener("charminal-settings:config-changed", onConfigChanged);
   }, [refreshPacks]);
