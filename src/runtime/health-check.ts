@@ -1,6 +1,6 @@
 import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@charminal/sdk";
 import { invoke } from "@tauri-apps/api/core";
-import { resolveCommandPath } from "../bindings/tauri-commands";
+import { mcpServerStatus, resolveCommandPath } from "../bindings/tauri-commands";
 import {
   fetchSafeModeFlag,
   readCharminalConfigText,
@@ -45,7 +45,7 @@ function parseLoadReport(text: string): { failed: number; total: number } | null
 }
 
 export async function collectHealthReport(deps: CollectHealthReportDeps): Promise<UiHealthReport> {
-  const [homeDir, safeMode, configText, startupText, claudePath, codexPath, packResult] =
+  const [homeDir, safeMode, configText, startupText, claudePath, codexPath, mcpStatus, packResult] =
     await Promise.all([
       invoke<string>("charminal_home_dir").catch(() => ""),
       fetchSafeModeFlag().catch(() => false),
@@ -53,11 +53,15 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       readLastStartupReport().catch(() => ""),
       resolveCommandPath({ command: "claude" }).catch(() => null),
       resolveCommandPath({ command: "codex" }).catch(() => null),
+      mcpServerStatus().catch(() => ({ port: null, error: "Could not read MCP status." })),
       deps.listPacks().catch(() => ({ packs: [] })),
     ]);
 
   const config = parseConfig(configText);
+  const expectedMcpPort = config.mcpPort ?? 18743;
   const selectedAgentPath = config.terminalAgent === "claude" ? claudePath : codexPath;
+  const otherAgentPath = config.terminalAgent === "claude" ? codexPath : claudePath;
+  const otherAgentName = config.terminalAgent === "claude" ? "Codex" : "Claude Code";
   const packs = packResult.packs;
   const failedPacks = packs.filter((pack) => pack.status === "failed");
   const disabledPacks = packs.filter((pack) => pack.status === "disabled");
@@ -81,22 +85,38 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       selectedAgentPath === null ? "error" : "ok",
       selectedAgentPath === null
         ? `${config.terminalAgent} is selected but was not found on Charminal's PATH.`
-        : `${config.terminalAgent}: ${selectedAgentPath}`,
+        : `${config.terminalAgent}: ${selectedAgentPath}${
+            otherAgentPath === null ? "" : ` (${otherAgentName} also available)`
+          }`,
       selectedAgentPath === null
         ? "Install the selected agent or switch Agent in Settings."
         : undefined,
     ),
   );
 
+  if (claudePath === null && codexPath === null) {
+    items.push(
+      healthItem(
+        "agent-options",
+        "Agent options",
+        "warning",
+        "Claude Code and Codex were both missing from Charminal's PATH.",
+        "Install Claude Code or Codex before using the embedded agent terminal.",
+      ),
+    );
+  }
+
   items.push(
     healthItem(
-      "agent-options",
-      "Agent options",
-      claudePath === null && codexPath === null ? "warning" : "ok",
-      `Claude Code: ${claudePath ?? "not found"} / Codex: ${codexPath ?? "not found"}`,
-      claudePath === null && codexPath === null
-        ? "Install Claude Code or Codex before using the embedded agent terminal."
-        : undefined,
+      "mcp-port",
+      "MCP port",
+      mcpStatus.error === null ? "ok" : "warning",
+      mcpStatus.error === null
+        ? `Charminal MCP is listening on localhost:${mcpStatus.port ?? expectedMcpPort}.`
+        : `Charminal MCP did not start on localhost:${expectedMcpPort}: ${mcpStatus.error}`,
+      mcpStatus.error === null
+        ? undefined
+        : "Check whether another process is using the configured MCP port, then restart Charminal.",
     ),
   );
 
@@ -116,7 +136,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Packs",
       failedPacks.length > 0 ? "error" : disabledPacks.length > 0 ? "warning" : "ok",
       `${packs.length} known, ${failedPacks.length} failed, ${disabledPacks.length} disabled`,
-      failedPacks.length > 0 ? "Open Packs below and diagnose the failed entries." : undefined,
+      failedPacks.length > 0 ? "Open Packs above and diagnose the failed entries." : undefined,
     ),
   );
 

@@ -468,6 +468,12 @@ function FirstRunHealthPanel({
   const visibleItems = report.items.filter(
     (item) => item.status !== "ok" || item.id === "agent" || item.id === "home",
   );
+  const continueLabel =
+    report.summary === "error"
+      ? report.selectedAgent === "claude"
+        ? "Continue without Claude Code"
+        : "Continue without Codex"
+      : "Continue";
 
   return (
     <div
@@ -495,6 +501,12 @@ function FirstRunHealthPanel({
           <div>Config: {report.paths.config}</div>
           <div>Startup report: {report.paths.startupReport}</div>
         </div>
+        {report.summary === "error" && (
+          <div className="first-run-health-note">
+            The terminal may already be trying to start in the background. Open Settings to switch
+            agents or continue after reviewing the issue.
+          </div>
+        )}
         <div className="first-run-health-actions">
           <button
             type="button"
@@ -507,7 +519,7 @@ function FirstRunHealthPanel({
             Open settings
           </button>
           <button type="button" className="first-run-health-primary" onClick={onDismiss}>
-            Continue
+            {continueLabel}
           </button>
         </div>
       </div>

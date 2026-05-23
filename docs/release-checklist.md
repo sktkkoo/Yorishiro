@@ -23,7 +23,8 @@ xattr -cr /Applications/charminal.app
 ```
 
 - Launch Charminal from Finder.
-- Confirm the first-run health check appears once.
+- Confirm the first-run health check appears once in the installed production
+  build. Do not rely on the dev build's localStorage state for this check.
 - Confirm the first-run check reports the selected terminal agent clearly.
 - Dismiss the first-run check, quit, and relaunch. It should not reappear.
 

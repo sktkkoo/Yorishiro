@@ -9,6 +9,7 @@ interface AppErrorBoundaryState {
   readonly error: Error | null;
   readonly errorInfo: React.ErrorInfo | null;
   readonly homeDir: string | null;
+  readonly copied: boolean;
 }
 
 function formatError(error: Error, errorInfo: React.ErrorInfo | null): string {
@@ -25,6 +26,7 @@ export class AppErrorBoundary extends React.Component<
     error: null,
     errorInfo: null,
     homeDir: null,
+    copied: false,
   };
 
   static getDerivedStateFromError(error: Error): Partial<AppErrorBoundaryState> {
@@ -50,6 +52,7 @@ export class AppErrorBoundary extends React.Component<
       navigator.platform.toLowerCase().includes("mac") || navigator.userAgent.includes("Mac")
         ? "CHARMINAL_SAFE_MODE=1 open /Applications/charminal.app"
         : "CHARMINAL_SAFE_MODE=1 charminal";
+    const issueUrl = "https://github.com/sktkkoo/Charminal/issues/new?template=crash_report.yml";
 
     return (
       <main className="app-error-boundary">
@@ -73,6 +76,19 @@ export class AppErrorBoundary extends React.Component<
             <pre>{formatError(error, errorInfo)}</pre>
           </details>
           <div className="app-error-boundary-actions">
+            <a href={issueUrl} target="_blank" rel="noreferrer">
+              Report crash
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard?.writeText(safeModeCommand).then(() => {
+                  this.setState({ copied: true });
+                });
+              }}
+            >
+              {this.state.copied ? "Copied" : "Copy safe mode command"}
+            </button>
             <button type="button" onClick={() => window.location.reload()}>
               Reload
             </button>

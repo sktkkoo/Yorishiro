@@ -17,6 +17,15 @@ use tauri::{AppHandle, Manager, State};
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
 struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
+#[derive(Clone, Default, serde::Serialize)]
+struct McpServerStatusSnapshot {
+    port: Option<u16>,
+    error: Option<String>,
+}
+
+#[derive(Default)]
+struct McpServerStatus(Mutex<McpServerStatusSnapshot>);
+
 static LOCALIZED_PLUGIN_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
@@ -56,7 +65,7 @@ fn command_candidate_names(command: &str) -> Vec<String> {
 }
 
 fn resolve_command_path_impl(command: &str) -> Option<String> {
-    if command.trim().is_empty() || command.contains(std::path::MAIN_SEPARATOR) {
+    if command.trim().is_empty() || command.contains('/') || command.contains('\\') {
         return None;
     }
     let path_env = build_path_env();
@@ -519,6 +528,18 @@ async fn charminal_home_dir() -> Result<String, String> {
 #[tauri::command]
 async fn resolve_command_path(command: String) -> Result<Option<String>, String> {
     Ok(resolve_command_path_impl(&command))
+}
+
+/// Return the MCP server startup result captured during Tauri setup.
+#[tauri::command]
+async fn mcp_server_status(
+    state: State<'_, McpServerStatus>,
+) -> Result<McpServerStatusSnapshot, String> {
+    state
+        .0
+        .lock()
+        .map(|status| status.clone())
+        .map_err(|_| "mcp status lock poisoned".to_string())
 }
 
 /// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
@@ -1072,9 +1093,11 @@ pub fn run() {
         .manage(registry)
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
+        .manage(McpServerStatus::default())
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
             resolve_command_path,
+            mcp_server_status,
             session_spawn,
             session_destroy,
             session_write,
@@ -1116,9 +1139,21 @@ pub fn run() {
             let mcp_handle = app.handle().clone();
             match mcp::spawn_server(mcp_handle) {
                 Ok(port) => {
+                    if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
+                        *status = McpServerStatusSnapshot {
+                            port: Some(port),
+                            error: None,
+                        };
+                    }
                     eprintln!("[charminal-mcp] listening on localhost:{}", port);
                 }
                 Err(err) => {
+                    if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
+                        *status = McpServerStatusSnapshot {
+                            port: None,
+                            error: Some(err.clone()),
+                        };
+                    }
                     eprintln!("[charminal-mcp] startup skipped: {}", err);
                 }
             }
@@ -1348,6 +1383,7 @@ mod layer_scope_tests {
         assert_eq!(resolve_command_path_impl(""), None);
         assert_eq!(resolve_command_path_impl("  "), None);
         assert_eq!(resolve_command_path_impl("bin/claude"), None);
+        assert_eq!(resolve_command_path_impl("bin\\claude"), None);
     }
 
     #[test]

@@ -145,6 +145,14 @@ export interface ResolveCommandPathArgs {
 export const resolveCommandPath = (args: ResolveCommandPathArgs): Promise<string | null> =>
   call("resolve_command_path", args);
 
+export interface McpServerStatus {
+  readonly port: number | null;
+  readonly error: string | null;
+}
+
+/** MCP server の startup 結果を返す。 */
+export const mcpServerStatus = (): Promise<McpServerStatus> => invoke("mcp_server_status");
+
 export interface PtyWriteArgs {
   readonly data: string;
 }

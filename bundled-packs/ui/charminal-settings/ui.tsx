@@ -618,7 +618,13 @@ function groupPacksByKind(
 
 function HealthStatusIcon({ status }: { status: "ok" | "warning" | "error" }) {
   if (status === "ok") return <CheckCircle2 size={14} color={COLORS.accent} aria-hidden="true" />;
-  return <AlertTriangle size={14} color={COLORS.accent} aria-hidden="true" />;
+  return (
+    <AlertTriangle
+      size={14}
+      color={status === "warning" ? "#d6b15c" : "#ff756f"}
+      aria-hidden="true"
+    />
+  );
 }
 
 function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
@@ -1661,12 +1667,12 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <HealthDiagnostics ctx={ctx} />
+        <PackWorkbench ctx={ctx} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <PackWorkbench ctx={ctx} />
+        <HealthDiagnostics ctx={ctx} />
       </main>
     </div>
   );
