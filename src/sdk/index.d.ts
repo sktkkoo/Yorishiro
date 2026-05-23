@@ -57,6 +57,8 @@ export type {
   UiAppPackDiagnosis,
   UiAppPackOption,
   UiAppPackStatusEntry,
+  UiHealthItem,
+  UiHealthReport,
   UiClaimAPI,
   UiContext,
   UiLayout,

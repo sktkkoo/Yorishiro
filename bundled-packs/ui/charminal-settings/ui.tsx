@@ -15,15 +15,18 @@ import type {
   UiAppPackDiagnoseResponse,
   UiAppPackStatusEntry,
   UiContext,
+  UiHealthReport,
   UiPackDefinition,
 } from "@charminal/sdk";
 import {
+  Activity,
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
   FolderOpen,
   Package,
   RefreshCw,
+  ShieldAlert,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -611,6 +614,167 @@ function groupPacksByKind(
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
     })
     .map(([kind, packs]) => ({ kind, packs }));
+}
+
+function HealthStatusIcon({ status }: { status: "ok" | "warning" | "error" }) {
+  if (status === "ok") return <CheckCircle2 size={14} color={COLORS.accent} aria-hidden="true" />;
+  return <AlertTriangle size={14} color={COLORS.accent} aria-hidden="true" />;
+}
+
+function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
+  const [report, setReport] = useState<UiHealthReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setReport(await ctx.app.getHealthReport());
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(reason);
+      ctx.emitEvent("charminal-settings:write-failed", { field: "health-report", reason });
+    } finally {
+      setLoading(false);
+    }
+  }, [ctx]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const title =
+    report?.summary === "error"
+      ? "Needs attention"
+      : report?.summary === "warning"
+        ? "Warnings"
+        : "Healthy";
+
+  return (
+    <section>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          marginBottom: SPACING.md,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, opacity: 0.78 }}>
+          {report?.safeMode ? (
+            <ShieldAlert size={14} aria-hidden="true" />
+          ) : (
+            <Activity size={14} aria-hidden="true" />
+          )}
+          <span>Health</span>
+          {report && <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>{title}</span>}
+        </div>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={loading}
+          aria-label="Refresh health"
+          title="Refresh health"
+          style={{
+            width: "26px",
+            height: "26px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            border: "none",
+            borderRadius: RADIUS.sm,
+            background: "transparent",
+            color: COLORS.fgDimmer,
+            cursor: loading ? "default" : "pointer",
+            opacity: loading ? 0.4 : 0.7,
+            padding: 0,
+          }}
+        >
+          <RefreshCw size={13} aria-hidden="true" />
+        </button>
+      </div>
+
+      <div
+        style={{
+          border: `1px solid ${COLORS.borderSubtle}`,
+          borderRadius: RADIUS.md,
+          overflow: "hidden",
+          maxWidth: "520px",
+          background: COLORS.bgInput,
+        }}
+      >
+        {report === null ? (
+          <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+            {error ?? "Checking…"}
+          </div>
+        ) : (
+          <>
+            {report.items.map((item) => (
+              <div
+                key={item.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "18px minmax(0, 1fr)",
+                  gap: SPACING.sm,
+                  padding: `${SPACING.sm} ${SPACING.md}`,
+                  borderBottom: `1px solid ${COLORS.borderSubtle}`,
+                }}
+              >
+                <HealthStatusIcon status={item.status} />
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: FONT.sizeS,
+                      fontWeight: FONT.weightSemibold,
+                      color: item.status === "error" ? COLORS.accent : COLORS.fg,
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: "2px",
+                      color: COLORS.fgDimmer,
+                      fontSize: FONT.sizeXs,
+                      lineHeight: 1.45,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {item.detail}
+                  </div>
+                  {item.action && (
+                    <div
+                      style={{
+                        marginTop: "3px",
+                        color: COLORS.fgDim,
+                        fontSize: FONT.sizeXs,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {item.action}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div
+              style={{
+                padding: `${SPACING.sm} ${SPACING.md}`,
+                color: COLORS.fgDimmer,
+                fontSize: FONT.sizeXs,
+                lineHeight: 1.45,
+                overflowWrap: "anywhere",
+              }}
+            >
+              <div>Config: {report.paths.config}</div>
+              <div>Startup report: {report.paths.startupReport}</div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
@@ -1468,6 +1632,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             Shortcut
           </button>
         </div>
+
+        {/* 32px gap */}
+        <div style={{ height: "32px" }} />
+
+        <HealthDiagnostics ctx={ctx} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />

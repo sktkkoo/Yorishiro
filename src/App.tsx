@@ -5,6 +5,7 @@ import type {
   TweenAPI,
   UiClaimAPI,
   UiContext,
+  UiHealthReport,
   UiLayout,
   UiPackManifest,
   UiSceneLayerPatch,
@@ -80,6 +81,7 @@ import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
+import { collectHealthReport } from "./runtime/health-check";
 import { getOrInit } from "./runtime/hot-data";
 import {
   type AppLanguage,
@@ -444,6 +446,73 @@ function applyPresenceWidth(px: number): PresenceResolution {
   document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
   res.el.classList.toggle("presence-closed", px <= 0);
   return res;
+}
+
+const FIRST_RUN_HEALTH_SEEN_KEY = "charminal:first-run-health-seen";
+
+function FirstRunHealthPanel({
+  report,
+  onOpenSettings,
+  onDismiss,
+}: {
+  readonly report: UiHealthReport;
+  readonly onOpenSettings: () => void;
+  readonly onDismiss: () => void;
+}): React.JSX.Element {
+  const title =
+    report.summary === "error"
+      ? "Charminal needs setup"
+      : report.summary === "warning"
+        ? "Charminal is almost ready"
+        : "Charminal is ready";
+  const visibleItems = report.items.filter(
+    (item) => item.status !== "ok" || item.id === "agent" || item.id === "home",
+  );
+
+  return (
+    <div
+      className="first-run-health"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="health-title"
+    >
+      <div className="first-run-health-panel">
+        <div className="first-run-health-kicker">First run check</div>
+        <h1 id="health-title">{title}</h1>
+        <div className="first-run-health-body">
+          {visibleItems.map((item) => (
+            <div className="first-run-health-row" data-status={item.status} key={item.id}>
+              <span className="first-run-health-dot" aria-hidden="true" />
+              <div>
+                <div className="first-run-health-label">{item.label}</div>
+                <div className="first-run-health-detail">{item.detail}</div>
+                {item.action && <div className="first-run-health-action">{item.action}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="first-run-health-paths">
+          <div>Config: {report.paths.config}</div>
+          <div>Startup report: {report.paths.startupReport}</div>
+        </div>
+        <div className="first-run-health-actions">
+          <button
+            type="button"
+            className="first-run-health-secondary"
+            onClick={() => {
+              onOpenSettings();
+              onDismiss();
+            }}
+          >
+            Open settings
+          </button>
+          <button type="button" className="first-run-health-primary" onClick={onDismiss}>
+            Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -1587,6 +1656,87 @@ function App() {
     }
   }, []);
 
+  const listPacksForHealth = useCallback(async () => {
+    const { createListPacksHandler } = await import("./runtime/charminal-mcp/tool-handlers");
+    const readBundledPacks = (): Array<{ id: string; kind: string }> => [
+      ...personaRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => ({ id: e.id, kind: "persona" })),
+      ...scenePackRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => ({ id: e.id, kind: "scene" })),
+      ...uiPackRegistry
+        .listEntries()
+        .filter((e) => e.origin === "bundled")
+        .map((e) => ({ id: e.id, kind: "ui" })),
+      ...[
+        cameraMovePack,
+        desaturatePack,
+        fireworksPack,
+        fireworksVolleyPack,
+        screenShakePack,
+        textPhysicsPack,
+      ].map((p) => ({ id: p.id, kind: "effect" })),
+    ];
+    const result = await createListPacksHandler({
+      readRegistry: () => packRegistry.listEntries(),
+      readBundledPacks,
+      readConfig: async () => parseConfig(await readCharminalConfigText()),
+      readLoadReport: async () => {
+        const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
+        const text = await readLastStartupReport();
+        if (text === "") return null;
+        try {
+          return JSON.parse(text);
+        } catch {
+          return null;
+        }
+      },
+      getActiveIds: () => ({
+        scene: scenePackRegistry.getActiveSceneId(),
+        ui: uiPackRegistry.getActiveUiId(),
+        persona: personaRegistry.getActivePersonaId(),
+      }),
+    })({});
+    const { invoke } = await import("@tauri-apps/api/core");
+    type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
+    const userEntries = await invoke<UserPackEntry[]>("list_user_packs").catch(() => []);
+    return {
+      packs: result.packs.flatMap((pack) => {
+        if (pack.status !== "disabled" || pack.kind !== "") return [pack];
+        const matchingEntries = userEntries.filter((entry) => entry.id === pack.id);
+        if (matchingEntries.length === 0) return [pack];
+        return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
+      }),
+    };
+  }, [packRegistry, personaRegistry, scenePackRegistry, uiPackRegistry]);
+
+  const collectAppHealthReport = useCallback(
+    () => collectHealthReport({ listPacks: listPacksForHealth }),
+    [listPacksForHealth],
+  );
+
+  const [firstRunHealth, setFirstRunHealth] = useState<UiHealthReport | null>(null);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    if (localStorage.getItem(FIRST_RUN_HEALTH_SEEN_KEY) === "1") return;
+    let cancelled = false;
+    void collectAppHealthReport().then((report) => {
+      if (!cancelled) setFirstRunHealth(report);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isUserLayerReady, collectAppHealthReport]);
+
+  const dismissFirstRunHealth = useCallback(() => {
+    localStorage.setItem(FIRST_RUN_HEALTH_SEEN_KEY, "1");
+    setFirstRunHealth(null);
+  }, []);
+
   // ── UI pack: subscribe + mount / dispose lifecycle ────────────────────
   // active UI pack が切り替わるたびに前の pack を teardown（dispose + container remove +
   // layout reset）してから新しい pack の layout を apply、container を body 直下に挿入、
@@ -1966,22 +2116,7 @@ function App() {
               name: e.manifest.name,
               origin: e.origin,
             })),
-          listPacks: async () => {
-            const { createListPacksHandler } = await import(
-              "./runtime/charminal-mcp/tool-handlers"
-            );
-            const { writeConfig: _writeConfig, ...deps } = buildPackToolDeps();
-            const result = await createListPacksHandler(deps)({});
-            const userEntries = await readUserPackEntriesForPackTools().catch(() => []);
-            return {
-              packs: result.packs.flatMap((pack) => {
-                if (pack.status !== "disabled" || pack.kind !== "") return [pack];
-                const matchingEntries = userEntries.filter((entry) => entry.id === pack.id);
-                if (matchingEntries.length === 0) return [pack];
-                return matchingEntries.map((entry) => ({ ...pack, kind: entry.kind }));
-              }),
-            };
-          },
+          listPacks: listPacksForHealth,
           diagnosePack: async (id, kind) => {
             const { createPackDiagnoseHandler } = await import(
               "./runtime/charminal-mcp/tool-handlers"
@@ -2014,6 +2149,7 @@ function App() {
               reloadPack: reloadPackForPackTools,
             })({ id });
           },
+          getHealthReport: collectAppHealthReport,
           setPrimaryPersona: async (id) => {
             await updateConfig({ primaryPersona: id });
             personaRegistry.setPrimaryPersona(
@@ -2194,6 +2330,8 @@ function App() {
     tabManager,
     effectPackRunner,
     packRegistry,
+    listPacksForHealth,
+    collectAppHealthReport,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -2837,6 +2975,13 @@ function App() {
             }
           />
         </>
+      )}
+      {firstRunHealth && (
+        <FirstRunHealthPanel
+          report={firstRunHealth}
+          onOpenSettings={handleOpenSettings}
+          onDismiss={dismissFirstRunHealth}
+        />
       )}
     </div>
   );

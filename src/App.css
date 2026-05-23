@@ -221,6 +221,126 @@ body,
   opacity: 1;
 }
 
+/* ── First-run health check ─────────────────────────── */
+.first-run-health {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(5, 8, 12, 0.62);
+}
+
+.first-run-health-panel {
+  width: min(560px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid var(--charminal-border);
+  border-radius: 8px;
+  background: var(--charminal-panel-bg);
+  color: var(--charminal-fg);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.36);
+  padding: 22px;
+}
+
+.first-run-health-kicker {
+  color: var(--charminal-accent);
+  font-size: 11px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.first-run-health-panel h1 {
+  margin-top: 8px;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.first-run-health-body {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.first-run-health-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--charminal-border);
+}
+
+.first-run-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-top: 6px;
+  background: var(--charminal-accent);
+}
+
+.first-run-health-row[data-status="warning"] .first-run-health-dot {
+  background: #d6b15c;
+}
+
+.first-run-health-row[data-status="error"] .first-run-health-dot {
+  background: #ff756f;
+}
+
+.first-run-health-label {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.first-run-health-detail,
+.first-run-health-action,
+.first-run-health-paths {
+  margin-top: 3px;
+  color: var(--charminal-fg-dim);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.first-run-health-action {
+  color: var(--charminal-fg);
+}
+
+.first-run-health-paths {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--charminal-border);
+}
+
+.first-run-health-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.first-run-health-actions button {
+  border-radius: 8px;
+  border: 1px solid var(--charminal-border);
+  padding: 8px 12px;
+  color: var(--charminal-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.first-run-health-secondary {
+  background: var(--charminal-input-bg);
+}
+
+.first-run-health-primary {
+  background: var(--charminal-button-bg);
+}
+
 .avatar-btn-cta {
   background: var(--charminal-accent-soft);
   color: inherit;

@@ -42,6 +42,36 @@ fn build_path_env() -> String {
     }
 }
 
+fn command_candidate_names(command: &str) -> Vec<String> {
+    if !cfg!(windows) || Path::new(command).extension().is_some() {
+        return vec![command.to_string()];
+    }
+    let pathext = std::env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+    pathext
+        .split(';')
+        .filter(|ext| !ext.trim().is_empty())
+        .map(|ext| format!("{}{}", command, ext.to_ascii_lowercase()))
+        .chain(std::iter::once(command.to_string()))
+        .collect()
+}
+
+fn resolve_command_path_impl(command: &str) -> Option<String> {
+    if command.trim().is_empty() || command.contains(std::path::MAIN_SEPARATOR) {
+        return None;
+    }
+    let path_env = build_path_env();
+    let candidates = command_candidate_names(command);
+    for dir in std::env::split_paths(&path_env) {
+        for candidate in &candidates {
+            let path = dir.join(candidate);
+            if path.is_file() {
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+
 fn normalized_plugin_language(language: &str) -> &'static str {
     if language == "ja" {
         "ja"
@@ -482,6 +512,13 @@ struct UserPackManifestSummary {
 #[tauri::command]
 async fn charminal_home_dir() -> Result<String, String> {
     Ok(charminal_home_path()?.to_string_lossy().to_string())
+}
+
+/// Resolve a command through Charminal's launch PATH. Used by first-run health
+/// checks to explain missing Claude Code / Codex binaries before PTY spawn.
+#[tauri::command]
+async fn resolve_command_path(command: String) -> Result<Option<String>, String> {
+    Ok(resolve_command_path_impl(&command))
 }
 
 /// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
@@ -1037,6 +1074,7 @@ pub fn run() {
         .manage(tts::TtsState::new())
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
+            resolve_command_path,
             session_spawn,
             session_destroy,
             session_write,
@@ -1238,7 +1276,8 @@ mod user_pack_discovery_tests {
 #[cfg(test)]
 mod layer_scope_tests {
     use super::{
-        is_safe_mode_value, layer_event_label, read_last_startup_report_impl, stat_mtime_in_scope,
+        command_candidate_names, is_safe_mode_value, layer_event_label,
+        read_last_startup_report_impl, resolve_command_path_impl, stat_mtime_in_scope,
         write_charminal_file_atomic_impl,
     };
     use std::fs;
@@ -1302,6 +1341,18 @@ mod layer_scope_tests {
         );
 
         let _ = fs::remove_dir_all(&scope);
+    }
+
+    #[test]
+    fn resolve_command_path_rejects_empty_or_path_like_commands() {
+        assert_eq!(resolve_command_path_impl(""), None);
+        assert_eq!(resolve_command_path_impl("  "), None);
+        assert_eq!(resolve_command_path_impl("bin/claude"), None);
+    }
+
+    #[test]
+    fn command_candidate_names_keeps_plain_command_on_unix() {
+        assert_eq!(command_candidate_names("codex"), vec!["codex".to_string()]);
     }
 
     #[test]
