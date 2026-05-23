@@ -984,56 +984,81 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                   const selected = key === selectedKey;
                   const isDisabled = pack.status === "disabled";
                   return (
-                    <button
-                      type="button"
+                    <div
                       key={key}
-                      onClick={() => selectPack(key)}
                       style={{
                         width: "100%",
                         display: "flex",
                         alignItems: "center",
                         gap: SPACING.sm,
                         padding: `6px ${SPACING.md}`,
-                        border: "none",
                         borderLeft: pack.isActive
                           ? `3px solid ${COLORS.accent}`
                           : "3px solid transparent",
                         borderBottom: `1px solid ${COLORS.borderSubtle}`,
                         background: selected ? COLORS.accentSoft : COLORS.bgPanel,
                         color: isDisabled ? COLORS.fgDim : COLORS.fg,
-                        cursor: "pointer",
                         textAlign: "left",
                         font: "inherit",
                         fontSize: FONT.sizeS,
                         opacity: isDisabled ? 0.7 : 1,
                       }}
                     >
-                      <PackStatusIndicator status={pack.status} />
-                      <span
+                      <button
+                        type="button"
+                        onClick={() => selectPack(key)}
                         style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: SPACING.sm,
                           flex: 1,
                           minWidth: 0,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          textDecoration: isDisabled ? "line-through" : "none",
+                          border: "none",
+                          background: "transparent",
+                          color: "inherit",
+                          cursor: "pointer",
+                          textAlign: "left",
+                          font: "inherit",
+                          fontSize: "inherit",
+                          padding: 0,
                         }}
                       >
-                        {pack.id}
-                      </span>
-                      {pack.origin === "user" && (
                         <span
                           style={{
-                            fontSize: "10px",
-                            color: COLORS.fgDimmer,
-                            padding: "1px 5px",
-                            borderRadius: "3px",
-                            border: `1px solid ${COLORS.borderSubtle}`,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            flexShrink: 0,
                           }}
                         >
-                          user
+                          <PackStatusIndicator status={pack.status} />
                         </span>
-                      )}
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            textDecoration: isDisabled ? "line-through" : "none",
+                          }}
+                        >
+                          {pack.id}
+                        </span>
+                        {pack.origin === "user" && (
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              color: COLORS.fgDimmer,
+                              padding: "1px 5px",
+                              borderRadius: "3px",
+                              border: `1px solid ${COLORS.borderSubtle}`,
+                              flexShrink: 0,
+                            }}
+                          >
+                            user
+                          </span>
+                        )}
+                      </button>
                       <PackToggle
                         pack={pack}
                         busy={busy !== null}
@@ -1042,7 +1067,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                           void runPackAction(action, pack.id);
                         }}
                       />
-                    </button>
+                    </div>
                   );
                 })}
               </div>
