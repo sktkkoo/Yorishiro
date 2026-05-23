@@ -51,7 +51,7 @@ const EN: UiStrings = {
   pomodoroPrompt: "/charm:help I want to use Pomodoro",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
-  voiceFrequency: "Summary Voice",
+  voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
   voiceAppliesNextSession: "Applies from the next session",
