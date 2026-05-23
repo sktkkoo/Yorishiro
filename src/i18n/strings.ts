@@ -27,6 +27,28 @@ export interface UiStrings {
   readonly voiceOn: string;
   readonly voiceOff: string;
   readonly voiceAppliesNextSession: string;
+  readonly labelPersona: string;
+  readonly labelScene: string;
+  readonly labelSound: string;
+  readonly labelAgent: string;
+  readonly labelAura: string;
+  readonly labelHealth: string;
+  readonly labelPacks: string;
+  readonly healthHealthy: string;
+  readonly healthWarnings: string;
+  readonly healthNeedsAttention: string;
+  readonly packHealthy: string;
+  readonly packWarnings: string;
+  readonly packNeedsAttention: string;
+  readonly loadingPacks: string;
+  readonly noPacksInstalled: string;
+  readonly selectPack: string;
+  readonly diagnosing: string;
+  readonly quickHelp: string;
+  readonly quickTutorial: string;
+  readonly quickShortcut: string;
+  readonly quickCreatePack: string;
+  readonly quickPomodoro: string;
 }
 
 const EN: UiStrings = {
@@ -55,6 +77,28 @@ const EN: UiStrings = {
   voiceOn: "On",
   voiceOff: "Off",
   voiceAppliesNextSession: "Applies from the next session",
+  labelPersona: "Persona",
+  labelScene: "Scene",
+  labelSound: "Sound",
+  labelAgent: "Agent",
+  labelAura: "Aura",
+  labelHealth: "Health",
+  labelPacks: "Packs",
+  healthHealthy: "Healthy",
+  healthWarnings: "Warnings",
+  healthNeedsAttention: "Needs attention",
+  packHealthy: "Pack looks healthy",
+  packWarnings: "Pack has warnings",
+  packNeedsAttention: "Pack needs attention",
+  loadingPacks: "Loading packs…",
+  noPacksInstalled: "No packs installed",
+  selectPack: "Select a pack",
+  diagnosing: "Diagnosing…",
+  quickHelp: "Help",
+  quickTutorial: "Tutorial",
+  quickShortcut: "Shortcut",
+  quickCreatePack: "Create Pack",
+  quickPomodoro: "Pomodoro",
 };
 
 const JA: UiStrings = {
@@ -79,10 +123,32 @@ const JA: UiStrings = {
   pomodoroPrompt: "/charm:help Pomodoro を使いたい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",
-  voiceFrequency: "要約読み上げ",
+  voiceFrequency: "ボイスサマリー",
   voiceOn: "On",
   voiceOff: "Off",
   voiceAppliesNextSession: "※ 次のセッションから反映",
+  labelPersona: "ペルソナ",
+  labelScene: "シーン",
+  labelSound: "サウンド",
+  labelAgent: "エージェント",
+  labelAura: "オーラ",
+  labelHealth: "ヘルス",
+  labelPacks: "パック",
+  healthHealthy: "正常",
+  healthWarnings: "警告あり",
+  healthNeedsAttention: "対応が必要",
+  packHealthy: "正常",
+  packWarnings: "警告あり",
+  packNeedsAttention: "対応が必要",
+  loadingPacks: "読み込み中…",
+  noPacksInstalled: "パックなし",
+  selectPack: "パックを選択",
+  diagnosing: "診断中…",
+  quickHelp: "ヘルプ",
+  quickTutorial: "チュートリアル",
+  quickShortcut: "ショートカット",
+  quickCreatePack: "パック作成",
+  quickPomodoro: "ポモドーロ",
 };
 
 export function getStrings(language: ResolvedLanguage): UiStrings {

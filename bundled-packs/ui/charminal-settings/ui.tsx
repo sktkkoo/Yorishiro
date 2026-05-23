@@ -32,7 +32,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { getStrings } from "../../../src/i18n/strings";
+import { getStrings, type UiStrings } from "../../../src/i18n/strings";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
@@ -42,15 +42,15 @@ import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 export const SETTINGS_PACK_ID = "charminal-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
 
-const QUICK_ACTIONS: ReadonlyArray<{
-  readonly label: string;
+const QUICK_ACTION_KEYS: ReadonlyArray<{
   readonly key: FixedTerminalPromptKey;
+  readonly stringKey: keyof UiStrings;
 }> = [
-  { label: "Help", key: "help" },
-  { label: "Tutorial", key: "tutorial" },
-  { label: "Shortcut", key: "shortcut" },
-  { label: "Create Pack", key: "create-pack" },
-  { label: "Pomodoro", key: "pomodoro" },
+  { key: "help", stringKey: "quickHelp" },
+  { key: "tutorial", stringKey: "quickTutorial" },
+  { key: "shortcut", stringKey: "quickShortcut" },
+  { key: "create-pack", stringKey: "quickCreatePack" },
+  { key: "pomodoro", stringKey: "quickPomodoro" },
 ];
 
 export interface ResolveCloseTargetArgs {
@@ -424,8 +424,20 @@ export function summarizePackDiagnosis(diagnosis: UiAppPackDiagnoseResponse): {
   };
 }
 
-function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseResponse }) {
+function PackDiagnosisSummary({
+  diagnosis,
+  strings,
+}: {
+  diagnosis: UiAppPackDiagnoseResponse;
+  strings: UiStrings;
+}) {
   const summary = summarizePackDiagnosis(diagnosis);
+  const localizedTitle =
+    summary.state === "error"
+      ? strings.packNeedsAttention
+      : summary.state === "warning"
+        ? strings.packWarnings
+        : strings.packHealthy;
   const iconColor =
     summary.state === "error"
       ? COLORS.statusError
@@ -458,7 +470,7 @@ function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseRespo
             color: summary.state === "error" ? COLORS.statusError : COLORS.fg,
           }}
         >
-          {summary.title}
+          {localizedTitle}
         </div>
         <div
           style={{
@@ -682,7 +694,13 @@ function HealthStatusIcon({ status }: { status: "ok" | "warning" | "error" }) {
   );
 }
 
-function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
+function HealthDiagnostics({
+  ctx,
+  strings,
+}: {
+  ctx: UiContext;
+  strings: UiStrings;
+}): React.JSX.Element {
   const [report, setReport] = useState<UiHealthReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -712,10 +730,10 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const summaryStatus = report?.summary ?? (error ? "error" : null);
   const title =
     summaryStatus === "error"
-      ? "Needs attention"
+      ? strings.healthNeedsAttention
       : summaryStatus === "warning"
-        ? "Warnings"
-        : "Healthy";
+        ? strings.healthWarnings
+        : strings.healthHealthy;
   const titleColor =
     summaryStatus === "error"
       ? COLORS.statusError
@@ -762,7 +780,7 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
           ) : report ? (
             <CheckCircle2 size={14} color={COLORS.accent} aria-hidden="true" />
           ) : null}
-          <span>Health</span>
+          <span>{strings.labelHealth}</span>
           {summaryStatus !== null && (
             <span style={{ color: titleColor, fontSize: FONT.sizeXs }}>{title}</span>
           )}
@@ -877,7 +895,13 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
   );
 }
 
-function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
+function PackWorkbench({
+  ctx,
+  strings,
+}: {
+  ctx: UiContext;
+  strings: UiStrings;
+}): React.JSX.Element {
   const [packs, setPacks] = useState<readonly UiAppPackStatusEntry[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [diagnosis, setDiagnosis] = useState<UiAppPackDiagnoseResponse | null>(null);
@@ -1012,7 +1036,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
       >
         <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm, opacity: 0.78 }}>
           <Package size={14} aria-hidden="true" />
-          <span>Packs</span>
+          <span>{strings.labelPacks}</span>
           {packs.length > 0 && (
             <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>{packs.length}</span>
           )}
@@ -1060,7 +1084,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 textAlign: "center",
               }}
             >
-              {loading ? "Loading packs…" : "No packs installed"}
+              {loading ? strings.loadingPacks : strings.noPacksInstalled}
             </div>
           ) : (
             groups.map((group) => (
@@ -1193,7 +1217,7 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 padding: `${SPACING.xs} 0`,
               }}
             >
-              Select a pack
+              {strings.selectPack}
             </div>
           ) : (
             <>
@@ -1240,11 +1264,11 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                     padding: `${SPACING.xs} 0`,
                   }}
                 >
-                  Diagnosing…
+                  {strings.diagnosing}
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: SPACING.sm }}>
-                  <PackDiagnosisSummary diagnosis={diagnosis} />
+                  <PackDiagnosisSummary diagnosis={diagnosis} strings={strings} />
                   {diagnosis.diagnostics
                     .filter((item) => item.severity !== "info")
                     .map((item) => (
@@ -1564,7 +1588,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             marginBottom: SPACING.xl,
           }}
         >
-          {QUICK_ACTIONS.map((action) => (
+          {QUICK_ACTION_KEYS.map((action) => (
             <button
               key={action.key}
               type="button"
@@ -1585,7 +1609,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 opacity: 1,
               }}
             >
-              {action.label}
+              {strings[action.stringKey]}
             </button>
           ))}
         </div>
@@ -1649,7 +1673,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </button>
 
           {/* Persona */}
-          <div style={{ opacity: 0.7 }}>Persona</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelPersona}</div>
           <div>
             <Select
               value={personaSelectValue}
@@ -1664,7 +1688,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
 
           {/* Scene */}
-          <div style={{ opacity: 0.7 }}>Scene</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelScene}</div>
           <div>
             <Select
               value={scene ?? ""}
@@ -1679,7 +1703,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
 
           {/* Aura */}
-          <div style={{ opacity: 0.7 }}>Aura</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelAura}</div>
           <div>
             <Toggle checked={auraEnabled} onChange={onAuraToggle} />
           </div>
@@ -1690,7 +1714,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         {/* グループ 2: Sound（mute icon + volume slider） */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>Sound</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelSound}</div>
           <div
             style={{
               display: "flex",
@@ -1754,7 +1778,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         {/* グループ 3: Terminal */}
         <div style={gridStyle}>
-          <div style={{ opacity: 0.7 }}>Agent</div>
+          <div style={{ opacity: 0.7 }}>{strings.labelAgent}</div>
           <div>
             <Select
               value={agent}
@@ -1780,12 +1804,12 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <HealthDiagnostics ctx={ctx} />
+        <HealthDiagnostics ctx={ctx} strings={strings} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <PackWorkbench ctx={ctx} />
+        <PackWorkbench ctx={ctx} strings={strings} />
       </main>
     </div>
   );
