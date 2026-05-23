@@ -31,7 +31,11 @@ const THEME = {
   borderMid: "var(--charminal-border)",
 } as const;
 
-export const COLORS = THEME;
+export const COLORS = {
+  ...THEME,
+  statusError: "#ff756f",
+  statusWarning: "#d6b15c",
+} as const;
 
 export const SPACING = {
   xs: "4px",

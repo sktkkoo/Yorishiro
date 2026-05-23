@@ -418,10 +418,10 @@ function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseRespo
   const summary = summarizePackDiagnosis(diagnosis);
   const iconColor =
     summary.state === "error"
-      ? COLORS.accent
+      ? COLORS.statusError
       : summary.state === "warning"
-        ? COLORS.fgDim
-        : COLORS.fgDimmer;
+        ? COLORS.statusWarning
+        : COLORS.accent;
 
   return (
     <div
@@ -445,7 +445,7 @@ function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseRespo
           style={{
             fontSize: FONT.sizeS,
             fontWeight: FONT.weightSemibold,
-            color: summary.state === "error" ? COLORS.accent : COLORS.fg,
+            color: summary.state === "error" ? COLORS.statusError : COLORS.fg,
           }}
         >
           {summary.title}
@@ -468,9 +468,9 @@ function PackDiagnosisSummary({ diagnosis }: { diagnosis: UiAppPackDiagnoseRespo
 function PackDiagnosticRow({ item }: { item: UiAppPackDiagnoseResponse["diagnostics"][number] }) {
   const color =
     item.severity === "error"
-      ? COLORS.accent
+      ? COLORS.statusError
       : item.severity === "warning"
-        ? COLORS.fgDim
+        ? COLORS.statusWarning
         : COLORS.fgDimmer;
 
   return (
@@ -501,7 +501,10 @@ function PackDiagnosticRow({ item }: { item: UiAppPackDiagnoseResponse["diagnost
         {item.code}
       </span>
       <span
-        style={{ minWidth: 0, color: item.severity === "error" ? COLORS.accent : COLORS.fgDim }}
+        style={{
+          minWidth: 0,
+          color: item.severity === "error" ? COLORS.statusError : COLORS.fgDim,
+        }}
       >
         {item.message}
       </span>
@@ -528,9 +531,9 @@ function PackRecommendationRow({ text }: { text: string }) {
 
 function PackStatusIndicator({ status }: { status: UiAppPackStatusEntry["status"] }) {
   if (status === "failed") {
-    return <AlertTriangle size={12} color={COLORS.accent} aria-hidden="true" />;
+    return <AlertTriangle size={12} color={COLORS.statusError} aria-hidden="true" />;
   }
-  const color = status === "disabled" ? COLORS.borderSubtle : COLORS.accent;
+  const color = status === "disabled" ? COLORS.statusWarning : COLORS.accent;
   return (
     <span
       style={{
@@ -621,7 +624,7 @@ function HealthStatusIcon({ status }: { status: "ok" | "warning" | "error" }) {
   return (
     <AlertTriangle
       size={14}
-      color={status === "warning" ? "#d6b15c" : "#ff756f"}
+      color={status === "warning" ? COLORS.statusWarning : COLORS.statusError}
       aria-hidden="true"
     />
   );
@@ -733,7 +736,7 @@ function HealthDiagnostics({ ctx }: { ctx: UiContext }): React.JSX.Element {
                     style={{
                       fontSize: FONT.sizeS,
                       fontWeight: FONT.weightSemibold,
-                      color: item.status === "error" ? COLORS.accent : COLORS.fg,
+                      color: item.status === "error" ? COLORS.statusError : COLORS.fg,
                     }}
                   >
                     {item.label}
@@ -1173,7 +1176,13 @@ function PackWorkbench({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 </div>
               )}
               {error && (
-                <div style={{ marginTop: SPACING.sm, color: COLORS.accent, fontSize: FONT.sizeXs }}>
+                <div
+                  style={{
+                    marginTop: SPACING.sm,
+                    color: COLORS.statusError,
+                    fontSize: FONT.sizeXs,
+                  }}
+                >
                   {error}
                 </div>
               )}
