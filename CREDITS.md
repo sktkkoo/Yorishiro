@@ -67,7 +67,7 @@ Charminal launches [**Claude Code**](https://claude.com/claude-code) (Anthropic)
 
 ## Bundled assets
 
-VRMA animations and voice WAVs are third-party assets that **cannot be included directly in the public git repository** (see individual licenses). However, they are embedded into the distributed application bundle (`.app` / `.exe`) at build time — bundling within an application is treated differently from redistributing raw files in a public repository.
+VRMA animations are third-party assets that **cannot be included directly in the public git repository** (see individual licenses). However, they are embedded into the distributed application bundle (`.app` / `.exe`) at build time — bundling within an application is treated differently from redistributing raw files in a public repository.
 
 For developer asset setup, see `scripts/fetch-assets.mjs`.
 
@@ -110,13 +110,6 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 
 - Source: Animations from [Adobe Mixamo](https://www.mixamo.com/) converted to VRMA format.
 - Terms: Subject to the Mixamo ToS. Signed-in users may use animations in personal and commercial projects. Redistribution of files as standalone assets is not permitted — placing raw files in a public git repo is not permitted; embedding in an application bundle is permitted.
-
-### Voice WAV files
-
-- Location: External `../Charminal-assets/voices/` → copied to `bundled-packs/shared/voices/` at build time (`.gitignore`d)
-- Categories: `acknowledge/` / `working/` / `thinking/` / `longwork/` / `done/` / `error/`
-- **Source**: Development samples recorded with [VOICEVOX](https://voicevox.hiho.jp/)
-- **Distribution policy**: ⚠️ **Current voice WAVs are not included in the distributed bundle.** They are not suitable for distribution under VOICEVOX's terms of use. They will be replaced with distributable voice assets before a release build.
 
 ### Fonts / icons
 
