@@ -123,6 +123,8 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 - VRoid / VRM ecosystem (pixiv / VRM Consortium) — the foundation for character expression
 - Emacs — for the user-extensible runtime model and the `init.el` pattern (`~/.charminal/init.js` is its direct lineage)
 - VRChat — UGC platform built around 3D avatar-mediated presence; "inhabiting a virtual space"
+- [@kensyouen_Y](https://x.com/kensyouen_Y/status/1820748563338637581) — A video of a character inside Blender grabbing and manipulating the UI, moving panels on their own, even changing their own hair color. A major inspiration for ICI: the character operating the environment that contains them.
+- [Caramel Pain / Hoshimachi Suisei (official)](https://www.youtube.com/watch?v=UpEPkPg8YP4) — A music video where Suisei, drawn inside an illustration tool, destroys the tool's UI and breaks out of the application to wreak havoc. Another major inspiration.
 
 ---
 
