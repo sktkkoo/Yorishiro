@@ -1029,7 +1029,8 @@ function PackWorkbench({
   };
 
   const insertRepairPrompt = async () => {
-    if (selectedPack === null || diagnosis === null) return;
+    if (selectedPack === null || diagnosis === null || repairPromptInserted) return;
+    setRepairPromptInserted(true);
     setError(null);
     try {
       await ctx.app.insertPackRepairPrompt(
@@ -1037,9 +1038,9 @@ function PackWorkbench({
         selectedPack.kind || undefined,
         repairAction,
       );
-      setRepairPromptInserted(true);
       onClose();
     } catch (err) {
+      setRepairPromptInserted(false);
       const reason = err instanceof Error ? err.message : String(err);
       setError(reason);
       ctx.emitEvent("charminal-settings:write-failed", { field: "pack-repair-prompt", reason });
@@ -1287,21 +1288,12 @@ function PackWorkbench({
                   >
                     <button
                       type="button"
+                      disabled={repairPromptInserted}
                       onClick={() => void insertRepairPrompt()}
                       aria-label={
-                        repairPromptInserted
-                          ? strings.repairPromptInserted
-                          : repairAction === "repair"
-                            ? strings.repairPack
-                            : strings.improvePack
+                        repairAction === "repair" ? strings.repairPack : strings.improvePack
                       }
-                      title={
-                        repairPromptInserted
-                          ? strings.repairPromptInserted
-                          : repairAction === "repair"
-                            ? strings.repairPack
-                            : strings.improvePack
-                      }
+                      title={repairAction === "repair" ? strings.repairPack : strings.improvePack}
                       style={{
                         width: "24px",
                         height: "24px",
@@ -1311,8 +1303,9 @@ function PackWorkbench({
                         border: `1px solid ${COLORS.borderSubtle}`,
                         borderRadius: RADIUS.sm,
                         background: COLORS.bgPanel,
-                        color: repairPromptInserted ? COLORS.accent : COLORS.fgDimmer,
-                        cursor: "pointer",
+                        color: COLORS.fgDimmer,
+                        cursor: repairPromptInserted ? "default" : "pointer",
+                        opacity: repairPromptInserted ? 0.4 : 1,
                         padding: 0,
                       }}
                     >

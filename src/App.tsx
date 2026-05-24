@@ -2163,24 +2163,6 @@ function App() {
             const { ptyWrite } = await import("./bindings/tauri-commands");
             await ptyWrite({ data });
           },
-          openPackLocation: async (id, entryPath) => {
-            if (id.includes("/") || id.includes("\\") || id === "." || id === "..") {
-              throw new Error("invalid pack id");
-            }
-            const { invoke } = await import("@tauri-apps/api/core");
-            const { openPath, revealItemInDir } = await import("@tauri-apps/plugin-opener");
-            const home = await invoke<string>("charminal_home_dir");
-            const packDir = `${home.replace(/[\\/]$/, "")}/packs/${id}`;
-            if (entryPath !== undefined && entryPath !== "") {
-              try {
-                await revealItemInDir(entryPath);
-                return;
-              } catch {
-                // Fall back to opening the user pack folder below.
-              }
-            }
-            await openPath(packDir);
-          },
           listPersonas: () =>
             personaRegistry.listEntries().map((e) => ({
               id: e.id,

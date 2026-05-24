@@ -217,6 +217,26 @@ describe("Pack Workbench helpers", () => {
     );
     expect(
       resolvePackRepairPrompt({
+        id: "my-scene",
+        kind: "scene",
+        action: "improve",
+        language: "en",
+      }),
+    ).toBe(
+      '/charm:update Diagnose and improve my-scene (scene). Start with pack_diagnose({ id: "my-scene" }).',
+    );
+    expect(
+      resolvePackRepairPrompt({
+        id: "broken-persona",
+        kind: "persona",
+        action: "repair",
+        language: "ja",
+      }),
+    ).toBe(
+      '/charm:update broken-persona (persona) を診断して、修正してください。まず pack_diagnose({ id: "broken-persona" }) で状態を確認してください。',
+    );
+    expect(
+      resolvePackRepairPrompt({
         id: "ok-scene",
         kind: "scene",
         action: "improve",
@@ -225,5 +245,17 @@ describe("Pack Workbench helpers", () => {
     ).toBe(
       '/charm:update ok-scene (scene) を診断して、改善してください。まず pack_diagnose({ id: "ok-scene" }) で状態を確認してください。',
     );
+  });
+
+  it("rejects unsafe pack ids in repair prompt", () => {
+    expect(() =>
+      resolvePackRepairPrompt({ id: "../etc", action: "repair", language: "en" }),
+    ).toThrow("invalid pack id");
+    expect(() =>
+      resolvePackRepairPrompt({ id: "foo;rm -rf", action: "repair", language: "en" }),
+    ).toThrow("invalid pack id");
+    expect(() =>
+      resolvePackRepairPrompt({ id: "ok", kind: "a;b", action: "repair", language: "en" }),
+    ).toThrow("invalid pack kind");
   });
 });

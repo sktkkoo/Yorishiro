@@ -47,7 +47,6 @@ export interface UiStrings {
   readonly repairPack: string;
   readonly improvePack: string;
   readonly repairPromptInserted: string;
-  readonly revealPackEntry: string;
   readonly quickHelp: string;
   readonly quickTutorial: string;
   readonly quickShortcut: string;
@@ -101,7 +100,6 @@ const EN: UiStrings = {
   repairPack: "Repair with /charm:update",
   improvePack: "Improve with /charm:update",
   repairPromptInserted: "Repair prompt inserted",
-  revealPackEntry: "Reveal entry file",
   quickHelp: "Help",
   quickTutorial: "Tutorial",
   quickShortcut: "Shortcut",
@@ -152,10 +150,9 @@ const JA: UiStrings = {
   noPacksInstalled: "パックなし",
   selectPack: "パックを選択",
   diagnosing: "診断中…",
-  repairPack: "/charm:update で修理",
+  repairPack: "/charm:update で修正",
   improvePack: "/charm:update で改善",
-  repairPromptInserted: "修理プロンプトを入力済み",
-  revealPackEntry: "entry file を表示",
+  repairPromptInserted: "修正プロンプトを入力済み",
   quickHelp: "ヘルプ",
   quickTutorial: "チュートリアル",
   quickShortcut: "ショートカット",
@@ -191,12 +188,17 @@ export function resolveFixedTerminalPrompt(
   return getStrings(language)[FIXED_PROMPT_STRING[key]];
 }
 
+const SAFE_PACK_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
+
 export function resolvePackRepairPrompt(args: {
   readonly id: string;
   readonly kind?: string;
   readonly action: "repair" | "improve";
   readonly language: ResolvedLanguage;
 }): string {
+  if (!SAFE_PACK_ID.test(args.id)) throw new Error("invalid pack id");
+  if (args.kind !== undefined && !SAFE_PACK_ID.test(args.kind))
+    throw new Error("invalid pack kind");
   const kindPart = args.kind ? ` (${args.kind})` : "";
   if (args.language === "ja") {
     const actionText = args.action === "repair" ? "修正" : "改善";
