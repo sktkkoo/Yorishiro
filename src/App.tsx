@@ -806,16 +806,19 @@ function App() {
 
     async function bootstrap(): Promise<void> {
       // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
-      try {
-        const bundledScenes: ReadonlyArray<{
-          readonly pack: ScenePackDefinition;
-          readonly manifest: ScenePackManifest;
-        }> = [
-          { pack: simpleRoomPack, manifest: simpleRoomManifest as ScenePackManifest },
-          { pack: mistyGrasslandsPack, manifest: mistyGrasslandsManifest as ScenePackManifest },
-          { pack: abandonedFactoryPack, manifest: abandonedFactoryManifest as ScenePackManifest },
-        ];
-        for (const { pack, manifest } of bundledScenes) {
+      // try/catch は pack 単位。1 pack の asset 解決失敗で後続 pack の登録を巻き
+      // 添えにしない（特に defaultBundledId が指す pack が先頭にあるため、
+      // 一括 try だと先頭失敗で全 scene が消える）。
+      const bundledScenes: ReadonlyArray<{
+        readonly pack: ScenePackDefinition;
+        readonly manifest: ScenePackManifest;
+      }> = [
+        { pack: simpleRoomPack, manifest: simpleRoomManifest as ScenePackManifest },
+        { pack: mistyGrasslandsPack, manifest: mistyGrasslandsManifest as ScenePackManifest },
+        { pack: abandonedFactoryPack, manifest: abandonedFactoryManifest as ScenePackManifest },
+      ];
+      for (const { pack, manifest } of bundledScenes) {
+        try {
           const resolved = await resolveSceneAssets(pack.scene, {
             origin: "bundled",
             packId: pack.id,
@@ -837,13 +840,13 @@ function App() {
             phase: "register",
             note: `registered bundled scene '${pack.id}'`,
           });
+        } catch (err) {
+          appLog.write({
+            phase: "register",
+            note: `bundled scene '${pack.id}' register failed`,
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
         }
-      } catch (err) {
-        appLog.write({
-          phase: "register",
-          note: "bundled scene register failed",
-          data: { error: err instanceof Error ? err.message : String(err) },
-        });
       }
 
       // ─ Step 2: config を一度だけ読んで primaryPersona と activeScene を反映 ─
@@ -912,8 +915,11 @@ function App() {
       }
 
       // ─ Step 2.5: subscribeActive 系 wire ─
-      // config 反映後に subscribe することで、bundled fallback の alphabetical 先頭
-      // （abandoned-factory）が一瞬 active 扱いになって音が鳴る race を回避する。
+      // 順序契約：subscribe wire は Step 2 の setActiveScene(config.activeScene)
+      // より後。逆順だと bundled fallback の default scene で listener が一度
+      // fire し、その直後の config 反映でもう一度 fire する double-dispatch が
+      // 起きる（現状 default の simple-room は ambient:[] なので可聴ではないが、
+      // 将来 default を音付き scene に変えた瞬間に boot 直後の audio pop に化ける）。
       ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
       ambientAudioEngineRef.current.setMuted(ambientAudioMuted);
       ambientAudioEngineRef.current.setMasterVolume(ambientAudioVolume);

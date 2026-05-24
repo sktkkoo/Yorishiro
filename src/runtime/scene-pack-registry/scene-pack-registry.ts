@@ -14,6 +14,7 @@
  * Internal design-record: specs/2026-04-18-scene-pack-registry.md §3
  */
 
+import simpleRoomManifest from "../../../bundled-packs/scenes/simple-room/manifest.json";
 import type { SceneSpec } from "../../sdk/scene";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
@@ -29,6 +30,17 @@ export interface ScenePackRegistryOptions {
   readonly warn?: (msg: string) => void;
 }
 
+/**
+ * fresh-install / activeScene 未指定時に選ぶ既定 bundled scene の id。
+ * 落ち着いた抽象空間で「住人がいる場所」を最小限の演出で出すため、
+ * alphabetical 先頭ではなく明示的に指定する。
+ *
+ * 文字列リテラルではなく manifest.id を参照することで、bundled-packs/scenes/
+ * simple-room/ がリネームされた時に import path が壊れて compile-time に
+ * 検出される（リテラルだと runtime で alphabetical fallback に静かに落ちる）。
+ */
+export const DEFAULT_BUNDLED_SCENE_ID: string = simpleRoomManifest.id;
+
 export class ScenePackRegistryImpl
   extends SingleActiveRegistry<ScenePackEntry, SceneSpec>
   implements ScenePackRegistryInterface
@@ -38,8 +50,9 @@ export class ScenePackRegistryImpl
       extractValue: (entry) => entry.scene,
       label: "ScenePackRegistry",
       warn: opts.warn,
-      // bundled scene は複数の標準選択肢を持てる。fallback は alphabetical 先頭。
+      // bundled scene は複数の標準選択肢を持てる。fallback は明示 default → alphabetical 先頭。
       warnOnMultipleBundled: false,
+      defaultBundledId: DEFAULT_BUNDLED_SCENE_ID,
     });
   }
 

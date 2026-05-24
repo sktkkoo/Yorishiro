@@ -227,6 +227,45 @@ describe("SingleActiveRegistry", () => {
     });
   });
 
+  describe("defaultBundledId option", () => {
+    const makeRegistryWithDefault = (defaultBundledId: string) =>
+      new SingleActiveRegistry<TestEntry, string>({
+        extractValue: (e) => e.value,
+        label: "TestRegistry",
+        defaultBundledId,
+      });
+
+    it("picks the named bundled instead of alphabetical first when activeId is null", () => {
+      const registry = makeRegistryWithDefault("z-pick-me");
+      registry.register(makeEntry("a", "bundled"));
+      registry.register(makeEntry("z-pick-me", "bundled"));
+      expect(registry.getActiveId()).toBe("z-pick-me");
+    });
+
+    it("falls back to alphabetical first when the named default is not registered", () => {
+      const registry = makeRegistryWithDefault("not-present");
+      registry.register(makeEntry("a", "bundled"));
+      registry.register(makeEntry("b", "bundled"));
+      expect(registry.getActiveId()).toBe("a");
+    });
+
+    it("does not pick the named id if it is a user entry (only bundled is auto-selected)", () => {
+      const registry = makeRegistryWithDefault("u");
+      registry.register(makeEntry("a", "bundled"));
+      registry.register(makeEntry("u", "user"));
+      // user "u" は auto-select されない（Design B）。bundled の alphabetical 先頭に流れる。
+      expect(registry.getActiveId()).toBe("a");
+    });
+
+    it("explicit setActive still overrides defaultBundledId", () => {
+      const registry = makeRegistryWithDefault("a");
+      registry.register(makeEntry("a", "bundled"));
+      registry.register(makeEntry("b", "bundled"));
+      registry.setActive("b");
+      expect(registry.getActiveId()).toBe("b");
+    });
+  });
+
   describe("warnOnMultipleBundled option", () => {
     it("default is off — multiple bundled with different ids do not warn", () => {
       const warnings: string[] = [];

@@ -50,4 +50,10 @@ export interface SingleActiveRegistryOptions<TEntry extends SingleActiveEntry, T
    * dev mistake 検出に使う（同梱 pack を増やす際の名前衝突警告）。default `false`。
    */
   readonly warnOnMultipleBundled?: boolean;
+  /**
+   * 明示 activeId 未設定 & bundled fallback 経路に入った時に優先する bundled id。
+   * 該当 id が registered bundled に存在しなければ alphabetical fallback に流す。
+   * domain が「alphabetical でなく、この pack を default にしたい」を表すための option。
+   */
+  readonly defaultBundledId?: string;
 }
