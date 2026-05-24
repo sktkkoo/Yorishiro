@@ -30,9 +30,9 @@ If a pack fails but Charminal still opens:
 1. Open Settings.
 2. Check Health for failed pack count.
 3. Open Packs.
-4. Select the failed pack.
-5. Disable it or edit the file under `~/.charminal/packs/`.
-6. Reload with `Cmd+R` / `Ctrl+R`.
+4. Select the failed pack and review the diagnosis.
+5. Click the 🔧 button to insert a `/charm:update` repair prompt into the terminal, then press Enter to let the AI fix it.
+6. To fix manually instead, edit the file under `~/.charminal/packs/` and reload with `Cmd+R` / `Ctrl+R`.
 
 If a pack prevents Charminal from opening, use safe mode.
 
@@ -69,6 +69,10 @@ When reporting the crash, include the error details shown there and the contents
 of `~/.charminal/last-startup.json` when relevant.
 
 ## Issue report checklist
+
+User pack issues are outside the scope of Charminal issues. If a user pack is
+causing the problem, try the 🔧 repair button or `/charm:update` first. File an
+issue only if the problem persists with all user packs disabled (safe mode).
 
 Include:
 

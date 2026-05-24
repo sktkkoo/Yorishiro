@@ -167,9 +167,9 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
 - 反射層による PTY 観察と即時反応
 - コンテキスト共有: Terminal Reference Marker（Cmd+click / Option+Shift+drag）と Voice Summary
-- First-run と Settings の health diagnostics（agent setup / safe mode / pack / startup report）
 - Journal による長期記憶 [開発中]
 - `/charm:*` command による pack の対話的な作成・編集
+- [Safe mode](docs/troubleshooting.ja.md)（`CHARMINAL_SAFE_MODE=1`）で壊れた pack から復旧
 
 > **対応プラットフォーム:** macOS のみ。Windows はビルドは通りますが動作が安定しないため、現時点ではサポート対象外です。Linux は未対応です。
 

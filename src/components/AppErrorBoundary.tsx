@@ -61,7 +61,9 @@ export class AppErrorBoundary extends React.Component<
           <h1>Recovery information</h1>
           <p>
             The React runtime stopped while rendering Charminal. A broken user pack can cause this;
-            safe mode starts without user packs or init.js.
+            safe mode starts without user packs or init.js. If the crash only happens with user
+            packs enabled, try fixing the pack with <code>/charm:update</code> instead of filing an
+            issue.
           </p>
           <div className="app-error-boundary-grid">
             <div>Safe mode</div>

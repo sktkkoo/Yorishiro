@@ -169,9 +169,9 @@ What works today:
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
-- First-run and Settings health diagnostics for agent setup, safe mode, packs, and startup reports
 - Journal: long-term memory across sessions [in development]
 - `/charm:*` commands for interactive pack creation and editing
+- [Safe mode](docs/troubleshooting.md) (`CHARMINAL_SAFE_MODE=1`) to recover from broken packs
 
 > **Platform:** macOS only. Windows is not supported at this time — the build compiles but runtime behavior is unstable. Linux support is not yet available.
 

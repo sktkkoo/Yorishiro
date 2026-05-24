@@ -1,0 +1,86 @@
+# トラブルシューティング
+
+Charminal alpha はローカル完結型です。復旧に必要な情報はほぼすべて
+`~/.charminal/` にあり、ネットワーク不要で確認できます。
+
+## 初回起動と health check
+
+初回起動時に、選択中の terminal agent・ユーザーデータのパス・safe mode の
+状態・pack の読み込み結果・startup report のパスを表示します。
+同じ情報は Settings → Health からいつでも確認できます。
+
+選択中の agent が見つからない場合は、Claude Code か Codex をインストールするか、
+Agent 設定を変更して Charminal を再起動してください。
+
+## 主要なパス
+
+| パス | 用途 |
+|---|---|
+| `~/.charminal/config.json` | persona・scene・terminal agent・無効化 pack などのユーザー設定 |
+| `~/.charminal/init.js` | ユーザー起動スクリプト。safe mode ではスキップされる |
+| `~/.charminal/packs/` | ユーザー作成 pack |
+| `~/.charminal/last-startup.json` | 直近の user pack 読み込みレポート |
+| `~/.charminal/journal/` | Journal と memory ファイル |
+| `~/.charminal/shell/` | 生成されたシェル統合ファイル |
+
+## pack が壊れた場合
+
+pack が失敗しても Charminal が開ける場合:
+
+1. Settings を開く。
+2. Health で失敗した pack の数を確認する。
+3. Packs を開く。
+4. 失敗した pack を選択し、診断結果を確認する。
+5. 🔧 ボタンを押すと `/charm:update` の修正プロンプトがターミナルに挿入されるので、Enter で AI に修復を任せる。
+6. 手動で直したい場合は、`~/.charminal/packs/` 内のファイルを編集して `Cmd+R` / `Ctrl+R` でリロードする。
+
+pack が原因で Charminal が開けない場合は safe mode を使ってください。
+
+## Safe mode
+
+Safe mode はユーザー pack と `init.js` をスキップします。ユーザーデータは削除されません。
+
+macOS:
+
+```bash
+CHARMINAL_SAFE_MODE=1 open /Applications/charminal.app
+```
+
+ソースから:
+
+```bash
+CHARMINAL_SAFE_MODE=1 npm run tauri dev
+```
+
+壊れた pack を無効化または修正したら、`CHARMINAL_SAFE_MODE` なしで再起動してください。
+
+## クラッシュ復旧画面
+
+React ランタイムがクラッシュした場合、復旧画面が表示されます:
+
+- safe mode コマンド
+- user pack ディレクトリ
+- startup report のパス
+- エラー詳細
+- Reload ボタン
+
+クラッシュを報告する際は、復旧画面に表示されたエラー詳細と、該当する場合は
+`~/.charminal/last-startup.json` の内容を含めてください。
+
+## Issue 報告チェックリスト
+
+ユーザー作成 pack に起因する問題は Issue の対象外です。pack が原因と思われる
+場合は、まず 🔧 ボタンか `/charm:update` で AI 修復を試してください。すべての
+ユーザー pack を無効化（safe mode）しても問題が再現する場合のみ Issue を報告して
+ください。
+
+以下を含めてください:
+
+- Charminal のバージョンまたはコミットハッシュ
+- OS と CPU アーキテクチャ
+- インストール方法: `.dmg`、ソースチェックアウト、その他
+- 選択中の terminal agent: Claude Code または Codex
+- safe mode で挙動が変わるかどうか
+- 関連する user pack の id（あれば）
+- `~/.charminal/last-startup.json`（存在する場合）
+- クラッシュ復旧画面のエラー詳細（表示された場合）
