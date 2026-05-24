@@ -67,7 +67,7 @@ Charminal launches [**Claude Code**](https://claude.com/claude-code) (Anthropic)
 
 ## Bundled assets
 
-VRMA animations and voice WAVs are third-party assets that **cannot be included directly in the public git repository** (see individual licenses). However, they are embedded into the distributed application bundle (`.app` / `.exe`) at build time — bundling within an application is treated differently from redistributing raw files in a public repository.
+VRMA animations are third-party assets that **cannot be included directly in the public git repository** (see individual licenses). However, they are embedded into the distributed application bundle (`.app` / `.exe`) at build time — bundling within an application is treated differently from redistributing raw files in a public repository.
 
 For developer asset setup, see `scripts/fetch-assets.mjs`.
 
@@ -111,13 +111,6 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 - Source: Animations from [Adobe Mixamo](https://www.mixamo.com/) converted to VRMA format.
 - Terms: Subject to the Mixamo ToS. Signed-in users may use animations in personal and commercial projects. Redistribution of files as standalone assets is not permitted — placing raw files in a public git repo is not permitted; embedding in an application bundle is permitted.
 
-### Voice WAV files
-
-- Location: External `../Charminal-assets/voices/` → copied to `bundled-packs/shared/voices/` at build time (`.gitignore`d)
-- Categories: `acknowledge/` / `working/` / `thinking/` / `longwork/` / `done/` / `error/`
-- **Source**: Development samples recorded with [VOICEVOX](https://voicevox.hiho.jp/)
-- **Distribution policy**: ⚠️ **Current voice WAVs are not included in the distributed bundle.** They are not suitable for distribution under VOICEVOX's terms of use. They will be replaced with distributable voice assets before a release build.
-
 ### Fonts / icons
 
 - Tauri default icon: `src-tauri/icons/` — from the [Tauri template](https://github.com/tauri-apps/create-tauri-app) (MIT / Apache-2.0). To be replaced with a Charminal-specific icon in the future.
@@ -126,10 +119,14 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 
 ## Inspiration / prior art
 
+These works showed us what was possible and gave Charminal its direction.
+
 - Claude Code (Anthropic) — the system Charminal gives a body to
 - VRoid / VRM ecosystem (pixiv / VRM Consortium) — the foundation for character expression
 - Emacs — for the user-extensible runtime model and the `init.el` pattern (`~/.charminal/init.js` is its direct lineage)
 - VRChat — UGC platform built around 3D avatar-mediated presence; "inhabiting a virtual space"
+- [@kensyouen_Y](https://x.com/kensyouen_Y/status/1820748563338637581) — A character inside Blender grabs the UI, rearranges panels, changes their own hair color. A remarkable work that showed, in a single video, that a character can operate the very environment that contains them.
+- [Caramel Pain / Hoshimachi Suisei (official)](https://www.youtube.com/watch?v=UpEPkPg8YP4) — Suisei, drawn inside an illustration tool, tears through the UI and breaks out of the application. A breathtaking music video that made us realize a character doesn't have to stay inside their frame — and that life emerges precisely at the moment they cross that boundary.
 
 ---
 
