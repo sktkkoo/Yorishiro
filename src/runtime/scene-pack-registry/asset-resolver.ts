@@ -13,6 +13,7 @@
  * Internal design-record: specs/2026-04-18-scene-pack-registry.md §5
  */
 
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { AmbientSound, Layer, SceneSpec } from "../../sdk/scene";
 import { resolveSharedSound, SHARED_SOUNDS } from "../ambient-audio/sound-resolver";
 
@@ -70,7 +71,6 @@ export function resolveBundledAsset(packId: string, relativePath: string): strin
  * 実装は Tauri の convertFileSrc を dynamic import して使う。
  */
 export async function resolveUserAsset(packDir: string, relativePath: string): Promise<string> {
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
   const clean = normalizeRelativePath(relativePath);
   if (!isSafeUserPackRelativePath(clean)) {
     throw new Error(`unsafe user pack asset path: ${relativePath}`);

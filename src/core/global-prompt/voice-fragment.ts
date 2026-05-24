@@ -5,6 +5,7 @@
  * グローバル system prompt に注入する。
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import type { ResolvedLanguage } from "../../runtime/language/language";
 import { registerGlobalPromptFragment } from "./index";
 import { getVoiceGuide, type VoiceLevel } from "./prompts";
@@ -12,7 +13,6 @@ import { getVoiceGuide, type VoiceLevel } from "./prompts";
 async function provideVoice(language: ResolvedLanguage): Promise<string> {
   let level: VoiceLevel = "on";
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
     const text = await invoke<string>("read_charminal_file", {
       relativePath: "config.json",
     });

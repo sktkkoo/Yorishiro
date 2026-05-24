@@ -11,6 +11,7 @@
  */
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   validateAmbientUiPackDefinition,
@@ -62,8 +63,6 @@ const extractDefault = (mod: unknown): unknown => {
  * が止まっていても Charminal 本体は動く——philosophy「壊さないこと」の典型適用。
  */
 export async function startPackWatcher(deps: StartPackWatcherDeps): Promise<PackWatcherHandle> {
-  const { invoke, convertFileSrc, Channel } = await import("@tauri-apps/api/core");
-
   let charminalHome: string;
   try {
     charminalHome = await invoke<string>("charminal_home_dir");

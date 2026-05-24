@@ -16,6 +16,7 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 5
  */
 
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { PersonaDefinition } from "../../sdk/persona";
@@ -69,8 +70,6 @@ export interface LoadUserLayerResult {
  * （= 前回通常起動時の snapshot を保持し、rescue 経路で読める状態を守る）。
  */
 export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLayerResult> {
-  const { invoke, convertFileSrc } = await import("@tauri-apps/api/core");
-
   const safeMode = await fetchSafeModeFlag().catch(() => false);
   if (safeMode) {
     deps.userPackLog.write({
@@ -199,8 +198,6 @@ export async function reloadSingleUserPack(
   id: string,
   deps: ReloadSingleUserPackDeps,
 ): Promise<{ ok: boolean; reason?: string }> {
-  const { invoke, convertFileSrc } = await import("@tauri-apps/api/core");
-
   const buildCacheBustUrl = async (path: string): Promise<string> => {
     const base = convertFileSrc(path);
     try {

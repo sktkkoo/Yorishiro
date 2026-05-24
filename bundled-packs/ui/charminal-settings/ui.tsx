@@ -19,6 +19,7 @@ import type {
   UiHealthReport,
   UiPackDefinition,
 } from "@charminal/sdk";
+import { invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -1535,7 +1536,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const onPickVrm = async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      const { invoke } = await import("@tauri-apps/api/core");
       const selected = await open({
         title: strings.selectVrmFile,
         filters: [{ name: "VRM", extensions: ["vrm"] }],

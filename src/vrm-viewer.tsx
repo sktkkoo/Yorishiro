@@ -16,7 +16,7 @@
 import { useEffect, useRef } from "react";
 import type { Body } from "./core/body";
 import type { SubsystemLog } from "./core/dev-log";
-import { getThreeRuntime } from "./runtime/three-runtime";
+import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
 
 interface VrmViewerProps {
   readonly url: string;

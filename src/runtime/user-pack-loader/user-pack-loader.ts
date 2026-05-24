@@ -17,6 +17,7 @@
  */
 
 import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   PackValidationError,
@@ -251,7 +252,6 @@ export async function loadSingleUserPack(
       // .js 側で明示している場合は injectPersonaPrompt が no-op を返す。
       // 404 / fetch 失敗は「md 無し」として扱い load は継続する。
       const packDir = entry.entryPath.replace(/\/persona\.js$/, "");
-      const { convertFileSrc } = await import("@tauri-apps/api/core");
       const mdUrl = convertFileSrc(`${packDir}/persona.md`);
       let mdText = "";
       try {
@@ -307,9 +307,6 @@ export async function loadSingleUserPack(
       }
     }
     if (entry.kind === "scene") {
-      // convertFileSrc は dep injection 原則に沿って @tauri-apps/api/core から取得する。
-      // registerScenePack helper に注入することで、helper 自体は Tauri 非依存のまま保つ。
-      const { convertFileSrc } = await import("@tauri-apps/api/core");
       const sceneResult = await registerScenePack({
         id: entry.id,
         entryPath: entry.entryPath,

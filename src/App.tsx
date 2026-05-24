@@ -12,6 +12,7 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -53,7 +54,14 @@ import immersiveManifest from "../bundled-packs/ui/immersive/manifest.json";
 import immersivePack from "../bundled-packs/ui/immersive/ui";
 import theaterManifest from "../bundled-packs/ui/theater/manifest.json";
 import theaterPack from "../bundled-packs/ui/theater/ui";
-import { prepareLocalizedPluginDir, type SpawnSpec, sessionList } from "./bindings/tauri-commands";
+import {
+  checkTutorialDone,
+  markTutorialDone,
+  prepareLocalizedPluginDir,
+  ptyWrite,
+  type SpawnSpec,
+  sessionList,
+} from "./bindings/tauri-commands";
 import CharacterSurface from "./character-surface";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
@@ -121,7 +129,6 @@ import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
 import { getSurfaceRegistry } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
-import { getThreeRuntime } from "./runtime/three-runtime";
 import {
   getRuntimeLevaStore,
   useRuntimeLevaStore,
@@ -130,12 +137,14 @@ import {
   getActiveSceneLevaStore,
   useActiveSceneLevaStore,
 } from "./runtime/three-runtime/scene-pack-leva-store";
+import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
-import { loadUserLayer, UserPackRegistry } from "./runtime/user-pack-loader";
+import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
 import {
   readCharminalConfigText,
+  readLastStartupReport,
   writeCharminalConfigText,
 } from "./runtime/user-pack-loader/charminal-io";
 import {
@@ -1025,7 +1034,6 @@ function App() {
       // Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        const { invoke } = await import("@tauri-apps/api/core");
         const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
         const {
           createListPacksHandler,
@@ -1068,11 +1076,6 @@ function App() {
           "./runtime/presence-intensity"
         );
         type PresenceIntensityDeps = import("./runtime/presence-intensity").PresenceIntensityDeps;
-        const { writeCharminalConfigText, readLastStartupReport } = await import(
-          "./runtime/user-pack-loader/charminal-io"
-        );
-        const { serializeConfig } = await import("./runtime/user-pack-loader/config");
-        const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
@@ -1420,12 +1423,10 @@ function App() {
       // ptyWrite は改行なしで送り、Enter はユーザーが押す（PTY observation only に抵触しない）。
       // フラグは pre-fill 成功直後に立てる（AI の判断に依存しない確実な経路）。
       try {
-        const { checkTutorialDone } = await import("./bindings/tauri-commands");
         const done = await checkTutorialDone();
         if (!done) {
           setTimeout(async () => {
             try {
-              const { ptyWrite, markTutorialDone } = await import("./bindings/tauri-commands");
               await ptyWrite({ data: "/charm:tutorial" });
               await markTutorialDone();
             } catch (err) {
@@ -1763,7 +1764,6 @@ function App() {
       readBundledPacks,
       readConfig: async () => parseConfig(await readCharminalConfigText()),
       readLoadReport: async () => {
-        const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
         const text = await readLastStartupReport();
         if (text === "") return null;
         try {
@@ -1778,7 +1778,6 @@ function App() {
         persona: personaRegistry.getActivePersonaId(),
       }),
     })({});
-    const { invoke } = await import("@tauri-apps/api/core");
     type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
     const userEntries = await invoke<UserPackEntry[]>("list_user_packs").catch(() => []);
     return {
@@ -1975,7 +1974,6 @@ function App() {
     };
 
     const readLoadReportForPackTools = async () => {
-      const { readLastStartupReport } = await import("./runtime/user-pack-loader/charminal-io");
       const text = await readLastStartupReport();
       if (text === "") return null;
       try {
@@ -1986,7 +1984,6 @@ function App() {
     };
 
     const readUserPackEntriesForPackTools = async () => {
-      const { invoke } = await import("@tauri-apps/api/core");
       type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
       return invoke<UserPackEntry[]>("list_user_packs");
     };
@@ -1994,7 +1991,6 @@ function App() {
     const reloadPackForPackTools = async (
       id: string,
     ): Promise<{ ok: boolean; reason?: string }> => {
-      const { reloadSingleUserPack } = await import("./runtime/user-pack-loader/runtime-wire");
       return reloadSingleUserPack(id, {
         effectPackRunner,
         personaRegistry,
@@ -2156,7 +2152,6 @@ function App() {
           // 設計境界: docs/decisions/input-prefill-boundary.md
           insertFixedPrompt: async (key) => {
             const data = resolveFixedTerminalPrompt(key, appLanguageRef.current.resolved);
-            const { ptyWrite } = await import("./bindings/tauri-commands");
             await ptyWrite({ data });
           },
           insertPackRepairPrompt: async (id, kind, action) => {
@@ -2166,7 +2161,6 @@ function App() {
               action,
               language: appLanguageRef.current.resolved,
             });
-            const { ptyWrite } = await import("./bindings/tauri-commands");
             await ptyWrite({ data });
           },
           listPersonas: () =>
@@ -2508,7 +2502,6 @@ function App() {
     appLog.write({ phase: "polling", note: "starting hook-signal polling" });
 
     const poll = async () => {
-      const { invoke } = await import("@tauri-apps/api/core");
       appLog.write({ phase: "polling", note: "loop started" });
       while (polling) {
         try {
@@ -2591,11 +2584,7 @@ function App() {
       setVrmUrl("/models/CLAI.vrm");
       return;
     }
-    import("@tauri-apps/api/core")
-      .then(({ convertFileSrc }) => {
-        setVrmUrl(convertFileSrc(vrmPath));
-      })
-      .catch(() => setVrmUrl(null));
+    setVrmUrl(convertFileSrc(vrmPath));
   }, [vrmPath]);
 
   // ambient-ui packs を document.body 直下の #ambient-layer に mount/unmount する。

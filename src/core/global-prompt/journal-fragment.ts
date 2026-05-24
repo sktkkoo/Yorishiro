@@ -5,6 +5,7 @@
  * どの persona であっても journal を書く。
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import type { ResolvedLanguage } from "../../runtime/language/language";
 import { registerGlobalPromptFragment } from "./index";
 import { getJournalGuide, getMemoriesHeader, getRecentJournalHeader } from "./prompts";
@@ -15,8 +16,6 @@ interface JournalEntry {
 }
 
 async function provideJournal(language: ResolvedLanguage): Promise<string> {
-  const { invoke } = await import("@tauri-apps/api/core");
-
   let memories = "";
   try {
     memories = await invoke<string>("read_journal_memories");
