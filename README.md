@@ -137,7 +137,7 @@ Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a 
 
 ### Context sharing
 
-A few small features help bridge the gap between what you see on screen and what the AI knows. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say` or Windows `System.Speech.Synthesis.SpeechSynthesizer`; support for additional speech engines is planned.
+A few small features help bridge the gap between what you see on screen and what the AI knows. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say`; support for additional speech engines is planned.
 
 ### Self-referential MCP
 
@@ -172,7 +172,8 @@ What works today:
 - First-run and Settings health diagnostics for agent setup, safe mode, packs, and startup reports
 - Journal: long-term memory across sessions [in development]
 - `/charm:*` commands for interactive pack creation and editing
-- Windows build support [experimental, not yet manually verified]
+
+> **Platform:** macOS only. Windows is not supported at this time — the build compiles but runtime behavior is unstable. Linux support is not yet available.
 
 ---
 

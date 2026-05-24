@@ -135,7 +135,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ### コンテキスト共有
 
-画面に見えているものと AI が知っていることのギャップを埋める小さな機能群です。**Terminal Reference Marker** は、ターミナル上の行を Cmd+click（または Option+Shift+drag で矩形選択）すると `[#Term1]` のようなマーカーが入力に挿入され、AI が参照テキストを解決できる仕組みです。**Voice Summary** は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声は macOS では `say`、Windows では `System.Speech.Synthesis.SpeechSynthesizer` を使用。他の音声エンジンへの対応も検討中です。
+画面に見えているものと AI が知っていることのギャップを埋める小さな機能群です。**Terminal Reference Marker** は、ターミナル上の行を Cmd+click（または Option+Shift+drag で矩形選択）すると `[#Term1]` のようなマーカーが入力に挿入され、AI が参照テキストを解決できる仕組みです。**Voice Summary** は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声は macOS の `say` を使用。他の音声エンジンへの対応も検討中です。
 
 ### 自己言及的 MCP
 
@@ -170,7 +170,8 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - First-run と Settings の health diagnostics（agent setup / safe mode / pack / startup report）
 - Journal による長期記憶 [開発中]
 - `/charm:*` command による pack の対話的な作成・編集
-- Windows ビルド対応 [experimental、未手動検証]
+
+> **対応プラットフォーム:** macOS のみ。Windows はビルドは通りますが動作が安定しないため、現時点ではサポート対象外です。Linux は未対応です。
 
 ---
 
