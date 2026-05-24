@@ -155,7 +155,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.3.0-alpha**
+**v0.4.0**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -165,13 +165,19 @@ What works today:
 - Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
 - CLAI, a VRM 3D character that breathes, blinks, and shifts gaze (bundled)
 - VRMA animation clip playback
+- Lip sync: voice playback with real-time mouth animation via Web Audio analysis
+- Microexpressions: subtle idle facial movements across brow, eye, and mouth regions
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
 - Journal: long-term memory across sessions [in development]
 - `/charm:*` commands for interactive pack creation and editing
+- Localization: Japanese / English auto-detection with per-language persona and prompts
+- UI packs: immersive and theater fullscreen layouts
+- Pack diagnostics: health checks, repair handoff, and local pack validation
 - [Safe mode](docs/troubleshooting.md) (`CHARMINAL_SAFE_MODE=1`) to recover from broken packs
+- Signed macOS builds via GitHub Actions (code signing + notarization)
 
 > **Platform:** macOS only. Windows is not supported at this time — the build compiles but runtime behavior is unstable. Linux support is not yet available.
 

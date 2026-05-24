@@ -4,7 +4,7 @@
   "name": "Pomodoro Timer",
   "type": "amenity",
   "version": "0.1.0",
-  "charminalVersion": "^0.3.0",
+  "charminalVersion": "^0.4.0",
   "author": "Charminal team",
   "description": "Pomodoro timer amenity with terminal dimming during breaks",
   "entry": "amenity.ts"

@@ -122,7 +122,7 @@ GitHub Actions で macOS 向けの署名済み `.dmg` をビルドする。
 
 ### トリガー
 
-- `git tag v0.3.0 && git push origin v0.3.0` — tag push で自動実行
+- `git tag v0.4.0 && git push origin v0.4.0` — tag push で自動実行
 - GitHub Actions 画面から **Run workflow** で手動実行
 
 ### ビルド対象

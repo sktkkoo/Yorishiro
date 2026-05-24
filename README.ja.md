@@ -153,7 +153,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ## Status
 
-**v0.3.0-alpha**
+**v0.4.0**
 
 実装 phase の途中です。API・データ形状・pack 仕様は今後変わります。
 
@@ -163,13 +163,19 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 - Session tabs: agent と並行して複数の shell セッションを操作（`Cmd+T` / `Ctrl+Tab`）
 - VRM の 3D キャラクター CLAI が呼吸し、瞬きし、視線を動かす（同梱）
 - VRMA アニメーションクリップの再生
+- リップシンク: Web Audio 解析によるリアルタイムの口の動きと音声再生
+- マイクロエクスプレッション: 眉・目・口の微細なアイドル表情変化
 - 6 種類の pack によるカスタマイズ（persona / scene / effect / ui / amenity / ambient-ui）
 - 自己言及的 MCP（20 以上の tool）— カメラ・ライティング制御を含む
 - 反射層による PTY 観察と即時反応
 - コンテキスト共有: Terminal Reference Marker（Cmd+click / Option+Shift+drag）と Voice Summary
 - Journal による長期記憶 [開発中]
 - `/charm:*` command による pack の対話的な作成・編集
+- ローカライズ: 日本語 / 英語の自動検出、言語別 persona・プロンプト
+- UI pack: immersive / theater のフルスクリーンレイアウト
+- Pack 診断: ヘルスチェック、修復ハンドオフ、ローカル pack の検証
 - [Safe mode](docs/troubleshooting.ja.md)（`CHARMINAL_SAFE_MODE=1`）で壊れた pack から復旧
+- GitHub Actions による署名済み macOS ビルド（コード署名 + 公証）
 
 > **対応プラットフォーム:** macOS のみ。Windows はビルドは通りますが動作が安定しないため、現時点ではサポート対象外です。Linux は未対応です。
 

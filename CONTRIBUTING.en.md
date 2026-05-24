@@ -122,7 +122,7 @@ GitHub Actions builds signed `.dmg` files for macOS.
 
 ### Triggers
 
-- `git tag v0.3.0 && git push origin v0.3.0` — runs automatically on tag push
+- `git tag v0.4.0 && git push origin v0.4.0` — runs automatically on tag push
 - **Run workflow** button on the GitHub Actions page for manual execution
 
 ### Build targets
