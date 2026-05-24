@@ -2409,7 +2409,13 @@ function App() {
         body.initAttention();
         body.setLipSyncSource(voicePlayer);
         dispatcher.setContextFactory(
-          createRealPersonaContextFactory({ body, logBridge, effectDispatcher, voicePlayer }),
+          createRealPersonaContextFactory({
+            body,
+            logBridge,
+            effectDispatcher,
+            voicePlayer,
+            personaRegistry,
+          }),
         );
         if (!greetedRef.current) {
           greetedRef.current = true;
@@ -2429,7 +2435,7 @@ function App() {
         dispatcher.setContextFactory(createStubPersonaContextFactory());
       }
     },
-    [dispatcher, logBridge, effectDispatcher, voicePlayer],
+    [dispatcher, logBridge, effectDispatcher, voicePlayer, personaRegistry],
   );
 
   // ── Tool-activity → Body state wiring ─────────────────────

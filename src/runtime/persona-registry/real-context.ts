@@ -7,8 +7,8 @@
  *   - ctx.character → Body.createCharacterAPI()   (real VRM control)
  *   - ctx.log       → createLogAPI(logBridge, id)  (real log bridge)
  *   - ctx.memory    → in-memory Map                (same as stub for now)
- *   - ctx.voice     → stub                         (VoicePlayer is post-MVP)
- *   - ctx.space     → stub                         (Effect pipeline is post-MVP)
+ *   - ctx.voice     → VoicePlayer                  (TTS + pre-recorded clips)
+ *   - ctx.space     → EffectDispatcher             (space effects)
  *   - ctx.terminal  → stub                         (PTY observation is post-MVP)
  *   - ctx.charm     → stub                         (CharmCommand is post-MVP)
  */
@@ -34,6 +34,8 @@ import { createLogAPI } from "../../core/log-bridge";
 import type { EffectDispatcher } from "../../core/space";
 import type { VoicePlayer } from "../../core/voice";
 import type { PersonaContextFactory, PersonaContextInputs } from "./stub-context";
+import type { PersonaRegistry } from "./types";
+import { resolvePersonaVoiceClip } from "./voice-asset-resolver";
 
 export interface RealContextDeps {
   /** Body instance for CharacterAPI. */
@@ -44,11 +46,13 @@ export interface RealContextDeps {
   readonly effectDispatcher: EffectDispatcher;
   /** VoicePlayer for VoiceAPI（省略時は stub fallback）。 */
   readonly voicePlayer?: VoicePlayer;
+  /** Active persona lookup for pack-local voice assets. */
+  readonly personaRegistry?: Pick<PersonaRegistry, "listEntries">;
 }
 
 /**
  * Create a PersonaContextFactory backed by real Body + LogBridge.
- * Voice / Space / Terminal / Charm remain stubbed for now.
+ * Terminal / Charm remain stubbed for now.
  */
 export function createRealPersonaContextFactory(deps: RealContextDeps): PersonaContextFactory {
   const characterAPI = deps.body.createCharacterAPI();
@@ -57,22 +61,32 @@ export function createRealPersonaContextFactory(deps: RealContextDeps): PersonaC
       deps.effectDispatcher.dispatch(request),
   };
 
-  return (inputs: PersonaContextInputs): PersonaContext => ({
-    event: inputs.event,
-    persona: inputs.persona,
-    time: inputs.time,
-    emitEvent: inputs.emitEvent,
+  return (inputs: PersonaContextInputs): PersonaContext => {
+    const personaEntry = deps.personaRegistry
+      ?.listEntries()
+      .find((candidate) => candidate.id === inputs.persona.id);
 
-    character: characterAPI,
-    log: createLogAPI(deps.logBridge, inputs.persona.id),
-    space: spaceAPI,
+    return {
+      event: inputs.event,
+      persona: inputs.persona,
+      time: inputs.time,
+      emitEvent: inputs.emitEvent,
 
-    voice: deps.voicePlayer?.createVoiceAPI() ?? createStubVoiceAPI(),
-    memory: createStubMemoryAPI(),
-    terminal: createStubTerminalAPI(),
-    charm: stubCharm,
-    signal: inputs.signal,
-  });
+      character: characterAPI,
+      log: createLogAPI(deps.logBridge, inputs.persona.id),
+      space: spaceAPI,
+
+      voice:
+        deps.voicePlayer?.createVoiceAPI({
+          resolveClip: (clipRef) =>
+            personaEntry === undefined ? null : resolvePersonaVoiceClip(personaEntry, clipRef),
+        }) ?? createStubVoiceAPI(),
+      memory: createStubMemoryAPI(),
+      terminal: createStubTerminalAPI(),
+      charm: stubCharm,
+      signal: inputs.signal,
+    };
+  };
 }
 
 // ─── Stubs for not-yet-implemented APIs ─────────────────

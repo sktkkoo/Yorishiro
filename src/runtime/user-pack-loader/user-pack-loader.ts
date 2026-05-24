@@ -291,6 +291,7 @@ export async function loadSingleUserPack(
           },
           persona: injected,
           origin: "user",
+          entryPath: entry.entryPath,
         };
         const handle = personaRegistry.register(personaEntry);
         packRegistry.register(entry.id, entry.kind, handle);

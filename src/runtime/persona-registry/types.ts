@@ -21,6 +21,8 @@ export interface PersonaEntry {
   readonly manifest: PersonaPackManifest;
   readonly persona: PersonaDefinition;
   readonly origin: PackOrigin;
+  /** Absolute entry path for user packs. Used to resolve pack-local runtime assets. */
+  readonly entryPath?: string;
 }
 
 export interface Disposable {
