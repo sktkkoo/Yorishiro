@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Volume2,
   VolumeX,
+  Wrench,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -896,9 +897,11 @@ function HealthDiagnostics({
 function PackWorkbench({
   ctx,
   strings,
+  onClose,
 }: {
   ctx: UiContext;
   strings: UiStrings;
+  onClose: () => void;
 }): React.JSX.Element {
   const [packs, setPacks] = useState<readonly UiAppPackStatusEntry[]>([]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -906,6 +909,7 @@ function PackWorkbench({
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<"enable" | "disable" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [repairPromptInserted, setRepairPromptInserted] = useState(false);
 
   const selectedPack = packs.find((pack) => packWorkbenchKey(pack) === selectedKey) ?? null;
 
@@ -975,6 +979,7 @@ function PackWorkbench({
       return;
     }
     let aborted = false;
+    setRepairPromptInserted(false);
     setDiagnosis(null);
     void ctx.app
       .diagnosePack(selectedPack.id, selectedPack.kind || undefined)
@@ -1017,9 +1022,29 @@ function PackWorkbench({
 
   const groups = groupPacksByKind(packs);
   const sectionRef = useRef<HTMLElement>(null);
+  const repairAction = diagnosis?.ok === false ? "repair" : "improve";
 
   const selectPack = (key: string) => {
     setSelectedKey(key);
+  };
+
+  const insertRepairPrompt = async () => {
+    if (selectedPack === null || diagnosis === null || repairPromptInserted) return;
+    setRepairPromptInserted(true);
+    setError(null);
+    try {
+      await ctx.app.insertPackRepairPrompt(
+        selectedPack.id,
+        selectedPack.kind || undefined,
+        repairAction,
+      );
+      onClose();
+    } catch (err) {
+      setRepairPromptInserted(false);
+      const reason = err instanceof Error ? err.message : String(err);
+      setError(reason);
+      ctx.emitEvent("charminal-settings:write-failed", { field: "pack-repair-prompt", reason });
+    }
   };
 
   return (
@@ -1251,6 +1276,43 @@ function PackWorkbench({
                 >
                   {selectedPack.origin}
                 </span>
+                {diagnosis !== null && (
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: SPACING.xs,
+                      marginLeft: "auto",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={repairPromptInserted}
+                      onClick={() => void insertRepairPrompt()}
+                      aria-label={
+                        repairAction === "repair" ? strings.repairPack : strings.improvePack
+                      }
+                      title={repairAction === "repair" ? strings.repairPack : strings.improvePack}
+                      style={{
+                        width: "24px",
+                        height: "24px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        border: `1px solid ${COLORS.borderSubtle}`,
+                        borderRadius: RADIUS.sm,
+                        background: COLORS.bgPanel,
+                        color: COLORS.fgDimmer,
+                        cursor: repairPromptInserted ? "default" : "pointer",
+                        opacity: repairPromptInserted ? 0.4 : 1,
+                        padding: 0,
+                      }}
+                    >
+                      <Wrench size={12} aria-hidden="true" />
+                    </button>
+                  </div>
+                )}
               </div>
               <PackMetadata diagnosis={diagnosis} origin={selectedPack.origin} />
 
@@ -1807,7 +1869,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <PackWorkbench ctx={ctx} strings={strings} />
+        <PackWorkbench ctx={ctx} strings={strings} onClose={fireCloseRequest} />
       </main>
     </div>
   );

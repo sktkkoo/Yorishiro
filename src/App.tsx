@@ -70,7 +70,7 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { SayTtsEngine, VoicePlayer } from "./core/voice";
-import { getStrings, resolveFixedTerminalPrompt } from "./i18n/strings";
+import { getStrings, resolveFixedTerminalPrompt, resolvePackRepairPrompt } from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -2150,6 +2150,16 @@ function App() {
           // 設計境界: docs/decisions/input-prefill-boundary.md
           insertFixedPrompt: async (key) => {
             const data = resolveFixedTerminalPrompt(key, appLanguageRef.current.resolved);
+            const { ptyWrite } = await import("./bindings/tauri-commands");
+            await ptyWrite({ data });
+          },
+          insertPackRepairPrompt: async (id, kind, action) => {
+            const data = resolvePackRepairPrompt({
+              id,
+              kind,
+              action,
+              language: appLanguageRef.current.resolved,
+            });
             const { ptyWrite } = await import("./bindings/tauri-commands");
             await ptyWrite({ data });
           },
