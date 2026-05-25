@@ -1067,6 +1067,7 @@ function App() {
           createPresenceSetIntensityHandler,
           // Voice:
           createVoiceSayHandler,
+          createVoicePlayHandler,
           // Pomodoro:
           createPomodoroStartHandler,
           createPomodoroStopHandler,
@@ -1371,6 +1372,12 @@ function App() {
           "voice.say": createVoiceSayHandler({
             speak: (text) => {
               voicePlayer.createVoiceAPI().say(text);
+            },
+            getFrequency: () => voiceFrequency,
+          }),
+          "voice.play": createVoicePlayHandler({
+            play: (clipRef, options) => {
+              voicePlayer.createVoiceAPI().play(clipRef, options);
             },
             getFrequency: () => voiceFrequency,
           }),
