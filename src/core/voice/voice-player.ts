@@ -11,18 +11,14 @@ import { LipSyncAnalyser } from "./lip-sync-analyser";
 import type { MouthValues } from "./mouth-values";
 import { ZERO_MOUTH } from "./mouth-values";
 import type { TtsEngine } from "./tts-engine";
+import { isPlayableVoiceUrl, resolveSharedVoiceRef } from "./voice-clip-resolver";
 
 const FADE_OUT_MS = 150;
 const BUFFER_ANALYSIS_WINDOW_MS = 32;
 const BUFFER_ANALYSIS_VOLUME_SCALE = 0.12;
 const BUFFER_SILENCE_THRESHOLD = 0.05;
 
-/** post-MVP 用スタブハンドル（clip 再生は未実装） */
-const stubHandle = (): VoiceHandle => ({
-  startedAt: 0,
-  stop: () => Promise.resolve(),
-  completion: Promise.resolve(),
-});
+export type VoiceClipResolver = (clipRef: VoiceClipRef) => Promise<string | null> | string | null;
 
 /**
  * TTS 音声を Web Audio パイプラインで再生する VoicePlayer。
@@ -40,6 +36,9 @@ export class VoicePlayer {
   private gainNode: GainNode | null = null;
   private lipSync: LipSyncAnalyser | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
+  private currentPlaybackId: number | null = null;
+  private nextPlaybackId = 1;
+  private fadeResetGeneration = 0;
   private animFrameId: number | null = null;
   private onMouthValues: ((values: MouthValues) => void) | null = null;
   private analysisBuffer: AudioBuffer | null = null;
@@ -66,16 +65,17 @@ export class VoicePlayer {
     return { ...ZERO_MOUTH };
   }
 
-  createVoiceAPI(): VoiceAPI {
+  createVoiceAPI(options: { readonly resolveClip?: VoiceClipResolver } = {}): VoiceAPI {
     return {
-      say: (text: string, _options?: SayOptions): VoiceHandle => {
+      say: (text: string, options?: SayOptions): VoiceHandle => {
         if (this.engine) {
-          return this.sayViaWebAudio(text);
+          return this.sayViaWebAudio(text, options);
         }
         return this.sayViaOsTts(text);
       },
 
-      play: (_clipRef: VoiceClipRef, _options?: VoicePlayOptions): VoiceHandle => stubHandle(),
+      play: (clipRef: VoiceClipRef, playOptions?: VoicePlayOptions): VoiceHandle =>
+        this.playClip(clipRef, playOptions, options.resolveClip),
 
       silence: (_fadeMs?: number): void => {
         this.stopPlayback();
@@ -93,8 +93,9 @@ export class VoicePlayer {
   // Web Audio パイプライン (engine あり)
   // ---------------------------------------------------------------------------
 
-  private sayViaWebAudio(text: string): VoiceHandle {
+  private sayViaWebAudio(text: string, options?: SayOptions): VoiceHandle {
     const startedAt = Date.now();
+    const playbackId = this.createPlaybackId();
     let stopped = false;
 
     const completion = (async () => {
@@ -111,10 +112,10 @@ export class VoicePlayer {
         audioBuffer = await decodeAudioData(ctx, audioData);
         if (stopped) return;
 
-        await this.playBuffer(ctx, audioBuffer);
+        await this.playBuffer(playbackId, ctx, audioBuffer, normalizeVolume(options?.volume));
       } catch (error) {
         if (stopped) return;
-        this.stopPlayback();
+        this.stopPlayback(playbackId);
         console.error("[voice] Web Audio TTS failed; lip sync cannot run.", error);
         if (audioBuffer) this.startBufferAnalysis(audioBuffer);
         await invoke("tts_speak", { text, voice: this.voice });
@@ -125,7 +126,7 @@ export class VoicePlayer {
       startedAt,
       stop: () => {
         stopped = true;
-        this.stopPlayback();
+        this.stopPlayback(playbackId);
         this.stopBufferAnalysis();
         void invoke("tts_stop", {});
         return Promise.resolve();
@@ -148,7 +149,93 @@ export class VoicePlayer {
     this.lipSync = new LipSyncAnalyser(this.analyserNode);
   }
 
-  private playBuffer(ctx: AudioContext, buffer: AudioBuffer): Promise<void> {
+  private playClip(
+    clipRef: VoiceClipRef,
+    options?: VoicePlayOptions,
+    resolveClip?: VoiceClipResolver,
+  ): VoiceHandle {
+    let startedAt = 0;
+    const playbackId = this.createPlaybackId();
+    let stopped = false;
+
+    const completion = (async () => {
+      const url = await this.resolveClipUrl(clipRef, resolveClip);
+      if (stopped) return;
+      if (url === null) {
+        throw new Error(`Unable to resolve voice clip '${clipRef}'`);
+      }
+
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const audioData = await response.arrayBuffer();
+        if (stopped) return;
+
+        const ctx = getAudioContext();
+        if (ctx.state === "suspended") await ctx.resume();
+
+        this.ensureGraph(ctx);
+
+        const audioBuffer = await decodeAudioData(ctx, audioData);
+        if (stopped) return;
+
+        await this.playBuffer(
+          playbackId,
+          ctx,
+          audioBuffer,
+          normalizeVolume(options?.volume),
+          () => {
+            startedAt = Date.now();
+          },
+        );
+      } catch (error) {
+        if (!stopped) {
+          console.error(`[voice] Failed to play clip '${clipRef}'.`, error);
+          throw error;
+        }
+      }
+    })();
+    void completion.catch(() => {});
+
+    return {
+      get startedAt() {
+        return startedAt;
+      },
+      stop: () => {
+        stopped = true;
+        this.stopPlayback(playbackId);
+        return Promise.resolve();
+      },
+      completion,
+    };
+  }
+
+  private async resolveClipUrl(
+    clipRef: VoiceClipRef,
+    scopedResolver?: VoiceClipResolver,
+  ): Promise<string | null> {
+    const scoped = await resolveWith(scopedResolver, clipRef);
+    if (scoped !== null) return scoped;
+
+    const shared = resolveSharedVoiceRef(clipRef);
+    if (shared !== null) return shared;
+
+    // Direct URL playback is intentionally kept for host-owned or already-sanitized refs.
+    // User pack-local paths should go through the scoped resolver above.
+    if (isPlayableVoiceUrl(clipRef)) return clipRef;
+    return null;
+  }
+
+  private playBuffer(
+    playbackId: number,
+    ctx: AudioContext,
+    buffer: AudioBuffer,
+    volume = 1,
+    onStart?: () => void,
+  ): Promise<void> {
+    this.fadeResetGeneration += 1;
     this.stopSource();
 
     return new Promise((resolve) => {
@@ -157,15 +244,17 @@ export class VoicePlayer {
       source.connect(this.analyserNode as AnalyserNode);
       source.connect(this.gainNode as GainNode);
       this.currentSource = source;
-      this.gainNode?.gain.setValueAtTime(1, ctx.currentTime);
+      this.currentPlaybackId = playbackId;
+      this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
 
       this.lipSync?.reset();
       this.startBufferAnalysis(buffer);
       this.startLipSyncLoop();
 
       source.onended = () => {
-        if (this.currentSource === source) {
+        if (this.currentSource === source && this.currentPlaybackId === playbackId) {
           this.currentSource = null;
+          this.currentPlaybackId = null;
           this.stopLipSyncLoop();
           this.stopBufferAnalysis();
           this.onMouthValues?.({ ...ZERO_MOUTH });
@@ -174,11 +263,13 @@ export class VoicePlayer {
       };
 
       source.start();
+      onStart?.();
     });
   }
 
-  private stopPlayback(): void {
-    this.fadeOutAndStop();
+  private stopPlayback(playbackId?: number): void {
+    if (playbackId !== undefined && this.currentPlaybackId !== playbackId) return;
+    this.fadeOutAndStop(playbackId);
     this.stopLipSyncLoop();
     this.stopBufferAnalysis();
     this.onMouthValues?.({ ...ZERO_MOUTH });
@@ -232,7 +323,8 @@ export class VoicePlayer {
     return { aa: volume, ih: 0, ou: 0, ee: 0, oh: 0 };
   }
 
-  private stopSource(): void {
+  private stopSource(playbackId?: number): void {
+    if (playbackId !== undefined && this.currentPlaybackId !== playbackId) return;
     if (this.currentSource) {
       try {
         this.currentSource.stop();
@@ -240,18 +332,22 @@ export class VoicePlayer {
         /* already stopped */
       }
       this.currentSource = null;
+      this.currentPlaybackId = null;
     }
   }
 
-  private fadeOutAndStop(): void {
+  private fadeOutAndStop(playbackId?: number): void {
+    if (playbackId !== undefined && this.currentPlaybackId !== playbackId) return;
     const source = this.currentSource;
     const gain = this.gainNode;
     if (!gain || !source) {
-      this.stopSource();
+      this.stopSource(playbackId);
       return;
     }
     this.currentSource = null;
+    this.currentPlaybackId = null;
     const ctx = getAudioContext();
+    const resetGeneration = this.fadeResetGeneration;
     gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_OUT_MS / 1000);
     setTimeout(() => {
@@ -260,7 +356,9 @@ export class VoicePlayer {
       } catch {
         /* already stopped */
       }
-      gain.gain.setValueAtTime(1, ctx.currentTime);
+      if (this.fadeResetGeneration === resetGeneration) {
+        gain.gain.setValueAtTime(1, ctx.currentTime);
+      }
     }, FADE_OUT_MS + 10);
   }
 
@@ -300,6 +398,29 @@ export class VoicePlayer {
       completion,
     };
   }
+
+  private createPlaybackId(): number {
+    const id = this.nextPlaybackId;
+    this.nextPlaybackId += 1;
+    return id;
+  }
+}
+
+async function resolveWith(
+  resolver: VoiceClipResolver | undefined | null,
+  clipRef: VoiceClipRef,
+): Promise<string | null> {
+  if (!resolver) return null;
+  try {
+    return (await resolver(clipRef)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeVolume(volume: number | undefined): number {
+  if (volume === undefined || !Number.isFinite(volume)) return 1;
+  return Math.min(Math.max(volume, 0), 1);
 }
 
 async function decodeAudioData(ctx: AudioContext, audioData: ArrayBuffer): Promise<AudioBuffer> {

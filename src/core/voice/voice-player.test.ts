@@ -1,10 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockAudioContext } = vi.hoisted(() => {
-  const createMockGainNode = () => ({
-    connect: vi.fn(),
-    gain: { value: 1, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
-  });
+const { mockInvoke, mockAudioContext, mockFetch } = vi.hoisted(() => {
+  const createMockGainNode = () => {
+    const gain = {
+      value: 1,
+      setValueAtTime: vi.fn((value: number) => {
+        gain.value = value;
+      }),
+      linearRampToValueAtTime: vi.fn((value: number) => {
+        gain.value = value;
+      }),
+    };
+    return {
+      connect: vi.fn(),
+      gain,
+    };
+  };
   const mockGainNode = createMockGainNode();
   const mockAnalyserNode = {
     connect: vi.fn(() => mockGainNode),
@@ -43,6 +54,7 @@ const { mockInvoke, mockAudioContext } = vi.hoisted(() => {
   return {
     mockInvoke: vi.fn(() => Promise.resolve()),
     mockAudioContext,
+    mockFetch: vi.fn(),
   };
 });
 
@@ -54,9 +66,18 @@ vi.mock("./audio-context", () => ({
 // Node 環境に存在しないブラウザ API のスタブ
 vi.stubGlobal("requestAnimationFrame", (cb: () => void) => setTimeout(cb, 0));
 vi.stubGlobal("cancelAnimationFrame", (id: number) => clearTimeout(id));
+vi.stubGlobal("fetch", mockFetch);
 
 import type { TtsEngine } from "./tts-engine";
 import { VoicePlayer } from "./voice-player";
+
+const flushPlaybackStart = async (): Promise<void> => {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
 
 // ---------------------------------------------------------------------------
 // engine なし (従来の OS TTS フォールバック)
@@ -75,6 +96,7 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
       length: 480,
       sampleRate: 24000,
     });
+    mockFetch.mockReset();
   });
 
   it("say() は tts_speak を text 付きで invoke する", () => {
@@ -121,11 +143,51 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
     expect(mockInvoke).toHaveBeenCalledWith("tts_stop", {});
   });
 
-  it("play() はスタブハンドルを返す（post-MVP）", () => {
+  it("play() は resolveClip の URL を fetch して Web Audio で再生する", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      arrayBuffer: vi.fn(async () => createMinimalWav()),
+    });
+    const player = new VoicePlayer();
+    const api = player.createVoiceAPI({ resolveClip: () => "/voice.wav" });
+    const handle = api.play("clip:greeting", { volume: 0.4 });
+
+    expect(handle.startedAt).toBe(0);
+    await flushPlaybackStart();
+
+    expect(handle.startedAt).toBeGreaterThan(0);
+    expect(mockFetch).toHaveBeenCalledWith("/voice.wav");
+    expect(mockAudioContext.createBuffer).toHaveBeenCalledWith(1, 480, 24000);
+
+    const outputGain = mockAudioContext.createGain.mock.results[1].value;
+    expect(outputGain.gain.setValueAtTime).toHaveBeenCalledWith(0.4, mockAudioContext.currentTime);
+  });
+
+  it("play() は clip が解決できない場合 startedAt=0 のまま completion で失敗する", async () => {
     const player = new VoicePlayer();
     const api = player.createVoiceAPI();
-    const handle = api.play("clip:greeting");
+    const handle = api.play("clip:missing");
+
+    await expect(handle.completion).rejects.toThrow("Unable to resolve voice clip");
     expect(handle.startedAt).toBe(0);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("play() は fetch 失敗を completion で通知する", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      arrayBuffer: vi.fn(),
+    });
+    const player = new VoicePlayer();
+    const api = player.createVoiceAPI({ resolveClip: () => "/missing.wav" });
+    const handle = api.play("clip:missing");
+
+    await expect(handle.completion).rejects.toThrow("HTTP 404");
+    expect(handle.startedAt).toBe(0);
+    consoleError.mockRestore();
   });
 });
 
@@ -190,6 +252,7 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
       length: 480,
       sampleRate: 24000,
     });
+    mockFetch.mockReset();
   });
 
   it("say() は engine.synthesize を呼ぶ（tts_speak は呼ばない）", () => {
@@ -244,6 +307,19 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
 
     expect(mockAudioContext.createBuffer).toHaveBeenCalledWith(1, 480, 24000);
     expect(mockAudioContext.decodeAudioData).not.toHaveBeenCalled();
+  });
+
+  it("say() は Web Audio 再生時に volume option を反映する", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+
+    api.say("hello", { volume: 0.5 });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const outputGain = mockAudioContext.createGain.mock.results[1].value;
+    expect(outputGain.gain.setValueAtTime).toHaveBeenCalledWith(0.5, mockAudioContext.currentTime);
   });
 
   it("解析用 AnalyserNode は silent sink 経由で destination に接続される", async () => {
@@ -329,5 +405,61 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(mouth.aa).toBeGreaterThan(0);
     expect(mouth.ih).toBe(0);
     expect(mockAudioContext.decodeAudioData).not.toHaveBeenCalled();
+  });
+
+  it("未開始の play handle を stop しても既存の say 再生は止めない", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+    api.say("hello");
+    await Promise.resolve();
+    await Promise.resolve();
+    const saySource = mockAudioContext.createBufferSource.mock.results[0].value;
+
+    let resolveClip: (value: string) => void = () => {};
+    const clipHandle = api.play("clip:late", {
+      volume: 0.5,
+    });
+    const scopedApi = player.createVoiceAPI({
+      resolveClip: () =>
+        new Promise<string>((resolve) => {
+          resolveClip = resolve;
+        }),
+    });
+    const lateHandle = scopedApi.play("clip:late");
+
+    await Promise.resolve();
+    await clipHandle.stop();
+    await lateHandle.stop();
+    resolveClip("/late.wav");
+    await lateHandle.completion;
+
+    expect(saySource.stop).not.toHaveBeenCalled();
+  });
+
+  it("古い fade timer は新しい clip の volume を 1 に戻さない", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: vi.fn(async () => createMinimalWav()),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        arrayBuffer: vi.fn(async () => createMinimalWav()),
+      });
+    const player = new VoicePlayer();
+    const api = player.createVoiceAPI({ resolveClip: () => "/voice.wav" });
+    const first = api.play("clip:first", { volume: 0.3 });
+    await flushPlaybackStart();
+    await first.stop();
+
+    api.play("clip:second", { volume: 0.3 });
+    await flushPlaybackStart();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    const outputGain = mockAudioContext.createGain.mock.results[1].value;
+    expect(outputGain.gain.value).toBe(0.3);
   });
 });

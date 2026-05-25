@@ -1637,6 +1637,39 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
+ * voice.play
+ * ────────────────────────────────────────────────────────── */
+
+export interface VoicePlayDeps {
+  readonly play: (clipRef: string, options?: { readonly volume?: number }) => void;
+  readonly getFrequency: () => "on" | "off";
+}
+
+export interface VoicePlayResult {
+  readonly played: boolean;
+}
+
+/**
+ * pre-recorded voice clip を再生する handler。VoicePlayer.play に委譲する。
+ * MCP からは scoped resolver を持たないので shared voice (`voice:<stem>`) と
+ * playable URL (`https?://` / `asset://` / `blob:`) のみが解決される。
+ * pack-local の `./...` `assets/...` は VoicePlayer 側で resolve 失敗扱いとなる。
+ */
+export function createVoicePlayHandler(deps: VoicePlayDeps) {
+  return async (request: unknown): Promise<VoicePlayResult> => {
+    if (deps.getFrequency() === "off") return { played: false };
+    const r = requestRecord(request);
+    const clipRef = r.clipRef;
+    if (typeof clipRef !== "string" || clipRef === "") {
+      return { played: false };
+    }
+    const volume = typeof r.volume === "number" ? r.volume : undefined;
+    deps.play(clipRef, volume === undefined ? undefined : { volume });
+    return { played: true };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
  * presence.set-intensity
  * ────────────────────────────────────────────────────────── */
 

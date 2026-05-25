@@ -84,7 +84,10 @@ const extractDefault = (mod: unknown): unknown => {
   return (mod as { default?: unknown }).default;
 };
 
-const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
+const makeInitContext = (
+  deps: LoadInitScriptDeps,
+  initScriptPath: string,
+): CharminalInitContext => ({
   registerEffect(pack) {
     const validated = validateEffectDefinition(pack);
     deps.effectPackRunner.register(validated);
@@ -103,6 +106,7 @@ const makeInitContext = (deps: LoadInitScriptDeps): CharminalInitContext => ({
       },
       persona: withDefaults,
       origin: "user",
+      entryPath: initScriptPath,
     };
     deps.personaRegistry.register(entry);
   },
@@ -180,7 +184,7 @@ export async function loadInitScript(deps: LoadInitScriptDeps): Promise<LoadInit
     return { ran: false, error };
   }
 
-  const ctx = makeInitContext(deps);
+  const ctx = makeInitContext(deps, path);
   try {
     // user's default may be sync or async. Await always — Promise.resolve wraps
     // plain returns and keeps synchronous throws catchable in the same block.

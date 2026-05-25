@@ -135,6 +135,7 @@ describe("loadInitScript", () => {
     expect(personaReg.registered).toHaveLength(1);
     expect(personaReg.registered[0].persona).toMatchObject(validPersonaPack);
     expect(personaReg.registered[0].origin).toBe("user");
+    expect(personaReg.registered[0].entryPath).toBe("/home/user/.charminal/init.js");
   });
 
   it("awaits async default() before returning", async () => {

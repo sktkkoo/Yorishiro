@@ -283,6 +283,20 @@ pub struct VoiceSayRequest {
     pub voice: Option<String>,
 }
 
+/// `voice_play` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct VoicePlayRequest {
+    /// 再生する voice clip の ref。`voice:<stem>` (shared library) もしくは
+    /// `https?://` / `asset://` / `blob:` (playable URL) を受理する。
+    /// pack-local の `./...` `assets/...` は MCP からは解決できない
+    /// （pack scope を持たないため）。
+    #[serde(rename = "clipRef")]
+    pub clip_ref: String,
+    /// 再生音量 (0.0-1.0)。省略時は default。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f32>,
+}
+
 /// `presence_set_intensity` の引数。存在濃度の切り替え。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PresenceSetIntensityRequest {
@@ -684,6 +698,24 @@ impl Charminal {
             &self.app_handle,
             "voice.say",
             json!({ "text": req.text, "voice": req.voice }),
+        )
+        .await
+    }
+
+    /// voice_play: 事前収録された voice clip を再生する。
+    /// 共有ライブラリ参照 `voice:<stem>` か playable URL (`https?://` / `asset://` / `blob:`) を渡す。
+    /// pack-local の `./` `assets/` は pack scope を持つ handler からのみ解決可能なため、MCP からは使えない。
+    #[tool(
+        description = "Play a pre-recorded voice clip aloud. Accepts shared library refs (`voice:<stem>`) or playable URLs (`https?://`, `asset://`, `blob:`). Pack-local `./` and `assets/` refs are not resolvable from MCP. Use voice_say for TTS instead."
+    )]
+    async fn voice_play(
+        &self,
+        Parameters(req): Parameters<VoicePlayRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "voice.play",
+            json!({ "clipRef": req.clip_ref, "volume": req.volume }),
         )
         .await
     }
