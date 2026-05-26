@@ -83,7 +83,10 @@ v1 OpenCode adapter は：
 - ✗ session resume（session storage path 未確認）
 - ✗ Claude-Code-style lifecycle hooks（OpenCode native 機構なし）
 
-**known limitation**: `OPENCODE_CONFIG_CONTENT` は project-local `opencode.json` を **置換** するため、Charminal session 中は user の project-local 設定が無視される。v2 で deep-merge 対応する。
+**known limitations**:
+
+- `OPENCODE_CONFIG_CONTENT` は project-local `opencode.json` を **置換** するため、Charminal session 中は user の project-local 設定が無視される。v2 で deep-merge 対応する。
+- Unicode rendering (CJK 全角 / 結合文字 / Cyrillic / icon glyph 等) の品質は OpenCode 本体の TUI 実装に依存する。Charminal の xterm.js は VS Code と同じ xterm.js core なので、xterm.js 系で報告された OpenCode 上流 issue (例: [#2920](https://github.com/sst/opencode/issues/2920) は v1.0 で fix 済、[#2013](https://github.com/sst/opencode/issues/2013) ほか) の状況に追従する。本件は Charminal 側で workaround しない (OpenCode 上流の責務)。最低 OpenCode v1.0 以降の利用を `docs/configuration.md` で推奨する。
 
 ## なぜそう決めたか
 
