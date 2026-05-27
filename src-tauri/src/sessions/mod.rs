@@ -5,6 +5,7 @@
 //!
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
+pub mod agent_adapter;
 pub mod osc133;
 pub mod pty_session;
 pub mod registry;
