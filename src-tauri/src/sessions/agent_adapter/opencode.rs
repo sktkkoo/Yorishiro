@@ -1,3 +1,5 @@
+use serde_json::{Map, Value};
+
 use super::{AgentCapabilities, LaunchArgs, LaunchContext, TerminalAgent};
 
 pub struct OpencodeAgent;
@@ -20,7 +22,7 @@ impl TerminalAgent for OpencodeAgent {
         AgentCapabilities {
             persona_overlay: true,
             mcp_injection: true,
-            plugins: false,
+            plugins: true,
             lifecycle_hooks: false,
             session_resume: false,
         }
@@ -58,6 +60,10 @@ impl TerminalAgent for OpencodeAgent {
             temp_files.push(persona_path);
         }
 
+        if let Some(commands) = opencode_charminal_commands(ctx.plugin_dir)? {
+            config_obj["command"] = Value::Object(commands);
+        }
+
         env.push((
             "OPENCODE_CONFIG_CONTENT".to_string(),
             config_obj.to_string(),
@@ -71,28 +77,142 @@ impl TerminalAgent for OpencodeAgent {
     }
 }
 
+fn parse_command_markdown(content: &str) -> (String, String) {
+    let mut description = String::new();
+    let mut in_frontmatter = false;
+    let mut frontmatter_end = 0;
+
+    for (i, line) in content.lines().enumerate() {
+        let trimmed = line.trim();
+        if i == 0 && trimmed == "---" {
+            in_frontmatter = true;
+            continue;
+        }
+        if in_frontmatter {
+            if trimmed == "---" {
+                in_frontmatter = false;
+                frontmatter_end = i;
+                continue;
+            }
+            if let Some(desc) = trimmed.strip_prefix("description:") {
+                description = desc.trim().trim_matches('"').to_string();
+            }
+        }
+    }
+
+    let lines_vec: Vec<&str> = content.lines().collect();
+    let mut body_start = if frontmatter_end > 0 {
+        frontmatter_end + 1
+    } else {
+        0
+    };
+    while body_start < lines_vec.len() {
+        let trimmed = lines_vec[body_start].trim();
+        if trimmed.is_empty() || trimmed == "$ARGUMENTS" || trimmed == "---" {
+            body_start += 1;
+        } else {
+            break;
+        }
+    }
+
+    (description, lines_vec[body_start..].join("\n"))
+}
+
+fn rewrite_charm_slash_commands(input: &str) -> String {
+    let mut out = input.to_string();
+    for (slash, command) in [
+        ("/charm:create", "/charm-create"),
+        ("/charm:update", "/charm-update"),
+        ("/charm:help", "/charm-help"),
+        ("/charm:shortcut", "/charm-shortcut"),
+        ("/charm:tutorial", "/charm-tutorial"),
+        ("/charm:*", "/charm-*"),
+    ] {
+        out = out.replace(slash, command);
+    }
+    out
+}
+
+fn opencode_command_config(content: &str, command_name: &str) -> Value {
+    let (description, body) = parse_command_markdown(content);
+    let body = rewrite_charm_slash_commands(&body);
+    let template = format!("$ARGUMENTS\n\n---\n\n{}", body);
+
+    serde_json::json!({
+        "template": template,
+        "description": if description.is_empty() {
+            format!("Charminal {}", command_name)
+        } else {
+            description
+        },
+    })
+}
+
+fn opencode_charminal_commands(
+    plugin_dir: Option<&std::path::Path>,
+) -> Result<Option<Map<String, Value>>, String> {
+    let Some(plugin_dir) = plugin_dir else {
+        return Ok(None);
+    };
+    let commands_dir = plugin_dir.join("commands");
+    if !commands_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut commands = Map::new();
+    for entry in std::fs::read_dir(&commands_dir)
+        .map_err(|e| format!("read OpenCode command dir failed: {}", e))?
+    {
+        let path = entry
+            .map_err(|e| format!("read OpenCode command dir entry failed: {}", e))?
+            .path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("md") {
+            continue;
+        }
+        let Some(command_name) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("read OpenCode command {} failed: {}", path.display(), e))?;
+        commands.insert(
+            format!("charm-{}", command_name),
+            opencode_command_config(&content, command_name),
+        );
+    }
+
+    if commands.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(commands))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::Value;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
-    fn make_ctx<'a>(cwd: Option<&'a Path>, system_prompt: Option<&'a str>) -> LaunchContext<'a> {
+    fn make_ctx<'a>(
+        cwd: Option<&'a Path>,
+        system_prompt: Option<&'a str>,
+        plugin_dir: Option<&'a Path>,
+    ) -> LaunchContext<'a> {
         LaunchContext {
             cwd,
             system_prompt,
-            plugin_dir: None,
+            plugin_dir,
             mcp_port: 18743,
             hook_port: 19001,
         }
     }
 
     #[test]
-    fn opencode_capabilities_declares_no_plugins_no_hooks_no_resume() {
+    fn opencode_capabilities_declares_plugins_no_hooks_no_resume() {
         let caps = OPENCODE.capabilities();
         assert!(caps.persona_overlay);
         assert!(caps.mcp_injection);
-        assert!(!caps.plugins);
+        assert!(caps.plugins);
         assert!(!caps.lifecycle_hooks);
         assert!(!caps.session_resume);
     }
@@ -100,7 +220,7 @@ mod tests {
     #[test]
     fn opencode_build_launch_args_includes_dir_when_cwd_set() {
         let cwd = Path::new("/tmp/some-cwd");
-        let ctx = make_ctx(Some(cwd), None);
+        let ctx = make_ctx(Some(cwd), None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let pair = result
             .args
@@ -112,7 +232,7 @@ mod tests {
 
     #[test]
     fn opencode_omits_dir_when_cwd_missing() {
-        let ctx = make_ctx(None, None);
+        let ctx = make_ctx(None, None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
     }
@@ -124,7 +244,7 @@ mod tests {
         use std::os::unix::ffi::OsStrExt;
 
         let cwd = Path::new(OsStr::from_bytes(b"/tmp/charminal-\xFF"));
-        let ctx = make_ctx(Some(cwd), None);
+        let ctx = make_ctx(Some(cwd), None, None);
         let err = match OPENCODE.build_launch_args(&ctx) {
             Ok(_) => panic!("non-UTF-8 cwd should error"),
             Err(err) => err,
@@ -134,7 +254,7 @@ mod tests {
 
     #[test]
     fn opencode_injects_mcp_via_opencode_config_content_env() {
-        let ctx = make_ctx(None, None);
+        let ctx = make_ctx(None, None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
             .env
@@ -150,7 +270,7 @@ mod tests {
 
     #[test]
     fn opencode_includes_persona_via_instructions_temp_file() {
-        let ctx = make_ctx(None, Some("住人としての気質を保つ"));
+        let ctx = make_ctx(None, Some("住人としての気質を保つ"), None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
 
         let (_, json_str) = result
@@ -178,7 +298,7 @@ mod tests {
 
     #[test]
     fn opencode_omits_instructions_when_no_persona() {
-        let ctx = make_ctx(None, None);
+        let ctx = make_ctx(None, None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
             .env
@@ -187,5 +307,81 @@ mod tests {
             .expect("env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
         assert!(parsed.get("instructions").is_none() || parsed["instructions"].is_null());
+    }
+
+    fn fresh_plugin_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-opencode-commands-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("commands")).expect("create commands dir");
+        tmp
+    }
+
+    #[test]
+    fn opencode_injects_charminal_commands_via_config_content() {
+        let plugin_dir = fresh_plugin_dir("basic");
+        std::fs::write(
+            plugin_dir.join("commands").join("create.md"),
+            "---\ndescription: Create a new pack\n---\n\n$ARGUMENTS\n\n---\n\nCreate the requested pack.",
+        )
+        .expect("write command");
+
+        let ctx = make_ctx(None, None, Some(&plugin_dir));
+        let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
+        let (_, json_str) = result
+            .env
+            .iter()
+            .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
+            .expect("env present");
+        let parsed: Value = serde_json::from_str(json_str).expect("valid json");
+        let command = &parsed["command"]["charm-create"];
+
+        assert_eq!(command["description"], "Create a new pack");
+        assert!(command["template"]
+            .as_str()
+            .unwrap()
+            .starts_with("$ARGUMENTS"));
+        assert!(command["template"]
+            .as_str()
+            .unwrap()
+            .contains("Create the requested pack."));
+
+        let _ = std::fs::remove_dir_all(&plugin_dir);
+    }
+
+    #[test]
+    fn opencode_command_templates_rewrite_charm_refs() {
+        let plugin_dir = fresh_plugin_dir("rewrite");
+        std::fs::write(
+            plugin_dir.join("commands").join("help.md"),
+            "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /charm:create, /charm:update, or /charm:*.",
+        )
+        .expect("write command");
+
+        let ctx = make_ctx(None, None, Some(&plugin_dir));
+        let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
+        let (_, json_str) = result
+            .env
+            .iter()
+            .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
+            .expect("env present");
+        let parsed: Value = serde_json::from_str(json_str).expect("valid json");
+        let template = parsed["command"]["charm-help"]["template"]
+            .as_str()
+            .expect("template string");
+
+        assert!(template.contains("/charm-create"));
+        assert!(template.contains("/charm-update"));
+        assert!(template.contains("/charm-*"));
+        assert!(!template.contains("/charm:create"));
+
+        let _ = std::fs::remove_dir_all(&plugin_dir);
     }
 }

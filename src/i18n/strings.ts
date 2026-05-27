@@ -178,14 +178,32 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
 };
 
 function commandPromptForAgent(prompt: string, terminalAgent: string): string {
-  if (terminalAgent !== "codex") return prompt;
-  return [
-    ["/charm:create", "$charm-create"],
-    ["/charm:update", "$charm-update"],
-    ["/charm:help", "$charm-help"],
-    ["/charm:shortcut", "$charm-shortcut"],
-    ["/charm:tutorial", "$charm-tutorial"],
-  ].reduce((acc, [slash, skill]) => acc.split(slash).join(skill), prompt);
+  const replacements =
+    terminalAgent === "codex"
+      ? [
+          ["/charm:create", "$charm-create"],
+          ["/charm:update", "$charm-update"],
+          ["/charm:help", "$charm-help"],
+          ["/charm:shortcut", "$charm-shortcut"],
+          ["/charm:tutorial", "$charm-tutorial"],
+        ]
+      : terminalAgent === "opencode"
+        ? [
+            ["/charm:create", "/charm-create"],
+            ["/charm:update", "/charm-update"],
+            ["/charm:help", "/charm-help"],
+            ["/charm:shortcut", "/charm-shortcut"],
+            ["/charm:tutorial", "/charm-tutorial"],
+          ]
+        : null;
+  if (replacements === null) return prompt;
+  return replacements.reduce((acc, [slash, command]) => acc.split(slash).join(command), prompt);
+}
+
+function updateCommandForAgent(terminalAgent?: string): string {
+  if (terminalAgent === "codex") return "$charm-update";
+  if (terminalAgent === "opencode") return "/charm-update";
+  return "/charm:update";
 }
 
 /**
@@ -213,7 +231,7 @@ export function resolvePackRepairPrompt(args: {
   if (args.kind !== undefined && !SAFE_PACK_ID.test(args.kind))
     throw new Error("invalid pack kind");
   const kindPart = args.kind ? ` (${args.kind})` : "";
-  const command = args.terminalAgent === "codex" ? "$charm-update" : "/charm:update";
+  const command = updateCommandForAgent(args.terminalAgent);
   if (args.language === "ja") {
     const actionText = args.action === "repair" ? "修正" : "改善";
     return `${command} ${args.id}${kindPart} を診断して、${actionText}してください。まず pack_diagnose({ id: "${args.id}" }) で状態を確認してください。`;

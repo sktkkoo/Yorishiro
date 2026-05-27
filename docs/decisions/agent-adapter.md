@@ -45,7 +45,7 @@ pub struct AgentCapabilities {
 |---|---|---|---|---|---|
 | Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Codex | ✓ | ✓ | ✓ | ✗ | ✓ |
-| OpenCode | ✓ | ✓ | ✗ | ✗ | ✗ |
+| OpenCode | ✓ | ✓ | ✓ | ✗ | ✗ |
 
 Capability flag は **意味論を揃えるためではない**。Codex の hook が Claude と同じ event を emit するように retrofit するのは別件で、capability flag は単に「Claude には ○、Codex には ✗」を declare して呼び出し側が **持っていない capability を期待しないようにする**。
 
@@ -83,7 +83,7 @@ v1 OpenCode adapter は：
 
 - ✓ persona overlay (temp markdown を書き出して `instructions[]` 配下にリストアップ)
 - ✓ MCP injection (`mcp.charminal = { type: "remote", url: "..." }`)
-- ✗ Charminal command/skill plugin（OpenCode の `command` 設定経由で再現可能だが scope 外）
+- ✓ Charminal command plugin（`OPENCODE_CONFIG_CONTENT.command` で `/charm-*` を session-scoped に渡す）
 - ✗ session resume（session storage path 未確認）
 - ✗ Claude-Code-style lifecycle hooks（OpenCode native 機構なし）
 

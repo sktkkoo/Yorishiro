@@ -39,7 +39,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 - UI labels
 - bundled persona fallback (`primaryPersona: null`)
 - global system prompt natural-language guidance
-- Charminal command/skill prompt bodies（Claude Code は `/charm:*`、Codex は `$charm-*`）
+- Charminal command/skill prompt bodies（Claude Code は `/charm:*`、Codex は `$charm-*`、OpenCode は `/charm-*`）
 - first-run / settings prefill text
 
 ```json
@@ -50,7 +50,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 
 `auto` detects the WebView locale at startup. Japanese locales resolve to `ja`; all other locales resolve to `en`. Explicit values (`"en"` / `"ja"`) always win over detection.
 
-Identifiers are not localized: command ids (`/charm:create` / `$charm-create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
+Identifiers are not localized: command ids (`/charm:create` / `$charm-create` / `/charm-create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
 
 If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Charminal chooses `clai-ja` for Japanese and `clai-en` otherwise.
 
@@ -103,7 +103,7 @@ Agent ごとの違い：
 |---|---|---|---|
 | `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm:*` plugin、Charminal MCP config を session-scoped に渡す |
 | `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config と `$charm-*` skill plugin を session-scoped に渡す。Claude hooks は非対応 |
-| `opencode` | `opencode` | `OPENCODE_CONFIG_CONTENT` の `instructions[]` に temp markdown file を渡す | Charminal MCP config を `OPENCODE_CONFIG_CONTENT` で渡す。Claude hooks / Charminal command plugin / session resume は非対応 |
+| `opencode` | `opencode` | `OPENCODE_CONFIG_CONTENT` の `instructions[]` に temp markdown file を渡す | Charminal MCP config と `/charm-*` command を `OPENCODE_CONFIG_CONTENT` で渡す。Claude hooks / session resume は非対応 |
 
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 

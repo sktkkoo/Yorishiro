@@ -34,6 +34,18 @@ describe("resolveFixedTerminalPrompt", () => {
     ]);
   });
 
+  it("resolves OpenCode fixed prompts as /charm-* commands", () => {
+    expect(
+      FIXED_PROMPT_KEYS.map((key) => [key, resolveFixedTerminalPrompt(key, "en", "opencode")]),
+    ).toEqual([
+      ["help", "/charm-help"],
+      ["tutorial", "/charm-tutorial"],
+      ["shortcut", "/charm-shortcut I want to change keyboard shortcuts"],
+      ["create-pack", "/charm-create I want to create a pack"],
+      ["pomodoro", "/charm-help I want to use Pomodoro"],
+    ]);
+  });
+
   // セキュリティ不変条件: 固定プロンプトは改行を含まない。改行が混ざると
   // user の Enter を待たずに実行されうる（input-prefill-boundary.md / §1）。
   it("never contains a newline or carriage return", () => {
@@ -58,6 +70,20 @@ describe("resolvePackRepairPrompt", () => {
       }),
     ).toBe(
       '$charm-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
+    );
+  });
+
+  it("uses /charm-update for OpenCode", () => {
+    expect(
+      resolvePackRepairPrompt({
+        id: "broken-effect",
+        kind: "effect",
+        action: "repair",
+        language: "en",
+        terminalAgent: "opencode",
+      }),
+    ).toBe(
+      '/charm-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
     );
   });
 });
