@@ -10,6 +10,7 @@ import {
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
   summarizePackDiagnosis,
+  TERMINAL_AGENT_OPTIONS,
 } from "./ui";
 
 describe("resolveCloseTarget", () => {
@@ -119,6 +120,16 @@ describe("localized CLAI persona options", () => {
     expect(configPrimaryPersonaForSelection("clai-en")).toBeNull();
     expect(configPrimaryPersonaForSelection("clai-ja")).toBeNull();
     expect(configPrimaryPersonaForSelection("my-persona")).toBe("my-persona");
+  });
+});
+
+describe("terminal agent options", () => {
+  it("shows OpenCode in settings", () => {
+    expect(TERMINAL_AGENT_OPTIONS).toEqual([
+      { value: "claude", label: "Claude Code" },
+      { value: "codex", label: "Codex" },
+      { value: "opencode", label: "OpenCode" },
+    ]);
   });
 });
 

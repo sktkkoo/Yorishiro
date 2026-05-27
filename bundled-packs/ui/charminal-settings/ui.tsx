@@ -109,6 +109,12 @@ interface SelectOption {
   readonly label: string;
 }
 
+export const TERMINAL_AGENT_OPTIONS = [
+  { value: "claude", label: "Claude Code" },
+  { value: "codex", label: "Codex" },
+  { value: "opencode", label: "OpenCode" },
+] as const satisfies readonly SelectOption[];
+
 function formatPackOptionLabel(pack: {
   readonly id: string;
   readonly name?: string;
@@ -1840,14 +1846,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div style={gridStyle}>
           <div style={{ opacity: 0.7 }}>{strings.labelAgent}</div>
           <div>
-            <Select
-              value={agent}
-              onChange={onAgentChange}
-              options={[
-                { value: "claude", label: "Claude Code" },
-                { value: "codex", label: "Codex" },
-              ]}
-            />
+            <Select value={agent} onChange={onAgentChange} options={TERMINAL_AGENT_OPTIONS} />
           </div>
         </div>
         <div
