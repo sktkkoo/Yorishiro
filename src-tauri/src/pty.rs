@@ -24,20 +24,6 @@ pub fn drain_hook_signals() -> Vec<String> {
 
 pub(crate) const HOOK_SERVER_PORT: u16 = 19001;
 
-pub(crate) fn temp_config_path(prefix: &str, extension: &str) -> std::path::PathBuf {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "charminal-{}-{}-{}.{}",
-        prefix,
-        std::process::id(),
-        stamp,
-        extension
-    ))
-}
-
 fn sh_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }

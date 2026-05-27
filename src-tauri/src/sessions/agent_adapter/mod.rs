@@ -12,6 +12,26 @@ use std::sync::OnceLock;
 
 use serde::Serialize;
 
+fn temp_config_path(prefix: &str, extension: &str) -> PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "charminal-{}-{}-{}.{}",
+        prefix,
+        std::process::id(),
+        stamp,
+        extension
+    ))
+}
+
+fn utf8_path_for_cli(path: &Path, label: &str) -> Result<String, String> {
+    path.to_str()
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| format!("{} path is not valid UTF-8: {}", label, path.display()))
+}
+
 /// Adapter の機能宣言。意味論を揃えるためではなく、ある／ないを declare する。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

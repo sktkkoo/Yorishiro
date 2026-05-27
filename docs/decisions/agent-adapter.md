@@ -69,7 +69,11 @@ agent adapter は Rust 本体で bake in する。`~/.charminal/agents/<id>.toml
 }
 ```
 
-`TerminalAgent` TS 型を `"claude" | "codex"` から `string` に widen し、起動時に `list_supported_agents()` で validate。未知 id は warn + `"claude"` fallback（tolerant parsing は config.ts の既存原則）。
+`TerminalAgent` TS 型を `"claude" | "codex"` から `string` に widen する。
+
+`config.ts` の parse は pure / async-free 境界なので、Tauri command の `list_supported_agents()` はここでは呼ばない。代わりに `KNOWN_AGENT_IDS` を Rust `agent_adapter::registered_agents()` の TS-side mirror として持ち、既知 id だけを config から受け付ける。未知 id は `"claude"` fallback（tolerant parsing は config.ts の既存原則）。
+
+adapter を追加するときは、Rust registry、`KNOWN_AGENT_IDS`、bundled profiles を同時に更新する。Diagnostics / health check は `list_supported_agents()` を使って Rust registry の実値を表示するが、config parse の validation source ではない。
 
 ### 5. OpenCode v1 adapter の scope
 

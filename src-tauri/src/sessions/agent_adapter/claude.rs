@@ -37,21 +37,23 @@ impl TerminalAgent for ClaudeAgent {
         }
 
         let hooks_json = crate::pty::build_hooks_json(ctx.hook_port);
-        let hooks_path = crate::pty::temp_config_path("hooks", "json");
+        let hooks_path = super::temp_config_path("hooks", "json");
+        let hooks_path_arg = super::utf8_path_for_cli(&hooks_path, "Claude hooks settings")?;
         std::fs::write(&hooks_path, &hooks_json)
             .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
         args.push("--settings".to_string());
-        args.push(hooks_path.to_string_lossy().into_owned());
+        args.push(hooks_path_arg);
         temp_files.push(hooks_path);
 
         // Claude Code plugin 配下の .mcp.json は auto-discover されないため、
         // 起動ごとに実 port を反映した config を session-scoped に生成する。
         let mcp_config_json = claude_charminal_mcp_config_json(ctx.mcp_port);
-        let mcp_config_path = crate::pty::temp_config_path("mcp", "json");
+        let mcp_config_path = super::temp_config_path("mcp", "json");
+        let mcp_config_path_arg = super::utf8_path_for_cli(&mcp_config_path, "Claude MCP config")?;
         std::fs::write(&mcp_config_path, &mcp_config_json)
             .map_err(|e| format!("Failed to write MCP config: {}", e))?;
         args.push("--mcp-config".to_string());
-        args.push(mcp_config_path.to_string_lossy().into_owned());
+        args.push(mcp_config_path_arg);
         temp_files.push(mcp_config_path);
 
         if let Some(dir) = ctx.plugin_dir {

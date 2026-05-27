@@ -118,6 +118,13 @@ const toNullableString = (value: unknown): string | null => {
   return typeof value === "string" && value !== "" ? value : null;
 };
 
+/**
+ * Rust `agent_adapter::registered_agents()` の TS-side mirror。
+ *
+ * `parseConfig()` は pure / async-free 境界なので Tauri の `list_supported_agents`
+ * はここでは呼ばない。adapter を追加したら Rust registry、bundled profiles、
+ * この set を同時に更新する。
+ */
 export const KNOWN_AGENT_IDS: ReadonlySet<string> = new Set(["claude", "codex", "opencode"]);
 
 const toTerminalAgent = (value: unknown): TerminalAgent => {

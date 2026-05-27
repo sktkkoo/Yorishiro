@@ -33,7 +33,7 @@ impl TerminalAgent for OpencodeAgent {
 
         if let Some(cwd) = ctx.cwd {
             args.push("--dir".to_string());
-            args.push(cwd.to_string_lossy().into_owned());
+            args.push(super::utf8_path_for_cli(cwd, "OpenCode cwd")?);
         }
 
         // OpenCode の session-scoped 注入経路として env var に inline JSON を渡す。
@@ -50,11 +50,11 @@ impl TerminalAgent for OpencodeAgent {
         });
 
         if let Some(prompt) = ctx.system_prompt {
-            let persona_path = crate::pty::temp_config_path("opencode-persona", "md");
+            let persona_path = super::temp_config_path("opencode-persona", "md");
+            let persona_path_arg = super::utf8_path_for_cli(&persona_path, "OpenCode persona")?;
             std::fs::write(&persona_path, prompt)
                 .map_err(|e| format!("Failed to write opencode persona: {}", e))?;
-            config_obj["instructions"] =
-                serde_json::json!([persona_path.to_string_lossy().into_owned()]);
+            config_obj["instructions"] = serde_json::json!([persona_path_arg]);
             temp_files.push(persona_path);
         }
 
@@ -115,6 +115,21 @@ mod tests {
         let ctx = make_ctx(None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn opencode_rejects_non_utf8_cwd() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let cwd = Path::new(OsStr::from_bytes(b"/tmp/charminal-\xFF"));
+        let ctx = make_ctx(Some(cwd), None);
+        let err = match OPENCODE.build_launch_args(&ctx) {
+            Ok(_) => panic!("non-UTF-8 cwd should error"),
+            Err(err) => err,
+        };
+        assert!(err.contains("OpenCode cwd path is not valid UTF-8"));
     }
 
     #[test]
