@@ -22,8 +22,8 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
-| `terminalAgent` | `"claude"` or `"codex"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
+| `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` / `opencode` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
+| `terminalAgent` | `"claude"`, `"codex"`, or `"opencode"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
 | `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / `/charm:*` command prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
@@ -103,9 +103,23 @@ Agent ごとの違い：
 |---|---|---|---|
 | `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm` plugin、Charminal MCP config を session-scoped に渡す |
 | `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config を session-scoped に渡す。Claude hooks / `/charm` plugin は非対応 |
+| `opencode` | `opencode` | `OPENCODE_CONFIG_CONTENT` の `instructions[]` に temp markdown file を渡す | Charminal MCP config を `OPENCODE_CONFIG_CONTENT` で渡す。Claude hooks / `/charm` plugin / session resume は非対応 |
 
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 
-Design rationale は [decisions/codex-terminal-agent.md](decisions/codex-terminal-agent.md)。
+#### `opencode` の known limitation
+
+OpenCode は v1.0 以降を推奨する。Charminal v0.5 の OpenCode adapter は
+`OPENCODE_CONFIG_CONTENT` env var に inline JSON を渡して、Charminal MCP server
+と persona overlay を session-scoped に注入する。この方式は project-local
+`opencode.json` を session 中だけ置換するため、user の project-local OpenCode
+設定は無視される。project-local 設定との deep-merge は v0.6 以降の scope。
+
+OpenCode の Unicode rendering（CJK 全角、結合文字、Cyrillic、icon glyph 等）は
+OpenCode 本体の TUI 実装に依存する。Charminal は xterm.js 上で OpenCode を
+起動するだけで、OpenCode 上流の rendering issue を Charminal 側で workaround
+しない。
+
+Design rationale は [decisions/agent-adapter.md](decisions/agent-adapter.md) と [decisions/codex-terminal-agent.md](decisions/codex-terminal-agent.md)。
 
 Terminal session 全体の設計（profile / shell integration / カスタマイズ）は [terminal.md](terminal.md)。

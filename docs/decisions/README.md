@@ -103,6 +103,7 @@
 ### Architecture
 
 - [**single-active-registry-pattern.md**](single-active-registry-pattern.md) — 新しい single-active pack 種別を追加する時の extend recipe。`SingleActiveRegistry<TEntry, TValue>` を extend して domain alias 2 個を生やすだけ、実装をコピーしない
+- [**agent-adapter.md**](agent-adapter.md) — Terminal agent (Claude / Codex / OpenCode / 将来) の adapter 抽象化と capability flag set
 - [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない。Charminal MCP と `/charm:*` command plugin は session-scoped config で注入する
 - [**effect-rendering-primitives.md**](effect-rendering-primitives.md) — effect の rendering primitive は種類別に複数並列（filter / particle / canvas 2D / DOM / Three.js）。drawOnCanvas → addDomLayer / addThreeLayer → addParticles の順で帰納的に足す
 - [**pack-execution-classes.md**](pack-execution-classes.md) ([English](pack-execution-classes.en.md)) — Pack `type` は product semantics、`executionClass` は security boundary。declarative / isolated-js / trusted-main-thread-js の 3 class を分離。公開 amenity は `isolated-js` 完成後の future scope

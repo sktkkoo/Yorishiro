@@ -1,7 +1,7 @@
 # Codex Terminal Agent Support
 
 **Status**: active
-**Last updated**: 2026-05-19
+**Last updated**: 2026-05-26
 
 ## TL;DR
 
@@ -60,6 +60,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 ## 関連 reference
 
 - source: `src-tauri/src/pty.rs`
+- decision: [agent-adapter.md](agent-adapter.md) — Codex を含む全 agent の adapter 抽象化 (2026-05-26 以降)
 - source: `src/runtime/user-pack-loader/config.ts`
 - source: `src/runtime/terminal-runtime/terminal-runtime.ts`
 - philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md「観察の境界」`
@@ -68,6 +69,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 
 ## 改訂履歴
 
+- 2026-05-26: TerminalAgent trait + capability flag への refactor を [agent-adapter.md](agent-adapter.md) で実施。本 doc は 2-agent 時代の決定として保持し、capability flag (`lifecycle_hooks: false`) の宣言根拠として参照される。
 - 2026-05-19: marketplace config override 方式を廃止し、Codex プラグインキャッシュ直接インストール + コマンド形式変換（YAML frontmatter → `# /name` ヘッダー）に切替。
 - 2026-05-19: Codex 起動時に Charminal local marketplace plugin を session-scoped config として渡し、`/charm:*` command を Codex でも使えるようにした。Claude Code hooks は引き続き Claude Code 専用。
 - 2026-05-14: Codex 起動時に Charminal MCP server を session-scoped config として渡す方針を追記。
