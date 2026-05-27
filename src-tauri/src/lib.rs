@@ -534,6 +534,12 @@ async fn resolve_command_path(command: String) -> Result<Option<String>, String>
     Ok(resolve_command_path_impl(&command))
 }
 
+/// 登録済み terminal agent adapter の一覧を返す。
+#[tauri::command]
+fn list_supported_agents() -> Vec<sessions::agent_adapter::AgentDescriptor> {
+    sessions::agent_adapter::descriptors()
+}
+
 /// Return the MCP server startup result captured during Tauri setup.
 #[tauri::command]
 async fn mcp_server_status(
@@ -1103,6 +1109,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
             resolve_command_path,
+            list_supported_agents,
             mcp_server_status,
             session_spawn,
             session_destroy,

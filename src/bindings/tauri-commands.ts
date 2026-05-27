@@ -145,6 +145,25 @@ export interface ResolveCommandPathArgs {
 export const resolveCommandPath = (args: ResolveCommandPathArgs): Promise<string | null> =>
   call("resolve_command_path", args);
 
+export interface AgentCapabilities {
+  readonly personaOverlay: boolean;
+  readonly mcpInjection: boolean;
+  readonly plugins: boolean;
+  readonly lifecycleHooks: boolean;
+  readonly sessionResume: boolean;
+}
+
+export interface AgentDescriptor {
+  readonly id: string;
+  readonly displayName: string;
+  readonly binaryName: string;
+  readonly capabilities: AgentCapabilities;
+}
+
+/** 登録済み terminal agent adapter の一覧を返す。 */
+export const listSupportedAgents = (): Promise<readonly AgentDescriptor[]> =>
+  call("list_supported_agents", {});
+
 export interface McpServerStatus {
   readonly port: number | null;
   readonly error: string | null;

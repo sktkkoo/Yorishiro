@@ -7,8 +7,6 @@
 //! Internal design-record (非公開): 2026-05-26-terminal-agent-adapter.md.
 //! Public decision: `docs/decisions/agent-adapter.md`.
 
-#![allow(dead_code)]
-
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
