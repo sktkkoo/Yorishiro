@@ -136,6 +136,6 @@ mod tests {
     }
 }
 
-pub(in crate::sessions) mod claude;
-pub(in crate::sessions) mod codex;
-pub(in crate::sessions) mod opencode;
+mod claude;
+mod codex;
+mod opencode;

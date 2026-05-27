@@ -83,7 +83,7 @@ impl TerminalAgent for ClaudeAgent {
     }
 }
 
-pub(in crate::sessions) fn claude_charminal_mcp_config_json(port: u16) -> String {
+fn claude_charminal_mcp_config_json(port: u16) -> String {
     serde_json::json!({
         "mcpServers": {
             "charminal": {
@@ -115,7 +115,7 @@ fn encode_project_dir_name(resolved: &Path) -> Option<String> {
 ///
 /// HOME 不在、canonicalize 失敗、非 UTF-8 path などの error はすべて false。
 /// 呼び出し側は false の場合 fresh session を起動するので、degraded だが安全。
-pub(in crate::sessions) fn has_existing_claude_session(cwd: Option<&str>) -> bool {
+fn has_existing_claude_session(cwd: Option<&str>) -> bool {
     let raw = match cwd {
         Some(c) => std::path::PathBuf::from(c),
         None => match std::env::current_dir() {

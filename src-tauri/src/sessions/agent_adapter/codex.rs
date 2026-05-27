@@ -114,7 +114,7 @@ fn has_existing_codex_session_in(sessions_dir: &Path, resolved_cwd: &Path) -> bo
 /// Codex は JSONL rollout を `~/.codex/sessions/YYYY/MM/DD/` に保存する。
 /// 先頭行の `session_meta.payload.cwd` を canonicalize 後の cwd と照合し、
 /// 別 workspace の `resume --last` 誤爆を避ける。
-pub(in crate::sessions) fn has_existing_codex_session(cwd: Option<&str>) -> bool {
+fn has_existing_codex_session(cwd: Option<&str>) -> bool {
     let raw = match cwd {
         Some(c) => std::path::PathBuf::from(c),
         None => match std::env::current_dir() {
@@ -134,7 +134,7 @@ pub(in crate::sessions) fn has_existing_codex_session(cwd: Option<&str>) -> bool
     has_existing_codex_session_in(&home.join(".codex").join("sessions"), &resolved)
 }
 
-pub(in crate::sessions) fn toml_basic_string(value: &str) -> String {
+fn toml_basic_string(value: &str) -> String {
     let mut out = String::from("\"");
     for ch in value.chars() {
         match ch {
@@ -151,7 +151,7 @@ pub(in crate::sessions) fn toml_basic_string(value: &str) -> String {
     out
 }
 
-pub(in crate::sessions) fn codex_charminal_mcp_config_arg(port: u16) -> String {
+fn codex_charminal_mcp_config_arg(port: u16) -> String {
     let url = format!("http://127.0.0.1:{}/mcp", port);
     format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
 }
@@ -159,7 +159,7 @@ pub(in crate::sessions) fn codex_charminal_mcp_config_arg(port: u16) -> String {
 /// Codex の charm プラグイン有効化に必要な -c config override を返す。
 /// プラグイン自体は prepare_localized_plugin_dir で Codex のキャッシュに
 /// 直接インストール済み。ここでは有効化フラグだけ渡す。
-pub(in crate::sessions) fn codex_charminal_plugin_enable_arg() -> String {
+fn codex_charminal_plugin_enable_arg() -> String {
     "plugins.\"charm@charminal-local\".enabled=true".to_string()
 }
 

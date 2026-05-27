@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
@@ -23,13 +23,6 @@ pub fn drain_hook_signals() -> Vec<String> {
 // ─── Hook server ────────────────────────────────────────────────
 
 pub(crate) const HOOK_SERVER_PORT: u16 = 19001;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AgentKind {
-    Claude,
-    Codex,
-}
 
 pub(crate) fn temp_config_path(prefix: &str, extension: &str) -> std::path::PathBuf {
     let stamp = std::time::SystemTime::now()
@@ -324,10 +317,7 @@ impl PtyState {
         self.registry.remove(session_id);
 
         let (profile_id, kind) = match spec {
-            SpawnSpec::Agent { agent, .. } => match agent {
-                AgentKind::Claude => ("claude", SessionKind::Agent),
-                AgentKind::Codex => ("codex", SessionKind::Agent),
-            },
+            SpawnSpec::Agent { agent, .. } => (agent.as_str(), SessionKind::Agent),
             SpawnSpec::Shell { .. } => ("shell", SessionKind::Shell),
         };
         self.registry.add(SessionDescriptor {

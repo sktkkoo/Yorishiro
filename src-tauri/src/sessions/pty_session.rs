@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
-use crate::pty::{build_hooks_json, temp_config_path, AgentKind, PtyExit, HOOK_SERVER_PORT};
+use crate::pty::PtyExit;
 
 use super::osc133::{Osc133Parser, OscEvent};
 use super::registry::SessionRegistry;
@@ -21,7 +21,7 @@ use super::types::{SessionActivity, SessionId};
 
 // ─── SpawnSpec ──────────────────────────────────────────────────
 
-/// PTY spawn の意図を表す enum。Agent (claude / codex) と Shell の 2 variant。
+/// PTY spawn の意図を表す enum。Agent (adapter id) と Shell の 2 variant。
 /// TS 側からは serde tag = "kind" の discriminated union として渡される。
 ///
 /// Phase B-1 では Shell は plain spawn のみ。Phase B-2 で wrapper rc 注入と
@@ -30,7 +30,9 @@ use super::types::{SessionActivity, SessionId};
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SpawnSpec {
     Agent {
-        agent: AgentKind,
+        /// Adapter id ("claude" / "codex" / "opencode" / ...)。
+        /// Rust 側 `agent_adapter::lookup` で validate される。
+        agent: String,
         /// 起動 binary を override したい場合のみ Some。None なら $HOME/.local/bin
         /// 等から検索した既定 binary を使う。
         #[serde(default)]
@@ -59,15 +61,15 @@ fn default_true() -> bool {
     true
 }
 
-pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>) -> String {
+pub(crate) fn resolve_agent_binary(
+    adapter: &'static dyn crate::sessions::agent_adapter::TerminalAgent,
+    override_path: Option<&str>,
+) -> String {
     if let Some(path) = override_path {
         return path.to_string();
     }
     let home = dirs::home_dir().unwrap_or_default();
-    let binary_name = match agent {
-        AgentKind::Claude => "claude",
-        AgentKind::Codex => "codex",
-    };
+    let binary_name = adapter.binary_name();
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if cfg!(windows) {
         let exe_name = format!("{}.exe", binary_name);
@@ -97,6 +99,15 @@ pub(crate) fn resolve_agent_binary(agent: AgentKind, override_path: Option<&str>
         }
     }
     binary_name.to_string()
+}
+
+fn apply_base_env(cmd: &mut CommandBuilder) {
+    cmd.env("PATH", crate::build_path_env());
+    cmd.env("TERM", "xterm-256color");
+    cmd.env("COLORTERM", "truecolor");
+    cmd.env("TERM_PROGRAM", "Charminal");
+    let lang = std::env::var("LANG").unwrap_or_else(|_| "ja_JP.UTF-8".to_string());
+    cmd.env("LANG", lang);
 }
 
 fn resolve_shell_command(override_command: Option<&str>) -> String {
@@ -248,120 +259,54 @@ impl PtySession {
             })
             .map_err(|e| format!("PTY open failed: {}", e))?;
 
-        let binary = match spec {
-            SpawnSpec::Agent { agent, command, .. } => {
-                resolve_agent_binary(*agent, command.as_deref())
-            }
-            SpawnSpec::Shell { command, .. } => resolve_shell_command(command.as_deref()),
-        };
-
-        let mut cmd = CommandBuilder::new(&binary);
-        cmd.env("PATH", crate::build_path_env());
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
-        cmd.env("TERM_PROGRAM", "Charminal");
-        let lang = std::env::var("LANG").unwrap_or_else(|_| "ja_JP.UTF-8".to_string());
-        cmd.env("LANG", lang);
-
         let mut temp_paths_to_cleanup: Vec<std::path::PathBuf> = Vec::new();
-        match spec {
+        let (binary, mut cmd) = match spec {
             SpawnSpec::Agent {
-                agent,
+                agent: agent_id,
+                command,
                 system_prompt,
                 plugin_dir,
-                ..
-            } => match agent {
-                AgentKind::Claude => {
-                    if crate::sessions::agent_adapter::claude::has_existing_claude_session(
-                        cwd.as_deref(),
-                    ) {
-                        cmd.arg("-c");
-                    }
+            } => {
+                let adapter = crate::sessions::agent_adapter::lookup(agent_id.as_str())
+                    .ok_or_else(|| format!("Unknown agent id: {}", agent_id))?;
+                let binary = resolve_agent_binary(adapter, command.as_deref());
+                let mut cmd = CommandBuilder::new(&binary);
+                apply_base_env(&mut cmd);
 
-                    let hooks_json = build_hooks_json(HOOK_SERVER_PORT);
-                    let hooks_path = temp_config_path("hooks", "json");
-                    std::fs::write(&hooks_path, &hooks_json)
-                        .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
-                    cmd.arg("--settings");
-                    cmd.arg(hooks_path.to_str().unwrap_or_default());
-                    temp_paths_to_cleanup.push(hooks_path);
-
-                    // Claude Code plugin 配下の .mcp.json は auto-discover されない。
-                    // さらに静的 config では ~/.charminal/config.json の mcpPort と
-                    // ずれるため、起動ごとに実 port を反映した config を生成する。
-                    // 127.0.0.1 固定にして、localhost が ::1 に解決される環境でも
-                    // Rust 側 bind address と一致させる。
-                    let mcp_config_json =
-                        crate::sessions::agent_adapter::claude::claude_charminal_mcp_config_json(
-                            crate::mcp::server::resolve_port(),
-                        );
-                    let mcp_config_path = temp_config_path("mcp", "json");
-                    std::fs::write(&mcp_config_path, &mcp_config_json)
-                        .map_err(|e| format!("Failed to write MCP config: {}", e))?;
-                    cmd.arg("--mcp-config");
-                    cmd.arg(mcp_config_path.to_str().unwrap_or_default());
-                    temp_paths_to_cleanup.push(mcp_config_path);
-
-                    // Load Charminal's bundled plugin dir (contains charm: skills).
-                    // Session-scoped; does not touch ~/.claude or the user's cwd.
-                    if let Some(dir) = plugin_dir {
-                        if dir.exists() {
-                            cmd.arg("--plugin-dir");
-                            cmd.arg(dir.to_str().unwrap_or_default());
-                        } else {
-                            eprintln!(
-                                "[pty.spawn] plugin_dir does not exist, skipping: {}",
-                                dir.display()
-                            );
-                        }
-                    }
-
-                    if let Some(prompt) = system_prompt {
-                        cmd.arg("--append-system-prompt");
-                        cmd.arg(prompt);
-                    }
+                let ctx = crate::sessions::agent_adapter::LaunchContext {
+                    cwd: cwd.as_deref().map(std::path::Path::new),
+                    system_prompt: system_prompt.as_deref(),
+                    plugin_dir: plugin_dir.as_deref(),
+                    mcp_port: crate::mcp::server::resolve_port(),
+                    hook_port: crate::pty::HOOK_SERVER_PORT,
+                };
+                let launch = adapter.build_launch_args(&ctx)?;
+                for (k, v) in &launch.env {
+                    cmd.env(k, v);
                 }
-                AgentKind::Codex => {
-                    if crate::sessions::agent_adapter::codex::has_existing_codex_session(
-                        cwd.as_deref(),
-                    ) {
-                        cmd.arg("resume");
-                        cmd.arg("--last");
-                    }
-
-                    cmd.arg("-c");
-                    cmd.arg(
-                        crate::sessions::agent_adapter::codex::codex_charminal_mcp_config_arg(
-                            crate::mcp::server::resolve_port(),
-                        ),
-                    );
-
-                    // プラグインは prepare_localized_plugin_dir で
-                    // ~/.codex/plugins/cache/ にインストール済み。
-                    // 有効化フラグだけ渡す。
-                    cmd.arg("-c");
-                    cmd.arg(
-                        crate::sessions::agent_adapter::codex::codex_charminal_plugin_enable_arg(),
-                    );
-
-                    if let Some(prompt) = system_prompt {
-                        cmd.arg("-c");
-                        cmd.arg(format!(
-                            "developer_instructions={}",
-                            crate::sessions::agent_adapter::codex::toml_basic_string(prompt)
-                        ));
-                    }
+                for arg in &launch.args {
+                    cmd.arg(arg);
                 }
-            },
-            SpawnSpec::Shell { integration, .. } => {
+                temp_paths_to_cleanup.extend(launch.temp_files);
+
+                (binary, cmd)
+            }
+            SpawnSpec::Shell {
+                integration,
+                command,
+            } => {
+                let binary = resolve_shell_command(command.as_deref());
+                let mut cmd = CommandBuilder::new(&binary);
+                apply_base_env(&mut cmd);
                 if *integration {
                     let charminal_home = dirs::home_dir().map(|h| h.join(".charminal"));
                     if let Some(home) = charminal_home {
                         super::shell_wrapper::apply_integration(&mut cmd, &binary, &home);
                     }
                 }
+                (binary, cmd)
             }
-        }
+        };
 
         if let Some(ref dir) = cwd {
             let metadata =
