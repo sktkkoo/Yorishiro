@@ -80,7 +80,12 @@ impl AgentDescriptor {
 pub fn registered_agents() -> &'static [&'static dyn TerminalAgent] {
     static AGENTS: OnceLock<Vec<&'static dyn TerminalAgent>> = OnceLock::new();
     AGENTS
-        .get_or_init(|| vec![&claude::CLAUDE as &dyn TerminalAgent])
+        .get_or_init(|| {
+            vec![
+                &claude::CLAUDE as &dyn TerminalAgent,
+                &codex::CODEX as &dyn TerminalAgent,
+            ]
+        })
         .as_slice()
 }
 
@@ -101,10 +106,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registered_agents_contains_claude_after_phase_b() {
+    fn registered_agents_contains_claude_and_codex_after_phase_c() {
         let agents = registered_agents();
-        assert_eq!(agents.len(), 1);
+        assert_eq!(agents.len(), 2);
         assert_eq!(agents[0].id(), "claude");
+        assert_eq!(agents[1].id(), "codex");
     }
 
     #[test]
@@ -116,6 +122,12 @@ mod tests {
     fn lookup_returns_claude_adapter() {
         assert_eq!(lookup("claude").map(|agent| agent.id()), Some("claude"));
     }
+
+    #[test]
+    fn lookup_returns_codex_adapter() {
+        assert_eq!(lookup("codex").map(|agent| agent.id()), Some("codex"));
+    }
 }
 
 pub(in crate::sessions) mod claude;
+pub(in crate::sessions) mod codex;

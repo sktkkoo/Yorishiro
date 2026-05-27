@@ -13,11 +13,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
-use crate::pty::{
-    build_hooks_json, codex_charminal_mcp_config_arg, codex_charminal_plugin_enable_arg,
-    has_existing_codex_session, temp_config_path, toml_basic_string, AgentKind, PtyExit,
-    HOOK_SERVER_PORT,
-};
+use crate::pty::{build_hooks_json, temp_config_path, AgentKind, PtyExit, HOOK_SERVER_PORT};
 
 use super::osc133::{Osc133Parser, OscEvent};
 use super::registry::SessionRegistry;
@@ -326,27 +322,33 @@ impl PtySession {
                     }
                 }
                 AgentKind::Codex => {
-                    if has_existing_codex_session(cwd.as_deref()) {
+                    if crate::sessions::agent_adapter::codex::has_existing_codex_session(
+                        cwd.as_deref(),
+                    ) {
                         cmd.arg("resume");
                         cmd.arg("--last");
                     }
 
                     cmd.arg("-c");
-                    cmd.arg(codex_charminal_mcp_config_arg(
-                        crate::mcp::server::resolve_port(),
-                    ));
+                    cmd.arg(
+                        crate::sessions::agent_adapter::codex::codex_charminal_mcp_config_arg(
+                            crate::mcp::server::resolve_port(),
+                        ),
+                    );
 
                     // プラグインは prepare_localized_plugin_dir で
                     // ~/.codex/plugins/cache/ にインストール済み。
                     // 有効化フラグだけ渡す。
                     cmd.arg("-c");
-                    cmd.arg(codex_charminal_plugin_enable_arg());
+                    cmd.arg(
+                        crate::sessions::agent_adapter::codex::codex_charminal_plugin_enable_arg(),
+                    );
 
                     if let Some(prompt) = system_prompt {
                         cmd.arg("-c");
                         cmd.arg(format!(
                             "developer_instructions={}",
-                            toml_basic_string(prompt)
+                            crate::sessions::agent_adapter::codex::toml_basic_string(prompt)
                         ));
                     }
                 }
