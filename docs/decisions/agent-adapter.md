@@ -35,7 +35,7 @@ pub trait TerminalAgent: Send + Sync {
 pub struct AgentCapabilities {
     pub persona_overlay: bool,    // 起動時に persona prompt overlay を注入できるか
     pub mcp_injection: bool,      // 起動時に Charminal MCP server を注入できるか
-    pub plugins: bool,            // /charm:* slash command を bundle できるか
+    pub plugins: bool,            // Charminal command/skill entrypoint を bundle できるか
     pub lifecycle_hooks: bool,    // PreToolUse / PostToolUse / UserPromptSubmit 同等を emit するか
     pub session_resume: bool,     // 既存 session を cwd から検出して resume できるか
 }
@@ -83,7 +83,7 @@ v1 OpenCode adapter は：
 
 - ✓ persona overlay (temp markdown を書き出して `instructions[]` 配下にリストアップ)
 - ✓ MCP injection (`mcp.charminal = { type: "remote", url: "..." }`)
-- ✗ `/charm:*` plugin（OpenCode の `command` 設定経由で再現可能だが scope 外）
+- ✗ Charminal command/skill plugin（OpenCode の `command` 設定経由で再現可能だが scope 外）
 - ✗ session resume（session storage path 未確認）
 - ✗ Claude-Code-style lifecycle hooks（OpenCode native 機構なし）
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveFixedTerminalPrompt } from "./strings";
+import { resolveFixedTerminalPrompt, resolvePackRepairPrompt } from "./strings";
 
 const FIXED_PROMPT_KEYS = ["help", "tutorial", "shortcut", "create-pack", "pomodoro"] as const;
 
@@ -22,6 +22,18 @@ describe("resolveFixedTerminalPrompt", () => {
     ]);
   });
 
+  it("resolves Codex fixed prompts as $charm skills", () => {
+    expect(
+      FIXED_PROMPT_KEYS.map((key) => [key, resolveFixedTerminalPrompt(key, "en", "codex")]),
+    ).toEqual([
+      ["help", "$charm-help"],
+      ["tutorial", "$charm-tutorial"],
+      ["shortcut", "$charm-shortcut I want to change keyboard shortcuts"],
+      ["create-pack", "$charm-create I want to create a pack"],
+      ["pomodoro", "$charm-help I want to use Pomodoro"],
+    ]);
+  });
+
   // セキュリティ不変条件: 固定プロンプトは改行を含まない。改行が混ざると
   // user の Enter を待たずに実行されうる（input-prefill-boundary.md / §1）。
   it("never contains a newline or carriage return", () => {
@@ -31,5 +43,21 @@ describe("resolveFixedTerminalPrompt", () => {
         expect(data).not.toMatch(/[\n\r]/);
       }
     }
+  });
+});
+
+describe("resolvePackRepairPrompt", () => {
+  it("uses $charm-update for Codex", () => {
+    expect(
+      resolvePackRepairPrompt({
+        id: "broken-effect",
+        kind: "effect",
+        action: "repair",
+        language: "en",
+        terminalAgent: "codex",
+      }),
+    ).toBe(
+      '$charm-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
+    );
   });
 });

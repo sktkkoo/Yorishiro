@@ -35,7 +35,7 @@ session の正体は profile で定義する。`~/.charminal/config.json` の `p
 | `args` | `string[]` | `[]` | command 引数 |
 | `env` | `Record<string, string>` | `{}` | 追加 env |
 | `cwd` | `string` | window の cwd | 起動 directory（`~` 展開可） |
-| `agent` | `"claude"` or `"codex"` | — | `kind=agent` のとき必須 |
+| `agent` | `string` | — | `kind=agent` のとき必須（bundled は `claude` / `codex` / `opencode`） |
 | `integration` | `boolean` | `true` | `false` で Charminal 側の instrumentation（OSC 133 / hook 注入）を skip（→ §統合を切る） |
 
 未指定 / 不正 field は無視して default を使う。`profiles[]` 自体が壊れていても fatal error にはせず bundled fallback で起動する。
@@ -45,8 +45,9 @@ session の正体は profile で定義する。`~/.charminal/config.json` の `p
 `profiles[]` を書かなくても、以下は常に使える：
 
 - `shell` — `$SHELL` を起動、shell integration あり
-- `claude` — Claude Code を起動、hook + `/charm` plugin 注入
-- `codex` — Codex を起動、Charminal MCP config + PTY 観察あり
+- `claude` — Claude Code を起動、hook + `/charm:*` plugin 注入
+- `codex` — Codex を起動、Charminal MCP config + `$charm-*` skill plugin + PTY 観察あり
+- `opencode` — OpenCode を起動、Charminal MCP config + PTY 観察あり
 
 User profile は同じ id を上書きできる。
 

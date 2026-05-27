@@ -97,8 +97,8 @@ const EN: UiStrings = {
   noPacksInstalled: "No packs installed",
   selectPack: "Select a pack",
   diagnosing: "Diagnosing…",
-  repairPack: "Repair with /charm:update",
-  improvePack: "Improve with /charm:update",
+  repairPack: "Repair with agent",
+  improvePack: "Improve with agent",
   repairPromptInserted: "Repair prompt inserted",
   quickHelp: "Help",
   quickTutorial: "Tutorial",
@@ -150,8 +150,8 @@ const JA: UiStrings = {
   noPacksInstalled: "パックなし",
   selectPack: "パックを選択",
   diagnosing: "診断中…",
-  repairPack: "/charm:update で修正",
-  improvePack: "/charm:update で改善",
+  repairPack: "AI で修正",
+  improvePack: "AI で改善",
   repairPromptInserted: "修正プロンプトを入力済み",
   quickHelp: "ヘルプ",
   quickTutorial: "チュートリアル",
@@ -177,6 +177,17 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
   pomodoro: "pomodoroPrompt",
 };
 
+function commandPromptForAgent(prompt: string, terminalAgent: string): string {
+  if (terminalAgent !== "codex") return prompt;
+  return [
+    ["/charm:create", "$charm-create"],
+    ["/charm:update", "$charm-update"],
+    ["/charm:help", "$charm-help"],
+    ["/charm:shortcut", "$charm-shortcut"],
+    ["/charm:tutorial", "$charm-tutorial"],
+  ].reduce((acc, [slash, skill]) => acc.split(slash).join(skill), prompt);
+}
+
 /**
  * host 所有の固定プロンプトを現在の言語で解決する pure 関数。
  * pack はこの結果を選べない（key → host 所有文字列）。
@@ -184,8 +195,9 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
 export function resolveFixedTerminalPrompt(
   key: FixedTerminalPromptKey,
   language: ResolvedLanguage,
+  terminalAgent = "claude",
 ): string {
-  return getStrings(language)[FIXED_PROMPT_STRING[key]];
+  return commandPromptForAgent(getStrings(language)[FIXED_PROMPT_STRING[key]], terminalAgent);
 }
 
 const SAFE_PACK_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -195,15 +207,17 @@ export function resolvePackRepairPrompt(args: {
   readonly kind?: string;
   readonly action: "repair" | "improve";
   readonly language: ResolvedLanguage;
+  readonly terminalAgent?: string;
 }): string {
   if (!SAFE_PACK_ID.test(args.id)) throw new Error("invalid pack id");
   if (args.kind !== undefined && !SAFE_PACK_ID.test(args.kind))
     throw new Error("invalid pack kind");
   const kindPart = args.kind ? ` (${args.kind})` : "";
+  const command = args.terminalAgent === "codex" ? "$charm-update" : "/charm:update";
   if (args.language === "ja") {
     const actionText = args.action === "repair" ? "修正" : "改善";
-    return `/charm:update ${args.id}${kindPart} を診断して、${actionText}してください。まず pack_diagnose({ id: "${args.id}" }) で状態を確認してください。`;
+    return `${command} ${args.id}${kindPart} を診断して、${actionText}してください。まず pack_diagnose({ id: "${args.id}" }) で状態を確認してください。`;
   }
   const actionText = args.action === "repair" ? "repair" : "improve";
-  return `/charm:update Diagnose and ${actionText} ${args.id}${kindPart}. Start with pack_diagnose({ id: "${args.id}" }).`;
+  return `${command} Diagnose and ${actionText} ${args.id}${kindPart}. Start with pack_diagnose({ id: "${args.id}" }).`;
 }

@@ -10,6 +10,7 @@
   "repository": "https://github.com/sktkkoo/Charminal",
   "license": "MIT",
   "keywords": ["charminal", "pack", "desktop", "codex"],
+  "skills": "./skills/",
   "interface": {
     "displayName": "Charminal",
     "shortDescription": "Create and edit Charminal packs from Codex.",

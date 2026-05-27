@@ -112,9 +112,7 @@ fn copy_markdown_files_to_dir(src_dir: &Path, dest_dir: &Path) -> Result<(), Str
     Ok(())
 }
 
-/// Claude Code 形式（YAML frontmatter）のコマンド .md を Codex 形式（`# /name` ヘッダー）に変換。
-/// Codex は `# /command-name` + 本文で slash command を認識する。
-fn convert_command_to_codex_format(content: &str, command_name: &str) -> String {
+fn parse_command_markdown(content: &str) -> (String, String) {
     let mut description = String::new();
     let mut in_frontmatter = false;
     let mut frontmatter_end = 0;
@@ -132,7 +130,7 @@ fn convert_command_to_codex_format(content: &str, command_name: &str) -> String 
                 continue;
             }
             if let Some(desc) = trimmed.strip_prefix("description:") {
-                description = desc.trim().to_string();
+                description = desc.trim().trim_matches('"').to_string();
             }
         }
     }
@@ -153,15 +151,81 @@ fn convert_command_to_codex_format(content: &str, command_name: &str) -> String 
     }
 
     let body: String = lines_vec[body_start..].join("\n");
+    (description, body)
+}
+
+fn rewrite_charm_slash_commands_for_codex(input: &str) -> String {
+    let mut out = input.to_string();
+    for (slash, skill) in [
+        ("/charm:create", "$charm-create"),
+        ("/charm:update", "$charm-update"),
+        ("/charm:help", "$charm-help"),
+        ("/charm:shortcut", "$charm-shortcut"),
+        ("/charm:tutorial", "$charm-tutorial"),
+        ("/charm:*", "$charm-*"),
+    ] {
+        out = out.replace(slash, skill);
+    }
+    out
+}
+
+/// Claude Code 形式（YAML frontmatter）のコマンド .md を Codex skill に変換。
+/// Codex では Charminal custom slash command は使わず、`$charm-*` skill を入口にする。
+fn convert_command_to_codex_skill(content: &str, command_name: &str) -> String {
+    let (description, body) = parse_command_markdown(content);
+    let skill_name = format!("charm-{}", command_name);
+    let body = rewrite_charm_slash_commands_for_codex(&body);
 
     if description.is_empty() {
-        format!("# /{}\n\n{}", command_name, body)
+        format!(
+            "---\nname: {}\ndescription: Charminal {}\n---\n\n# {}\n\n$ARGUMENTS\n\n---\n\n{}",
+            skill_name, command_name, skill_name, body
+        )
     } else {
-        format!("# /{}\n\n{}\n\n{}", command_name, description, body)
+        format!(
+            "---\nname: {}\ndescription: {}\n---\n\n# {}\n\n$ARGUMENTS\n\n---\n\n{}",
+            skill_name, description, skill_name, body
+        )
     }
 }
 
-fn copy_markdown_files_to_dir_codex(src_dir: &Path, dest_dir: &Path) -> Result<(), String> {
+fn codex_entrypoint_skill(language: &str) -> &'static str {
+    if language == "ja" {
+        r#"---
+name: charm
+description: Charminal の pack 作成・編集・ショートカット・チュートリアル入口
+---
+
+# Charminal
+
+Codex CLI では Charminal の custom slash command は使えないため、Codex では `$charm` と専用 skill を入口にする。
+
+- `$charm-create ...`: 新しい pack を作る。
+- `$charm-update ...`: 既存 pack を編集・調整する。
+- `$charm-shortcut ...`: ショートカットを追加・編集する。
+- `$charm-tutorial`: 初回チュートリアルを開始する。
+- `$charm-help`: Charminal commands / skills と pack の基本を説明する。
+"#
+    } else {
+        r#"---
+name: charm
+description: Charminal entry point for pack creation, editing, shortcuts, and tutorials
+---
+
+# Charminal
+
+Codex CLI does not recognize Charminal custom slash commands as built-in commands, so Charminal uses `$charm` and dedicated skills as the Codex entry point.
+
+- `$charm-create ...`: Create a new pack.
+- `$charm-update ...`: Edit or tune an existing pack.
+- `$charm-shortcut ...`: Add or edit shortcuts.
+- `$charm-tutorial`: Run the first-use tutorial.
+- `$charm-help`: Explain Charminal commands / skills and pack basics.
+"#
+    }
+}
+
+fn write_codex_skill_files(src_dir: &Path, skills_dir: &Path) -> Result<(), String> {
     for entry in std::fs::read_dir(src_dir)
         .map_err(|e| format!("read {} failed: {}", src_dir.display(), e))?
     {
@@ -176,18 +240,61 @@ fn copy_markdown_files_to_dir_codex(src_dir: &Path, dest_dir: &Path) -> Result<(
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        let converted = convert_command_to_codex_format(&content, command_name);
-        std::fs::write(dest_dir.join(entry.file_name()), converted)
-            .map_err(|e| format!("write codex command {} failed: {}", path.display(), e))?;
+        let skill_name = format!("charm-{}", command_name);
+        let skill_dir = skills_dir.join(&skill_name);
+        std::fs::create_dir_all(&skill_dir)
+            .map_err(|e| format!("codex skill dir create failed: {}", e))?;
+        let converted = convert_command_to_codex_skill(&content, command_name);
+        std::fs::write(skill_dir.join("SKILL.md"), converted)
+            .map_err(|e| format!("write codex skill {} failed: {}", path.display(), e))?;
     }
+    Ok(())
+}
+
+fn write_codex_plugin_cache(
+    cache_root: &Path,
+    codex_plugin_json: &Path,
+    source_commands: &Path,
+    language: &str,
+) -> Result<(), String> {
+    let cache_meta = cache_root.join(".codex-plugin");
+    let stale_commands = cache_root.join("commands");
+    let cache_skills = cache_root.join("skills");
+
+    std::fs::create_dir_all(&cache_meta)
+        .map_err(|e| format!("codex cache meta dir create failed: {}", e))?;
+    if stale_commands.exists() {
+        std::fs::remove_dir_all(&stale_commands)
+            .map_err(|e| format!("codex cache commands cleanup failed: {}", e))?;
+    }
+    if cache_skills.exists() {
+        std::fs::remove_dir_all(&cache_skills)
+            .map_err(|e| format!("codex cache skills cleanup failed: {}", e))?;
+    }
+    std::fs::create_dir_all(&cache_skills)
+        .map_err(|e| format!("codex cache skills dir create failed: {}", e))?;
+
+    copy_file_to_dir(codex_plugin_json, &cache_meta)?;
+    let entry_skill_dir = cache_skills.join("charm");
+    std::fs::create_dir_all(&entry_skill_dir)
+        .map_err(|e| format!("codex entry skill dir create failed: {}", e))?;
+    std::fs::write(
+        entry_skill_dir.join("SKILL.md"),
+        codex_entrypoint_skill(language),
+    )
+    .map_err(|e| format!("write codex entry skill failed: {}", e))?;
+    write_codex_skill_files(source_commands, &cache_skills)?;
+
     Ok(())
 }
 
 /// Codex プラグインキャッシュに charm プラグインをインストール。
 /// `~/.codex/plugins/cache/charminal-local/charm/current/` に配置する。
+#[cfg(not(test))]
 fn install_codex_plugin_to_cache(
     codex_plugin_json: &Path,
     source_commands: &Path,
+    language: &str,
 ) -> Result<(), String> {
     let Some(home) = dirs::home_dir() else {
         return Ok(());
@@ -202,21 +309,15 @@ fn install_codex_plugin_to_cache(
         .join("charminal-local")
         .join("charm")
         .join("current");
-    let cache_meta = cache_root.join(".codex-plugin");
-    let cache_commands = cache_root.join("commands");
+    write_codex_plugin_cache(&cache_root, codex_plugin_json, source_commands, language)
+}
 
-    std::fs::create_dir_all(&cache_meta)
-        .map_err(|e| format!("codex cache meta dir create failed: {}", e))?;
-    if cache_commands.exists() {
-        std::fs::remove_dir_all(&cache_commands)
-            .map_err(|e| format!("codex cache commands cleanup failed: {}", e))?;
-    }
-    std::fs::create_dir_all(&cache_commands)
-        .map_err(|e| format!("codex cache commands dir create failed: {}", e))?;
-
-    copy_file_to_dir(codex_plugin_json, &cache_meta)?;
-    copy_markdown_files_to_dir_codex(source_commands, &cache_commands)?;
-
+#[cfg(test)]
+fn install_codex_plugin_to_cache(
+    _codex_plugin_json: &Path,
+    _source_commands: &Path,
+    _language: &str,
+) -> Result<(), String> {
     Ok(())
 }
 
@@ -259,6 +360,7 @@ fn prepare_localized_plugin_dir_at(
     if let Err(e) = install_codex_plugin_to_cache(
         &resource_root.join(".codex-plugin").join("plugin.json"),
         &source_commands,
+        language,
     ) {
         eprintln!(
             "[prepare_localized_plugin_dir] codex cache install failed (non-fatal): {}",
@@ -1542,7 +1644,9 @@ mod user_init_seed_tests {
 
 #[cfg(test)]
 mod localized_plugin_dir_tests {
-    use super::{convert_command_to_codex_format, prepare_localized_plugin_dir_at};
+    use super::{
+        convert_command_to_codex_skill, prepare_localized_plugin_dir_at, write_codex_plugin_cache,
+    };
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -1573,7 +1677,7 @@ mod localized_plugin_dir_tests {
         .expect("write plugin json");
         fs::write(
             root.join(".codex-plugin").join("plugin.json"),
-            "{\"name\":\"charm\"}",
+            "{\"name\":\"charm\",\"skills\":\"./skills/\"}",
         )
         .expect("write codex plugin json");
         fs::write(
@@ -1666,24 +1770,66 @@ mod localized_plugin_dir_tests {
     }
 
     #[test]
-    fn convert_command_strips_frontmatter_and_adds_codex_header() {
+    fn convert_command_strips_frontmatter_and_adds_codex_skill_metadata() {
         let input = "---\ndescription: Create a new pack\nargument-hint: \"[what]\"\n---\n\n$ARGUMENTS\n\n---\n\nYou are helping create a pack.\n\nMore instructions here.";
-        let result = convert_command_to_codex_format(input, "create");
-        assert!(result.starts_with("# /create\n"));
+        let result = convert_command_to_codex_skill(input, "create");
+        assert!(result.starts_with("---\nname: charm-create\n"));
         assert!(result.contains("Create a new pack"));
+        assert!(result.contains("# charm-create"));
+        assert!(result.contains("$ARGUMENTS"));
         assert!(result.contains("You are helping create a pack."));
         assert!(result.contains("More instructions here."));
-        assert!(!result.contains("---"));
-        assert!(!result.contains("$ARGUMENTS"));
+        assert!(!result.contains("# /create"));
         assert!(!result.contains("argument-hint"));
     }
 
     #[test]
-    fn convert_command_handles_missing_frontmatter() {
-        let input = "Plain content without frontmatter.";
-        let result = convert_command_to_codex_format(input, "help");
-        assert!(result.starts_with("# /help\n"));
-        assert!(result.contains("Plain content without frontmatter."));
+    fn convert_command_rewrites_slash_charm_refs_for_codex_skill() {
+        let input = "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /charm:create, /charm:update, or /charm:*.";
+        let result = convert_command_to_codex_skill(input, "help");
+        assert!(result.contains("$charm-create"));
+        assert!(result.contains("$charm-update"));
+        assert!(result.contains("$charm-*"));
+        assert!(!result.contains("/charm:create"));
+    }
+
+    #[test]
+    fn write_codex_cache_installs_skills_and_removes_stale_commands() {
+        let tmp = fresh_dir("codex-cache");
+        let resource = tmp.join("resource");
+        let cache = tmp.join("cache");
+        write_fixture(&resource);
+        fs::create_dir_all(cache.join("commands")).expect("create stale commands");
+        fs::write(cache.join("commands").join("old.md"), "stale").expect("write stale command");
+        fs::create_dir_all(cache.join("skills").join("old")).expect("create stale skill");
+        fs::write(cache.join("skills").join("old").join("SKILL.md"), "stale")
+            .expect("write stale skill");
+
+        write_codex_plugin_cache(
+            &cache,
+            &resource.join(".codex-plugin").join("plugin.json"),
+            &resource.join("commands-en"),
+            "en",
+        )
+        .expect("write cache");
+
+        assert!(!cache.join("commands").exists());
+        assert_eq!(
+            fs::read_to_string(cache.join(".codex-plugin").join("plugin.json"))
+                .expect("read codex plugin json"),
+            "{\"name\":\"charm\",\"skills\":\"./skills/\"}"
+        );
+        let entry = fs::read_to_string(cache.join("skills").join("charm").join("SKILL.md"))
+            .expect("read entry skill");
+        assert!(entry.contains("$charm-create"));
+        let create = fs::read_to_string(cache.join("skills").join("charm-create").join("SKILL.md"))
+            .expect("read create skill");
+        assert!(create.contains("name: charm-create"));
+        assert!(create.contains("$ARGUMENTS"));
+        assert!(create.contains("English create content."));
+        assert!(!create.contains("# /create"));
+
+        let _ = fs::remove_dir_all(&tmp);
     }
 }
 

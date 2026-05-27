@@ -202,7 +202,7 @@ export interface UiAppAPI {
   insertFixedPrompt(key: FixedTerminalPromptKey): Promise<void>;
   /**
    * Pack Workbench 用: 構造化された pack id/kind から、host 所有の
-   * `/charm:update` 修正プロンプトを terminal に pre-fill する。
+   * 選択中 agent に合った修正プロンプトを terminal に pre-fill する。
    * 任意テキストは受け取らない。
    */
   insertPackRepairPrompt(

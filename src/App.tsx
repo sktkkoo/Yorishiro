@@ -1423,7 +1423,14 @@ function App() {
         if (!done) {
           setTimeout(async () => {
             try {
-              await ptyWrite({ data: "/charm:tutorial" });
+              const config = await readConfig();
+              await ptyWrite({
+                data: resolveFixedTerminalPrompt(
+                  "tutorial",
+                  appLanguageRef.current.resolved,
+                  config.terminalAgent,
+                ),
+              });
               await markTutorialDone();
             } catch (err) {
               appLog.write({
@@ -2147,15 +2154,22 @@ function App() {
           // 選べない）。改行なし＝user が Enter するまで実行されない。
           // 設計境界: docs/decisions/input-prefill-boundary.md
           insertFixedPrompt: async (key) => {
-            const data = resolveFixedTerminalPrompt(key, appLanguageRef.current.resolved);
+            const config = parseConfig(await readCharminalConfigText());
+            const data = resolveFixedTerminalPrompt(
+              key,
+              appLanguageRef.current.resolved,
+              config.terminalAgent,
+            );
             await ptyWrite({ data });
           },
           insertPackRepairPrompt: async (id, kind, action) => {
+            const config = parseConfig(await readCharminalConfigText());
             const data = resolvePackRepairPrompt({
               id,
               kind,
               action,
               language: appLanguageRef.current.resolved,
+              terminalAgent: config.terminalAgent,
             });
             await ptyWrite({ data });
           },

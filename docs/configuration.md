@@ -24,7 +24,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 |---|---|---|---|
 | `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` / `opencode` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
 | `terminalAgent` | `"claude"`, `"codex"`, or `"opencode"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
-| `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / `/charm:*` command prompts の言語 |
+| `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / Charminal command/skill prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
 | `activeScene` | `string` or `null` | `null` | active scene pack の user pick。`null` なら bundled fallback |
@@ -39,7 +39,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 - UI labels
 - bundled persona fallback (`primaryPersona: null`)
 - global system prompt natural-language guidance
-- `/charm:*` command prompt bodies
+- Charminal command/skill prompt bodies（Claude Code は `/charm:*`、Codex は `$charm-*`）
 - first-run / settings prefill text
 
 ```json
@@ -50,11 +50,11 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 
 `auto` detects the WebView locale at startup. Japanese locales resolve to `ja`; all other locales resolve to `en`. Explicit values (`"en"` / `"ja"`) always win over detection.
 
-Identifiers are not localized: command ids (`/charm:create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
+Identifiers are not localized: command ids (`/charm:create` / `$charm-create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
 
 If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Charminal chooses `clai-ja` for Japanese and `clai-en` otherwise.
 
-Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and `/charm:*` command language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
+Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and Charminal command/skill language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
 
 ### Default profile（shell を起動する）
 
@@ -101,9 +101,9 @@ Agent ごとの違い：
 
 | Agent | 起動 | Prompt overlay | Hook / command support |
 |---|---|---|---|
-| `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm` plugin、Charminal MCP config を session-scoped に渡す |
-| `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config を session-scoped に渡す。Claude hooks / `/charm` plugin は非対応 |
-| `opencode` | `opencode` | `OPENCODE_CONFIG_CONTENT` の `instructions[]` に temp markdown file を渡す | Charminal MCP config を `OPENCODE_CONFIG_CONTENT` で渡す。Claude hooks / `/charm` plugin / session resume は非対応 |
+| `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm:*` plugin、Charminal MCP config を session-scoped に渡す |
+| `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config と `$charm-*` skill plugin を session-scoped に渡す。Claude hooks は非対応 |
+| `opencode` | `opencode` | `OPENCODE_CONFIG_CONTENT` の `instructions[]` に temp markdown file を渡す | Charminal MCP config を `OPENCODE_CONFIG_CONTENT` で渡す。Claude hooks / Charminal command plugin / session resume は非対応 |
 
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 

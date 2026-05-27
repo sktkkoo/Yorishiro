@@ -15,7 +15,7 @@ Charminal の設定画面。`activeUi` を `"charminal-settings"` に一時 swap
 
 - **キャラクター**: VRM body / Persona / Scene
 - **ターミナル**: Coding agent (Claude / Codex)
-- **ショートカット**: terminal に `/charm:shortcut ショートカットを変更したい` を pre-fill する button
+- **ショートカット**: terminal に選択中 agent 用の固定 shortcut prompt（Claude Code は `/charm:shortcut ...`、Codex は `$charm-shortcut ...`）を pre-fill する button
 - フッタ: `⌘R / Ctrl+R` の hint
 
 ## Fork
