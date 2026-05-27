@@ -79,7 +79,9 @@ impl AgentDescriptor {
 
 pub fn registered_agents() -> &'static [&'static dyn TerminalAgent] {
     static AGENTS: OnceLock<Vec<&'static dyn TerminalAgent>> = OnceLock::new();
-    AGENTS.get_or_init(Vec::new).as_slice()
+    AGENTS
+        .get_or_init(|| vec![&claude::CLAUDE as &dyn TerminalAgent])
+        .as_slice()
 }
 
 pub fn lookup(id: &str) -> Option<&'static dyn TerminalAgent> {
@@ -99,13 +101,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registered_agents_is_initially_empty_until_adapters_added() {
-        // Phase A 単独 commit 時点では空でよい。Phase D 完了時に 3 に変わる。
-        assert!(registered_agents().is_empty() || registered_agents().len() == 3);
+    fn registered_agents_contains_claude_after_phase_b() {
+        let agents = registered_agents();
+        assert_eq!(agents.len(), 1);
+        assert_eq!(agents[0].id(), "claude");
     }
 
     #[test]
     fn lookup_returns_none_for_unknown_id() {
         assert!(lookup("nonexistent-agent-id").is_none());
     }
+
+    #[test]
+    fn lookup_returns_claude_adapter() {
+        assert_eq!(lookup("claude").map(|agent| agent.id()), Some("claude"));
+    }
 }
+
+pub(in crate::sessions) mod claude;

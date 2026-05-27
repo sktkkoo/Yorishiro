@@ -31,6 +31,20 @@ pub enum AgentKind {
     Codex,
 }
 
+pub(crate) fn temp_config_path(prefix: &str, extension: &str) -> std::path::PathBuf {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!(
+        "charminal-{}-{}-{}.{}",
+        prefix,
+        std::process::id(),
+        stamp,
+        extension
+    ))
+}
+
 fn sh_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
@@ -263,58 +277,6 @@ pub fn start_hook_server(_app: AppHandle) {
 
 // ─── Session detection ──────────────────────────────────────────
 
-/// Encode a resolved cwd into the project-dir name used by Claude Code.
-///
-/// Empirically, Claude Code stores per-project session state at
-/// `~/.claude/projects/<encoded>/` where `<encoded>` is the canonicalized
-/// cwd with path separators replaced by `-` (verified by inspecting actual entries —
-/// e.g. a session opened at `/tmp/x` on macOS becomes `-private-tmp-x`,
-/// confirming both symlink resolution and `/`→`-` substitution). Windows drive
-/// separators are also replaced so the encoded name is never interpreted as an
-/// absolute path by `Path::join`.
-///
-/// Returns `None` if the path can't be expressed as UTF-8. The caller treats
-/// `None` as "no session" — degraded but safe.
-fn encode_project_dir_name(resolved: &std::path::Path) -> Option<String> {
-    let mut path = resolved.to_str()?.to_string();
-    if let Some(stripped) = path.strip_prefix(r"\\?\UNC\") {
-        path = format!(r"\\{}", stripped);
-    } else if let Some(stripped) = path.strip_prefix(r"\\?\") {
-        path = stripped.to_string();
-    }
-    Some(path.replace(['/', '\\', ':'], "-"))
-}
-
-/// True if Claude Code has an existing session for `cwd` that `-c` can resume.
-///
-/// Returns `false` on any error (missing HOME, can't canonicalize, non-UTF-8
-/// path, etc.). The caller uses this to decide whether to pass `-c` to claude;
-/// false → start fresh, which never errors.
-pub(crate) fn has_existing_claude_session(cwd: Option<&str>) -> bool {
-    let raw = match cwd {
-        Some(c) => std::path::PathBuf::from(c),
-        None => match std::env::current_dir() {
-            Ok(p) => p,
-            Err(_) => return false,
-        },
-    };
-
-    // Claude Code resolves symlinks before deriving the project dir name.
-    let Ok(resolved) = std::fs::canonicalize(&raw) else {
-        return false;
-    };
-
-    let Some(encoded) = encode_project_dir_name(&resolved) else {
-        return false;
-    };
-
-    let Some(home) = dirs::home_dir() else {
-        return false;
-    };
-
-    home.join(".claude").join("projects").join(encoded).is_dir()
-}
-
 fn codex_session_file_matches_cwd(path: &std::path::Path, resolved_cwd: &std::path::Path) -> bool {
     let Ok(file) = std::fs::File::open(path) else {
         return false;
@@ -417,18 +379,6 @@ pub(crate) fn codex_charminal_mcp_config_arg(port: u16) -> String {
 /// 直接インストール済み。ここでは有効化フラグだけ渡す。
 pub(crate) fn codex_charminal_plugin_enable_arg() -> String {
     "plugins.\"charm@charminal-local\".enabled=true".to_string()
-}
-
-pub(crate) fn claude_charminal_mcp_config_json(port: u16) -> String {
-    serde_json::json!({
-        "mcpServers": {
-            "charminal": {
-                "type": "http",
-                "url": format!("http://127.0.0.1:{}/mcp", port),
-            }
-        }
-    })
-    .to_string()
 }
 
 // ─── PTY state (facade) ─────────────────────────────────────────
@@ -557,74 +507,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn encode_project_dir_name_basic() {
-        assert_eq!(
-            encode_project_dir_name(std::path::Path::new("/Users/foo/Charminal")),
-            Some("-Users-foo-Charminal".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_preserves_dots() {
-        // Claude Code does not escape `.`; verified against actual entries.
-        assert_eq!(
-            encode_project_dir_name(std::path::Path::new("/Users/foo/.config/app")),
-            Some("-Users-foo-.config-app".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_root() {
-        assert_eq!(
-            encode_project_dir_name(std::path::Path::new("/")),
-            Some("-".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_windows_path_is_relative_safe() {
-        assert_eq!(
-            encode_project_dir_name(std::path::Path::new(r"C:\Users\foo\Charminal")),
-            Some("C--Users-foo-Charminal".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_strips_windows_verbatim_prefix() {
-        assert_eq!(
-            encode_project_dir_name(std::path::Path::new(r"\\?\C:\Users\foo\Charminal")),
-            Some("C--Users-foo-Charminal".to_string())
-        );
-    }
-
-    #[test]
-    fn has_existing_claude_session_false_for_nonexistent_cwd() {
-        // canonicalize fails on a path that doesn't exist → safe default.
-        assert!(!has_existing_claude_session(Some(
-            "/charminal/definitely/not/a/real/path/xyz"
-        )));
-    }
-
-    #[test]
-    fn has_existing_claude_session_false_for_unrelated_tmp_dir() {
-        // A freshly-created tempdir has no Claude Code session, so even
-        // though canonicalize succeeds, the lookup must return false.
-        let tmp = std::env::temp_dir().join(format!(
-            "charminal-session-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&tmp).expect("create tempdir");
-        let path_str = tmp.to_str().expect("tmp path utf8").to_string();
-        let result = has_existing_claude_session(Some(&path_str));
-        let _ = std::fs::remove_dir(&tmp);
-        assert!(!result, "fresh tempdir should not have a Claude session");
-    }
-
-    #[test]
     fn codex_session_file_matches_cwd_from_session_meta() {
         let tmp = std::env::temp_dir().join(format!(
             "charminal-codex-session-test-{}-{}",
@@ -712,17 +594,6 @@ mod tests {
             codex_charminal_plugin_enable_arg(),
             "plugins.\"charm@charminal-local\".enabled=true"
         );
-    }
-
-    #[test]
-    fn claude_charminal_mcp_config_json_points_to_streamable_http_server() {
-        let parsed: serde_json::Value =
-            serde_json::from_str(&claude_charminal_mcp_config_json(18744)).expect("valid json");
-        assert_eq!(
-            parsed["mcpServers"]["charminal"]["url"],
-            "http://127.0.0.1:18744/mcp"
-        );
-        assert_eq!(parsed["mcpServers"]["charminal"]["type"], "http");
     }
 
     #[test]

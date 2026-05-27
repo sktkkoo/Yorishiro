@@ -15,7 +15,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::pty::{
     build_hooks_json, codex_charminal_mcp_config_arg, codex_charminal_plugin_enable_arg,
-    has_existing_claude_session, has_existing_codex_session, toml_basic_string, AgentKind, PtyExit,
+    has_existing_codex_session, temp_config_path, toml_basic_string, AgentKind, PtyExit,
     HOOK_SERVER_PORT,
 };
 
@@ -112,20 +112,6 @@ fn resolve_shell_command(override_command: Option<&str>) -> String {
     } else {
         std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string())
     }
-}
-
-fn temp_config_path(prefix: &str, extension: &str) -> std::path::PathBuf {
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "charminal-{}-{}-{}.{}",
-        prefix,
-        std::process::id(),
-        stamp,
-        extension
-    ))
 }
 
 // ─── Ring buffer ────────────────────────────────────────────────
@@ -290,7 +276,9 @@ impl PtySession {
                 ..
             } => match agent {
                 AgentKind::Claude => {
-                    if has_existing_claude_session(cwd.as_deref()) {
+                    if crate::sessions::agent_adapter::claude::has_existing_claude_session(
+                        cwd.as_deref(),
+                    ) {
                         cmd.arg("-c");
                     }
 
@@ -307,9 +295,10 @@ impl PtySession {
                     // ずれるため、起動ごとに実 port を反映した config を生成する。
                     // 127.0.0.1 固定にして、localhost が ::1 に解決される環境でも
                     // Rust 側 bind address と一致させる。
-                    let mcp_config_json = crate::pty::claude_charminal_mcp_config_json(
-                        crate::mcp::server::resolve_port(),
-                    );
+                    let mcp_config_json =
+                        crate::sessions::agent_adapter::claude::claude_charminal_mcp_config_json(
+                            crate::mcp::server::resolve_port(),
+                        );
                     let mcp_config_path = temp_config_path("mcp", "json");
                     std::fs::write(&mcp_config_path, &mcp_config_json)
                         .map_err(|e| format!("Failed to write MCP config: {}", e))?;
