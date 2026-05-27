@@ -84,6 +84,7 @@ pub fn registered_agents() -> &'static [&'static dyn TerminalAgent] {
             vec![
                 &claude::CLAUDE as &dyn TerminalAgent,
                 &codex::CODEX as &dyn TerminalAgent,
+                &opencode::OPENCODE as &dyn TerminalAgent,
             ]
         })
         .as_slice()
@@ -106,11 +107,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registered_agents_contains_claude_and_codex_after_phase_c() {
+    fn registered_agents_contains_three_adapters_after_phase_d() {
         let agents = registered_agents();
-        assert_eq!(agents.len(), 2);
+        assert_eq!(agents.len(), 3);
         assert_eq!(agents[0].id(), "claude");
         assert_eq!(agents[1].id(), "codex");
+        assert_eq!(agents[2].id(), "opencode");
     }
 
     #[test]
@@ -127,7 +129,13 @@ mod tests {
     fn lookup_returns_codex_adapter() {
         assert_eq!(lookup("codex").map(|agent| agent.id()), Some("codex"));
     }
+
+    #[test]
+    fn lookup_returns_opencode_adapter() {
+        assert_eq!(lookup("opencode").map(|agent| agent.id()), Some("opencode"));
+    }
 }
 
 pub(in crate::sessions) mod claude;
 pub(in crate::sessions) mod codex;
+pub(in crate::sessions) mod opencode;
