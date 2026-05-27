@@ -1,7 +1,7 @@
 /**
  * Bundled session profile と profile 解決 helper。
  *
- * Bundled profile (`shell` / `claude` / `codex`) は user の `profiles[]` 設定に
+ * Bundled profile (`shell` / `claude` / `codex` / `opencode`) は user の `profiles[]` 設定に
  * 関係なく常に使える。User profile が同じ id を宣言した場合は user 側が勝つ
  * （override 可能）。
  *
@@ -11,11 +11,11 @@
 import type { SessionProfile } from "./types";
 
 /**
- * Bundled profile の正本。Charminal 本体が保証する 3 種類。
+ * Bundled profile の正本。Charminal 本体が保証する profile 群。
  *
  * `command` を null にしておくのは「spawn 側で profile.kind と profile.agent
  * から既定 binary を決めて」という意思表示。`shell` profile は `$SHELL`、
- * `claude` / `codex` profile はそれぞれ既定 binary を使う。
+ * agent profile はそれぞれ adapter の既定 binary を使う。
  */
 const BUNDLED_PROFILES: ReadonlyArray<SessionProfile> = [
   {
@@ -48,10 +48,20 @@ const BUNDLED_PROFILES: ReadonlyArray<SessionProfile> = [
     agent: "codex",
     integration: true,
   },
+  {
+    id: "opencode",
+    kind: "agent",
+    command: null,
+    args: [],
+    env: {},
+    cwd: null,
+    agent: "opencode",
+    integration: true,
+  },
 ];
 
 /**
- * Bundled profile の id 一覧（`shell` / `claude` / `codex`）。
+ * Bundled profile の id 一覧。
  */
 export function listBundledProfiles(): ReadonlyArray<SessionProfile> {
   return BUNDLED_PROFILES;

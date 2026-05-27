@@ -3,6 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { KNOWN_AGENT_IDS } from "../user-pack-loader/config";
 import {
   getBundledProfile,
   listAvailableProfiles,
@@ -12,9 +13,9 @@ import {
 import type { SessionProfile } from "./types";
 
 describe("listBundledProfiles", () => {
-  it("returns shell / claude / codex in stable order", () => {
+  it("returns shell / claude / codex / opencode in stable order", () => {
     const ids = listBundledProfiles().map((p) => p.id);
-    expect(ids).toEqual(["shell", "claude", "codex"]);
+    expect(ids).toEqual(["shell", "claude", "codex", "opencode"]);
   });
 
   it("shell profile has kind=shell and agent=null", () => {
@@ -29,17 +30,33 @@ describe("listBundledProfiles", () => {
     expect(claude?.kind).toBe("agent");
     expect(claude?.agent).toBe("claude");
   });
+
+  it("opencode profile has kind=agent and agent=opencode", () => {
+    const opencode = listBundledProfiles().find((p) => p.id === "opencode");
+    expect(opencode?.kind).toBe("agent");
+    expect(opencode?.agent).toBe("opencode");
+  });
 });
 
 describe("getBundledProfile", () => {
   it("returns the bundled profile for known id", () => {
     expect(getBundledProfile("claude")?.agent).toBe("claude");
     expect(getBundledProfile("codex")?.agent).toBe("codex");
+    expect(getBundledProfile("opencode")?.agent).toBe("opencode");
     expect(getBundledProfile("shell")?.kind).toBe("shell");
   });
 
   it("returns null for unknown id", () => {
     expect(getBundledProfile("phantom")).toBeNull();
+  });
+});
+
+describe("agent id sync", () => {
+  it("keeps bundled agent profiles aligned with config validation", () => {
+    const bundledAgentIds = listBundledProfiles()
+      .map((profile) => profile.agent)
+      .filter((agent): agent is string => agent !== null);
+    expect(new Set(bundledAgentIds)).toEqual(KNOWN_AGENT_IDS);
   });
 });
 
@@ -77,7 +94,7 @@ describe("resolveProfile", () => {
 describe("listAvailableProfiles", () => {
   it("returns all bundled when user has none", () => {
     const ids = listAvailableProfiles([]).map((p) => p.id);
-    expect(ids).toEqual(["shell", "claude", "codex"]);
+    expect(ids).toEqual(["shell", "claude", "codex", "opencode"]);
   });
 
   it("user profile shadows bundled with same id", () => {
@@ -92,7 +109,7 @@ describe("listAvailableProfiles", () => {
       integration: true,
     };
     const list = listAvailableProfiles([userFishOverride]);
-    expect(list.map((p) => p.id)).toEqual(["shell", "claude", "codex"]);
+    expect(list.map((p) => p.id)).toEqual(["shell", "claude", "codex", "opencode"]);
     expect(list[0].command).toBe("/opt/homebrew/bin/fish");
   });
 
@@ -108,6 +125,6 @@ describe("listAvailableProfiles", () => {
       integration: true,
     };
     const ids = listAvailableProfiles([nixDev]).map((p) => p.id);
-    expect(ids).toEqual(["nix-dev", "shell", "claude", "codex"]);
+    expect(ids).toEqual(["nix-dev", "shell", "claude", "codex", "opencode"]);
   });
 });

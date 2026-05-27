@@ -1,6 +1,10 @@
 import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@charminal/sdk";
 import { invoke } from "@tauri-apps/api/core";
-import { mcpServerStatus, resolveCommandPath } from "../bindings/tauri-commands";
+import {
+  listSupportedAgents,
+  mcpServerStatus,
+  resolveCommandPath,
+} from "../bindings/tauri-commands";
 import {
   fetchSafeModeFlag,
   readCharminalConfigText,
@@ -45,23 +49,32 @@ function parseLoadReport(text: string): { failed: number; total: number } | null
 }
 
 export async function collectHealthReport(deps: CollectHealthReportDeps): Promise<UiHealthReport> {
-  const [homeDir, safeMode, configText, startupText, claudePath, codexPath, mcpStatus, packResult] =
+  const [homeDir, safeMode, configText, startupText, agents, mcpStatus, packResult] =
     await Promise.all([
       invoke<string>("charminal_home_dir").catch(() => ""),
       fetchSafeModeFlag().catch(() => false),
       readCharminalConfigText(),
       readLastStartupReport().catch(() => ""),
-      resolveCommandPath({ command: "claude" }).catch(() => null),
-      resolveCommandPath({ command: "codex" }).catch(() => null),
+      listSupportedAgents().catch(() => []),
       mcpServerStatus().catch(() => ({ port: null, error: "Could not read MCP status." })),
       deps.listPacks().catch(() => ({ packs: [] })),
     ]);
 
   const config = parseConfig(configText);
   const expectedMcpPort = config.mcpPort ?? 18743;
-  const selectedAgentPath = config.terminalAgent === "claude" ? claudePath : codexPath;
-  const otherAgentPath = config.terminalAgent === "claude" ? codexPath : claudePath;
-  const otherAgentName = config.terminalAgent === "claude" ? "Codex" : "Claude Code";
+  const agentPaths = await Promise.all(
+    agents.map(async (agent) => ({
+      id: agent.id,
+      displayName: agent.displayName,
+      path: await resolveCommandPath({ command: agent.binaryName }).catch(() => null),
+    })),
+  );
+  const selectedAgent = agentPaths.find((agent) => agent.id === config.terminalAgent);
+  const selectedAgentPath = selectedAgent?.path ?? null;
+  const supportedAgentSummary =
+    agentPaths.length === 0
+      ? "No registered agents were reported."
+      : agentPaths.map((agent) => `${agent.displayName}: ${agent.path ?? "missing"}`).join(" / ");
   const packs = packResult.packs;
   const failedPacks = packs.filter((pack) => pack.status === "failed");
   const disabledPacks = packs.filter((pack) => pack.status === "disabled");
@@ -85,23 +98,21 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       selectedAgentPath === null ? "error" : "ok",
       selectedAgentPath === null
         ? `${config.terminalAgent} is selected but was not found on Charminal's PATH.`
-        : `${config.terminalAgent}: ${selectedAgentPath}${
-            otherAgentPath === null ? "" : ` (${otherAgentName} also available)`
-          }`,
+        : `${config.terminalAgent}: ${selectedAgentPath} (${supportedAgentSummary})`,
       selectedAgentPath === null
         ? "Install the selected agent or switch Agent in Settings."
         : undefined,
     ),
   );
 
-  if (claudePath === null && codexPath === null) {
+  if (agentPaths.length === 0 || agentPaths.every((agent) => agent.path === null)) {
     items.push(
       healthItem(
         "agent-options",
         "Agent options",
         "warning",
-        "Claude Code and Codex were both missing from Charminal's PATH.",
-        "Install Claude Code or Codex before using the embedded agent terminal.",
+        `No supported agents found on PATH (${agentPaths.map((agent) => agent.displayName).join(" / ")}).`,
+        "Install at least one supported agent before using the embedded agent terminal.",
       ),
     );
   }

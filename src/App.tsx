@@ -485,11 +485,7 @@ function FirstRunHealthPanel({
     (item) => item.status !== "ok" || item.id === "agent" || item.id === "home",
   );
   const continueLabel =
-    report.summary === "error"
-      ? report.selectedAgent === "claude"
-        ? "Continue without Claude Code"
-        : "Continue without Codex"
-      : "Continue";
+    report.summary === "error" ? `Continue without ${report.selectedAgent}` : "Continue";
 
   return (
     <div
@@ -1932,7 +1928,7 @@ function App() {
       patch: Partial<{
         primaryPersona: string | null;
         activeScene: string | null;
-        terminalAgent: "claude" | "codex";
+        terminalAgent: string;
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
         language: AppLanguage;

@@ -1389,7 +1389,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   });
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
-  const [agent, setAgent] = useState<"claude" | "codex">("claude");
+  const [agent, setAgent] = useState<string>("claude");
   // 環境音 mute は config が読まれるまで undecided。getConfig 後に boolean を入れる。
   const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
   // 環境音ボリューム（0.0-1.0）。config 読み込み前は null。
@@ -1452,7 +1452,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   };
 
   const onAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = e.target.value as "claude" | "codex";
+    const next = e.target.value;
     void applyConfigUpdate({
       next,
       prev: agent,

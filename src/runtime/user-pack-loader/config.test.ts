@@ -176,6 +176,11 @@ describe("parseConfig", () => {
     expect(config.terminalAgent).toBe("codex");
   });
 
+  it("reads opencode terminalAgent", () => {
+    const config = parseConfig('{"terminalAgent": "opencode"}');
+    expect(config.terminalAgent).toBe("opencode");
+  });
+
   it("defaults unknown terminalAgent to claude", () => {
     const config = parseConfig('{"terminalAgent": "unknown"}');
     expect(config.terminalAgent).toBe("claude");
@@ -262,6 +267,12 @@ describe("serializeConfig", () => {
   it("writes terminalAgent when codex is selected", () => {
     const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ terminalAgent: "codex" });
+  });
+
+  it("writes terminalAgent when opencode is selected", () => {
+    const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "opencode" };
+    const text = serializeConfig(cfg);
+    expect(parseConfig(text).terminalAgent).toBe("opencode");
   });
 });
 
@@ -553,6 +564,16 @@ describe("profiles[]", () => {
   it("skips agent profile missing agent field", () => {
     const cfg = parseConfig(JSON.stringify({ profiles: [{ id: "x", kind: "agent" }] }));
     expect(cfg.profiles).toEqual([]);
+  });
+
+  it("accepts agent profile with opencode", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        profiles: [{ id: "my-opencode", kind: "agent", agent: "opencode" }],
+      }),
+    );
+    expect(cfg.profiles).toHaveLength(1);
+    expect(cfg.profiles[0]?.agent).toBe("opencode");
   });
 
   it("filters out invalid entries while keeping valid ones", () => {

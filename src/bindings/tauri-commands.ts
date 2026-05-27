@@ -31,7 +31,8 @@ const call = <T>(cmd: string, args: object): Promise<T> =>
 export type SpawnSpec =
   | {
       readonly kind: "agent";
-      readonly agent: "claude" | "codex";
+      /** Adapter id（`listSupportedAgents()` が返す id のいずれか）。 */
+      readonly agent: string;
       /** binary 上書き。null で既定の agent binary 検索を使う。 */
       readonly command?: string | null;
       readonly systemPrompt?: string | null;
