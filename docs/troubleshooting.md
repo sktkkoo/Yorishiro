@@ -22,6 +22,8 @@ the Agent setting and restart Charminal.
 | `~/.charminal/last-startup.json` | Latest user pack load report |
 | `~/.charminal/journal/` | Journal and memory files |
 | `~/.charminal/shell/` | Generated shell integration files |
+| `~/.charminal/runtime-plugin/` | Generated Charminal command plugin used by Claude Code and OpenCode launches |
+| `~/.codex/plugins/cache/charminal-local/` | Charminal's local Codex plugin cache for `$charm-*` skills |
 
 ## Broken user pack
 
@@ -55,6 +57,28 @@ CHARMINAL_SAFE_MODE=1 npm run tauri dev
 After disabling or fixing the broken pack, launch again without
 `CHARMINAL_SAFE_MODE`.
 
+## Clean uninstall
+
+Removing the Charminal app does not automatically delete user data or generated
+agent integration cache. This matches the common desktop-app pattern where a
+normal uninstall preserves settings and extensions for reinstall.
+
+Charminal commands are only injected when Charminal launches the selected
+agent. If Charminal is not running, the generated Claude/OpenCode command
+plugin is not passed to those agents, and the Codex plugin cache is not enabled
+because Charminal supplies the enabling `-c` flag only at launch time.
+
+To remove generated command integration cache without deleting packs, run:
+
+```bash
+rm -rf ~/.charminal/runtime-plugin
+rm -rf ~/.codex/plugins/cache/charminal-local
+```
+
+To remove all Charminal user data, including packs, config, journal, memory,
+and generated files, remove `~/.charminal`. This is destructive and should be
+treated separately from uninstalling the app binary.
+
 ## Crash recovery screen
 
 If the React runtime crashes, Charminal shows a recovery screen with:
@@ -79,7 +103,7 @@ Include:
 - Charminal version or commit
 - operating system and CPU architecture
 - install method: `.dmg`, source checkout, or other
-- selected terminal agent: Claude Code or Codex
+- selected terminal agent: Claude Code, Codex, or OpenCode
 - whether safe mode changes the behavior
 - relevant user pack id, if any
 - `~/.charminal/last-startup.json`, if it exists
