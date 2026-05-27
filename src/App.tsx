@@ -126,6 +126,10 @@ import {
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
+import {
+  spawnSpecFromDefaultProfile,
+  withAgentRuntimeFields,
+} from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
@@ -792,8 +796,8 @@ function App() {
     });
     // userLayerReady は Terminal mount を gate する Promise。
     // **Step 3 完了直後** に resolve する（systemPrompt の race / 多重 spawn 回避）。
-    // defaultSpec は config.defaultProfile が shell profile を指していたときに
-    // 構築される SpawnSpec.Shell。null なら従来の terminalAgent fallback で動く。
+    // defaultSpec は config.defaultProfile が bundled/user profile を指していたときに
+    // 構築される SpawnSpec。null なら従来の terminalAgent fallback で動く。
     let userLayerReadyResolve!: (init: {
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
@@ -890,17 +894,12 @@ function App() {
             data: { error: err instanceof Error ? err.message : String(err) },
           });
         }
-        // defaultProfile が shell profile を指していたら shell spec を build。
-        // agent profile を指している場合は Phase B-1 では terminalAgent fallback で動く
-        // （Phase C で agent profile も defaultProfile から resolve できるようにする）。
+        // defaultProfile が profile を指していたら default-session の spec として使う。
         if (config.defaultProfile !== null) {
           const profile = resolveProfile(config.defaultProfile, config.profiles);
-          if (profile?.kind === "shell") {
-            defaultSpec = {
-              kind: "shell",
-              command: profile.command,
-              integration: profile.integration,
-            };
+          defaultSpec = spawnSpecFromDefaultProfile(profile);
+          if (profile?.kind === "agent" && profile.agent !== null) {
+            terminalAgent = profile.agent;
           }
         }
         personaRegistry.setPrimaryPersona(
@@ -3014,12 +3013,14 @@ function App() {
                 visible={sessionId === tabState.activeSessionId}
                 spec={
                   sessionId === DEFAULT_SESSION_ID
-                    ? (defaultSpec ?? {
-                        kind: "agent",
-                        agent: terminalAgent,
-                        systemPrompt: resolvedSystemPrompt,
-                        pluginDir: localizedPluginDir,
-                      })
+                    ? withAgentRuntimeFields(
+                        defaultSpec ?? {
+                          kind: "agent",
+                          agent: terminalAgent,
+                        },
+                        resolvedSystemPrompt,
+                        localizedPluginDir,
+                      )
                     : { kind: "shell", integration: true }
                 }
                 cwd={sessionCwd === undefined ? cwd : sessionCwd}

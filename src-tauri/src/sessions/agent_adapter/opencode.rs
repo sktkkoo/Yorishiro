@@ -29,14 +29,9 @@ impl TerminalAgent for OpencodeAgent {
     }
 
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String> {
-        let mut args = Vec::new();
+        let args = Vec::new();
         let mut env = Vec::new();
         let mut temp_files = Vec::new();
-
-        if let Some(cwd) = ctx.cwd {
-            args.push("--dir".to_string());
-            args.push(super::utf8_path_for_cli(cwd, "OpenCode cwd")?);
-        }
 
         // OpenCode の session-scoped 注入経路として env var に inline JSON を渡す。
         // project-local opencode.json との deep-merge は v2 scope。
@@ -218,16 +213,12 @@ mod tests {
     }
 
     #[test]
-    fn opencode_build_launch_args_includes_dir_when_cwd_set() {
+    fn opencode_uses_process_cwd_without_dir_arg() {
         let cwd = Path::new("/tmp/some-cwd");
         let ctx = make_ctx(Some(cwd), None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
-        let pair = result
-            .args
-            .windows(2)
-            .find(|w| w[0] == "--dir")
-            .expect("--dir present");
-        assert_eq!(pair[1], "/tmp/some-cwd");
+        assert!(!result.args.iter().any(|a| a == "--dir"));
+        assert!(!result.args.iter().any(|a| a == "/tmp/some-cwd"));
     }
 
     #[test]
@@ -235,21 +226,6 @@ mod tests {
         let ctx = make_ctx(None, None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn opencode_rejects_non_utf8_cwd() {
-        use std::ffi::OsStr;
-        use std::os::unix::ffi::OsStrExt;
-
-        let cwd = Path::new(OsStr::from_bytes(b"/tmp/charminal-\xFF"));
-        let ctx = make_ctx(Some(cwd), None, None);
-        let err = match OPENCODE.build_launch_args(&ctx) {
-            Ok(_) => panic!("non-UTF-8 cwd should error"),
-            Err(err) => err,
-        };
-        assert!(err.contains("OpenCode cwd path is not valid UTF-8"));
     }
 
     #[test]
