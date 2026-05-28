@@ -51,10 +51,12 @@ impl TerminalAgent for OpencodeAgent {
             config_obj["command"] = Value::Object(commands);
         }
 
-        if let Some(prompt) = ctx.system_prompt {
+        if let Some(prompt) =
+            super::merge_system_prompt_and_reminder(ctx.system_prompt, ctx.prompt_reminder)
+        {
             let persona_path = super::temp_config_path("opencode-persona", "md");
             let persona_path_arg = super::utf8_path_for_cli(&persona_path, "OpenCode persona")?;
-            std::fs::write(&persona_path, prompt)
+            std::fs::write(&persona_path, &prompt)
                 .map_err(|e| format!("Failed to write opencode persona: {}", e))?;
             let persona_ref = format!("{{file:{}}}", persona_path_arg);
             let agent_prompt = serde_json::json!({ "prompt": persona_ref });
@@ -230,7 +232,22 @@ mod tests {
         LaunchContext {
             cwd,
             system_prompt,
+            prompt_reminder: None,
             plugin_dir,
+            mcp_port: 18743,
+            hook_port: 19001,
+        }
+    }
+
+    fn make_ctx_with_reminder<'a>(
+        system_prompt: Option<&'a str>,
+        prompt_reminder: Option<&'a str>,
+    ) -> LaunchContext<'a> {
+        LaunchContext {
+            cwd: None,
+            system_prompt,
+            prompt_reminder,
+            plugin_dir: None,
             mcp_port: 18743,
             hook_port: 19001,
         }
@@ -341,6 +358,54 @@ mod tests {
         assert!(result.temp_files.contains(&persona_path.to_path_buf()));
         assert!(parsed.get("instructions").is_none() || parsed["instructions"].is_null());
 
+        cleanup_temp_files(&result);
+    }
+
+    #[test]
+    fn opencode_injects_prompt_reminder_as_primary_agent_prompts() {
+        let ctx = make_ctx_with_reminder(None, Some("## Charminal reminders\n\n- voice_say"));
+        let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
+
+        let (_, json_str) = result
+            .env
+            .iter()
+            .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
+            .expect("OPENCODE_CONFIG_CONTENT present");
+        let parsed: Value = serde_json::from_str(json_str).expect("valid json");
+        let build_prompt = parsed["agent"]["build"]["prompt"]
+            .as_str()
+            .expect("build prompt is string");
+        let persona_path_str = build_prompt
+            .strip_prefix("{file:")
+            .and_then(|s| s.strip_suffix('}'))
+            .expect("prompt uses opencode file reference");
+        let contents = std::fs::read_to_string(persona_path_str).expect("read prompt");
+
+        assert_eq!(contents, "## Charminal reminders\n\n- voice_say");
+        cleanup_temp_files(&result);
+    }
+
+    #[test]
+    fn opencode_appends_prompt_reminder_after_persona() {
+        let ctx = make_ctx_with_reminder(Some("persona prompt"), Some("runtime reminder"));
+        let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
+
+        let (_, json_str) = result
+            .env
+            .iter()
+            .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
+            .expect("OPENCODE_CONFIG_CONTENT present");
+        let parsed: Value = serde_json::from_str(json_str).expect("valid json");
+        let build_prompt = parsed["agent"]["build"]["prompt"]
+            .as_str()
+            .expect("build prompt is string");
+        let persona_path_str = build_prompt
+            .strip_prefix("{file:")
+            .and_then(|s| s.strip_suffix('}'))
+            .expect("prompt uses opencode file reference");
+        let contents = std::fs::read_to_string(persona_path_str).expect("read prompt");
+
+        assert_eq!(contents, "persona prompt\n\n---\n\nruntime reminder");
         cleanup_temp_files(&result);
     }
 

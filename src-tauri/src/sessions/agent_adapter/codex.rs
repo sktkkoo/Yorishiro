@@ -42,11 +42,13 @@ impl TerminalAgent for CodexAgent {
         args.push("-c".to_string());
         args.push(codex_charminal_plugin_enable_arg());
 
-        if let Some(prompt) = ctx.system_prompt {
+        if let Some(prompt) =
+            super::merge_system_prompt_and_reminder(ctx.system_prompt, ctx.prompt_reminder)
+        {
             args.push("-c".to_string());
             args.push(format!(
                 "developer_instructions={}",
-                toml_basic_string(prompt)
+                toml_basic_string(&prompt)
             ));
         }
 
@@ -167,6 +169,21 @@ fn codex_charminal_plugin_enable_arg() -> String {
 mod tests {
     use super::*;
 
+    fn make_ctx<'a>(
+        cwd: Option<&'a Path>,
+        system_prompt: Option<&'a str>,
+        prompt_reminder: Option<&'a str>,
+    ) -> LaunchContext<'a> {
+        LaunchContext {
+            cwd,
+            system_prompt,
+            prompt_reminder,
+            plugin_dir: None,
+            mcp_port: 18743,
+            hook_port: 19001,
+        }
+    }
+
     #[test]
     fn codex_session_file_matches_cwd_from_session_meta() {
         let tmp = std::env::temp_dir().join(format!(
@@ -255,5 +272,25 @@ mod tests {
             codex_charminal_plugin_enable_arg(),
             "plugins.\"charm@charminal-local\".enabled=true"
         );
+    }
+
+    #[test]
+    fn codex_injects_prompt_reminder_as_developer_instructions() {
+        let ctx = make_ctx(None, None, Some("## Charminal reminders\n\n- voice_say"));
+        let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
+
+        assert!(result.args.iter().any(|arg| arg
+            .contains("developer_instructions=\"## Charminal reminders\\n\\n- voice_say\"")));
+    }
+
+    #[test]
+    fn codex_appends_prompt_reminder_after_system_prompt() {
+        let ctx = make_ctx(None, Some("persona prompt"), Some("runtime reminder"));
+        let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
+
+        assert!(result
+            .args
+            .iter()
+            .any(|arg| arg.contains("persona prompt\\n\\n---\\n\\nruntime reminder")));
     }
 }

@@ -52,6 +52,7 @@ pub enum AgentThemeRefresh {
 pub struct LaunchContext<'a> {
     pub cwd: Option<&'a Path>,
     pub system_prompt: Option<&'a str>,
+    pub prompt_reminder: Option<&'a str>,
     pub plugin_dir: Option<&'a Path>,
     pub mcp_port: u16,
     pub hook_port: u16,
@@ -128,6 +129,71 @@ pub fn descriptors() -> Vec<AgentDescriptor> {
         .collect()
 }
 
+/// Claude の UserPromptSubmit reminder と同じ active 設定を、hook を持たない
+/// adapter 用の prompt overlay として組み立てる。
+pub(crate) fn build_prompt_reminder_from_config() -> Option<String> {
+    let config = dirs::home_dir()
+        .and_then(|home| std::fs::read_to_string(home.join(".charminal").join("config.json")).ok())
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
+    build_prompt_reminder_from_config_value(config.as_ref())
+}
+
+pub(crate) fn merge_system_prompt_and_reminder(
+    system_prompt: Option<&str>,
+    prompt_reminder: Option<&str>,
+) -> Option<String> {
+    let system = system_prompt.and_then(non_empty_trimmed);
+    let reminder = prompt_reminder.and_then(non_empty_trimmed);
+    match (system, reminder) {
+        (Some(system), Some(reminder)) => Some(format!("{}\n\n---\n\n{}", system, reminder)),
+        (Some(system), None) => Some(system.to_string()),
+        (None, Some(reminder)) => Some(reminder.to_string()),
+        (None, None) => None,
+    }
+}
+
+fn non_empty_trimmed(value: &str) -> Option<&str> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn build_prompt_reminder_from_config_value(config: Option<&serde_json::Value>) -> Option<String> {
+    let mut reminders = Vec::new();
+    if !config_field_is_any(config, "journalReminder", &["off"]) {
+        reminders.push("印象があれば journal_write。[感触/記憶/物語]");
+    }
+    if !config_field_is_any(config, "voiceFrequency", &["off", "none"]) {
+        reminders.push("応答の要点を voice_say で声に出す。声が先。");
+    }
+    if reminders.is_empty() {
+        return None;
+    }
+
+    let bullets = reminders
+        .into_iter()
+        .map(|line| format!("- {}", line))
+        .collect::<Vec<_>>()
+        .join("\n");
+    Some(format!(
+        "## Charminal reminders\n\nBefore each response, check these active reminders:\n\n{}",
+        bullets
+    ))
+}
+
+fn config_field_is_any(config: Option<&serde_json::Value>, field: &str, values: &[&str]) -> bool {
+    let Some(actual) = config
+        .and_then(|value| value.get(field))
+        .and_then(|value| value.as_str())
+    else {
+        return false;
+    };
+    values.contains(&actual)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +240,48 @@ mod tests {
         assert_eq!(
             lookup("opencode").and_then(|agent| agent.theme_refresh()),
             Some(AgentThemeRefresh::Sigusr2)
+        );
+    }
+
+    #[test]
+    fn prompt_reminder_defaults_to_journal_and_voice() {
+        let reminder = build_prompt_reminder_from_config_value(None).expect("reminder");
+        assert!(reminder.contains("journal_write"));
+        assert!(reminder.contains("voice_say"));
+    }
+
+    #[test]
+    fn prompt_reminder_respects_disabled_config_flags() {
+        let config = serde_json::json!({
+            "journalReminder": "off",
+            "voiceFrequency": "off",
+        });
+        assert!(build_prompt_reminder_from_config_value(Some(&config)).is_none());
+    }
+
+    #[test]
+    fn prompt_reminder_treats_legacy_none_voice_frequency_as_off() {
+        let config = serde_json::json!({
+            "voiceFrequency": "none",
+        });
+        let reminder = build_prompt_reminder_from_config_value(Some(&config)).expect("reminder");
+        assert!(reminder.contains("journal_write"));
+        assert!(!reminder.contains("voice_say"));
+    }
+
+    #[test]
+    fn merge_system_prompt_and_reminder_appends_reminder() {
+        assert_eq!(
+            merge_system_prompt_and_reminder(Some("persona"), Some("reminder")),
+            Some("persona\n\n---\n\nreminder".to_string())
+        );
+        assert_eq!(
+            merge_system_prompt_and_reminder(Some("  persona  "), None),
+            Some("persona".to_string())
+        );
+        assert_eq!(
+            merge_system_prompt_and_reminder(None, Some("  reminder  ")),
+            Some("reminder".to_string())
         );
     }
 }

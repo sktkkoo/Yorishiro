@@ -273,9 +273,12 @@ impl PtySession {
                 let mut cmd = CommandBuilder::new(&binary);
                 apply_base_env(&mut cmd);
 
+                let prompt_reminder =
+                    crate::sessions::agent_adapter::build_prompt_reminder_from_config();
                 let ctx = crate::sessions::agent_adapter::LaunchContext {
                     cwd: cwd.as_deref().map(std::path::Path::new),
                     system_prompt: system_prompt.as_deref(),
+                    prompt_reminder: prompt_reminder.as_deref(),
                     plugin_dir: plugin_dir.as_deref(),
                     mcp_port: crate::mcp::server::resolve_port(),
                     hook_port: crate::pty::HOOK_SERVER_PORT,
