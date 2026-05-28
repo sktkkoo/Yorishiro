@@ -162,11 +162,18 @@ export interface AgentCapabilities {
   readonly sessionResume: boolean;
 }
 
+/** charm コマンドの記法（`<prefix>charm<separator><name>`）。Rust adapter が正本。 */
+export interface CommandSyntax {
+  readonly prefix: string;
+  readonly separator: string;
+}
+
 export interface AgentDescriptor {
   readonly id: string;
   readonly displayName: string;
   readonly binaryName: string;
   readonly capabilities: AgentCapabilities;
+  readonly commandSyntax: CommandSyntax;
 }
 
 /** 登録済み terminal agent adapter の一覧を返す。 */

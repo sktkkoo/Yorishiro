@@ -1,6 +1,8 @@
 use serde_json::{Map, Value};
 
-use super::{AgentCapabilities, AgentThemeRefresh, LaunchArgs, LaunchContext, TerminalAgent};
+use super::{
+    AgentCapabilities, AgentThemeRefresh, CommandSyntax, LaunchArgs, LaunchContext, TerminalAgent,
+};
 
 pub struct OpencodeAgent;
 pub static OPENCODE: OpencodeAgent = OpencodeAgent;
@@ -107,6 +109,14 @@ impl TerminalAgent for OpencodeAgent {
         Some(AgentThemeRefresh::Sigusr2)
     }
 
+    /// OpenCode は charm command を `/charm-<name>` で呼ぶ。
+    fn command_syntax(&self) -> CommandSyntax {
+        CommandSyntax {
+            prefix: "/",
+            separator: "-",
+        }
+    }
+
     /// OpenCode は標準で `~/.opencode/bin` に install される。Windows の install
     /// location は upstream 都合で異なるため、unix のみ宣言する。
     fn extra_path_dirs(&self) -> Vec<std::path::PathBuf> {
@@ -161,19 +171,14 @@ fn parse_command_markdown(content: &str) -> (String, String) {
     (description, lines_vec[body_start..].join("\n"))
 }
 
+/// Claude 記法 `/charm:<name>` を OpenCode 自身の宣言した記法へ書き換える。
+/// 記法は OpencodeAgent::command_syntax() を正本にし、ここで直書きしない。
 fn rewrite_charm_slash_commands(input: &str) -> String {
-    let mut out = input.to_string();
-    for (slash, command) in [
-        ("/charm:create", "/charm-create"),
-        ("/charm:update", "/charm-update"),
-        ("/charm:help", "/charm-help"),
-        ("/charm:shortcut", "/charm-shortcut"),
-        ("/charm:tutorial", "/charm-tutorial"),
-        ("/charm:*", "/charm-*"),
-    ] {
-        out = out.replace(slash, command);
-    }
-    out
+    let syntax = OPENCODE.command_syntax();
+    input.replace(
+        "/charm:",
+        &format!("{}charm{}", syntax.prefix, syntax.separator),
+    )
 }
 
 fn opencode_command_config(content: &str, command_name: &str) -> Value {

@@ -181,14 +181,21 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
 };
 
 /**
- * agent ごとの charm コマンド記法。`<prefix>charm<sep><name>` で 1 つの命令になる。
+ * agent ごとの charm コマンド記法。`<prefix>charm<separator><name>` で 1 命令になる。
  * Claude は `/charm:create`、Codex は `$charm-create`、OpenCode は `/charm-create`。
+ *
+ * 正本は Rust 各 adapter の `command_syntax()`（`list_supported_agents` で公開）。
+ * strings.ts は sync / pure 境界なので Tauri call を呼ばず、この表で mirror する。
+ * Rust とのズレは health-check の agent-registry drift 検知で surface される。
  * agent を増やすときはこの表に 1 行足すだけでよい（if-chain を散らさない）。
  */
-const AGENT_COMMAND_SYNTAX: Record<string, { readonly prefix: string; readonly sep: string }> = {
-  claude: { prefix: "/", sep: ":" },
-  codex: { prefix: "$", sep: "-" },
-  opencode: { prefix: "/", sep: "-" },
+export const AGENT_COMMAND_SYNTAX: Record<
+  string,
+  { readonly prefix: string; readonly separator: string }
+> = {
+  claude: { prefix: "/", separator: ":" },
+  codex: { prefix: "$", separator: "-" },
+  opencode: { prefix: "/", separator: "-" },
 };
 
 /** Charminal が prefill する固定プロンプト中に現れる charm コマンド名。 */
@@ -197,7 +204,7 @@ const CHARM_COMMAND_NAMES = ["create", "update", "help", "shortcut", "tutorial"]
 /** 未知 agent は Claude 記法に fall back する。 */
 function charmCommand(name: string, terminalAgent: string): string {
   const syntax = AGENT_COMMAND_SYNTAX[terminalAgent] ?? AGENT_COMMAND_SYNTAX.claude;
-  return `${syntax.prefix}charm${syntax.sep}${name}`;
+  return `${syntax.prefix}charm${syntax.separator}${name}`;
 }
 
 function commandPromptForAgent(prompt: string, terminalAgent: string): string {

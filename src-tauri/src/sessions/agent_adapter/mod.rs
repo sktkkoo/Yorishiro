@@ -48,6 +48,16 @@ pub enum AgentThemeRefresh {
     Sigusr2,
 }
 
+/// charm コマンドの記法。`<prefix>charm<separator><name>` で 1 命令になる。
+/// Claude: `/charm:create`、Codex: `$charm-create`、OpenCode: `/charm-create`。
+/// prefill (TS strings.ts) / template 生成 (opencode.rs) はこの宣言を正本にする。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandSyntax {
+    pub prefix: &'static str,
+    pub separator: &'static str,
+}
+
 /// Spawn 時に各 adapter に渡される context。
 pub struct LaunchContext<'a> {
     pub cwd: Option<&'a Path>,
@@ -74,6 +84,13 @@ pub trait TerminalAgent: Send + Sync + 'static {
     /// Default binary 名 (PATH 検索の base)。
     fn binary_name(&self) -> &'static str;
     fn capabilities(&self) -> AgentCapabilities;
+    /// charm コマンドの記法。default は Claude (`/charm:<name>`)。
+    fn command_syntax(&self) -> CommandSyntax {
+        CommandSyntax {
+            prefix: "/",
+            separator: ":",
+        }
+    }
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String>;
     fn theme_refresh(&self) -> Option<AgentThemeRefresh> {
         None
@@ -97,6 +114,7 @@ pub struct AgentDescriptor {
     pub display_name: String,
     pub binary_name: String,
     pub capabilities: AgentCapabilities,
+    pub command_syntax: CommandSyntax,
 }
 
 impl AgentDescriptor {
@@ -106,6 +124,7 @@ impl AgentDescriptor {
             display_name: adapter.display_name().to_string(),
             binary_name: adapter.binary_name().to_string(),
             capabilities: adapter.capabilities(),
+            command_syntax: adapter.command_syntax(),
         }
     }
 }
@@ -239,6 +258,31 @@ mod tests {
     #[test]
     fn lookup_returns_opencode_adapter() {
         assert_eq!(lookup("opencode").map(|agent| agent.id()), Some("opencode"));
+    }
+
+    #[test]
+    fn command_syntax_declared_per_adapter() {
+        assert_eq!(
+            lookup("claude").map(|a| a.command_syntax()),
+            Some(CommandSyntax {
+                prefix: "/",
+                separator: ":"
+            })
+        );
+        assert_eq!(
+            lookup("codex").map(|a| a.command_syntax()),
+            Some(CommandSyntax {
+                prefix: "$",
+                separator: "-"
+            })
+        );
+        assert_eq!(
+            lookup("opencode").map(|a| a.command_syntax()),
+            Some(CommandSyntax {
+                prefix: "/",
+                separator: "-"
+            })
+        );
     }
 
     #[test]

@@ -5,6 +5,7 @@ import {
   mcpServerStatus,
   resolveCommandPath,
 } from "../bindings/tauri-commands";
+import { AGENT_COMMAND_SYNTAX } from "../i18n/strings";
 import { resolveEffectiveAgent } from "./sessions";
 import {
   fetchSafeModeFlag,
@@ -128,7 +129,18 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
     const rustAgentIds = new Set(agents.map((agent) => agent.id));
     const missingInConfig = [...rustAgentIds].filter((id) => !KNOWN_AGENT_IDS.has(id));
     const missingInRust = [...KNOWN_AGENT_IDS].filter((id) => !rustAgentIds.has(id));
-    if (missingInConfig.length > 0 || missingInRust.length > 0) {
+    // charm コマンド記法の正本は Rust adapter。strings.ts の mirror がズレていないか照合。
+    const syntaxDrift = agents
+      .filter((agent) => {
+        const mirror = AGENT_COMMAND_SYNTAX[agent.id];
+        return (
+          mirror !== undefined &&
+          (mirror.prefix !== agent.commandSyntax.prefix ||
+            mirror.separator !== agent.commandSyntax.separator)
+        );
+      })
+      .map((agent) => agent.id);
+    if (missingInConfig.length > 0 || missingInRust.length > 0 || syntaxDrift.length > 0) {
       const parts: string[] = [];
       if (missingInConfig.length > 0) {
         parts.push(`registered but not accepted by config: ${missingInConfig.join(", ")}`);
@@ -136,13 +148,16 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       if (missingInRust.length > 0) {
         parts.push(`accepted by config but not registered: ${missingInRust.join(", ")}`);
       }
+      if (syntaxDrift.length > 0) {
+        parts.push(`command syntax mirror out of date: ${syntaxDrift.join(", ")}`);
+      }
       items.push(
         healthItem(
           "agent-registry",
           "Agent registry",
           "warning",
-          `Agent id lists are out of sync (${parts.join("; ")}).`,
-          "Align KNOWN_AGENT_IDS, bundled profiles, and settings options with the registered adapters.",
+          `Agent registry mirror is out of sync (${parts.join("; ")}).`,
+          "Align KNOWN_AGENT_IDS, bundled profiles, settings options, and AGENT_COMMAND_SYNTAX with the registered adapters.",
         ),
       );
     }

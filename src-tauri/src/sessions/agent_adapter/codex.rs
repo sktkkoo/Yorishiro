@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{AgentCapabilities, LaunchArgs, LaunchContext, TerminalAgent};
+use super::{AgentCapabilities, CommandSyntax, LaunchArgs, LaunchContext, TerminalAgent};
 
 pub struct CodexAgent;
 pub static CODEX: CodexAgent = CodexAgent;
@@ -25,6 +25,14 @@ impl TerminalAgent for CodexAgent {
             plugins: true,
             lifecycle_hooks: false,
             session_resume: true,
+        }
+    }
+
+    /// Codex は charm command を skill として `$charm-<name>` で呼ぶ。
+    fn command_syntax(&self) -> CommandSyntax {
+        CommandSyntax {
+            prefix: "$",
+            separator: "-",
         }
     }
 

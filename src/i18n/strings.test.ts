@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveFixedTerminalPrompt, resolvePackRepairPrompt } from "./strings";
+import {
+  AGENT_COMMAND_SYNTAX,
+  resolveFixedTerminalPrompt,
+  resolvePackRepairPrompt,
+} from "./strings";
 
 const FIXED_PROMPT_KEYS = ["help", "tutorial", "shortcut", "create-pack", "pomodoro"] as const;
 
@@ -63,6 +67,16 @@ describe("resolveFixedTerminalPrompt", () => {
         expect(data).not.toMatch(/[\n\r]/);
       }
     }
+  });
+});
+
+describe("AGENT_COMMAND_SYNTAX", () => {
+  // Rust 各 adapter の command_syntax() の mirror。ズレると prefill コマンドが
+  // 間違った記法になる。Rust↔TS の drift は health-check で runtime 検知される。
+  it("mirrors the Rust adapter command syntax", () => {
+    expect(AGENT_COMMAND_SYNTAX.claude).toEqual({ prefix: "/", separator: ":" });
+    expect(AGENT_COMMAND_SYNTAX.codex).toEqual({ prefix: "$", separator: "-" });
+    expect(AGENT_COMMAND_SYNTAX.opencode).toEqual({ prefix: "/", separator: "-" });
   });
 });
 
