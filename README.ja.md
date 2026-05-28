@@ -193,7 +193,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 }
 ```
 
-自動起動・persona prompt overlay・PTY observation・Charminal MCP access・`/charm:*` command が動作します。ただし Claude Code hooks は Claude Code 専用のため、Codex は同じ tool lifecycle hook event を出しません。
+自動起動・persona prompt overlay・PTY observation・Charminal MCP access・`/charm:*` command が動作します。ただし Claude Code hooks は cross-agent contract として扱いません。Codex / OpenCode が独自の hook や plugin event を持つ場合でも、Charminal は Claude hook と完全互換であるとは仮定しません。
 
 ---
 

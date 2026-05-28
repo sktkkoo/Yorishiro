@@ -195,7 +195,7 @@ What works today:
 }
 ```
 
-Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks remain Claude Code-exclusive, so Codex does not emit the same tool lifecycle hook events.
+Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Codex and OpenCode may have their own hook/plugin events, but Charminal does not assume full Claude hook parity.
 
 ---
 

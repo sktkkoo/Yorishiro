@@ -105,6 +105,14 @@ Agent ごとの違い：
 | `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config と `$charm-*` skill plugin を session-scoped に渡す。Claude hooks は非対応 |
 | `opencode` | `opencode` | temp markdown file を `agent.build.prompt` / `agent.plan.prompt` の `{file:...}` 参照で渡す | Charminal MCP config と `/charm-*` command を `OPENCODE_CONFIG_CONTENT` で渡す。TUI theme は temp `tui.json` + `OPENCODE_TUI_CONFIG` で `system` にする。Claude hooks / session resume は非対応 |
 
+Claude Code hooks は cross-agent contract ではない。Codex / OpenCode が独自の
+lifecycle hook や plugin event を持つ場合でも、Charminal は Claude Code hooks
+と完全互換であるとは扱わない。共通化する挙動は Claude hook の emulate ではなく、
+agent ごとの capability として明示的に実装する。現状、hook-based reminder
+（`UserPromptSubmit` で毎ターン `additionalContext` を返す仕組み）は Claude Code 専用。
+Codex / OpenCode には persona overlay / global prompt と MCP tools は渡るが、
+同じ reminder hook は動かない。
+
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 
 #### `opencode` の known limitation
