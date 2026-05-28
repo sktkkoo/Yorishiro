@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use super::{AgentCapabilities, LaunchArgs, LaunchContext, TerminalAgent};
+use super::{AgentCapabilities, AgentThemeRefresh, LaunchArgs, LaunchContext, TerminalAgent};
 
 pub struct OpencodeAgent;
 pub static OPENCODE: OpencodeAgent = OpencodeAgent;
@@ -99,6 +99,10 @@ impl TerminalAgent for OpencodeAgent {
             env,
             temp_files,
         })
+    }
+
+    fn theme_refresh(&self) -> Option<AgentThemeRefresh> {
+        Some(AgentThemeRefresh::Sigusr2)
     }
 }
 

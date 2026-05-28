@@ -61,6 +61,7 @@ import {
   ptyWrite,
   type SpawnSpec,
   sessionList,
+  sessionRefreshTheme,
 } from "./bindings/tauri-commands";
 import CharacterSurface from "./character-surface";
 import TabIndicator from "./components/TabIndicator";
@@ -1605,6 +1606,9 @@ function App() {
       const rt = getTerminalRuntime(activeId);
       rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
       rt.refit();
+      void sessionRefreshTheme({ sessionId: activeId }).catch((err) => {
+        console.warn("[terminal-theme] failed to refresh agent theme:", err);
+      });
     });
     return () => sub.dispose();
   }, [isUserLayerReady, scenePackRegistry, tabManager]);

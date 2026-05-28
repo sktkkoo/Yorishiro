@@ -475,6 +475,51 @@ impl PtySession {
         Ok(())
     }
 
+    pub fn refresh_agent_theme(
+        &self,
+        refresh: super::agent_adapter::AgentThemeRefresh,
+    ) -> Result<(), String> {
+        match refresh {
+            super::agent_adapter::AgentThemeRefresh::Sigusr2 => self.send_sigusr2(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn send_sigusr2(&self) -> Result<(), String> {
+        let pid = {
+            let mut guard = lock_or_recover(&self.child);
+            let Some(child) = guard.as_mut() else {
+                return Ok(());
+            };
+            if child.try_wait().ok().flatten().is_some() {
+                return Ok(());
+            }
+            let Some(pid) = child.process_id() else {
+                return Ok(());
+            };
+            pid
+        };
+
+        let result = unsafe { libc::kill(pid as libc::pid_t, libc::SIGUSR2) };
+        if result == 0 {
+            return Ok(());
+        }
+
+        let err = std::io::Error::last_os_error();
+        if err.raw_os_error() == Some(libc::ESRCH) {
+            return Ok(());
+        }
+        Err(format!(
+            "Failed to refresh PTY child theme with SIGUSR2 (pid {}): {}",
+            pid, err
+        ))
+    }
+
+    #[cfg(not(unix))]
+    fn send_sigusr2(&self) -> Result<(), String> {
+        Ok(())
+    }
+
     pub fn kill(&self) -> Result<(), String> {
         // Lock order: writer → child → master
         *lock_or_recover(&self.writer) = None;

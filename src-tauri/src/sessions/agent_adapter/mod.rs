@@ -43,6 +43,11 @@ pub struct AgentCapabilities {
     pub session_resume: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AgentThemeRefresh {
+    Sigusr2,
+}
+
 /// Spawn 時に各 adapter に渡される context。
 pub struct LaunchContext<'a> {
     pub cwd: Option<&'a Path>,
@@ -69,6 +74,9 @@ pub trait TerminalAgent: Send + Sync + 'static {
     fn binary_name(&self) -> &'static str;
     fn capabilities(&self) -> AgentCapabilities;
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String>;
+    fn theme_refresh(&self) -> Option<AgentThemeRefresh> {
+        None
+    }
     fn has_existing_session(&self, _cwd: Option<&Path>) -> bool {
         false
     }
@@ -151,6 +159,22 @@ mod tests {
     #[test]
     fn lookup_returns_opencode_adapter() {
         assert_eq!(lookup("opencode").map(|agent| agent.id()), Some("opencode"));
+    }
+
+    #[test]
+    fn only_opencode_declares_theme_refresh_signal() {
+        assert_eq!(
+            lookup("claude").and_then(|agent| agent.theme_refresh()),
+            None
+        );
+        assert_eq!(
+            lookup("codex").and_then(|agent| agent.theme_refresh()),
+            None
+        );
+        assert_eq!(
+            lookup("opencode").and_then(|agent| agent.theme_refresh()),
+            Some(AgentThemeRefresh::Sigusr2)
+        );
     }
 }
 

@@ -354,6 +354,25 @@ impl PtyState {
         session.resize(cols, rows)
     }
 
+    pub fn refresh_theme(&self, session_id: &str) -> Result<(), String> {
+        let Some(descriptor) = self.registry.get(session_id) else {
+            return Ok(());
+        };
+        if !matches!(descriptor.kind, SessionKind::Agent) {
+            return Ok(());
+        }
+        let Some(adapter) = crate::sessions::agent_adapter::lookup(&descriptor.profile_id) else {
+            return Ok(());
+        };
+        let Some(refresh) = adapter.theme_refresh() else {
+            return Ok(());
+        };
+        let Some(session) = self.session_or_default(session_id) else {
+            return Ok(());
+        };
+        session.refresh_agent_theme(refresh)
+    }
+
     pub fn kill(&self, session_id: &str) -> Result<(), String> {
         if let Some(session) = self.session_or_default(session_id) {
             let _ = session.kill();

@@ -98,6 +98,14 @@ export interface SessionResizeArgs {
 export const sessionResize = (args: SessionResizeArgs): Promise<void> =>
   call("session_resize", args);
 
+export interface SessionRefreshThemeArgs {
+  readonly sessionId: string;
+}
+
+/** Agent session に terminal theme refresh を通知する。非対応 agent では no-op。 */
+export const sessionRefreshTheme = (args: SessionRefreshThemeArgs): Promise<void> =>
+  call("session_refresh_theme", args);
+
 export interface SessionDestroyArgs {
   readonly sessionId: string;
 }

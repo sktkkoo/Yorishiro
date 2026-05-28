@@ -458,6 +458,14 @@ async fn session_resize(
 }
 
 #[tauri::command]
+async fn session_refresh_theme(
+    state: State<'_, PtyState>,
+    session_id: String,
+) -> Result<(), String> {
+    state.refresh_theme(&session_id)
+}
+
+#[tauri::command]
 async fn session_attach(
     state: State<'_, PtyState>,
     session_id: String,
@@ -1217,6 +1225,7 @@ pub fn run() {
             session_destroy,
             session_write,
             session_resize,
+            session_refresh_theme,
             session_attach,
             session_detach,
             session_list,
