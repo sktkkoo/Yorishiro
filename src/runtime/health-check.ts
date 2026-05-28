@@ -11,7 +11,7 @@ import {
   readCharminalConfigText,
   readLastStartupReport,
 } from "./user-pack-loader/charminal-io";
-import { parseConfig } from "./user-pack-loader/config";
+import { KNOWN_AGENT_IDS, parseConfig } from "./user-pack-loader/config";
 
 export interface CollectHealthReportDeps {
   readonly listPacks: () => Promise<{ readonly packs: readonly UiAppPackStatusEntry[] }>;
@@ -119,6 +119,33 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
         "Install at least one supported agent before using the embedded agent terminal.",
       ),
     );
+  }
+
+  // Rust adapter registry（正本）と TS の config validation set がずれると、
+  // 有効な agent id が silently "claude" に fallback したり spawn 時に Unknown
+  // agent id で落ちたりする。listSupportedAgents が応答したときだけ照合する。
+  if (agents.length > 0) {
+    const rustAgentIds = new Set(agents.map((agent) => agent.id));
+    const missingInConfig = [...rustAgentIds].filter((id) => !KNOWN_AGENT_IDS.has(id));
+    const missingInRust = [...KNOWN_AGENT_IDS].filter((id) => !rustAgentIds.has(id));
+    if (missingInConfig.length > 0 || missingInRust.length > 0) {
+      const parts: string[] = [];
+      if (missingInConfig.length > 0) {
+        parts.push(`registered but not accepted by config: ${missingInConfig.join(", ")}`);
+      }
+      if (missingInRust.length > 0) {
+        parts.push(`accepted by config but not registered: ${missingInRust.join(", ")}`);
+      }
+      items.push(
+        healthItem(
+          "agent-registry",
+          "Agent registry",
+          "warning",
+          `Agent id lists are out of sync (${parts.join("; ")}).`,
+          "Align KNOWN_AGENT_IDS, bundled profiles, and settings options with the registered adapters.",
+        ),
+      );
+    }
   }
 
   items.push(

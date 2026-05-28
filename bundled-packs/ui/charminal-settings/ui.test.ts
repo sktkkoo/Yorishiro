@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolvePackRepairPrompt } from "../../../src/i18n/strings";
+import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
@@ -130,6 +131,13 @@ describe("terminal agent options", () => {
       { value: "codex", label: "Codex" },
       { value: "opencode", label: "OpenCode" },
     ]);
+  });
+
+  it("stays in sync with config validation (KNOWN_AGENT_IDS)", () => {
+    // dropdown の選択肢と config validation がずれると、UI で選べる agent を
+    // config parse が弾く（or 逆）。adapter 追加時の更新漏れをここで検知する。
+    const optionIds = new Set(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
+    expect(optionIds).toEqual(KNOWN_AGENT_IDS);
   });
 });
 
