@@ -2,7 +2,7 @@
 
 > Charminal の Terminal session（shell / coding agent）の設定と動作。実装上の正本は `src-tauri/src/pty.rs` および `src/runtime/user-pack-loader/config.ts`。
 
-Charminal の Terminal は shell（zsh / bash / fish / pwsh）と coding agent（Claude Code / Codex）を session として走らせる。Pane を分割して複数 session を並べ、住人がそれら全体を観察できるようにすることを目指している。
+Charminal の Terminal は shell（zsh / bash / fish / pwsh）と coding agent（Claude Code / Codex / OpenCode）を session として走らせる。Pane を分割して複数 session を並べ、住人がそれら全体を観察できるようにすることを目指している。
 
 > **現状（v0.0.1）**: §Session profile（shell / claude / codex bundled profile + `defaultProfile`）と §Shell integration（OSC 133 wrapper rc 注入 + `user.<shell>` chain + `init.<shell>` の OSC 133 emit）は実装済み（Phase B sub-1 / sub-2）。住人は OSC 133 経由で command 単位の status（command 開始 / 終了 / exit code）を読める。`integration: false` profile での raw 起動も対応。**Pane split は Phase C で別途**。pwsh integration は sub-2 では out of scope。
 
@@ -47,7 +47,7 @@ session の正体は profile で定義する。`~/.charminal/config.json` の `p
 - `shell` — `$SHELL` を起動、shell integration あり
 - `claude` — Claude Code を起動、hook + `/charm:*` plugin 注入
 - `codex` — Codex を起動、Charminal MCP config + `$charm-*` skill plugin + PTY 観察あり
-- `opencode` — OpenCode を起動、Charminal MCP config + `/charm-*` command + PTY 観察あり
+- `opencode` — OpenCode を起動、Charminal MCP config + `/charm-*` command + TUI `system` theme + PTY 観察あり
 
 User profile は同じ id を上書きできる。
 

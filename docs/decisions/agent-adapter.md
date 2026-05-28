@@ -77,19 +77,21 @@ adapter を追加するときは、Rust registry、`KNOWN_AGENT_IDS`、bundled p
 
 ### 5. OpenCode v1 adapter の scope
 
-OpenCode CLI は session-scoped CLI flag が薄い (`--prompt` は run-mode、`--mcp` 無し)。唯一の inject 経路は **`OPENCODE_CONFIG_CONTENT` env var に inline JSON を渡す** こと。
+OpenCode CLI は session-scoped CLI flag が薄い (`--prompt` は run-mode、`--mcp` 無し)。runtime config の inject 経路は **`OPENCODE_CONFIG_CONTENT` env var に inline JSON を渡す** こと。TUI theme は別 config なので、temp `tui.json` を `OPENCODE_TUI_CONFIG` で渡す。
 
 v1 OpenCode adapter は：
 
-- ✓ persona overlay (temp markdown を書き出して `instructions[]` 配下にリストアップ)
+- ✓ persona overlay (temp markdown を書き出して `agent.build.prompt` / `agent.plan.prompt` の `{file:...}` 参照に渡す)
 - ✓ MCP injection (`mcp.charminal = { type: "remote", url: "..." }`)
 - ✓ Charminal command plugin（`OPENCODE_CONFIG_CONTENT.command` で `/charm-*` を session-scoped に渡す）
+- ✓ TUI theme bridge（temp `tui.json` + `OPENCODE_TUI_CONFIG` で `theme: "system"` を session-scoped に渡す）
 - ✗ session resume（session storage path 未確認）
 - ✗ Claude-Code-style lifecycle hooks（OpenCode native 機構なし）
 
 **known limitations**:
 
 - `OPENCODE_CONFIG_CONTENT` は project-local `opencode.json` を **置換** するため、Charminal session 中は user の project-local 設定が無視される。v2 で deep-merge 対応する。
+- `OPENCODE_TUI_CONFIG` は TUI config path を Charminal session 中だけ temp file に差し替える。user の OpenCode config file は書き換えないが、user TUI config との deep-merge はしない。
 - Unicode rendering (CJK 全角 / 結合文字 / Cyrillic / icon glyph 等) の品質は OpenCode 本体の TUI 実装に依存する。Charminal の xterm.js は VS Code と同じ xterm.js core なので、xterm.js 系で報告された OpenCode 上流 issue (例: [#2920](https://github.com/sst/opencode/issues/2920) は v1.0 で fix 済、[#2013](https://github.com/sst/opencode/issues/2013) ほか) の状況に追従する。本件は Charminal 側で workaround しない (OpenCode 上流の責務)。最低 OpenCode v1.0 以降の利用を `docs/configuration.md` で推奨する。
 
 ## なぜそう決めたか

@@ -32,8 +32,9 @@ impl TerminalAgent for OpencodeAgent {
         let args = Vec::new();
         let mut env = Vec::new();
         let mut temp_files = Vec::new();
+        let commands = opencode_charminal_commands(ctx.plugin_dir)?;
 
-        // OpenCode の session-scoped 注入経路として env var に inline JSON を渡す。
+        // OpenCode の runtime config は session-scoped 注入経路として env var に渡す。
         // project-local opencode.json との deep-merge は v2 scope。
         let mut config_obj = serde_json::json!({
             "$schema": "https://opencode.ai/config.json",
@@ -46,18 +47,47 @@ impl TerminalAgent for OpencodeAgent {
             }
         });
 
+        if let Some(commands) = commands {
+            config_obj["command"] = Value::Object(commands);
+        }
+
         if let Some(prompt) = ctx.system_prompt {
             let persona_path = super::temp_config_path("opencode-persona", "md");
             let persona_path_arg = super::utf8_path_for_cli(&persona_path, "OpenCode persona")?;
             std::fs::write(&persona_path, prompt)
                 .map_err(|e| format!("Failed to write opencode persona: {}", e))?;
-            config_obj["instructions"] = serde_json::json!([persona_path_arg]);
+            let persona_ref = format!("{{file:{}}}", persona_path_arg);
+            let agent_prompt = serde_json::json!({ "prompt": persona_ref });
+            config_obj["agent"] = serde_json::json!({
+                "build": agent_prompt.clone(),
+                "plan": agent_prompt,
+            });
             temp_files.push(persona_path);
         }
 
-        if let Some(commands) = opencode_charminal_commands(ctx.plugin_dir)? {
-            config_obj["command"] = Value::Object(commands);
-        }
+        let tui_config_path = super::temp_config_path("opencode-tui", "json");
+        let tui_config_path_arg =
+            match super::utf8_path_for_cli(&tui_config_path, "OpenCode TUI config") {
+                Ok(path) => path,
+                Err(err) => {
+                    for path in &temp_files {
+                        let _ = std::fs::remove_file(path);
+                    }
+                    return Err(err);
+                }
+            };
+        let tui_config = serde_json::json!({
+            "$schema": "https://opencode.ai/tui.json",
+            "theme": "system",
+        });
+        std::fs::write(&tui_config_path, format!("{}\n", tui_config)).map_err(|e| {
+            for path in &temp_files {
+                let _ = std::fs::remove_file(path);
+            }
+            format!("Failed to write opencode TUI config: {}", e)
+        })?;
+        env.push(("OPENCODE_TUI_CONFIG".to_string(), tui_config_path_arg));
+        temp_files.push(tui_config_path);
 
         env.push((
             "OPENCODE_CONFIG_CONTENT".to_string(),
@@ -202,6 +232,12 @@ mod tests {
         }
     }
 
+    fn cleanup_temp_files(result: &LaunchArgs) {
+        for path in &result.temp_files {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
     #[test]
     fn opencode_capabilities_declares_plugins_no_hooks_no_resume() {
         let caps = OPENCODE.capabilities();
@@ -219,6 +255,28 @@ mod tests {
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
         assert!(!result.args.iter().any(|a| a == "/tmp/some-cwd"));
+        cleanup_temp_files(&result);
+    }
+
+    #[test]
+    fn opencode_sets_system_tui_theme_via_temp_config() {
+        let ctx = make_ctx(None, None, None);
+        let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
+        let (_, path_str) = result
+            .env
+            .iter()
+            .find(|(k, _)| k == "OPENCODE_TUI_CONFIG")
+            .expect("OPENCODE_TUI_CONFIG env present");
+        let tui_path = Path::new(path_str);
+
+        assert!(tui_path.exists(), "TUI config file should exist");
+        let contents = std::fs::read_to_string(tui_path).expect("read TUI config");
+        let parsed: Value = serde_json::from_str(&contents).expect("valid TUI config json");
+        assert_eq!(parsed["$schema"], "https://opencode.ai/tui.json");
+        assert_eq!(parsed["theme"], "system");
+        assert!(result.temp_files.contains(&tui_path.to_path_buf()));
+
+        cleanup_temp_files(&result);
     }
 
     #[test]
@@ -226,6 +284,7 @@ mod tests {
         let ctx = make_ctx(None, None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
+        cleanup_temp_files(&result);
     }
 
     #[test]
@@ -242,10 +301,11 @@ mod tests {
         assert_eq!(charminal_mcp["type"], "remote");
         assert_eq!(charminal_mcp["url"], "http://127.0.0.1:18743/mcp");
         assert_eq!(charminal_mcp["enabled"], true);
+        cleanup_temp_files(&result);
     }
 
     #[test]
-    fn opencode_includes_persona_via_instructions_temp_file() {
+    fn opencode_injects_persona_as_primary_agent_prompts() {
         let ctx = make_ctx(None, Some("住人としての気質を保つ"), None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
 
@@ -256,11 +316,18 @@ mod tests {
             .expect("OPENCODE_CONFIG_CONTENT present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
 
-        let instructions = parsed["instructions"]
-            .as_array()
-            .expect("instructions is array");
-        assert_eq!(instructions.len(), 1);
-        let persona_path_str = instructions[0].as_str().expect("path is string");
+        let build_prompt = parsed["agent"]["build"]["prompt"]
+            .as_str()
+            .expect("build prompt is string");
+        let plan_prompt = parsed["agent"]["plan"]["prompt"]
+            .as_str()
+            .expect("plan prompt is string");
+        assert_eq!(build_prompt, plan_prompt);
+
+        let persona_path_str = build_prompt
+            .strip_prefix("{file:")
+            .and_then(|s| s.strip_suffix('}'))
+            .expect("prompt uses opencode file reference");
         let persona_path = Path::new(persona_path_str);
 
         assert!(persona_path.exists(), "persona file should exist");
@@ -268,12 +335,13 @@ mod tests {
         assert_eq!(contents, "住人としての気質を保つ");
 
         assert!(result.temp_files.contains(&persona_path.to_path_buf()));
+        assert!(parsed.get("instructions").is_none() || parsed["instructions"].is_null());
 
-        let _ = std::fs::remove_file(persona_path);
+        cleanup_temp_files(&result);
     }
 
     #[test]
-    fn opencode_omits_instructions_when_no_persona() {
+    fn opencode_omits_agent_prompt_when_no_persona() {
         let ctx = make_ctx(None, None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
@@ -282,7 +350,8 @@ mod tests {
             .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
             .expect("env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
-        assert!(parsed.get("instructions").is_none() || parsed["instructions"].is_null());
+        assert!(parsed.get("agent").is_none() || parsed["agent"].is_null());
+        cleanup_temp_files(&result);
     }
 
     fn fresh_plugin_dir(label: &str) -> PathBuf {
@@ -329,6 +398,7 @@ mod tests {
             .unwrap()
             .contains("Create the requested pack."));
 
+        cleanup_temp_files(&result);
         let _ = std::fs::remove_dir_all(&plugin_dir);
     }
 
@@ -358,6 +428,7 @@ mod tests {
         assert!(template.contains("/charm-*"));
         assert!(!template.contains("/charm:create"));
 
+        cleanup_temp_files(&result);
         let _ = std::fs::remove_dir_all(&plugin_dir);
     }
 }
