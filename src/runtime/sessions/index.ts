@@ -11,6 +11,7 @@ export {
   getBundledProfile,
   listAvailableProfiles,
   listBundledProfiles,
+  resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveProfile,
 } from "./profiles";

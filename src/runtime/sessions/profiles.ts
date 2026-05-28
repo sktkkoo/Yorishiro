@@ -110,6 +110,24 @@ export function resolveEffectiveAgent(config: {
 }
 
 /**
+ * `defaultProfile` が agent profile を指していれば、その profile id を返す。
+ * 指していない（未指定 / shell profile / 解決不能）なら null。
+ *
+ * Settings の agent dropdown が `defaultProfile` によって固定されているか
+ * （= terminalAgent の変更が起動 agent に効かない状態か）の判定に使う。
+ */
+export function resolveDefaultAgentProfileId(config: {
+  readonly defaultProfile: string | null;
+  readonly profiles: ReadonlyArray<SessionProfile>;
+}): string | null {
+  if (config.defaultProfile === null) {
+    return null;
+  }
+  const profile = resolveProfile(config.defaultProfile, config.profiles);
+  return profile?.kind === "agent" && profile.agent !== null ? config.defaultProfile : null;
+}
+
+/**
  * UI で「開ける profile 一覧」を出すための merged view。User profile が
  * bundled を override した場合、bundled 側は出さない。
  */

@@ -247,7 +247,12 @@ export interface UiAppAPI {
   getConfig(): Promise<{
     readonly primaryPersona: string | null;
     readonly activeScene: string | null;
+    /** `terminalAgent` config 値（legacy fallback）。dropdown の書き込み対象。 */
     readonly terminalAgent: string;
+    /** 起動時に実際に使われる agent。`defaultProfile` が agent profile を指せば優先される。 */
+    readonly effectiveAgent: string;
+    /** `defaultProfile` が agent を固定しているならその profile id、なければ null。 */
+    readonly agentPinnedByProfile: string | null;
     readonly ambientAudioMuted: boolean;
     readonly ambientAudioVolume: number;
     readonly activeAmbientUi: readonly string[];

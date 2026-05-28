@@ -16,6 +16,7 @@ export interface UiStrings {
   readonly ambientVolume: string;
   readonly selectVrmFile: string;
   readonly agentAppliesNextLaunch: string;
+  readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
   readonly shortcutPrompt: string;
@@ -69,6 +70,7 @@ const EN: UiStrings = {
   ambientVolume: "Ambient volume",
   selectVrmFile: "Select VRM file",
   agentAppliesNextLaunch: "Applies from the next agent launch",
+  agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/charm:help",
   tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
@@ -122,6 +124,7 @@ const JA: UiStrings = {
   ambientVolume: "環境音ボリューム",
   selectVrmFile: "VRM ファイルを選択",
   agentAppliesNextLaunch: "※ 次回起動時に反映",
+  agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/charm:help",
   tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",

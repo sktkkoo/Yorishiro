@@ -159,6 +159,7 @@ function Select({
   onChange,
   loadingPlaceholder,
   emptyLabel = "(no packs)",
+  disabled = false,
 }: {
   value: string;
   options: readonly SelectOption[];
@@ -166,6 +167,8 @@ function Select({
   /** value === "" の時に表示する disabled option（読み込み中など）。 */
   loadingPlaceholder?: string;
   emptyLabel?: string;
+  /** true で操作不可。値が外部要因で固定されている（例: defaultProfile）ときに使う。 */
+  disabled?: boolean;
 }): React.JSX.Element {
   // 0 options: pack が登録されていない
   if (options.length === 0) {
@@ -230,6 +233,7 @@ function Select({
       <select
         value={value}
         onChange={onChange}
+        disabled={disabled}
         style={{
           appearance: "none",
           WebkitAppearance: "none",
@@ -238,11 +242,12 @@ function Select({
           border: `1px solid ${COLORS.borderSubtle}`,
           borderRadius: RADIUS.sm,
           padding: `${SPACING.sm} ${SPACING.xl} ${SPACING.sm} ${SPACING.md}`,
-          color: COLORS.fg,
+          color: disabled ? COLORS.fgDim : COLORS.fg,
           font: "inherit",
           fontFamily: FONT.family,
           fontSize: FONT.sizeS,
-          cursor: "pointer",
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.6 : 1,
           width: "100%",
           outline: "none",
         }}
@@ -1396,6 +1401,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
   const [agent, setAgent] = useState<string>("claude");
+  // defaultProfile が agent を固定しているときの profile id。null なら dropdown は通常操作可能。
+  const [agentPinnedBy, setAgentPinnedBy] = useState<string | null>(null);
   // 環境音 mute は config が読まれるまで undecided。getConfig 後に boolean を入れる。
   const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
   // 環境音ボリューム（0.0-1.0）。config 読み込み前は null。
@@ -1420,7 +1427,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       if (aborted) return;
       setPersona(cur.primaryPersona);
       setScene(cur.activeScene);
-      setAgent(cur.terminalAgent);
+      // dropdown は実起動 agent を表示する。defaultProfile が固定していれば操作不可。
+      setAgent(cur.effectiveAgent);
+      setAgentPinnedBy(cur.agentPinnedByProfile);
       setAmbientMuted(cur.ambientAudioMuted);
       setAmbientVolume(cur.ambientAudioVolume);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
@@ -1846,7 +1855,12 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div style={gridStyle}>
           <div style={{ opacity: 0.7 }}>{strings.labelAgent}</div>
           <div>
-            <Select value={agent} onChange={onAgentChange} options={TERMINAL_AGENT_OPTIONS} />
+            <Select
+              value={agent}
+              onChange={onAgentChange}
+              options={TERMINAL_AGENT_OPTIONS}
+              disabled={agentPinnedBy !== null}
+            />
           </div>
         </div>
         <div
@@ -1857,7 +1871,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             opacity: 0.5,
           }}
         >
-          {strings.agentAppliesNextLaunch}
+          {agentPinnedBy !== null
+            ? `${strings.agentControlledByProfile}（${agentPinnedBy}）`
+            : strings.agentAppliesNextLaunch}
         </div>
 
         {/* 32px gap */}

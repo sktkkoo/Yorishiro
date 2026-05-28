@@ -8,6 +8,7 @@ import {
   getBundledProfile,
   listAvailableProfiles,
   listBundledProfiles,
+  resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveProfile,
 } from "./profiles";
@@ -106,6 +107,41 @@ describe("resolveEffectiveAgent", () => {
     expect(
       resolveEffectiveAgent({ terminalAgent: "claude", defaultProfile: "phantom", profiles: [] }),
     ).toBe("claude");
+  });
+});
+
+describe("resolveDefaultAgentProfileId", () => {
+  it("returns null when defaultProfile is null", () => {
+    expect(resolveDefaultAgentProfileId({ defaultProfile: null, profiles: [] })).toBeNull();
+  });
+
+  it("returns the id when defaultProfile points to a bundled agent profile", () => {
+    expect(resolveDefaultAgentProfileId({ defaultProfile: "codex", profiles: [] })).toBe("codex");
+  });
+
+  it("returns null when defaultProfile points to a shell profile", () => {
+    // shell default は agent を固定しないので dropdown は通常操作可能。
+    expect(resolveDefaultAgentProfileId({ defaultProfile: "shell", profiles: [] })).toBeNull();
+  });
+
+  it("returns the id for a user agent profile", () => {
+    const userProfile: SessionProfile = {
+      id: "my-codex",
+      kind: "agent",
+      command: null,
+      args: [],
+      env: {},
+      cwd: null,
+      agent: "codex",
+      integration: true,
+    };
+    expect(
+      resolveDefaultAgentProfileId({ defaultProfile: "my-codex", profiles: [userProfile] }),
+    ).toBe("my-codex");
+  });
+
+  it("returns null when defaultProfile id is unresolvable", () => {
+    expect(resolveDefaultAgentProfileId({ defaultProfile: "phantom", profiles: [] })).toBeNull();
   });
 });
 

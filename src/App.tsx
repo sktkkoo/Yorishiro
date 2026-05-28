@@ -126,7 +126,12 @@ import {
 } from "./runtime/scene-pack-registry";
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
-import { DEFAULT_SESSION_ID, resolveEffectiveAgent, resolveProfile } from "./runtime/sessions";
+import {
+  DEFAULT_SESSION_ID,
+  resolveDefaultAgentProfileId,
+  resolveEffectiveAgent,
+  resolveProfile,
+} from "./runtime/sessions";
 import {
   spawnSpecFromDefaultProfile,
   withAgentRuntimeFields,
@@ -2277,6 +2282,8 @@ function App() {
               primaryPersona: cur.primaryPersona,
               activeScene: cur.activeScene,
               terminalAgent: cur.terminalAgent,
+              effectiveAgent: resolveEffectiveAgent(cur),
+              agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
               activeAmbientUi: cur.activeAmbientUi,
