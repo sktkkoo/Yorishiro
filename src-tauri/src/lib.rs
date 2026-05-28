@@ -45,8 +45,8 @@ fn build_path_env() -> String {
         format!("{}\\.cargo\\bin{}{}", home, sep, current)
     } else {
         format!(
-            "{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:{}",
-            home, home, current
+            "{}/.opencode/bin:{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:{}",
+            home, home, home, current
         )
     }
 }
@@ -1507,6 +1507,18 @@ mod layer_scope_tests {
         assert_eq!(resolve_command_path_impl("  "), None);
         assert_eq!(resolve_command_path_impl("bin/claude"), None);
         assert_eq!(resolve_command_path_impl("bin\\claude"), None);
+    }
+
+    #[test]
+    fn build_path_env_includes_opencode_install_dir_on_unix() {
+        if cfg!(windows) {
+            return;
+        }
+        let path = super::build_path_env();
+        assert!(
+            path.contains("/.opencode/bin"),
+            "PATH should include ~/.opencode/bin, got {path}"
+        );
     }
 
     #[test]

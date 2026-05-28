@@ -88,6 +88,7 @@ pub(crate) fn resolve_agent_binary(
         candidates.push(npm_dir.join(&ps1_name));
     } else {
         let exe_name = binary_name.to_string();
+        candidates.push(home.join(".opencode").join("bin").join(&exe_name));
         candidates.push(home.join(".local").join("bin").join(&exe_name));
         candidates.push(home.join(".cargo").join("bin").join(&exe_name));
         candidates.push(std::path::PathBuf::from("/usr/local/bin").join(&exe_name));
@@ -607,5 +608,21 @@ mod tests {
         rb.write(b"data");
         rb.clear();
         assert!(rb.read().is_empty());
+    }
+
+    #[test]
+    fn resolve_agent_binary_finds_opencode_install_dir_on_unix() {
+        if cfg!(windows) {
+            return;
+        }
+        let resolved = resolve_agent_binary(
+            crate::sessions::agent_adapter::lookup("opencode").expect("opencode adapter"),
+            None,
+        );
+        let home = dirs::home_dir().unwrap_or_default();
+        let opencode = home.join(".opencode").join("bin").join("opencode");
+        if opencode.exists() {
+            assert_eq!(resolved, opencode.to_string_lossy());
+        }
     }
 }
