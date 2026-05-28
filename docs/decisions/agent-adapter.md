@@ -90,6 +90,12 @@ v1 OpenCode adapter は：
 - ✗ session resume（session storage path 未確認）
 - ✗ Claude-Code-style lifecycle hooks（OpenCode plugin events は存在し得るが Claude hook 完全互換として扱わない）
 
+OpenCode の TUI theme bridge は、起動時の temp config だけでなく scene 変更 / terminal attach 時の
+`SIGUSR2` refresh signal も使う。これは PTY input ではなく、OpenCode TUI に terminal palette を
+再サンプルさせる固定の process-control signal である。Charminal は prompt / command / key input を
+signal payload に載せず、adapter の `theme_refresh()` が opt-in した agent にだけ送る。agent / persona /
+user pack へ任意 signal API は公開しない（[critical-constraints §1](critical-constraints.md)）。
+
 **known limitations**:
 
 - `OPENCODE_CONFIG_CONTENT` は project-local `opencode.json` を **置換** するため、Charminal session 中は user の project-local 設定が無視される。v2 で deep-merge 対応する。

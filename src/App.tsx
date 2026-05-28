@@ -1423,7 +1423,7 @@ function App() {
         if (!done) {
           setTimeout(async () => {
             try {
-              const config = await readConfig();
+              const config = parseConfig(await readCharminalConfigText());
               await ptyWrite({
                 data: resolveFixedTerminalPrompt(
                   "tutorial",
