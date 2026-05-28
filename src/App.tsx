@@ -126,7 +126,7 @@ import {
 } from "./runtime/scene-pack-registry";
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
-import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
+import { DEFAULT_SESSION_ID, resolveEffectiveAgent, resolveProfile } from "./runtime/sessions";
 import {
   spawnSpecFromDefaultProfile,
   withAgentRuntimeFields,
@@ -899,10 +899,9 @@ function App() {
         if (config.defaultProfile !== null) {
           const profile = resolveProfile(config.defaultProfile, config.profiles);
           defaultSpec = spawnSpecFromDefaultProfile(profile);
-          if (profile?.kind === "agent" && profile.agent !== null) {
-            terminalAgent = profile.agent;
-          }
         }
+        // 実起動 agent の解決は resolveEffectiveAgent に集約する（health-check と共有）。
+        terminalAgent = resolveEffectiveAgent(config);
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );

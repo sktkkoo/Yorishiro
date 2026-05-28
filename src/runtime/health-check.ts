@@ -5,6 +5,7 @@ import {
   mcpServerStatus,
   resolveCommandPath,
 } from "../bindings/tauri-commands";
+import { resolveEffectiveAgent } from "./sessions";
 import {
   fetchSafeModeFlag,
   readCharminalConfigText,
@@ -61,6 +62,9 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
     ]);
 
   const config = parseConfig(configText);
+  // 起動時に実際に使われる agent。defaultProfile が agent profile を指していれば
+  // terminalAgent より優先される（App.tsx の bootstrap と同じ解決）。
+  const effectiveAgent = resolveEffectiveAgent(config);
   const expectedMcpPort = config.mcpPort ?? 18743;
   const agentPaths = await Promise.all(
     agents.map(async (agent) => ({
@@ -69,7 +73,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       path: await resolveCommandPath({ command: agent.binaryName }).catch(() => null),
     })),
   );
-  const selectedAgent = agentPaths.find((agent) => agent.id === config.terminalAgent);
+  const selectedAgent = agentPaths.find((agent) => agent.id === effectiveAgent);
   const selectedAgentPath = selectedAgent?.path ?? null;
   const supportedAgentSummary =
     agentPaths.length === 0
@@ -97,8 +101,8 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Terminal agent",
       selectedAgentPath === null ? "error" : "ok",
       selectedAgentPath === null
-        ? `${config.terminalAgent} is selected but was not found on Charminal's PATH.`
-        : `${config.terminalAgent}: ${selectedAgentPath} (${supportedAgentSummary})`,
+        ? `${effectiveAgent} is selected but was not found on Charminal's PATH.`
+        : `${effectiveAgent}: ${selectedAgentPath} (${supportedAgentSummary})`,
       selectedAgentPath === null
         ? "Install the selected agent or switch Agent in Settings."
         : undefined,
@@ -176,7 +180,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
   return {
     generatedAt: new Date().toISOString(),
     summary: summarize(items),
-    selectedAgent: config.terminalAgent,
+    selectedAgent: effectiveAgent,
     safeMode,
     homeDir,
     paths: {

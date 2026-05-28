@@ -86,6 +86,30 @@ export function resolveProfile(
 }
 
 /**
+ * 起動時に実際に使われる agent id を解決する。
+ *
+ * `defaultProfile` が agent profile を指していればその agent が勝ち、それ以外
+ * （未指定 / shell profile / 解決不能）なら legacy `terminalAgent` に fall back
+ * する。App.tsx の bootstrap と health-check が同じ解決を共有するための正本。
+ *
+ * shell profile が default の場合でも `terminalAgent`（agent pane を開くときに
+ * 使う agent）を返す。これは bootstrap 側の挙動と一致する。
+ */
+export function resolveEffectiveAgent(config: {
+  readonly terminalAgent: string;
+  readonly defaultProfile: string | null;
+  readonly profiles: ReadonlyArray<SessionProfile>;
+}): string {
+  if (config.defaultProfile !== null) {
+    const profile = resolveProfile(config.defaultProfile, config.profiles);
+    if (profile?.kind === "agent" && profile.agent !== null) {
+      return profile.agent;
+    }
+  }
+  return config.terminalAgent;
+}
+
+/**
  * UI で「開ける profile 一覧」を出すための merged view。User profile が
  * bundled を override した場合、bundled 側は出さない。
  */

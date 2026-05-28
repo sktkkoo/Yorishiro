@@ -8,6 +8,7 @@ import {
   getBundledProfile,
   listAvailableProfiles,
   listBundledProfiles,
+  resolveEffectiveAgent,
   resolveProfile,
 } from "./profiles";
 import type { SessionProfile } from "./types";
@@ -57,6 +58,54 @@ describe("agent id sync", () => {
       .map((profile) => profile.agent)
       .filter((agent): agent is string => agent !== null);
     expect(new Set(bundledAgentIds)).toEqual(KNOWN_AGENT_IDS);
+  });
+});
+
+describe("resolveEffectiveAgent", () => {
+  const codexProfile: SessionProfile = {
+    id: "codex",
+    kind: "agent",
+    command: null,
+    args: [],
+    env: {},
+    cwd: null,
+    agent: "codex",
+    integration: true,
+  };
+
+  it("falls back to terminalAgent when defaultProfile is null", () => {
+    expect(
+      resolveEffectiveAgent({ terminalAgent: "claude", defaultProfile: null, profiles: [] }),
+    ).toBe("claude");
+  });
+
+  it("prefers the agent of a bundled defaultProfile over terminalAgent", () => {
+    // terminalAgent は legacy default "claude" のままでも、defaultProfile=codex が勝つ。
+    expect(
+      resolveEffectiveAgent({ terminalAgent: "claude", defaultProfile: "codex", profiles: [] }),
+    ).toBe("codex");
+  });
+
+  it("prefers the agent of a user defaultProfile", () => {
+    expect(
+      resolveEffectiveAgent({
+        terminalAgent: "claude",
+        defaultProfile: "codex",
+        profiles: [{ ...codexProfile, id: "codex", agent: "opencode" }],
+      }),
+    ).toBe("opencode");
+  });
+
+  it("falls back to terminalAgent when defaultProfile is a shell profile", () => {
+    expect(
+      resolveEffectiveAgent({ terminalAgent: "codex", defaultProfile: "shell", profiles: [] }),
+    ).toBe("codex");
+  });
+
+  it("falls back to terminalAgent when defaultProfile id is unresolvable", () => {
+    expect(
+      resolveEffectiveAgent({ terminalAgent: "claude", defaultProfile: "phantom", profiles: [] }),
+    ).toBe("claude");
   });
 });
 

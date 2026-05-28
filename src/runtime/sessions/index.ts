@@ -11,6 +11,7 @@ export {
   getBundledProfile,
   listAvailableProfiles,
   listBundledProfiles,
+  resolveEffectiveAgent,
   resolveProfile,
 } from "./profiles";
 export { getSessionRegistry, SessionRegistry } from "./session-registry";
