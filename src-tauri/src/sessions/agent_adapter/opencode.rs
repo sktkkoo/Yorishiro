@@ -106,6 +106,18 @@ impl TerminalAgent for OpencodeAgent {
     fn theme_refresh(&self) -> Option<AgentThemeRefresh> {
         Some(AgentThemeRefresh::Sigusr2)
     }
+
+    /// OpenCode は標準で `~/.opencode/bin` に install される。Windows の install
+    /// location は upstream 都合で異なるため、unix のみ宣言する。
+    fn extra_path_dirs(&self) -> Vec<std::path::PathBuf> {
+        if cfg!(windows) {
+            return Vec::new();
+        }
+        dirs::home_dir()
+            .map(|home| home.join(".opencode").join("bin"))
+            .into_iter()
+            .collect()
+    }
 }
 
 fn parse_command_markdown(content: &str) -> (String, String) {
@@ -257,6 +269,14 @@ mod tests {
         for path in &result.temp_files {
             let _ = std::fs::remove_file(path);
         }
+    }
+
+    #[test]
+    #[cfg(not(windows))]
+    fn opencode_declares_install_dir_for_path_search() {
+        let dirs = OPENCODE.extra_path_dirs();
+        let home = dirs::home_dir().expect("home dir");
+        assert_eq!(dirs, vec![home.join(".opencode").join("bin")]);
     }
 
     #[test]

@@ -81,6 +81,12 @@ pub trait TerminalAgent: Send + Sync + 'static {
     fn has_existing_session(&self, _cwd: Option<&Path>) -> bool {
         false
     }
+    /// この agent 固有の install dir。PATH 検索の base に前置される。
+    /// generic 層（`build_path_env` / `resolve_agent_binary`）は agent 固有の
+    /// install location を直書きせず、ここを参照する。
+    fn extra_path_dirs(&self) -> Vec<PathBuf> {
+        Vec::new()
+    }
 }
 
 /// AgentDescriptor — Tauri command 戻り値用 DTO。
@@ -126,6 +132,14 @@ pub fn descriptors() -> Vec<AgentDescriptor> {
         .iter()
         .copied()
         .map(AgentDescriptor::from)
+        .collect()
+}
+
+/// 登録済み全 adapter が宣言する install dir を集めて返す（PATH 前置用）。
+pub(crate) fn all_extra_path_dirs() -> Vec<PathBuf> {
+    registered_agents()
+        .iter()
+        .flat_map(|agent| agent.extra_path_dirs())
         .collect()
 }
 

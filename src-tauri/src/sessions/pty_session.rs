@@ -70,11 +70,19 @@ pub(crate) fn resolve_agent_binary(
     }
     let home = dirs::home_dir().unwrap_or_default();
     let binary_name = adapter.binary_name();
+    // adapter が宣言する install dir を最優先で探す（agent 固有 location は
+    // ここに直書きせず adapter::extra_path_dirs に閉じる）。
+    let extra_dirs = adapter.extra_path_dirs();
     let mut candidates: Vec<std::path::PathBuf> = Vec::new();
     if cfg!(windows) {
         let exe_name = format!("{}.exe", binary_name);
         let cmd_name = format!("{}.cmd", binary_name);
         let ps1_name = format!("{}.ps1", binary_name);
+        for dir in &extra_dirs {
+            candidates.push(dir.join(&exe_name));
+            candidates.push(dir.join(&cmd_name));
+            candidates.push(dir.join(&ps1_name));
+        }
         candidates.push(home.join(".cargo").join("bin").join(&exe_name));
         candidates.push(
             home.join("AppData")
@@ -88,7 +96,9 @@ pub(crate) fn resolve_agent_binary(
         candidates.push(npm_dir.join(&ps1_name));
     } else {
         let exe_name = binary_name.to_string();
-        candidates.push(home.join(".opencode").join("bin").join(&exe_name));
+        for dir in &extra_dirs {
+            candidates.push(dir.join(&exe_name));
+        }
         candidates.push(home.join(".local").join("bin").join(&exe_name));
         candidates.push(home.join(".cargo").join("bin").join(&exe_name));
         candidates.push(std::path::PathBuf::from("/usr/local/bin").join(&exe_name));

@@ -40,15 +40,23 @@ fn build_path_env() -> String {
     let home = dirs::home_dir().unwrap_or_default();
     let home = home.to_string_lossy();
     let current = std::env::var("PATH").unwrap_or_default();
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    // adapter 固有の install dir（例: OpenCode の ~/.opencode/bin）を先頭に積む。
+    // generic 層は agent 固有 location を直書きしない。
+    let mut dirs: Vec<String> = crate::sessions::agent_adapter::all_extra_path_dirs()
+        .iter()
+        .map(|dir| dir.to_string_lossy().into_owned())
+        .collect();
     if cfg!(windows) {
-        let sep = ";";
-        format!("{}\\.cargo\\bin{}{}", home, sep, current)
+        dirs.push(format!("{}\\.cargo\\bin", home));
     } else {
-        format!(
-            "{}/.opencode/bin:{}/.local/bin:{}/.cargo/bin:/usr/local/bin:/opt/homebrew/bin:{}",
-            home, home, home, current
-        )
+        dirs.push(format!("{}/.local/bin", home));
+        dirs.push(format!("{}/.cargo/bin", home));
+        dirs.push("/usr/local/bin".to_string());
+        dirs.push("/opt/homebrew/bin".to_string());
     }
+    dirs.push(current);
+    dirs.join(sep)
 }
 
 fn command_candidate_names(command: &str) -> Vec<String> {
