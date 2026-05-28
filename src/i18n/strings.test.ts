@@ -46,6 +46,14 @@ describe("resolveFixedTerminalPrompt", () => {
     ]);
   });
 
+  it("falls back to Claude command syntax for an unknown agent", () => {
+    // 記法 table に無い agent は Claude 形式（/charm:<name>）に fall back する。
+    expect(resolveFixedTerminalPrompt("help", "en", "future-agent")).toBe("/charm:help");
+    expect(resolveFixedTerminalPrompt("create-pack", "en", "future-agent")).toBe(
+      "/charm:create I want to create a pack",
+    );
+  });
+
   // セキュリティ不変条件: 固定プロンプトは改行を含まない。改行が混ざると
   // user の Enter を待たずに実行されうる（input-prefill-boundary.md / §1）。
   it("never contains a newline or carriage return", () => {

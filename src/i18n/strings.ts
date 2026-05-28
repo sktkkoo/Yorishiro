@@ -180,33 +180,36 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
   pomodoro: "pomodoroPrompt",
 };
 
-function commandPromptForAgent(prompt: string, terminalAgent: string): string {
-  const replacements =
-    terminalAgent === "codex"
-      ? [
-          ["/charm:create", "$charm-create"],
-          ["/charm:update", "$charm-update"],
-          ["/charm:help", "$charm-help"],
-          ["/charm:shortcut", "$charm-shortcut"],
-          ["/charm:tutorial", "$charm-tutorial"],
-        ]
-      : terminalAgent === "opencode"
-        ? [
-            ["/charm:create", "/charm-create"],
-            ["/charm:update", "/charm-update"],
-            ["/charm:help", "/charm-help"],
-            ["/charm:shortcut", "/charm-shortcut"],
-            ["/charm:tutorial", "/charm-tutorial"],
-          ]
-        : null;
-  if (replacements === null) return prompt;
-  return replacements.reduce((acc, [slash, command]) => acc.split(slash).join(command), prompt);
+/**
+ * agent ごとの charm コマンド記法。`<prefix>charm<sep><name>` で 1 つの命令になる。
+ * Claude は `/charm:create`、Codex は `$charm-create`、OpenCode は `/charm-create`。
+ * agent を増やすときはこの表に 1 行足すだけでよい（if-chain を散らさない）。
+ */
+const AGENT_COMMAND_SYNTAX: Record<string, { readonly prefix: string; readonly sep: string }> = {
+  claude: { prefix: "/", sep: ":" },
+  codex: { prefix: "$", sep: "-" },
+  opencode: { prefix: "/", sep: "-" },
+};
+
+/** Charminal が prefill する固定プロンプト中に現れる charm コマンド名。 */
+const CHARM_COMMAND_NAMES = ["create", "update", "help", "shortcut", "tutorial"] as const;
+
+/** 未知 agent は Claude 記法に fall back する。 */
+function charmCommand(name: string, terminalAgent: string): string {
+  const syntax = AGENT_COMMAND_SYNTAX[terminalAgent] ?? AGENT_COMMAND_SYNTAX.claude;
+  return `${syntax.prefix}charm${syntax.sep}${name}`;
 }
 
-function updateCommandForAgent(terminalAgent?: string): string {
-  if (terminalAgent === "codex") return "$charm-update";
-  if (terminalAgent === "opencode") return "/charm-update";
-  return "/charm:update";
+function commandPromptForAgent(prompt: string, terminalAgent: string): string {
+  // Claude 記法（/charm:<name>）を terminalAgent の記法へ書き換える。claude は no-op。
+  return CHARM_COMMAND_NAMES.reduce(
+    (acc, name) => acc.split(`/charm:${name}`).join(charmCommand(name, terminalAgent)),
+    prompt,
+  );
+}
+
+function updateCommandForAgent(terminalAgent = "claude"): string {
+  return charmCommand("update", terminalAgent);
 }
 
 /**
