@@ -116,6 +116,8 @@ active reminder（journal / voice）を追記する。設定変更は既存 PTY 
 
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 
+`defaultProfile` が agent profile（`claude` / `codex` / `opencode` や user `profiles[]` の agent profile）を指している場合は、起動 agent はそちらが優先される。このとき Settings の Agent dropdown は実際に起動する agent を表示したうえで操作不可になり、「起動 agent は defaultProfile で固定中」と注記する。agent を切り替えるには `defaultProfile` を編集する（dropdown は `terminalAgent` のみを書き換えるため、固定中は効かない）。
+
 #### `opencode` の known limitation
 
 OpenCode は v1.0 以降を推奨する。Charminal v0.5 の OpenCode adapter は

@@ -10,5 +10,7 @@
 - Codex and OpenCode now receive Charminal journal/voice reminders through their launch prompt overlays instead of Claude Code hook output.
 - Documented that Claude Code hooks are not a cross-agent contract; Codex/OpenCode hook-like surfaces require explicit per-agent capabilities before Charminal treats them as shared behavior.
 - Agent `defaultProfile` values such as `"opencode"` now launch that agent instead of falling back to `terminalAgent`.
+- The Settings Agent dropdown and the Status panel now report the agent that actually launches (honoring `defaultProfile`). When `defaultProfile` pins an agent, the dropdown shows that agent and is disabled with a "fixed by defaultProfile" note.
+- Agent install directories and charm command syntax are now declared by each `TerminalAgent` adapter (single source of truth); the Status panel warns if the Rust adapter registry and the TypeScript mirror drift.
 - `terminalAgent: "opencode"` is accepted in config. OpenCode end-to-end smoke is deferred and remains unverified on this machine.
 - `UiAppAPI.setTerminalAgent` and related SDK/config types now accept string adapter ids instead of only `"claude" | "codex"`.
