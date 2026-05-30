@@ -22,9 +22,9 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
-| `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
-| `terminalAgent` | `"claude"` or `"codex"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
-| `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / `/charm:*` command prompts の言語 |
+| `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` / `opencode` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
+| `terminalAgent` | `"claude"`, `"codex"`, or `"opencode"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
+| `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / Charminal command/skill prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
 | `activeScene` | `string` or `null` | `null` | active scene pack の user pick。`null` なら bundled fallback |
@@ -39,7 +39,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 - UI labels
 - bundled persona fallback (`primaryPersona: null`)
 - global system prompt natural-language guidance
-- `/charm:*` command prompt bodies
+- Charminal command/skill prompt bodies（Claude Code は `/charm:*`、Codex は `$charm-*`、OpenCode は `/charm-*`）
 - first-run / settings prefill text
 
 ```json
@@ -50,11 +50,11 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 
 `auto` detects the WebView locale at startup. Japanese locales resolve to `ja`; all other locales resolve to `en`. Explicit values (`"en"` / `"ja"`) always win over detection.
 
-Identifiers are not localized: command ids (`/charm:create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
+Identifiers are not localized: command ids (`/charm:create` / `$charm-create` / `/charm-create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
 
 If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Charminal chooses `clai-ja` for Japanese and `clai-en` otherwise.
 
-Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and `/charm:*` command language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
+Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and Charminal command/skill language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
 
 ### Default profile（shell を起動する）
 
@@ -101,11 +101,46 @@ Agent ごとの違い：
 
 | Agent | 起動 | Prompt overlay | Hook / command support |
 |---|---|---|---|
-| `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm` plugin、Charminal MCP config を session-scoped に渡す |
-| `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config を session-scoped に渡す。Claude hooks / `/charm` plugin は非対応 |
+| `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/charm:*` plugin、Charminal MCP config を session-scoped に渡す |
+| `codex` | `codex` | `-c developer_instructions=...` | Charminal MCP config と `$charm-*` skill plugin を session-scoped に渡す。Charminal reminder は prompt overlay に追記する。Claude hooks は非対応 |
+| `opencode` | `opencode` | temp markdown file を `agent.build.prompt` / `agent.plan.prompt` の `{file:...}` 参照で渡す | Charminal MCP config と `/charm-*` command を `OPENCODE_CONFIG_CONTENT` で渡す。TUI theme は temp `tui.json` + `OPENCODE_TUI_CONFIG` で `system` にする。Charminal reminder は agent prompt に追記する。Claude hooks / session resume は非対応 |
+
+Claude Code hooks は cross-agent contract ではない。Codex / OpenCode が独自の
+lifecycle hook や plugin event を持つ場合でも、Charminal は Claude Code hooks
+と完全互換であるとは扱わない。共通化する挙動は Claude hook の emulate ではなく、
+agent ごとの capability として明示的に実装する。hook-based reminder
+（`UserPromptSubmit` で毎ターン `additionalContext` を返す仕組み）は Claude Code 専用。
+Codex / OpenCode には同じ reminder hook は動かないが、起動時の prompt overlay に
+active reminder（journal / voice）を追記する。設定変更は既存 PTY session には反映せず、
+新しい Terminal session から反映される。
 
 `terminalAgent` を変更しても、既に走っている PTY session には注入し直さない。新しい Terminal session から反映される。
 
-Design rationale は [decisions/codex-terminal-agent.md](decisions/codex-terminal-agent.md)。
+`defaultProfile` が agent profile（`claude` / `codex` / `opencode` や user `profiles[]` の agent profile）を指している場合は、起動 agent はそちらが優先される。このとき Settings の Agent dropdown は実際に起動する agent を表示したうえで操作不可になり、「起動 agent は defaultProfile で固定中」と注記する。agent を切り替えるには `defaultProfile` を編集する（dropdown は `terminalAgent` のみを書き換えるため、固定中は効かない）。
+
+#### `opencode` の known limitation
+
+OpenCode は v1.0 以降を推奨する。Charminal v0.5 の OpenCode adapter は
+`OPENCODE_CONFIG_CONTENT` env var に inline JSON を渡して、Charminal MCP server
+と `/charm-*` command を session-scoped に注入する。persona overlay は temp
+markdown file を `agent.build.prompt` / `agent.plan.prompt` の `{file:...}` 参照で渡す。
+この方式は project-local
+`opencode.json` を session 中だけ置換するため、user の project-local OpenCode
+設定は無視される。project-local 設定との deep-merge は v0.6 以降の scope。
+
+OpenCode TUI の color theme は temp `tui.json` に `{ "theme": "system" }` を書き、
+`OPENCODE_TUI_CONFIG` でその path を渡す。さらに scene 切替時は OpenCode が提供する
+`SIGUSR2` refresh hook を active OpenCode process に送り、panel / input 色を terminal
+palette から再サンプルさせる。Charminal は user の
+`~/.config/opencode/tui.json` や project-local TUI config を書き換えない。ただし
+OpenCode から見る TUI config path は Charminal session 中だけ temp file に差し替わるため、
+user の OpenCode TUI config との deep-merge はしない。
+
+OpenCode の Unicode rendering（CJK 全角、結合文字、Cyrillic、icon glyph 等）は
+OpenCode 本体の TUI 実装に依存する。Charminal は xterm.js 上で OpenCode を
+起動するだけで、OpenCode 上流の rendering issue を Charminal 側で workaround
+しない。
+
+Design rationale は [decisions/agent-adapter.md](decisions/agent-adapter.md) と [decisions/codex-terminal-agent.md](decisions/codex-terminal-agent.md)。
 
 Terminal session 全体の設計（profile / shell integration / カスタマイズ）は [terminal.md](terminal.md)。

@@ -881,7 +881,7 @@ export interface StateGetResult {
   readonly config: {
     primaryPersona: string | null;
     activeScene: string | null;
-    terminalAgent: "claude" | "codex";
+    terminalAgent: string;
   };
   readonly camera: {
     position: readonly [number, number, number];

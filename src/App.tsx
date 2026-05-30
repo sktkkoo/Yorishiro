@@ -25,6 +25,7 @@ import {
   ptyWrite,
   type SpawnSpec,
   sessionList,
+  sessionRefreshTheme,
 } from "./bindings/tauri-commands";
 import {
   abandonedFactoryManifest,
@@ -126,7 +127,16 @@ import {
 } from "./runtime/scene-pack-registry";
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
-import { DEFAULT_SESSION_ID, resolveProfile } from "./runtime/sessions";
+import {
+  DEFAULT_SESSION_ID,
+  resolveDefaultAgentProfileId,
+  resolveEffectiveAgent,
+  resolveProfile,
+} from "./runtime/sessions";
+import {
+  spawnSpecFromDefaultProfile,
+  withAgentRuntimeFields,
+} from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
@@ -486,11 +496,7 @@ function FirstRunHealthPanel({
     (item) => item.status !== "ok" || item.id === "agent" || item.id === "home",
   );
   const continueLabel =
-    report.summary === "error"
-      ? report.selectedAgent === "claude"
-        ? "Continue without Claude Code"
-        : "Continue without Codex"
-      : "Continue";
+    report.summary === "error" ? `Continue without ${report.selectedAgent}` : "Continue";
 
   return (
     <div
@@ -797,8 +803,8 @@ function App() {
     });
     // userLayerReady は Terminal mount を gate する Promise。
     // **Step 3 完了直後** に resolve する（systemPrompt の race / 多重 spawn 回避）。
-    // defaultSpec は config.defaultProfile が shell profile を指していたときに
-    // 構築される SpawnSpec.Shell。null なら従来の terminalAgent fallback で動く。
+    // defaultSpec は config.defaultProfile が bundled/user profile を指していたときに
+    // 構築される SpawnSpec。null なら従来の terminalAgent fallback で動く。
     let userLayerReadyResolve!: (init: {
       terminalAgent: TerminalAgent;
       defaultSpec: SpawnSpec | null;
@@ -895,19 +901,13 @@ function App() {
             data: { error: err instanceof Error ? err.message : String(err) },
           });
         }
-        // defaultProfile が shell profile を指していたら shell spec を build。
-        // agent profile を指している場合は Phase B-1 では terminalAgent fallback で動く
-        // （Phase C で agent profile も defaultProfile から resolve できるようにする）。
+        // defaultProfile が profile を指していたら default-session の spec として使う。
         if (config.defaultProfile !== null) {
           const profile = resolveProfile(config.defaultProfile, config.profiles);
-          if (profile?.kind === "shell") {
-            defaultSpec = {
-              kind: "shell",
-              command: profile.command,
-              integration: profile.integration,
-            };
-          }
+          defaultSpec = spawnSpecFromDefaultProfile(profile);
         }
+        // 実起動 agent の解決は resolveEffectiveAgent に集約する（health-check と共有）。
+        terminalAgent = resolveEffectiveAgent(config);
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
@@ -1435,7 +1435,14 @@ function App() {
         if (!done) {
           setTimeout(async () => {
             try {
-              await ptyWrite({ data: "/charm:tutorial" });
+              const config = parseConfig(await readCharminalConfigText());
+              await ptyWrite({
+                data: resolveFixedTerminalPrompt(
+                  "tutorial",
+                  appLanguageRef.current.resolved,
+                  config.terminalAgent,
+                ),
+              });
               await markTutorialDone();
             } catch (err) {
               appLog.write({
@@ -1611,6 +1618,9 @@ function App() {
       const rt = getTerminalRuntime(activeId);
       rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
       rt.refit();
+      void sessionRefreshTheme({ sessionId: activeId }).catch((err) => {
+        console.warn("[terminal-theme] failed to refresh agent theme:", err);
+      });
     });
     return () => sub.dispose();
   }, [isUserLayerReady, scenePackRegistry, tabManager]);
@@ -1940,7 +1950,7 @@ function App() {
       patch: Partial<{
         primaryPersona: string | null;
         activeScene: string | null;
-        terminalAgent: "claude" | "codex";
+        terminalAgent: string;
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
         language: AppLanguage;
@@ -2159,15 +2169,22 @@ function App() {
           // 選べない）。改行なし＝user が Enter するまで実行されない。
           // 設計境界: docs/decisions/input-prefill-boundary.md
           insertFixedPrompt: async (key) => {
-            const data = resolveFixedTerminalPrompt(key, appLanguageRef.current.resolved);
+            const config = parseConfig(await readCharminalConfigText());
+            const data = resolveFixedTerminalPrompt(
+              key,
+              appLanguageRef.current.resolved,
+              config.terminalAgent,
+            );
             await ptyWrite({ data });
           },
           insertPackRepairPrompt: async (id, kind, action) => {
+            const config = parseConfig(await readCharminalConfigText());
             const data = resolvePackRepairPrompt({
               id,
               kind,
               action,
               language: appLanguageRef.current.resolved,
+              terminalAgent: config.terminalAgent,
             });
             await ptyWrite({ data });
           },
@@ -2273,6 +2290,8 @@ function App() {
               primaryPersona: cur.primaryPersona,
               activeScene: cur.activeScene,
               terminalAgent: cur.terminalAgent,
+              effectiveAgent: resolveEffectiveAgent(cur),
+              agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
               activeAmbientUi: cur.activeAmbientUi,
@@ -3018,12 +3037,14 @@ function App() {
                 visible={sessionId === tabState.activeSessionId}
                 spec={
                   sessionId === DEFAULT_SESSION_ID
-                    ? (defaultSpec ?? {
-                        kind: "agent",
-                        agent: terminalAgent,
-                        systemPrompt: resolvedSystemPrompt,
-                        pluginDir: localizedPluginDir,
-                      })
+                    ? withAgentRuntimeFields(
+                        defaultSpec ?? {
+                          kind: "agent",
+                          agent: terminalAgent,
+                        },
+                        resolvedSystemPrompt,
+                        localizedPluginDir,
+                      )
                     : { kind: "shell", integration: true }
                 }
                 cwd={sessionCwd === undefined ? cwd : sessionCwd}

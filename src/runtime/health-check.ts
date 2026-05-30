@@ -1,12 +1,18 @@
 import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@charminal/sdk";
 import { invoke } from "@tauri-apps/api/core";
-import { mcpServerStatus, resolveCommandPath } from "../bindings/tauri-commands";
+import {
+  listSupportedAgents,
+  mcpServerStatus,
+  resolveCommandPath,
+} from "../bindings/tauri-commands";
+import { AGENT_COMMAND_SYNTAX } from "../i18n/strings";
+import { resolveEffectiveAgent } from "./sessions";
 import {
   fetchSafeModeFlag,
   readCharminalConfigText,
   readLastStartupReport,
 } from "./user-pack-loader/charminal-io";
-import { parseConfig } from "./user-pack-loader/config";
+import { KNOWN_AGENT_IDS, parseConfig } from "./user-pack-loader/config";
 
 export interface CollectHealthReportDeps {
   readonly listPacks: () => Promise<{ readonly packs: readonly UiAppPackStatusEntry[] }>;
@@ -45,23 +51,35 @@ function parseLoadReport(text: string): { failed: number; total: number } | null
 }
 
 export async function collectHealthReport(deps: CollectHealthReportDeps): Promise<UiHealthReport> {
-  const [homeDir, safeMode, configText, startupText, claudePath, codexPath, mcpStatus, packResult] =
+  const [homeDir, safeMode, configText, startupText, agents, mcpStatus, packResult] =
     await Promise.all([
       invoke<string>("charminal_home_dir").catch(() => ""),
       fetchSafeModeFlag().catch(() => false),
       readCharminalConfigText(),
       readLastStartupReport().catch(() => ""),
-      resolveCommandPath({ command: "claude" }).catch(() => null),
-      resolveCommandPath({ command: "codex" }).catch(() => null),
+      listSupportedAgents().catch(() => []),
       mcpServerStatus().catch(() => ({ port: null, error: "Could not read MCP status." })),
       deps.listPacks().catch(() => ({ packs: [] })),
     ]);
 
   const config = parseConfig(configText);
+  // 起動時に実際に使われる agent。defaultProfile が agent profile を指していれば
+  // terminalAgent より優先される（App.tsx の bootstrap と同じ解決）。
+  const effectiveAgent = resolveEffectiveAgent(config);
   const expectedMcpPort = config.mcpPort ?? 18743;
-  const selectedAgentPath = config.terminalAgent === "claude" ? claudePath : codexPath;
-  const otherAgentPath = config.terminalAgent === "claude" ? codexPath : claudePath;
-  const otherAgentName = config.terminalAgent === "claude" ? "Codex" : "Claude Code";
+  const agentPaths = await Promise.all(
+    agents.map(async (agent) => ({
+      id: agent.id,
+      displayName: agent.displayName,
+      path: await resolveCommandPath({ command: agent.binaryName }).catch(() => null),
+    })),
+  );
+  const selectedAgent = agentPaths.find((agent) => agent.id === effectiveAgent);
+  const selectedAgentPath = selectedAgent?.path ?? null;
+  const supportedAgentSummary =
+    agentPaths.length === 0
+      ? "No registered agents were reported."
+      : agentPaths.map((agent) => `${agent.displayName}: ${agent.path ?? "missing"}`).join(" / ");
   const packs = packResult.packs;
   const failedPacks = packs.filter((pack) => pack.status === "failed");
   const disabledPacks = packs.filter((pack) => pack.status === "disabled");
@@ -84,26 +102,65 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Terminal agent",
       selectedAgentPath === null ? "error" : "ok",
       selectedAgentPath === null
-        ? `${config.terminalAgent} is selected but was not found on Charminal's PATH.`
-        : `${config.terminalAgent}: ${selectedAgentPath}${
-            otherAgentPath === null ? "" : ` (${otherAgentName} also available)`
-          }`,
+        ? `${effectiveAgent} is selected but was not found on Charminal's PATH.`
+        : `${effectiveAgent}: ${selectedAgentPath} (${supportedAgentSummary})`,
       selectedAgentPath === null
         ? "Install the selected agent or switch Agent in Settings."
         : undefined,
     ),
   );
 
-  if (claudePath === null && codexPath === null) {
+  if (agentPaths.length === 0 || agentPaths.every((agent) => agent.path === null)) {
     items.push(
       healthItem(
         "agent-options",
         "Agent options",
         "warning",
-        "Claude Code and Codex were both missing from Charminal's PATH.",
-        "Install Claude Code or Codex before using the embedded agent terminal.",
+        `No supported agents found on PATH (${agentPaths.map((agent) => agent.displayName).join(" / ")}).`,
+        "Install at least one supported agent before using the embedded agent terminal.",
       ),
     );
+  }
+
+  // Rust adapter registry（正本）と TS の config validation set がずれると、
+  // 有効な agent id が silently "claude" に fallback したり spawn 時に Unknown
+  // agent id で落ちたりする。listSupportedAgents が応答したときだけ照合する。
+  if (agents.length > 0) {
+    const rustAgentIds = new Set(agents.map((agent) => agent.id));
+    const missingInConfig = [...rustAgentIds].filter((id) => !KNOWN_AGENT_IDS.has(id));
+    const missingInRust = [...KNOWN_AGENT_IDS].filter((id) => !rustAgentIds.has(id));
+    // charm コマンド記法の正本は Rust adapter。strings.ts の mirror がズレていないか照合。
+    const syntaxDrift = agents
+      .filter((agent) => {
+        const mirror = AGENT_COMMAND_SYNTAX[agent.id];
+        return (
+          mirror !== undefined &&
+          (mirror.prefix !== agent.commandSyntax.prefix ||
+            mirror.separator !== agent.commandSyntax.separator)
+        );
+      })
+      .map((agent) => agent.id);
+    if (missingInConfig.length > 0 || missingInRust.length > 0 || syntaxDrift.length > 0) {
+      const parts: string[] = [];
+      if (missingInConfig.length > 0) {
+        parts.push(`registered but not accepted by config: ${missingInConfig.join(", ")}`);
+      }
+      if (missingInRust.length > 0) {
+        parts.push(`accepted by config but not registered: ${missingInRust.join(", ")}`);
+      }
+      if (syntaxDrift.length > 0) {
+        parts.push(`command syntax mirror out of date: ${syntaxDrift.join(", ")}`);
+      }
+      items.push(
+        healthItem(
+          "agent-registry",
+          "Agent registry",
+          "warning",
+          `Agent registry mirror is out of sync (${parts.join("; ")}).`,
+          "Align KNOWN_AGENT_IDS, bundled profiles, settings options, and AGENT_COMMAND_SYNTAX with the registered adapters.",
+        ),
+      );
+    }
   }
 
   items.push(
@@ -165,7 +222,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
   return {
     generatedAt: new Date().toISOString(),
     summary: summarize(items),
-    selectedAgent: config.terminalAgent,
+    selectedAgent: effectiveAgent,
     safeMode,
     homeDir,
     paths: {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import type { SpawnSpec } from "./bindings/tauri-commands";
+import { type SpawnSpec, sessionRefreshTheme } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
@@ -34,6 +34,9 @@ export default function Terminal({
       runtime.attachTo(placeholder);
       runtime.setTheme(getCurrentTerminalTheme());
       runtime.focus();
+      void sessionRefreshTheme({ sessionId }).catch((err) => {
+        console.warn("[terminal-theme] failed to refresh agent theme:", err);
+      });
     } else {
       runtime.detachContainer();
     }

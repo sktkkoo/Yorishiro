@@ -3,8 +3,8 @@
 # Split strategy:
 #   - pre-commit: fast, staged-file-scoped fixes (biome + rustfmt).
 #     Auto-fixed files are re-staged so the commit stays self-consistent.
-#   - pre-push: full gate (biome check, cargo fmt --check, cargo clippy,
-#     typedoc validation).
+#   - pre-push: full gate (tsc --noEmit, biome check, cargo fmt --check,
+#     cargo clippy, typedoc validation).
 #     Clippy runs on the whole crate, so it is too slow for pre-commit.
 #   - post-commit: regenerate local API doc HTML so docs/api/typescript/ stays
 #     fresh against HEAD (artifact is gitignored, this is purely local).
@@ -27,6 +27,8 @@ pre-commit:
 pre-push:
   parallel: false
   jobs:
+    - name: tsc-no-emit
+      run: npx tsc --noEmit
     - name: biome-check
       run: npx biome check .
     - name: cargo-fmt

@@ -3,7 +3,7 @@
 > このファイルは「**設計判断で line を踏みそうな時 / 新しい API を生やす前**」に読む。対象：dev / AI。
 
 **Status**: active
-**Last updated**: 2026-04-25
+**Last updated**: 2026-05-28
 
 これらは Charminal の architecture と思想の核を成す **不可侵な制約**。それぞれの「なぜ」を理解しないまま破ると、既存 code の前提が崩れて雪崩が起きる。実装で迷ったら **まずこのページを引いて該当条項を確認する**。
 
@@ -28,6 +28,19 @@
 - 「user の許可を取れば書き込んでいいのでは」→ NO。user consent は誠実さを担保しない（白塗り化する）
 - 「特定の trigger に限定して write API を生やす」→ NO。grey zone を作らない
 - amenity / persona から「key を送る」「command を流す」ような副作用を持つ API を追加しない
+
+### Theme Refresh Signals
+
+Terminal agent adapter は PTY input に書き込まない。OpenCode の TUI theme refresh では
+例外的に host が `SIGUSR2` を child process へ送るが、これは PTY data ではなく
+terminal theme を agent renderer に再サンプルさせる固定の process-control signal として扱う。
+
+この経路を許す条件：
+
+- signal payload は固定で、prompt / command / key input を含めない
+- agent / persona / user pack に任意 signal API を公開しない
+- scene 変更や terminal attach など host-owned visual state 変更からのみ発火する
+- adapter が `theme_refresh()` で明示 opt-in した agent だけに送る
 
 ### Reference
 

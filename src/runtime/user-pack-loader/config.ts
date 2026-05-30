@@ -13,10 +13,10 @@
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
  * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
- * - `terminalAgent: "claude" | "codex"`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
+ * - `terminalAgent: string`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
  * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
- * - `defaultProfile: string | null`（optional）: 起動時 default-session に使う profile id。bundled (`shell` / `claude` / `codex`) または user `profiles[]` の id。null なら `terminalAgent` を fallback に使う
+ * - `defaultProfile: string | null`（optional）: 起動時 default-session に使う profile id。bundled (`shell` / `claude` / `codex` / `opencode`) または user `profiles[]` の id。null なら `terminalAgent` を fallback に使う
  *
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
@@ -53,7 +53,7 @@ export interface CharminalConfig {
   readonly ambientAudioMuted: boolean;
   /** 環境音のマスターボリューム（0.0-1.0）。全 Howl の volume にこの値を乗算する。 */
   readonly ambientAudioVolume: number;
-  /** User 定義の session profile。bundled (`shell` / `claude` / `codex`) と同 id なら override。 */
+  /** User 定義の session profile。bundled (`shell` / `claude` / `codex` / `opencode`) と同 id なら override。 */
   readonly profiles: ReadonlyArray<SessionProfile>;
   /** 起動時 default-session に使う profile id。null なら `terminalAgent` を fallback。 */
   readonly defaultProfile: string | null;
@@ -61,7 +61,7 @@ export interface CharminalConfig {
   readonly voiceFrequency: VoiceFrequency;
 }
 
-export type TerminalAgent = "claude" | "codex";
+export type TerminalAgent = string;
 
 /** Voice Summary の On/Off。"on" は毎回発話、"off" は voice_say を使わない（token 消費なし）。 */
 export type VoiceFrequency = "on" | "off";
@@ -118,8 +118,20 @@ const toNullableString = (value: unknown): string | null => {
   return typeof value === "string" && value !== "" ? value : null;
 };
 
+/**
+ * Rust `agent_adapter::registered_agents()` の TS-side mirror。
+ *
+ * `parseConfig()` は pure / async-free 境界なので Tauri の `list_supported_agents`
+ * はここでは呼ばない。adapter を追加したら Rust registry、bundled profiles、
+ * この set を同時に更新する。
+ */
+export const KNOWN_AGENT_IDS: ReadonlySet<string> = new Set(["claude", "codex", "opencode"]);
+
 const toTerminalAgent = (value: unknown): TerminalAgent => {
-  return value === "codex" ? "codex" : "claude";
+  if (typeof value === "string" && KNOWN_AGENT_IDS.has(value)) {
+    return value;
+  }
+  return "claude";
 };
 
 const toBoolean = (value: unknown): boolean => {
@@ -146,6 +158,13 @@ const toStringRecord = (value: unknown): Record<string, string> => {
   return result;
 };
 
+const toSessionAgent = (value: unknown): string | null => {
+  if (typeof value === "string" && KNOWN_AGENT_IDS.has(value)) {
+    return value;
+  }
+  return null;
+};
+
 /**
  * profile entry 1 つを SessionProfile に変換、不正なら null。
  * 不正条件: id 欠如 / kind 不正 / kind=agent で agent field 欠如。
@@ -162,8 +181,7 @@ const toSessionProfile = (value: unknown): SessionProfile | null => {
     kindRaw === "shell" || kindRaw === "agent" ? kindRaw : null;
   if (kind === null) return null;
 
-  const agent: SessionProfile["agent"] =
-    obj.agent === "claude" || obj.agent === "codex" ? obj.agent : null;
+  const agent: SessionProfile["agent"] = toSessionAgent(obj.agent);
   if (kind === "agent" && agent === null) return null;
 
   return {

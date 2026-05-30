@@ -31,7 +31,8 @@ const call = <T>(cmd: string, args: object): Promise<T> =>
 export type SpawnSpec =
   | {
       readonly kind: "agent";
-      readonly agent: "claude" | "codex";
+      /** Adapter id（`listSupportedAgents()` が返す id のいずれか）。 */
+      readonly agent: string;
       /** binary 上書き。null で既定の agent binary 検索を使う。 */
       readonly command?: string | null;
       readonly systemPrompt?: string | null;
@@ -97,6 +98,14 @@ export interface SessionResizeArgs {
 export const sessionResize = (args: SessionResizeArgs): Promise<void> =>
   call("session_resize", args);
 
+export interface SessionRefreshThemeArgs {
+  readonly sessionId: string;
+}
+
+/** Agent session に terminal theme refresh を通知する。非対応 agent では no-op。 */
+export const sessionRefreshTheme = (args: SessionRefreshThemeArgs): Promise<void> =>
+  call("session_refresh_theme", args);
+
 export interface SessionDestroyArgs {
   readonly sessionId: string;
 }
@@ -144,6 +153,32 @@ export interface ResolveCommandPathArgs {
 /** Charminal の launch PATH 上で command が解決できるかを返す。 */
 export const resolveCommandPath = (args: ResolveCommandPathArgs): Promise<string | null> =>
   call("resolve_command_path", args);
+
+export interface AgentCapabilities {
+  readonly personaOverlay: boolean;
+  readonly mcpInjection: boolean;
+  readonly plugins: boolean;
+  readonly lifecycleHooks: boolean;
+  readonly sessionResume: boolean;
+}
+
+/** charm コマンドの記法（`<prefix>charm<separator><name>`）。Rust adapter が正本。 */
+export interface CommandSyntax {
+  readonly prefix: string;
+  readonly separator: string;
+}
+
+export interface AgentDescriptor {
+  readonly id: string;
+  readonly displayName: string;
+  readonly binaryName: string;
+  readonly capabilities: AgentCapabilities;
+  readonly commandSyntax: CommandSyntax;
+}
+
+/** 登録済み terminal agent adapter の一覧を返す。 */
+export const listSupportedAgents = (): Promise<readonly AgentDescriptor[]> =>
+  call("list_supported_agents", {});
 
 export interface McpServerStatus {
   readonly port: number | null;

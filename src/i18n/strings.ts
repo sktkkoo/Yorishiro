@@ -16,6 +16,7 @@ export interface UiStrings {
   readonly ambientVolume: string;
   readonly selectVrmFile: string;
   readonly agentAppliesNextLaunch: string;
+  readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
   readonly shortcutPrompt: string;
@@ -69,6 +70,7 @@ const EN: UiStrings = {
   ambientVolume: "Ambient volume",
   selectVrmFile: "Select VRM file",
   agentAppliesNextLaunch: "Applies from the next agent launch",
+  agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/charm:help",
   tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
@@ -97,8 +99,8 @@ const EN: UiStrings = {
   noPacksInstalled: "No packs installed",
   selectPack: "Select a pack",
   diagnosing: "Diagnosing…",
-  repairPack: "Repair with /charm:update",
-  improvePack: "Improve with /charm:update",
+  repairPack: "Repair with agent",
+  improvePack: "Improve with agent",
   repairPromptInserted: "Repair prompt inserted",
   quickHelp: "Help",
   quickTutorial: "Tutorial",
@@ -122,6 +124,7 @@ const JA: UiStrings = {
   ambientVolume: "環境音ボリューム",
   selectVrmFile: "VRM ファイルを選択",
   agentAppliesNextLaunch: "※ 次回起動時に反映",
+  agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/charm:help",
   tutorialPrompt: "/charm:tutorial",
   shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
@@ -150,8 +153,8 @@ const JA: UiStrings = {
   noPacksInstalled: "パックなし",
   selectPack: "パックを選択",
   diagnosing: "診断中…",
-  repairPack: "/charm:update で修正",
-  improvePack: "/charm:update で改善",
+  repairPack: "AI で修正",
+  improvePack: "AI で改善",
   repairPromptInserted: "修正プロンプトを入力済み",
   quickHelp: "ヘルプ",
   quickTutorial: "チュートリアル",
@@ -178,14 +181,54 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
 };
 
 /**
+ * agent ごとの charm コマンド記法。`<prefix>charm<separator><name>` で 1 命令になる。
+ * Claude は `/charm:create`、Codex は `$charm-create`、OpenCode は `/charm-create`。
+ *
+ * 正本は Rust 各 adapter の `command_syntax()`（`list_supported_agents` で公開）。
+ * strings.ts は sync / pure 境界なので Tauri call を呼ばず、この表で mirror する。
+ * Rust とのズレは health-check の agent-registry drift 検知で surface される。
+ * agent を増やすときはこの表に 1 行足すだけでよい（if-chain を散らさない）。
+ */
+export const AGENT_COMMAND_SYNTAX: Record<
+  string,
+  { readonly prefix: string; readonly separator: string }
+> = {
+  claude: { prefix: "/", separator: ":" },
+  codex: { prefix: "$", separator: "-" },
+  opencode: { prefix: "/", separator: "-" },
+};
+
+/** Charminal が prefill する固定プロンプト中に現れる charm コマンド名。 */
+const CHARM_COMMAND_NAMES = ["create", "update", "help", "shortcut", "tutorial"] as const;
+
+/** 未知 agent は Claude 記法に fall back する。 */
+function charmCommand(name: string, terminalAgent: string): string {
+  const syntax = AGENT_COMMAND_SYNTAX[terminalAgent] ?? AGENT_COMMAND_SYNTAX.claude;
+  return `${syntax.prefix}charm${syntax.separator}${name}`;
+}
+
+function commandPromptForAgent(prompt: string, terminalAgent: string): string {
+  // Claude 記法（/charm:<name>）を terminalAgent の記法へ書き換える。claude は no-op。
+  return CHARM_COMMAND_NAMES.reduce(
+    (acc, name) => acc.split(`/charm:${name}`).join(charmCommand(name, terminalAgent)),
+    prompt,
+  );
+}
+
+function updateCommandForAgent(terminalAgent = "claude"): string {
+  return charmCommand("update", terminalAgent);
+}
+
+/**
  * host 所有の固定プロンプトを現在の言語で解決する pure 関数。
  * pack はこの結果を選べない（key → host 所有文字列）。
  */
 export function resolveFixedTerminalPrompt(
   key: FixedTerminalPromptKey,
   language: ResolvedLanguage,
+  terminalAgent = "claude",
 ): string {
-  return getStrings(language)[FIXED_PROMPT_STRING[key]];
+  return commandPromptForAgent(getStrings(language)[FIXED_PROMPT_STRING[key]], terminalAgent);
 }
 
 const SAFE_PACK_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -195,15 +238,17 @@ export function resolvePackRepairPrompt(args: {
   readonly kind?: string;
   readonly action: "repair" | "improve";
   readonly language: ResolvedLanguage;
+  readonly terminalAgent?: string;
 }): string {
   if (!SAFE_PACK_ID.test(args.id)) throw new Error("invalid pack id");
   if (args.kind !== undefined && !SAFE_PACK_ID.test(args.kind))
     throw new Error("invalid pack kind");
   const kindPart = args.kind ? ` (${args.kind})` : "";
+  const command = updateCommandForAgent(args.terminalAgent);
   if (args.language === "ja") {
     const actionText = args.action === "repair" ? "修正" : "改善";
-    return `/charm:update ${args.id}${kindPart} を診断して、${actionText}してください。まず pack_diagnose({ id: "${args.id}" }) で状態を確認してください。`;
+    return `${command} ${args.id}${kindPart} を診断して、${actionText}してください。まず pack_diagnose({ id: "${args.id}" }) で状態を確認してください。`;
   }
   const actionText = args.action === "repair" ? "repair" : "improve";
-  return `/charm:update Diagnose and ${actionText} ${args.id}${kindPart}. Start with pack_diagnose({ id: "${args.id}" }).`;
+  return `${command} Diagnose and ${actionText} ${args.id}${kindPart}. Start with pack_diagnose({ id: "${args.id}" }).`;
 }

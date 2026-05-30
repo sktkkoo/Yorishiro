@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolvePackRepairPrompt } from "../../../src/i18n/strings";
+import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
@@ -10,6 +11,7 @@ import {
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
   summarizePackDiagnosis,
+  TERMINAL_AGENT_OPTIONS,
 } from "./ui";
 
 describe("resolveCloseTarget", () => {
@@ -119,6 +121,23 @@ describe("localized CLAI persona options", () => {
     expect(configPrimaryPersonaForSelection("clai-en")).toBeNull();
     expect(configPrimaryPersonaForSelection("clai-ja")).toBeNull();
     expect(configPrimaryPersonaForSelection("my-persona")).toBe("my-persona");
+  });
+});
+
+describe("terminal agent options", () => {
+  it("shows OpenCode in settings", () => {
+    expect(TERMINAL_AGENT_OPTIONS).toEqual([
+      { value: "claude", label: "Claude Code" },
+      { value: "codex", label: "Codex" },
+      { value: "opencode", label: "OpenCode" },
+    ]);
+  });
+
+  it("stays in sync with config validation (KNOWN_AGENT_IDS)", () => {
+    // dropdown の選択肢と config validation がずれると、UI で選べる agent を
+    // config parse が弾く（or 逆）。adapter 追加時の更新漏れをここで検知する。
+    const optionIds = new Set(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
+    expect(optionIds).toEqual(KNOWN_AGENT_IDS);
   });
 });
 

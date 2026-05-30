@@ -158,7 +158,7 @@ export interface UiHealthItem {
 export interface UiHealthReport {
   readonly generatedAt: string;
   readonly summary: "ok" | "warning" | "error";
-  readonly selectedAgent: "claude" | "codex";
+  readonly selectedAgent: string;
   readonly safeMode: boolean;
   readonly homeDir: string;
   readonly paths: {
@@ -202,7 +202,7 @@ export interface UiAppAPI {
   insertFixedPrompt(key: FixedTerminalPromptKey): Promise<void>;
   /**
    * Pack Workbench 用: 構造化された pack id/kind から、host 所有の
-   * `/charm:update` 修正プロンプトを terminal に pre-fill する。
+   * 選択中 agent に合った修正プロンプトを terminal に pre-fill する。
    * 任意テキストは受け取らない。
    */
   insertPackRepairPrompt(
@@ -229,7 +229,7 @@ export interface UiAppAPI {
   /** activeScene を切り替える。 */
   setActiveScene(id: string | null): Promise<void>;
   /** terminalAgent を切り替える。 */
-  setTerminalAgent(agent: "claude" | "codex"): Promise<void>;
+  setTerminalAgent(agent: string): Promise<void>;
   /** Scene pack の環境音を mute / unmute する。 */
   setAmbientAudioMuted(muted: boolean): Promise<void>;
   /** activeAmbientUi の配列を置き換える。config.json に書き戻す。 */
@@ -247,7 +247,12 @@ export interface UiAppAPI {
   getConfig(): Promise<{
     readonly primaryPersona: string | null;
     readonly activeScene: string | null;
-    readonly terminalAgent: "claude" | "codex";
+    /** `terminalAgent` config 値（legacy fallback）。dropdown の書き込み対象。 */
+    readonly terminalAgent: string;
+    /** 起動時に実際に使われる agent。`defaultProfile` が agent profile を指せば優先される。 */
+    readonly effectiveAgent: string;
+    /** `defaultProfile` が agent を固定しているならその profile id、なければ null。 */
+    readonly agentPinnedByProfile: string | null;
     readonly ambientAudioMuted: boolean;
     readonly ambientAudioVolume: number;
     readonly activeAmbientUi: readonly string[];
