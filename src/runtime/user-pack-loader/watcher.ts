@@ -265,6 +265,7 @@ async function reloadPack(
         },
         persona: injected,
         origin: "user",
+        entryPath: action.entryPath,
       };
       deps.packRegistry.dispose(action.id, action.kind);
       const handle = deps.personaRegistry.register(personaEntry);
