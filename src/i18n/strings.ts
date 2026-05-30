@@ -55,6 +55,8 @@ export interface UiStrings {
   readonly quickShortcut: string;
   readonly quickCreatePack: string;
   readonly quickPomodoro: string;
+  /** 設定画面 Quick Actions の CREDITS ボタン。overlay の中身は英語固定（ui.tsx）。 */
+  readonly labelCredits: string;
 }
 
 const EN: UiStrings = {
@@ -110,6 +112,7 @@ const EN: UiStrings = {
   quickShortcut: "Shortcut",
   quickCreatePack: "Create Pack",
   quickPomodoro: "Pomodoro",
+  labelCredits: "CREDITS",
 };
 
 const JA: UiStrings = {
@@ -165,6 +168,7 @@ const JA: UiStrings = {
   quickShortcut: "ショートカット",
   quickCreatePack: "パック作成",
   quickPomodoro: "ポモドーロ",
+  labelCredits: "CREDITS",
 };
 
 export function getStrings(language: ResolvedLanguage): UiStrings {

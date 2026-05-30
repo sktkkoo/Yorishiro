@@ -4,6 +4,7 @@ import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
+  creditsSections,
   EXPERIMENTAL_AGENT_IDS,
   filterPersonaOptionsForLanguage,
   localizedAgentOptions,
@@ -159,6 +160,35 @@ describe("terminal agent options", () => {
     expect(byId.get("claude")).toBe("Claude Code");
     expect(byId.get("codex")).toBe("Codex（experimental）");
     expect(byId.get("opencode")).toBe("OpenCode（experimental）");
+  });
+});
+
+describe("credits sections", () => {
+  it("includes the mandatory pixiv attribution line (license obligation)", () => {
+    const allLines = creditsSections().flatMap((s) => s.lines.map((l) => l.text));
+    expect(allLines).toContain("Character animation credits to pixiv Inc.'s VRoid Project");
+  });
+
+  it("credits the bundled character model and key built-with stack", () => {
+    const byLabel = new Map(creditsSections().map((s) => [s.label, s]));
+
+    const character = byLabel.get("Character");
+    expect(character?.lines.map((l) => l.text)).toContain("CLAI — character model by LUCAS");
+
+    const builtWith = byLabel.get("Built with");
+    const builtWithNames = builtWith?.lines.map((l) => l.text) ?? [];
+    expect(builtWithNames).toContain("Tauri");
+    expect(builtWithNames).toContain("@pixiv/three-vrm");
+    // built-with の各行は license note を伴う。
+    expect(builtWith?.lines.every((l) => Boolean(l.note))).toBe(true);
+  });
+
+  it("every section has a non-empty label and at least one line", () => {
+    for (const section of creditsSections()) {
+      expect(section.label.length).toBeGreaterThan(0);
+      expect(section.lines.length).toBeGreaterThan(0);
+      expect(section.lines.every((l) => l.text.length > 0)).toBe(true);
+    }
   });
 });
 
