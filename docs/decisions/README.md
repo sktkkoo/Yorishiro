@@ -77,6 +77,7 @@
 ### Persona / Identity
 
 - [**persona-multi-instance.md**](persona-multi-instance.md) — 複数 persona 並行 active は不可、single-active が正解（Claude Code additive system prompt 制約由来）
+- [**arg-mode-abandoned-monitor.md**](arg-mode-abandoned-monitor.md) — ARG モードの軸を旧クライ残留思念に置き、`abandoned-monitor` overlay を廃工場限定の発見経路として扱う
 
 ### Pack system
 
