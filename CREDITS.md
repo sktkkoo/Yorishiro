@@ -79,6 +79,8 @@ Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTu
 
 Copyright in this model has been transferred to the Charminal project. Moral rights remain with LUCAS.
 
+**License (as embedded in the CLAI.vrm metadata):** Use within Charminal is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
+
 We are deeply grateful for the exceptional design and craftsmanship that brings CLAI to life.
 
 > LUCAS is not affiliated with the Charminal project in any way.
@@ -90,7 +92,7 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 
 #### `VRMA_01.vrma` – `VRMA_07.vrma`
 
-> **Character Animation by pixiv Inc. / VRoid Project**
+> **Character animation credits to pixiv Inc.'s VRoid Project**
 
 - Source: [VRM Animation 7-clip set (.vrma) — VRoid Project (BOOTH)](https://booth.pm/ja/items/5512385)
 - Terms: Commercial use permitted (individuals and companies), modification permitted. **The above credit is required** (intended to be displayed in the app's About / Credits screen).
@@ -101,7 +103,7 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 `Idle Arguing.vrma` / `Idle Chatting.vrma` / `Idle Chatting 2.vrma` / `Idle Conversation.vrma` / `Idle Leaning On Wall.vrma` / `Idle Listening To Music.vrma` / `Idle Looking Around.vrma` / `Idle Looking Around 2.vrma` / `Idle Pointing.vrma` / `Idle Watching Something.vrma`
 
 - Source: [Rokoko — 10 Free Everyday Idle Animations](https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations) (motion capture by Sam Lazarus / Marco Mori / Jon Noorlander)
-- Terms: Subject to the [Rokoko Studio EULA v2](https://cdn.rokoko.com/legal/rokoko-studio/rokoko_studio_eula_v2.pdf). Commercial use in finished products is permitted. **Redistribution of raw animation files is prohibited** — placing raw files in a public git repo is not permitted; embedding converted data in an application bundle as an integrated component is permitted. No explicit attribution requirement exists in the EULA, but we credit the source and capture artists here out of courtesy.
+- Terms: Governed by Rokoko's **Rokoko Asset** license terms (as stated in [Rokoko's Terms of Use](https://support.rokoko.com/hc/en-us/articles/29449288418065-Rokoko-Vision-Terms-of-Use)) — **not** the [Rokoko Studio software EULA](https://cdn.rokoko.com/legal/rokoko-studio/rokoko_studio_eula_v2.pdf), which only covers use of the Studio application and says nothing about asset redistribution. Commercial use within your own projects is permitted. You may **not reproduce, distribute, sublicense, rent, lease or lend the asset** on a standalone basis, but copies are expressly permitted **when the asset is integrated as part of digital media productions**; the asset license is **limited to the period in which you hold a Rokoko account**. No attribution requirement, but we credit the source and capture artists here out of courtesy. The exact terms for this specific free pack should be confirmed with Rokoko before public binary distribution.
 - Note: Original FBX files converted to VRMA format via VRMAConverter.
 
 #### Mixamo-derived VRMA clips
@@ -110,6 +112,14 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 
 - Source: Animations from [Adobe Mixamo](https://www.mixamo.com/) converted to VRMA format.
 - Terms: Subject to the Mixamo ToS. Signed-in users may use animations in personal and commercial projects. Redistribution of files as standalone assets is not permitted — placing raw files in a public git repo is not permitted; embedding in an application bundle is permitted.
+
+### Sound
+
+Bundled ambient audio, referenced by scene packs via `sound:<name>`. The per-file list and licenses are maintained in [`bundled-packs/shared/sounds/README.md`](bundled-packs/shared/sounds/README.md).
+
+- `calming-rain.mp3` — [Pixabay](https://pixabay.com/) — [Pixabay Content License](https://pixabay.com/service/license-summary/) (no attribution required, commercial use permitted)
+
+CLAI's pre-recorded voice clips are not bundled in this release.
 
 ### Fonts / icons
 

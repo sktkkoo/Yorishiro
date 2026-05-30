@@ -19,7 +19,9 @@ import type {
   UiHealthReport,
   UiPackDefinition,
 } from "@charminal/sdk";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -43,6 +45,12 @@ import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
+
+/** 公開リポジトリ。Credits 画面の「View on GitHub」リンク先。 */
+const CHARMINAL_REPO_URL = "https://github.com/sktkkoo/Charminal";
+
+/** CREDITS.md（正本の全クレジット）。Credits 画面下部の「Full credits」リンク先。 */
+const CHARMINAL_CREDITS_URL = "https://github.com/sktkkoo/Charminal/blob/main/CREDITS.md";
 
 const QUICK_ACTION_KEYS: ReadonlyArray<{
   readonly key: FixedTerminalPromptKey;
@@ -128,6 +136,77 @@ export function localizedAgentOptions(experimentalSuffix: string): readonly Sele
       ? { value: opt.value, label: `${opt.label}（${experimentalSuffix}）` }
       : opt,
   );
+}
+
+interface CreditLine {
+  /** 主たる表記（asset 名 / library 名）。 */
+  readonly text: string;
+  /** 右側に淡く添える補足（license / 提供元）。 */
+  readonly note?: string;
+}
+
+interface CreditSection {
+  readonly label: string;
+  readonly lines: readonly CreditLine[];
+  /** section 下に添える注記（例: CLAI の利用条件）。 */
+  readonly footnote?: string;
+}
+
+/**
+ * Credits 画面に表示する帰属の構造化リスト。アプリにバンドルされている asset と
+ * 使用 OSS の出所を示す。pixiv VRMA セットの帰属表記は License 上の義務
+ * （CREDITS.md 参照）、その他は courtesy。完全な一覧は CREDITS.md が正本。
+ *
+ * Credits 画面の中身は app language に関わらず常に英語で出す（library 名 /
+ * license / 帰属はそのまま読めるのが望ましく、訳すと座りが悪い）。pixiv の必須
+ * クレジットも英語表記で規約を満たす。よって i18n strings を介さず literal で持つ。
+ */
+export function creditsSections(): readonly CreditSection[] {
+  return [
+    {
+      // LUCAS には出所リンクを貼らない：CREDITS.md の「本件について連絡しないでほしい」
+      // という意向を尊重し、social へ誘導しない。
+      // footnote は VRM 埋め込み meta の利用条件を英語に書き写した固定文（CREDITS.md と一致）。
+      label: "Character",
+      lines: [{ text: "CLAI — character model by LUCAS" }],
+      footnote:
+        "Use within Charminal is permitted for everyone. Standalone redistribution or reuse of the model is prohibited. Violent expression is permitted; sexual expression is not.",
+    },
+    {
+      // 用途（idle / additional 等）は変わるので書かない。提供元を並列に挙げるだけ。
+      // pixiv は規約上の必須クレジット文言をそのまま保持する。
+      label: "Animations",
+      lines: [
+        { text: "Character animation credits to pixiv Inc.'s VRoid Project" },
+        { text: "Rokoko", note: "Rokoko Asset license" },
+        { text: "Adobe Mixamo", note: "Mixamo License" },
+      ],
+    },
+    {
+      // bundled ambient。CLAI の事前収録 voice は未同梱なので載せない。
+      label: "Audio",
+      lines: [{ text: "Pixabay", note: "Pixabay Content License" }],
+    },
+    {
+      label: "Built with",
+      lines: [
+        { text: "Tauri", note: "MIT / Apache-2.0" },
+        { text: "React", note: "MIT" },
+        { text: "Three.js", note: "MIT" },
+        { text: "React Three Fiber · drei", note: "MIT · Poimandres" },
+        { text: "@pixiv/three-vrm", note: "MIT · pixiv Inc." },
+        { text: "xterm.js", note: "MIT" },
+        { text: "leva", note: "MIT · Poimandres" },
+      ],
+    },
+    {
+      label: "Specifications",
+      lines: [
+        { text: "VRM / VRMA", note: "VRM Consortium" },
+        { text: "glTF 2.0", note: "Khronos Group" },
+      ],
+    },
+  ];
 }
 
 function formatPackOptionLabel(pack: {
@@ -1408,7 +1487,269 @@ const gridStyle: React.CSSProperties = {
   alignItems: "center",
 };
 
+const CREDITS_RISE_KEYFRAMES = `
+@keyframes charminal-credits-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}`;
+
+/**
+ * Credits 画面。設定画面の CREDITS action から開く overlay。app identity（名称 /
+ * version / license / repo）に続けて、bundle 済み asset と使用 OSS の帰属を表示する。
+ * pixiv VRMA の表記は License 上の義務、その他は courtesy（正本は CREDITS.md）。
+ *
+ * 中身は app language に関わらず常に英語（[[creditsSections]] 参照）。
+ *
+ * 美学：Charminal は terminal の app なので monospace を活かした抑制的・編集的な
+ * 版面で「ちゃんと手入れされている」ことを伝える（presence over spectacle）。
+ * 読み込み時に section を控えめに rise させる以上の演出はしない。
+ */
+function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
+  const [version, setVersion] = useState<string>("");
+
+  useEffect(() => {
+    let active = true;
+    getVersion()
+      .then((v) => {
+        if (active) setVersion(v);
+      })
+      .catch(() => {
+        /* dev / 非 Tauri 文脈では version を出さない */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const sections = creditsSections();
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        background: COLORS.bgPanel,
+        color: COLORS.fg,
+        fontFamily: FONT.family,
+        display: "flex",
+        flexDirection: "column",
+        pointerEvents: "auto",
+      }}
+    >
+      <style>{CREDITS_RISE_KEYFRAMES}</style>
+
+      {/* header: 戻る button のみ、設定画面の close header と対称 */}
+      <header
+        style={{
+          padding: `${SPACING.lg} ${SPACING.xl}`,
+          display: "flex",
+          alignItems: "center",
+        }}
+      >
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            cursor: "pointer",
+            opacity: 0.8,
+            display: "flex",
+            alignItems: "center",
+            gap: SPACING.xs,
+            padding: `${SPACING.xs} 10px`,
+            borderRadius: RADIUS.sm,
+            background: COLORS.bgInputHover,
+            color: "inherit",
+            border: "none",
+            font: "inherit",
+            fontSize: FONT.sizeXs,
+          }}
+        >
+          <span aria-hidden="true">←</span>
+          Back
+        </button>
+      </header>
+
+      <main
+        style={{
+          flex: 1,
+          padding: `0 ${SPACING.xl} ${SPACING.xxl}`,
+          width: "100%",
+          maxWidth: "560px",
+          overflowY: "auto",
+        }}
+      >
+        {/* app identity */}
+        <div
+          style={{
+            paddingBottom: SPACING.lg,
+            marginBottom: SPACING.lg,
+            borderBottom: `1px solid ${COLORS.borderSubtle}`,
+            animation: "charminal-credits-rise 360ms ease both",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "baseline", gap: SPACING.sm }}>
+            <span
+              style={{
+                fontSize: "22px",
+                fontWeight: FONT.weightSemibold,
+                letterSpacing: "0.01em",
+              }}
+            >
+              Charminal
+            </span>
+            {version && (
+              <span
+                style={{
+                  fontSize: FONT.sizeXs,
+                  opacity: 0.85,
+                  padding: `2px ${SPACING.sm}`,
+                  borderRadius: RADIUS.sm,
+                  background: COLORS.accentSoft,
+                  border: `1px solid ${COLORS.accentBorder}`,
+                }}
+              >
+                v{version}
+              </span>
+            )}
+          </div>
+          {/* license + repo は app identity の一部としてアプリ名の直下に置く */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: SPACING.sm,
+              marginTop: SPACING.sm,
+              fontSize: FONT.sizeXs,
+            }}
+          >
+            <span style={{ opacity: 0.4 }}>MIT License</span>
+            <span style={{ opacity: 0.25 }} aria-hidden="true">
+              ·
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                void openUrl(CHARMINAL_REPO_URL);
+              }}
+              style={{
+                background: "none",
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: FONT.sizeXs,
+                color: COLORS.accent,
+                textDecoration: "underline",
+                textDecorationColor: "currentColor",
+                textUnderlineOffset: "2px",
+              }}
+            >
+              View on GitHub
+            </button>
+          </div>
+        </div>
+
+        {/* credit sections */}
+        {sections.map((section, i) => (
+          <div
+            key={section.label}
+            style={{
+              marginBottom: SPACING.xl,
+              animation: `charminal-credits-rise 360ms ease both`,
+              animationDelay: `${(i + 1) * 45}ms`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: FONT.sizeXs,
+                opacity: 0.4,
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+                marginBottom: SPACING.sm,
+              }}
+            >
+              {section.label}
+            </div>
+            {section.lines.map((line) => (
+              <div
+                key={line.text}
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: SPACING.md,
+                  padding: `${SPACING.xs} 0`,
+                  lineHeight: "1.5",
+                }}
+              >
+                <span style={{ fontSize: FONT.sizeS, opacity: 0.82 }}>{line.text}</span>
+                {line.note && (
+                  <span
+                    style={{
+                      fontSize: FONT.sizeXs,
+                      opacity: 0.38,
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {line.note}
+                  </span>
+                )}
+              </div>
+            ))}
+            {section.footnote && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: SPACING.sm,
+                  marginTop: SPACING.xs,
+                  fontSize: FONT.sizeXs,
+                  lineHeight: "1.6",
+                }}
+              >
+                <span style={{ opacity: 0.3, flexShrink: 0 }}>License</span>
+                <span style={{ opacity: 0.5 }}>{section.footnote}</span>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {/* full credits は CREDITS.md（正本）へ誘導。上部 View on GitHub（repo）とは役割を分ける。 */}
+        <div
+          style={{
+            marginTop: SPACING.sm,
+            paddingTop: SPACING.lg,
+            borderTop: `1px solid ${COLORS.borderSubtle}`,
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              void openUrl(CHARMINAL_CREDITS_URL);
+            }}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              font: "inherit",
+              fontSize: FONT.sizeXs,
+              color: COLORS.accent,
+              textDecoration: "underline",
+              textDecorationColor: "currentColor",
+              textUnderlineOffset: "2px",
+            }}
+          >
+            Full credits and licenses
+          </button>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const [vrmName, setVrmName] = useState<string>(() => {
     const stored = localStorage.getItem("charminal:vrm");
     return stored ? (stored.split("/").pop() ?? stored) : "";
@@ -1702,6 +2043,26 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               {strings[action.stringKey]}
             </button>
           ))}
+          {/* Credits は他 action の右に並べる。fixed-prompt ではなく overlay を開く別系統。 */}
+          <button
+            type="button"
+            onClick={() => setCreditsOpen(true)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "inherit",
+              font: "inherit",
+              fontSize: "inherit",
+              cursor: "pointer",
+              padding: 0,
+              textDecoration: "underline",
+              textDecorationColor: "currentColor",
+              textUnderlineOffset: "2px",
+              opacity: 1,
+            }}
+          >
+            {strings.labelCredits}
+          </button>
         </div>
 
         {/* グループ 1: VRM / Persona / Scene / Aura */}
@@ -1901,6 +2262,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
         <PackWorkbench ctx={ctx} strings={strings} onClose={fireCloseRequest} />
       </main>
+
+      {creditsOpen && <CreditsOverlay onBack={() => setCreditsOpen(false)} />}
     </div>
   );
 }
