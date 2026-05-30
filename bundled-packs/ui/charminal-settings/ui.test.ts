@@ -4,7 +4,9 @@ import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
+  EXPERIMENTAL_AGENT_IDS,
   filterPersonaOptionsForLanguage,
+  localizedAgentOptions,
   packWorkbenchKey,
   resolveCloseTarget,
   resolvePersonaSelectValue,
@@ -138,6 +140,25 @@ describe("terminal agent options", () => {
     // config parse が弾く（or 逆）。adapter 追加時の更新漏れをここで検知する。
     const optionIds = new Set(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
     expect(optionIds).toEqual(KNOWN_AGENT_IDS);
+  });
+
+  it("marks Claude Code as the sole non-experimental agent", () => {
+    expect(EXPERIMENTAL_AGENT_IDS.has("claude")).toBe(false);
+    expect(EXPERIMENTAL_AGENT_IDS.has("codex")).toBe(true);
+    expect(EXPERIMENTAL_AGENT_IDS.has("opencode")).toBe(true);
+    // 全 experimental id は実在の agent option である（typo 検知）。
+    const optionIds = new Set<string>(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
+    for (const id of EXPERIMENTAL_AGENT_IDS) {
+      expect(optionIds.has(id)).toBe(true);
+    }
+  });
+
+  it("appends a localized suffix only to experimental agent labels", () => {
+    const options = localizedAgentOptions("experimental");
+    const byId = new Map(options.map((o) => [o.value, o.label]));
+    expect(byId.get("claude")).toBe("Claude Code");
+    expect(byId.get("codex")).toBe("Codex（experimental）");
+    expect(byId.get("opencode")).toBe("OpenCode（experimental）");
   });
 });
 

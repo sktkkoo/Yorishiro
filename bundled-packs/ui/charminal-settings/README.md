@@ -14,7 +14,7 @@ Charminal の設定画面。`activeUi` を `"charminal-settings"` に一時 swap
 ## 設定項目
 
 - **キャラクター**: VRM body / Persona / Scene
-- **ターミナル**: Coding agent (Claude / Codex / OpenCode)
+- **ターミナル**: Coding agent (Claude / Codex（実験的）/ OpenCode（実験的）)。dropdown では Claude 以外に「（実験的）」suffix を付ける（`localizedAgentOptions` / `EXPERIMENTAL_AGENT_IDS`）
 - **ショートカット**: terminal に選択中 agent 用の固定 shortcut prompt（Claude Code は `/charm:shortcut ...`、Codex は `$charm-shortcut ...`、OpenCode は `/charm-shortcut ...`）を pre-fill する button
 - フッタ: `⌘R / Ctrl+R` の hint
 
