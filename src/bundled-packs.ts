@@ -11,6 +11,8 @@ export { default as pomodoroUiManifest } from "../bundled-packs/ambient-ui/pomod
 export { default as pomodoroManifest } from "../bundled-packs/amenities/pomodoro/manifest.json";
 
 // Effects
+export { default as abandonedMonitorPack } from "../bundled-packs/effects/abandoned-monitor/effect";
+export { default as abandonedMonitorManifest } from "../bundled-packs/effects/abandoned-monitor/manifest.json";
 export { default as cameraMovePack } from "../bundled-packs/effects/camera-move/effect";
 export { default as cameraMoveManifest } from "../bundled-packs/effects/camera-move/manifest.json";
 export { default as desaturatePack } from "../bundled-packs/effects/desaturate/effect";
