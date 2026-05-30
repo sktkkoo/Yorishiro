@@ -18,42 +18,6 @@ import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
-import attentionAuraManifest from "../bundled-packs/ambient-ui/attention-aura/manifest.json";
-import pomodoroUiManifest from "../bundled-packs/ambient-ui/pomodoro-ui/manifest.json";
-import pomodoroManifest from "../bundled-packs/amenities/pomodoro/manifest.json";
-import cameraMovePack from "../bundled-packs/effects/camera-move/effect";
-import cameraMoveManifest from "../bundled-packs/effects/camera-move/manifest.json";
-import desaturatePack from "../bundled-packs/effects/desaturate/effect";
-import desaturateManifest from "../bundled-packs/effects/desaturate/manifest.json";
-import fireworksPack from "../bundled-packs/effects/fireworks/effect";
-import fireworksManifest from "../bundled-packs/effects/fireworks/manifest.json";
-import fireworksVolleyPack from "../bundled-packs/effects/fireworks-volley/effect";
-import fireworksVolleyManifest from "../bundled-packs/effects/fireworks-volley/manifest.json";
-import screenFlashPack from "../bundled-packs/effects/screen-flash/effect";
-import screenShakePack from "../bundled-packs/effects/screen-shake/effect";
-import screenShakeManifest from "../bundled-packs/effects/screen-shake/manifest.json";
-import textPhysicsPack from "../bundled-packs/effects/text-physics/effect";
-import textPhysicsManifest from "../bundled-packs/effects/text-physics/manifest.json";
-import claiEnManifest from "../bundled-packs/personas/clai-en/manifest.json";
-import claiEnPack from "../bundled-packs/personas/clai-en/persona";
-import claiJaManifest from "../bundled-packs/personas/clai-ja/manifest.json";
-import claiJaPack from "../bundled-packs/personas/clai-ja/persona";
-import abandonedFactoryManifest from "../bundled-packs/scenes/abandoned-factory/manifest.json";
-import abandonedFactoryPack from "../bundled-packs/scenes/abandoned-factory/scene";
-import mistyGrasslandsManifest from "../bundled-packs/scenes/misty-grasslands/manifest.json";
-import mistyGrasslandsPack from "../bundled-packs/scenes/misty-grasslands/scene";
-import simpleRoomManifest from "../bundled-packs/scenes/simple-room/manifest.json";
-import simpleRoomPack from "../bundled-packs/scenes/simple-room/scene";
-import charminalSettingsManifest from "../bundled-packs/ui/charminal-settings/manifest.json";
-import charminalSettingsPack, {
-  PREVIOUS_ACTIVE_UI_KEY,
-  resolveCloseTarget,
-  SETTINGS_PACK_ID,
-} from "../bundled-packs/ui/charminal-settings/ui";
-import immersiveManifest from "../bundled-packs/ui/immersive/manifest.json";
-import immersivePack from "../bundled-packs/ui/immersive/ui";
-import theaterManifest from "../bundled-packs/ui/theater/manifest.json";
-import theaterPack from "../bundled-packs/ui/theater/ui";
 import {
   checkTutorialDone,
   markTutorialDone,
@@ -62,6 +26,43 @@ import {
   type SpawnSpec,
   sessionList,
 } from "./bindings/tauri-commands";
+import {
+  abandonedFactoryManifest,
+  abandonedFactoryPack,
+  attentionAuraManifest,
+  cameraMoveManifest,
+  cameraMovePack,
+  charminalSettingsManifest,
+  charminalSettingsPack,
+  claiEnManifest,
+  claiEnPack,
+  claiJaManifest,
+  claiJaPack,
+  desaturateManifest,
+  desaturatePack,
+  fireworksManifest,
+  fireworksPack,
+  fireworksVolleyManifest,
+  fireworksVolleyPack,
+  immersiveManifest,
+  immersivePack,
+  mistyGrasslandsManifest,
+  mistyGrasslandsPack,
+  PREVIOUS_ACTIVE_UI_KEY,
+  pomodoroManifest,
+  pomodoroUiManifest,
+  resolveCloseTarget,
+  SETTINGS_PACK_ID,
+  screenFlashPack,
+  screenShakeManifest,
+  screenShakePack,
+  simpleRoomManifest,
+  simpleRoomPack,
+  textPhysicsManifest,
+  textPhysicsPack,
+  theaterManifest,
+  theaterPack,
+} from "./bundled-packs";
 import CharacterSurface from "./character-surface";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
