@@ -460,8 +460,27 @@ export interface Bounds {
 export interface VoiceAPI {
   /** TTS 発話（思考層から) */
   say(text: string, options?: SayOptions): VoiceHandle;
-  /** pre-recorded clip 再生 */
+
+  /**
+   * Pre-recorded clip を再生する。
+   *
+   * `clipRef` は 3 種類を支援：
+   * - `voice:<stem>` — 共有 voice library（`bundled-packs/shared/voices/`）
+   * - `./...` / `assets/...` — persona pack 同梱の WAV
+   * - `http(s)://`, `asset://`, `blob:` — caller が解決済みの URL
+   *
+   * 解決失敗は silent ではなく、returned VoiceHandle の `completion` が reject する。
+   * `startedAt` は `0` のまま。caller は「鳴っていない」を検知できる。
+   *
+   * @param clipRef 再生対象の clip reference。解決規約は docs/decisions/voice-clip-resolution.md 参照
+   * @param options 再生オプション（volume など）
+   *
+   * @returns VoiceHandle。startedAt, stop(), completion を持つ
+   *
+   * @see docs/decisions/voice-clip-resolution.md 「音声 clip の参照を解決する規約」
+   */
   play(clipRef: VoiceClipRef, options?: VoicePlayOptions): VoiceHandle;
+
   /** 黙らせる */
   silence(fadeMs?: number): void;
 }
