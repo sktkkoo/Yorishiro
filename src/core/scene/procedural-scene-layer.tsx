@@ -242,8 +242,14 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
   let lastW = 0;
   let lastH = 0;
 
+  const isHostDrawable = () => {
+    const rect = host.getBoundingClientRect();
+    return host.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+  };
+
   const resize = () => {
     const rect = host.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     const width = Math.max(1, Math.floor(rect.width));
     const height = Math.max(1, Math.floor(rect.height));
     if (width === lastW && height === lastH) return;
@@ -287,6 +293,7 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     requestFrame();
 
     if (nowMs - lastRenderAtMs < MIN_RENDER_FRAME_INTERVAL_MS - 0.5) return;
+    if (!isHostDrawable()) return;
     lastRenderAtMs = nowMs;
 
     const elapsed = clock.getElapsedTime();
