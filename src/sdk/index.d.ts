@@ -65,6 +65,7 @@ export type {
   UiLayoutAPI,
   UiPackDefinition,
   UiPackManifest,
+  UiPresenceLevel,
   UiSceneAPI,
   UiSceneLayerPatch,
   UiSceneLayerTarget,

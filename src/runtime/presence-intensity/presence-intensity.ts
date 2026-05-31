@@ -26,7 +26,7 @@ import type { PresenceResolution } from "../presence-target";
 export type PresenceLevel = "default" | "closed";
 
 /** レベル変更の起因。 */
-export type PresenceSource = "default" | "mcp";
+export type PresenceSource = "default" | "mcp" | "settings";
 
 /** 存在強度の内部 state。 */
 export interface PresenceState {
@@ -43,7 +43,7 @@ export interface PresenceState {
 
 /** applyPresenceLevel の結果。unavailable=loud-unavailable（spec §4）。 */
 export type ApplyPresenceResult =
-  | { readonly applied: true }
+  | { readonly applied: true; readonly completion?: Promise<void> }
   | { readonly unavailable: true; readonly reason: string };
 
 /** applyPresenceLevel に注入する依存。App.tsx の wiring 時に構築する。 */
@@ -126,7 +126,7 @@ export function applyPresenceLevel(
 
   if (level === prevLevel) {
     // 同一レベル — effect 不要
-    return { applied: true };
+    return { applied: true, completion: Promise.resolve() };
   }
 
   // state 更新
@@ -155,24 +155,21 @@ export function applyPresenceLevel(
   // VRM visibility は shell column の display:none に追従するため、ここでは触らない。
   // .shell-column 自体が px<=0 で display:none になれば、その子孫の VRM canvas も paint されない。
 
-  // closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
-  // 完了直前に default に戻されている可能性があるので、適用時に level を再確認する。
+  // closed: tween 完了後に scene/aura を止める。
+  // sidebar が見えている間は描画を残し、完了直前に default に戻された場合は何もしない。
   if (level === "closed") {
     handle.completion.then(() => {
-      if (getState().level !== "default") {
-        deps.setRenderPaused(true);
-      }
+      if (getState().level !== "closed") return;
+      deps.ambientUiRegistry.disable(AURA_PACK_ID);
+      deps.setRenderPaused(true);
     });
   }
 
-  // Aura
   if (level === "default") {
     deps.ambientUiRegistry.enable(AURA_PACK_ID);
-  } else {
-    deps.ambientUiRegistry.disable(AURA_PACK_ID);
   }
 
-  return { applied: true };
+  return { applied: true, completion: handle.completion };
 }
 
 /**

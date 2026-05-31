@@ -1,5 +1,8 @@
 :root {
   --sidebar-width: 280px;
+  /* Shell width animates; scene/VRM content keeps this stable render width. */
+  --sidebar-content-width: 280px;
+  --sidebar-border-width: 1px;
   --leva-panel-width: 0px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
@@ -148,12 +151,13 @@ body,
 
 /* ── Shell column（width / collapse を所有する縦カラム）─────── */
 .shell-column {
+  flex: 0 0 var(--sidebar-width);
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
   background: var(--charminal-sidebar-bg);
-  border-right: 1px solid var(--charminal-border);
+  border-right: var(--sidebar-border-width) solid var(--charminal-border);
   overflow: hidden;
 }
 
@@ -170,6 +174,8 @@ body,
 .sidebar {
   display: flex;
   flex-direction: column;
+  width: var(--sidebar-content-width);
+  min-width: var(--sidebar-content-width);
   padding: 12px 12px 0;
 }
 
@@ -209,7 +215,8 @@ body,
 .charactor-container {
   flex: 1;
   min-height: 0;
-  width: 100%;
+  width: var(--sidebar-content-width);
+  min-width: var(--sidebar-content-width);
   display: flex;
   align-items: center;
   justify-content: center;
