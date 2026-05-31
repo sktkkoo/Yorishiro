@@ -49,7 +49,8 @@ ctx.dispatchEffect({
 | `color` | `string` | `"#00ff41"` | テキスト色 |
 | `bgColor` | `string` | `"rgba(0, 0, 0, 0.85)"` | 背景色 |
 | `typeSpeed` | `number` | `35` | 1 文字あたりのタイプ速度（ms） |
-| `glitchIntensity` | `number` | `1` | グリッチの強さ。0 で無効、1 が既定 |
+| `glitchIntensity` | `number` | `1` | 揺れの強さ（位置オフセット・画面ジッターの量）。0 で無効、1 が既定 |
+| `charGlitchRate` | `number` | `1` | 文字が別の字に化ける頻度だけを独立に絞るノブ（0〜1）。`glitchIntensity` で揺れは保ったまま、これを下げると文面が読みやすくなる |
 | `fontSize` | `number` | `16` | フォントサイズ（px） |
 
 ## 境界

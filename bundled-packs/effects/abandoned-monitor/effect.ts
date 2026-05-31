@@ -17,6 +17,12 @@ export interface AbandonedMonitorOptions {
   readonly bgColor?: string;
   readonly typeSpeed?: number;
   readonly glitchIntensity?: number;
+  /**
+   * 文字置換の起きやすさ（0〜1）。glitchIntensity が揺れ（位置オフセット・
+   * 画面ジッター）の量を決めるのに対し、こちらは「文字が別の字に化ける頻度」だけを
+   * 独立に絞るためのノブ。1 で従来どおり、下げるほど化けが減って文面が読みやすくなる。
+   */
+  readonly charGlitchRate?: number;
   readonly fontSize?: number;
 }
 
@@ -55,6 +61,7 @@ export const DEFAULTS = {
   bgColor: "rgba(0, 0, 0, 0.85)",
   typeSpeed: 35,
   glitchIntensity: 1,
+  charGlitchRate: 1,
   fontSize: 16,
 } as const;
 
@@ -98,6 +105,7 @@ export default {
     const bgColor = options.bgColor ?? DEFAULTS.bgColor;
     const typeSpeed = options.typeSpeed ?? DEFAULTS.typeSpeed;
     const glitchIntensity = options.glitchIntensity ?? DEFAULTS.glitchIntensity;
+    const charGlitchRate = options.charGlitchRate ?? DEFAULTS.charGlitchRate;
     const fontSize = options.fontSize ?? DEFAULTS.fontSize;
 
     let rafId: number | null = null;
@@ -227,7 +235,9 @@ export default {
             if (now - lastGlitch < 100) continue;
 
             // グリッチ: 元の文字かグリッチ文字か。
-            if (Math.random() < 0.7) {
+            // charGlitchRate で「化ける確率」だけを絞る（ループ回数＝揺れの量は
+            // glitchIntensity のまま）。下げるほど化けが減り、元の文字に戻りやすくなる。
+            if (Math.random() < 0.7 * charGlitchRate) {
               span.textContent = glitchChar(orig);
             } else {
               span.textContent = orig;
