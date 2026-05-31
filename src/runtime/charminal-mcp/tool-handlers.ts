@@ -1146,15 +1146,27 @@ export interface SpaceEffectPlayResult {
  * durationMs 等が直に並ぶ）。MCP 経由では payload object でラップして受けるが、dispatch
  * には spread でフラット化して渡す。payload が object でなければ kind のみ送る。
  */
+/** JSON 文字列を安全に parse する。失敗時は null。 */
+function safeJsonParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
   return async (request: unknown): Promise<SpaceEffectPlayResult> => {
     const r = (request ?? {}) as { kind?: unknown; payload?: unknown };
     if (typeof r.kind !== "string" || r.kind === "") {
       throw new Error("missing kind");
     }
+    // MCP transport は payload を JSON 文字列として渡してくることがあるため、
+    // 文字列なら一度 parse してからフラット化する（SDK 経路は object 直渡し）。
+    const rawPayload = typeof r.payload === "string" ? safeJsonParse(r.payload) : r.payload;
     const payloadObj =
-      typeof r.payload === "object" && r.payload !== null && !Array.isArray(r.payload)
-        ? (r.payload as Record<string, unknown>)
+      typeof rawPayload === "object" && rawPayload !== null && !Array.isArray(rawPayload)
+        ? (rawPayload as Record<string, unknown>)
         : {};
     deps.effectDispatcher.dispatch({ kind: r.kind, ...payloadObj } as SpaceEffectRequest);
     return { kind: r.kind };
