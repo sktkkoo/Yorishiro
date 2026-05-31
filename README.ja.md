@@ -183,7 +183,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ## Experimental
 
-正式サポートは Claude Code です。Codex と OpenCode は **experimental（実験的）** な代替として利用できます——アプリ内の Agent 切り替え（設定画面）でも *（実験的）* と明記されます。capability は agent ごとに異なります。詳細は [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md) を参照。
+正式サポートは Claude Code です。Codex は **experimental（実験的）** な代替として利用できます——アプリ内の Agent 切り替え（設定画面）でも *（実験的）* と明記されます。capability は agent ごとに異なります。詳細は [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md) を参照。
 
 ### Codex support（実験的）
 
@@ -195,19 +195,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 }
 ```
 
-自動起動・persona prompt overlay・PTY observation・Charminal MCP access・`/charm:*` command が動作します。ただし Claude Code hooks は cross-agent contract として扱いません。Codex / OpenCode の Charminal reminder は Claude の `UserPromptSubmit` hook 出力ではなく、prompt overlay への追記として渡します。
-
-### OpenCode support（実験的）
-
-[OpenCode](https://github.com/sst/opencode) を terminal agent として使用できます（multi-provider：Anthropic / OpenAI / Google / Ollama 等）。`~/.charminal/config.json` で切り替えます：
-
-```json
-{
-  "terminalAgent": "opencode"
-}
-```
-
-自動起動・persona prompt overlay・Charminal MCP access・`/charm-*` command・TUI theme bridge が動作します。既知の制約：session resume は未対応、Charminal session 中は project-local `opencode.json` を deep-merge せず置換、Unicode 描画品質は OpenCode 本体の TUI 実装に依存（OpenCode v1.0 以降を推奨）。詳細は decision doc を参照。
+自動起動・persona prompt overlay・PTY observation・Charminal MCP access・`/charm:*` command が動作します。ただし Claude Code hooks は cross-agent contract として扱いません。Codex の Charminal reminder は Claude の `UserPromptSubmit` hook 出力ではなく、prompt overlay への追記として渡します。
 
 ---
 

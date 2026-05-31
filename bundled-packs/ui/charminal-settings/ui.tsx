@@ -120,14 +120,13 @@ interface SelectOption {
 export const TERMINAL_AGENT_OPTIONS = [
   { value: "claude", label: "Claude Code" },
   { value: "codex", label: "Codex" },
-  { value: "opencode", label: "OpenCode" },
 ] as const satisfies readonly SelectOption[];
 
 /**
- * Claude Code 以外の adapter は experimental。dropdown では label に suffix を付け、
- * user に成熟度の差を明示する（agent-adapter decision の experimental scope）。
+ * 初回リリースで設定画面に出す experimental agent。OpenCode adapter は内部に残すが、
+ * まだ管理しきれないため user-facing option には出さない。
  */
-export const EXPERIMENTAL_AGENT_IDS: ReadonlySet<string> = new Set(["codex", "opencode"]);
+export const EXPERIMENTAL_AGENT_IDS: ReadonlySet<string> = new Set(["codex"]);
 
 /** TERMINAL_AGENT_OPTIONS を localized 表示用に変換し、experimental agent に suffix を付ける。 */
 export function localizedAgentOptions(experimentalSuffix: string): readonly SelectOption[] {

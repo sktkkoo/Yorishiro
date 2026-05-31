@@ -185,7 +185,7 @@ What works today:
 
 ## Experimental
 
-Claude Code is the primary, fully-supported agent. Codex and OpenCode are available as **experimental** alternatives — they are also marked *(experimental)* in the in-app Agent switcher (Settings). Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
+Claude Code is the primary, fully-supported agent. Codex is available as an **experimental** alternative — it is also marked *(experimental)* in the in-app Agent switcher (Settings). Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
 
 ### Codex support (experimental)
 
@@ -197,19 +197,7 @@ Claude Code is the primary, fully-supported agent. Codex and OpenCode are availa
 }
 ```
 
-Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Charminal reminders are prompt-based on Codex/OpenCode instead of Claude `UserPromptSubmit` hook output.
-
-### OpenCode support (experimental)
-
-[OpenCode](https://github.com/sst/opencode) can be used as the terminal agent (multi-provider: Anthropic / OpenAI / Google / Ollama, etc.). Switch via `~/.charminal/config.json`:
-
-```json
-{
-  "terminalAgent": "opencode"
-}
-```
-
-Auto-launch, persona prompt overlay, Charminal MCP access, `/charm-*` commands, and TUI theme bridge work. Known limitations: no session resume yet, the Charminal session replaces (not merges) project-local `opencode.json`, and Unicode rendering quality depends on OpenCode's own TUI (OpenCode v1.0+ recommended). See the decision doc for details.
+Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Charminal reminders are prompt-based on Codex instead of Claude `UserPromptSubmit` hook output.
 
 ---
 
