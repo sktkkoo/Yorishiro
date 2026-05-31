@@ -43,7 +43,7 @@ export interface PresenceState {
 
 /** applyPresenceLevel の結果。unavailable=loud-unavailable（spec §4）。 */
 export type ApplyPresenceResult =
-  | { readonly applied: true }
+  | { readonly applied: true; readonly completion?: Promise<void> }
   | { readonly unavailable: true; readonly reason: string };
 
 /** applyPresenceLevel に注入する依存。App.tsx の wiring 時に構築する。 */
@@ -126,7 +126,7 @@ export function applyPresenceLevel(
 
   if (level === prevLevel) {
     // 同一レベル — effect 不要
-    return { applied: true };
+    return { applied: true, completion: Promise.resolve() };
   }
 
   // state 更新
@@ -172,7 +172,7 @@ export function applyPresenceLevel(
     deps.ambientUiRegistry.disable(AURA_PACK_ID);
   }
 
-  return { applied: true };
+  return { applied: true, completion: handle.completion };
 }
 
 /**

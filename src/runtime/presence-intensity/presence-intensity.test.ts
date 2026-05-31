@@ -258,7 +258,8 @@ describe("PresenceIntensity", () => {
       resolvePresence: () => ({ ok: true, el: {} as HTMLElement, target: "shell" }),
     });
     const result = applyPresenceLevel("closed", "mcp", deps);
-    expect(result).toEqual({ applied: true });
+    expect(result).toMatchObject({ applied: true });
+    expect("completion" in result).toBe(true);
     expect(getPresenceState().level).toBe("closed");
   });
 });

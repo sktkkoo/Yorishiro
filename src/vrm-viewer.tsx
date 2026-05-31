@@ -13,7 +13,7 @@
  * Internal design-record: 2026-04-17-three-runtime-singleton.md.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { Body } from "./core/body";
 import type { SubsystemLog } from "./core/dev-log";
 import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
@@ -29,7 +29,7 @@ export default function VrmViewer({ url, onBodyReady, devLog }: VrmViewerProps) 
 
   // ── Attach to the singleton canvas ────────────────────────────
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const placeholder = placeholderRef.current;
     if (!placeholder) return;
     const runtime = getThreeRuntime();

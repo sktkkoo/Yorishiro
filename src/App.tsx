@@ -17,6 +17,7 @@ import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
+import { flushSync } from "react-dom";
 import * as ReactDomClient from "react-dom/client";
 import {
   checkTutorialDone,
@@ -121,7 +122,6 @@ import {
   applyPresenceLevel,
   getPresenceSnapshot,
   getPresenceState,
-  onUserPromptSubmit,
   type PresenceIntensityDeps,
   type PresenceLevel,
   type PresenceSource,
@@ -628,17 +628,34 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
-  const [presenceLevel, setPresenceLevelState] = useState<PresenceLevel>(
-    () => getPresenceState().level,
+  const [characterSurfaceVisible, setCharacterSurfaceVisible] = useState(
+    () => getPresenceState().level !== "closed",
   );
+  const presenceTransitionTokenRef = useRef(0);
 
   const applyPresenceLevelFromApp = useCallback(
     (level: PresenceLevel, source: PresenceSource): ApplyPresenceResult => {
+      const token = ++presenceTransitionTokenRef.current;
+      if (level === "default") {
+        flushSync(() => setCharacterSurfaceVisible(true));
+      }
+
       const result = applyPresenceLevel(level, source, buildPresenceDeps());
       if ("applied" in result) {
         const nextLevel = getPresenceState().level;
-        setPresenceLevelState(nextLevel);
         emitPresenceLevelChanged(nextLevel);
+        if (nextLevel === "closed") {
+          void result.completion?.then(() => {
+            if (
+              presenceTransitionTokenRef.current === token &&
+              getPresenceState().level === "closed"
+            ) {
+              setCharacterSurfaceVisible(false);
+            }
+          });
+        } else {
+          setCharacterSurfaceVisible(true);
+        }
       }
       return result;
     },
@@ -646,18 +663,26 @@ function App() {
   );
 
   const restorePresenceFromPrompt = useCallback(() => {
-    onUserPromptSubmit(buildPresenceDeps());
-    const nextLevel = getPresenceState().level;
-    setPresenceLevelState(nextLevel);
-    emitPresenceLevelChanged(nextLevel);
-  }, []);
+    const state = getPresenceState();
+    state.previousLevel = state.level;
+    state.previousLevelSince = state.levelSince;
+    if (state.level === "default") {
+      state.source = "default";
+      setCharacterSurfaceVisible(true);
+      emitPresenceLevelChanged("default");
+      return;
+    }
+    applyPresenceLevelFromApp("default", "default");
+  }, [applyPresenceLevelFromApp]);
 
   useEffect(() => {
     appLanguageRef.current = appLanguage;
   }, [appLanguage]);
 
   useEffect(() => {
-    syncPresenceLevelStyles(getPresenceState().level);
+    const level = getPresenceState().level;
+    syncPresenceLevelStyles(level);
+    setCharacterSurfaceVisible(level !== "closed");
   }, []);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
@@ -3067,7 +3092,7 @@ function App() {
           onBodyReady={handleBodyReady}
           bodyDevLog={bodyDevLog}
           scene={renderedSceneEntry}
-          visible={presenceLevel !== "closed"}
+          visible={characterSurfaceVisible}
         />
       </div>
       {canMountTerminals && (

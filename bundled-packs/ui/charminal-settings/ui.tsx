@@ -2182,35 +2182,10 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             />
           </div>
 
-          {/* Character sidebar */}
+          {/* Door */}
           <div style={{ opacity: 0.7 }}>{strings.labelPresence}</div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: SPACING.sm,
-              minWidth: "220px",
-            }}
-          >
-            <span
-              style={{
-                color: presenceLevel === "closed" ? COLORS.fg : COLORS.fgDimmer,
-                fontSize: FONT.sizeXs,
-                minWidth: "34px",
-              }}
-            >
-              {strings.presenceClose}
-            </span>
+          <div>
             <Toggle checked={presenceLevel === "default"} onChange={onPresenceToggle} />
-            <span
-              style={{
-                color: presenceLevel === "default" ? COLORS.fg : COLORS.fgDimmer,
-                fontSize: FONT.sizeXs,
-                minWidth: "34px",
-              }}
-            >
-              {strings.presenceOpen}
-            </span>
           </div>
 
           {/* Aura */}
