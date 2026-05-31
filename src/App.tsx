@@ -117,6 +117,21 @@ import {
   getPersonaRegistry,
 } from "./runtime/persona-registry";
 import {
+  type ApplyPresenceResult,
+  applyPresenceLevel,
+  getPresenceSnapshot,
+  getPresenceState,
+  onUserPromptSubmit,
+  type PresenceIntensityDeps,
+  type PresenceLevel,
+  type PresenceSource,
+} from "./runtime/presence-intensity";
+import {
+  readPresenceSidebarWidth,
+  syncPresenceClosedStyles,
+  writePresenceSidebarWidth,
+} from "./runtime/presence-intensity/sidebar-visibility";
+import {
   type ActiveUiPresence,
   type PresenceResolution,
   resolvePresence,
@@ -467,14 +482,50 @@ function queryMountedSessionIds(): string[] {
 
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
-// presence-closed class は解決された surface に対してのみ toggle。
+// border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
+// 1px の縦線だけが残る状態を避ける。
 // 解決不能（loud-unavailable）時は一切書き込まず resolution を返す。
 function applyPresenceWidth(px: number): PresenceResolution {
   const res = resolvePresenceSurface();
   if (!res.ok) return res;
-  document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
-  res.el.classList.toggle("presence-closed", px <= 0);
+  writePresenceSidebarWidth(document.documentElement, res.el, px);
   return res;
+}
+
+function getCurrentSidebarWidth(): number {
+  return readPresenceSidebarWidth(document.documentElement);
+}
+
+function buildPresenceDeps(): PresenceIntensityDeps {
+  return {
+    setSidebarWidth: (px) => {
+      applyPresenceWidth(px);
+    },
+    getSidebarWidth: getCurrentSidebarWidth,
+    // App.css の :root --sidebar-width 初期値（280px）と一致させる。
+    getDefaultSidebarWidth: () => 280,
+    tweenManager: getThreeRuntime().getTweenManager(),
+    ambientUiRegistry: getAmbientUiPackRegistry(),
+    setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
+    now: () => Date.now(),
+    resolvePresence: () => resolvePresenceSurface(),
+  };
+}
+
+function syncPresenceLevelStyles(level: PresenceLevel): void {
+  syncPresenceClosedStyles(
+    document.documentElement,
+    getSurfaceRegistry().get("shell"),
+    level === "closed",
+  );
+}
+
+function emitPresenceLevelChanged(level: PresenceLevel): void {
+  window.dispatchEvent(
+    new CustomEvent("charminal:presence-level-changed", {
+      detail: { level },
+    }),
+  );
 }
 
 const FIRST_RUN_HEALTH_SEEN_KEY = "charminal:first-run-health-seen";
@@ -577,10 +628,39 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+  const [presenceLevel, setPresenceLevelState] = useState<PresenceLevel>(
+    () => getPresenceState().level,
+  );
+
+  const applyPresenceLevelFromApp = useCallback(
+    (level: PresenceLevel, source: PresenceSource): ApplyPresenceResult => {
+      const result = applyPresenceLevel(level, source, buildPresenceDeps());
+      if ("applied" in result) {
+        const nextLevel = getPresenceState().level;
+        setPresenceLevelState(nextLevel);
+        syncPresenceLevelStyles(nextLevel);
+        emitPresenceLevelChanged(nextLevel);
+      }
+      return result;
+    },
+    [],
+  );
+
+  const restorePresenceFromPrompt = useCallback(() => {
+    onUserPromptSubmit(buildPresenceDeps());
+    const nextLevel = getPresenceState().level;
+    setPresenceLevelState(nextLevel);
+    syncPresenceLevelStyles(nextLevel);
+    emitPresenceLevelChanged(nextLevel);
+  }, []);
 
   useEffect(() => {
     appLanguageRef.current = appLanguage;
   }, [appLanguage]);
+
+  useEffect(() => {
+    syncPresenceLevelStyles(presenceLevel);
+  }, [presenceLevel]);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
 
@@ -654,8 +734,8 @@ function App() {
     effectPackRunner.register(desaturatePack);
     effectPackRunner.register(cameraMovePack);
 
-    // Presence の hook callback は presence-intensity module が dynamic import される
-    // 後でしか buildPresenceDeps が組めないため、ref で late-bind する。
+    // Presence の hook callback は MCP/bootstrap wiring 後に有効化するため、
+    // ref で late-bind する。
     // bind 完了前に hook が発火しても no-op で安全側に倒れる。
     const presenceRestoreRef: { current: () => void } = { current: () => {} };
 
@@ -1077,10 +1157,6 @@ function App() {
           createPomodoroStopHandler,
           createPomodoroStatusHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
-        const { applyPresenceLevel, getPresenceSnapshot, onUserPromptSubmit } = await import(
-          "./runtime/presence-intensity"
-        );
-        type PresenceIntensityDeps = import("./runtime/presence-intensity").PresenceIntensityDeps;
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
@@ -1100,30 +1176,6 @@ function App() {
           }
         };
         // disable/enable で fs から読み直して runtime registry に register し直す経路。
-        // Presence Intensity の deps factory。MCP handler / idle fallback / restore
-        // 全てここを経由する。getThreeRuntime / getAmbientUiPackRegistry は singleton
-        // なので呼び出しのたびに最新の instance を引ける。
-        const buildPresenceDeps = (): PresenceIntensityDeps => ({
-          setSidebarWidth: (px) => {
-            applyPresenceWidth(px);
-          },
-          getSidebarWidth: () => {
-            const raw = getComputedStyle(document.documentElement)
-              .getPropertyValue("--sidebar-width")
-              .trim();
-            const n = Number.parseFloat(raw);
-            // 0 は valid な現在値（closed 状態）。NaN のときだけ default に倒す。
-            return Number.isNaN(n) ? 280 : n;
-          },
-          // App.css の :root --sidebar-width 初期値（280px）と一致させる。
-          getDefaultSidebarWidth: () => 280,
-          tweenManager: getThreeRuntime().getTweenManager(),
-          ambientUiRegistry: getAmbientUiPackRegistry(),
-          setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
-          now: () => Date.now(),
-          resolvePresence: () => resolvePresenceSurface(),
-        });
-
         const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
         const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
           return reloadSingleUserPack(id, {
@@ -1256,12 +1308,7 @@ function App() {
             getVrm: () => getThreeRuntime().getVrm(),
             getBody: () => getThreeRuntime().getBody(),
             tweenManager: getThreeRuntime().getTweenManager(),
-            getSidebarWidth: () => {
-              const raw = getComputedStyle(document.documentElement)
-                .getPropertyValue("--sidebar-width")
-                .trim();
-              return Number.parseFloat(raw) || 280;
-            },
+            getSidebarWidth: getCurrentSidebarWidth,
             getTerminalOpacity: () => {
               const ids = queryMountedSessionIds();
               return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getOpacity();
@@ -1316,19 +1363,8 @@ function App() {
             setSidebarWidth: (px) => {
               applyPresenceWidth(px);
             },
-            getSidebarWidth: () => {
-              const raw = getComputedStyle(document.documentElement)
-                .getPropertyValue("--sidebar-width")
-                .trim();
-              return Number.parseFloat(raw) || 280;
-            },
-            getDefaultSidebarWidth: (() => {
-              const raw = getComputedStyle(document.documentElement)
-                .getPropertyValue("--sidebar-width")
-                .trim();
-              const initial = Number.parseFloat(raw) || 280;
-              return () => initial;
-            })(),
+            getSidebarWidth: getCurrentSidebarWidth,
+            getDefaultSidebarWidth: () => 280,
             getWindowSize: () => ({
               width: window.innerWidth,
               height: window.innerHeight,
@@ -1370,8 +1406,7 @@ function App() {
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
-            applyPresenceLevel: (level, source) =>
-              applyPresenceLevel(level, source, buildPresenceDeps()),
+            applyPresenceLevel: (level, source) => applyPresenceLevelFromApp(level, source),
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
@@ -1399,10 +1434,8 @@ function App() {
         };
 
         // Perception の presence callback を late-bind する。
-        // Perception 構築時には presence-intensity module が dynamic import 前のため
-        // ref で空 callback を埋めておき、ここで実体に差し替える。
         presenceRestoreRef.current = (): void => {
-          onUserPromptSubmit(buildPresenceDeps());
+          restorePresenceFromPrompt();
         };
 
         await listen<{ requestId: string; tool: string; request: unknown }>(
@@ -2288,6 +2321,11 @@ function App() {
             return next;
           },
           setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
+          getPresenceLevel: () => getPresenceState().level,
+          setPresenceLevel: async (level) => {
+            const result = applyPresenceLevelFromApp(level, "settings");
+            if ("unavailable" in result) throw new Error(result.reason);
+          },
           getConfig: async () => {
             const text = await readCharminalConfigText();
             const cur = parseConfig(text);
@@ -2425,6 +2463,7 @@ function App() {
     listPacksForHealth,
     collectAppHealthReport,
     readBundledPacks,
+    applyPresenceLevelFromApp,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -3030,6 +3069,7 @@ function App() {
           onBodyReady={handleBodyReady}
           bodyDevLog={bodyDevLog}
           scene={renderedSceneEntry}
+          visible={presenceLevel !== "closed"}
         />
       </div>
       {canMountTerminals && (

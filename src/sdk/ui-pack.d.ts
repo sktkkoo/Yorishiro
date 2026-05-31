@@ -23,6 +23,7 @@ import type { LayerRole, SceneSpec } from "./scene";
 
 export type AppLanguage = "auto" | "en" | "ja";
 export type ResolvedLanguage = "en" | "ja";
+export type UiPresenceLevel = "default" | "closed";
 
 /**
  * Charminal の layout を UI pack がどう変えるかの宣言。
@@ -240,6 +241,10 @@ export interface UiAppAPI {
   setLanguage(language: AppLanguage): Promise<void>;
   /** TTS 音声の利用頻度を設定する。次回セッションから反映。 */
   setVoiceFrequency(voiceFrequency: "on" | "off"): Promise<void>;
+  /** character/sidebar の presence 表示状態を取得する。 */
+  getPresenceLevel(): UiPresenceLevel;
+  /** character/sidebar の presence 表示状態を切り替える。 */
+  setPresenceLevel(level: UiPresenceLevel): Promise<void>;
   /**
    * 現 config の snapshot（読み取り専用、初期値表示用）。
    * `~/.charminal/config.json` を fresh に読んで返す async。

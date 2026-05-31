@@ -26,7 +26,7 @@ import type { PresenceResolution } from "../presence-target";
 export type PresenceLevel = "default" | "closed";
 
 /** レベル変更の起因。 */
-export type PresenceSource = "default" | "mcp";
+export type PresenceSource = "default" | "mcp" | "settings";
 
 /** 存在強度の内部 state。 */
 export interface PresenceState {

@@ -24,6 +24,7 @@ interface CharacterSurfaceProps {
   readonly onBodyReady?: (body: Body | null) => void;
   readonly bodyDevLog?: SubsystemLog;
   readonly scene: ScenePackEntry | null;
+  readonly visible?: boolean;
 }
 
 export default function CharacterSurface({
@@ -31,6 +32,7 @@ export default function CharacterSurface({
   onBodyReady,
   bodyDevLog,
   scene,
+  visible = true,
 }: CharacterSurfaceProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -45,18 +47,19 @@ export default function CharacterSurface({
     return () => reg.unregister("character", el);
   }, []);
 
-  const vrmContent = vrmUrl ? (
-    <Suspense fallback={<div className="vrm-loading" />}>
-      <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
-    </Suspense>
-  ) : (
-    <div className="vrm-placeholder" />
-  );
+  const vrmContent =
+    visible && vrmUrl ? (
+      <Suspense fallback={<div className="vrm-loading" />}>
+        <VrmViewer url={vrmUrl} onBodyReady={onBodyReady} devLog={bodyDevLog} />
+      </Suspense>
+    ) : (
+      <div className="vrm-placeholder" />
+    );
 
   return (
     /* クラス名は既存 CSS 一致のため意図的な表記（typo 由来。改名時は App.css も同時に） */
     <div className="charactor-container" ref={containerRef}>
-      <SceneRouter entry={scene}>{vrmContent}</SceneRouter>
+      {visible ? <SceneRouter entry={scene}>{vrmContent}</SceneRouter> : null}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 :root {
   --sidebar-width: 280px;
+  --sidebar-border-width: 1px;
   --leva-panel-width: 0px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
@@ -153,7 +154,7 @@ body,
   display: flex;
   flex-direction: column;
   background: var(--charminal-sidebar-bg);
-  border-right: 1px solid var(--charminal-border);
+  border-right: var(--sidebar-border-width) solid var(--charminal-border);
   overflow: hidden;
 }
 

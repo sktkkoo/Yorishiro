@@ -1,4 +1,5 @@
 export type {
+  ApplyPresenceResult,
   PresenceIntensityDeps,
   PresenceLevel,
   PresenceSource,
