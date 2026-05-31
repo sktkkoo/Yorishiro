@@ -201,7 +201,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ## Contributing
 
-個人プロジェクトとして開発中です。Issue や Discussion は歓迎します。**Pull request は現在受け付けていません。**
+Issue や Discussion は歓迎します。**Pull request は現在受け付けていません。**
 
 セキュリティ報告は [SECURITY.md](SECURITY.md) を参照してください。
 

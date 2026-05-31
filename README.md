@@ -203,7 +203,7 @@ Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access w
 
 ## Contributing
 
-This is a personal project in active development. Issues and discussions are welcome. **Pull requests are not accepted at this time.**
+Issues and discussions are welcome. **Pull requests are not accepted at this time.**
 
 For security reporting, see [SECURITY.md](SECURITY.md).
 
