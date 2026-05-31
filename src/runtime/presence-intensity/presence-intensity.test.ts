@@ -108,9 +108,24 @@ describe("PresenceIntensity", () => {
     expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
   });
 
-  it("closed では aura を disable する", () => {
+  it("closed では tween 完了後に aura を disable する", async () => {
     const deps = createMockDeps();
+
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((r) => {
+      resolveCompletion = r;
+    });
+    vi.mocked(deps.tweenManager.start).mockReturnValueOnce({
+      cancel: vi.fn(),
+      completion,
+    });
+
     applyPresenceLevel("closed", "mcp", deps);
+
+    expect(deps.ambientUiRegistry.disable).not.toHaveBeenCalled();
+    resolveCompletion();
+    await Promise.resolve();
+    await Promise.resolve();
 
     expect(deps.ambientUiRegistry.disable).toHaveBeenCalledWith("attention-aura");
   });
@@ -121,8 +136,21 @@ describe("PresenceIntensity", () => {
 
   it("default → closed: tween 完了後に render を pause する", async () => {
     const deps = createMockDeps();
+
+    let resolveCompletion!: () => void;
+    const completion = new Promise<void>((r) => {
+      resolveCompletion = r;
+    });
+    vi.mocked(deps.tweenManager.start).mockReturnValueOnce({
+      cancel: vi.fn(),
+      completion,
+    });
+
     applyPresenceLevel("closed", "mcp", deps);
 
+    expect(deps.setRenderPaused).not.toHaveBeenCalledWith(true);
+    resolveCompletion();
+    await Promise.resolve();
     await Promise.resolve();
     expect(deps.setRenderPaused).toHaveBeenCalledWith(true);
   });

@@ -155,21 +155,18 @@ export function applyPresenceLevel(
   // VRM visibility は shell column の display:none に追従するため、ここでは触らない。
   // .shell-column 自体が px<=0 で display:none になれば、その子孫の VRM canvas も paint されない。
 
-  // closed: tween 完了後に render loop を pause（CPU/GPU を休ませる）。
-  // 完了直前に default に戻されている可能性があるので、適用時に level を再確認する。
+  // closed: tween 完了後に scene/aura を止める。
+  // sidebar が見えている間は描画を残し、完了直前に default に戻された場合は何もしない。
   if (level === "closed") {
     handle.completion.then(() => {
-      if (getState().level !== "default") {
-        deps.setRenderPaused(true);
-      }
+      if (getState().level !== "closed") return;
+      deps.ambientUiRegistry.disable(AURA_PACK_ID);
+      deps.setRenderPaused(true);
     });
   }
 
-  // Aura
   if (level === "default") {
     deps.ambientUiRegistry.enable(AURA_PACK_ID);
-  } else {
-    deps.ambientUiRegistry.disable(AURA_PACK_ID);
   }
 
   return { applied: true, completion: handle.completion };

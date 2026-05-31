@@ -17,7 +17,6 @@ import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
-import { flushSync } from "react-dom";
 import * as ReactDomClient from "react-dom/client";
 import {
   checkTutorialDone,
@@ -628,34 +627,12 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
-  const [characterSurfaceVisible, setCharacterSurfaceVisible] = useState(
-    () => getPresenceState().level !== "closed",
-  );
-  const presenceTransitionTokenRef = useRef(0);
 
   const applyPresenceLevelFromApp = useCallback(
     (level: PresenceLevel, source: PresenceSource): ApplyPresenceResult => {
-      const token = ++presenceTransitionTokenRef.current;
-      if (level === "default") {
-        flushSync(() => setCharacterSurfaceVisible(true));
-      }
-
       const result = applyPresenceLevel(level, source, buildPresenceDeps());
       if ("applied" in result) {
-        const nextLevel = getPresenceState().level;
-        emitPresenceLevelChanged(nextLevel);
-        if (nextLevel === "closed") {
-          void result.completion?.then(() => {
-            if (
-              presenceTransitionTokenRef.current === token &&
-              getPresenceState().level === "closed"
-            ) {
-              setCharacterSurfaceVisible(false);
-            }
-          });
-        } else {
-          setCharacterSurfaceVisible(true);
-        }
+        emitPresenceLevelChanged(getPresenceState().level);
       }
       return result;
     },
@@ -668,7 +645,6 @@ function App() {
     state.previousLevelSince = state.levelSince;
     if (state.level === "default") {
       state.source = "default";
-      setCharacterSurfaceVisible(true);
       emitPresenceLevelChanged("default");
       return;
     }
@@ -682,7 +658,7 @@ function App() {
   useEffect(() => {
     const level = getPresenceState().level;
     syncPresenceLevelStyles(level);
-    setCharacterSurfaceVisible(level !== "closed");
+    getThreeRuntime().setRenderPaused(level === "closed");
   }, []);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
@@ -3092,7 +3068,6 @@ function App() {
           onBodyReady={handleBodyReady}
           bodyDevLog={bodyDevLog}
           scene={renderedSceneEntry}
-          visible={characterSurfaceVisible}
         />
       </div>
       {canMountTerminals && (
