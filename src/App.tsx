@@ -170,6 +170,10 @@ import {
   withLanguageSet,
   withPrimaryPersonaSet,
 } from "./runtime/user-pack-loader/config";
+import {
+  appendInitChangedMarker,
+  stripInitChangedMarker,
+} from "./runtime/user-pack-loader/init-changed-title";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
@@ -971,6 +975,23 @@ function App() {
             userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
+            onInitChanged: () => {
+              void (async () => {
+                try {
+                  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+                  const win = getCurrentWindow();
+                  const current = await win.title();
+                  const next = appendInitChangedMarker(current);
+                  if (next !== current) await win.setTitle(next);
+                } catch (err) {
+                  appLog.write({
+                    phase: "init-changed-title",
+                    note: "failed to append init.js-changed marker to window title",
+                    data: { error: err instanceof Error ? err.message : String(err) },
+                  });
+                }
+              })();
+            },
           });
           appLog.write({
             phase: "user-layer",
@@ -1013,7 +1034,23 @@ function App() {
       //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
       userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt, pluginDir });
 
-      // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
+      // ─ Step 4: 前回 reload 待ち marker を title から剥がす（独立な失敗で MCP に影響しない）─
+      // native window title は webview reload を跨いで残るため、boot 時に明示的に掃除する。
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        const current = await win.title();
+        const next = stripInitChangedMarker(current);
+        if (next !== current) await win.setTitle(next);
+      } catch (err) {
+        appLog.write({
+          phase: "init-changed-title",
+          note: "failed to strip init.js-changed marker from window title",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+
+      // ─ Step 4.1: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
       if (safeMode) {
         try {

@@ -41,6 +41,7 @@ export interface StartPackWatcherDeps {
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
+  readonly onInitChanged?: () => void;
 }
 
 export interface PackWatcherHandle {
@@ -115,14 +116,15 @@ async function handleLayerEvent(
       return;
 
     case "init-changed":
-      // Phase 1-b では init.js の reload は扱わない。keydown listener などの
-      // side effect が hot swap 経路を用意しないと leak するため、Phase 1-c で
-      // 正面から設計する。ここでは存在だけ認知する。
+      // init.js は明示 reload 契約。再実行はしない。
+      // 理由: docs/decisions/init-js-hot-reload.md
+      // ここでは変更を title suffix で可視化するだけ。
       deps.initScriptLog.write({
         phase: "reload",
-        note: "init.js changed; reload not supported in Phase 1-b",
+        note: "init.js changed; press Cmd/Ctrl+R to reload",
         data: { path: action.path },
       });
+      deps.onInitChanged?.();
       return;
 
     case "remove-pack": {
