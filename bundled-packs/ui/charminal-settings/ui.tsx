@@ -2182,7 +2182,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             />
           </div>
 
-          {/* Door */}
+          {/* Sidebar */}
           <div style={{ opacity: 0.7 }}>{strings.labelPresence}</div>
           <div>
             <Toggle checked={presenceLevel === "default"} onChange={onPresenceToggle} />
