@@ -190,6 +190,7 @@ describe("PresenceIntensity", () => {
 
     const trueCalls = vi.mocked(deps.setRenderPaused).mock.calls.filter((c) => c[0] === true);
     expect(trueCalls).toHaveLength(0);
+    expect(deps.ambientUiRegistry.disable).not.toHaveBeenCalled();
   });
 
   // -----------------------------------------------------------------------
