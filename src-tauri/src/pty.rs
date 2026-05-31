@@ -328,12 +328,6 @@ impl PtyState {
     }
 
     pub fn attach(&self, session_id: &str, cwd: Option<String>, on_output: Channel) -> bool {
-        let Some(descriptor) = self.registry.get(session_id) else {
-            return false;
-        };
-        if !can_attach_existing_session(&descriptor) {
-            return false;
-        }
         let Some(session) = self.session_or_default(session_id) else {
             return false;
         };
@@ -395,33 +389,11 @@ fn now_millis() -> u64 {
         .unwrap_or(0)
 }
 
-fn can_attach_existing_session(descriptor: &SessionDescriptor) -> bool {
-    match descriptor.kind {
-        SessionKind::Shell => true,
-        // WebView reload 後の attach は既存 PTY の画面状態を replay するだけなので、
-        // resume 非対応 agent（OpenCode の full-screen TUI など）は fresh spawn に落とす。
-        SessionKind::Agent => crate::sessions::agent_adapter::lookup(&descriptor.profile_id)
-            .map(|adapter| adapter.capabilities().session_resume)
-            .unwrap_or(false),
-    }
-}
-
 // ─── Tests ──────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn descriptor(profile_id: &str, kind: SessionKind) -> SessionDescriptor {
-        SessionDescriptor {
-            id: format!("session-{profile_id}"),
-            profile_id: profile_id.to_string(),
-            kind,
-            label: profile_id.to_string(),
-            cwd: None,
-            started_at: 0,
-        }
-    }
 
     #[test]
     fn build_hooks_json_valid() {
@@ -444,41 +416,5 @@ mod tests {
         let stdin = build_hook_stdin_command(19001, "/hook/pre-tool-use", true);
         assert!(stdin.contains("[Console]::In.ReadToEnd()"));
         assert!(stdin.contains("http://127.0.0.1:19001/hook/pre-tool-use"));
-    }
-
-    #[test]
-    fn attach_allowed_for_shell_sessions() {
-        assert!(can_attach_existing_session(&descriptor(
-            "shell",
-            SessionKind::Shell
-        )));
-    }
-
-    #[test]
-    fn attach_allowed_for_resume_capable_agents() {
-        assert!(can_attach_existing_session(&descriptor(
-            "claude",
-            SessionKind::Agent
-        )));
-        assert!(can_attach_existing_session(&descriptor(
-            "codex",
-            SessionKind::Agent
-        )));
-    }
-
-    #[test]
-    fn attach_rejected_for_opencode_because_session_resume_is_unsupported() {
-        assert!(!can_attach_existing_session(&descriptor(
-            "opencode",
-            SessionKind::Agent
-        )));
-    }
-
-    #[test]
-    fn attach_rejected_for_unknown_agent_profiles() {
-        assert!(!can_attach_existing_session(&descriptor(
-            "unknown-agent",
-            SessionKind::Agent
-        )));
     }
 }

@@ -167,6 +167,22 @@ describe("TerminalRuntime", () => {
     expect(mockState.sessionSpawn).not.toHaveBeenCalled();
   });
 
+  it("attach-first 成功後に PTY resize を送り TUI 再描画を促す", async () => {
+    mockState.sessionAttach.mockResolvedValueOnce(true);
+    const runtime = getTerminalRuntime("shell-1");
+
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null }, { attachFirst: true });
+    await flushMicrotasks();
+
+    expect(mockState.sessionAttach).toHaveBeenCalledOnce();
+    expect(mockState.sessionSpawn).not.toHaveBeenCalled();
+    expect(mockState.sessionResize).toHaveBeenCalledWith({
+      sessionId: "shell-1",
+      cols: 80,
+      rows: 24,
+    });
+  });
+
   it("destroys a PTY when an in-flight spawn completes after dispose", async () => {
     const spawn = deferred<void>();
     mockState.sessionSpawn.mockReturnValueOnce(spawn.promise);
