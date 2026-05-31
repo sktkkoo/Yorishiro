@@ -6,6 +6,6 @@
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
   "author": "Charminal team",
-  "description": "放置された監視端末風の ARG overlay。破損したシステムログと暗号めいたメッセージをタイプライター + グリッチで全画面に表示する。",
+  "description": "放置された監視端末風の overlay。破損したシステムログと暗号めいたメッセージをタイプライター + グリッチで全画面に表示する。",
   "entry": "effect.ts"
 }
