@@ -29,6 +29,7 @@ const mockState = vi.hoisted(() => {
     listen: ReturnType<typeof vi.fn>;
     sessionAttach: ReturnType<typeof vi.fn>;
     sessionDestroy: ReturnType<typeof vi.fn>;
+    sessionRefreshTheme: ReturnType<typeof vi.fn>;
     sessionResize: ReturnType<typeof vi.fn>;
     sessionSpawn: ReturnType<typeof vi.fn>;
     sessionWrite: ReturnType<typeof vi.fn>;
@@ -41,6 +42,7 @@ const mockState = vi.hoisted(() => {
     listen: vi.fn(),
     sessionAttach: vi.fn(),
     sessionDestroy: vi.fn(),
+    sessionRefreshTheme: vi.fn(),
     sessionResize: vi.fn(),
     sessionSpawn: vi.fn(),
     sessionWrite: vi.fn(),
@@ -110,6 +112,7 @@ vi.mock("@xterm/xterm", () => ({
 vi.mock("../../bindings/tauri-commands", () => ({
   sessionAttach: mockState.sessionAttach,
   sessionDestroy: mockState.sessionDestroy,
+  sessionRefreshTheme: mockState.sessionRefreshTheme,
   sessionResize: mockState.sessionResize,
   sessionSpawn: mockState.sessionSpawn,
   sessionWrite: mockState.sessionWrite,
@@ -138,6 +141,8 @@ describe("TerminalRuntime", () => {
     mockState.sessionAttach.mockResolvedValue(false);
     mockState.sessionDestroy.mockReset();
     mockState.sessionDestroy.mockResolvedValue(undefined);
+    mockState.sessionRefreshTheme.mockReset();
+    mockState.sessionRefreshTheme.mockResolvedValue(undefined);
     mockState.sessionResize.mockReset();
     mockState.sessionResize.mockResolvedValue(undefined);
     mockState.sessionSpawn.mockReset();
@@ -167,7 +172,7 @@ describe("TerminalRuntime", () => {
     expect(mockState.sessionSpawn).not.toHaveBeenCalled();
   });
 
-  it("attach-first 成功後に PTY resize を送り TUI 再描画を促す", async () => {
+  it("attach-first 成功後に PTY resize と theme refresh を送り TUI 再描画を促す", async () => {
     mockState.sessionAttach.mockResolvedValueOnce(true);
     const runtime = getTerminalRuntime("shell-1");
 
@@ -181,6 +186,7 @@ describe("TerminalRuntime", () => {
       cols: 80,
       rows: 24,
     });
+    expect(mockState.sessionRefreshTheme).toHaveBeenCalledWith({ sessionId: "shell-1" });
   });
 
   it("destroys a PTY when an in-flight spawn completes after dispose", async () => {

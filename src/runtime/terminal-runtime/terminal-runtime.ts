@@ -7,6 +7,7 @@ import {
   type SpawnSpec,
   sessionAttach,
   sessionDestroy,
+  sessionRefreshTheme,
   sessionResize,
   sessionSpawn,
   sessionWrite,
@@ -382,6 +383,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const cols = Math.max(2, this.term.cols || 80);
     const rows = Math.max(1, this.term.rows || 24);
     void sessionResize({ sessionId: this.sessionId, cols, rows }).catch(() => {});
+    void sessionRefreshTheme({ sessionId: this.sessionId }).catch(() => {});
     this.term.refresh(0, this.term.rows - 1);
   }
 
