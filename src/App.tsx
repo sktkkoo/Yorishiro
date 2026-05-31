@@ -30,6 +30,8 @@ import {
 import {
   abandonedFactoryManifest,
   abandonedFactoryPack,
+  abandonedMonitorManifest,
+  abandonedMonitorPack,
   attentionAuraManifest,
   cameraMoveManifest,
   cameraMovePack,
@@ -643,6 +645,7 @@ function App() {
       renderer,
       time,
     });
+    effectPackRunner.register(abandonedMonitorPack);
     effectPackRunner.register(screenShakePack);
     effectPackRunner.register(screenFlashPack);
     effectPackRunner.register(fireworksPack);
@@ -1148,6 +1151,7 @@ function App() {
             .filter((e) => e.origin === "bundled")
             .map((e) => ({ id: e.id, kind: "ui" })),
           ...[
+            abandonedMonitorPack,
             cameraMovePack,
             desaturatePack,
             fireworksPack,
@@ -1719,6 +1723,7 @@ function App() {
           charminalSettingsManifest,
           immersiveManifest,
           theaterManifest,
+          abandonedMonitorManifest,
           cameraMoveManifest,
           desaturateManifest,
           fireworksManifest,
@@ -1757,6 +1762,7 @@ function App() {
         .filter((e) => e.origin === "bundled")
         .map((e) => withMeta(e.id, "ui")),
       ...[
+        abandonedMonitorPack,
         cameraMovePack,
         desaturatePack,
         fireworksPack,

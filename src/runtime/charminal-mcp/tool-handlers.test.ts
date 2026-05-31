@@ -1466,6 +1466,37 @@ describe("createSpaceEffectPlayHandler", () => {
     expect(dispatch).toHaveBeenCalledWith({ kind: "shake" });
   });
 
+  it("parses payload when it arrives as a JSON string", async () => {
+    // MCP transport は payload を JSON 文字列として渡してくることがある。
+    // 文字列でも parse して field を届けることを assert（regression）。
+    const dispatch = vi.fn();
+    const handler = createSpaceEffectPlayHandler({
+      effectDispatcher: { dispatch } as unknown as {
+        dispatch: (r: SpaceEffectRequest) => unknown;
+      },
+    });
+    await handler({
+      kind: "abandoned-monitor",
+      payload: JSON.stringify({ lines: ["a", "b"], durationMs: 6000 }),
+    });
+    expect(dispatch).toHaveBeenCalledWith({
+      kind: "abandoned-monitor",
+      lines: ["a", "b"],
+      durationMs: 6000,
+    });
+  });
+
+  it("dispatches with kind only when payload is an unparseable string", async () => {
+    const dispatch = vi.fn();
+    const handler = createSpaceEffectPlayHandler({
+      effectDispatcher: { dispatch } as unknown as {
+        dispatch: (r: SpaceEffectRequest) => unknown;
+      },
+    });
+    await handler({ kind: "shake", payload: "not json {{" });
+    expect(dispatch).toHaveBeenCalledWith({ kind: "shake" });
+  });
+
   it("throws on missing kind", async () => {
     const handler = createSpaceEffectPlayHandler({
       effectDispatcher: { dispatch: vi.fn() } as unknown as {

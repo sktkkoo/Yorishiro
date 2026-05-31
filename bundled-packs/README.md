@@ -59,7 +59,7 @@ bundled-packs/
 ### scenes/abandoned-factory
 - **Entry**: `scene.tsx`
 - **Files**: `manifest.json`, `README.md`, `lib/`（procedural shader / lights / props / post-process / camera rig 一式）, `assets/`（user 提供 GLTF）
-- **役割**: 廃工場 R3F-component scene. CLAI がかつてここで誰かと過ごした場所
+- **役割**: 廃工場 R3F-component scene. CLAI がかつて、もう一人の自分のような誰かとすれ違った場所
 - 詳細：`bundled-packs/scenes/abandoned-factory/README.md`
 - 内部設計：`../Charminal-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 
@@ -85,6 +85,12 @@ bundled-packs/
 - **Files**: `manifest.json`, `README.md`
 - **役割**: ターミナルの文字が重力で崩壊し、元の位置に復元するエフェクト。`addDomLayer` + `queryTerminalCells` で DOM ベース描画。4 phase: hold → cascade → rest → restore
 - 詳細：`bundled-packs/effects/text-physics/README.md`
+
+### effects/abandoned-monitor
+- **Entry**: `effect.ts`
+- **Files**: `manifest.json`, `README.md`, `effect.test.ts`
+- **役割**: 放置された監視端末風の全画面 ARG overlay。`addDomLayer` で背景 / スキャンライン / タイプライター + グリッチ文字を描画し、`lines` option で任意テキストを流せる
+- 詳細：`bundled-packs/effects/abandoned-monitor/README.md`
 
 ### effects/fireworks-volley
 - **Entry**: `effect.ts`

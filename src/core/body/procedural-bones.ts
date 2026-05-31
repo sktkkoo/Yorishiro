@@ -19,6 +19,10 @@ const HEAD_DRIFT_AMP_Z = 0.04; // lateral tilt (radians)
 const HEAD_DRIFT_AMP_Y = 0.05; // yaw rotation (radians)
 const HEAD_DRIFT_SPEED = 1.2; // lerp speed (units/sec)
 const HEAD_LOOK_AT_SPEED = 1.2;
+// idle/thinking 中の頭 pitch の「中心」を少し下げる静的バイアス（radians, 負で chin down）。
+// drift（z/y）と違い pitch には揺らぎが無く中心が素のポーズ任せだったため、ここで中心だけ寄せる。
+// procedural weight に乗せるので、conscious animation 中はフェードして効かない。
+const HEAD_REST_PITCH_RAD = -0.035;
 
 // ─── Utility ─────────────────────────────────────────────
 
@@ -137,15 +141,19 @@ export class ProceduralBones {
         HEAD_LOOK_AT_SPEED,
         delta,
       );
+      // pitch の中心を procedural weight ぶんだけ下げる（揺らぎ自体は据え置き）。
+      // look-at と同じ applied/current 方式に畳んで冪等に保つ。
+      const restPitchX = HEAD_REST_PITCH_RAD * w;
+      const appliedPitchX = this.headLookAtCurrentX + restPitchX;
       this.headBone.rotation.x -= this.headLookAtAppliedX;
       this.headBone.rotation.y -= this.headLookAtAppliedY;
       if (w >= 0.001) {
         this.headBone.rotation.z = this.headDriftCurrentZ * w;
         this.headBone.rotation.y = this.headDriftCurrentY * w;
       }
-      this.headBone.rotation.x += this.headLookAtCurrentX;
+      this.headBone.rotation.x += appliedPitchX;
       this.headBone.rotation.y += this.headLookAtCurrentY;
-      this.headLookAtAppliedX = this.headLookAtCurrentX;
+      this.headLookAtAppliedX = appliedPitchX;
       this.headLookAtAppliedY = this.headLookAtCurrentY;
     }
 
