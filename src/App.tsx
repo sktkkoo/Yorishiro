@@ -638,7 +638,6 @@ function App() {
       if ("applied" in result) {
         const nextLevel = getPresenceState().level;
         setPresenceLevelState(nextLevel);
-        syncPresenceLevelStyles(nextLevel);
         emitPresenceLevelChanged(nextLevel);
       }
       return result;
@@ -650,7 +649,6 @@ function App() {
     onUserPromptSubmit(buildPresenceDeps());
     const nextLevel = getPresenceState().level;
     setPresenceLevelState(nextLevel);
-    syncPresenceLevelStyles(nextLevel);
     emitPresenceLevelChanged(nextLevel);
   }, []);
 
@@ -659,8 +657,8 @@ function App() {
   }, [appLanguage]);
 
   useEffect(() => {
-    syncPresenceLevelStyles(presenceLevel);
-  }, [presenceLevel]);
+    syncPresenceLevelStyles(getPresenceState().level);
+  }, []);
 
   // ── Runtime stack (HMR-surviving singleton) ─────────────────
 
