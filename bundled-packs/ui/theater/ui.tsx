@@ -15,6 +15,8 @@ const theater: UiPackDefinition = {
     chrome: { visible: false },
     // terminal が見えないのでタブ切替は無意味 → タブインジケータも隠す。
     tabIndicator: { visible: false },
+    // chrome を上へ引っ込めてからステージを全画面に開くアニメーション（逆順で閉じる）。
+    transition: { kind: "stage" },
   },
   mount(_ctx, _container): Disposable {
     return { dispose() {} };

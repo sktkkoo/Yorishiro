@@ -167,6 +167,10 @@ import {
 import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
+import {
+  playStageTransition,
+  type StageSurfaces,
+} from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
 import {
@@ -1965,6 +1969,26 @@ function App() {
         return targets ? [targets] : [];
       });
 
+    // stage 遷移（chrome 引っ込み → ステージ全画面）で動かす surface 群。
+    const getStageSurfaces = (): StageSurfaces | null => {
+      const reg = getSurfaceRegistry();
+      const shell = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
+      const character =
+        reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
+      const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
+      if (!shell || !character || !chrome) return null;
+      return { shell, character, chrome };
+    };
+
+    const playStage = (direction: "open" | "close") => {
+      const surfaces = getStageSurfaces();
+      if (!surfaces) return;
+      void playStageTransition(direction, surfaces, {
+        tweenManager: getThreeRuntime().getTweenManager(),
+        viewportWidth: () => window.innerWidth,
+      });
+    };
+
     const refitActiveTerminal = () => {
       getTerminalRuntime(tabManager.getState().activeSessionId).refit();
     };
@@ -2391,6 +2415,8 @@ function App() {
     };
 
     const activateEntry = (entry: UiPackEntry | null) => {
+      // 前の layout を捕捉してから cleanup（deactivate 時の閉じアニメ判定に使う）。
+      const prevLayout = currentLayout;
       // 前の UI pack を cleanup
       if (currentAbort) currentAbort.abort();
       currentAbort = null;
@@ -2405,7 +2431,12 @@ function App() {
       claimState.releaseAll();
       setSceneLayerOverrides([]);
 
-      if (!entry) return;
+      if (!entry) {
+        // 前 pack が stage 遷移なら、reset 後の素の状態から「閉じアニメ」を再生する
+        // （resetLayout で end-state を一旦 clear → playStage("close") が反対端へ override して tween）。
+        if (prevLayout?.transition?.kind === "stage") playStage("close");
+        return;
+      }
 
       const targets = applyLayoutForAllTerminals(entry.pack.layout);
       currentLayout = entry.pack.layout;
@@ -2418,6 +2449,11 @@ function App() {
         return;
       }
       refitActiveTerminal();
+
+      // stage 遷移を宣言した pack（theater 等）は、applyLayout が置いた end-state を
+      // 反対端へ override して「開きアニメ」を再生する（snap でなく Tween）。
+      if (entry.pack.layout.transition?.kind === "stage") playStage("open");
+
       const container = document.createElement("div");
       container.className = "ui-pack-container";
       container.style.position = "fixed";

@@ -33,6 +33,9 @@ const MANAGED_STYLE_KEYS = [
   "top",
   "left",
   "height",
+  // applyLayout は transform を書かないが、stage 遷移（ui-pack-transition）が chrome に
+  // translateY を残すことがあるため、deactivate 時の reset で確実に clear する。
+  "transform",
 ] as const;
 
 export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {

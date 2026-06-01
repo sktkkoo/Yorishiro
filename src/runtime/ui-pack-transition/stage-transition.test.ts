@@ -1,0 +1,86 @@
+import { describe, expect, it, vi } from "vitest";
+import type { TweenManager } from "../../core/tween/tween-manager";
+import { playStageTransition, type StageSurfaces } from "./stage-transition";
+
+interface StubStyle {
+  [key: string]: string;
+  width: string;
+  minWidth: string;
+  display: string;
+  transform: string;
+}
+
+const stubStyle = (): StubStyle =>
+  ({ width: "", minWidth: "", display: "", transform: "" }) as StubStyle;
+
+const stubEl = () => ({ style: stubStyle() }) as unknown as HTMLElement;
+
+const makeSurfaces = (): StageSurfaces => ({
+  shell: stubEl(),
+  character: stubEl(),
+  chrome: stubEl(),
+});
+
+/** start() で setter(to) を即時適用し、completion を即 resolve する mock。呼び出し順を記録。 */
+function makeTweenManager(): {
+  tm: TweenManager;
+  calls: { key: string; from: number; to: number }[];
+} {
+  const calls: { key: string; from: number; to: number }[] = [];
+  const tm = {
+    start: vi.fn(
+      (
+        key: string,
+        to: number,
+        _ms: number,
+        setter: (v: number) => void,
+        opts: { from: number },
+      ) => {
+        calls.push({ key, from: opts.from, to });
+        setter(to);
+        return { cancel: vi.fn(), completion: Promise.resolve() };
+      },
+    ),
+    cancel: vi.fn(),
+  } as unknown as TweenManager;
+  return { tm, calls };
+}
+
+describe("playStageTransition", () => {
+  it("open: chrome を上げてから shell/character を 100vw に広げ、最終状態にする", async () => {
+    const surfaces = makeSurfaces();
+    const { tm, calls } = makeTweenManager();
+
+    await playStageTransition("open", surfaces, { tweenManager: tm, viewportWidth: () => 1000 });
+
+    // 順序: chrome → shell/char
+    const chromeIdx = calls.findIndex((c) => c.key === "stage.chrome");
+    const shellIdx = calls.findIndex((c) => c.key === "stage.shell");
+    expect(chromeIdx).toBeGreaterThanOrEqual(0);
+    expect(shellIdx).toBeGreaterThan(chromeIdx);
+    expect(calls.some((c) => c.key === "stage.char")).toBe(true);
+
+    // 最終状態: 全画面 + chrome は隠れる
+    expect(surfaces.shell.style.width).toBe("100vw");
+    expect(surfaces.character.style.width).toBe("100vw");
+    expect(surfaces.chrome.style.display).toBe("none");
+  });
+
+  it("close: shell/character を畳んでから chrome を下ろし、inline を戻す", async () => {
+    const surfaces = makeSurfaces();
+    const { tm, calls } = makeTweenManager();
+
+    await playStageTransition("close", surfaces, { tweenManager: tm, viewportWidth: () => 1000 });
+
+    // 順序: width → chrome
+    const shellIdx = calls.findIndex((c) => c.key === "stage.shell");
+    const chromeIdx = calls.findIndex((c) => c.key === "stage.chrome");
+    expect(shellIdx).toBeGreaterThanOrEqual(0);
+    expect(chromeIdx).toBeGreaterThan(shellIdx);
+
+    // 最終: inline width をクリア（CSS へ返す）、chrome transform クリア
+    expect(surfaces.shell.style.width).toBe("");
+    expect(surfaces.character.style.width).toBe("");
+    expect(surfaces.chrome.style.transform).toBe("");
+  });
+});

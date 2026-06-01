@@ -71,6 +71,10 @@ export interface UiLayout {
     /** false にするとタブインジケータ（セッション切替の pill）を非表示。terminal が見えない全画面モード（theater 等）でタブ切替が無意味なときに使う */
     readonly visible?: boolean;
   };
+  readonly transition?: {
+    /** "stage" = chrome 行が上へ引っ込み → shell/character が全画面へ開く（閉じるときは逆順）アニメーション。theater 等の fullscreen pack 用。presence と同じ TweenManager で駆動 */
+    readonly kind: "stage";
+  };
   /**
    * AI の存在強度 / `ui.sidebar.set` 相当の mutation がどの surface を動かすかの宣言。
    *
