@@ -13,6 +13,8 @@ const theater: UiPackDefinition = {
     sidebar: { width: "fullscreen" },
     terminal: { position: "hidden" },
     chrome: { visible: false },
+    // terminal が見えないのでタブ切替は無意味 → タブインジケータも隠す。
+    tabIndicator: { visible: false },
   },
   mount(_ctx, _container): Disposable {
     return { dispose() {} };

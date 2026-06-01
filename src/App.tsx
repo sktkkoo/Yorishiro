@@ -1934,12 +1934,15 @@ function App() {
       // "chrome" surface は Sidebar が自己登録する（P3）。未登録時は DOM class ".sidebar" にフォールバック
       const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
       if (!sidebar || !character || !chrome) return null;
+      // tab-indicator は常時存在するとは限らない（タブ未描画時）ので optional。
+      const tabIndicator = document.querySelector<HTMLElement>(".tab-indicator") ?? undefined;
       return {
         root: document.documentElement,
         terminal,
         sidebar,
         character,
         chrome,
+        tabIndicator,
       };
     };
 

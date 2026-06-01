@@ -38,6 +38,7 @@ const makeTargets = (): LayoutTargets => ({
   sidebar: makeStubElement(),
   character: makeStubElement(),
   chrome: makeStubElement(),
+  tabIndicator: makeStubElement(),
 });
 
 describe("applyLayout", () => {
@@ -124,6 +125,54 @@ describe("applyLayout", () => {
     const targets = makeTargets();
     applyLayout({ character: { visible: false } }, targets);
     expect(targets.character.style.display).toBe("none");
+  });
+
+  it("sidebar fullscreen で character 描画域も 100vw に広げる", () => {
+    // .charactor-container は通常 280px 固定（presence tween 中の VRM reflow 防止）。
+    // stage を fullscreen にするときは canvas/camera を全画面に追従させる。
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen" } }, targets);
+    expect(targets.character.style.width).toBe("100vw");
+    expect(targets.character.style.minWidth).toBe("100vw");
+  });
+
+  it("sidebar fullscreen 以外では character 幅を触らない", () => {
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: 400 } }, targets);
+    expect(targets.character.style.width).toBe("");
+    expect(targets.character.style.minWidth).toBe("");
+  });
+});
+
+describe("applyLayout tabIndicator", () => {
+  it("tabIndicator.visible:false で tab-indicator を display:none", () => {
+    const targets = makeTargets();
+    applyLayout({ tabIndicator: { visible: false } }, targets);
+    expect(targets.tabIndicator?.style.display).toBe("none");
+  });
+
+  it("tabIndicator 未指定では tab-indicator を触らない", () => {
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen" } }, targets);
+    expect(targets.tabIndicator?.style.display).toBe("");
+  });
+
+  it("tabIndicator target が無くても throw しない", () => {
+    const targets: LayoutTargets = {
+      root: makeStubElement(),
+      terminal: makeStubElement(),
+      sidebar: makeStubElement(),
+      character: makeStubElement(),
+      chrome: makeStubElement(),
+    };
+    expect(() => applyLayout({ tabIndicator: { visible: false } }, targets)).not.toThrow();
+  });
+
+  it("resetLayout は tab-indicator の display を空に戻す", () => {
+    const targets = makeTargets();
+    applyLayout({ tabIndicator: { visible: false } }, targets);
+    resetLayout(targets);
+    expect(targets.tabIndicator?.style.display).toBe("");
   });
 });
 

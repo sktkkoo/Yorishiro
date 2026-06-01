@@ -67,6 +67,10 @@ export interface UiLayout {
     /** false にすると chrome 行（folder/gear, .sidebar）を非表示。"キャラだけ全画面" 等に使う */
     readonly visible?: boolean;
   };
+  readonly tabIndicator?: {
+    /** false にするとタブインジケータ（セッション切替の pill）を非表示。terminal が見えない全画面モード（theater 等）でタブ切替が無意味なときに使う */
+    readonly visible?: boolean;
+  };
   /**
    * AI の存在強度 / `ui.sidebar.set` 相当の mutation がどの surface を動かすかの宣言。
    *
