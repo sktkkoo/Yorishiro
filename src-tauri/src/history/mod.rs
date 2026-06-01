@@ -149,6 +149,12 @@ pub(crate) fn snapshot_create_impl(
     Ok(seq)
 }
 
+pub(crate) fn snapshot_list_impl(home_root: &Path) -> Result<Vec<SnapshotEntry>, String> {
+    let mut snaps = read_index(home_root)?.snapshots;
+    snaps.sort_by(|a, b| b.seq.cmp(&a.seq));
+    Ok(snaps)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,6 +232,24 @@ mod tests {
         let idx = read_index(&home).unwrap();
         assert_eq!(idx.snapshots.len(), 1);
         assert_eq!(idx.snapshots[0].trigger, "manual");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn snapshot_list_returns_desc_by_seq() {
+        let home = tmp_home("snap-list");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+
+        snapshot_create_impl(&home, "a", None).unwrap();
+        snapshot_create_impl(&home, "b", Some("labelled")).unwrap();
+
+        let list = snapshot_list_impl(&home).unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].seq, 2);
+        assert_eq!(list[0].label.as_deref(), Some("labelled"));
+        assert_eq!(list[1].seq, 1);
 
         let _ = fs::remove_dir_all(&home);
     }
