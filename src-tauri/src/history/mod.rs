@@ -2,6 +2,8 @@
 //! known-good 自動判定・content-addressed は P4。ここは素朴な timeline undo。
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 
 const HISTORY_DIRNAME: &str = ".history";
@@ -155,6 +157,218 @@ pub(crate) fn snapshot_list_impl(home_root: &Path) -> Result<Vec<SnapshotEntry>,
     Ok(snaps)
 }
 
+fn remove_path(p: &Path) -> Result<(), String> {
+    match std::fs::symlink_metadata(p) {
+        Ok(meta) if meta.file_type().is_dir() && !meta.file_type().is_symlink() => {
+            std::fs::remove_dir_all(p).map_err(|e| format!("rmdir {}: {}", p.display(), e))
+        }
+        Ok(_) => std::fs::remove_file(p).map_err(|e| format!("rm {}: {}", p.display(), e)),
+        Err(ref e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("metadata {}: {}", p.display(), e)),
+    }
+}
+
+fn path_is_file_like(p: &Path) -> bool {
+    std::fs::symlink_metadata(p)
+        .map(|meta| !meta.file_type().is_dir() || meta.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+fn path_is_real_dir(p: &Path) -> bool {
+    std::fs::symlink_metadata(p)
+        .map(|meta| meta.file_type().is_dir() && !meta.file_type().is_symlink())
+        .unwrap_or(false)
+}
+
+/// 単一ファイルを atomic（同一 dir の .tmp→rename）で配置する。
+fn atomic_copy_file(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {}", e))?;
+    }
+    let file_name = dst
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("restore");
+    let tmp = dst.with_file_name(format!(".{}.resttmp", file_name));
+    let _ = remove_path(&tmp);
+    std::fs::copy(src, &tmp).map_err(|e| format!("copy {}: {}", src.display(), e))?;
+    if let Err(e) = std::fs::rename(&tmp, dst) {
+        let _ = remove_path(&tmp);
+        return Err(format!("rename {}: {}", dst.display(), e));
+    }
+    Ok(())
+}
+
+/// src 配下の全相対 file path を収集する。
+fn collect_rel_files(base: &Path, cur: &Path, out: &mut BTreeSet<PathBuf>) -> Result<(), String> {
+    for entry in std::fs::read_dir(cur).map_err(|e| format!("read_dir {}: {}", cur.display(), e))? {
+        let entry = entry.map_err(|e| format!("entry: {}", e))?;
+        let path = entry.path();
+        let ty = entry.file_type().map_err(|e| format!("file_type: {}", e))?;
+        if ty.is_dir() {
+            collect_rel_files(base, &path, out)?;
+        } else {
+            let rel = path
+                .strip_prefix(base)
+                .map_err(|e| format!("strip: {}", e))?;
+            out.insert(rel.to_path_buf());
+        }
+    }
+    Ok(())
+}
+
+/// root から target の親までを浅い順に検査し、file 化した ancestor を削除する。
+fn clear_conflicting_ancestors(root: &Path, target: &Path) -> Result<(), String> {
+    let rel = match target.strip_prefix(root) {
+        Ok(rel) => rel,
+        Err(_) => return Ok(()),
+    };
+    let comps: Vec<_> = rel.components().collect();
+    let mut cur = root.to_path_buf();
+    for comp in comps.iter().take(comps.len().saturating_sub(1)) {
+        cur = cur.join(comp.as_os_str());
+        if path_is_file_like(&cur) {
+            remove_path(&cur)?;
+        }
+    }
+    Ok(())
+}
+
+/// dst 配下の空 dir を再帰的に削除する（dst 自身は残す）。
+fn remove_empty_dirs(dst: &Path) -> Result<(), String> {
+    fn walk(dir: &Path, root: &Path) -> Result<(), String> {
+        let entries: Vec<_> = std::fs::read_dir(dir)
+            .map_err(|e| format!("read_dir {}: {}", dir.display(), e))?
+            .filter_map(|e| e.ok())
+            .collect();
+        for entry in &entries {
+            let path = entry.path();
+            if path_is_real_dir(&path) {
+                walk(&path, root)?;
+            }
+        }
+        if dir != root
+            && std::fs::read_dir(dir)
+                .map(|mut entries| entries.next().is_none())
+                .unwrap_or(false)
+        {
+            let _ = std::fs::remove_dir(dir);
+        }
+        Ok(())
+    }
+    if path_is_real_dir(dst) {
+        walk(dst, dst)?;
+    }
+    Ok(())
+}
+
+/// live dst を src と一致させる。src に無い live file は削除し、空 dir も掃除する。
+fn mirror_dir(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {}", dst.display(), e))?;
+
+    let mut src_files = BTreeSet::new();
+    collect_rel_files(src, src, &mut src_files)?;
+    for rel in &src_files {
+        let from = src.join(rel);
+        let to = dst.join(rel);
+        clear_conflicting_ancestors(dst, &to)?;
+        if path_is_real_dir(&to) {
+            remove_path(&to)?;
+        }
+        atomic_copy_file(&from, &to)?;
+    }
+
+    let mut dst_files = BTreeSet::new();
+    if path_is_real_dir(dst) {
+        collect_rel_files(dst, dst, &mut dst_files)?;
+    }
+    let mut extras: Vec<PathBuf> = dst_files.difference(&src_files).cloned().collect();
+    extras.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
+    for rel in extras {
+        remove_path(&dst.join(rel))?;
+    }
+    remove_empty_dirs(dst)?;
+    Ok(())
+}
+
+/// generation の scope entry を live に full-replace する。
+fn restore_scope_entry(gen_dir: &Path, charminal: &Path, rel: &str) -> Result<(), String> {
+    let src = gen_dir.join(rel);
+    let dst = charminal.join(rel);
+    clear_conflicting_ancestors(charminal, &dst)?;
+
+    if src.exists() {
+        if path_is_real_dir(&src) && path_is_file_like(&dst) {
+            remove_path(&dst)?;
+        }
+        if path_is_file_like(&src) && path_is_real_dir(&dst) {
+            remove_path(&dst)?;
+        }
+        if path_is_real_dir(&src) {
+            mirror_dir(&src, &dst)?;
+        } else {
+            atomic_copy_file(&src, &dst)?;
+        }
+    } else {
+        remove_path(&dst)?;
+    }
+    Ok(())
+}
+
+/// restore を許す相対 path か。allowlist：packs / packs/<...> / config.json / init.js のみ。
+fn is_restorable_rel(rel: &str) -> bool {
+    if rel.is_empty() {
+        return false;
+    }
+    let path = Path::new(rel);
+    if path.is_absolute() {
+        return false;
+    }
+    let comps: Vec<_> = path.components().collect();
+    if comps.is_empty()
+        || comps
+            .iter()
+            .any(|comp| !matches!(comp, Component::Normal(_)))
+    {
+        return false;
+    }
+
+    match comps[0] {
+        Component::Normal(seg) if seg == "config.json" || seg == "init.js" => comps.len() == 1,
+        Component::Normal(seg) if seg == "packs" => true,
+        _ => false,
+    }
+}
+
+pub(crate) fn snapshot_restore_impl(
+    home_root: &Path,
+    seq: u64,
+    paths: Option<Vec<String>>,
+) -> Result<(), String> {
+    let charminal = charminal_dir(home_root);
+    let gen_dir = history_root(home_root)
+        .join(GENERATIONS_DIR)
+        .join(gen_dirname(seq));
+    if !gen_dir.exists() {
+        return Err(format!("generation {} not found", seq));
+    }
+    let scope: Vec<String> = match paths {
+        Some(paths) if !paths.is_empty() => paths,
+        _ => SNAPSHOT_INCLUDES.iter().map(|s| s.to_string()).collect(),
+    };
+
+    // 破壊的 restore なので、scope 全体を検証してから live に触る。
+    for rel in &scope {
+        if !is_restorable_rel(rel) {
+            return Err(format!("restore path not allowed: {}", rel));
+        }
+    }
+    for rel in &scope {
+        restore_scope_entry(&gen_dir, &charminal, rel)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,6 +464,140 @@ mod tests {
         assert_eq!(list[0].seq, 2);
         assert_eq!(list[0].label.as_deref(), Some("labelled"));
         assert_eq!(list[1].seq, 1);
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_full_replace_removes_extra_pack() {
+        let home = tmp_home("restore-extra");
+        let charminal = home.join(".charminal");
+        fs::create_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("packs/foo/effect.js"), "v1").unwrap();
+        fs::write(charminal.join("config.json"), "{\"a\":1}").unwrap();
+
+        let seq = snapshot_create_impl(&home, "base", None).unwrap();
+
+        // snapshot 後に壊れた pack を追加し、既存も改変する。
+        fs::create_dir_all(charminal.join("packs/bad")).unwrap();
+        fs::write(charminal.join("packs/bad/effect.js"), "boom").unwrap();
+        fs::write(charminal.join("packs/foo/effect.js"), "v2-broken").unwrap();
+
+        snapshot_restore_impl(&home, seq, None).unwrap();
+
+        assert!(!charminal.join("packs/bad").exists());
+        assert_eq!(
+            fs::read_to_string(charminal.join("packs/foo/effect.js")).unwrap(),
+            "v1"
+        );
+        assert_eq!(
+            fs::read_to_string(charminal.join("config.json")).unwrap(),
+            "{\"a\":1}"
+        );
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_resolves_path_type_conflict() {
+        let home = tmp_home("restore-conflict");
+        let charminal = home.join(".charminal");
+        // snapshot 時: effect.js は file。
+        fs::create_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("packs/foo/effect.js"), "real").unwrap();
+        let seq = snapshot_create_impl(&home, "base", None).unwrap();
+
+        // 外部直編集で effect.js が directory になってしまった。
+        fs::remove_file(charminal.join("packs/foo/effect.js")).unwrap();
+        fs::create_dir_all(charminal.join("packs/foo/effect.js")).unwrap();
+        fs::write(charminal.join("packs/foo/effect.js/inner"), "x").unwrap();
+
+        snapshot_restore_impl(&home, seq, None).unwrap();
+
+        let p = charminal.join("packs/foo/effect.js");
+        assert!(p.is_file());
+        assert_eq!(fs::read_to_string(&p).unwrap(), "real");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_resolves_nested_ancestor_conflict() {
+        let home = tmp_home("restore-nested-conflict");
+        let charminal = home.join(".charminal");
+        // snapshot 時: packs/foo/assets/a.png は file（packs/foo は dir）。
+        fs::create_dir_all(charminal.join("packs/foo/assets")).unwrap();
+        fs::write(charminal.join("packs/foo/assets/a.png"), "img").unwrap();
+        let seq = snapshot_create_impl(&home, "base", None).unwrap();
+
+        // 外部直編集で packs/foo を file にしてしまった（上位 ancestor が file）。
+        fs::remove_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("packs/foo"), "oops-file").unwrap();
+
+        snapshot_restore_impl(&home, seq, None).unwrap();
+
+        assert!(charminal.join("packs/foo").is_dir());
+        assert_eq!(
+            fs::read_to_string(charminal.join("packs/foo/assets/a.png")).unwrap(),
+            "img"
+        );
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_partial_scope_only_touches_given_path() {
+        let home = tmp_home("restore-partial");
+        let charminal = home.join(".charminal");
+        fs::create_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("packs/foo/effect.js"), "v1").unwrap();
+        fs::write(charminal.join("config.json"), "orig").unwrap();
+        let seq = snapshot_create_impl(&home, "base", None).unwrap();
+
+        fs::write(charminal.join("packs/foo/effect.js"), "v2").unwrap();
+        fs::write(charminal.join("config.json"), "changed").unwrap();
+
+        // packs だけ restore。config は触らない。
+        snapshot_restore_impl(&home, seq, Some(vec!["packs".to_string()])).unwrap();
+
+        assert_eq!(
+            fs::read_to_string(charminal.join("packs/foo/effect.js")).unwrap(),
+            "v1"
+        );
+        assert_eq!(
+            fs::read_to_string(charminal.join("config.json")).unwrap(),
+            "changed"
+        );
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_rejects_disallowed_paths() {
+        let home = tmp_home("restore-guard");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+        // 対象外 path を確実に live に置く（消されないことを確認するため）。
+        fs::create_dir_all(charminal.join("journal")).unwrap();
+        fs::write(charminal.join("journal/memo.md"), "keep").unwrap();
+        let seq = snapshot_create_impl(&home, "base", None).unwrap();
+
+        for bad in [
+            ".history",
+            ".staging",
+            "tmp",
+            "journal",
+            "memories.md",
+            "sdk.d.ts",
+            "last-startup.json",
+            "..",
+            "/etc",
+        ] {
+            let r = snapshot_restore_impl(&home, seq, Some(vec![bad.to_string()]));
+            assert!(r.is_err(), "should reject {}", bad);
+        }
+        // journal は無傷。
+        assert!(charminal.join("journal/memo.md").exists());
 
         let _ = fs::remove_dir_all(&home);
     }
