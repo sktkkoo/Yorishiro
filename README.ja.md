@@ -29,7 +29,7 @@ Charminal は、ターミナルの中で動く AI に身体を与えるデスク
 Charminal はユーザーのローカル環境にインストールされた Claude Code または Codex をターミナル上で自動起動する仕組みです。そのため：
 
 - **事前に [Claude Code](https://docs.anthropic.com/en/docs/claude-code) または [Codex](https://github.com/openai/codex) の環境構築が必要です**
-- Charminal が API キーを要求することはありません。代わりに、ユーザー環境で認証済みの terminal agent をそのまま使います
+- Charminal が API キーを要求・保存・直接利用することはありません。ユーザー環境で認証済みの terminal agent をそのまま起動します。そのため、Claude Code / Codex 側でログイン済み、または API キー等が設定済みの場合、その agent が通常どおり外部 API を利用する可能性があります
 
 ### インストール（macOS）
 

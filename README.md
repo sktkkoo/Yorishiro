@@ -29,7 +29,7 @@ Much of Charminal's own development has been done as a collaboration with the AI
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
 
 - **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
-- Charminal never asks for API keys. Instead, it uses the terminal agent already authenticated on your machine
+- Charminal never asks for, stores, or directly uses API keys. It launches the terminal agent already authenticated in your environment; if Claude Code or Codex is logged in or configured with API credentials, that agent may use its normal external APIs after launch
 
 ### Install (macOS)
 
