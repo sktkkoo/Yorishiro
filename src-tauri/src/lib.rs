@@ -764,6 +764,16 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     if let Err(e) = sessions::ensure_shell_files(&home) {
         eprintln!("[ensure_charminal_dirs] shell integration files: {}", e);
     }
+
+    // 起動時 baseline snapshot（once-per-process）。spec §0。失敗しても起動は止めない。
+    static BASELINE_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !BASELINE_DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        if let Ok(home_root) = home_dir_or_err() {
+            if let Err(e) = history::snapshot_create_impl(&home_root, "startup-baseline", None) {
+                eprintln!("[history] baseline snapshot failed: {}", e);
+            }
+        }
+    }
     Ok(())
 }
 
