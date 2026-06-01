@@ -52,6 +52,7 @@ export interface LoadUserLayerDeps {
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
   readonly tweenManager?: TweenManager;
+  readonly onInitChanged?: () => void;
 }
 
 export interface LoadUserLayerResult {
@@ -163,6 +164,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     personaDefaults: deps.personaDefaults,
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
+    onInitChanged: deps.onInitChanged,
   });
 
   return { packs, init, watcher, safeMode };

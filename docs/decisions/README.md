@@ -88,6 +88,7 @@
 - [**scene-controls-api.md**](scene-controls-api.md) — Scene Pack の lighting / post effect / camera modulation は `useCharminalControls`（`@charminal/sdk/controls`）経由で Scene panel に登録、base camera は Common panel。F2 は Common / Scene の 2 枚。Leva は adapter / debug UI に留める
 - [**scene-layer-override-semantics.md**](scene-layer-override-semantics.md) — Scene が layer 構造を握る、override は既存 layer への patch のみ（auto-create 廃止）。scene 切替で override は clear（共通管理 Camera のみ持ち越し）
 - [**user-init-script-seed.md**](user-init-script-seed.md) — `~/.charminal/init.js` は初回だけ雛形を seed、既存 file は touch しない。app bundle 内設置は採らない
+- [**init-js-hot-reload.md**](init-js-hot-reload.md) — init.js は pack と違い hot reload しない、明示 reload 契約（Cmd/Ctrl+R）を踏襲。v1 は変更検知の UX 改善のみ。in-place auto-capture は downstream 誤捕捉 + top-level 取りこぼしで却下
 - [**explicit-over-implicit-ugc.md**](explicit-over-implicit-ugc.md) — Agentic UGC 前提では implicit な便利さより explicit な予測可能性
 - *UI pack（5 つ目の pack kind）は Plan 3 完了まで shape が変わるため、この topic-indexed index には未 promote*
 

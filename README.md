@@ -29,7 +29,7 @@ Much of Charminal's own development has been done as a collaboration with the AI
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
 
 - **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
-- Charminal never asks for API keys. Instead, it uses the terminal agent already authenticated on your machine
+- Charminal never asks for, stores, or directly uses API keys. It launches the terminal agent already authenticated in your environment; if Claude Code or Codex is logged in or configured with API credentials, that agent may use its normal external APIs after launch
 
 ### Install (macOS)
 
@@ -185,7 +185,7 @@ What works today:
 
 ## Experimental
 
-Claude Code is the primary, fully-supported agent. Codex and OpenCode are available as **experimental** alternatives — they are also marked *(experimental)* in the in-app Agent switcher (Settings). Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
+Claude Code is the primary, fully-supported agent. Codex is available as an **experimental** alternative — it is also marked *(experimental)* in the in-app Agent switcher (Settings). Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
 
 ### Codex support (experimental)
 
@@ -197,25 +197,13 @@ Claude Code is the primary, fully-supported agent. Codex and OpenCode are availa
 }
 ```
 
-Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Charminal reminders are prompt-based on Codex/OpenCode instead of Claude `UserPromptSubmit` hook output.
-
-### OpenCode support (experimental)
-
-[OpenCode](https://github.com/sst/opencode) can be used as the terminal agent (multi-provider: Anthropic / OpenAI / Google / Ollama, etc.). Switch via `~/.charminal/config.json`:
-
-```json
-{
-  "terminalAgent": "opencode"
-}
-```
-
-Auto-launch, persona prompt overlay, Charminal MCP access, `/charm-*` commands, and TUI theme bridge work. Known limitations: no session resume yet, the Charminal session replaces (not merges) project-local `opencode.json`, and Unicode rendering quality depends on OpenCode's own TUI (OpenCode v1.0+ recommended). See the decision doc for details.
+Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Charminal reminders are prompt-based on Codex instead of Claude `UserPromptSubmit` hook output.
 
 ---
 
 ## Contributing
 
-This is a personal project in active development. Issues and discussions are welcome. **Pull requests are not accepted at this time.**
+Issues and discussions are welcome. **Pull requests are not accepted at this time.**
 
 For security reporting, see [SECURITY.md](SECURITY.md).
 

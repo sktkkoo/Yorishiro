@@ -83,7 +83,7 @@ Changing language from the settings screen updates UI labels and bundled persona
 
 `~/.charminal/packs/` 以下の pack ファイルは hot reload に対応しており、保存するだけでアプリを再起動せずに反映される。
 
-ただし `init.js` など初期化時に一度だけ読まれるファイルは hot reload の対象外。変更後は Ctrl+R（Reload）で明示的に再読み込みする。hot reload がうまく効かない場合も Ctrl+R で確実に反映できる。
+ただし `init.js` など初期化時に一度だけ読まれるファイルは hot reload の対象外。変更後は Ctrl+R（Reload）で明示的に再読み込みする。`init.js` を変更すると window title に `— init.js changed (⌘R)` が表示される。hot reload がうまく効かない場合も Ctrl+R で確実に反映できる。
 
 ## Terminal Agent
 
