@@ -283,7 +283,7 @@ fn mirror_dir(src: &Path, dst: &Path) -> Result<(), String> {
         collect_rel_files(dst, dst, &mut dst_files)?;
     }
     let mut extras: Vec<PathBuf> = dst_files.difference(&src_files).cloned().collect();
-    extras.sort_by(|a, b| b.components().count().cmp(&a.components().count()));
+    extras.sort_by_key(|rel| std::cmp::Reverse(rel.components().count()));
     for rel in extras {
         remove_path(&dst.join(rel))?;
     }
