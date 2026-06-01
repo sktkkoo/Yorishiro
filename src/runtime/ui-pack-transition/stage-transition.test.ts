@@ -7,11 +7,11 @@ interface StubStyle {
   width: string;
   minWidth: string;
   display: string;
-  transform: string;
+  marginTop: string;
 }
 
 const stubStyle = (): StubStyle =>
-  ({ width: "", minWidth: "", display: "", transform: "" }) as StubStyle;
+  ({ width: "", minWidth: "", display: "", marginTop: "" }) as StubStyle;
 
 const stubEl = () => ({ style: stubStyle() }) as unknown as HTMLElement;
 
@@ -78,9 +78,9 @@ describe("playStageTransition", () => {
     expect(shellIdx).toBeGreaterThanOrEqual(0);
     expect(chromeIdx).toBeGreaterThan(shellIdx);
 
-    // 最終: inline width をクリア（CSS へ返す）、chrome transform クリア
+    // 最終: inline width をクリア（CSS へ返す）、chrome marginTop クリア
     expect(surfaces.shell.style.width).toBe("");
     expect(surfaces.character.style.width).toBe("");
-    expect(surfaces.chrome.style.transform).toBe("");
+    expect(surfaces.chrome.style.marginTop).toBe("");
   });
 });

@@ -34,9 +34,9 @@ export interface StageTransitionDeps {
 /** 畳んだ状態の幅。App.css の --sidebar-width / --sidebar-content-width 初期値に一致。 */
 const COLLAPSED_WIDTH_PX = 280;
 /** chrome の上下スライド時間（感触値、帰納調整）。 */
-const CHROME_MS = 260;
+const CHROME_MS = 1000;
 /** shell/character の開閉時間（感触値、帰納調整）。 */
-const WIDTH_MS = 420;
+const WIDTH_MS = 2500;
 
 /**
  * 連続 toggle 時に in-flight な遷移の完了 callback が最終状態を上書きしないための世代 token。
@@ -78,23 +78,27 @@ export async function playStageTransition(
     surfaces.character.style.width = `${w}px`;
     surfaces.character.style.minWidth = `${w}px`;
   };
-  const setChromeY = (pct: number) => {
-    surfaces.chrome.style.transform = `translateY(${pct}%)`;
+  // chrome を marginTop で上へ動かす。負の marginTop は「上へスライド」＋「占有スペースを
+  // 畳む」を同時に満たすため、下の character が retract に合わせて上へ詰める（要望 B）。
+  const setChromeMargin = (px: number) => {
+    surfaces.chrome.style.marginTop = `${px}px`;
   };
 
   if (direction === "open") {
     // applyLayout は chrome を display:none・shell/char を 100vw にしている。
     // start 値へ上書き（同一 sync block 内なので paint 前、ちらつかない）。
     surfaces.chrome.style.display = "";
-    setChromeY(0);
+    surfaces.chrome.style.marginTop = "0px";
+    // 退避量＝chrome の現在高さ（display 復帰後に測れる）。
+    const chromeH = surfaces.chrome.offsetHeight || 0;
     setShell(COLLAPSED_WIDTH_PX);
     setChar(COLLAPSED_WIDTH_PX);
 
-    // ① chrome を上へ引っ込める
-    await tweenTo(tm, "stage.chrome", 0, -100, CHROME_MS, setChromeY);
+    // ① chrome を上へ引っ込め、占有スペースごと畳む（character が上に詰める）
+    await tweenTo(tm, "stage.chrome", 0, -chromeH, CHROME_MS, setChromeMargin);
     if (!isCurrent()) return;
     surfaces.chrome.style.display = "none";
-    surfaces.chrome.style.transform = "";
+    surfaces.chrome.style.marginTop = "";
 
     // ② shell/character を全画面へ
     await Promise.all([
@@ -110,11 +114,14 @@ export async function playStageTransition(
     return;
   }
 
-  // close — resetLayout が inline を clear 済み（shell/char は CSS 280px、chrome は display:"" / transform なし）。
-  // end-state へ上書きしてから start へ tween。
+  // close — resetLayout が inline を clear 済み（shell/char は CSS 280px、chrome は
+  // display:"" / marginTop なし）。end-state へ上書きしてから start へ tween。
   setShell(vw);
   setChar(vw);
-  surfaces.chrome.style.display = "none";
+  // chrome を可視化して退避量を測り、畳んだ（上へ退避した）状態から開始する。
+  surfaces.chrome.style.display = "";
+  const chromeH = surfaces.chrome.offsetHeight || 0;
+  setChromeMargin(-chromeH);
 
   // ① shell/character を畳む
   await Promise.all([
@@ -128,10 +135,8 @@ export async function playStageTransition(
   surfaces.character.style.width = "";
   surfaces.character.style.minWidth = "";
 
-  // ② chrome を下ろす
-  surfaces.chrome.style.display = "";
-  setChromeY(-100);
-  await tweenTo(tm, "stage.chrome", -100, 0, CHROME_MS, setChromeY);
+  // ② chrome を下ろす（占有スペースが戻り、character が下がる）
+  await tweenTo(tm, "stage.chrome", -chromeH, 0, CHROME_MS, setChromeMargin);
   if (!isCurrent()) return;
-  surfaces.chrome.style.transform = "";
+  surfaces.chrome.style.marginTop = "";
 }

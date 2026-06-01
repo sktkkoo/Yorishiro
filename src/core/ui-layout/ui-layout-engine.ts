@@ -33,8 +33,9 @@ const MANAGED_STYLE_KEYS = [
   "top",
   "left",
   "height",
-  // applyLayout は transform を書かないが、stage 遷移（ui-pack-transition）が chrome に
-  // translateY を残すことがあるため、deactivate 時の reset で確実に clear する。
+  // applyLayout は書かないが、stage 遷移（ui-pack-transition）が chrome に marginTop
+  // （占有スペースを畳む退避）や transform を残しうるため、deactivate 時の reset で clear する。
+  "marginTop",
   "transform",
 ] as const;
 
