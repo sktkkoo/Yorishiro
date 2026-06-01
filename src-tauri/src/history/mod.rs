@@ -75,6 +75,80 @@ pub(crate) fn next_seq(index: &HistoryIndex) -> u64 {
     index.snapshots.iter().map(|s| s.seq).max().unwrap_or(0) + 1
 }
 
+fn gen_dirname(seq: u64) -> String {
+    format!("{:06}", seq)
+}
+
+/// dir を再帰コピー（per-file）。walkdir 不使用。
+fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {}", dst.display(), e))?;
+    for entry in std::fs::read_dir(src).map_err(|e| format!("read_dir {}: {}", src.display(), e))? {
+        let entry = entry.map_err(|e| format!("dir entry: {}", e))?;
+        let ty = entry.file_type().map_err(|e| format!("file_type: {}", e))?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to).map_err(|e| format!("copy {}: {}", from.display(), e))?;
+        }
+    }
+    Ok(())
+}
+
+/// live ~/.charminal の SNAPSHOT_INCLUDES を generations/<seq>/ に full copy し、index に追記。
+pub(crate) fn snapshot_create_impl(
+    home_root: &Path,
+    trigger: &str,
+    label: Option<&str>,
+) -> Result<u64, String> {
+    let charminal = charminal_dir(home_root);
+    let mut index = read_index(home_root)?;
+    let seq = next_seq(&index);
+
+    // partial generation を残さない：<seq>.tmp にコピーし、成功後だけ可視化する。
+    let gens_root = history_root(home_root).join(GENERATIONS_DIR);
+    let final_dir = gens_root.join(gen_dirname(seq));
+    let tmp_dir = gens_root.join(format!("{}.tmp", gen_dirname(seq)));
+    let _ = std::fs::remove_dir_all(&tmp_dir);
+    std::fs::create_dir_all(&tmp_dir).map_err(|e| format!("mkdir gen tmp: {}", e))?;
+
+    let copy_result: Result<(), String> = (|| {
+        for rel in SNAPSHOT_INCLUDES {
+            let src = charminal.join(rel);
+            if !src.exists() {
+                continue;
+            }
+            let dst = tmp_dir.join(rel);
+            if src.is_dir() {
+                copy_dir_all(&src, &dst)?;
+            } else {
+                if let Some(parent) = dst.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| format!("mkdir parent: {}", e))?;
+                }
+                std::fs::copy(&src, &dst).map_err(|e| format!("copy {}: {}", src.display(), e))?;
+            }
+        }
+        Ok(())
+    })();
+    if let Err(e) = copy_result {
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+        return Err(e);
+    }
+
+    let _ = std::fs::remove_dir_all(&final_dir);
+    std::fs::rename(&tmp_dir, &final_dir).map_err(|e| format!("rename gen: {}", e))?;
+
+    index.snapshots.push(SnapshotEntry {
+        seq,
+        ts_ms: now_ms(),
+        trigger: trigger.to_string(),
+        label: label.map(|s| s.to_string()),
+    });
+    write_index(home_root, &index)?;
+    Ok(seq)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,6 +194,38 @@ mod tests {
         assert_eq!(reread.snapshots.len(), 1);
         assert_eq!(reread.snapshots[0].seq, 1);
         assert_eq!(next_seq(&reread), 2);
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn snapshot_create_copies_scope_and_excludes_journal() {
+        let home = tmp_home("snap-create");
+        let charminal = home.join(".charminal");
+        // live tree を用意する。
+        fs::create_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("packs/foo/effect.js"), "export default {}").unwrap();
+        fs::write(charminal.join("config.json"), "{\"activeScene\":null}").unwrap();
+        fs::write(charminal.join("init.js"), "// init").unwrap();
+        // 対象外。
+        fs::create_dir_all(charminal.join("journal/daily")).unwrap();
+        fs::write(charminal.join("journal/daily/2026-06-02.md"), "secret").unwrap();
+        fs::write(charminal.join("last-startup.json"), "[]").unwrap();
+
+        let seq = snapshot_create_impl(&home, "manual", None).expect("snapshot");
+        assert_eq!(seq, 1);
+
+        let generation = charminal.join(".history/generations/000001");
+        assert!(generation.join("packs/foo/effect.js").exists());
+        assert!(generation.join("config.json").exists());
+        assert!(generation.join("init.js").exists());
+        // 対象外は含まれない。
+        assert!(!generation.join("journal").exists());
+        assert!(!generation.join("last-startup.json").exists());
+        // index に 1 件。
+        let idx = read_index(&home).unwrap();
+        assert_eq!(idx.snapshots.len(), 1);
+        assert_eq!(idx.snapshots[0].trigger, "manual");
 
         let _ = fs::remove_dir_all(&home);
     }
