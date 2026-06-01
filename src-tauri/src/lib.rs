@@ -1,3 +1,4 @@
+mod history;
 mod journal;
 mod mcp;
 mod pty;
