@@ -369,6 +369,23 @@ pub(crate) fn snapshot_restore_impl(
     Ok(())
 }
 
+/// seq の新しい順に keep_n 件だけ残し、古い generation dir と index entry を削除する。
+pub(crate) fn snapshot_prune_impl(home_root: &Path, keep_n: usize) -> Result<(), String> {
+    let mut index = read_index(home_root)?;
+    index.snapshots.sort_by(|a, b| b.seq.cmp(&a.seq));
+    if index.snapshots.len() <= keep_n {
+        return Ok(());
+    }
+
+    let gens_root = history_root(home_root).join(GENERATIONS_DIR);
+    let removed: Vec<SnapshotEntry> = index.snapshots.split_off(keep_n);
+    for entry in &removed {
+        let _ = std::fs::remove_dir_all(gens_root.join(gen_dirname(entry.seq)));
+    }
+    write_index(home_root, &index)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -598,6 +615,27 @@ mod tests {
         }
         // journal は無傷。
         assert!(charminal.join("journal/memo.md").exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn prune_keeps_last_n() {
+        let home = tmp_home("prune");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+        for _ in 0..5 {
+            snapshot_create_impl(&home, "x", None).unwrap();
+        }
+        snapshot_prune_impl(&home, 2).unwrap();
+
+        let list = snapshot_list_impl(&home).unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].seq, 5);
+        assert_eq!(list[1].seq, 4);
+        // 古い gen dir は消えている。
+        assert!(!charminal.join(".history/generations/000001").exists());
+        assert!(charminal.join(".history/generations/000005").exists());
 
         let _ = fs::remove_dir_all(&home);
     }
