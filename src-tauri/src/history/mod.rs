@@ -386,6 +386,30 @@ pub(crate) fn snapshot_prune_impl(home_root: &Path, keep_n: usize) -> Result<(),
     Ok(())
 }
 
+#[tauri::command]
+pub fn snapshot_create(trigger: String, label: Option<String>) -> Result<u64, String> {
+    let home = crate::home_dir_or_err()?;
+    snapshot_create_impl(&home, &trigger, label.as_deref())
+}
+
+#[tauri::command]
+pub fn snapshot_list() -> Result<Vec<SnapshotEntry>, String> {
+    let home = crate::home_dir_or_err()?;
+    snapshot_list_impl(&home)
+}
+
+#[tauri::command]
+pub fn snapshot_restore(seq: u64, paths: Option<Vec<String>>) -> Result<(), String> {
+    let home = crate::home_dir_or_err()?;
+    snapshot_restore_impl(&home, seq, paths)
+}
+
+#[tauri::command]
+pub fn snapshot_prune(keep_n: usize) -> Result<(), String> {
+    let home = crate::home_dir_or_err()?;
+    snapshot_prune_impl(&home, keep_n)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1262,7 +1262,11 @@ pub fn run() {
             mark_tutorial_done,
             tts::tts_speak,
             tts::tts_stop,
-            tts::tts_synthesize
+            tts::tts_synthesize,
+            history::snapshot_create,
+            history::snapshot_list,
+            history::snapshot_restore,
+            history::snapshot_prune
         ])
         .setup(|app| {
             if let Err(e) = pty::ensure_reminder_script() {
