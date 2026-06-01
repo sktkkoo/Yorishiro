@@ -1031,6 +1031,18 @@ fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
     }
 }
 
+/// path が ~/.charminal/{.history,.staging,tmp} 配下なら true（watcher で drop 対象）。
+pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(charminal_home) else {
+        return false;
+    };
+    matches!(
+        rel.components().next(),
+        Some(std::path::Component::Normal(seg))
+            if seg == ".history" || seg == ".staging" || seg == "tmp"
+    )
+}
+
 /// File の mtime を ms 単位で返す。読めない場合は 0（removed event の fallback）。
 fn path_mtime_ms(path: &Path) -> u64 {
     let Ok(metadata) = std::fs::metadata(path) else {
@@ -1154,6 +1166,10 @@ async fn watch_charminal_layer(
                 |canonical| canonical.starts_with(&canonical_home),
             );
             if !in_scope {
+                continue;
+            }
+            if is_history_internal_path(&home, &path) {
+                // snapshot store / staging / scratch の内部書き込みは TS に流さない。
                 continue;
             }
             let payload = CharminalLayerEvent {
@@ -1447,7 +1463,7 @@ mod user_pack_discovery_tests {
 #[cfg(test)]
 mod layer_scope_tests {
     use super::{
-        command_candidate_names, is_safe_mode_value, layer_event_label,
+        command_candidate_names, is_history_internal_path, is_safe_mode_value, layer_event_label,
         read_last_startup_report_impl, resolve_command_path_impl, stat_mtime_in_scope,
         write_charminal_file_atomic_impl,
     };
@@ -1565,6 +1581,34 @@ mod layer_scope_tests {
         assert_eq!(layer_event_label(&EventKind::Access(AccessKind::Any)), None,);
         assert_eq!(layer_event_label(&EventKind::Any), None);
         assert_eq!(layer_event_label(&EventKind::Other), None);
+    }
+
+    #[test]
+    fn history_paths_are_excluded_from_watch() {
+        let home = std::path::Path::new("/Users/x/.charminal");
+        assert!(is_history_internal_path(
+            home,
+            std::path::Path::new(
+                "/Users/x/.charminal/.history/generations/000001/packs/foo/effect.js"
+            )
+        ));
+        assert!(is_history_internal_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/.staging/foo/effect.js")
+        ));
+        assert!(is_history_internal_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/tmp/scratch")
+        ));
+        // 通常の pack は除外しない。
+        assert!(!is_history_internal_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/foo/effect.js")
+        ));
+        assert!(!is_history_internal_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/config.json")
+        ));
     }
 
     // ─── Phase 1-c: safe-mode / atomic write / load-report ────────
