@@ -22,6 +22,8 @@ export interface SnapshotEntry {
   readonly trigger: string;
   /** user / AI が付けた任意ラベル。 */
   readonly label?: string;
+  /** 直前 startup が clean だったかの advisory ラベル（startup-baseline のみ付く）。 */
+  readonly startup_clean?: boolean;
 }
 
 export interface HistoryAPI {
