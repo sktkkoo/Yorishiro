@@ -957,11 +957,13 @@ impl ServerHandler for Charminal {
                 "- 表情だけ変える → body_expression_set\n",
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
+                "- pack を壊した／戻したい → history_list で seq を確認 → history_restore（確認 UX を経て full-replace）。リスクのある編集前に history_snapshot で戻したい時点を残せる（known-good 判定はしない・素朴な timeline 点）\n",
                 "\n",
                 "## 重要ルール\n",
                 "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
                 "- bundled pack は不可変。disable_pack / enable_pack は user pack のみ\n",
                 "- scene_activate / ui_activate は runtime 限定。永続切替は config.json の activeScene / activeUI\n",
+                "- history_restore は破壊的（packs/config.json/init.js を完全置換）。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
                 "- journal は機械的ログではなく情緒的な思い出を書く\n",
             ))
     }
