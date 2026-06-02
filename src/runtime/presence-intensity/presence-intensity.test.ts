@@ -4,6 +4,7 @@ import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry/types";
 import type { PresenceIntensityDeps } from "./presence-intensity";
 import {
   _resetForTest,
+  type ApplyPresenceOptions,
   applyPresenceLevel,
   getPresenceSnapshot,
   getPresenceState,
@@ -90,6 +91,43 @@ describe("PresenceIntensity", () => {
     const lastCall = calls[calls.length - 1];
     expect(lastCall?.[0]).toBe("presence.sidebar.width");
     expect(lastCall?.[1]).toBe(280); // defaultWidth
+  });
+
+  it("immediate default は sidebar tween を使わず default 幅へ即時復帰する", () => {
+    const deps = createMockDeps({
+      getSidebarWidth: vi.fn(() => 0),
+    });
+    applyPresenceLevel("closed", "mcp", deps);
+    vi.mocked(deps.tweenManager.start).mockClear();
+    vi.mocked(deps.setSidebarWidth).mockClear();
+    vi.mocked(deps.setRenderPaused).mockClear();
+    vi.mocked(deps.ambientUiRegistry.enable).mockClear();
+
+    const options: ApplyPresenceOptions = { immediate: true };
+    applyPresenceLevel("default", "default", deps, options);
+
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(false);
+    expect(deps.tweenManager.cancel).toHaveBeenCalledWith("presence.sidebar.width");
+    expect(deps.tweenManager.start).not.toHaveBeenCalled();
+    expect(deps.setSidebarWidth).toHaveBeenCalledWith(280);
+    expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
+    expect(getPresenceState().level).toBe("default");
+  });
+
+  it("immediate default は同一 level でも sidebar と render を再同期する", () => {
+    const deps = createMockDeps({
+      getSidebarWidth: vi.fn(() => 0),
+    });
+    const options: ApplyPresenceOptions = { immediate: true };
+
+    applyPresenceLevel("default", "default", deps, options);
+
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(false);
+    expect(deps.tweenManager.cancel).toHaveBeenCalledWith("presence.sidebar.width");
+    expect(deps.tweenManager.start).not.toHaveBeenCalled();
+    expect(deps.setSidebarWidth).toHaveBeenCalledWith(280);
+    expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
+    expect(getPresenceState().level).toBe("default");
   });
 
   // -----------------------------------------------------------------------

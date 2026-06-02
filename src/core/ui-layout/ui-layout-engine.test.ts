@@ -90,6 +90,7 @@ describe("applyLayout", () => {
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);
     expect(targets.sidebar.style.width).toBe("100vw");
     expect(targets.sidebar.style.minWidth).toBe("100vw");
+    expect(targets.sidebar.style.flexBasis).toBe("100vw");
   });
 
   it("sidebar position=overlay は fixed で viewport 全体を占有する", () => {
@@ -102,6 +103,7 @@ describe("applyLayout", () => {
     expect(targets.sidebar.style.left).toBe("0");
     expect(targets.sidebar.style.height).toBe("100vh");
     expect(targets.sidebar.style.width).toBe("100vw");
+    expect(targets.sidebar.style.flexBasis).toBe("100vw");
   });
 
   it("resetLayout は overlay の top/left/height も空に戻す", () => {
@@ -119,6 +121,7 @@ describe("applyLayout", () => {
     applyLayout({ sidebar: { width: 400 } }, targets);
     expect(targets.sidebar.style.width).toBe("400px");
     expect(targets.sidebar.style.minWidth).toBe("400px");
+    expect(targets.sidebar.style.flexBasis).toBe("400px");
   });
 
   it("character visible:false で display:none", () => {
@@ -190,6 +193,7 @@ describe("resetLayout", () => {
     resetLayout(targets);
     expect(targets.sidebar.style.width).toBe("");
     expect(targets.sidebar.style.minWidth).toBe("");
+    expect(targets.sidebar.style.flexBasis).toBe("");
   });
 
   it("root も reset loop に含まれる（Plan 2 以降の拡張性）", () => {
@@ -209,6 +213,7 @@ describe("full-replace semantics（update で前の値が残らない）", () =>
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);
     expect(targets.terminal.style.display).toBe("");
     expect(targets.sidebar.style.width).toBe("100vw");
+    expect(targets.sidebar.style.flexBasis).toBe("100vw");
   });
 });
 

@@ -6,12 +6,13 @@ interface StubStyle {
   [key: string]: string;
   width: string;
   minWidth: string;
+  flexBasis: string;
   display: string;
   marginTop: string;
 }
 
 const stubStyle = (): StubStyle =>
-  ({ width: "", minWidth: "", display: "", marginTop: "" }) as StubStyle;
+  ({ width: "", minWidth: "", flexBasis: "", display: "", marginTop: "" }) as StubStyle;
 
 const stubEl = () => ({ style: stubStyle() }) as unknown as HTMLElement;
 
@@ -62,8 +63,41 @@ describe("playStageTransition", () => {
 
     // 最終状態: 全画面 + chrome は隠れる
     expect(surfaces.shell.style.width).toBe("100vw");
+    expect(surfaces.shell.style.flexBasis).toBe("100vw");
     expect(surfaces.character.style.width).toBe("100vw");
     expect(surfaces.chrome.style.display).toBe("none");
+  });
+
+  it("open: tween completion が来ない場合も最終 fullscreen 状態へ到達する", async () => {
+    vi.useFakeTimers();
+    try {
+      const surfaces = makeSurfaces();
+      const tm = {
+        start: vi.fn(
+          (
+            _key: string,
+            _to: number,
+            _ms: number,
+            _setter: (v: number) => void,
+            _opts: { from: number },
+          ) => ({ cancel: vi.fn(), completion: new Promise<void>(() => {}) }),
+        ),
+      } as unknown as TweenManager;
+
+      const transition = playStageTransition("open", surfaces, {
+        tweenManager: tm,
+        viewportWidth: () => 1000,
+      });
+      await vi.advanceTimersByTimeAsync(4000);
+      await transition;
+
+      expect(surfaces.shell.style.width).toBe("100vw");
+      expect(surfaces.shell.style.flexBasis).toBe("100vw");
+      expect(surfaces.character.style.width).toBe("100vw");
+      expect(surfaces.chrome.style.display).toBe("none");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("close: shell/character を畳んでから chrome を下ろし、inline を戻す", async () => {
@@ -80,6 +114,7 @@ describe("playStageTransition", () => {
 
     // 最終: inline width をクリア（CSS へ返す）、chrome marginTop クリア
     expect(surfaces.shell.style.width).toBe("");
+    expect(surfaces.shell.style.flexBasis).toBe("");
     expect(surfaces.character.style.width).toBe("");
     expect(surfaces.chrome.style.marginTop).toBe("");
   });

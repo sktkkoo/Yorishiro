@@ -117,6 +117,7 @@ import {
   getPersonaRegistry,
 } from "./runtime/persona-registry";
 import {
+  type ApplyPresenceOptions,
   type ApplyPresenceResult,
   applyPresenceLevel,
   getPresenceSnapshot,
@@ -153,7 +154,7 @@ import {
   spawnSpecFromDefaultProfile,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
-import { getSurfaceRegistry } from "./runtime/surface-registry";
+import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import {
@@ -467,9 +468,26 @@ globalThis.__CHARMINAL_REACT__ = React;
 globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 
+function fallbackSelectorForSurface(name: SurfaceName): string {
+  switch (name) {
+    case "shell":
+      return ".shell-column";
+    case "character":
+      return ".charactor-container";
+    case "chrome":
+      return ".sidebar";
+  }
+}
+
+function getConnectedSurface(name: SurfaceName, fallbackSelector: string): HTMLElement | null {
+  const registered = getSurfaceRegistry().get(name);
+  if (registered?.isConnected === true) return registered;
+  return document.querySelector<HTMLElement>(fallbackSelector);
+}
+
 // presence 契約の単一解決点（spec §4 loud-unavailable）。
 // active UI pack の presence 宣言（無ければ host 既定 = classic shell）から
-// surface を解決。?? querySelector の silent fallback を構造的に置換する。
+// surface を解決。stale HMR surface は使わず、現 DOM の connected node に寄せる。
 // module-level: getUiRegistry()/getSurfaceRegistry() は HMR singleton なので
 // どの closure からでも同一 registry を引ける（App.tsx 既存の getUiRegistry() 再取得と同方針）。
 function resolvePresenceSurface(): PresenceResolution {
@@ -477,7 +495,9 @@ function resolvePresenceSurface(): PresenceResolution {
   const a: ActiveUiPresence = active
     ? { kind: "pack", id: active.id, presence: active.pack.layout.presence }
     : { kind: "none" };
-  return resolvePresence(a, getSurfaceRegistry());
+  return resolvePresence(a, {
+    get: (name) => getConnectedSurface(name, fallbackSelectorForSurface(name)),
+  });
 }
 
 /** mount 済み terminal session id を DOM placeholder から引く（single-writer 用の共有 helper）。 */
@@ -499,14 +519,44 @@ function applyPresenceWidth(px: number): PresenceResolution {
   return res;
 }
 
+function resolveHostDefaultPresenceSurface(): PresenceResolution {
+  const shell = getConnectedSurface("shell", ".shell-column");
+  if (!shell) {
+    return { ok: false, reason: "host default presence target 'shell' is not registered" };
+  }
+  return { ok: true, el: shell, target: "shell" };
+}
+
+function applyHostDefaultPresenceWidth(px: number): PresenceResolution {
+  const res = resolveHostDefaultPresenceSurface();
+  if (!res.ok) return res;
+  writePresenceSidebarWidth(document.documentElement, res.el, px);
+  return res;
+}
+
 function getCurrentSidebarWidth(): number {
   return readPresenceSidebarWidth(document.documentElement);
 }
 
-function buildPresenceDeps(): PresenceIntensityDeps {
+function isHostDefaultPresenceClosed(): boolean {
+  const shell = getConnectedSurface("shell", ".shell-column");
+  return getCurrentSidebarWidth() <= 0 || shell?.classList.contains("presence-closed") === true;
+}
+
+function layoutNeedsHostPresenceResume(layout: UiLayout): boolean {
+  return layout.sidebar?.width === "fullscreen";
+}
+
+type PresenceApplyTarget = "active-ui" | "host-default";
+
+function buildPresenceDeps(target: PresenceApplyTarget = "active-ui"): PresenceIntensityDeps {
   return {
     setSidebarWidth: (px) => {
-      applyPresenceWidth(px);
+      if (target === "host-default") {
+        applyHostDefaultPresenceWidth(px);
+      } else {
+        applyPresenceWidth(px);
+      }
     },
     getSidebarWidth: getCurrentSidebarWidth,
     // App.css の :root --sidebar-width 初期値（280px）と一致させる。
@@ -515,14 +565,15 @@ function buildPresenceDeps(): PresenceIntensityDeps {
     ambientUiRegistry: getAmbientUiPackRegistry(),
     setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
     now: () => Date.now(),
-    resolvePresence: () => resolvePresenceSurface(),
+    resolvePresence: () =>
+      target === "host-default" ? resolveHostDefaultPresenceSurface() : resolvePresenceSurface(),
   };
 }
 
 function syncPresenceLevelStyles(level: PresenceLevel): void {
   syncPresenceClosedStyles(
     document.documentElement,
-    getSurfaceRegistry().get("shell"),
+    getConnectedSurface("shell", ".shell-column"),
     level === "closed",
   );
 }
@@ -637,8 +688,13 @@ function App() {
   const activeSceneLevaStore = useActiveSceneLevaStore();
 
   const applyPresenceLevelFromApp = useCallback(
-    (level: PresenceLevel, source: PresenceSource): ApplyPresenceResult => {
-      const result = applyPresenceLevel(level, source, buildPresenceDeps());
+    (
+      level: PresenceLevel,
+      source: PresenceSource,
+      options?: ApplyPresenceOptions,
+      target?: PresenceApplyTarget,
+    ): ApplyPresenceResult => {
+      const result = applyPresenceLevel(level, source, buildPresenceDeps(target), options);
       if ("applied" in result) {
         emitPresenceLevelChanged(getPresenceState().level);
       }
@@ -1943,12 +1999,10 @@ function App() {
     let currentLayout: UiLayout | null = null;
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
-      const reg = getSurfaceRegistry();
-      const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
-      const character =
-        reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
+      const sidebar = getConnectedSurface("shell", ".shell-column");
+      const character = getConnectedSurface("character", ".charactor-container");
       // "chrome" surface は Sidebar が自己登録する（P3）。未登録時は DOM class ".sidebar" にフォールバック
-      const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
+      const chrome = getConnectedSurface("chrome", ".sidebar");
       if (!sidebar || !character || !chrome) return null;
       // tab-indicator は常時存在するとは限らない（タブ未描画時）ので optional。
       const tabIndicator = document.querySelector<HTMLElement>(".tab-indicator") ?? undefined;
@@ -1983,11 +2037,9 @@ function App() {
 
     // stage 遷移（chrome 引っ込み → ステージ全画面）で動かす surface 群。
     const getStageSurfaces = (): StageSurfaces | null => {
-      const reg = getSurfaceRegistry();
-      const shell = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
-      const character =
-        reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
-      const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
+      const shell = getConnectedSurface("shell", ".shell-column");
+      const character = getConnectedSurface("character", ".charactor-container");
+      const chrome = getConnectedSurface("chrome", ".sidebar");
       if (!shell || !character || !chrome) return null;
       return { shell, character, chrome };
     };
@@ -2448,6 +2500,22 @@ function App() {
         // （resetLayout で end-state を一旦 clear → playStage("close") が反対端へ override して tween）。
         if (prevLayout?.transition?.kind === "stage") playStage("close");
         return;
+      }
+
+      // presence "closed"（Sidebar 閉）のまま UI pack を出すと、shell-column が
+      // presence-closed（display:none）+ render paused のままで見えない（F3 でキャラが出ない /
+      // F4 が無反応）。UI pack はステージ/レイアウトを占有するので presence を resume する。
+      // 明示起動なので settings-guard（restorePresenceFromPrompt）は通さず無条件に開ける。
+      // theater / immersive は active UI pack としては presence target を宣言しない。
+      // ここで開けたいのは host default shell なので、active-ui contract ではなく
+      // host-default surface を即時復帰する（presence tween は stage tween と競合させない）。
+      if (
+        layoutNeedsHostPresenceResume(entry.pack.layout) ||
+        getPresenceState().level === "closed" ||
+        isHostDefaultPresenceClosed()
+      ) {
+        applyPresenceLevelFromApp("default", "default", { immediate: true }, "host-default");
+        syncPresenceLevelStyles("default");
       }
 
       const targets = applyLayoutForAllTerminals(entry.pack.layout);

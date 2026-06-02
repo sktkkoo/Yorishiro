@@ -25,6 +25,7 @@ export interface LayoutTargets {
 const MANAGED_STYLE_KEYS = [
   "width",
   "minWidth",
+  "flexBasis",
   "display",
   "position",
   "zIndex",
@@ -46,6 +47,7 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
     if (s.width === "fullscreen") {
       targets.sidebar.style.width = "100vw";
       targets.sidebar.style.minWidth = "100vw";
+      targets.sidebar.style.flexBasis = "100vw";
       // stage を fullscreen にするとき character 描画域も全画面へ広げる。
       // .charactor-container は通常 --sidebar-content-width(280px) 固定（presence
       // sidebar tween 中の VRM reflow を防ぐため）。fullscreen UI pack では canvas/camera を
@@ -57,6 +59,7 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
     } else if (typeof s.width === "number") {
       targets.sidebar.style.width = `${s.width}px`;
       targets.sidebar.style.minWidth = `${s.width}px`;
+      targets.sidebar.style.flexBasis = `${s.width}px`;
     }
     // "default" は何もしない（元の CSS が効く）
 

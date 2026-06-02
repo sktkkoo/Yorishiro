@@ -52,7 +52,24 @@ function tweenTo(
   durationMs: number,
   setter: (v: number) => void,
 ): Promise<void> {
-  return tm.start(key, to, durationMs, setter, { from, easing: easeInOutCubic }).completion;
+  const handle = tm.start(key, to, durationMs, setter, { from, easing: easeInOutCubic });
+  return new Promise<void>((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    // ThreeRuntime が pause / hidden state から復帰できない場合でも、fullscreen UI pack は
+    // 最終 layout へ必ず到達させる。通常は completion が先に resolve するので visual には影響しない。
+    const timer = setTimeout(() => {
+      setter(to);
+      handle.cancel();
+      finish();
+    }, durationMs + 100);
+    handle.completion.then(finish, finish);
+  });
 }
 
 /**
@@ -73,6 +90,7 @@ export async function playStageTransition(
   const setShell = (w: number) => {
     surfaces.shell.style.width = `${w}px`;
     surfaces.shell.style.minWidth = `${w}px`;
+    surfaces.shell.style.flexBasis = `${w}px`;
   };
   const setChar = (w: number) => {
     surfaces.character.style.width = `${w}px`;
@@ -109,6 +127,7 @@ export async function playStageTransition(
     // clean end-state（applyLayout と一致させ、responsive な 100vw に戻す）
     surfaces.shell.style.width = "100vw";
     surfaces.shell.style.minWidth = "100vw";
+    surfaces.shell.style.flexBasis = "100vw";
     surfaces.character.style.width = "100vw";
     surfaces.character.style.minWidth = "100vw";
     return;
@@ -132,6 +151,7 @@ export async function playStageTransition(
   // inline を外して CSS（--sidebar-width / --sidebar-content-width）へ返す
   surfaces.shell.style.width = "";
   surfaces.shell.style.minWidth = "";
+  surfaces.shell.style.flexBasis = "";
   surfaces.character.style.width = "";
   surfaces.character.style.minWidth = "";
 
