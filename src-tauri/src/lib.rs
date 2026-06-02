@@ -1053,6 +1053,24 @@ pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bo
     )
 }
 
+/// path が snapshot 対象（`packs/**` か top-level `config.json` か `init.js`）の
+/// 変更なら true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
+/// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`last-startup.json` 等は false。
+pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(charminal_home) else {
+        return false;
+    };
+    let mut comps = rel.components();
+    match comps.next() {
+        Some(std::path::Component::Normal(seg)) if seg == "packs" => true,
+        // config.json / init.js は top-level の単一成分のみ対象。
+        Some(std::path::Component::Normal(seg)) if seg == "config.json" || seg == "init.js" => {
+            comps.next().is_none()
+        }
+        _ => false,
+    }
+}
+
 /// File の mtime を ms 単位で返す。読めない場合は 0（removed event の fallback）。
 fn path_mtime_ms(path: &Path) -> u64 {
     let Ok(metadata) = std::fs::metadata(path) else {
@@ -1473,9 +1491,9 @@ mod user_pack_discovery_tests {
 #[cfg(test)]
 mod layer_scope_tests {
     use super::{
-        command_candidate_names, is_history_internal_path, is_safe_mode_value, layer_event_label,
-        read_last_startup_report_impl, resolve_command_path_impl, stat_mtime_in_scope,
-        write_charminal_file_atomic_impl,
+        command_candidate_names, is_history_internal_path, is_safe_mode_value,
+        is_snapshot_relevant_path, layer_event_label, read_last_startup_report_impl,
+        resolve_command_path_impl, stat_mtime_in_scope, write_charminal_file_atomic_impl,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -1618,6 +1636,57 @@ mod layer_scope_tests {
         assert!(!is_history_internal_path(
             home,
             std::path::Path::new("/Users/x/.charminal/config.json")
+        ));
+    }
+
+    #[test]
+    fn snapshot_relevant_path_matches_packs_config_initjs_only() {
+        let home = std::path::Path::new("/Users/x/.charminal");
+        // packs 配下は対象。
+        assert!(is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/foo/effect.js")
+        ));
+        // packs ディレクトリ自体の event も対象。
+        assert!(is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs")
+        ));
+        // top-level の config.json / init.js は対象。
+        assert!(is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/config.json")
+        ));
+        assert!(is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/init.js")
+        ));
+        // 対象外：journal / sdk.d.ts / last-startup.json / .history。
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/journal/daily/2026-06-02.md")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/sdk.d.ts")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/last-startup.json")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/.history/generations/000001/config.json")
+        ));
+        // config.json と同名でも sub-path は対象外（config.json/something のような異常系）。
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/config.json/inner")
+        ));
+        // home 外は対象外。
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/y/other/packs/foo.js")
         ));
     }
 
