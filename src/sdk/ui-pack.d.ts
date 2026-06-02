@@ -35,7 +35,13 @@ export type UiPresenceLevel = "default" | "closed";
  */
 export interface UiLayout {
   readonly sidebar?: {
-    /** "default" = 280px, "fullscreen" = 100vw, "hidden" = 0, number = px 指定 */
+    /**
+     * "default" = 280px, "fullscreen" = 100vw, "hidden" = 0, number = px 指定。
+     *
+     * fullscreen は runtime の layout API 経由で指定すること。host DOM（`.shell-column` など）
+     * を直接 `style.width = "100vw"` で触ると、flex-basis / min-width / character 描画域との
+     * 同期を外し、VRM canvas が閉じた sidebar state 由来の幅で描画されることがある。
+     */
     readonly width?: "default" | "fullscreen" | "hidden" | number;
     /** sidebar の配置。"overlay" は terminal の上に重なる */
     readonly position?: "left" | "right" | "overlay";
@@ -393,6 +399,10 @@ export interface UiLayoutAPI {
   /**
    * layout を full-replace する（reset → apply）。差分適用ではない：
    * 引数 `full` は「今適用したい layout の完全な形」であり、前回 apply した値は残らない。
+   *
+   * Fullscreen UI を作るときは `ctx.layout.update({ sidebar: { width: "fullscreen" } })`
+   * を使う。runtime が shell の width / min-width / flex-basis と character 描画域をまとめて
+   * 同期するため、host DOM を直接 style する必要はない。
    */
   update(full: UiLayout): void;
 }
