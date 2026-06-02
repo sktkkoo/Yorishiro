@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::path::Component;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 const HISTORY_DIRNAME: &str = ".history";
 const INDEX_FILE: &str = "index.json";
@@ -12,6 +13,16 @@ const GENERATIONS_DIR: &str = "generations";
 
 /// snapshot に含める ~/.charminal 相対パス。
 const SNAPSHOT_INCLUDES: &[&str] = &["packs", "config.json", "init.js"];
+
+/// prune で残す世代の既定件数。watcher-settled / baseline の自動 snapshot 後に
+/// この件数まで間引いて履歴の単調増加を防ぐ（spec §0「prune は直近 N 件だけ残す」）。
+pub(crate) const DEFAULT_KEEP: usize = 50;
+
+/// snapshot_create / snapshot_prune の read-modify-write（index.json の更新）を
+/// プロセス内で直列化する lock。watcher / baseline / Tauri command が並走しても
+/// 同一 seq を採番しないようにする（Finding #2）。Charminal は単一プロセスなので
+/// file-lock までは不要。
+static SNAPSHOT_LOCK: Mutex<()> = Mutex::new(());
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct SnapshotEntry {
@@ -81,6 +92,27 @@ fn gen_dirname(seq: u64) -> String {
     format!("{:06}", seq)
 }
 
+/// generations/ 配下の実在 dir 名（`000001` 形式）から最大 seq を返す。
+/// index.json と乖離していても（partial write / 手動削除）既存世代を上書きしない
+/// ための belt-and-suspenders。`<seq>.tmp` のような非数値名は parse 失敗で無視。
+fn max_existing_gen_seq(home_root: &Path) -> u64 {
+    let gens_root = history_root(home_root).join(GENERATIONS_DIR);
+    let Ok(entries) = std::fs::read_dir(&gens_root) else {
+        return 0;
+    };
+    let mut max = 0u64;
+    for entry in entries.flatten() {
+        if let Some(seq) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<u64>().ok())
+        {
+            max = max.max(seq);
+        }
+    }
+    max
+}
+
 /// dir を再帰コピー（per-file）。walkdir 不使用。
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
     std::fs::create_dir_all(dst).map_err(|e| format!("mkdir {}: {}", dst.display(), e))?;
@@ -104,9 +136,12 @@ pub(crate) fn snapshot_create_impl(
     trigger: &str,
     label: Option<&str>,
 ) -> Result<u64, String> {
+    // index の read-modify-write を直列化（Finding #2）。poison しても続行する。
+    let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let charminal = charminal_dir(home_root);
     let mut index = read_index(home_root)?;
-    let seq = next_seq(&index);
+    // index と generations/ の実在 dir 両方から採番し、どちらとも衝突しない seq を採る。
+    let seq = next_seq(&index).max(max_existing_gen_seq(home_root) + 1);
 
     // partial generation を残さない：<seq>.tmp にコピーし、成功後だけ可視化する。
     let gens_root = history_root(home_root).join(GENERATIONS_DIR);
@@ -371,6 +406,7 @@ pub(crate) fn snapshot_restore_impl(
 
 /// seq の新しい順に keep_n 件だけ残し、古い generation dir と index entry を削除する。
 pub(crate) fn snapshot_prune_impl(home_root: &Path, keep_n: usize) -> Result<(), String> {
+    let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let mut index = read_index(home_root)?;
     index.snapshots.sort_by(|a, b| b.seq.cmp(&a.seq));
     if index.snapshots.len() <= keep_n {
@@ -662,5 +698,52 @@ mod tests {
         assert!(charminal.join(".history/generations/000005").exists());
 
         let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn snapshot_create_skips_seq_of_orphan_generation_dir() {
+        let home = tmp_home("orphan-seq");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+        // index には無いが generations/000003 が実在する（前回 crash 後の残骸を模す）。
+        fs::create_dir_all(charminal.join(".history/generations/000003")).unwrap();
+
+        let seq = snapshot_create_impl(&home, "x", None).unwrap();
+        // 空 index の next_seq=1 ではなく、実在 dir 000003 の次の 4 を採る。
+        assert_eq!(seq, 4);
+        // orphan dir は温存される（上書きしない）。
+        assert!(charminal.join(".history/generations/000003").exists());
+        assert!(charminal.join(".history/generations/000004").exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn concurrent_snapshot_creates_get_unique_seqs() {
+        let home = std::sync::Arc::new(tmp_home("concurrent"));
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+
+        let mut handles = Vec::new();
+        for _ in 0..8 {
+            let home = home.clone();
+            handles.push(std::thread::spawn(move || {
+                snapshot_create_impl(&home, "x", None).unwrap()
+            }));
+        }
+        let mut seqs: Vec<u64> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+        seqs.sort_unstable();
+        let unique = {
+            let mut s = seqs.clone();
+            s.dedup();
+            s.len()
+        };
+        // 8 件すべて unique な seq（lock が無いと同 seq 衝突で < 8 になり得る）。
+        assert_eq!(unique, 8, "all seqs unique: {:?}", seqs);
+
+        let list = snapshot_list_impl(&home).unwrap();
+        assert_eq!(list.len(), 8);
+
+        let _ = fs::remove_dir_all(home.as_path());
     }
 }
