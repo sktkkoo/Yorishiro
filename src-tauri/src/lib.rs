@@ -680,6 +680,7 @@ async fn mcp_server_status(
 const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("reaction.d.ts", include_str!("../../src/sdk/reaction.d.ts")),
     ("context.d.ts", include_str!("../../src/sdk/context.d.ts")),
+    ("history.d.ts", include_str!("../../src/sdk/history.d.ts")),
     ("persona.d.ts", include_str!("../../src/sdk/persona.d.ts")),
     ("amenity.d.ts", include_str!("../../src/sdk/amenity.d.ts")),
     ("effect.d.ts", include_str!("../../src/sdk/effect.d.ts")),

@@ -13,6 +13,7 @@ import type {
   UiThreeAPI,
 } from "@charminal/sdk";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +27,9 @@ import {
   type SpawnSpec,
   sessionList,
   sessionRefreshTheme,
+  snapshotCreate,
+  snapshotList,
+  snapshotRestore,
 } from "./bindings/tauri-commands";
 import {
   abandonedFactoryManifest,
@@ -101,6 +105,7 @@ import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { collectHealthReport } from "./runtime/health-check";
+import { createHistoryApi } from "./runtime/history/history-api";
 import { getOrInit } from "./runtime/hot-data";
 import {
   type AppLanguage,
@@ -852,6 +857,21 @@ function App() {
       note: "registered bundled ambient-UI packs 'attention-aura', 'pomodoro-ui'",
     });
 
+    // ── History API（pack rollback）──────────────────────────────
+    // 確認 dialog 内蔵の restore を持つ単一 instance。bundled amenity ctx と
+    // MCP history-restore handler の双方が共用する（対称性）。
+    // trigger taxonomy：このインスタンスの create/snapshot は SDK 経路
+    // （pack 作者の ctx.history.snapshot）からのみ呼ばれるので "sdk:snapshot"。
+    // 住人 AI の MCP history_snapshot は Rust 完結で別 trigger "mcp:snapshot"
+    // を打つ（P2b Task 4）。watcher 自動は "watcher-settled"、baseline は
+    // "startup-baseline"。これで監査・UI でどの経路の snapshot か区別できる。
+    const historyApi = createHistoryApi({
+      list: () => snapshotList(),
+      create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
+      restore: (seq) => snapshotRestore({ seq }),
+      confirm: (message) => ask(message, { title: "Charminal — 復元の確認", kind: "warning" }),
+    });
+
     // ── Bundled amenity pack 登録（pomodoro）──────────────────────────────
     registerBundledPomodoro({
       registry: getAmenityPackRegistry(),
@@ -866,6 +886,7 @@ function App() {
       emitEvent: (name, payload) => {
         bus.emitSynthetic({ type: "system", packId: "pomodoro" }, name, payload, 0);
       },
+      history: historyApi,
     });
     appLog.write({
       phase: "register",
