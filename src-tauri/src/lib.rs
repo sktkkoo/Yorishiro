@@ -1183,6 +1183,9 @@ async fn watch_charminal_layer(
             };
             guard.drain().collect()
         };
+        // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
+        // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
+        let mut snapshot_relevant = false;
         for (path, kind) in drained {
             let Some(label) = layer_event_label(&kind) else {
                 continue;
@@ -1200,6 +1203,9 @@ async fn watch_charminal_layer(
                 // snapshot store / staging / scratch の内部書き込みは TS に流さない。
                 continue;
             }
+            if is_snapshot_relevant_path(&home, &path) {
+                snapshot_relevant = true;
+            }
             let payload = CharminalLayerEvent {
                 path: path.to_string_lossy().to_string(),
                 kind: label.to_string(),
@@ -1208,6 +1214,24 @@ async fn watch_charminal_layer(
             if let Err(e) = channel.send(payload) {
                 eprintln!("[watch_charminal_layer] channel send failed: {}", e);
                 break;
+            }
+        }
+        // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮り、
+        // 直近 DEFAULT_KEEP 件に間引く。snapshot は .history/ へ書くので
+        // is_history_internal_path filter により watcher へ戻らない（無限ループ無し）。
+        // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
+        if snapshot_relevant {
+            if let Some(home_root) = home.parent() {
+                match history::snapshot_create_impl(home_root, "watcher-settled", None) {
+                    Ok(_) => {
+                        if let Err(e) =
+                            history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
+                        {
+                            eprintln!("[history] watcher-settled prune failed: {}", e);
+                        }
+                    }
+                    Err(e) => eprintln!("[history] watcher-settled snapshot failed: {}", e),
+                }
             }
         }
     });
