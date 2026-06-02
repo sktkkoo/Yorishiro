@@ -31,6 +31,10 @@ pub struct SnapshotEntry {
     pub trigger: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// 直前 startup が clean だったかの advisory ラベル（spec §0）。startup-baseline
+    /// にだけ付く。古い index.json は field 不在なので default で None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub startup_clean: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -181,6 +185,7 @@ pub(crate) fn snapshot_create_impl(
         ts_ms: now_ms(),
         trigger: trigger.to_string(),
         label: label.map(|s| s.to_string()),
+        startup_clean: None,
     });
     write_index(home_root, &index)?;
     Ok(seq)
@@ -422,6 +427,33 @@ pub(crate) fn snapshot_prune_impl(home_root: &Path, keep_n: usize) -> Result<(),
     Ok(())
 }
 
+/// 直前 startup が clean だったか（last-startup.json の load error 有無）を返す。
+/// report 不在なら None（未確認）、failed が 1 件でもあれば Some(false)、無ければ Some(true)。
+pub(crate) fn is_last_startup_clean(home_root: &Path) -> Option<bool> {
+    let text = crate::read_last_startup_report_impl(home_root).ok()?;
+    if text.is_empty() {
+        return None;
+    }
+    let parsed: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let results = parsed.get("loadResults")?.as_array()?;
+    let any_failed = results
+        .iter()
+        .any(|item| item.get("status").and_then(|v| v.as_str()) == Some("failed"));
+    Some(!any_failed)
+}
+
+/// index の seq に一致する entry に startup_clean を付ける（advisory・spec §0）。
+/// 一致なしは no-op。index の read-modify-write は SNAPSHOT_LOCK で直列化する。
+pub(crate) fn tag_startup_clean(home_root: &Path, seq: u64, clean: bool) -> Result<(), String> {
+    let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let mut index = read_index(home_root)?;
+    if let Some(entry) = index.snapshots.iter_mut().find(|e| e.seq == seq) {
+        entry.startup_clean = Some(clean);
+        write_index(home_root, &index)?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn snapshot_create(trigger: String, label: Option<String>) -> Result<u64, String> {
     let home = crate::home_dir_or_err()?;
@@ -483,6 +515,7 @@ mod tests {
             ts_ms: 123,
             trigger: "manual".into(),
             label: None,
+            startup_clean: None,
         });
         write_index(&home, &idx).expect("write");
 
@@ -696,6 +729,49 @@ mod tests {
         // 古い gen dir は消えている。
         assert!(!charminal.join(".history/generations/000001").exists());
         assert!(charminal.join(".history/generations/000005").exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn is_last_startup_clean_reflects_load_results() {
+        let home = tmp_home("startup-clean");
+        let charminal = home.join(".charminal");
+        // report 不在 → None（未確認）。
+        assert_eq!(is_last_startup_clean(&home), None);
+        // failed が 1 件でもあれば Some(false)。
+        fs::write(
+            charminal.join("last-startup.json"),
+            r#"{"loadResults":[{"id":"a","kind":"effect","status":"loaded"},{"id":"b","kind":"persona","status":"failed"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(is_last_startup_clean(&home), Some(false));
+        // 全 loaded なら Some(true)。
+        fs::write(
+            charminal.join("last-startup.json"),
+            r#"{"loadResults":[{"id":"a","kind":"effect","status":"loaded"}]}"#,
+        )
+        .unwrap();
+        assert_eq!(is_last_startup_clean(&home), Some(true));
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn tag_startup_clean_sets_field_on_matching_seq() {
+        let home = tmp_home("tag-clean");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+        let seq = snapshot_create_impl(&home, "startup-baseline", None).unwrap();
+        assert_eq!(snapshot_list_impl(&home).unwrap()[0].startup_clean, None);
+
+        tag_startup_clean(&home, seq, true).unwrap();
+        assert_eq!(
+            snapshot_list_impl(&home).unwrap()[0].startup_clean,
+            Some(true)
+        );
+        // 存在しない seq は no-op（エラーにしない）。
+        tag_startup_clean(&home, 999, false).unwrap();
 
         let _ = fs::remove_dir_all(&home);
     }

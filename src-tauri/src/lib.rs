@@ -770,10 +770,19 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     static BASELINE_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if !BASELINE_DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
         if let Ok(home_root) = home_dir_or_err() {
-            if let Err(e) = history::snapshot_create_impl(&home_root, "startup-baseline", None) {
-                eprintln!("[history] baseline snapshot failed: {}", e);
+            match history::snapshot_create_impl(&home_root, "startup-baseline", None) {
+                Ok(seq) => {
+                    // 直前 startup の clean 判定を advisory ラベルとして付ける（spec §0）。
+                    // 自動 restore の根拠にはしない（あくまで表示用）。
+                    if let Some(clean) = history::is_last_startup_clean(&home_root) {
+                        if let Err(e) = history::tag_startup_clean(&home_root, seq, clean) {
+                            eprintln!("[history] tag startup_clean failed: {}", e);
+                        }
+                    }
+                }
+                Err(e) => eprintln!("[history] baseline snapshot failed: {}", e),
             }
-            // baseline で 1 世代増えるので、ここでも prune して単調増加を防ぐ（Finding #1）。
+            // baseline で 1 世代増えるので prune して単調増加を防ぐ（Finding #1）。
             if let Err(e) = history::snapshot_prune_impl(&home_root, history::DEFAULT_KEEP) {
                 eprintln!("[history] baseline prune failed: {}", e);
             }
