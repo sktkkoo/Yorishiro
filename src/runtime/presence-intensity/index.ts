@@ -11,4 +11,5 @@ export {
   getPresenceSnapshot,
   getPresenceState,
   onUserPromptSubmit,
+  shouldRestorePresenceOnPrompt,
 } from "./presence-intensity";

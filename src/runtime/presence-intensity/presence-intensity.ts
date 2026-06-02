@@ -192,13 +192,30 @@ export function applyPresenceLevel(
 }
 
 /**
+ * prompt 送信時に presence を自動復帰すべきか判定する pure helper。
+ *
+ * 「呼ばれたら顔を出す」自動復帰は、住人が自分で引っ込んだ場合（source "mcp"）の振る舞い。
+ * user が UI で明示的に閉じた場合（source "settings"）は、その意思を尊重して closed を維持する。
+ * Philosophy: docs/philosophy/PRESENCE_HARNESS.ja.md「Presence Intensity / 住人が自分で決める」
+ */
+export function shouldRestorePresenceOnPrompt(state: PresenceState): boolean {
+  return !(state.level === "closed" && state.source === "settings");
+}
+
+/**
  * user が prompt を送信したときに呼ばれる。
  *
  * 現在のレベルを previousLevel に保存し、"default" に復帰する。
  * 既に "default" の場合は source を "default" にリセットするだけで effect は不要。
+ * user が settings で明示的に閉じた状態（source "settings"）は維持し、勝手に開かない。
  */
 export function onUserPromptSubmit(deps: PresenceIntensityDeps): void {
   const state = getState();
+
+  // user の明示的な close は prompt 送信で上書きしない。
+  if (!shouldRestorePresenceOnPrompt(state)) {
+    return;
+  }
 
   // 直前のレベルを保存
   state.previousLevel = state.level;

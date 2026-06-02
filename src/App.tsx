@@ -125,6 +125,7 @@ import {
   type PresenceIntensityDeps,
   type PresenceLevel,
   type PresenceSource,
+  shouldRestorePresenceOnPrompt,
 } from "./runtime/presence-intensity";
 import {
   readPresenceSidebarWidth,
@@ -705,6 +706,9 @@ function App() {
 
   const restorePresenceFromPrompt = useCallback(() => {
     const state = getPresenceState();
+    // user が settings で明示的に閉じた状態は、prompt 送信で勝手に開かない（意思を尊重）。
+    // 自動復帰は住人が自分で引っ込んだ場合（source "mcp"）の「呼ばれたら顔を出す」だけ。
+    if (!shouldRestorePresenceOnPrompt(state)) return;
     state.previousLevel = state.level;
     state.previousLevelSince = state.levelSince;
     if (state.level === "default") {

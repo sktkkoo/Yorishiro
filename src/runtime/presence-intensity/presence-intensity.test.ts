@@ -278,6 +278,23 @@ describe("PresenceIntensity", () => {
     expect(deps2.tweenManager.start).not.toHaveBeenCalled();
   });
 
+  it("onUserPromptSubmit は user が settings で閉じた closed を維持する（自動復帰しない）", () => {
+    // 「呼ばれたら顔を出す」自動復帰は住人が自分で引っ込んだ場合（source "mcp"）だけ。
+    // user が UI で明示的に閉じた（source "settings"）状態は prompt 送信で勝手に開かない。
+    const deps = createMockDeps({ now: vi.fn(() => 2000) });
+    applyPresenceLevel("closed", "settings", deps);
+
+    const deps2 = createMockDeps({ now: vi.fn(() => 3000) });
+    onUserPromptSubmit(deps2);
+
+    const state = getPresenceState();
+    expect(state.level).toBe("closed");
+    expect(state.source).toBe("settings");
+    expect(state.previousLevel).toBeNull();
+    expect(state.previousLevelSince).toBeNull();
+    expect(deps2.tweenManager.start).not.toHaveBeenCalled();
+  });
+
   // -----------------------------------------------------------------------
   // getPresenceSnapshot
   // -----------------------------------------------------------------------
