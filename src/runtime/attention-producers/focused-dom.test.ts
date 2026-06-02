@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
-import { startFocusedDomAttentionProducer } from "./focused-dom";
+import { FOCUSED_DOM_SCAN_INTERVAL_MS, startFocusedDomAttentionProducer } from "./focused-dom";
 
 function makeFakeAttention() {
   const setSourceTarget = vi.fn();
@@ -15,13 +15,15 @@ function makeFakeAttention() {
 // input-cursor.test.ts と同様の rAF stub ヘルパー
 function makeRafStub() {
   const state: { cb: ((t: DOMHighResTimeStamp) => void) | null } = { cb: null };
+  let now = 0;
   const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
     state.cb = cb;
     return 1;
   });
   vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-  const tick = (t = performance.now()): void => {
-    state.cb?.(t);
+  const tick = (t?: DOMHighResTimeStamp): void => {
+    now = t ?? now + FOCUSED_DOM_SCAN_INTERVAL_MS;
+    state.cb?.(now);
   };
   const restore = (): void => {
     rafSpy.mockRestore();
@@ -267,6 +269,69 @@ describe("startFocusedDomAttentionProducer", () => {
       expect(rafSpy).toHaveBeenCalledTimes(2);
 
       dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("scan interval 未満の frame では activeElement を読み直さない", () => {
+    const { tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      const getActiveElement = vi.fn(() => null);
+      const dispose = startFocusedDomAttentionProducer({
+        attention,
+        getActiveElement,
+      });
+
+      tick(0);
+      expect(getActiveElement).toHaveBeenCalledTimes(1);
+
+      tick(FOCUSED_DOM_SCAN_INTERVAL_MS - 1);
+      expect(getActiveElement).toHaveBeenCalledTimes(1);
+
+      tick(FOCUSED_DOM_SCAN_INTERVAL_MS);
+      expect(getActiveElement).toHaveBeenCalledTimes(2);
+
+      dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
+  it("dispose 時に active な focused-dom source を clear する", () => {
+    const { tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      const button = document.createElement("button");
+      button.getBoundingClientRect = () =>
+        ({
+          left: 50,
+          top: 100,
+          width: 120,
+          height: 40,
+          right: 170,
+          bottom: 140,
+          x: 50,
+          y: 100,
+          toJSON: () => ({}),
+        }) as DOMRect;
+      document.body.appendChild(button);
+
+      const handle = startFocusedDomAttentionProducer({
+        attention,
+        getActiveElement: () => button,
+      });
+
+      tick();
+      handle.dispose();
+
+      const clearCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "focused-dom" && c[1] === null,
+      );
+      expect(clearCall).toBeDefined();
+
+      button.remove();
     } finally {
       restore();
     }

@@ -13,7 +13,8 @@
  * - activeElement が terminal 系コンテナ配下（.terminal-container / .xterm-singleton-container / .xterm）
  * - bounding rect の width または height が 0（非表示 / 未レンダリング）
  *
- * v1 では rAF loop で毎 frame poll していた挙動を踏襲。
+ * v1 では rAF loop で毎 frame poll していたが、focused DOM の矩形は
+ * 高頻度に変わらないため rAF に同期した低頻度 poll にする。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
@@ -23,6 +24,7 @@ const SOURCE = "focused-dom";
 const PRIORITY = 5;
 const CONFIDENCE = 0.7;
 const EXPAND_PX = 10;
+export const FOCUSED_DOM_SCAN_INTERVAL_MS = 250;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
@@ -44,8 +46,10 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
 
   let rafId: number | null = null;
   let focusActive = false;
+  let lastScanAt = Number.NEGATIVE_INFINITY;
+  let disposed = false;
 
-  const tick = (): void => {
+  const scan = (): void => {
     const activeElement = getActiveElement();
     const htmlEl = activeElement instanceof HTMLElement ? activeElement : null;
     const activeRect = htmlEl?.getBoundingClientRect();
@@ -83,7 +87,14 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
         focusActive = false;
       }
     }
+  };
 
+  const tick = (now: DOMHighResTimeStamp): void => {
+    if (disposed) return;
+    if (now - lastScanAt >= FOCUSED_DOM_SCAN_INTERVAL_MS) {
+      lastScanAt = now;
+      scan();
+    }
     rafId = raf(tick);
   };
 
@@ -91,9 +102,14 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
 
   return {
     dispose: () => {
+      disposed = true;
       if (rafId !== null) {
         cancelRaf(rafId);
         rafId = null;
+      }
+      if (focusActive) {
+        attention.setSourceTarget(SOURCE, null);
+        focusActive = false;
       }
     },
   };

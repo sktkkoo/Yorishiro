@@ -1,16 +1,16 @@
 /**
  * Input cursor attention producer。
  *
- * rAF loop で毎 frame caret 位置を poll し、stateful に管理:
+ * rAF aligned throttled loop で caret 位置を poll し、stateful に管理:
  * - rect が取れた: input-cursor:typing として emit (priority=5)
  * - rect 不在 (null) かつ前回 active: null clear
  * - rect 不在 かつ前回 inactive: 何もしない
  *
- * v1 と同様に getInputCursorClientPosition を rAF 毎に呼ぶことで、
+ * v1 と同様に rAF に同期して getInputCursorClientPosition を呼ぶことで、
  * user 入力時に lastUserInputAt が更新されたことを自然に拾う
  * （subscribePtyData は agent 出力でしか発火しないため使わない）。
  *
- * dispose で rAF cancel を行う。
+ * dispose で rAF cancel と active source clear を行う。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
@@ -20,6 +20,7 @@ import type { Disposable } from "./types";
 const SOURCE_TYPING = "input-cursor:typing";
 const PRIORITY_TYPING = 5;
 const CONFIDENCE = 1;
+export const INPUT_CURSOR_SCAN_INTERVAL_MS = 1000 / 15;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
@@ -30,6 +31,8 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
   const { attention, terminal } = opts;
   let typingActive = false;
   let rafId: number | null = null;
+  let lastScanAt = Number.NEGATIVE_INFINITY;
+  let disposed = false;
 
   const updateTyping = (): void => {
     const cursor = terminal.getInputCursorClientPosition();
@@ -57,17 +60,26 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
     typingActive = true;
   };
 
-  // rAF loop で毎 frame caret 位置を poll する（v1 同様）。
+  // rAF に同期して caret 位置を poll する（v1 同様）。
   // subscribePtyData は agent 出力でのみ発火するため user 入力を拾えない。
-  const tick = (): void => {
-    updateTyping();
+  const tick = (now: DOMHighResTimeStamp): void => {
+    if (disposed) return;
+    if (now - lastScanAt >= INPUT_CURSOR_SCAN_INTERVAL_MS) {
+      lastScanAt = now;
+      updateTyping();
+    }
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
 
   return {
     dispose: () => {
+      disposed = true;
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (typingActive) {
+        attention.setSourceTarget(SOURCE_TYPING, null);
+        typingActive = false;
+      }
     },
   };
 }

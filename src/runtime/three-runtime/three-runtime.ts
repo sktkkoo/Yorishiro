@@ -524,9 +524,36 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
       }
+      if (this.shouldLogResizeDebug()) {
+        const sz = this.renderer.getSize(new THREE.Vector2());
+        const vp = this.renderer.getViewport(new THREE.Vector4());
+        console.warn(
+          "[resize-debug2]",
+          JSON.stringify({
+            rectW: w,
+            rectH: h,
+            glW: Math.round(sz.x),
+            glH: Math.round(sz.y),
+            vpW: Math.round(vp.z),
+            vpH: Math.round(vp.w),
+            camAspect: +this.camera.aspect.toFixed(4),
+            camFov: this.camera.fov,
+            camZoom: this.camera.zoom,
+            xform: this.canvasContainer.style.transform || "(none)",
+          }),
+        );
+      }
       return true;
     }
     return false;
+  }
+
+  private shouldLogResizeDebug(): boolean {
+    try {
+      return localStorage.getItem("charminal:resize-debug") === "1";
+    } catch {
+      return false;
+    }
   }
 
   private updateBodyPointerReference(): void {

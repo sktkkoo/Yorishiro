@@ -677,15 +677,27 @@ function App() {
       warn: (msg, meta) => console.warn(`[charminal] ${msg}`, meta),
       error: (msg, meta) => console.error(`[charminal] ${msg}`, meta),
     };
-    // Generation-time 細い回路 — dev でのみ active、console に mirror して即時視認。
+    // Generation-time 細い回路 — dev でのみ active。console mirror は長時間起動で
+    // WebView 側のログ蓄積を増やすため opt-in にする。
     // Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+    const mirrorDevLogToConsole =
+      import.meta.env.DEV &&
+      (() => {
+        try {
+          return localStorage.getItem("charminal:dev-log-console") === "1";
+        } catch {
+          return false;
+        }
+      })();
     const devLog = new DevLog({
       time,
       enabled: import.meta.env.DEV,
-      sink: (entry: DevLogEntry) => {
-        const tag = entry.phase ? `${entry.subsystem}:${entry.phase}` : entry.subsystem;
-        console.log(`[${tag}] ${entry.note ?? ""}`, entry.data ?? "");
-      },
+      sink: mirrorDevLogToConsole
+        ? (entry: DevLogEntry) => {
+            const tag = entry.phase ? `${entry.subsystem}:${entry.phase}` : entry.subsystem;
+            console.log(`[${tag}] ${entry.note ?? ""}`, entry.data ?? "");
+          }
+        : undefined,
     });
     const bus = new EventBus({
       time,

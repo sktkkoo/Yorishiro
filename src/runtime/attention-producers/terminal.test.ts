@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalRuntime } from "../terminal-runtime/types";
-import { startTerminalAttentionProducer } from "./terminal";
+import { startTerminalAttentionProducer, TERMINAL_ATTENTION_SCAN_INTERVAL_MS } from "./terminal";
 
 function makeFakeAttention() {
   const setSourceTarget = vi.fn();
@@ -25,13 +25,15 @@ function makeFakeTerminal(
 // オブジェクトプロパティ経由にすることで TypeScript CFA の never 収束を回避する。
 function makeRafStub() {
   const state: { cb: ((t: DOMHighResTimeStamp) => void) | null } = { cb: null };
+  let now = 0;
   const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
     state.cb = cb;
     return 1;
   });
   vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-  const tick = (t = performance.now()): void => {
-    state.cb?.(t);
+  const tick = (t?: DOMHighResTimeStamp): void => {
+    now = t ?? now + TERMINAL_ATTENTION_SCAN_INTERVAL_MS;
+    state.cb?.(now);
   };
   const restore = (): void => {
     rafSpy.mockRestore();
@@ -76,7 +78,7 @@ function makeTimerStub() {
 }
 
 describe("startTerminalAttentionProducer", () => {
-  it("getViewportLineRects は rAF tick 毎に呼ばれる", () => {
+  it("getViewportLineRects は scan interval ごとに呼ばれる", () => {
     const { rafSpy, tick, restore } = makeRafStub();
     try {
       const attention = makeFakeAttention();
@@ -88,11 +90,15 @@ describe("startTerminalAttentionProducer", () => {
       expect(terminal.getViewportLineRects).not.toHaveBeenCalled();
 
       // 1 frame 進める
-      tick();
+      tick(0);
       expect(terminal.getViewportLineRects).toHaveBeenCalledTimes(1);
 
-      // 2 frame 目
-      tick();
+      // interval 未満の frame は重い走査を skip
+      tick(TERMINAL_ATTENTION_SCAN_INTERVAL_MS - 1);
+      expect(terminal.getViewportLineRects).toHaveBeenCalledTimes(1);
+
+      // interval 到達で次の scan
+      tick(TERMINAL_ATTENTION_SCAN_INTERVAL_MS);
       expect(terminal.getViewportLineRects).toHaveBeenCalledTimes(2);
 
       dispose.dispose();
@@ -467,9 +473,8 @@ describe("startTerminalAttentionProducer", () => {
 
       handle.dispose();
 
-      // dispose 後の tick: rAF がキャンセルされているので stub の cb は
-      // 次の tick で更新されない（stub は同一 cb を保持したまま）。
-      // getViewportLineRects の呼び出し回数が増えないことで確認する。
+      // dispose 後に古い callback が呼ばれても scan しない。
+      tick();
       expect(terminal.getViewportLineRects.mock.calls.length).toBe(countAfterFirstTick);
     } finally {
       restore();

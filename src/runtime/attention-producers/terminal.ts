@@ -1,9 +1,10 @@
 /**
  * Terminal attention producer。
  *
- * rAF loop で毎 frame `getViewportLineRects()` を poll し、bottom-most（配列先頭）
- * から意味分類を行う。diagnostic / file-link に該当する行が **新規に現れた** ときだけ
- * emit し、`PULSE_MS` 後に null clear する一過性（transient）設計。
+ * rAF aligned throttled loop で `getViewportLineRects()` を poll し、
+ * bottom-most（配列先頭）から意味分類を行う。diagnostic / file-link に該当する行が
+ * **新規に現れた** ときだけ emit し、`PULSE_MS` 後に null clear する一過性
+ * （transient）設計。
  *
  * `getViewportLineRects()` は最終行から逆順で返すため、配列の index 0 が viewport
  * 最下行（= 直近出力行）となる。top-first ではなく bottom-first で scan することで
@@ -24,7 +25,8 @@
  *
  * event-driven (subscribePtyData / subscribeViewportScroll) は廃止。
  * PTY 出力後に xterm が行を確定する frame との乖離で diagnostic 検出が
- * 取りこぼされていたため、rAF loop に切り替えた。
+ * 取りこぼされていたため、rAF に同期する。ただし可視行の全走査は重いので
+ * 低頻度に間引く。
  *
  * Internal design-record: 2026-04-25-attention-aura-v2-design.md
  *   「Producer 一覧と priority」section
@@ -37,6 +39,7 @@ import type { Disposable } from "./types";
 
 /** diagnostic / file-link pulse の持続時間（ms）。この時間後に source を null clear する */
 const PULSE_MS = 3000;
+export const TERMINAL_ATTENTION_SCAN_INTERVAL_MS = 100;
 
 const PRIORITY_DIAGNOSTIC = 8;
 const PRIORITY_FILE_LINK = 5;
@@ -77,6 +80,8 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   const pulseTimers = new Map<string, unknown>();
 
   let rafId: number | null = null;
+  let lastScanAt = Number.NEGATIVE_INFINITY;
+  let disposed = false;
 
   /** source の pulse timer を開始（または上書き）し、PULSE_MS 後に null clear する */
   const startPulse = (source: string): void => {
@@ -131,14 +136,19 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
     seenFileLinkLines = currentFileLinkLines;
   };
 
-  const tick = (): void => {
-    scan();
+  const tick = (now: DOMHighResTimeStamp): void => {
+    if (disposed) return;
+    if (now - lastScanAt >= TERMINAL_ATTENTION_SCAN_INTERVAL_MS) {
+      lastScanAt = now;
+      scan();
+    }
     rafId = requestAnimationFrame(tick);
   };
   rafId = requestAnimationFrame(tick);
 
   return {
     dispose: () => {
+      disposed = true;
       if (rafId !== null) cancelAnimationFrame(rafId);
       // dispose 時に全 pulse timer をキャンセルし、active source を clear する
       for (const [source, timer] of pulseTimers) {
