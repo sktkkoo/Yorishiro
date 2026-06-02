@@ -858,8 +858,9 @@ function App() {
     });
 
     // ── History API（pack rollback）──────────────────────────────
-    // 確認 dialog 内蔵の restore を持つ単一 instance。bundled amenity ctx と
-    // MCP history-restore handler の双方が共用する（対称性）。
+    // 確認 dialog 内蔵の restore を持つ SDK instance。bundled amenity ctx に渡す。
+    // MCP history_restore は 5s emit timeout を避けるため、この instance を await
+    // せず proposal-only handler から UI 側 async flow へ委譲する。
     // trigger taxonomy：このインスタンスの create/snapshot は SDK 経路
     // （pack 作者の ctx.history.snapshot）からのみ呼ばれるので "sdk:snapshot"。
     // 住人 AI の MCP history_snapshot は Rust 完結で別 trigger "mcp:snapshot"
@@ -1276,7 +1277,20 @@ function App() {
             writeConfig,
             reloadPack,
           }),
-          "history-restore": createHistoryRestoreHandler({ historyApi }),
+          "history-restore": createHistoryRestoreHandler({
+            proposeRestore: (seq) => {
+              void (async () => {
+                const approved = await ask(
+                  `住人 AI が snapshot #${seq} への復元を提案しています。~/.charminal を戻しますか？\n` +
+                    "packs / config.json / init.js を完全置換し、反映のためアプリを再読み込みします（journal は変更しません）。",
+                  { title: "Charminal — 復元の提案", kind: "warning" },
+                );
+                if (!approved) return;
+                await snapshotRestore({ seq });
+                window.location.reload();
+              })();
+            },
+          }),
           "get-ui-state": createGetPackStateHandler({
             state: uiState,
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),

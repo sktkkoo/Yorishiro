@@ -467,46 +467,24 @@ describe("enable_pack handler", () => {
 });
 
 describe("createHistoryRestoreHandler", () => {
-  const stubApi = (over: Partial<import("../../sdk/history").HistoryAPI> = {}) => ({
-    list: async () => [],
-    snapshot: async () => 0,
-    restore: async () => true,
-    ...over,
-  });
-
-  it("returns ok when restore resolves true", async () => {
-    const calls: number[] = [];
+  it("surfaces a restore proposal and returns ok immediately", async () => {
+    const proposed: number[] = [];
     const handler = createHistoryRestoreHandler({
-      historyApi: stubApi({
-        restore: async (seq) => {
-          calls.push(seq);
-          return true;
-        },
-      }),
+      proposeRestore: (seq) => {
+        proposed.push(seq);
+      },
     });
     expect(await handler({ seq: 3 })).toEqual({ ok: true });
-    expect(calls).toEqual([3]);
+    expect(proposed).toEqual([3]);
   });
 
-  it("reports declined when restore resolves false", async () => {
+  it("rejects invalid seq without proposing restore", async () => {
+    const proposeRestore = vi.fn();
     const handler = createHistoryRestoreHandler({
-      historyApi: stubApi({ restore: async () => false }),
-    });
-    expect(await handler({ seq: 3 })).toEqual({ ok: false, reason: "user declined restore" });
-  });
-
-  it("rejects invalid seq without calling restore", async () => {
-    let called = false;
-    const handler = createHistoryRestoreHandler({
-      historyApi: stubApi({
-        restore: async () => {
-          called = true;
-          return true;
-        },
-      }),
+      proposeRestore,
     });
     expect(await handler({})).toEqual({ ok: false, reason: "missing or invalid seq" });
-    expect(called).toBe(false);
+    expect(proposeRestore).not.toHaveBeenCalled();
   });
 });
 

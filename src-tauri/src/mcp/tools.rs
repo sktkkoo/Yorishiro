@@ -414,7 +414,7 @@ impl Charminal {
 
     /// history_restore: TS 委譲。確認 dialog を経て snapshot に full-replace で戻す。
     #[tool(
-        description = "Restore ~/.charminal to a snapshot by seq (full replace of packs/config.json/init.js). DESTRUCTIVE: the user is asked to confirm before it runs; returns ok:false/reason if declined. If config.json or init.js changed, an app reload is required to apply. journal/memories are never touched."
+        description = "Propose restoring ~/.charminal to a snapshot by seq. This does NOT restore directly — it surfaces a confirmation to the user, who approves it in the app (the app then full-replaces packs/config.json/init.js and reloads). Returns ok:true once the proposal is surfaced (not when the restore completes). journal/memories are never touched."
     )]
     async fn history_restore(
         &self,

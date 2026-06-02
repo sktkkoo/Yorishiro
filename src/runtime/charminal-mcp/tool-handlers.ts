@@ -18,7 +18,6 @@ import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
-import type { HistoryAPI } from "../../sdk/history";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
 import type { PresenceResolution } from "../presence-target";
 import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
@@ -417,12 +416,13 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
 }
 
 export interface HistoryRestoreDeps {
-  readonly historyApi: HistoryAPI;
+  /** restore 提案を UI に surface（fire-and-forget）。handler は await しない。 */
+  readonly proposeRestore: (seq: number) => void;
 }
 
 /**
- * history_restore: 住人 AI が要求した restore を、確認 UX（historyApi 内蔵）を
- * 経て実行する。declined / 不正 seq は SimpleOkResponse の reason で AI に返す。
+ * history_restore: 住人 AI の restore 提案を UI に surface して即返す。
+ * dialog / restore / reload は App 側の非同期処理に任せ、MCP emit timeout を避ける。
  */
 export function createHistoryRestoreHandler(deps: HistoryRestoreDeps) {
   return async (request: unknown): Promise<SimpleOkResponse> => {
@@ -430,8 +430,8 @@ export function createHistoryRestoreHandler(deps: HistoryRestoreDeps) {
     if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 1) {
       return { ok: false, reason: "missing or invalid seq" };
     }
-    const restored = await deps.historyApi.restore(seq);
-    return restored ? { ok: true } : { ok: false, reason: "user declined restore" };
+    deps.proposeRestore(seq);
+    return { ok: true };
   };
 }
 
