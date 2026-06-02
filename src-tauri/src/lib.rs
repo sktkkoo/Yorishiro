@@ -772,6 +772,10 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
             if let Err(e) = history::snapshot_create_impl(&home_root, "startup-baseline", None) {
                 eprintln!("[history] baseline snapshot failed: {}", e);
             }
+            // baseline で 1 世代増えるので、ここでも prune して単調増加を防ぐ（Finding #1）。
+            if let Err(e) = history::snapshot_prune_impl(&home_root, history::DEFAULT_KEEP) {
+                eprintln!("[history] baseline prune failed: {}", e);
+            }
         }
     }
     Ok(())
