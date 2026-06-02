@@ -18,6 +18,7 @@ import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { HistoryAPI } from "../../sdk/history";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
 import type { PresenceResolution } from "../presence-target";
 import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
@@ -412,6 +413,25 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
     const next = withDisabledPackRemoved(current, id);
     await deps.writeConfig(next);
     return await deps.reloadPack(id);
+  };
+}
+
+export interface HistoryRestoreDeps {
+  readonly historyApi: HistoryAPI;
+}
+
+/**
+ * history_restore: 住人 AI が要求した restore を、確認 UX（historyApi 内蔵）を
+ * 経て実行する。declined / 不正 seq は SimpleOkResponse の reason で AI に返す。
+ */
+export function createHistoryRestoreHandler(deps: HistoryRestoreDeps) {
+  return async (request: unknown): Promise<SimpleOkResponse> => {
+    const seq = (request as { seq?: number }).seq;
+    if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 1) {
+      return { ok: false, reason: "missing or invalid seq" };
+    }
+    const restored = await deps.historyApi.restore(seq);
+    return restored ? { ok: true } : { ok: false, reason: "user declined restore" };
   };
 }
 

@@ -32,6 +32,7 @@ import {
   createDisablePackHandler,
   createEnablePackHandler,
   createGetPackStateHandler,
+  createHistoryRestoreHandler,
   createListPacksHandler,
   createPackDiagnoseHandler,
   createPresenceSetIntensityHandler,
@@ -462,6 +463,50 @@ describe("enable_pack handler", () => {
     });
     const result = await handler({ id: "ghost" });
     expect(result).toEqual({ ok: false, reason: "pack file not found" });
+  });
+});
+
+describe("createHistoryRestoreHandler", () => {
+  const stubApi = (over: Partial<import("../../sdk/history").HistoryAPI> = {}) => ({
+    list: async () => [],
+    snapshot: async () => 0,
+    restore: async () => true,
+    ...over,
+  });
+
+  it("returns ok when restore resolves true", async () => {
+    const calls: number[] = [];
+    const handler = createHistoryRestoreHandler({
+      historyApi: stubApi({
+        restore: async (seq) => {
+          calls.push(seq);
+          return true;
+        },
+      }),
+    });
+    expect(await handler({ seq: 3 })).toEqual({ ok: true });
+    expect(calls).toEqual([3]);
+  });
+
+  it("reports declined when restore resolves false", async () => {
+    const handler = createHistoryRestoreHandler({
+      historyApi: stubApi({ restore: async () => false }),
+    });
+    expect(await handler({ seq: 3 })).toEqual({ ok: false, reason: "user declined restore" });
+  });
+
+  it("rejects invalid seq without calling restore", async () => {
+    let called = false;
+    const handler = createHistoryRestoreHandler({
+      historyApi: stubApi({
+        restore: async () => {
+          called = true;
+          return true;
+        },
+      }),
+    });
+    expect(await handler({})).toEqual({ ok: false, reason: "missing or invalid seq" });
+    expect(called).toBe(false);
   });
 });
 

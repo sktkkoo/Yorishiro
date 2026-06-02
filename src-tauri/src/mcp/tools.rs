@@ -60,7 +60,6 @@ pub struct HistorySnapshotRequest {
 }
 
 /// `history_restore` の引数。戻したい snapshot の seq（Task 5 で使う）。
-#[allow(dead_code)]
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct HistoryRestoreRequest {
     /// Target snapshot seq (from history_list).
@@ -411,6 +410,22 @@ impl Charminal {
             }
             Err(msg) => Err(McpError::internal_error(msg, None)),
         }
+    }
+
+    /// history_restore: TS 委譲。確認 dialog を経て snapshot に full-replace で戻す。
+    #[tool(
+        description = "Restore ~/.charminal to a snapshot by seq (full replace of packs/config.json/init.js). DESTRUCTIVE: the user is asked to confirm before it runs; returns ok:false/reason if declined. If config.json or init.js changed, an app reload is required to apply. journal/memories are never touched."
+    )]
+    async fn history_restore(
+        &self,
+        Parameters(req): Parameters<HistoryRestoreRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "history-restore",
+            json!({ "seq": req.seq }),
+        )
+        .await
     }
 
     /// list_packs: TS runtime に委譲。`{ packs: PackStatus[] }` を返す。

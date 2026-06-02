@@ -1176,6 +1176,7 @@ function App() {
           createPomodoroStartHandler,
           createPomodoroStopHandler,
           createPomodoroStatusHandler,
+          createHistoryRestoreHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
@@ -1275,6 +1276,7 @@ function App() {
             writeConfig,
             reloadPack,
           }),
+          "history-restore": createHistoryRestoreHandler({ historyApi }),
           "get-ui-state": createGetPackStateHandler({
             state: uiState,
             getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
