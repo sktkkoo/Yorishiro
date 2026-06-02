@@ -412,7 +412,7 @@ impl Charminal {
         }
     }
 
-    /// history_restore: TS 委譲。確認 dialog を経て snapshot に full-replace で戻す。
+    /// history_restore: TS 委譲。restore 提案を UI に surface して即返す。
     #[tool(
         description = "Propose restoring ~/.charminal to a snapshot by seq. This does NOT restore directly — it surfaces a confirmation to the user, who approves it in the app (the app then full-replaces packs/config.json/init.js and reloads). Returns ok:true once the proposal is surfaced (not when the restore completes). journal/memories are never touched."
     )]
