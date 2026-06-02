@@ -149,6 +149,54 @@ body,
   text-decoration: none;
 }
 
+.app-error-boundary-restore {
+  margin-top: 18px;
+  border-top: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));
+  padding-top: 14px;
+}
+
+.app-error-boundary-restore h2 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.app-error-boundary-restore ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.app-error-boundary-restore li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.app-error-boundary-restore button {
+  border-radius: 8px;
+  border: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));
+  padding: 6px 10px;
+  background: var(--charminal-button-bg, #243447);
+  color: var(--charminal-fg, #e6edf3);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.app-error-boundary-restore button:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.app-error-boundary-restore li.is-recommended {
+  font-weight: 600;
+}
+
 /* ── Shell column（width / collapse を所有する縦カラム）─────── */
 .shell-column {
   flex: 0 0 var(--sidebar-width);
