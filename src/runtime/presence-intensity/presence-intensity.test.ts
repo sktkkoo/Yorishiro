@@ -4,6 +4,7 @@ import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry/types";
 import type { PresenceIntensityDeps } from "./presence-intensity";
 import {
   _resetForTest,
+  type ApplyPresenceOptions,
   applyPresenceLevel,
   getPresenceSnapshot,
   getPresenceState,
@@ -90,6 +91,43 @@ describe("PresenceIntensity", () => {
     const lastCall = calls[calls.length - 1];
     expect(lastCall?.[0]).toBe("presence.sidebar.width");
     expect(lastCall?.[1]).toBe(280); // defaultWidth
+  });
+
+  it("immediate default は sidebar tween を使わず default 幅へ即時復帰する", () => {
+    const deps = createMockDeps({
+      getSidebarWidth: vi.fn(() => 0),
+    });
+    applyPresenceLevel("closed", "mcp", deps);
+    vi.mocked(deps.tweenManager.start).mockClear();
+    vi.mocked(deps.setSidebarWidth).mockClear();
+    vi.mocked(deps.setRenderPaused).mockClear();
+    vi.mocked(deps.ambientUiRegistry.enable).mockClear();
+
+    const options: ApplyPresenceOptions = { immediate: true };
+    applyPresenceLevel("default", "default", deps, options);
+
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(false);
+    expect(deps.tweenManager.cancel).toHaveBeenCalledWith("presence.sidebar.width");
+    expect(deps.tweenManager.start).not.toHaveBeenCalled();
+    expect(deps.setSidebarWidth).toHaveBeenCalledWith(280);
+    expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
+    expect(getPresenceState().level).toBe("default");
+  });
+
+  it("immediate default は同一 level でも sidebar と render を再同期する", () => {
+    const deps = createMockDeps({
+      getSidebarWidth: vi.fn(() => 0),
+    });
+    const options: ApplyPresenceOptions = { immediate: true };
+
+    applyPresenceLevel("default", "default", deps, options);
+
+    expect(deps.setRenderPaused).toHaveBeenCalledWith(false);
+    expect(deps.tweenManager.cancel).toHaveBeenCalledWith("presence.sidebar.width");
+    expect(deps.tweenManager.start).not.toHaveBeenCalled();
+    expect(deps.setSidebarWidth).toHaveBeenCalledWith(280);
+    expect(deps.ambientUiRegistry.enable).toHaveBeenCalledWith("attention-aura");
+    expect(getPresenceState().level).toBe("default");
   });
 
   // -----------------------------------------------------------------------
@@ -237,6 +275,23 @@ describe("PresenceIntensity", () => {
     expect(state.level).toBe("default");
     expect(state.source).toBe("default");
     expect(state.previousLevel).toBe("default");
+    expect(deps2.tweenManager.start).not.toHaveBeenCalled();
+  });
+
+  it("onUserPromptSubmit は user が settings で閉じた closed を維持する（自動復帰しない）", () => {
+    // 「呼ばれたら顔を出す」自動復帰は住人が自分で引っ込んだ場合（source "mcp"）だけ。
+    // user が UI で明示的に閉じた（source "settings"）状態は prompt 送信で勝手に開かない。
+    const deps = createMockDeps({ now: vi.fn(() => 2000) });
+    applyPresenceLevel("closed", "settings", deps);
+
+    const deps2 = createMockDeps({ now: vi.fn(() => 3000) });
+    onUserPromptSubmit(deps2);
+
+    const state = getPresenceState();
+    expect(state.level).toBe("closed");
+    expect(state.source).toBe("settings");
+    expect(state.previousLevel).toBeNull();
+    expect(state.previousLevelSince).toBeNull();
     expect(deps2.tweenManager.start).not.toHaveBeenCalled();
   });
 

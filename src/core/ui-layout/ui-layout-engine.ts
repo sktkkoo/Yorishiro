@@ -17,12 +17,15 @@ export interface LayoutTargets {
   readonly sidebar: HTMLElement;
   readonly character: HTMLElement;
   readonly chrome: HTMLElement;
+  /** タブインジケータ（セッション切替の pill）。常時存在するとは限らないため optional。 */
+  readonly tabIndicator?: HTMLElement;
 }
 
 /** 本モジュールが touch する全 style プロパティ（resetLayout の loop で参照） */
 const MANAGED_STYLE_KEYS = [
   "width",
   "minWidth",
+  "flexBasis",
   "display",
   "position",
   "zIndex",
@@ -31,6 +34,10 @@ const MANAGED_STYLE_KEYS = [
   "top",
   "left",
   "height",
+  // applyLayout は書かないが、stage 遷移（ui-pack-transition）が chrome に marginTop
+  // （占有スペースを畳む退避）や transform を残しうるため、deactivate 時の reset で clear する。
+  "marginTop",
+  "transform",
 ] as const;
 
 export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
@@ -40,11 +47,19 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
     if (s.width === "fullscreen") {
       targets.sidebar.style.width = "100vw";
       targets.sidebar.style.minWidth = "100vw";
+      targets.sidebar.style.flexBasis = "100vw";
+      // stage を fullscreen にするとき character 描画域も全画面へ広げる。
+      // .charactor-container は通常 --sidebar-content-width(280px) 固定（presence
+      // sidebar tween 中の VRM reflow を防ぐため）。fullscreen UI pack では canvas/camera を
+      // 全画面に追従させたいので、ここで明示的に上書きする（ThreeRuntime の ResizeObserver が拾う）。
+      targets.character.style.width = "100vw";
+      targets.character.style.minWidth = "100vw";
     } else if (s.width === "hidden") {
       targets.sidebar.style.display = "none";
     } else if (typeof s.width === "number") {
       targets.sidebar.style.width = `${s.width}px`;
       targets.sidebar.style.minWidth = `${s.width}px`;
+      targets.sidebar.style.flexBasis = `${s.width}px`;
     }
     // "default" は何もしない（元の CSS が効く）
 
@@ -100,6 +115,14 @@ export function applyLayout(layout: UiLayout, targets: LayoutTargets): void {
       targets.chrome.style.display = "none";
     }
   }
+
+  // tab-indicator（セッション切替の pill）。terminal が見えない全画面モードでは
+  // タブ切替が無意味なので隠せる。target が無い構成（タブ未描画）では no-op。
+  if (layout.tabIndicator && targets.tabIndicator) {
+    if (layout.tabIndicator.visible === false) {
+      targets.tabIndicator.style.display = "none";
+    }
+  }
 }
 
 /** applyLayout が touch する全 style プロパティを空文字に戻す。 */
@@ -110,7 +133,9 @@ export function resetLayout(targets: LayoutTargets): void {
     targets.terminal,
     targets.character,
     targets.chrome,
+    targets.tabIndicator,
   ]) {
+    if (!target) continue;
     for (const key of MANAGED_STYLE_KEYS) {
       (target.style as unknown as Record<string, string>)[key] = "";
     }
