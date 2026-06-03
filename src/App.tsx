@@ -1340,6 +1340,24 @@ function App() {
             return null;
           }
         };
+        const enableBundledAmenity = (id: string): boolean => {
+          const registry = getAmenityPackRegistry();
+          const entry = registry
+            .listEntries()
+            .find((candidate) => candidate.id === id && candidate.origin === "bundled");
+          if (entry === undefined) return false;
+          registry.enable(id);
+          return registry.getActiveSet().includes(id);
+        };
+        const disableBundledAmenity = (id: string): boolean => {
+          const registry = getAmenityPackRegistry();
+          const entry = registry
+            .listEntries()
+            .find((candidate) => candidate.id === id && candidate.origin === "bundled");
+          if (entry === undefined) return false;
+          registry.disable(id);
+          return true;
+        };
         // disable/enable で fs から読み直して runtime registry に register し直す経路。
         const userPackLog = createSubsystemLog(devLog, "UserPackLoader");
         const reloadPack = async (id: string): Promise<{ ok: boolean; reason?: string }> => {
@@ -1415,17 +1433,13 @@ function App() {
             readConfig,
             writeConfig,
             registry: packRegistry,
+            disableBundledAmenity,
           }),
           "enable-pack": createEnablePackHandler({
             readConfig,
             writeConfig,
             reloadPack,
-            enableBundledAmenity: (id) => {
-              const registry = getAmenityPackRegistry();
-              const before = registry.getActiveSet().length;
-              registry.enable(id);
-              return registry.getActiveSet().length > before;
-            },
+            enableBundledAmenity,
           }),
           "history-restore": createHistoryRestoreHandler({
             proposeRestore: (seq) => {
@@ -2274,6 +2288,25 @@ function App() {
       });
     };
 
+    const enableBundledAmenityForPackTools = (id: string): boolean => {
+      const registry = getAmenityPackRegistry();
+      const entry = registry
+        .listEntries()
+        .find((candidate) => candidate.id === id && candidate.origin === "bundled");
+      if (entry === undefined) return false;
+      registry.enable(id);
+      return registry.getActiveSet().includes(id);
+    };
+    const disableBundledAmenityForPackTools = (id: string): boolean => {
+      const registry = getAmenityPackRegistry();
+      const entry = registry
+        .listEntries()
+        .find((candidate) => candidate.id === id && candidate.origin === "bundled");
+      if (entry === undefined) return false;
+      registry.disable(id);
+      return true;
+    };
+
     const buildPackToolDeps = () => ({
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
@@ -2473,6 +2506,7 @@ function App() {
               readConfig: deps.readConfig,
               writeConfig: deps.writeConfig,
               registry: packRegistry,
+              disableBundledAmenity: disableBundledAmenityForPackTools,
             })({ id });
           },
           enablePack: async (id) => {
@@ -2484,12 +2518,7 @@ function App() {
               readConfig: deps.readConfig,
               writeConfig: deps.writeConfig,
               reloadPack: reloadPackForPackTools,
-              enableBundledAmenity: (packId) => {
-                const registry = getAmenityPackRegistry();
-                const before = registry.getActiveSet().length;
-                registry.enable(packId);
-                return registry.getActiveSet().length > before;
-              },
+              enableBundledAmenity: enableBundledAmenityForPackTools,
             })({ id });
           },
           getHealthReport: collectAppHealthReport,

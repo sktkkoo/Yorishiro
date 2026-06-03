@@ -108,6 +108,69 @@ struct SystemExecResult {
     duration_ms: u64,
 }
 
+#[cfg(windows)]
+struct WindowsJobHandle(usize);
+
+#[cfg(windows)]
+impl Drop for WindowsJobHandle {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = windows_sys::Win32::Foundation::CloseHandle(self.0 as _);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn create_kill_on_close_job(child: &std::process::Child) -> Option<WindowsJobHandle> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    unsafe {
+        let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+        if job.is_null() {
+            return None;
+        }
+
+        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const core::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        if configured == 0 {
+            let _ = CloseHandle(job);
+            return None;
+        }
+
+        let assigned = AssignProcessToJobObject(job, child.as_raw_handle() as _);
+        if assigned == 0 {
+            let _ = CloseHandle(job);
+            return None;
+        }
+
+        Some(WindowsJobHandle(job as usize))
+    }
+}
+
+#[cfg(windows)]
+fn kill_windows_process_tree(child_id: u32, job: Option<WindowsJobHandle>) {
+    if job.is_some() {
+        drop(job);
+        return;
+    }
+
+    let _ = std::process::Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &child_id.to_string()])
+        .output();
+}
+
 #[tauri::command]
 async fn system_exec(
     pack_id: String,
@@ -166,6 +229,8 @@ async fn system_exec(
     let start = Instant::now();
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+    #[cfg(windows)]
+    let windows_job = create_kill_on_close_job(&child);
 
     let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
     let child_id = child.id();
@@ -240,9 +305,7 @@ async fn system_exec(
                     }
                     #[cfg(windows)]
                     {
-                        let _ = std::process::Command::new("taskkill")
-                            .args(["/T", "/F", "/PID", &child_id.to_string()])
-                            .output();
+                        kill_windows_process_tree(child_id, windows_job);
                     }
 
                     if let Some(h) = stdin_handle {
@@ -272,9 +335,7 @@ async fn system_exec(
                         }
                         #[cfg(windows)]
                         {
-                            let _ = std::process::Command::new("taskkill")
-                                .args(["/T", "/F", "/PID", &child_id.to_string()])
-                                .output();
+                            kill_windows_process_tree(child_id, windows_job);
                         }
                         let _ = child.wait();
                         return Err(format!("timeout after {timeout_ms}ms"));

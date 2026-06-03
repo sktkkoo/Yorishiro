@@ -366,6 +366,11 @@ export interface DisablePackDeps {
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly writeConfig: (next: CharminalConfig) => Promise<void>;
   readonly registry: UserPackRegistry;
+  /**
+   * bundled amenity を id で disable する。registry に登録済みなら active 状態に
+   * 関わらず true を返す。未登録なら false。
+   */
+  readonly disableBundledAmenity?: (id: string) => boolean;
 }
 
 export interface SimpleOkResponse {
@@ -388,6 +393,7 @@ export function createDisablePackHandler(deps: DisablePackDeps) {
     for (const e of entries) {
       deps.registry.dispose(e.id, e.kind);
     }
+    deps.disableBundledAmenity?.(id);
     return { ok: true };
   };
 }
@@ -403,7 +409,7 @@ export interface EnablePackDeps {
   readonly reloadPack: (id: string) => Promise<SimpleOkResponse>;
   /**
    * bundled amenity を id で enable する。registry に登録済みなら enable して
-   * true を返す。未登録なら false。
+   * true を返す。すでに active な場合も true。未登録なら false。
    */
   readonly enableBundledAmenity?: (id: string) => boolean;
 }
