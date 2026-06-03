@@ -30,6 +30,7 @@ import {
   FolderOpen,
   Package,
   RefreshCw,
+  RotateCcw,
   Volume2,
   VolumeX,
   Wrench,
@@ -37,11 +38,14 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { snapshotList, snapshotRestore } from "../../../src/bindings/tauri-commands";
 import { getStrings, type UiStrings } from "../../../src/i18n/strings";
+import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
 } from "../../../src/runtime/user-pack-loader/config";
+import type { SnapshotEntry } from "../../../src/sdk/history";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
@@ -995,6 +999,206 @@ function HealthDiagnostics({
             </>
           )}
         </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * 設定画面の restore section。crash していなくても、snapshot 一覧から手動で
+ * ~/.charminal を以前の状態に戻す。最新は「現在に近い状態」なので既定にせず、
+ * 1 つ前を ★推奨（buildRestoreRows）として表示する。確認 → restore → reload で
+ * config/init.js も再適用する。
+ */
+function SnapshotRestoreSection({ strings }: { strings: UiStrings }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState<ReadonlyArray<SnapshotEntry> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    snapshotList()
+      .then((next) => setSnapshots(next))
+      .catch(() => setSnapshots([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (open && snapshots === null) refresh();
+  }, [open, snapshots, refresh]);
+
+  const handleRestore = useCallback(
+    async (seq: number) => {
+      // dialog は dynamic import（AppErrorBoundary / App.tsx と同パターン）。
+      const { ask, message } = await import("@tauri-apps/plugin-dialog");
+      const approved = await ask(
+        `${strings.restoreConfirmIntro}（#${seq}）\n${strings.restoreConfirmDetail}`,
+        { title: strings.restoreConfirmTitle, kind: "warning" },
+      );
+      if (!approved) return;
+      setRestoring(true);
+      try {
+        await snapshotRestore({ seq });
+        window.location.reload();
+      } catch (err) {
+        setRestoring(false);
+        void message(
+          `${strings.restoreFailed}: ${err instanceof Error ? err.message : String(err)}`,
+          { title: "Charminal", kind: "error" },
+        );
+      }
+    },
+    [strings],
+  );
+
+  const rows = snapshots ? buildRestoreRows(snapshots, Date.now()) : [];
+  let listContent: React.ReactNode;
+  if (snapshots === null) {
+    listContent = (
+      <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+        Checking…
+      </div>
+    );
+  } else if (rows.length === 0) {
+    listContent = (
+      <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+        {strings.restoreEmpty}
+      </div>
+    );
+  } else {
+    listContent = rows.map((row) => (
+      <div
+        key={row.seq}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: SPACING.md,
+          padding: `${SPACING.sm} ${SPACING.md}`,
+          borderBottom: `1px solid ${COLORS.borderSubtle}`,
+        }}
+      >
+        <span
+          style={{
+            minWidth: 0,
+            fontSize: FONT.sizeXs,
+            color: COLORS.fgDim,
+            overflowWrap: "anywhere",
+            fontWeight: row.isRecommended ? FONT.weightSemibold : FONT.weightNormal,
+          }}
+        >
+          {row.text}
+          {row.isLatest ? ` ${strings.restoreLatestTag}` : ""}
+          {row.isRecommended ? ` ${strings.restoreRecommendedTag}` : ""}
+        </span>
+        <button
+          type="button"
+          disabled={restoring}
+          onClick={() => void handleRestore(row.seq)}
+          style={{
+            flexShrink: 0,
+            border: `1px solid ${COLORS.borderSubtle}`,
+            borderRadius: RADIUS.sm,
+            background: COLORS.bgButton,
+            color: COLORS.fg,
+            font: "inherit",
+            fontSize: FONT.sizeXs,
+            padding: `${SPACING.xs} ${SPACING.sm}`,
+            cursor: restoring ? "default" : "pointer",
+            opacity: restoring ? 0.5 : 1,
+          }}
+        >
+          {strings.restoreButton}
+        </button>
+      </div>
+    ));
+  }
+
+  return (
+    <section>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: SPACING.sm,
+            opacity: 0.78,
+            border: "none",
+            background: "transparent",
+            color: COLORS.fg,
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: "inherit",
+            padding: 0,
+          }}
+        >
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            style={{
+              transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+              transition: "transform 0.15s ease",
+            }}
+          />
+          <RotateCcw size={14} aria-hidden="true" color={COLORS.fgDimmer} />
+          <span>{strings.labelRestore}</span>
+        </button>
+        {open && (
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            aria-label="Refresh snapshots"
+            title="Refresh snapshots"
+            style={{
+              width: "26px",
+              height: "26px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              borderRadius: RADIUS.sm,
+              background: "transparent",
+              color: COLORS.fgDimmer,
+              cursor: loading ? "default" : "pointer",
+              opacity: loading ? 0.4 : 0.7,
+              padding: 0,
+            }}
+          >
+            <RefreshCw size={13} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <>
+          <div
+            style={{
+              marginTop: SPACING.sm,
+              color: COLORS.fgDimmer,
+              fontSize: FONT.sizeXs,
+              lineHeight: 1.45,
+              maxWidth: "520px",
+            }}
+          >
+            {strings.restoreIntro}
+          </div>
+          <div
+            style={{
+              marginTop: SPACING.md,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              borderRadius: RADIUS.md,
+              overflow: "hidden",
+              maxWidth: "520px",
+              background: COLORS.bgInput,
+            }}
+          >
+            {listContent}
+          </div>
+        </>
       )}
     </section>
   );
@@ -2290,6 +2494,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div style={{ height: "32px" }} />
 
         <HealthDiagnostics ctx={ctx} strings={strings} />
+
+        {/* 32px gap */}
+        <div style={{ height: "32px" }} />
+
+        <SnapshotRestoreSection strings={strings} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
