@@ -16,6 +16,11 @@ export interface RegisterBundledMusicShelfDeps {
   readonly tweenManager: TweenManager;
   readonly emitEvent: (name: string, payload?: unknown) => void;
   readonly history: HistoryAPI;
+  /**
+   * true / undefined なら登録後に active にする。config.disabledPacks で明示的に
+   * disable されている場合だけ caller が false を渡す。
+   */
+  readonly defaultEnabled?: boolean;
 }
 
 export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
@@ -118,8 +123,9 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
       handle,
     });
 
-    // default-off: enable() を呼ばない。ユーザーが enable_pack で明示的に有効化する。
-    // pomodoro と異なり system.exec を使う amenity は opt-in。
+    if (deps.defaultEnabled !== false) {
+      deps.registry.enable(musicShelfPack.id);
+    }
 
     abortController.signal.addEventListener("abort", () => {
       registration.dispose();

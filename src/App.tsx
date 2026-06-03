@@ -986,20 +986,6 @@ function App() {
       note: "registered bundled amenity pack 'pomodoro'",
     });
 
-    // ── Bundled amenity pack 登録（music-shelf）────────────────────────────
-    registerBundledMusicShelf({
-      registry: getAmenityPackRegistry(),
-      tweenManager: getThreeRuntime().getTweenManager(),
-      emitEvent: (name, payload) => {
-        bus.emitSynthetic({ type: "system", packId: "music-shelf" }, name, payload, 0);
-      },
-      history: historyApi,
-    });
-    appLog.write({
-      phase: "register",
-      note: "registered bundled amenity pack 'music-shelf'",
-    });
-
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
     // 旧来は 3 つの fire-and-forget IIFE で並行実行していたが、互いに strict な
     // 順序依存（bundled scene → config 反映 → user pack load）があり race で
@@ -1087,9 +1073,11 @@ function App() {
       let resolvedLanguage: ResolvedLanguage = resolveLanguage("auto", getBrowserLocales());
       let voiceFrequency: "on" | "off" = "on";
       let pluginDir: string | null = null;
+      let disabledPacks: ReadonlyArray<string> = [];
       try {
         const configText = await readCharminalConfigText();
         const config = parseConfig(configText);
+        disabledPacks = config.disabledPacks;
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
@@ -1133,6 +1121,26 @@ function App() {
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }
+
+      // ── Bundled amenity pack 登録（music-shelf）────────────────────────────
+      // default-on。ただし disable_pack で config.disabledPacks に入っている場合は
+      // 起動時に active に戻さない。
+      const musicShelfDefaultEnabled = !disabledPacks.includes("music-shelf");
+      registerBundledMusicShelf({
+        registry: getAmenityPackRegistry(),
+        tweenManager: getThreeRuntime().getTweenManager(),
+        emitEvent: (name, payload) => {
+          bus.emitSynthetic({ type: "system", packId: "music-shelf" }, name, payload, 0);
+        },
+        history: historyApi,
+        defaultEnabled: musicShelfDefaultEnabled,
+      });
+      appLog.write({
+        phase: "register",
+        note: musicShelfDefaultEnabled
+          ? "registered bundled amenity pack 'music-shelf'"
+          : "registered bundled amenity pack 'music-shelf' (disabled by config)",
+      });
 
       // ─ Step 2.5: subscribeActive 系 wire ─
       // 順序契約：subscribe wire は Step 2 の setActiveScene(config.activeScene)
