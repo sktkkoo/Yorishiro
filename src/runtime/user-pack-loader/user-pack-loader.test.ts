@@ -5,10 +5,11 @@
  * ここでは real instance を組まずに stub で直接検証する。
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
+import type { EffectDefinition, HistoryAPI, PersonaDefinition } from "@charminal/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
+import type { TweenManager } from "../../core/tween/tween-manager";
 
 // @tauri-apps/api/core は Tauri runtime なしでは動かないので stub する。
 // scene branch が convertFileSrc で manifest URL を構築するため必要。
@@ -19,10 +20,11 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import type { AmbientUiPackEntry, AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
-import type { AmenityPackRegistry } from "../amenity-pack-registry";
+import { type AmenityPackRegistry, AmenityPackRegistryImpl } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackEntry, UiPackRegistry } from "../ui-pack-registry";
+import { createUserAmenityContextFactory } from "./amenity-activation";
 import {
   type EffectRegistrar,
   loadSingleUserPack,
@@ -60,6 +62,15 @@ const validAmbientUiPack = {
   id: "user-ambient",
   type: "ambient-ui",
   mount: () => ({ dispose: () => {} }),
+};
+
+const validAmenityPack = {
+  id: "noted",
+  name: "Noted",
+  activate: async () => ({
+    tools: { noted_add: async (p: unknown) => ({ saved: p }) },
+    dispose: () => {},
+  }),
 };
 
 // ─── fakes ────────────────────────────────────────────────────────
@@ -190,6 +201,20 @@ function makeFakeAmenityPackRegistry(): AmenityPackRegistry {
     getActiveHandle: () => null,
     subscribeActiveSet: () => ({ dispose: () => {} }),
   };
+}
+
+const fakeHistory: HistoryAPI = {
+  list: async () => [],
+  snapshot: async () => 1,
+  restore: async () => true,
+};
+
+function makeFakeTweenManager(): TweenManager {
+  return {
+    start: () => ({ cancel: () => {}, completion: Promise.resolve() }),
+    startVec3: () => ({ cancel: () => {}, completion: Promise.resolve() }),
+    cancel: () => {},
+  } as unknown as TweenManager;
 }
 
 // ─── tests ────────────────────────────────────────────────────────
@@ -844,6 +869,61 @@ describe("loadSingleUserPack", () => {
 
     expect(result.status).toBe("loaded");
     expect(packRegistry.has("solo", "effect")).toBe(true);
+  });
+
+  it("activates and registers amenity when a context factory is injected", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const persona: PersonaRegistrar = { register: () => ({ dispose: () => {} }) };
+    const amenityPackRegistry = new AmenityPackRegistryImpl();
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const result = await loadSingleUserPack(
+      { id: "noted", kind: "amenity", entryPath: "/fake/noted/amenity.js" },
+      {
+        effectPackRunner: runner,
+        personaRegistry: persona,
+        scenePackRegistry: makeFakeScenePackRegistry(),
+        ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+        amenityPackRegistry,
+        packRegistry,
+        devLog,
+        importModule: async () => ({ default: validAmenityPack }),
+        createAmenityContext: createUserAmenityContextFactory({
+          tweenManager: makeFakeTweenManager(),
+          emitEvent: () => {},
+          history: fakeHistory,
+        }),
+      },
+    );
+
+    expect(result.status).toBe("loaded");
+    expect(amenityPackRegistry.getActiveHandle("noted")).not.toBeNull();
+  });
+
+  it("falls back to validate-only for amenity when no context factory is injected", async () => {
+    const runner: EffectRegistrar = { register: () => ({ dispose: () => {} }) };
+    const persona: PersonaRegistrar = { register: () => ({ dispose: () => {} }) };
+    const amenityPackRegistry = new AmenityPackRegistryImpl();
+    const packRegistry = new UserPackRegistry();
+    const devLog = makeDevLog().subsystem;
+
+    const result = await loadSingleUserPack(
+      { id: "noted", kind: "amenity", entryPath: "/fake/noted/amenity.js" },
+      {
+        effectPackRunner: runner,
+        personaRegistry: persona,
+        scenePackRegistry: makeFakeScenePackRegistry(),
+        ambientUiPackRegistry: makeFakeAmbientUiPackRegistry(),
+        amenityPackRegistry,
+        packRegistry,
+        devLog,
+        importModule: async () => ({ default: validAmenityPack }),
+      },
+    );
+
+    expect(result.status).toBe("loaded");
+    expect(amenityPackRegistry.getActiveHandle("noted")).toBeNull();
   });
 
   it("returns failed when importModule throws", async () => {
