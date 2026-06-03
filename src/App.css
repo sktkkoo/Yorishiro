@@ -177,6 +177,37 @@ body,
   font-size: 12px;
 }
 
+.app-error-boundary-restore-row-text {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.app-error-boundary-restore-row-time {
+  color: var(--charminal-muted, rgba(230, 237, 243, 0.65));
+  font-weight: 400;
+}
+
+.app-error-boundary-restore-badge {
+  border: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--charminal-muted, rgba(230, 237, 243, 0.65));
+  font-weight: 400;
+}
+
+.app-error-boundary-restore-badge.is-error {
+  color: #d6b15c;
+}
+
+.app-error-boundary-restore-recommended {
+  color: var(--charminal-fg, #e6edf3);
+}
+
 .app-error-boundary-restore button {
   border-radius: 8px;
   border: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));

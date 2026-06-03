@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import React from "react";
 import { snapshotList, snapshotRestore } from "../bindings/tauri-commands";
-import { buildRestoreRows } from "../runtime/history/describe-snapshot";
+import { changeStrings, getStrings, type UiStrings } from "../i18n/strings";
+import { buildRestoreRows, type StartupStatus } from "../runtime/history/describe-snapshot";
+import { getBrowserLocales, resolveLanguage } from "../runtime/language/language";
 import type { SnapshotEntry } from "../sdk/history";
 
 interface AppErrorBoundaryProps {
@@ -21,6 +23,15 @@ function formatError(error: Error, errorInfo: React.ErrorInfo | null): string {
   const parts = [error.stack || error.message];
   if (errorInfo?.componentStack) parts.push(errorInfo.componentStack);
   return parts.join("\n\n");
+}
+
+function crashRestoreStrings(): { readonly locale: string; readonly strings: UiStrings } {
+  const locale = resolveLanguage("auto", getBrowserLocales());
+  return { locale, strings: getStrings(locale) };
+}
+
+function startupStatusTag(strings: UiStrings, status: StartupStatus): string {
+  return status === "clean" ? strings.restoreStartupCleanTag : strings.restoreStartupErrorTag;
 }
 
 export class AppErrorBoundary extends React.Component<
@@ -54,17 +65,17 @@ export class AppErrorBoundary extends React.Component<
   private async handleRestore(seq: number): Promise<void> {
     // dialog は dynamic import（App.tsx と同パターン）。
     const { ask, message } = await import("@tauri-apps/plugin-dialog");
+    const { strings } = crashRestoreStrings();
     const approved = await ask(
-      `snapshot #${seq} に ~/.charminal を戻します。よろしいですか？\n` +
-        "packs / config.json / init.js を完全置換し、反映のためアプリを再読み込みします（journal は変更しません）。",
-      { title: "Charminal — 復元の確認", kind: "warning" },
+      `${strings.restoreConfirmIntro}（#${seq}）\n${strings.restoreConfirmDetail}`,
+      { title: strings.restoreConfirmTitle, kind: "warning" },
     );
     if (!approved) return;
     this.setState({ restoring: true });
     try {
       await snapshotRestore({ seq });
       // append-only なので list の番号では戻ったか分かりにくい。明示的に確認を出す。
-      await message(`snapshot #${seq} の状態に戻しました。再読み込みします。`, {
+      await message(strings.restoreDone.replace("{seq}", String(seq)), {
         title: "Charminal",
         kind: "info",
       });
@@ -72,17 +83,21 @@ export class AppErrorBoundary extends React.Component<
       window.location.reload();
     } catch (err) {
       this.setState({ restoring: false });
-      void message(`復元に失敗しました: ${err instanceof Error ? err.message : String(err)}`, {
-        title: "Charminal",
-        kind: "error",
-      });
+      void message(
+        `${strings.restoreFailed}: ${err instanceof Error ? err.message : String(err)}`,
+        {
+          title: "Charminal",
+          kind: "error",
+        },
+      );
     }
   }
 
   private renderRestoreSection(): React.ReactNode {
     const { snapshots, restoring } = this.state;
     if (snapshots === null || snapshots.length === 0) return null;
-    const rows = buildRestoreRows(snapshots, Date.now());
+    const { locale, strings } = crashRestoreStrings();
+    const rows = buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale);
     return (
       <div className="app-error-boundary-restore">
         <h2>最新変更前の状態に戻す</h2>
@@ -95,10 +110,24 @@ export class AppErrorBoundary extends React.Component<
         <ul>
           {rows.map((row) => (
             <li key={row.seq} className={row.isRecommended ? "is-recommended" : undefined}>
-              <span>
-                {row.text}
-                {row.isLatest ? "（最新 / 現在の状態）" : ""}
-                {row.isRecommended ? "  ★推奨" : ""}
+              <span className="app-error-boundary-restore-row-text">
+                <span>{row.changeText}</span>
+                <span className="app-error-boundary-restore-row-time">· {row.timeText}</span>
+                {row.isLatest ? (
+                  <span className="app-error-boundary-restore-row-time">
+                    {strings.restoreLatestTag}
+                  </span>
+                ) : null}
+                {row.startupStatus ? (
+                  <span className={`app-error-boundary-restore-badge is-${row.startupStatus}`}>
+                    {startupStatusTag(strings, row.startupStatus)}
+                  </span>
+                ) : null}
+                {row.isRecommended ? (
+                  <span className="app-error-boundary-restore-recommended">
+                    {strings.restoreRecommendedTag}
+                  </span>
+                ) : null}
               </span>
               {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}
               {row.isLatest ? null : (

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   AGENT_COMMAND_SYNTAX,
+  changeStrings,
+  getStrings,
   resolveFixedTerminalPrompt,
   resolvePackRepairPrompt,
 } from "./strings";
@@ -77,6 +79,32 @@ describe("AGENT_COMMAND_SYNTAX", () => {
     expect(AGENT_COMMAND_SYNTAX.claude).toEqual({ prefix: "/", separator: ":" });
     expect(AGENT_COMMAND_SYNTAX.codex).toEqual({ prefix: "$", separator: "-" });
     expect(AGENT_COMMAND_SYNTAX.opencode).toEqual({ prefix: "/", separator: "-" });
+  });
+});
+
+describe("changeStrings", () => {
+  it("builds English ChangeStrings from UiStrings templates", () => {
+    const s = changeStrings(getStrings("en"));
+    expect(s.changedOnePack("theme")).toBe('Changed "theme"');
+    expect(s.changedManyPacks(3)).toBe("Changed 3 packs");
+    expect(s.changedConfig).toBe("Changed settings");
+    expect(s.changedInit).toBe("Changed init.js");
+    expect(s.changedMixed(2)).toBe("2 changes");
+    expect(s.changeStartup).toBe("At startup");
+    expect(s.changeManual).toBe("Marked by AI");
+    expect(s.changeUnknown).toBe("Changed");
+  });
+
+  it("builds Japanese ChangeStrings from UiStrings templates", () => {
+    const s = changeStrings(getStrings("ja"));
+    expect(s.changedOnePack("theme")).toBe("「theme」を変更");
+    expect(s.changedManyPacks(3)).toBe("3個のpackを変更");
+    expect(s.changedConfig).toBe("設定を変更");
+    expect(s.changedInit).toBe("init.js を変更");
+    expect(s.changedMixed(2)).toBe("2件の変更");
+    expect(s.changeStartup).toBe("起動時");
+    expect(s.changeManual).toBe("AIが記録");
+    expect(s.changeUnknown).toBe("変更");
   });
 });
 

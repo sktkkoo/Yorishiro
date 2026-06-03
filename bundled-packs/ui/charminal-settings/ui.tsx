@@ -39,8 +39,11 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { snapshotList, snapshotRestore } from "../../../src/bindings/tauri-commands";
-import { getStrings, type UiStrings } from "../../../src/i18n/strings";
-import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
+import { changeStrings, getStrings, type UiStrings } from "../../../src/i18n/strings";
+import {
+  buildRestoreRows,
+  type StartupStatus,
+} from "../../../src/runtime/history/describe-snapshot";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
@@ -1006,11 +1009,17 @@ function HealthDiagnostics({
 
 /**
  * 設定画面の restore section。crash していなくても、snapshot 一覧から手動で
- * ~/.charminal を以前の状態に戻す。最新は「現在に近い状態」なので既定にせず、
- * 1 つ前を ★推奨（buildRestoreRows）として表示する。確認 → restore → reload で
- * config/init.js も再適用する。
+ * ~/.charminal を以前の状態に戻す。最新は「今の状態」なのでボタンを出さない。
+ * 推奨タグは crash 画面にだけ残し、設定画面では行の内容を淡々と読めるようにする。
+ * 確認 → restore → reload で config/init.js も再適用する。
  */
-function SnapshotRestoreSection({ strings }: { strings: UiStrings }): React.JSX.Element {
+function SnapshotRestoreSection({
+  locale,
+  strings,
+}: {
+  locale: ResolvedLanguage;
+  strings: UiStrings;
+}): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<ReadonlyArray<SnapshotEntry> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1057,7 +1066,11 @@ function SnapshotRestoreSection({ strings }: { strings: UiStrings }): React.JSX.
     [strings],
   );
 
-  const rows = snapshots ? buildRestoreRows(snapshots, Date.now()) : [];
+  const rows = snapshots
+    ? buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale)
+    : [];
+  const startupTag = (status: StartupStatus) =>
+    status === "clean" ? strings.restoreStartupCleanTag : strings.restoreStartupErrorTag;
   let listContent: React.ReactNode;
   if (snapshots === null) {
     listContent = (
@@ -1087,15 +1100,35 @@ function SnapshotRestoreSection({ strings }: { strings: UiStrings }): React.JSX.
         <span
           style={{
             minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: SPACING.xs,
             fontSize: FONT.sizeXs,
             color: COLORS.fgDim,
             overflowWrap: "anywhere",
-            fontWeight: row.isRecommended ? FONT.weightSemibold : FONT.weightNormal,
+            lineHeight: 1.45,
           }}
         >
-          {row.text}
-          {row.isLatest ? ` ${strings.restoreLatestTag}` : ""}
-          {row.isRecommended ? ` ${strings.restoreRecommendedTag}` : ""}
+          <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{row.changeText}</span>
+          <span style={{ color: COLORS.fgDimmer }}>· {row.timeText}</span>
+          {row.isLatest ? (
+            <span style={{ color: COLORS.fgDimmer }}>{strings.restoreLatestTag}</span>
+          ) : null}
+          {row.startupStatus ? (
+            <span
+              style={{
+                flexShrink: 0,
+                border: `1px solid ${COLORS.borderSubtle}`,
+                borderRadius: RADIUS.sm,
+                color: row.startupStatus === "error" ? COLORS.statusWarning : COLORS.fgDimmer,
+                padding: "1px 5px",
+                lineHeight: 1.35,
+              }}
+            >
+              {startupTag(row.startupStatus)}
+            </span>
+          ) : null}
         </span>
         {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}
         {row.isLatest ? null : (
@@ -2506,7 +2539,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <SnapshotRestoreSection strings={strings} />
+        <SnapshotRestoreSection locale={resolvedLanguage} strings={strings} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />

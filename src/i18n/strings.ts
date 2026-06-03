@@ -1,4 +1,5 @@
 import type { FixedTerminalPromptKey } from "@charminal/sdk";
+import type { ChangeStrings } from "../runtime/history/describe-snapshot";
 import type { ResolvedLanguage } from "../runtime/language/language";
 
 export interface UiStrings {
@@ -43,12 +44,22 @@ export interface UiStrings {
   readonly restoreEmpty: string;
   readonly restoreLatestTag: string;
   readonly restoreRecommendedTag: string;
+  readonly restoreStartupCleanTag: string;
+  readonly restoreStartupErrorTag: string;
   readonly restoreButton: string;
   readonly restoreConfirmTitle: string;
   readonly restoreConfirmIntro: string;
   readonly restoreConfirmDetail: string;
   readonly restoreDone: string;
   readonly restoreFailed: string;
+  readonly changedOnePack: string;
+  readonly changedManyPacks: string;
+  readonly changedConfig: string;
+  readonly changedInit: string;
+  readonly changedMixed: string;
+  readonly changeStartup: string;
+  readonly changeManual: string;
+  readonly changeUnknown: string;
   readonly healthHealthy: string;
   readonly healthWarnings: string;
   readonly healthNeedsAttention: string;
@@ -111,8 +122,10 @@ const EN: UiStrings = {
   restoreIntro:
     "Roll ~/.charminal back to an earlier snapshot. Snapshots are taken automatically when you change packs / config.json / init.js. journal is never touched.",
   restoreEmpty: "No snapshots yet.",
-  restoreLatestTag: "(latest / current)",
+  restoreLatestTag: "(current state)",
   restoreRecommendedTag: "★recommended",
+  restoreStartupCleanTag: "Started cleanly",
+  restoreStartupErrorTag: "Startup error",
   restoreButton: "Restore this",
   restoreConfirmTitle: "Charminal — Confirm restore",
   restoreConfirmIntro: "Restore ~/.charminal to the selected snapshot?",
@@ -120,6 +133,14 @@ const EN: UiStrings = {
     "This full-replaces packs / config.json / init.js and reloads the app (journal is not changed).",
   restoreDone: "Restored to snapshot #{seq}. Reloading…",
   restoreFailed: "Restore failed",
+  changedOnePack: 'Changed "{id}"',
+  changedManyPacks: "Changed {n} packs",
+  changedConfig: "Changed settings",
+  changedInit: "Changed init.js",
+  changedMixed: "{n} changes",
+  changeStartup: "At startup",
+  changeManual: "Marked by AI",
+  changeUnknown: "Changed",
   healthHealthy: "Healthy",
   healthWarnings: "Warnings",
   healthNeedsAttention: "Needs attention",
@@ -181,8 +202,10 @@ const JA: UiStrings = {
   restoreIntro:
     "~/.charminal を以前の snapshot に戻します。pack / config.json / init.js を変更すると自動で snapshot が残ります。journal は変更しません。",
   restoreEmpty: "まだ snapshot がありません。",
-  restoreLatestTag: "（最新 / 現在）",
+  restoreLatestTag: "（今の状態）",
   restoreRecommendedTag: "★推奨",
+  restoreStartupCleanTag: "起動OK",
+  restoreStartupErrorTag: "起動エラー",
   restoreButton: "この状態に戻す",
   restoreConfirmTitle: "Charminal — 復元の確認",
   restoreConfirmIntro: "選んだ snapshot に ~/.charminal を戻しますか？",
@@ -190,6 +213,14 @@ const JA: UiStrings = {
     "packs / config.json / init.js を完全置換し、アプリを再読み込みします（journal は変更しません）。",
   restoreDone: "snapshot #{seq} の状態に戻しました。再読み込みします。",
   restoreFailed: "復元に失敗しました",
+  changedOnePack: "「{id}」を変更",
+  changedManyPacks: "{n}個のpackを変更",
+  changedConfig: "設定を変更",
+  changedInit: "init.js を変更",
+  changedMixed: "{n}件の変更",
+  changeStartup: "起動時",
+  changeManual: "AIが記録",
+  changeUnknown: "変更",
   healthHealthy: "正常",
   healthWarnings: "警告あり",
   healthNeedsAttention: "対応が必要",
@@ -213,6 +244,20 @@ const JA: UiStrings = {
 
 export function getStrings(language: ResolvedLanguage): UiStrings {
   return language === "ja" ? JA : EN;
+}
+
+/** `UiStrings` のテンプレートを `describeChange` 用の focused interface に変換する。 */
+export function changeStrings(s: UiStrings): ChangeStrings {
+  return {
+    changedOnePack: (id) => s.changedOnePack.replace("{id}", id),
+    changedManyPacks: (n) => s.changedManyPacks.replace("{n}", String(n)),
+    changedConfig: s.changedConfig,
+    changedInit: s.changedInit,
+    changedMixed: (n) => s.changedMixed.replace("{n}", String(n)),
+    changeStartup: s.changeStartup,
+    changeManual: s.changeManual,
+    changeUnknown: s.changeUnknown,
+  };
 }
 
 /**
