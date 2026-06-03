@@ -1,5 +1,6 @@
 import type { HistoryAPI } from "@charminal/sdk";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import { AmenityPackRegistryImpl } from "../amenity-pack-registry";
 import { registerBundledMusicShelf } from "./index";
@@ -26,6 +27,10 @@ const flushRegistration = async () => {
 };
 
 describe("registerBundledMusicShelf", () => {
+  beforeEach(() => {
+    vi.mocked(systemExec).mockReset();
+  });
+
   it("enables music-shelf by default", async () => {
     const registry = new AmenityPackRegistryImpl();
     const disposable = registerBundledMusicShelf({
@@ -56,6 +61,37 @@ describe("registerBundledMusicShelf", () => {
 
     expect(registry.listEntries().map((entry) => entry.id)).toEqual(["music-shelf"]);
     expect(registry.getActiveSet()).toEqual([]);
+    disposable.dispose();
+  });
+
+  it("marks now-playing probes as quiet system.exec calls", async () => {
+    vi.mocked(systemExec).mockResolvedValue({
+      exitCode: 0,
+      stdout: "stopped\n",
+      stderr: "",
+      durationMs: 1,
+    });
+    const registry = new AmenityPackRegistryImpl();
+    const disposable = registerBundledMusicShelf({
+      registry,
+      tweenManager: fakeTween(),
+      emitEvent: vi.fn(),
+      history: fakeHistory,
+    });
+
+    await flushRegistration();
+    const handle = registry.getActiveHandle("music-shelf");
+    const result = await handle?.tools.music_now_playing({});
+
+    expect(result).toEqual({ state: "stopped" });
+    expect(systemExec).toHaveBeenCalledWith({
+      packId: "music-shelf",
+      command: "osascript",
+      options: expect.objectContaining({
+        input: expect.stringContaining("get player state as string"),
+        quiet: true,
+      }),
+    });
     disposable.dispose();
   });
 });

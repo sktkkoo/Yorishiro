@@ -18,10 +18,15 @@ import type { AmenityContext, AmenityHandle, AmenityPackDefinition } from "@char
 // ─── osascript helper ───────────────────────────────────
 
 /** Music.app に AppleScript を送って結果を返す。stdin 経由で渡すので shell injection しない。 */
-async function tell(ctx: AmenityContext, script: string): Promise<string> {
+async function tell(
+  ctx: AmenityContext,
+  script: string,
+  options?: { readonly quiet?: boolean },
+): Promise<string> {
   const fullScript = `tell application "Music"\n${script}\nend tell`;
   const { stdout, exitCode } = await ctx.system.exec("osascript", {
     input: fullScript,
+    quiet: options?.quiet,
   });
   if (exitCode !== 0) return "";
   return stdout.trim();
@@ -44,8 +49,11 @@ interface NowPlaying {
 const EMPTY: NowPlaying = { title: "", artist: "", album: "", state: "stopped" };
 
 /** 現在の再生情報を取得する。 */
-async function fetchNowPlaying(ctx: AmenityContext): Promise<NowPlaying> {
-  const state = await tell(ctx, "get player state as string");
+async function fetchNowPlaying(
+  ctx: AmenityContext,
+  options?: { readonly quiet?: boolean },
+): Promise<NowPlaying> {
+  const state = await tell(ctx, "get player state as string", options);
   if (state !== "playing" && state !== "paused") {
     return { ...EMPTY, state };
   }
@@ -53,7 +61,7 @@ async function fetchNowPlaying(ctx: AmenityContext): Promise<NowPlaying> {
     'set t to name of current track & "\\n" & artist of current track & "\\n" & album of current track',
     "return t",
   ].join("\n");
-  const raw = await tell(ctx, script);
+  const raw = await tell(ctx, script, options);
   const [title = "", artist = "", album = ""] = raw.split("\n");
   return { title, artist, album, state };
 }
@@ -70,7 +78,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
     if (poller !== null) return;
     poller = ctx.time.every(5000, () => {
       void (async () => {
-        const now = await fetchNowPlaying(ctx);
+        const now = await fetchNowPlaying(ctx, { quiet: true });
         if (now.title !== last.title || now.artist !== last.artist) {
           if (now.title !== "") {
             ctx.emitEvent("music-shelf:track-changed", {
@@ -101,7 +109,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         } else {
           await tell(ctx, "play");
         }
-        last = await fetchNowPlaying(ctx);
+        last = await fetchNowPlaying(ctx, { quiet: true });
         ctx.emitEvent("music-shelf:state-changed", { state: "playing" });
         return { ok: true, nowPlaying: last };
       },
@@ -119,7 +127,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         await tell(ctx, "next track");
         // 少し待ってから曲情報を取得（切り替わりに若干のラグがある）
         await ctx.time.after(500);
-        last = await fetchNowPlaying(ctx);
+        last = await fetchNowPlaying(ctx, { quiet: true });
         ctx.emitEvent("music-shelf:track-changed", {
           title: last.title,
           artist: last.artist,
@@ -132,7 +140,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         ensurePolling();
         await tell(ctx, "previous track");
         await ctx.time.after(500);
-        last = await fetchNowPlaying(ctx);
+        last = await fetchNowPlaying(ctx, { quiet: true });
         ctx.emitEvent("music-shelf:track-changed", {
           title: last.title,
           artist: last.artist,
@@ -142,12 +150,12 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
       },
 
       music_now_playing: async () => {
-        last = await fetchNowPlaying(ctx);
+        last = await fetchNowPlaying(ctx, { quiet: true });
         if (last.state !== "playing" && last.state !== "paused") {
           return { state: last.state };
         }
-        const position = await tell(ctx, "get player position");
-        const duration = await tell(ctx, "get duration of current track");
+        const position = await tell(ctx, "get player position", { quiet: true });
+        const duration = await tell(ctx, "get duration of current track", { quiet: true });
         return {
           ...last,
           positionSec: Number.parseFloat(position) || 0,

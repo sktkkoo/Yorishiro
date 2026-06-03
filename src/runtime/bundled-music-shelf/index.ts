@@ -67,6 +67,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
                 env: options.env,
                 timeoutMs: options.timeoutMs,
                 input: options.input,
+                quiet: options.quiet,
               }
             : undefined,
         });

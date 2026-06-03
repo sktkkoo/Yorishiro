@@ -97,6 +97,7 @@ struct SystemExecOptions {
     env: Option<HashMap<String, String>>,
     timeout_ms: Option<u64>,
     input: Option<String>,
+    quiet: Option<bool>,
 }
 
 #[derive(serde::Serialize)]
@@ -180,21 +181,25 @@ async fn system_exec(
     use std::process::{Command, Stdio};
     use std::time::Instant;
 
-    let cmd_display: String = command.chars().take(120).collect();
-    let cmd_truncated = cmd_display.len() < command.len();
-    eprintln!(
-        "[system-exec] pack={} cmd={}{}",
-        pack_id,
-        cmd_display,
-        if cmd_truncated { "…" } else { "" }
-    );
-
     let opts = options.unwrap_or(SystemExecOptions {
         cwd: None,
         env: None,
         timeout_ms: None,
         input: None,
+        quiet: None,
     });
+    let quiet = opts.quiet.unwrap_or(false);
+
+    if !quiet {
+        let cmd_display: String = command.chars().take(120).collect();
+        let cmd_truncated = cmd_display.len() < command.len();
+        eprintln!(
+            "[system-exec] pack={} cmd={}{}",
+            pack_id,
+            cmd_display,
+            if cmd_truncated { "…" } else { "" }
+        );
+    }
 
     let shell = if cfg!(windows) { "cmd" } else { "sh" };
     let shell_flag = if cfg!(windows) { "/C" } else { "-c" };
@@ -350,10 +355,14 @@ async fn system_exec(
     .map_err(|e| format!("task join failed: {e}"))?;
 
     match &result {
-        Ok(r) => eprintln!(
-            "[system-exec] pack={} exit={} duration={}ms",
-            pack_id, r.exit_code, r.duration_ms
-        ),
+        Ok(r) => {
+            if !quiet || r.exit_code != 0 {
+                eprintln!(
+                    "[system-exec] pack={} exit={} duration={}ms",
+                    pack_id, r.exit_code, r.duration_ms
+                );
+            }
+        }
         Err(e) => eprintln!("[system-exec] pack={} error={}", pack_id, e),
     }
 

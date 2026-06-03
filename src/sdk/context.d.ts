@@ -610,6 +610,11 @@ export interface ExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   input?: string;
+  /**
+   * Suppress stdout/stderr audit lines for expected high-frequency successful calls.
+   * Errors, timeouts, and non-zero exits are still logged by the host.
+   */
+  quiet?: boolean;
 }
 
 export interface ExecResult {
