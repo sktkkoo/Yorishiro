@@ -38,6 +38,16 @@ export interface UiStrings {
   readonly labelAura: string;
   readonly labelHealth: string;
   readonly labelPacks: string;
+  readonly labelRestore: string;
+  readonly restoreIntro: string;
+  readonly restoreEmpty: string;
+  readonly restoreLatestTag: string;
+  readonly restoreRecommendedTag: string;
+  readonly restoreButton: string;
+  readonly restoreConfirmTitle: string;
+  readonly restoreConfirmIntro: string;
+  readonly restoreConfirmDetail: string;
+  readonly restoreFailed: string;
   readonly healthHealthy: string;
   readonly healthWarnings: string;
   readonly healthNeedsAttention: string;
@@ -96,6 +106,18 @@ const EN: UiStrings = {
   labelAura: "Aura",
   labelHealth: "Status",
   labelPacks: "Packs",
+  labelRestore: "Restore",
+  restoreIntro:
+    "Roll ~/.charminal back to an earlier snapshot. Snapshots are taken automatically when you change packs / config.json / init.js. journal is never touched.",
+  restoreEmpty: "No snapshots yet.",
+  restoreLatestTag: "(latest / current)",
+  restoreRecommendedTag: "★recommended",
+  restoreButton: "Restore this",
+  restoreConfirmTitle: "Charminal — Confirm restore",
+  restoreConfirmIntro: "Restore ~/.charminal to the selected snapshot?",
+  restoreConfirmDetail:
+    "This full-replaces packs / config.json / init.js and reloads the app (journal is not changed).",
+  restoreFailed: "Restore failed",
   healthHealthy: "Healthy",
   healthWarnings: "Warnings",
   healthNeedsAttention: "Needs attention",
@@ -153,6 +175,18 @@ const JA: UiStrings = {
   labelAura: "Aura",
   labelHealth: "Status",
   labelPacks: "Packs",
+  labelRestore: "復元",
+  restoreIntro:
+    "~/.charminal を以前の snapshot に戻します。pack / config.json / init.js を変更すると自動で snapshot が残ります。journal は変更しません。",
+  restoreEmpty: "まだ snapshot がありません。",
+  restoreLatestTag: "（最新 / 現在）",
+  restoreRecommendedTag: "★推奨",
+  restoreButton: "この状態に戻す",
+  restoreConfirmTitle: "Charminal — 復元の確認",
+  restoreConfirmIntro: "選んだ snapshot に ~/.charminal を戻しますか？",
+  restoreConfirmDetail:
+    "packs / config.json / init.js を完全置換し、アプリを再読み込みします（journal は変更しません）。",
+  restoreFailed: "復元に失敗しました",
   healthHealthy: "正常",
   healthWarnings: "警告あり",
   healthNeedsAttention: "対応が必要",
