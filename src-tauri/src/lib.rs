@@ -1046,10 +1046,16 @@ impl Default for WatcherState {
 
 /// notify の EventKind を TS 層の文字列に落とす。受け取る必要のない kind は None。
 fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
+    use notify::event::ModifyKind;
     use notify::EventKind::{Create, Modify, Remove};
     match kind {
         Create(_) => Some("created"),
-        Modify(_) => Some("modified"),
+        // snapshot 作成中の source read が atime 等の metadata-only modify として
+        // 通知される環境がある。content/name 変更だけ hot-reload と snapshot 対象にする。
+        Modify(ModifyKind::Data(_) | ModifyKind::Name(_) | ModifyKind::Any | ModifyKind::Other) => {
+            Some("modified")
+        }
+        Modify(ModifyKind::Metadata(_)) => None,
         Remove(_) => Some("removed"),
         _ => None,
     }
@@ -1624,7 +1630,7 @@ mod layer_scope_tests {
     #[test]
     fn layer_event_label_maps_create_modify_remove_and_ignores_the_rest() {
         use notify::event::{
-            AccessKind, CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode,
+            AccessKind, CreateKind, DataChange, MetadataKind, ModifyKind, RemoveKind, RenameMode,
         };
         use notify::EventKind;
 
@@ -1639,6 +1645,10 @@ mod layer_scope_tests {
         assert_eq!(
             layer_event_label(&EventKind::Modify(ModifyKind::Name(RenameMode::Any))),
             Some("modified"),
+        );
+        assert_eq!(
+            layer_event_label(&EventKind::Modify(ModifyKind::Metadata(MetadataKind::Any))),
+            None,
         );
         assert_eq!(
             layer_event_label(&EventKind::Remove(RemoveKind::File)),
