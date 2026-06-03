@@ -74,6 +74,7 @@ export function createUserAmenityContextFactory(
     system: {
       exec: async (command: string, options?: ExecOptions) => {
         const result = await systemExec({
+          packId,
           command,
           options: options
             ? {

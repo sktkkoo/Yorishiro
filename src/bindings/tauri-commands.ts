@@ -236,6 +236,7 @@ export const snapshotPrune = (args: { keepN: number }): Promise<void> =>
 // ─── System exec (amenity) ─────────────────────────────────────
 
 export interface SystemExecArgs {
+  readonly packId: string;
   readonly command: string;
   readonly options?: {
     readonly cwd?: string;

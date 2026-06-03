@@ -110,11 +110,22 @@ struct SystemExecResult {
 
 #[tauri::command]
 async fn system_exec(
+    pack_id: String,
     command: String,
     options: Option<SystemExecOptions>,
 ) -> Result<SystemExecResult, String> {
     use std::process::{Command, Stdio};
     use std::time::Instant;
+
+    eprintln!(
+        "[system-exec] pack={} cmd={}",
+        pack_id,
+        if command.len() > 120 {
+            format!("{}…", &command[..120])
+        } else {
+            command.clone()
+        }
+    );
 
     let opts = options.unwrap_or(SystemExecOptions {
         cwd: None,
@@ -202,6 +213,14 @@ async fn system_exec(
     })
     .await
     .map_err(|e| format!("task join failed: {e}"))?;
+
+    match &result {
+        Ok(r) => eprintln!(
+            "[system-exec] pack={} exit={} duration={}ms",
+            pack_id, r.exit_code, r.duration_ms
+        ),
+        Err(e) => eprintln!("[system-exec] pack={} error={}", pack_id, e),
+    }
 
     result
 }
