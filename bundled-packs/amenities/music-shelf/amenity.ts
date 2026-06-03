@@ -17,13 +17,19 @@ import type { AmenityContext, AmenityHandle, AmenityPackDefinition } from "@char
 
 // ─── osascript helper ───────────────────────────────────
 
-/** Music.app に AppleScript を送って結果を返す。 */
+/** Music.app に AppleScript を送って結果を返す。stdin 経由で渡すので shell injection しない。 */
 async function tell(ctx: AmenityContext, script: string): Promise<string> {
-  const { stdout, exitCode } = await ctx.system.exec(
-    `osascript -e 'tell application "Music" to ${script}'`,
-  );
+  const fullScript = `tell application "Music"\n${script}\nend tell`;
+  const { stdout, exitCode } = await ctx.system.exec("osascript", {
+    input: fullScript,
+  });
   if (exitCode !== 0) return "";
   return stdout.trim();
+}
+
+/** AppleScript 文字列リテラル用エスケープ。 */
+function escapeAppleScript(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 // ─── 状態管理 ───────────────────────────────────────────
@@ -43,10 +49,11 @@ async function fetchNowPlaying(ctx: AmenityContext): Promise<NowPlaying> {
   if (state !== "playing" && state !== "paused") {
     return { ...EMPTY, state };
   }
-  const raw = await tell(
-    ctx,
-    'set t to name of current track & "\\n" & artist of current track & "\\n" & album of current track\nreturn t',
-  );
+  const script = [
+    'set t to name of current track & "\\n" & artist of current track & "\\n" & album of current track',
+    "return t",
+  ].join("\n");
+  const raw = await tell(ctx, script);
   const [title = "", artist = "", album = ""] = raw.split("\n");
   return { title, artist, album, state };
 }
@@ -55,34 +62,40 @@ async function fetchNowPlaying(ctx: AmenityContext): Promise<NowPlaying> {
 
 function createMusicShelf(ctx: AmenityContext): AmenityHandle {
   let last: NowPlaying = { ...EMPTY };
+  let poller: { cancel(): void } | null = null;
 
-  // 5 秒ごとに再生状態を poll し、曲が変わったら event を emit する。
-  const poller = ctx.time.every(5000, async () => {
-    const now = await fetchNowPlaying(ctx);
-    if (now.title !== last.title || now.artist !== last.artist) {
-      if (now.title !== "") {
-        ctx.emitEvent("music-shelf:track-changed", {
-          title: now.title,
-          artist: now.artist,
-          album: now.album,
-        });
+  // polling は初回 tool 使用時に開始する。
+  // 起動時から Music.app に触りに行かない（automation prompt 回避）。
+  function ensurePolling(): void {
+    if (poller !== null) return;
+    poller = ctx.time.every(5000, async () => {
+      const now = await fetchNowPlaying(ctx);
+      if (now.title !== last.title || now.artist !== last.artist) {
+        if (now.title !== "") {
+          ctx.emitEvent("music-shelf:track-changed", {
+            title: now.title,
+            artist: now.artist,
+            album: now.album,
+          });
+        }
       }
-    }
-    if (now.state !== last.state) {
-      ctx.emitEvent("music-shelf:state-changed", { state: now.state });
-    }
-    last = now;
-  });
+      if (now.state !== last.state) {
+        ctx.emitEvent("music-shelf:state-changed", { state: now.state });
+      }
+      last = now;
+    });
+  }
 
   return {
     tools: {
       music_play: async (params) => {
+        ensurePolling();
         const p = (params ?? {}) as { playlist?: string; shuffle?: boolean };
         if (p.shuffle) {
           await tell(ctx, "set shuffle enabled to true");
         }
         if (p.playlist) {
-          await tell(ctx, `play playlist "${p.playlist}"`);
+          await tell(ctx, `play playlist "${escapeAppleScript(p.playlist)}"`);
         } else {
           await tell(ctx, "play");
         }
@@ -92,6 +105,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
       },
 
       music_pause: async () => {
+        ensurePolling();
         await tell(ctx, "pause");
         last = { ...last, state: "paused" };
         ctx.emitEvent("music-shelf:state-changed", { state: "paused" });
@@ -99,6 +113,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
       },
 
       music_next: async () => {
+        ensurePolling();
         await tell(ctx, "next track");
         // 少し待ってから曲情報を取得（切り替わりに若干のラグがある）
         await ctx.time.after(500);
@@ -112,6 +127,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
       },
 
       music_previous: async () => {
+        ensurePolling();
         await tell(ctx, "previous track");
         await ctx.time.after(500);
         last = await fetchNowPlaying(ctx);
@@ -155,7 +171,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
       },
     },
     dispose: () => {
-      poller.cancel();
+      poller?.cancel();
     },
   };
 }

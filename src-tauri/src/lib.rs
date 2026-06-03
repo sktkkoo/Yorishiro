@@ -117,14 +117,13 @@ async fn system_exec(
     use std::process::{Command, Stdio};
     use std::time::Instant;
 
+    let cmd_display: String = command.chars().take(120).collect();
+    let cmd_truncated = cmd_display.len() < command.len();
     eprintln!(
-        "[system-exec] pack={} cmd={}",
+        "[system-exec] pack={} cmd={}{}",
         pack_id,
-        if command.len() > 120 {
-            format!("{}…", &command[..120])
-        } else {
-            command.clone()
-        }
+        cmd_display,
+        if cmd_truncated { "…" } else { "" }
     );
 
     let opts = options.unwrap_or(SystemExecOptions {
@@ -140,6 +139,13 @@ async fn system_exec(
     let mut cmd = Command::new(shell);
     cmd.arg(shell_flag).arg(&command);
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    // 新 process group で起動（timeout 時に子プロセスごと kill するため）
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
 
     // Charminal の PATH を継承
     cmd.env("PATH", build_path_env());
@@ -170,28 +176,35 @@ async fn system_exec(
     }
 
     let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
+    let child_id = child.id();
     let result = tokio::task::spawn_blocking(move || {
+        // stdout/stderr を別 thread で concurrent drain（pipe buffer deadlock 防止）
+        let stdout_handle = child.stdout.take().map(|r| {
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let mut r = r;
+                std::io::Read::read_to_string(&mut r, &mut s).ok();
+                s
+            })
+        });
+        let stderr_handle = child.stderr.take().map(|r| {
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let mut r = r;
+                std::io::Read::read_to_string(&mut r, &mut s).ok();
+                s
+            })
+        });
+
         let deadline = start + Duration::from_millis(timeout_ms);
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    let stdout = child
-                        .stdout
-                        .take()
-                        .map(|mut r| {
-                            let mut s = String::new();
-                            std::io::Read::read_to_string(&mut r, &mut s).ok();
-                            s
-                        })
+                    let stdout = stdout_handle
+                        .and_then(|h| h.join().ok())
                         .unwrap_or_default();
-                    let stderr = child
-                        .stderr
-                        .take()
-                        .map(|mut r| {
-                            let mut s = String::new();
-                            std::io::Read::read_to_string(&mut r, &mut s).ok();
-                            s
-                        })
+                    let stderr = stderr_handle
+                        .and_then(|h| h.join().ok())
                         .unwrap_or_default();
                     return Ok(SystemExecResult {
                         exit_code: status.code().unwrap_or(-1),
@@ -202,8 +215,19 @@ async fn system_exec(
                 }
                 Ok(None) => {
                     if Instant::now() >= deadline {
-                        let _ = child.kill();
-                        return Err(format!("timeout after {}ms", timeout_ms));
+                        // process group ごと kill（子プロセスも巻き込む）
+                        #[cfg(unix)]
+                        {
+                            unsafe {
+                                libc::kill(-(child_id as i32), libc::SIGKILL);
+                            }
+                        }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = child.kill();
+                        }
+                        let _ = child.wait();
+                        return Err(format!("timeout after {timeout_ms}ms"));
                     }
                     std::thread::sleep(Duration::from_millis(50));
                 }
