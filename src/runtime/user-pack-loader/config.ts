@@ -59,6 +59,12 @@ export interface CharminalConfig {
   readonly defaultProfile: string | null;
   /** TTS 音声の利用頻度。 */
   readonly voiceFrequency: VoiceFrequency;
+  /**
+   * asset protocol scope に追加するメディアフォルダ。
+   * user amenity pack が `new Audio()` 等でローカルファイルを再生するために使う。
+   * `~` は home directory に展開される。Rust 側 setup で scope に追加。
+   */
+  readonly mediaFolders: ReadonlyArray<string>;
 }
 
 export type TerminalAgent = string;
@@ -82,6 +88,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   profiles: [],
   defaultProfile: null,
   voiceFrequency: "on",
+  mediaFolders: ["~/Music"],
 };
 
 export function localizedClaiPersonaId(language: ResolvedLanguage): "clai-en" | "clai-ja" {
@@ -247,6 +254,8 @@ export function parseConfig(text: string): CharminalConfig {
     profiles: toSessionProfiles(obj.profiles),
     defaultProfile: toNullableString(obj.defaultProfile),
     voiceFrequency: toVoiceFrequency(obj.voiceFrequency),
+    mediaFolders:
+      "mediaFolders" in obj ? toStringArray(obj.mediaFolders) : EMPTY_CONFIG.mediaFolders,
   };
 }
 
@@ -271,6 +280,9 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
   if (cfg.defaultProfile !== null) out.defaultProfile = cfg.defaultProfile;
   if (cfg.voiceFrequency !== "on") out.voiceFrequency = cfg.voiceFrequency;
+  if (!stringArraysEqual(cfg.mediaFolders, EMPTY_CONFIG.mediaFolders)) {
+    out.mediaFolders = [...cfg.mediaFolders];
+  }
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 

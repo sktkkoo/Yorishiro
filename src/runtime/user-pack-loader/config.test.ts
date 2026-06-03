@@ -49,6 +49,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -68,6 +69,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -87,6 +89,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -106,6 +109,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -125,6 +129,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -144,6 +149,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -168,6 +174,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     });
   });
 
@@ -209,6 +216,7 @@ describe("serializeConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
   });
@@ -228,6 +236,7 @@ describe("serializeConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
   });
@@ -260,6 +269,7 @@ describe("serializeConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
   });
@@ -303,6 +313,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     };
     const next = withDisabledPackRemoved(base, "a");
     expect(next.disabledPacks).toEqual(["b"]);
@@ -323,6 +334,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      mediaFolders: ["~/Music"],
     };
     const next = withDisabledPackRemoved(base, "phantom");
     expect(next.disabledPacks).toEqual(["a"]);

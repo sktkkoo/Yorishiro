@@ -37,6 +37,57 @@ pub(crate) fn home_dir_or_err() -> Result<std::path::PathBuf, String> {
     dirs::home_dir().ok_or_else(|| "home directory not found".to_string())
 }
 
+/// `~` / `~/...` を home directory に展開する。それ以外のパスはそのまま返す。
+fn expand_tilde(path: &str, home: &Path) -> PathBuf {
+    if path == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        home.join(rest)
+    } else {
+        PathBuf::from(path)
+    }
+}
+
+/// `~/.charminal/config.json` の `mediaFolders` を読み、asset protocol scope に追加する。
+/// field 未指定時は `["~/Music"]` を default として扱う。
+fn register_media_folder_scopes(app: &tauri::App) {
+    let home = dirs::home_dir().unwrap_or_default();
+    let config_path = home.join(".charminal").join("config.json");
+
+    let folders: Vec<PathBuf> = if config_path.is_file() {
+        match std::fs::read_to_string(&config_path) {
+            Ok(text) => {
+                let parsed: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+                match parsed.get("mediaFolders").and_then(|v| v.as_array()) {
+                    Some(arr) => arr
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| expand_tilde(s, &home))
+                        .collect(),
+                    // field 未指定 → default
+                    None => vec![home.join("Music")],
+                }
+            }
+            Err(_) => vec![home.join("Music")],
+        }
+    } else {
+        vec![home.join("Music")]
+    };
+
+    let scope = app.asset_protocol_scope();
+    for folder in &folders {
+        if folder.is_dir() {
+            if let Err(e) = scope.allow_directory(folder, true) {
+                eprintln!(
+                    "[media-folders] scope 追加失敗: {} — {}",
+                    folder.display(),
+                    e
+                );
+            }
+        }
+    }
+}
+
 fn build_path_env() -> String {
     let home = dirs::home_dir().unwrap_or_default();
     let home = home.to_string_lossy();
@@ -1408,6 +1459,9 @@ pub fn run() {
                     eprintln!("[charminal-mcp] startup skipped: {}", err);
                 }
             }
+
+            // config.json の mediaFolders を asset protocol scope に追加
+            register_media_folder_scopes(app);
 
             // Cohabitation hours tracking 開始
             let start = journal::cohabitation::start_tracking();
