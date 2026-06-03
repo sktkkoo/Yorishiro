@@ -101,6 +101,7 @@ import {
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
+import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
@@ -983,6 +984,20 @@ function App() {
     appLog.write({
       phase: "register",
       note: "registered bundled amenity pack 'pomodoro'",
+    });
+
+    // ── Bundled amenity pack 登録（music-shelf）────────────────────────────
+    registerBundledMusicShelf({
+      registry: getAmenityPackRegistry(),
+      tweenManager: getThreeRuntime().getTweenManager(),
+      emitEvent: (name, payload) => {
+        bus.emitSynthetic({ type: "system", packId: "music-shelf" }, name, payload, 0);
+      },
+      history: historyApi,
+    });
+    appLog.write({
+      phase: "register",
+      note: "registered bundled amenity pack 'music-shelf'",
     });
 
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
