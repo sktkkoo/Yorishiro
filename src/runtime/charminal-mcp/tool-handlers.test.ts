@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TweenManager } from "../../core/tween/tween-manager";
 import type { SceneSpec } from "../../sdk/scene";
 import type { ScenePackManifest } from "../../sdk/scene-pack";
+import { AmenityPackRegistryImpl } from "../amenity-pack-registry";
 import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
 import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
@@ -22,6 +23,8 @@ import {
   __resetMcpMotionHandleForTesting,
   type BodyLike,
   type ControlStoreLike,
+  createAmenityCallHandler,
+  createAmenityListToolsHandler,
   createBodyAnimationPlayHandler,
   createBodyExpressionSetHandler,
   createBodyMotionCancelHandler,
@@ -485,6 +488,47 @@ describe("createHistoryRestoreHandler", () => {
     });
     expect(await handler({})).toEqual({ ok: false, reason: "missing or invalid seq" });
     expect(proposeRestore).not.toHaveBeenCalled();
+  });
+});
+
+describe("amenity_call / amenity_list_tools", () => {
+  const makeRegistry = () => {
+    const reg = new AmenityPackRegistryImpl();
+    reg.register({
+      id: "noted",
+      origin: "user",
+      manifest: {
+        id: "noted",
+        type: "amenity",
+        version: "0.0.0",
+        charminalVersion: "*",
+        entry: "amenity.js",
+      },
+      handle: { tools: { noted_add: async (p) => ({ saved: p }) }, dispose: () => {} },
+    });
+    reg.enable("noted");
+    return reg;
+  };
+
+  it("routes amenity_call to the active handle's tool", async () => {
+    const handler = createAmenityCallHandler({ amenityPackRegistry: makeRegistry() });
+    expect(await handler({ amenityId: "noted", tool: "noted_add", params: { t: 1 } })).toEqual({
+      saved: { t: 1 },
+    });
+  });
+
+  it("throws on unknown amenity or tool", async () => {
+    const handler = createAmenityCallHandler({ amenityPackRegistry: makeRegistry() });
+    await expect(handler({ amenityId: "ghost", tool: "x" })).rejects.toThrow();
+    await expect(handler({ amenityId: "noted", tool: "nope" })).rejects.toThrow();
+  });
+
+  it("lists active amenity tool names (and treats null amenityId as no filter)", async () => {
+    const handler = createAmenityListToolsHandler({ amenityPackRegistry: makeRegistry() });
+    const expected = { amenities: [{ id: "noted", tools: ["noted_add"] }] };
+    expect(await handler({})).toEqual(expected);
+    // MCP は省略時に {"amenityId": null} を送るため、全件として扱う。
+    expect(await handler({ amenityId: null })).toEqual(expected);
   });
 });
 

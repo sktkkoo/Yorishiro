@@ -1189,6 +1189,9 @@ function App() {
           createPomodoroStartHandler,
           createPomodoroStopHandler,
           createPomodoroStatusHandler,
+          // User amenity:
+          createAmenityCallHandler,
+          createAmenityListToolsHandler,
           createHistoryRestoreHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
@@ -1303,6 +1306,12 @@ function App() {
                 window.location.reload();
               })();
             },
+          }),
+          "amenity.call": createAmenityCallHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          "amenity.list-tools": createAmenityListToolsHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
           }),
           "get-ui-state": createGetPackStateHandler({
             state: uiState,

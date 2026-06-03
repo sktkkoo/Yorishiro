@@ -66,6 +66,26 @@ pub struct HistoryRestoreRequest {
     pub seq: u64,
 }
 
+/// `amenity_call` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AmenityCallRequest {
+    /// `amenity_list_tools` で確認した対象 amenity id。
+    pub amenity_id: String,
+    /// amenity が公開する tool 名。
+    pub tool: String,
+    /// tool に渡す引数 object。
+    #[serde(default)]
+    pub params: serde_json::Value,
+}
+
+/// `amenity_list_tools` の引数。amenity_id 省略時は全 active amenity。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AmenityListToolsRequest {
+    /// 省略時は active amenity 全件を返す。指定時はその id に絞る。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amenity_id: Option<String>,
+}
+
 /// `get_ui_state` の引数。active scene pack の内部 state を読み取る。key 省略時は full snapshot。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetUiStateRequest {
@@ -424,6 +444,38 @@ impl Charminal {
             &self.app_handle,
             "history-restore",
             json!({ "seq": req.seq }),
+        )
+        .await
+    }
+
+    /// amenity_call: active amenity pack が公開する tool を呼ぶ。TS 委譲。
+    #[tool(
+        description = "Call a tool exposed by an active amenity pack. Use amenity_list_tools first to see amenity ids and tool names. 'params' is the tool's argument object."
+    )]
+    async fn amenity_call(
+        &self,
+        Parameters(req): Parameters<AmenityCallRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "amenity.call",
+            json!({ "amenityId": req.amenity_id, "tool": req.tool, "params": req.params }),
+        )
+        .await
+    }
+
+    /// amenity_list_tools: active amenity と公開 tool 名の一覧。TS 委譲。
+    #[tool(
+        description = "List active amenity packs and the tool names they expose. Call those tools via amenity_call."
+    )]
+    async fn amenity_list_tools(
+        &self,
+        Parameters(req): Parameters<AmenityListToolsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "amenity.list-tools",
+            json!({ "amenityId": req.amenity_id }),
         )
         .await
     }
@@ -958,6 +1010,7 @@ impl ServerHandler for Charminal {
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
                 "- pack を壊した／戻したい → history_list で seq を確認 → history_restore（確認 UX を経て full-replace）。リスクのある編集前に history_snapshot で戻したい時点を残せる（known-good 判定はしない・素朴な timeline 点）\n",
+                "- user amenity 設備の機能を使う → amenity_list_tools で確認 → amenity_call で呼ぶ（bundled pomodoro は専用 pomodoro_* を使う）\n",
                 "\n",
                 "## 重要ルール\n",
                 "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
