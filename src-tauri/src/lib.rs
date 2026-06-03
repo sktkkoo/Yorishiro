@@ -37,6 +37,268 @@ pub(crate) fn home_dir_or_err() -> Result<std::path::PathBuf, String> {
     dirs::home_dir().ok_or_else(|| "home directory not found".to_string())
 }
 
+/// `~` / `~/...` を home directory に展開する。それ以外のパスはそのまま返す。
+fn expand_tilde(path: &str, home: &Path) -> PathBuf {
+    if path == "~" {
+        home.to_path_buf()
+    } else if let Some(rest) = path.strip_prefix("~/") {
+        home.join(rest)
+    } else {
+        PathBuf::from(path)
+    }
+}
+
+/// `~/.charminal/config.json` の `mediaFolders` を読み、asset protocol scope に追加する。
+/// field 未指定時は `["~/Music"]` を default として扱う。
+fn register_media_folder_scopes(app: &tauri::App) {
+    let home = dirs::home_dir().unwrap_or_default();
+    let config_path = home.join(".charminal").join("config.json");
+
+    let folders: Vec<PathBuf> = if config_path.is_file() {
+        match std::fs::read_to_string(&config_path) {
+            Ok(text) => {
+                let parsed: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+                match parsed.get("mediaFolders").and_then(|v| v.as_array()) {
+                    Some(arr) => arr
+                        .iter()
+                        .filter_map(|v| v.as_str())
+                        .map(|s| expand_tilde(s, &home))
+                        .collect(),
+                    // field 未指定 → default
+                    None => vec![home.join("Music")],
+                }
+            }
+            Err(_) => vec![home.join("Music")],
+        }
+    } else {
+        vec![home.join("Music")]
+    };
+
+    let scope = app.asset_protocol_scope();
+    for folder in &folders {
+        if folder.is_dir() {
+            if let Err(e) = scope.allow_directory(folder, true) {
+                eprintln!(
+                    "[media-folders] scope 追加失敗: {} — {}",
+                    folder.display(),
+                    e
+                );
+            }
+        }
+    }
+}
+
+// ─── system.exec ────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemExecOptions {
+    cwd: Option<String>,
+    env: Option<HashMap<String, String>>,
+    timeout_ms: Option<u64>,
+    input: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemExecResult {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+    duration_ms: u64,
+}
+
+#[tauri::command]
+async fn system_exec(
+    pack_id: String,
+    command: String,
+    options: Option<SystemExecOptions>,
+) -> Result<SystemExecResult, String> {
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
+
+    let cmd_display: String = command.chars().take(120).collect();
+    let cmd_truncated = cmd_display.len() < command.len();
+    eprintln!(
+        "[system-exec] pack={} cmd={}{}",
+        pack_id,
+        cmd_display,
+        if cmd_truncated { "…" } else { "" }
+    );
+
+    let opts = options.unwrap_or(SystemExecOptions {
+        cwd: None,
+        env: None,
+        timeout_ms: None,
+        input: None,
+    });
+
+    let shell = if cfg!(windows) { "cmd" } else { "sh" };
+    let shell_flag = if cfg!(windows) { "/C" } else { "-c" };
+
+    let mut cmd = Command::new(shell);
+    cmd.arg(shell_flag).arg(&command);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    // 新 process group で起動（timeout 時に子プロセスごと kill するため）
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+
+    // Charminal の PATH を継承
+    cmd.env("PATH", build_path_env());
+
+    if let Some(cwd) = &opts.cwd {
+        cmd.current_dir(cwd);
+    }
+    if let Some(env) = &opts.env {
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+    }
+    let input_data = opts.input.clone();
+    if input_data.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+
+    let start = Instant::now();
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+
+    let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
+    let child_id = child.id();
+    let result = tokio::task::spawn_blocking(move || {
+        let deadline = start + Duration::from_millis(timeout_ms);
+
+        // stdin / stdout / stderr を全て concurrent に処理（deadlock 防止）。
+        // 各 drain thread は deadline を共有し、背景プロセスが pipe を保持しても
+        // timeout で抜ける。
+        let stdin_handle = input_data.and_then(|data| {
+            child.stdin.take().map(|stdin| {
+                std::thread::spawn(move || {
+                    use std::io::Write;
+                    let mut stdin = stdin;
+                    let _ = stdin.write_all(data.as_bytes());
+                })
+            })
+        });
+        let stdout_handle = child.stdout.take().map(|r| {
+            let dl = deadline;
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let mut r = r;
+                let mut buf = [0u8; 8192];
+                loop {
+                    if Instant::now() >= dl {
+                        break;
+                    }
+                    match std::io::Read::read(&mut r, &mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        }
+                        Err(_) => break,
+                    }
+                }
+                s
+            })
+        });
+        let stderr_handle = child.stderr.take().map(|r| {
+            let dl = deadline;
+            std::thread::spawn(move || {
+                let mut s = String::new();
+                let mut r = r;
+                let mut buf = [0u8; 8192];
+                loop {
+                    if Instant::now() >= dl {
+                        break;
+                    }
+                    match std::io::Read::read(&mut r, &mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        }
+                        Err(_) => break,
+                    }
+                }
+                s
+            })
+        });
+
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    // shell 終了後、背景プロセスが pipe FD を保持して
+                    // drain thread を block するのを防ぐため process group を kill。
+                    #[cfg(unix)]
+                    {
+                        unsafe {
+                            libc::kill(-(child_id as i32), libc::SIGKILL);
+                        }
+                    }
+                    #[cfg(windows)]
+                    {
+                        let _ = std::process::Command::new("taskkill")
+                            .args(["/T", "/F", "/PID", &child_id.to_string()])
+                            .output();
+                    }
+
+                    if let Some(h) = stdin_handle {
+                        let _ = h.join();
+                    }
+                    let stdout = stdout_handle
+                        .and_then(|h| h.join().ok())
+                        .unwrap_or_default();
+                    let stderr = stderr_handle
+                        .and_then(|h| h.join().ok())
+                        .unwrap_or_default();
+                    return Ok(SystemExecResult {
+                        exit_code: status.code().unwrap_or(-1),
+                        stdout,
+                        stderr,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    });
+                }
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        // process tree ごと kill
+                        #[cfg(unix)]
+                        {
+                            unsafe {
+                                libc::kill(-(child_id as i32), libc::SIGKILL);
+                            }
+                        }
+                        #[cfg(windows)]
+                        {
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/T", "/F", "/PID", &child_id.to_string()])
+                                .output();
+                        }
+                        let _ = child.wait();
+                        return Err(format!("timeout after {timeout_ms}ms"));
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => return Err(format!("wait failed: {e}")),
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("task join failed: {e}"))?;
+
+    match &result {
+        Ok(r) => eprintln!(
+            "[system-exec] pack={} exit={} duration={}ms",
+            pack_id, r.exit_code, r.duration_ms
+        ),
+        Err(e) => eprintln!("[system-exec] pack={} error={}", pack_id, e),
+    }
+
+    result
+}
+
 fn build_path_env() -> String {
     let home = dirs::home_dir().unwrap_or_default();
     let home = home.to_string_lossy();
@@ -1427,7 +1689,8 @@ pub fn run() {
             history::snapshot_create,
             history::snapshot_list,
             history::snapshot_restore,
-            history::snapshot_prune
+            history::snapshot_prune,
+            system_exec
         ])
         .setup(|app| {
             if let Err(e) = pty::ensure_reminder_script() {
@@ -1455,6 +1718,9 @@ pub fn run() {
                     eprintln!("[charminal-mcp] startup skipped: {}", err);
                 }
             }
+
+            // config.json の mediaFolders を asset protocol scope に追加
+            register_media_folder_scopes(app);
 
             // Cohabitation hours tracking 開始
             let start = journal::cohabitation::start_tracking();

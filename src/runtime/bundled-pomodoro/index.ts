@@ -65,6 +65,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
     terminal: { output: () => "", session: { pid: 0, cwd: "", startedAt: 0 } },
     charm: async () => {},
     signal: abortController.signal,
+    resolveAsset: () => "",
     setTerminalOpacity: deps.setTerminalOpacity,
     getTerminalOpacity: deps.getTerminalOpacity,
   };

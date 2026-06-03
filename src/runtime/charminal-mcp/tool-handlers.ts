@@ -122,7 +122,7 @@ function buildListPacksResponse(input: BuildListPacksInput): ListPacksResponse {
 
   const disabled = input.config.disabledPacks
     .filter((id) => {
-      return !loaded.some((e) => e.id === id);
+      return !loaded.some((e) => e.id === id) && !bundled.some((e) => e.id === id);
     })
     .map(
       (id): PackStatusEntry => ({
@@ -401,6 +401,11 @@ export interface EnablePackDeps {
    * を通す配線が期待される。見つからなければ ok:false と reason を返す。
    */
   readonly reloadPack: (id: string) => Promise<SimpleOkResponse>;
+  /**
+   * bundled amenity を id で enable する。registry に登録済みなら enable して
+   * true を返す。未登録なら false。
+   */
+  readonly enableBundledAmenity?: (id: string) => boolean;
 }
 
 export function createEnablePackHandler(deps: EnablePackDeps) {
@@ -412,6 +417,10 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
     const current = await deps.readConfig();
     const next = withDisabledPackRemoved(current, id);
     await deps.writeConfig(next);
+
+    if (deps.enableBundledAmenity?.(id)) {
+      return { ok: true };
+    }
     return await deps.reloadPack(id);
   };
 }

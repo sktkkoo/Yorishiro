@@ -1,10 +1,26 @@
-import type { AmenityContext, AmenityPackDefinition, HistoryAPI } from "@charminal/sdk";
+import type {
+  AmenityContext,
+  AmenityPackDefinition,
+  ExecOptions,
+  HistoryAPI,
+} from "@charminal/sdk";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
+import {
+  isSafeUserPackRelativePath,
+  normalizeRelativePath,
+} from "../scene-pack-registry/asset-resolver";
+
+/** pack の出自。system.exec の利用可否を決める。 */
+export type PackSource = "local" | "bundled" | "curated" | "community";
 
 /** user amenity の activate に渡す AmenityContext を組む factory。 */
 export type AmenityContextFactory = (input: {
   readonly packId: string;
+  readonly packDir: string;
+  readonly source: PackSource;
   readonly signal: AbortSignal;
 }) => AmenityContext;
 
@@ -27,7 +43,7 @@ export interface UserAmenityContextDeps {
 export function createUserAmenityContextFactory(
   deps: UserAmenityContextDeps,
 ): AmenityContextFactory {
-  return ({ packId, signal }) => ({
+  return ({ packId, packDir, source, signal }) => ({
     time: {
       now: () => Date.now(),
       after: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -59,7 +75,50 @@ export function createUserAmenityContextFactory(
         deps.tweenManager.startVec3(`${packId}:${key}`, to, durationMs, apply, options),
       cancel: (key) => deps.tweenManager.cancel(`${packId}:${key}`),
     },
-    system: {} as AmenityContext["system"],
+    system: {
+      exec: async (command: string, options?: ExecOptions) => {
+        if (source === "community") {
+          throw new Error(
+            "system.exec is not available for community packs. Use isolated-js with capability RPC.",
+          );
+        }
+        const result = await systemExec({
+          packId,
+          command,
+          options: options
+            ? {
+                cwd: options.cwd,
+                env: options.env,
+                timeoutMs: options.timeoutMs,
+                input: options.input,
+              }
+            : undefined,
+        });
+        return {
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          durationMs: result.durationMs,
+        };
+      },
+      spawn: () => {
+        throw new Error("system.spawn is not yet implemented");
+      },
+      fs: {
+        read: async () => {
+          throw new Error("system.fs is not yet implemented");
+        },
+        write: async () => {
+          throw new Error("system.fs is not yet implemented");
+        },
+        exists: async () => {
+          throw new Error("system.fs is not yet implemented");
+        },
+      },
+      notify: async () => {
+        throw new Error("system.notify is not yet implemented");
+      },
+    } satisfies AmenityContext["system"],
     log: { write: () => {}, tail: () => [], read: () => [] },
     memory: {
       persona: { get: () => undefined, set: () => {}, delete: () => {} },
@@ -69,6 +128,16 @@ export function createUserAmenityContextFactory(
     charm: async () => {},
     signal,
     history: deps.history,
+    resolveAsset: (path: string): string => {
+      if (path.startsWith("/")) {
+        return convertFileSrc(path);
+      }
+      const clean = normalizeRelativePath(path);
+      if (!isSafeUserPackRelativePath(clean)) {
+        throw new Error(`unsafe asset path: ${path}`);
+      }
+      return convertFileSrc(`${packDir}/${clean}`);
+    },
   });
 }
 
@@ -107,7 +176,13 @@ export async function activateAndRegisterAmenity(
   const { registryId, def, entryPath, amenityPackRegistry, packRegistry, createAmenityContext } =
     args;
   const abort = new AbortController();
-  const ctx = createAmenityContext({ packId: registryId, signal: abort.signal });
+  const packDir = entryPath.substring(0, entryPath.lastIndexOf("/"));
+  const ctx = createAmenityContext({
+    packId: registryId,
+    packDir,
+    source: "local",
+    signal: abort.signal,
+  });
   const handle = await def.activate(ctx);
   const registration = amenityPackRegistry.register({
     id: registryId,

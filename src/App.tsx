@@ -101,6 +101,7 @@ import {
 } from "./runtime/attention-producers";
 import { getAttentionRuntime } from "./runtime/attention-runtime";
 import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
+import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
@@ -985,6 +986,20 @@ function App() {
       note: "registered bundled amenity pack 'pomodoro'",
     });
 
+    // ── Bundled amenity pack 登録（music-shelf）────────────────────────────
+    registerBundledMusicShelf({
+      registry: getAmenityPackRegistry(),
+      tweenManager: getThreeRuntime().getTweenManager(),
+      emitEvent: (name, payload) => {
+        bus.emitSynthetic({ type: "system", packId: "music-shelf" }, name, payload, 0);
+      },
+      history: historyApi,
+    });
+    appLog.write({
+      phase: "register",
+      note: "registered bundled amenity pack 'music-shelf'",
+    });
+
     // ── User layer 準備 (bootstrap) ───────────────────────────────────────
     // 旧来は 3 つの fire-and-forget IIFE で並行実行していたが、互いに strict な
     // 順序依存（bundled scene → config 反映 → user pack load）があり race で
@@ -1405,6 +1420,12 @@ function App() {
             readConfig,
             writeConfig,
             reloadPack,
+            enableBundledAmenity: (id) => {
+              const registry = getAmenityPackRegistry();
+              const before = registry.getActiveSet().length;
+              registry.enable(id);
+              return registry.getActiveSet().length > before;
+            },
           }),
           "history-restore": createHistoryRestoreHandler({
             proposeRestore: (seq) => {
@@ -2463,6 +2484,12 @@ function App() {
               readConfig: deps.readConfig,
               writeConfig: deps.writeConfig,
               reloadPack: reloadPackForPackTools,
+              enableBundledAmenity: (packId) => {
+                const registry = getAmenityPackRegistry();
+                const before = registry.getActiveSet().length;
+                registry.enable(packId);
+                return registry.getActiveSet().length > before;
+              },
             })({ id });
           },
           getHealthReport: collectAppHealthReport,
