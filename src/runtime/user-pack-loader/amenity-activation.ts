@@ -1,10 +1,16 @@
 import type { AmenityContext, AmenityPackDefinition, HistoryAPI } from "@charminal/sdk";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
+import {
+  isSafeUserPackRelativePath,
+  normalizeRelativePath,
+} from "../scene-pack-registry/asset-resolver";
 
 /** user amenity の activate に渡す AmenityContext を組む factory。 */
 export type AmenityContextFactory = (input: {
   readonly packId: string;
+  readonly packDir: string;
   readonly signal: AbortSignal;
 }) => AmenityContext;
 
@@ -27,7 +33,7 @@ export interface UserAmenityContextDeps {
 export function createUserAmenityContextFactory(
   deps: UserAmenityContextDeps,
 ): AmenityContextFactory {
-  return ({ packId, signal }) => ({
+  return ({ packId, packDir, signal }) => ({
     time: {
       now: () => Date.now(),
       after: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -69,6 +75,16 @@ export function createUserAmenityContextFactory(
     charm: async () => {},
     signal,
     history: deps.history,
+    resolveAsset: (path: string): string => {
+      if (path.startsWith("/")) {
+        return convertFileSrc(path);
+      }
+      const clean = normalizeRelativePath(path);
+      if (!isSafeUserPackRelativePath(clean)) {
+        throw new Error(`unsafe asset path: ${path}`);
+      }
+      return convertFileSrc(`${packDir}/${clean}`);
+    },
   });
 }
 
@@ -107,7 +123,8 @@ export async function activateAndRegisterAmenity(
   const { registryId, def, entryPath, amenityPackRegistry, packRegistry, createAmenityContext } =
     args;
   const abort = new AbortController();
-  const ctx = createAmenityContext({ packId: registryId, signal: abort.signal });
+  const packDir = entryPath.substring(0, entryPath.lastIndexOf("/"));
+  const ctx = createAmenityContext({ packId: registryId, packDir, signal: abort.signal });
   const handle = await def.activate(ctx);
   const registration = amenityPackRegistry.register({
     id: registryId,

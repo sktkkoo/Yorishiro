@@ -27,7 +27,11 @@ describe("createUserAmenityContextFactory", () => {
       history: fakeHistory,
     });
     const controller = new AbortController();
-    const ctx = factory({ packId: "my-amenity", signal: controller.signal });
+    const ctx = factory({
+      packId: "my-amenity",
+      packDir: "/tmp/packs/my-amenity",
+      signal: controller.signal,
+    });
 
     expect(ctx.history).toBe(fakeHistory);
     expect(ctx.signal).toBe(controller.signal);

@@ -141,6 +141,20 @@ export interface AmenityContext {
   readonly charm: CharmAPI;
   readonly signal: AbortSignal;
 
+  /**
+   * ローカルファイルを webview から読み込める asset URL に変換する。
+   * `new Audio(ctx.resolveAsset(...))` のように使う。
+   *
+   * - 相対パス（`tracks/song.mp3`）→ pack ディレクトリ基準で解決
+   * - 絶対パス（`/Users/.../Music/song.mp3`）→ そのまま asset URL に変換
+   *
+   * asset protocol scope 外のパスは URL 自体は返るがブラウザ側で読み込みに失敗する。
+   * scope は `~/.charminal/config.json` の `mediaFolders` で拡張できる。
+   *
+   * @throws 相対パスで traversal（`..`）や絶対 URL を含む場合
+   */
+  resolveAsset(path: string): string;
+
   // NOTE: character / voice / space は意図的に存在しない (motion-free)
   // NOTE: event: ReactionEvent も存在しない (activate は event-driven ではない)
 }
