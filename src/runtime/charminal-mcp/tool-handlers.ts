@@ -122,7 +122,7 @@ function buildListPacksResponse(input: BuildListPacksInput): ListPacksResponse {
 
   const disabled = input.config.disabledPacks
     .filter((id) => {
-      return !loaded.some((e) => e.id === id);
+      return !loaded.some((e) => e.id === id) && !bundled.some((e) => e.id === id);
     })
     .map(
       (id): PackStatusEntry => ({
