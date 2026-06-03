@@ -24,6 +24,7 @@ import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import type { AmenityContextFactory } from "./amenity-activation";
 import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
 import { parseConfig } from "./config";
 import { type EffectRequester, type LoadInitScriptResult, loadInitScript } from "./init-script";
@@ -45,6 +46,7 @@ export interface LoadUserLayerDeps {
   readonly uiPackRegistry: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly amenityPackRegistry: AmenityPackRegistry;
+  readonly createAmenityContext?: AmenityContextFactory;
   readonly effectDispatcher: EffectRequester;
   readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly packRegistry: UserPackRegistry;
@@ -116,6 +118,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       uiPackRegistry: deps.uiPackRegistry,
       ambientUiPackRegistry: deps.ambientUiPackRegistry,
       amenityPackRegistry: deps.amenityPackRegistry,
+      createAmenityContext: deps.createAmenityContext,
       packRegistry: deps.packRegistry,
       personaDefaults: deps.personaDefaults,
       devLog: deps.userPackLog,
@@ -159,6 +162,8 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     scenePackRegistry: deps.scenePackRegistry,
     uiPackRegistry: deps.uiPackRegistry,
     ambientUiPackRegistry: deps.ambientUiPackRegistry,
+    amenityPackRegistry: deps.amenityPackRegistry,
+    createAmenityContext: deps.createAmenityContext,
     packRegistry: deps.packRegistry,
     personaDefaults: deps.personaDefaults,
     userPackLog: deps.userPackLog,
@@ -175,6 +180,7 @@ export interface ReloadSingleUserPackDeps {
   readonly uiPackRegistry: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly amenityPackRegistry: AmenityPackRegistry;
+  readonly createAmenityContext?: AmenityContextFactory;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
@@ -240,6 +246,7 @@ export async function reloadSingleUserPack(
     uiPackRegistry: deps.uiPackRegistry,
     ambientUiPackRegistry: deps.ambientUiPackRegistry,
     amenityPackRegistry: deps.amenityPackRegistry,
+    createAmenityContext: deps.createAmenityContext,
     packRegistry: deps.packRegistry,
     personaDefaults: deps.personaDefaults,
     devLog: deps.userPackLog,

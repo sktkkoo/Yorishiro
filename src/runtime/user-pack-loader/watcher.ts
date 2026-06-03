@@ -20,9 +20,11 @@ import {
   validateUiPackDefinition,
 } from "../../sdk/validators";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
+import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import type { AmenityContextFactory } from "./amenity-activation";
 import { readManifestForEntry, validatePackExecutionPolicy } from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
@@ -37,6 +39,8 @@ export interface StartPackWatcherDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
+  readonly amenityPackRegistry: AmenityPackRegistry;
+  readonly createAmenityContext?: AmenityContextFactory;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;

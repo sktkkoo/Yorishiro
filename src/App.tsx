@@ -174,6 +174,7 @@ import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
+import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amenity-activation";
 import {
   readCharminalConfigText,
   readLastStartupReport,
@@ -872,6 +873,16 @@ function App() {
       restore: (seq) => snapshotRestore({ seq }),
       confirm: (message) => ask(message, { title: "Charminal — 復元の確認", kind: "warning" }),
     });
+    // user amenity の activate に渡す ctx factory。historyApi を ctx.history に通す。
+    // emitEvent は発火元 pack id（registryId）を source に stamp し、複数 amenity
+    // の発火元が潰れないようにする。
+    const createAmenityContext = createUserAmenityContextFactory({
+      tweenManager: getThreeRuntime().getTweenManager(),
+      emitEvent: (packId, name, payload) => {
+        bus.emitSynthetic({ type: "system", packId }, name, payload, 0);
+      },
+      history: historyApi,
+    });
 
     // ── Bundled amenity pack 登録（pomodoro）──────────────────────────────
     registerBundledPomodoro({
@@ -1072,6 +1083,7 @@ function App() {
             userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
+            createAmenityContext,
           });
           appLog.write({
             phase: "user-layer",
@@ -1209,6 +1221,7 @@ function App() {
             amenityPackRegistry: getAmenityPackRegistry(),
             packRegistry,
             userPackLog,
+            createAmenityContext,
           });
         };
         const readBundledPacks = (): Array<{ id: string; kind: string }> => [
@@ -1569,6 +1582,7 @@ function App() {
       claimState,
       uiState,
       userLayerReady,
+      createAmenityContext,
     };
   });
 
@@ -1587,6 +1601,7 @@ function App() {
     uiState,
     time,
     userLayerReady,
+    createAmenityContext,
   } = runtime;
 
   // user layer load（bundled + user pack 登録、primaryPersona 反映）完了を待ってから
@@ -2093,6 +2108,7 @@ function App() {
         amenityPackRegistry: getAmenityPackRegistry(),
         packRegistry,
         userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+        createAmenityContext,
       });
     };
 
@@ -2500,6 +2516,7 @@ function App() {
     collectAppHealthReport,
     readBundledPacks,
     applyPresenceLevelFromApp,
+    createAmenityContext,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
