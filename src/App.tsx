@@ -1420,6 +1420,12 @@ function App() {
             readConfig,
             writeConfig,
             reloadPack,
+            enableBundledAmenity: (id) => {
+              const registry = getAmenityPackRegistry();
+              const before = registry.getActiveSet().length;
+              registry.enable(id);
+              return registry.getActiveSet().length > before;
+            },
           }),
           "history-restore": createHistoryRestoreHandler({
             proposeRestore: (seq) => {
@@ -2478,6 +2484,12 @@ function App() {
               readConfig: deps.readConfig,
               writeConfig: deps.writeConfig,
               reloadPack: reloadPackForPackTools,
+              enableBundledAmenity: (packId) => {
+                const registry = getAmenityPackRegistry();
+                const before = registry.getActiveSet().length;
+                registry.enable(packId);
+                return registry.getActiveSet().length > before;
+              },
             })({ id });
           },
           getHealthReport: collectAppHealthReport,

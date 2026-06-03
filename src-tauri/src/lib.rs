@@ -230,10 +230,24 @@ async fn system_exec(
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
+                    // shell 終了後、背景プロセスが pipe FD を保持して
+                    // drain thread を block するのを防ぐため process group を kill。
+                    #[cfg(unix)]
+                    {
+                        unsafe {
+                            libc::kill(-(child_id as i32), libc::SIGKILL);
+                        }
+                    }
+                    #[cfg(windows)]
+                    {
+                        let _ = std::process::Command::new("taskkill")
+                            .args(["/T", "/F", "/PID", &child_id.to_string()])
+                            .output();
+                    }
+
                     if let Some(h) = stdin_handle {
                         let _ = h.join();
                     }
-                    // drain thread も deadline で抜けるので join は有限時間で完了する
                     let stdout = stdout_handle
                         .and_then(|h| h.join().ok())
                         .unwrap_or_default();
