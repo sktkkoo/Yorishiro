@@ -3,7 +3,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalRuntime } from "../terminal-runtime/types";
-import { startInputCursorAttentionProducer } from "./input-cursor";
+import { INPUT_CURSOR_SCAN_INTERVAL_MS, startInputCursorAttentionProducer } from "./input-cursor";
 
 function makeFakeAttention() {
   const setSourceTarget = vi.fn();
@@ -25,13 +25,15 @@ function makeFakeTerminal(
 // オブジェクトプロパティ経由にすることで TypeScript CFA の never 収束を回避する。
 function makeRafStub() {
   const state: { cb: ((t: DOMHighResTimeStamp) => void) | null } = { cb: null };
+  let now = 0;
   const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation((cb) => {
     state.cb = cb;
     return 1;
   });
   vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-  const tick = (t = performance.now()): void => {
-    state.cb?.(t);
+  const tick = (t?: DOMHighResTimeStamp): void => {
+    now = t ?? now + INPUT_CURSOR_SCAN_INTERVAL_MS;
+    state.cb?.(now);
   };
   const restore = (): void => {
     rafSpy.mockRestore();
@@ -41,7 +43,7 @@ function makeRafStub() {
 }
 
 describe("startInputCursorAttentionProducer", () => {
-  it("getInputCursorClientPosition は rAF 毎に呼ばれる", () => {
+  it("getInputCursorClientPosition は scan interval ごとに呼ばれる", () => {
     // requestAnimationFrame をスタブし、手動で tick を制御する
     const { rafSpy, tick, restore } = makeRafStub();
     try {
@@ -62,11 +64,15 @@ describe("startInputCursorAttentionProducer", () => {
       expect(terminal.getInputCursorClientPosition).not.toHaveBeenCalled();
 
       // 1 frame 進める
-      tick();
+      tick(0);
       expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(1);
 
-      // 2 frame 目
-      tick();
+      // interval 未満の frame は skip
+      tick(INPUT_CURSOR_SCAN_INTERVAL_MS - 1);
+      expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(1);
+
+      // interval 到達で次の scan
+      tick(INPUT_CURSOR_SCAN_INTERVAL_MS);
       expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(2);
 
       dispose.dispose();
@@ -177,6 +183,33 @@ describe("startInputCursorAttentionProducer", () => {
     } finally {
       cancelSpy.mockRestore();
       vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
+    }
+  });
+
+  it("dispose 時に active な typing source を clear する", () => {
+    const { tick, restore } = makeRafStub();
+    try {
+      const attention = makeFakeAttention();
+      const { fake: terminal } = makeFakeTerminal({
+        clientX: 50,
+        clientY: 100,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+      const handle = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+      });
+
+      tick();
+      handle.dispose();
+
+      const nullCall = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "input-cursor:typing" && c[1] === null,
+      );
+      expect(nullCall).toBeDefined();
+    } finally {
+      restore();
     }
   });
 });

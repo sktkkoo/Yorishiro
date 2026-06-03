@@ -88,6 +88,7 @@
 - [**scene-controls-api.md**](scene-controls-api.md) — Scene Pack の lighting / post effect / camera modulation は `useCharminalControls`（`@charminal/sdk/controls`）経由で Scene panel に登録、base camera は Common panel。F2 は Common / Scene の 2 枚。Leva は adapter / debug UI に留める
 - [**scene-layer-override-semantics.md**](scene-layer-override-semantics.md) — Scene が layer 構造を握る、override は既存 layer への patch のみ（auto-create 廃止）。scene 切替で override は clear（共通管理 Camera のみ持ち越し）
 - [**user-init-script-seed.md**](user-init-script-seed.md) — `~/.charminal/init.js` は初回だけ雛形を seed、既存 file は touch しない。app bundle 内設置は採らない
+- [**init-js-hot-reload.md**](init-js-hot-reload.md) — init.js は pack と違い hot reload しない、明示 reload 契約（Cmd/Ctrl+R）を踏襲。v1 は変更検知の UX 改善のみ。in-place auto-capture は downstream 誤捕捉 + top-level 取りこぼしで却下
 - [**explicit-over-implicit-ugc.md**](explicit-over-implicit-ugc.md) — Agentic UGC 前提では implicit な便利さより explicit な予測可能性
 - *UI pack（5 つ目の pack kind）は Plan 3 完了まで shape が変わるため、この topic-indexed index には未 promote*
 
@@ -100,6 +101,7 @@
 - [**body-interaction-style.md**](body-interaction-style.md) — 住人の身体性は (B) 滲み出しと UI 操作 を default に。(A) 物理接触（IK で壁押し / カーソル追従等）は禁じないが推奨しない（技術困難 + (B) の方が住人性を本質的に伝える）
 - [**autonomy-without-disruption.md**](autonomy-without-disruption.md) — 住人の自発性は user の作業を邪魔しない範囲で設計する。「邪魔しない / でも従属もしない」の二項で居ることを定義。「邪魔になりうることが大事」は退ける
 - [**idle-text-physics-removed.md**](idle-text-physics-removed.md) — idle 中に低確率で shoot/TextPhysics を自動発火する旧演出を廃止。shoot は init.js ショートカットの明示発火のみ（侵襲が強く autonomy-without-disruption と非整合）
+- [**presence-restore-source-aware.md**](presence-restore-source-aware.md) — prompt 送信時の presence 自動復帰は source 対応。住人発（mcp）の close は「呼ばれたら顔を出す」で復帰、user 発（settings）の明示 close は維持し勝手に開かない
 
 ### Architecture
 
@@ -113,6 +115,7 @@
 - [**mcp-trust-tiers.md**](mcp-trust-tiers.md) — Charminal の MCP 3 階層（Tier 1 host / Tier 2 住人 / Tier 3 外部）。各 tier の tool category access policy。PTY 系 tool は当面全 tier で禁止（whitelist validation + length cap + trust tier gate + content layer 防御の 4 層が揃うまで）
 - [**input-prefill-boundary.md**](input-prefill-boundary.md) — pack/AI に任意テキスト書込み API を露出しない。(A) host 所有の固定文字列 verb（SDK + MCP 対称、user pack は参照のみ）+ (B) 既存 Reference Marker（write は固定 token、可変内容は MCP read で解決）。mcp-trust-tiers の PTY-prefill 保留条項を安全 subset 分だけ精緻化
 - [**voice-clip-resolution.md**](voice-clip-resolution.md) — `ctx.voice.play()` の clip ref を解決する規約。3 種類の ref（shared `voice:<stem>` / pack-local `./...` / playable URL）+ scoped → shared → URL の順で解決。失敗は silent ではなく reject。pack-local ref は path-segment 単位で `.`/`..` 拒否（security 境界）。shared voice の basename alias と filler 同梱は **検証中**
+- [**render-on-resize-managed-layer.md**](render-on-resize-managed-layer.md) — `setSize()` は drawing buffer を clear するので resize した frame で必ず render する（ThreeRuntime + procedural-scene-layer の 2 経路で enforce 済み）。作者が自前 renderer を持ち込む `addDomLayer` 経路の再発防止に managed render-layer primitive を **proposed**（未実装）
 - *（今後の追加候補）* `living-system-and-hot-reload.md` — TS が canonical runtime、Rust は IO 層のみ、Claude Code session は HMR で切らない
 - *（今後の追加候補）* `core-vs-pack-vs-mcp.md` — core 機能 vs pack vs MCP tool の判断軸（2026-04-19-core-mcp-pack-layers.md の topic 化）
 

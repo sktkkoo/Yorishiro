@@ -7,6 +7,7 @@ import {
   type SpawnSpec,
   sessionAttach,
   sessionDestroy,
+  sessionRefreshTheme,
   sessionResize,
   sessionSpawn,
   sessionWrite,
@@ -322,6 +323,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     void (async () => {
       try {
         if (this.isStaleStart(generation)) return;
+        if (this.attachedContainer) {
+          this.syncAttachedRect();
+        }
         if (opts.attachFirst) {
           let attached = false;
           try {
@@ -339,6 +343,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           }
           if (this.isStaleStart(generation)) return;
           if (attached) {
+            this.resyncAttachedPtyDisplay();
             return;
           }
         }
@@ -366,6 +371,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
       }
     })();
+  }
+
+  private resyncAttachedPtyDisplay(): void {
+    if (this.disposed) return;
+    // WebView reload 後の attach では xterm の画面だけが新しくなる。OpenCode などの
+    // full-screen TUI は replay だけで復元しきれないため、PTY resize で再描画を促す。
+    if (this.attachedContainer) {
+      this.syncAttachedRect();
+    }
+    const cols = Math.max(2, this.term.cols || 80);
+    const rows = Math.max(1, this.term.rows || 24);
+    void sessionResize({ sessionId: this.sessionId, cols, rows }).catch(() => {});
+    void sessionRefreshTheme({ sessionId: this.sessionId }).catch(() => {});
+    this.term.refresh(0, this.term.rows - 1);
   }
 
   setPerception(perception: Perception | null): void {

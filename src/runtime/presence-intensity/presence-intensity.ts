@@ -46,6 +46,12 @@ export type ApplyPresenceResult =
   | { readonly applied: true; readonly completion?: Promise<void> }
   | { readonly unavailable: true; readonly reason: string };
 
+/** applyPresenceLevel の追加挙動。host が layout を即時専有する経路で使う。 */
+export interface ApplyPresenceOptions {
+  /** 同一 level でも sidebar/render の副作用を即時再適用する。 */
+  readonly immediate?: boolean;
+}
+
 /** applyPresenceLevel に注入する依存。App.tsx の wiring 時に構築する。 */
 export interface PresenceIntensityDeps {
   readonly setSidebarWidth: (px: number) => void;
@@ -110,6 +116,7 @@ export function applyPresenceLevel(
   level: PresenceLevel,
   source: PresenceSource,
   deps: PresenceIntensityDeps,
+  options?: ApplyPresenceOptions,
 ): ApplyPresenceResult {
   const state = getState();
   const prevLevel = state.level;
@@ -124,7 +131,7 @@ export function applyPresenceLevel(
   // source は常に更新
   state.source = source;
 
-  if (level === prevLevel) {
+  if (level === prevLevel && options?.immediate !== true) {
     // 同一レベル — effect 不要
     return { applied: true, completion: Promise.resolve() };
   }
@@ -144,6 +151,18 @@ export function applyPresenceLevel(
 
   // Sidebar tween
   const sidebarTarget = level === "default" ? deps.getDefaultSidebarWidth() : 0;
+  if (options?.immediate === true) {
+    deps.tweenManager.cancel("presence.sidebar.width");
+    deps.setSidebarWidth(sidebarTarget);
+    if (level === "closed") {
+      deps.ambientUiRegistry.disable(AURA_PACK_ID);
+      deps.setRenderPaused(true);
+    } else {
+      deps.ambientUiRegistry.enable(AURA_PACK_ID);
+    }
+    return { applied: true, completion: Promise.resolve() };
+  }
+
   const handle = deps.tweenManager.start(
     "presence.sidebar.width",
     sidebarTarget,
@@ -173,13 +192,30 @@ export function applyPresenceLevel(
 }
 
 /**
+ * prompt 送信時に presence を自動復帰すべきか判定する pure helper。
+ *
+ * 「呼ばれたら顔を出す」自動復帰は、住人が自分で引っ込んだ場合（source "mcp"）の振る舞い。
+ * user が UI で明示的に閉じた場合（source "settings"）は、その意思を尊重して closed を維持する。
+ * Philosophy: docs/philosophy/PRESENCE_HARNESS.ja.md「Presence Intensity / 住人が自分で決める」
+ */
+export function shouldRestorePresenceOnPrompt(state: PresenceState): boolean {
+  return !(state.level === "closed" && state.source === "settings");
+}
+
+/**
  * user が prompt を送信したときに呼ばれる。
  *
  * 現在のレベルを previousLevel に保存し、"default" に復帰する。
  * 既に "default" の場合は source を "default" にリセットするだけで effect は不要。
+ * user が settings で明示的に閉じた状態（source "settings"）は維持し、勝手に開かない。
  */
 export function onUserPromptSubmit(deps: PresenceIntensityDeps): void {
   const state = getState();
+
+  // user の明示的な close は prompt 送信で上書きしない。
+  if (!shouldRestorePresenceOnPrompt(state)) {
+    return;
+  }
 
   // 直前のレベルを保存
   state.previousLevel = state.level;

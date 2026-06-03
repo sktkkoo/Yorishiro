@@ -122,6 +122,7 @@ import {
   getPersonaRegistry,
 } from "./runtime/persona-registry";
 import {
+  type ApplyPresenceOptions,
   type ApplyPresenceResult,
   applyPresenceLevel,
   getPresenceSnapshot,
@@ -129,6 +130,7 @@ import {
   type PresenceIntensityDeps,
   type PresenceLevel,
   type PresenceSource,
+  shouldRestorePresenceOnPrompt,
 } from "./runtime/presence-intensity";
 import {
   readPresenceSidebarWidth,
@@ -158,7 +160,7 @@ import {
   spawnSpecFromDefaultProfile,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
-import { getSurfaceRegistry } from "./runtime/surface-registry";
+import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
 import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme } from "./runtime/terminal-theme";
 import {
@@ -172,6 +174,10 @@ import {
 import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
+import {
+  playStageTransition,
+  type StageSurfaces,
+} from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
 import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amenity-activation";
@@ -190,6 +196,10 @@ import {
   withLanguageSet,
   withPrimaryPersonaSet,
 } from "./runtime/user-pack-loader/config";
+import {
+  appendInitChangedMarker,
+  stripInitChangedMarker,
+} from "./runtime/user-pack-loader/init-changed-title";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
@@ -465,9 +475,26 @@ globalThis.__CHARMINAL_REACT__ = React;
 globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 
+function fallbackSelectorForSurface(name: SurfaceName): string {
+  switch (name) {
+    case "shell":
+      return ".shell-column";
+    case "character":
+      return ".charactor-container";
+    case "chrome":
+      return ".sidebar";
+  }
+}
+
+function getConnectedSurface(name: SurfaceName, fallbackSelector: string): HTMLElement | null {
+  const registered = getSurfaceRegistry().get(name);
+  if (registered?.isConnected === true) return registered;
+  return document.querySelector<HTMLElement>(fallbackSelector);
+}
+
 // presence 契約の単一解決点（spec §4 loud-unavailable）。
 // active UI pack の presence 宣言（無ければ host 既定 = classic shell）から
-// surface を解決。?? querySelector の silent fallback を構造的に置換する。
+// surface を解決。stale HMR surface は使わず、現 DOM の connected node に寄せる。
 // module-level: getUiRegistry()/getSurfaceRegistry() は HMR singleton なので
 // どの closure からでも同一 registry を引ける（App.tsx 既存の getUiRegistry() 再取得と同方針）。
 function resolvePresenceSurface(): PresenceResolution {
@@ -475,7 +502,9 @@ function resolvePresenceSurface(): PresenceResolution {
   const a: ActiveUiPresence = active
     ? { kind: "pack", id: active.id, presence: active.pack.layout.presence }
     : { kind: "none" };
-  return resolvePresence(a, getSurfaceRegistry());
+  return resolvePresence(a, {
+    get: (name) => getConnectedSurface(name, fallbackSelectorForSurface(name)),
+  });
 }
 
 /** mount 済み terminal session id を DOM placeholder から引く（single-writer 用の共有 helper）。 */
@@ -497,14 +526,44 @@ function applyPresenceWidth(px: number): PresenceResolution {
   return res;
 }
 
+function resolveHostDefaultPresenceSurface(): PresenceResolution {
+  const shell = getConnectedSurface("shell", ".shell-column");
+  if (!shell) {
+    return { ok: false, reason: "host default presence target 'shell' is not registered" };
+  }
+  return { ok: true, el: shell, target: "shell" };
+}
+
+function applyHostDefaultPresenceWidth(px: number): PresenceResolution {
+  const res = resolveHostDefaultPresenceSurface();
+  if (!res.ok) return res;
+  writePresenceSidebarWidth(document.documentElement, res.el, px);
+  return res;
+}
+
 function getCurrentSidebarWidth(): number {
   return readPresenceSidebarWidth(document.documentElement);
 }
 
-function buildPresenceDeps(): PresenceIntensityDeps {
+function isHostDefaultPresenceClosed(): boolean {
+  const shell = getConnectedSurface("shell", ".shell-column");
+  return getCurrentSidebarWidth() <= 0 || shell?.classList.contains("presence-closed") === true;
+}
+
+function layoutNeedsHostPresenceResume(layout: UiLayout): boolean {
+  return layout.sidebar?.width === "fullscreen";
+}
+
+type PresenceApplyTarget = "active-ui" | "host-default";
+
+function buildPresenceDeps(target: PresenceApplyTarget = "active-ui"): PresenceIntensityDeps {
   return {
     setSidebarWidth: (px) => {
-      applyPresenceWidth(px);
+      if (target === "host-default") {
+        applyHostDefaultPresenceWidth(px);
+      } else {
+        applyPresenceWidth(px);
+      }
     },
     getSidebarWidth: getCurrentSidebarWidth,
     // App.css の :root --sidebar-width 初期値（280px）と一致させる。
@@ -513,14 +572,15 @@ function buildPresenceDeps(): PresenceIntensityDeps {
     ambientUiRegistry: getAmbientUiPackRegistry(),
     setRenderPaused: (paused) => getThreeRuntime().setRenderPaused(paused),
     now: () => Date.now(),
-    resolvePresence: () => resolvePresenceSurface(),
+    resolvePresence: () =>
+      target === "host-default" ? resolveHostDefaultPresenceSurface() : resolvePresenceSurface(),
   };
 }
 
 function syncPresenceLevelStyles(level: PresenceLevel): void {
   syncPresenceClosedStyles(
     document.documentElement,
-    getSurfaceRegistry().get("shell"),
+    getConnectedSurface("shell", ".shell-column"),
     level === "closed",
   );
 }
@@ -635,8 +695,13 @@ function App() {
   const activeSceneLevaStore = useActiveSceneLevaStore();
 
   const applyPresenceLevelFromApp = useCallback(
-    (level: PresenceLevel, source: PresenceSource): ApplyPresenceResult => {
-      const result = applyPresenceLevel(level, source, buildPresenceDeps());
+    (
+      level: PresenceLevel,
+      source: PresenceSource,
+      options?: ApplyPresenceOptions,
+      target?: PresenceApplyTarget,
+    ): ApplyPresenceResult => {
+      const result = applyPresenceLevel(level, source, buildPresenceDeps(target), options);
       if ("applied" in result) {
         emitPresenceLevelChanged(getPresenceState().level);
       }
@@ -647,6 +712,9 @@ function App() {
 
   const restorePresenceFromPrompt = useCallback(() => {
     const state = getPresenceState();
+    // user が settings で明示的に閉じた状態は、prompt 送信で勝手に開かない（意思を尊重）。
+    // 自動復帰は住人が自分で引っ込んだ場合（source "mcp"）の「呼ばれたら顔を出す」だけ。
+    if (!shouldRestorePresenceOnPrompt(state)) return;
     state.previousLevel = state.level;
     state.previousLevelSince = state.levelSince;
     if (state.level === "default") {
@@ -675,15 +743,27 @@ function App() {
       warn: (msg, meta) => console.warn(`[charminal] ${msg}`, meta),
       error: (msg, meta) => console.error(`[charminal] ${msg}`, meta),
     };
-    // Generation-time 細い回路 — dev でのみ active、console に mirror して即時視認。
+    // Generation-time 細い回路 — dev でのみ active。console mirror は長時間起動で
+    // WebView 側のログ蓄積を増やすため opt-in にする。
     // Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+    const mirrorDevLogToConsole =
+      import.meta.env.DEV &&
+      (() => {
+        try {
+          return localStorage.getItem("charminal:dev-log-console") === "1";
+        } catch {
+          return false;
+        }
+      })();
     const devLog = new DevLog({
       time,
       enabled: import.meta.env.DEV,
-      sink: (entry: DevLogEntry) => {
-        const tag = entry.phase ? `${entry.subsystem}:${entry.phase}` : entry.subsystem;
-        console.log(`[${tag}] ${entry.note ?? ""}`, entry.data ?? "");
-      },
+      sink: mirrorDevLogToConsole
+        ? (entry: DevLogEntry) => {
+            const tag = entry.phase ? `${entry.subsystem}:${entry.phase}` : entry.subsystem;
+            console.log(`[${tag}] ${entry.note ?? ""}`, entry.data ?? "");
+          }
+        : undefined,
     });
     const bus = new EventBus({
       time,
@@ -1084,6 +1164,23 @@ function App() {
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
             createAmenityContext,
+            onInitChanged: () => {
+              void (async () => {
+                try {
+                  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+                  const win = getCurrentWindow();
+                  const current = await win.title();
+                  const next = appendInitChangedMarker(current);
+                  if (next !== current) await win.setTitle(next);
+                } catch (err) {
+                  appLog.write({
+                    phase: "init-changed-title",
+                    note: "failed to append init.js-changed marker to window title",
+                    data: { error: err instanceof Error ? err.message : String(err) },
+                  });
+                }
+              })();
+            },
           });
           appLog.write({
             phase: "user-layer",
@@ -1126,7 +1223,23 @@ function App() {
       //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
       userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt, pluginDir });
 
-      // ─ Step 4: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
+      // ─ Step 4: 前回 reload 待ち marker を title から剥がす（独立な失敗で MCP に影響しない）─
+      // native window title は webview reload を跨いで残るため、boot 時に明示的に掃除する。
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const win = getCurrentWindow();
+        const current = await win.title();
+        const next = stripInitChangedMarker(current);
+        if (next !== current) await win.setTitle(next);
+      } catch (err) {
+        appLog.write({
+          phase: "init-changed-title",
+          note: "failed to strip init.js-changed marker from window title",
+          data: { error: err instanceof Error ? err.message : String(err) },
+        });
+      }
+
+      // ─ Step 4.1: safe mode のとき window title に suffix（独立な失敗で MCP に影響しない）─
       // user が env var で safe mode に入ったことを常時 visible にする。
       if (safeMode) {
         try {
@@ -1951,19 +2064,20 @@ function App() {
     let currentLayout: UiLayout | null = null;
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
-      const reg = getSurfaceRegistry();
-      const sidebar = reg.get("shell") ?? document.querySelector<HTMLElement>(".shell-column");
-      const character =
-        reg.get("character") ?? document.querySelector<HTMLElement>(".charactor-container");
+      const sidebar = getConnectedSurface("shell", ".shell-column");
+      const character = getConnectedSurface("character", ".charactor-container");
       // "chrome" surface は Sidebar が自己登録する（P3）。未登録時は DOM class ".sidebar" にフォールバック
-      const chrome = reg.get("chrome") ?? document.querySelector<HTMLElement>(".sidebar");
+      const chrome = getConnectedSurface("chrome", ".sidebar");
       if (!sidebar || !character || !chrome) return null;
+      // tab-indicator は常時存在するとは限らない（タブ未描画時）ので optional。
+      const tabIndicator = document.querySelector<HTMLElement>(".tab-indicator") ?? undefined;
       return {
         root: document.documentElement,
         terminal,
         sidebar,
         character,
         chrome,
+        tabIndicator,
       };
     };
 
@@ -1985,6 +2099,24 @@ function App() {
         const targets = makeLayoutTargets(terminal);
         return targets ? [targets] : [];
       });
+
+    // stage 遷移（chrome 引っ込み → ステージ全画面）で動かす surface 群。
+    const getStageSurfaces = (): StageSurfaces | null => {
+      const shell = getConnectedSurface("shell", ".shell-column");
+      const character = getConnectedSurface("character", ".charactor-container");
+      const chrome = getConnectedSurface("chrome", ".sidebar");
+      if (!shell || !character || !chrome) return null;
+      return { shell, character, chrome };
+    };
+
+    const playStage = (direction: "open" | "close") => {
+      const surfaces = getStageSurfaces();
+      if (!surfaces) return;
+      void playStageTransition(direction, surfaces, {
+        tweenManager: getThreeRuntime().getTweenManager(),
+        viewportWidth: () => window.innerWidth,
+      });
+    };
 
     const refitActiveTerminal = () => {
       getTerminalRuntime(tabManager.getState().activeSessionId).refit();
@@ -2413,6 +2545,8 @@ function App() {
     };
 
     const activateEntry = (entry: UiPackEntry | null) => {
+      // 前の layout を捕捉してから cleanup（deactivate 時の閉じアニメ判定に使う）。
+      const prevLayout = currentLayout;
       // 前の UI pack を cleanup
       if (currentAbort) currentAbort.abort();
       currentAbort = null;
@@ -2427,7 +2561,28 @@ function App() {
       claimState.releaseAll();
       setSceneLayerOverrides([]);
 
-      if (!entry) return;
+      if (!entry) {
+        // 前 pack が stage 遷移なら、reset 後の素の状態から「閉じアニメ」を再生する
+        // （resetLayout で end-state を一旦 clear → playStage("close") が反対端へ override して tween）。
+        if (prevLayout?.transition?.kind === "stage") playStage("close");
+        return;
+      }
+
+      // presence "closed"（Sidebar 閉）のまま UI pack を出すと、shell-column が
+      // presence-closed（display:none）+ render paused のままで見えない（F3 でキャラが出ない /
+      // F4 が無反応）。UI pack はステージ/レイアウトを占有するので presence を resume する。
+      // 明示起動なので settings-guard（restorePresenceFromPrompt）は通さず無条件に開ける。
+      // theater / immersive は active UI pack としては presence target を宣言しない。
+      // ここで開けたいのは host default shell なので、active-ui contract ではなく
+      // host-default surface を即時復帰する（presence tween は stage tween と競合させない）。
+      if (
+        layoutNeedsHostPresenceResume(entry.pack.layout) ||
+        getPresenceState().level === "closed" ||
+        isHostDefaultPresenceClosed()
+      ) {
+        applyPresenceLevelFromApp("default", "default", { immediate: true }, "host-default");
+        syncPresenceLevelStyles("default");
+      }
 
       const targets = applyLayoutForAllTerminals(entry.pack.layout);
       currentLayout = entry.pack.layout;
@@ -2440,6 +2595,11 @@ function App() {
         return;
       }
       refitActiveTerminal();
+
+      // stage 遷移を宣言した pack（theater 等）は、applyLayout が置いた end-state を
+      // 反対端へ override して「開きアニメ」を再生する（snap でなく Tween）。
+      if (entry.pack.layout.transition?.kind === "stage") playStage("open");
+
       const container = document.createElement("div");
       container.className = "ui-pack-container";
       container.style.position = "fixed";

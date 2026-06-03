@@ -247,6 +247,17 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     return host.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
   };
 
+  // scene → renderTarget → fullscreen quad の 2 パス。tick と resize の両方から呼ぶ。
+  const drawScene = () => {
+    // 1) scene → renderTarget。既存の renderOrder / depthWrite はそのまま効く
+    //    （RT も color + depth を持つ通常の framebuffer 相当）
+    renderer.setRenderTarget(renderTarget);
+    renderer.render(scene, camera);
+    // 2) RT を fullscreen quad で sample しながら post pass を canvas に
+    renderer.setRenderTarget(null);
+    renderer.render(postScene, postCamera);
+  };
+
   const resize = () => {
     const rect = host.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
@@ -263,6 +274,9 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     const rtHeight = Math.max(1, Math.floor(height * pr));
     renderTarget.setSize(rtWidth, rtHeight);
     postUniforms.uResolution.value.set(rtWidth, rtHeight);
+    // setSize は canvas / RT を clear するため、resize した frame で必ず描き直す。
+    // throttled tick 任せだと UI アニメ中（host が毎フレーム resize）に背景が消える。
+    drawScene();
   };
 
   const resizeObserver = new ResizeObserver(resize);
@@ -304,14 +318,7 @@ function mountRadiantMeadow(host: HTMLDivElement): () => void {
     motes.uniforms.uTime.value = elapsed;
     postUniforms.uTime.value = elapsed;
 
-    // 1) scene → renderTarget。既存の renderOrder / depthWrite はそのまま効く
-    //    （RT も color + depth を持つ通常の framebuffer 相当）
-    renderer.setRenderTarget(renderTarget);
-    renderer.render(scene, camera);
-
-    // 2) RT を fullscreen quad で sample しながら post pass を canvas に
-    renderer.setRenderTarget(null);
-    renderer.render(postScene, postCamera);
+    drawScene();
   };
   document.addEventListener("visibilitychange", handleVisibilityChange);
   requestFrame();

@@ -128,25 +128,26 @@ describe("localized CLAI persona options", () => {
 });
 
 describe("terminal agent options", () => {
-  it("shows OpenCode in settings", () => {
+  it("shows only release-supported agents in settings", () => {
     expect(TERMINAL_AGENT_OPTIONS).toEqual([
       { value: "claude", label: "Claude Code" },
       { value: "codex", label: "Codex" },
-      { value: "opencode", label: "OpenCode" },
     ]);
   });
 
-  it("stays in sync with config validation (KNOWN_AGENT_IDS)", () => {
-    // dropdown の選択肢と config validation がずれると、UI で選べる agent を
-    // config parse が弾く（or 逆）。adapter 追加時の更新漏れをここで検知する。
-    const optionIds = new Set(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
-    expect(optionIds).toEqual(KNOWN_AGENT_IDS);
+  it("uses only agent ids accepted by config validation", () => {
+    // 設定画面は config が受け付ける agent の subset。内部 adapter があっても
+    // 初回リリースでは user-facing option に出さない agent がある。
+    for (const option of TERMINAL_AGENT_OPTIONS) {
+      expect(KNOWN_AGENT_IDS.has(option.value)).toBe(true);
+    }
+    const optionIds = new Set<string>(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
+    expect(optionIds.has("opencode")).toBe(false);
   });
 
-  it("marks Claude Code as the sole non-experimental agent", () => {
+  it("marks Codex as the only experimental settings option", () => {
     expect(EXPERIMENTAL_AGENT_IDS.has("claude")).toBe(false);
     expect(EXPERIMENTAL_AGENT_IDS.has("codex")).toBe(true);
-    expect(EXPERIMENTAL_AGENT_IDS.has("opencode")).toBe(true);
     // 全 experimental id は実在の agent option である（typo 検知）。
     const optionIds = new Set<string>(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
     for (const id of EXPERIMENTAL_AGENT_IDS) {
@@ -156,10 +157,10 @@ describe("terminal agent options", () => {
 
   it("appends a localized suffix only to experimental agent labels", () => {
     const options = localizedAgentOptions("experimental");
-    const byId = new Map(options.map((o) => [o.value, o.label]));
+    const byId = new Map<string, string>(options.map((o) => [o.value, o.label]));
     expect(byId.get("claude")).toBe("Claude Code");
     expect(byId.get("codex")).toBe("Codex（experimental）");
-    expect(byId.get("opencode")).toBe("OpenCode（experimental）");
+    expect(byId.has("opencode")).toBe(false);
   });
 });
 

@@ -35,7 +35,13 @@ export type UiPresenceLevel = "default" | "closed";
  */
 export interface UiLayout {
   readonly sidebar?: {
-    /** "default" = 280px, "fullscreen" = 100vw, "hidden" = 0, number = px 指定 */
+    /**
+     * "default" = 280px, "fullscreen" = 100vw, "hidden" = 0, number = px 指定。
+     *
+     * fullscreen は runtime の layout API 経由で指定すること。host DOM（`.shell-column` など）
+     * を直接 `style.width = "100vw"` で触ると、flex-basis / min-width / character 描画域との
+     * 同期を外し、VRM canvas が閉じた sidebar state 由来の幅で描画されることがある。
+     */
     readonly width?: "default" | "fullscreen" | "hidden" | number;
     /** sidebar の配置。"overlay" は terminal の上に重なる */
     readonly position?: "left" | "right" | "overlay";
@@ -66,6 +72,14 @@ export interface UiLayout {
   readonly chrome?: {
     /** false にすると chrome 行（folder/gear, .sidebar）を非表示。"キャラだけ全画面" 等に使う */
     readonly visible?: boolean;
+  };
+  readonly tabIndicator?: {
+    /** false にするとタブインジケータ（セッション切替の pill）を非表示。terminal が見えない全画面モード（theater 等）でタブ切替が無意味なときに使う */
+    readonly visible?: boolean;
+  };
+  readonly transition?: {
+    /** "stage" = chrome 行が上へ引っ込み → shell/character が全画面へ開く（閉じるときは逆順）アニメーション。theater 等の fullscreen pack 用。presence と同じ TweenManager で駆動 */
+    readonly kind: "stage";
   };
   /**
    * AI の存在強度 / `ui.sidebar.set` 相当の mutation がどの surface を動かすかの宣言。
@@ -385,6 +399,10 @@ export interface UiLayoutAPI {
   /**
    * layout を full-replace する（reset → apply）。差分適用ではない：
    * 引数 `full` は「今適用したい layout の完全な形」であり、前回 apply した値は残らない。
+   *
+   * Fullscreen UI を作るときは `ctx.layout.update({ sidebar: { width: "fullscreen" } })`
+   * を使う。runtime が shell の width / min-width / flex-basis と character 描画域をまとめて
+   * 同期するため、host DOM を直接 style する必要はない。
    */
   update(full: UiLayout): void;
 }

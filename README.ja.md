@@ -29,7 +29,7 @@ Charminal は、ターミナルの中で動く AI に身体を与えるデスク
 Charminal はユーザーのローカル環境にインストールされた Claude Code または Codex をターミナル上で自動起動する仕組みです。そのため：
 
 - **事前に [Claude Code](https://docs.anthropic.com/en/docs/claude-code) または [Codex](https://github.com/openai/codex) の環境構築が必要です**
-- Charminal が API キーを要求することはありません。代わりに、ユーザー環境で認証済みの terminal agent をそのまま使います
+- Charminal が API キーを要求・保存・直接利用することはありません。ユーザー環境で認証済みの terminal agent をそのまま起動します。そのため、Claude Code / Codex 側でログイン済み、または API キー等が設定済みの場合、その agent が通常どおり外部 API を利用する可能性があります
 
 ### インストール（macOS）
 
@@ -183,7 +183,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ## Experimental
 
-正式サポートは Claude Code です。Codex と OpenCode は **experimental（実験的）** な代替として利用できます——アプリ内の Agent 切り替え（設定画面）でも *（実験的）* と明記されます。capability は agent ごとに異なります。詳細は [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md) を参照。
+正式サポートは Claude Code です。Codex は **experimental（実験的）** な代替として利用できます——アプリ内の Agent 切り替え（設定画面）でも *（実験的）* と明記されます。capability は agent ごとに異なります。詳細は [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md) を参照。
 
 ### Codex support（実験的）
 
@@ -195,25 +195,13 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 }
 ```
 
-自動起動・persona prompt overlay・PTY observation・Charminal MCP access・`/charm:*` command が動作します。ただし Claude Code hooks は cross-agent contract として扱いません。Codex / OpenCode の Charminal reminder は Claude の `UserPromptSubmit` hook 出力ではなく、prompt overlay への追記として渡します。
-
-### OpenCode support（実験的）
-
-[OpenCode](https://github.com/sst/opencode) を terminal agent として使用できます（multi-provider：Anthropic / OpenAI / Google / Ollama 等）。`~/.charminal/config.json` で切り替えます：
-
-```json
-{
-  "terminalAgent": "opencode"
-}
-```
-
-自動起動・persona prompt overlay・Charminal MCP access・`/charm-*` command・TUI theme bridge が動作します。既知の制約：session resume は未対応、Charminal session 中は project-local `opencode.json` を deep-merge せず置換、Unicode 描画品質は OpenCode 本体の TUI 実装に依存（OpenCode v1.0 以降を推奨）。詳細は decision doc を参照。
+自動起動・persona prompt overlay・PTY observation・Charminal MCP access・`/charm:*` command が動作します。ただし Claude Code hooks は cross-agent contract として扱いません。Codex の Charminal reminder は Claude の `UserPromptSubmit` hook 出力ではなく、prompt overlay への追記として渡します。
 
 ---
 
 ## Contributing
 
-個人プロジェクトとして開発中です。Issue や Discussion は歓迎します。**Pull request は現在受け付けていません。**
+Issue や Discussion は歓迎します。**Pull request は現在受け付けていません。**
 
 セキュリティ報告は [SECURITY.md](SECURITY.md) を参照してください。
 

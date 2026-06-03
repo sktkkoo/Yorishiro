@@ -606,6 +606,35 @@ ctx.terminal.input('...');  // ERROR: input method は存在しない
 
 **正しい**：PTY 観察のみ。書き込む API は意図的に存在しない（Charminal は Claude Code の reasoning loop に介入しない）。
 
+### ❌ UI pack で host DOM の layout を直接書き換える
+
+```typescript
+// ui pack mount 内
+document.querySelector('.shell-column')!.style.width = '100vw';  // NG
+```
+
+**正しい**：fullscreen / hidden / fixed px の切り替えは layout API で宣言する。
+
+```typescript
+import type { UiPackDefinition } from '@charminal/sdk';
+
+export default {
+  id: 'my-fullscreen-ui',
+  type: 'ui',
+  layout: {
+    sidebar: { width: 'fullscreen' },
+  },
+  mount: (ctx, container) => {
+    // runtime が shell の width / min-width / flex-basis と character 描画域を同期する。
+    return { dispose() {} };
+  },
+} satisfies UiPackDefinition;
+```
+
+動的に切り替える場合も `ctx.layout.update({ sidebar: { width: 'fullscreen' } })` を使う。
+`.shell-column` は `flex-basis` も幅決定に使うため、`style.width` だけを直接変えると
+sidebar を閉じた状態から fullscreen にした時に VRM canvas の描画域と layout がずれることがある。
+
 ### ❌ handler 内で reaction を直接 emit しようとする
 
 ```typescript

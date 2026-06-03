@@ -350,7 +350,6 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
     const now = performance.now();
     const hadActiveTweens = this.tweenManager.activeCount > 0;
-    const shouldRenderThisFrame = this.shouldRenderScene() && this.shouldRenderAt(now);
 
     this.tweenManager.tick(now);
 
@@ -365,7 +364,12 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.layoutRefreshFramesRemaining--;
       }
     }
-    this.handleResize();
+    // resize は drawing buffer を clear するため、resize した frame は frame-rate
+    // throttle を無視して必ず render する（resize したのに描かないと scene が消える）。
+    // これが「UI を動かすとシーンが消える」class のバグの根本対処。
+    const resizedThisFrame = this.handleResize();
+    const shouldRenderThisFrame =
+      this.shouldRenderScene() && (this.shouldRenderAt(now) || resizedThisFrame);
 
     if (shouldRenderThisFrame) {
       const delta = this.clock.getDelta();
@@ -500,10 +504,15 @@ class ThreeRuntimeImpl implements ThreeRuntime {
       });
   }
 
-  private handleResize(): void {
+  /**
+   * placeholder の実寸に canvas を追従させる。size が変わったら true を返す。
+   * setSize は WebGL drawing buffer を clear するため、呼び出し側は resize した frame で
+   * 必ず render する責務を持つ（resize したのに描かないと scene が一瞬消える）。
+   */
+  private handleResize(): boolean {
     const w = Math.round(this.placeholderRect.width);
     const h = Math.round(this.placeholderRect.height);
-    if (w === 0 || h === 0) return;
+    if (w === 0 || h === 0) return false;
 
     if (w !== this.lastRendererW || h !== this.lastRendererH) {
       this.lastRendererW = w;
@@ -515,6 +524,35 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.camera.aspect = w / h;
         this.camera.updateProjectionMatrix();
       }
+      if (this.shouldLogResizeDebug()) {
+        const sz = this.renderer.getSize(new THREE.Vector2());
+        const vp = this.renderer.getViewport(new THREE.Vector4());
+        console.warn(
+          "[resize-debug2]",
+          JSON.stringify({
+            rectW: w,
+            rectH: h,
+            glW: Math.round(sz.x),
+            glH: Math.round(sz.y),
+            vpW: Math.round(vp.z),
+            vpH: Math.round(vp.w),
+            camAspect: +this.camera.aspect.toFixed(4),
+            camFov: this.camera.fov,
+            camZoom: this.camera.zoom,
+            xform: this.canvasContainer.style.transform || "(none)",
+          }),
+        );
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private shouldLogResizeDebug(): boolean {
+    try {
+      return localStorage.getItem("charminal:resize-debug") === "1";
+    } catch {
+      return false;
     }
   }
 

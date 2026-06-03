@@ -1,4 +1,5 @@
 export type {
+  ApplyPresenceOptions,
   ApplyPresenceResult,
   PresenceIntensityDeps,
   PresenceLevel,
@@ -10,4 +11,5 @@ export {
   getPresenceSnapshot,
   getPresenceState,
   onUserPromptSubmit,
+  shouldRestorePresenceOnPrompt,
 } from "./presence-intensity";

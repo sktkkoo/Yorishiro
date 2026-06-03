@@ -38,6 +38,7 @@ const makeTargets = (): LayoutTargets => ({
   sidebar: makeStubElement(),
   character: makeStubElement(),
   chrome: makeStubElement(),
+  tabIndicator: makeStubElement(),
 });
 
 describe("applyLayout", () => {
@@ -89,6 +90,7 @@ describe("applyLayout", () => {
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);
     expect(targets.sidebar.style.width).toBe("100vw");
     expect(targets.sidebar.style.minWidth).toBe("100vw");
+    expect(targets.sidebar.style.flexBasis).toBe("100vw");
   });
 
   it("sidebar position=overlay は fixed で viewport 全体を占有する", () => {
@@ -101,6 +103,7 @@ describe("applyLayout", () => {
     expect(targets.sidebar.style.left).toBe("0");
     expect(targets.sidebar.style.height).toBe("100vh");
     expect(targets.sidebar.style.width).toBe("100vw");
+    expect(targets.sidebar.style.flexBasis).toBe("100vw");
   });
 
   it("resetLayout は overlay の top/left/height も空に戻す", () => {
@@ -118,12 +121,61 @@ describe("applyLayout", () => {
     applyLayout({ sidebar: { width: 400 } }, targets);
     expect(targets.sidebar.style.width).toBe("400px");
     expect(targets.sidebar.style.minWidth).toBe("400px");
+    expect(targets.sidebar.style.flexBasis).toBe("400px");
   });
 
   it("character visible:false で display:none", () => {
     const targets = makeTargets();
     applyLayout({ character: { visible: false } }, targets);
     expect(targets.character.style.display).toBe("none");
+  });
+
+  it("sidebar fullscreen で character 描画域も 100vw に広げる", () => {
+    // .charactor-container は通常 280px 固定（presence tween 中の VRM reflow 防止）。
+    // stage を fullscreen にするときは canvas/camera を全画面に追従させる。
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen" } }, targets);
+    expect(targets.character.style.width).toBe("100vw");
+    expect(targets.character.style.minWidth).toBe("100vw");
+  });
+
+  it("sidebar fullscreen 以外では character 幅を触らない", () => {
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: 400 } }, targets);
+    expect(targets.character.style.width).toBe("");
+    expect(targets.character.style.minWidth).toBe("");
+  });
+});
+
+describe("applyLayout tabIndicator", () => {
+  it("tabIndicator.visible:false で tab-indicator を display:none", () => {
+    const targets = makeTargets();
+    applyLayout({ tabIndicator: { visible: false } }, targets);
+    expect(targets.tabIndicator?.style.display).toBe("none");
+  });
+
+  it("tabIndicator 未指定では tab-indicator を触らない", () => {
+    const targets = makeTargets();
+    applyLayout({ sidebar: { width: "fullscreen" } }, targets);
+    expect(targets.tabIndicator?.style.display).toBe("");
+  });
+
+  it("tabIndicator target が無くても throw しない", () => {
+    const targets: LayoutTargets = {
+      root: makeStubElement(),
+      terminal: makeStubElement(),
+      sidebar: makeStubElement(),
+      character: makeStubElement(),
+      chrome: makeStubElement(),
+    };
+    expect(() => applyLayout({ tabIndicator: { visible: false } }, targets)).not.toThrow();
+  });
+
+  it("resetLayout は tab-indicator の display を空に戻す", () => {
+    const targets = makeTargets();
+    applyLayout({ tabIndicator: { visible: false } }, targets);
+    resetLayout(targets);
+    expect(targets.tabIndicator?.style.display).toBe("");
   });
 });
 
@@ -141,6 +193,7 @@ describe("resetLayout", () => {
     resetLayout(targets);
     expect(targets.sidebar.style.width).toBe("");
     expect(targets.sidebar.style.minWidth).toBe("");
+    expect(targets.sidebar.style.flexBasis).toBe("");
   });
 
   it("root も reset loop に含まれる（Plan 2 以降の拡張性）", () => {
@@ -160,6 +213,7 @@ describe("full-replace semantics（update で前の値が残らない）", () =>
     applyLayout({ sidebar: { width: "fullscreen" } }, targets);
     expect(targets.terminal.style.display).toBe("");
     expect(targets.sidebar.style.width).toBe("100vw");
+    expect(targets.sidebar.style.flexBasis).toBe("100vw");
   });
 });
 
