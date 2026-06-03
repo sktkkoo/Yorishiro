@@ -35,6 +35,10 @@ pub struct SnapshotEntry {
     /// にだけ付く。古い index.json は field 不在なので default で None。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup_clean: Option<bool>,
+    /// この snapshot で変わった pack/ファイルの帰属（Scope C）。watcher-settled に付く。
+    /// 各要素は pack id（`packs/<id>`）か "config.json" / "init.js"。古い index は None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -140,6 +144,16 @@ pub(crate) fn snapshot_create_impl(
     trigger: &str,
     label: Option<&str>,
 ) -> Result<u64, String> {
+    snapshot_create_with_changed_impl(home_root, trigger, label, None)
+}
+
+/// `snapshot_create_impl` に「変わった pack/ファイルの帰属（changed）」を添えられる版（Scope C）。
+pub(crate) fn snapshot_create_with_changed_impl(
+    home_root: &Path,
+    trigger: &str,
+    label: Option<&str>,
+    changed: Option<Vec<String>>,
+) -> Result<u64, String> {
     // index の read-modify-write を直列化（Finding #2）。poison しても続行する。
     let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let charminal = charminal_dir(home_root);
@@ -186,6 +200,7 @@ pub(crate) fn snapshot_create_impl(
         trigger: trigger.to_string(),
         label: label.map(|s| s.to_string()),
         startup_clean: None,
+        changed,
     });
     write_index(home_root, &index)?;
     Ok(seq)
@@ -524,6 +539,7 @@ mod tests {
             trigger: "manual".into(),
             label: None,
             startup_clean: None,
+            changed: None,
         });
         write_index(&home, &idx).expect("write");
 
@@ -594,6 +610,27 @@ mod tests {
         // live は seq1 の内容（v:1）に戻っている。
         let restored = fs::read_to_string(charminal.join("config.json")).unwrap();
         assert_eq!(restored, "{\"v\":1}");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn snapshot_create_with_changed_records_scope() {
+        let home = tmp_home("snap-changed");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+
+        let seq = snapshot_create_with_changed_impl(
+            &home,
+            "watcher-settled",
+            None,
+            Some(vec!["my-theme".to_string()]),
+        )
+        .unwrap();
+        assert_eq!(seq, 1);
+
+        let snaps = snapshot_list_impl(&home).unwrap();
+        assert_eq!(snaps[0].changed, Some(vec!["my-theme".to_string()]));
 
         let _ = fs::remove_dir_all(&home);
     }
