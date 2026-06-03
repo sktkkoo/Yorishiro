@@ -56,7 +56,7 @@ describe("parseConfig", () => {
   it("reads primaryPersona string", () => {
     const json = JSON.stringify({ primaryPersona: "clai" });
     expect(parseConfig(json)).toEqual({
-      disabledPacks: [],
+      disabledPacks: ["music-shelf"],
       primaryPersona: "clai",
       mcpPort: null,
       activeScene: null,
@@ -76,7 +76,7 @@ describe("parseConfig", () => {
   it("treats empty string primaryPersona as null", () => {
     const json = JSON.stringify({ primaryPersona: "" });
     expect(parseConfig(json)).toEqual({
-      disabledPacks: [],
+      disabledPacks: ["music-shelf"],
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
@@ -96,7 +96,7 @@ describe("parseConfig", () => {
   it("treats non-string primaryPersona as null", () => {
     const json = JSON.stringify({ primaryPersona: 42 });
     expect(parseConfig(json)).toEqual({
-      disabledPacks: [],
+      disabledPacks: ["music-shelf"],
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
@@ -116,7 +116,7 @@ describe("parseConfig", () => {
   it("silently ignores legacy activePersonas field", () => {
     const json = JSON.stringify({ activePersonas: ["clai"] });
     expect(parseConfig(json)).toEqual({
-      disabledPacks: [],
+      disabledPacks: ["music-shelf"],
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
@@ -136,7 +136,7 @@ describe("parseConfig", () => {
   it("reads mcpPort number", () => {
     const json = JSON.stringify({ mcpPort: 12345 });
     expect(parseConfig(json)).toEqual({
-      disabledPacks: [],
+      disabledPacks: ["music-shelf"],
       primaryPersona: null,
       mcpPort: 12345,
       activeScene: null,
@@ -238,7 +238,10 @@ describe("serializeConfig", () => {
       voiceFrequency: "on",
       mediaFolders: ["~/Music"],
     };
-    expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({
+      disabledPacks: [],
+      primaryPersona: "my-persona",
+    });
   });
 
   it("omits primaryPersona when null", () => {
@@ -289,13 +292,13 @@ describe("serializeConfig", () => {
 describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
   it("adds an id to disabledPacks", () => {
     const next = withDisabledPackAdded(EMPTY_CONFIG, "bad");
-    expect(next.disabledPacks).toEqual(["bad"]);
+    expect(next.disabledPacks).toEqual(["music-shelf", "bad"]);
   });
 
   it("is idempotent — adding the same id twice stays unique", () => {
     const once = withDisabledPackAdded(EMPTY_CONFIG, "x");
     const twice = withDisabledPackAdded(once, "x");
-    expect(twice.disabledPacks).toEqual(["x"]);
+    expect(twice.disabledPacks).toEqual(["music-shelf", "x"]);
   });
 
   it("removes an id from disabledPacks", () => {

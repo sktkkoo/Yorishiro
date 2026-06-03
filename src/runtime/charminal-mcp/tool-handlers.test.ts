@@ -176,7 +176,7 @@ describe("list_packs handler", () => {
     const handler = createListPacksHandler({
       readRegistry: () => registry.listEntries(),
       readBundledPacks: () => [],
-      readConfig: async () => EMPTY_CONFIG,
+      readConfig: async () => ({ ...EMPTY_CONFIG, disabledPacks: [] }),
       readLoadReport: async () => report,
       getActiveIds: () => ({ scene: null, ui: null, persona: null }),
     });

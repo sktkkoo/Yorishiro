@@ -75,7 +75,7 @@ export type VoiceFrequency = "on" | "off";
 const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai-en", "clai-ja"]);
 
 export const EMPTY_CONFIG: CharminalConfig = {
-  disabledPacks: [],
+  disabledPacks: ["music-shelf"],
   primaryPersona: null,
   mcpPort: null,
   activeScene: null,
@@ -240,7 +240,8 @@ export function parseConfig(text: string): CharminalConfig {
   if (raw === null || typeof raw !== "object") return EMPTY_CONFIG;
   const obj = raw as Record<string, unknown>;
   return {
-    disabledPacks: toStringArray(obj.disabledPacks),
+    disabledPacks:
+      "disabledPacks" in obj ? toStringArray(obj.disabledPacks) : EMPTY_CONFIG.disabledPacks,
     primaryPersona: toNullableString(obj.primaryPersona),
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
@@ -265,7 +266,9 @@ export function parseConfig(text: string): CharminalConfig {
  */
 export function serializeConfig(cfg: CharminalConfig): string {
   const out: Record<string, unknown> = {};
-  if (cfg.disabledPacks.length > 0) out.disabledPacks = cfg.disabledPacks;
+  if (!stringArraysEqual(cfg.disabledPacks, EMPTY_CONFIG.disabledPacks)) {
+    out.disabledPacks = [...cfg.disabledPacks];
+  }
   if (cfg.primaryPersona !== null) out.primaryPersona = cfg.primaryPersona;
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;

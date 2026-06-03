@@ -77,6 +77,22 @@ exec は Charminal プロセスの PATH（`build_path_env()` で構築、Homebre
 - community pack は `system.exec` を呼べない（TS 層で throw）。将来 `isolated-js` + capability RPC が実装されるまで、community amenity pack は公開しない（[`pack-execution-classes.md`](pack-execution-classes.md) MVP 推奨 §6）
 - audit log は devtools console に出力される。production でも記録は残るが、ユーザーが明示的に見に行く必要がある
 
+## Bundled amenity の default-off 方針
+
+`system.exec` を使う bundled amenity pack は `EMPTY_CONFIG.disabledPacks` に含め、default-off とする。ユーザーが設定画面（または `config.json`）で明示的に有効化する。
+
+| pack | default | 理由 |
+|---|---|---|
+| pomodoro | ON | system 権限なし。初回体験の核。pomodoro-ui が依存 |
+| music-shelf | **OFF** | `system.exec` あり。macOS 専用（osascript）。Apple Music 未導入環境で壊れる |
+
+判断基準：
+- **system capability を持たない** pack → default ON（安全、初回体験に寄与）
+- **system capability を持つ** pack → default OFF（明示的 opt-in）
+- **platform 依存** がある pack → default OFF（動かない環境でエラーにしない）
+
+設定画面に bundled amenity の on/off トグルを追加する作業は別 scope で進行中。それまではユーザーが `~/.charminal/config.json` の `disabledPacks` を手動で編集する。
+
 ## 関連 reference
 
 - [`pack-execution-classes.md`](pack-execution-classes.md) — execution class / source / sandbox 設計
