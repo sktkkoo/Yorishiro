@@ -15,14 +15,17 @@ import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   validateAmbientUiPackDefinition,
+  validateAmenityDefinition,
   validateEffectDefinition,
   validatePersonaDefinition,
   validateUiPackDefinition,
 } from "../../sdk/validators";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
+import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
 import { readManifestForEntry, validatePackExecutionPolicy } from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
@@ -37,6 +40,8 @@ export interface StartPackWatcherDeps {
   readonly scenePackRegistry: ScenePackRegistry;
   readonly uiPackRegistry: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
+  readonly amenityPackRegistry: AmenityPackRegistry;
+  readonly createAmenityContext?: AmenityContextFactory;
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
   readonly userPackLog: SubsystemLog;
@@ -334,6 +339,29 @@ async function reloadPack(
         phase: "reload",
         note: `re-registered ambient-ui '${pack.id}'`,
       });
+    } else if (action.kind === "amenity") {
+      const pack = validateAmenityDefinition(def);
+      // 旧 activate を畳んでから再 activate する。packRegistry.register 側も同 key を auto-dispose する。
+      deps.packRegistry.dispose(action.id, action.kind);
+      if (deps.createAmenityContext === undefined) {
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `amenity '${pack.id}' validated (no context factory; activate skipped)`,
+        });
+      } else {
+        await activateAndRegisterAmenity({
+          registryId: action.id,
+          def: pack,
+          entryPath: action.entryPath,
+          amenityPackRegistry: deps.amenityPackRegistry,
+          packRegistry: deps.packRegistry,
+          createAmenityContext: deps.createAmenityContext,
+        });
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `re-activated amenity '${pack.id}' (id=${action.id})`,
+        });
+      }
     }
   } catch (err) {
     deps.userPackLog.write({

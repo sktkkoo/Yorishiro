@@ -14,6 +14,7 @@
  */
 
 import { type Channel, type InvokeArgs, invoke } from "@tauri-apps/api/core";
+import type { SnapshotEntry } from "../sdk/history";
 
 // Tauri の invoke() は引数に Record<string, unknown> 互換を求める。こちらの
 // typed args interface は readonly + closed-shape で index signature を持たず
@@ -210,3 +211,24 @@ export const checkTutorialDone = (): Promise<boolean> => invoke("check_tutorial_
 
 /** `~/.charminal/.tutorial-done` を作成する。 */
 export const markTutorialDone = (): Promise<void> => invoke("mark_tutorial_done");
+
+// ─── History (pack rollback) ────────────────────────────────────
+
+export type { SnapshotEntry };
+
+/** `history::snapshot_list()` → 新しい順の SnapshotEntry[]。 */
+export const snapshotList = (): Promise<ReadonlyArray<SnapshotEntry>> => invoke("snapshot_list");
+
+/** `history::snapshot_create(trigger, label)` → 採番された seq。 */
+export const snapshotCreate = (args: { trigger: string; label?: string }): Promise<number> =>
+  call("snapshot_create", args);
+
+/** `history::snapshot_restore(seq, paths?)` → full-replace 復元（破壊的）。 */
+export const snapshotRestore = (args: {
+  seq: number;
+  paths?: ReadonlyArray<string>;
+}): Promise<void> => call("snapshot_restore", args);
+
+/** `history::snapshot_prune(keep_n)` → 直近 keepN 件に間引く。 */
+export const snapshotPrune = (args: { keepN: number }): Promise<void> =>
+  call("snapshot_prune", args);

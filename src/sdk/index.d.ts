@@ -49,6 +49,7 @@ export type {
   ScenePackManifest,
 } from "./scene-pack";
 export type { PersonaPackManifest } from "./persona-pack";
+export type { HistoryAPI, SnapshotEntry } from "./history";
 export type {
   AppLanguage,
   FixedTerminalPromptKey,

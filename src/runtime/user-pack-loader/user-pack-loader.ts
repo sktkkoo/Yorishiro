@@ -32,6 +32,7 @@ import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
 import { buildLoadReport, type LoadReport } from "./load-report";
 import { validatePackExecutionPolicy } from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
@@ -77,6 +78,7 @@ export interface LoadUserPacksDeps {
   readonly uiPackRegistry?: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly amenityPackRegistry: AmenityPackRegistry;
+  readonly createAmenityContext?: AmenityContextFactory;
   readonly devLog: SubsystemLog;
   /**
    * Hot-reload 用の idempotency 層。register 結果の Disposable をここに格納し、
@@ -139,6 +141,7 @@ export interface LoadSingleUserPackDeps {
   readonly uiPackRegistry?: UiPackRegistry;
   readonly ambientUiPackRegistry: AmbientUiPackRegistry;
   readonly amenityPackRegistry: AmenityPackRegistry;
+  readonly createAmenityContext?: AmenityContextFactory;
   readonly packRegistry: UserPackRegistry;
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
@@ -188,6 +191,7 @@ export async function loadSingleUserPack(
     uiPackRegistry,
     ambientUiPackRegistry,
     amenityPackRegistry,
+    createAmenityContext,
     packRegistry,
     personaDefaults,
     devLog,
@@ -367,10 +371,25 @@ export async function loadSingleUserPack(
     }
     if (entry.kind === "amenity") {
       const pack = validateAmenityDefinition(def);
-      void amenityPackRegistry;
+      if (createAmenityContext === undefined) {
+        // context factory 未注入（test 等）では従来通り validate のみ。
+        devLog.write({
+          phase: "register",
+          note: `validated amenity '${pack.id}' (no context factory; activate skipped)`,
+        });
+        return { status: "loaded", id: entry.id, kind: entry.kind };
+      }
+      await activateAndRegisterAmenity({
+        registryId: entry.id,
+        def: pack,
+        entryPath: entry.entryPath,
+        amenityPackRegistry,
+        packRegistry,
+        createAmenityContext,
+      });
       devLog.write({
         phase: "register",
-        note: `validated amenity '${pack.id}' (user amenity activate is deferred)`,
+        note: `activated amenity '${pack.id}' (id=${entry.id})`,
       });
       return { status: "loaded", id: entry.id, kind: entry.kind };
     }
@@ -408,6 +427,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
     uiPackRegistry,
     ambientUiPackRegistry,
     amenityPackRegistry,
+    createAmenityContext,
     devLog,
     packRegistry,
     personaDefaults,
@@ -464,6 +484,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
       uiPackRegistry,
       ambientUiPackRegistry,
       amenityPackRegistry,
+      createAmenityContext,
       packRegistry,
       personaDefaults,
       devLog,

@@ -17,6 +17,7 @@
  */
 
 import type { ReactionEvent } from "./reaction";
+import type { HistoryAPI } from "./history";
 
 // ─── PersonaContext ────────────────────────────────────────
 
@@ -128,6 +129,12 @@ export interface AmenityContext {
 
   readonly tween: TweenAPI;
   readonly system: SystemAPI;
+  /**
+   * Pack rollback の history（list / snapshot / restore）。functional capability
+   * なので persona ではなく amenity 側に置く（motion-free 境界・system と同列）。
+   * restore は破壊的なので実装が確認 UX を gate する。
+   */
+  readonly history: HistoryAPI;
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
   readonly terminal: TerminalAPI;

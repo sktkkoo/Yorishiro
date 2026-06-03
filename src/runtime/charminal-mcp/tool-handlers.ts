@@ -18,6 +18,7 @@ import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
 import type { PresenceResolution } from "../presence-target";
 import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
@@ -412,6 +413,69 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
     const next = withDisabledPackRemoved(current, id);
     await deps.writeConfig(next);
     return await deps.reloadPack(id);
+  };
+}
+
+export interface HistoryRestoreDeps {
+  /** restore 提案を UI に surface（fire-and-forget）。handler は await しない。 */
+  readonly proposeRestore: (seq: number) => void;
+}
+
+/**
+ * history_restore: 住人 AI の restore 提案を UI に surface して即返す。
+ * dialog / restore / reload は App 側の非同期処理に任せ、MCP emit timeout を避ける。
+ */
+export function createHistoryRestoreHandler(deps: HistoryRestoreDeps) {
+  return async (request: unknown): Promise<SimpleOkResponse> => {
+    const seq = (request as { seq?: number }).seq;
+    if (typeof seq !== "number" || !Number.isInteger(seq) || seq < 1) {
+      return { ok: false, reason: "missing or invalid seq" };
+    }
+    deps.proposeRestore(seq);
+    return { ok: true };
+  };
+}
+
+export interface AmenityToolDeps {
+  readonly amenityPackRegistry: AmenityPackRegistry;
+}
+
+/** amenity_call: active amenity の tool に params を渡して呼ぶ。 */
+export function createAmenityCallHandler(deps: AmenityToolDeps) {
+  return async (request: unknown): Promise<unknown> => {
+    const { amenityId, tool, params } = request as {
+      amenityId?: string;
+      tool?: string;
+      params?: unknown;
+    };
+    if (typeof amenityId !== "string" || typeof tool !== "string") {
+      throw new Error("amenityId and tool are required");
+    }
+    const handle = deps.amenityPackRegistry.getActiveHandle(amenityId);
+    if (handle === null) throw new Error(`amenity '${amenityId}' is not active`);
+    const fn = handle.tools[tool];
+    if (typeof fn !== "function") {
+      throw new Error(`amenity '${amenityId}' has no tool '${tool}'`);
+    }
+    return await fn(params);
+  };
+}
+
+/** amenity_list_tools: active amenity と公開 tool 名の一覧。 */
+export function createAmenityListToolsHandler(deps: AmenityToolDeps) {
+  return async (
+    request: unknown,
+  ): Promise<{ amenities: Array<{ id: string; tools: string[] }> }> => {
+    // MCP 経由で省略すると Rust が {"amenityId": null} を送る。null は全件指定として扱う。
+    const filter = (request as { amenityId?: string | null }).amenityId ?? undefined;
+    const amenities = deps.amenityPackRegistry
+      .getActiveSet()
+      .filter((id) => filter === undefined || id === filter)
+      .map((id) => {
+        const handle = deps.amenityPackRegistry.getActiveHandle(id);
+        return { id, tools: handle ? Object.keys(handle.tools) : [] };
+      });
+    return { amenities };
   };
 }
 
@@ -1714,8 +1778,6 @@ export function createPresenceSetIntensityHandler(deps: PresenceSetIntensityDeps
 /* ──────────────────────────────────────────────────────────
  * pomodoro.start / pomodoro.stop / pomodoro.status
  * ────────────────────────────────────────────────────────── */
-
-import type { AmenityPackRegistry } from "../amenity-pack-registry";
 
 export interface PomodoroDeps {
   readonly amenityPackRegistry: AmenityPackRegistry;

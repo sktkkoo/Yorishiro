@@ -47,6 +47,45 @@ pub struct ListPacksRequest {}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ListLoadErrorsRequest {}
 
+/// `history_list` の引数。body を取らない。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct HistoryListRequest {}
+
+/// `history_snapshot` の引数。任意 label を付けられる。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct HistorySnapshotRequest {
+    /// Optional human/AI label for this snapshot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// `history_restore` の引数。戻したい snapshot の seq（Task 5 で使う）。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct HistoryRestoreRequest {
+    /// Target snapshot seq (from history_list).
+    pub seq: u64,
+}
+
+/// `amenity_call` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AmenityCallRequest {
+    /// `amenity_list_tools` で確認した対象 amenity id。
+    pub amenity_id: String,
+    /// amenity が公開する tool 名。
+    pub tool: String,
+    /// tool に渡す引数 object。
+    #[serde(default)]
+    pub params: serde_json::Value,
+}
+
+/// `amenity_list_tools` の引数。amenity_id 省略時は全 active amenity。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AmenityListToolsRequest {
+    /// 省略時は active amenity 全件を返す。指定時はその id に絞る。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amenity_id: Option<String>,
+}
+
 /// `get_ui_state` の引数。active scene pack の内部 state を読み取る。key 省略時は full snapshot。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetUiStateRequest {
@@ -357,6 +396,88 @@ impl Charminal {
             }
             Err(msg) => Err(McpError::internal_error(msg, None)),
         }
+    }
+
+    /// history_list: ~/.charminal の snapshot 一覧（新しい順）を返す。Rust 完結。
+    #[tool(
+        description = "List ~/.charminal state snapshots, newest first. Each entry has seq, ts_ms, trigger, optional label. Pick a seq, then call history_restore to roll back."
+    )]
+    async fn history_list(
+        &self,
+        _params: Parameters<HistoryListRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match history_list_sync() {
+            Ok(snapshots) => {
+                let content = Content::json(snapshots)?;
+                Ok(CallToolResult::success(vec![content]))
+            }
+            Err(msg) => Err(McpError::internal_error(msg, None)),
+        }
+    }
+
+    /// history_snapshot: 現在の ~/.charminal を 1 枚 snapshot して seq を返す。Rust 完結。
+    #[tool(
+        description = "Snapshot the current ~/.charminal state (packs, config.json, init.js) and return its seq. Use this to mark a point you may want to return to before risky pack edits. (This does not validate the state; it is a plain timeline point, not a verified known-good.)"
+    )]
+    async fn history_snapshot(
+        &self,
+        Parameters(req): Parameters<HistorySnapshotRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        match history_snapshot_sync(req.label.as_deref()) {
+            Ok(seq) => {
+                let content = Content::json(json!({ "seq": seq }))?;
+                Ok(CallToolResult::success(vec![content]))
+            }
+            Err(msg) => Err(McpError::internal_error(msg, None)),
+        }
+    }
+
+    /// history_restore: TS 委譲。restore 提案を UI に surface して即返す。
+    #[tool(
+        description = "Propose restoring ~/.charminal to a snapshot by seq. This does NOT restore directly — it surfaces a confirmation to the user, who approves it in the app (the app then full-replaces packs/config.json/init.js and reloads). Returns ok:true once the proposal is surfaced (not when the restore completes). journal/memories are never touched."
+    )]
+    async fn history_restore(
+        &self,
+        Parameters(req): Parameters<HistoryRestoreRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "history-restore",
+            json!({ "seq": req.seq }),
+        )
+        .await
+    }
+
+    /// amenity_call: active amenity pack が公開する tool を呼ぶ。TS 委譲。
+    #[tool(
+        description = "Call a tool exposed by an active amenity pack. Use amenity_list_tools first to see amenity ids and tool names. 'params' is the tool's argument object."
+    )]
+    async fn amenity_call(
+        &self,
+        Parameters(req): Parameters<AmenityCallRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "amenity.call",
+            json!({ "amenityId": req.amenity_id, "tool": req.tool, "params": req.params }),
+        )
+        .await
+    }
+
+    /// amenity_list_tools: active amenity と公開 tool 名の一覧。TS 委譲。
+    #[tool(
+        description = "List active amenity packs and the tool names they expose. Call those tools via amenity_call."
+    )]
+    async fn amenity_list_tools(
+        &self,
+        Parameters(req): Parameters<AmenityListToolsRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "amenity.list-tools",
+            json!({ "amenityId": req.amenity_id }),
+        )
+        .await
     }
 
     /// list_packs: TS runtime に委譲。`{ packs: PackStatus[] }` を返す。
@@ -888,11 +1009,14 @@ impl ServerHandler for Charminal {
                 "- 表情だけ変える → body_expression_set\n",
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
+                "- pack を壊した／戻したい → history_list で seq を確認 → history_restore（確認 UX を経て full-replace）。リスクのある編集前に history_snapshot で戻したい時点を残せる（known-good 判定はしない・素朴な timeline 点）\n",
+                "- user amenity 設備の機能を使う → amenity_list_tools で確認 → amenity_call で呼ぶ（bundled pomodoro は専用 pomodoro_* を使う）\n",
                 "\n",
                 "## 重要ルール\n",
                 "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
                 "- bundled pack は不可変。disable_pack / enable_pack は user pack のみ\n",
                 "- scene_activate / ui_activate は runtime 限定。永続切替は config.json の activeScene / activeUI\n",
+                "- history_restore は破壊的（packs/config.json/init.js を完全置換）。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
                 "- journal は機械的ログではなく情緒的な思い出を書く\n",
             ))
     }
@@ -1005,6 +1129,18 @@ pub(crate) fn list_load_errors_sync() -> Result<ListLoadErrorsResponse, String> 
     Ok(ListLoadErrorsResponse { errors })
 }
 
+/// history_list: Rust 側完結。~/.charminal/.history/ の snapshot 一覧を新しい順で返す。
+pub(crate) fn history_list_sync() -> Result<Vec<crate::history::SnapshotEntry>, String> {
+    let home = crate::home_dir_or_err()?;
+    crate::history::snapshot_list_impl(&home)
+}
+
+/// history_snapshot: Rust 側完結。現在の ~/.charminal を 1 枚撮り seq を返す。
+pub(crate) fn history_snapshot_sync(label: Option<&str>) -> Result<u64, String> {
+    let home = crate::home_dir_or_err()?;
+    crate::history::snapshot_create_impl(&home, "mcp:snapshot", label)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1066,6 +1202,42 @@ mod tests {
         assert_eq!(r.errors[0].id, "bad");
         assert_eq!(r.errors[0].phase, "import");
         assert_eq!(r.errors[0].message, "boom");
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn history_list_sync_returns_snapshots_desc() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home();
+        std::env::set_var("HOME", &home);
+        fs::write(home.join(".charminal/config.json"), "{}").unwrap();
+        crate::history::snapshot_create_impl(&home, "a", None).unwrap();
+        crate::history::snapshot_create_impl(&home, "b", Some("good")).unwrap();
+
+        let list = history_list_sync().expect("ok");
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].seq, 2);
+        assert_eq!(list[0].label.as_deref(), Some("good"));
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn history_snapshot_sync_creates_with_mcp_trigger() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home();
+        std::env::set_var("HOME", &home);
+        fs::write(home.join(".charminal/config.json"), "{}").unwrap();
+
+        let seq = history_snapshot_sync(Some("manual")).expect("ok");
+        assert_eq!(seq, 1);
+        let list = crate::history::snapshot_list_impl(&home).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].trigger, "mcp:snapshot");
+        assert_eq!(list[0].label.as_deref(), Some("manual"));
         let _ = fs::remove_dir_all(&home);
     }
 

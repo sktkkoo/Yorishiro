@@ -5,7 +5,7 @@
  * terminal opacity 制御用の deps は App.tsx 側から注入される。
  */
 
-import type { AmenityContext } from "@charminal/sdk";
+import type { AmenityContext, HistoryAPI } from "@charminal/sdk";
 import pomodoroPack, {
   createPomodoroAmenity,
   type PomodoroActivateContext,
@@ -19,6 +19,7 @@ export interface RegisterBundledPomodoroDeps {
   readonly setTerminalOpacity: (value: number) => void;
   readonly getTerminalOpacity: () => number;
   readonly emitEvent: (name: string, payload?: unknown) => void;
+  readonly history: HistoryAPI;
 }
 
 export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
@@ -55,6 +56,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
       cancel: (key) => deps.tweenManager.cancel(`pomodoro:${key}`),
     },
     system: {} as AmenityContext["system"],
+    history: deps.history,
     log: { write: () => {}, tail: () => [], read: () => [] },
     memory: {
       persona: { get: () => undefined, set: () => {}, delete: () => {} },

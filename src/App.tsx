@@ -13,6 +13,7 @@ import type {
   UiThreeAPI,
 } from "@charminal/sdk";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +27,9 @@ import {
   type SpawnSpec,
   sessionList,
   sessionRefreshTheme,
+  snapshotCreate,
+  snapshotList,
+  snapshotRestore,
 } from "./bindings/tauri-commands";
 import {
   abandonedFactoryManifest,
@@ -101,6 +105,7 @@ import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { collectHealthReport } from "./runtime/health-check";
+import { createHistoryApi } from "./runtime/history/history-api";
 import { getOrInit } from "./runtime/hot-data";
 import {
   type AppLanguage,
@@ -175,6 +180,7 @@ import {
 } from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
+import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amenity-activation";
 import {
   readCharminalConfigText,
   readLastStartupReport,
@@ -932,6 +938,32 @@ function App() {
       note: "registered bundled ambient-UI packs 'attention-aura', 'pomodoro-ui'",
     });
 
+    // ── History API（pack rollback）──────────────────────────────
+    // 確認 dialog 内蔵の restore を持つ SDK instance。bundled amenity ctx に渡す。
+    // MCP history_restore は 5s emit timeout を避けるため、この instance を await
+    // せず proposal-only handler から UI 側 async flow へ委譲する。
+    // trigger taxonomy：このインスタンスの create/snapshot は SDK 経路
+    // （pack 作者の ctx.history.snapshot）からのみ呼ばれるので "sdk:snapshot"。
+    // 住人 AI の MCP history_snapshot は Rust 完結で別 trigger "mcp:snapshot"
+    // を打つ（P2b Task 4）。watcher 自動は "watcher-settled"、baseline は
+    // "startup-baseline"。これで監査・UI でどの経路の snapshot か区別できる。
+    const historyApi = createHistoryApi({
+      list: () => snapshotList(),
+      create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
+      restore: (seq) => snapshotRestore({ seq }),
+      confirm: (message) => ask(message, { title: "Charminal — 復元の確認", kind: "warning" }),
+    });
+    // user amenity の activate に渡す ctx factory。historyApi を ctx.history に通す。
+    // emitEvent は発火元 pack id（registryId）を source に stamp し、複数 amenity
+    // の発火元が潰れないようにする。
+    const createAmenityContext = createUserAmenityContextFactory({
+      tweenManager: getThreeRuntime().getTweenManager(),
+      emitEvent: (packId, name, payload) => {
+        bus.emitSynthetic({ type: "system", packId }, name, payload, 0);
+      },
+      history: historyApi,
+    });
+
     // ── Bundled amenity pack 登録（pomodoro）──────────────────────────────
     registerBundledPomodoro({
       registry: getAmenityPackRegistry(),
@@ -946,6 +978,7 @@ function App() {
       emitEvent: (name, payload) => {
         bus.emitSynthetic({ type: "system", packId: "pomodoro" }, name, payload, 0);
       },
+      history: historyApi,
     });
     appLog.write({
       phase: "register",
@@ -1130,6 +1163,7 @@ function App() {
             userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
+            createAmenityContext,
             onInitChanged: () => {
               void (async () => {
                 try {
@@ -1268,6 +1302,10 @@ function App() {
           createPomodoroStartHandler,
           createPomodoroStopHandler,
           createPomodoroStatusHandler,
+          // User amenity:
+          createAmenityCallHandler,
+          createAmenityListToolsHandler,
+          createHistoryRestoreHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
@@ -1299,6 +1337,7 @@ function App() {
             amenityPackRegistry: getAmenityPackRegistry(),
             packRegistry,
             userPackLog,
+            createAmenityContext,
           });
         };
         const readBundledPacks = (): Array<{ id: string; kind: string }> => [
@@ -1366,6 +1405,26 @@ function App() {
             readConfig,
             writeConfig,
             reloadPack,
+          }),
+          "history-restore": createHistoryRestoreHandler({
+            proposeRestore: (seq) => {
+              void (async () => {
+                const approved = await ask(
+                  `住人 AI が snapshot #${seq} への復元を提案しています。~/.charminal を戻しますか？\n` +
+                    "packs / config.json / init.js を完全置換し、反映のためアプリを再読み込みします（journal は変更しません）。",
+                  { title: "Charminal — 復元の提案", kind: "warning" },
+                );
+                if (!approved) return;
+                await snapshotRestore({ seq });
+                window.location.reload();
+              })();
+            },
+          }),
+          "amenity.call": createAmenityCallHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          "amenity.list-tools": createAmenityListToolsHandler({
+            amenityPackRegistry: getAmenityPackRegistry(),
           }),
           "get-ui-state": createGetPackStateHandler({
             state: uiState,
@@ -1645,6 +1704,7 @@ function App() {
       claimState,
       uiState,
       userLayerReady,
+      createAmenityContext,
     };
   });
 
@@ -1663,6 +1723,7 @@ function App() {
     uiState,
     time,
     userLayerReady,
+    createAmenityContext,
   } = runtime;
 
   // user layer load（bundled + user pack 登録、primaryPersona 反映）完了を待ってから
@@ -2188,6 +2249,7 @@ function App() {
         amenityPackRegistry: getAmenityPackRegistry(),
         packRegistry,
         userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
+        createAmenityContext,
       });
     };
 
@@ -2623,6 +2685,7 @@ function App() {
     collectAppHealthReport,
     readBundledPacks,
     applyPresenceLevelFromApp,
+    createAmenityContext,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
