@@ -7,7 +7,7 @@ mod tts;
 
 use pty::{start_hook_server, PtyState};
 use sessions::{SessionRegistry, SpawnSpec};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
@@ -1092,6 +1092,27 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
     }
 }
 
+/// 変更 path から「変わった pack/ファイル」の帰属トークンを導出する（Scope C）。
+/// `packs/<id>/...` → "<id>"、top-level `config.json` / `init.js` → その名前、
+/// それ以外（packs 直下のみ・対象外 path）→ None。is_snapshot_relevant_path と対。
+pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option<String> {
+    let rel = path.strip_prefix(charminal_home).ok()?;
+    let mut comps = rel.components();
+    match comps.next()? {
+        std::path::Component::Normal(seg) if seg == "packs" => match comps.next() {
+            Some(std::path::Component::Normal(id)) => Some(id.to_string_lossy().to_string()),
+            _ => None,
+        },
+        std::path::Component::Normal(seg) if seg == "config.json" => {
+            comps.next().is_none().then(|| "config.json".to_string())
+        }
+        std::path::Component::Normal(seg) if seg == "init.js" => {
+            comps.next().is_none().then(|| "init.js".to_string())
+        }
+        _ => None,
+    }
+}
+
 /// File の mtime を ms 単位で返す。読めない場合は 0（removed event の fallback）。
 fn path_mtime_ms(path: &Path) -> u64 {
     let Ok(metadata) = std::fs::metadata(path) else {
@@ -1227,6 +1248,7 @@ async fn watch_charminal_layer(
             // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
             // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
             let mut snapshot_relevant = false;
+            let mut changed_scopes: BTreeSet<String> = BTreeSet::new();
             for (path, kind) in drained {
                 let Some(label) = layer_event_label(&kind) else {
                     continue;
@@ -1250,6 +1272,9 @@ async fn watch_charminal_layer(
                 }
                 if is_snapshot_relevant_path(&home, &path) {
                     snapshot_relevant = true;
+                    if let Some(token) = snapshot_scope_token(&home, &path) {
+                        changed_scopes.insert(token);
+                    }
                 }
                 let payload = CharminalLayerEvent {
                     path: path.to_string_lossy().to_string(),
@@ -1267,7 +1292,17 @@ async fn watch_charminal_layer(
             // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
             if snapshot_relevant {
                 if let Some(home_root) = home.parent() {
-                    match history::snapshot_create_impl(home_root, "watcher-settled", None) {
+                    let changed = if changed_scopes.is_empty() {
+                        None
+                    } else {
+                        Some(changed_scopes.into_iter().collect::<Vec<_>>())
+                    };
+                    match history::snapshot_create_with_changed_impl(
+                        home_root,
+                        "watcher-settled",
+                        None,
+                        changed,
+                    ) {
                         Ok(_) => {
                             if let Err(e) =
                                 history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
@@ -1563,12 +1598,12 @@ mod layer_scope_tests {
     use super::{
         command_candidate_names, is_history_internal_path, is_safe_mode_value,
         is_snapshot_relevant_path, layer_event_label, read_last_startup_report_impl,
-        resolve_command_path_impl, should_emit_layer_event, stat_mtime_in_scope,
-        write_charminal_file_atomic_impl,
+        resolve_command_path_impl, should_emit_layer_event, snapshot_scope_token,
+        stat_mtime_in_scope, write_charminal_file_atomic_impl,
     };
     use std::collections::HashMap;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
@@ -1775,6 +1810,35 @@ mod layer_scope_tests {
             home,
             std::path::Path::new("/Users/y/other/packs/foo.js")
         ));
+    }
+
+    #[test]
+    fn snapshot_scope_token_extracts_pack_id_and_files() {
+        let home = Path::new("/Users/x/.charminal");
+        assert_eq!(
+            snapshot_scope_token(
+                home,
+                Path::new("/Users/x/.charminal/packs/my-theme/scene.js")
+            ),
+            Some("my-theme".to_string())
+        );
+        assert_eq!(
+            snapshot_scope_token(home, Path::new("/Users/x/.charminal/config.json")),
+            Some("config.json".to_string())
+        );
+        assert_eq!(
+            snapshot_scope_token(home, Path::new("/Users/x/.charminal/init.js")),
+            Some("init.js".to_string())
+        );
+        // 対象外・packs 直下のみは None。
+        assert_eq!(
+            snapshot_scope_token(home, Path::new("/Users/x/.charminal/journal/x.md")),
+            None
+        );
+        assert_eq!(
+            snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs")),
+            None
+        );
     }
 
     // ─── Phase 1-c: safe-mode / atomic write / load-report ────────
