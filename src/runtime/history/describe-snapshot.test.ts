@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describeChange, describeSnapshot, recommendedRestoreSeq } from "./describe-snapshot";
+import {
+  buildRestoreRows,
+  describeChange,
+  describeSnapshot,
+  recommendedRestoreSeq,
+} from "./describe-snapshot";
 
 describe("describeSnapshot", () => {
   const now = 600_000; // 10 分（ms）
@@ -113,5 +118,37 @@ describe("describeChange", () => {
 
   it("unknown fallback when changed and label absent", () => {
     expect(describeChange({ seq: 1, ts_ms: 0, trigger: "pre-restore" }, s)).toBe("変更");
+  });
+});
+
+describe("buildRestoreRows", () => {
+  const snaps = [
+    { seq: 9, ts_ms: 0, trigger: "watcher-settled" },
+    { seq: 8, ts_ms: 0, trigger: "watcher-settled" },
+    { seq: 7, ts_ms: 0, trigger: "startup-baseline", startup_clean: true },
+  ];
+
+  it("marks latest([0]) and recommends the one before it", () => {
+    const rows = buildRestoreRows(snaps, 0);
+    expect(rows.map((r) => r.seq)).toEqual([9, 8, 7]);
+    expect(rows[0].isLatest).toBe(true);
+    expect(rows[0].isRecommended).toBe(false); // 最新（壊れている可能性）は既定にしない
+    expect(rows[1].isLatest).toBe(false);
+    expect(rows[1].isRecommended).toBe(true); // 1 つ前が推奨
+    expect(rows[0].text).toContain("#9"); // describeSnapshot の整形 text
+  });
+
+  it("limits to `limit` rows (default 5)", () => {
+    const many = Array.from({ length: 10 }, (_, i) => ({
+      seq: 10 - i,
+      ts_ms: 0,
+      trigger: "x",
+    }));
+    expect(buildRestoreRows(many, 0)).toHaveLength(5);
+    expect(buildRestoreRows(many, 0, 3)).toHaveLength(3);
+  });
+
+  it("empty → []", () => {
+    expect(buildRestoreRows([], 0)).toEqual([]);
   });
 });

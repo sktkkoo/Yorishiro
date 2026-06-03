@@ -63,3 +63,32 @@ export function describeChange(entry: SnapshotEntry, s: ChangeStrings): string {
   if (!hasSpecial) return s.changedManyPacks(changed.length);
   return s.changedMixed(changed.length);
 }
+
+/** restore 一覧の 1 行。表示用の整形 text と、最新／推奨フラグを持つ。 */
+export interface RestoreRow {
+  readonly seq: number;
+  readonly text: string;
+  /** snapshots[0]（変更後＝現在に近い状態）か。 */
+  readonly isLatest: boolean;
+  /** 既定の戻し先（recommendedRestoreSeq）か。 */
+  readonly isRecommended: boolean;
+}
+
+/**
+ * snapshot 一覧を recovery / 設定 UI 用の表示行に変換する pure helper。
+ * 直近 `limit` 件に絞り、最新（[0]）と推奨（recommendedRestoreSeq）を flag する。
+ * 行 text は describeSnapshot。tag 文言は呼び出し側が isLatest / isRecommended から付ける。
+ */
+export function buildRestoreRows(
+  snapshots: ReadonlyArray<SnapshotEntry>,
+  nowMs: number,
+  limit = 5,
+): RestoreRow[] {
+  const recommended = recommendedRestoreSeq(snapshots);
+  return snapshots.slice(0, limit).map((entry, index) => ({
+    seq: entry.seq,
+    text: describeSnapshot(entry, nowMs),
+    isLatest: index === 0,
+    isRecommended: entry.seq === recommended,
+  }));
+}
