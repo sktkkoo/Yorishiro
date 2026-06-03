@@ -419,6 +419,23 @@ describe("disable_pack handler", () => {
     expect(writtenConfig).toContain('"target"');
   });
 
+  it("disables bundled amenity entries through the injected hook", async () => {
+    let disabledBundled: string | null = null;
+    const handler = createDisablePackHandler({
+      readConfig: async () => EMPTY_CONFIG,
+      writeConfig: async () => {},
+      registry: new UserPackRegistry(),
+      disableBundledAmenity: (id) => {
+        disabledBundled = id;
+        return true;
+      },
+    });
+
+    const result = await handler({ id: "music-shelf" });
+    expect(result).toEqual({ ok: true });
+    expect(disabledBundled).toBe("music-shelf");
+  });
+
   it("is idempotent when id is already disabled", async () => {
     const handler = createDisablePackHandler({
       readConfig: async () => ({
@@ -466,6 +483,23 @@ describe("enable_pack handler", () => {
     });
     const result = await handler({ id: "ghost" });
     expect(result).toEqual({ ok: false, reason: "pack file not found" });
+  });
+
+  it("enables bundled amenities without falling through to user pack reload", async () => {
+    let reloadCalled = false;
+    const handler = createEnablePackHandler({
+      readConfig: async () => EMPTY_CONFIG,
+      writeConfig: async () => {},
+      reloadPack: async () => {
+        reloadCalled = true;
+        return { ok: false, reason: "pack file not found" };
+      },
+      enableBundledAmenity: (id) => id === "music-shelf",
+    });
+
+    const result = await handler({ id: "music-shelf" });
+    expect(result).toEqual({ ok: true });
+    expect(reloadCalled).toBe(false);
   });
 });
 
