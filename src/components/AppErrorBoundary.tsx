@@ -63,6 +63,11 @@ export class AppErrorBoundary extends React.Component<
     this.setState({ restoring: true });
     try {
       await snapshotRestore({ seq });
+      // append-only なので list の番号では戻ったか分かりにくい。明示的に確認を出す。
+      await message(`snapshot #${seq} の状態に戻しました。再読み込みします。`, {
+        title: "Charminal",
+        kind: "info",
+      });
       // reload で config/init.js の変更も再適用される（restart-required を満たす）。
       window.location.reload();
     } catch (err) {
@@ -95,13 +100,16 @@ export class AppErrorBoundary extends React.Component<
                 {row.isLatest ? "（最新 / 現在の状態）" : ""}
                 {row.isRecommended ? "  ★推奨" : ""}
               </span>
-              <button
-                type="button"
-                disabled={restoring}
-                onClick={() => void this.handleRestore(row.seq)}
-              >
-                この状態に戻す
-              </button>
+              {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}
+              {row.isLatest ? null : (
+                <button
+                  type="button"
+                  disabled={restoring}
+                  onClick={() => void this.handleRestore(row.seq)}
+                >
+                  この状態に戻す
+                </button>
+              )}
             </li>
           ))}
         </ul>

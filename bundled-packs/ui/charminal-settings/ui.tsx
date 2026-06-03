@@ -1040,6 +1040,11 @@ function SnapshotRestoreSection({ strings }: { strings: UiStrings }): React.JSX.
       setRestoring(true);
       try {
         await snapshotRestore({ seq });
+        // append-only なので list の番号では戻ったか分かりにくい。明示的に確認を出す。
+        await message(strings.restoreDone.replace("{seq}", String(seq)), {
+          title: "Charminal",
+          kind: "info",
+        });
         window.location.reload();
       } catch (err) {
         setRestoring(false);
@@ -1092,25 +1097,28 @@ function SnapshotRestoreSection({ strings }: { strings: UiStrings }): React.JSX.
           {row.isLatest ? ` ${strings.restoreLatestTag}` : ""}
           {row.isRecommended ? ` ${strings.restoreRecommendedTag}` : ""}
         </span>
-        <button
-          type="button"
-          disabled={restoring}
-          onClick={() => void handleRestore(row.seq)}
-          style={{
-            flexShrink: 0,
-            border: `1px solid ${COLORS.borderSubtle}`,
-            borderRadius: RADIUS.sm,
-            background: COLORS.bgButton,
-            color: COLORS.fg,
-            font: "inherit",
-            fontSize: FONT.sizeXs,
-            padding: `${SPACING.xs} ${SPACING.sm}`,
-            cursor: restoring ? "default" : "pointer",
-            opacity: restoring ? 0.5 : 1,
-          }}
-        >
-          {strings.restoreButton}
-        </button>
+        {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}
+        {row.isLatest ? null : (
+          <button
+            type="button"
+            disabled={restoring}
+            onClick={() => void handleRestore(row.seq)}
+            style={{
+              flexShrink: 0,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              borderRadius: RADIUS.sm,
+              background: COLORS.bgButton,
+              color: COLORS.fg,
+              font: "inherit",
+              fontSize: FONT.sizeXs,
+              padding: `${SPACING.xs} ${SPACING.sm}`,
+              cursor: restoring ? "default" : "pointer",
+              opacity: restoring ? 0.5 : 1,
+            }}
+          >
+            {strings.restoreButton}
+          </button>
+        )}
       </div>
     ));
   }

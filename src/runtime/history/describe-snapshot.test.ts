@@ -42,8 +42,8 @@ describe("recommendedRestoreSeq", () => {
     expect(recommendedRestoreSeq([])).toBeNull();
   });
 
-  it("returns the only snapshot when length 1", () => {
-    expect(recommendedRestoreSeq([{ seq: 7, ts_ms: 0, trigger: "startup-baseline" }])).toBe(7);
+  it("returns null when there is no earlier snapshot (length <= 1)", () => {
+    expect(recommendedRestoreSeq([{ seq: 7, ts_ms: 0, trigger: "startup-baseline" }])).toBeNull();
   });
 
   it("skips the possibly-broken latest and returns the second-newest", () => {

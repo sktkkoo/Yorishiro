@@ -16,14 +16,12 @@ export function describeSnapshot(entry: SnapshotEntry, nowMs: number): string {
 }
 
 /**
- * recovery 時の既定 restore 候補 seq を返す（Finding: 壊れた最新 snapshot を既定に
- * しない）。snapshots は新しい順。watcher-settled は「変更後」を撮るので、最新（[0]）は
- * 「現在＝壊れている可能性がある状態」。よって既定は 1 つ前（[1]）＝「最新変更前」。
- * snapshot が 1 件だけなら最新を返す（他に戻し先が無い）。0 件なら null。
+ * recovery 時の既定 restore 候補 seq を返す。snapshots は新しい順。最新（[0]）は
+ * 「変更後＝現在の状態」なので戻し先にしない（restore しても no-op）。よって既定は
+ * 1 つ前（[1]）＝「最新変更前」。以前の状態が無い（length <= 1）なら null（戻し先なし）。
  */
 export function recommendedRestoreSeq(snapshots: ReadonlyArray<SnapshotEntry>): number | null {
-  if (snapshots.length === 0) return null;
-  return (snapshots[1] ?? snapshots[0]).seq;
+  return snapshots[1]?.seq ?? null;
 }
 
 /**

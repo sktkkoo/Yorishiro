@@ -47,6 +47,7 @@ export interface UiStrings {
   readonly restoreConfirmTitle: string;
   readonly restoreConfirmIntro: string;
   readonly restoreConfirmDetail: string;
+  readonly restoreDone: string;
   readonly restoreFailed: string;
   readonly healthHealthy: string;
   readonly healthWarnings: string;
@@ -117,6 +118,7 @@ const EN: UiStrings = {
   restoreConfirmIntro: "Restore ~/.charminal to the selected snapshot?",
   restoreConfirmDetail:
     "This full-replaces packs / config.json / init.js and reloads the app (journal is not changed).",
+  restoreDone: "Restored to snapshot #{seq}. Reloading…",
   restoreFailed: "Restore failed",
   healthHealthy: "Healthy",
   healthWarnings: "Warnings",
@@ -186,6 +188,7 @@ const JA: UiStrings = {
   restoreConfirmIntro: "選んだ snapshot に ~/.charminal を戻しますか？",
   restoreConfirmDetail:
     "packs / config.json / init.js を完全置換し、アプリを再読み込みします（journal は変更しません）。",
+  restoreDone: "snapshot #{seq} の状態に戻しました。再読み込みします。",
   restoreFailed: "復元に失敗しました",
   healthHealthy: "正常",
   healthWarnings: "警告あり",
