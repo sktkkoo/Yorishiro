@@ -79,19 +79,21 @@ exec は Charminal プロセスの PATH（`build_path_env()` で構築、Homebre
 
 ## Bundled amenity の default-off 方針
 
-`system.exec` を使う bundled amenity pack は `EMPTY_CONFIG.disabledPacks` に含め、default-off とする。ユーザーが設定画面（または `config.json`）で明示的に有効化する。
+`system.exec` を使う bundled amenity は **登録時に `enable()` を呼ばない** ことで default-off を実現する。`disabledPacks` は使わない（config migration の問題を避けるため）。
 
-| pack | default | 理由 |
+| pack | 登録時 enable | 理由 |
 |---|---|---|
-| pomodoro | ON | system 権限なし。初回体験の核。pomodoro-ui が依存 |
-| music-shelf | **OFF** | `system.exec` あり。macOS 専用（osascript）。Apple Music 未導入環境で壊れる |
+| pomodoro | **する** | system 権限なし。初回体験の核。pomodoro-ui が依存 |
+| music-shelf | **しない** | `system.exec` あり。macOS 専用。明示的 opt-in |
 
-判断基準：
-- **system capability を持たない** pack → default ON（安全、初回体験に寄与）
-- **system capability を持つ** pack → default OFF（明示的 opt-in）
-- **platform 依存** がある pack → default OFF（動かない環境でエラーにしない）
+有効化の手段：
+- MCP `enable_pack("music-shelf")` を呼ぶ
+- 設定画面の on/off トグル（別 scope で実装予定）
 
-設定画面に bundled amenity の on/off トグルを追加する作業は別 scope で進行中。それまではユーザーが `~/.charminal/config.json` の `disabledPacks` を手動で編集する。
+`disabledPacks` で default-off を表現しない理由：
+- 既存ユーザーの config に `disabledPacks` がある場合、新規 default-disabled pack が漏れる
+- config migration が必要になり、parse/serialize の複雑さが増す
+- 登録時 enable 制御の方が単純で確実
 
 ## 関連 reference
 

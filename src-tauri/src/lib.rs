@@ -170,41 +170,70 @@ async fn system_exec(
     let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
     let child_id = child.id();
     let result = tokio::task::spawn_blocking(move || {
-        // stdin / stdout / stderr を全て concurrent に処理（deadlock 防止）
+        let deadline = start + Duration::from_millis(timeout_ms);
+
+        // stdin / stdout / stderr を全て concurrent に処理（deadlock 防止）。
+        // 各 drain thread は deadline を共有し、背景プロセスが pipe を保持しても
+        // timeout で抜ける。
         let stdin_handle = input_data.and_then(|data| {
             child.stdin.take().map(|stdin| {
                 std::thread::spawn(move || {
                     use std::io::Write;
                     let mut stdin = stdin;
                     let _ = stdin.write_all(data.as_bytes());
-                    // drop で stdin を close — コマンドが EOF を受け取る
                 })
             })
         });
         let stdout_handle = child.stdout.take().map(|r| {
+            let dl = deadline;
             std::thread::spawn(move || {
                 let mut s = String::new();
                 let mut r = r;
-                std::io::Read::read_to_string(&mut r, &mut s).ok();
+                let mut buf = [0u8; 8192];
+                loop {
+                    if Instant::now() >= dl {
+                        break;
+                    }
+                    match std::io::Read::read(&mut r, &mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        }
+                        Err(_) => break,
+                    }
+                }
                 s
             })
         });
         let stderr_handle = child.stderr.take().map(|r| {
+            let dl = deadline;
             std::thread::spawn(move || {
                 let mut s = String::new();
                 let mut r = r;
-                std::io::Read::read_to_string(&mut r, &mut s).ok();
+                let mut buf = [0u8; 8192];
+                loop {
+                    if Instant::now() >= dl {
+                        break;
+                    }
+                    match std::io::Read::read(&mut r, &mut buf) {
+                        Ok(0) => break,
+                        Ok(n) => {
+                            s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        }
+                        Err(_) => break,
+                    }
+                }
                 s
             })
         });
 
-        let deadline = start + Duration::from_millis(timeout_ms);
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
                     if let Some(h) = stdin_handle {
                         let _ = h.join();
                     }
+                    // drain thread も deadline で抜けるので join は有限時間で完了する
                     let stdout = stdout_handle
                         .and_then(|h| h.join().ok())
                         .unwrap_or_default();

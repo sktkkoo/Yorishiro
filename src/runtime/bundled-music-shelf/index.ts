@@ -118,7 +118,8 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
       handle,
     });
 
-    deps.registry.enable(musicShelfPack.id);
+    // default-off: enable() を呼ばない。ユーザーが enable_pack で明示的に有効化する。
+    // pomodoro と異なり system.exec を使う amenity は opt-in。
 
     abortController.signal.addEventListener("abort", () => {
       registration.dispose();
