@@ -1007,6 +1007,7 @@ struct CharminalLayerEvent {
 
 /// File 1 枚の pending event（最後に届いた kind が勝つ）。
 type PendingMap = Arc<Mutex<HashMap<PathBuf, notify::EventKind>>>;
+type LayerEventFingerprint = (&'static str, u64);
 
 struct WatcherHandle {
     /// Drop 時に OS watcher を畳む。
@@ -1105,6 +1106,24 @@ fn path_mtime_ms(path: &Path) -> u64 {
         .unwrap_or(0)
 }
 
+/// watcher の重複通知を path / label / mtime で間引く。
+///
+/// snapshot 作成が live source を読むだけで同じ mtime の modify 通知を返す環境が
+/// あるため、snapshot 判定前に同一 fingerprint を落として再帰 snapshot を防ぐ。
+fn should_emit_layer_event(
+    last: &mut HashMap<PathBuf, LayerEventFingerprint>,
+    path: &Path,
+    label: &'static str,
+    mtime_ms: u64,
+) -> bool {
+    let fingerprint = (label, mtime_ms);
+    if last.get(path).copied() == Some(fingerprint) {
+        return false;
+    }
+    last.insert(path.to_path_buf(), fingerprint);
+    true
+}
+
 /// 与えられた scope 内に `path` が収まることを確認し、mtime を ms で返す。
 /// 本関数は `stat_file_mtime` の pure 実装——cargo test で scope 挙動を verify
 /// するため tauri ランタイムから分離してある。
@@ -1188,69 +1207,76 @@ async fn watch_charminal_layer(
     let pending_bg = pending.clone();
     let channel = on_event;
 
-    let thread = std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(150));
-        if matches!(
-            stop_rx.try_recv(),
-            Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected)
-        ) {
-            break;
-        }
-        let drained: Vec<(PathBuf, notify::EventKind)> = {
-            let mut guard = match pending_bg.lock() {
-                Ok(g) => g,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            guard.drain().collect()
-        };
-        // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
-        // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
-        let mut snapshot_relevant = false;
-        for (path, kind) in drained {
-            let Some(label) = layer_event_label(&kind) else {
-                continue;
-            };
-            // 削除済み path は canonicalize できないので非正規化 path を scope
-            // チェックする。上位 dir の存在を scope に対して相対比較するだけ。
-            let in_scope = path.canonicalize().map_or_else(
-                |_| path.starts_with(&canonical_home) || path.starts_with(&home),
-                |canonical| canonical.starts_with(&canonical_home),
-            );
-            if !in_scope {
-                continue;
-            }
-            if is_history_internal_path(&home, &path) {
-                // snapshot store / staging / scratch の内部書き込みは TS に流さない。
-                continue;
-            }
-            if is_snapshot_relevant_path(&home, &path) {
-                snapshot_relevant = true;
-            }
-            let payload = CharminalLayerEvent {
-                path: path.to_string_lossy().to_string(),
-                kind: label.to_string(),
-                mtime_ms: path_mtime_ms(&path),
-            };
-            if let Err(e) = channel.send(payload) {
-                eprintln!("[watch_charminal_layer] channel send failed: {}", e);
+    let thread = std::thread::spawn(move || {
+        let mut last_emitted: HashMap<PathBuf, LayerEventFingerprint> = HashMap::new();
+        loop {
+            std::thread::sleep(Duration::from_millis(150));
+            if matches!(
+                stop_rx.try_recv(),
+                Ok(()) | Err(std::sync::mpsc::TryRecvError::Disconnected)
+            ) {
                 break;
             }
-        }
-        // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮り、
-        // 直近 DEFAULT_KEEP 件に間引く。snapshot は .history/ へ書くので
-        // is_history_internal_path filter により watcher へ戻らない（無限ループ無し）。
-        // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
-        if snapshot_relevant {
-            if let Some(home_root) = home.parent() {
-                match history::snapshot_create_impl(home_root, "watcher-settled", None) {
-                    Ok(_) => {
-                        if let Err(e) =
-                            history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
-                        {
-                            eprintln!("[history] watcher-settled prune failed: {}", e);
+            let drained: Vec<(PathBuf, notify::EventKind)> = {
+                let mut guard = match pending_bg.lock() {
+                    Ok(g) => g,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                guard.drain().collect()
+            };
+            // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
+            // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
+            let mut snapshot_relevant = false;
+            for (path, kind) in drained {
+                let Some(label) = layer_event_label(&kind) else {
+                    continue;
+                };
+                // 削除済み path は canonicalize できないので非正規化 path を scope
+                // チェックする。上位 dir の存在を scope に対して相対比較するだけ。
+                let in_scope = path.canonicalize().map_or_else(
+                    |_| path.starts_with(&canonical_home) || path.starts_with(&home),
+                    |canonical| canonical.starts_with(&canonical_home),
+                );
+                if !in_scope {
+                    continue;
+                }
+                if is_history_internal_path(&home, &path) {
+                    // snapshot store / staging / scratch の内部書き込みは TS に流さない。
+                    continue;
+                }
+                let mtime_ms = path_mtime_ms(&path);
+                if !should_emit_layer_event(&mut last_emitted, &path, label, mtime_ms) {
+                    continue;
+                }
+                if is_snapshot_relevant_path(&home, &path) {
+                    snapshot_relevant = true;
+                }
+                let payload = CharminalLayerEvent {
+                    path: path.to_string_lossy().to_string(),
+                    kind: label.to_string(),
+                    mtime_ms,
+                };
+                if let Err(e) = channel.send(payload) {
+                    eprintln!("[watch_charminal_layer] channel send failed: {}", e);
+                    break;
+                }
+            }
+            // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮り、
+            // 直近 DEFAULT_KEEP 件に間引く。snapshot は .history/ へ書くので
+            // is_history_internal_path filter により watcher へ戻らない（無限ループ無し）。
+            // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
+            if snapshot_relevant {
+                if let Some(home_root) = home.parent() {
+                    match history::snapshot_create_impl(home_root, "watcher-settled", None) {
+                        Ok(_) => {
+                            if let Err(e) =
+                                history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
+                            {
+                                eprintln!("[history] watcher-settled prune failed: {}", e);
+                            }
                         }
+                        Err(e) => eprintln!("[history] watcher-settled snapshot failed: {}", e),
                     }
-                    Err(e) => eprintln!("[history] watcher-settled snapshot failed: {}", e),
                 }
             }
         }
@@ -1537,8 +1563,10 @@ mod layer_scope_tests {
     use super::{
         command_candidate_names, is_history_internal_path, is_safe_mode_value,
         is_snapshot_relevant_path, layer_event_label, read_last_startup_report_impl,
-        resolve_command_path_impl, stat_mtime_in_scope, write_charminal_file_atomic_impl,
+        resolve_command_path_impl, should_emit_layer_event, stat_mtime_in_scope,
+        write_charminal_file_atomic_impl,
     };
+    use std::collections::HashMap;
     use std::fs;
     use std::path::PathBuf;
 
@@ -1657,6 +1685,17 @@ mod layer_scope_tests {
         assert_eq!(layer_event_label(&EventKind::Access(AccessKind::Any)), None,);
         assert_eq!(layer_event_label(&EventKind::Any), None);
         assert_eq!(layer_event_label(&EventKind::Other), None);
+    }
+
+    #[test]
+    fn watcher_event_fingerprint_drops_same_path_label_and_mtime_only() {
+        let mut last = HashMap::new();
+        let path = std::path::Path::new("/Users/x/.charminal/packs/foo/amenity.js");
+
+        assert!(should_emit_layer_event(&mut last, path, "modified", 100));
+        assert!(!should_emit_layer_event(&mut last, path, "modified", 100));
+        assert!(should_emit_layer_event(&mut last, path, "modified", 101));
+        assert!(should_emit_layer_event(&mut last, path, "removed", 0));
     }
 
     #[test]
