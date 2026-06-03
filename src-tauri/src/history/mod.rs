@@ -603,13 +603,19 @@ mod tests {
 
         // index に "pre-restore" entry がある（= restore 自体が undo 可能）。
         let snaps = snapshot_list_impl(&home).unwrap();
-        assert!(
-            snaps.iter().any(|s| s.trigger == "pre-restore"),
-            "pre-restore snapshot must exist after restore"
-        );
+        let pre_restore_seq = snaps
+            .iter()
+            .find(|s| s.trigger == "pre-restore")
+            .map(|s| s.seq)
+            .expect("pre-restore snapshot must exist after restore");
         // live は seq1 の内容（v:1）に戻っている。
         let restored = fs::read_to_string(charminal.join("config.json")).unwrap();
         assert_eq!(restored, "{\"v\":1}");
+
+        // pre-restore 自体に戻せるので、restore 操作は実際に undo 可能。
+        snapshot_restore_impl(&home, pre_restore_seq, None).unwrap();
+        let undone = fs::read_to_string(charminal.join("config.json")).unwrap();
+        assert_eq!(undone, "{\"v\":2}");
 
         let _ = fs::remove_dir_all(&home);
     }

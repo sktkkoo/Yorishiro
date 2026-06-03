@@ -76,6 +76,12 @@ describe("describeChange", () => {
     ).toBe("設定を変更");
   });
 
+  it("init only", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["init.js"] }, s),
+    ).toBe("init.js を変更");
+  });
+
   it("many packs", () => {
     expect(
       describeChange({ seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "b"] }, s),
@@ -99,5 +105,13 @@ describe("describeChange", () => {
     expect(
       describeChange({ seq: 1, ts_ms: 0, trigger: "mcp:snapshot", label: "夜にする前" }, s),
     ).toBe("夜にする前");
+  });
+
+  it("mcp manual fallback when label absent", () => {
+    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "mcp:snapshot" }, s)).toBe("AIが記録");
+  });
+
+  it("unknown fallback when changed and label absent", () => {
+    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "pre-restore" }, s)).toBe("変更");
   });
 });

@@ -1113,6 +1113,24 @@ pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option
     }
 }
 
+/// settle バースト内の変更 path 群を watcher snapshot の `changed` field に変換する。
+/// 同一 pack の複数 file は 1 要素へ dedup し、帰属できる path が無ければ None。
+pub(crate) fn collect_changed_scopes<I, P>(charminal_home: &Path, paths: I) -> Option<Vec<String>>
+where
+    I: IntoIterator<Item = P>,
+    P: AsRef<Path>,
+{
+    let changed_scopes: BTreeSet<String> = paths
+        .into_iter()
+        .filter_map(|path| snapshot_scope_token(charminal_home, path.as_ref()))
+        .collect();
+    if changed_scopes.is_empty() {
+        None
+    } else {
+        Some(changed_scopes.into_iter().collect())
+    }
+}
+
 /// File の mtime を ms 単位で返す。読めない場合は 0（removed event の fallback）。
 fn path_mtime_ms(path: &Path) -> u64 {
     let Ok(metadata) = std::fs::metadata(path) else {
@@ -1248,7 +1266,7 @@ async fn watch_charminal_layer(
             // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
             // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
             let mut snapshot_relevant = false;
-            let mut changed_scopes: BTreeSet<String> = BTreeSet::new();
+            let mut changed_paths: Vec<PathBuf> = Vec::new();
             for (path, kind) in drained {
                 let Some(label) = layer_event_label(&kind) else {
                     continue;
@@ -1272,9 +1290,7 @@ async fn watch_charminal_layer(
                 }
                 if is_snapshot_relevant_path(&home, &path) {
                     snapshot_relevant = true;
-                    if let Some(token) = snapshot_scope_token(&home, &path) {
-                        changed_scopes.insert(token);
-                    }
+                    changed_paths.push(path.clone());
                 }
                 let payload = CharminalLayerEvent {
                     path: path.to_string_lossy().to_string(),
@@ -1292,11 +1308,7 @@ async fn watch_charminal_layer(
             // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
             if snapshot_relevant {
                 if let Some(home_root) = home.parent() {
-                    let changed = if changed_scopes.is_empty() {
-                        None
-                    } else {
-                        Some(changed_scopes.into_iter().collect::<Vec<_>>())
-                    };
+                    let changed = collect_changed_scopes(&home, changed_paths.iter());
                     match history::snapshot_create_with_changed_impl(
                         home_root,
                         "watcher-settled",
@@ -1596,10 +1608,10 @@ mod user_pack_discovery_tests {
 #[cfg(test)]
 mod layer_scope_tests {
     use super::{
-        command_candidate_names, is_history_internal_path, is_safe_mode_value,
-        is_snapshot_relevant_path, layer_event_label, read_last_startup_report_impl,
-        resolve_command_path_impl, should_emit_layer_event, snapshot_scope_token,
-        stat_mtime_in_scope, write_charminal_file_atomic_impl,
+        collect_changed_scopes, command_candidate_names, is_history_internal_path,
+        is_safe_mode_value, is_snapshot_relevant_path, layer_event_label,
+        read_last_startup_report_impl, resolve_command_path_impl, should_emit_layer_event,
+        snapshot_scope_token, stat_mtime_in_scope, write_charminal_file_atomic_impl,
     };
     use std::collections::HashMap;
     use std::fs;
@@ -1837,6 +1849,50 @@ mod layer_scope_tests {
         );
         assert_eq!(
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs")),
+            None
+        );
+    }
+
+    #[test]
+    fn collect_changed_scopes_dedups_and_sorts_pack_ids() {
+        let home = Path::new("/Users/x/.charminal");
+        let paths = [
+            Path::new("/Users/x/.charminal/packs/b/effect.js"),
+            Path::new("/Users/x/.charminal/packs/a/effect.js"),
+            Path::new("/Users/x/.charminal/packs/a/assets/icon.png"),
+        ];
+
+        assert_eq!(
+            collect_changed_scopes(home, paths),
+            Some(vec!["a".to_string(), "b".to_string()])
+        );
+    }
+
+    #[test]
+    fn collect_changed_scopes_records_config_init_and_returns_none_when_empty() {
+        let home = Path::new("/Users/x/.charminal");
+        let paths = [
+            Path::new("/Users/x/.charminal/packs/theme/scene.js"),
+            Path::new("/Users/x/.charminal/config.json"),
+            Path::new("/Users/x/.charminal/init.js"),
+        ];
+
+        assert_eq!(
+            collect_changed_scopes(home, paths),
+            Some(vec![
+                "config.json".to_string(),
+                "init.js".to_string(),
+                "theme".to_string(),
+            ])
+        );
+        assert_eq!(
+            collect_changed_scopes(
+                home,
+                [
+                    Path::new("/Users/x/.charminal/packs"),
+                    Path::new("/Users/x/.charminal/journal/x.md"),
+                ],
+            ),
             None
         );
     }
