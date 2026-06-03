@@ -68,21 +68,23 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
   // 起動時から Music.app に触りに行かない（automation prompt 回避）。
   function ensurePolling(): void {
     if (poller !== null) return;
-    poller = ctx.time.every(5000, async () => {
-      const now = await fetchNowPlaying(ctx);
-      if (now.title !== last.title || now.artist !== last.artist) {
-        if (now.title !== "") {
-          ctx.emitEvent("music-shelf:track-changed", {
-            title: now.title,
-            artist: now.artist,
-            album: now.album,
-          });
+    poller = ctx.time.every(5000, () => {
+      void (async () => {
+        const now = await fetchNowPlaying(ctx);
+        if (now.title !== last.title || now.artist !== last.artist) {
+          if (now.title !== "") {
+            ctx.emitEvent("music-shelf:track-changed", {
+              title: now.title,
+              artist: now.artist,
+              album: now.album,
+            });
+          }
         }
-      }
-      if (now.state !== last.state) {
-        ctx.emitEvent("music-shelf:state-changed", { state: now.state });
-      }
-      last = now;
+        if (now.state !== last.state) {
+          ctx.emitEvent("music-shelf:state-changed", { state: now.state });
+        }
+        last = now;
+      })().catch(() => {});
     });
   }
 

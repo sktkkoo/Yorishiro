@@ -158,7 +158,8 @@ async fn system_exec(
             cmd.env(k, v);
         }
     }
-    if opts.input.is_some() {
+    let input_data = opts.input.clone();
+    if input_data.is_some() {
         cmd.stdin(Stdio::piped());
     }
 
@@ -166,19 +167,20 @@ async fn system_exec(
 
     let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
 
-    if let Some(input) = &opts.input {
-        use std::io::Write;
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin
-                .write_all(input.as_bytes())
-                .map_err(|e| format!("stdin write failed: {e}"))?;
-        }
-    }
-
     let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
     let child_id = child.id();
     let result = tokio::task::spawn_blocking(move || {
-        // stdout/stderr を別 thread で concurrent drain（pipe buffer deadlock 防止）
+        // stdin / stdout / stderr を全て concurrent に処理（deadlock 防止）
+        let stdin_handle = input_data.and_then(|data| {
+            child.stdin.take().map(|stdin| {
+                std::thread::spawn(move || {
+                    use std::io::Write;
+                    let mut stdin = stdin;
+                    let _ = stdin.write_all(data.as_bytes());
+                    // drop で stdin を close — コマンドが EOF を受け取る
+                })
+            })
+        });
         let stdout_handle = child.stdout.take().map(|r| {
             std::thread::spawn(move || {
                 let mut s = String::new();
@@ -200,6 +202,9 @@ async fn system_exec(
         loop {
             match child.try_wait() {
                 Ok(Some(status)) => {
+                    if let Some(h) = stdin_handle {
+                        let _ = h.join();
+                    }
                     let stdout = stdout_handle
                         .and_then(|h| h.join().ok())
                         .unwrap_or_default();
@@ -215,16 +220,18 @@ async fn system_exec(
                 }
                 Ok(None) => {
                     if Instant::now() >= deadline {
-                        // process group ごと kill（子プロセスも巻き込む）
+                        // process tree ごと kill
                         #[cfg(unix)]
                         {
                             unsafe {
                                 libc::kill(-(child_id as i32), libc::SIGKILL);
                             }
                         }
-                        #[cfg(not(unix))]
+                        #[cfg(windows)]
                         {
-                            let _ = child.kill();
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/T", "/F", "/PID", &child_id.to_string()])
+                                .output();
                         }
                         let _ = child.wait();
                         return Err(format!("timeout after {timeout_ms}ms"));
