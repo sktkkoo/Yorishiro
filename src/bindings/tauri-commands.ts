@@ -232,3 +232,26 @@ export const snapshotRestore = (args: {
 /** `history::snapshot_prune(keep_n)` → 直近 keepN 件に間引く。 */
 export const snapshotPrune = (args: { keepN: number }): Promise<void> =>
   call("snapshot_prune", args);
+
+// ─── System exec (amenity) ─────────────────────────────────────
+
+export interface SystemExecArgs {
+  readonly command: string;
+  readonly options?: {
+    readonly cwd?: string;
+    readonly env?: Record<string, string>;
+    readonly timeoutMs?: number;
+    readonly input?: string;
+  };
+}
+
+export interface SystemExecResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly durationMs: number;
+}
+
+/** amenity pack の system.exec が使う shell command 実行。 */
+export const systemExec = (args: SystemExecArgs): Promise<SystemExecResult> =>
+  call("system_exec", args);

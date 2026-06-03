@@ -88,6 +88,124 @@ fn register_media_folder_scopes(app: &tauri::App) {
     }
 }
 
+// ─── system.exec ────────────────────────────────────────────────
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemExecOptions {
+    cwd: Option<String>,
+    env: Option<HashMap<String, String>>,
+    timeout_ms: Option<u64>,
+    input: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemExecResult {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+    duration_ms: u64,
+}
+
+#[tauri::command]
+async fn system_exec(
+    command: String,
+    options: Option<SystemExecOptions>,
+) -> Result<SystemExecResult, String> {
+    use std::process::{Command, Stdio};
+    use std::time::Instant;
+
+    let opts = options.unwrap_or(SystemExecOptions {
+        cwd: None,
+        env: None,
+        timeout_ms: None,
+        input: None,
+    });
+
+    let shell = if cfg!(windows) { "cmd" } else { "sh" };
+    let shell_flag = if cfg!(windows) { "/C" } else { "-c" };
+
+    let mut cmd = Command::new(shell);
+    cmd.arg(shell_flag).arg(&command);
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+    // Charminal の PATH を継承
+    cmd.env("PATH", build_path_env());
+
+    if let Some(cwd) = &opts.cwd {
+        cmd.current_dir(cwd);
+    }
+    if let Some(env) = &opts.env {
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+    }
+    if opts.input.is_some() {
+        cmd.stdin(Stdio::piped());
+    }
+
+    let start = Instant::now();
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn failed: {e}"))?;
+
+    if let Some(input) = &opts.input {
+        use std::io::Write;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(input.as_bytes())
+                .map_err(|e| format!("stdin write failed: {e}"))?;
+        }
+    }
+
+    let timeout_ms = opts.timeout_ms.unwrap_or(30_000);
+    let result = tokio::task::spawn_blocking(move || {
+        let deadline = start + Duration::from_millis(timeout_ms);
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    let stdout = child
+                        .stdout
+                        .take()
+                        .map(|mut r| {
+                            let mut s = String::new();
+                            std::io::Read::read_to_string(&mut r, &mut s).ok();
+                            s
+                        })
+                        .unwrap_or_default();
+                    let stderr = child
+                        .stderr
+                        .take()
+                        .map(|mut r| {
+                            let mut s = String::new();
+                            std::io::Read::read_to_string(&mut r, &mut s).ok();
+                            s
+                        })
+                        .unwrap_or_default();
+                    return Ok(SystemExecResult {
+                        exit_code: status.code().unwrap_or(-1),
+                        stdout,
+                        stderr,
+                        duration_ms: start.elapsed().as_millis() as u64,
+                    });
+                }
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        let _ = child.kill();
+                        return Err(format!("timeout after {}ms", timeout_ms));
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => return Err(format!("wait failed: {e}")),
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("task join failed: {e}"))?;
+
+    result
+}
+
 fn build_path_env() -> String {
     let home = dirs::home_dir().unwrap_or_default();
     let home = home.to_string_lossy();
@@ -1431,7 +1549,8 @@ pub fn run() {
             history::snapshot_create,
             history::snapshot_list,
             history::snapshot_restore,
-            history::snapshot_prune
+            history::snapshot_prune,
+            system_exec
         ])
         .setup(|app| {
             if let Err(e) = pty::ensure_reminder_script() {

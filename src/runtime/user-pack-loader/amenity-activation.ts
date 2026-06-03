@@ -1,5 +1,11 @@
-import type { AmenityContext, AmenityPackDefinition, HistoryAPI } from "@charminal/sdk";
+import type {
+  AmenityContext,
+  AmenityPackDefinition,
+  ExecOptions,
+  HistoryAPI,
+} from "@charminal/sdk";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import {
@@ -65,7 +71,44 @@ export function createUserAmenityContextFactory(
         deps.tweenManager.startVec3(`${packId}:${key}`, to, durationMs, apply, options),
       cancel: (key) => deps.tweenManager.cancel(`${packId}:${key}`),
     },
-    system: {} as AmenityContext["system"],
+    system: {
+      exec: async (command: string, options?: ExecOptions) => {
+        const result = await systemExec({
+          command,
+          options: options
+            ? {
+                cwd: options.cwd,
+                env: options.env,
+                timeoutMs: options.timeoutMs,
+                input: options.input,
+              }
+            : undefined,
+        });
+        return {
+          exitCode: result.exitCode,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          durationMs: result.durationMs,
+        };
+      },
+      spawn: () => {
+        throw new Error("system.spawn is not yet implemented");
+      },
+      fs: {
+        read: async () => {
+          throw new Error("system.fs is not yet implemented");
+        },
+        write: async () => {
+          throw new Error("system.fs is not yet implemented");
+        },
+        exists: async () => {
+          throw new Error("system.fs is not yet implemented");
+        },
+      },
+      notify: async () => {
+        throw new Error("system.notify is not yet implemented");
+      },
+    } satisfies AmenityContext["system"],
     log: { write: () => {}, tail: () => [], read: () => [] },
     memory: {
       persona: { get: () => undefined, set: () => {}, delete: () => {} },
