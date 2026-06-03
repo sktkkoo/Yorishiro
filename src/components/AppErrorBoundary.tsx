@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import React from "react";
 import { snapshotList, snapshotRestore } from "../bindings/tauri-commands";
-import { describeSnapshot, recommendedRestoreSeq } from "../runtime/history/describe-snapshot";
+import { buildRestoreRows } from "../runtime/history/describe-snapshot";
 import type { SnapshotEntry } from "../sdk/history";
 
 interface AppErrorBoundaryProps {
@@ -77,10 +77,7 @@ export class AppErrorBoundary extends React.Component<
   private renderRestoreSection(): React.ReactNode {
     const { snapshots, restoring } = this.state;
     if (snapshots === null || snapshots.length === 0) return null;
-    const now = Date.now();
-    // watcher-settled は「変更後」を撮るので最新（[0]）は壊れている可能性がある。
-    // 既定の戻し先は 1 つ前（recommendedRestoreSeq）にする（Finding 対応）。
-    const recommended = recommendedRestoreSeq(snapshots);
+    const rows = buildRestoreRows(snapshots, Date.now());
     return (
       <div className="app-error-boundary-restore">
         <h2>最新変更前の状態に戻す</h2>
@@ -91,20 +88,17 @@ export class AppErrorBoundary extends React.Component<
           を含む復元はアプリを再読み込みします。
         </p>
         <ul>
-          {snapshots.slice(0, 5).map((entry, i) => (
-            <li
-              key={entry.seq}
-              className={entry.seq === recommended ? "is-recommended" : undefined}
-            >
+          {rows.map((row) => (
+            <li key={row.seq} className={row.isRecommended ? "is-recommended" : undefined}>
               <span>
-                {describeSnapshot(entry, now)}
-                {i === 0 ? "（最新 / 現在の状態）" : ""}
-                {entry.seq === recommended ? "  ★推奨" : ""}
+                {row.text}
+                {row.isLatest ? "（最新 / 現在の状態）" : ""}
+                {row.isRecommended ? "  ★推奨" : ""}
               </span>
               <button
                 type="button"
                 disabled={restoring}
-                onClick={() => void this.handleRestore(entry.seq)}
+                onClick={() => void this.handleRestore(row.seq)}
               >
                 この状態に戻す
               </button>
