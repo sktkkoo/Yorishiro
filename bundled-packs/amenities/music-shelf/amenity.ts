@@ -55,7 +55,14 @@ interface MusicTrack {
   readonly dateAdded?: string;
 }
 
+interface AmbientDuckingSnapshot {
+  readonly muted: boolean;
+  readonly volume: number;
+  readonly duckedVolume: number;
+}
+
 const EMPTY: NowPlaying = { title: "", artist: "", album: "", state: "stopped" };
+const DEFAULT_AMBIENT_DUCK_VOLUME = 0.2;
 const TRACK_ROW_EXPR = [
   "(persistent ID of t as text)",
   "(name of t as text)",
@@ -68,6 +75,28 @@ const TRACK_ROW_WITH_DATE_EXPR = `${TRACK_ROW_EXPR} & tab & (date added of t as 
 function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function clampUnitFloat(value: unknown, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(1, value));
+}
+
+function shouldDuckAmbient(params: unknown): boolean {
+  const p = (params ?? {}) as { ambient?: string; ambientDucking?: boolean };
+  return p.ambient !== "keep" && p.ambientDucking !== false;
+}
+
+function resolveAmbientDuckVolume(params: unknown): number {
+  const p = (params ?? {}) as {
+    ambientDuckVolume?: number;
+    duckVolume?: number;
+    ambientVolume?: number;
+  };
+  return clampUnitFloat(
+    p.ambientDuckVolume ?? p.duckVolume ?? p.ambientVolume,
+    DEFAULT_AMBIENT_DUCK_VOLUME,
+  );
 }
 
 function parseTrackRows(raw: string): MusicTrack[] {
@@ -184,6 +213,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
   let stopTimerUntil = 0;
   let queue: MusicTrack[] = [];
   let fadeToken: { cancelled: boolean } | null = null;
+  let ambientDucking: AmbientDuckingSnapshot | null = null;
 
   function emitTrackChanged(track: Pick<NowPlaying, "title" | "artist" | "album">): void {
     ctx.emitEvent("music-shelf:track-changed", {
@@ -193,12 +223,43 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
     });
   }
 
+  function applyAmbientDucking(params?: unknown): void {
+    if (!shouldDuckAmbient(params) || ambientDucking !== null) return;
+    const current = ctx.ambientAudio.getState();
+    if (current.muted) return;
+    const duckedVolume = Math.min(current.volume, resolveAmbientDuckVolume(params));
+    if (duckedVolume >= current.volume) return;
+    ambientDucking = {
+      muted: current.muted,
+      volume: current.volume,
+      duckedVolume,
+    };
+    ctx.ambientAudio.setVolume(duckedVolume);
+  }
+
+  function restoreAmbientDucking(): void {
+    const snapshot = ambientDucking;
+    if (snapshot === null) return;
+    ambientDucking = null;
+    const current = ctx.ambientAudio.getState();
+    const stillDucked =
+      current.muted === snapshot.muted && Math.abs(current.volume - snapshot.duckedVolume) < 0.001;
+    if (!stillDucked) return;
+    ctx.ambientAudio.setMuted(snapshot.muted);
+    ctx.ambientAudio.setVolume(snapshot.volume);
+  }
+
+  function restoreAmbientDuckingUnlessPlaying(state: string): void {
+    if (state !== "playing") restoreAmbientDucking();
+  }
+
   async function playQueuedTrack(): Promise<MusicTrack | null> {
     const next = queue.shift();
     if (next === undefined) return null;
     const played = await playTrackById(ctx, next.id);
     if (played !== null) {
       last = { title: played.title, artist: played.artist, album: played.album, state: "playing" };
+      applyAmbientDucking();
       emitTrackChanged(last);
       ctx.emitEvent("music-shelf:state-changed", { state: "playing" });
     }
@@ -224,6 +285,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         if (now.state !== last.state) {
           ctx.emitEvent("music-shelf:state-changed", { state: now.state });
         }
+        restoreAmbientDuckingUnlessPlaying(now.state);
         last = now;
       })().catch(() => {});
     });
@@ -243,6 +305,8 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
           await tell(ctx, "play");
         }
         last = await fetchNowPlaying(ctx, { quiet: true });
+        if (last.state === "playing") applyAmbientDucking(p);
+        else restoreAmbientDucking();
         ctx.emitEvent("music-shelf:state-changed", { state: "playing" });
         return { ok: true, nowPlaying: last };
       },
@@ -251,11 +315,12 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         ensurePolling();
         await tell(ctx, "pause");
         last = { ...last, state: "paused" };
+        restoreAmbientDucking();
         ctx.emitEvent("music-shelf:state-changed", { state: "paused" });
         return { ok: true };
       },
 
-      music_next: async () => {
+      music_next: async (params) => {
         ensurePolling();
         const queued = await playQueuedTrack();
         if (queued !== null) return { ok: true, nowPlaying: { ...last } };
@@ -263,21 +328,26 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         // 少し待ってから曲情報を取得（切り替わりに若干のラグがある）
         await ctx.time.after(500);
         last = await fetchNowPlaying(ctx, { quiet: true });
+        if (last.state === "playing") applyAmbientDucking(params);
+        else restoreAmbientDucking();
         emitTrackChanged(last);
         return { ok: true, nowPlaying: last };
       },
 
-      music_previous: async () => {
+      music_previous: async (params) => {
         ensurePolling();
         await tell(ctx, "previous track");
         await ctx.time.after(500);
         last = await fetchNowPlaying(ctx, { quiet: true });
+        if (last.state === "playing") applyAmbientDucking(params);
+        else restoreAmbientDucking();
         emitTrackChanged(last);
         return { ok: true, nowPlaying: last };
       },
 
       music_now_playing: async () => {
         last = await fetchNowPlaying(ctx, { quiet: true });
+        restoreAmbientDuckingUnlessPlaying(last.state);
         if (last.state !== "playing" && last.state !== "paused") {
           return { state: last.state };
         }
@@ -324,6 +394,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
           album: played.album,
           state: "playing",
         };
+        applyAmbientDucking(p);
         emitTrackChanged(last);
         ctx.emitEvent("music-shelf:state-changed", { state: "playing" });
         return { ok: true, track: played, matches: tracks };
@@ -341,6 +412,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
           album: played.album,
           state: "playing",
         };
+        applyAmbientDucking(p);
         emitTrackChanged(last);
         ctx.emitEvent("music-shelf:state-changed", { state: "playing" });
         return { ok: true, track: played };
@@ -519,6 +591,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
         stopTimerUntil = ctx.time.now() + delayMs;
         stopTimer = ctx.time.schedule(delayMs, () => {
           void tell(ctx, action).finally(() => {
+            restoreAmbientDucking();
             stopTimer = null;
             stopTimerUntil = 0;
           });
@@ -530,6 +603,7 @@ function createMusicShelf(ctx: AmenityContext): AmenityHandle {
       poller?.cancel();
       stopTimer?.cancel();
       fadeToken = { cancelled: true };
+      restoreAmbientDucking();
     },
   };
 }
@@ -546,6 +620,8 @@ export default {
       parameters: {
         playlist: { type: "string", description: "プレイリスト名（省略で現在の曲を再生）" },
         shuffle: { type: "boolean", description: "シャッフル再生にするか" },
+        ambient: { type: "string", description: "duck / keep（省略時 duck）" },
+        ambientDuckVolume: { type: "number", description: "duck 時の環境音ボリューム（0.0-1.0）" },
       },
     },
     {
@@ -555,10 +631,18 @@ export default {
     {
       name: "music_next",
       description: "次の曲にスキップする",
+      parameters: {
+        ambient: { type: "string", description: "duck / keep（省略時 duck）" },
+        ambientDuckVolume: { type: "number", description: "duck 時の環境音ボリューム（0.0-1.0）" },
+      },
     },
     {
       name: "music_previous",
       description: "前の曲に戻る",
+      parameters: {
+        ambient: { type: "string", description: "duck / keep（省略時 duck）" },
+        ambientDuckVolume: { type: "number", description: "duck 時の環境音ボリューム（0.0-1.0）" },
+      },
     },
     {
       name: "music_now_playing",
@@ -583,6 +667,8 @@ export default {
       parameters: {
         query: { type: "string", description: "検索語" },
         limit: { type: "number", description: "候補として返す最大件数" },
+        ambient: { type: "string", description: "duck / keep（省略時 duck）" },
+        ambientDuckVolume: { type: "number", description: "duck 時の環境音ボリューム（0.0-1.0）" },
       },
     },
     {
@@ -590,6 +676,8 @@ export default {
       description: "検索結果の track id（persistent ID）を指定して再生する",
       parameters: {
         id: { type: "string", description: "music_search が返す track id" },
+        ambient: { type: "string", description: "duck / keep（省略時 duck）" },
+        ambientDuckVolume: { type: "number", description: "duck 時の環境音ボリューム（0.0-1.0）" },
       },
     },
     {

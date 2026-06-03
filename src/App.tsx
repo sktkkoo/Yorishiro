@@ -1,4 +1,6 @@
 import type {
+  AmbientAudioAPI,
+  AmbientAudioState,
   AmbientUiContext,
   Disposable,
   Trigger,
@@ -669,6 +671,9 @@ function FirstRunHealthPanel({
   );
 }
 
+const clampAmbientAudioVolume = (volume: number): number =>
+  Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
+
 function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
@@ -954,11 +959,25 @@ function App() {
       restore: (seq) => snapshotRestore({ seq }),
       confirm: (message) => ask(message, { title: "Charminal — 復元の確認", kind: "warning" }),
     });
+    let ambientAudioLiveState: AmbientAudioState = { muted: false, volume: 1 };
+    const ambientAudio: AmbientAudioAPI = {
+      getState: () => ambientAudioLiveState,
+      setMuted: (muted) => {
+        ambientAudioLiveState = { ...ambientAudioLiveState, muted };
+        ambientAudioEngineRef.current?.setMuted(muted);
+      },
+      setVolume: (volume) => {
+        const clamped = clampAmbientAudioVolume(volume);
+        ambientAudioLiveState = { ...ambientAudioLiveState, volume: clamped };
+        ambientAudioEngineRef.current?.setMasterVolume(clamped);
+      },
+    };
     // user amenity の activate に渡す ctx factory。historyApi を ctx.history に通す。
     // emitEvent は発火元 pack id（registryId）を source に stamp し、複数 amenity
     // の発火元が潰れないようにする。
     const createAmenityContext = createUserAmenityContextFactory({
       tweenManager: getThreeRuntime().getTweenManager(),
+      ambientAudio,
       emitEvent: (packId, name, payload) => {
         bus.emitSynthetic({ type: "system", packId }, name, payload, 0);
       },
@@ -1081,6 +1100,7 @@ function App() {
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
+        ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
         voiceFrequency = config.voiceFrequency;
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
@@ -1133,6 +1153,7 @@ function App() {
           bus.emitSynthetic({ type: "system", packId: "music-shelf" }, name, payload, 0);
         },
         history: historyApi,
+        ambientAudio,
         defaultEnabled: musicShelfDefaultEnabled,
       });
       appLog.write({
@@ -1149,8 +1170,8 @@ function App() {
       // 起きる（現状 default の simple-room は ambient:[] なので可聴ではないが、
       // 将来 default を音付き scene に変えた瞬間に boot 直後の audio pop に化ける）。
       ambientAudioEngineRef.current = initAmbientAudio(scenePackRegistry).engine;
-      ambientAudioEngineRef.current.setMuted(ambientAudioMuted);
-      ambientAudioEngineRef.current.setMasterVolume(ambientAudioVolume);
+      ambientAudio.setMuted(ambientAudioLiveState.muted);
+      ambientAudio.setVolume(ambientAudioLiveState.volume);
       appLog.write({
         phase: "register",
         note: "initialized AmbientAudioRuntime",
@@ -1748,6 +1769,7 @@ function App() {
       uiState,
       userLayerReady,
       createAmenityContext,
+      ambientAudio,
     };
   });
 
@@ -1767,6 +1789,7 @@ function App() {
     time,
     userLayerReady,
     createAmenityContext,
+    ambientAudio,
   } = runtime;
 
   // user layer load（bundled + user pack 登録、primaryPersona 反映）完了を待ってから
@@ -2546,14 +2569,15 @@ function App() {
           },
           setAmbientAudioMuted: async (muted) => {
             await updateConfig({ ambientAudioMuted: muted });
-            ambientAudioEngineRef.current?.setMuted(muted);
+            ambientAudio.setMuted(muted);
           },
           setActiveAmbientUi: async (ids) => {
             await updateActiveAmbientUi(ids);
           },
           setAmbientAudioVolume: async (volume) => {
-            await updateConfig({ ambientAudioVolume: volume });
-            ambientAudioEngineRef.current?.setMasterVolume(volume);
+            const clamped = clampAmbientAudioVolume(volume);
+            await updateConfig({ ambientAudioVolume: clamped });
+            ambientAudio.setVolume(clamped);
           },
           setLanguage: async (language) => {
             const next = pendingConfigWrite.then(async () => {
@@ -2750,6 +2774,7 @@ function App() {
     readBundledPacks,
     applyPresenceLevelFromApp,
     createAmenityContext,
+    ambientAudio,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

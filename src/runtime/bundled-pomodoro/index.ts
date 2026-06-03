@@ -13,6 +13,12 @@ import pomodoroPack, {
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 
+const FALLBACK_AMBIENT_AUDIO: AmenityContext["ambientAudio"] = {
+  getState: () => ({ muted: false, volume: 1 }),
+  setMuted: () => {},
+  setVolume: () => {},
+};
+
 export interface RegisterBundledPomodoroDeps {
   readonly registry: AmenityPackRegistry;
   readonly tweenManager: TweenManager;
@@ -55,6 +61,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
         deps.tweenManager.startVec3(`pomodoro:${key}`, to, durationMs, apply, options),
       cancel: (key) => deps.tweenManager.cancel(`pomodoro:${key}`),
     },
+    ambientAudio: FALLBACK_AMBIENT_AUDIO,
     system: {} as AmenityContext["system"],
     history: deps.history,
     log: { write: () => {}, tail: () => [], read: () => [] },

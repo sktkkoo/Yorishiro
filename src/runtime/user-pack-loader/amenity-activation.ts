@@ -13,6 +13,12 @@ import {
   normalizeRelativePath,
 } from "../scene-pack-registry/asset-resolver";
 
+const FALLBACK_AMBIENT_AUDIO: AmenityContext["ambientAudio"] = {
+  getState: () => ({ muted: false, volume: 1 }),
+  setMuted: () => {},
+  setVolume: () => {},
+};
+
 /** pack の出自。system.exec の利用可否を決める。 */
 export type PackSource = "local" | "bundled" | "curated" | "community";
 
@@ -26,6 +32,7 @@ export type AmenityContextFactory = (input: {
 
 export interface UserAmenityContextDeps {
   readonly tweenManager: TweenManager;
+  readonly ambientAudio?: AmenityContext["ambientAudio"];
   /**
    * synthetic event を投入する。第 1 引数に発火元 pack id を取る。
    * EventBus は source をそのまま stamp するので、全 amenity が同じ source に
@@ -75,6 +82,7 @@ export function createUserAmenityContextFactory(
         deps.tweenManager.startVec3(`${packId}:${key}`, to, durationMs, apply, options),
       cancel: (key) => deps.tweenManager.cancel(`${packId}:${key}`),
     },
+    ambientAudio: deps.ambientAudio ?? FALLBACK_AMBIENT_AUDIO,
     system: {
       exec: async (command: string, options?: ExecOptions) => {
         if (source === "community") {
