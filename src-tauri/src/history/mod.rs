@@ -403,6 +403,14 @@ pub(crate) fn snapshot_restore_impl(
             return Err(format!("restore path not allowed: {}", rel));
         }
     }
+
+    // 破壊的 restore の前に現状を 1 枚撮り、restore 自体を undo 可能にする（可逆性の土台・Scope A）。
+    // pre-restore は whole-home（SNAPSHOT_INCLUDES）を撮るので、部分 restore でも安全網は全体に効く。
+    // 撮影失敗は recovery を止めない（best-effort・log のみ。crash 復旧を pre-restore 失敗で塞がない）。
+    if let Err(e) = snapshot_create_impl(home_root, "pre-restore", None) {
+        eprintln!("[history] pre-restore snapshot failed: {}", e);
+    }
+
     for rel in &scope {
         restore_scope_entry(&gen_dir, &charminal, rel)?;
     }
@@ -556,6 +564,36 @@ mod tests {
         let idx = read_index(&home).unwrap();
         assert_eq!(idx.snapshots.len(), 1);
         assert_eq!(idx.snapshots[0].trigger, "manual");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_takes_pre_restore_snapshot_first() {
+        let home = tmp_home("pre-restore");
+        let charminal = home.join(".charminal");
+        fs::create_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("config.json"), "{\"v\":1}").unwrap();
+
+        // seq 1: 元の状態。
+        let seq1 = snapshot_create_impl(&home, "manual", None).unwrap();
+        assert_eq!(seq1, 1);
+
+        // live を変更（壊す想定）。
+        fs::write(charminal.join("config.json"), "{\"v\":2}").unwrap();
+
+        // seq 1 に戻す。戻す前に pre-restore が 1 枚撮られるはず。
+        snapshot_restore_impl(&home, seq1, None).unwrap();
+
+        // index に "pre-restore" entry がある（= restore 自体が undo 可能）。
+        let snaps = snapshot_list_impl(&home).unwrap();
+        assert!(
+            snaps.iter().any(|s| s.trigger == "pre-restore"),
+            "pre-restore snapshot must exist after restore"
+        );
+        // live は seq1 の内容（v:1）に戻っている。
+        let restored = fs::read_to_string(charminal.join("config.json")).unwrap();
+        assert_eq!(restored, "{\"v\":1}");
 
         let _ = fs::remove_dir_all(&home);
     }
