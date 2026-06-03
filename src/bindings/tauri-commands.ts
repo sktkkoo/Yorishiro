@@ -243,6 +243,7 @@ export interface SystemExecArgs {
     readonly env?: Record<string, string>;
     readonly timeoutMs?: number;
     readonly input?: string;
+    readonly quiet?: boolean;
   };
 }
 

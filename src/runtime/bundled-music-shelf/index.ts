@@ -11,11 +11,23 @@ import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 
+const FALLBACK_AMBIENT_AUDIO: AmenityContext["ambientAudio"] = {
+  getState: () => ({ muted: false, volume: 1 }),
+  setMuted: () => {},
+  setVolume: () => {},
+};
+
 export interface RegisterBundledMusicShelfDeps {
   readonly registry: AmenityPackRegistry;
   readonly tweenManager: TweenManager;
+  readonly ambientAudio?: AmenityContext["ambientAudio"];
   readonly emitEvent: (name: string, payload?: unknown) => void;
   readonly history: HistoryAPI;
+  /**
+   * true / undefined なら登録後に active にする。config.disabledPacks で明示的に
+   * disable されている場合だけ caller が false を渡す。
+   */
+  readonly defaultEnabled?: boolean;
 }
 
 export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
@@ -51,6 +63,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
         deps.tweenManager.startVec3(`music-shelf:${key}`, to, durationMs, apply, options),
       cancel: (key) => deps.tweenManager.cancel(`music-shelf:${key}`),
     },
+    ambientAudio: deps.ambientAudio ?? FALLBACK_AMBIENT_AUDIO,
     system: {
       exec: async (command: string, options?: ExecOptions) => {
         const result = await systemExec({
@@ -62,6 +75,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
                 env: options.env,
                 timeoutMs: options.timeoutMs,
                 input: options.input,
+                quiet: options.quiet,
               }
             : undefined,
         });
@@ -118,8 +132,9 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
       handle,
     });
 
-    // default-off: enable() を呼ばない。ユーザーが enable_pack で明示的に有効化する。
-    // pomodoro と異なり system.exec を使う amenity は opt-in。
+    if (deps.defaultEnabled !== false) {
+      deps.registry.enable(musicShelfPack.id);
+    }
 
     abortController.signal.addEventListener("abort", () => {
       registration.dispose();

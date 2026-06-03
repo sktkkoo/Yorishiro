@@ -19,6 +19,27 @@
 import type { ReactionEvent } from "./reaction";
 import type { HistoryAPI } from "./history";
 
+// ─── AmbientAudioAPI ───────────────────────────────────────
+
+/** Scene pack の `ambient` 宣言で鳴る環境音の live state。 */
+export interface AmbientAudioState {
+  readonly muted: boolean;
+  /** 環境音の live マスターボリューム（0.0-1.0）。 */
+  readonly volume: number;
+}
+
+/**
+ * Amenity から scene ambient sound を一時制御する API。
+ *
+ * 設定ファイルを書き換える永続設定ではなく、現在の runtime mix だけに効く。
+ * 一時的な ducking / restore など、機能設備の lifecycle に紐づく用途で使う。
+ */
+export interface AmbientAudioAPI {
+  getState(): AmbientAudioState;
+  setMuted(muted: boolean): void;
+  setVolume(volume: number): void;
+}
+
 // ─── PersonaContext ────────────────────────────────────────
 
 /**
@@ -128,6 +149,7 @@ export interface AmenityContext {
   emitEvent(name: string, payload?: unknown): void;
 
   readonly tween: TweenAPI;
+  readonly ambientAudio: AmbientAudioAPI;
   readonly system: SystemAPI;
   /**
    * Pack rollback の history（list / snapshot / restore）。functional capability
@@ -610,6 +632,11 @@ export interface ExecOptions {
   env?: Record<string, string>;
   timeoutMs?: number;
   input?: string;
+  /**
+   * Suppress stdout/stderr audit lines for expected high-frequency successful calls.
+   * Errors, timeouts, and non-zero exits are still logged by the host.
+   */
+  quiet?: boolean;
 }
 
 export interface ExecResult {
