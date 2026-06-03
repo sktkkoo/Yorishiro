@@ -163,7 +163,8 @@ export function createClaiPersona(args: {
         } satisfies Trigger,
 
         // 設定画面 UI pack が config write 等に失敗した時に流す synthetic event。
-        // user-visible feedback の主役は persona の distressed reaction（顔を顰める + screen-shake）。
+        // user-visible feedback は persona の表情に留める。screen-shake は app が壊れた
+        // ように見えるため、設定 UI の recoverable write error では使わない。
         // 詳細 reason は dev log / console.error に残るが、user 画面には出さない。
         // Internal design-record: specs/2026-04-25-settings-screen-design.md §5
         {
@@ -187,7 +188,7 @@ export function createClaiPersona(args: {
         distressed: {
           handlers: [
             {
-              label: "frown-and-shake",
+              label: "frown-on-settings-write-failed",
               handler: async (ctx: PersonaContext) => {
                 // 観察: どの tool / command がこの reaction を駆動したかを dev-log に残す。
                 // user が「error じゃないのに shake」と感じたケースを特定するため。
@@ -199,16 +200,7 @@ export function createClaiPersona(args: {
                   data: ctx.event.payload,
                 });
 
-                // 顔を顰める
                 const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
-                // 画面全体（ターミナル含む）が短く揺れる。
-                // terminal の物理約束事を一瞬だけ破る — Charm 思想に近い強さ。
-                // 軽い揺れ（"shake" = character 範囲のみ）は別 kind として用意してある。
-                ctx.space.injectEffect({
-                  kind: "screen-shake",
-                  intensity: 0.35,
-                  durationMs: 500,
-                });
 
                 // 2.5 秒後にゆっくり戻す
                 await ctx.time.after(2500);
