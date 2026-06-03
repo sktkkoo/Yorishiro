@@ -35,6 +35,10 @@ pub struct SnapshotEntry {
     /// にだけ付く。古い index.json は field 不在なので default で None。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup_clean: Option<bool>,
+    /// この snapshot で変わった pack/ファイルの帰属（Scope C）。watcher-settled に付く。
+    /// 各要素は pack id（`packs/<id>`）か "config.json" / "init.js"。古い index は None。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub changed: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -140,6 +144,16 @@ pub(crate) fn snapshot_create_impl(
     trigger: &str,
     label: Option<&str>,
 ) -> Result<u64, String> {
+    snapshot_create_with_changed_impl(home_root, trigger, label, None)
+}
+
+/// `snapshot_create_impl` に「変わった pack/ファイルの帰属（changed）」を添えられる版（Scope C）。
+pub(crate) fn snapshot_create_with_changed_impl(
+    home_root: &Path,
+    trigger: &str,
+    label: Option<&str>,
+    changed: Option<Vec<String>>,
+) -> Result<u64, String> {
     // index の read-modify-write を直列化（Finding #2）。poison しても続行する。
     let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let charminal = charminal_dir(home_root);
@@ -186,6 +200,7 @@ pub(crate) fn snapshot_create_impl(
         trigger: trigger.to_string(),
         label: label.map(|s| s.to_string()),
         startup_clean: None,
+        changed,
     });
     write_index(home_root, &index)?;
     Ok(seq)
@@ -403,6 +418,14 @@ pub(crate) fn snapshot_restore_impl(
             return Err(format!("restore path not allowed: {}", rel));
         }
     }
+
+    // 破壊的 restore の前に現状を 1 枚撮り、restore 自体を undo 可能にする（可逆性の土台・Scope A）。
+    // pre-restore は whole-home（SNAPSHOT_INCLUDES）を撮るので、部分 restore でも安全網は全体に効く。
+    // 撮影失敗は recovery を止めない（best-effort・log のみ。crash 復旧を pre-restore 失敗で塞がない）。
+    if let Err(e) = snapshot_create_impl(home_root, "pre-restore", None) {
+        eprintln!("[history] pre-restore snapshot failed: {}", e);
+    }
+
     for rel in &scope {
         restore_scope_entry(&gen_dir, &charminal, rel)?;
     }
@@ -516,6 +539,7 @@ mod tests {
             trigger: "manual".into(),
             label: None,
             startup_clean: None,
+            changed: None,
         });
         write_index(&home, &idx).expect("write");
 
@@ -556,6 +580,63 @@ mod tests {
         let idx = read_index(&home).unwrap();
         assert_eq!(idx.snapshots.len(), 1);
         assert_eq!(idx.snapshots[0].trigger, "manual");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_takes_pre_restore_snapshot_first() {
+        let home = tmp_home("pre-restore");
+        let charminal = home.join(".charminal");
+        fs::create_dir_all(charminal.join("packs/foo")).unwrap();
+        fs::write(charminal.join("config.json"), "{\"v\":1}").unwrap();
+
+        // seq 1: 元の状態。
+        let seq1 = snapshot_create_impl(&home, "manual", None).unwrap();
+        assert_eq!(seq1, 1);
+
+        // live を変更（壊す想定）。
+        fs::write(charminal.join("config.json"), "{\"v\":2}").unwrap();
+
+        // seq 1 に戻す。戻す前に pre-restore が 1 枚撮られるはず。
+        snapshot_restore_impl(&home, seq1, None).unwrap();
+
+        // index に "pre-restore" entry がある（= restore 自体が undo 可能）。
+        let snaps = snapshot_list_impl(&home).unwrap();
+        let pre_restore_seq = snaps
+            .iter()
+            .find(|s| s.trigger == "pre-restore")
+            .map(|s| s.seq)
+            .expect("pre-restore snapshot must exist after restore");
+        // live は seq1 の内容（v:1）に戻っている。
+        let restored = fs::read_to_string(charminal.join("config.json")).unwrap();
+        assert_eq!(restored, "{\"v\":1}");
+
+        // pre-restore 自体に戻せるので、restore 操作は実際に undo 可能。
+        snapshot_restore_impl(&home, pre_restore_seq, None).unwrap();
+        let undone = fs::read_to_string(charminal.join("config.json")).unwrap();
+        assert_eq!(undone, "{\"v\":2}");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn snapshot_create_with_changed_records_scope() {
+        let home = tmp_home("snap-changed");
+        let charminal = home.join(".charminal");
+        fs::write(charminal.join("config.json"), "{}").unwrap();
+
+        let seq = snapshot_create_with_changed_impl(
+            &home,
+            "watcher-settled",
+            None,
+            Some(vec!["my-theme".to_string()]),
+        )
+        .unwrap();
+        assert_eq!(seq, 1);
+
+        let snaps = snapshot_list_impl(&home).unwrap();
+        assert_eq!(snaps[0].changed, Some(vec!["my-theme".to_string()]));
 
         let _ = fs::remove_dir_all(&home);
     }

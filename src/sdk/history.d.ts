@@ -24,6 +24,8 @@ export interface SnapshotEntry {
   readonly label?: string;
   /** 直前 startup が clean だったかの advisory ラベル（startup-baseline のみ付く）。 */
   readonly startup_clean?: boolean;
+  /** この snapshot で変わった pack id / "config.json" / "init.js"（Scope C, watcher-settled に付く）。 */
+  readonly changed?: readonly string[];
 }
 
 export interface HistoryAPI {

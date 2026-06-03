@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeSnapshot, recommendedRestoreSeq } from "./describe-snapshot";
+import { describeChange, describeSnapshot, recommendedRestoreSeq } from "./describe-snapshot";
 
 describe("describeSnapshot", () => {
   const now = 600_000; // 10 分（ms）
@@ -49,5 +49,69 @@ describe("recommendedRestoreSeq", () => {
         { seq: 7, ts_ms: 0, trigger: "startup-baseline" },
       ]),
     ).toBe(8);
+  });
+});
+
+describe("describeChange", () => {
+  const s = {
+    changedOnePack: (id: string) => `「${id}」を変更`,
+    changedManyPacks: (n: number) => `${n}個のpackを変更`,
+    changedConfig: "設定を変更",
+    changedInit: "init.js を変更",
+    changedMixed: (n: number) => `${n}個の変更`,
+    changeStartup: "起動時",
+    changeManual: "AIが記録",
+    changeUnknown: "変更",
+  };
+
+  it("one pack", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["my-theme"] }, s),
+    ).toBe("「my-theme」を変更");
+  });
+
+  it("config only", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["config.json"] }, s),
+    ).toBe("設定を変更");
+  });
+
+  it("init only", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["init.js"] }, s),
+    ).toBe("init.js を変更");
+  });
+
+  it("many packs", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "b"] }, s),
+    ).toBe("2個のpackを変更");
+  });
+
+  it("mixed pack + config", () => {
+    expect(
+      describeChange(
+        { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "config.json"] },
+        s,
+      ),
+    ).toBe("2個の変更");
+  });
+
+  it("baseline fallback when changed absent", () => {
+    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "startup-baseline" }, s)).toBe("起動時");
+  });
+
+  it("mcp label fallback when changed absent", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "mcp:snapshot", label: "夜にする前" }, s),
+    ).toBe("夜にする前");
+  });
+
+  it("mcp manual fallback when label absent", () => {
+    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "mcp:snapshot" }, s)).toBe("AIが記録");
+  });
+
+  it("unknown fallback when changed and label absent", () => {
+    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "pre-restore" }, s)).toBe("変更");
   });
 });
