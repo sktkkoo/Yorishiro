@@ -13,10 +13,14 @@ import {
   normalizeRelativePath,
 } from "../scene-pack-registry/asset-resolver";
 
+/** pack の出自。system.exec の利用可否を決める。 */
+export type PackSource = "local" | "bundled" | "curated" | "community";
+
 /** user amenity の activate に渡す AmenityContext を組む factory。 */
 export type AmenityContextFactory = (input: {
   readonly packId: string;
   readonly packDir: string;
+  readonly source: PackSource;
   readonly signal: AbortSignal;
 }) => AmenityContext;
 
@@ -39,7 +43,7 @@ export interface UserAmenityContextDeps {
 export function createUserAmenityContextFactory(
   deps: UserAmenityContextDeps,
 ): AmenityContextFactory {
-  return ({ packId, packDir, signal }) => ({
+  return ({ packId, packDir, source, signal }) => ({
     time: {
       now: () => Date.now(),
       after: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
@@ -73,6 +77,11 @@ export function createUserAmenityContextFactory(
     },
     system: {
       exec: async (command: string, options?: ExecOptions) => {
+        if (source === "community") {
+          throw new Error(
+            "system.exec is not available for community packs. Use isolated-js with capability RPC.",
+          );
+        }
         const result = await systemExec({
           packId,
           command,
@@ -168,7 +177,12 @@ export async function activateAndRegisterAmenity(
     args;
   const abort = new AbortController();
   const packDir = entryPath.substring(0, entryPath.lastIndexOf("/"));
-  const ctx = createAmenityContext({ packId: registryId, packDir, signal: abort.signal });
+  const ctx = createAmenityContext({
+    packId: registryId,
+    packDir,
+    source: "local",
+    signal: abort.signal,
+  });
   const handle = await def.activate(ctx);
   const registration = amenityPackRegistry.register({
     id: registryId,

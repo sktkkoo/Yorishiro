@@ -30,6 +30,7 @@ describe("createUserAmenityContextFactory", () => {
     const ctx = factory({
       packId: "my-amenity",
       packDir: "/tmp/packs/my-amenity",
+      source: "local",
       signal: controller.signal,
     });
 
