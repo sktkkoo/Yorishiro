@@ -6,17 +6,19 @@
 
 <p align="center"><strong>A body for the AI in your terminal.</strong></p>
 
-<p align="center"><sub><strong>Charm</strong>inal = <strong>Char</strong>acter + Ter<strong>minal</strong> + <strong>Charm</strong></sub></p>
+<p align="center"><sub>Charminal = Character + Terminal + Charm</sub></p>
 
-Charminal is a desktop app that gives a body to the AI running inside your terminal. The entire app — terminal included — is treated as the character's living space.
+Charminal is a terminal that gives AI a body and a living space. It is not a character chat app or a secretary app. The entire application — terminal included — is treated as a space the character inhabits.
 
-Claude Code or Codex runs inside. While the AI is deep in thought, a 3D character lets its gaze wander. When an error hits, the face grimaces before the AI puts it into words. Sometimes the character just moves on its own, for no reason at all. Instead of a spinner, someone is there.
+Claude Code launches automatically inside the terminal. When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
 
-The inhabitant can control the world it lives in — switching scenes, triggering expressions and effects. Users can also reshape everything just by talking to the inhabitant: personality, space, reactions. All while the app is running, without stopping it.
+The inhabitant can directly manipulate the environment it lives in — switching scenes, changing the lighting, rearranging the UI. Users can manipulate the same environment.
 
-There is something we once saw in science fiction and anime — an AI partner who moves freely inside the screen, manipulates the UI, and helps you. This project is trying to build that experience.
+Nearly everything in Charminal beyond the core is extensible and modifiable through units called packs. Just by talking to the inhabitant, Charminal rewrites itself — not only the inhabitant's appearance and personality, but the entire space including the UI. If you don't like the result, one click reverts it.
 
-Much of Charminal's own development has been done as a collaboration with the AI running on Charminal itself.
+Much of Charminal's own development has been done as a collaboration with the inhabitant running on Charminal itself.
+
+There is something we once saw in science fiction and anime — an AI as a partner. Moving freely inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
 > [日本語版 README はこちら](README.ja.md)
 
