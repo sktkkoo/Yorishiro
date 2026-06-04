@@ -1,4 +1,5 @@
 import type { FixedTerminalPromptKey } from "@charminal/sdk";
+import type { RestoreConfirmStrings } from "../components/RestoreConfirmDialog";
 import type { ChangeStrings } from "../runtime/history/describe-snapshot";
 import type { ResolvedLanguage } from "../runtime/language/language";
 
@@ -48,6 +49,13 @@ export interface UiStrings {
   readonly restoreConfirmTitle: string;
   readonly restoreConfirmIntro: string;
   readonly restoreConfirmDetail: string;
+  readonly restoreConfirmBody: string;
+  readonly restoreConfirmButton: string;
+  readonly restoreConfirmCancel: string;
+  readonly restoreConfirmRestoring: string;
+  readonly restoreConfirmDone: string;
+  readonly restoreConfirmClose: string;
+  readonly restoreConfirmRetry: string;
   readonly restoreDone: string;
   readonly restoreFailed: string;
   readonly restoreCrashTitle: string;
@@ -128,10 +136,17 @@ const EN: UiStrings = {
   restoreLatestTag: "(current state)",
   restoreRecommendedTag: "★recommended",
   restoreButton: "Restore this",
-  restoreConfirmTitle: "Charminal — Confirm restore",
+  restoreConfirmTitle: "Restore this snapshot?",
   restoreConfirmIntro: "Restore ~/.charminal to the selected snapshot?",
-  restoreConfirmDetail:
-    "This full-replaces packs / config.json / init.js and reloads the app (journal is not changed).",
+  restoreConfirmDetail: "This full-replaces packs / config.json / init.js and reloads the app.",
+  restoreConfirmBody:
+    "Restore to {change} ({time}). This full-replaces packs / config.json / init.js and reloads the app.",
+  restoreConfirmButton: "Restore",
+  restoreConfirmCancel: "Cancel",
+  restoreConfirmRestoring: "Restoring...",
+  restoreConfirmDone: "Restored. Reloading...",
+  restoreConfirmClose: "Close",
+  restoreConfirmRetry: "Retry",
   restoreDone: "Restored to snapshot #{seq}. Reloading…",
   restoreFailed: "Restore failed",
   restoreCrashTitle: "Restore to the state before the latest change",
@@ -212,10 +227,17 @@ const JA: UiStrings = {
   restoreLatestTag: "（今の状態）",
   restoreRecommendedTag: "★推奨",
   restoreButton: "この状態に戻す",
-  restoreConfirmTitle: "Charminal — 復元の確認",
+  restoreConfirmTitle: "この snapshot に戻しますか？",
   restoreConfirmIntro: "選んだ snapshot に ~/.charminal を戻しますか？",
-  restoreConfirmDetail:
-    "packs / config.json / init.js を完全置換し、アプリを再読み込みします（journal は変更しません）。",
+  restoreConfirmDetail: "packs / config.json / init.js を完全置換し、アプリを再読み込みします。",
+  restoreConfirmBody:
+    "{change}（{time}）に戻します。packs / config.json / init.js を置き換え、アプリを再読み込みします。",
+  restoreConfirmButton: "戻す",
+  restoreConfirmCancel: "やめる",
+  restoreConfirmRestoring: "戻しています...",
+  restoreConfirmDone: "戻しました。再読み込みします...",
+  restoreConfirmClose: "閉じる",
+  restoreConfirmRetry: "再試行",
   restoreDone: "snapshot #{seq} の状態に戻しました。再読み込みします。",
   restoreFailed: "復元に失敗しました",
   restoreCrashTitle: "最新変更前の状態に戻す",
@@ -269,6 +291,21 @@ export function changeStrings(s: UiStrings): ChangeStrings {
     changeStartupError: s.changeStartupError,
     changeManual: s.changeManual,
     changeUnknown: s.changeUnknown,
+  };
+}
+
+/** `UiStrings` から restore confirm overlay 用の focused interface を作る。 */
+export function restoreConfirmStrings(s: UiStrings): RestoreConfirmStrings {
+  return {
+    title: s.restoreConfirmTitle,
+    body: s.restoreConfirmBody,
+    cancel: s.restoreConfirmCancel,
+    confirm: s.restoreConfirmButton,
+    restoring: s.restoreConfirmRestoring,
+    done: s.restoreConfirmDone,
+    failed: s.restoreFailed,
+    close: s.restoreConfirmClose,
+    retry: s.restoreConfirmRetry,
   };
 }
 

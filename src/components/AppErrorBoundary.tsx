@@ -1,10 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import React from "react";
 import { snapshotList, snapshotRestore } from "../bindings/tauri-commands";
-import { changeStrings, getStrings, type UiStrings } from "../i18n/strings";
+import { changeStrings, getStrings, restoreConfirmStrings, type UiStrings } from "../i18n/strings";
 import { buildRestoreRows } from "../runtime/history/describe-snapshot";
 import { getBrowserLocales, resolveLanguage } from "../runtime/language/language";
 import type { SnapshotEntry } from "../sdk/history";
+import { RestoreConfirmDialog } from "./RestoreConfirmDialog";
 
 interface AppErrorBoundaryProps {
   readonly children: React.ReactNode;
@@ -16,7 +17,13 @@ interface AppErrorBoundaryState {
   readonly homeDir: string | null;
   readonly copied: boolean;
   readonly snapshots: ReadonlyArray<SnapshotEntry> | null;
-  readonly restoring: boolean;
+  readonly restoreTarget: RestoreDialogTarget | null;
+}
+
+interface RestoreDialogTarget {
+  readonly seq: number;
+  readonly changeText: string;
+  readonly timeText: string;
 }
 
 function formatError(error: Error, errorInfo: React.ErrorInfo | null): string {
@@ -40,7 +47,7 @@ export class AppErrorBoundary extends React.Component<
     homeDir: null,
     copied: false,
     snapshots: null,
-    restoring: false,
+    restoreTarget: null,
   };
 
   static getDerivedStateFromError(error: Error): Partial<AppErrorBoundaryState> {
@@ -58,39 +65,8 @@ export class AppErrorBoundary extends React.Component<
       .catch(() => this.setState({ snapshots: [] }));
   }
 
-  private async handleRestore(seq: number): Promise<void> {
-    // dialog は dynamic import（App.tsx と同パターン）。
-    const { ask, message } = await import("@tauri-apps/plugin-dialog");
-    const { strings } = crashRestoreStrings();
-    const approved = await ask(
-      `${strings.restoreConfirmIntro}（#${seq}）\n${strings.restoreConfirmDetail}`,
-      { title: strings.restoreConfirmTitle, kind: "warning" },
-    );
-    if (!approved) return;
-    this.setState({ restoring: true });
-    try {
-      await snapshotRestore({ seq });
-      // append-only なので list の番号では戻ったか分かりにくい。明示的に確認を出す。
-      await message(strings.restoreDone.replace("{seq}", String(seq)), {
-        title: "Charminal",
-        kind: "info",
-      });
-      // reload で config/init.js の変更も再適用される（restart-required を満たす）。
-      window.location.reload();
-    } catch (err) {
-      this.setState({ restoring: false });
-      void message(
-        `${strings.restoreFailed}: ${err instanceof Error ? err.message : String(err)}`,
-        {
-          title: "Charminal",
-          kind: "error",
-        },
-      );
-    }
-  }
-
   private renderRestoreSection(): React.ReactNode {
-    const { snapshots, restoring } = this.state;
+    const { restoreTarget, snapshots } = this.state;
     if (snapshots === null || snapshots.length === 0) return null;
     const { locale, strings } = crashRestoreStrings();
     const rows = buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale);
@@ -135,8 +111,16 @@ export class AppErrorBoundary extends React.Component<
               {row.isLatest ? null : (
                 <button
                   type="button"
-                  disabled={restoring}
-                  onClick={() => void this.handleRestore(row.seq)}
+                  disabled={restoreTarget !== null}
+                  onClick={() =>
+                    this.setState({
+                      restoreTarget: {
+                        seq: row.seq,
+                        changeText: row.changeText,
+                        timeText: row.timeText,
+                      },
+                    })
+                  }
                 >
                   {strings.restoreButton}
                 </button>
@@ -144,6 +128,17 @@ export class AppErrorBoundary extends React.Component<
             </li>
           ))}
         </ul>
+        {restoreTarget ? (
+          <RestoreConfirmDialog
+            seq={restoreTarget.seq}
+            changeText={restoreTarget.changeText}
+            timeText={restoreTarget.timeText}
+            surface="crash"
+            strings={restoreConfirmStrings(strings)}
+            onClose={() => this.setState({ restoreTarget: null })}
+            onConfirm={() => snapshotRestore({ seq: restoreTarget.seq })}
+          />
+        ) : null}
       </div>
     );
   }

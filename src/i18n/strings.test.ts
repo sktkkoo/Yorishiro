@@ -6,6 +6,7 @@ import {
   getStrings,
   resolveFixedTerminalPrompt,
   resolvePackRepairPrompt,
+  restoreConfirmStrings,
 } from "./strings";
 
 const FIXED_PROMPT_KEYS = ["help", "tutorial", "shortcut", "create-pack", "pomodoro"] as const;
@@ -107,6 +108,22 @@ describe("changeStrings", () => {
     expect(s.changeStartupError).toBe("起動エラーが出た時");
     expect(s.changeManual).toBe("AIが記録");
     expect(s.changeUnknown).toBe("変更");
+  });
+});
+
+describe("restoreConfirmStrings", () => {
+  it("builds overlay copy without app prefix or journal wording", () => {
+    for (const language of ["en", "ja"] as const) {
+      const ui = getStrings(language);
+      const s = restoreConfirmStrings(ui);
+      expect(s.title).toBe(ui.restoreConfirmTitle);
+      expect(s.title).not.toContain("Charminal");
+      expect(s.body).not.toMatch(/journal/i);
+      expect(ui.restoreConfirmDetail).not.toMatch(/journal/i);
+      expect(s.confirm).toBe(ui.restoreConfirmButton);
+      expect(s.cancel).toBe(ui.restoreConfirmCancel);
+      expect(s.failed).toBe(ui.restoreFailed);
+    }
   });
 });
 

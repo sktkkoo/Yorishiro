@@ -39,7 +39,13 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { snapshotList, snapshotRestore } from "../../../src/bindings/tauri-commands";
-import { changeStrings, getStrings, type UiStrings } from "../../../src/i18n/strings";
+import { RestoreConfirmDialog } from "../../../src/components/RestoreConfirmDialog";
+import {
+  changeStrings,
+  getStrings,
+  restoreConfirmStrings,
+  type UiStrings,
+} from "../../../src/i18n/strings";
 import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import {
   isBundledClaiPersonaId,
@@ -67,6 +73,12 @@ const QUICK_ACTION_KEYS: ReadonlyArray<{
   { key: "create-pack", stringKey: "quickCreatePack" },
   { key: "pomodoro", stringKey: "quickPomodoro" },
 ];
+
+interface RestoreDialogTarget {
+  readonly seq: number;
+  readonly changeText: string;
+  readonly timeText: string;
+}
 
 export interface ResolveCloseTargetArgs {
   readonly saved: string | null;
@@ -1020,7 +1032,7 @@ function SnapshotRestoreSection({
   const [open, setOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<ReadonlyArray<SnapshotEntry> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [restoring, setRestoring] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<RestoreDialogTarget | null>(null);
 
   const refresh = useCallback(() => {
     setLoading(true);
@@ -1033,35 +1045,6 @@ function SnapshotRestoreSection({
   useEffect(() => {
     if (open && snapshots === null) refresh();
   }, [open, snapshots, refresh]);
-
-  const handleRestore = useCallback(
-    async (seq: number) => {
-      // dialog は dynamic import（AppErrorBoundary / App.tsx と同パターン）。
-      const { ask, message } = await import("@tauri-apps/plugin-dialog");
-      const approved = await ask(
-        `${strings.restoreConfirmIntro}（#${seq}）\n${strings.restoreConfirmDetail}`,
-        { title: strings.restoreConfirmTitle, kind: "warning" },
-      );
-      if (!approved) return;
-      setRestoring(true);
-      try {
-        await snapshotRestore({ seq });
-        // append-only なので list の番号では戻ったか分かりにくい。明示的に確認を出す。
-        await message(strings.restoreDone.replace("{seq}", String(seq)), {
-          title: "Charminal",
-          kind: "info",
-        });
-        window.location.reload();
-      } catch (err) {
-        setRestoring(false);
-        void message(
-          `${strings.restoreFailed}: ${err instanceof Error ? err.message : String(err)}`,
-          { title: "Charminal", kind: "error" },
-        );
-      }
-    },
-    [strings],
-  );
 
   const rows = snapshots
     ? buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale)
@@ -1123,8 +1106,14 @@ function SnapshotRestoreSection({
         {row.isLatest ? null : (
           <button
             type="button"
-            disabled={restoring}
-            onClick={() => void handleRestore(row.seq)}
+            disabled={restoreTarget !== null}
+            onClick={() =>
+              setRestoreTarget({
+                seq: row.seq,
+                changeText: row.changeText,
+                timeText: row.timeText,
+              })
+            }
             style={{
               flexShrink: 0,
               border: `1px solid ${COLORS.borderSubtle}`,
@@ -1134,8 +1123,8 @@ function SnapshotRestoreSection({
               font: "inherit",
               fontSize: FONT.sizeXs,
               padding: `${SPACING.xs} ${SPACING.sm}`,
-              cursor: restoring ? "default" : "pointer",
-              opacity: restoring ? 0.5 : 1,
+              cursor: restoreTarget ? "default" : "pointer",
+              opacity: restoreTarget ? 0.5 : 1,
             }}
           >
             {strings.restoreButton}
@@ -1230,6 +1219,17 @@ function SnapshotRestoreSection({
           </div>
         </>
       )}
+      {restoreTarget ? (
+        <RestoreConfirmDialog
+          seq={restoreTarget.seq}
+          changeText={restoreTarget.changeText}
+          timeText={restoreTarget.timeText}
+          surface="themed"
+          strings={restoreConfirmStrings(strings)}
+          onClose={() => setRestoreTarget(null)}
+          onConfirm={() => snapshotRestore({ seq: restoreTarget.seq })}
+        />
+      ) : null}
     </section>
   );
 }
