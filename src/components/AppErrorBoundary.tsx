@@ -98,14 +98,17 @@ export class AppErrorBoundary extends React.Component<
     if (snapshots === null || snapshots.length === 0) return null;
     const { locale, strings } = crashRestoreStrings();
     const rows = buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale);
+    const recommendedText = strings.restoreCrashRecommendedText.replace(
+      "{tag}",
+      strings.restoreRecommendedTag,
+    );
     return (
       <div className="app-error-boundary-restore">
-        <h2>最新変更前の状態に戻す</h2>
+        <h2>{strings.restoreCrashTitle}</h2>
         <p>
-          壊れた pack が原因なら、<strong>最新の変更前（★推奨）</strong>に戻すと復旧できる
-          ことがあります。最新の snapshot は「変更後＝現在の状態」なので、戻しても症状が
-          変わらない場合があります。journal は変更しません。config.json / init.js
-          を含む復元はアプリを再読み込みします。
+          {strings.restoreCrashIntroPrefix}
+          <strong>{recommendedText}</strong>
+          {strings.restoreCrashIntroSuffix}
         </p>
         <ul>
           {rows.map((row) => (
@@ -136,7 +139,7 @@ export class AppErrorBoundary extends React.Component<
                   disabled={restoring}
                   onClick={() => void this.handleRestore(row.seq)}
                 >
-                  この状態に戻す
+                  {strings.restoreButton}
                 </button>
               )}
             </li>

@@ -11,7 +11,7 @@ const changeText = {
   changedManyPacks: (n: number) => `${n}個のpackを変更`,
   changedConfig: "設定を変更",
   changedInit: "init.js を変更",
-  changedMixed: (n: number) => `${n}個の変更`,
+  changedMixed: (n: number) => `${n}件の変更`,
   changeStartup: "起動時",
   changeManual: "AIが記録",
   changeUnknown: "変更",
@@ -109,7 +109,7 @@ describe("describeChange", () => {
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "config.json"] },
         changeText,
       ),
-    ).toBe("2個の変更");
+    ).toBe("2件の変更");
   });
 
   it("baseline fallback when changed absent", () => {

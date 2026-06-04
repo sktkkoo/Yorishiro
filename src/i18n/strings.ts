@@ -52,6 +52,10 @@ export interface UiStrings {
   readonly restoreConfirmDetail: string;
   readonly restoreDone: string;
   readonly restoreFailed: string;
+  readonly restoreCrashTitle: string;
+  readonly restoreCrashIntroPrefix: string;
+  readonly restoreCrashRecommendedText: string;
+  readonly restoreCrashIntroSuffix: string;
   readonly changedOnePack: string;
   readonly changedManyPacks: string;
   readonly changedConfig: string;
@@ -133,6 +137,11 @@ const EN: UiStrings = {
     "This full-replaces packs / config.json / init.js and reloads the app (journal is not changed).",
   restoreDone: "Restored to snapshot #{seq}. Reloading…",
   restoreFailed: "Restore failed",
+  restoreCrashTitle: "Restore to the state before the latest change",
+  restoreCrashIntroPrefix: "If a broken pack caused the crash, restoring to ",
+  restoreCrashRecommendedText: "the state before the latest change ({tag})",
+  restoreCrashIntroSuffix:
+    " can recover Charminal. The latest snapshot is the state after the change, so restoring it may not change the crash. journal is not changed. Restoring config.json / init.js reloads the app.",
   changedOnePack: 'Changed "{id}"',
   changedManyPacks: "Changed {n} packs",
   changedConfig: "Changed settings",
@@ -213,6 +222,11 @@ const JA: UiStrings = {
     "packs / config.json / init.js を完全置換し、アプリを再読み込みします（journal は変更しません）。",
   restoreDone: "snapshot #{seq} の状態に戻しました。再読み込みします。",
   restoreFailed: "復元に失敗しました",
+  restoreCrashTitle: "最新変更前の状態に戻す",
+  restoreCrashIntroPrefix: "壊れた pack が原因なら、",
+  restoreCrashRecommendedText: "最新の変更前（{tag}）",
+  restoreCrashIntroSuffix:
+    "に戻すと復旧できることがあります。最新の snapshot は「変更後＝現在の状態」なので、戻しても症状が変わらない場合があります。journal は変更しません。config.json / init.js を含む復元はアプリを再読み込みします。",
   changedOnePack: "「{id}」を変更",
   changedManyPacks: "{n}個のpackを変更",
   changedConfig: "設定を変更",
