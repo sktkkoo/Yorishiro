@@ -40,10 +40,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { snapshotList, snapshotRestore } from "../../../src/bindings/tauri-commands";
 import { changeStrings, getStrings, type UiStrings } from "../../../src/i18n/strings";
-import {
-  buildRestoreRows,
-  type StartupStatus,
-} from "../../../src/runtime/history/describe-snapshot";
+import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
@@ -1069,8 +1066,6 @@ function SnapshotRestoreSection({
   const rows = snapshots
     ? buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale)
     : [];
-  const startupTag = (status: StartupStatus) =>
-    status === "clean" ? strings.restoreStartupCleanTag : strings.restoreStartupErrorTag;
   let listContent: React.ReactNode;
   if (snapshots === null) {
     listContent = (
@@ -1110,24 +1105,18 @@ function SnapshotRestoreSection({
             lineHeight: 1.45,
           }}
         >
-          <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{row.changeText}</span>
+          <span
+            style={{
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              color: row.startupStatus === "error" ? COLORS.statusWarning : undefined,
+            }}
+          >
+            {row.changeText}
+          </span>
           <span style={{ color: COLORS.fgDimmer }}>· {row.timeText}</span>
           {row.isLatest ? (
             <span style={{ color: COLORS.fgDimmer }}>{strings.restoreLatestTag}</span>
-          ) : null}
-          {row.startupStatus ? (
-            <span
-              style={{
-                flexShrink: 0,
-                border: `1px solid ${COLORS.borderSubtle}`,
-                borderRadius: RADIUS.sm,
-                color: row.startupStatus === "error" ? COLORS.statusWarning : COLORS.fgDimmer,
-                padding: "1px 5px",
-                lineHeight: 1.35,
-              }}
-            >
-              {startupTag(row.startupStatus)}
-            </span>
           ) : null}
         </span>
         {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}

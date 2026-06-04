@@ -2,7 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import React from "react";
 import { snapshotList, snapshotRestore } from "../bindings/tauri-commands";
 import { changeStrings, getStrings, type UiStrings } from "../i18n/strings";
-import { buildRestoreRows, type StartupStatus } from "../runtime/history/describe-snapshot";
+import { buildRestoreRows } from "../runtime/history/describe-snapshot";
 import { getBrowserLocales, resolveLanguage } from "../runtime/language/language";
 import type { SnapshotEntry } from "../sdk/history";
 
@@ -28,10 +28,6 @@ function formatError(error: Error, errorInfo: React.ErrorInfo | null): string {
 function crashRestoreStrings(): { readonly locale: string; readonly strings: UiStrings } {
   const locale = resolveLanguage("auto", getBrowserLocales());
   return { locale, strings: getStrings(locale) };
-}
-
-function startupStatusTag(strings: UiStrings, status: StartupStatus): string {
-  return status === "clean" ? strings.restoreStartupCleanTag : strings.restoreStartupErrorTag;
 }
 
 export class AppErrorBoundary extends React.Component<
@@ -114,16 +110,19 @@ export class AppErrorBoundary extends React.Component<
           {rows.map((row) => (
             <li key={row.seq} className={row.isRecommended ? "is-recommended" : undefined}>
               <span className="app-error-boundary-restore-row-text">
-                <span>{row.changeText}</span>
+                <span
+                  className={
+                    row.startupStatus === "error"
+                      ? "app-error-boundary-restore-row-change is-error"
+                      : "app-error-boundary-restore-row-change"
+                  }
+                >
+                  {row.changeText}
+                </span>
                 <span className="app-error-boundary-restore-row-time">· {row.timeText}</span>
                 {row.isLatest ? (
                   <span className="app-error-boundary-restore-row-time">
                     {strings.restoreLatestTag}
-                  </span>
-                ) : null}
-                {row.startupStatus ? (
-                  <span className={`app-error-boundary-restore-badge is-${row.startupStatus}`}>
-                    {startupStatusTag(strings, row.startupStatus)}
                   </span>
                 ) : null}
                 {row.isRecommended ? (

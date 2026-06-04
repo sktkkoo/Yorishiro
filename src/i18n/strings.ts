@@ -44,8 +44,6 @@ export interface UiStrings {
   readonly restoreEmpty: string;
   readonly restoreLatestTag: string;
   readonly restoreRecommendedTag: string;
-  readonly restoreStartupCleanTag: string;
-  readonly restoreStartupErrorTag: string;
   readonly restoreButton: string;
   readonly restoreConfirmTitle: string;
   readonly restoreConfirmIntro: string;
@@ -62,6 +60,7 @@ export interface UiStrings {
   readonly changedInit: string;
   readonly changedMixed: string;
   readonly changeStartup: string;
+  readonly changeStartupError: string;
   readonly changeManual: string;
   readonly changeUnknown: string;
   readonly healthHealthy: string;
@@ -128,8 +127,6 @@ const EN: UiStrings = {
   restoreEmpty: "No snapshots yet.",
   restoreLatestTag: "(current state)",
   restoreRecommendedTag: "★recommended",
-  restoreStartupCleanTag: "Started cleanly",
-  restoreStartupErrorTag: "Startup error",
   restoreButton: "Restore this",
   restoreConfirmTitle: "Charminal — Confirm restore",
   restoreConfirmIntro: "Restore ~/.charminal to the selected snapshot?",
@@ -148,6 +145,7 @@ const EN: UiStrings = {
   changedInit: "Changed init.js",
   changedMixed: "{n} changes",
   changeStartup: "At startup",
+  changeStartupError: "Startup error",
   changeManual: "Marked by AI",
   changeUnknown: "Changed",
   healthHealthy: "Healthy",
@@ -213,8 +211,6 @@ const JA: UiStrings = {
   restoreEmpty: "まだ snapshot がありません。",
   restoreLatestTag: "（今の状態）",
   restoreRecommendedTag: "★推奨",
-  restoreStartupCleanTag: "起動OK",
-  restoreStartupErrorTag: "起動エラー",
   restoreButton: "この状態に戻す",
   restoreConfirmTitle: "Charminal — 復元の確認",
   restoreConfirmIntro: "選んだ snapshot に ~/.charminal を戻しますか？",
@@ -232,7 +228,8 @@ const JA: UiStrings = {
   changedConfig: "設定を変更",
   changedInit: "init.js を変更",
   changedMixed: "{n}件の変更",
-  changeStartup: "起動時",
+  changeStartup: "起動した時",
+  changeStartupError: "起動エラーが出た時",
   changeManual: "AIが記録",
   changeUnknown: "変更",
   healthHealthy: "正常",
@@ -269,6 +266,7 @@ export function changeStrings(s: UiStrings): ChangeStrings {
     changedInit: s.changedInit,
     changedMixed: (n) => s.changedMixed.replace("{n}", String(n)),
     changeStartup: s.changeStartup,
+    changeStartupError: s.changeStartupError,
     changeManual: s.changeManual,
     changeUnknown: s.changeUnknown,
   };

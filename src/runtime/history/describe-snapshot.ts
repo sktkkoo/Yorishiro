@@ -98,6 +98,7 @@ export interface ChangeStrings {
   readonly changedInit: string;
   readonly changedMixed: (n: number) => string;
   readonly changeStartup: string;
+  readonly changeStartupError: string;
   readonly changeManual: string;
   readonly changeUnknown: string;
 }
@@ -110,7 +111,9 @@ export interface ChangeStrings {
 export function describeChange(entry: SnapshotEntry, s: ChangeStrings): string {
   const changed = entry.changed ?? [];
   if (changed.length === 0) {
-    if (entry.trigger === "startup-baseline") return s.changeStartup;
+    if (entry.trigger === "startup-baseline") {
+      return entry.startup_clean === false ? s.changeStartupError : s.changeStartup;
+    }
     if (entry.trigger === "mcp:snapshot") return entry.label ?? s.changeManual;
     return entry.label ?? s.changeUnknown;
   }
@@ -125,7 +128,7 @@ export function describeChange(entry: SnapshotEntry, s: ChangeStrings): string {
   return s.changedMixed(changed.length);
 }
 
-export type StartupStatus = "clean" | "error";
+export type StartupStatus = "error";
 
 /** restore 一覧の 1 行。表示要素を構造化して、UI 側で落ち着いた行に組む。 */
 export interface RestoreRow {
@@ -140,7 +143,6 @@ export interface RestoreRow {
 }
 
 function startupStatus(entry: SnapshotEntry): StartupStatus | null {
-  if (entry.startup_clean === true) return "clean";
   if (entry.startup_clean === false) return "error";
   return null;
 }

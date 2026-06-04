@@ -91,6 +91,7 @@ describe("changeStrings", () => {
     expect(s.changedInit).toBe("Changed init.js");
     expect(s.changedMixed(2)).toBe("2 changes");
     expect(s.changeStartup).toBe("At startup");
+    expect(s.changeStartupError).toBe("Startup error");
     expect(s.changeManual).toBe("Marked by AI");
     expect(s.changeUnknown).toBe("Changed");
   });
@@ -102,7 +103,8 @@ describe("changeStrings", () => {
     expect(s.changedConfig).toBe("設定を変更");
     expect(s.changedInit).toBe("init.js を変更");
     expect(s.changedMixed(2)).toBe("2件の変更");
-    expect(s.changeStartup).toBe("起動時");
+    expect(s.changeStartup).toBe("起動した時");
+    expect(s.changeStartupError).toBe("起動エラーが出た時");
     expect(s.changeManual).toBe("AIが記録");
     expect(s.changeUnknown).toBe("変更");
   });

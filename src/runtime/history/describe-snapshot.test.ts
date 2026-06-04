@@ -12,7 +12,8 @@ const changeText = {
   changedConfig: "設定を変更",
   changedInit: "init.js を変更",
   changedMixed: (n: number) => `${n}件の変更`,
-  changeStartup: "起動時",
+  changeStartup: "起動した時",
+  changeStartupError: "起動エラーが出た時",
   changeManual: "AIが記録",
   changeUnknown: "変更",
 };
@@ -114,7 +115,31 @@ describe("describeChange", () => {
 
   it("baseline fallback when changed absent", () => {
     expect(describeChange({ seq: 1, ts_ms: 0, trigger: "startup-baseline" }, changeText)).toBe(
-      "起動時",
+      "起動した時",
+    );
+  });
+
+  it("startup error folds health into the text", () => {
+    expect(
+      describeChange(
+        { seq: 1, ts_ms: 0, trigger: "startup-baseline", startup_clean: false },
+        changeText,
+      ),
+    ).toBe("起動エラーが出た時");
+  });
+
+  it("startup clean is just the plain startup text", () => {
+    expect(
+      describeChange(
+        { seq: 1, ts_ms: 0, trigger: "startup-baseline", startup_clean: true },
+        changeText,
+      ),
+    ).toBe("起動した時");
+  });
+
+  it("startup unknown is just the plain startup text", () => {
+    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "startup-baseline" }, changeText)).toBe(
+      "起動した時",
     );
   });
 
@@ -155,7 +180,7 @@ describe("buildRestoreRows", () => {
     expect(rows[0].isRecommended).toBe(false); // 最新（壊れている可能性）は既定にしない
     expect(rows[1].changeText).toBe("設定を変更");
     expect(rows[1].timeText).toBe("1分前");
-    expect(rows[2].startupStatus).toBe("clean");
+    expect(rows[2].startupStatus).toBeNull();
     expect(rows[1].isLatest).toBe(false);
     expect(rows[1].isRecommended).toBe(true); // 1 つ前が推奨
   });
