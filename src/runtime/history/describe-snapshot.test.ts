@@ -8,9 +8,9 @@ import {
 
 const changeText = {
   changedOnePack: (id: string) => `「${id}」を変更`,
-  changedManyPacks: (n: number) => `${n}個のpackを変更`,
+  changedManyPacks: (n: number) => `${n}個の変更`,
   changedConfig: "設定を変更",
-  changedInit: "init.js を変更",
+  changedInit: "起動時の動作を変更",
   changedMixed: (n: number) => `${n}件の変更`,
   changeStartup: "起動した時",
   changeStartupError: "起動エラーが出た時",
@@ -92,7 +92,7 @@ describe("describeChange", () => {
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["init.js"] },
         changeText,
       ),
-    ).toBe("init.js を変更");
+    ).toBe("起動時の動作を変更");
   });
 
   it("many packs", () => {
@@ -101,7 +101,7 @@ describe("describeChange", () => {
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "b"] },
         changeText,
       ),
-    ).toBe("2個のpackを変更");
+    ).toBe("2個の変更");
   });
 
   it("mixed pack + config", () => {

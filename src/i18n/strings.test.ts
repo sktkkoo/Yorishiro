@@ -87,9 +87,9 @@ describe("changeStrings", () => {
   it("builds English ChangeStrings from UiStrings templates", () => {
     const s = changeStrings(getStrings("en"));
     expect(s.changedOnePack("theme")).toBe('Changed "theme"');
-    expect(s.changedManyPacks(3)).toBe("Changed 3 packs");
+    expect(s.changedManyPacks(3)).toBe("3 changes");
     expect(s.changedConfig).toBe("Changed settings");
-    expect(s.changedInit).toBe("Changed init.js");
+    expect(s.changedInit).toBe("Changed startup behavior");
     expect(s.changedMixed(2)).toBe("2 changes");
     expect(s.changeStartup).toBe("At startup");
     expect(s.changeStartupError).toBe("Startup error");
@@ -100,9 +100,9 @@ describe("changeStrings", () => {
   it("builds Japanese ChangeStrings from UiStrings templates", () => {
     const s = changeStrings(getStrings("ja"));
     expect(s.changedOnePack("theme")).toBe("「theme」を変更");
-    expect(s.changedManyPacks(3)).toBe("3個のpackを変更");
+    expect(s.changedManyPacks(3)).toBe("3個の変更");
     expect(s.changedConfig).toBe("設定を変更");
-    expect(s.changedInit).toBe("init.js を変更");
+    expect(s.changedInit).toBe("起動時の動作を変更");
     expect(s.changedMixed(2)).toBe("2件の変更");
     expect(s.changeStartup).toBe("起動した時");
     expect(s.changeStartupError).toBe("起動エラーが出た時");
@@ -118,8 +118,11 @@ describe("restoreConfirmStrings", () => {
       const s = restoreConfirmStrings(ui);
       expect(s.title).toBe(ui.restoreConfirmTitle);
       expect(s.title).not.toContain("Charminal");
+      expect(s.title).not.toMatch(/snapshot/i);
       expect(s.body).not.toMatch(/journal/i);
+      expect(s.body).not.toMatch(/pack|config\.json|init\.js/i);
       expect(ui.restoreConfirmDetail).not.toMatch(/journal/i);
+      expect(ui.restoreConfirmDetail).not.toMatch(/pack|config\.json|init\.js/i);
       expect(s.confirm).toBe(ui.restoreConfirmButton);
       expect(s.cancel).toBe(ui.restoreConfirmCancel);
       expect(s.failed).toBe(ui.restoreFailed);
