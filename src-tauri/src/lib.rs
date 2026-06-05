@@ -1448,17 +1448,17 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
             Some(std::path::Component::Normal(id)) => is_user_pack_id(id),
             _ => false,
         },
-        // config.json / init.js は top-level の単一成分のみ対象。
-        Some(std::path::Component::Normal(seg)) if seg == "config.json" || seg == "init.js" => {
-            comps.next().is_none()
-        }
+        // init.js は top-level の単一成分のみ対象。
+        // config.json は設定 UI から個別に戻せるため watcher snapshot の対象外。
+        Some(std::path::Component::Normal(seg)) if seg == "init.js" => comps.next().is_none(),
         _ => false,
     }
 }
 
 /// 変更 path から「変わった pack/ファイル」の帰属トークンを導出する（Scope C）。
-/// `packs/<id>/...` → "<id>"、top-level `config.json` / `init.js` → その名前、
+/// `packs/<id>/...` → "<id>"、top-level `init.js` → その名前、
 /// それ以外（packs 直下のみ・対象外 path）→ None。is_snapshot_relevant_path と対。
+/// config.json は設定 UI から個別に戻せるため対象外。
 pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option<String> {
     if has_snapshot_ignored_component(charminal_home, path) {
         return None;
@@ -1472,9 +1472,6 @@ pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option
             }
             _ => None,
         },
-        std::path::Component::Normal(seg) if seg == "config.json" => {
-            comps.next().is_none().then(|| "config.json".to_string())
-        }
         std::path::Component::Normal(seg) if seg == "init.js" => {
             comps.next().is_none().then(|| "init.js".to_string())
         }
@@ -2216,11 +2213,12 @@ mod layer_scope_tests {
             home,
             std::path::Path::new("/Users/x/.charminal/packs/foo/.effect.js.resttmp")
         ));
-        // top-level の config.json / init.js は対象。
-        assert!(is_snapshot_relevant_path(
+        // config.json は設定 UI から個別に戻せるため対象外。
+        assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/config.json")
         ));
+        // init.js は対象。
         assert!(is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/init.js")
@@ -2266,7 +2264,7 @@ mod layer_scope_tests {
         );
         assert_eq!(
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/config.json")),
-            Some("config.json".to_string())
+            None
         );
         assert_eq!(
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/init.js")),
@@ -2317,7 +2315,7 @@ mod layer_scope_tests {
     }
 
     #[test]
-    fn collect_changed_scopes_records_config_init_and_returns_none_when_empty() {
+    fn collect_changed_scopes_records_init_and_returns_none_when_empty() {
         let home = Path::new("/Users/x/.charminal");
         let paths = [
             Path::new("/Users/x/.charminal/packs/theme/scene.js"),
@@ -2327,11 +2325,7 @@ mod layer_scope_tests {
 
         assert_eq!(
             collect_changed_scopes(home, paths),
-            Some(vec![
-                "config.json".to_string(),
-                "init.js".to_string(),
-                "theme".to_string(),
-            ])
+            Some(vec!["init.js".to_string(), "theme".to_string()])
         );
         assert_eq!(
             collect_changed_scopes(
@@ -2351,7 +2345,7 @@ mod layer_scope_tests {
         let mut last = None;
         let now = Instant::now();
         let theme = Some(vec!["theme".to_string()]);
-        let settings = Some(vec!["config.json".to_string()]);
+        let init = Some(vec!["init.js".to_string()]);
 
         assert!(should_create_watcher_snapshot(&mut last, &theme, now));
         assert!(!should_create_watcher_snapshot(
@@ -2361,12 +2355,12 @@ mod layer_scope_tests {
         ));
         assert!(should_create_watcher_snapshot(
             &mut last,
-            &settings,
+            &init,
             now + Duration::from_millis(60)
         ));
         assert!(should_create_watcher_snapshot(
             &mut last,
-            &settings,
+            &init,
             now + Duration::from_secs(1)
         ));
     }
