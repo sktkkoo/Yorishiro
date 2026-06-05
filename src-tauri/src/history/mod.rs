@@ -92,6 +92,36 @@ pub(crate) fn write_index(home_root: &Path, index: &HistoryIndex) -> Result<(), 
     Ok(())
 }
 
+/// 直前 snapshot が startup-baseline で、かつ一定時間以内ならスキップ。
+/// 頻繁な reload で同内容の baseline が積み重なるのを防ぐ。
+pub(crate) fn should_skip_baseline(home_root: &Path, window_ms: u64) -> bool {
+    let Ok(index) = read_index(home_root) else {
+        return false;
+    };
+    let Some(latest) = index.snapshots.iter().max_by_key(|entry| entry.seq) else {
+        return false;
+    };
+    if latest.trigger != "startup-baseline" {
+        return false;
+    }
+    let Some(second) = index
+        .snapshots
+        .iter()
+        .filter(|entry| entry.seq < latest.seq)
+        .max_by_key(|entry| entry.seq)
+    else {
+        // baseline しか無い（初回起動直後の reload）→ 時間で判定
+        return now_ms().saturating_sub(latest.ts_ms) <= window_ms;
+    };
+    // 直前 baseline と、その前の snapshot の間に watcher-settled（= pack/init.js の実変更）が
+    // 無ければ、reload しても中身は同じなのでスキップ。
+    if second.trigger == "startup-baseline" || second.trigger == "pre-restore" {
+        return now_ms().saturating_sub(latest.ts_ms) <= window_ms;
+    }
+    // 間に watcher-settled が挟まっている場合は、変更があったので baseline を作る。
+    false
+}
+
 pub(crate) fn restore_quiet_period_active(home_root: &Path, window_ms: u64) -> bool {
     let Ok(index) = read_index(home_root) else {
         return false;
@@ -605,6 +635,80 @@ mod tests {
         )
         .expect("write old pre-restore");
         assert!(!restore_quiet_period_active(&home, 5_000));
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn should_skip_baseline_deduplicates_consecutive_baselines() {
+        let home = tmp_home("skip-baseline");
+        let mut idx = HistoryIndex::default();
+
+        // baseline 1 つだけ、直近 → スキップ
+        idx.snapshots.push(SnapshotEntry {
+            seq: 1,
+            ts_ms: now_ms(),
+            trigger: "startup-baseline".into(),
+            label: None,
+            startup_clean: None,
+            changed: None,
+        });
+        write_index(&home, &idx).expect("write");
+        assert!(should_skip_baseline(&home, 60_000));
+
+        // 間に watcher-settled が挟まる → スキップしない（実変更あり）
+        idx.snapshots.push(SnapshotEntry {
+            seq: 2,
+            ts_ms: now_ms(),
+            trigger: "watcher-settled".into(),
+            label: None,
+            startup_clean: None,
+            changed: Some(vec!["my-theme".into()]),
+        });
+        idx.snapshots.push(SnapshotEntry {
+            seq: 3,
+            ts_ms: now_ms(),
+            trigger: "startup-baseline".into(),
+            label: None,
+            startup_clean: None,
+            changed: None,
+        });
+        write_index(&home, &idx).expect("write");
+        assert!(!should_skip_baseline(&home, 60_000));
+
+        // baseline → baseline（連続 reload）→ スキップ
+        let mut idx2 = HistoryIndex::default();
+        idx2.snapshots.push(SnapshotEntry {
+            seq: 4,
+            ts_ms: now_ms(),
+            trigger: "startup-baseline".into(),
+            label: None,
+            startup_clean: None,
+            changed: None,
+        });
+        idx2.snapshots.push(SnapshotEntry {
+            seq: 5,
+            ts_ms: now_ms(),
+            trigger: "startup-baseline".into(),
+            label: None,
+            startup_clean: None,
+            changed: None,
+        });
+        write_index(&home, &idx2).expect("write");
+        assert!(should_skip_baseline(&home, 60_000));
+
+        // 古い baseline（window 超過）→ スキップしない
+        let mut idx3 = HistoryIndex::default();
+        idx3.snapshots.push(SnapshotEntry {
+            seq: 6,
+            ts_ms: now_ms().saturating_sub(120_000),
+            trigger: "startup-baseline".into(),
+            label: None,
+            startup_clean: None,
+            changed: None,
+        });
+        write_index(&home, &idx3).expect("write");
+        assert!(!should_skip_baseline(&home, 60_000));
 
         let _ = fs::remove_dir_all(&home);
     }
