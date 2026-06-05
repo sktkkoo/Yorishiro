@@ -13,6 +13,8 @@ $ARGUMENTS
 
 既存 pack の編集フロー。user が「ここを直したい」「性格を変えたい」「scene の色を変えたい」と言ったとき、対象 pack を特定し、安全に編集して hot reload で反映する。
 
+壊れそうな変更や複数ファイルにまたがる編集の前には `history_snapshot(label)` を呼び、何をなぜ試すのかが user にも分かる短い label（例: 「夜に使いやすい暗い見た目を試す」）を付ける。復元 UI はこの label を復元地点と直後の変更の主なサマリーとして使う。
+
 ## 対象 pack の特定
 
 1. `list_packs()` MCP tool で現在 loaded な pack を確認する
