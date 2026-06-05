@@ -95,7 +95,9 @@ export class AppErrorBoundary extends React.Component<
                 >
                   {row.changeText}
                 </span>
-                <span className="app-error-boundary-restore-row-time">· {row.timeText}</span>
+                <span className="app-error-boundary-restore-row-time">
+                  · {row.timeText} · {row.timeAbsolute}
+                </span>
                 {row.isLatest ? (
                   <span className="app-error-boundary-restore-row-time">
                     {strings.restoreLatestTag}
@@ -104,6 +106,11 @@ export class AppErrorBoundary extends React.Component<
                 {row.isRecommended ? (
                   <span className="app-error-boundary-restore-recommended">
                     {strings.restoreRecommendedTag}
+                  </span>
+                ) : null}
+                {row.changedItems.length > 0 ? (
+                  <span className="app-error-boundary-restore-row-detail">
+                    {row.changedItems.join(", ")}
                   </span>
                 ) : null}
               </span>

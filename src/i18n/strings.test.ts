@@ -120,9 +120,9 @@ describe("restoreConfirmStrings", () => {
       expect(s.title).not.toContain("Charminal");
       expect(s.title).not.toMatch(/snapshot/i);
       expect(s.body).not.toMatch(/journal/i);
-      expect(s.body).not.toMatch(/pack|config\.json|init\.js/i);
+      expect(s.body).not.toMatch(/config\.json|init\.js|snapshot/i);
       expect(ui.restoreConfirmDetail).not.toMatch(/journal/i);
-      expect(ui.restoreConfirmDetail).not.toMatch(/pack|config\.json|init\.js/i);
+      expect(ui.restoreConfirmDetail).not.toMatch(/config\.json|init\.js|snapshot/i);
       expect(s.confirm).toBe(ui.restoreConfirmButton);
       expect(s.cancel).toBe(ui.restoreConfirmCancel);
       expect(s.failed).toBe(ui.restoreFailed);

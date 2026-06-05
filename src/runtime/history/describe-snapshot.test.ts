@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildRestoreRows,
   describeChange,
+  formatAbsoluteTime,
   formatSnapshotTime,
   recommendedRestoreSeq,
 } from "./describe-snapshot";
@@ -44,6 +45,20 @@ describe("formatSnapshotTime", () => {
   it("formats older days as month/day and time", () => {
     const older = new Date(2026, 5, 1, 9, 5, 0).getTime();
     expect(formatSnapshotTime(older, now, "ja-JP")).toBe("6/1 09:05");
+  });
+});
+
+describe("formatAbsoluteTime", () => {
+  const now = new Date(2026, 5, 3, 12, 0, 0).getTime();
+
+  it("formats same-year as month/day time", () => {
+    const ts = new Date(2026, 5, 1, 9, 5, 0).getTime();
+    expect(formatAbsoluteTime(ts, now, "ja-JP")).toBe("6/1 09:05");
+  });
+
+  it("includes year when crossing year boundary", () => {
+    const ts = new Date(2025, 11, 31, 23, 59, 0).getTime();
+    expect(formatAbsoluteTime(ts, now, "ja-JP")).toBe("2025/12/31 23:59");
   });
 });
 
@@ -175,6 +190,8 @@ describe("buildRestoreRows", () => {
     expect(rows.map((r) => r.seq)).toEqual([9, 8, 7]);
     expect(rows[0].changeText).toBe("「my-theme」を変更");
     expect(rows[0].timeText).toBe("たった今");
+    expect(rows[0].timeAbsolute).toMatch(/^\d+\/\d+ \d{2}:\d{2}$/);
+    expect(rows[0].changedItems).toEqual(["my-theme"]);
     expect(rows[0].startupStatus).toBeNull();
     expect(rows[0].isLatest).toBe(true);
     expect(rows[0].isRecommended).toBe(false); // 最新（壊れている可能性）は既定にしない

@@ -59,6 +59,30 @@ function isYesterday(tsMs: number, nowMs: number): boolean {
   );
 }
 
+/** 年をまたぐかどうかで年を含めるか判定し、絶対日時を返す。 */
+export function formatAbsoluteTime(tsMs: number, nowMs: number, locale: string): string {
+  const tsDate = new Date(tsMs);
+  const nowDate = new Date(nowMs);
+  if (tsDate.getFullYear() !== nowDate.getFullYear()) {
+    const parts = new Intl.DateTimeFormat(intlLocale(locale), {
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(tsDate)
+      .filter((part) => part.type !== "literal")
+      .reduce<Record<string, string>>((acc, part) => {
+        acc[part.type] = part.value;
+        return acc;
+      }, {});
+    return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
+  }
+  return formatMonthDayTime(tsMs, locale);
+}
+
 /**
  * snapshot の時刻を UI 行用に整形する純関数。
  * 24 時間未満は相対、24 時間以上は絶対日付に倒す。
@@ -135,6 +159,10 @@ export interface RestoreRow {
   readonly seq: number;
   readonly changeText: string;
   readonly timeText: string;
+  /** 絶対日時（月/日 HH:MM 形式）。相対時刻と並べて「いつの時点か」を常に読めるようにする。 */
+  readonly timeAbsolute: string;
+  /** snapshot の changed フィールド（pack 名 / init.js）。UI で詳細表示に使う。 */
+  readonly changedItems: ReadonlyArray<string>;
   readonly startupStatus: StartupStatus | null;
   /** snapshots[0]（変更後＝現在に近い状態）か。 */
   readonly isLatest: boolean;
@@ -164,6 +192,8 @@ export function buildRestoreRows(
     seq: entry.seq,
     changeText: describeChange(entry, s),
     timeText: formatSnapshotTime(entry.ts_ms, nowMs, locale),
+    timeAbsolute: formatAbsoluteTime(entry.ts_ms, nowMs, locale),
+    changedItems: entry.changed ?? [],
     startupStatus: startupStatus(entry),
     isLatest: index === 0,
     isRecommended: entry.seq === recommended,

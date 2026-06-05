@@ -1097,9 +1097,24 @@ function SnapshotRestoreSection({
           >
             {row.changeText}
           </span>
-          <span style={{ color: COLORS.fgDimmer }}>· {row.timeText}</span>
+          <span style={{ color: COLORS.fgDimmer }}>
+            · {row.timeText} · {row.timeAbsolute}
+          </span>
           {row.isLatest ? (
             <span style={{ color: COLORS.fgDimmer }}>{strings.restoreLatestTag}</span>
+          ) : null}
+          {row.changedItems.length > 0 ? (
+            <span
+              style={{
+                display: "block",
+                width: "100%",
+                color: COLORS.fgDimmer,
+                fontSize: "10px",
+                lineHeight: 1.3,
+              }}
+            >
+              {row.changedItems.join(", ")}
+            </span>
           ) : null}
         </span>
         {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}
