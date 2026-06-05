@@ -8,11 +8,12 @@ mod tts;
 use pty::{start_hook_server, PtyState};
 use sessions::{SessionRegistry, SpawnSpec};
 use std::collections::{BTreeSet, HashMap};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Cohabitation hours tracking の開始時刻を保持する managed state。
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
@@ -1328,9 +1329,20 @@ struct CharminalLayerEvent {
     mtime_ms: u64,
 }
 
+/// watcher-settled snapshot が index へ書き込まれた後に UI へ知らせる event。
+#[derive(Clone, serde::Serialize)]
+struct HistorySnapshotCreatedEvent {
+    seq: u64,
+    changed: Option<Vec<String>>,
+}
+
 /// File 1 枚の pending event（最後に届いた kind が勝つ）。
 type PendingMap = Arc<Mutex<HashMap<PathBuf, notify::EventKind>>>;
 type LayerEventFingerprint = (&'static str, u64);
+type WatcherSnapshotSignature = Option<Vec<String>>;
+
+const WATCHER_SNAPSHOT_DUPLICATE_WINDOW: Duration = Duration::from_millis(750);
+const RESTORE_WATCHER_QUIET_WINDOW: Duration = Duration::from_secs(5);
 
 struct WatcherHandle {
     /// Drop 時に OS watcher を畳む。
@@ -1397,6 +1409,28 @@ pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bo
     )
 }
 
+fn is_snapshot_ignored_component(seg: &OsStr) -> bool {
+    let name = seg.to_string_lossy();
+    name == ".DS_Store" || name.ends_with(".resttmp")
+}
+
+fn is_user_pack_id(seg: &OsStr) -> bool {
+    let id = seg.to_string_lossy();
+    !id.starts_with('.') && !id.ends_with(".resttmp")
+}
+
+fn has_snapshot_ignored_component(charminal_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(charminal_home) else {
+        return false;
+    };
+    rel.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Normal(seg) if is_snapshot_ignored_component(seg)
+        )
+    })
+}
+
 /// path が snapshot 対象（`packs/**` か top-level `config.json` か `init.js`）の
 /// 変更なら true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
 /// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`last-startup.json` 等は false。
@@ -1404,9 +1438,16 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
     let Ok(rel) = path.strip_prefix(charminal_home) else {
         return false;
     };
+    if has_snapshot_ignored_component(charminal_home, path) {
+        return false;
+    }
     let mut comps = rel.components();
     match comps.next() {
-        Some(std::path::Component::Normal(seg)) if seg == "packs" => true,
+        Some(std::path::Component::Normal(seg)) if seg == "packs" => match comps.next() {
+            None => false,
+            Some(std::path::Component::Normal(id)) => is_user_pack_id(id),
+            _ => false,
+        },
         // config.json / init.js は top-level の単一成分のみ対象。
         Some(std::path::Component::Normal(seg)) if seg == "config.json" || seg == "init.js" => {
             comps.next().is_none()
@@ -1419,11 +1460,16 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
 /// `packs/<id>/...` → "<id>"、top-level `config.json` / `init.js` → その名前、
 /// それ以外（packs 直下のみ・対象外 path）→ None。is_snapshot_relevant_path と対。
 pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option<String> {
+    if has_snapshot_ignored_component(charminal_home, path) {
+        return None;
+    }
     let rel = path.strip_prefix(charminal_home).ok()?;
     let mut comps = rel.components();
     match comps.next()? {
         std::path::Component::Normal(seg) if seg == "packs" => match comps.next() {
-            Some(std::path::Component::Normal(id)) => Some(id.to_string_lossy().to_string()),
+            Some(std::path::Component::Normal(id)) if is_user_pack_id(id) => {
+                Some(id.to_string_lossy().to_string())
+            }
             _ => None,
         },
         std::path::Component::Normal(seg) if seg == "config.json" => {
@@ -1486,6 +1532,22 @@ fn should_emit_layer_event(
     true
 }
 
+fn should_create_watcher_snapshot(
+    last: &mut Option<(WatcherSnapshotSignature, Instant)>,
+    changed: &WatcherSnapshotSignature,
+    now: Instant,
+) -> bool {
+    if let Some((last_changed, last_at)) = last.as_ref() {
+        if last_changed == changed
+            && now.duration_since(*last_at) < WATCHER_SNAPSHOT_DUPLICATE_WINDOW
+        {
+            return false;
+        }
+    }
+    *last = Some((changed.clone(), now));
+    true
+}
+
 /// 与えられた scope 内に `path` が収まることを確認し、mtime を ms で返す。
 /// 本関数は `stat_file_mtime` の pure 実装——cargo test で scope 挙動を verify
 /// するため tauri ランタイムから分離してある。
@@ -1526,6 +1588,7 @@ async fn stat_file_mtime(path: String) -> Result<u64, String> {
 /// する。
 #[tauri::command]
 async fn watch_charminal_layer(
+    app: AppHandle,
     state: State<'_, WatcherState>,
     on_event: Channel<CharminalLayerEvent>,
 ) -> Result<(), String> {
@@ -1568,9 +1631,11 @@ async fn watch_charminal_layer(
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
     let pending_bg = pending.clone();
     let channel = on_event;
+    let app_handle = app.clone();
 
     let thread = std::thread::spawn(move || {
         let mut last_emitted: HashMap<PathBuf, LayerEventFingerprint> = HashMap::new();
+        let mut last_watcher_snapshot: Option<(WatcherSnapshotSignature, Instant)> = None;
         loop {
             std::thread::sleep(Duration::from_millis(150));
             if matches!(
@@ -1631,14 +1696,37 @@ async fn watch_charminal_layer(
             // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
             if snapshot_relevant {
                 if let Some(home_root) = home.parent() {
+                    if history::restore_quiet_period_active(
+                        home_root,
+                        RESTORE_WATCHER_QUIET_WINDOW.as_millis() as u64,
+                    ) {
+                        continue;
+                    }
                     let changed = collect_changed_scopes(&home, changed_paths.iter());
+                    if !should_create_watcher_snapshot(
+                        &mut last_watcher_snapshot,
+                        &changed,
+                        Instant::now(),
+                    ) {
+                        continue;
+                    }
+                    let event_changed = changed.clone();
                     match history::snapshot_create_with_changed_impl(
                         home_root,
                         "watcher-settled",
                         None,
                         changed,
                     ) {
-                        Ok(_) => {
+                        Ok(seq) => {
+                            let event = HistorySnapshotCreatedEvent {
+                                seq,
+                                changed: event_changed,
+                            };
+                            if let Err(e) =
+                                app_handle.emit("charminal:history-snapshot-created", event)
+                            {
+                                eprintln!("[history] watcher-settled event emit failed: {}", e);
+                            }
                             if let Err(e) =
                                 history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
                             {
@@ -1937,12 +2025,14 @@ mod layer_scope_tests {
     use super::{
         collect_changed_scopes, command_candidate_names, is_history_internal_path,
         is_safe_mode_value, is_snapshot_relevant_path, layer_event_label,
-        read_last_startup_report_impl, resolve_command_path_impl, should_emit_layer_event,
-        snapshot_scope_token, stat_mtime_in_scope, write_charminal_file_atomic_impl,
+        read_last_startup_report_impl, resolve_command_path_impl, should_create_watcher_snapshot,
+        should_emit_layer_event, snapshot_scope_token, stat_mtime_in_scope,
+        write_charminal_file_atomic_impl,
     };
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
@@ -2108,10 +2198,23 @@ mod layer_scope_tests {
             home,
             std::path::Path::new("/Users/x/.charminal/packs/foo/effect.js")
         ));
-        // packs ディレクトリ自体の event も対象。
-        assert!(is_snapshot_relevant_path(
+        // packs ディレクトリ自体の mtime だけでは何が変わったかを説明できないため対象外。
+        assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/packs")
+        ));
+        // packs root の Finder dotfile は user-facing 変更ではない。
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/.DS_Store")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/..DS_Store.resttmp")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/foo/.effect.js.resttmp")
         ));
         // top-level の config.json / init.js は対象。
         assert!(is_snapshot_relevant_path(
@@ -2178,6 +2281,24 @@ mod layer_scope_tests {
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs")),
             None
         );
+        assert_eq!(
+            snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs/.DS_Store")),
+            None
+        );
+        assert_eq!(
+            snapshot_scope_token(
+                home,
+                Path::new("/Users/x/.charminal/packs/..DS_Store.resttmp")
+            ),
+            None
+        );
+        assert_eq!(
+            snapshot_scope_token(
+                home,
+                Path::new("/Users/x/.charminal/packs/foo/.scene.js.resttmp")
+            ),
+            None
+        );
     }
 
     #[test]
@@ -2218,10 +2339,36 @@ mod layer_scope_tests {
                 [
                     Path::new("/Users/x/.charminal/packs"),
                     Path::new("/Users/x/.charminal/journal/x.md"),
+                    Path::new("/Users/x/.charminal/packs/foo/.scene.js.resttmp"),
                 ],
             ),
             None
         );
+    }
+
+    #[test]
+    fn watcher_snapshot_suppresses_identical_short_bursts() {
+        let mut last = None;
+        let now = Instant::now();
+        let theme = Some(vec!["theme".to_string()]);
+        let settings = Some(vec!["config.json".to_string()]);
+
+        assert!(should_create_watcher_snapshot(&mut last, &theme, now));
+        assert!(!should_create_watcher_snapshot(
+            &mut last,
+            &theme,
+            now + Duration::from_millis(50)
+        ));
+        assert!(should_create_watcher_snapshot(
+            &mut last,
+            &settings,
+            now + Duration::from_millis(60)
+        ));
+        assert!(should_create_watcher_snapshot(
+            &mut last,
+            &settings,
+            now + Duration::from_secs(1)
+        ));
     }
 
     // ─── Phase 1-c: safe-mode / atomic write / load-report ────────

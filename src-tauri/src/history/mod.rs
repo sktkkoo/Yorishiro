@@ -92,6 +92,16 @@ pub(crate) fn write_index(home_root: &Path, index: &HistoryIndex) -> Result<(), 
     Ok(())
 }
 
+pub(crate) fn restore_quiet_period_active(home_root: &Path, window_ms: u64) -> bool {
+    let Ok(index) = read_index(home_root) else {
+        return false;
+    };
+    let Some(latest) = index.snapshots.iter().max_by_key(|entry| entry.seq) else {
+        return false;
+    };
+    latest.trigger == "pre-restore" && now_ms().saturating_sub(latest.ts_ms) <= window_ms
+}
+
 pub(crate) fn next_seq(index: &HistoryIndex) -> u64 {
     index.snapshots.iter().map(|s| s.seq).max().unwrap_or(0) + 1
 }
@@ -548,6 +558,53 @@ mod tests {
         assert_eq!(reread.snapshots.len(), 1);
         assert_eq!(reread.snapshots[0].seq, 1);
         assert_eq!(next_seq(&reread), 2);
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn restore_quiet_period_is_active_only_after_recent_pre_restore() {
+        let home = tmp_home("restore-quiet");
+        let mut idx = HistoryIndex::default();
+        idx.snapshots.push(SnapshotEntry {
+            seq: 1,
+            ts_ms: now_ms(),
+            trigger: "pre-restore".into(),
+            label: None,
+            startup_clean: None,
+            changed: None,
+        });
+        write_index(&home, &idx).expect("write pre-restore");
+        assert!(restore_quiet_period_active(&home, 5_000));
+
+        idx.snapshots.push(SnapshotEntry {
+            seq: 2,
+            ts_ms: now_ms(),
+            trigger: "watcher-settled".into(),
+            label: None,
+            startup_clean: None,
+            changed: Some(vec!["config.json".into()]),
+        });
+        write_index(&home, &idx).expect("write watcher");
+        assert!(!restore_quiet_period_active(&home, 5_000));
+
+        let old = now_ms().saturating_sub(10_000);
+        write_index(
+            &home,
+            &HistoryIndex {
+                version: 1,
+                snapshots: vec![SnapshotEntry {
+                    seq: 3,
+                    ts_ms: old,
+                    trigger: "pre-restore".into(),
+                    label: None,
+                    startup_clean: None,
+                    changed: None,
+                }],
+            },
+        )
+        .expect("write old pre-restore");
+        assert!(!restore_quiet_period_active(&home, 5_000));
 
         let _ = fs::remove_dir_all(&home);
     }
