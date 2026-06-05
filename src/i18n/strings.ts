@@ -138,9 +138,9 @@ const EN: UiStrings = {
   restoreConfirmTitle: "Restore to this point?",
   restoreConfirmIntro: "Restore Charminal to the selected point?",
   restoreConfirmDetail:
-    "This restores Charminal to that point in time. Appearance, settings, and startup behavior return to that point, and the app reloads.",
+    "This restores Charminal to that point in time. Packs, settings, and startup behavior return to that point, and the app reloads.",
   restoreConfirmBody:
-    "Restore to {change} ({time}). Appearance, settings, and startup behavior return to that point, and the app reloads.",
+    "Restore to {change} ({time}). Packs, settings, and startup behavior return to that point, and the app reloads.",
   restoreConfirmButton: "Restore",
   restoreConfirmCancel: "Cancel",
   restoreConfirmRestoring: "Restoring...",
@@ -229,9 +229,9 @@ const JA: UiStrings = {
   restoreConfirmTitle: "この時点に戻しますか？",
   restoreConfirmIntro: "選んだ時点に戻しますか？",
   restoreConfirmDetail:
-    "この時点の状態に戻します。見た目・設定・起動時の動作がその時点に戻り、アプリを再読み込みします。",
+    "この時点の状態に戻します。パック・設定・起動時の動作がその時点に戻り、アプリを再読み込みします。",
   restoreConfirmBody:
-    "{change}（{time}）に戻します。見た目・設定・起動時の動作がその時点に戻り、アプリを再読み込みします。",
+    "{change}（{time}）に戻します。パック・設定・起動時の動作がその時点に戻り、アプリを再読み込みします。",
   restoreConfirmButton: "戻す",
   restoreConfirmCancel: "やめる",
   restoreConfirmRestoring: "戻しています...",
