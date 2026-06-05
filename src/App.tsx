@@ -1100,6 +1100,40 @@ function App() {
     });
 
     async function bootstrap(): Promise<void> {
+      const syncAmbientUiActiveSet = (ids: ReadonlyArray<string>): void => {
+        const registry = getAmbientUiPackRegistry();
+        const knownIds = new Set(registry.listEntries().map((entry) => entry.id));
+        const nextActive = new Set(ids.filter((id) => knownIds.has(id)));
+        const currentActive = new Set(registry.getActiveSet());
+        for (const id of currentActive) {
+          if (!nextActive.has(id)) registry.disable(id);
+        }
+        for (const id of nextActive) {
+          if (!currentActive.has(id)) registry.enable(id);
+        }
+      };
+
+      const resyncAmbientUiActiveSetFromConfig = async (phase: string): Promise<void> => {
+        try {
+          const config = parseConfig(await readCharminalConfigText());
+          syncAmbientUiActiveSet(config.activeAmbientUi);
+          appLog.write({
+            phase,
+            note: "synced active ambient-ui picks",
+            data: {
+              activeAmbientUi: [...config.activeAmbientUi],
+              activeSet: getAmbientUiPackRegistry().getActiveSet(),
+            },
+          });
+        } catch (err) {
+          appLog.write({
+            phase,
+            note: "failed to sync active ambient-ui picks",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      };
+
       // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
       // try/catch は pack 単位。1 pack の asset 解決失敗で後続 pack の登録を巻き
       // 添えにしない（特に defaultBundledId が指す pack が先頭にあるため、
@@ -1192,9 +1226,7 @@ function App() {
         );
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
-        for (const id of config.activeAmbientUi) {
-          getAmbientUiPackRegistry().enable(id);
-        }
+        syncAmbientUiActiveSet(config.activeAmbientUi);
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -1271,6 +1303,7 @@ function App() {
             note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
             data: { packs: result.packs, init: result.init },
           });
+          await resyncAmbientUiActiveSetFromConfig("user-layer");
           return result;
         } catch (err) {
           appLog.write({
@@ -1484,6 +1517,8 @@ function App() {
               scene: scenePackRegistry.getActiveSceneId(),
               ui: uiPackRegistry.getActiveUiId(),
               persona: personaRegistry.getActivePersonaId(),
+              ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+              amenity: getAmenityPackRegistry().getActiveSet(),
             }),
           }),
           "pack-diagnose": createPackDiagnoseHandler({
@@ -1495,6 +1530,8 @@ function App() {
               scene: scenePackRegistry.getActiveSceneId(),
               ui: uiPackRegistry.getActiveUiId(),
               persona: personaRegistry.getActivePersonaId(),
+              ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+              amenity: getAmenityPackRegistry().getActiveSet(),
             }),
             readUserPackEntries: async () => invoke<UserPackEntry[]>("list_user_packs"),
           }),
@@ -2101,6 +2138,8 @@ function App() {
         scene: scenePackRegistry.getActiveSceneId(),
         ui: uiPackRegistry.getActiveUiId(),
         persona: personaRegistry.getActivePersonaId(),
+        ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+        amenity: getAmenityPackRegistry().getActiveSet(),
       }),
     })({});
     type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
@@ -2379,6 +2418,8 @@ function App() {
         scene: scenePackRegistry.getActiveSceneId(),
         ui: uiPackRegistry.getActiveUiId(),
         persona: personaRegistry.getActivePersonaId(),
+        ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+        amenity: getAmenityPackRegistry().getActiveSet(),
       }),
     });
 

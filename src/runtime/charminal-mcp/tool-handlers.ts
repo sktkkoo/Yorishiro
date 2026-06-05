@@ -57,13 +57,15 @@ export interface ListPacksDeps {
   readonly readConfig: () => Promise<CharminalConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
   /**
-   * single-active 系（scene / ui / persona）の現 active id 群を返す。
-   * 各 entry の isActive 判定に使う。multi-active 系は false 固定。
+   * 現 active id 群を返す。
+   * scene / ui / persona は single-active、ambient-ui / amenity は multi-active。
    */
   readonly getActiveIds: () => {
     readonly scene: string | null;
     readonly ui: string | null;
     readonly persona: string | null;
+    readonly ambientUi?: ReadonlyArray<string>;
+    readonly amenity?: ReadonlyArray<string>;
   };
 }
 
@@ -88,6 +90,8 @@ interface BuildListPacksInput {
     readonly scene: string | null;
     readonly ui: string | null;
     readonly persona: string | null;
+    readonly ambientUi?: ReadonlyArray<string>;
+    readonly amenity?: ReadonlyArray<string>;
   };
 }
 
@@ -96,6 +100,8 @@ function buildListPacksResponse(input: BuildListPacksInput): ListPacksResponse {
     if (kind === "scene") return id === input.activeIds.scene;
     if (kind === "ui") return id === input.activeIds.ui;
     if (kind === "persona") return id === input.activeIds.persona;
+    if (kind === "ambient-ui") return input.activeIds.ambientUi?.includes(id) ?? false;
+    if (kind === "amenity") return input.activeIds.amenity?.includes(id) ?? false;
     return false;
   };
 
