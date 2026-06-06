@@ -1400,7 +1400,7 @@ fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
     }
 }
 
-/// path が ~/.charminal/{.history,.staging,tmp} 配下なら true（watcher で drop 対象）。
+/// path が ~/.charminal/{.history,.charminal-snapshots,.staging,tmp} 配下なら true（watcher で drop 対象）。
 pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(charminal_home) else {
         return false;
@@ -1408,7 +1408,7 @@ pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bo
     matches!(
         rel.components().next(),
         Some(std::path::Component::Normal(seg))
-            if seg == ".history" || seg == ".staging" || seg == "tmp"
+            if seg == ".history" || seg == ".charminal-snapshots" || seg == ".staging" || seg == "tmp"
     )
 }
 
@@ -2170,6 +2170,10 @@ mod layer_scope_tests {
             std::path::Path::new(
                 "/Users/x/.charminal/.history/generations/000001/packs/foo/effect.js"
             )
+        ));
+        assert!(is_history_internal_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/.charminal-snapshots/objects/ab/cdef")
         ));
         assert!(is_history_internal_path(
             home,
