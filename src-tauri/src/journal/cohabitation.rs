@@ -1,24 +1,24 @@
 //! 同棲時間（cohabitation hours）の追跡。
 //!
-//! アプリ起動時に開始時刻を記録し、終了時に累計時間を config.json に書き出す。
+//! アプリ起動時に開始時刻を記録し、終了時に累計時間を cohabitation.json に書き出す。
 //! persona ごとの累計と全体の累計を保持する。
 //!
-//! config.json の構造:
+//! cohabitation.json の構造:
 //! ```json
 //! {
-//!   "cohabitation": {
-//!     "total_hours": 42.5,
-//!     "last_shutdown": "2026-05-04T12:34:56Z",
-//!     "per_persona": {
-//!       "clai": 40.0,
-//!       "other": 2.5
-//!     }
+//!   "total_hours": 42.5,
+//!   "last_shutdown": "2026-05-04T12:34:56Z",
+//!   "per_persona": {
+//!     "clai": 40.0,
+//!     "other": 2.5
 //!   }
 //! }
 //! ```
 
 use std::path::Path;
 use std::time::Instant;
+
+const COHABITATION_FILE: &str = "cohabitation.json";
 
 /// 起動時に呼ぶ。開始時刻を記録して返す。
 pub fn start_tracking() -> Instant {
@@ -33,11 +33,32 @@ fn default_cohabitation() -> serde_json::Value {
     })
 }
 
-/// 終了時に呼ぶ。経過時間を config.json の cohabitation セクションに書き出す。
+fn read_json_file(path: &Path, label: &str) -> Result<Option<serde_json::Value>, String> {
+    if !path.exists() {
+        return Ok(None);
+    }
+    let text =
+        std::fs::read_to_string(path).map_err(|e| format!("{} 読み込み失敗: {}", label, e))?;
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(|e| format!("{} パース失敗: {}", label, e))
+}
+
+fn write_json_atomic(path: &Path, label: &str, value: &serde_json::Value) -> Result<(), String> {
+    let serialized = serde_json::to_string_pretty(value)
+        .map_err(|e| format!("{} シリアライズ失敗: {}", label, e))?;
+    let tmp_path = path.with_extension("json.tmp");
+    std::fs::write(&tmp_path, &serialized)
+        .map_err(|e| format!("{}.tmp 書き込み失敗: {}", label, e))?;
+    std::fs::rename(&tmp_path, path).map_err(|e| format!("{} rename 失敗: {}", label, e))
+}
+
+/// 終了時に呼ぶ。経過時間を cohabitation.json に書き出す。
 ///
 /// - `total_hours` に経過時間を加算
 /// - `per_persona[active_persona_id]` に経過時間を加算
 /// - `last_shutdown` に現在の ISO 8601 タイムスタンプを記録
+/// - 旧 `config.json.cohabitation` があれば移行して config から削除
 pub fn save_hours(start: Instant, active_persona_id: &str) -> Result<(), String> {
     let charminal_dir = crate::home_dir_or_err()?.join(".charminal");
     save_hours_impl(start, active_persona_id, &charminal_dir)
@@ -50,27 +71,20 @@ fn save_hours_impl(
     charminal_dir: &Path,
 ) -> Result<(), String> {
     let elapsed_hours = start.elapsed().as_secs_f64() / 3600.0;
+    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.charminal/ 作成失敗: {}", e))?;
 
-    // config.json 全体を読む
     let config_path = charminal_dir.join("config.json");
-    let mut config: serde_json::Value = if config_path.exists() {
-        let text = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("config.json 読み込み失敗: {}", e))?;
-        serde_json::from_str(&text).map_err(|e| format!("config.json パース失敗: {}", e))?
-    } else {
-        std::fs::create_dir_all(charminal_dir)
-            .map_err(|e| format!("~/.charminal/ 作成失敗: {}", e))?;
-        serde_json::json!({})
-    };
-
-    let config_obj = config
-        .as_object_mut()
-        .ok_or_else(|| "config.json がオブジェクトではない".to_string())?;
-
-    // cohabitation セクションを取得 or 初期化
-    let cohabitation = config_obj
-        .entry("cohabitation")
-        .or_insert_with(default_cohabitation);
+    let cohabitation_path = charminal_dir.join(COHABITATION_FILE);
+    let mut config = read_json_file(&config_path, "config.json")?;
+    let mut cohabitation =
+        if let Some(value) = read_json_file(&cohabitation_path, COHABITATION_FILE)? {
+            value
+        } else {
+            config
+                .as_ref()
+                .and_then(|value| value.get("cohabitation").cloned())
+                .unwrap_or_else(default_cohabitation)
+        };
 
     let cohab_obj = cohabitation
         .as_object_mut()
@@ -113,15 +127,15 @@ fn save_hours_impl(
         serde_json::json!(current_persona_hours + elapsed_hours),
     );
 
-    // atomic write
-    let serialized = serde_json::to_string_pretty(&config)
-        .map_err(|e| format!("config.json シリアライズ失敗: {}", e))?;
-
-    let tmp_path = config_path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, &serialized)
-        .map_err(|e| format!("config.json.tmp 書き込み失敗: {}", e))?;
-    std::fs::rename(&tmp_path, &config_path)
-        .map_err(|e| format!("config.json rename 失敗: {}", e))?;
+    write_json_atomic(&cohabitation_path, COHABITATION_FILE, &cohabitation)?;
+    if let Some(config) = config.as_mut() {
+        let config_obj = config
+            .as_object_mut()
+            .ok_or_else(|| "config.json がオブジェクトではない".to_string())?;
+        if config_obj.remove("cohabitation").is_some() {
+            write_json_atomic(&config_path, "config.json", config)?;
+        }
+    }
 
     eprintln!(
         "[cohabitation] 保存完了: +{:.4}h (total: {:.2}h, persona '{}': {:.2}h)",
@@ -210,29 +224,25 @@ mod tests {
     }
 
     #[test]
-    fn save_hours_creates_config_with_cohabitation() {
+    fn save_hours_creates_cohabitation_file_without_config() {
         let dir = fresh_dir("save-new");
         let start = Instant::now();
         // 即座に save するので経過時間はほぼ 0
         save_hours_impl(start, "clai", &dir).expect("save ok");
 
-        let text = fs::read_to_string(dir.join("config.json")).expect("read");
+        assert!(!dir.join("config.json").exists());
+        let text = fs::read_to_string(dir.join(COHABITATION_FILE)).expect("read");
         let parsed: serde_json::Value = serde_json::from_str(&text).expect("parse");
 
-        assert!(parsed["cohabitation"]["total_hours"].as_f64().unwrap() >= 0.0);
-        assert!(parsed["cohabitation"]["last_shutdown"].is_string());
-        assert!(
-            parsed["cohabitation"]["per_persona"]["clai"]
-                .as_f64()
-                .unwrap()
-                >= 0.0
-        );
+        assert!(parsed["total_hours"].as_f64().unwrap() >= 0.0);
+        assert!(parsed["last_shutdown"].is_string());
+        assert!(parsed["per_persona"]["clai"].as_f64().unwrap() >= 0.0);
 
         let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn save_hours_accumulates_on_existing_config() {
+    fn save_hours_migrates_legacy_config_cohabitation() {
         let dir = fresh_dir("save-accumulate");
         fs::write(
             dir.join("config.json"),
@@ -252,20 +262,21 @@ mod tests {
         let start = Instant::now();
         save_hours_impl(start, "clai", &dir).expect("save ok");
 
-        let text = fs::read_to_string(dir.join("config.json")).expect("read");
-        let parsed: serde_json::Value = serde_json::from_str(&text).expect("parse");
+        let cohab_text =
+            fs::read_to_string(dir.join(COHABITATION_FILE)).expect("read cohabitation");
+        let cohabitation: serde_json::Value =
+            serde_json::from_str(&cohab_text).expect("parse cohabitation");
 
         // total_hours は 10.0 以上（加算されているはず）
-        assert!(parsed["cohabitation"]["total_hours"].as_f64().unwrap() >= 10.0);
+        assert!(cohabitation["total_hours"].as_f64().unwrap() >= 10.0);
         // per_persona.clai は 8.0 以上
-        assert!(
-            parsed["cohabitation"]["per_persona"]["clai"]
-                .as_f64()
-                .unwrap()
-                >= 8.0
-        );
+        assert!(cohabitation["per_persona"]["clai"].as_f64().unwrap() >= 8.0);
+
+        let config_text = fs::read_to_string(dir.join("config.json")).expect("read config");
+        let config: serde_json::Value = serde_json::from_str(&config_text).expect("parse config");
         // mcpPort は保持される
-        assert_eq!(parsed["mcpPort"], 18743);
+        assert_eq!(config["mcpPort"], 18743);
+        assert!(config.get("cohabitation").is_none());
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -274,14 +285,12 @@ mod tests {
     fn save_hours_adds_new_persona() {
         let dir = fresh_dir("save-new-persona");
         fs::write(
-            dir.join("config.json"),
+            dir.join(COHABITATION_FILE),
             r#"{
-              "cohabitation": {
-                "total_hours": 5.0,
-                "last_shutdown": null,
-                "per_persona": {
-                  "clai": 5.0
-                }
+              "total_hours": 5.0,
+              "last_shutdown": null,
+              "per_persona": {
+                "clai": 5.0
               }
             }"#,
         )
@@ -290,15 +299,13 @@ mod tests {
         let start = Instant::now();
         save_hours_impl(start, "other-persona", &dir).expect("save ok");
 
-        let text = fs::read_to_string(dir.join("config.json")).expect("read");
+        let text = fs::read_to_string(dir.join(COHABITATION_FILE)).expect("read");
         let parsed: serde_json::Value = serde_json::from_str(&text).expect("parse");
 
         // 新しい persona が追加される
-        assert!(parsed["cohabitation"]["per_persona"]["other-persona"]
-            .as_f64()
-            .is_some());
+        assert!(parsed["per_persona"]["other-persona"].as_f64().is_some());
         // 既存 persona は保持される
-        assert_eq!(parsed["cohabitation"]["per_persona"]["clai"], 5.0);
+        assert_eq!(parsed["per_persona"]["clai"], 5.0);
 
         let _ = fs::remove_dir_all(&dir);
     }

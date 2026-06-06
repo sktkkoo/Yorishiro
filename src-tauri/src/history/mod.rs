@@ -6,7 +6,7 @@ use git2::{
     Commit, ErrorCode, Index, ObjectType, Oid, Repository, RepositoryInitOptions, Signature, Tree,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::path::Component;
 use std::path::{Path, PathBuf};
@@ -20,6 +20,7 @@ journal/
 .charminal-snapshots/
 sdk.d.ts
 last-startup.json
+cohabitation.json
 .staging/
 tmp/
 .DS_Store
@@ -91,6 +92,33 @@ fn signature() -> Result<Signature<'static>, String> {
 fn ensure_gitignore(charminal_home: &Path) -> Result<(), String> {
     let path = charminal_home.join(".gitignore");
     if path.exists() {
+        let mut content =
+            std::fs::read_to_string(&path).map_err(|e| io_err("read .gitignore", e))?;
+        let existing: BTreeSet<String> = content
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect();
+        let mut changed = false;
+        for line in GITIGNORE_CONTENT
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+        {
+            if existing.contains(line) {
+                continue;
+            }
+            if !content.ends_with('\n') {
+                content.push('\n');
+            }
+            content.push_str(line);
+            content.push('\n');
+            changed = true;
+        }
+        if changed {
+            std::fs::write(&path, content).map_err(|e| io_err("write .gitignore", e))?;
+        }
         return Ok(());
     }
     std::fs::write(&path, GITIGNORE_CONTENT).map_err(|e| io_err("write .gitignore", e))
@@ -162,16 +190,6 @@ fn head_commit(repo: &Repository) -> Result<Option<Commit<'_>>, String> {
         Err(e) if is_unborn_or_not_found(&e) => Ok(None),
         Err(e) => Err(git_err("read HEAD", e)),
     }
-}
-
-fn head_tree_oid(repo: &Repository) -> Result<Option<Oid>, String> {
-    let Some(commit) = head_commit(repo)? else {
-        return Ok(None);
-    };
-    commit
-        .tree()
-        .map(|tree| Some(tree.id()))
-        .map_err(|e| git_err("read HEAD tree", e))
 }
 
 fn revwalk_oids(repo: &Repository) -> Result<Vec<Oid>, String> {
@@ -571,6 +589,35 @@ fn collect_tree_files(
     Ok(())
 }
 
+fn collect_tree_blob_oids(
+    repo: &Repository,
+    tree: &Tree<'_>,
+    base: &Path,
+    out: &mut BTreeMap<PathBuf, Oid>,
+) -> Result<(), String> {
+    for entry in tree.iter() {
+        let Some(name) = entry.name() else {
+            continue;
+        };
+        let rel = base.join(name);
+        match entry.kind() {
+            Some(ObjectType::Blob) => {
+                out.insert(rel, entry.id());
+            }
+            Some(ObjectType::Tree) => {
+                let child = entry
+                    .to_object(repo)
+                    .map_err(|e| git_err("tree entry object", e))?
+                    .peel_to_tree()
+                    .map_err(|e| git_err("peel tree entry", e))?;
+                collect_tree_blob_oids(repo, &child, &rel, out)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
 fn collect_tree_dirs_and_files(
     repo: &Repository,
     tree: &Tree<'_>,
@@ -600,6 +647,62 @@ fn collect_tree_dirs_and_files(
         }
     }
     Ok(())
+}
+
+fn normalize_config_for_baseline(bytes: &[u8]) -> Vec<u8> {
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(bytes) else {
+        return bytes.to_vec();
+    };
+    let Some(obj) = value.as_object_mut() else {
+        return bytes.to_vec();
+    };
+    obj.remove("cohabitation");
+    serde_json::to_vec(&value).unwrap_or_else(|_| bytes.to_vec())
+}
+
+fn normalized_blob_bytes_for_baseline(
+    repo: &Repository,
+    oid: Oid,
+    rel: &Path,
+) -> Result<Vec<u8>, String> {
+    let blob = repo
+        .find_blob(oid)
+        .map_err(|e| git_err("find tree blob", e))?;
+    let bytes = blob.content();
+    if rel == Path::new("config.json") {
+        Ok(normalize_config_for_baseline(bytes))
+    } else {
+        Ok(bytes.to_vec())
+    }
+}
+
+fn trees_equal_for_baseline(
+    repo: &Repository,
+    head_tree: &Tree<'_>,
+    live_tree: &Tree<'_>,
+) -> Result<bool, String> {
+    let mut head_blobs = BTreeMap::new();
+    let mut live_blobs = BTreeMap::new();
+    collect_tree_blob_oids(repo, head_tree, Path::new(""), &mut head_blobs)?;
+    collect_tree_blob_oids(repo, live_tree, Path::new(""), &mut live_blobs)?;
+    if head_blobs.keys().collect::<Vec<_>>() != live_blobs.keys().collect::<Vec<_>>() {
+        return Ok(false);
+    }
+    for (rel, head_oid) in head_blobs {
+        let Some(live_oid) = live_blobs.get(&rel) else {
+            return Ok(false);
+        };
+        if rel == Path::new("config.json") {
+            let head_bytes = normalized_blob_bytes_for_baseline(repo, head_oid, &rel)?;
+            let live_bytes = normalized_blob_bytes_for_baseline(repo, *live_oid, &rel)?;
+            if head_bytes != live_bytes {
+                return Ok(false);
+            }
+        } else if head_oid != *live_oid {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn target_files_for_prefix(
@@ -802,15 +905,22 @@ pub(crate) fn should_skip_baseline(home_root: &Path, _window_ms: u64) -> bool {
     let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let result: Result<bool, String> = (|| {
         let repo = open_or_init_repo(home_root)?;
-        let Some(head_tree_oid) = head_tree_oid(&repo)? else {
+        let Some(head) = head_commit(&repo)? else {
             return Ok(false);
         };
+        let head_tree = head.tree().map_err(|e| git_err("read HEAD tree", e))?;
         let mut index = repo.index().map_err(|e| git_err("open index", e))?;
         sync_index_to_live(&repo, &mut index)?;
         let live_tree_oid = index
             .write_tree()
             .map_err(|e| git_err("write live tree", e))?;
-        Ok(live_tree_oid == head_tree_oid)
+        if live_tree_oid == head_tree.id() {
+            return Ok(true);
+        }
+        let live_tree = repo
+            .find_tree(live_tree_oid)
+            .map_err(|e| git_err("find live tree", e))?;
+        trees_equal_for_baseline(&repo, &head_tree, &live_tree)
     })();
     result.unwrap_or(false)
 }
@@ -937,7 +1047,23 @@ mod tests {
         assert!(!charminal(&home).join(".git").exists());
         let ignore = fs::read_to_string(charminal(&home).join(".gitignore")).unwrap();
         assert!(ignore.contains(".charminal-snapshots/"));
+        assert!(ignore.contains("cohabitation.json"));
         assert!(head_commit(&repo(&home)).unwrap().is_none());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn repo_init_appends_missing_gitignore_entries() {
+        let home = tmp_home("repo-init-gitignore-append");
+        fs::write(charminal(&home).join(".gitignore"), "journal/\n").unwrap();
+
+        ensure_snapshot_repo_impl(&home).unwrap();
+
+        let ignore = fs::read_to_string(charminal(&home).join(".gitignore")).unwrap();
+        assert!(ignore.contains("journal/"));
+        assert!(ignore.contains("cohabitation.json"));
+        assert!(ignore.contains(".charminal-snapshots/"));
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -1048,6 +1174,54 @@ mod tests {
         assert!(!should_skip_baseline(&home, 60_000));
         fs::create_dir_all(charminal(&home).join("journal")).unwrap();
         fs::write(charminal(&home).join("journal/memo.md"), "ignored").unwrap();
+        assert!(!should_skip_baseline(&home, 60_000));
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn should_skip_baseline_ignores_cohabitation_runtime_config_changes() {
+        let home = tmp_home("skip-cohabitation");
+        fs::write(
+            charminal(&home).join("config.json"),
+            r#"{
+              "activeScene": "room",
+              "cohabitation": {
+                "last_shutdown": "2026-06-05T16:53:22Z",
+                "per_persona": { "clai-ja": 1.0 },
+                "total_hours": 1.0
+              }
+            }"#,
+        )
+        .unwrap();
+        snapshot_create_impl(&home, "startup-baseline", None).unwrap();
+
+        fs::write(
+            charminal(&home).join("config.json"),
+            r#"{
+              "activeScene": "room",
+              "cohabitation": {
+                "last_shutdown": "2026-06-06T00:33:29Z",
+                "per_persona": { "clai-ja": 1.5 },
+                "total_hours": 1.5
+              }
+            }"#,
+        )
+        .unwrap();
+        assert!(should_skip_baseline(&home, 60_000));
+
+        fs::write(
+            charminal(&home).join("config.json"),
+            r#"{
+              "activeScene": "factory",
+              "cohabitation": {
+                "last_shutdown": "2026-06-06T00:33:29Z",
+                "per_persona": { "clai-ja": 1.5 },
+                "total_hours": 1.5
+              }
+            }"#,
+        )
+        .unwrap();
         assert!(!should_skip_baseline(&home, 60_000));
 
         let _ = fs::remove_dir_all(&home);
