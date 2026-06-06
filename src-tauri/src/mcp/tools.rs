@@ -1130,7 +1130,7 @@ pub(crate) fn list_load_errors_sync() -> Result<ListLoadErrorsResponse, String> 
     Ok(ListLoadErrorsResponse { errors })
 }
 
-/// history_list: Rust 側完結。~/.charminal/.history/ の snapshot 一覧を新しい順で返す。
+/// history_list: Rust 側完結。~/.charminal/.charminal-snapshots/ の snapshot 一覧を新しい順で返す。
 pub(crate) fn history_list_sync() -> Result<Vec<crate::history::SnapshotEntry>, String> {
     let home = crate::home_dir_or_err()?;
     crate::history::snapshot_list_impl(&home)
@@ -1214,8 +1214,8 @@ mod tests {
         let home = tmp_home();
         std::env::set_var("HOME", &home);
         fs::write(home.join(".charminal/config.json"), "{}").unwrap();
-        crate::history::snapshot_create_impl(&home, "a", None).unwrap();
-        crate::history::snapshot_create_impl(&home, "b", Some("good")).unwrap();
+        crate::history::snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
+        crate::history::snapshot_create_impl(&home, "mcp:snapshot", Some("good")).unwrap();
 
         let list = history_list_sync().expect("ok");
         assert_eq!(list.len(), 2);
