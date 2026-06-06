@@ -134,7 +134,8 @@ const EN: UiStrings = {
   labelHealth: "Status",
   labelPacks: "Packs",
   labelRestore: "Restore",
-  restoreIntro: "Go back to a recent point in time if an experiment does not feel right.",
+  restoreIntro:
+    "Restore packs and startup scripts to a previous state. Your project files are not affected. Checkpoints are created automatically when packs or init.js change.",
   restoreEmpty: "No restore points yet.",
   restoreLatestTag: "(current state)",
   restoreRecommendedTag: "★recommended",
@@ -229,7 +230,8 @@ const JA: UiStrings = {
   labelHealth: "Status",
   labelPacks: "Packs",
   labelRestore: "復元",
-  restoreIntro: "試した変更が合わなかった時に、最近の時点へ戻せます。",
+  restoreIntro:
+    "パックや起動スクリプトを以前の状態に戻せます。プロジェクトのファイルには影響しません。チェックポイントはパックや init.js の変更時に自動で作られます。",
   restoreEmpty: "まだ戻せる地点がありません。",
   restoreLatestTag: "（今の状態）",
   restoreRecommendedTag: "★推奨",
