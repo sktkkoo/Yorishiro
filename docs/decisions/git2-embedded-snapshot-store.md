@@ -5,7 +5,7 @@
 
 ## 決定
 
-`~/.charminal/` の pack / init.js の状態管理を、独自の full-copy snapshot store から `git2` crate（libgit2 vendored 静的リンク）に移行する。ユーザーのシステム git には依存しない。
+`~/.charminal/` の `packs/` / `config.json` / `init.js` の状態管理を、独自の full-copy snapshot store から `git2` crate（libgit2 vendored 静的リンク）に移行する。ユーザーのシステム git には依存しない。
 
 ## 背景
 
@@ -18,7 +18,7 @@ Charminal は `~/.charminal/packs/` と `init.js` の変更を自動検知し、
 full-copy 方式を運用する中で以下の問題が顕在化した:
 
 1. **ディスク消費**: 50 世代 × packs 全体のコピー。pack にアセットが含まれると急速に肥大化する
-2. **自前ロジックの肥大**: burst dedup（同一変更の短時間連打を抑制）、baseline skip（連続 reload の重複排除）、.DS_Store filter、config.json 除外——これらを全て手書きで実装し、コードが増え続けていた
+2. **自前ロジックの肥大**: burst dedup（同一変更の短時間連打を抑制）、baseline skip（連続 reload の重複排除）、.DS_Store filter、snapshot 対象外 state の除外——これらを全て手書きで実装し、コードが増え続けていた
 3. **diff が出ない**: 「何が変わったか」を示すには独自の manifest diff を設計・実装する必要がある。snapshot の `changed` フィールドに pack ID を入れる仕組みを作り込んでいたが、ファイルレベルの差分は見えない
 4. **content dedup が無い**: 同一内容のファイルが世代ごとに別コピーとして保存される
 
@@ -58,7 +58,7 @@ git はインフラとして完全に隠蔽する:
 - **content dedup**: 同一ファイルは 1 blob。世代数に比例するディスク消費が消える
 - **diff**: `git2` の diff API でファイルレベルの差分が取れる（P3 の diff preview が自然に実装できる）
 - **削除の自然な反映**: index を live 状態に同期するだけで、削除されたファイルも正しく commit に反映される
-- **自前ロジックの削減**: `.gitignore` で journal / .DS_Store / cohabitation.json を除外。burst dedup は git の content-addressing が自然に吸収する（同一 tree なら no-op commit を検知できる）
+- **自前ロジックの削減**: `.gitignore` で `journal/` / `cohabitation.json` / `sdk.d.ts` / `last-startup.json` / `.history/` / `.charminal-snapshots/` / `.DS_Store` を除外。`config.json` は snapshot に含めるが watcher trigger にはしない。burst dedup は git の content-addressing が自然に吸収する（同一 tree なら no-op commit を検知できる）
 
 ## トレードオフ
 
@@ -66,8 +66,10 @@ git はインフラとして完全に隠蔽する:
 - **バイナリサイズ**: 数百 KB 増加
 - **pack/delta 圧縮**: libgit2 は system git の `git gc --auto` 相当を自動では走らせない。loose object は蓄積する。blob dedup は効くが delta 圧縮は将来必要になったら `Packbuilder` API で対応する
 - **マイグレーション**: 旧 `.history/` の履歴は移行しない。git 移行後の最初の commit が新しい履歴の起点になる
+- **prune**: 公開 API 互換のため `snapshot_prune` は残すが、commit 削除はしない。restore 一覧は最新 50 件に制限し、object 圧縮は将来必要になった時に git2 側で扱う
 
 ## 改訂履歴
 
 - 2026-06-06: 初版。full-copy → git2 移行を決定
 - 2026-06-06: cohabitation を config.json から `cohabitation.json` に分離（baseline skip の正確化）。config.json は git 追跡するが watcher trigger 対象外
+- 2026-06-06: snapshot 対象 / 除外 state / prune 互換 no-op を現行実装に合わせて明記

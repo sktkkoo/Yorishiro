@@ -17,8 +17,10 @@ Agent 設定を変更して Charminal を再起動してください。
 | パス | 用途 |
 |---|---|
 | `~/.charminal/config.json` | persona・scene・terminal agent・無効化 pack などのユーザー設定 |
+| `~/.charminal/cohabitation.json` | 同棲時間の runtime state。ユーザー設定ではなく rollback snapshot にも含めない |
 | `~/.charminal/init.js` | ユーザー起動スクリプト。safe mode ではスキップされる |
 | `~/.charminal/packs/` | ユーザー作成 pack |
+| `~/.charminal/.charminal-snapshots/` | 内部 rollback snapshot store。手動編集しない |
 | `~/.charminal/last-startup.json` | 直近の user pack 読み込みレポート |
 | `~/.charminal/journal/` | Journal と memory ファイル |
 | `~/.charminal/shell/` | 生成されたシェル統合ファイル |
@@ -73,8 +75,8 @@ rm -rf ~/.charminal/runtime-plugin
 rm -rf ~/.codex/plugins/cache/charminal-local
 ```
 
-pack、config、journal、memory、生成ファイルを含めて Charminal のユーザーデータを
-すべて削除する場合は `~/.charminal` を削除します。これは破壊的操作なので、アプリ本体の
+pack、config、cohabitation state、journal、memory、rollback snapshot、生成ファイルを含めて
+Charminal のユーザーデータをすべて削除する場合は `~/.charminal` を削除します。これは破壊的操作なので、アプリ本体の
 アンインストールとは別に扱ってください。
 
 ## クラッシュ復旧画面
