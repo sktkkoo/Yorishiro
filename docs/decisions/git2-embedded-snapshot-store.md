@@ -58,7 +58,7 @@ git はインフラとして完全に隠蔽する:
 - **content dedup**: 同一ファイルは 1 blob。世代数に比例するディスク消費が消える
 - **diff**: `git2` の diff API でファイルレベルの差分が取れる（P3 の diff preview が自然に実装できる）
 - **削除の自然な反映**: index を live 状態に同期するだけで、削除されたファイルも正しく commit に反映される
-- **自前ロジックの削減**: `.gitignore` で config.json / journal / .DS_Store を除外。burst dedup は git の content-addressing が自然に吸収する（同一 tree なら no-op commit を検知できる）
+- **自前ロジックの削減**: `.gitignore` で journal / .DS_Store / cohabitation.json を除外。burst dedup は git の content-addressing が自然に吸収する（同一 tree なら no-op commit を検知できる）
 
 ## トレードオフ
 
@@ -70,3 +70,4 @@ git はインフラとして完全に隠蔽する:
 ## 改訂履歴
 
 - 2026-06-06: 初版。full-copy → git2 移行を決定
+- 2026-06-06: cohabitation を config.json から `cohabitation.json` に分離（baseline skip の正確化）。config.json は git 追跡するが watcher trigger 対象外
