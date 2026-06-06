@@ -1,7 +1,7 @@
 /**
  * @charminal/sdk/history
  *
- * Pack rollback の history API。~/.charminal/.history/ の full-copy snapshot を
+ * Pack rollback の history API。~/.charminal/.charminal-snapshots/ の git2 snapshot を
  * 列挙・作成・復元する。AmenityContext 経由で amenity pack 作者に、MCP
  * `history_*` 経由で住人 AI に等しく公開する（対称性原則・SELF_REFERENTIAL_MCP）。
  *
@@ -18,13 +18,13 @@ export interface SnapshotEntry {
    * 出るため snake_case（index.json との互換のため camelCase 化しない）。
    */
   readonly ts_ms: number;
-  /** "watcher-settled" | "startup-baseline" | "mcp:snapshot" など。 */
+  /** "watcher-settled" | "startup-baseline" | "mcp:snapshot" | "sdk:snapshot" など。 */
   readonly trigger: string;
   /** user / AI が付けた任意ラベル。 */
   readonly label?: string;
   /** 直前 startup が clean だったかの advisory ラベル（startup-baseline のみ付く）。 */
   readonly startup_clean?: boolean;
-  /** この snapshot で変わった pack id / "config.json" / "init.js"（Scope C, watcher-settled に付く）。 */
+  /** この snapshot で変わった pack id / "init.js"（Scope C, watcher-settled に付く）。 */
   readonly changed?: readonly string[];
 }
 

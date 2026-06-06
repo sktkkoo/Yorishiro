@@ -1089,28 +1089,30 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     if let Err(e) = sessions::ensure_shell_files(&home) {
         eprintln!("[ensure_charminal_dirs] shell integration files: {}", e);
     }
+    let home_root = home_dir_or_err().ok();
+    if let Some(home_root) = home_root.as_ref() {
+        if let Err(e) = history::ensure_snapshot_repo_impl(home_root) {
+            eprintln!("[history] ensure snapshot repo failed: {}", e);
+        }
+    }
 
     // 起動時 baseline snapshot（once-per-process）。spec §0。失敗しても起動は止めない。
     // 直前 baseline から実変更が無い短時間の reload ではスキップしてノイズを減らす。
     static BASELINE_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if !BASELINE_DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        if let Ok(home_root) = home_dir_or_err() {
-            if !history::should_skip_baseline(&home_root, 60_000) {
-                match history::snapshot_create_impl(&home_root, "startup-baseline", None) {
+        if let Some(home_root) = home_root.as_ref() {
+            if !history::should_skip_baseline(home_root, 60_000) {
+                match history::snapshot_create_impl(home_root, "startup-baseline", None) {
                     Ok(seq) => {
                         // 直前 startup の clean 判定を advisory ラベルとして付ける（spec §0）。
                         // 自動 restore の根拠にはしない（あくまで表示用）。
-                        if let Some(clean) = history::is_last_startup_clean(&home_root) {
-                            if let Err(e) = history::tag_startup_clean(&home_root, seq, clean) {
+                        if let Some(clean) = history::is_last_startup_clean(home_root) {
+                            if let Err(e) = history::tag_startup_clean(home_root, seq, clean) {
                                 eprintln!("[history] tag startup_clean failed: {}", e);
                             }
                         }
                     }
                     Err(e) => eprintln!("[history] baseline snapshot failed: {}", e),
-                }
-                // baseline で 1 世代増えるので prune して単調増加を防ぐ（Finding #1）。
-                if let Err(e) = history::snapshot_prune_impl(&home_root, history::DEFAULT_KEEP) {
-                    eprintln!("[history] baseline prune failed: {}", e);
                 }
             }
         }
@@ -1434,8 +1436,8 @@ fn has_snapshot_ignored_component(charminal_home: &Path, path: &Path) -> bool {
     })
 }
 
-/// path が snapshot 対象（`packs/**` か top-level `config.json` か `init.js`）の
-/// 変更なら true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
+/// path が watcher trigger 対象（`packs/**` か top-level `init.js`）の変更なら
+/// true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
 /// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`last-startup.json` 等は false。
 pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(charminal_home) else {
@@ -1452,7 +1454,7 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
             _ => false,
         },
         // init.js は top-level の単一成分のみ対象。
-        // config.json は設定 UI から個別に戻せるため watcher snapshot の対象外。
+        // config.json は git-tracked だが watcher trigger target ではない。
         Some(std::path::Component::Normal(seg)) if seg == "init.js" => comps.next().is_none(),
         _ => false,
     }
@@ -1461,7 +1463,7 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
 /// 変更 path から「変わった pack/ファイル」の帰属トークンを導出する（Scope C）。
 /// `packs/<id>/...` → "<id>"、top-level `init.js` → その名前、
 /// それ以外（packs 直下のみ・対象外 path）→ None。is_snapshot_relevant_path と対。
-/// config.json は設定 UI から個別に戻せるため対象外。
+/// config.json は git-tracked だが watcher trigger target ではない。
 pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option<String> {
     if has_snapshot_ignored_component(charminal_home, path) {
         return None;
@@ -1651,7 +1653,7 @@ async fn watch_charminal_layer(
                 };
                 guard.drain().collect()
             };
-            // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
+            // この settle バーストに watcher trigger 対象（packs/** / init.js）の
             // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
             let mut snapshot_relevant = false;
             let mut changed_paths: Vec<PathBuf> = Vec::new();
@@ -1690,9 +1692,9 @@ async fn watch_charminal_layer(
                     break;
                 }
             }
-            // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮り、
-            // 直近 DEFAULT_KEEP 件に間引く。snapshot は .history/ へ書くので
-            // is_history_internal_path filter により watcher へ戻らない（無限ループ無し）。
+            // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮る。
+            // snapshot は .charminal-snapshots/ へ書くので is_history_internal_path
+            // filter により watcher へ戻らない（無限ループ無し）。
             // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
             if snapshot_relevant {
                 if let Some(home_root) = home.parent() {
@@ -1726,11 +1728,6 @@ async fn watch_charminal_layer(
                                 app_handle.emit("charminal:history-snapshot-created", event)
                             {
                                 eprintln!("[history] watcher-settled event emit failed: {}", e);
-                            }
-                            if let Err(e) =
-                                history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
-                            {
-                                eprintln!("[history] watcher-settled prune failed: {}", e);
                             }
                         }
                         Err(e) => eprintln!("[history] watcher-settled snapshot failed: {}", e),
@@ -2165,6 +2162,7 @@ mod layer_scope_tests {
     #[test]
     fn history_paths_are_excluded_from_watch() {
         let home = std::path::Path::new("/Users/x/.charminal");
+        // 旧 full-copy store が残っていても内部書き込みとして除外する。
         assert!(is_history_internal_path(
             home,
             std::path::Path::new(
@@ -2220,7 +2218,7 @@ mod layer_scope_tests {
             home,
             std::path::Path::new("/Users/x/.charminal/packs/foo/.effect.js.resttmp")
         ));
-        // config.json は設定 UI から個別に戻せるため対象外。
+        // config.json は git-tracked だが watcher trigger target ではない。
         assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/config.json")
@@ -2230,7 +2228,7 @@ mod layer_scope_tests {
             home,
             std::path::Path::new("/Users/x/.charminal/init.js")
         ));
-        // 対象外：journal / sdk.d.ts / last-startup.json / .history。
+        // 対象外：journal / sdk.d.ts / last-startup.json / snapshot store。
         assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/journal/daily/2026-06-02.md")
@@ -2246,6 +2244,10 @@ mod layer_scope_tests {
         assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/.history/generations/000001/config.json")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/.charminal-snapshots/HEAD")
         ));
         // config.json と同名でも sub-path は対象外（config.json/something のような異常系）。
         assert!(!is_snapshot_relevant_path(
