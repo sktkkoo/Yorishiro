@@ -1010,13 +1010,14 @@ impl ServerHandler for Charminal {
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
                 "- pack を壊した／戻したい → history_list で seq を確認 → history_restore（確認 UX を経て full-replace）。リスクのある編集前に history_snapshot で戻したい時点を残せる（known-good 判定はしない・素朴な timeline 点）\n",
+                "- まとまった /charm 編集や壊れそうな変更の前には history_snapshot(label) を呼び、何をなぜ試すのかがユーザーに見ても通じる短い label（例: 「夜に使いやすい暗い見た目を試す」）を付ける。restore UI はこの label を復元地点と直後の変更の見出しに使う\n",
                 "- user amenity 設備の機能を使う → amenity_list_tools で確認 → amenity_call で呼ぶ（bundled pomodoro は専用 pomodoro_* を使う）\n",
                 "\n",
                 "## 重要ルール\n",
                 "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
                 "- bundled pack は不可変。disable_pack / enable_pack は user pack のみ\n",
                 "- scene_activate / ui_activate は runtime 限定。永続切替は config.json の activeScene / activeUI\n",
-                "- history_restore は破壊的（packs/config.json/init.js を完全置換）。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
+                "- history_restore は復元前 snapshot を残す可逆操作だが、packs/config.json/init.js を full-replace する。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
                 "- journal は機械的ログではなく情緒的な思い出を書く\n",
             ))
     }
@@ -1129,7 +1130,7 @@ pub(crate) fn list_load_errors_sync() -> Result<ListLoadErrorsResponse, String> 
     Ok(ListLoadErrorsResponse { errors })
 }
 
-/// history_list: Rust 側完結。~/.charminal/.history/ の snapshot 一覧を新しい順で返す。
+/// history_list: Rust 側完結。~/.charminal/.charminal-snapshots/ の snapshot 一覧を新しい順で返す。
 pub(crate) fn history_list_sync() -> Result<Vec<crate::history::SnapshotEntry>, String> {
     let home = crate::home_dir_or_err()?;
     crate::history::snapshot_list_impl(&home)
@@ -1213,8 +1214,8 @@ mod tests {
         let home = tmp_home();
         std::env::set_var("HOME", &home);
         fs::write(home.join(".charminal/config.json"), "{}").unwrap();
-        crate::history::snapshot_create_impl(&home, "a", None).unwrap();
-        crate::history::snapshot_create_impl(&home, "b", Some("good")).unwrap();
+        crate::history::snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
+        crate::history::snapshot_create_impl(&home, "mcp:snapshot", Some("good")).unwrap();
 
         let list = history_list_sync().expect("ok");
         assert_eq!(list.len(), 2);

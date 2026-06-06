@@ -30,6 +30,7 @@ import {
   FolderOpen,
   Package,
   RefreshCw,
+  RotateCcw,
   Volume2,
   VolumeX,
   Wrench,
@@ -37,11 +38,20 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { getStrings, type UiStrings } from "../../../src/i18n/strings";
+import { snapshotList, snapshotRestore } from "../../../src/bindings/tauri-commands";
+import { RestoreConfirmDialog } from "../../../src/components/RestoreConfirmDialog";
+import {
+  changeStrings,
+  getStrings,
+  restoreConfirmStrings,
+  type UiStrings,
+} from "../../../src/i18n/strings";
+import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
 } from "../../../src/runtime/user-pack-loader/config";
+import type { SnapshotEntry } from "../../../src/sdk/history";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "charminal-settings";
@@ -63,6 +73,12 @@ const QUICK_ACTION_KEYS: ReadonlyArray<{
   { key: "create-pack", stringKey: "quickCreatePack" },
   { key: "pomodoro", stringKey: "quickPomodoro" },
 ];
+
+interface RestoreDialogTarget {
+  readonly seq: number;
+  readonly changeText: string;
+  readonly timeText: string;
+}
 
 export interface ResolveCloseTargetArgs {
   readonly saved: string | null;
@@ -996,6 +1012,237 @@ function HealthDiagnostics({
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * 設定画面の restore section。crash していなくても、snapshot 一覧から手動で
+ * ~/.charminal を以前の状態に戻す。最新は「今の状態」なのでボタンを出さない。
+ * 推奨タグは crash 画面にだけ残し、設定画面では行の内容を淡々と読めるようにする。
+ * 確認 → restore → reload で config/init.js も再適用する。
+ */
+function SnapshotRestoreSection({
+  locale,
+  strings,
+}: {
+  locale: ResolvedLanguage;
+  strings: UiStrings;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState<ReadonlyArray<SnapshotEntry> | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [restoreTarget, setRestoreTarget] = useState<RestoreDialogTarget | null>(null);
+
+  const refresh = useCallback(() => {
+    setLoading(true);
+    snapshotList()
+      .then((next) => setSnapshots(next))
+      .catch(() => setSnapshots([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (open && snapshots === null) refresh();
+  }, [open, snapshots, refresh]);
+
+  const rows = snapshots
+    ? buildRestoreRows(snapshots, Date.now(), changeStrings(strings), locale)
+    : [];
+  let listContent: React.ReactNode;
+  if (snapshots === null) {
+    listContent = (
+      <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+        Checking…
+      </div>
+    );
+  } else if (rows.length === 0) {
+    listContent = (
+      <div style={{ padding: SPACING.md, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+        {strings.restoreEmpty}
+      </div>
+    );
+  } else {
+    listContent = rows.map((row) => (
+      <div
+        key={row.seq}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: SPACING.md,
+          padding: `${SPACING.sm} ${SPACING.md}`,
+          borderBottom: `1px solid ${COLORS.borderSubtle}`,
+        }}
+      >
+        <span
+          style={{
+            minWidth: 0,
+            display: "flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: SPACING.xs,
+            fontSize: FONT.sizeXs,
+            color: COLORS.fgDim,
+            overflowWrap: "anywhere",
+            lineHeight: 1.45,
+          }}
+        >
+          <span
+            style={{
+              minWidth: 0,
+              overflowWrap: "anywhere",
+              color: row.startupStatus === "error" ? COLORS.statusWarning : undefined,
+            }}
+          >
+            {row.changeText}
+          </span>
+          <span style={{ color: COLORS.fgDimmer }}>· {row.timeText}</span>
+          {row.isLatest ? (
+            <span style={{ color: COLORS.fgDimmer }}>{strings.restoreLatestTag}</span>
+          ) : null}
+          {row.changedItems.length > 0 ? (
+            <span
+              style={{
+                display: "block",
+                width: "100%",
+                color: COLORS.fgDimmer,
+                fontSize: "10px",
+                lineHeight: 1.3,
+              }}
+            >
+              {row.changedItems.join(", ")}
+            </span>
+          ) : null}
+        </span>
+        {/* 最新（現在の状態）は戻しても no-op なのでボタンを出さない。 */}
+        {row.isLatest ? null : (
+          <button
+            type="button"
+            disabled={restoreTarget !== null}
+            onClick={() =>
+              setRestoreTarget({
+                seq: row.seq,
+                changeText: row.changeText,
+                timeText: row.timeText,
+              })
+            }
+            style={{
+              flexShrink: 0,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              borderRadius: RADIUS.sm,
+              background: COLORS.bgButton,
+              color: COLORS.fg,
+              font: "inherit",
+              fontSize: FONT.sizeXs,
+              padding: `${SPACING.xs} ${SPACING.sm}`,
+              cursor: restoreTarget ? "default" : "pointer",
+              opacity: restoreTarget ? 0.5 : 1,
+            }}
+          >
+            {strings.restoreButton}
+          </button>
+        )}
+      </div>
+    ));
+  }
+
+  return (
+    <section>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <button
+          type="button"
+          onClick={() => setOpen((prev) => !prev)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: SPACING.sm,
+            opacity: 0.78,
+            border: "none",
+            background: "transparent",
+            color: COLORS.fg,
+            cursor: "pointer",
+            font: "inherit",
+            fontSize: "inherit",
+            padding: 0,
+          }}
+        >
+          <ChevronDown
+            size={14}
+            aria-hidden="true"
+            style={{
+              transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+              transition: "transform 0.15s ease",
+            }}
+          />
+          <RotateCcw size={14} aria-hidden="true" color={COLORS.fg} />
+          <span>{strings.labelRestore}</span>
+        </button>
+        {open && (
+          <button
+            type="button"
+            onClick={refresh}
+            disabled={loading}
+            aria-label="Refresh snapshots"
+            title="Refresh snapshots"
+            style={{
+              width: "26px",
+              height: "26px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              border: "none",
+              borderRadius: RADIUS.sm,
+              background: "transparent",
+              color: COLORS.fgDimmer,
+              cursor: loading ? "default" : "pointer",
+              opacity: loading ? 0.4 : 0.7,
+              padding: 0,
+            }}
+          >
+            <RefreshCw size={13} aria-hidden="true" />
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <>
+          <div
+            style={{
+              marginTop: SPACING.sm,
+              color: COLORS.fgDimmer,
+              fontSize: FONT.sizeXs,
+              lineHeight: 1.45,
+              maxWidth: "520px",
+            }}
+          >
+            {strings.restoreIntro}
+          </div>
+          <div
+            style={{
+              marginTop: SPACING.md,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              borderRadius: RADIUS.md,
+              overflow: "hidden",
+              maxWidth: "520px",
+              background: COLORS.bgInput,
+            }}
+          >
+            <div style={{ maxHeight: "320px", overflowY: "auto" }}>{listContent}</div>
+          </div>
+        </>
+      )}
+      {restoreTarget ? (
+        <RestoreConfirmDialog
+          seq={restoreTarget.seq}
+          changeText={restoreTarget.changeText}
+          timeText={restoreTarget.timeText}
+          surface="themed"
+          strings={restoreConfirmStrings(strings)}
+          onClose={() => setRestoreTarget(null)}
+          onConfirm={() => snapshotRestore({ seq: restoreTarget.seq })}
+        />
+      ) : null}
     </section>
   );
 }
@@ -2290,6 +2537,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div style={{ height: "32px" }} />
 
         <HealthDiagnostics ctx={ctx} strings={strings} />
+
+        {/* 32px gap */}
+        <div style={{ height: "32px" }} />
+
+        <SnapshotRestoreSection locale={resolvedLanguage} strings={strings} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />

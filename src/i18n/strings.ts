@@ -1,4 +1,6 @@
 import type { FixedTerminalPromptKey } from "@charminal/sdk";
+import type { RestoreConfirmStrings } from "../components/RestoreConfirmDialog";
+import type { ChangeStrings } from "../runtime/history/describe-snapshot";
 import type { ResolvedLanguage } from "../runtime/language/language";
 
 export interface UiStrings {
@@ -38,6 +40,41 @@ export interface UiStrings {
   readonly labelAura: string;
   readonly labelHealth: string;
   readonly labelPacks: string;
+  readonly labelRestore: string;
+  readonly restoreIntro: string;
+  readonly restoreEmpty: string;
+  readonly restoreLatestTag: string;
+  readonly restoreRecommendedTag: string;
+  readonly restoreButton: string;
+  readonly restoreConfirmTitle: string;
+  readonly restoreConfirmIntro: string;
+  readonly restoreConfirmDetail: string;
+  readonly restoreConfirmBody: string;
+  readonly restoreConfirmButton: string;
+  readonly restoreConfirmCancel: string;
+  readonly restoreConfirmRestoring: string;
+  readonly restoreConfirmDone: string;
+  readonly restoreConfirmClose: string;
+  readonly restoreConfirmRetry: string;
+  readonly restoreDone: string;
+  readonly restoreFailed: string;
+  readonly restoreCrashTitle: string;
+  readonly restoreCrashIntroPrefix: string;
+  readonly restoreCrashRecommendedText: string;
+  readonly restoreCrashIntroSuffix: string;
+  readonly changedOnePack: string;
+  readonly changedManyPacks: string;
+  readonly changedManyPacksNamed: string;
+  readonly changedManyPacksNamedMore: string;
+  readonly changedConfig: string;
+  readonly changedInit: string;
+  readonly changedMixed: string;
+  readonly changeStartup: string;
+  readonly changeStartupError: string;
+  readonly changeManual: string;
+  readonly changePreRestore: string;
+  readonly changeSdkSnapshot: string;
+  readonly changeUnknown: string;
   readonly healthHealthy: string;
   readonly healthWarnings: string;
   readonly healthNeedsAttention: string;
@@ -96,6 +133,45 @@ const EN: UiStrings = {
   labelAura: "Aura",
   labelHealth: "Status",
   labelPacks: "Packs",
+  labelRestore: "Restore",
+  restoreIntro:
+    "Restore packs and startup scripts to a previous state. Your project files are not affected. Checkpoints are created automatically when packs or init.js change.",
+  restoreEmpty: "No restore points yet.",
+  restoreLatestTag: "(current state)",
+  restoreRecommendedTag: "★recommended",
+  restoreButton: "Restore this",
+  restoreConfirmTitle: "Restore to this point?",
+  restoreConfirmIntro: "Restore Charminal to the selected point?",
+  restoreConfirmDetail:
+    "This restores Charminal to that point in time. Packs, settings, and startup behavior return to that point, and the app reloads.",
+  restoreConfirmBody:
+    "Restore to {change} ({time}). Packs, settings, and startup behavior return to that point, and the app reloads.",
+  restoreConfirmButton: "Restore",
+  restoreConfirmCancel: "Cancel",
+  restoreConfirmRestoring: "Restoring...",
+  restoreConfirmDone: "Restored. Reloading...",
+  restoreConfirmClose: "Close",
+  restoreConfirmRetry: "Retry",
+  restoreDone: "Restored. Reloading…",
+  restoreFailed: "Restore failed",
+  restoreCrashTitle: "Restore to the state before the latest change",
+  restoreCrashIntroPrefix: "If the last change caused the crash, restoring to ",
+  restoreCrashRecommendedText: "the state before the latest change ({tag})",
+  restoreCrashIntroSuffix:
+    " can recover Charminal. The latest point is the current state, so restoring it may not change the crash. Restoring reloads the app.",
+  changedOnePack: 'Changed "{id}"',
+  changedManyPacks: "{n} changes",
+  changedManyPacksNamed: 'Changed "{names}"',
+  changedManyPacksNamedMore: 'Changed "{first}" + {rest} more',
+  changedConfig: "Changed settings",
+  changedInit: "Changed startup behavior",
+  changedMixed: "{n} changes",
+  changeStartup: "Startup checkpoint",
+  changeStartupError: "Startup checkpoint (error)",
+  changeManual: "Marked by AI",
+  changePreRestore: "Restored to {time}",
+  changeSdkSnapshot: "Recorded by pack",
+  changeUnknown: "Changed",
   healthHealthy: "Healthy",
   healthWarnings: "Warnings",
   healthNeedsAttention: "Needs attention",
@@ -153,6 +229,45 @@ const JA: UiStrings = {
   labelAura: "Aura",
   labelHealth: "Status",
   labelPacks: "Packs",
+  labelRestore: "復元",
+  restoreIntro:
+    "パックや起動スクリプトを以前の状態に戻せます。プロジェクトのファイルには影響しません。チェックポイントはパックや init.js の変更時に自動で作られます。",
+  restoreEmpty: "まだ戻せる地点がありません。",
+  restoreLatestTag: "（今の状態）",
+  restoreRecommendedTag: "★推奨",
+  restoreButton: "この状態に戻す",
+  restoreConfirmTitle: "この時点に戻しますか？",
+  restoreConfirmIntro: "選んだ時点に戻しますか？",
+  restoreConfirmDetail:
+    "この時点の状態に戻します。パック・設定・起動時の動作がその時点に戻り、アプリを再読み込みします。",
+  restoreConfirmBody:
+    "{change}（{time}）に戻します。パック・設定・起動時の動作がその時点に戻り、アプリを再読み込みします。",
+  restoreConfirmButton: "戻す",
+  restoreConfirmCancel: "やめる",
+  restoreConfirmRestoring: "戻しています...",
+  restoreConfirmDone: "戻しました。再読み込みします...",
+  restoreConfirmClose: "閉じる",
+  restoreConfirmRetry: "再試行",
+  restoreDone: "戻しました。再読み込みします。",
+  restoreFailed: "復元に失敗しました",
+  restoreCrashTitle: "最新変更前の状態に戻す",
+  restoreCrashIntroPrefix: "直前の変更が原因なら、",
+  restoreCrashRecommendedText: "最新の変更前（{tag}）",
+  restoreCrashIntroSuffix:
+    "に戻すと復旧できることがあります。最新の時点は「変更後＝現在の状態」なので、戻しても症状が変わらない場合があります。復元するとアプリを再読み込みします。",
+  changedOnePack: "「{id}」を変更",
+  changedManyPacks: "{n}個の変更",
+  changedManyPacksNamed: "「{names}」を変更",
+  changedManyPacksNamedMore: "「{first}」ほか{rest}件を変更",
+  changedConfig: "設定を変更",
+  changedInit: "起動時の動作を変更",
+  changedMixed: "{n}件の変更",
+  changeStartup: "起動時チェックポイント",
+  changeStartupError: "起動時チェックポイント（エラー）",
+  changeManual: "AIが記録",
+  changePreRestore: "{time} の状態に復元",
+  changeSdkSnapshot: "packが記録",
+  changeUnknown: "変更",
   healthHealthy: "正常",
   healthWarnings: "警告あり",
   healthNeedsAttention: "対応が必要",
@@ -176,6 +291,47 @@ const JA: UiStrings = {
 
 export function getStrings(language: ResolvedLanguage): UiStrings {
   return language === "ja" ? JA : EN;
+}
+
+/** `UiStrings` のテンプレートを `describeChange` 用の focused interface に変換する。 */
+export function changeStrings(s: UiStrings): ChangeStrings {
+  return {
+    changedOnePack: (id) => s.changedOnePack.replace("{id}", id),
+    changedManyPacks: (n) => s.changedManyPacks.replace("{n}", String(n)),
+    changedManyPacksNamed: (names) => {
+      if (names.length <= 2) {
+        const joined = names.map((n) => s.changedOnePack.replace("{id}", n)).join("、");
+        return joined;
+      }
+      return s.changedManyPacksNamedMore
+        .replace("{first}", names[0])
+        .replace("{rest}", String(names.length - 1));
+    },
+    changedConfig: s.changedConfig,
+    changedInit: s.changedInit,
+    changedMixed: (n) => s.changedMixed.replace("{n}", String(n)),
+    changeStartup: s.changeStartup,
+    changeStartupError: s.changeStartupError,
+    changeManual: s.changeManual,
+    changePreRestore: (time) => s.changePreRestore.replace("{time}", time),
+    changeSdkSnapshot: s.changeSdkSnapshot,
+    changeUnknown: s.changeUnknown,
+  };
+}
+
+/** `UiStrings` から restore confirm overlay 用の focused interface を作る。 */
+export function restoreConfirmStrings(s: UiStrings): RestoreConfirmStrings {
+  return {
+    title: s.restoreConfirmTitle,
+    body: s.restoreConfirmBody,
+    cancel: s.restoreConfirmCancel,
+    confirm: s.restoreConfirmButton,
+    restoring: s.restoreConfirmRestoring,
+    done: s.restoreConfirmDone,
+    failed: s.restoreFailed,
+    close: s.restoreConfirmClose,
+    retry: s.restoreConfirmRetry,
+  };
 }
 
 /**

@@ -15,7 +15,6 @@ import type {
   UiThreeAPI,
 } from "@charminal/sdk";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,6 +72,7 @@ import {
   theaterPack,
 } from "./bundled-packs";
 import CharacterSurface from "./character-surface";
+import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -88,7 +88,13 @@ import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
 import { SayTtsEngine, VoicePlayer } from "./core/voice";
-import { getStrings, resolveFixedTerminalPrompt, resolvePackRepairPrompt } from "./i18n/strings";
+import {
+  changeStrings,
+  getStrings,
+  resolveFixedTerminalPrompt,
+  resolvePackRepairPrompt,
+  restoreConfirmStrings,
+} from "./i18n/strings";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -108,6 +114,7 @@ import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { collectHealthReport } from "./runtime/health-check";
+import { buildRestoreRows } from "./runtime/history/describe-snapshot";
 import { createHistoryApi } from "./runtime/history/history-api";
 import { getOrInit } from "./runtime/hot-data";
 import {
@@ -330,6 +337,13 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
+
+interface RestoreDialogRequest {
+  readonly seq: number;
+  readonly changeText: string;
+  readonly timeText: string;
+  readonly runRestore: () => Promise<void>;
+}
 
 type SceneLayerOverride = {
   readonly target: UiSceneLayerTarget;
@@ -697,8 +711,63 @@ function App() {
   }));
   const appLanguageRef = useRef(appLanguage);
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
+  const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
+  const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+
+  const resolveRestoreDialogTarget = useCallback(async (seq: number) => {
+    const locale = appLanguageRef.current.resolved;
+    const localizedStrings = getStrings(locale);
+    try {
+      const snapshots = await snapshotList();
+      const rows = buildRestoreRows(
+        snapshots,
+        Date.now(),
+        changeStrings(localizedStrings),
+        locale,
+        Math.max(5, snapshots.length),
+      );
+      const row = rows.find((candidate) => candidate.seq === seq);
+      if (row) return { changeText: row.changeText, timeText: row.timeText };
+    } catch {
+      // snapshot list が読めなくても restore 提案自体は続行できる。
+    }
+    return { changeText: `snapshot #${seq}`, timeText: "" };
+  }, []);
+
+  const openRestoreDialog = useCallback(
+    async (seq: number, runRestore: () => Promise<void> = () => snapshotRestore({ seq })) => {
+      const target = await resolveRestoreDialogTarget(seq);
+      restoreDialogResolveRef.current?.(false);
+      return new Promise<boolean>((resolve) => {
+        restoreDialogResolveRef.current = resolve;
+        setRestoreDialog({ seq, ...target, runRestore });
+      });
+    },
+    [resolveRestoreDialogTarget],
+  );
+
+  const handleRestoreDialogClose = useCallback(() => {
+    restoreDialogResolveRef.current?.(false);
+    restoreDialogResolveRef.current = null;
+    setRestoreDialog(null);
+  }, []);
+
+  const handleRestoreDialogConfirm = useCallback(async () => {
+    const request = restoreDialog;
+    if (request === null) return;
+    await request.runRestore();
+    restoreDialogResolveRef.current?.(true);
+    restoreDialogResolveRef.current = null;
+  }, [restoreDialog]);
+
+  useEffect(() => {
+    return () => {
+      restoreDialogResolveRef.current?.(false);
+      restoreDialogResolveRef.current = null;
+    };
+  }, []);
 
   const applyPresenceLevelFromApp = useCallback(
     (
@@ -957,7 +1026,7 @@ function App() {
       list: () => snapshotList(),
       create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
       restore: (seq) => snapshotRestore({ seq }),
-      confirm: (message) => ask(message, { title: "Charminal — 復元の確認", kind: "warning" }),
+      confirmRestore: (seq, runRestore) => openRestoreDialog(seq, runRestore),
     });
     let ambientAudioLiveState: AmbientAudioState = { muted: false, volume: 1 };
     const ambientAudio: AmbientAudioAPI = {
@@ -1036,6 +1105,40 @@ function App() {
     });
 
     async function bootstrap(): Promise<void> {
+      const syncAmbientUiActiveSet = (ids: ReadonlyArray<string>): void => {
+        const registry = getAmbientUiPackRegistry();
+        const knownIds = new Set(registry.listEntries().map((entry) => entry.id));
+        const nextActive = new Set(ids.filter((id) => knownIds.has(id)));
+        const currentActive = new Set(registry.getActiveSet());
+        for (const id of currentActive) {
+          if (!nextActive.has(id)) registry.disable(id);
+        }
+        for (const id of nextActive) {
+          if (!currentActive.has(id)) registry.enable(id);
+        }
+      };
+
+      const resyncAmbientUiActiveSetFromConfig = async (phase: string): Promise<void> => {
+        try {
+          const config = parseConfig(await readCharminalConfigText());
+          syncAmbientUiActiveSet(config.activeAmbientUi);
+          appLog.write({
+            phase,
+            note: "synced active ambient-ui picks",
+            data: {
+              activeAmbientUi: [...config.activeAmbientUi],
+              activeSet: getAmbientUiPackRegistry().getActiveSet(),
+            },
+          });
+        } catch (err) {
+          appLog.write({
+            phase,
+            note: "failed to sync active ambient-ui picks",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
+      };
+
       // ─ Step 1: bundled scene の asset を resolve して register（async：asset 解決） ─
       // try/catch は pack 単位。1 pack の asset 解決失敗で後続 pack の登録を巻き
       // 添えにしない（特に defaultBundledId が指す pack が先頭にあるため、
@@ -1131,9 +1234,7 @@ function App() {
         );
         scenePackRegistry.setActiveScene(config.activeScene);
         uiPackRegistry.setActiveUi(config.activeUi);
-        for (const id of config.activeAmbientUi) {
-          getAmbientUiPackRegistry().enable(id);
-        }
+        syncAmbientUiActiveSet(config.activeAmbientUi);
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -1231,6 +1332,7 @@ function App() {
             note: `user-layer ready (packs loaded=${result.packs.loaded.length} failed=${result.packs.failed.length}; init ran=${result.init.ran})`,
             data: { packs: result.packs, init: result.init },
           });
+          await resyncAmbientUiActiveSetFromConfig("user-layer");
           return result;
         } catch (err) {
           appLog.write({
@@ -1444,6 +1546,8 @@ function App() {
               scene: scenePackRegistry.getActiveSceneId(),
               ui: uiPackRegistry.getActiveUiId(),
               persona: personaRegistry.getActivePersonaId(),
+              ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+              amenity: getAmenityPackRegistry().getActiveSet(),
             }),
           }),
           "pack-diagnose": createPackDiagnoseHandler({
@@ -1455,6 +1559,8 @@ function App() {
               scene: scenePackRegistry.getActiveSceneId(),
               ui: uiPackRegistry.getActiveUiId(),
               persona: personaRegistry.getActivePersonaId(),
+              ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+              amenity: getAmenityPackRegistry().getActiveSet(),
             }),
             readUserPackEntries: async () => invoke<UserPackEntry[]>("list_user_packs"),
           }),
@@ -1472,16 +1578,7 @@ function App() {
           }),
           "history-restore": createHistoryRestoreHandler({
             proposeRestore: (seq) => {
-              void (async () => {
-                const approved = await ask(
-                  `住人 AI が snapshot #${seq} への復元を提案しています。~/.charminal を戻しますか？\n` +
-                    "packs / config.json / init.js を完全置換し、反映のためアプリを再読み込みします（journal は変更しません）。",
-                  { title: "Charminal — 復元の提案", kind: "warning" },
-                );
-                if (!approved) return;
-                await snapshotRestore({ seq });
-                window.location.reload();
-              })();
+              void openRestoreDialog(seq);
             },
           }),
           "amenity.call": createAmenityCallHandler({
@@ -2072,6 +2169,8 @@ function App() {
         scene: scenePackRegistry.getActiveSceneId(),
         ui: uiPackRegistry.getActiveUiId(),
         persona: personaRegistry.getActivePersonaId(),
+        ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+        amenity: getAmenityPackRegistry().getActiveSet(),
       }),
     })({});
     type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
@@ -2350,6 +2449,8 @@ function App() {
         scene: scenePackRegistry.getActiveSceneId(),
         ui: uiPackRegistry.getActiveUiId(),
         persona: personaRegistry.getActivePersonaId(),
+        ambientUi: getAmbientUiPackRegistry().getActiveSet(),
+        amenity: getAmenityPackRegistry().getActiveSet(),
       }),
     });
 
@@ -3429,6 +3530,17 @@ function App() {
           onDismiss={dismissFirstRunHealth}
         />
       )}
+      {restoreDialog ? (
+        <RestoreConfirmDialog
+          seq={restoreDialog.seq}
+          changeText={restoreDialog.changeText}
+          timeText={restoreDialog.timeText}
+          surface="themed"
+          strings={restoreConfirmStrings(strings)}
+          onClose={handleRestoreDialogClose}
+          onConfirm={handleRestoreDialogConfirm}
+        />
+      ) : null}
     </div>
   );
 }

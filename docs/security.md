@@ -26,6 +26,7 @@ philosophy doc [`philosophy/SELF_REFERENTIAL_MCP.md`](philosophy/SELF_REFERENTIA
 - **Malicious pack** — runs as local trusted code in the WebView layer. Bounded by the SDK surface and the PTY-observation-only and IPC boundaries above.
 - **MCP client** — bounded by trust tiers. PTY-write-like requests are rejected by design.
 - **Local config (`~/.charminal/config.json`)** — user-owned; treated as trusted local input.
+- **Local cohabitation state (`~/.charminal/cohabitation.json`)** — user-owned runtime state; treated as trusted local input and kept outside rollback snapshots.
 - **Remote input reaching the agent** — relevant when reported issues involve prompt-borne instructions; note the involved vector when reporting.
 
 ## Not yet released

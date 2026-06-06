@@ -217,6 +217,36 @@ describe("list_packs handler", () => {
     expect(byId.get("persona:bundled-persona")?.isActive).toBe(false);
     expect(byId.get("effect:bundled-effect")?.isActive).toBe(false);
   });
+
+  it("marks isActive based on getActiveIds for multi-active kinds", async () => {
+    const registry = new UserPackRegistry();
+    registry.register("user-ambient", "ambient-ui", { dispose: () => {} });
+    registry.register("user-amenity", "amenity", { dispose: () => {} });
+
+    const handler = createListPacksHandler({
+      readRegistry: () => registry.listEntries(),
+      readBundledPacks: () => [
+        { id: "bundled-ambient", kind: "ambient-ui" },
+        { id: "bundled-amenity", kind: "amenity" },
+      ],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => null,
+      getActiveIds: () => ({
+        scene: null,
+        ui: null,
+        persona: null,
+        ambientUi: ["user-ambient"],
+        amenity: ["bundled-amenity"],
+      }),
+    });
+
+    const result = await handler({});
+    const byId = new Map(result.packs.map((p) => [`${p.kind}:${p.id}`, p]));
+    expect(byId.get("ambient-ui:user-ambient")?.isActive).toBe(true);
+    expect(byId.get("ambient-ui:bundled-ambient")?.isActive).toBe(false);
+    expect(byId.get("amenity:user-amenity")?.isActive).toBe(false);
+    expect(byId.get("amenity:bundled-amenity")?.isActive).toBe(true);
+  });
 });
 
 describe("pack_diagnose handler", () => {
@@ -276,6 +306,57 @@ describe("pack_diagnose handler", () => {
           severity: "info",
           code: "local-trusted-code",
           message: "pack 'user-scene' runs as local trusted code",
+        },
+      ]),
+    );
+  });
+
+  it("returns active state for a loaded ambient-ui pack", async () => {
+    const registry = new UserPackRegistry();
+    registry.register("work-context-lite", "ambient-ui", { dispose: () => {} });
+
+    const handler = createPackDiagnoseHandler({
+      readRegistry: () => registry.listEntries(),
+      readBundledPacks: () => [],
+      readConfig: async () => EMPTY_CONFIG,
+      readLoadReport: async () => null,
+      getActiveIds: () => ({
+        scene: null,
+        ui: null,
+        persona: null,
+        ambientUi: ["work-context-lite"],
+      }),
+      readUserPackEntries: async () => [
+        {
+          id: "work-context-lite",
+          kind: "ambient-ui",
+          entryPath: "/Users/me/.charminal/packs/work-context-lite/ambient-ui.js",
+          source: "local",
+          manifest: {
+            id: "work-context-lite",
+            type: "ambient-ui",
+            entry: "ambient-ui.js",
+            executionClass: "trusted-main-thread-js",
+          },
+        },
+      ],
+    });
+
+    const result = await handler({ id: "work-context-lite" });
+
+    expect(result.ok).toBe(true);
+    expect(result.diagnoses[0]).toMatchObject({
+      id: "work-context-lite",
+      kind: "ambient-ui",
+      status: "loaded",
+      isActive: true,
+    });
+    expect(result.diagnostics).toEqual(
+      expect.arrayContaining([
+        {
+          severity: "info",
+          code: "pack-loaded",
+          message: "ambient-ui pack 'work-context-lite' is loaded and active",
         },
       ]),
     );

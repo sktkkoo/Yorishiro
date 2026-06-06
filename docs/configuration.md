@@ -4,6 +4,8 @@
 
 Charminal は起動時に `~/.charminal/config.json` を読み、壊れている field や未知 field は無視して bundled fallback で起動する。空ファイル・不正 JSON も fatal error にはしない。
 
+同棲時間などの runtime state は `config.json` には置かない。`~/.charminal/cohabitation.json` は `total_hours` / `last_shutdown` / `per_persona` を保存する内部 state で、user-facing 設定でも rollback snapshot の対象でもない。
+
 ## Example
 
 ```json

@@ -28,6 +28,7 @@ portable-pty = "0.8"
 dirs = "6"
 libc = "0.2"
 notify = "8.2.0"
+git2 = { version = "0.19", features = ["vendored-libgit2"] }
 # MCP server: rmcp 1.7 + streamable-http-server（SSE の後継）+ axum で
 # localhost に bind する。spike 結果は internal design-record
 # 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5 / 4.6。

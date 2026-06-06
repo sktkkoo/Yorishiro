@@ -8,11 +8,12 @@ mod tts;
 use pty::{start_hook_server, PtyState};
 use sessions::{SessionRegistry, SpawnSpec};
 use std::collections::{BTreeSet, HashMap};
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Cohabitation hours tracking の開始時刻を保持する managed state。
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
@@ -1097,26 +1098,31 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     if let Err(e) = sessions::ensure_shell_files(&home) {
         eprintln!("[ensure_charminal_dirs] shell integration files: {}", e);
     }
+    let home_root = home_dir_or_err().ok();
+    if let Some(home_root) = home_root.as_ref() {
+        if let Err(e) = history::ensure_snapshot_repo_impl(home_root) {
+            eprintln!("[history] ensure snapshot repo failed: {}", e);
+        }
+    }
 
     // 起動時 baseline snapshot（once-per-process）。spec §0。失敗しても起動は止めない。
+    // 直前 baseline から実変更が無い短時間の reload ではスキップしてノイズを減らす。
     static BASELINE_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     if !BASELINE_DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        if let Ok(home_root) = home_dir_or_err() {
-            match history::snapshot_create_impl(&home_root, "startup-baseline", None) {
-                Ok(seq) => {
-                    // 直前 startup の clean 判定を advisory ラベルとして付ける（spec §0）。
-                    // 自動 restore の根拠にはしない（あくまで表示用）。
-                    if let Some(clean) = history::is_last_startup_clean(&home_root) {
-                        if let Err(e) = history::tag_startup_clean(&home_root, seq, clean) {
-                            eprintln!("[history] tag startup_clean failed: {}", e);
+        if let Some(home_root) = home_root.as_ref() {
+            if !history::should_skip_baseline(home_root, 60_000) {
+                match history::snapshot_create_impl(home_root, "startup-baseline", None) {
+                    Ok(seq) => {
+                        // 直前 startup の clean 判定を advisory ラベルとして付ける（spec §0）。
+                        // 自動 restore の根拠にはしない（あくまで表示用）。
+                        if let Some(clean) = history::is_last_startup_clean(home_root) {
+                            if let Err(e) = history::tag_startup_clean(home_root, seq, clean) {
+                                eprintln!("[history] tag startup_clean failed: {}", e);
+                            }
                         }
                     }
+                    Err(e) => eprintln!("[history] baseline snapshot failed: {}", e),
                 }
-                Err(e) => eprintln!("[history] baseline snapshot failed: {}", e),
-            }
-            // baseline で 1 世代増えるので prune して単調増加を防ぐ（Finding #1）。
-            if let Err(e) = history::snapshot_prune_impl(&home_root, history::DEFAULT_KEEP) {
-                eprintln!("[history] baseline prune failed: {}", e);
             }
         }
     }
@@ -1337,9 +1343,20 @@ struct CharminalLayerEvent {
     mtime_ms: u64,
 }
 
+/// watcher-settled snapshot が index へ書き込まれた後に UI へ知らせる event。
+#[derive(Clone, serde::Serialize)]
+struct HistorySnapshotCreatedEvent {
+    seq: u64,
+    changed: Option<Vec<String>>,
+}
+
 /// File 1 枚の pending event（最後に届いた kind が勝つ）。
 type PendingMap = Arc<Mutex<HashMap<PathBuf, notify::EventKind>>>;
 type LayerEventFingerprint = (&'static str, u64);
+type WatcherSnapshotSignature = Option<Vec<String>>;
+
+const WATCHER_SNAPSHOT_DUPLICATE_WINDOW: Duration = Duration::from_millis(750);
+const RESTORE_WATCHER_QUIET_WINDOW: Duration = Duration::from_secs(5);
 
 struct WatcherHandle {
     /// Drop 時に OS watcher を畳む。
@@ -1394,7 +1411,7 @@ fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
     }
 }
 
-/// path が ~/.charminal/{.history,.staging,tmp} 配下なら true（watcher で drop 対象）。
+/// path が ~/.charminal/{.history,.charminal-snapshots,.staging,tmp} 配下なら true（watcher で drop 対象）。
 pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(charminal_home) else {
         return false;
@@ -1402,42 +1419,73 @@ pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bo
     matches!(
         rel.components().next(),
         Some(std::path::Component::Normal(seg))
-            if seg == ".history" || seg == ".staging" || seg == "tmp"
+            if seg == ".history" || seg == ".charminal-snapshots" || seg == ".staging" || seg == "tmp"
     )
 }
 
-/// path が snapshot 対象（`packs/**` か top-level `config.json` か `init.js`）の
-/// 変更なら true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
+fn is_snapshot_ignored_component(seg: &OsStr) -> bool {
+    let name = seg.to_string_lossy();
+    name == ".DS_Store" || name.ends_with(".resttmp")
+}
+
+fn is_user_pack_id(seg: &OsStr) -> bool {
+    let id = seg.to_string_lossy();
+    !id.starts_with('.') && !id.ends_with(".resttmp")
+}
+
+fn has_snapshot_ignored_component(charminal_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(charminal_home) else {
+        return false;
+    };
+    rel.components().any(|component| {
+        matches!(
+            component,
+            std::path::Component::Normal(seg) if is_snapshot_ignored_component(seg)
+        )
+    })
+}
+
+/// path が watcher trigger 対象（`packs/**` か top-level `init.js`）の変更なら
+/// true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
 /// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`last-startup.json` 等は false。
 pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(charminal_home) else {
         return false;
     };
+    if has_snapshot_ignored_component(charminal_home, path) {
+        return false;
+    }
     let mut comps = rel.components();
     match comps.next() {
-        Some(std::path::Component::Normal(seg)) if seg == "packs" => true,
-        // config.json / init.js は top-level の単一成分のみ対象。
-        Some(std::path::Component::Normal(seg)) if seg == "config.json" || seg == "init.js" => {
-            comps.next().is_none()
-        }
+        Some(std::path::Component::Normal(seg)) if seg == "packs" => match comps.next() {
+            None => false,
+            Some(std::path::Component::Normal(id)) => is_user_pack_id(id),
+            _ => false,
+        },
+        // init.js は top-level の単一成分のみ対象。
+        // config.json は git-tracked だが watcher trigger target ではない。
+        Some(std::path::Component::Normal(seg)) if seg == "init.js" => comps.next().is_none(),
         _ => false,
     }
 }
 
 /// 変更 path から「変わった pack/ファイル」の帰属トークンを導出する（Scope C）。
-/// `packs/<id>/...` → "<id>"、top-level `config.json` / `init.js` → その名前、
+/// `packs/<id>/...` → "<id>"、top-level `init.js` → その名前、
 /// それ以外（packs 直下のみ・対象外 path）→ None。is_snapshot_relevant_path と対。
+/// config.json は git-tracked だが watcher trigger target ではない。
 pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option<String> {
+    if has_snapshot_ignored_component(charminal_home, path) {
+        return None;
+    }
     let rel = path.strip_prefix(charminal_home).ok()?;
     let mut comps = rel.components();
     match comps.next()? {
         std::path::Component::Normal(seg) if seg == "packs" => match comps.next() {
-            Some(std::path::Component::Normal(id)) => Some(id.to_string_lossy().to_string()),
+            Some(std::path::Component::Normal(id)) if is_user_pack_id(id) => {
+                Some(id.to_string_lossy().to_string())
+            }
             _ => None,
         },
-        std::path::Component::Normal(seg) if seg == "config.json" => {
-            comps.next().is_none().then(|| "config.json".to_string())
-        }
         std::path::Component::Normal(seg) if seg == "init.js" => {
             comps.next().is_none().then(|| "init.js".to_string())
         }
@@ -1495,6 +1543,22 @@ fn should_emit_layer_event(
     true
 }
 
+fn should_create_watcher_snapshot(
+    last: &mut Option<(WatcherSnapshotSignature, Instant)>,
+    changed: &WatcherSnapshotSignature,
+    now: Instant,
+) -> bool {
+    if let Some((last_changed, last_at)) = last.as_ref() {
+        if last_changed == changed
+            && now.duration_since(*last_at) < WATCHER_SNAPSHOT_DUPLICATE_WINDOW
+        {
+            return false;
+        }
+    }
+    *last = Some((changed.clone(), now));
+    true
+}
+
 /// 与えられた scope 内に `path` が収まることを確認し、mtime を ms で返す。
 /// 本関数は `stat_file_mtime` の pure 実装——cargo test で scope 挙動を verify
 /// するため tauri ランタイムから分離してある。
@@ -1535,6 +1599,7 @@ async fn stat_file_mtime(path: String) -> Result<u64, String> {
 /// する。
 #[tauri::command]
 async fn watch_charminal_layer(
+    app: AppHandle,
     state: State<'_, WatcherState>,
     on_event: Channel<CharminalLayerEvent>,
 ) -> Result<(), String> {
@@ -1577,9 +1642,11 @@ async fn watch_charminal_layer(
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
     let pending_bg = pending.clone();
     let channel = on_event;
+    let app_handle = app.clone();
 
     let thread = std::thread::spawn(move || {
         let mut last_emitted: HashMap<PathBuf, LayerEventFingerprint> = HashMap::new();
+        let mut last_watcher_snapshot: Option<(WatcherSnapshotSignature, Instant)> = None;
         loop {
             std::thread::sleep(Duration::from_millis(150));
             if matches!(
@@ -1595,7 +1662,7 @@ async fn watch_charminal_layer(
                 };
                 guard.drain().collect()
             };
-            // この settle バーストに snapshot 対象（packs/** / config.json / init.js）の
+            // この settle バーストに watcher trigger 対象（packs/** / init.js）の
             // 変更が含まれていたかを記録する。含まれていれば末尾で 1 枚だけ撮る。
             let mut snapshot_relevant = false;
             let mut changed_paths: Vec<PathBuf> = Vec::new();
@@ -1634,24 +1701,42 @@ async fn watch_charminal_layer(
                     break;
                 }
             }
-            // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮り、
-            // 直近 DEFAULT_KEEP 件に間引く。snapshot は .history/ へ書くので
-            // is_history_internal_path filter により watcher へ戻らない（無限ループ無し）。
+            // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮る。
+            // snapshot は .charminal-snapshots/ へ書くので is_history_internal_path
+            // filter により watcher へ戻らない（無限ループ無し）。
             // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
             if snapshot_relevant {
                 if let Some(home_root) = home.parent() {
+                    if history::restore_quiet_period_active(
+                        home_root,
+                        RESTORE_WATCHER_QUIET_WINDOW.as_millis() as u64,
+                    ) {
+                        continue;
+                    }
                     let changed = collect_changed_scopes(&home, changed_paths.iter());
+                    if !should_create_watcher_snapshot(
+                        &mut last_watcher_snapshot,
+                        &changed,
+                        Instant::now(),
+                    ) {
+                        continue;
+                    }
+                    let event_changed = changed.clone();
                     match history::snapshot_create_with_changed_impl(
                         home_root,
                         "watcher-settled",
                         None,
                         changed,
                     ) {
-                        Ok(_) => {
+                        Ok(seq) => {
+                            let event = HistorySnapshotCreatedEvent {
+                                seq,
+                                changed: event_changed,
+                            };
                             if let Err(e) =
-                                history::snapshot_prune_impl(home_root, history::DEFAULT_KEEP)
+                                app_handle.emit("charminal:history-snapshot-created", event)
                             {
-                                eprintln!("[history] watcher-settled prune failed: {}", e);
+                                eprintln!("[history] watcher-settled event emit failed: {}", e);
                             }
                         }
                         Err(e) => eprintln!("[history] watcher-settled snapshot failed: {}", e),
@@ -1946,12 +2031,14 @@ mod layer_scope_tests {
     use super::{
         collect_changed_scopes, command_candidate_names, is_history_internal_path,
         is_safe_mode_value, is_snapshot_relevant_path, layer_event_label,
-        read_last_startup_report_impl, resolve_command_path_impl, should_emit_layer_event,
-        snapshot_scope_token, stat_mtime_in_scope, write_charminal_file_atomic_impl,
+        read_last_startup_report_impl, resolve_command_path_impl, should_create_watcher_snapshot,
+        should_emit_layer_event, snapshot_scope_token, stat_mtime_in_scope,
+        write_charminal_file_atomic_impl,
     };
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
@@ -2084,11 +2171,16 @@ mod layer_scope_tests {
     #[test]
     fn history_paths_are_excluded_from_watch() {
         let home = std::path::Path::new("/Users/x/.charminal");
+        // 旧 full-copy store が残っていても内部書き込みとして除外する。
         assert!(is_history_internal_path(
             home,
             std::path::Path::new(
                 "/Users/x/.charminal/.history/generations/000001/packs/foo/effect.js"
             )
+        ));
+        assert!(is_history_internal_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/.charminal-snapshots/objects/ab/cdef")
         ));
         assert!(is_history_internal_path(
             home,
@@ -2117,21 +2209,35 @@ mod layer_scope_tests {
             home,
             std::path::Path::new("/Users/x/.charminal/packs/foo/effect.js")
         ));
-        // packs ディレクトリ自体の event も対象。
-        assert!(is_snapshot_relevant_path(
+        // packs ディレクトリ自体の mtime だけでは何が変わったかを説明できないため対象外。
+        assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/packs")
         ));
-        // top-level の config.json / init.js は対象。
-        assert!(is_snapshot_relevant_path(
+        // packs root の Finder dotfile は user-facing 変更ではない。
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/.DS_Store")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/..DS_Store.resttmp")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/packs/foo/.effect.js.resttmp")
+        ));
+        // config.json は git-tracked だが watcher trigger target ではない。
+        assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/config.json")
         ));
+        // init.js は対象。
         assert!(is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/init.js")
         ));
-        // 対象外：journal / sdk.d.ts / last-startup.json / .history。
+        // 対象外：journal / sdk.d.ts / last-startup.json / snapshot store。
         assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/journal/daily/2026-06-02.md")
@@ -2147,6 +2253,10 @@ mod layer_scope_tests {
         assert!(!is_snapshot_relevant_path(
             home,
             std::path::Path::new("/Users/x/.charminal/.history/generations/000001/config.json")
+        ));
+        assert!(!is_snapshot_relevant_path(
+            home,
+            std::path::Path::new("/Users/x/.charminal/.charminal-snapshots/HEAD")
         ));
         // config.json と同名でも sub-path は対象外（config.json/something のような異常系）。
         assert!(!is_snapshot_relevant_path(
@@ -2172,7 +2282,7 @@ mod layer_scope_tests {
         );
         assert_eq!(
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/config.json")),
-            Some("config.json".to_string())
+            None
         );
         assert_eq!(
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/init.js")),
@@ -2185,6 +2295,24 @@ mod layer_scope_tests {
         );
         assert_eq!(
             snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs")),
+            None
+        );
+        assert_eq!(
+            snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs/.DS_Store")),
+            None
+        );
+        assert_eq!(
+            snapshot_scope_token(
+                home,
+                Path::new("/Users/x/.charminal/packs/..DS_Store.resttmp")
+            ),
+            None
+        );
+        assert_eq!(
+            snapshot_scope_token(
+                home,
+                Path::new("/Users/x/.charminal/packs/foo/.scene.js.resttmp")
+            ),
             None
         );
     }
@@ -2205,7 +2333,7 @@ mod layer_scope_tests {
     }
 
     #[test]
-    fn collect_changed_scopes_records_config_init_and_returns_none_when_empty() {
+    fn collect_changed_scopes_records_init_and_returns_none_when_empty() {
         let home = Path::new("/Users/x/.charminal");
         let paths = [
             Path::new("/Users/x/.charminal/packs/theme/scene.js"),
@@ -2215,11 +2343,7 @@ mod layer_scope_tests {
 
         assert_eq!(
             collect_changed_scopes(home, paths),
-            Some(vec![
-                "config.json".to_string(),
-                "init.js".to_string(),
-                "theme".to_string(),
-            ])
+            Some(vec!["init.js".to_string(), "theme".to_string()])
         );
         assert_eq!(
             collect_changed_scopes(
@@ -2227,10 +2351,36 @@ mod layer_scope_tests {
                 [
                     Path::new("/Users/x/.charminal/packs"),
                     Path::new("/Users/x/.charminal/journal/x.md"),
+                    Path::new("/Users/x/.charminal/packs/foo/.scene.js.resttmp"),
                 ],
             ),
             None
         );
+    }
+
+    #[test]
+    fn watcher_snapshot_suppresses_identical_short_bursts() {
+        let mut last = None;
+        let now = Instant::now();
+        let theme = Some(vec!["theme".to_string()]);
+        let init = Some(vec!["init.js".to_string()]);
+
+        assert!(should_create_watcher_snapshot(&mut last, &theme, now));
+        assert!(!should_create_watcher_snapshot(
+            &mut last,
+            &theme,
+            now + Duration::from_millis(50)
+        ));
+        assert!(should_create_watcher_snapshot(
+            &mut last,
+            &init,
+            now + Duration::from_millis(60)
+        ));
+        assert!(should_create_watcher_snapshot(
+            &mut last,
+            &init,
+            now + Duration::from_secs(1)
+        ));
     }
 
     // ─── Phase 1-c: safe-mode / atomic write / load-report ────────

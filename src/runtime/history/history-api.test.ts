@@ -9,7 +9,10 @@ describe("createHistoryApi", () => {
     ],
     create: async (_label?: string) => 3,
     restore: async (_seq: number) => {},
-    confirm: async () => true,
+    confirmRestore: async (_seq: number, runRestore: () => Promise<void>) => {
+      await runRestore();
+      return true;
+    },
   };
 
   it("list passes through", async () => {
@@ -26,7 +29,10 @@ describe("createHistoryApi", () => {
     const calls: number[] = [];
     const api = createHistoryApi({
       ...baseDeps,
-      confirm: async () => true,
+      confirmRestore: async (_seq, runRestore) => {
+        await runRestore();
+        return true;
+      },
       restore: async (seq) => {
         calls.push(seq);
       },
@@ -39,7 +45,7 @@ describe("createHistoryApi", () => {
     const calls: number[] = [];
     const api = createHistoryApi({
       ...baseDeps,
-      confirm: async () => false,
+      confirmRestore: async () => false,
       restore: async (seq) => {
         calls.push(seq);
       },

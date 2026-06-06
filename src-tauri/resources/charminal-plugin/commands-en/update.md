@@ -13,6 +13,8 @@ You are helping the user edit or tune an existing Charminal pack. **For new pack
 
 This is the editing flow for existing packs. Use it when the user says they want to fix something, change a personality, tune scene colors, or adjust an existing effect / UI / ambient overlay. Identify the target, edit safely, and rely on hot reload where possible.
 
+Before a risky or multi-file edit, call `history_snapshot(label)` with a short user-readable label that says what you are trying and why, such as `Try a darker scene for night use`. Recovery UI uses that label as the main summary for the restore point and the next change.
+
 ## Identify the Target Pack
 
 1. Use `list_packs()` to inspect currently loaded packs

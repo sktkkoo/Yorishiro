@@ -17,8 +17,10 @@ the Agent setting and restart Charminal.
 | Path | Purpose |
 |---|---|
 | `~/.charminal/config.json` | User settings, including selected persona, scene, terminal agent, and disabled packs |
+| `~/.charminal/cohabitation.json` | Runtime cohabitation-hours state. Not a user setting and not included in rollback snapshots |
 | `~/.charminal/init.js` | User startup script. Skipped in safe mode |
 | `~/.charminal/packs/` | User-created packs |
+| `~/.charminal/.charminal-snapshots/` | Internal rollback snapshot store. Do not edit manually |
 | `~/.charminal/last-startup.json` | Latest user pack load report |
 | `~/.charminal/journal/` | Journal and memory files |
 | `~/.charminal/shell/` | Generated shell integration files |
@@ -75,8 +77,8 @@ rm -rf ~/.charminal/runtime-plugin
 rm -rf ~/.codex/plugins/cache/charminal-local
 ```
 
-To remove all Charminal user data, including packs, config, journal, memory,
-and generated files, remove `~/.charminal`. This is destructive and should be
+To remove all Charminal user data, including packs, config, cohabitation state,
+journal, memory, rollback snapshots, and generated files, remove `~/.charminal`. This is destructive and should be
 treated separately from uninstalling the app binary.
 
 ## Crash recovery screen

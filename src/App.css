@@ -177,6 +177,38 @@ body,
   font-size: 12px;
 }
 
+.app-error-boundary-restore-row-text {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.app-error-boundary-restore-row-time {
+  color: var(--charminal-muted, rgba(230, 237, 243, 0.65));
+  font-weight: 400;
+}
+
+.app-error-boundary-restore-row-detail {
+  display: block;
+  width: 100%;
+  color: var(--charminal-muted, rgba(230, 237, 243, 0.65));
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+
+.app-error-boundary-restore-row-change.is-error {
+  color: #d6b15c;
+}
+
+.app-error-boundary-restore-recommended {
+  color: var(--charminal-fg, #e6edf3);
+}
+
 .app-error-boundary-restore button {
   border-radius: 8px;
   border: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));
@@ -195,6 +227,142 @@ body,
 
 .app-error-boundary-restore li.is-recommended {
   font-weight: 600;
+}
+
+.restore-confirm-overlay {
+  --restore-panel-bg: rgba(28, 31, 35, 0.72);
+  --restore-panel-solid-bg: rgb(28, 31, 35);
+  --restore-panel-border: rgba(244, 247, 250, 0.13);
+  --restore-fg: #f4f7fa;
+  --restore-muted: rgba(244, 247, 250, 0.68);
+  --restore-scrim: rgba(7, 9, 12, 0.52);
+  --restore-primary-bg: #eef2f5;
+  --restore-primary-fg: #171a1d;
+  --restore-secondary-bg: rgba(244, 247, 250, 0.08);
+  --restore-secondary-bg-hover: rgba(244, 247, 250, 0.13);
+  --restore-focus: rgba(244, 247, 250, 0.42);
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--restore-scrim);
+}
+
+.restore-confirm-overlay[data-surface="themed"] {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.restore-confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.restore-confirm-panel {
+  position: relative;
+  z-index: 1;
+  width: min(440px, calc(100vw - 48px));
+  border: 1px solid var(--restore-panel-border);
+  border-radius: 10px;
+  background: var(--restore-panel-bg);
+  color: var(--restore-fg);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+  padding: 20px;
+  text-align: left;
+}
+
+.restore-confirm-overlay[data-surface="crash"] .restore-confirm-panel {
+  background: var(--restore-panel-solid-bg);
+}
+
+.restore-confirm-title {
+  margin: 0;
+  color: var(--restore-fg);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.restore-confirm-body,
+.restore-confirm-error {
+  margin: 12px 0 0;
+  color: var(--restore-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.restore-confirm-error {
+  color: #f1c56f;
+}
+
+.restore-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.restore-confirm-button {
+  min-height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--restore-panel-border);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.restore-confirm-button:focus-visible {
+  outline: 2px solid var(--restore-focus);
+  outline-offset: 2px;
+}
+
+.restore-confirm-button:disabled {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.restore-confirm-button-secondary {
+  background: var(--restore-secondary-bg);
+  color: var(--restore-fg);
+}
+
+.restore-confirm-button-secondary:hover:not(:disabled) {
+  background: var(--restore-secondary-bg-hover);
+}
+
+.restore-confirm-button-primary {
+  background: var(--restore-primary-bg);
+  color: var(--restore-primary-fg);
+}
+
+.restore-confirm-button-primary:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .restore-confirm-overlay[data-surface="themed"] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .restore-confirm-panel {
+    background: var(--restore-panel-solid-bg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restore-confirm-panel,
+  .restore-confirm-overlay {
+    transition: none;
+    animation: none;
+  }
 }
 
 /* ── Shell column（width / collapse を所有する縦カラム）─────── */
