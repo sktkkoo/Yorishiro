@@ -1175,7 +1175,7 @@ function SnapshotRestoreSection({
               transition: "transform 0.15s ease",
             }}
           />
-          <RotateCcw size={14} aria-hidden="true" color={COLORS.fgDimmer} />
+          <RotateCcw size={14} aria-hidden="true" color={COLORS.fgDim} />
           <span>{strings.labelRestore}</span>
         </button>
         {open && (
