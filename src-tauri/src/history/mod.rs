@@ -787,7 +787,9 @@ pub(crate) fn snapshot_restore_impl(
         }
     }
 
-    snapshot_create_locked(&repo, "pre-restore", None, None)?;
+    let target_ts_ms = target_commit.time().seconds().max(0) as u64 * 1000;
+    let restore_label = format!("restore-to:{}:{}", seq, target_ts_ms);
+    snapshot_create_locked(&repo, "pre-restore", Some(&restore_label), None)?;
     checkout_scope(&repo, &target_tree, &scope)?;
     for rel in &scope {
         mirror_scope(&repo, &target_tree, rel)?;
@@ -1085,11 +1087,18 @@ mod tests {
         snapshot_restore_impl(&home, seq1, None).unwrap();
 
         let snaps = snapshot_list_impl(&home).unwrap();
-        let pre_restore_seq = snaps
+        let pre_restore = snaps
             .iter()
             .find(|s| s.trigger == "pre-restore")
-            .map(|s| s.seq)
             .expect("pre-restore snapshot");
+        let pre_restore_seq = pre_restore.seq;
+        // pre-restore の label に復元先の seq と ts_ms が記録されている
+        let label = pre_restore.label.as_deref().expect("pre-restore label");
+        assert!(
+            label.starts_with(&format!("restore-to:{}:", seq1)),
+            "label should encode restore target seq: {}",
+            label
+        );
         assert_eq!(
             fs::read_to_string(charminal(&home).join("config.json")).unwrap(),
             "{\"v\":1}"

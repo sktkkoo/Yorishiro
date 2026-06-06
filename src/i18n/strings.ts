@@ -64,12 +64,16 @@ export interface UiStrings {
   readonly restoreCrashIntroSuffix: string;
   readonly changedOnePack: string;
   readonly changedManyPacks: string;
+  readonly changedManyPacksNamed: string;
+  readonly changedManyPacksNamedMore: string;
   readonly changedConfig: string;
   readonly changedInit: string;
   readonly changedMixed: string;
   readonly changeStartup: string;
   readonly changeStartupError: string;
   readonly changeManual: string;
+  readonly changePreRestore: string;
+  readonly changeSdkSnapshot: string;
   readonly changeUnknown: string;
   readonly healthHealthy: string;
   readonly healthWarnings: string;
@@ -156,12 +160,16 @@ const EN: UiStrings = {
     " can recover Charminal. The latest point is the current state, so restoring it may not change the crash. Restoring reloads the app.",
   changedOnePack: 'Changed "{id}"',
   changedManyPacks: "{n} changes",
+  changedManyPacksNamed: 'Changed "{names}"',
+  changedManyPacksNamedMore: 'Changed "{first}" + {rest} more',
   changedConfig: "Changed settings",
   changedInit: "Changed startup behavior",
   changedMixed: "{n} changes",
-  changeStartup: "At startup",
-  changeStartupError: "Startup error",
+  changeStartup: "Startup checkpoint",
+  changeStartupError: "Startup checkpoint (error)",
   changeManual: "Marked by AI",
+  changePreRestore: "Restored to {time}",
+  changeSdkSnapshot: "Recorded by pack",
   changeUnknown: "Changed",
   healthHealthy: "Healthy",
   healthWarnings: "Warnings",
@@ -247,12 +255,16 @@ const JA: UiStrings = {
     "に戻すと復旧できることがあります。最新の時点は「変更後＝現在の状態」なので、戻しても症状が変わらない場合があります。復元するとアプリを再読み込みします。",
   changedOnePack: "「{id}」を変更",
   changedManyPacks: "{n}個の変更",
+  changedManyPacksNamed: "「{names}」を変更",
+  changedManyPacksNamedMore: "「{first}」ほか{rest}件を変更",
   changedConfig: "設定を変更",
   changedInit: "起動時の動作を変更",
   changedMixed: "{n}件の変更",
-  changeStartup: "起動した時",
-  changeStartupError: "起動エラーが出た時",
+  changeStartup: "起動時チェックポイント",
+  changeStartupError: "起動時チェックポイント（エラー）",
   changeManual: "AIが記録",
+  changePreRestore: "{time} の状態に復元",
+  changeSdkSnapshot: "packが記録",
   changeUnknown: "変更",
   healthHealthy: "正常",
   healthWarnings: "警告あり",
@@ -284,12 +296,23 @@ export function changeStrings(s: UiStrings): ChangeStrings {
   return {
     changedOnePack: (id) => s.changedOnePack.replace("{id}", id),
     changedManyPacks: (n) => s.changedManyPacks.replace("{n}", String(n)),
+    changedManyPacksNamed: (names) => {
+      if (names.length <= 2) {
+        const joined = names.map((n) => s.changedOnePack.replace("{id}", n)).join("、");
+        return joined;
+      }
+      return s.changedManyPacksNamedMore
+        .replace("{first}", names[0])
+        .replace("{rest}", String(names.length - 1));
+    },
     changedConfig: s.changedConfig,
     changedInit: s.changedInit,
     changedMixed: (n) => s.changedMixed.replace("{n}", String(n)),
     changeStartup: s.changeStartup,
     changeStartupError: s.changeStartupError,
     changeManual: s.changeManual,
+    changePreRestore: (time) => s.changePreRestore.replace("{time}", time),
+    changeSdkSnapshot: s.changeSdkSnapshot,
     changeUnknown: s.changeUnknown,
   };
 }

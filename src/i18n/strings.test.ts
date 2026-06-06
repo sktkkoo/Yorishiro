@@ -91,8 +91,8 @@ describe("changeStrings", () => {
     expect(s.changedConfig).toBe("Changed settings");
     expect(s.changedInit).toBe("Changed startup behavior");
     expect(s.changedMixed(2)).toBe("2 changes");
-    expect(s.changeStartup).toBe("At startup");
-    expect(s.changeStartupError).toBe("Startup error");
+    expect(s.changeStartup).toBe("Startup checkpoint");
+    expect(s.changeStartupError).toBe("Startup checkpoint (error)");
     expect(s.changeManual).toBe("Marked by AI");
     expect(s.changeUnknown).toBe("Changed");
   });
@@ -104,8 +104,8 @@ describe("changeStrings", () => {
     expect(s.changedConfig).toBe("設定を変更");
     expect(s.changedInit).toBe("起動時の動作を変更");
     expect(s.changedMixed(2)).toBe("2件の変更");
-    expect(s.changeStartup).toBe("起動した時");
-    expect(s.changeStartupError).toBe("起動エラーが出た時");
+    expect(s.changeStartup).toBe("起動時チェックポイント");
+    expect(s.changeStartupError).toBe("起動時チェックポイント（エラー）");
     expect(s.changeManual).toBe("AIが記録");
     expect(s.changeUnknown).toBe("変更");
   });

@@ -95,9 +95,7 @@ export class AppErrorBoundary extends React.Component<
                 >
                   {row.changeText}
                 </span>
-                <span className="app-error-boundary-restore-row-time">
-                  · {row.timeText} · {row.timeAbsolute}
-                </span>
+                <span className="app-error-boundary-restore-row-time">· {row.timeText}</span>
                 {row.isLatest ? (
                   <span className="app-error-boundary-restore-row-time">
                     {strings.restoreLatestTag}

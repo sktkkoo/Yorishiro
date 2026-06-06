@@ -1097,9 +1097,7 @@ function SnapshotRestoreSection({
           >
             {row.changeText}
           </span>
-          <span style={{ color: COLORS.fgDimmer }}>
-            · {row.timeText} · {row.timeAbsolute}
-          </span>
+          <span style={{ color: COLORS.fgDimmer }}>· {row.timeText}</span>
           {row.isLatest ? (
             <span style={{ color: COLORS.fgDimmer }}>{strings.restoreLatestTag}</span>
           ) : null}

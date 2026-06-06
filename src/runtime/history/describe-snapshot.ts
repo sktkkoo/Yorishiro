@@ -59,30 +59,6 @@ function isYesterday(tsMs: number, nowMs: number): boolean {
   );
 }
 
-/** 年をまたぐかどうかで年を含めるか判定し、絶対日時を返す。 */
-export function formatAbsoluteTime(tsMs: number, nowMs: number, locale: string): string {
-  const tsDate = new Date(tsMs);
-  const nowDate = new Date(nowMs);
-  if (tsDate.getFullYear() !== nowDate.getFullYear()) {
-    const parts = new Intl.DateTimeFormat(intlLocale(locale), {
-      year: "numeric",
-      month: "numeric",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    })
-      .formatToParts(tsDate)
-      .filter((part) => part.type !== "literal")
-      .reduce<Record<string, string>>((acc, part) => {
-        acc[part.type] = part.value;
-        return acc;
-      }, {});
-    return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
-  }
-  return formatMonthDayTime(tsMs, locale);
-}
-
 /**
  * snapshot の時刻を UI 行用に整形する純関数。
  * 24 時間未満は相対、24 時間以上は絶対日付に倒す。
@@ -111,35 +87,58 @@ export function recommendedRestoreSeq(snapshots: ReadonlyArray<SnapshotEntry>): 
   return snapshots[1]?.seq ?? null;
 }
 
-/**
- * `describeChange` が必要とする i18n 文言（focused interface）。
- * P2 で UiStrings から組み立てる。P1 では型と pure helper だけ用意する。
- */
 export interface ChangeStrings {
   readonly changedOnePack: (id: string) => string;
   readonly changedManyPacks: (n: number) => string;
+  readonly changedManyPacksNamed: (names: readonly string[]) => string;
   readonly changedConfig: string;
   readonly changedInit: string;
   readonly changedMixed: (n: number) => string;
   readonly changeStartup: string;
   readonly changeStartupError: string;
   readonly changeManual: string;
+  readonly changePreRestore: (time: string) => string;
+  readonly changeSdkSnapshot: string;
   readonly changeUnknown: string;
 }
 
+/** pre-restore label から復元先の ts_ms を取り出す。形式: "restore-to:<seq>:<ts_ms>" */
+export function parseRestoreLabel(label: string | undefined): number | null {
+  if (!label) return null;
+  const m = label.match(/^restore-to:\d+:(\d+)$/);
+  return m ? Number(m[1]) : null;
+}
+
+function isUserVisibleChangedToken(value: string): boolean {
+  return !value.startsWith(".") && !value.endsWith(".resttmp");
+}
+
 /**
- * snapshot の「何が起きたか」を user 語で返す純関数（Scope C）。
- * `changed` があればそれを優先し、無ければ trigger / label に fallback する。
- * seq / trigger 名のような実装語彙は表に出さない。
+ * snapshot の「何が起きたか」を user 語で返す純関数。
+ * trigger / changed / label から適切なサマリーを生成する。
  */
-export function describeChange(entry: SnapshotEntry, s: ChangeStrings): string {
-  const changed = entry.changed ?? [];
+export function describeChange(
+  entry: SnapshotEntry,
+  s: ChangeStrings,
+  locale: string,
+  nowMs: number,
+): string {
+  const label = entry.label?.trim();
+  const changed = (entry.changed ?? []).filter(isUserVisibleChangedToken);
   if (changed.length === 0) {
     if (entry.trigger === "startup-baseline") {
       return entry.startup_clean === false ? s.changeStartupError : s.changeStartup;
     }
-    if (entry.trigger === "mcp:snapshot") return entry.label ?? s.changeManual;
-    return entry.label ?? s.changeUnknown;
+    if (entry.trigger === "pre-restore") {
+      const targetTs = parseRestoreLabel(entry.label);
+      if (targetTs !== null) {
+        return s.changePreRestore(formatSnapshotTime(targetTs, nowMs, locale));
+      }
+      return label ?? s.changeUnknown;
+    }
+    if (entry.trigger === "mcp:snapshot") return label ?? s.changeManual;
+    if (entry.trigger === "sdk:snapshot") return label ?? s.changeSdkSnapshot;
+    return label ?? s.changeUnknown;
   }
   if (changed.length === 1) {
     const only = changed[0];
@@ -148,25 +147,19 @@ export function describeChange(entry: SnapshotEntry, s: ChangeStrings): string {
     if (only !== undefined) return s.changedOnePack(only);
   }
   const hasSpecial = changed.some((c) => c === "config.json" || c === "init.js");
-  if (!hasSpecial) return s.changedManyPacks(changed.length);
+  if (!hasSpecial) return s.changedManyPacksNamed(changed);
   return s.changedMixed(changed.length);
 }
 
 export type StartupStatus = "error";
 
-/** restore 一覧の 1 行。表示要素を構造化して、UI 側で落ち着いた行に組む。 */
 export interface RestoreRow {
   readonly seq: number;
   readonly changeText: string;
   readonly timeText: string;
-  /** 絶対日時（月/日 HH:MM 形式）。相対時刻と並べて「いつの時点か」を常に読めるようにする。 */
-  readonly timeAbsolute: string;
-  /** snapshot の changed フィールド（pack 名 / init.js）。UI で詳細表示に使う。 */
   readonly changedItems: ReadonlyArray<string>;
   readonly startupStatus: StartupStatus | null;
-  /** snapshots[0]（変更後＝現在に近い状態）か。 */
   readonly isLatest: boolean;
-  /** 既定の戻し先（recommendedRestoreSeq）か。 */
   readonly isRecommended: boolean;
 }
 
@@ -175,11 +168,6 @@ function startupStatus(entry: SnapshotEntry): StartupStatus | null {
   return null;
 }
 
-/**
- * snapshot 一覧を recovery / 設定 UI 用の表示行に変換する pure helper。
- * 直近 `limit` 件に絞り、最新（[0]）と推奨（recommendedRestoreSeq）を flag する。
- * 行の文言は構造化し、tag 文言は呼び出し側が isLatest / isRecommended から付ける。
- */
 export function buildRestoreRows(
   snapshots: ReadonlyArray<SnapshotEntry>,
   nowMs: number,
@@ -190,9 +178,8 @@ export function buildRestoreRows(
   const recommended = recommendedRestoreSeq(snapshots);
   return snapshots.slice(0, limit).map((entry, index) => ({
     seq: entry.seq,
-    changeText: describeChange(entry, s),
+    changeText: describeChange(entry, s, locale, nowMs),
     timeText: formatSnapshotTime(entry.ts_ms, nowMs, locale),
-    timeAbsolute: formatAbsoluteTime(entry.ts_ms, nowMs, locale),
     changedItems: entry.changed ?? [],
     startupStatus: startupStatus(entry),
     isLatest: index === 0,

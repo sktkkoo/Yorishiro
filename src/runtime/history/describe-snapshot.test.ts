@@ -1,23 +1,32 @@
 import { describe, expect, it } from "vitest";
 import {
   buildRestoreRows,
+  type ChangeStrings,
   describeChange,
-  formatAbsoluteTime,
   formatSnapshotTime,
+  parseRestoreLabel,
   recommendedRestoreSeq,
 } from "./describe-snapshot";
 
-const changeText = {
+const changeText: ChangeStrings = {
   changedOnePack: (id: string) => `「${id}」を変更`,
   changedManyPacks: (n: number) => `${n}個の変更`,
+  changedManyPacksNamed: (names: readonly string[]) => {
+    if (names.length <= 2) return names.map((n) => `「${n}」を変更`).join("、");
+    return `「${names[0]}」ほか${names.length - 1}件を変更`;
+  },
   changedConfig: "設定を変更",
   changedInit: "起動時の動作を変更",
   changedMixed: (n: number) => `${n}件の変更`,
-  changeStartup: "起動した時",
-  changeStartupError: "起動エラーが出た時",
+  changeStartup: "起動時チェックポイント",
+  changeStartupError: "起動時チェックポイント（エラー）",
   changeManual: "AIが記録",
+  changePreRestore: (time: string) => `${time} の状態に復元`,
+  changeSdkSnapshot: "packが記録",
   changeUnknown: "変更",
 };
+
+const NOW = new Date(2026, 5, 6, 12, 0, 0).getTime();
 
 describe("formatSnapshotTime", () => {
   const now = new Date(2026, 5, 3, 12, 0, 0).getTime();
@@ -48,20 +57,6 @@ describe("formatSnapshotTime", () => {
   });
 });
 
-describe("formatAbsoluteTime", () => {
-  const now = new Date(2026, 5, 3, 12, 0, 0).getTime();
-
-  it("formats same-year as month/day time", () => {
-    const ts = new Date(2026, 5, 1, 9, 5, 0).getTime();
-    expect(formatAbsoluteTime(ts, now, "ja-JP")).toBe("6/1 09:05");
-  });
-
-  it("includes year when crossing year boundary", () => {
-    const ts = new Date(2025, 11, 31, 23, 59, 0).getTime();
-    expect(formatAbsoluteTime(ts, now, "ja-JP")).toBe("2025/12/31 23:59");
-  });
-});
-
 describe("recommendedRestoreSeq", () => {
   it("returns null for empty", () => {
     expect(recommendedRestoreSeq([])).toBeNull();
@@ -82,12 +77,30 @@ describe("recommendedRestoreSeq", () => {
   });
 });
 
+describe("parseRestoreLabel", () => {
+  it("parses valid restore label", () => {
+    expect(parseRestoreLabel("restore-to:5:1717628460000")).toBe(1717628460000);
+  });
+
+  it("returns null for undefined", () => {
+    expect(parseRestoreLabel(undefined)).toBeNull();
+  });
+
+  it("returns null for invalid format", () => {
+    expect(parseRestoreLabel("random label")).toBeNull();
+    expect(parseRestoreLabel("restore-to:abc:def")).toBeNull();
+    expect(parseRestoreLabel("restore-to:5")).toBeNull();
+  });
+});
+
 describe("describeChange", () => {
   it("one pack", () => {
     expect(
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["my-theme"] },
         changeText,
+        "ja-JP",
+        NOW,
       ),
     ).toBe("「my-theme」を変更");
   });
@@ -97,6 +110,8 @@ describe("describeChange", () => {
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["config.json"] },
         changeText,
+        "ja-JP",
+        NOW,
       ),
     ).toBe("設定を変更");
   });
@@ -106,17 +121,32 @@ describe("describeChange", () => {
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["init.js"] },
         changeText,
+        "ja-JP",
+        NOW,
       ),
     ).toBe("起動時の動作を変更");
   });
 
-  it("many packs", () => {
+  it("two packs shows both names", () => {
     expect(
       describeChange(
-        { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "b"] },
+        { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["theme-a", "theme-b"] },
         changeText,
+        "ja-JP",
+        NOW,
       ),
-    ).toBe("2個の変更");
+    ).toBe("「theme-a」を変更、「theme-b」を変更");
+  });
+
+  it("four packs shows first + count", () => {
+    expect(
+      describeChange(
+        { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "b", "c", "d"] },
+        changeText,
+        "ja-JP",
+        NOW,
+      ),
+    ).toBe("「a」ほか3件を変更");
   });
 
   it("mixed pack + config", () => {
@@ -124,14 +154,16 @@ describe("describeChange", () => {
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "watcher-settled", changed: ["a", "config.json"] },
         changeText,
+        "ja-JP",
+        NOW,
       ),
     ).toBe("2件の変更");
   });
 
   it("baseline fallback when changed absent", () => {
-    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "startup-baseline" }, changeText)).toBe(
-      "起動した時",
-    );
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "startup-baseline" }, changeText, "ja-JP", NOW),
+    ).toBe("起動時チェックポイント");
   });
 
   it("startup error folds health into the text", () => {
@@ -139,8 +171,10 @@ describe("describeChange", () => {
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "startup-baseline", startup_clean: false },
         changeText,
+        "ja-JP",
+        NOW,
       ),
-    ).toBe("起動エラーが出た時");
+    ).toBe("起動時チェックポイント（エラー）");
   });
 
   it("startup clean is just the plain startup text", () => {
@@ -148,33 +182,79 @@ describe("describeChange", () => {
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "startup-baseline", startup_clean: true },
         changeText,
+        "ja-JP",
+        NOW,
       ),
-    ).toBe("起動した時");
+    ).toBe("起動時チェックポイント");
   });
 
-  it("startup unknown is just the plain startup text", () => {
-    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "startup-baseline" }, changeText)).toBe(
-      "起動した時",
-    );
-  });
-
-  it("mcp label fallback when changed absent", () => {
+  it("mcp label takes precedence", () => {
     expect(
       describeChange(
         { seq: 1, ts_ms: 0, trigger: "mcp:snapshot", label: "夜にする前" },
         changeText,
+        "ja-JP",
+        NOW,
       ),
     ).toBe("夜にする前");
   });
 
-  it("mcp manual fallback when label absent", () => {
-    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "mcp:snapshot" }, changeText)).toBe(
-      "AIが記録",
-    );
+  it("mcp without label falls back to manual", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "mcp:snapshot" }, changeText, "ja-JP", NOW),
+    ).toBe("AIが記録");
   });
 
-  it("unknown fallback when changed and label absent", () => {
-    expect(describeChange({ seq: 1, ts_ms: 0, trigger: "pre-restore" }, changeText)).toBe("変更");
+  it("sdk:snapshot without label", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "sdk:snapshot" }, changeText, "ja-JP", NOW),
+    ).toBe("packが記録");
+  });
+
+  it("sdk:snapshot with label uses label", () => {
+    expect(
+      describeChange(
+        { seq: 1, ts_ms: 0, trigger: "sdk:snapshot", label: "before experiment" },
+        changeText,
+        "ja-JP",
+        NOW,
+      ),
+    ).toBe("before experiment");
+  });
+
+  it("pre-restore with structured label shows restore target time", () => {
+    const targetTs = new Date(2026, 5, 6, 0, 31, 0).getTime();
+    expect(
+      describeChange(
+        { seq: 3, ts_ms: NOW, trigger: "pre-restore", label: `restore-to:1:${targetTs}` },
+        changeText,
+        "ja-JP",
+        NOW,
+      ),
+    ).toMatch(/の状態に復元$/);
+  });
+
+  it("pre-restore without label falls back to unknown", () => {
+    expect(
+      describeChange({ seq: 1, ts_ms: 0, trigger: "pre-restore" }, changeText, "ja-JP", NOW),
+    ).toBe("変更");
+  });
+
+  it("uses label as the primary heading when present with changed", () => {
+    expect(
+      describeChange(
+        {
+          seq: 1,
+          ts_ms: 0,
+          trigger: "watcher-settled",
+          changed: ["my-theme"],
+          label: "暗い見た目にする前",
+        },
+        changeText,
+        "ja-JP",
+        NOW,
+      ),
+    ).toBe("「my-theme」を変更");
   });
 });
 
@@ -190,16 +270,15 @@ describe("buildRestoreRows", () => {
     expect(rows.map((r) => r.seq)).toEqual([9, 8, 7]);
     expect(rows[0].changeText).toBe("「my-theme」を変更");
     expect(rows[0].timeText).toBe("たった今");
-    expect(rows[0].timeAbsolute).toMatch(/^\d+\/\d+ \d{2}:\d{2}$/);
     expect(rows[0].changedItems).toEqual(["my-theme"]);
     expect(rows[0].startupStatus).toBeNull();
     expect(rows[0].isLatest).toBe(true);
-    expect(rows[0].isRecommended).toBe(false); // 最新（壊れている可能性）は既定にしない
+    expect(rows[0].isRecommended).toBe(false);
     expect(rows[1].changeText).toBe("設定を変更");
     expect(rows[1].timeText).toBe("1分前");
     expect(rows[2].startupStatus).toBeNull();
     expect(rows[1].isLatest).toBe(false);
-    expect(rows[1].isRecommended).toBe(true); // 1 つ前が推奨
+    expect(rows[1].isRecommended).toBe(true);
   });
 
   it("maps startup_clean false to error status", () => {
@@ -216,7 +295,8 @@ describe("buildRestoreRows", () => {
     const many = Array.from({ length: 10 }, (_, i) => ({
       seq: 10 - i,
       ts_ms: 0,
-      trigger: "x",
+      trigger: "watcher-settled" as const,
+      changed: ["pack"],
     }));
     expect(buildRestoreRows(many, 0, changeText, "ja-JP")).toHaveLength(5);
     expect(buildRestoreRows(many, 0, changeText, "ja-JP", 3)).toHaveLength(3);
