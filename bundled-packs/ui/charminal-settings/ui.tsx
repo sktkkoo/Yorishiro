@@ -1228,7 +1228,7 @@ function SnapshotRestoreSection({
               background: COLORS.bgInput,
             }}
           >
-            {listContent}
+            <div style={{ maxHeight: "320px", overflowY: "auto" }}>{listContent}</div>
           </div>
         </>
       )}
