@@ -8,6 +8,7 @@ export { default as attentionAuraManifest } from "../bundled-packs/ambient-ui/at
 export { default as pomodoroUiManifest } from "../bundled-packs/ambient-ui/pomodoro-ui/manifest.json";
 
 // Amenities
+export { default as musicShelfManifest } from "../bundled-packs/amenities/music-shelf/manifest.json";
 export { default as pomodoroManifest } from "../bundled-packs/amenities/pomodoro/manifest.json";
 
 // Effects
