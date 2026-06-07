@@ -87,6 +87,7 @@ export class VoicePlayer {
 
   dispose(): void {
     this.stopPlayback();
+    this.disconnectGraph();
     this.onMouthValues = null;
   }
 
@@ -136,15 +137,7 @@ export class VoicePlayer {
   }
 
   private ensureGraph(ctx: AudioContext): void {
-    if (
-      this.graphContext === ctx &&
-      this.analyserNode &&
-      this.silentSinkNode &&
-      this.gainNode &&
-      this.lipSync
-    ) {
-      return;
-    }
+    if (this.graphContext === ctx) return;
 
     this.stopSource();
     this.disconnectGraph();
@@ -376,6 +369,7 @@ export class VoicePlayer {
   }
 
   private disconnectGraph(): void {
+    this.fadeResetGeneration += 1;
     disconnectNode(this.analyserNode);
     disconnectNode(this.silentSinkNode);
     disconnectNode(this.gainNode);
@@ -536,7 +530,7 @@ function hasMouthSignal(values: MouthValues): boolean {
 
 function disconnectNode(node: AudioNode | null): void {
   try {
-    (node as { disconnect?: () => void } | null)?.disconnect?.();
+    node?.disconnect();
   } catch {
     /* already disconnected */
   }

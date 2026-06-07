@@ -2,6 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type RuntimeAudioContextState = AudioContextState | "interrupted";
 
+let windowStub: {
+  readonly addEventListener: ReturnType<typeof vi.fn>;
+  readonly removeEventListener: ReturnType<typeof vi.fn>;
+};
+
 class FakeAudioContext {
   static initialState: RuntimeAudioContextState = "running";
   static resumeState: RuntimeAudioContextState = "running";
@@ -31,10 +36,11 @@ describe("audio-context", () => {
     FakeAudioContext.resumeState = "running";
     FakeAudioContext.instances = [];
     vi.stubGlobal("AudioContext", FakeAudioContext);
-    vi.stubGlobal("window", {
+    windowStub = {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
-    });
+    };
+    vi.stubGlobal("window", windowStub);
   });
 
   afterEach(() => {
@@ -71,6 +77,16 @@ describe("audio-context", () => {
     );
   });
 
+  it("resume 後も suspended の場合は WebAudio 再生に進ませない", async () => {
+    FakeAudioContext.initialState = "suspended";
+    FakeAudioContext.resumeState = "suspended";
+    const { ensureAudioContextRunning } = await loadAudioContextModule();
+
+    await expect(ensureAudioContextRunning()).rejects.toThrow(
+      "AudioContext is not running after resume (state: suspended)",
+    );
+  });
+
   it("closed になった共有 AudioContext は作り直す", async () => {
     const { ensureAudioContextRunning, getAudioContext } = await loadAudioContextModule();
     const first = getAudioContext() as unknown as FakeAudioContext;
@@ -81,5 +97,16 @@ describe("audio-context", () => {
     expect(second).not.toBe(first);
     expect(second.state).toBe("running");
     expect(FakeAudioContext.instances).toHaveLength(2);
+  });
+
+  it("AudioContext を作り直す時は旧 context の gesture listener を外す", async () => {
+    const { ensureAudioContextRunning, getAudioContext } = await loadAudioContextModule();
+    const first = getAudioContext() as unknown as FakeAudioContext;
+    first.state = "closed";
+
+    await ensureAudioContextRunning();
+
+    expect(windowStub.addEventListener).toHaveBeenCalledTimes(6);
+    expect(windowStub.removeEventListener).toHaveBeenCalledTimes(3);
   });
 });

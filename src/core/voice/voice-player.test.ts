@@ -15,12 +15,14 @@ const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning }
       };
       return {
         connect: vi.fn(),
+        disconnect: vi.fn(),
         gain,
       };
     };
     const mockGainNode = createMockGainNode();
     const mockAnalyserNode = {
       connect: vi.fn(() => mockGainNode),
+      disconnect: vi.fn(),
       fftSize: 256,
       frequencyBinCount: 128,
       getByteFrequencyData: vi.fn((out: Uint8Array) => out.fill(0)),
@@ -306,6 +308,24 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(() => player.dispose()).not.toThrow();
   });
 
+  it("dispose() は Web Audio graph を disconnect する", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+
+    api.say("hello");
+    await flushPlaybackStart();
+    const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
+    const silentSink = mockAudioContext.createGain.mock.results[0].value;
+    const outputGain = mockAudioContext.createGain.mock.results[1].value;
+
+    player.dispose();
+
+    expect(analyser.disconnect).toHaveBeenCalled();
+    expect(silentSink.disconnect).toHaveBeenCalled();
+    expect(outputGain.disconnect).toHaveBeenCalled();
+  });
+
   it("PCM WAV は decodeAudioData を使わず直接 AudioBuffer に変換する", async () => {
     const engine = createMockEngine();
     const player = new VoicePlayer(undefined, engine);
@@ -412,6 +432,7 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
   it("Web Audio 再生中はテキスト推定ではなく音声解析を優先する", async () => {
     mockAudioContext.createAnalyser.mockReturnValueOnce({
       connect: vi.fn(),
+      disconnect: vi.fn(),
       fftSize: 256,
       frequencyBinCount: 128,
       getByteFrequencyData: vi.fn((out: Uint8Array) => out.fill(0)),
@@ -487,5 +508,24 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
 
     const outputGain = mockAudioContext.createGain.mock.results[1].value;
     expect(outputGain.gain.value).toBe(0.3);
+  });
+
+  it("dispose() は古い fade timer の gain 復元を無効化する", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+    const handle = api.say("hello", { volume: 0.3 });
+    await flushPlaybackStart();
+    const outputGain = mockAudioContext.createGain.mock.results[1].value;
+
+    await handle.stop();
+    player.dispose();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(outputGain.gain.setValueAtTime).not.toHaveBeenCalledWith(
+      1,
+      mockAudioContext.currentTime,
+    );
+    expect(outputGain.gain.value).not.toBe(1);
   });
 });

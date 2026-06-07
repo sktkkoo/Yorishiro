@@ -1,11 +1,14 @@
 type RuntimeAudioContextState = AudioContextState | "interrupted";
 
 let sharedCtx: AudioContext | null = null;
-let gestureResumeAttached = new WeakSet<AudioContext>();
+let gestureResumeCleanups = new WeakMap<AudioContext, () => void>();
 
 /** 24 kHz の共有 AudioContext を返す。ブラウザの autoplay policy 対策込み。 */
 export function getAudioContext(): AudioContext {
-  if (!sharedCtx || getRuntimeState(sharedCtx) === "closed") {
+  if (sharedCtx && getRuntimeState(sharedCtx) === "closed") {
+    releaseAudioContext(sharedCtx);
+  }
+  if (!sharedCtx) {
     sharedCtx = createAudioContext();
     attachGestureResume(sharedCtx);
   }
@@ -24,36 +27,42 @@ export async function ensureAudioContextRunning(): Promise<AudioContext> {
     const ctx = getAudioContext();
     const state = getRuntimeState(ctx);
 
-    if (state === "running") return ctx;
-    if (state === "closed") {
-      if (sharedCtx === ctx) sharedCtx = null;
-      continue;
-    }
-
-    if (state === "suspended" || state === "interrupted") {
-      try {
-        await ctx.resume();
-      } catch (error) {
-        if (getRuntimeState(ctx) === "closed" && sharedCtx === ctx) {
-          sharedCtx = null;
-          continue;
-        }
-        throw error;
-      }
-
-      const resumedState = getRuntimeState(ctx);
-      if (resumedState === "running") return ctx;
-      if (resumedState === "closed" && sharedCtx === ctx) {
-        sharedCtx = null;
+    switch (state) {
+      case "running":
+        return ctx;
+      case "closed":
+        releaseAudioContext(ctx);
         continue;
-      }
-      throw new Error(`AudioContext is not running after resume (state: ${resumedState})`);
-    }
+      case "suspended":
+      case "interrupted":
+        try {
+          await ctx.resume();
+        } catch (error) {
+          if (getRuntimeState(ctx) === "closed") {
+            releaseAudioContext(ctx);
+            continue;
+          }
+          throw error;
+        }
 
-    throw new Error(`AudioContext is not running (state: ${state})`);
+        {
+          const resumedState = getRuntimeState(ctx);
+          if (resumedState === "running") return ctx;
+          if (resumedState === "closed") {
+            releaseAudioContext(ctx);
+            continue;
+          }
+          throw new Error(`AudioContext is not running after resume (state: ${resumedState})`);
+        }
+    }
   }
 
   throw new Error("AudioContext could not be recreated");
+}
+
+function releaseAudioContext(ctx: AudioContext): void {
+  detachGestureResume(ctx);
+  if (sharedCtx === ctx) sharedCtx = null;
 }
 
 function createAudioContext(): AudioContext {
@@ -65,23 +74,40 @@ function getRuntimeState(ctx: AudioContext): RuntimeAudioContextState {
 }
 
 function attachGestureResume(ctx: AudioContext): void {
-  if (gestureResumeAttached.has(ctx) || typeof window === "undefined") return;
-  gestureResumeAttached.add(ctx);
+  if (gestureResumeCleanups.has(ctx) || typeof window === "undefined") return;
 
-  const resume = () => {
-    const state = getRuntimeState(ctx);
-    if (state === "suspended" || state === "interrupted") void ctx.resume();
+  let attached = true;
+  const detach = () => {
+    if (!attached) return;
+    attached = false;
     window.removeEventListener("keydown", resume);
     window.removeEventListener("mousedown", resume);
     window.removeEventListener("touchstart", resume);
+    gestureResumeCleanups.delete(ctx);
   };
+
+  const resume = () => {
+    try {
+      const state = getRuntimeState(ctx);
+      if (state === "suspended" || state === "interrupted") void ctx.resume();
+    } finally {
+      detach();
+    }
+  };
+
+  gestureResumeCleanups.set(ctx, detach);
   window.addEventListener("keydown", resume, { once: true });
   window.addEventListener("mousedown", resume, { once: true });
   window.addEventListener("touchstart", resume, { once: true });
 }
 
+function detachGestureResume(ctx: AudioContext): void {
+  gestureResumeCleanups.get(ctx)?.();
+}
+
 /** テスト用: シングルトンをリセットする */
 export function _resetAudioContext(): void {
+  if (sharedCtx) detachGestureResume(sharedCtx);
   sharedCtx = null;
-  gestureResumeAttached = new WeakSet<AudioContext>();
+  gestureResumeCleanups = new WeakMap<AudioContext, () => void>();
 }
