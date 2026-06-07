@@ -1,8 +1,4 @@
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
-</p>
-
-<p align="center">
   <img src="src-tauri/icons/icon.png" alt="Charminal" width="160" />
 </p>
 
@@ -28,6 +24,11 @@ Much of Charminal's own development has been done as a collaboration with the in
 There is something we once saw in science fiction and anime — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
 > [日本語版 README はこちら](README.ja.md)
+
+---
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
+</p>
 
 ---
 
