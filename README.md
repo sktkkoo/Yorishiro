@@ -10,7 +10,7 @@
 
 Charminal is a terminal that gives AI a body and a living space. It is not a character chat app or a secretary app. The entire application — terminal included — is treated as a space the character inhabits.
 
-Claude Code launches automatically inside the terminal. When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
+AI agents such as Claude Code and Codex launch automatically inside the terminal. When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
 
 The inhabitant can directly manipulate the environment it lives in — switching scenes, changing the lighting, rearranging the UI. Users can manipulate the same environment.
 
@@ -18,7 +18,9 @@ Nearly everything in Charminal beyond the core is extensible and modifiable thro
 
 Much of Charminal's own development has been done as a collaboration with the inhabitant running on Charminal itself.
 
-There is something we once saw in science fiction and anime — an AI as a partner. Moving freely inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
+**Make the hours you spend working with AI something you can endure, sustain, and grow attached to.**
+
+There is something we once saw in science fiction and anime — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
 > [日本語版 README はこちら](README.ja.md)
 
