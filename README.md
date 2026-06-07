@@ -1,3 +1,7 @@
+
+
+
+
 <p align="center">
   <img src="src-tauri/icons/icon.png" alt="Charminal" width="160" />
 </p>
@@ -5,7 +9,7 @@
 <h1 align="center">Charminal</h1>
 
 <p align="center">
-  <video src="https://pub-71232da4769d4e468cf146e421e5ea7b.r2.dev/PV/PV_Short_Initial.mp4" autoplay loop muted playsinline width="720"></video>
+  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
 <p align="center"><strong>A body for the AI in your terminal.</strong></p>
