@@ -1,6 +1,6 @@
-
-
-
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
+</p>
 
 <p align="center">
   <img src="src-tauri/icons/icon.png" alt="Charminal" width="160" />
@@ -8,9 +8,6 @@
 
 <h1 align="center">Charminal</h1>
 
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
-</p>
 
 <p align="center"><strong>A body for the AI in your terminal.</strong></p>
 
