@@ -1,65 +1,71 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockAudioContext, mockFetch } = vi.hoisted(() => {
-  const createMockGainNode = () => {
-    const gain = {
-      value: 1,
-      setValueAtTime: vi.fn((value: number) => {
-        gain.value = value;
-      }),
-      linearRampToValueAtTime: vi.fn((value: number) => {
-        gain.value = value;
-      }),
-    };
-    return {
-      connect: vi.fn(),
-      gain,
-    };
-  };
-  const mockGainNode = createMockGainNode();
-  const mockAnalyserNode = {
-    connect: vi.fn(() => mockGainNode),
-    fftSize: 256,
-    frequencyBinCount: 128,
-    getByteFrequencyData: vi.fn((out: Uint8Array) => out.fill(0)),
-    getByteTimeDomainData: vi.fn((out: Uint8Array) => out.fill(128)),
-  };
-  const mockSource = {
-    buffer: null,
-    connect: vi.fn(),
-    start: vi.fn(),
-    stop: vi.fn(),
-    onended: null as (() => void) | null,
-  };
-  const mockAudioContext = {
-    state: "running",
-    resume: vi.fn(() => Promise.resolve()),
-    createAnalyser: vi.fn(() => ({ ...mockAnalyserNode })),
-    createGain: vi.fn(() => createMockGainNode()),
-    createBufferSource: vi.fn(() => ({ ...mockSource })),
-    createBuffer: vi.fn((numberOfChannels: number, length: number, sampleRate: number) => {
-      const channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
-      return {
-        duration: length / sampleRate,
-        length,
-        numberOfChannels,
-        sampleRate,
-        getChannelData: vi.fn((channel: number) => channels[channel]),
+const { mockInvoke, mockAudioContext, mockFetch, mockEnsureAudioContextRunning } = vi.hoisted(
+  () => {
+    const createMockGainNode = () => {
+      const gain = {
+        value: 1,
+        cancelScheduledValues: vi.fn(),
+        setValueAtTime: vi.fn((value: number) => {
+          gain.value = value;
+        }),
+        linearRampToValueAtTime: vi.fn((value: number) => {
+          gain.value = value;
+        }),
       };
-    }),
-    decodeAudioData: vi.fn(async () => ({ duration: 0.02, length: 480, sampleRate: 24000 })),
-    currentTime: 0,
-    destination: {},
-  };
-  return {
-    mockInvoke: vi.fn(() => Promise.resolve()),
-    mockAudioContext,
-    mockFetch: vi.fn(),
-  };
-});
+      return {
+        connect: vi.fn(),
+        gain,
+      };
+    };
+    const mockGainNode = createMockGainNode();
+    const mockAnalyserNode = {
+      connect: vi.fn(() => mockGainNode),
+      fftSize: 256,
+      frequencyBinCount: 128,
+      getByteFrequencyData: vi.fn((out: Uint8Array) => out.fill(0)),
+      getByteTimeDomainData: vi.fn((out: Uint8Array) => out.fill(128)),
+    };
+    const mockSource = {
+      buffer: null,
+      connect: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      onended: null as (() => void) | null,
+    };
+    const mockAudioContext = {
+      state: "running",
+      resume: vi.fn(() => Promise.resolve()),
+      createAnalyser: vi.fn(() => ({ ...mockAnalyserNode })),
+      createGain: vi.fn(() => createMockGainNode()),
+      createBufferSource: vi.fn(() => ({ ...mockSource })),
+      createBuffer: vi.fn((numberOfChannels: number, length: number, sampleRate: number) => {
+        const channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
+        return {
+          duration: length / sampleRate,
+          length,
+          numberOfChannels,
+          sampleRate,
+          getChannelData: vi.fn((channel: number) => channels[channel]),
+        };
+      }),
+      decodeAudioData: vi.fn(async () => ({ duration: 0.02, length: 480, sampleRate: 24000 })),
+      currentTime: 0,
+      destination: {},
+    };
+    const mockEnsureAudioContextRunning = vi.fn(async () => mockAudioContext);
+    return {
+      mockInvoke: vi.fn(() => Promise.resolve()),
+      mockAudioContext,
+      mockFetch: vi.fn(),
+      mockEnsureAudioContextRunning,
+    };
+  },
+);
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: mockInvoke }));
 vi.mock("./audio-context", () => ({
+  ensureAudioContextRunning: mockEnsureAudioContextRunning,
   getAudioContext: () => mockAudioContext,
 }));
 
@@ -97,6 +103,8 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
       sampleRate: 24000,
     });
     mockFetch.mockReset();
+    mockEnsureAudioContextRunning.mockReset();
+    mockEnsureAudioContextRunning.mockResolvedValue(mockAudioContext);
   });
 
   it("say() は tts_speak を text 付きで invoke する", () => {
@@ -253,6 +261,8 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
       sampleRate: 24000,
     });
     mockFetch.mockReset();
+    mockEnsureAudioContextRunning.mockReset();
+    mockEnsureAudioContextRunning.mockResolvedValue(mockAudioContext);
   });
 
   it("say() は engine.synthesize を呼ぶ（tts_speak は呼ばない）", () => {
@@ -315,8 +325,7 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     const api = player.createVoiceAPI();
 
     api.say("hello", { volume: 0.5 });
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushPlaybackStart();
 
     const outputGain = mockAudioContext.createGain.mock.results[1].value;
     expect(outputGain.gain.setValueAtTime).toHaveBeenCalledWith(0.5, mockAudioContext.currentTime);
@@ -328,8 +337,7 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     const api = player.createVoiceAPI();
 
     api.say("hello");
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushPlaybackStart();
 
     const analyser = mockAudioContext.createAnalyser.mock.results[0].value;
     const silentSink = mockAudioContext.createGain.mock.results[0].value;
@@ -362,6 +370,25 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
       text: "hello",
       voice: "Kyoko",
     });
+  });
+
+  it("AudioContext を復旧できない場合は Web Audio 再生へ進まず OS TTS にフォールバックする", async () => {
+    mockEnsureAudioContextRunning.mockRejectedValueOnce(
+      new Error("AudioContext is not running after resume (state: interrupted)"),
+    );
+    const engine = createMockEngine();
+    const player = new VoicePlayer("Kyoko", engine);
+    const api = player.createVoiceAPI();
+    const handle = api.say("hello");
+
+    await handle.completion;
+
+    expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalledWith("tts_speak", {
+      text: "hello",
+      voice: "Kyoko",
+    });
+    expect(player.sampleMouth()).toEqual({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
   });
 
   it("OS TTS フォールバック中は mouth 値を返さない", async () => {
@@ -412,8 +439,7 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     const player = new VoicePlayer(undefined, engine);
     const api = player.createVoiceAPI();
     api.say("hello");
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushPlaybackStart();
     const saySource = mockAudioContext.createBufferSource.mock.results[0].value;
 
     let resolveClip: (value: string) => void = () => {};

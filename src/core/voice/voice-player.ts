@@ -6,7 +6,7 @@ import type {
   VoicePlayOptions,
 } from "@charminal/sdk";
 import { invoke } from "@tauri-apps/api/core";
-import { getAudioContext } from "./audio-context";
+import { ensureAudioContextRunning, getAudioContext } from "./audio-context";
 import { LipSyncAnalyser } from "./lip-sync-analyser";
 import type { MouthValues } from "./mouth-values";
 import { ZERO_MOUTH } from "./mouth-values";
@@ -34,6 +34,7 @@ export class VoicePlayer {
   private analyserNode: AnalyserNode | null = null;
   private silentSinkNode: GainNode | null = null;
   private gainNode: GainNode | null = null;
+  private graphContext: AudioContext | null = null;
   private lipSync: LipSyncAnalyser | null = null;
   private currentSource: AudioBufferSourceNode | null = null;
   private currentPlaybackId: number | null = null;
@@ -104,8 +105,7 @@ export class VoicePlayer {
         const audioData = await this.engine?.synthesize(text, this.voice ?? undefined);
         if (!audioData || stopped) return;
 
-        const ctx = getAudioContext();
-        if (ctx.state === "suspended") await ctx.resume();
+        const ctx = await ensureAudioContextRunning();
 
         this.ensureGraph(ctx);
 
@@ -136,7 +136,18 @@ export class VoicePlayer {
   }
 
   private ensureGraph(ctx: AudioContext): void {
-    if (this.analyserNode) return;
+    if (
+      this.graphContext === ctx &&
+      this.analyserNode &&
+      this.silentSinkNode &&
+      this.gainNode &&
+      this.lipSync
+    ) {
+      return;
+    }
+
+    this.stopSource();
+    this.disconnectGraph();
 
     this.analyserNode = LipSyncAnalyser.createAnalyserNode(ctx);
     this.silentSinkNode = ctx.createGain();
@@ -147,6 +158,7 @@ export class VoicePlayer {
     this.silentSinkNode.connect(ctx.destination);
     this.gainNode.connect(ctx.destination);
     this.lipSync = new LipSyncAnalyser(this.analyserNode);
+    this.graphContext = ctx;
   }
 
   private playClip(
@@ -173,8 +185,7 @@ export class VoicePlayer {
         const audioData = await response.arrayBuffer();
         if (stopped) return;
 
-        const ctx = getAudioContext();
-        if (ctx.state === "suspended") await ctx.resume();
+        const ctx = await ensureAudioContextRunning();
 
         this.ensureGraph(ctx);
 
@@ -245,6 +256,7 @@ export class VoicePlayer {
       source.connect(this.gainNode as GainNode);
       this.currentSource = source;
       this.currentPlaybackId = playbackId;
+      this.gainNode?.gain.cancelScheduledValues(ctx.currentTime);
       this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
 
       this.lipSync?.reset();
@@ -346,8 +358,9 @@ export class VoicePlayer {
     }
     this.currentSource = null;
     this.currentPlaybackId = null;
-    const ctx = getAudioContext();
+    const ctx = this.graphContext ?? getAudioContext();
     const resetGeneration = this.fadeResetGeneration;
+    gain.gain.cancelScheduledValues(ctx.currentTime);
     gain.gain.setValueAtTime(gain.gain.value, ctx.currentTime);
     gain.gain.linearRampToValueAtTime(0, ctx.currentTime + FADE_OUT_MS / 1000);
     setTimeout(() => {
@@ -360,6 +373,17 @@ export class VoicePlayer {
         gain.gain.setValueAtTime(1, ctx.currentTime);
       }
     }, FADE_OUT_MS + 10);
+  }
+
+  private disconnectGraph(): void {
+    disconnectNode(this.analyserNode);
+    disconnectNode(this.silentSinkNode);
+    disconnectNode(this.gainNode);
+    this.analyserNode = null;
+    this.silentSinkNode = null;
+    this.gainNode = null;
+    this.lipSync = null;
+    this.graphContext = null;
   }
 
   // ---------------------------------------------------------------------------
@@ -508,4 +532,12 @@ function readAscii(view: DataView, offset: number, length: number): string {
 
 function hasMouthSignal(values: MouthValues): boolean {
   return values.aa > 0 || values.ih > 0 || values.ou > 0 || values.ee > 0 || values.oh > 0;
+}
+
+function disconnectNode(node: AudioNode | null): void {
+  try {
+    (node as { disconnect?: () => void } | null)?.disconnect?.();
+  } catch {
+    /* already disconnected */
+  }
 }
