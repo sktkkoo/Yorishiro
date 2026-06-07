@@ -43,7 +43,7 @@ export interface UserAmenityContextDeps {
 }
 
 /**
- * user amenity 用の AmenityContext factory。bundled pomodoro と同じ stub レベル
+ * user amenity 用の AmenityContext factory。bundled amenity と同じ stub レベル
  * （system/log/memory/terminal/charm は stub、time/tween/emitEvent/history/signal
  * は実体）。tween key は packId で namespace する。
  */

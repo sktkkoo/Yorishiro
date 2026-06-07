@@ -157,11 +157,11 @@ persona の reflex trigger に拾わせる（twin-trigger co-emission）。
 
 ```json
 {
-  "id": "pomodoro",
-  "name": "Pomodoro Timer",
+  "id": "my-amenity",
+  "name": "My Amenity",
   "type": "amenity",
   "version": "1.0.0",
-  "charminalVersion": "^0.1.0",
+  "charminalVersion": "^0.4.0",
   "entry": "amenity.js"
 }
 ```
@@ -169,31 +169,35 @@ persona の reflex trigger に拾わせる（twin-trigger co-emission）。
 ### amenity.ts 実装
 
 `export default ... satisfies AmenityPackDefinition` で書く。
+bundled の `music-shelf`（`bundled-packs/amenities/music-shelf/amenity.ts`）が
+user amenity pack の参考実装として読めるように書かれている。
+`ctx.system.exec()` による外部コマンド実行、`ctx.time.every()` による定期 polling、
+`ctx.emitEvent()` による persona への通知、dispose での cleanup のパターンを示す。
 
 ```typescript
 import type { AmenityPackDefinition, AmenityContext } from '@charminal/sdk';
 
 export default {
-  id: 'pomodoro',
-  name: 'Pomodoro Timer',
+  id: 'my-amenity',
+  name: 'My Amenity',
   // MCP tool listing 用の静的メタデータ。activate 前でも tool 一覧を返せる。
   toolMeta: [
-    { name: 'pomodoro_start',  description: 'Start a pomodoro session' },
-    { name: 'pomodoro_stop',   description: 'Stop the current session' },
-    { name: 'pomodoro_status', description: 'Get current pomodoro status' },
+    { name: 'my_tool_do',     description: '何かを実行する' },
+    { name: 'my_tool_status', description: '現在の状態を返す' },
   ],
   // pack enable 時に呼ばれる lifecycle 関数。AmenityHandle を返す。
   activate: async (ctx: AmenityContext) => {
-    const timer = createTimer(ctx);
+    // ctx.system.exec() で外部コマンドを実行できる
+    // ctx.time.every() / ctx.time.schedule() で定期・遅延処理を登録できる
+    // ctx.emitEvent() で persona に synthetic event を通知できる
     return {
       // key は toolMeta の name と一致させる contract。MCP 経由で呼ばれる。
       tools: {
-        pomodoro_start:  async (params) => timer.start(params),
-        pomodoro_stop:   async () => timer.stop(),
-        pomodoro_status: async () => timer.status(),
+        my_tool_do:     async (params) => { /* ... */ return { ok: true }; },
+        my_tool_status: async ()       => { /* ... */ return { status: 'idle' }; },
       },
       // pack disable / アプリ終了時に呼ばれる後片付け。
-      dispose: () => timer.dispose(),
+      dispose: () => { /* timer cancel など */ },
     };
   },
 } satisfies AmenityPackDefinition;
