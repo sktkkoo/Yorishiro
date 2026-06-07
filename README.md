@@ -9,6 +9,10 @@
 
 <p align="center"><sub>Charminal = Character + Terminal + Charm</sub></p>
 
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
+</p>
+
 Charminal is a terminal that gives AI a body and a living space. It is not a character chat app or a secretary app. The entire application — terminal included — is treated as a space the character inhabits.
 
 AI agents such as Claude Code and Codex launch automatically inside the terminal. When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
@@ -25,10 +29,6 @@ There is something we once saw in science fiction and anime — an AI as a partn
 
 > [日本語版 README はこちら](README.ja.md)
 
----
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
-</p>
 
 ---
 
