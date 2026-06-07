@@ -14,9 +14,6 @@ import type { TtsEngine } from "./tts-engine";
 import { isPlayableVoiceUrl, resolveSharedVoiceRef } from "./voice-clip-resolver";
 
 const FADE_OUT_MS = 150;
-const BUFFER_ANALYSIS_WINDOW_MS = 32;
-const BUFFER_ANALYSIS_VOLUME_SCALE = 0.12;
-const BUFFER_SILENCE_THRESHOLD = 0.05;
 
 export type VoiceClipResolver = (clipRef: VoiceClipRef) => Promise<string | null> | string | null;
 
@@ -42,8 +39,6 @@ export class VoicePlayer {
   private fadeResetGeneration = 0;
   private animFrameId: number | null = null;
   private onMouthValues: ((values: MouthValues) => void) | null = null;
-  private analysisBuffer: AudioBuffer | null = null;
-  private analysisStartedAtMs = 0;
 
   constructor(voice?: string, engine?: TtsEngine) {
     this.voice = voice ?? null;
@@ -55,15 +50,9 @@ export class VoicePlayer {
     this.onMouthValues = cb;
   }
 
-  /** 現在の口形素を 1 回取得する。AnalyserNode を優先し、信号なければ buffer analysis にフォールバック。 */
+  /** 現在の口形素を 1 回取得する（コールバック不使用時のポーリング用）。 */
   sampleMouth(): MouthValues {
-    const analysed = this.lipSync?.sample() ?? ZERO_MOUTH;
-    if (hasMouthSignal(analysed)) return analysed;
-
-    const bufferAnalysed = this.sampleAnalysisBuffer();
-    if (hasMouthSignal(bufferAnalysed)) return bufferAnalysed;
-
-    return { ...ZERO_MOUTH };
+    return this.lipSync?.sample() ?? { ...ZERO_MOUTH };
   }
 
   createVoiceAPI(options: { readonly resolveClip?: VoiceClipResolver } = {}): VoiceAPI {
@@ -101,7 +90,6 @@ export class VoicePlayer {
     let stopped = false;
 
     const completion = (async () => {
-      let audioBuffer: AudioBuffer | null = null;
       try {
         const audioData = await this.engine?.synthesize(text, this.voice ?? undefined);
         if (!audioData || stopped) return;
@@ -110,7 +98,7 @@ export class VoicePlayer {
 
         this.ensureGraph(ctx);
 
-        audioBuffer = await decodeAudioData(ctx, audioData);
+        const audioBuffer = await decodeAudioData(ctx, audioData);
         if (stopped) return;
 
         await this.playBuffer(playbackId, ctx, audioBuffer, normalizeVolume(options?.volume));
@@ -118,7 +106,6 @@ export class VoicePlayer {
         if (stopped) return;
         this.stopPlayback(playbackId);
         console.error("[voice] Web Audio TTS failed; lip sync cannot run.", error);
-        if (audioBuffer) this.startBufferAnalysis(audioBuffer);
         await invoke("tts_speak", { text, voice: this.voice });
       }
     })();
@@ -128,7 +115,6 @@ export class VoicePlayer {
       stop: () => {
         stopped = true;
         this.stopPlayback(playbackId);
-        this.stopBufferAnalysis();
         void invoke("tts_stop", {});
         return Promise.resolve();
       },
@@ -253,7 +239,6 @@ export class VoicePlayer {
       this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
 
       this.lipSync?.reset();
-      this.startBufferAnalysis(buffer);
       this.startLipSyncLoop();
 
       source.onended = () => {
@@ -261,7 +246,6 @@ export class VoicePlayer {
           this.currentSource = null;
           this.currentPlaybackId = null;
           this.stopLipSyncLoop();
-          this.stopBufferAnalysis();
           this.onMouthValues?.({ ...ZERO_MOUTH });
         }
         resolve();
@@ -276,56 +260,7 @@ export class VoicePlayer {
     if (playbackId !== undefined && this.currentPlaybackId !== playbackId) return;
     this.fadeOutAndStop(playbackId);
     this.stopLipSyncLoop();
-    this.stopBufferAnalysis();
     this.onMouthValues?.({ ...ZERO_MOUTH });
-  }
-
-  private startBufferAnalysis(buffer: AudioBuffer): void {
-    this.analysisBuffer = buffer;
-    this.analysisStartedAtMs = performance.now();
-  }
-
-  private stopBufferAnalysis(): void {
-    this.analysisBuffer = null;
-    this.analysisStartedAtMs = 0;
-  }
-
-  private sampleAnalysisBuffer(): MouthValues {
-    const buffer = this.analysisBuffer;
-    if (!buffer) return { ...ZERO_MOUTH };
-
-    const elapsedSeconds = (performance.now() - this.analysisStartedAtMs) / 1000;
-    if (elapsedSeconds < 0 || elapsedSeconds > buffer.duration) {
-      return { ...ZERO_MOUTH };
-    }
-
-    const centerFrame = Math.floor(elapsedSeconds * buffer.sampleRate);
-    const halfWindow = Math.max(
-      1,
-      Math.floor((BUFFER_ANALYSIS_WINDOW_MS / 1000) * buffer.sampleRate * 0.5),
-    );
-    const startFrame = Math.max(0, centerFrame - halfWindow);
-    const endFrame = Math.min(buffer.length, centerFrame + halfWindow);
-    if (startFrame >= endFrame) return { ...ZERO_MOUTH };
-
-    let squareSum = 0;
-    let peak = 0;
-    let count = 0;
-    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-      const data = buffer.getChannelData(channel);
-      for (let frame = startFrame; frame < endFrame; frame++) {
-        const sample = data[frame];
-        squareSum += sample * sample;
-        peak = Math.max(peak, Math.abs(sample));
-        count += 1;
-      }
-    }
-
-    const rms = count > 0 ? Math.sqrt(squareSum / count) : 0;
-    const volume = Math.min(Math.max(rms, peak * 0.5) / BUFFER_ANALYSIS_VOLUME_SCALE, 1);
-    if (volume < BUFFER_SILENCE_THRESHOLD) return { ...ZERO_MOUTH };
-
-    return { aa: volume, ih: 0, ou: 0, ee: 0, oh: 0 };
   }
 
   private stopSource(playbackId?: number): void {
@@ -522,10 +457,6 @@ function readAscii(view: DataView, offset: number, length: number): string {
     value += String.fromCharCode(view.getUint8(offset + i));
   }
   return value;
-}
-
-function hasMouthSignal(values: MouthValues): boolean {
-  return values.aa > 0 || values.ih > 0 || values.ou > 0 || values.ee > 0 || values.oh > 0;
 }
 
 function disconnectNode(node: AudioNode | null): void {

@@ -212,10 +212,9 @@ function createMockEngine(): TtsEngine {
   };
 }
 
-/** 最小限の WAV ヘッダ + 無音サンプル */
-function createMinimalWav(): ArrayBuffer {
+/** 最小限の WAV ヘッダ + mono PCM サンプル */
+function createMinimalWav(sampleValue = 0, numSamples = 480): ArrayBuffer {
   const sampleRate = 24000;
-  const numSamples = 480; // 20ms
   const dataSize = numSamples * 2; // 16-bit
   const buffer = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buffer);
@@ -238,7 +237,9 @@ function createMinimalWav(): ArrayBuffer {
   // data chunk
   writeString(view, 36, "data");
   view.setUint32(40, dataSize, true);
-  // samples は 0 (無音)
+  for (let i = 0; i < numSamples; i++) {
+    view.setInt16(44 + i * 2, sampleValue, true);
+  }
 
   return buffer;
 }
@@ -453,6 +454,20 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(mouth.aa).toBeGreaterThan(0);
     expect(mouth.ih).toBe(0);
     expect(mockAudioContext.decodeAudioData).not.toHaveBeenCalled();
+  });
+
+  it("Web Audio analyser が無信号なら合成 buffer だけでは mouth 値を出さない", async () => {
+    const engine: TtsEngine = {
+      name: "mock",
+      synthesize: vi.fn(async () => createMinimalWav(16000, 24000)),
+    };
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+
+    api.say("あ");
+    await flushPlaybackStart();
+
+    expect(player.sampleMouth()).toEqual({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
   });
 
   it("未開始の play handle を stop しても既存の say 再生は止めない", async () => {
