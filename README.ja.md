@@ -1,4 +1,8 @@
 <p align="center">
+  <video src="https://pub-71232da4769d4e468cf146e421e5ea7b.r2.dev/PV/PV_short_initial.mp4" autoplay loop muted playsinline width="720"></video>
+</p>
+
+<p align="center">
   <img src="src-tauri/icons/icon.png" alt="Charminal" width="160" />
 </p>
 

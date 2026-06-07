@@ -173,7 +173,7 @@ export function createClaiPersona(args: {
             if (event.kind !== "synthetic") return null;
             if (event.name !== "charminal-settings:write-failed") return null;
             return {
-              reaction: "distressed",
+              reaction: "settings-error",
               payload: event.payload,
             };
           },
@@ -188,12 +188,8 @@ export function createClaiPersona(args: {
         distressed: {
           handlers: [
             {
-              label: "frown-on-settings-write-failed",
+              label: "frown-and-shake",
               handler: async (ctx: PersonaContext) => {
-                // 観察: どの tool / command がこの reaction を駆動したかを dev-log に残す。
-                // user が「error じゃないのに shake」と感じたケースを特定するため。
-                // ctx.event.payload は trigger の TriggerMatch.payload
-                // （= PostToolUseFailure の生 payload）。
                 ctx.log.write({
                   reaction: "distressed",
                   note: "triggered (full payload)",
@@ -201,8 +197,34 @@ export function createClaiPersona(args: {
                 });
 
                 const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
+                ctx.space.injectEffect({
+                  kind: "screen-shake",
+                  intensity: 0.35,
+                  durationMs: 500,
+                });
 
-                // 2.5 秒後にゆっくり戻す
+                await ctx.time.after(2500);
+                if (ctx.signal.aborted) return;
+                expr.release(600);
+              },
+            },
+          ],
+        },
+
+        // 設定 UI の recoverable write error 用。shake なし — 連続発火で振動し続ける問題の回避。
+        "settings-error": {
+          handlers: [
+            {
+              label: "frown-only",
+              handler: async (ctx: PersonaContext) => {
+                ctx.log.write({
+                  reaction: "settings-error",
+                  note: "settings write failed (no shake)",
+                  data: ctx.event.payload,
+                });
+
+                const expr = ctx.character.express({ kind: "mood", preset: "sad" }, 0.7);
+
                 await ctx.time.after(2500);
                 if (ctx.signal.aborted) return;
                 expr.release(600);
