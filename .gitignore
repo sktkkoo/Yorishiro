@@ -44,8 +44,10 @@ docs/design-record/
 
 # AI development instructions (private — public conventions are in CONTRIBUTING.md)
 CLAUDE.md
+AGENTS.md
 
-# Claude Code skill definitions (internal tooling)
+# AI skill / plugin definitions (internal tooling)
+.agents/
 .superpowers/
 docs/superpowers/
 
