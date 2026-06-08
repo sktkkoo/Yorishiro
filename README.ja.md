@@ -4,9 +4,7 @@
 
 <h1 align="center">Charminal</h1>
 
-<p align="center"><strong>ターミナルの中の AI に、身体を。</strong></p>
-
-<p align="center"><sub>Charminal = Character + Terminal + Charm</sub></p>
+<p align="center"><strong>ターミナルの中の AI に、身体を。</strong></p>
 
 **AIと働く時間を、人間が耐えられるもの、続けられるもの、愛着を持てるものにする。これがこのプロジェクトの目的です。**
 
