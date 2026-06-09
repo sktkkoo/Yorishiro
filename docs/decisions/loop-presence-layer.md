@@ -61,7 +61,8 @@ Codex は `lifecycle_hooks: false`（[agent-adapter.md](agent-adapter.md)）。l
 - **fearless recovery の分離**：loop event は `history_*`（`~/.charminal` 側の pack/config/init rollback）に **一切 couple しない**（observe するだけ。restore を起こさない・represent しない）。自律ループが対象 project repo を変更する場合の復旧単位は **git branch / worktree / commit / stash** であり、これは「Charminal 自身の復元」とは **別軸**。将来 recovery を載せる時は両者を **別表示**する。`event.detail` は将来の repo-scoped recovery のために repo 変更の手がかり（changed files / commit SHA 等）を載せられる *余地* を残すが、loop event 自体は restore を起こさない。
 - **PTY observation-only 不変**（[critical-constraints §1](critical-constraints.md)）：loop event は観察 stream に流れるだけで、PTY write 経路を生まない。`loop_announce` は read/announce であり、[input-prefill-boundary.md](input-prefill-boundary.md) の任意テキスト書込み禁止に抵触しない。
 - **trust tier**：`loop_announce` は自己申告の benign announcement（destructive でも sensitive-read でもない）。[mcp-trust-tiers.md](mcp-trust-tiers.md) で `journal_write` 等と同列の announcement 系として扱う。
-- phase 1 完了後、住人が `blocked-on-approval` / `failed` を felt に surface する persona reflex、away mode の attention 設計、repo-scoped recovery が次の検討対象になる（別 decision を起こす）。
+- **discovery は MCP tool description のみ（意図的）**：`loop_announce` は `body_expression_set` / `controls_*` / `scene_*` 等と同じく、住人 AI への露出は MCP tool の self-describing な description に委ねる。`journal_write` / `voice_say` のように global-prompt fragment（`src/core/global-prompt/prompts.ts`）/ reminder（`agent_adapter/mod.rs`）で明示 enumerate して proactive 利用を促すのは **Phase 2**（それらは「毎ターン」behavior ゆえ特別に nudge されている。loop_announce は loop 境界での event-boundary behavior）。住人が long-horizon loop 中に確実に自己申告するよう促したくなったら、その時に prompt-level guidance を足す。
+- phase 1 完了後、住人が `blocked-on-approval` / `failed` を felt に surface する persona reflex、away mode の attention 設計、repo-scoped recovery、上記 prompt-level discovery guidance が次の検討対象になる（別 decision を起こす）。
 
 ## 関連 reference
 
