@@ -328,4 +328,70 @@ describe("Perception", () => {
       expect(onPresenceRestore).toHaveBeenCalledTimes(1);
     });
   });
+
+  // ── Loop lifecycle ──────────────────────────────────────────
+
+  describe("ingestLoopLifecycle", () => {
+    it("dispatches LoopLifecycleEvent with phase, agent, detail, timestamp", () => {
+      const { perception, dispatched } = createStack();
+      clockMs = 5000;
+
+      perception.ingestLoopLifecycle("blocked-on-approval", "codex", {
+        runId: "r1",
+        reason: "destructive op",
+      });
+
+      expect(dispatched).toHaveLength(1);
+      const event = dispatched[0];
+      expect(event.kind).toBe("loop-lifecycle");
+      if (event.kind === "loop-lifecycle") {
+        expect(event.phase).toBe("blocked-on-approval");
+        expect(event.agent).toBe("codex");
+        expect(event.detail).toEqual({ runId: "r1", reason: "destructive op" });
+        expect(event.timestamp).toBe(5000);
+      }
+    });
+
+    it("agent null for pack-origin announce, detail optional", () => {
+      const { perception, dispatched } = createStack();
+
+      perception.ingestLoopLifecycle("started", null);
+
+      expect(dispatched).toHaveLength(1);
+      const event = dispatched[0];
+      if (event.kind === "loop-lifecycle") {
+        expect(event.agent).toBeNull();
+        expect(event.detail).toBeUndefined();
+      }
+    });
+
+    it("does not dispatch after dispose", () => {
+      const { perception, dispatched } = createStack();
+      perception.dispose();
+
+      perception.ingestLoopLifecycle("iterating", "claude");
+
+      expect(dispatched).toHaveLength(0);
+    });
+
+    it("does not count as user activity (idle still fires after a loop event)", () => {
+      const { perception, dispatched } = createStack();
+      dispatched.length = 0;
+
+      // loop event at 4000ms — must NOT reset the user-idle clock (away mode).
+      clockMs = 4000;
+      perception.ingestLoopLifecycle("iterating", "claude");
+      dispatched.length = 0;
+
+      // check at 6000ms: 5000ms since last *user* activity (1000) → idle fires.
+      clockMs = 6000;
+      vi.advanceTimersByTime(1000);
+
+      const idleEvents = dispatched.filter((e) => e.kind === "idle");
+      expect(idleEvents).toHaveLength(1);
+      if (idleEvents[0]?.kind === "idle") {
+        expect(idleEvents[0].durationMs).toBe(5000); // 6000 - 1000, not 6000 - 4000
+      }
+    });
+  });
 });

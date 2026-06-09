@@ -70,7 +70,8 @@ export type ObservedEvent =
   | UserInputEvent
   | WindowEvent
   | SceneChangeEvent
-  | CharmCommandEvent;
+  | CharmCommandEvent
+  | LoopLifecycleEvent;
 
 /**
  * Runtime が観測結果から生成する便利 event。
@@ -179,6 +180,78 @@ export interface SceneChangeEvent {
 export interface CharmCommandEvent {
   readonly kind: "charm-command";
   readonly command: string;
+  readonly timestamp: number;
+}
+
+// ─── Loop lifecycle ────────────────────────────────────────
+
+/**
+ * 自律 agent loop の lifecycle phase。
+ *
+ * ここでの「loop」とは Claude Code / Codex 等が goal に向けて
+ * plan → execute → evaluate → adjust を繰り返す long-horizon の自動実行を指す。
+ * turn 単位の hook signal（pre-tool-use 等）より上位の構造で、複数 turn に
+ * またがる。Charminal はこの loop を **駆動しない**——agent 自身が MCP
+ * `loop_announce`（または pack が `ctx.loop.announce`）で自己申告した phase を
+ * 観察するだけ。
+ *
+ * 詳細: docs/decisions/loop-presence-layer.md
+ */
+export type LoopPhase =
+  | "started" // goal を受けて自動実行に入った
+  | "iterating" // iteration を 1 周回した（plan→execute→evaluate の刻み）
+  | "blocked-on-approval" // 人間の承認待ちで停止（destructive / scope 外操作など）
+  | "progress-milestone" // 中間達成（test 通過 / sub-goal 完了など）
+  | "failed" // loop が失敗で終わった（stop condition: error）
+  | "completed"; // loop が goal 達成で終わった（stop condition: success）
+
+/**
+ * 自律 agent loop の lifecycle event。runtime が外部 source（agent の MCP
+ * 自己申告 / pack の announce）から観察した loop の状態遷移。
+ *
+ * `PtyOutputEvent` と同格の `ObservedEvent`——PTY 出力が一つの観察源である
+ * のと同じく、loop の構造化 stream も一つの観察源として同じ trigger loop を
+ * 流れる。custom trigger は `event.kind === "loop-lifecycle"` で match できる。
+ *
+ * ## なぜ first-class event か
+ *
+ * synthetic event の name 規約で代用せず専用 kind にしているのは、(a) phase が
+ * closed enum で type-safe に match でき、(b) MCP `loop_announce` 側で phase を
+ * validation でき、(c) PTY / hook と並ぶ「観察源」として discoverable にするため。
+ *
+ * ## 観察境界
+ *
+ * これは observation であって命令ではない。Charminal は loop を起動・停止・
+ * 制御しない。`blocked-on-approval` を観察しても承認を **代行しない**——人間が
+ * 端末で操作する（PTY observation-only、docs/decisions/critical-constraints.md §1）。
+ *
+ * 詳細: docs/decisions/loop-presence-layer.md
+ */
+export interface LoopLifecycleEvent {
+  readonly kind: "loop-lifecycle";
+  readonly phase: LoopPhase;
+  /**
+   * どの agent が報告したか。`"claude"` / `"codex"` 等の terminalAgent id。
+   * pack（`ctx.loop`）由来の announce では `null`。
+   *
+   * **host が stamp する**——caller（agent / pack）は指定できない。観察主体の
+   * 帰属を詐称させないため（`SyntheticEvent.source` と同じ host-bound 原則）。
+   * custom trigger は `event.agent === "codex"` のように分岐できる。
+   */
+  readonly agent: string | null;
+  /**
+   * phase 固有の付加情報。型は match 側で cast する（`unknown`）。
+   *
+   * 推奨 field（強制はしない）: `runId`（同一 loop run の相関）、`goal`、
+   * `iteration`（number）、`milestone`（progress-milestone の label）、
+   * `reason`（failed / blocked-on-approval の理由）。
+   *
+   * NOTE: 将来 repo-scoped recovery のため repo 変更の手がかり（changed
+   * files / commit SHA 等）を載せられるが、loop event 自体は restore を
+   * 起こさない。Charminal 自身の復元（history_*）とは別軸。
+   * 詳細: docs/decisions/loop-presence-layer.md
+   */
+  readonly detail?: unknown;
   readonly timestamp: number;
 }
 

@@ -1,14 +1,14 @@
 /**
- * Perception — PTY / hook / idle event を観察し DispatchEvent として EventBus に供給する event source。
+ * Perception — PTY / hook / idle / loop event を観察し DispatchEvent として EventBus に供給する event source。
  *
  * Philosophy: docs/philosophy/PRESENCE_HARNESS.md「六要素 > 知覚」+「認識の境界」
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent union
  *
  * Design:
  *   - Perception は Tauri API を直接 import しない（testability のため）
- *   - 外部（Terminal / App）が onPtyOutput / onHookSignal / onUserInput を呼ぶ
+ *   - 外部（Terminal / App / MCP / pack）が onPtyOutput / onHookSignal / onUserInput / ingestLoopLifecycle を呼ぶ
  *   - 内部で idle detection timer を管理し、自律的に IdleEvent を生成する
- *   - 全 event は EventBus.dispatch() に流れる
+ *   - 全 event は EventBus.dispatch() に流れる（PTY 出力も loop の構造化 stream も同格の観察源）
  */
 
 import type {
@@ -16,6 +16,8 @@ import type {
   HookSignal,
   HookSignalEvent,
   IdleEvent,
+  LoopLifecycleEvent,
+  LoopPhase,
   PtyOutputEvent,
   ToolActivityEvent,
   UserInputEvent,
@@ -194,6 +196,33 @@ export class Perception {
     const event: UserInputEvent = {
       kind: "user-input",
       text,
+      timestamp: this.time.now(),
+    };
+    this.bus.dispatch(event);
+  }
+
+  /**
+   * 自律 agent loop の lifecycle phase を観察 stream に ingest する。
+   *
+   * MCP `loop_announce` handler（住人 AI 由来）と amenity の `ctx.loop.announce`
+   * （pack 由来）が共通で呼ぶ単一の ingest 経路。PTY 出力と同格の観察源として
+   * `LoopLifecycleEvent` を EventBus に流す（custom trigger が `kind ===
+   * "loop-lifecycle"` で match できる）。詳細: docs/decisions/loop-presence-layer.md
+   *
+   * `agent` は host が stamp した観察主体（MCP 由来は terminalAgent id、pack 由来は
+   * null）。caller が詐称できないよう、呼び出し側で確定した値を受け取るだけ。
+   *
+   * NOTE: loop event は **user activity ではない**——`lastActivityAt` を更新しない。
+   * 自律ループ進行中こそ user は離席している（away mode）ので、loop の進行で
+   * idle 反応を抑制すべきではない。docs/decisions/autonomy-without-disruption.md
+   */
+  ingestLoopLifecycle(phase: LoopPhase, agent: string | null, detail?: unknown): void {
+    if (this.disposed) return;
+    const event: LoopLifecycleEvent = {
+      kind: "loop-lifecycle",
+      phase,
+      agent,
+      detail,
       timestamp: this.time.now(),
     };
     this.bus.dispatch(event);
