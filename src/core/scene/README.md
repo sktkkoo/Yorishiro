@@ -6,7 +6,7 @@
 
 ## scene とは何か
 
-`CHARMINAL.md`「住まうということ」の実体化。住人（VRM）が**どういう場に居るか**を決める layer stack。複数レイヤーによる合成処理を使うが、目的は「一枚の構図を綺麗に見せる」ことではない：
+`PHILOSOPHY.md`「住まうということ」の実体化。住人（VRM）が**どういう場に居るか**を決める layer stack。複数レイヤーによる合成処理を使うが、目的は「一枚の構図を綺麗に見せる」ことではない：
 
 - 映像作品の layer stack の目的：**一枚の構図を綺麗に見せる**（frame）
 - Charminal の目的：**住人がその場に居る実在感を増幅する**（place）
@@ -269,6 +269,6 @@ user は設定で ambient 全体を on/off できる。
 
 ## 関連
 
-- Philosophy: `docs/philosophy/CHARMINAL.md`「住まうということ」「触れるものと、触れないもの」「Presence が立ち上がる三つの条件」
+- Philosophy: `docs/philosophy/PHILOSOPHY.md`「住まうということ」「触れるものと、触れないもの」「Presence が立ち上がる三つの条件」
 - Spec: `specs/2026-04-18-scene-pack-compositor-design.md`（外部 repo `Charminal-design-record`）
 - SDK guide: `src/sdk/README.md` — 4 種類の Pack（Persona / Harness / Effect / Scene）の書き方を集約。Scene Pack section は manifest / scene.ts shape / active 選択の流れを扱う
