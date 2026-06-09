@@ -190,6 +190,6 @@ User がここを拡張 / 一部上書きしたい場合は **`user.<shell>` を
 ## 関連 doc
 
 - [`configuration.md`](configuration.md) — `~/.charminal/config.json` の他の field
-- [`philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`](philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) — 「観察の境界」（住人は PTY を観察できるが書き込めない）
+- [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) — 「観察の境界」（住人は PTY を観察できるが書き込めない）
 - [`decisions/explicit-over-implicit-ugc.md`](decisions/explicit-over-implicit-ugc.md) — explicit 設定を選ぶ判断
 - [`decisions/bundled-pack-immutability.md`](decisions/bundled-pack-immutability.md) — Charminal 所有 / user 所有の境界

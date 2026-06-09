@@ -165,7 +165,7 @@ Codex / OpenCode にはそれぞれ独自の hook / plugin event surface があ�
 - source: `src/runtime/user-pack-loader/config.ts` (`TerminalAgent` 型 widen)
 - decision: [codex-terminal-agent.md](codex-terminal-agent.md) (前段の 2-agent decision)
 - decision: [critical-constraints.md](critical-constraints.md) §1 PTY observation only
-- philosophy: [INHABITED_CHARACTER_INTERFACE.ja.md「観察の境界」](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md)
+- philosophy: [PHILOSOPHY.ja.md「観察の境界」](../philosophy/PHILOSOPHY.ja.md)
 - internal design-record (非公開): `specs/2026-05-26-terminal-agent-adapter.md`、`plans/2026-05-26-terminal-agent-adapter.md`、`handoffs/2026-05-26-terminal-agent-adapter-handoff.md`
 - OpenCode docs: [opencode.ai/docs/cli](https://opencode.ai/docs/cli/), [opencode.ai/docs/mcp-servers](https://opencode.ai/docs/mcp-servers/), [opencode.ai/docs/rules](https://opencode.ai/docs/rules/)
 

@@ -2,7 +2,7 @@
 
 > このファイルは「**Charminal の doc 全体の navigation 入口**」。dev / AI / pack 作者 / repo を訪れた人すべての最初の 1 ページ。「どこに何があるか」を 5 分で把握するための map。
 >
-> 公開向けの読み物（narrative）は [`philosophy/CHARMINAL.ja.md`](philosophy/CHARMINAL.ja.md) から始める。本 README は navigation 専用で、自身は narrative を持たない。
+> 公開向けの読み物（narrative）は [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) から始める。本 README は navigation 専用で、自身は narrative を持たない。
 
 ---
 
@@ -10,7 +10,7 @@
 
 | やりたいこと | まず読むファイル |
 |---|---|
-| Charminal が何を目指しているか知りたい | [`philosophy/CHARMINAL.ja.md`](philosophy/CHARMINAL.ja.md) |
+| Charminal が何を目指しているか知りたい | [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) |
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
@@ -31,7 +31,7 @@
 
 ```
 公開思想 (narrative, drift しにくい)
-  └─ docs/philosophy/   ← 作品宣言・原理。3 本だけ。
+  └─ docs/philosophy/   ← 作品宣言・原理。PHILOSOPHY.ja.md に統合。
 
 決定 / 制約 (topic-indexed, drift 注意)
   └─ docs/decisions/    ← 「なぜそう決めたか」を topic 軸で。
@@ -58,21 +58,9 @@ User-private memory (auto-recall, 個人ローカル)
 
 ---
 
-## 2. 思想（philosophy）の階層
+## 2. 思想（philosophy）
 
-3 本の文書は階層構造を持つ。**抽象 → 具体** で読む：
-
-| 入口 | 階層 | 主題 |
-|---|---|---|
-| [`philosophy/PRESENCE_HARNESS.ja.md`](philosophy/PRESENCE_HARNESS.ja.md) | 最抽象 | 「AI が呼び出されるものから、共に居る存在へ」の領域定義 |
-| [`philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`](philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) | 中層 | 「UI は道具ではなく場所、AI は住人」という立場 |
-| [`philosophy/CHARMINAL.ja.md`](philosophy/CHARMINAL.ja.md) | 最具体 | 「ターミナル + VRM + ログ回路」での具体実装 |
-
-```
-PRESENCE_HARNESS.ja.md
-  └─ INHABITED_CHARACTER_INTERFACE.ja.md
-       └─ CHARMINAL.ja.md
-```
+[`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) に統合されています。問題意識 → Presence Harness → ICI → 二層構造 → 自己言及的 MCP → 境界 → 生きた系の順で読めます。
 
 Source code 内で参照するときは：
 
