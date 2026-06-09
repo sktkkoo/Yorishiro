@@ -16,7 +16,7 @@
  * Scene の宣言型は `./scene-pack.d.ts` の `ScenePackDefinition` を参照。
  */
 
-import type { ReactionEvent } from "./reaction";
+import type { LoopPhase, ReactionEvent } from "./reaction";
 import type { HistoryAPI } from "./history";
 
 // ─── AmbientAudioAPI ───────────────────────────────────────
@@ -157,6 +157,12 @@ export interface AmenityContext {
    * restore は破壊的なので実装が確認 UX を gate する。
    */
   readonly history: HistoryAPI;
+  /**
+   * 自律 agent loop の lifecycle を観察 stream に announce する。
+   * MCP `loop_announce` と対称な observation 注入 primitive（motion-free・
+   * system / history と同列）。詳細は LoopAPI の JSDoc を参照。
+   */
+  readonly loop: LoopAPI;
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
   readonly terminal: TerminalAPI;
@@ -609,6 +615,44 @@ export interface SpaceEffectHandle {
   readonly startedAt: number;
   readonly completion: Promise<void>;
   cancel(): void;
+}
+
+// ─── LoopAPI (amenity only) ────────────────────────────────
+
+/**
+ * 自律 agent loop の lifecycle を観察 stream に announce する API。
+ *
+ * pack（amenity）が外部の loop runner（ralph 系 / 自前 harness 等）を観察し、
+ * その phase 遷移を Charminal に報告するための primitive。announce された phase は
+ * `LoopLifecycleEvent` として通常の trigger loop を流れ、custom trigger が
+ * `kind === "loop-lifecycle"` で match して reaction を emit する（PTY / hook と
+ * 同じ「観察 → trigger → reaction」の flow）。
+ *
+ * MCP の `loop_announce` tool と対称——住人 AI は MCP 経由、pack は SDK 経由で
+ * 同じ observation を注入する（CLAUDE.md「Symmetry principle」）。
+ *
+ * ⚠️ これは loop を **制御する** API ではない。announce は「loop がこの phase に
+ * 入った」と **述べる** だけで、loop の起動・停止・承認は行わない（観察境界、
+ * docs/decisions/critical-constraints.md §1）。「どう反応するか」は persona の
+ * reflex が決める。
+ *
+ * motion-free な機能 capability なので persona ではなく amenity 側に置く
+ * （system / history と同列）。
+ *
+ * 詳細: docs/decisions/loop-presence-layer.md
+ */
+export interface LoopAPI {
+  /**
+   * loop lifecycle の phase を観察 stream に announce する。
+   *
+   * 報告元の `agent` 帰属は host が stamp する（pack 由来は `null`）。caller は
+   * 指定できない——詐称を防ぐため（`LoopLifecycleEvent.agent` の JSDoc 参照）。
+   *
+   * @param phase loop の lifecycle phase
+   * @param detail phase 固有の付加情報（runId / goal / iteration / reason 等）。
+   *               custom trigger の match 関数で参照できる
+   */
+  announce(phase: LoopPhase, detail?: unknown): void;
 }
 
 // ─── SystemAPI (amenity only) ──────────────────────────────

@@ -5,7 +5,7 @@
  * system.exec は Tauri command 経由で実体化する。
  */
 
-import type { AmenityContext, ExecOptions, HistoryAPI } from "@charminal/sdk";
+import type { AmenityContext, ExecOptions, HistoryAPI, LoopPhase } from "@charminal/sdk";
 import musicShelfPack from "../../../bundled-packs/amenities/music-shelf/amenity";
 import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
@@ -22,6 +22,8 @@ export interface RegisterBundledMusicShelfDeps {
   readonly tweenManager: TweenManager;
   readonly ambientAudio?: AmenityContext["ambientAudio"];
   readonly emitEvent: (name: string, payload?: unknown) => void;
+  /** loop lifecycle phase を観察 stream に announce する（host が agent=null stamp）。 */
+  readonly loop: (phase: LoopPhase, detail?: unknown) => void;
   readonly history: HistoryAPI;
   /**
    * true / undefined なら登録後に active にする。config.disabledPacks で明示的に
@@ -105,6 +107,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
       },
     },
     history: deps.history,
+    loop: { announce: (phase, detail) => deps.loop(phase, detail) },
     log: { write: () => {}, tail: () => [], read: () => [] },
     memory: {
       persona: { get: () => undefined, set: () => {}, delete: () => {} },

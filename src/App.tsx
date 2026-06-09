@@ -1051,6 +1051,8 @@ function App() {
       emitEvent: (packId, name, payload) => {
         bus.emitSynthetic({ type: "system", packId }, name, payload, 0);
       },
+      // pack 由来の loop announce は agent=null で観察 stream に流す（host stamp）。
+      loop: (phase, detail) => perception.ingestLoopLifecycle(phase, null, detail),
       history: historyApi,
     });
 
@@ -1068,6 +1070,7 @@ function App() {
       emitEvent: (name, payload) => {
         bus.emitSynthetic({ type: "system", packId: "pomodoro" }, name, payload, 0);
       },
+      loop: (phase, detail) => perception.ingestLoopLifecycle(phase, null, detail),
       history: historyApi,
     });
     appLog.write({
@@ -1254,6 +1257,7 @@ function App() {
         emitEvent: (name, payload) => {
           bus.emitSynthetic({ type: "system", packId: "music-shelf" }, name, payload, 0);
         },
+        loop: (phase, detail) => perception.ingestLoopLifecycle(phase, null, detail),
         history: historyApi,
         ambientAudio,
         defaultEnabled: musicShelfDefaultEnabled,

@@ -5,7 +5,7 @@
  * terminal opacity 制御用の deps は App.tsx 側から注入される。
  */
 
-import type { AmenityContext, HistoryAPI } from "@charminal/sdk";
+import type { AmenityContext, HistoryAPI, LoopPhase } from "@charminal/sdk";
 import pomodoroPack, {
   createPomodoroAmenity,
   type PomodoroActivateContext,
@@ -25,6 +25,8 @@ export interface RegisterBundledPomodoroDeps {
   readonly setTerminalOpacity: (value: number) => void;
   readonly getTerminalOpacity: () => number;
   readonly emitEvent: (name: string, payload?: unknown) => void;
+  /** loop lifecycle phase を観察 stream に announce する（host が agent=null stamp）。 */
+  readonly loop: (phase: LoopPhase, detail?: unknown) => void;
   readonly history: HistoryAPI;
 }
 
@@ -64,6 +66,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
     ambientAudio: FALLBACK_AMBIENT_AUDIO,
     system: {} as AmenityContext["system"],
     history: deps.history,
+    loop: { announce: (phase, detail) => deps.loop(phase, detail) },
     log: { write: () => {}, tail: () => [], read: () => [] },
     memory: {
       persona: { get: () => undefined, set: () => {}, delete: () => {} },

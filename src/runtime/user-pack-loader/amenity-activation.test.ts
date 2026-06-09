@@ -24,6 +24,7 @@ describe("createUserAmenityContextFactory", () => {
     const factory = createUserAmenityContextFactory({
       tweenManager,
       emitEvent,
+      loop: () => {},
       history: fakeHistory,
     });
     const controller = new AbortController();
@@ -48,6 +49,26 @@ describe("createUserAmenityContextFactory", () => {
       apply,
       undefined,
     );
+  });
+
+  it("ctx.loop.announce が loop dep に phase / detail を渡す", () => {
+    const loop = vi.fn();
+    const factory = createUserAmenityContextFactory({
+      tweenManager: fakeTween(),
+      emitEvent: vi.fn(),
+      loop,
+      history: fakeHistory,
+    });
+    const ctx = factory({
+      packId: "loop-watcher",
+      packDir: "/tmp/packs/loop-watcher",
+      source: "local",
+      signal: new AbortController().signal,
+    });
+
+    ctx.loop.announce("progress-milestone", { iteration: 3 });
+
+    expect(loop).toHaveBeenCalledWith("progress-milestone", { iteration: 3 });
   });
 });
 
@@ -74,6 +95,7 @@ describe("activateAndRegisterAmenity", () => {
       createAmenityContext: createUserAmenityContextFactory({
         tweenManager: fakeTween(),
         emitEvent: vi.fn(),
+        loop: () => {},
         history: fakeHistory,
       }),
     });
@@ -108,6 +130,7 @@ describe("activateAndRegisterAmenity", () => {
       createAmenityContext: createUserAmenityContextFactory({
         tweenManager: fakeTween(),
         emitEvent: vi.fn(),
+        loop: () => {},
         history: fakeHistory,
       }),
     });
