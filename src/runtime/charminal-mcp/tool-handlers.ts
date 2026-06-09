@@ -1834,7 +1834,7 @@ export function createPomodoroStatusHandler(deps: PomodoroDeps) {
  * ────────────────────────────────────────────────────────── */
 
 /** loop_announce が受け付ける lifecycle phase 集合（reaction.d.ts の LoopPhase と同期）。 */
-const LOOP_PHASES: ReadonlySet<LoopPhase> = new Set<LoopPhase>([
+const LOOP_PHASES: ReadonlySet<string> = new Set([
   "started",
   "iterating",
   "blocked-on-approval",
@@ -1844,7 +1844,7 @@ const LOOP_PHASES: ReadonlySet<LoopPhase> = new Set<LoopPhase>([
 ]);
 
 function isLoopPhase(value: unknown): value is LoopPhase {
-  return typeof value === "string" && (LOOP_PHASES as ReadonlySet<string>).has(value);
+  return typeof value === "string" && LOOP_PHASES.has(value);
 }
 
 export interface LoopAnnounceDeps {
