@@ -892,6 +892,7 @@ describe("loadSingleUserPack", () => {
         createAmenityContext: createUserAmenityContextFactory({
           tweenManager: makeFakeTweenManager(),
           emitEvent: () => {},
+          loop: () => {},
           history: fakeHistory,
         }),
       },

@@ -3,6 +3,7 @@ import type {
   AmenityPackDefinition,
   ExecOptions,
   HistoryAPI,
+  LoopPhase,
 } from "@charminal/sdk";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { systemExec } from "../../bindings/tauri-commands";
@@ -39,6 +40,11 @@ export interface UserAmenityContextDeps {
    * 潰れないよう実 pack id（registryId）を閉じ込める。
    */
   readonly emitEvent: (packId: string, name: string, payload?: unknown) => void;
+  /**
+   * loop lifecycle phase を観察 stream に announce する。pack 由来の announce なので
+   * host 側で `agent = null` を stamp する（`LoopAPI` / loop-presence-layer.md 参照）。
+   */
+  readonly loop: (phase: LoopPhase, detail?: unknown) => void;
   readonly history: HistoryAPI;
 }
 
@@ -137,6 +143,10 @@ export function createUserAmenityContextFactory(
     charm: async () => {},
     signal,
     history: deps.history,
+    loop: {
+      // pack 由来の announce。agent 帰属は host（deps.loop）が null で stamp する。
+      announce: (phase, detail) => deps.loop(phase, detail),
+    },
     resolveAsset: (path: string): string => {
       if (path.startsWith("/")) {
         return convertFileSrc(path);

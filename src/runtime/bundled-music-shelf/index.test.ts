@@ -53,6 +53,7 @@ describe("registerBundledMusicShelf", () => {
       registry,
       tweenManager: fakeTween(),
       emitEvent: vi.fn(),
+      loop: () => {},
       history: fakeHistory,
     });
 
@@ -69,6 +70,7 @@ describe("registerBundledMusicShelf", () => {
       registry,
       tweenManager: fakeTween(),
       emitEvent: vi.fn(),
+      loop: () => {},
       history: fakeHistory,
       defaultEnabled: false,
     });
@@ -92,6 +94,7 @@ describe("registerBundledMusicShelf", () => {
       registry,
       tweenManager: fakeTween(),
       emitEvent: vi.fn(),
+      loop: () => {},
       history: fakeHistory,
     });
 
@@ -134,6 +137,7 @@ describe("registerBundledMusicShelf", () => {
       tweenManager: fakeTween(),
       ambientAudio: ambientAudio.api,
       emitEvent: vi.fn(),
+      loop: () => {},
       history: fakeHistory,
     });
 

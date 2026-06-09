@@ -354,6 +354,17 @@ pub struct JournalWriteRequest {
     pub summary: Option<String>,
 }
 
+/// `loop_announce` の引数。自律ループの lifecycle 自己申告。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LoopAnnounceRequest {
+    /// loop lifecycle phase: "started" / "iterating" / "blocked-on-approval"
+    /// / "progress-milestone" / "failed" / "completed"。未知の値は TS 側で無視される。
+    pub phase: String,
+    /// phase 固有の付加情報（runId / goal / iteration / reason 等）。任意。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<Value>,
+}
+
 /// `journal_read` の引数。date / days いずれも省略時は最新 7 日分を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JournalReadRequest {
@@ -907,6 +918,25 @@ impl Charminal {
         let has_memory = req.summary.is_some();
         let content = Content::json(json!({ "ok": true, "date": req.date, "memory": has_memory }))?;
         Ok(CallToolResult::success(vec![content]))
+    }
+
+    /// loop_announce: 自律ループ（goal に向けた長時間の自動実行）の lifecycle phase を
+    /// Charminal に伝える。Charminal は観察して住人の存在として表現するだけで、ループの
+    /// 実行は制御しない（観察境界）。CC / Codex 共通の経路。
+    /// 詳細: docs/decisions/loop-presence-layer.md
+    #[tool(
+        description = "Report a lifecycle phase of your autonomous loop (long-horizon, goal-directed self-execution) so Charminal can reflect it as the resident's presence. Charminal only observes — it does not drive, gate, or control your loop. phase must be one of: started, iterating, blocked-on-approval, progress-milestone, failed, completed. Optionally attach a detail object (e.g. goal, iteration, runId, reason). Call this at loop boundaries (start / each iteration / when blocked on human approval / on a milestone / on failure / on completion); do not call it for ordinary single-turn work."
+    )]
+    async fn loop_announce(
+        &self,
+        Parameters(req): Parameters<LoopAnnounceRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "loop.announce",
+            json!({ "phase": req.phase, "detail": req.detail }),
+        )
+        .await
     }
 
     /// journal エントリを読み取る。日付指定または最新 N 日分。

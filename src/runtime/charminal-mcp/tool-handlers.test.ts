@@ -37,6 +37,7 @@ import {
   createGetPackStateHandler,
   createHistoryRestoreHandler,
   createListPacksHandler,
+  createLoopAnnounceHandler,
   createPackDiagnoseHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
@@ -109,6 +110,53 @@ describe("createTerminalContextGetHandler", () => {
     });
 
     await expect(handler({})).resolves.toEqual({ context: null, references: [] });
+  });
+});
+
+describe("createLoopAnnounceHandler", () => {
+  it("ingests a valid phase with host-stamped agent and detail", async () => {
+    const ingested: Array<{ phase: string; agent: string | null; detail: unknown }> = [];
+    const handler = createLoopAnnounceHandler({
+      ingest: (phase, agent, detail) => ingested.push({ phase, agent, detail }),
+      getAgentKind: () => "codex",
+    });
+
+    await expect(
+      handler({ phase: "blocked-on-approval", detail: { reason: "destructive op" } }),
+    ).resolves.toEqual({ announced: true });
+    expect(ingested).toEqual([
+      { phase: "blocked-on-approval", agent: "codex", detail: { reason: "destructive op" } },
+    ]);
+  });
+
+  it("normalizes omitted (SDK) and explicit-null (Rust transport) detail to undefined", async () => {
+    const ingested: Array<{ phase: string; agent: string | null; detail: unknown }> = [];
+    const handler = createLoopAnnounceHandler({
+      ingest: (phase, agent, detail) => ingested.push({ phase, agent, detail }),
+      getAgentKind: () => "claude",
+    });
+
+    // SDK 経路: ctx.loop.announce(phase) → detail key 省略
+    await handler({ phase: "started" });
+    // MCP/Rust 経路: emit_to の json!({ "detail": req.detail }) が Option::None を null で送る
+    await handler({ phase: "completed", detail: null });
+
+    expect(ingested).toEqual([
+      { phase: "started", agent: "claude", detail: undefined },
+      { phase: "completed", agent: "claude", detail: undefined },
+    ]);
+  });
+
+  it("rejects an unknown phase without ingesting", async () => {
+    const ingested: unknown[] = [];
+    const handler = createLoopAnnounceHandler({
+      ingest: (...args) => ingested.push(args),
+      getAgentKind: () => "claude",
+    });
+
+    await expect(handler({ phase: "not-a-phase" })).resolves.toEqual({ announced: false });
+    await expect(handler({})).resolves.toEqual({ announced: false });
+    expect(ingested).toHaveLength(0);
   });
 });
 
