@@ -1873,7 +1873,11 @@ export function createLoopAnnounceHandler(deps: LoopAnnounceDeps) {
     if (!isLoopPhase(r.phase)) {
       return { announced: false };
     }
-    const detail = "detail" in r ? r.detail : undefined;
+    // detail 省略と明示 null を共に「detail なし」= undefined に正規化する。
+    // Rust 側の json!({ "detail": req.detail }) は Option::None を JSON null で送るため、
+    // この正規化で MCP 経路と SDK 経路（ctx.loop.announce(phase) → undefined）の挙動を揃える。
+    // null/undefined のみ畳む（`0` / `false` / `""` などの意味ある detail は保持）。
+    const detail = r.detail ?? undefined;
     deps.ingest(r.phase, deps.getAgentKind(), detail);
     return { announced: true };
   };

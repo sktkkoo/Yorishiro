@@ -129,16 +129,22 @@ describe("createLoopAnnounceHandler", () => {
     ]);
   });
 
-  it("defaults detail to undefined when omitted", async () => {
+  it("normalizes omitted (SDK) and explicit-null (Rust transport) detail to undefined", async () => {
     const ingested: Array<{ phase: string; agent: string | null; detail: unknown }> = [];
     const handler = createLoopAnnounceHandler({
       ingest: (phase, agent, detail) => ingested.push({ phase, agent, detail }),
       getAgentKind: () => "claude",
     });
 
+    // SDK 経路: ctx.loop.announce(phase) → detail key 省略
     await handler({ phase: "started" });
+    // MCP/Rust 経路: emit_to の json!({ "detail": req.detail }) が Option::None を null で送る
+    await handler({ phase: "completed", detail: null });
 
-    expect(ingested).toEqual([{ phase: "started", agent: "claude", detail: undefined }]);
+    expect(ingested).toEqual([
+      { phase: "started", agent: "claude", detail: undefined },
+      { phase: "completed", agent: "claude", detail: undefined },
+    ]);
   });
 
   it("rejects an unknown phase without ingesting", async () => {
