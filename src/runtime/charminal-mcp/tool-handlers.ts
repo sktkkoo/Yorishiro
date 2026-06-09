@@ -10,6 +10,7 @@
 import type {
   Disposable,
   ExpressionHandle,
+  LoopPhase,
   MotionHandle,
   MotionSnapshot,
   SpaceEffectRequest,
@@ -1825,5 +1826,55 @@ export function createPomodoroStatusHandler(deps: PomodoroDeps) {
     const handle = deps.amenityPackRegistry.getActiveHandle("pomodoro");
     if (!handle) throw new Error("pomodoro amenity is not active");
     return handle.tools.pomodoro_status({});
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * loop.announce
+ * ────────────────────────────────────────────────────────── */
+
+/** loop_announce が受け付ける lifecycle phase 集合（reaction.d.ts の LoopPhase と同期）。 */
+const LOOP_PHASES: ReadonlySet<LoopPhase> = new Set<LoopPhase>([
+  "started",
+  "iterating",
+  "blocked-on-approval",
+  "progress-milestone",
+  "failed",
+  "completed",
+]);
+
+function isLoopPhase(value: unknown): value is LoopPhase {
+  return typeof value === "string" && (LOOP_PHASES as ReadonlySet<string>).has(value);
+}
+
+export interface LoopAnnounceDeps {
+  /**
+   * loop lifecycle phase を観察 stream に ingest する（= perception.ingestLoopLifecycle）。
+   * agent 帰属は caller ではなく host が stamp するため、getAgentKind() の値をここで渡す。
+   */
+  readonly ingest: (phase: LoopPhase, agent: string | null, detail?: unknown) => void;
+  /** 現在 Charminal に住んでいる terminal agent の id（"claude" / "codex" 等）。 */
+  readonly getAgentKind: () => string | null;
+}
+
+export interface LoopAnnounceResult {
+  readonly announced: boolean;
+}
+
+/**
+ * 住人 AI（MCP）が自律ループの lifecycle phase を Charminal に自己申告する handler。
+ * 観察 stream に LoopLifecycleEvent を流すだけで、ループの制御はしない（観察境界）。
+ * 未知の phase は無視する（closed enum で validation）。
+ * 詳細: docs/decisions/loop-presence-layer.md
+ */
+export function createLoopAnnounceHandler(deps: LoopAnnounceDeps) {
+  return async (request: unknown): Promise<LoopAnnounceResult> => {
+    const r = requestRecord(request);
+    if (!isLoopPhase(r.phase)) {
+      return { announced: false };
+    }
+    const detail = "detail" in r ? r.detail : undefined;
+    deps.ingest(r.phase, deps.getAgentKind(), detail);
+    return { announced: true };
   };
 }

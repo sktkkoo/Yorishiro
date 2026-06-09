@@ -37,6 +37,7 @@ import {
   createGetPackStateHandler,
   createHistoryRestoreHandler,
   createListPacksHandler,
+  createLoopAnnounceHandler,
   createPackDiagnoseHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
@@ -109,6 +110,47 @@ describe("createTerminalContextGetHandler", () => {
     });
 
     await expect(handler({})).resolves.toEqual({ context: null, references: [] });
+  });
+});
+
+describe("createLoopAnnounceHandler", () => {
+  it("ingests a valid phase with host-stamped agent and detail", async () => {
+    const ingested: Array<{ phase: string; agent: string | null; detail: unknown }> = [];
+    const handler = createLoopAnnounceHandler({
+      ingest: (phase, agent, detail) => ingested.push({ phase, agent, detail }),
+      getAgentKind: () => "codex",
+    });
+
+    await expect(
+      handler({ phase: "blocked-on-approval", detail: { reason: "destructive op" } }),
+    ).resolves.toEqual({ announced: true });
+    expect(ingested).toEqual([
+      { phase: "blocked-on-approval", agent: "codex", detail: { reason: "destructive op" } },
+    ]);
+  });
+
+  it("defaults detail to undefined when omitted", async () => {
+    const ingested: Array<{ phase: string; agent: string | null; detail: unknown }> = [];
+    const handler = createLoopAnnounceHandler({
+      ingest: (phase, agent, detail) => ingested.push({ phase, agent, detail }),
+      getAgentKind: () => "claude",
+    });
+
+    await handler({ phase: "started" });
+
+    expect(ingested).toEqual([{ phase: "started", agent: "claude", detail: undefined }]);
+  });
+
+  it("rejects an unknown phase without ingesting", async () => {
+    const ingested: unknown[] = [];
+    const handler = createLoopAnnounceHandler({
+      ingest: (...args) => ingested.push(args),
+      getAgentKind: () => "claude",
+    });
+
+    await expect(handler({ phase: "not-a-phase" })).resolves.toEqual({ announced: false });
+    await expect(handler({})).resolves.toEqual({ announced: false });
+    expect(ingested).toHaveLength(0);
   });
 });
 

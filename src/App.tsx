@@ -1457,6 +1457,8 @@ function App() {
           createAmenityCallHandler,
           createAmenityListToolsHandler,
           createHistoryRestoreHandler,
+          // Loop observation:
+          createLoopAnnounceHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
@@ -1767,6 +1769,13 @@ function App() {
           }),
           "pomodoro.status": createPomodoroStatusHandler({
             amenityPackRegistry: getAmenityPackRegistry(),
+          }),
+          // ── Loop observation ─────────────────────────────
+          // 住人 AI が自律ループの phase を自己申告する。観察 stream に流すだけ。
+          // agent 帰属は host（= 起動中の terminalAgent）が stamp する。
+          "loop.announce": createLoopAnnounceHandler({
+            ingest: (phase, agent, detail) => perception.ingestLoopLifecycle(phase, agent, detail),
+            getAgentKind: () => terminalAgent,
           }),
         };
 
