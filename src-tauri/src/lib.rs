@@ -1759,12 +1759,26 @@ async fn watch_charminal_layer(
     Ok(())
 }
 
+/// `path` の拡張子が `.vrm`（大文字小文字無視）かどうか。
+///
+/// import_vrm は任意 path を AppData/avatars/ にコピーするため、拡張子を絞らないと
+/// `~/.ssh/id_rsa` 等の任意ファイルを assetProtocol scope 内へ複製できてしまう。
+fn has_vrm_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("vrm"))
+        .unwrap_or(false)
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
     let src_path = std::path::Path::new(&src);
     if !src_path.exists() {
         return Err("File not found".into());
+    }
+    if !has_vrm_extension(src_path) {
+        return Err("VRM ファイル（.vrm）ではありません".into());
     }
     let file_name = src_path
         .file_name()
@@ -1784,6 +1798,33 @@ async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
     std::fs::copy(&src, &dest).map_err(|e| format!("Copy failed: {}", e))?;
 
     Ok(dest.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod import_vrm_tests {
+    use super::has_vrm_extension;
+    use std::path::Path;
+
+    #[test]
+    fn accepts_vrm_extension() {
+        assert!(has_vrm_extension(Path::new("/some/dir/avatar.vrm")));
+    }
+
+    #[test]
+    fn accepts_vrm_extension_case_insensitive() {
+        assert!(has_vrm_extension(Path::new("/some/dir/Avatar.VRM")));
+    }
+
+    #[test]
+    fn rejects_non_vrm_extension() {
+        assert!(!has_vrm_extension(Path::new("/home/user/.ssh/id_rsa")));
+        assert!(!has_vrm_extension(Path::new("/some/dir/photo.png")));
+    }
+
+    #[test]
+    fn rejects_missing_extension() {
+        assert!(!has_vrm_extension(Path::new("/some/dir/noext")));
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
