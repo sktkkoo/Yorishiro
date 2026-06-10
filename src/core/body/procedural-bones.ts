@@ -10,6 +10,7 @@
 
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
+import { OrganicNoise } from "./organic-noise";
 import { createVrmRestPose, type VrmRestPose } from "./vrm-rest-pose";
 
 // ─── Constants ───────────────────────────────────────────
@@ -19,6 +20,14 @@ const HEAD_DRIFT_AMP_Z = 0.04; // lateral tilt (radians)
 const HEAD_DRIFT_AMP_Y = 0.05; // yaw rotation (radians)
 const HEAD_DRIFT_SPEED = 1.2; // lerp speed (units/sec)
 const HEAD_LOOK_AT_SPEED = 1.2;
+
+// Posture shift — 立ち姿の重心がゆっくり入れ替わる（数十秒スケール）。
+// sway（数秒スケール）より一段遅い層で「ずっと同じ姿勢で固まっていない」
+// 実在感を作る。
+const POSTURE_LEAN_AMP = 0.012; // radians
+const POSTURE_MIN_S = 20;
+const POSTURE_MAX_S = 50;
+const POSTURE_LERP_SPEED = 0.3; // units/sec（とてもゆっくり）
 // idle/thinking 中の頭 pitch の「中心」を少し下げる静的バイアス（radians, 負で chin down）。
 // drift（z/y）と違い pitch には揺らぎが無く中心が素のポーズ任せだったため、ここで中心だけ寄せる。
 // procedural weight に乗せるので、conscious animation 中はフェードして効かない。
@@ -76,10 +85,32 @@ export class ProceduralBones {
     }
   }
 
+  // Posture shift state
+  private postureLeanZ = 0;
+  private postureLeanTarget = 0;
+  private postureTimer: number;
+
   private readonly random: () => number;
+
+  // Sway noise（旧実装の単一 sine を置換。周波数帯は同等、波形だけ有機化）。
+  // 各 instance が独立位相を持つので左右非対称・非同期になる。
+  private readonly swaySpineZ: OrganicNoise;
+  private readonly swaySpineX: OrganicNoise;
+  private readonly swayArmLeftZ: OrganicNoise;
+  private readonly swayArmLeftX: OrganicNoise;
+  private readonly swayArmRightZ: OrganicNoise;
+  private readonly swayArmRightX: OrganicNoise;
 
   constructor(random?: () => number) {
     this.random = random ?? Math.random;
+    this.swaySpineZ = new OrganicNoise(0.6, this.random);
+    this.swaySpineX = new OrganicNoise(0.4, this.random);
+    this.swayArmLeftZ = new OrganicNoise(0.5, this.random);
+    this.swayArmLeftX = new OrganicNoise(0.35, this.random);
+    this.swayArmRightZ = new OrganicNoise(0.5, this.random);
+    this.swayArmRightX = new OrganicNoise(0.35, this.random);
+    // 最初の重心移動は早めに入れる（起動直後の「固まり」を避ける）
+    this.postureTimer = 5 + this.random() * 15;
   }
 
   /** Bind to VRM normalized bones. Call after VRM loads + rest pose setup. */
@@ -122,10 +153,24 @@ export class ProceduralBones {
   update(delta: number, elapsed: number, weight = 1.0): void {
     const w = weight;
 
+    // ── Posture shift（重心の入れ替わり）─────────────────
+    this.postureTimer -= delta;
+    if (this.postureTimer <= 0) {
+      this.postureLeanTarget = (this.random() - 0.5) * 2 * POSTURE_LEAN_AMP;
+      this.postureTimer = POSTURE_MIN_S + this.random() * (POSTURE_MAX_S - POSTURE_MIN_S);
+    }
+    this.postureLeanZ = lerpDelta(
+      this.postureLeanZ,
+      this.postureLeanTarget,
+      POSTURE_LERP_SPEED,
+      delta,
+    );
+
     // ── Spine sway ──────────────────────────────────────
     if (this.spineBone && w >= 0.001) {
-      this.spineBone.rotation.z = Math.sin(elapsed * 0.6) * 0.015 * w;
-      this.spineBone.rotation.x = (Math.sin(elapsed * 0.4) * 0.008 + this.breathChestPitch) * w;
+      this.spineBone.rotation.z = (this.swaySpineZ.sample(elapsed) * 0.015 + this.postureLeanZ) * w;
+      this.spineBone.rotation.x =
+        (this.swaySpineX.sample(elapsed) * 0.008 + this.breathChestPitch) * w;
     }
 
     // ── Head drift ──────────────────────────────────────
@@ -183,20 +228,21 @@ export class ProceduralBones {
     // ── Arm micro-sway ──────────────────────────────────
     // Rest pose base + small sine offset (phase-shifted per arm)
     const restPose = this.restPose;
-    // 呼吸の肩上げは左右ミラー（吸気で両肩がわずかに開く / 上がる）
+    // 呼吸の肩上げは左右ミラー（吸気で両肩がわずかに開く / 上がる）。
+    // sway は腕ごとに独立 noise（左右非対称・非同期）。
     if (this.leftUpperArm && restPose && w >= 0.001) {
       this.leftUpperArm.rotation.z =
         restPose.leftArm.upperArmZ +
-        (Math.sin(elapsed * 0.5 + 1.2) * 0.02 + this.breathShoulderLift) * w;
+        (this.swayArmLeftZ.sample(elapsed) * 0.02 + this.breathShoulderLift) * w;
       this.leftUpperArm.rotation.x =
-        restPose.leftArm.upperArmX + Math.sin(elapsed * 0.35) * 0.015 * w;
+        restPose.leftArm.upperArmX + this.swayArmLeftX.sample(elapsed) * 0.015 * w;
     }
     if (this.rightUpperArm && restPose && w >= 0.001) {
       this.rightUpperArm.rotation.z =
         restPose.rightArm.upperArmZ +
-        (Math.sin(elapsed * 0.5 + 2.4) * 0.02 - this.breathShoulderLift) * w;
+        (this.swayArmRightZ.sample(elapsed) * 0.02 - this.breathShoulderLift) * w;
       this.rightUpperArm.rotation.x =
-        restPose.rightArm.upperArmX + Math.sin(elapsed * 0.35 + 1.8) * 0.015 * w;
+        restPose.rightArm.upperArmX + this.swayArmRightX.sample(elapsed) * 0.015 * w;
     }
   }
 }
