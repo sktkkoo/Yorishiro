@@ -323,7 +323,7 @@ bundled の参考実装: `bundled-packs/ui/charminal-settings/`
 
 ### 境界
 
-ui pack は **描画と state 管理のみ**。`ctx.system` / `ctx.character` / `ctx.voice` は持たない。terminal へ何か入力させたい場合は、PTY write を直接呼ばず、既存の安全な prompt UI 経路だけを使う。
+ui pack は **描画と state 管理のみ**。`ctx.system` / `ctx.character` / `ctx.voice` は持たない。terminal へ prompt を入れる場合は、`ctx.app.insertFixedPrompt(...)` のような host 所有の固定 key verb だけを使う。任意 terminal prefill / PTY write 直叩きは公開しない。
 
 **色は CSS 変数を使う**: `#eceff4` や `rgba(77, 217, 207, ...)` のようなハードコード色を直書きしない。scene テーマが変わったときに追従するため、以下の CSS 変数を使う:
 

@@ -223,7 +223,7 @@ L1 + L2 + L3 + L4 が全て揃うまで、PTY 系 tool は registry / SDK のい
 
 `bundled-packs/ui/charminal-settings/ui.tsx` の "ショートカット変更" button は `src/bindings/tauri-commands` から `ptyWrite` を相対 import して `pty_write` を直接呼ぶ。これは **MCP tool ではない**が、**pack 層のコードが Tauri IPC を直叩きしている SDK leak** であり解消対象。
 
-> 旧版はこの leak を `TerminalPromptButton` の挙動と記述していたが誤同定。実体は上記 `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではない。
+> 旧版はこの leak を `TerminalPromptButton` の挙動と記述していたが誤同定。実体は上記 `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではなく、任意テキスト + raw `ptyWrite` 配線を勧める footgun だったため 2026-06-10 に削除した。
 
 解消の方向は [`input-prefill-boundary.md`](input-prefill-boundary.md) で確定：pack/AI に任意テキスト書込み API を露出せず、(A) host/bundled 所有の固定文字列 verb（SDK + MCP 対称、user pack は参照のみ）と (B) 既存 Reference Marker（write 経路は固定 token `[#TermN]`、可変内容は MCP read で解決）の 2 経路のみ。
 

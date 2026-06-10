@@ -50,11 +50,12 @@ before relying on any of them:
   `isolated-js` class for future community packs.
 - **MCP trust tiers are not yet implemented.** The local MCP server
   (`127.0.0.1`, loopback only) has no caller identification, no per-tier
-  approval, no audit log, and no rate limit. The implemented tools
-  (`list_packs`, `enable_pack`, `disable_pack`) are reachable by any process
-  running as the same user. `enable_pack` / `disable_pack` mutate `config.json`
-  without an approval prompt; the change is reversible (re-enable + history
-  snapshots). Tracked in [`decisions/mcp-trust-tiers.md`](decisions/mcp-trust-tiers.md)
+  approval, no audit log, and no rate limit. All tools exposed by
+  `src-tauri/src/mcp/tools.rs` are reachable by any process running as the same
+  user, including pack toggles, screenshots, voice, journal, controls, and
+  history restore. `enable_pack` / `disable_pack` mutate `config.json` without
+  an approval prompt; the change is reversible (re-enable + history snapshots).
+  Tracked in [`decisions/mcp-trust-tiers.md`](decisions/mcp-trust-tiers.md)
   "Implementation status".
 - **No outbound network.** The Rust host has no HTTP client. Screenshots and TTS
   are produced locally and never leave the machine, and CSP `connect-src`

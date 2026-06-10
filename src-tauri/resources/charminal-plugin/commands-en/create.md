@@ -318,7 +318,7 @@ Reference: `bundled-packs/ui/charminal-settings/`.
 
 ### UI Boundaries
 
-UI packs are for rendering and state management. They do not have `ctx.system`, `ctx.character`, or `ctx.voice`. Terminal prefill should go through `TerminalPromptButton`; direct PTY writing from random UI code should not become a general pattern.
+UI packs are for rendering and state management. They do not have `ctx.system`, `ctx.character`, or `ctx.voice`. Terminal prompt insertion must use fixed-key host verbs such as `ctx.app.insertFixedPrompt(...)`; arbitrary terminal prefill / direct PTY writing is not exposed.
 
 Use CSS variables for colors:
 
