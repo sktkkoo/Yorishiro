@@ -9,6 +9,7 @@ use pty::{start_hook_server, PtyState};
 use sessions::{SessionRegistry, SpawnSpec};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -1836,21 +1837,68 @@ fn has_vrm_extension(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
-#[tauri::command]
-async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
-    let src_path = std::path::Path::new(&src);
-    if !src_path.exists() {
-        return Err("File not found".into());
+fn validate_vrm_glb_header(file: &mut std::fs::File, file_size: u64) -> Result<(), String> {
+    let mut header = [0_u8; 12];
+    file.read_exact(&mut header)
+        .map_err(|_| "VRM ファイルのGLBヘッダーを読み取れません".to_string())?;
+
+    if &header[0..4] != b"glTF" {
+        return Err("VRM ファイルのGLBヘッダーが不正です".into());
+    }
+
+    let version = u32::from_le_bytes(header[4..8].try_into().expect("header slice length"));
+    if version != 2 {
+        return Err(format!("未対応のGLBバージョンです: {}", version));
+    }
+
+    let declared_len = u32::from_le_bytes(header[8..12].try_into().expect("header slice length"));
+    if u64::from(declared_len) != file_size {
+        return Err("VRM ファイルのGLBサイズ宣言が不正です".into());
+    }
+
+    Ok(())
+}
+
+fn open_vrm_import_source(src_path: &Path) -> Result<(std::fs::File, String), String> {
+    let meta = std::fs::symlink_metadata(src_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "File not found".to_string()
+        } else {
+            format!("Failed to inspect file: {}", e)
+        }
+    })?;
+
+    let file_type = meta.file_type();
+    if file_type.is_symlink() {
+        return Err("シンボリックリンクは VRM import できません".into());
+    }
+    if !file_type.is_file() {
+        return Err("VRM import source must be a regular file".into());
     }
     if !has_vrm_extension(src_path) {
         return Err("VRM ファイル（.vrm）ではありません".into());
     }
+
     let file_name = src_path
         .file_name()
         .ok_or("Invalid file path")?
         .to_string_lossy()
         .to_string();
+
+    let mut file =
+        std::fs::File::open(src_path).map_err(|e| format!("Failed to open VRM: {}", e))?;
+    validate_vrm_glb_header(&mut file, meta.len())?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("Failed to rewind VRM: {}", e))?;
+
+    Ok((file, file_name))
+}
+
+/// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
+#[tauri::command]
+async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
+    let src_path = std::path::Path::new(&src);
+    let (mut src_file, file_name) = open_vrm_import_source(src_path)?;
 
     let app_data = app
         .path()
@@ -1861,15 +1909,40 @@ async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to create directory: {}", e))?;
 
     let dest = avatars_dir.join(&file_name);
-    std::fs::copy(&src, &dest).map_err(|e| format!("Copy failed: {}", e))?;
+    let mut dest_file = std::fs::File::create(&dest).map_err(|e| format!("Copy failed: {}", e))?;
+    std::io::copy(&mut src_file, &mut dest_file).map_err(|e| format!("Copy failed: {}", e))?;
 
     Ok(dest.to_string_lossy().to_string())
 }
 
 #[cfg(test)]
 mod import_vrm_tests {
-    use super::has_vrm_extension;
-    use std::path::Path;
+    use super::{has_vrm_extension, open_vrm_import_source};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn tmp_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-import-vrm-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("mkdir");
+        tmp
+    }
+
+    fn minimal_glb_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"glTF");
+        bytes.extend_from_slice(&2_u32.to_le_bytes());
+        bytes.extend_from_slice(&12_u32.to_le_bytes());
+        bytes
+    }
 
     #[test]
     fn accepts_vrm_extension() {
@@ -1890,6 +1963,59 @@ mod import_vrm_tests {
     #[test]
     fn rejects_missing_extension() {
         assert!(!has_vrm_extension(Path::new("/some/dir/noext")));
+    }
+
+    #[test]
+    fn validates_regular_vrm_glb_source() {
+        let dir = tmp_dir("regular");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, minimal_glb_bytes()).expect("write");
+
+        let (_file, file_name) = open_vrm_import_source(&path).expect("valid source");
+        assert_eq!(file_name, "avatar.vrm");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_non_glb_vrm_file() {
+        let dir = tmp_dir("non-glb");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, b"not a glb").expect("write");
+
+        let result = open_vrm_import_source(&path);
+        assert!(result.is_err(), "GLB ではない .vrm は拒否されるべき");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_directory_named_vrm() {
+        let dir = tmp_dir("directory");
+        let path = dir.join("avatar.vrm");
+        fs::create_dir_all(&path).expect("mkdir");
+
+        let result = open_vrm_import_source(&path);
+        assert!(result.is_err(), "directory は import できてはならない");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_named_vrm() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tmp_dir("symlink");
+        let target = dir.join("secret");
+        let link = dir.join("avatar.vrm");
+        fs::write(&target, minimal_glb_bytes()).expect("write");
+        symlink(&target, &link).expect("symlink");
+
+        let result = open_vrm_import_source(&link);
+        assert!(result.is_err(), "symlink は import できてはならない");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
 
