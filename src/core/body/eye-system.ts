@@ -17,6 +17,27 @@ export interface EyeOutput {
   pitch: number; // degrees
 }
 
+/**
+ * Saccade 開始の通知（pull 型）。Body が毎フレーム consume して
+ * eye-head coordination（大きい視線移動に頭が遅れて追従）と
+ * gaze-evoked blink（大きい saccade が瞬きを誘発する生理現象）に使う。
+ */
+export interface SaccadeEvent {
+  /** 移動量（pattern 空間の距離、おおよそ 0〜1.4）。 */
+  readonly magnitude: number;
+  /** Saccade 後の目標視線（degrees、正 = モデルの左）。 */
+  readonly targetYawDeg: number;
+  readonly targetPitchDeg: number;
+  /** この saccade が瞬きを誘発するか（magnitude 閾値 + 確率抽選済み）。 */
+  readonly blinkWorthy: boolean;
+}
+
+// Gaze-evoked blink: 視線の大移動時、人間は高確率で瞬きを伴う。
+const GAZE_BLINK_MIN_MAGNITUDE = 0.6;
+const GAZE_BLINK_PROB = 0.3;
+// これ未満の移動は saccade とみなさない（front → front の縮退など）
+const SACCADE_MIN_MAGNITUDE = 0.05;
+
 interface EyeDir {
   up: number;
   down: number;
@@ -103,7 +124,7 @@ interface GazeOverride {
 
 export class EyeSystem {
   // ── Idle state ──
-  private fixationTimer = 2.0 + Math.random() * 3.0;
+  private fixationTimer: number;
   private saccadeProgress = 0;
   private saccadeDuration = 0.06;
   private isSaccading = false;
@@ -113,7 +134,7 @@ export class EyeSystem {
   private readonly saccadeStart: EyeDir = { up: 0, down: 0, left: 0, right: 0 };
 
   // Micro-saccade
-  private microTimer = 0.3 + Math.random() * 0.4;
+  private microTimer: number;
   private microYaw = 0;
   private microPitch = 0;
   private microYawTarget = 0;
@@ -132,11 +153,21 @@ export class EyeSystem {
   // ── Activity state ──
   private _state: EyeState = "idle";
 
+  // ── Saccade event（pull 型、consume で消える）──
+  private pendingSaccade: SaccadeEvent | null = null;
+
+  // 次の saccade を正面に強制する flag（注意の切り替え用）
+  private forceFrontNext = false;
+
   /** Dependency injection for testability. */
   private readonly random: () => number;
 
   constructor(random?: () => number) {
     this.random = random ?? Math.random;
+    // injectable random で初期 timer も決定的にする（field initializer だと
+    // Math.random 直叩きになりテストから制御できない）
+    this.fixationTimer = 2.0 + this.random() * 3.0;
+    this.microTimer = 0.3 + this.random() * 0.4;
   }
 
   /** Set the activity state. Changes gaze patterns and saccade intervals. */
@@ -209,6 +240,23 @@ export class EyeSystem {
     this.ambientPitchTarget = clamp(pitch, -EYE_MAX_PITCH_DEG, EYE_MAX_PITCH_DEG);
   }
 
+  /** 直近の saccade 開始 event を 1 回だけ返す（pull したら消える）。 */
+  consumeSaccadeEvent(): SaccadeEvent | null {
+    const event = this.pendingSaccade;
+    this.pendingSaccade = null;
+    return event;
+  }
+
+  /**
+   * 注意の切り替え（user の入力など）：視線をすぐ正面（作業対象）へ向け直す。
+   * override 中は何もしない（明示的 gaze が優先）。
+   */
+  refocusFront(): void {
+    if (this.override) return;
+    this.forceFrontNext = true;
+    this.fixationTimer = Math.min(this.fixationTimer, 0.05);
+  }
+
   // ── Idle internals ────────────────────────────────────
 
   private updateAmbient(delta: number): void {
@@ -235,7 +283,10 @@ export class EyeSystem {
       this.fixationTimer -= delta;
       if (this.fixationTimer <= 0) {
         const patterns = PATTERNS[this._state];
-        const picked = patterns[Math.floor(this.random() * patterns.length)];
+        const picked = this.forceFrontNext
+          ? { up: 0, down: 0, left: 0, right: 0 }
+          : patterns[Math.floor(this.random() * patterns.length)];
+        this.forceFrontNext = false;
 
         const dist = Math.hypot(
           picked.up - this.current.up,
@@ -257,6 +308,17 @@ export class EyeSystem {
         this.target.right = picked.right;
 
         this.isSaccading = true;
+
+        // Saccade event の発行（縮退 saccade は通知しない）。blink 抽選は
+        // ここで確定させる（injectable random で決定的にテストできる）。
+        if (dist > SACCADE_MIN_MAGNITUDE) {
+          this.pendingSaccade = {
+            magnitude: dist,
+            targetYawDeg: (picked.left - picked.right) * MAX_YAW,
+            targetPitchDeg: (picked.up - picked.down) * MAX_PITCH,
+            blinkWorthy: dist >= GAZE_BLINK_MIN_MAGNITUDE && this.random() < GAZE_BLINK_PROB,
+          };
+        }
 
         // Thinking: upper gaze gets slightly longer fixation
         if (this._state === "thinking" && picked.up > 0.3) {

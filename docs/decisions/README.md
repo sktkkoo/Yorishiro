@@ -106,6 +106,7 @@
 ### Architecture
 
 - [**single-active-registry-pattern.md**](single-active-registry-pattern.md) — 新しい single-active pack 種別を追加する時の extend recipe。`SingleActiveRegistry<TEntry, TValue>` を extend して domain alias 2 個を生やすだけ、実装をコピーしない
+- [**physiological-reflex-layer.md**](physiological-reflex-layer.md) — 生理反射（startle / 注意切替 / 一息 / 認知瞬き）は persona reaction ではなく Body built-in。event → state mutation axis から発火。表情 preset / motion clip / effect を使うなら演技なので persona 側
 - [**agent-adapter.md**](agent-adapter.md) — Terminal agent (Claude / Codex / OpenCode / 将来) の adapter 抽象化と capability flag set
 - [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない。Charminal MCP と `$charm-*` skill plugin は session-scoped config で注入する
 - [**loop-presence-layer.md**](loop-presence-layer.md) — 自律 agent loop（自動実行）は観察・可視化する presence layer として取り込み、execution engine 化はしない。loop-lifecycle event（6 phase）を `ObservedEvent` 同格で足し、SDK `ctx.loop` と MCP `loop_announce` に対称公開。agent-declared（host 推論しない）/ CC・Codex は `mcp_injection` で両対応 / fearless recovery は Charminal 自身と対象 repo を別軸で扱う
