@@ -52,6 +52,11 @@ export class ProceduralBones {
   private headLookAtAppliedY = 0;
   private restPose: VrmRestPose | null = null;
 
+  // BreathingSystem からの胸郭・肩オフセット（毎フレーム Body が供給）。
+  // spine sway / arm sway と同じ bone に加算合成するためここで適用する。
+  private breathChestPitch = 0;
+  private breathShoulderLift = 0;
+
   /** When true, head drift amplitude increases ×1.8 and interval shortens. */
   private _isThinking = false;
 
@@ -92,6 +97,12 @@ export class ProceduralBones {
     this.headLookAtTargetX = pitchRad;
   }
 
+  /** BreathingSystem の胸郭・肩オフセットを受け取る。update で weight 込みで適用。 */
+  setBreathingOffsets(chestPitchRad: number, shoulderLiftRad: number): void {
+    this.breathChestPitch = chestPitchRad;
+    this.breathShoulderLift = shoulderLiftRad;
+  }
+
   /**
    * Per-frame update. Applies bone rotations directly.
    * `weight` is used to blend with VRMA animations (1.0 = full procedural).
@@ -102,7 +113,7 @@ export class ProceduralBones {
     // ── Spine sway ──────────────────────────────────────
     if (this.spineBone && w >= 0.001) {
       this.spineBone.rotation.z = Math.sin(elapsed * 0.6) * 0.015 * w;
-      this.spineBone.rotation.x = Math.sin(elapsed * 0.4) * 0.008 * w;
+      this.spineBone.rotation.x = (Math.sin(elapsed * 0.4) * 0.008 + this.breathChestPitch) * w;
     }
 
     // ── Head drift ──────────────────────────────────────
@@ -160,15 +171,18 @@ export class ProceduralBones {
     // ── Arm micro-sway ──────────────────────────────────
     // Rest pose base + small sine offset (phase-shifted per arm)
     const restPose = this.restPose;
+    // 呼吸の肩上げは左右ミラー（吸気で両肩がわずかに開く / 上がる）
     if (this.leftUpperArm && restPose && w >= 0.001) {
       this.leftUpperArm.rotation.z =
-        restPose.leftArm.upperArmZ + Math.sin(elapsed * 0.5 + 1.2) * 0.02 * w;
+        restPose.leftArm.upperArmZ +
+        (Math.sin(elapsed * 0.5 + 1.2) * 0.02 + this.breathShoulderLift) * w;
       this.leftUpperArm.rotation.x =
         restPose.leftArm.upperArmX + Math.sin(elapsed * 0.35) * 0.015 * w;
     }
     if (this.rightUpperArm && restPose && w >= 0.001) {
       this.rightUpperArm.rotation.z =
-        restPose.rightArm.upperArmZ + Math.sin(elapsed * 0.5 + 2.4) * 0.02 * w;
+        restPose.rightArm.upperArmZ +
+        (Math.sin(elapsed * 0.5 + 2.4) * 0.02 - this.breathShoulderLift) * w;
       this.rightUpperArm.rotation.x =
         restPose.rightArm.upperArmX + Math.sin(elapsed * 0.35 + 1.8) * 0.015 * w;
     }

@@ -38,6 +38,7 @@ import type { MouthValues } from "../voice/mouth-values";
 import { MOUTH_KEYS } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
+import { BreathingSystem } from "./breathing-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import {
   type ExpressionKind,
@@ -71,8 +72,6 @@ export interface LipSyncSource {
   sampleMouth(): MouthValues;
 }
 
-const BREATHING_AMPLITUDE = 0.005;
-const BREATHING_FREQUENCY = 0.8;
 const BLINK_EXPRESSION_NAME = "blink";
 
 // State-dependent expression targets (ported from old vrmExpressions.ts)
@@ -101,6 +100,12 @@ export class Body {
    */
   private readonly expressionSink = new ExpressionSinkTracker();
   private readonly blinkSystem: BlinkSystem;
+  /**
+   * 呼吸の生理。state 連動（focused は速く浅く、長 idle は深くゆっくり）、
+   * ため息、startle 時の息止めを持つ。出力は scene Y 位置 + 胸郭・肩の
+   * 微小回転（後者は ProceduralBones が spine / upperArm に加算合成）。
+   */
+  private readonly breathing = new BreathingSystem();
   private readonly eyeSystem: EyeSystem;
   private readonly eyelids: EyelidExpressionController;
   /**
@@ -344,13 +349,21 @@ export class Body {
       this.animationPlayer.update(delta);
     }
 
-    // 2. Procedural bone animation (spine sway, head drift, arm sway)
+    // 2. Breathing + procedural bone animation (spine sway, head drift, arm sway)
+    //    呼吸は ProceduralBones の bone 書き込みより先に値を確定し、胸郭・肩
+    //    オフセットとして渡す（spine sway / arm sway と同 bone への加算合成）。
     //    Complementary weight with VRMA: procedural fades as clips take over,
     //    so procedural's direct rotation assignment doesn't fight clip motion.
     //    (Ported from old Charminal AnimationSourceManager.update.)
     const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
     const proceduralWeight = Math.max(0, 1 - vrmaWeight);
     if (!animationClaimed) {
+      this.breathing.setMode(
+        this.eyeSystem.state !== "idle" ? "focused" : this.relaxedValue > 0 ? "relaxed" : "idle",
+      );
+      const breath = this.breathing.update(delta);
+      this.vrm.scene.position.y = breath.offsetY;
+      this.proceduralBones.setBreathingOffsets(breath.chestPitch, breath.shoulderLift);
       this.proceduralBones.update(delta, elapsed, proceduralWeight);
     }
 
@@ -411,12 +424,7 @@ export class Body {
     // 7. Apply eye gaze to VRM
     this.applyGaze();
 
-    // 8. Breathing
-    if (!animationClaimed) {
-      this.applyBreathing(elapsed);
-    }
-
-    // 9. VRM spring bones etc.
+    // 8. VRM spring bones etc.
     this.vrm.update(delta);
   }
 
@@ -688,10 +696,6 @@ export class Body {
     this.vrm.lookAt.yaw = output.yaw;
     this.vrm.lookAt.pitch = output.pitch;
     this.vrm.lookAt.applier.applyYawPitch(output.yaw, output.pitch);
-  }
-
-  private applyBreathing(elapsed: number): void {
-    this.vrm.scene.position.y = Math.sin(elapsed * BREATHING_FREQUENCY) * BREATHING_AMPLITUDE;
   }
 
   private logCursorAttentionSample(
