@@ -49,10 +49,20 @@ fn expand_tilde(path: &str, home: &Path) -> PathBuf {
     }
 }
 
+/// media folder の scope 追加先が広すぎる（root or home 全体）か。正規化済み path を渡す前提。
+///
+/// `mediaFolders` は user-owned config だが、`/` や `$HOME` 全体を asset protocol scope に
+/// 開くと、CSP 越えの XSS や system_exec 経由の config 改竄から FS 広域を webview が読める
+/// 二次経路になる。ルート級だけを拒否する（深い任意 path・外部ドライブは許容）。
+fn is_too_broad_media_scope(folder: &Path, home: &Path) -> bool {
+    (folder.has_root() && folder.parent().is_none()) || folder == home
+}
+
 /// `~/.charminal/config.json` の `mediaFolders` を読み、asset protocol scope に追加する。
 /// field 未指定時は `["~/Music"]` を default として扱う。
 fn register_media_folder_scopes(app: &tauri::App) {
     let home = dirs::home_dir().unwrap_or_default();
+    let canonical_home = home.canonicalize().unwrap_or_else(|_| home.clone());
     let config_path = home.join(".charminal").join("config.json");
 
     let folders: Vec<PathBuf> = if config_path.is_file() {
@@ -78,14 +88,70 @@ fn register_media_folder_scopes(app: &tauri::App) {
     let scope = app.asset_protocol_scope();
     for folder in &folders {
         if folder.is_dir() {
-            if let Err(e) = scope.allow_directory(folder, true) {
+            let canonical_folder = match folder.canonicalize() {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!(
+                        "[media-folders] scope 正規化失敗: {} — {}",
+                        folder.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+            if is_too_broad_media_scope(&canonical_folder, &canonical_home) {
+                eprintln!(
+                    "[media-folders] 広すぎる scope を拒否: {}",
+                    canonical_folder.display()
+                );
+                continue;
+            }
+            if let Err(e) = scope.allow_directory(&canonical_folder, true) {
                 eprintln!(
                     "[media-folders] scope 追加失敗: {} — {}",
-                    folder.display(),
+                    canonical_folder.display(),
                     e
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod media_scope_tests {
+    use super::is_too_broad_media_scope;
+    use std::path::Path;
+
+    #[test]
+    fn rejects_filesystem_root() {
+        assert!(is_too_broad_media_scope(
+            Path::new("/"),
+            Path::new("/home/u")
+        ));
+    }
+
+    #[test]
+    fn rejects_home_itself() {
+        assert!(is_too_broad_media_scope(
+            Path::new("/home/u"),
+            Path::new("/home/u")
+        ));
+    }
+
+    #[test]
+    fn accepts_subdir_of_home() {
+        assert!(!is_too_broad_media_scope(
+            Path::new("/home/u/Music"),
+            Path::new("/home/u")
+        ));
+    }
+
+    #[test]
+    fn accepts_external_media_dir() {
+        assert!(!is_too_broad_media_scope(
+            Path::new("/Volumes/ext/music"),
+            Path::new("/home/u")
+        ));
     }
 }
 
