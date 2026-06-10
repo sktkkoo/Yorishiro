@@ -40,6 +40,17 @@ describe("EyeSystem saccade event", () => {
     expect(eye.consumeSaccadeEvent()?.blinkWorthy).toBe(false);
   });
 
+  it("refocusFront で次の saccade が正面に向かう（注意の切り替え）", () => {
+    // rng=0: 通常なら patterns[0]（左）ばかり選ぶ
+    const eye = new EyeSystem(() => 0);
+    for (let t = 0; t < 2.5; t += DT) eye.update(DT); // 左へ saccade 済み
+    expect(Math.abs(eye.getOutput().yaw)).toBeGreaterThan(10);
+
+    eye.refocusFront();
+    for (let t = 0; t < 0.5; t += DT) eye.update(DT);
+    expect(Math.abs(eye.getOutput().yaw)).toBeLessThan(2);
+  });
+
   it("正面 → 正面の縮退 saccade は event を出さない", () => {
     // rng=0.8: patterns[6]（front）→ 初期位置も front なので magnitude 0
     const eye = new EyeSystem(() => 0.8);

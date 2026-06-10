@@ -79,6 +79,12 @@ const BLINK_EXPRESSION_NAME = "blink";
 const HEAD_RECRUITMENT_MIN_MAGNITUDE = 0.6;
 const HEAD_RECRUITMENT_GAIN = 0.25;
 
+// Startle 反射の cooldown。エラーが連発しても痙攣的に反応し続けない
+//（motion-effect-trigger-axes.md の「intrusive な motion」の教訓）。
+const STARTLE_COOLDOWN_S = 10;
+// Startle 時の息止め時間
+const STARTLE_BREATH_HOLD_S = 0.5;
+
 // State-dependent expression targets (ported from old vrmExpressions.ts)
 const STATE_EXPRESSIONS: Record<EyeState, ReadonlyArray<[string, number]>> = {
   idle: [["neutral", 1.0]],
@@ -176,6 +182,9 @@ export class Body {
 
   /** LipSync 音声解析ソース。再生中に毎フレーム sampleMouth() を pull する。 */
   private lipSyncSource: LipSyncSource | null = null;
+
+  /** Startle 反射の cooldown 計時。update の delta で進める。 */
+  private timeSinceStartle = STARTLE_COOLDOWN_S;
 
   /** VRM head の screen 座標（three-runtime が毎 frame setHeadClientReference で更新）。 */
   private headClientX = 0;
@@ -338,9 +347,42 @@ export class Body {
     // }
   }
 
+  // ─── 生理反射（physiological reflexes）────────────────
+  //
+  // persona の演技（reaction handler）とは別概念の生理層。瞬き・呼吸と同じ
+  // Body built-in で、App.tsx の event → state mutation axis（side-effect only
+  // inline trigger）から呼ばれる。persona reaction を経由しないのは
+  // docs/decisions/motion-effect-trigger-axes.md の整理に基づく：これは
+  // 「どの persona でも起きる生理」であって個性の表現ではない。
+
+  /**
+   * Startle 反射：予期しない失敗イベントへの身体反応。
+   * 速い瞬き + 頭の微小な引き（chin tuck）+ 一瞬の息止め。
+   * エラー連発で痙攣しないよう cooldown 付き。
+   */
+  notifyStartle(): void {
+    if (this.timeSinceStartle < STARTLE_COOLDOWN_S) return;
+    this.timeSinceStartle = 0;
+    this.blinkSystem.requestBlink();
+    this.breathing.hold(STARTLE_BREATH_HOLD_S);
+    this.proceduralBones.flinchHead();
+  }
+
+  /** 注意の切り替え（user の入力送信など）：瞬き + 視線を作業対象へ向け直す。 */
+  notifyAttentionShift(): void {
+    this.blinkSystem.requestBlink();
+    this.eyeSystem.refocusFront();
+  }
+
+  /** ターン完了などの区切りで一息つく（深い呼吸を 1 回）。 */
+  notifySettle(): void {
+    this.breathing.triggerDeepBreath();
+  }
+
   update(delta: number, elapsed: number): void {
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
+    this.timeSinceStartle += delta;
     this.cursorAttention.update(delta);
     const cursorAttention = this.cursorAttention.getOutput();
     this.proceduralBones.setHeadLookAtOffset(

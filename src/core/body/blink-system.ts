@@ -28,6 +28,9 @@ const INTERVAL_SCALE: Record<EyeState, number> = {
 };
 
 const DOUBLE_BLINK_PROB = 0.15;
+// 注意の切り替わり（state 遷移）に伴う認知瞬きの確率。人間は課題の区切りや
+// 注意のシフトで瞬きを打つ（attentional blink punctuation）。
+const COGNITIVE_BLINK_PROB = 0.4;
 const CLOSE_RATE = 20; // units/sec（~50ms で閉じる）
 const OPEN_RATE = 12; // units/sec（~83ms で開く）
 const SPEED_JITTER = 0.3; // 毎回の開閉速度の揺らぎ幅（0.85〜1.15 倍）
@@ -39,6 +42,7 @@ export class BlinkSystem {
   private blinkValue = 0;
   private intervalScale = INTERVAL_SCALE.idle;
   private speedMul = 1.0;
+  private currentState: EyeState = "idle";
 
   /** Active suppression tokens (e.g., handler-driven blink, idle squint). */
   private readonly suppressions = new Set<number>();
@@ -51,9 +55,17 @@ export class BlinkSystem {
     this.timer = 4.0 + this.random() * 2.0;
   }
 
-  /** Activity state に応じて瞬き間隔を変調する。 */
+  /**
+   * Activity state に応じて瞬き間隔を変調する。state が実際に切り替わった
+   * ときは確率的に認知瞬きを打つ（注意のシフトの句読点）。
+   */
   setState(state: EyeState): void {
+    const changed = state !== this.currentState;
+    this.currentState = state;
     this.intervalScale = INTERVAL_SCALE[state];
+    if (changed && this.random() < COGNITIVE_BLINK_PROB) {
+      this.requestBlink();
+    }
   }
 
   /**

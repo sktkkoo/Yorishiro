@@ -28,6 +28,11 @@ const POSTURE_LEAN_AMP = 0.012; // radians
 const POSTURE_MIN_S = 20;
 const POSTURE_MAX_S = 50;
 const POSTURE_LERP_SPEED = 0.3; // units/sec（とてもゆっくり）
+
+// Startle flinch — 予期しない失敗イベントへの頭の微小な引き（chin tuck）。
+// 演出ではなく生理反射なので振幅は小さく、一拍で戻る。
+const FLINCH_DURATION_S = 0.45;
+const FLINCH_PITCH_RAD = -0.045; // 負 = chin down
 // idle/thinking 中の頭 pitch の「中心」を少し下げる静的バイアス（radians, 負で chin down）。
 // drift（z/y）と違い pitch には揺らぎが無く中心が素のポーズ任せだったため、ここで中心だけ寄せる。
 // procedural weight に乗せるので、conscious animation 中はフェードして効かない。
@@ -90,6 +95,9 @@ export class ProceduralBones {
   private postureLeanTarget = 0;
   private postureTimer: number;
 
+  // Startle flinch state（残り時間。0 で非アクティブ）
+  private flinchTimer = 0;
+
   private readonly random: () => number;
 
   // Sway noise（旧実装の単一 sine を置換。周波数帯は同等、波形だけ有機化）。
@@ -144,6 +152,11 @@ export class ProceduralBones {
     this.headDriftTargetY = Math.max(-limit, Math.min(limit, yawRad));
     // しばらくこの向きを保持してから通常 drift に戻る
     this.headDriftTimer = 1.0 + this.random() * 1.5;
+  }
+
+  /** Startle 反射：頭が一瞬小さく引いて（chin tuck）一拍で戻る。 */
+  flinchHead(): void {
+    this.flinchTimer = FLINCH_DURATION_S;
   }
 
   /**
@@ -212,7 +225,14 @@ export class ProceduralBones {
       // pitch の中心を procedural weight ぶんだけ下げる（揺らぎ自体は据え置き）。
       // look-at と同じ applied/current 方式に畳んで冪等に保つ。
       const restPitchX = HEAD_REST_PITCH_RAD * w;
-      const appliedPitchX = this.headLookAtCurrentX + restPitchX;
+      // Startle flinch：単発の sin envelope で沈んで戻る
+      let flinchX = 0;
+      if (this.flinchTimer > 0) {
+        this.flinchTimer = Math.max(0, this.flinchTimer - delta);
+        const p = 1 - this.flinchTimer / FLINCH_DURATION_S;
+        flinchX = Math.sin(Math.PI * p) * FLINCH_PITCH_RAD * w;
+      }
+      const appliedPitchX = this.headLookAtCurrentX + restPitchX + flinchX;
       this.headBone.rotation.x -= this.headLookAtAppliedX;
       this.headBone.rotation.y -= this.headLookAtAppliedY;
       if (w >= 0.001) {

@@ -63,6 +63,39 @@ describe("BlinkSystem extensions", () => {
     expect(Math.min(...gaps)).toBeLessThan(1.0);
   });
 
+  it("state 遷移で認知瞬きが入る（低 rng = 抽選当選）", () => {
+    const blink = new BlinkSystem(() => 0);
+    blink.update(DT);
+    blink.setState("thinking");
+    let maxValue = 0;
+    for (let t = 0; t < 0.3; t += DT) {
+      maxValue = Math.max(maxValue, blink.update(DT));
+    }
+    expect(maxValue).toBe(1.0);
+  });
+
+  it("state 遷移の認知瞬きは抽選外れなら発生しない", () => {
+    const blink = new BlinkSystem(() => 0.5); // 0.5 ≥ 0.4 → 外れ
+    blink.update(DT);
+    blink.setState("thinking");
+    let maxValue = 0;
+    for (let t = 0; t < 1; t += DT) {
+      maxValue = Math.max(maxValue, blink.update(DT));
+    }
+    expect(maxValue).toBe(0);
+  });
+
+  it("同じ state の再設定では認知瞬きは入らない", () => {
+    const blink = new BlinkSystem(() => 0);
+    blink.update(DT);
+    blink.setState("idle"); // 既に idle
+    let maxValue = 0;
+    for (let t = 0; t < 0.5; t += DT) {
+      maxValue = Math.max(maxValue, blink.update(DT));
+    }
+    expect(maxValue).toBe(0);
+  });
+
   it("低 rng では double blink は発生しない（間隔は常に 2 秒以上）", () => {
     const blink = new BlinkSystem(() => 0);
     const starts = collectBlinkStarts(blink, 20);

@@ -2967,13 +2967,22 @@ function App() {
         if (event.kind === "hook-signal" && event.signal.name === "user-prompt-submit") {
           inTurnRef.current = true;
           bodyRef.current?.setState("thinking");
+          // 生理反射：注意の切り替え（瞬き + 視線を作業対象へ）
+          bodyRef.current?.notifyAttentionShift();
         }
         if (event.kind === "hook-signal" && event.signal.name === "pre-tool-use") {
           bodyRef.current?.setState("thinking");
         }
+        if (event.kind === "hook-signal" && event.signal.name === "post-tool-failure") {
+          // 生理反射：startle（速い瞬き + 頭の微小な引き + 息止め）。
+          // persona の演技（distressed 等）とは独立の生理層で、cooldown は Body 側。
+          bodyRef.current?.notifyStartle();
+        }
         if (event.kind === "hook-signal" && event.signal.name === "stop") {
           inTurnRef.current = false;
           bodyRef.current?.setState("idle");
+          // 生理反射：ターンの区切りで一息つく
+          bodyRef.current?.notifySettle();
         }
         return null; // never emit a reaction — side-effect only
       },

@@ -135,6 +135,34 @@ describe("ProceduralBones breathing offsets", () => {
     expect(Math.abs(late - early)).toBeGreaterThan(0.005);
   });
 
+  it("flinchHead で頭が一瞬引いて戻る（startle 反射）", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+
+    // baseline（rest pitch bias のみ）
+    bones.update(DT, 0, 1.0);
+    const baseline = getBone("head").rotation.x;
+
+    bones.flinchHead();
+    let minX = baseline;
+    let clock = 0;
+    for (let t = 0; t < 0.45; t += DT) {
+      clock += DT;
+      bones.update(DT, clock, 1.0);
+      minX = Math.min(minX, getBone("head").rotation.x);
+    }
+    // flinch のピークで baseline よりはっきり沈む
+    expect(minX).toBeLessThan(baseline - 0.02);
+
+    // flinch 終了後は baseline 近傍に戻る
+    for (let t = 0; t < 0.5; t += DT) {
+      clock += DT;
+      bones.update(DT, clock, 1.0);
+    }
+    expect(getBone("head").rotation.x).toBeCloseTo(baseline, 2);
+  });
+
   it("weight 0 では breathing offset も適用されない", () => {
     const { vrm, getBone } = mockVrm();
     const bones = new ProceduralBones(() => 0.5);

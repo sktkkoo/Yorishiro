@@ -156,6 +156,9 @@ export class EyeSystem {
   // ── Saccade event（pull 型、consume で消える）──
   private pendingSaccade: SaccadeEvent | null = null;
 
+  // 次の saccade を正面に強制する flag（注意の切り替え用）
+  private forceFrontNext = false;
+
   /** Dependency injection for testability. */
   private readonly random: () => number;
 
@@ -244,6 +247,16 @@ export class EyeSystem {
     return event;
   }
 
+  /**
+   * 注意の切り替え（user の入力など）：視線をすぐ正面（作業対象）へ向け直す。
+   * override 中は何もしない（明示的 gaze が優先）。
+   */
+  refocusFront(): void {
+    if (this.override) return;
+    this.forceFrontNext = true;
+    this.fixationTimer = Math.min(this.fixationTimer, 0.05);
+  }
+
   // ── Idle internals ────────────────────────────────────
 
   private updateAmbient(delta: number): void {
@@ -270,7 +283,10 @@ export class EyeSystem {
       this.fixationTimer -= delta;
       if (this.fixationTimer <= 0) {
         const patterns = PATTERNS[this._state];
-        const picked = patterns[Math.floor(this.random() * patterns.length)];
+        const picked = this.forceFrontNext
+          ? { up: 0, down: 0, left: 0, right: 0 }
+          : patterns[Math.floor(this.random() * patterns.length)];
+        this.forceFrontNext = false;
 
         const dist = Math.hypot(
           picked.up - this.current.up,
