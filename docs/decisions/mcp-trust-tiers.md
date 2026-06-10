@@ -292,6 +292,20 @@ community pack が MCP tool を呼ぶ shape は両文書の交点に立つ。具
 - 外部 MCP server install の review chain
 - `terminal_prefill` 系 tool（**当面実装しない**）
 
+> **注（2026-06-10 更新）**：上の「実装済み」リストは初版当時のもので、現在の `src-tauri/src/mcp/tools.rs`
+> はこれより多くの tool を提供している（screenshot / voice / journal_write / history_restore /
+> controls 系など）。tool の権威ある一覧は `tools.rs` を参照。trust tier gate は依然未実装のため、
+> これら全 tool は下記 transport の含意の対象になる。
+
+> **現状の transport の security 含意**：MCP server は `127.0.0.1` に **無認証**で listen
+> する（接続元 identification が未実装のため）。loopback 限定なのでリモートからは到達しないが、
+> 同一ユーザー権限の任意ローカルプロセスが実装済み tool を呼べる。`enable_pack` / `disable_pack`
+> は approval UI 無しで `config.json` を書き換える（可逆：re-enable + history snapshot で戻せる）。
+> `journal_write` の `date` traversal は 2026-06-10 に Rust 側 validation で塞いだ。tier gate を
+> 実装する際は、起動毎のランダム token 認証を transport に入れて「同一マシンの別プロセス」を Tier 3
+> として識別できるようにするのが起点。single-user local desktop の pre-1.0 では許容範囲だが、
+> multi-machine MCP pairing や community pack install を解禁する前に必ず閉じる。
+
 ## MVP 推奨
 
 1. trust tier 1/2 の自動許可範囲を実装してから出す（cosmetic operation の self-write tool 群）
