@@ -104,6 +104,18 @@ export class ProceduralBones {
   }
 
   /**
+   * Eye-head coordination：大きい saccade の後、頭が視線方向へ遅れて追従する。
+   * drift target を視線方向に向けるだけなので、動き自体は通常の drift lerp
+   * （HEAD_DRIFT_SPEED）が作る = 目が先、頭が後の生理的な順序になる。
+   */
+  nudgeHeadToward(yawRad: number): void {
+    const limit = HEAD_DRIFT_AMP_Y * 2;
+    this.headDriftTargetY = Math.max(-limit, Math.min(limit, yawRad));
+    // しばらくこの向きを保持してから通常 drift に戻る
+    this.headDriftTimer = 1.0 + this.random() * 1.5;
+  }
+
+  /**
    * Per-frame update. Applies bone rotations directly.
    * `weight` is used to blend with VRMA animations (1.0 = full procedural).
    */

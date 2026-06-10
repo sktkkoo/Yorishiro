@@ -68,6 +68,29 @@ describe("ProceduralBones breathing offsets", () => {
     expect(leftDiff).toBeCloseTo(-rightDiff, 5);
   });
 
+  it("nudgeHeadToward で頭が指定方向に lerp で向かう（eye-head coordination）", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+
+    bones.nudgeHeadToward(0.08);
+    for (let t = 0; t < 1; t += DT) bones.update(DT, t, 1.0);
+    // 即時ジャンプではなく lerp で接近する（1 秒で目標の 5 割以上）
+    const y = getBone("head").rotation.y;
+    expect(y).toBeGreaterThan(0.04);
+    expect(y).toBeLessThan(0.08);
+  });
+
+  it("nudgeHeadToward は head drift の振幅域に clamp される", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+
+    bones.nudgeHeadToward(0.5);
+    for (let t = 0; t < 3; t += DT) bones.update(DT, t, 1.0);
+    expect(getBone("head").rotation.y).toBeLessThan(0.12);
+  });
+
   it("weight 0 では breathing offset も適用されない", () => {
     const { vrm, getBone } = mockVrm();
     const bones = new ProceduralBones(() => 0.5);

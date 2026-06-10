@@ -74,6 +74,11 @@ export interface LipSyncSource {
 
 const BLINK_EXPRESSION_NAME = "blink";
 
+// Eye-head coordination：この magnitude 以上の saccade で頭が視線に追従する。
+// gain は「目の移動角の何割を頭が肩代わりするか」（人間はおよそ 2〜3 割）。
+const HEAD_RECRUITMENT_MIN_MAGNITUDE = 0.6;
+const HEAD_RECRUITMENT_GAIN = 0.25;
+
 // State-dependent expression targets (ported from old vrmExpressions.ts)
 const STATE_EXPRESSIONS: Record<EyeState, ReadonlyArray<[string, number]>> = {
   idle: [["neutral", 1.0]],
@@ -383,6 +388,19 @@ export class Body {
 
     // 4. Eye system (state-dependent patterns)
     this.eyeSystem.update(delta);
+
+    // 4b. Eye-head coordination + gaze-evoked blink。
+    //     大きい saccade では頭が遅れて同方向に追従し（目が先・頭が後）、
+    //     確率的に瞬きを伴う。blink 抽選は EyeSystem 側で確定済み。
+    const saccade = this.eyeSystem.consumeSaccadeEvent();
+    if (saccade && !animationClaimed) {
+      if (saccade.blinkWorthy) this.blinkSystem.requestBlink();
+      if (saccade.magnitude >= HEAD_RECRUITMENT_MIN_MAGNITUDE) {
+        this.proceduralBones.nudgeHeadToward(
+          saccade.targetYawDeg * (Math.PI / 180) * HEAD_RECRUITMENT_GAIN,
+        );
+      }
+    }
 
     // 5 で 5b と 6 の両方で lip sync 値が要るので、ここで 1 度だけ pull してキャッシュ。
     // LipSyncAnalyser.sample() の smoothing が二重に進まないようにする目的もある。
