@@ -364,6 +364,7 @@ export class Body {
     if (this.timeSinceStartle < STARTLE_COOLDOWN_S) return;
     this.timeSinceStartle = 0;
     this.blinkSystem.requestBlink();
+    if (this.claimState.isClaimed("animation")) return;
     this.breathing.hold(STARTLE_BREATH_HOLD_S);
     this.proceduralBones.flinchHead();
   }
@@ -376,6 +377,7 @@ export class Body {
 
   /** ターン完了などの区切りで一息つく（深い呼吸を 1 回）。 */
   notifySettle(): void {
+    if (this.claimState.isClaimed("animation")) return;
     this.breathing.triggerDeepBreath();
   }
 
@@ -405,14 +407,16 @@ export class Body {
     //    (Ported from old Charminal AnimationSourceManager.update.)
     const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
     const proceduralWeight = Math.max(0, 1 - vrmaWeight);
+    this.breathing.setMode(
+      this.eyeSystem.state !== "idle" ? "focused" : this.relaxedValue > 0 ? "relaxed" : "idle",
+    );
+    const breath = this.breathing.update(delta);
     if (!animationClaimed) {
-      this.breathing.setMode(
-        this.eyeSystem.state !== "idle" ? "focused" : this.relaxedValue > 0 ? "relaxed" : "idle",
-      );
-      const breath = this.breathing.update(delta);
       this.vrm.scene.position.y = breath.offsetY;
       this.proceduralBones.setBreathingOffsets(breath.chestPitch, breath.shoulderLift);
       this.proceduralBones.update(delta, elapsed, proceduralWeight);
+    } else {
+      this.proceduralBones.clearTransientReflexes();
     }
 
     // 3. Blink
@@ -435,9 +439,9 @@ export class Body {
     //     大きい saccade では頭が遅れて同方向に追従し（目が先・頭が後）、
     //     確率的に瞬きを伴う。blink 抽選は EyeSystem 側で確定済み。
     const saccade = this.eyeSystem.consumeSaccadeEvent();
-    if (saccade && !animationClaimed) {
-      if (saccade.blinkWorthy) this.blinkSystem.requestBlink();
-      if (saccade.magnitude >= HEAD_RECRUITMENT_MIN_MAGNITUDE) {
+    if (saccade) {
+      if (saccade.blinkWorthy && !expressionClaimed) this.blinkSystem.requestBlink();
+      if (!animationClaimed && saccade.magnitude >= HEAD_RECRUITMENT_MIN_MAGNITUDE) {
         this.proceduralBones.nudgeHeadToward(
           saccade.targetYawDeg * (Math.PI / 180) * HEAD_RECRUITMENT_GAIN,
         );

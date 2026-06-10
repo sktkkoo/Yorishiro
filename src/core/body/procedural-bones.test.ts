@@ -163,6 +163,23 @@ describe("ProceduralBones breathing offsets", () => {
     expect(getBone("head").rotation.x).toBeCloseTo(baseline, 2);
   });
 
+  it("clearTransientReflexes で未再生の flinch を破棄する", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+
+    bones.update(DT, 0, 1.0);
+    const baseline = getBone("head").rotation.x;
+
+    bones.flinchHead();
+    bones.clearTransientReflexes();
+    for (let t = 0; t < 0.45; t += DT) {
+      bones.update(DT, t, 1.0);
+    }
+
+    expect(getBone("head").rotation.x).toBeCloseTo(baseline, 5);
+  });
+
   it("weight 0 では breathing offset も適用されない", () => {
     const { vrm, getBone } = mockVrm();
     const bones = new ProceduralBones(() => 0.5);

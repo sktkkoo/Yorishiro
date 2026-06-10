@@ -11,7 +11,7 @@
 
 // 黄金比 / 自然対数の底。整数比に縮約されない無理数の組で、
 // 合成波の繰り返し周期を実用上無限に引き延ばす。
-const FREQ_RATIOS = [1.0, 1.618033988749895, 2.718281828459045] as const;
+const FREQ_RATIOS = [1.0, 1.618033988749895, Math.E] as const;
 const AMPLITUDES = [1.0, 0.55, 0.3] as const;
 const AMPLITUDE_SUM = AMPLITUDES.reduce((a, b) => a + b, 0);
 

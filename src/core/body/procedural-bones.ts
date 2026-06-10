@@ -159,6 +159,11 @@ export class ProceduralBones {
     this.flinchTimer = FLINCH_DURATION_S;
   }
 
+  /** Drop one-shot reflex overlays that should not replay after animation claim release. */
+  clearTransientReflexes(): void {
+    this.flinchTimer = 0;
+  }
+
   /**
    * Per-frame update. Applies bone rotations directly.
    * `weight` is used to blend with VRMA animations (1.0 = full procedural).

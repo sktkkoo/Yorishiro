@@ -76,6 +76,7 @@ import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
+import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
 import { registerEnvironmentFragment } from "./core/global-prompt/environment-fragment";
@@ -2976,7 +2977,9 @@ function App() {
         if (event.kind === "hook-signal" && event.signal.name === "post-tool-failure") {
           // 生理反射：startle（速い瞬き + 頭の微小な引き + 息止め）。
           // persona の演技（distressed 等）とは独立の生理層で、cooldown は Body 側。
-          bodyRef.current?.notifyStartle();
+          if (shouldTriggerStartleForToolFailure(event.signal.payload)) {
+            bodyRef.current?.notifyStartle();
+          }
         }
         if (event.kind === "hook-signal" && event.signal.name === "stop") {
           inTurnRef.current = false;
