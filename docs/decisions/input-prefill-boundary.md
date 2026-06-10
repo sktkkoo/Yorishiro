@@ -47,7 +47,7 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 - (B) の resolve 内容は秘密を含みうる（画面に出ていた物）。**Tier 3（外部 client）では sensitive-read 扱い**で blanket default-open にしない。→ 2026-05-18 実施済み：`mcp-trust-tiers.md` に Sensitive-read 行を分離 + 不変条件（実装検証済み）+ 前向きガード（user-pointed selection 限定、AI 任意 region/scrollback を生やさない）を記録。
 - (B) の不変条件（mapping は host-private + user gesture のみ生成 / token は固定形 host 採番 / resolve は read-only）は 2026-05-18 にコードで検証済み。コード変更不要。詳細は `mcp-trust-tiers.md`「Terminal reference の不変条件」。
 - **interim**：(A) verb 実装前でも、charminal-settings の leak は「`ptyWrite` 直 import を外し host backed の固定文字列 helper に差し替え」で閉じられる（OSS ブロッカー回避）。interim を恒久化しない。
-- `mcp-trust-tiers.md` の leak 元記述（`TerminalPromptButton` が `pty_write` を呼ぶ）は **誤同定**。実体は `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではない。当該 doc を訂正する。
+- `mcp-trust-tiers.md` の leak 元記述（`TerminalPromptButton` が `pty_write` を呼ぶ）は **誤同定**。実体は `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではなかった。任意テキスト + raw `ptyWrite` 配線を勧める docstring を持つ footgun だったため、2026-06-10 に当該ファイル（と test）を削除した。
 
 ## 関連 reference
 
@@ -55,10 +55,11 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 - (B) 実体: `src-tauri/src/mcp/tools.rs:494`（reference resolve tool）, `src/runtime/charminal-mcp/tool-handlers.ts:244`（`getTerminalReferences()`）
 - host Tier 1 の正しい側: `src/App.tsx:1250`（初回 tutorial prefill、host 自身）
 - IPC: `src-tauri/src/lib.rs:243`（`pty_write` command）, `src/bindings/tauri-commands.ts:145`（`ptyWrite` binding）
-- 未使用デッドコード: `src/sdk/components/terminal-prompt-button.tsx`（barrel 未 export）
+- 旧 footgun（2026-06-10 削除済み）: `src/sdk/components/terminal-prompt-button.tsx` は任意テキストを raw `ptyWrite` に流す未使用デッドコードだった
 - 決定境界: [`critical-constraints.md`](critical-constraints.md) §1、[`mcp-trust-tiers.md`](mcp-trust-tiers.md)「PTY 系 tool の扱い」
 - 思想: `docs/philosophy/SELF_REFERENTIAL_MCP.ja.md`「経路の有無が境界になる」「対称性」、`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」
 
 ## 改訂履歴
 
 - 2026-05-18: 初版（確定版）。誤解版 composer 決定（任意テキスト + 人間 commit）を revert した上で、(A) 固定文字列 verb + (B) 既存 Reference Marker の 2 経路に確定。任意テキスト書込み API は不在を維持。mcp-trust-tiers の PTY-prefill 保留条項を安全 subset 分だけ精緻化、leak 元誤同定の訂正を記録。
+- 2026-06-10: footgun デッドコード `src/sdk/components/terminal-prompt-button.tsx`（+ test）を削除。任意テキストを raw `ptyWrite` に流す配線を勧める docstring を持ち、固定 verb 境界を侵食しうるため。security hardening の一環。
