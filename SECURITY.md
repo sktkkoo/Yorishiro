@@ -32,8 +32,8 @@ Pack execution classes and future distribution constraints are documented in [`d
 
 ## MCP, PTY, and IPC Boundary
 
-Charminal includes a local MCP server for letting the resident agent control Charminal features. MCP capability boundaries are documented in [`docs/decisions/mcp-trust-tiers.md`](docs/decisions/mcp-trust-tiers.md).
+Charminal includes a local MCP server (loopback `127.0.0.1` only) for letting the resident agent control Charminal features. The *intended* MCP capability boundaries are documented in [`docs/decisions/mcp-trust-tiers.md`](docs/decisions/mcp-trust-tiers.md). Note that trust-tier gating (caller identification, per-tier approval, audit log, rate limit) is **not yet implemented**; the current enforcement status is summarized in [`docs/security.md`](docs/security.md) "Current enforcement status".
 
-MCP and pack pathways are observation-oriented with respect to the terminal. PTY write-like capabilities are intentionally not exposed as pack or community MCP APIs, and requests for `terminal_prefill` / `write_terminal_input` style behavior are treated as security-sensitive.
+MCP and pack pathways are observation-oriented with respect to the terminal. No PTY write-like capability is exposed as an MCP tool; `terminal_prefill` / `write_terminal_input` style behavior is treated as security-sensitive and is not implemented for any tier.
 
-Charminal is a Tauri app with a TypeScript WebView layer and a Rust host layer. The supported pack authoring surface is the Charminal SDK, not direct Tauri IPC. If a non-bundled pack can invoke host commands directly, or bypass the intended capability path, report it as a vulnerability.
+Charminal is a Tauri app with a TypeScript WebView layer and a Rust host layer. The Charminal SDK is the *supported* pack authoring surface, but it is not a runtime-enforced sandbox: a user pack runs in the same WebView realm as the app and can reach Tauri IPC commands directly (this is the "local trusted code" stance — installing a pack runs code with your own authority). Reaching host IPC directly becomes a reportable vulnerability once packs are sandboxed for in-app community distribution (the future `isolated-js` execution class). Until then, treat installing any pack as running fully-trusted local code with full system access.

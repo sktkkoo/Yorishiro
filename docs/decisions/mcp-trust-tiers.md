@@ -223,7 +223,7 @@ L1 + L2 + L3 + L4 が全て揃うまで、PTY 系 tool は registry / SDK のい
 
 `bundled-packs/ui/charminal-settings/ui.tsx` の "ショートカット変更" button は `src/bindings/tauri-commands` から `ptyWrite` を相対 import して `pty_write` を直接呼ぶ。これは **MCP tool ではない**が、**pack 層のコードが Tauri IPC を直叩きしている SDK leak** であり解消対象。
 
-> 旧版はこの leak を `TerminalPromptButton` の挙動と記述していたが誤同定。実体は上記 `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではない。
+> 旧版はこの leak を `TerminalPromptButton` の挙動と記述していたが誤同定。実体は上記 `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではなく、任意テキスト + raw `ptyWrite` 配線を勧める footgun だったため 2026-06-10 に削除した。
 
 解消の方向は [`input-prefill-boundary.md`](input-prefill-boundary.md) で確定：pack/AI に任意テキスト書込み API を露出せず、(A) host/bundled 所有の固定文字列 verb（SDK + MCP 対称、user pack は参照のみ）と (B) 既存 Reference Marker（write 経路は固定 token `[#TermN]`、可変内容は MCP read で解決）の 2 経路のみ。
 
@@ -291,6 +291,20 @@ community pack が MCP tool を呼ぶ shape は両文書の交点に立つ。具
 - trust tier gate の機構（接続元の identification、approval UI、rate limit、audit log）
 - 外部 MCP server install の review chain
 - `terminal_prefill` 系 tool（**当面実装しない**）
+
+> **注（2026-06-10 更新）**：上の「実装済み」リストは初版当時のもので、現在の `src-tauri/src/mcp/tools.rs`
+> はこれより多くの tool を提供している（screenshot / voice / journal_write / history_restore /
+> controls 系など）。tool の権威ある一覧は `tools.rs` を参照。trust tier gate は依然未実装のため、
+> これら全 tool は下記 transport の含意の対象になる。
+
+> **現状の transport の security 含意**：MCP server は `127.0.0.1` に **無認証**で listen
+> する（接続元 identification が未実装のため）。loopback 限定なのでリモートからは到達しないが、
+> 同一ユーザー権限の任意ローカルプロセスが実装済み tool を呼べる。`enable_pack` / `disable_pack`
+> は approval UI 無しで `config.json` を書き換える（可逆：re-enable + history snapshot で戻せる）。
+> `journal_write` の `date` traversal は 2026-06-10 に Rust 側 validation で塞いだ。tier gate を
+> 実装する際は、起動毎のランダム token 認証を transport に入れて「同一マシンの別プロセス」を Tier 3
+> として識別できるようにするのが起点。single-user local desktop の pre-1.0 では許容範囲だが、
+> multi-machine MCP pairing や community pack install を解禁する前に必ず閉じる。
 
 ## MVP 推奨
 

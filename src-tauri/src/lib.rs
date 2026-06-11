@@ -9,6 +9,7 @@ use pty::{start_hook_server, PtyState};
 use sessions::{SessionRegistry, SpawnSpec};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, UNIX_EPOCH};
@@ -49,10 +50,20 @@ fn expand_tilde(path: &str, home: &Path) -> PathBuf {
     }
 }
 
+/// media folder の scope 追加先が広すぎる（root or home 全体）か。正規化済み path を渡す前提。
+///
+/// `mediaFolders` は user-owned config だが、`/` や `$HOME` 全体を asset protocol scope に
+/// 開くと、CSP 越えの XSS や system_exec 経由の config 改竄から FS 広域を webview が読める
+/// 二次経路になる。ルート級だけを拒否する（深い任意 path・外部ドライブは許容）。
+fn is_too_broad_media_scope(folder: &Path, home: &Path) -> bool {
+    (folder.has_root() && folder.parent().is_none()) || folder == home
+}
+
 /// `~/.charminal/config.json` の `mediaFolders` を読み、asset protocol scope に追加する。
 /// field 未指定時は `["~/Music"]` を default として扱う。
 fn register_media_folder_scopes(app: &tauri::App) {
     let home = dirs::home_dir().unwrap_or_default();
+    let canonical_home = home.canonicalize().unwrap_or_else(|_| home.clone());
     let config_path = home.join(".charminal").join("config.json");
 
     let folders: Vec<PathBuf> = if config_path.is_file() {
@@ -78,14 +89,70 @@ fn register_media_folder_scopes(app: &tauri::App) {
     let scope = app.asset_protocol_scope();
     for folder in &folders {
         if folder.is_dir() {
-            if let Err(e) = scope.allow_directory(folder, true) {
+            let canonical_folder = match folder.canonicalize() {
+                Ok(path) => path,
+                Err(e) => {
+                    eprintln!(
+                        "[media-folders] scope 正規化失敗: {} — {}",
+                        folder.display(),
+                        e
+                    );
+                    continue;
+                }
+            };
+            if is_too_broad_media_scope(&canonical_folder, &canonical_home) {
+                eprintln!(
+                    "[media-folders] 広すぎる scope を拒否: {}",
+                    canonical_folder.display()
+                );
+                continue;
+            }
+            if let Err(e) = scope.allow_directory(&canonical_folder, true) {
                 eprintln!(
                     "[media-folders] scope 追加失敗: {} — {}",
-                    folder.display(),
+                    canonical_folder.display(),
                     e
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod media_scope_tests {
+    use super::is_too_broad_media_scope;
+    use std::path::Path;
+
+    #[test]
+    fn rejects_filesystem_root() {
+        assert!(is_too_broad_media_scope(
+            Path::new("/"),
+            Path::new("/home/u")
+        ));
+    }
+
+    #[test]
+    fn rejects_home_itself() {
+        assert!(is_too_broad_media_scope(
+            Path::new("/home/u"),
+            Path::new("/home/u")
+        ));
+    }
+
+    #[test]
+    fn accepts_subdir_of_home() {
+        assert!(!is_too_broad_media_scope(
+            Path::new("/home/u/Music"),
+            Path::new("/home/u")
+        ));
+    }
+
+    #[test]
+    fn accepts_external_media_dir() {
+        assert!(!is_too_broad_media_scope(
+            Path::new("/Volumes/ext/music"),
+            Path::new("/home/u")
+        ));
     }
 }
 
@@ -1759,18 +1826,79 @@ async fn watch_charminal_layer(
     Ok(())
 }
 
-/// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
-#[tauri::command]
-async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
-    let src_path = std::path::Path::new(&src);
-    if !src_path.exists() {
-        return Err("File not found".into());
+/// `path` の拡張子が `.vrm`（大文字小文字無視）かどうか。
+///
+/// import_vrm は任意 path を AppData/avatars/ にコピーするため、拡張子を絞らないと
+/// `~/.ssh/id_rsa` 等の任意ファイルを assetProtocol scope 内へ複製できてしまう。
+fn has_vrm_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("vrm"))
+        .unwrap_or(false)
+}
+
+fn validate_vrm_glb_header(file: &mut std::fs::File, file_size: u64) -> Result<(), String> {
+    let mut header = [0_u8; 12];
+    file.read_exact(&mut header)
+        .map_err(|_| "VRM ファイルのGLBヘッダーを読み取れません".to_string())?;
+
+    if &header[0..4] != b"glTF" {
+        return Err("VRM ファイルのGLBヘッダーが不正です".into());
     }
+
+    let version = u32::from_le_bytes(header[4..8].try_into().expect("header slice length"));
+    if version != 2 {
+        return Err(format!("未対応のGLBバージョンです: {}", version));
+    }
+
+    let declared_len = u32::from_le_bytes(header[8..12].try_into().expect("header slice length"));
+    if u64::from(declared_len) != file_size {
+        return Err("VRM ファイルのGLBサイズ宣言が不正です".into());
+    }
+
+    Ok(())
+}
+
+fn open_vrm_import_source(src_path: &Path) -> Result<(std::fs::File, String), String> {
+    let meta = std::fs::symlink_metadata(src_path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            "File not found".to_string()
+        } else {
+            format!("Failed to inspect file: {}", e)
+        }
+    })?;
+
+    let file_type = meta.file_type();
+    if file_type.is_symlink() {
+        return Err("シンボリックリンクは VRM import できません".into());
+    }
+    if !file_type.is_file() {
+        return Err("VRM import source must be a regular file".into());
+    }
+    if !has_vrm_extension(src_path) {
+        return Err("VRM ファイル（.vrm）ではありません".into());
+    }
+
     let file_name = src_path
         .file_name()
         .ok_or("Invalid file path")?
         .to_string_lossy()
         .to_string();
+
+    let mut file =
+        std::fs::File::open(src_path).map_err(|e| format!("Failed to open VRM: {}", e))?;
+    validate_vrm_glb_header(&mut file, meta.len())?;
+    file.seek(SeekFrom::Start(0))
+        .map_err(|e| format!("Failed to rewind VRM: {}", e))?;
+
+    Ok((file, file_name))
+}
+
+/// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
+#[tauri::command]
+async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
+    let src_path = std::path::Path::new(&src);
+    let (mut src_file, file_name) = open_vrm_import_source(src_path)?;
 
     let app_data = app
         .path()
@@ -1781,9 +1909,114 @@ async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to create directory: {}", e))?;
 
     let dest = avatars_dir.join(&file_name);
-    std::fs::copy(&src, &dest).map_err(|e| format!("Copy failed: {}", e))?;
+    let mut dest_file = std::fs::File::create(&dest).map_err(|e| format!("Copy failed: {}", e))?;
+    std::io::copy(&mut src_file, &mut dest_file).map_err(|e| format!("Copy failed: {}", e))?;
 
     Ok(dest.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod import_vrm_tests {
+    use super::{has_vrm_extension, open_vrm_import_source};
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    fn tmp_dir(label: &str) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!(
+            "charminal-import-vrm-{}-{}-{}",
+            label,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let _ = fs::remove_dir_all(&tmp);
+        fs::create_dir_all(&tmp).expect("mkdir");
+        tmp
+    }
+
+    fn minimal_glb_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"glTF");
+        bytes.extend_from_slice(&2_u32.to_le_bytes());
+        bytes.extend_from_slice(&12_u32.to_le_bytes());
+        bytes
+    }
+
+    #[test]
+    fn accepts_vrm_extension() {
+        assert!(has_vrm_extension(Path::new("/some/dir/avatar.vrm")));
+    }
+
+    #[test]
+    fn accepts_vrm_extension_case_insensitive() {
+        assert!(has_vrm_extension(Path::new("/some/dir/Avatar.VRM")));
+    }
+
+    #[test]
+    fn rejects_non_vrm_extension() {
+        assert!(!has_vrm_extension(Path::new("/home/user/.ssh/id_rsa")));
+        assert!(!has_vrm_extension(Path::new("/some/dir/photo.png")));
+    }
+
+    #[test]
+    fn rejects_missing_extension() {
+        assert!(!has_vrm_extension(Path::new("/some/dir/noext")));
+    }
+
+    #[test]
+    fn validates_regular_vrm_glb_source() {
+        let dir = tmp_dir("regular");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, minimal_glb_bytes()).expect("write");
+
+        let (_file, file_name) = open_vrm_import_source(&path).expect("valid source");
+        assert_eq!(file_name, "avatar.vrm");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_non_glb_vrm_file() {
+        let dir = tmp_dir("non-glb");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, b"not a glb").expect("write");
+
+        let result = open_vrm_import_source(&path);
+        assert!(result.is_err(), "GLB ではない .vrm は拒否されるべき");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn rejects_directory_named_vrm() {
+        let dir = tmp_dir("directory");
+        let path = dir.join("avatar.vrm");
+        fs::create_dir_all(&path).expect("mkdir");
+
+        let result = open_vrm_import_source(&path);
+        assert!(result.is_err(), "directory は import できてはならない");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_named_vrm() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tmp_dir("symlink");
+        let target = dir.join("secret");
+        let link = dir.join("avatar.vrm");
+        fs::write(&target, minimal_glb_bytes()).expect("write");
+        symlink(&target, &link).expect("symlink");
+
+        let result = open_vrm_import_source(&link);
+        assert!(result.is_err(), "symlink は import できてはならない");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

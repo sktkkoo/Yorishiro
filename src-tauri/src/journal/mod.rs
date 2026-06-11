@@ -34,8 +34,31 @@ fn memories_path() -> Result<PathBuf, String> {
     Ok(journal_root()?.join("memories.md"))
 }
 
+/// `date` が `YYYY-MM-DD` 形式であることを検証する。
+///
+/// journal の `date` は MCP tool 引数（住人 AI が制御）としてファイル名・
+/// `memories.md` の本文に組み込まれるため、`..` や `/` `\` を構造的に排除して
+/// `~/.charminal/journal/` 外への path traversal を防ぐ。`read_recent` の
+/// 走査側 filter（`len() == 10`）と同じ形式に揃える。
+fn validate_journal_date(date: &str) -> Result<(), String> {
+    let ok = date.len() == 10
+        && date.as_bytes().iter().enumerate().all(|(i, &b)| match i {
+            4 | 7 => b == b'-',
+            _ => b.is_ascii_digit(),
+        });
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "不正な日付形式です（YYYY-MM-DD のみ許可）: {}",
+            date
+        ))
+    }
+}
+
 /// `memories.md` に一行追記する。印象に残ったことだけ選択的に記録される。
 pub fn append_memory(date: &str, summary: &str) -> Result<(), String> {
+    validate_journal_date(date)?;
     let path = memories_path()?;
     std::fs::create_dir_all(path.parent().unwrap())
         .map_err(|e| format!("journal ディレクトリの作成に失敗: {}", e))?;
@@ -71,6 +94,7 @@ pub fn read_memories() -> Result<String, String> {
 
 /// journal エントリを書き込む。`daily/{date}.md` に出力。既存ファイルには空行を挟んで追記する。
 pub fn write_entry(date: &str, content: &str) -> Result<(), String> {
+    validate_journal_date(date)?;
     let dir = daily_dir()?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("journal ディレクトリの作成に失敗: {}", e))?;
@@ -103,6 +127,7 @@ pub fn write_entry(date: &str, content: &str) -> Result<(), String> {
 
 /// 指定日付の journal を読み取る。ファイルが無ければ `None`。
 pub fn read_entry(date: &str) -> Result<Option<String>, String> {
+    validate_journal_date(date)?;
     let path = daily_dir()?.join(format!("{}.md", date));
     if !path.exists() {
         return Ok(None);
@@ -265,6 +290,76 @@ mod tests {
 
         let entries = read_recent(7).expect("read recent ok");
         assert!(entries.is_empty());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn write_entry_rejects_path_traversal() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("write-traversal");
+        std::env::set_var("HOME", &home);
+
+        // `date` に traversal を含めても scope 外に書けてはならない。
+        let result = write_entry("../../../../evil", "悪意のある内容");
+        assert!(result.is_err(), "traversal を含む date は拒否されるべき");
+
+        // daily ディレクトリにファイルが 1 つも作られていないこと。
+        let daily = home.join(".charminal/journal/daily");
+        let count = fs::read_dir(&daily).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(count, 0, "traversal 時にファイルが作られてはならない");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn read_entry_rejects_path_traversal() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("read-traversal");
+        std::env::set_var("HOME", &home);
+
+        let result = read_entry("../../../../../etc/passwd");
+        assert!(result.is_err(), "traversal を含む date は拒否されるべき");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn append_memory_rejects_invalid_date() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("memory-invalid-date");
+        std::env::set_var("HOME", &home);
+
+        // memories.md に注入される date は形式を強制する。
+        let result = append_memory("../../evil", "勝手な行");
+        assert!(result.is_err(), "不正な date は拒否されるべき");
+
+        let memories = home.join(".charminal/journal/memories.md");
+        assert!(
+            !memories.exists(),
+            "拒否された append で memories.md が作られてはならない"
+        );
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn write_entry_accepts_valid_date() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("write-valid-date");
+        std::env::set_var("HOME", &home);
+
+        // 正規の YYYY-MM-DD は通ること（validation が正常系を壊さない回帰防止）。
+        write_entry("2026-06-10", "正常な記録。").expect("valid date は通るべき");
+        assert!(home.join(".charminal/journal/daily/2026-06-10.md").exists());
 
         let _ = fs::remove_dir_all(&home);
     }

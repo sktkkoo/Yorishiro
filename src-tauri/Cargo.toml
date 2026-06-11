@@ -19,7 +19,11 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["protocol-asset", "devtools"] }
+# devtools feature は付けない。debug build では feature 無しでも WebView Inspector が
+# 自動で有効になるため dev 体験は保たれる。一方この feature を付けると release build でも
+# Inspector が開き、console から __TAURI_INTERNALS__.invoke で system_exec を含む全 IPC
+# command を直接叩けてしまう（pack 信頼境界を console から迂回できる）。production には含めない。
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
