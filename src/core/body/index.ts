@@ -38,6 +38,7 @@ import type { MouthValues } from "../voice/mouth-values";
 import { MOUTH_KEYS } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
 import { BlinkSystem } from "./blink-system";
+import { BreathingSystem } from "./breathing-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import {
   type ExpressionKind,
@@ -71,9 +72,18 @@ export interface LipSyncSource {
   sampleMouth(): MouthValues;
 }
 
-const BREATHING_AMPLITUDE = 0.005;
-const BREATHING_FREQUENCY = 0.8;
 const BLINK_EXPRESSION_NAME = "blink";
+
+// Eye-head coordination：この magnitude 以上の saccade で頭が視線に追従する。
+// gain は「目の移動角の何割を頭が肩代わりするか」（人間はおよそ 2〜3 割）。
+const HEAD_RECRUITMENT_MIN_MAGNITUDE = 0.6;
+const HEAD_RECRUITMENT_GAIN = 0.25;
+
+// Startle 反射の cooldown。エラーが連発しても痙攣的に反応し続けない
+//（motion-effect-trigger-axes.md の「intrusive な motion」の教訓）。
+const STARTLE_COOLDOWN_S = 10;
+// Startle 時の息止め時間
+const STARTLE_BREATH_HOLD_S = 0.5;
 
 // State-dependent expression targets (ported from old vrmExpressions.ts)
 const STATE_EXPRESSIONS: Record<EyeState, ReadonlyArray<[string, number]>> = {
@@ -101,6 +111,12 @@ export class Body {
    */
   private readonly expressionSink = new ExpressionSinkTracker();
   private readonly blinkSystem: BlinkSystem;
+  /**
+   * 呼吸の生理。state 連動（focused は速く浅く、長 idle は深くゆっくり）、
+   * ため息、startle 時の息止めを持つ。出力は scene Y 位置 + 胸郭・肩の
+   * 微小回転（後者は ProceduralBones が spine / upperArm に加算合成）。
+   */
+  private readonly breathing = new BreathingSystem();
   private readonly eyeSystem: EyeSystem;
   private readonly eyelids: EyelidExpressionController;
   /**
@@ -166,6 +182,9 @@ export class Body {
 
   /** LipSync 音声解析ソース。再生中に毎フレーム sampleMouth() を pull する。 */
   private lipSyncSource: LipSyncSource | null = null;
+
+  /** Startle 反射の cooldown 計時。update の delta で進める。 */
+  private timeSinceStartle = STARTLE_COOLDOWN_S;
 
   /** VRM head の screen 座標（three-runtime が毎 frame setHeadClientReference で更新）。 */
   private headClientX = 0;
@@ -286,6 +305,7 @@ export class Body {
   setState(state: EyeState): void {
     // const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);
+    this.blinkSystem.setState(state);
     // "thinking family": Claude のターン中は writing 以外ずっと頭を揺らす。
     // writing を除外するのは Typing.vrma と procedural head drift がぶつかるため。
     this.proceduralBones.isThinking =
@@ -327,9 +347,44 @@ export class Body {
     // }
   }
 
+  // ─── 生理反射（physiological reflexes）────────────────
+  //
+  // persona の演技（reaction handler）とは別概念の生理層。瞬き・呼吸と同じ
+  // Body built-in で、App.tsx の event → state mutation axis（side-effect only
+  // inline trigger）から呼ばれる。persona reaction を経由しないのは
+  // docs/decisions/motion-effect-trigger-axes.md の整理に基づく：これは
+  // 「どの persona でも起きる生理」であって個性の表現ではない。
+
+  /**
+   * Startle 反射：予期しない失敗イベントへの身体反応。
+   * 速い瞬き + 頭の微小な引き（chin tuck）+ 一瞬の息止め。
+   * エラー連発で痙攣しないよう cooldown 付き。
+   */
+  notifyStartle(): void {
+    if (this.timeSinceStartle < STARTLE_COOLDOWN_S) return;
+    this.timeSinceStartle = 0;
+    this.blinkSystem.requestBlink();
+    if (this.claimState.isClaimed("animation")) return;
+    this.breathing.hold(STARTLE_BREATH_HOLD_S);
+    this.proceduralBones.flinchHead();
+  }
+
+  /** 注意の切り替え（user の入力送信など）：瞬き + 視線を作業対象へ向け直す。 */
+  notifyAttentionShift(): void {
+    this.blinkSystem.requestBlink();
+    this.eyeSystem.refocusFront();
+  }
+
+  /** ターン完了などの区切りで一息つく（深い呼吸を 1 回）。 */
+  notifySettle(): void {
+    if (this.claimState.isClaimed("animation")) return;
+    this.breathing.triggerDeepBreath();
+  }
+
   update(delta: number, elapsed: number): void {
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
+    this.timeSinceStartle += delta;
     this.cursorAttention.update(delta);
     const cursorAttention = this.cursorAttention.getOutput();
     this.proceduralBones.setHeadLookAtOffset(
@@ -344,14 +399,24 @@ export class Body {
       this.animationPlayer.update(delta);
     }
 
-    // 2. Procedural bone animation (spine sway, head drift, arm sway)
+    // 2. Breathing + procedural bone animation (spine sway, head drift, arm sway)
+    //    呼吸は ProceduralBones の bone 書き込みより先に値を確定し、胸郭・肩
+    //    オフセットとして渡す（spine sway / arm sway と同 bone への加算合成）。
     //    Complementary weight with VRMA: procedural fades as clips take over,
     //    so procedural's direct rotation assignment doesn't fight clip motion.
     //    (Ported from old Charminal AnimationSourceManager.update.)
     const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
     const proceduralWeight = Math.max(0, 1 - vrmaWeight);
+    this.breathing.setMode(
+      this.eyeSystem.state !== "idle" ? "focused" : this.relaxedValue > 0 ? "relaxed" : "idle",
+    );
+    const breath = this.breathing.update(delta);
     if (!animationClaimed) {
+      this.vrm.scene.position.y = breath.offsetY;
+      this.proceduralBones.setBreathingOffsets(breath.chestPitch, breath.shoulderLift);
       this.proceduralBones.update(delta, elapsed, proceduralWeight);
+    } else {
+      this.proceduralBones.clearTransientReflexes();
     }
 
     // 3. Blink
@@ -369,6 +434,19 @@ export class Body {
 
     // 4. Eye system (state-dependent patterns)
     this.eyeSystem.update(delta);
+
+    // 4b. Eye-head coordination + gaze-evoked blink。
+    //     大きい saccade では頭が遅れて同方向に追従し（目が先・頭が後）、
+    //     確率的に瞬きを伴う。blink 抽選は EyeSystem 側で確定済み。
+    const saccade = this.eyeSystem.consumeSaccadeEvent();
+    if (saccade) {
+      if (saccade.blinkWorthy && !expressionClaimed) this.blinkSystem.requestBlink();
+      if (!animationClaimed && saccade.magnitude >= HEAD_RECRUITMENT_MIN_MAGNITUDE) {
+        this.proceduralBones.nudgeHeadToward(
+          saccade.targetYawDeg * (Math.PI / 180) * HEAD_RECRUITMENT_GAIN,
+        );
+      }
+    }
 
     // 5 で 5b と 6 の両方で lip sync 値が要るので、ここで 1 度だけ pull してキャッシュ。
     // LipSyncAnalyser.sample() の smoothing が二重に進まないようにする目的もある。
@@ -411,12 +489,7 @@ export class Body {
     // 7. Apply eye gaze to VRM
     this.applyGaze();
 
-    // 8. Breathing
-    if (!animationClaimed) {
-      this.applyBreathing(elapsed);
-    }
-
-    // 9. VRM spring bones etc.
+    // 8. VRM spring bones etc.
     this.vrm.update(delta);
   }
 
@@ -688,10 +761,6 @@ export class Body {
     this.vrm.lookAt.yaw = output.yaw;
     this.vrm.lookAt.pitch = output.pitch;
     this.vrm.lookAt.applier.applyYawPitch(output.yaw, output.pitch);
-  }
-
-  private applyBreathing(elapsed: number): void {
-    this.vrm.scene.position.y = Math.sin(elapsed * BREATHING_FREQUENCY) * BREATHING_AMPLITUDE;
   }
 
   private logCursorAttentionSample(
