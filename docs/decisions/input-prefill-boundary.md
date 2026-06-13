@@ -57,7 +57,7 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 - IPC: `src-tauri/src/lib.rs:243`（`pty_write` command）, `src/bindings/tauri-commands.ts:145`（`ptyWrite` binding）
 - 旧 footgun（2026-06-10 削除済み）: `src/sdk/components/terminal-prompt-button.tsx` は任意テキストを raw `ptyWrite` に流す未使用デッドコードだった
 - 決定境界: [`critical-constraints.md`](critical-constraints.md) §1、[`mcp-trust-tiers.md`](mcp-trust-tiers.md)「PTY 系 tool の扱い」
-- 思想: `docs/philosophy/PHILOSOPHY.ja.md`「経路の有無が境界になる」「対称性」、`docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」
+- 思想: `docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」「対称性」
 
 ## 改訂履歴
 

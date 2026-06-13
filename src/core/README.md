@@ -1,7 +1,7 @@
 # src/core/ — Presence Harness の primitive 層
 
 > このファイルは「**`src/core/` 配下の primitive をどこから触るか**」を把握したい時に読む。対象：dev / AI（pack 作者は [SDK README](../sdk/README.md) のほうが近い）。
-> 思想層：[docs/philosophy/PHILOSOPHY.md](../../docs/philosophy/PHILOSOPHY.md)（六要素の整合）、[docs/philosophy/PHILOSOPHY.md](../../docs/philosophy/PHILOSOPHY.md)（二つの層 / ログという細い回路）
+> 思想層：[docs/philosophy/PHILOSOPHY.md](../../docs/philosophy/PHILOSOPHY.md)（二つの層）
 
 キャラの **存在感と反応** の基盤。ICI の「身体」と「観察の細い回路」を形にした 6 primitive + 2 coordinator + dev support。
 
@@ -49,9 +49,7 @@ interaction/  (skeleton, deps undecided)
 
 ---
 
-## 6 primitive と思想の対応
-
-[PHILOSOPHY.md](../../docs/philosophy/PHILOSOPHY.md) の「六要素」との対応：
+## 6 primitive の一覧
 
 | 思想層の要素 | core primitive |
 |---|---|

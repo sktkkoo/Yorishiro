@@ -1,7 +1,7 @@
 /**
  * Perception — PTY / hook / idle / loop event を観察し DispatchEvent として EventBus に供給する event source。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「六要素 > 知覚」+「認識の境界」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「認識の境界」
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent union
  *
  * Design:
@@ -38,7 +38,6 @@ export interface PerceptionDeps {
   readonly idleCheckIntervalMs?: number;
   /**
    * Optional dev-log adapter for generation-time self-observation.
-   * See docs/philosophy/PHILOSOPHY.md「ログという細い回路（生成期の sibling）」.
    */
   readonly devLog?: SubsystemLog;
   /** user-prompt-submit 検知時に呼ばれる。Presence を full に復帰する。 */

@@ -6,7 +6,6 @@
  * src/runtime/persona-reflex/ の PersonaReflexDispatcher に分離した
  * （internal design-record: 2026-04-19-persona-registry-unification.md）。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「多人格の住人」
  * SDK surface: src/sdk/persona.d.ts の PersonaDefinition + src/sdk/context.d.ts の PersonaContext
  */
 

@@ -126,7 +126,7 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ### Why
 
-- amenity と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則 6（[docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)）
+- amenity と persona が **状態を共有しつつ動作は独立** という Presence Harness の原則（[docs/philosophy/PHILOSOPHY.ja.md「Presence Harness — 存在の設計」](../philosophy/PHILOSOPHY.ja.md)）
 - 一方が落ちても他方が動く（degradation の独立）
 - pack の独立 install / disable が壊れない
 
@@ -147,7 +147,7 @@ trigger 名が同じであることを保証するため、shared helper（synon
 
 ### Reference
 
-- philosophy: [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md) 原則 6
+- philosophy: [docs/philosophy/PHILOSOPHY.ja.md「Presence Harness — 存在の設計」](../philosophy/PHILOSOPHY.ja.md)
 
 ---
 

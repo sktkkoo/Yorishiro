@@ -196,7 +196,6 @@ export function applyPresenceLevel(
  *
  * 「呼ばれたら顔を出す」自動復帰は、住人が自分で引っ込んだ場合（source "mcp"）の振る舞い。
  * user が UI で明示的に閉じた場合（source "settings"）は、その意思を尊重して closed を維持する。
- * Philosophy: docs/philosophy/PHILOSOPHY.ja.md「Presence Intensity / 住人が自分で決める」
  */
 export function shouldRestorePresenceOnPrompt(state: PresenceState): boolean {
   return !(state.level === "closed" && state.source === "settings");

@@ -7,7 +7,7 @@
  * user 側は型違反だと PackValidationError を受け取る（init 内で catch しなければ
  * 上まで伝播し、init は failed として記録される）。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-a: 最小限の user pack load」
  */
 
@@ -27,7 +27,7 @@ import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 /**
  * EffectDispatcher が満たす最小構造。dispatchEffect 経由で init.js が自発的に
  * effect を発火できる——persona の reflex 経路とは別の、「user が押したから走る」
- * 起動パス。philosophy「触れるものと、触れないもの」の user surface を広げる。
+ * 起動パス。philosophy「生きた系」の user surface を広げる。
  */
 export interface EffectRequester {
   dispatch(request: SpaceEffectRequest): unknown;

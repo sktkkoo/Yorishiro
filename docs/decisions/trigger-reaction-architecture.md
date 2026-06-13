@@ -346,7 +346,6 @@ responses: {
 
 ### Philosophy
 
-- [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md) — Twin-trigger co-emission、Synthetic event
 - [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md) — 観察の境界
 
 ---

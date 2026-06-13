@@ -50,7 +50,7 @@
 ### 3. 既存の design lens と整合的
 
 - [body-interaction-style.md](body-interaction-style.md) の (B) 滲み出しと操作の様式：そもそも作業を破壊する系の表現を主軸にしていない
-- [PHILOSOPHY.ja.md「独立した時間」](../philosophy/PHILOSOPHY.ja.md#独立した時間--住人はユーザー操作に従属しない)：ユーザー操作と無関係に動く時間を持つ、ただし破壊する必要はない
+- 独立した時間の原則：ユーザー操作と無関係に動く時間を持つ、ただし破壊する必要はない
 - [presence-over-spectacle.md](presence-over-spectacle.md)：visual layer は実在感の増幅が第一、過剰演出は採らない
 
 ---
@@ -101,9 +101,7 @@
 
 ### Philosophy
 
-- [PHILOSOPHY.ja.md「Presence が立ち上がる三つの条件 / ひとりでに動くとき」](../philosophy/PHILOSOPHY.ja.md#presence-が立ち上がる三つの条件)
-- [PHILOSOPHY.ja.md「これは何のためか」](../philosophy/PHILOSOPHY.ja.md#これは何のためか)
-- [PHILOSOPHY.ja.md「独立した時間」](../philosophy/PHILOSOPHY.ja.md#独立した時間--住人はユーザー操作に従属しない)
+- [PHILOSOPHY.ja.md「Presence の三つの機会」](../philosophy/PHILOSOPHY.ja.md#presence-の三つの機会)
 
 ### Decisions
 

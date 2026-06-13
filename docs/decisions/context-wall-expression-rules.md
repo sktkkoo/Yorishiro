@@ -1,4 +1,4 @@
-# コンテキストの壁 — 表現ルール
+# 認識の境界 — 表現ルール
 
 > このファイルは「**反射層と思考層が何を言えるか / persona の system prompt を書くとき**」に読む。対象：dev / AI。
 
@@ -47,5 +47,5 @@
 
 ## 関連
 
-- `docs/philosophy/PHILOSOPHY.ja.md`「コンテキストの壁」
+- `docs/philosophy/PHILOSOPHY.ja.md`「認識の境界」
 - `docs/decisions/critical-constraints.md` — PTY write 禁止

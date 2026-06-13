@@ -1,7 +1,6 @@
 /**
  * EventBus barrel。real 実装は `./event-bus` にある。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「Twin-trigger co-emission」+「Synthetic event」
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent / Trigger / TriggerMatch / ReactionEvent
  *
  * revelation 3.19 runtime contract の実装。Phase 3.3(g.3) で TDD 実装。

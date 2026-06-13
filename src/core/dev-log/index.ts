@@ -1,8 +1,7 @@
 /**
  * DevLog primitive barrel.
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「ログという細い回路（生成期の sibling）」+
- *             docs/philosophy/PHILOSOPHY.md「自己生成 loop」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
  */
 
 export {

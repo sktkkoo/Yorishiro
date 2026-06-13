@@ -2,7 +2,7 @@
  * User pack loader barrel. Phase 1-a の static load と Phase 1-b の hot reload
  * を public に露出する。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
  * Internal design-record: 2026-04-18-user-layer-runtime.md
  */
 

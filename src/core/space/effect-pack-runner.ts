@@ -2,7 +2,6 @@
  * EffectPackRunner — Effect Pack (EffectDefinition) を EffectDispatcher に
  * bind する薄い runner。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「六要素 > 空間」
  * SDK surface: src/sdk/effect.d.ts の EffectDefinition / EffectRunner
  *              src/sdk/context.d.ts の EffectContext（189–206）
  *

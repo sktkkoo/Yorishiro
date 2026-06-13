@@ -6,7 +6,7 @@
  * vitest で検証しているので、本 module は Tauri invoke + dynamic import の
  * 組み立てに責任を限定する。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
  */
 

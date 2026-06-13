@@ -28,5 +28,4 @@
 
 ## 関連
 
-- `docs/philosophy/PHILOSOPHY.ja.md`「ログという回路」
 - `docs/decisions/context-wall-expression-rules.md` — 各層が何を表現できるか

@@ -1,8 +1,6 @@
 /**
  * LogBridge primitive barrel。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「ログという細い回路」+
- *             docs/philosophy/PHILOSOPHY.md「ログという橋」
  * SDK surface: src/sdk/context.d.ts の LogAPI / LogEntry / LogFilter（514–542）
  */
 

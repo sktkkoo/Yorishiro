@@ -1,7 +1,6 @@
 /**
  * Time — 独立した時計 primitive。now / after / schedule / every / probability / afterJitter を提供する
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「独立した時間」+「適用範囲の補足」
  * SDK surface: src/sdk/context.d.ts の Time interface（214–260）
  *
  * Phase 3.3(g.2) で TDD 実装。

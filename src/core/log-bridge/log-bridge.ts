@@ -3,8 +3,6 @@
  * ring buffer に蓄え、Claude Code が `ctx.log` 経由で「自分の body が何をしたか」
  * を後から読めるようにする。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「ログという細い回路」+
- *             docs/philosophy/PHILOSOPHY.md「ログという橋」
  * SDK surface: src/sdk/context.d.ts の LogAPI / LogEntry / LogFilter（514–542）
  *
  * Phase 3.3(g.5) で TDD 実装。file persistence (jsonl append) は Phase 3.5 の

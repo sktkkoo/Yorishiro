@@ -12,7 +12,6 @@
  *   5. PackSource は register() / emitSynthetic() の引数としてそのまま受け取り、
  *      verbatim で stamping する。binding は呼び出し側（g.4）の責務。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「Twin-trigger co-emission」+「Synthetic event」
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent / Trigger / TriggerMatch / ReactionEvent
  */
 
@@ -74,7 +73,6 @@ export interface EventBusDeps {
   readonly maxDepth?: number;
   /**
    * Optional dev-log adapter for generation-time self-observation.
-   * See docs/philosophy/PHILOSOPHY.md「ログという細い回路（生成期の sibling）」.
    */
   readonly devLog?: SubsystemLog;
 }

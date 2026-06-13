@@ -7,7 +7,7 @@ import type { Layer, SceneSpec } from "./types";
 /**
  * Scene Compositor — layer stack を DOM で描画する薄い component。
  *
- * Philosophy: docs/philosophy/PHILOSOPHY.md「住まうということ」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「UI は環境である」
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §5
  *
  * 責務:

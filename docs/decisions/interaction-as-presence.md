@@ -28,5 +28,5 @@
 
 ## 関連 reference
 
-- philosophy: [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)「自発性の原則」
+- philosophy: [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)「自発性の境界」
 - 関連: [`presence-over-spectacle.md`](presence-over-spectacle.md)
