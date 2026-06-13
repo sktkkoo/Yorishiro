@@ -54,6 +54,8 @@ export interface UserPackEntry {
     readonly executionClass?: string;
     readonly description?: string;
     readonly author?: string;
+    /** 能力ラダーの sandbox 宣言（raw 値。検証は pack-execution-policy 側）。 */
+    readonly sandbox?: unknown;
   };
 }
 
