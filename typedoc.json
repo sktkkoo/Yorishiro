@@ -11,7 +11,7 @@
   "excludeInternal": false,
   "skipErrorChecking": true,
   "navigationLinks": {
-    "Philosophy": "../../philosophy/CHARMINAL.md",
+    "Philosophy": "../../philosophy/PHILOSOPHY.md",
     "Decisions": "../../decisions/README.md"
   },
   "disableSources": true

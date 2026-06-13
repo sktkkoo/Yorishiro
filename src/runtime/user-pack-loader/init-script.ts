@@ -7,7 +7,7 @@
  * user 側は型違反だと PackValidationError を受け取る（init 内で catch しなければ
  * 上まで伝播し、init は failed として記録される）。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-a: 最小限の user pack load」
  */
 

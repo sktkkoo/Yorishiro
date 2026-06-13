@@ -980,7 +980,7 @@ async fn poll_hook_signals() -> Vec<String> {
 //   ├── config.json                     # 将来の宣言的設定
 //   └── sdk.d.ts                        # Charminal が ship する IDE 用 type hint
 //
-// Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+// Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
 // Internal design-record: 2026-04-18-user-layer-runtime.md
 
 const PACK_KINDS: &[&str] = &[
@@ -1401,7 +1401,7 @@ async fn mcp_tool_response(request_id: String, response: serde_json::Value) -> R
 // に流す。TS 側は event を受けて対応 pack を cache-bust + re-import + registry
 // 経由で replace する。hot reload の主動脈。
 //
-// Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+// Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
 // Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b: File watcher + hot reload」
 
 /// TS 層に送る 1 event。`mtimeMs` は receiver が import URL の `?v=` に混ぜる

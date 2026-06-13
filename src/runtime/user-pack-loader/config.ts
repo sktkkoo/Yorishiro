@@ -21,7 +21,7 @@
  * Migration note: 旧 `activePersonas` field は parseConfig で silently ignored
  * （YAGNI — user の既存 config は新規 field が無いだけで壊れない）。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-19-persona-single-active.md /
  *                         2026-05-05-multi-pane-terminal.md（profiles[]）
  */

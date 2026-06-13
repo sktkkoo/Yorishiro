@@ -8,7 +8,7 @@
  * 環境変数の取得自体は Rust 側 `is_safe_mode` command が担う。ここは
  * 取得された文字列値から bool を決める pure fn に留める。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.1
  */
 

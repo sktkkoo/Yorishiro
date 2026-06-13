@@ -274,8 +274,7 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 ### Philosophy — what this project believes
 
-- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, and the self-referential MCP
-- [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — Why AI needs a body. The two-layer architecture of mind and reflex
+- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, the self-referential MCP, and why AI needs a body (the two-layer architecture of mind and reflex)
 
 ### Security
 

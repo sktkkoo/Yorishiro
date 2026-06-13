@@ -6,7 +6,7 @@
  * が担当する hybrid 構成。DOM layer が SceneCompositor を通るため debug controls
  * の "load bg" / "load fg" でメディア差し替えが効く。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「住まうということ」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「住まうということ」
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
  */
 

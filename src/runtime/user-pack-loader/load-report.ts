@@ -8,7 +8,7 @@
  *
  * Schema は spec 本文 Section 4.2 に準拠。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「ログという細い回路」
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.2
  */
 

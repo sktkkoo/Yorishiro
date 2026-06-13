@@ -2,7 +2,7 @@
  * screen-shake — 画面全体（terminal + character canvas）を短く揺らす
  * built-in Effect Pack。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「Charm ということ」— 「物理の
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「Charm ということ」— 「物理の
  * 約束事を一瞬だけ破る」の最小例として、body の transform で universe を
  * 揺さぶる。
  *

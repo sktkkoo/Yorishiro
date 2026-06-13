@@ -91,7 +91,7 @@ export function createClaiPersona(args: {
       customTriggers: [
         // エラー検知 → distressed を発火する generic mapping。
         // 身体表現（motion / expression / effect）は distressed handler 側で決める。
-        // Philosophy: docs/philosophy/CHARMINAL.md「意識に先立つ反応」
+        // Philosophy: docs/philosophy/PHILOSOPHY.md「意識に先立つ反応」
         {
           id: "clai:error",
           match(event: DispatchEvent) {
@@ -184,7 +184,7 @@ export function createClaiPersona(args: {
         // 「顔が顰められる」こととして語られており、body animation は必須ではない。
         // 旧 Charminal でも error に VRMA は紐づけられていなかった。body の連続感は
         // procedural bones（呼吸・head drift 等）が担う。
-        // Philosophy: docs/philosophy/CHARMINAL.md「意識に先立つ反応」
+        // Philosophy: docs/philosophy/PHILOSOPHY.md「意識に先立つ反応」
         distressed: {
           handlers: [
             {

@@ -48,4 +48,4 @@
 ## 関連
 
 - `docs/philosophy/PHILOSOPHY.ja.md`「独立した時間」
-- `docs/philosophy/CHARMINAL.ja.md`「Presence の三条件」
+- `docs/philosophy/PHILOSOPHY.ja.md`「Presence の三条件」

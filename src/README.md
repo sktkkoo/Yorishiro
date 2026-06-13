@@ -102,6 +102,6 @@ API surface（pack 作者向け）の正本は **typedoc 出力 + sdk/README.md*
 
 ## 関連 doc
 
-- 思想：[docs/philosophy/CHARMINAL.md](../docs/philosophy/CHARMINAL.md), [docs/philosophy/PHILOSOPHY.md](../docs/philosophy/PHILOSOPHY.md)
+- 思想：[docs/philosophy/PHILOSOPHY.md](../docs/philosophy/PHILOSOPHY.md), [docs/philosophy/PHILOSOPHY.md](../docs/philosophy/PHILOSOPHY.md)
 - 制約：[docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
 - 内部設計記録（別 repo）：`../Charminal-design-record/`

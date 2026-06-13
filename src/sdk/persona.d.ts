@@ -32,7 +32,7 @@ export interface PersonaReactionSet {
 /**
  * Persona の第四の軸：ログ参照ポリシー。
  * 思考層が反射層ログをいつ、どう読むかを定義する。
- * persona の性格の深い部分を決定する（docs/philosophy/CHARMINAL.md「ログという細い回路」）。
+ * persona の性格の深い部分を決定する（docs/philosophy/PHILOSOPHY.md「ログという細い回路」）。
  */
 export interface LogReadingPolicy {
   /** いつログを読むか */

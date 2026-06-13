@@ -822,7 +822,7 @@ function App() {
     };
     // Generation-time 細い回路 — dev でのみ active。console mirror は長時間起動で
     // WebView 側のログ蓄積を増やすため opt-in にする。
-    // Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+    // Philosophy: docs/philosophy/PHILOSOPHY.md「ログという細い回路（生成期の sibling）」.
     const mirrorDevLogToConsole =
       import.meta.env.DEV &&
       (() => {

@@ -8,7 +8,7 @@
  * 検査は top-level 構造のみ。深い nested field（個別 handler の signature など）は
  * 後段の register 処理で型付けされたまま扱うので、ここでは形だけ確かめる。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「壊さないこと」— SDK contract は
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「壊さないこと」— SDK contract は
  * 公開された瞬間 stable。validator は user pack が古い / 新しい shape で来ても
  * 落ちる場所を明示的にするための safety net。
  */

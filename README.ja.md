@@ -273,8 +273,7 @@ build を公開する前の smoke test には [`docs/release-checklist.md`](docs
 
 ### Philosophy — このプロジェクトの思想
 
-- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的 MCP
-- [`docs/philosophy/CHARMINAL.ja.md`](docs/philosophy/CHARMINAL.ja.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
+- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的 MCP、そして AI に身体が要る理由（意識と反射の二層構造）
 
 ### Security
 

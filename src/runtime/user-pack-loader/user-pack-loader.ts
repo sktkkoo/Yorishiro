@@ -7,7 +7,7 @@
  * effect / persona / scene は Path A + BYOC 方針の `.js` entry。UI pack は
  * Plan 4 MVP で `ui.tsx` を runtime transpile できる。
  *
- * Philosophy: docs/philosophy/CHARMINAL.md「触れるものと、触れないもの」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「触れるものと、触れないもの」
  * Internal design-record: 2026-04-18-user-layer-runtime.md Section 「結論: Path A + BYOC」
  *
  * Tauri invoke と dynamic import() は runtime 依存なので、本 loader は dep
@@ -415,7 +415,7 @@ export async function loadSingleUserPack(
  *
  * 1 個の pack が落ちても loop は止めず、dev-log に痕跡を残して続行する。
  * 「姿の見えない pack が Charminal 本体を道連れにしない」は philosophy 側の要請
- * （docs/philosophy/CHARMINAL.md「壊さないこと」）と直結。
+ * （docs/philosophy/PHILOSOPHY.md「壊さないこと」）と直結。
  *
  * 起動後の再 load（watcher からの reload 経由）でも同じ path を通る。register
  * 結果の Disposable は `packRegistry` に格納されるので、同 id+kind の前 entry

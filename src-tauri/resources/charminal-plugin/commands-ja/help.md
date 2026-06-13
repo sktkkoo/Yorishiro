@@ -221,4 +221,4 @@ safe mode では user pack が一切 load されず、MCP tool（`list_load_erro
 | `src/sdk/README.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等） |
 | `docs/catalogs/standard-hooks.md` | 標準 hook / DispatchEvent カタログ |
 | `bundled-packs/` | bundled pack の実例（pattern source） |
-| `docs/philosophy/CHARMINAL.md` | 思想的背景 |
+| `docs/philosophy/PHILOSOPHY.md` | 思想的背景 |

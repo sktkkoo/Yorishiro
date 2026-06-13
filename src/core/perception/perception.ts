@@ -38,7 +38,7 @@ export interface PerceptionDeps {
   readonly idleCheckIntervalMs?: number;
   /**
    * Optional dev-log adapter for generation-time self-observation.
-   * See docs/philosophy/CHARMINAL.md「ログという細い回路（生成期の sibling）」.
+   * See docs/philosophy/PHILOSOPHY.md「ログという細い回路（生成期の sibling）」.
    */
   readonly devLog?: SubsystemLog;
   /** user-prompt-submit 検知時に呼ばれる。Presence を full に復帰する。 */

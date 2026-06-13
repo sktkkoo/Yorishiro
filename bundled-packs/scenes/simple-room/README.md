@@ -28,4 +28,4 @@ pack を置く（bundled は dispose され、user 版が active になる）。
 ## 関連
 
 - Internal design-record: `specs/2026-04-18-scene-pack-compositor-design.md`、`specs/2026-04-18-scene-pack-registry.md`
-- Philosophy: `docs/philosophy/CHARMINAL.md`「住まうということ」「触れるものと、触れないもの」
+- Philosophy: `docs/philosophy/PHILOSOPHY.md`「住まうということ」「触れるものと、触れないもの」
