@@ -1,5 +1,5 @@
 ---
-description: Create a new pack (persona / scene / effect / ui / ambient-ui) through conversation
+description: Create a new pack (persona / scene / effect / amenity / ui / ambient-ui) through conversation
 argument-hint: "[what to create]"
 ---
 
@@ -19,6 +19,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 |---|---|---|
 | **persona** | Character personality, reactions, body, voice, and space. md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `clai` |
 | **effect** | Temporary visual effects on screen | `screen-shake`, `text-physics`, `fireworks-volley` |
+| **amenity** | Functional amenities such as timers or music playback, plus MCP tools. Local-trusted and has `system.exec` | `pomodoro`, `music-shelf` |
 | **scene** | The resident's place: background / foreground layers, lighting, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
 | **ui** | Primary sidebar UI panels. Single-active | `charminal-settings` |
 | **ambient-ui** | Always-on overlay UI. Multi-active | `attention-aura` |
@@ -30,6 +31,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 - Every generated manifest must include `"executionClass": "trusted-main-thread-js"`. Never label a `.js` / `.tsx` entry as `"declarative"`.
 - Do not create `utility` packs. They stay out of distribution until the `isolated-js` runtime and permission UX exist.
 - Do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes inside packs. If one is needed, design it as a host capability first.
+- Exception: amenity packs are functional amenities with `system.exec`. Create them only for local self-use, equivalent to the shell authority the resident AI already has in the terminal. Public distribution stays deferred until `isolated-js` runtime and permission UX exist. See Amenity Packs.
 - Scene assets must be pack-relative paths such as `./assets/bg.png`. Do not use `https:`, `data:`, `file:`, absolute paths, `../`, or CSS `url(...)`.
 - UI / ambient-ui packs must not write directly to the terminal. Prompting must use the existing safe UI path.
 
@@ -39,7 +41,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, use `bundled-packs/` as reference.
 3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
 4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences in English explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
-5. **Respect pack boundaries.** Persona has no system API; effect has only the minimal rendering API; scene is declarative; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
+5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
 6. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--charminal-fg)`, `var(--charminal-accent)`, and related variables so UI follows scene themes.
 
 ## Hot Reload and Self-Check
@@ -293,6 +295,44 @@ ctx.space.injectEffect({
 
 Effects have a minimal API. They do not get `ctx.character`, `ctx.voice`, `ctx.system`, `ctx.log`, or memory APIs. Treat them as short-lived rendering units driven by options.
 
+## Amenity Packs
+
+Amenity packs are functional amenities placed in the resident's environment: timers, music playback, external-state observers, and similar tools. They can expose MCP tools and, when needed, run local commands through `ctx.system.exec`. They are **motion-free**: no `ctx.character`, `ctx.voice`, or `ctx.space`.
+
+Amenity authoring is **local-trusted only**. Locally, `ctx.system.exec` is equivalent to the shell authority the resident AI already has in the terminal, so it does not add a new local authority boundary. It is still not a public-distribution artifact: installing someone else's amenity can run exec. Public distribution stays deferred until the `isolated-js` runtime and permission UX exist.
+
+`~/.charminal/packs/my-amenity/manifest.json`:
+
+```json
+{
+  "id": "my-amenity",
+  "type": "amenity",
+  "version": "0.1.0",
+  "charminalVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
+  "description": "Short description of this amenity",
+  "author": "Your name",
+  "entry": "amenity.js"
+}
+```
+
+`amenity.js` exports an `AmenityPackDefinition`. Put MCP tool names and descriptions in `toolMeta`, then return `{ tools, dispose }` from `activate(ctx)`. Each `tools` key must match a `toolMeta.name`.
+
+### Available Context APIs
+
+- `ctx.system.exec(command, options?)` - run a local command. `system.spawn`, `system.fs`, and `system.notify` are declared but currently unimplemented (they throw), so do not use them.
+- `ctx.time.every(...)` / `ctx.time.schedule(...)` / `ctx.time.after(...)` - polling, timers, and delays
+- `ctx.emitEvent(name, payload?)` - emit a synthetic event. If character expression is needed, a persona reflex should pick this up (twin-trigger)
+- `ctx.history` - entry point for pack/config/init snapshot and restore UI
+- `ctx.tween` - tween values provided by the host, such as terminal opacity
+- `ctx.ambientAudio` - temporary mute / volume control for scene ambient sound
+- `ctx.loop.announce(phase, detail?)` - report an autonomous loop lifecycle phase into the observation stream. It does not control the loop
+- `ctx.log` / `ctx.memory` - shared utilities
+- `ctx.terminal` - observation only. PTY writes are not available
+- `ctx.charm` / `ctx.signal` / `ctx.resolveAsset(path)` - `/charm` bridge, abort on disable, and pack-local asset resolution
+
+If the amenity should create character expression, do not call motion APIs directly. Use `ctx.emitEvent()` and let persona reflexes decide the expression. References: `bundled-packs/amenities/music-shelf/amenity.ts` and `bundled-packs/amenities/pomodoro/amenity.ts`.
+
 ## UI Packs
 
 UI packs are primary sidebar panels. They are **single-active**. The active UI pack is selected through `activeUi` in `~/.charminal/config.json`.
@@ -368,6 +408,7 @@ Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only
 
 - `src/sdk/*.d.ts` - SDK type definitions for pack definitions and contexts
 - `bundled-packs/personas/clai/` - flagship persona pattern source
+- `bundled-packs/amenities/` - amenity pack examples
 - `bundled-packs/ui/` - UI pack examples
 - `bundled-packs/ambient-ui/` - ambient-ui examples
 - `docs/philosophy/CHARMINAL.md` - design background
