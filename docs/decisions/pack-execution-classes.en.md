@@ -3,7 +3,7 @@
 > Read this when thinking about **safe execution models for publicly distributed packs / sandboxing / the boundary between amenity and scene packs**. Audience: dev / AI.
 
 **Status**: active
-**Last updated**: 2026-05-16
+**Last updated**: 2026-06-13
 
 **Implementation note**: The public registry / community distribution feature for packs and `/charm:prepare-publish` are not yet available. The publish flow / registry review / machine checker described here are design requirements that must be met before community distribution is enabled.
 
@@ -142,6 +142,14 @@ In that case, the pack is never presented as sandboxed. It is treated as `truste
 - Unsafe confirm
 
 `trusted-main-thread-js` risk is mitigated through provenance and operational controls, not runtime restrictions.
+
+### `sandbox` declaration (capability ladder)
+
+`executionClass` describes the boundary in which pack JS / data is evaluated. The `sandbox` declaration is a separate axis that describes the capability backend for script-executing packs. It is a top-level manifest field, at the same level as `executionClass`.
+
+The capability ladder is `declarative` → `sandbox: "wasm"` → `sandbox: "native"`. The shorthand `sandbox: "wasm"` / `sandbox: "native"` is used when discussing the ladder, but the canonical manifest shape is `sandbox: { "backend": "wasm" }` / `sandbox: { "backend": "native" }`.
+
+Phase 0 defines the schema in advance and rejects unknown backends / unknown fields fail-closed. Until backend enforcement exists, packs with a valid `sandbox` declaration are also rejected as unimplemented. See [`pack-sandbox-strategy.md`](pack-sandbox-strategy.md) for details.
 
 ## Default execution class per pack type
 
@@ -381,6 +389,7 @@ PTY tools (`terminal_prefill` / `write_terminal_input` etc.) are **prohibited ac
 
 ## Revision history
 
+- 2026-06-13: Added the sandbox declaration capability ladder and Phase 0 fail-closed client contract. Added `pack-sandbox-strategy.md` as the detailed decision.
 - 2026-05-16: Added source classification, declarative hostile data checklist, isolated-js initiation gate, capability RPC validation, registry trust limitation, SES bypass defense model, `/charm:create` and publish conversion flow, machine checker relationship, and note that public distribution is not yet available.
 - 2026-05-03: Added R3F scene pack class. Initial scope is bundled-only, execution class is `trusted-main-thread-js`.
 - 2026-04-24: Initial version. Defined execution classes along three axes (speed / freedom / security), positioned amenity public distribution as future scope after `isolated-js` completion.
