@@ -1,3 +1,4 @@
+import { parsePackSandboxSpec } from "./pack-sandbox-spec";
 import type { UserPackEntry } from "./user-pack-loader";
 
 export type PackExecutionClass = "declarative" | "isolated-js" | "trusted-main-thread-js";
@@ -28,6 +29,7 @@ export function normalizePackManifestSummary(raw: unknown): UserPackEntry["manif
     type: typeof raw.type === "string" ? raw.type : "",
     entry: typeof raw.entry === "string" ? raw.entry : "",
     executionClass: typeof raw.executionClass === "string" ? raw.executionClass : undefined,
+    sandbox: raw.sandbox,
   };
 }
 
@@ -55,6 +57,16 @@ export function validatePackExecutionPolicy(entry: UserPackEntry): string | null
   const executionClass = manifest.executionClass ?? "trusted-main-thread-js";
   if (!VALID_EXECUTION_CLASSES.has(executionClass as PackExecutionClass)) {
     return `unsupported executionClass "${executionClass}"`;
+  }
+
+  // sandbox 宣言は schema 検証のみ先行（Phase 0）。enforcement が無い backend は
+  // 全て reject する（fail-closed）。Phase 1 で native、Phase 2 で wasm を解禁予定。
+  if (manifest.sandbox !== undefined) {
+    const { spec, error } = parsePackSandboxSpec(manifest.sandbox);
+    if (error !== undefined) {
+      return error;
+    }
+    return `sandbox backend "${spec?.backend}" is not implemented yet`;
   }
 
   if (executionClass === "declarative") {
