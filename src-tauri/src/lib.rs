@@ -1038,6 +1038,9 @@ struct UserPackManifestSummary {
     description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author: Option<String>,
+    /// 能力ラダーの sandbox 宣言。Rust 側は素通しし、検証は TS（pack-execution-policy）が行う。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sandbox: Option<serde_json::Value>,
 }
 
 /// Absolute path to ~/.charminal/. Does not create it.
@@ -1259,6 +1262,7 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                         execution_class: m.execution_class.clone(),
                         description: m.description.clone(),
                         author: m.author.clone(),
+                        sandbox: m.sandbox.clone(),
                     }),
                 });
             }
@@ -2254,6 +2258,34 @@ mod user_pack_discovery_tests {
             manifest.execution_class.as_deref(),
             Some("trusted-main-thread-js")
         );
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn includes_manifest_sandbox_summary_when_present() {
+        let packs = fresh_packs_dir("manifest-sandbox-summary");
+        let pack_dir = packs.join("my-effect");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("effect.js"), "export default {};\n").expect("write effect.js");
+        fs::write(
+            pack_dir.join("manifest.json"),
+            r#"{
+              "id": "my-effect",
+              "type": "effect",
+              "version": "0.1.0",
+              "charminalVersion": "^0.1.0",
+              "executionClass": "trusted-main-thread-js",
+              "sandbox": { "backend": "wasm" },
+              "entry": "effect.js"
+            }"#,
+        )
+        .expect("write manifest");
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+        let manifest = entries[0].manifest.as_ref().expect("manifest summary");
+        let sandbox = manifest.sandbox.as_ref().expect("sandbox passthrough");
+        assert_eq!(sandbox["backend"], "wasm");
 
         let _ = fs::remove_dir_all(&packs);
     }

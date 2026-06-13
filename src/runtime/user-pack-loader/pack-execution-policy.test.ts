@@ -123,3 +123,37 @@ describe("validatePackExecutionPolicy", () => {
     ).toContain("manifest entry");
   });
 });
+
+describe("validatePackExecutionPolicy / sandbox", () => {
+  const manifestBase = {
+    id: "pack-a",
+    type: "effect",
+    entry: "effect.js",
+    executionClass: "trusted-main-thread-js",
+  };
+
+  it("sandbox 宣言が不正なら reject する", () => {
+    const error = validatePackExecutionPolicy(
+      entry({ manifest: { ...manifestBase, sandbox: { backend: "container" } } }),
+    );
+    expect(error).toContain('unknown sandbox backend "container"');
+  });
+
+  it("wasm backend は runtime 実装まで reject する", () => {
+    const error = validatePackExecutionPolicy(
+      entry({ manifest: { ...manifestBase, sandbox: { backend: "wasm" } } }),
+    );
+    expect(error).toBe('sandbox backend "wasm" is not implemented yet');
+  });
+
+  it("native backend は enforcement 実装まで reject する", () => {
+    const error = validatePackExecutionPolicy(
+      entry({ manifest: { ...manifestBase, sandbox: { backend: "native" } } }),
+    );
+    expect(error).toBe('sandbox backend "native" is not implemented yet');
+  });
+
+  it("sandbox 宣言が無い pack は従来どおり通る", () => {
+    expect(validatePackExecutionPolicy(entry({ manifest: manifestBase }))).toBeNull();
+  });
+});
