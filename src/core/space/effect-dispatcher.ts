@@ -3,7 +3,7 @@
  * 薄い pub/sub。persona handler は `ctx.space.injectEffect(request)` を呼ぶだけで、
  * どの element にどう描画するかは subscriber 側の責務。
  *
- * Philosophy: docs/philosophy/PRESENCE_HARNESS.md「六要素 > 空間」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「六要素 > 空間」
  * SDK surface: src/sdk/context.d.ts の SpaceAPI.injectEffect（407–412）
  *
  * 実装は kind 別の listener set。subscriber 追加は `subscribe(kind, listener)` で、

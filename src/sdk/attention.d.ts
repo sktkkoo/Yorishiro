@@ -11,7 +11,7 @@
  * 読めるが書けない。`setSourceTarget` は producer 専用 API として
  * `src/runtime/attention-runtime/types.ts` の AttentionRuntime interface に
  * 分離している（PTY observation-only と同型の境界、philosophy:
- * docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「観察の境界」）。
+ * docs/philosophy/PHILOSOPHY.md「観察の境界」）。
  *
  * Internal design-record: 2026-04-25-attention-aura-v2-design.md
  * 「Surface / SDK 設計」section

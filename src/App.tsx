@@ -2072,7 +2072,7 @@ function App() {
   // bundled clai は runtime factory 内で register 済み。
   // config.primaryPersona が切り替わった場合、次の Terminal セッションから反映される。
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
-  // （philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md 「観察の境界」）。
+  // （philosophy: docs/philosophy/PHILOSOPHY.md 「観察の境界」）。
   const personaRegistry = getPersonaRegistry();
   const [, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
     personaRegistry.getActivePersona(),

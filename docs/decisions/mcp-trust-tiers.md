@@ -35,7 +35,7 @@ trust tier はこれを **動作主体の側から** 精緻化する：
 
 ### 2. 「観察の境界」の延長
 
-`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」は、Charminal が Claude Code の reasoning loop に書き込まないことを境界として引いた。PTY write API は型としても存在しない。
+`docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」は、Charminal が Claude Code の reasoning loop に書き込まないことを境界として引いた。PTY write API は型としても存在しない。
 
 self-referential MCP は「住人が自身の身体と環境を操作する」を実装するが、上記境界は **継承する**。「住人は自分の家を整える、しかし user の作業や Claude Code の思考には踏み込まない」── trust tier は書き込み可能領域（住人の身体 + 環境 + Charminal 内部）と不可侵領域（user の作業ファイル、Claude Code の judgment loop）を構造的に分離する道具。
 
@@ -57,7 +57,7 @@ trust tier では：
 
 ## Why tiers
 
-self-referential MCP は user / 住人 / 外部の 3 surface が同じ tool 体系を共有する設計（[docs/philosophy/SELF_REFERENTIAL_MCP.ja.md](../philosophy/SELF_REFERENTIAL_MCP.ja.md)「経路の有無が境界になる」「対称性」）。
+self-referential MCP は user / 住人 / 外部の 3 surface が同じ tool 体系を共有する設計（[docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)「経路の有無が境界になる」「対称性」）。
 
 しかし「全 surface が等しく全機能を呼べる」設計は安全モデルが破綻する：
 
@@ -156,7 +156,7 @@ source: `src/runtime/terminal-runtime/terminal-runtime.ts:782`（private addTerm
 
 理由：
 
-- pack-execution-classes は「PTY write API は存在しないまま維持する」を Charminal 哲学の核として明示（`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」）
+- pack-execution-classes は「PTY write API は存在しないまま維持する」を Charminal 哲学の核として明示（`docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」）
 - self-referential MCP の体験は「住人が user の reasoning loop を hijack しない」前提で成立する
 - `terminal_prefill` 風の例外を設けるには **複数層の防御が integrated に揃う必要**。一つでも欠けると PTY write 禁止の核が崩れる
 
@@ -315,9 +315,9 @@ community pack が MCP tool を呼ぶ shape は両文書の交点に立つ。具
 
 ## 関連 reference
 
-- 思想: [docs/philosophy/SELF_REFERENTIAL_MCP.ja.md](../philosophy/SELF_REFERENTIAL_MCP.ja.md)（self-referential MCP 思想）
+- 思想: [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)（self-referential MCP 思想）
 - 関連 decision: [`pack-execution-classes.md`](pack-execution-classes.md)、[`critical-constraints.md`](critical-constraints.md)
-- 哲学: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」
+- 哲学: `docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」
 - 既存 MCP impl: `src-tauri/src/mcp/`（list_load_errors / list_packs / enable_pack / disable_pack）
 - ANSI escape sequence injection: <https://owasp.org/www-community/vulnerabilities/CRLF_Injection>（参考）
 

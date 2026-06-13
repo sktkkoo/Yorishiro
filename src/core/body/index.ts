@@ -10,7 +10,7 @@
  *
  * Exposes CharacterAPI for PersonaContext. Drives the render-loop update.
  *
- * Philosophy: docs/philosophy/PRESENCE_HARNESS.md "六要素 > 身体"
+ * Philosophy: docs/philosophy/PHILOSOPHY.md "六要素 > 身体"
  * SDK surface: src/sdk/context.d.ts CharacterAPI (262-292)
  */
 

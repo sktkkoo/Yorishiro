@@ -18,7 +18,7 @@
 
 ## なぜそう決めたか
 
-- philosophy（`docs/philosophy/PRESENCE_HARNESS.ja.md`「Presence Intensity / 住人が自分で決める」）の「呼びかけられればまた顔を出す」は **住人発の close** を前提にした挙動。住人が「今は引いていよう」と引っ込み、user の再エンゲージで戻る——これは住人性の証明。
+- philosophy（`docs/philosophy/PHILOSOPHY.ja.md`「Presence Intensity / 住人が自分で決める」）の「呼びかけられればまた顔を出す」は **住人発の close** を前提にした挙動。住人が「今は引いていよう」と引っ込み、user の再エンゲージで戻る——これは住人性の証明。
 - ところが設定パネルの「Sidebar」トグルは同じ presence level を **user 発（source `"settings"`）** で叩く。そこに住人発と同じ自動復帰を当てると、user が prompt を送る（＝住人とやり取りする）たびに user の明示的な close を上書きしてしまう。
 - user の明示的選択を毎 prompt で勝手に覆すのは [`autonomy-without-disruption.md`](autonomy-without-disruption.md)「邪魔しない / でも従属もしない」と [`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md)「explicit な予測可能性」に反する。source で発生源を区別すれば、住人発の温かい復帰と user 発の明示的選択の両方を立てられる。
 
@@ -35,7 +35,7 @@
 ## 関連 reference
 
 - 実装: `src/runtime/presence-intensity/presence-intensity.ts`（`shouldRestorePresenceOnPrompt` / `onUserPromptSubmit`）、`src/App.tsx`（`restorePresenceFromPrompt`）、`src/core/perception/perception.ts`（`user-prompt-submit` → `onPresenceRestore`）、`bundled-packs/ui/charminal-settings/ui.tsx`（`labelPresence` "Sidebar" → `ctx.app.setPresenceLevel`、source `"settings"`）
-- 思想: `docs/philosophy/PRESENCE_HARNESS.ja.md`「Presence Intensity / 住人が自分で決める」
+- 思想: `docs/philosophy/PHILOSOPHY.ja.md`「Presence Intensity / 住人が自分で決める」
 - 関連 decisions: [`autonomy-without-disruption.md`](autonomy-without-disruption.md)、[`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md)、[`separate-distinct-systems.md`](separate-distinct-systems.md)、[`presence-contract-loud-unavailable.md`](presence-contract-loud-unavailable.md)（presence の routing / surface 契約。本決定は復帰ライフサイクルで facet が別）
 
 ## 改訂履歴

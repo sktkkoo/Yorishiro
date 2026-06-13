@@ -2,7 +2,7 @@
  * Renderer — EffectContext.renderer に供給される RendererAPI の実装。
  *
  * SDK surface: src/sdk/context.d.ts の RendererAPI（584–595）
- * Philosophy: docs/philosophy/PRESENCE_HARNESS.md「六要素 > 空間」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「六要素 > 空間」
  *
  * 本実装は Effect Pack からのみ呼ばれる。Effect の lifecycle に沿って
  * filter primitive を dispense する。SDK の規約上 addShakeFilter 等は

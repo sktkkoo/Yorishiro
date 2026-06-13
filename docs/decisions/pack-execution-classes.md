@@ -351,7 +351,7 @@ Registry は以下を reject / block する。
 
 ## Self-referential MCP との関係
 
-Charminal は自身の MCP server を実装し、内部の住人（Claude Code 経由の AI）や外部 client にあらゆる機能を tool として公開する計画である（思想は [docs/philosophy/SELF_REFERENTIAL_MCP.ja.md](../philosophy/SELF_REFERENTIAL_MCP.ja.md)）。
+Charminal は自身の MCP server を実装し、内部の住人（Claude Code 経由の AI）や外部 client にあらゆる機能を tool として公開する計画である（思想は [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)）。
 
 これと pack-execution-classes は **layer が違う**：
 
@@ -372,7 +372,7 @@ PTY 系 tool（`terminal_prefill` / `write_terminal_input` 等）は当面 **全
 
 ## 関連 reference
 
-- philosophy: [docs/philosophy/SELF_REFERENTIAL_MCP.ja.md](../philosophy/SELF_REFERENTIAL_MCP.ja.md)（self-referential MCP 思想）
+- philosophy: [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)（self-referential MCP 思想）
 - 関連: [`mcp-trust-tiers.md`](mcp-trust-tiers.md)、[`critical-constraints.md`](critical-constraints.md)、[`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md)、[`separate-distinct-systems.md`](separate-distinct-systems.md)、[`effect-rendering-primitives.md`](effect-rendering-primitives.md)
 - MetaMask Snaps execution environment: <https://docs.metamask.io/snaps/learn/about-snaps/execution-environment/>
 - MetaMask Snaps permissions: <https://docs.metamask.io/snaps/how-to/request-permissions/>

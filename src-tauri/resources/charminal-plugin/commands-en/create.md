@@ -412,4 +412,4 @@ Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only
 - `bundled-packs/ui/` - UI pack examples
 - `bundled-packs/ambient-ui/` - ambient-ui examples
 - `docs/philosophy/CHARMINAL.md` - design background
-- `docs/philosophy/PRESENCE_HARNESS.md` - two-layer pack design
+- `docs/philosophy/PHILOSOPHY.md` - two-layer pack design

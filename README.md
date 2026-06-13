@@ -274,10 +274,8 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 ### Philosophy — what this project believes
 
-- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.md) — Treating UI as a place and AI as its inhabitant
+- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, and the self-referential MCP
 - [`docs/philosophy/CHARMINAL.md`](docs/philosophy/CHARMINAL.md) — Why AI needs a body. The two-layer architecture of mind and reflex
-- [`docs/philosophy/PRESENCE_HARNESS.md`](docs/philosophy/PRESENCE_HARNESS.md) — Designing not what AI can do, but how AI exists
-- [`docs/philosophy/SELF_REFERENTIAL_MCP.md`](docs/philosophy/SELF_REFERENTIAL_MCP.md) — An inhabitant who can reach into their own home: body and environment as one MCP surface
 
 ### Security
 

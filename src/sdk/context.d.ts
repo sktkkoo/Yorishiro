@@ -260,7 +260,7 @@ export interface Time {
    *
    * ⚠️ 過剰使用注意。default で使うべきではない。
    * narrow な「連続追従 anti-pattern」への対処としてのみ使う。
-   * 詳細は docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「独立した時間の適用範囲」参照。
+   * 詳細は docs/philosophy/PHILOSOPHY.md「独立した時間の適用範囲」参照。
    */
   afterJitter(min: number, max: number): Promise<void>;
 }
@@ -923,7 +923,7 @@ export interface AudioPlayOptions {
  * 現在値から開始する。pack dispose 時（signal abort）に、その pack が開始した
  * tween は自動的に cancel される。
  *
- * Philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「観察の境界」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「観察の境界」
  * — 身体・空間の変化は連続であるべき。
  */
 export interface TweenAPI {

@@ -35,7 +35,7 @@ presence は DOM ではなく契約。UI pack が `UiLayout.presence.target` で
 
 - 実装: `src/runtime/presence-target/`（pure resolver）、`src/runtime/presence-intensity/presence-intensity.ts`（`ApplyPresenceResult`）、`src/runtime/charminal-mcp/tool-handlers.ts`（`ToolUnavailable`）、`src/App.tsx`（`resolvePresenceSurface` / `applyPresenceWidth`）
 - 決定境界: [`input-prefill-boundary.md`](input-prefill-boundary.md)（基盤以外はなんでも触れる境界）、[`critical-constraints.md`](critical-constraints.md) §1（surface 境界）
-- 思想: `docs/philosophy/SELF_REFERENTIAL_MCP.ja.md`「経路の有無が境界になる」「対称性」、`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」
+- 思想: `docs/philosophy/PHILOSOPHY.ja.md`「経路の有無が境界になる」「対称性」、`docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」
 - spec: `internal design-record: 2026-05-18-shell-named-surfaces-design.md §4`（loud-unavailable 確定経緯）
 
 ## 改訂履歴

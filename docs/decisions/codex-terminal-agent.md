@@ -63,7 +63,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 - decision: [agent-adapter.md](agent-adapter.md) — Codex を含む全 agent の adapter 抽象化 (2026-05-26 以降)
 - source: `src/runtime/user-pack-loader/config.ts`
 - source: `src/runtime/terminal-runtime/terminal-runtime.ts`
-- philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md「観察の境界」`
+- philosophy: `docs/philosophy/PHILOSOPHY.ja.md「観察の境界」`
 - OpenAI: [Unrolling the Codex agent loop](https://openai.com/index/unrolling-the-codex-agent-loop/)
 - OpenClaw: [System Prompt](https://docs.openclaw.ai/concepts/system-prompt)
 

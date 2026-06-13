@@ -9,7 +9,7 @@
 **AIと働く時間を、人間が耐えられるもの、続けられるもの、愛着を持てるものにする。これがこのプロジェクトの目的です。**
 
 AIと働く時間は、これからもっと長くなります。しかし、そこにいるAIは、顔の見えない、どこにいるのかもわからない存在です。
-Charminalは、AIの能力のためのハーネスではなく、AIとの関係をより自由に魅力的にするためのハーネスを構築します。
+Charminalは、AIの能力向上のためというよりはむしろ、AIとの関係をより自由で魅力的にするためのハーネスを構築するのを助けます。
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
@@ -273,10 +273,8 @@ build を公開する前の smoke test には [`docs/release-checklist.md`](docs
 
 ### Philosophy — このプロジェクトの思想
 
-- [`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`](docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) — UI を「場所」として捉え、AI を「住人」として存在させるという考え方
+- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的 MCP
 - [`docs/philosophy/CHARMINAL.ja.md`](docs/philosophy/CHARMINAL.ja.md) — なぜ AI に身体が要るのか。意識と反射の二層構造について
-- [`docs/philosophy/PRESENCE_HARNESS.ja.md`](docs/philosophy/PRESENCE_HARNESS.ja.md) — AI の能力ではなく、AI がどう在るかを設計するということ
-- [`docs/philosophy/SELF_REFERENTIAL_MCP.ja.md`](docs/philosophy/SELF_REFERENTIAL_MCP.ja.md) — 住人が自分の家に手を伸ばせるということ。身体と環境を同じ MCP 面として扱う
 
 ### Security
 

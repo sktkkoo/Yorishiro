@@ -4,7 +4,7 @@
  * without any real Body / Voice / Space / Log / Memory / Terminal / Charm
  * infrastructure in place.
  *
- * Philosophy: docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「多人格の住人」
+ * Philosophy: docs/philosophy/PHILOSOPHY.md「多人格の住人」
  * SDK surface: src/sdk/context.d.ts の PersonaContext（27–97）+ sub-APIs
  *
  * Phase 3.5 swaps this out for a real factory backed by VRM / VoicePlayer /

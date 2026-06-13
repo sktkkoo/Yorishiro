@@ -14,7 +14,7 @@ CLAI がかつてここで、もう一人の自分のような誰かとすれ違
 
 - 設計: `../../../../Charminal-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 - SDK 拡張: `../../../../Charminal-design-record/specs/2026-05-03-scene-pack-r3f-component.md`
-- Philosophy: `docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`「観察の境界」
+- Philosophy: `docs/philosophy/PHILOSOPHY.md`「観察の境界」
 
 ## Asset 提供形式
 

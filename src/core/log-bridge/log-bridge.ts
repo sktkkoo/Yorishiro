@@ -4,7 +4,7 @@
  * を後から読めるようにする。
  *
  * Philosophy: docs/philosophy/CHARMINAL.md「ログという細い回路」+
- *             docs/philosophy/INHABITED_CHARACTER_INTERFACE.md「ログという橋」
+ *             docs/philosophy/PHILOSOPHY.md「ログという橋」
  * SDK surface: src/sdk/context.d.ts の LogAPI / LogEntry / LogFilter（514–542）
  *
  * Phase 3.3(g.5) で TDD 実装。file persistence (jsonl append) は Phase 3.5 の

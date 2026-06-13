@@ -346,8 +346,8 @@ responses: {
 
 ### Philosophy
 
-- [docs/philosophy/PRESENCE_HARNESS.ja.md](../philosophy/PRESENCE_HARNESS.ja.md) — Twin-trigger co-emission、Synthetic event
-- [docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md](../philosophy/INHABITED_CHARACTER_INTERFACE.ja.md) — 観察の境界
+- [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md) — Twin-trigger co-emission、Synthetic event
+- [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md) — 観察の境界
 
 ---
 

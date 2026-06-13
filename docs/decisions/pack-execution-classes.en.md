@@ -351,7 +351,7 @@ The registry rejects / blocks:
 
 ## Relationship with self-referential MCP
 
-Charminal plans to implement its own MCP server, exposing all internal capabilities as tools to the inhabitant (AI via Claude Code) and external clients (see [docs/philosophy/SELF_REFERENTIAL_MCP.ja.md](../philosophy/SELF_REFERENTIAL_MCP.ja.md)).
+Charminal plans to implement its own MCP server, exposing all internal capabilities as tools to the inhabitant (AI via Claude Code) and external clients (see [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)).
 
 Pack-execution-classes and this are **different layers**:
 
@@ -372,7 +372,7 @@ PTY tools (`terminal_prefill` / `write_terminal_input` etc.) are **prohibited ac
 
 ## Related references
 
-- Philosophy: [docs/philosophy/SELF_REFERENTIAL_MCP.ja.md](../philosophy/SELF_REFERENTIAL_MCP.ja.md) (self-referential MCP concept)
+- Philosophy: [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md) (self-referential MCP concept)
 - Related: [`mcp-trust-tiers.md`](mcp-trust-tiers.md), [`critical-constraints.md`](critical-constraints.md), [`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md), [`separate-distinct-systems.md`](separate-distinct-systems.md), [`effect-rendering-primitives.md`](effect-rendering-primitives.md)
 - MetaMask Snaps execution environment: <https://docs.metamask.io/snaps/learn/about-snaps/execution-environment/>
 - MetaMask Snaps permissions: <https://docs.metamask.io/snaps/how-to/request-permissions/>

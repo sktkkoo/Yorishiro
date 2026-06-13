@@ -68,7 +68,7 @@ Codex は `lifecycle_hooks: false`（[agent-adapter.md](agent-adapter.md)）。l
 
 - source（実装後）：`src/sdk/reaction.d.ts`（`LoopLifecycleEvent` / `LoopPhase`）、`src/sdk/context.d.ts`（`LoopAPI`）、`src/core/perception/perception.ts`（ingest）、`src/runtime/charminal-mcp/tool-handlers.ts`（`loop_announce` handler）、`src-tauri/src/mcp/tools.rs`（tool 登録）
 - decision：[critical-constraints.md](critical-constraints.md) §1、[input-prefill-boundary.md](input-prefill-boundary.md)、[agent-adapter.md](agent-adapter.md)、[trigger-reaction-architecture.md](trigger-reaction-architecture.md)、[mcp-trust-tiers.md](mcp-trust-tiers.md)
-- philosophy：`docs/philosophy/SELF_REFERENTIAL_MCP.ja.md`「経路の有無が境界になる」「対称性」、`docs/philosophy/INHABITED_CHARACTER_INTERFACE.ja.md`「観察の境界」
+- philosophy：`docs/philosophy/PHILOSOPHY.ja.md`「経路の有無が境界になる」「対称性」、`docs/philosophy/PHILOSOPHY.ja.md`「観察の境界」
 
 ## 改訂履歴
 

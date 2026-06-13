@@ -4,7 +4,7 @@
  * 思想 primitives: Presence Harness の六要素（Space / Body / Time / Perception /
  * Expression / Interaction）+ 思考層と反射層を繋ぐ LogBridge / TwoLayer。
  *
- * 詳細は `docs/philosophy/PRESENCE_HARNESS.md` と `docs/philosophy/INHABITED_CHARACTER_INTERFACE.md`。
+ * 詳細は `docs/philosophy/PHILOSOPHY.md` と `docs/philosophy/PHILOSOPHY.md`。
  */
 
 export { Body } from "./body";

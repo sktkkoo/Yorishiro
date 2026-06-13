@@ -1,7 +1,7 @@
 # src/runtime/ — Operational backbone
 
 > このファイルは「**pack registry / event dispatch / singleton 周りで作業する**」時に読む。対象：dev / AI。
-> 上位：[../README.md](../README.md)、思想：[docs/philosophy/PRESENCE_HARNESS.md](../../docs/philosophy/PRESENCE_HARNESS.md)（Twin-trigger / Synthetic event）
+> 上位：[../README.md](../README.md)、思想：[docs/philosophy/PHILOSOPHY.md](../../docs/philosophy/PHILOSOPHY.md)（Twin-trigger / Synthetic event）
 
 Pack 管理、event dispatch、module registry、singleton service。core primitive を **動かす** 層。
 
