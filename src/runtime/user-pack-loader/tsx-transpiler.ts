@@ -285,6 +285,30 @@ export const { ACESFilmicToneMapping, AddEquation, AddOperation, AdditiveAnimati
 export default THREE;
 `;
 
+function extractNamedExports(shim: string): string[] {
+  const names = new Set<string>();
+  const matches = shim.matchAll(/export const \{([\s\S]*?)\} = /g);
+  for (const match of matches) {
+    for (const name of match[1]
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean)) {
+      names.add(name);
+    }
+  }
+  return Array.from(names).sort();
+}
+
+export function tsxHostShimNamedExports(path: string): readonly string[] {
+  if (path === "@react-three/drei") return extractNamedExports(dreiShim);
+  if (path === "@charminal/sdk/r3f" || path === "@react-three/fiber") {
+    return extractNamedExports(r3fShim);
+  }
+  if (path === "@charminal/sdk/controls") return extractNamedExports(controlsShim);
+  if (path === "three") return extractNamedExports(threeShim);
+  return [];
+}
+
 function createPlan4MvpPlugin(
   packDir: string,
   deps: TsxTranspilerDeps,

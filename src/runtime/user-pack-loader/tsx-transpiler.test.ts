@@ -4,6 +4,7 @@ import {
   isSupportedTsxHostImport,
   isTsxEntryPath,
   resolveRelativeTsxImport,
+  tsxHostShimNamedExports,
 } from "./tsx-transpiler";
 
 describe("isTsxEntryPath", () => {
@@ -78,5 +79,23 @@ describe("resolveRelativeTsxImport", () => {
         "/Users/me/.charminal/packs/my-room",
       ),
     ).toBeNull();
+  });
+});
+
+describe("tsxHostShimNamedExports", () => {
+  it("keeps hand-written host shim exports aligned with installed packages", async () => {
+    const modules = {
+      "@react-three/drei": await import("@react-three/drei"),
+      "@react-three/fiber": await import("@react-three/fiber"),
+      three: await import("three"),
+    };
+
+    for (const [path, mod] of Object.entries(modules)) {
+      const actual = new Set(Object.keys(mod).filter((key) => key !== "__esModule"));
+      const shimExports = tsxHostShimNamedExports(path);
+      const missing = shimExports.filter((key) => !actual.has(key));
+
+      expect(missing, `${path} shim exports missing from installed module`).toEqual([]);
+    }
   });
 });

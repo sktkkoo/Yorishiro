@@ -86,6 +86,8 @@ A user scene pack lives in `~/.charminal/packs/<id>/` with **manifest.json plus 
 
 Use `scene.js` for declarative layer stacks. Use `scene.tsx` when the scene needs an R3F component for lighting or 3D objects, and export that React component through `ScenePackDefinition.component`. Keep the component to React + three.js rendering; do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes from the pack.
 
+You may split `scene.tsx` with pack-relative imports such as `./lib/lights.tsx`. Edits to source files inside the pack reload the owning `scene.tsx`.
+
 ### Exposing Parameters With SDK Controls
 
 Scene pack authors choose which parameters are tunable from outside. Only values registered with `useCharminalControls` and `useControlsBridge` from `@charminal/sdk/controls` appear in the F2 **Scene panel** and become readable / writable through MCP (`controls_get` / `controls_set` with `scope: "scene"`). The backend renderer currently uses a Leva adapter, but pack authors should not import Leva directly.

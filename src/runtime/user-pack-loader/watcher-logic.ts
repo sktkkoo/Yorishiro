@@ -4,6 +4,7 @@
  * Tauri invoke / dynamic import の impure 部分を持たないので、そのまま vitest
  * で検証できる。`~/.charminal/packs/<id>/<kind>.js` convention の parse と、
  * runtime-transpiled `~/.charminal/packs/<id>/{ui,scene}.tsx` の parse、
+ * scene.tsx が relative import する nested source file の owner entry mapping、
  * file event → 何をすべきかの mapping に責任を限定する。
  *
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
@@ -41,16 +42,20 @@ export type WatcherAction =
 
 const stripTrailingSlash = (p: string): string => (p.endsWith("/") ? p.slice(0, -1) : p);
 const TSX_ENTRY_KINDS = new Set(["ui", "scene"]);
+const PACK_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
+
+const isPackSourceFile = (path: string): boolean =>
+  PACK_SOURCE_EXTENSIONS.some((ext) => path.endsWith(ext));
 
 /**
  * `/Users/x/.charminal/packs/my-id/effect.js` → { type: "pack", id, kind }
  * `/Users/x/.charminal/packs/my-ui/ui.tsx` → { type: "pack", id, kind: "ui" }
  * `/Users/x/.charminal/packs/my-room/scene.tsx` → { type: "pack", id, kind: "scene" }
  * `/Users/x/.charminal/init.js` → { type: "init" }
+ * nested source file → owner scene.tsx の reload action（mapEventToAction で処理）
  * その他 → { type: "ignore" }
  *
- * charminalHome は trailing slash の有無を問わない。深さ 2 より深い nested も
- * `ignore` とする（Phase 1-b は flat layout のみ対応）。
+ * charminalHome は trailing slash の有無を問わない。
  */
 export function parseLayerPath(absPath: string, charminalHome: string): ParsedLayerPath {
   const home = stripTrailingSlash(charminalHome);
@@ -68,12 +73,19 @@ export function parseLayerPath(absPath: string, charminalHome: string): ParsedLa
   }
   const afterPacks = relative.slice("packs/".length);
   const segments = afterPacks.split("/");
-  if (segments.length !== 2) {
-    // packs/foo (pack dir itself) や packs/foo/sub/bar.js はどちらも ignore。
+  if (segments.length < 2) {
+    // packs/foo (pack dir itself) は ignore。
     return { type: "ignore" };
   }
   const [id, filename] = segments;
   if (id === "" || id.startsWith(".")) {
+    return { type: "ignore" };
+  }
+  if (segments.length > 2) {
+    const leaf = segments[segments.length - 1] ?? "";
+    if (isPackSourceFile(leaf)) {
+      return { type: "pack", id, kind: "scene" };
+    }
     return { type: "ignore" };
   }
   let kind: string | null = null;
@@ -106,7 +118,25 @@ export function mapEventToAction(event: CharminalLayerEvent, charminalHome: stri
     return { type: "init-changed", path: event.path };
   }
   if (event.kind === "removed") {
+    if (!event.path.endsWith(`${parsed.kind}.js`) && !event.path.endsWith(`${parsed.kind}.tsx`)) {
+      return {
+        type: "reload-pack",
+        id: parsed.id,
+        kind: parsed.kind,
+        entryPath: `${stripTrailingSlash(charminalHome)}/packs/${parsed.id}/${parsed.kind}.tsx`,
+        mtimeMs: event.mtimeMs,
+      };
+    }
     return { type: "remove-pack", id: parsed.id, kind: parsed.kind };
+  }
+  if (!event.path.endsWith(`${parsed.kind}.js`) && !event.path.endsWith(`${parsed.kind}.tsx`)) {
+    return {
+      type: "reload-pack",
+      id: parsed.id,
+      kind: parsed.kind,
+      entryPath: `${stripTrailingSlash(charminalHome)}/packs/${parsed.id}/${parsed.kind}.tsx`,
+      mtimeMs: event.mtimeMs,
+    };
   }
   return {
     type: "reload-pack",
