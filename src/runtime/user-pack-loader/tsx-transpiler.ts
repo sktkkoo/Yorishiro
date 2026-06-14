@@ -6,19 +6,37 @@
  * Relative imports と persistent `.build` output は follow-up。
  */
 
+import type * as ReactThreeFiber from "@react-three/fiber";
 import * as esbuild from "esbuild-wasm";
 import esbuildWasmUrl from "esbuild-wasm/esbuild.wasm?url";
 import type * as React from "react";
 import type * as ReactJsxRuntime from "react/jsx-runtime";
 import type * as ReactDomClient from "react-dom/client";
+import type * as THREE from "three";
+import type * as CharminalControls from "../../sdk/controls";
+import type * as CharminalR3f from "../../sdk/r3f";
 
 const HOST_NAMESPACE = "charminal-host";
 const UNSUPPORTED_NAMESPACE = "charminal-unsupported";
+const SUPPORTED_HOST_IMPORTS = new Set([
+  "@charminal/sdk",
+  "@charminal/sdk/controls",
+  "@charminal/sdk/r3f",
+  "@react-three/fiber",
+  "react",
+  "react-dom/client",
+  "react/jsx-runtime",
+  "three",
+]);
 
 declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
   var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
   var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+  var __CHARMINAL_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __CHARMINAL_THREE__: typeof THREE | undefined;
+  var __CHARMINAL_SDK_CONTROLS__: typeof CharminalControls | undefined;
+  var __CHARMINAL_SDK_R3F__: typeof CharminalR3f | undefined;
 }
 
 export interface TsxTranspilerDeps {
@@ -33,6 +51,10 @@ let initializePromise: Promise<void> | null = null;
 
 export function isTsxEntryPath(entryPath: string): boolean {
   return entryPath.endsWith(".tsx");
+}
+
+export function isSupportedTsxHostImport(path: string): boolean {
+  return SUPPORTED_HOST_IMPORTS.has(path);
 }
 
 function ensureEsbuildInitialized(): Promise<void> {
@@ -123,26 +145,86 @@ const sdkShim = `
 export {};
 `;
 
+const r3fShim = `
+const R3F = globalThis.__CHARMINAL_SDK_R3F__ ?? globalThis.__CHARMINAL_REACT_THREE_FIBER__;
+if (!R3F) throw new Error("Charminal R3F host bridge is not initialized");
+export const {
+  Canvas,
+  ReactThreeFiber,
+  _roots,
+  act,
+  addAfterEffect,
+  addEffect,
+  addTail,
+  advance,
+  applyProps,
+  buildGraph,
+  context,
+  createEvents,
+  createPortal,
+  createRoot,
+  dispose,
+  events,
+  extend,
+  flushGlobalEffects,
+  flushSync,
+  getRootState,
+  invalidate,
+  reconciler,
+  unmountComponentAtNode,
+  useFrame,
+  useGraph,
+  useInstanceHandle,
+  useLoader,
+  useStore,
+  useThree,
+} = R3F;
+export default R3F;
+`;
+
+const controlsShim = `
+const Controls = globalThis.__CHARMINAL_SDK_CONTROLS__;
+if (!Controls) throw new Error("Charminal controls host bridge is not initialized");
+export const {
+  ControlStoreProvider,
+  controlFolder,
+  useCharminalControls,
+  useControlsBridge,
+} = Controls;
+`;
+
+const threeShim = `
+const THREE = globalThis.__CHARMINAL_THREE__;
+if (!THREE) throw new Error("Charminal Three.js host bridge is not initialized");
+export const { ACESFilmicToneMapping, AddEquation, AddOperation, AdditiveAnimationBlendMode, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrayCamera, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BackSide, BasicDepthPacking, BasicShadowMap, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxGeometry, BoxHelper, BufferAttribute, BufferGeometry, BufferGeometryLoader, ByteType, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CineonToneMapping, CircleGeometry, ClampToEdgeWrapping, Clock, Color, ColorKeyframeTrack, ColorManagement, Compatibility, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, ConstantAlphaFactor, ConstantColorFactor, Controls, CubeCamera, CubeDepthTexture, CubeReflectionMapping, CubeRefractionMapping, CubeTexture, CubeTextureLoader, CubeUVReflectionMapping, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceBack, CullFaceFront, CullFaceFrontBack, CullFaceNone, Curve, CurvePath, CustomBlending, CustomToneMapping, CylinderGeometry, Cylindrical, Data3DTexture, DataArrayTexture, DataTexture, DataTextureLoader, DataUtils, DecrementStencilOp, DecrementWrapStencilOp, DefaultLoadingManager, DepthFormat, DepthStencilFormat, DepthTexture, DetachedBindMode, DirectionalLight, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicCopyUsage, DynamicDrawUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, Euler, EventDispatcher, ExternalTexture, ExtrudeGeometry, FileLoader, Float16BufferAttribute, Float32BufferAttribute, FloatType, Fog, FogExp2, FramebufferTexture, FrontSide, Frustum, FrustumArray, GLBufferAttribute, GLSL1, GLSL3, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, GridHelper, Group, HalfFloatType, HemisphereLight, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, IncrementStencilOp, IncrementWrapStencilOp, InstancedBufferAttribute, InstancedBufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, IntType, InterleavedBuffer, InterleavedBufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, InvertStencilOp, KeepStencilOp, KeyframeTrack, LOD, LatheGeometry, Layers, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, Light, LightProbe, Line, Line3, LineBasicMaterial, LineCurve, LineCurve3, LineDashedMaterial, LineLoop, LineSegments, LinearFilter, LinearInterpolant, LinearMipMapLinearFilter, LinearMipMapNearestFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, LinearToneMapping, LinearTransfer, Loader, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, Material, MaterialBlending, MaterialLoader, MathUtils, Matrix2, Matrix3, Matrix4, MaxEquation, Mesh, MeshBasicMaterial, MeshDepthMaterial, MeshDistanceMaterial, MeshLambertMaterial, MeshMatcapMaterial, MeshNormalMaterial, MeshPhongMaterial, MeshPhysicalMaterial, MeshStandardMaterial, MeshToonMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoNormalPacking, NoToneMapping, NormalAnimationBlendMode, NormalBlending, NormalGAPacking, NormalRGPacking, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, NumberKeyframeTrack, Object3D, ObjectLoader, ObjectSpaceNormalMap, OctahedronGeometry, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, OrthographicCamera, PCFShadowMap, PCFSoftShadowMap, PMREMGenerator, Path, PerspectiveCamera, Plane, PlaneGeometry, PlaneHelper, PointLight, PointLightHelper, Points, PointsMaterial, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, Quaternion, QuaternionKeyframeTrack, QuaternionLinearInterpolant, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBADepthPacking, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBDepthPacking, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGDepthPacking, RGFormat, RGIntegerFormat, RawShaderMaterial, Ray, Raycaster, RectAreaLight, RedFormat, RedIntegerFormat, ReinhardToneMapping, RenderTarget, RenderTarget3D, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, RingGeometry, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, Scene, ShaderChunk, ShaderLib, ShaderMaterial, ShadowMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, ShortType, Skeleton, SkeletonHelper, SkinnedMesh, Source, Sphere, SphereGeometry, Spherical, SphericalHarmonics3, SplineCurve, SpotLight, SpotLightHelper, Sprite, SpriteMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StaticCopyUsage, StaticDrawUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, SubtractEquation, SubtractiveBlending, TOUCH, TangentSpaceNormalMap, TetrahedronGeometry, Texture, TextureLoader, TextureUtils, Timer, TimestampQuery, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, UVMapping, Uint16BufferAttribute, Uint32BufferAttribute, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, UniformsLib, UniformsUtils, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, VSMShadowMap, Vector2, Vector3, Vector4, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLCoordinateSystem, WebGLCubeRenderTarget, WebGLRenderTarget, WebGLRenderer, WebGLUtils, WebGPUCoordinateSystem, WebXRController, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroFactor, ZeroSlopeEnding, ZeroStencilOp, createCanvasElement, error, getConsoleFunction, log, setConsoleFunction, warn, warnOnce } = THREE;
+export default THREE;
+`;
+
 function createPlan4MvpPlugin(): esbuild.Plugin {
   return {
     name: "charminal-ui-pack-plan4-mvp",
     setup(build) {
       build.onResolve(
-        { filter: /^(react|react-dom\/client|react\/jsx-runtime|@charminal\/sdk)$/ },
-        (args) => ({
-          path: args.path,
-          namespace: HOST_NAMESPACE,
-        }),
+        {
+          filter: /.*/,
+        },
+        (args) =>
+          isSupportedTsxHostImport(args.path)
+            ? {
+                path: args.path,
+                namespace: HOST_NAMESPACE,
+              }
+            : undefined,
       );
       build.onResolve({ filter: /^\.{1,2}\// }, (args) => ({
         path: args.path,
         namespace: UNSUPPORTED_NAMESPACE,
-        pluginData: "relative imports are not supported for ui.tsx in Plan 4 MVP",
+        pluginData: "relative imports are not supported for runtime-transpiled .tsx entries",
       }));
       build.onResolve({ filter: /.*/ }, (args) => ({
         path: args.path,
         namespace: UNSUPPORTED_NAMESPACE,
-        pluginData: `unsupported import '${args.path}' in ui.tsx Plan 4 MVP`,
+        pluginData: `unsupported import '${args.path}' in runtime-transpiled .tsx entry`,
       }));
       build.onLoad({ filter: /.*/, namespace: HOST_NAMESPACE }, (args) => {
         if (args.path === "react") {
@@ -153,6 +235,15 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
         }
         if (args.path === "react-dom/client") {
           return { contents: reactDomClientShim, loader: "js" };
+        }
+        if (args.path === "@charminal/sdk/r3f" || args.path === "@react-three/fiber") {
+          return { contents: r3fShim, loader: "js" };
+        }
+        if (args.path === "@charminal/sdk/controls") {
+          return { contents: controlsShim, loader: "js" };
+        }
+        if (args.path === "three") {
+          return { contents: threeShim, loader: "js" };
         }
         return { contents: sdkShim, loader: "js" };
       });

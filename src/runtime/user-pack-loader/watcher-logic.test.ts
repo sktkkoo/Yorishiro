@@ -28,6 +28,11 @@ describe("parseLayerPath", () => {
       id: "my-ui",
       kind: "ui",
     });
+    expect(parseLayerPath(`${HOME}/packs/my-room/scene.tsx`, HOME)).toEqual({
+      type: "pack",
+      id: "my-room",
+      kind: "scene",
+    });
     expect(parseLayerPath(`${HOME}/packs/my-ui/ui.js`, HOME)).toEqual({
       type: "pack",
       id: "my-ui",
@@ -57,7 +62,7 @@ describe("parseLayerPath", () => {
     expect(parseLayerPath(`${HOME}/packs/my-effect/README.md`, HOME)).toEqual({ type: "ignore" });
   });
 
-  it("ignores unsupported kinds (voice/body/scene) that the runtime has no registrar for", () => {
+  it("ignores unsupported kinds (voice/body) that the runtime has no registrar for", () => {
     expect(parseLayerPath(`${HOME}/packs/my-voice/voice.js`, HOME)).toEqual({ type: "ignore" });
     expect(parseLayerPath(`${HOME}/packs/my-body/body.js`, HOME)).toEqual({ type: "ignore" });
   });
@@ -108,6 +113,32 @@ describe("mapEventToAction", () => {
       kind: "ui",
       entryPath: `${HOME}/packs/my-ui/ui.tsx`,
       mtimeMs: 1700000000001,
+    });
+  });
+
+  it("maps modified and removed scene.tsx files to scene actions", () => {
+    expect(
+      mapEventToAction(
+        { path: `${HOME}/packs/my-room/scene.tsx`, kind: "modified", mtimeMs: 1700000000002 },
+        HOME,
+      ),
+    ).toEqual({
+      type: "reload-pack",
+      id: "my-room",
+      kind: "scene",
+      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      mtimeMs: 1700000000002,
+    });
+
+    expect(
+      mapEventToAction(
+        { path: `${HOME}/packs/my-room/scene.tsx`, kind: "removed", mtimeMs: 1700000000003 },
+        HOME,
+      ),
+    ).toEqual({
+      type: "remove-pack",
+      id: "my-room",
+      kind: "scene",
     });
   });
 

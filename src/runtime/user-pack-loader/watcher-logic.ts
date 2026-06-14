@@ -3,7 +3,7 @@
  *
  * Tauri invoke / dynamic import の impure 部分を持たないので、そのまま vitest
  * で検証できる。`~/.charminal/packs/<id>/<kind>.js` convention の parse と、
- * Plan 4 `~/.charminal/packs/<id>/ui.tsx` の parse、
+ * runtime-transpiled `~/.charminal/packs/<id>/{ui,scene}.tsx` の parse、
  * file event → 何をすべきかの mapping に責任を限定する。
  *
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
@@ -40,10 +40,12 @@ export type WatcherAction =
   | { readonly type: "ignore"; readonly reason: string };
 
 const stripTrailingSlash = (p: string): string => (p.endsWith("/") ? p.slice(0, -1) : p);
+const TSX_ENTRY_KINDS = new Set(["ui", "scene"]);
 
 /**
  * `/Users/x/.charminal/packs/my-id/effect.js` → { type: "pack", id, kind }
  * `/Users/x/.charminal/packs/my-ui/ui.tsx` → { type: "pack", id, kind: "ui" }
+ * `/Users/x/.charminal/packs/my-room/scene.tsx` → { type: "pack", id, kind: "scene" }
  * `/Users/x/.charminal/init.js` → { type: "init" }
  * その他 → { type: "ignore" }
  *
@@ -74,11 +76,13 @@ export function parseLayerPath(absPath: string, charminalHome: string): ParsedLa
   if (id === "" || id.startsWith(".")) {
     return { type: "ignore" };
   }
-  const kind = filename.endsWith(".js")
-    ? filename.slice(0, -".js".length)
-    : filename === "ui.tsx"
-      ? "ui"
-      : null;
+  let kind: string | null = null;
+  if (filename.endsWith(".js")) {
+    kind = filename.slice(0, -".js".length);
+  } else if (filename.endsWith(".tsx")) {
+    const tsxKind = filename.slice(0, -".tsx".length);
+    kind = TSX_ENTRY_KINDS.has(tsxKind) ? tsxKind : null;
+  }
   if (kind === null) {
     return { type: "ignore" };
   }

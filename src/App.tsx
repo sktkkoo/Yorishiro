@@ -14,12 +14,14 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
+import * as ReactThreeFiber from "@react-three/fiber";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 import * as ReactDomClient from "react-dom/client";
+import * as THREE from "three";
 import {
   checkTutorialDone,
   markTutorialDone,
@@ -212,8 +214,10 @@ import {
   appendInitChangedMarker,
   stripInitChangedMarker,
 } from "./runtime/user-pack-loader/init-changed-title";
+import * as CharminalControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
+import * as CharminalR3f from "./sdk/r3f";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
@@ -488,11 +492,19 @@ declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
   var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
   var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+  var __CHARMINAL_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __CHARMINAL_THREE__: typeof THREE | undefined;
+  var __CHARMINAL_SDK_CONTROLS__: typeof CharminalControls | undefined;
+  var __CHARMINAL_SDK_R3F__: typeof CharminalR3f | undefined;
 }
 
 globalThis.__CHARMINAL_REACT__ = React;
 globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
+globalThis.__CHARMINAL_REACT_THREE_FIBER__ = ReactThreeFiber;
+globalThis.__CHARMINAL_THREE__ = THREE;
+globalThis.__CHARMINAL_SDK_CONTROLS__ = CharminalControls;
+globalThis.__CHARMINAL_SDK_R3F__ = CharminalR3f;
 
 function fallbackSelectorForSurface(name: SurfaceName): string {
   switch (name) {

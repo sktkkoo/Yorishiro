@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTsxEntryUrl, isTsxEntryPath } from "./tsx-transpiler";
+import { buildTsxEntryUrl, isSupportedTsxHostImport, isTsxEntryPath } from "./tsx-transpiler";
 
 describe("isTsxEntryPath", () => {
   it("detects TSX entry paths", () => {
@@ -27,5 +27,20 @@ describe("buildTsxEntryUrl", () => {
     );
 
     expect(url).toBe("asset://localhost/ui.tsx?token=a&v=mtime%201");
+  });
+});
+
+describe("isSupportedTsxHostImport", () => {
+  it("allows host modules needed by scene.tsx R3F components", () => {
+    expect(isSupportedTsxHostImport("@charminal/sdk/r3f")).toBe(true);
+    expect(isSupportedTsxHostImport("@react-three/fiber")).toBe(true);
+    expect(isSupportedTsxHostImport("three")).toBe(true);
+    expect(isSupportedTsxHostImport("@charminal/sdk/controls")).toBe(true);
+  });
+
+  it("keeps unrelated imports unsupported", () => {
+    expect(isSupportedTsxHostImport("fs")).toBe(false);
+    expect(isSupportedTsxHostImport("@tauri-apps/api/core")).toBe(false);
+    expect(isSupportedTsxHostImport("./local-file")).toBe(false);
   });
 });
