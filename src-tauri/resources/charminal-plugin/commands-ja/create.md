@@ -83,20 +83,31 @@ Safe mode では user pack が一切 load されず、window title に ` (Safe M
 
 user scene pack は `~/.charminal/packs/<id>/` に **manifest.json + scene.js または scene.tsx** を置く。**manifest.json は必須**（Agentic UGC 前提なので explicit な宣言を優先）。bundled の `bundled-packs/scenes/<id>/` とは layout が違う（user 側は flat）。
 
-宣言的な layer stack だけなら `scene.js` でよい。lighting / 3D object などを R3F component として描く場合は `scene.tsx` を使い、`ScenePackDefinition.component` に React component を export する。component 内では React + three.js の描画に留め、`fetch` / `fs` / `system.exec` / Tauri API / Node builtin / PTY write は使わない。
+scene pack には 2 つの形式がある：
+
+- **declarative（`scene.js`）**: layers + terminal + ui の宣言だけを書く。controls 公開はしない。手軽で、背景色・画像・terminal / UI theme を作るだけならこちらを選ぶ。
+- **R3F component（`scene.tsx`）**: lighting / 3D object を React component で描く。`useCharminalControls` / `useControlsBridge` による controls 公開はこの形式でだけ使う。
 
 `scene.tsx` から pack 内の `./lib/*.tsx` 等へ相対 import して分割してよい。pack 内 source file の編集は owning `scene.tsx` の reload として扱われる。
 
-### パラメータの公開（SDK controls）
+component 内では React + three.js の描画に留め、`fetch` / `fs` / `system.exec` / Tauri API / Node builtin / PTY write は使わない。base camera は Common controls の所有なので scene から直接触らない。camera breath / shake / sway のような微小変調だけを Scene 側 controls として設計する。
 
-scene pack の作者は、どのパラメータを外からリアルタイム調整可能にするかを自分で選べる。`@charminal/sdk/controls` の `useCharminalControls` と `useControlsBridge` で登録した値だけが F2 の **Scene panel**（active scene pack 固有の panel）に現れ、MCP（`controls_get` / `controls_set` の `scope: "scene"`）経由でも読み書きできるようになる。裏側の renderer は現在 leva adapter だが、pack 作者は leva を直接 import しない。
+### R3F scene の controls 結線
+
+R3F component 形式を選んだら、実装前に user と **どのパラメータを外から触れるようにするか** を決める。lighting intensity / color / fog / post effect / camera modulation など、調整しながら肌触りを決めたい値だけを公開する。
+
+裏側の panel renderer は現在 leva adapter だが、pack 作者は leva を直接 import しない。公開 API は `@charminal/sdk/controls` だけを使う。
+
+作業ステップ：
+
+1. user に「F2 Scene panel や `/charm:update` から調整したい値はどれ？」と聞く
+2. `scene.tsx` の component 内で `@charminal/sdk/controls` の `useCharminalControls` と `useControlsBridge` を使って登録する
+3. 登録した値が F2 **Scene panel** に出ることを確認する
+4. `/charm:update` または MCP `controls_get` / `controls_set` の `scope: "scene"` で読み書きできることを確認する
 
 F2 で開く panel は **Common（runtime-wide な base camera など）と Scene（active scene pack の controls）** の 2 枚。scene pack の lighting / post effect / camera modulation はすべて Scene 側に登録される。
 
-- 公開したいパラメータ → `useCharminalControls` に書く → Scene panel に出る → `/charm` で一緒にリアルタイム調整できる
-- 公開しないパラメータ → コード内のローカル変数 → 固定値として動く
-
-user に「どのパラメータを外から触れるようにする？」と聞いて一緒に設計する。後から公開パラメータを増やすこともできる。
+scene pack 作者は **Scene 側にだけ register する**。base camera は Common 所有なので scene pack から触らない。公開しないパラメータはコード内のローカル値として固定する。
 
 bundled の `abandoned-factory` が参考実装（`bundled-packs/scenes/abandoned-factory/lib/` の各コンポーネントで `useCharminalControls` + `useControlsBridge` を使っている）。
 
@@ -139,6 +150,42 @@ export default {
       // 全 14 field は省略可（default にフォールバック）
     },
   },
+} satisfies ScenePackDefinition;
+```
+
+`~/.charminal/packs/my-scene/scene.tsx`（R3F component + controls 公開）:
+
+```typescript
+import type { ScenePackDefinition } from "@charminal/sdk";
+import { useCharminalControls, useControlsBridge } from "@charminal/sdk/controls";
+
+function MySceneComponent() {
+  const [controls, setControls] = useCharminalControls("lights", () => ({
+    intensity: { value: 1.2, min: 0, max: 4, step: 0.1 },
+  }));
+  useControlsBridge("my-scene", controls, setControls);
+
+  const intensity = Number(controls.intensity ?? 1.2);
+  return <ambientLight intensity={intensity} color="#ffffff" />;
+}
+
+export default {
+  id: "my-scene",
+  type: "scene",
+  scene: {
+    id: "my-scene",
+    layers: [{ id: "vrm-slot", role: "character", blur: 0 }],
+    terminal: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+      cursor: "#8abeb7",
+    },
+    ui: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+    },
+  },
+  component: MySceneComponent,
 } satisfies ScenePackDefinition;
 ```
 

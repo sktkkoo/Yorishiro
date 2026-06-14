@@ -84,27 +84,36 @@ Safe mode skips all user packs and adds `(Safe Mode)` to the window title. MCP t
 
 A user scene pack lives in `~/.charminal/packs/<id>/` with **manifest.json plus `scene.js` or `scene.tsx`**. `manifest.json` is required because agent-created UGC should declare its type explicitly. Bundled scenes use a different layout under `bundled-packs/scenes/<id>/`; user packs are flat directories.
 
-Use `scene.js` for declarative layer stacks. Use `scene.tsx` when the scene needs an R3F component for lighting or 3D objects, and export that React component through `ScenePackDefinition.component`. Keep the component to React + three.js rendering; do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes from the pack.
+Scene packs have two formats:
+
+- **Declarative (`scene.js`)**: declare layers + terminal + ui only. No controls are exposed. Choose this for simple backgrounds, images, and terminal / UI themes.
+- **R3F component (`scene.tsx`)**: render lighting / 3D objects with a React component. Controls exposed through `useCharminalControls` / `useControlsBridge` are available only in this format.
 
 You may split `scene.tsx` with pack-relative imports such as `./lib/lights.tsx`. Edits to source files inside the pack reload the owning `scene.tsx`.
 
-### Exposing Parameters With SDK Controls
+Keep components to React + three.js rendering; do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes from the pack. The base camera is owned by Common controls, so scene packs should not set it directly. Design small camera breath / shake / sway changes as Scene-side modulations.
 
-Scene pack authors choose which parameters are tunable from outside. Only values registered with `useCharminalControls` and `useControlsBridge` from `@charminal/sdk/controls` appear in the F2 **Scene panel** and become readable / writable through MCP (`controls_get` / `controls_set` with `scope: "scene"`). The backend renderer currently uses a Leva adapter, but pack authors should not import Leva directly.
+### Wiring Controls For R3F Scenes
+
+When choosing the R3F component format, decide with the user **which parameters should be externally tunable** before implementation. Expose only values whose feel should be adjusted live, such as lighting intensity / color, fog, post effects, or camera modulation.
+
+The panel renderer currently uses a Leva adapter, but pack authors should not import Leva directly. Use only the public `@charminal/sdk/controls` API.
+
+Workflow:
+
+1. Ask the user which values they want to tune from the F2 Scene panel or `/charm:update`
+2. In the `scene.tsx` component, register them with `useCharminalControls` and `useControlsBridge` from `@charminal/sdk/controls`
+3. Confirm the registered values appear in the F2 **Scene panel**
+4. Confirm they can be read / written through `/charm:update` or MCP `controls_get` / `controls_set` with `scope: "scene"`
 
 F2 opens two panels:
 
 - **Common**: runtime-wide controls such as base camera position / FOV / target / tracking. **Persists across scene switches.** Owned by the ThreeRuntime singleton.
 - **Scene**: active scene pack controls such as lighting, post effects, layer blur / opacity, and camera modulation. Reset on scene switch.
 
-Scene pack authors register **only on the Scene side**. The base camera lives in Common (owned by ThreeRuntime) and should not be touched from a scene pack. Camera breath / shake / sway are **modulations registered on the Scene side**, additively composed onto the base camera by CameraModulationRegistry.
+Scene pack authors register **only on the Scene side**. The base camera lives in Common and should not be touched from a scene pack. Parameters not exposed through controls stay fixed as local values in the code.
 
-Design these with the user:
-
-- Parameters to expose -> `useCharminalControls` -> Scene panel -> realtime tuning through `/charm`
-- Parameters not exposed -> local variables in code -> fixed behavior
-
-You can add more exposed parameters later. `bundled-packs/scenes/abandoned-factory/lib/` is the main reference for `useCharminalControls` + `useControlsBridge`.
+`bundled-packs/scenes/abandoned-factory/lib/` is the main reference for `useCharminalControls` + `useControlsBridge`.
 
 `~/.charminal/packs/my-scene/manifest.json`:
 
@@ -145,6 +154,42 @@ export default {
       foreground: "#c0c4cc"
     },
   },
+} satisfies ScenePackDefinition;
+```
+
+`~/.charminal/packs/my-scene/scene.tsx` (R3F component + exposed controls):
+
+```typescript
+import type { ScenePackDefinition } from "@charminal/sdk";
+import { useCharminalControls, useControlsBridge } from "@charminal/sdk/controls";
+
+function MySceneComponent() {
+  const [controls, setControls] = useCharminalControls("lights", () => ({
+    intensity: { value: 1.2, min: 0, max: 4, step: 0.1 },
+  }));
+  useControlsBridge("my-scene", controls, setControls);
+
+  const intensity = Number(controls.intensity ?? 1.2);
+  return <ambientLight intensity={intensity} color="#ffffff" />;
+}
+
+export default {
+  id: "my-scene",
+  type: "scene",
+  scene: {
+    id: "my-scene",
+    layers: [{ id: "vrm-slot", role: "character", blur: 0 }],
+    terminal: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+      cursor: "#8abeb7",
+    },
+    ui: {
+      background: "#1a1e28",
+      foreground: "#c0c4cc",
+    },
+  },
+  component: MySceneComponent,
 } satisfies ScenePackDefinition;
 ```
 
