@@ -47,6 +47,27 @@ const PACK_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
 const isPackSourceFile = (path: string): boolean =>
   PACK_SOURCE_EXTENSIONS.some((ext) => path.endsWith(ext));
 
+function topLevelEntryPath(
+  charminalHome: string,
+  id: string,
+  kind: string,
+  extension: "js" | "tsx",
+) {
+  return `${stripTrailingSlash(charminalHome)}/packs/${id}/${kind}.${extension}`;
+}
+
+function isTopLevelEntryPath(
+  path: string,
+  charminalHome: string,
+  id: string,
+  kind: string,
+): boolean {
+  return (
+    path === topLevelEntryPath(charminalHome, id, kind, "js") ||
+    path === topLevelEntryPath(charminalHome, id, kind, "tsx")
+  );
+}
+
 /**
  * `/Users/x/.charminal/packs/my-id/effect.js` → { type: "pack", id, kind }
  * `/Users/x/.charminal/packs/my-ui/ui.tsx` → { type: "pack", id, kind: "ui" }
@@ -118,23 +139,23 @@ export function mapEventToAction(event: CharminalLayerEvent, charminalHome: stri
     return { type: "init-changed", path: event.path };
   }
   if (event.kind === "removed") {
-    if (!event.path.endsWith(`${parsed.kind}.js`) && !event.path.endsWith(`${parsed.kind}.tsx`)) {
+    if (!isTopLevelEntryPath(event.path, charminalHome, parsed.id, parsed.kind)) {
       return {
         type: "reload-pack",
         id: parsed.id,
         kind: parsed.kind,
-        entryPath: `${stripTrailingSlash(charminalHome)}/packs/${parsed.id}/${parsed.kind}.tsx`,
+        entryPath: topLevelEntryPath(charminalHome, parsed.id, parsed.kind, "tsx"),
         mtimeMs: event.mtimeMs,
       };
     }
     return { type: "remove-pack", id: parsed.id, kind: parsed.kind };
   }
-  if (!event.path.endsWith(`${parsed.kind}.js`) && !event.path.endsWith(`${parsed.kind}.tsx`)) {
+  if (!isTopLevelEntryPath(event.path, charminalHome, parsed.id, parsed.kind)) {
     return {
       type: "reload-pack",
       id: parsed.id,
       kind: parsed.kind,
-      entryPath: `${stripTrailingSlash(charminalHome)}/packs/${parsed.id}/${parsed.kind}.tsx`,
+      entryPath: topLevelEntryPath(charminalHome, parsed.id, parsed.kind, "tsx"),
       mtimeMs: event.mtimeMs,
     };
   }

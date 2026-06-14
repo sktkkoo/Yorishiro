@@ -171,6 +171,19 @@ describe("mapEventToAction", () => {
 
     expect(
       mapEventToAction(
+        { path: `${HOME}/packs/my-room/lib/scene.tsx`, kind: "modified", mtimeMs: 1700000000006 },
+        HOME,
+      ),
+    ).toEqual({
+      type: "reload-pack",
+      id: "my-room",
+      kind: "scene",
+      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      mtimeMs: 1700000000006,
+    });
+
+    expect(
+      mapEventToAction(
         { path: `${HOME}/packs/my-room/lib/lights.tsx`, kind: "removed", mtimeMs: 1700000000005 },
         HOME,
       ),
