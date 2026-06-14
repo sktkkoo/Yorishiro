@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildTsxEntryUrl, isSupportedTsxHostImport, isTsxEntryPath } from "./tsx-transpiler";
+import {
+  buildTsxEntryUrl,
+  isSupportedTsxHostImport,
+  isTsxEntryPath,
+  resolveRelativeTsxImport,
+} from "./tsx-transpiler";
 
 describe("isTsxEntryPath", () => {
   it("detects TSX entry paths", () => {
@@ -34,6 +39,7 @@ describe("isSupportedTsxHostImport", () => {
   it("allows host modules needed by scene.tsx R3F components", () => {
     expect(isSupportedTsxHostImport("@charminal/sdk/r3f")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/fiber")).toBe(true);
+    expect(isSupportedTsxHostImport("@react-three/drei")).toBe(true);
     expect(isSupportedTsxHostImport("three")).toBe(true);
     expect(isSupportedTsxHostImport("@charminal/sdk/controls")).toBe(true);
   });
@@ -42,5 +48,35 @@ describe("isSupportedTsxHostImport", () => {
     expect(isSupportedTsxHostImport("fs")).toBe(false);
     expect(isSupportedTsxHostImport("@tauri-apps/api/core")).toBe(false);
     expect(isSupportedTsxHostImport("./local-file")).toBe(false);
+  });
+});
+
+describe("resolveRelativeTsxImport", () => {
+  it("resolves relative imports inside the pack directory", () => {
+    expect(
+      resolveRelativeTsxImport(
+        "./lib/lights",
+        "/Users/me/.charminal/packs/my-room/scene.tsx",
+        "/Users/me/.charminal/packs/my-room",
+      ),
+    ).toBe("/Users/me/.charminal/packs/my-room/lib/lights");
+
+    expect(
+      resolveRelativeTsxImport(
+        "../shared/palette",
+        "/Users/me/.charminal/packs/my-room/lib/lights.tsx",
+        "/Users/me/.charminal/packs/my-room",
+      ),
+    ).toBe("/Users/me/.charminal/packs/my-room/shared/palette");
+  });
+
+  it("rejects imports that leave the pack directory", () => {
+    expect(
+      resolveRelativeTsxImport(
+        "../other-pack/scene",
+        "/Users/me/.charminal/packs/my-room/scene.tsx",
+        "/Users/me/.charminal/packs/my-room",
+      ),
+    ).toBeNull();
   });
 });

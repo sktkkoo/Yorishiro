@@ -14,6 +14,7 @@ import type {
   UiSceneLayerTarget,
   UiThreeAPI,
 } from "@charminal/sdk";
+import * as ReactThreeDrei from "@react-three/drei";
 import * as ReactThreeFiber from "@react-three/fiber";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { LevaPanel } from "leva";
@@ -492,6 +493,7 @@ declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
   var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
   var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+  var __CHARMINAL_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
   var __CHARMINAL_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
   var __CHARMINAL_THREE__: typeof THREE | undefined;
   var __CHARMINAL_SDK_CONTROLS__: typeof CharminalControls | undefined;
@@ -501,6 +503,7 @@ declare global {
 globalThis.__CHARMINAL_REACT__ = React;
 globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
+globalThis.__CHARMINAL_REACT_THREE_DREI__ = ReactThreeDrei;
 globalThis.__CHARMINAL_REACT_THREE_FIBER__ = ReactThreeFiber;
 globalThis.__CHARMINAL_THREE__ = THREE;
 globalThis.__CHARMINAL_SDK_CONTROLS__ = CharminalControls;

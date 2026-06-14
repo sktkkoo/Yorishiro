@@ -3,9 +3,11 @@
  *
  * `.tsx` entry を runtime で esbuild-wasm transpile し、React / JSX runtime は
  * host 側の shim に解決する。現在は ui.tsx と scene.tsx がこの経路を使う。
- * Relative imports と persistent `.build` output は follow-up。
+ * Relative imports は pack directory 内の source file に限定して inline bundle する。
+ * Persistent `.build` output は follow-up。
  */
 
+import type * as ReactThreeDrei from "@react-three/drei";
 import type * as ReactThreeFiber from "@react-three/fiber";
 import * as esbuild from "esbuild-wasm";
 import esbuildWasmUrl from "esbuild-wasm/esbuild.wasm?url";
@@ -17,11 +19,13 @@ import type * as CharminalControls from "../../sdk/controls";
 import type * as CharminalR3f from "../../sdk/r3f";
 
 const HOST_NAMESPACE = "charminal-host";
+const USER_SOURCE_NAMESPACE = "charminal-user-source";
 const UNSUPPORTED_NAMESPACE = "charminal-unsupported";
 const SUPPORTED_HOST_IMPORTS = new Set([
   "@charminal/sdk",
   "@charminal/sdk/controls",
   "@charminal/sdk/r3f",
+  "@react-three/drei",
   "@react-three/fiber",
   "react",
   "react-dom/client",
@@ -33,6 +37,7 @@ declare global {
   var __CHARMINAL_REACT__: typeof React | undefined;
   var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
   var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+  var __CHARMINAL_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
   var __CHARMINAL_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
   var __CHARMINAL_THREE__: typeof THREE | undefined;
   var __CHARMINAL_SDK_CONTROLS__: typeof CharminalControls | undefined;
@@ -48,6 +53,9 @@ export interface TsxTranspilerOptions {
 }
 
 let initializePromise: Promise<void> | null = null;
+const RELATIVE_IMPORT_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
+
+type SourceLoader = "tsx" | "ts" | "jsx" | "js";
 
 export function isTsxEntryPath(entryPath: string): boolean {
   return entryPath.endsWith(".tsx");
@@ -55,6 +63,74 @@ export function isTsxEntryPath(entryPath: string): boolean {
 
 export function isSupportedTsxHostImport(path: string): boolean {
   return SUPPORTED_HOST_IMPORTS.has(path);
+}
+
+function packDirForEntry(entryPath: string): string {
+  return entryPath.slice(0, entryPath.lastIndexOf("/"));
+}
+
+function dirname(path: string): string {
+  const index = path.lastIndexOf("/");
+  return index <= 0 ? "/" : path.slice(0, index);
+}
+
+function normalizePosixPath(path: string): string | null {
+  const absolute = path.startsWith("/");
+  const parts: string[] = [];
+  for (const raw of path.split("/")) {
+    if (raw === "" || raw === ".") continue;
+    if (raw === "..") {
+      if (parts.length === 0) return null;
+      parts.pop();
+      continue;
+    }
+    parts.push(raw);
+  }
+  return `${absolute ? "/" : ""}${parts.join("/")}`;
+}
+
+function isWithinPackDir(path: string, packDir: string): boolean {
+  return path === packDir || path.startsWith(`${packDir}/`);
+}
+
+export function resolveRelativeTsxImport(
+  importPath: string,
+  importerPath: string,
+  packDir: string,
+): string | null {
+  if (!importPath.startsWith("./") && !importPath.startsWith("../")) {
+    return null;
+  }
+  const baseDir = importerPath === "" ? packDir : dirname(importerPath);
+  const normalized = normalizePosixPath(`${baseDir}/${importPath}`);
+  if (normalized === null || !isWithinPackDir(normalized, packDir)) {
+    return null;
+  }
+  return normalized;
+}
+
+function sourceLoaderForPath(path: string): SourceLoader | null {
+  if (path.endsWith(".tsx")) return "tsx";
+  if (path.endsWith(".ts")) return "ts";
+  if (path.endsWith(".jsx")) return "jsx";
+  if (path.endsWith(".js")) return "js";
+  return null;
+}
+
+async function readUserSource(
+  sourcePath: string,
+  deps: TsxTranspilerDeps,
+  options: TsxTranspilerOptions,
+): Promise<string | null> {
+  const url = buildTsxEntryUrl(sourcePath, deps, options);
+  const response = await fetch(url, { cache: "no-store" });
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(
+      `failed to read TSX relative import (${response.status} ${response.statusText}) at ${sourcePath}`,
+    );
+  }
+  return response.text();
 }
 
 function ensureEsbuildInitialized(): Promise<void> {
@@ -146,8 +222,10 @@ export {};
 `;
 
 const r3fShim = `
-const R3F = globalThis.__CHARMINAL_SDK_R3F__ ?? globalThis.__CHARMINAL_REACT_THREE_FIBER__;
-if (!R3F) throw new Error("Charminal R3F host bridge is not initialized");
+const Fiber = globalThis.__CHARMINAL_REACT_THREE_FIBER__;
+const SdkR3F = globalThis.__CHARMINAL_SDK_R3F__;
+if (!Fiber && !SdkR3F) throw new Error("Charminal R3F host bridge is not initialized");
+const R3F = { ...(Fiber ?? {}), ...(SdkR3F ?? {}) };
 export const {
   Canvas,
   ReactThreeFiber,
@@ -182,6 +260,13 @@ export const {
 export default R3F;
 `;
 
+const dreiShim = `
+const Drei = globalThis.__CHARMINAL_REACT_THREE_DREI__;
+if (!Drei) throw new Error("Charminal drei host bridge is not initialized");
+export const { AccumulativeShadows, AdaptiveDpr, AdaptiveEvents, ArcballControls, AsciiRenderer, BBAnchor, Backdrop, BakeShadows, Billboard, Bounds, Box, Bvh, CameraControls, CameraShake, Capsule, CatmullRomLine, Caustics, Center, Circle, Clone, Cloud, CloudInstance, Clouds, ComputedAttribute, Cone, ContactShadows, CubeCamera, CubeTexture, CubicBezierLine, CurveModifier, CycleRaycast, Cylinder, Decal, Detailed, DetectGPU, DeviceOrientationControls, Dodecahedron, DragControls, Edges, Effects, Environment, EnvironmentCube, EnvironmentMap, EnvironmentPortal, Example, Extrude, FaceControls, FaceLandmarker, FaceLandmarkerDefaults, Facemesh, FacemeshDatas, FacemeshEye, FacemeshEyeDefaults, Fbo, Fbx, FirstPersonControls, Fisheye, Float, FlyControls, GizmoHelper, GizmoViewcube, GizmoViewport, Gltf, GradientTexture, GradientType, Grid, Helper, Html, Hud, Icosahedron, Image, Instance, InstancedAttribute, Instances, IsObject, KeyboardControls, Ktx2, Lathe, Lightformer, Line, Loader, MapControls, MarchingCube, MarchingCubes, MarchingPlane, Mask, MatcapTexture, Merged, MeshDiscardMaterial, MeshDistortMaterial, MeshPortalMaterial, MeshReflectorMaterial, MeshRefractionMaterial, MeshTransmissionMaterial, MeshWobbleMaterial, MotionPathControls, MultiMaterial, NormalTexture, Octahedron, OrbitControls, OrthographicCamera, Outlines, PerformanceMonitor, PerspectiveCamera, PivotControls, Plane, Point, PointMaterial, PointMaterialImpl, PointerLockControls, Points, PointsBuffer, Polyhedron, PositionMesh, PositionPoint, PositionalAudio, Preload, PresentationControls, Progress, QuadraticBezierLine, RandomizedLight, RenderCubeTexture, RenderTexture, Resize, Ring, RoundedBox, RoundedBoxGeometry, Sampler, ScreenQuad, ScreenSizer, ScreenSpace, ScreenVideoTexture, Scroll, ScrollControls, Segment, SegmentObject, Segments, Select, Shadow, ShadowAlpha, Shape, Sky, SoftShadows, Sparkles, Sphere, Splat, SpotLight, SpotLightShadow, SpriteAnimator, Stage, Stars, Stats, StatsGl, Svg, Tetrahedron, Text, Text3D, Texture, Torus, TorusKnot, TrackballControls, Trail, TrailTexture, TransformControls, Tube, VideoTexture, View, WebcamVideoTexture, Wireframe, accumulativeContext, calcPosFromAngles, calculateScaleFactor, checkIfFrameIsEmpty, createInstances, getFirstFrame, isWebGL2Available, meshBounds, shaderMaterial, useAnimations, useAspect, useBVH, useBounds, useBoxProjectedEnv, useCamera, useContextBridge, useCubeCamera, useCubeTexture, useCursor, useDepthBuffer, useDetectGPU, useEnvironment, useFBO, useFBX, useFaceControls, useFaceLandmarker, useFont, useGLTF, useGizmoContext, useHelper, useIntersect, useKTX2, useKeyboardControls, useMask, useMatcapTexture, useMotion, useNormalTexture, usePerformanceMonitor, useProgress, useScroll, useSelect, useSpriteAnimator, useSpriteLoader, useSurfaceSampler, useTexture, useTrail, useTrailTexture, useVideoTexture } = Drei;
+export default Drei;
+`;
+
 const controlsShim = `
 const Controls = globalThis.__CHARMINAL_SDK_CONTROLS__;
 if (!Controls) throw new Error("Charminal controls host bridge is not initialized");
@@ -200,7 +285,11 @@ export const { ACESFilmicToneMapping, AddEquation, AddOperation, AdditiveAnimati
 export default THREE;
 `;
 
-function createPlan4MvpPlugin(): esbuild.Plugin {
+function createPlan4MvpPlugin(
+  packDir: string,
+  deps: TsxTranspilerDeps,
+  options: TsxTranspilerOptions,
+): esbuild.Plugin {
   return {
     name: "charminal-ui-pack-plan4-mvp",
     setup(build) {
@@ -216,11 +305,21 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
               }
             : undefined,
       );
-      build.onResolve({ filter: /^\.{1,2}\// }, (args) => ({
-        path: args.path,
-        namespace: UNSUPPORTED_NAMESPACE,
-        pluginData: "relative imports are not supported for runtime-transpiled .tsx entries",
-      }));
+      build.onResolve({ filter: /^\.{1,2}\// }, (args) => {
+        const resolved = resolveRelativeTsxImport(args.path, args.importer, packDir);
+        if (resolved === null) {
+          return {
+            path: args.path,
+            namespace: UNSUPPORTED_NAMESPACE,
+            pluginData: `relative import '${args.path}' escapes the pack directory`,
+          };
+        }
+        return {
+          path: resolved,
+          namespace: USER_SOURCE_NAMESPACE,
+          resolveDir: dirname(resolved),
+        };
+      });
       build.onResolve({ filter: /.*/ }, (args) => ({
         path: args.path,
         namespace: UNSUPPORTED_NAMESPACE,
@@ -236,6 +335,9 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
         if (args.path === "react-dom/client") {
           return { contents: reactDomClientShim, loader: "js" };
         }
+        if (args.path === "@react-three/drei") {
+          return { contents: dreiShim, loader: "js" };
+        }
         if (args.path === "@charminal/sdk/r3f" || args.path === "@react-three/fiber") {
           return { contents: r3fShim, loader: "js" };
         }
@@ -246,6 +348,31 @@ function createPlan4MvpPlugin(): esbuild.Plugin {
           return { contents: threeShim, loader: "js" };
         }
         return { contents: sdkShim, loader: "js" };
+      });
+      build.onLoad({ filter: /.*/, namespace: USER_SOURCE_NAMESPACE }, async (args) => {
+        const candidates =
+          sourceLoaderForPath(args.path) === null
+            ? RELATIVE_IMPORT_EXTENSIONS.map((ext) => `${args.path}${ext}`)
+            : [args.path];
+        for (const sourcePath of candidates) {
+          const loader = sourceLoaderForPath(sourcePath);
+          if (loader === null) continue;
+          const contents = await readUserSource(sourcePath, deps, options);
+          if (contents !== null) {
+            return {
+              contents,
+              loader,
+              resolveDir: dirname(sourcePath),
+            };
+          }
+        }
+        return {
+          errors: [
+            {
+              text: `relative import '${args.path}' not found; expected one of ${candidates.join(", ")}`,
+            },
+          ],
+        };
       });
       build.onLoad({ filter: /.*/, namespace: UNSUPPORTED_NAMESPACE }, (args) => ({
         errors: [{ text: String(args.pluginData) }],
@@ -261,6 +388,7 @@ export async function transpileUiTsxEntry(
 ): Promise<string> {
   await ensureEsbuildInitialized();
   const source = await readEntrySource(entryPath, deps, options);
+  const packDir = packDirForEntry(entryPath);
   const result = await esbuild.build({
     bundle: true,
     format: "esm",
@@ -270,13 +398,13 @@ export async function transpileUiTsxEntry(
     stdin: {
       contents: source,
       loader: "tsx",
-      resolveDir: "/",
+      resolveDir: packDir,
       sourcefile: entryPath,
     },
     target: "es2020",
     treeShaking: true,
     write: false,
-    plugins: [createPlan4MvpPlugin()],
+    plugins: [createPlan4MvpPlugin(packDir, deps, options)],
   });
   const output = result.outputFiles?.[0]?.text;
   if (output === undefined) {

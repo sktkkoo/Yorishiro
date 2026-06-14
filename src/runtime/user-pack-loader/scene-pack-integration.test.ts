@@ -146,6 +146,25 @@ describe("registerScenePack", () => {
     }
   });
 
+  it("component field が関数でなければ failed を返し registry に渡さない", async () => {
+    const { ctx, scenePackEntries } = makeCtx({
+      id: "bad-component-scene",
+      entryPath: "/p/bad-component-scene/scene.js",
+      def: {
+        ...makeValidDef("bad-component-scene"),
+        component: 42,
+      },
+    });
+
+    const result = await registerScenePack(ctx);
+
+    expect(result.status).toBe("failed");
+    if (result.status === "failed") {
+      expect(result.error).toMatch(/component must be a React component function/);
+    }
+    expect(scenePackEntries).toHaveLength(0);
+  });
+
   it("scene.tsx entry でも packDir を導出して manifest を読む", async () => {
     const { ctx, scenePackEntries } = makeCtx({
       id: "tsx-scene",
