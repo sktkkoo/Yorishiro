@@ -156,7 +156,7 @@ Phase 0 defines the schema in advance and rejects unknown backends / unknown fie
 | Pack type | MVP public default | Future public distribution | Notes |
 |---|---|---|---|
 | `scene` | `declarative` | `declarative` default. JS scenes are `trusted-main-thread-js` | Existing `scene.js` treated as local / legacy / trusted |
-| `scene` (R3F component) | Bundled-only | `trusted-main-thread-js`. User pack support in separate spec | Main-thread React + Three.js context. R3F host integration required |
+| `scene` (R3F component) | Bundled / local user pack | `trusted-main-thread-js` | Main-thread React + Three.js context. R3F host integration required. Local user packs run through the `scene.tsx` entry |
 | `effect` | `declarative` recipe or curated `trusted-main-thread-js` | `declarative` if renderer primitives suffice; custom renderer is trusted | Visual expressiveness and security conflict easily |
 | `persona` | `declarative` persona data | `isolated-js` if handler JS needed; main thread is trusted | Push prompt / reflex mapping toward data-only |
 | `amenity` | Not publicly distributed in MVP | `isolated-js` default | Deferred until permission UX is complete due to system capabilities |
@@ -389,6 +389,7 @@ PTY tools (`terminal_prefill` / `write_terminal_input` etc.) are **prohibited ac
 
 ## Revision history
 
+- 2026-06-14: Reflected local user pack support for R3F component scenes. `bundled-only` was an implementation gap; user packs may now provide `scene.tsx` under `trusted-main-thread-js`.
 - 2026-06-13: Added the sandbox declaration capability ladder and Phase 0 fail-closed client contract. Added `pack-sandbox-strategy.md` as the detailed decision.
 - 2026-05-16: Added source classification, declarative hostile data checklist, isolated-js initiation gate, capability RPC validation, registry trust limitation, SES bypass defense model, `/charm:create` and publish conversion flow, machine checker relationship, and note that public distribution is not yet available.
 - 2026-05-03: Added R3F scene pack class. Initial scope is bundled-only, execution class is `trusted-main-thread-js`.

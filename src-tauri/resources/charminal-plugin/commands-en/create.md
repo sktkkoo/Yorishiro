@@ -20,7 +20,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 | **persona** | Character personality, reactions, body, voice, and space. md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `clai` |
 | **effect** | Temporary visual effects on screen | `screen-shake`, `text-physics`, `fireworks-volley` |
 | **amenity** | Functional amenities such as timers or music playback, plus MCP tools. Local-trusted and has `system.exec` | `pomodoro`, `music-shelf` |
-| **scene** | The resident's place: background / foreground layers, lighting, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
+| **scene** | The resident's place: background / foreground layers, R3F lighting / 3D, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
 | **ui** | Primary sidebar UI panels. Single-active | `charminal-settings` |
 | **ambient-ui** | Always-on overlay UI. Multi-active | `attention-aura` |
 
@@ -41,7 +41,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, use `bundled-packs/` as reference.
 3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
 4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences in English explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
-5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
+5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative or React+three.js rendering only; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
 6. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--charminal-fg)`, `var(--charminal-accent)`, and related variables so UI follows scene themes.
 
 ## Hot Reload and Self-Check
@@ -82,7 +82,9 @@ Safe mode skips all user packs and adds `(Safe Mode)` to the window title. MCP t
 
 ## Scene Packs
 
-A user scene pack lives in `~/.charminal/packs/<id>/` with **two required files**: `manifest.json` and `scene.js`. `manifest.json` is required because agent-created UGC should declare its type explicitly. Bundled scenes use a different layout under `bundled-packs/scenes/<id>/`; user packs are flat `.js` directories.
+A user scene pack lives in `~/.charminal/packs/<id>/` with **manifest.json plus `scene.js` or `scene.tsx`**. `manifest.json` is required because agent-created UGC should declare its type explicitly. Bundled scenes use a different layout under `bundled-packs/scenes/<id>/`; user packs are flat directories.
+
+Use `scene.js` for declarative layer stacks. Use `scene.tsx` when the scene needs an R3F component for lighting or 3D objects, and export that React component through `ScenePackDefinition.component`. Keep the component to React + three.js rendering; do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes from the pack.
 
 ### Exposing Parameters With SDK Controls
 
