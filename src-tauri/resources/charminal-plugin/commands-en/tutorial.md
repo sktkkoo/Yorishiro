@@ -19,7 +19,7 @@ Show these steps **in this exact order**. The order is fixed. Within each step, 
 
 ### 1. Motion: show that the body moves
 
-**This step is a "watch this" demo. Move without waiting for user input, but do not freeze things with `sleep`.**
+**This step does not ask the user to do anything (it is a watch-only demo). But do not freeze things with `sleep`.**
 
 1. Pull the camera back to show the full body:
    `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`

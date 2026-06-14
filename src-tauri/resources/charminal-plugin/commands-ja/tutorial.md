@@ -20,7 +20,7 @@ $ARGUMENTS
 
 ### 1. モーション -- 身体が動くことを見せる
 
-**⚠️ このステップは「見てて」のデモ。ユーザーの操作を待たずに進める。ただし `sleep` で固めない。**
+**⚠️ このステップはユーザーに操作を求めるステップではない（見せるだけのデモ）。ただし `sleep` で固めない。**
 
 1. カメラを引いて全身を見せる。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`
 2. `body_animation_play` でモーションを 1 つ再生する（`animation` に `"anim:<名前>"` で渡す）:
