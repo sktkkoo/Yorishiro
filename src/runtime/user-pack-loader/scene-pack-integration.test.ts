@@ -4,7 +4,7 @@
  * fetch / convertFileSrc はすべて stub で差し替え。Tauri runtime 依存なし。
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { createSubsystemLog, DevLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
 import type { ScenePackEntry, ScenePackRegistry } from "../scene-pack-registry";
@@ -110,15 +110,15 @@ describe("registerScenePack", () => {
       expect(scenePackEntries).toHaveLength(1);
       expect(scenePackEntries[0].id).toBe("test-scene");
       expect(scenePackEntries[0].origin).toBe("user");
+      expect(scenePackEntries[0].component).toBeUndefined();
       expect(packRegistry.has("test-scene", "scene")).toBe(true);
     } finally {
       restore();
     }
   });
 
-  it("component field を持つ user scene pack は warn して entry には渡さない", async () => {
+  it("component field を持つ user scene pack は registry entry に渡す", async () => {
     const FakeComponent = () => null;
-    const consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { ctx, scenePackEntries } = makeCtx({
       id: "component-scene",
       entryPath: "/p/component-scene/scene.js",
@@ -139,12 +139,36 @@ describe("registerScenePack", () => {
       const result = await registerScenePack(ctx);
 
       expect(result.status).toBe("loaded");
-      expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining("component field"));
       expect(scenePackEntries).toHaveLength(1);
-      expect(scenePackEntries[0].component).toBeUndefined();
+      expect(scenePackEntries[0].component).toBe(FakeComponent);
     } finally {
       restore();
-      consoleWarnSpy.mockRestore();
+    }
+  });
+
+  it("scene.tsx entry でも packDir を導出して manifest を読む", async () => {
+    const { ctx, scenePackEntries } = makeCtx({
+      id: "tsx-scene",
+      entryPath: "/p/tsx-scene/scene.tsx",
+      def: makeValidDef("tsx-scene"),
+    });
+    const fetchedUrls: string[] = [];
+
+    const restore = withFetch((url) => {
+      fetchedUrls.push(url);
+      return new Response(makeManifestJson("tsx-scene"), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+    try {
+      const result = await registerScenePack(ctx);
+
+      expect(result.status).toBe("loaded");
+      expect(fetchedUrls).toContain("asset://localhost/p/tsx-scene/manifest.json");
+      expect(scenePackEntries).toHaveLength(1);
+    } finally {
+      restore();
     }
   });
 

@@ -33,7 +33,7 @@ import type { UserPackRegistry } from "./user-pack-registry";
 export interface SceneRegisterContext {
   /** pack ID（list_user_packs が返す id）。 */
   readonly id: string;
-  /** pack entry ファイルの絶対パス（`/path/to/<id>/scene.js`）。 */
+  /** pack entry ファイルの絶対パス（`/path/to/<id>/scene.js` または `scene.tsx`）。 */
   readonly entryPath: string;
   /** pack の default export（extractDefault 適用後の unknown 値）。 */
   readonly def: unknown;
@@ -82,7 +82,7 @@ const errorMessage = (err: unknown): string => (err instanceof Error ? err.messa
  *
  * 処理順：
  *   1. `validateScenePackDefinition` で default export の shape を確認
- *   2. `entryPath` から packDir を導出（末尾の `/scene.js` を除去）
+ *   2. `entryPath` から packDir を導出（末尾の `/scene.js` / `/scene.tsx` を除去）
  *   3. `convertFileSrc` で manifest URL を生成し `fetch` + `validateScenePackManifest`
  *   4. `resolveSceneAssets` で layer src を asset:// URL に変換
  *   5. `packRegistry.has` → dispose → `scenePackRegistry.register` → `packRegistry.register`
@@ -103,15 +103,8 @@ export async function registerScenePack(ctx: SceneRegisterContext): Promise<Scen
     });
     return { status: "failed", error };
   }
-  if (scenePackDef.component !== undefined) {
-    console.warn(
-      `[user-pack-loader] scene pack "${scenePackDef.id}" exports a component field. ` +
-        "R3F-component scene packs are not yet supported in user packs and will be ignored.",
-    );
-  }
-
-  // 2. packDir = entryPath から末尾の `/scene.js` を除いたディレクトリ
-  const packDir = ctx.entryPath.replace(/\/scene\.js$/, "");
+  // 2. packDir = entryPath から末尾の scene entry を除いたディレクトリ
+  const packDir = ctx.entryPath.replace(/\/scene\.(?:js|tsx)$/, "");
 
   // 3. manifest.json を fetch + validate
   const manifestUrl = ctx.convertFileSrc(`${packDir}/manifest.json`);
@@ -159,7 +152,7 @@ export async function registerScenePack(ctx: SceneRegisterContext): Promise<Scen
     manifest,
     scene: resolved,
     origin: "user",
-    // component は user pack では渡さない（R3F-component scene pack は bundled-only）。
+    component: scenePackDef.component,
   });
   ctx.packRegistry.register(ctx.id, "scene", handle);
 

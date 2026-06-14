@@ -1,9 +1,9 @@
 /**
- * UI pack TSX transpiler — Plan 4 MVP.
+ * user pack TSX transpiler.
  *
- * This intentionally supports only a single `ui.tsx` entry file. Relative
- * imports and persistent `.build` output are follow-up work once the core
- * user UI pack path is proven.
+ * `.tsx` entry を runtime で esbuild-wasm transpile し、React / JSX runtime は
+ * host 側の shim に解決する。現在は ui.tsx と scene.tsx がこの経路を使う。
+ * Relative imports と persistent `.build` output は follow-up。
  */
 
 import * as esbuild from "esbuild-wasm";
