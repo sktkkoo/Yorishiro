@@ -165,6 +165,9 @@ export function validateScenePackDefinition(rawDef: unknown): ScenePackDefinitio
   if (typeof d.scene !== "object" || d.scene === null) {
     throw new PackValidationError("scene pack must have scene SceneSpec");
   }
+  if (d.component !== undefined && typeof d.component !== "function") {
+    throw new PackValidationError("scene pack component must be a React component function");
+  }
   return d as unknown as ScenePackDefinition;
 }
 

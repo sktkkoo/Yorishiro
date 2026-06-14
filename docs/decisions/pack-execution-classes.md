@@ -156,7 +156,7 @@ Phase 0 では schema を先行定義し、未知 backend / 未知 field を fai
 | Pack type | MVP public default | 将来の公開配布 | 備考 |
 |---|---|---|---|
 | `scene` | `declarative` | `declarative` default。JS scene は `trusted-main-thread-js` | 既存 `scene.js` は local / legacy / trusted 扱い |
-| `scene` (R3F component) | bundled-only | `trusted-main-thread-js`。user pack 対応は別 spec | main thread React + Three.js context。R3F host integration 必須 |
+| `scene` (R3F component) | bundled / local user pack | `trusted-main-thread-js` | main thread React + Three.js context。R3F host integration 必須。local user pack は `scene.tsx` entry で実行する |
 | `effect` | `declarative` recipe or curated `trusted-main-thread-js` | renderer primitive が十分なら `declarative`、custom renderer は trusted | visual 表現力と security が衝突しやすい |
 | `persona` | `declarative` persona data | handler JS が必要なら `isolated-js`、main thread は trusted | prompt / reflex mapping は data-only に寄せる |
 | `amenity` | MVP では公開配布しない | `isolated-js` default | system capability を持つため permission UX 完成まで外す |
@@ -389,6 +389,7 @@ PTY 系 tool（`terminal_prefill` / `write_terminal_input` 等）は当面 **全
 
 ## 改訂履歴
 
+- 2026-06-14: R3F component scene の local user pack 対応を反映。`bundled-only` は初期実装上の gap であり、`scene.tsx` + `trusted-main-thread-js` として user pack でも許可する。
 - 2026-06-13: sandbox 宣言の能力ラダーと Phase 0 fail-closed client contract を追記。詳細 decision として `pack-sandbox-strategy.md` を追加。
 - 2026-05-16: source classification、declarative hostile data checklist、isolated-js 着手 gate、capability RPC validation、registry trust limitation、SES bypass 時の防御モデル、`/charm:create` と publish 用変換 flow、machine checker の関係、公開配布機能が未提供であることを追記。
 - 2026-05-03: R3F scene pack class を追加。初期 scope は bundled-only、execution class は `trusted-main-thread-js`。

@@ -11,6 +11,8 @@ import {
   useControls as useLevaControls,
 } from "../runtime/leva";
 
+export { useControlsBridge } from "../runtime/ui-state-store";
+
 export type ControlSchema = Record<string, unknown>;
 export type ControlSet = (values: Record<string, unknown>) => void;
 export type ControlGet = (path: string) => unknown;

@@ -137,11 +137,12 @@ export interface ScenePackDefinition {
 
   /**
    * Optional R3F component による visual 表現.
-   * 提供されれば runtime が R3F host に mount し, scene.layers は無視される.
+   * 提供されれば runtime が R3F host に mount する.
+   * scene.layers も併用でき, component + layers の hybrid scene として扱われる.
    * 提供されなければ既存の SceneCompositor が scene.layers を DOM stack で描画.
    *
-   * 初期スコープでは bundled pack のみ provide 可能.
-   * User pack に component を含めても loader 側で reject される（warning log）.
+   * bundled pack / user pack のどちらでも提供できる.
+   * user pack では scene.tsx entry を使うと React + three.js の component を書ける.
    *
    * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §3.1, §5.2
    */
