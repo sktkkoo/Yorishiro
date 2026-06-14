@@ -19,19 +19,22 @@ Show these steps **in this exact order**. The order is fixed. Within each step, 
 
 ### 1. Motion: show that the body moves
 
-**This step is a "watch this" demo. Do not wait for user input inside it. Complete it in one response.**
+**This step is a "watch this" demo. Move without waiting for user input, but do not freeze things with `sleep`.**
 
 1. Pull the camera back to show the full body:
    `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`
 2. Play one motion with `body_animation_play`, using `animation: "anim:<name>"`:
    - `anim:VRMA_06_HandOnHip` - hand on hip
-3. Use Bash **`sleep 5`** so the user can see it
-4. Return the camera to default:
-   `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
+3. **End the response here. Do not `sleep`.** The animation plays on its own in real time, so the user watches it naturally while reading your next words. Leave the camera pulled back so the full body stays visible during the pause.
 
 Talk to the user like a quiet aside, roughly "Is it moving properly?" Keep the temperature natural.
 
+(Return the camera to default at the start of the next step, not immediately within this same response.)
+
 ### 2. Lighting: let them experience that the resident sees the world
+
+First, return the camera you pulled back during the motion step to default:
+`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
 
 Ask the user to press **F2**. Say it naturally in the persona's voice.
 
@@ -76,12 +79,10 @@ This naturally shows that the resident can move the camera too.
 
 ### 4. Scene switch: show that the whole room can change
 
-**This is also a demo. Complete it in one response.**
+**This is also a demo. Do not freeze things with `sleep`.**
 
-1. Use `scene_activate` to switch scenes. Keep the line light, like "a little rearrangement"
-2. Use Bash **`sleep 5`** so the user can see the change
-3. Use `scene_activate` to return to **Simple Room**
-4. Use Bash **`sleep 5`**
+1. Use `scene_activate` to switch scenes. Keep the line light, like "a little rearrangement". **Once switched, end the response. Do not `sleep`.** The change applies instantly, so the user sees it before moving on to the next exchange
+2. In the next exchange, use `scene_activate` to return to **Simple Room**. Again do not wait — touch on the fact that you put it back and move on
 
 ### 5. Tutorial completion fireworks
 
@@ -124,8 +125,16 @@ Before pack creation, explain how to reduce repeated permission prompts. For Cla
 
 ### Keyboard controls
 
-- **F1** or the sidebar button opens settings. The user can change body, scene, and sound
-- **F2** toggles debug panels. Common holds base camera and runtime-wide controls; Scene holds active scene lighting / post effects. `/charm:update` uses these for realtime tuning
+F2 (debug panels) is the one you already touched during the lighting step: Common (base camera and runtime-wide controls) and Scene (active scene lighting / post effects), also used by `/charm:update` for realtime tuning.
+
+Here, hand over the remaining keys that switch how the world is *seen*. All three are shortcuts registered in `~/.charminal/init.js`:
+
+- **F1** - toggles settings (or the sidebar button). Change body, scene, and sound
+- **F3** - theater mode. Hides the sidebar chrome and terminal, leaving only the character fullscreen
+- **F4** - immersive mode. The terminal background turns transparent and the character sits behind the text
+
+Edit `init.js` to add your own keys (restart to apply).
+
 - **Cmd+T** opens a new shell tab. A plain shell, separate from the agent
 - **Cmd+W** closes the active tab (the main tab cannot be closed)
 - **Ctrl+Tab / Ctrl+Shift+Tab** switches to next / previous tab
