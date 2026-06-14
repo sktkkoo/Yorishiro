@@ -46,11 +46,7 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 macOS is the primary target for the current alpha builds.
 
-Download the `.dmg` from [Releases](https://github.com/sktkkoo/Charminal/releases) and drag `charminal.app` to `/Applications`. The app is unsigned, so remove the quarantine attribute before first launch:
-
-```bash
-xattr -cr /Applications/charminal.app
-```
+Download the `.dmg` from [Releases](https://github.com/sktkkoo/Charminal/releases) and drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
 ### Launch (from source)
 

@@ -47,11 +47,7 @@ Charminal はユーザーのローカル環境にインストールされた Cla
 
 現在の alpha build は macOS を主対象にしています。
 
-[Releases](https://github.com/sktkkoo/Charminal/releases) から `.dmg` をダウンロードし、`charminal.app` を `/Applications` にドラッグしてください。署名されていないため、初回起動前に quarantine 属性を解除します：
-
-```bash
-xattr -cr /Applications/charminal.app
-```
+[Releases](https://github.com/sktkkoo/Charminal/releases) から `.dmg` をダウンロードし、`charminal.app` を `/Applications` にドラッグしてください。ビルドは Apple Developer ID で署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
 ### 起動（ソースから）
 
