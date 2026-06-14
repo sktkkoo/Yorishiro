@@ -165,7 +165,7 @@ Charminal のユーザーデータは `~/.charminal/` に保存されます：
 
 ## Status
 
-**v0.4.0**
+**v0.5.0**
 
 実装 phase の途中です。API・データ形状・pack 仕様は今後変わります。
 

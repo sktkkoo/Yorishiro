@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-06-14
+
 - Terminal agent launch is now backed by `TerminalAgent` adapters for Claude Code, Codex, and OpenCode.
 - Codex installs Charminal commands as `$charm-*` skills instead of `/charm:*` slash commands.
 - OpenCode receives Charminal commands as `/charm-*` custom commands through `OPENCODE_CONFIG_CONTENT`.
