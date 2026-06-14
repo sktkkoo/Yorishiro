@@ -152,11 +152,12 @@ Scene packs can declare terminal colors and UI colors together. When the scene c
 
 **ui**: overall sidebar / panel / button colors. You can define background, foreground, foregroundDim, sidebarBackground, panelBackground, border, buttonBackground, buttonForeground, inputBackground, accent, accentSoft, accentBorder, muted, and glow. Missing fields fall back to defaults.
 
-When proposing a theme:
+**Decide the color theme together with the user.** This is a required step when building a scene — if the terminal colors do not match the world, the scene loses half its point. Do not lock it in unilaterally; work through it together:
 
-1. Pick the background from the scene mood
-2. Tune ANSI colors to the same saturation and temperature
+1. Pick the background from the scene mood. Offer a few candidates and let the user choose
+2. Tune ANSI colors to the same saturation and temperature. Confirm the base palette (Nord, Gruvbox, Catppuccin, Everforest, etc.) with the user
 3. Keep UI in the same tone; matching accent to cursor often feels natural
+4. Once decided, write it into `terminal` / `ui` in scene.js, apply it live with `scene_activate`, and fine-tune together while looking at the result
 
 References:
 

@@ -7,6 +7,8 @@
 
 <p align="center"><strong>A body for the AI in your terminal.</strong></p>
 
+Charminal is a terminal that gives AI a body and a living space. It is not a character chat app or a secretary app. The entire application — terminal included — is treated as a space the character inhabits.
+
 **Make the hours you spend working with AI something you can endure, sustain, and grow attached to. This is the purpose of this project.**
 
 The time we spend working with AI will only grow longer. Yet the AI beside us remains faceless — an entity whose presence we cannot even locate.
@@ -16,8 +18,6 @@ Charminal builds not a harness for AI's capabilities, but a harness for making t
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
-
-Charminal is a terminal that gives AI a body and a living space. It is not a character chat app or a secretary app. The entire application — terminal included — is treated as a space the character inhabits.
 
 AI agents such as Claude Code and Codex launch automatically inside the terminal. When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
 
@@ -46,11 +46,7 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 macOS is the primary target for the current alpha builds.
 
-Download the `.dmg` from [Releases](https://github.com/sktkkoo/Charminal/releases) and drag `charminal.app` to `/Applications`. The app is unsigned, so remove the quarantine attribute before first launch:
-
-```bash
-xattr -cr /Applications/charminal.app
-```
+Download the `.dmg` from [Releases](https://github.com/sktkkoo/Charminal/releases) and drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
 ### Launch (from source)
 
