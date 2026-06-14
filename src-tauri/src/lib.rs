@@ -1202,7 +1202,7 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
 /// Scan ~/.charminal/packs/ and return discovered packs.
 ///
 /// Convention: ~/.charminal/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
-/// UI packs also support ~/.charminal/packs/<id>/ui.tsx in Plan 4 MVP.
+/// UI / scene packs also support runtime-transpiled .tsx entries.
 /// Multiple kind files in one pack directory produce multiple entries.
 /// Missing directory returns empty vec (not an error).
 #[tauri::command]
@@ -1216,8 +1216,8 @@ fn entry_file_for_kind(pack_dir: &Path, kind: &str) -> Option<PathBuf> {
     if js_entry.is_file() {
         return Some(js_entry);
     }
-    if kind == "ui" {
-        let tsx_entry = pack_dir.join("ui.tsx");
+    if kind == "ui" || kind == "scene" {
+        let tsx_entry = pack_dir.join(format!("{}.tsx", kind));
         if tsx_entry.is_file() {
             return Some(tsx_entry);
         }
@@ -2174,7 +2174,7 @@ mod sdk_bundle_tests {
 
 #[cfg(test)]
 mod user_pack_discovery_tests {
-    use super::discover_user_pack_entries;
+    use super::{discover_user_pack_entries, entry_file_for_kind};
     use std::fs;
     use std::path::PathBuf;
 
@@ -2223,6 +2223,46 @@ mod user_pack_discovery_tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].kind, "ui");
         assert!(entries[0].entry_path.ends_with("/my-ui/ui.js"));
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn discovers_scene_tsx_when_scene_js_is_absent() {
+        let packs = fresh_packs_dir("scene-tsx");
+        let pack_dir = packs.join("my-room");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("scene.tsx"), "export default {};\n").expect("write scene.tsx");
+
+        let entry = entry_file_for_kind(&pack_dir, "scene").expect("scene entry");
+        assert!(entry.ends_with("scene.tsx"));
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "my-room");
+        assert_eq!(entries[0].kind, "scene");
+        assert!(entries[0].entry_path.ends_with("/my-room/scene.tsx"));
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn prefers_scene_js_over_scene_tsx_for_compatibility() {
+        let packs = fresh_packs_dir("scene-js-precedence");
+        let pack_dir = packs.join("my-room");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("scene.js"), "export default {};\n").expect("write scene.js");
+        fs::write(pack_dir.join("scene.tsx"), "export default {};\n").expect("write scene.tsx");
+
+        let entry = entry_file_for_kind(&pack_dir, "scene").expect("scene entry");
+        assert!(entry.ends_with("scene.js"));
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "scene");
+        assert!(entries[0].entry_path.ends_with("/my-room/scene.js"));
 
         let _ = fs::remove_dir_all(&packs);
     }
