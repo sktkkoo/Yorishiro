@@ -21,6 +21,33 @@ describe("layerStyle", () => {
     expect(style.filter).toBe("blur(0px)");
   });
 
+  it("applies CSS filter drop-shadow when dropShadow is set", () => {
+    const style = layerStyle({
+      id: "vrm",
+      dropShadow: {
+        offsetX: 6,
+        offsetY: 10,
+        blur: 12,
+        color: "rgba(0,0,0,0.45)",
+      },
+    });
+    expect(style.filter).toBe("drop-shadow(6px 10px 12px rgba(0,0,0,0.45))");
+  });
+
+  it("combines blur and dropShadow in CSS filter order", () => {
+    const style = layerStyle({
+      id: "vrm",
+      blur: 6,
+      dropShadow: {
+        offsetX: 6,
+        offsetY: 10,
+        blur: 12,
+        color: "rgba(0,0,0,0.45)",
+      },
+    });
+    expect(style.filter).toBe("blur(6px) drop-shadow(6px 10px 12px rgba(0,0,0,0.45))");
+  });
+
   it("omits filter when blur is not set", () => {
     const style = layerStyle({ id: "bg" });
     expect(style.filter).toBeUndefined();

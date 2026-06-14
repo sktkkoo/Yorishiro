@@ -51,6 +51,22 @@ export interface Layer {
   readonly blur?: number;
   /** 0-1。省略は 1（完全不透明）。 */
   readonly opacity?: number;
+  /**
+   * per-layer のドロップシャドウ（CSS `filter: drop-shadow()`）。
+   * character レイヤーに付けると VRM のシルエット影になる（透過 canvas の alpha を拾う）。
+   * 2D の screen-space オフセット影で、床への遠近投影ではない。
+   * 同じ layer 内の可視 canvas / 子孫要素も同じ影の対象になる。
+   */
+  readonly dropShadow?: {
+    /** 水平オフセット（px） */
+    readonly offsetX: number;
+    /** 垂直オフセット（px） */
+    readonly offsetY: number;
+    /** ぼかし半径（px） */
+    readonly blur: number;
+    /** 影色。opacity は色（rgba 等）に含める。例: "rgba(0,0,0,0.35)" */
+    readonly color: string;
+  };
 }
 
 /**
