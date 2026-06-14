@@ -15,7 +15,7 @@ You are helping the user add, edit, or list Charminal keyboard shortcuts.
 
 - Charminal creates a template on first launch
 - If the file is deleted, Charminal creates it again on the next launch
-- **There is no hot reload**. After editing it, tell the user to restart Charminal
+- **There is no automatic hot reload.** After editing it, tell the user to reload with **Cmd/Ctrl+R** (`window.location.reload()` re-runs init.js; a full app restart is not needed)
 
 ## Flow
 
@@ -23,7 +23,7 @@ You are helping the user add, edit, or list Charminal keyboard shortcuts.
 2. Check existing shortcuts to avoid duplicates
 3. Avoid terminal-standard keys such as `Ctrl+C`, `Ctrl+D`, and `Ctrl+Z`
 4. Edit or list the file as requested
-5. Tell the user Charminal must be restarted for changes to apply
+5. Tell the user the changes apply on a Cmd/Ctrl+R reload (not a full app restart)
 
 ## Context API
 

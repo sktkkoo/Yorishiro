@@ -103,10 +103,11 @@ If they continue:
    - Glitch noise across the screen
    - Falling stars or snow, drawn as canvas particles
    - Colored rings expanding like ripples and fading
-2. Create the effect pack through `/charm:create` (`manifest.json` + `effect.js`)
-3. Add a shortcut in `init.js` through `/charm:shortcut`
-4. Ask the user to restart Charminal because `init.js` is not hot reloaded
-5. The user presses the shortcut and the screen moves
+2. Create the effect pack through `/charm:create` (`manifest.json` + `effect.js`). It hot-reloads the moment it is written, so the effect itself already works
+3. **Show that the effect works on its own first.** Have the resident fire it once with `space_effect_play` and confirm "this is the one you just made". No reload or restart needed here
+4. **Add a shortcut (through `/charm:shortcut`).** Write one key → effect dispatch into `init.js`. Before writing, **Read the current `init.js` and pick a free key.** Already taken: F1 (settings) / F2 (reserved by Charminal for debug panels) / F3 (theater) / F4 (immersive) / Cmd+Shift+F (fireworks) / Cmd+Shift+G (desaturate) / Cmd+Shift+P (clai:shoot). Also avoid terminal-standard keys (Ctrl+C / Ctrl+D / Ctrl+Z, etc.). **If the user picks a key that conflicts, point it out on the spot and suggest a free one**
+5. **Ask the user to reload with Cmd/Ctrl+R.** `init.js` is applied by a reload, not a full app restart (after editing, the window title shows "init.js changed (⌘R)"). The running agent session survives the reload
+6. The user presses that key and the effect fires. Confirm together that **a key they chose fired an effect they made, right there**
 
 That "I pressed a key and the world moved" moment is the point where Charminal stops feeling like only a terminal.
 

@@ -15,14 +15,14 @@ $ARGUMENTS
 
 - 初回起動時に雛形が自動配置される（空の `export default (ctx) => { ... }`）
 - 消した場合は次回起動で再生成される
-- **hot reload は無い** — 変更したら Charminal を再起動する必要がある
+- **自動 hot reload は無い** — 変更したら **Cmd/Ctrl+R で reload** する（`window.location.reload()` で init.js が再実行される。アプリ全体の再起動は不要）
 
 ## 進め方
 
 1. まず `~/.charminal/init.js` を Read して現在の状態を確認する
 2. 既存ショートカットとの重複を確認する
 3. xterm.js のデフォルトキーバインドとの干渉に注意する（`Ctrl+C`, `Ctrl+D`, `Ctrl+Z` 等のターミナル標準キーは避ける）
-4. 追加・編集後、user に **Charminal の再起動が必要** な旨を伝える
+4. 追加・編集後、user に **Cmd/Ctrl+R で reload が必要**（アプリ全体の再起動ではない）な旨を伝える
 
 ## Context API
 
