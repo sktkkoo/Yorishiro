@@ -52,6 +52,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private currentUrl: string | null = null;
   private currentVrm: VRM | null = null;
   private currentBody: Body | null = null;
+  private motionIntensity = 1.0;
   private trackHead: THREE.Object3D | null = null;
   private loadToken = 0;
   private readonly tweenManager = new TweenManager();
@@ -206,6 +207,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
                 this.devLogRef.current ?? undefined,
                 this.claimState,
               );
+              this.currentBody.setMotionIntensity(this.motionIntensity);
 
               vrm.scene.updateWorldMatrix(true, true);
               vrm.update(0);
@@ -247,6 +249,14 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     if (listener !== null && this.currentBody !== null) {
       listener(this.currentBody);
     }
+  }
+
+  /**
+   * idle motion 倍率を設定。VRM 未ロードでも値を保持し、Body 生成時に適用する。
+   */
+  setMotionIntensity(value: number): void {
+    this.motionIntensity = value;
+    this.currentBody?.setMotionIntensity(value);
   }
 
   setDevLog(devLog: SubsystemLog | null): void {
