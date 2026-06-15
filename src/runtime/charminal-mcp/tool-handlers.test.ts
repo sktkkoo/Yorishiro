@@ -42,6 +42,7 @@ import {
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
   createSceneScreenshotHandler,
+  createSetMotionIntensityHandler,
   createSetPackStateHandler,
   createSpaceEffectPlayHandler,
   createStateGetHandler,
@@ -2283,6 +2284,31 @@ describe("createPresenceSetIntensityHandler", () => {
     });
     const r = await handler({ level: "closed" });
     expect(r).toEqual({ level: "closed" });
+  });
+});
+
+describe("createSetMotionIntensityHandler", () => {
+  it("writes clamped intensity to config and applies to runtime", async () => {
+    const writeConfig = vi.fn(async () => {});
+    const applyToRuntime = vi.fn();
+    const handler = createSetMotionIntensityHandler({
+      readConfig: async () => ({ ...EMPTY_CONFIG }),
+      writeConfig,
+      applyToRuntime,
+    });
+    const result = await handler({ intensity: 9 });
+    expect(result).toEqual({ intensity: 3 });
+    expect(writeConfig).toHaveBeenCalledWith({ ...EMPTY_CONFIG, motionIntensity: 3 });
+    expect(applyToRuntime).toHaveBeenCalledWith(3);
+  });
+
+  it("rejects non-numeric intensity", async () => {
+    const handler = createSetMotionIntensityHandler({
+      readConfig: async () => ({ ...EMPTY_CONFIG }),
+      writeConfig: async () => {},
+      applyToRuntime: () => {},
+    });
+    await expect(handler({ intensity: "big" })).rejects.toThrow();
   });
 });
 
