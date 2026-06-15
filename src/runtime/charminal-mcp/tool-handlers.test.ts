@@ -22,12 +22,14 @@ import {
   __resetMcpExpressionSlotsForTesting,
   __resetMcpMotionHandleForTesting,
   type BodyLike,
+  type BundledExampleResponse,
   type ControlStoreLike,
   createAmenityCallHandler,
   createAmenityListToolsHandler,
   createBodyAnimationPlayHandler,
   createBodyExpressionSetHandler,
   createBodyMotionCancelHandler,
+  createBundledExampleReadHandler,
   createControlsGetHandler,
   createControlsSetHandler,
   createControlsSetManyHandler,
@@ -2321,5 +2323,63 @@ describe("createUiSidebarSetHandler loud-unavailable", () => {
     });
     const r = await handler({ width: 123 });
     expect(r).toEqual({ width: 123 });
+  });
+});
+
+describe("createBundledExampleReadHandler", () => {
+  const mockResponse: BundledExampleResponse = {
+    id: "screen-shake",
+    kind: "effect",
+    files: [
+      { path: "effect.ts", content: 'export default { id: "screen-shake" };' },
+      { path: "manifest.json", content: '{ "id": "screen-shake", "type": "effect" }' },
+      { path: "lib/utils.tsx", content: "export function shake() {}" },
+    ],
+  };
+
+  it("正常系: bundled pack のソースを markdown 形式で返す", async () => {
+    const handler = createBundledExampleReadHandler({
+      readBundledPackSource: async (id) => {
+        expect(id).toBe("screen-shake");
+        return mockResponse;
+      },
+    });
+
+    const result = await handler({ id: "screen-shake" });
+    expect(result).toContain("# screen-shake (effect)");
+    expect(result).toContain("## effect.ts");
+    expect(result).toContain("```typescript");
+    expect(result).toContain('export default { id: "screen-shake" };');
+    expect(result).toContain("## manifest.json");
+    expect(result).toContain("```json");
+    expect(result).toContain("## lib/utils.tsx");
+  });
+
+  it("異常系: 存在しない id でエラーが返る", async () => {
+    const handler = createBundledExampleReadHandler({
+      readBundledPackSource: async () => {
+        throw new Error("Pack 'ghost' not found. Available: [screen-shake, clai-ja]");
+      },
+    });
+
+    await expect(handler({ id: "ghost" })).rejects.toThrow(
+      "Pack 'ghost' not found. Available: [screen-shake, clai-ja]",
+    );
+  });
+
+  it("異常系: id が空文字のとき throw する", async () => {
+    const handler = createBundledExampleReadHandler({
+      readBundledPackSource: vi.fn(),
+    });
+
+    await expect(handler({ id: "" })).rejects.toThrow("id must be a non-empty string");
+  });
+
+  it("異常系: id が省略されたとき throw する", async () => {
+    const handler = createBundledExampleReadHandler({
+      readBundledPackSource: vi.fn(),
+    });
+
+    await expect(handler({})).rejects.toThrow("id must be a non-empty string");
   });
 });

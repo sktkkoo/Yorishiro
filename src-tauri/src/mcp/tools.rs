@@ -365,6 +365,13 @@ pub struct LoopAnnounceRequest {
     pub detail: Option<Value>,
 }
 
+/// `bundled_example_read` の引数。bundled pack のソースコードを読み取る。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BundledExampleReadRequest {
+    /// 読みたい bundled pack の ID。list_packs で確認できる。
+    pub id: String,
+}
+
 /// `journal_read` の引数。date / days いずれも省略時は最新 7 日分を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JournalReadRequest {
@@ -939,6 +946,22 @@ impl Charminal {
         .await
     }
 
+    /// bundled pack のソースコードを読み取る。pack の書き方の参考にする。
+    #[tool(
+        description = "bundled pack のソースコードを読み取る。pack の書き方の参考にする。id が不明な場合は list_packs で確認できる。"
+    )]
+    async fn bundled_example_read(
+        &self,
+        Parameters(req): Parameters<BundledExampleReadRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "bundled-example.read",
+            json!({ "id": req.id }),
+        )
+        .await
+    }
+
     /// journal エントリを読み取る。日付指定または最新 N 日分。
     #[tool(description = "journal エントリを読み取る。日付指定または最新 N 日分")]
     async fn journal_read(
@@ -1039,6 +1062,7 @@ impl ServerHandler for Charminal {
                 "- 表情だけ変える → body_expression_set\n",
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
+                "- bundled pack のソースコードを参考にする → bundled_example_read（id は list_packs で確認）\n",
                 "- pack を壊した／戻したい → history_list で seq を確認 → history_restore（確認 UX を経て full-replace）。リスクのある編集前に history_snapshot で戻したい時点を残せる（known-good 判定はしない・素朴な timeline 点）\n",
                 "- まとまった /charm 編集や壊れそうな変更の前には history_snapshot(label) を呼び、何をなぜ試すのかがユーザーに見ても通じる短い label（例: 「夜に使いやすい暗い見た目を試す」）を付ける。restore UI はこの label を復元地点と直後の変更の見出しに使う\n",
                 "- user amenity 設備の機能を使う → amenity_list_tools で確認 → amenity_call で呼ぶ（bundled pomodoro は専用 pomodoro_* を使う）\n",

@@ -1882,3 +1882,73 @@ export function createLoopAnnounceHandler(deps: LoopAnnounceDeps) {
     return { announced: true };
   };
 }
+
+/* ──────────────────────────────────────────────────────────
+ * bundled_example.read
+ * ────────────────────────────────────────────────────────── */
+
+/** Rust 側 read_bundled_pack_source が返す個別ファイル。 */
+export interface BundledExampleFileResponse {
+  readonly path: string;
+  readonly content: string;
+}
+
+/** Rust 側 read_bundled_pack_source のレスポンス。 */
+export interface BundledExampleResponse {
+  readonly id: string;
+  readonly kind: string;
+  readonly files: ReadonlyArray<BundledExampleFileResponse>;
+}
+
+export interface BundledExampleReadDeps {
+  /** Tauri command `read_bundled_pack_source` を呼ぶ。pack 未発見時は throw。 */
+  readonly readBundledPackSource: (id: string) => Promise<BundledExampleResponse>;
+}
+
+/** ファイル拡張子から markdown code fence の言語ヒントを導出する。 */
+function langHintForPath(filePath: string): string {
+  const ext = filePath.split(".").pop()?.toLowerCase();
+  switch (ext) {
+    case "ts":
+    case "tsx":
+      return "typescript";
+    case "js":
+    case "jsx":
+      return "javascript";
+    case "json":
+      return "json";
+    case "css":
+      return "css";
+    case "html":
+      return "html";
+    case "md":
+      return "markdown";
+    default:
+      return "";
+  }
+}
+
+/**
+ * bundled pack のソースコードを markdown 形式で返す handler。
+ * pack の書き方を参考にするための read-only tool。
+ */
+export function createBundledExampleReadHandler(deps: BundledExampleReadDeps) {
+  return async (request: unknown): Promise<string> => {
+    const r = requestRecord(request);
+    const id = r.id;
+    if (typeof id !== "string" || id === "") {
+      throw new Error("id must be a non-empty string");
+    }
+    const result = await deps.readBundledPackSource(id);
+    const lines: string[] = [`# ${result.id} (${result.kind})`, ""];
+    for (const file of result.files) {
+      const lang = langHintForPath(file.path);
+      lines.push(`## ${file.path}`);
+      lines.push(`\`\`\`${lang}`);
+      lines.push(file.content);
+      lines.push("```");
+      lines.push("");
+    }
+    return lines.join("\n");
+  };
+}
