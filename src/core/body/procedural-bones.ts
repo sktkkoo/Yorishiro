@@ -59,6 +59,10 @@ export class ProceduralBones {
   private headDriftTimer = 1.5 + Math.random() * 2.0;
   private readonly headSpringZ: Spring1D;
   private readonly headSpringY: Spring1D;
+  private readonly armSpringLeftZ: Spring1D;
+  private readonly armSpringLeftX: Spring1D;
+  private readonly armSpringRightZ: Spring1D;
+  private readonly armSpringRightX: Spring1D;
   private headLookAtTargetX = 0;
   private headLookAtTargetY = 0;
   private headLookAtCurrentX = 0;
@@ -106,10 +110,6 @@ export class ProceduralBones {
   // 各 instance が独立位相を持つので左右非対称・非同期になる。
   private readonly swaySpineZ: OrganicNoise;
   private readonly swaySpineX: OrganicNoise;
-  private readonly swayArmLeftZ: OrganicNoise;
-  private readonly swayArmLeftX: OrganicNoise;
-  private readonly swayArmRightZ: OrganicNoise;
-  private readonly swayArmRightX: OrganicNoise;
   private readonly swaySpringZ: Spring1D;
   private readonly swaySpringX: Spring1D;
 
@@ -117,10 +117,6 @@ export class ProceduralBones {
     this.random = random ?? Math.random;
     this.swaySpineZ = new OrganicNoise(0.6, this.random);
     this.swaySpineX = new OrganicNoise(0.4, this.random);
-    this.swayArmLeftZ = new OrganicNoise(0.5, this.random);
-    this.swayArmLeftX = new OrganicNoise(0.35, this.random);
-    this.swayArmRightZ = new OrganicNoise(0.5, this.random);
-    this.swayArmRightX = new OrganicNoise(0.35, this.random);
     // 最初の重心移動は早めに入れる（起動直後の「固まり」を避ける）
     this.postureTimer = 5 + this.random() * 15;
     const sp = springParams(1.0);
@@ -128,6 +124,10 @@ export class ProceduralBones {
     this.swaySpringX = new Spring1D({ omega: sp.spineOmega, zeta: sp.spineZeta });
     this.headSpringZ = new Spring1D({ omega: sp.headOmega, zeta: sp.headZeta });
     this.headSpringY = new Spring1D({ omega: sp.headOmega, zeta: sp.headZeta });
+    this.armSpringLeftZ = new Spring1D({ omega: sp.armOmega, zeta: sp.armZeta });
+    this.armSpringLeftX = new Spring1D({ omega: sp.armOmega, zeta: sp.armZeta });
+    this.armSpringRightZ = new Spring1D({ omega: sp.armOmega, zeta: sp.armZeta });
+    this.armSpringRightX = new Spring1D({ omega: sp.armOmega, zeta: sp.armZeta });
   }
 
   /** idle motion 倍率（0-3, 1 で現状）。spring パラメータ + 振幅 gain を更新。 */
@@ -138,6 +138,10 @@ export class ProceduralBones {
     this.swaySpringX.setParams(sp.spineOmega, sp.spineZeta);
     this.headSpringZ.setParams(sp.headOmega, sp.headZeta);
     this.headSpringY.setParams(sp.headOmega, sp.headZeta);
+    this.armSpringLeftZ.setParams(sp.armOmega, sp.armZeta);
+    this.armSpringLeftX.setParams(sp.armOmega, sp.armZeta);
+    this.armSpringRightZ.setParams(sp.armOmega, sp.armZeta);
+    this.armSpringRightX.setParams(sp.armOmega, sp.armZeta);
   }
 
   /** Bind to VRM normalized bones. Call after VRM loads + rest pose setup. */
@@ -267,24 +271,26 @@ export class ProceduralBones {
       this.headLookAtAppliedY = this.headLookAtCurrentY;
     }
 
-    // ── Arm micro-sway ──────────────────────────────────
-    // Rest pose base + small sine offset (phase-shifted per arm)
+    // ── Arm drag（spine → 遅延追従）──────────────────────
     const restPose = this.restPose;
+    // swaySpringZ/X.pos は既に swayGain 込みの target を追従しているので再乗算しない。
+    const spineZ = this.swaySpringZ.pos;
+    const spineX = this.swaySpringX.pos;
+    this.armSpringLeftZ.update(delta, spineZ * 1.3);
+    this.armSpringLeftX.update(delta, spineX * 1.0);
+    this.armSpringRightZ.update(delta, spineZ * 1.25);
+    this.armSpringRightX.update(delta, spineX * 0.95);
+
     // 呼吸の肩上げは左右ミラー（吸気で両肩がわずかに開く / 上がる）。
-    // sway は腕ごとに独立 noise（左右非対称・非同期）。
     if (this.leftUpperArm && restPose && w >= 0.001) {
       this.leftUpperArm.rotation.z =
-        restPose.leftArm.upperArmZ +
-        (this.swayArmLeftZ.sample(elapsed) * 0.02 * swayGain + this.breathShoulderLift) * w;
-      this.leftUpperArm.rotation.x =
-        restPose.leftArm.upperArmX + this.swayArmLeftX.sample(elapsed) * 0.015 * swayGain * w;
+        restPose.leftArm.upperArmZ + (this.armSpringLeftZ.pos + this.breathShoulderLift) * w;
+      this.leftUpperArm.rotation.x = restPose.leftArm.upperArmX + this.armSpringLeftX.pos * w;
     }
     if (this.rightUpperArm && restPose && w >= 0.001) {
       this.rightUpperArm.rotation.z =
-        restPose.rightArm.upperArmZ +
-        (this.swayArmRightZ.sample(elapsed) * 0.02 * swayGain - this.breathShoulderLift) * w;
-      this.rightUpperArm.rotation.x =
-        restPose.rightArm.upperArmX + this.swayArmRightX.sample(elapsed) * 0.015 * swayGain * w;
+        restPose.rightArm.upperArmZ + (this.armSpringRightZ.pos - this.breathShoulderLift) * w;
+      this.rightUpperArm.rotation.x = restPose.rightArm.upperArmX + this.armSpringRightX.pos * w;
     }
   }
 }
