@@ -20,7 +20,6 @@ import { createVrmRestPose, type VrmRestPose } from "./vrm-rest-pose";
 // Head drift
 const HEAD_DRIFT_AMP_Z = 0.04; // lateral tilt (radians)
 const HEAD_DRIFT_AMP_Y = 0.05; // yaw rotation (radians)
-const HEAD_DRIFT_SPEED = 1.2; // lerp speed (units/sec)
 const HEAD_LOOK_AT_SPEED = 1.2;
 
 // Posture shift — 立ち姿の重心がゆっくり入れ替わる（数十秒スケール）。
@@ -57,9 +56,9 @@ export class ProceduralBones {
   // Head drift state
   private headDriftTargetZ = 0;
   private headDriftTargetY = 0;
-  private headDriftCurrentZ = 0;
-  private headDriftCurrentY = 0;
   private headDriftTimer = 1.5 + Math.random() * 2.0;
+  private readonly headSpringZ: Spring1D;
+  private readonly headSpringY: Spring1D;
   private headLookAtTargetX = 0;
   private headLookAtTargetY = 0;
   private headLookAtCurrentX = 0;
@@ -127,6 +126,8 @@ export class ProceduralBones {
     const sp = springParams(1.0);
     this.swaySpringZ = new Spring1D({ omega: sp.spineOmega, zeta: sp.spineZeta });
     this.swaySpringX = new Spring1D({ omega: sp.spineOmega, zeta: sp.spineZeta });
+    this.headSpringZ = new Spring1D({ omega: sp.headOmega, zeta: sp.headZeta });
+    this.headSpringY = new Spring1D({ omega: sp.headOmega, zeta: sp.headZeta });
   }
 
   /** idle motion 倍率（0-3, 1 で現状）。spring パラメータ + 振幅 gain を更新。 */
@@ -135,6 +136,8 @@ export class ProceduralBones {
     const sp = springParams(intensity);
     this.swaySpringZ.setParams(sp.spineOmega, sp.spineZeta);
     this.swaySpringX.setParams(sp.spineOmega, sp.spineZeta);
+    this.headSpringZ.setParams(sp.headOmega, sp.headZeta);
+    this.headSpringY.setParams(sp.headOmega, sp.headZeta);
   }
 
   /** Bind to VRM normalized bones. Call after VRM loads + rest pose setup. */
@@ -160,8 +163,8 @@ export class ProceduralBones {
 
   /**
    * Eye-head coordination：大きい saccade の後、頭が視線方向へ遅れて追従する。
-   * drift target を視線方向に向けるだけなので、動き自体は通常の drift lerp
-   * （HEAD_DRIFT_SPEED）が作る = 目が先、頭が後の生理的な順序になる。
+   * drift target を視線方向に向けるだけなので、動き自体は通常の head spring が作る
+   * = 目が先、頭が後の生理的な順序になる。
    */
   nudgeHeadToward(yawRad: number): void {
     const limit = HEAD_DRIFT_AMP_Y * 2;
@@ -222,22 +225,12 @@ export class ProceduralBones {
         const ampY = (this.isThinking ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y) * headGain;
         this.headDriftTargetZ = (this.random() - 0.5) * 2 * ampZ;
         this.headDriftTargetY = (this.random() - 0.5) * 2 * ampY;
-        this.headDriftTimer = this.isThinking
-          ? 1.0 + this.random() * 2.0
-          : 2.0 + this.random() * 3.0;
+        const sp = springParams(this.intensity);
+        const baseTimer = this.isThinking ? 1.0 + this.random() * 2.0 : 2.0 + this.random() * 3.0;
+        this.headDriftTimer = baseTimer * sp.headTimerScale;
       }
-      this.headDriftCurrentZ = lerpDelta(
-        this.headDriftCurrentZ,
-        this.headDriftTargetZ,
-        HEAD_DRIFT_SPEED,
-        delta,
-      );
-      this.headDriftCurrentY = lerpDelta(
-        this.headDriftCurrentY,
-        this.headDriftTargetY,
-        HEAD_DRIFT_SPEED,
-        delta,
-      );
+      this.headSpringZ.update(delta, this.headDriftTargetZ);
+      this.headSpringY.update(delta, this.headDriftTargetY);
       this.headLookAtCurrentX = lerpDelta(
         this.headLookAtCurrentX,
         this.headLookAtTargetX,
@@ -260,12 +253,13 @@ export class ProceduralBones {
         const p = 1 - this.flinchTimer / FLINCH_DURATION_S;
         flinchX = Math.sin(Math.PI * p) * FLINCH_PITCH_RAD * w;
       }
-      const appliedPitchX = this.headLookAtCurrentX + restPitchX + flinchX;
+      const headArc = Math.abs(this.headSpringZ.pos) * 0.3 * w;
+      const appliedPitchX = this.headLookAtCurrentX + restPitchX + flinchX - headArc;
       this.headBone.rotation.x -= this.headLookAtAppliedX;
       this.headBone.rotation.y -= this.headLookAtAppliedY;
       if (w >= 0.001) {
-        this.headBone.rotation.z = this.headDriftCurrentZ * w;
-        this.headBone.rotation.y = this.headDriftCurrentY * w;
+        this.headBone.rotation.z = this.headSpringZ.pos * w;
+        this.headBone.rotation.y = this.headSpringY.pos * w;
       }
       this.headBone.rotation.x += appliedPitchX;
       this.headBone.rotation.y += this.headLookAtCurrentY;
