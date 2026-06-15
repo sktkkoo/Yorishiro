@@ -15,6 +15,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
   "primaryPersona": "my-persona",
   "activeScene": "simple-room",
   "activeUi": "minimal-badge",
+  "motionIntensity": 1.85,
   "mcpPort": 18743,
   "disabledPacks": ["broken-pack"]
 }
@@ -31,8 +32,21 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
 | `activeScene` | `string` or `null` | `null` | active scene pack の user pick。`null` なら bundled fallback |
 | `activeUi` | `string` or `null` | `null` | active UI pack の user pick。`null` なら UI pack なし |
+| `motionIntensity` | `number` (`0.0`–`3.0`) | `1.0` | idle procedural motion（呼吸 / sway / head drift / posture）の振幅ノブ。`1.0` は従来どおり、`0` 付近はほぼ静止、上端は opt-in のオーバーアクション |
 | `mcpPort` | `number` | `18743` | Rust MCP server の listen port |
 | `disabledPacks` | `string[]` | `[]` | rescue 用。指定 id の user pack を load しない |
+
+### Motion intensity
+
+`motionIntensity` は Body built-in の idle procedural motion だけをスケールする。VRMA clip / persona reaction / lip-sync / startle・flinch などの生理反射はこの設定では変えない。
+
+```json
+{
+  "motionIntensity": 1.85
+}
+```
+
+設定画面の「動きの大きさ」スライダー、UI pack SDK の `ctx.app.setMotionIntensity(value)`、MCP tool の `motion_intensity_set` は同じ config field と runtime setter に到達する。`1.0` は default なので serialize 時に省略される。
 
 ### Language
 
