@@ -46,6 +46,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -66,6 +67,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -86,6 +88,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -106,6 +109,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -126,6 +130,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -146,6 +151,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -171,6 +177,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -213,6 +220,7 @@ describe("serializeConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -233,6 +241,7 @@ describe("serializeConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -266,6 +275,7 @@ describe("serializeConfig", () => {
       terminalAgent: "codex",
       ambientAudioMuted: true,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -283,6 +293,34 @@ describe("serializeConfig", () => {
     const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "opencode" };
     const text = serializeConfig(cfg);
     expect(parseConfig(text).terminalAgent).toBe("opencode");
+  });
+});
+
+describe("motionIntensity", () => {
+  it("defaults to 1.0", () => {
+    expect(EMPTY_CONFIG.motionIntensity).toBe(1.0);
+  });
+
+  it("parses a number from JSON", () => {
+    expect(parseConfig('{"motionIntensity": 2.5}').motionIntensity).toBe(2.5);
+  });
+
+  it("clamps above 3 to 3 and below 0 to 0", () => {
+    expect(parseConfig('{"motionIntensity": 9}').motionIntensity).toBe(3);
+    expect(parseConfig('{"motionIntensity": -2}').motionIntensity).toBe(0);
+  });
+
+  it("falls back to 1.0 for non-number", () => {
+    expect(parseConfig('{"motionIntensity": "big"}').motionIntensity).toBe(1.0);
+  });
+
+  it("omits motionIntensity from serialized output when 1.0 (default)", () => {
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
+  });
+
+  it("writes motionIntensity when non-default", () => {
+    const cfg = { ...EMPTY_CONFIG, motionIntensity: 2 };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ motionIntensity: 2 });
   });
 });
 
@@ -310,6 +348,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
@@ -331,6 +370,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
