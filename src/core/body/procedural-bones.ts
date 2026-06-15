@@ -10,8 +10,9 @@
 
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
-import { motionGain } from "./motion-gain";
+import { motionGain, springParams } from "./motion-gain";
 import { OrganicNoise } from "./organic-noise";
+import { Spring1D } from "./spring";
 import { createVrmRestPose, type VrmRestPose } from "./vrm-rest-pose";
 
 // ─── Constants ───────────────────────────────────────────
@@ -110,6 +111,8 @@ export class ProceduralBones {
   private readonly swayArmLeftX: OrganicNoise;
   private readonly swayArmRightZ: OrganicNoise;
   private readonly swayArmRightX: OrganicNoise;
+  private readonly swaySpringZ: Spring1D;
+  private readonly swaySpringX: Spring1D;
 
   constructor(random?: () => number) {
     this.random = random ?? Math.random;
@@ -121,11 +124,17 @@ export class ProceduralBones {
     this.swayArmRightX = new OrganicNoise(0.35, this.random);
     // 最初の重心移動は早めに入れる（起動直後の「固まり」を避ける）
     this.postureTimer = 5 + this.random() * 15;
+    const sp = springParams(1.0);
+    this.swaySpringZ = new Spring1D({ omega: sp.spineOmega, zeta: sp.spineZeta });
+    this.swaySpringX = new Spring1D({ omega: sp.spineOmega, zeta: sp.spineZeta });
   }
 
-  /** idle motion 倍率（0-3, 1 で現状）。head / sway / posture 軸の gain として振幅に乗算。 */
+  /** idle motion 倍率（0-3, 1 で現状）。spring パラメータ + 振幅 gain を更新。 */
   setIntensity(intensity: number): void {
     this.intensity = intensity;
+    const sp = springParams(intensity);
+    this.swaySpringZ.setParams(sp.spineOmega, sp.spineZeta);
+    this.swaySpringX.setParams(sp.spineOmega, sp.spineZeta);
   }
 
   /** Bind to VRM normalized bones. Call after VRM loads + rest pose setup. */
@@ -194,12 +203,15 @@ export class ProceduralBones {
       delta,
     );
 
-    // ── Spine sway ──────────────────────────────────────
+    // ── Spine sway（continuous noise → spring パススルー）──
+    const swayRawZ = this.swaySpineZ.sample(elapsed) * 0.015 * swayGain;
+    const swayRawX = this.swaySpineX.sample(elapsed) * 0.008 * swayGain;
+    this.swaySpringZ.update(delta, swayRawZ);
+    this.swaySpringX.update(delta, swayRawX);
+
     if (this.spineBone && w >= 0.001) {
-      this.spineBone.rotation.z =
-        (this.swaySpineZ.sample(elapsed) * 0.015 * swayGain + this.postureLeanZ) * w;
-      this.spineBone.rotation.x =
-        (this.swaySpineX.sample(elapsed) * 0.008 * swayGain + this.breathChestPitch) * w;
+      this.spineBone.rotation.z = (this.swaySpringZ.pos + this.postureLeanZ) * w;
+      this.spineBone.rotation.x = (this.swaySpringX.pos + this.breathChestPitch) * w;
     }
 
     // ── Head drift ──────────────────────────────────────
