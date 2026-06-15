@@ -30,6 +30,8 @@ export interface ThreeRuntime {
   detachContainer(): void;
   /** VRM URL を更新。同 URL なら no-op、差分あれば旧 VRM/Body を dispose し新 VRM を非同期 load。 */
   setVrmUrl(url: string | null): void;
+  /** idle motion 倍率。VRM 未ロード時も保持し、Body 生成時に反映する。 */
+  setMotionIntensity(value: number): void;
   /** Body 生成/消滅の listener。登録時に現 Body があれば即座に call する（late registration）。 */
   setBodyListener(listener: ((body: Body | null) => void) | null): void;
   /** dev-log を反映。null で暗黙 disable。次の VRM load 時から Body に渡される。 */
