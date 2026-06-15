@@ -1,10 +1,10 @@
-//! macOS WKWebView スクリーンショットキャプチャ。
+//! macOS ウィンドウスクリーンショットキャプチャ。
 //!
-//! `Webview::with_webview` で WKWebView にアクセスし、
-//! `takeSnapshotWithConfiguration:completionHandler:` で webview 全体の
-//! スクリーンショットを PNG bytes として取得する。
+//! CGWindowListCreateImage で OS ウィンドウサーバーの合成済みピクセルをキャプチャ
+//! する。WKWebView.takeSnapshotWithConfiguration と異なり、WebGL canvas に掛けた
+//! CSS filter (drop-shadow 等) も正確に反映される。
 //!
-//! ObjC completion handler → Rust async の橋渡しは oneshot channel。
+//! 注: 初回使用時に macOS「画面収録」(Screen Recording) 許可ダイアログが表示される。
 
 use rmcp::model::CallToolResult;
 use rmcp::ErrorData as McpError;
@@ -24,7 +24,7 @@ pub async fn capture_webview_screenshot(app: &AppHandle) -> Result<CallToolResul
 
     webview
         .with_webview(move |platform_webview| {
-            take_wkwebview_snapshot(platform_webview.inner(), tx);
+            capture_window_image(platform_webview.inner(), tx);
         })
         .map_err(|e| McpError::internal_error(format!("with_webview failed: {e}"), None))?;
 
@@ -42,21 +42,17 @@ pub async fn capture_webview_screenshot(app: &AppHandle) -> Result<CallToolResul
     Ok(CallToolResult::success(vec![content]))
 }
 
-/// WKWebView の takeSnapshotWithConfiguration:completionHandler: を ObjC runtime
-/// 経由で呼び出し、結果を oneshot channel で送信する。main thread で実行される前提。
+/// WKWebView が属する NSWindow の windowNumber を取得し、
+/// CGWindowListCreateImage でウィンドウの合成済みピクセルをキャプチャする。
 ///
-/// ObjC block は Fn（複数回呼び出し可能）を要求するため、oneshot::Sender を
-/// Mutex<Option<...>> でラップして interior mutability で FnOnce semantics を実現する。
+/// with_webview callback 内（main thread）で呼ばれる前提。
 #[cfg(target_os = "macos")]
-fn take_wkwebview_snapshot(
+fn capture_window_image(
     wk_webview: *mut std::ffi::c_void,
     tx: tokio::sync::oneshot::Sender<Result<Vec<u8>, String>>,
 ) {
-    use block2::RcBlock;
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
-    use std::ptr;
-    use std::sync::Mutex;
 
     if wk_webview.is_null() {
         let _ = tx.send(Err("null WKWebView pointer".into()));
@@ -65,53 +61,108 @@ fn take_wkwebview_snapshot(
 
     let wk: *mut AnyObject = wk_webview.cast();
 
-    // oneshot::Sender は FnOnce（consume on send）なので Mutex<Option<>> でラップ。
-    // completion handler は実際には 1 回しか呼ばれないが、block2 の型制約は Fn を要求する。
-    let tx = Mutex::new(Some(tx));
-
-    let block = RcBlock::new(move |image: *mut AnyObject, _error: *mut AnyObject| {
-        if let Some(tx) = tx.lock().unwrap_or_else(|e| e.into_inner()).take() {
-            let result = if image.is_null() {
-                Err("takeSnapshot returned nil image".to_string())
+    let result = unsafe {
+        let ns_window: *mut AnyObject = msg_send![wk, window];
+        if ns_window.is_null() {
+            Err("WKWebView has no window".to_string())
+        } else {
+            let window_number: isize = msg_send![ns_window, windowNumber];
+            if window_number <= 0 {
+                Err(format!("invalid windowNumber: {window_number}"))
             } else {
-                nsimage_to_png(image)
-            };
-            let _ = tx.send(result);
+                capture_cg_window(window_number as u32)
+            }
         }
-    });
+    };
+
+    let _ = tx.send(result);
+}
+
+/// CGWindowListCreateImage で指定ウィンドウの合成済みピクセルを取得し、
+/// NSBitmapImageRep 経由で PNG bytes に変換する。
+#[cfg(target_os = "macos")]
+fn capture_cg_window(window_id: u32) -> Result<Vec<u8>, String> {
+    use std::ffi::c_void;
+
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGPoint {
+        x: f64,
+        y: f64,
+    }
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGSize {
+        width: f64,
+        height: f64,
+    }
+    #[repr(C)]
+    #[derive(Copy, Clone)]
+    struct CGRect {
+        origin: CGPoint,
+        size: CGSize,
+    }
+
+    // kCGWindowListOptionIncludingWindow — capture only the specified window.
+    const LIST_OPTION: u32 = 1 << 3;
+    // kCGWindowImageBoundsIgnoreFraming — content bounds only, no OS chrome.
+    const IMAGE_OPTION: u32 = 1 << 0;
+
+    // CGRectNull — lets CGWindowListCreateImage use the window's own bounds.
+    let cg_rect_null = CGRect {
+        origin: CGPoint {
+            x: f64::INFINITY,
+            y: f64::INFINITY,
+        },
+        size: CGSize {
+            width: 0.0,
+            height: 0.0,
+        },
+    };
+
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGWindowListCreateImage(
+            screenBounds: CGRect,
+            listOption: u32,
+            windowID: u32,
+            imageOption: u32,
+        ) -> *mut c_void;
+        fn CGImageRelease(image: *mut c_void);
+    }
 
     unsafe {
-        let _: () = msg_send![
-            wk,
-            takeSnapshotWithConfiguration: ptr::null::<AnyObject>(),
-            completionHandler: &*block,
-        ];
+        let cg_image = CGWindowListCreateImage(cg_rect_null, LIST_OPTION, window_id, IMAGE_OPTION);
+
+        if cg_image.is_null() {
+            return Err("CGWindowListCreateImage returned null — \
+                 Screen Recording permission may be required. \
+                 Grant it in System Settings > Privacy & Security > Screen Recording."
+                .to_string());
+        }
+
+        let result = cgimage_to_png(cg_image);
+        CGImageRelease(cg_image);
+        result
     }
 }
 
-/// NSImage → TIFFRepresentation → NSBitmapImageRep → PNG bytes。
-/// typed wrapper の feature 不足を回避するため、msg_send で raw 呼び出し。
+/// CGImageRef → NSBitmapImageRep → PNG bytes。
 #[cfg(target_os = "macos")]
-fn nsimage_to_png(ns_image: *mut objc2::runtime::AnyObject) -> Result<Vec<u8>, String> {
+fn cgimage_to_png(cg_image: *mut std::ffi::c_void) -> Result<Vec<u8>, String> {
     use objc2::msg_send;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
-    use objc2::ClassType;
+    use objc2::AnyThread;
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep};
     use objc2_foundation::{NSData, NSDictionary};
 
     unsafe {
-        // [nsImage TIFFRepresentation] -> NSData
-        let tiff_data: Option<Retained<NSData>> = msg_send![ns_image, TIFFRepresentation];
-        let tiff_data = tiff_data.ok_or_else(|| "TIFFRepresentation returned nil".to_string())?;
-
-        // [NSBitmapImageRep imageRepWithData:tiffData] -> NSBitmapImageRep
         let bitmap_rep: Option<Retained<NSBitmapImageRep>> =
-            msg_send![NSBitmapImageRep::class(), imageRepWithData: &*tiff_data];
+            msg_send![NSBitmapImageRep::alloc(), initWithCGImage: cg_image];
         let bitmap_rep = bitmap_rep
-            .ok_or_else(|| "NSBitmapImageRep imageRepWithData returned nil".to_string())?;
+            .ok_or_else(|| "NSBitmapImageRep initWithCGImage returned nil".to_string())?;
 
-        // [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}]
         let empty_props = NSDictionary::<AnyObject, AnyObject>::new();
         let png_data: Option<Retained<NSData>> = msg_send![
             &*bitmap_rep,
@@ -121,7 +172,6 @@ fn nsimage_to_png(ns_image: *mut objc2::runtime::AnyObject) -> Result<Vec<u8>, S
         let png_data =
             png_data.ok_or_else(|| "PNG representationUsingType returned nil".to_string())?;
 
-        // NSData → Vec<u8>: raw msg_send で length + bytes を取得
         let length: usize = msg_send![&*png_data, length];
         let bytes_ptr: *const u8 = msg_send![&*png_data, bytes];
         if bytes_ptr.is_null() || length == 0 {

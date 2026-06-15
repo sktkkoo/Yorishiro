@@ -34,7 +34,11 @@ const r3fHostStyle: CSSProperties = {
 
 export function SceneRouter({ entry, children }: SceneRouterProps) {
   if (entry?.component && entry.scene.layers.length > 0) {
-    return <SceneCompositor scene={entry.scene}>{children}</SceneCompositor>;
+    return (
+      <SceneCompositor key={entry.id} scene={entry.scene}>
+        {children}
+      </SceneCompositor>
+    );
   }
   if (entry?.component) {
     return (
@@ -44,7 +48,11 @@ export function SceneRouter({ entry, children }: SceneRouterProps) {
     );
   }
   if (entry?.scene) {
-    return <SceneCompositor scene={entry.scene}>{children}</SceneCompositor>;
+    return (
+      <SceneCompositor key={entry.id} scene={entry.scene}>
+        {children}
+      </SceneCompositor>
+    );
   }
   return <>{children}</>;
 }

@@ -81,8 +81,18 @@ export function layerStyle(layer: Layer): CSSProperties {
   if (layer.role === "foreground") {
     style.zIndex = foregroundLayerZIndex;
   }
+  const filters: string[] = [];
   if (typeof layer.blur === "number") {
-    style.filter = `blur(${layer.blur}px)`;
+    filters.push(`blur(${layer.blur}px)`);
+  }
+  if (layer.dropShadow !== undefined) {
+    const shadow = layer.dropShadow;
+    filters.push(
+      `drop-shadow(${shadow.offsetX}px ${shadow.offsetY}px ${shadow.blur}px ${shadow.color})`,
+    );
+  }
+  if (filters.length > 0) {
+    style.filter = filters.join(" ");
   }
   if (typeof layer.opacity === "number") {
     style.opacity = layer.opacity;

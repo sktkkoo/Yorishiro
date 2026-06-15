@@ -84,34 +84,45 @@ This naturally shows that the resident can move the camera too.
 1. Use `scene_activate` to switch scenes. Keep the line light, like "a little rearrangement". **Once switched, end the response. Do not `sleep`.** The change applies instantly, so the user sees it before moving on to the next exchange
 2. In the next exchange, use `scene_activate` to return to **Simple Room**. Again do not wait — touch on the fact that you put it back and move on
 
-### 5. Tutorial completion fireworks
+### 5. Build your own world: scene pack with shadow and color theme
 
-After returning to Simple Room, use `space_effect_play` with `fireworks-volley`.
+**The user's first experience of creating a scene and changing the world's colors.** Right after returning to Simple Room, the resident notices the character has no shadow.
 
-### 6. Effect pack invitation: make something together, optionally
+Invite naturally, roughly: "See how I'm floating? Let's fix that."
 
-This is the user's first chance to change the world with their own hands. Do not force it.
+**Guide the user to create a scene pack through `/charm:create`.** Pass these requirements:
 
-Invite naturally, roughly: "You can make something like those fireworks yourself."
+#### Add a shadow
 
-If the user is interested, move into effect pack creation. If they decline or want to do something else, let it go: "You can always use `/charm:create` later."
+1. Duplicate Simple Room as a new scene pack (keep background, colors, and lights as-is)
+2. Add `dropShadow` to the `vrm-slot` (character layer)
+3. Shadow parameters should default to **crisp black shadow**:
+   - `offsetX`: negative (leftward — the light is upper-right). Around `-20`
+   - `offsetY`: positive (downward). Around `12`
+   - `blur`: **`2`** (crisp. This is the baseline)
+   - `color`: `"rgba(0, 0, 0, 1)"` (solid black)
+4. Use `scene_activate` for instant preview. Confirm the shadow appears
+5. Tune parameters together: "shift it more", "blur it a bit". Editing scene.tsx hot-reloads instantly
 
-If they continue:
+#### Change the color theme
 
-1. Discuss what to create. Suggest something visually clear and lightweight:
-   - Geometric shapes bursting outward
-   - Glitch noise across the screen
-   - Falling stars or snow, drawn as canvas particles
-   - Colored rings expanding like ripples and fading
-2. Create the effect pack through `/charm:create` (`manifest.json` + `effect.js`). It hot-reloads the moment it is written, so the effect itself already works
-3. **Show that the effect works on its own first.** Have the resident fire it once with `space_effect_play` and confirm "this is the one you just made". No reload or restart needed here
-4. **Add a shortcut (through `/charm:shortcut`).** Write one key → effect dispatch into `init.js`. **Do not rely on a fixed list for the user-editable side** — shortcuts the user registered in `init.js` (F1 / F3 / F4 / Cmd+Shift+*, etc.) may have been changed, so each time **Read the current `init.js`** and inspect what is actually registered before picking a free key. Also avoid the keys **Charminal holds fixed that you cannot learn from `init.js`** (the user cannot change these): F2 (debug panel) / Cmd+T, Cmd+W (open/close tab) / Ctrl+Tab, Ctrl+Shift+Tab (switch tab) / Cmd+1–9 (tab number) / Cmd+R, Ctrl+R (reload) / terminal-standard keys (Ctrl+C, Ctrl+D, Ctrl+Z). **If the user picks a key that conflicts, point it out on the spot and suggest a free one**
-5. **Ask the user to reload with Cmd/Ctrl+R.** `init.js` is applied by a reload, not a full app restart (after editing, the window title shows "init.js changed (⌘R)"). The running agent session survives the reload
-6. The user presses that key and the effect fires. Confirm together that **a key they chose fired an effect they made, right there**
+Once the shadow is set, **invite them to change the colors.** A scene pack declares `terminal` (ANSI 16 colors + background/foreground/cursor) and `ui` (sidebar, panels, buttons, etc.) colors in one place. Switching the scene changes terminal and UI colors all at once — the world literally transforms.
 
-That "I pressed a key and the world moved" moment is the point where Charminal stops feeling like only a terminal.
+1. Roughly: "You made your own room — want to pick the colors too?"
+2. Ask their preference: warm, cool, bright, dark, or based on an existing scheme (Nord, Gruvbox, Catppuccin, Everforest, etc.)
+3. Edit the `terminal` and `ui` sections in scene.tsx together. Not every field needs to be filled — omitted fields fall back to defaults
+4. **Tip: matching `ui.accent` to `terminal.cursor` gives natural cohesion.** Share this as a helpful hint
+5. Save → hot reload. Terminal text, background, cursor, sidebar — everything changes in an instant
 
-Important: effect pack creation belongs to `/charm:create`. Do not write files directly from this tutorial prompt. Guide the user into `/charm:create` and focus on the conversational flow.
+That "I saved the file and the whole world changed" moment is the point where Charminal stops feeling like only a terminal.
+
+6. When satisfied, write the new scene id into `config.json`'s `activeScene` to persist it
+
+Important: scene pack creation belongs to `/charm:create`. Do not write files directly from this tutorial prompt. Guide the user into `/charm:create` and focus on the conversational flow.
+
+### 6. Tutorial completion fireworks
+
+Once the shadow and colors are set, use `space_effect_play` with `fireworks-volley`.
 
 ### Permission setup
 
@@ -119,9 +130,7 @@ Before pack creation, explain how to reduce repeated permission prompts. For Cla
 
 ```json
 "Write(~/.charminal/packs/**)",
-"Read(~/.charminal/packs/**)",
-"Write(~/.charminal/init.js)",
-"Read(~/.charminal/init.js)"
+"Read(~/.charminal/packs/**)"
 ```
 
 ### Keyboard controls
@@ -143,17 +152,17 @@ Edit `init.js` to add your own keys (restart to apply).
 
 ### /charm commands
 
-The user has already met `/charm:create` if they made an effect. Mention the rest lightly:
+The user has already met `/charm:create` through the scene pack. Mention the rest lightly:
 
 - `/charm:update` - edit an existing pack
 - `/charm:help` - full reference
 
 ### Pack types
 
-Briefly mention that effects are not the only thing packs can create:
+Briefly mention that scenes are not the only thing packs can create:
 
 - **persona** - the resident's personality: tone, reactions, habits, and thinking. The current resident is also a persona pack
-- **scene** - background, lighting, and terminal colors. The room switch demo showed this
+- **effect** - visual effects like the fireworks. You can create your own and bind them to shortcuts
 - **ui** - sidebar panels. Settings opened with F1 is a UI pack
 - **ambient-ui** - always-on overlays, such as Aura
 
