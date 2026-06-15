@@ -197,6 +197,7 @@ fn generate_rust_source(groups: &[PackGroup]) -> String {
     writeln!(out, "    pub files: &'static [BundledExampleFile],").unwrap();
     writeln!(out, "}}").unwrap();
     writeln!(out).unwrap();
+    writeln!(out, "#[rustfmt::skip]").unwrap();
     writeln!(
         out,
         "pub static BUNDLED_EXAMPLES: &[BundledExamplePack] = &["
@@ -213,12 +214,15 @@ fn generate_rust_source(groups: &[PackGroup]) -> String {
             .iter()
             .zip(group.full_relative_paths.iter())
         {
+            writeln!(out, "            BundledExampleFile {{").unwrap();
+            writeln!(out, "                path: {:?},", rel).unwrap();
             writeln!(
                 out,
-                "            BundledExampleFile {{ path: {:?}, content: include_str!(\"../../bundled-packs/{}\") }},",
-                rel, full_rel
+                "                content: include_str!(\"../../bundled-packs/{}\"),",
+                full_rel
             )
             .unwrap();
+            writeln!(out, "            }},").unwrap();
         }
         writeln!(out, "        ],").unwrap();
         writeln!(out, "    }},").unwrap();
