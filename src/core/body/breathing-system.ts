@@ -17,6 +17,7 @@
  * Pure data logic, no VRM dependency.
  */
 
+import { motionGain } from "./motion-gain";
 import { OrganicNoise } from "./organic-noise";
 
 export type BreathingMode = "idle" | "focused" | "relaxed";
@@ -65,6 +66,7 @@ export class BreathingSystem {
   private deepProgress = 1;
   private sighTimer: number;
   private holdTimer = 0;
+  private intensity = 1.0;
   private lastOutput: BreathingOutput = { offsetY: 0, chestPitch: 0, shoulderLift: 0 };
 
   private readonly ampNoise: OrganicNoise;
@@ -80,6 +82,11 @@ export class BreathingSystem {
 
   setMode(mode: BreathingMode): void {
     this.mode = mode;
+  }
+
+  /** idle motion 倍率（0-3, 1 で現状）。breathing 軸の gain として振幅に乗算。 */
+  setIntensity(intensity: number): void {
+    this.intensity = intensity;
   }
 
   /** ため息 / 深い一呼吸を 1 回入れる。進行中なら no-op。 */
@@ -128,7 +135,8 @@ export class BreathingSystem {
       breathValue = (1 - env) * breathValue + env * deep;
     }
 
-    const value = breathValue * this.depth * ampMul;
+    const gain = motionGain(this.intensity, "breathing");
+    const value = breathValue * this.depth * ampMul * gain;
     this.lastOutput = {
       offsetY: value * OFFSET_Y_AMP,
       chestPitch: value * CHEST_AMP,
