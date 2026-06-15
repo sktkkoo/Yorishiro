@@ -10,6 +10,7 @@
 
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
+import { motionGain } from "./motion-gain";
 import { OrganicNoise } from "./organic-noise";
 import { createVrmRestPose, type VrmRestPose } from "./vrm-rest-pose";
 
@@ -97,6 +98,7 @@ export class ProceduralBones {
 
   // Startle flinch state（残り時間。0 で非アクティブ）
   private flinchTimer = 0;
+  private intensity = 1.0;
 
   private readonly random: () => number;
 
@@ -119,6 +121,11 @@ export class ProceduralBones {
     this.swayArmRightX = new OrganicNoise(0.35, this.random);
     // 最初の重心移動は早めに入れる（起動直後の「固まり」を避ける）
     this.postureTimer = 5 + this.random() * 15;
+  }
+
+  /** idle motion 倍率（0-3, 1 で現状）。head / sway / posture 軸の gain として振幅に乗算。 */
+  setIntensity(intensity: number): void {
+    this.intensity = intensity;
   }
 
   /** Bind to VRM normalized bones. Call after VRM loads + rest pose setup. */
@@ -170,11 +177,14 @@ export class ProceduralBones {
    */
   update(delta: number, elapsed: number, weight = 1.0): void {
     const w = weight;
+    const swayGain = motionGain(this.intensity, "sway");
+    const headGain = motionGain(this.intensity, "head");
+    const postureGain = motionGain(this.intensity, "posture");
 
     // ── Posture shift（重心の入れ替わり）─────────────────
     this.postureTimer -= delta;
     if (this.postureTimer <= 0) {
-      this.postureLeanTarget = (this.random() - 0.5) * 2 * POSTURE_LEAN_AMP;
+      this.postureLeanTarget = (this.random() - 0.5) * 2 * POSTURE_LEAN_AMP * postureGain;
       this.postureTimer = POSTURE_MIN_S + this.random() * (POSTURE_MAX_S - POSTURE_MIN_S);
     }
     this.postureLeanZ = lerpDelta(
@@ -186,17 +196,18 @@ export class ProceduralBones {
 
     // ── Spine sway ──────────────────────────────────────
     if (this.spineBone && w >= 0.001) {
-      this.spineBone.rotation.z = (this.swaySpineZ.sample(elapsed) * 0.015 + this.postureLeanZ) * w;
+      this.spineBone.rotation.z =
+        (this.swaySpineZ.sample(elapsed) * 0.015 * swayGain + this.postureLeanZ) * w;
       this.spineBone.rotation.x =
-        (this.swaySpineX.sample(elapsed) * 0.008 + this.breathChestPitch) * w;
+        (this.swaySpineX.sample(elapsed) * 0.008 * swayGain + this.breathChestPitch) * w;
     }
 
     // ── Head drift ──────────────────────────────────────
     if (this.headBone) {
       this.headDriftTimer -= delta;
       if (this.headDriftTimer <= 0) {
-        const ampZ = this.isThinking ? HEAD_DRIFT_AMP_Z * 1.8 : HEAD_DRIFT_AMP_Z;
-        const ampY = this.isThinking ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y;
+        const ampZ = (this.isThinking ? HEAD_DRIFT_AMP_Z * 1.8 : HEAD_DRIFT_AMP_Z) * headGain;
+        const ampY = (this.isThinking ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y) * headGain;
         this.headDriftTargetZ = (this.random() - 0.5) * 2 * ampZ;
         this.headDriftTargetY = (this.random() - 0.5) * 2 * ampY;
         this.headDriftTimer = this.isThinking
@@ -258,16 +269,16 @@ export class ProceduralBones {
     if (this.leftUpperArm && restPose && w >= 0.001) {
       this.leftUpperArm.rotation.z =
         restPose.leftArm.upperArmZ +
-        (this.swayArmLeftZ.sample(elapsed) * 0.02 + this.breathShoulderLift) * w;
+        (this.swayArmLeftZ.sample(elapsed) * 0.02 * swayGain + this.breathShoulderLift) * w;
       this.leftUpperArm.rotation.x =
-        restPose.leftArm.upperArmX + this.swayArmLeftX.sample(elapsed) * 0.015 * w;
+        restPose.leftArm.upperArmX + this.swayArmLeftX.sample(elapsed) * 0.015 * swayGain * w;
     }
     if (this.rightUpperArm && restPose && w >= 0.001) {
       this.rightUpperArm.rotation.z =
         restPose.rightArm.upperArmZ +
-        (this.swayArmRightZ.sample(elapsed) * 0.02 - this.breathShoulderLift) * w;
+        (this.swayArmRightZ.sample(elapsed) * 0.02 * swayGain - this.breathShoulderLift) * w;
       this.rightUpperArm.rotation.x =
-        restPose.rightArm.upperArmX + this.swayArmRightX.sample(elapsed) * 0.015 * w;
+        restPose.rightArm.upperArmX + this.swayArmRightX.sample(elapsed) * 0.015 * swayGain * w;
     }
   }
 }

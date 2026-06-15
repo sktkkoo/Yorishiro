@@ -8,7 +8,20 @@
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import { motionGain } from "./motion-gain";
 import { ProceduralBones } from "./procedural-bones";
+
+/** 決定的な疑似乱数（mulberry32）。 */
+function seededRandom(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 function mockVrm(): {
   readonly vrm: VRM;
@@ -189,5 +202,57 @@ describe("ProceduralBones breathing offsets", () => {
     bones.update(DT, 1.0, 0.0);
     // weight 0 では spine sway 自体が書かれない（rotation は触られない）
     expect(getBone("spine").rotation.x).toBe(0);
+  });
+
+  it("intensity 1.0 は spine sway が完全に不変（default 保証）", () => {
+    const a = mockVrm();
+    const b = mockVrm();
+    const pa = new ProceduralBones(() => 0.5);
+    pa.bindVrm(a.vrm);
+    const pb = new ProceduralBones(() => 0.5);
+    pb.bindVrm(b.vrm);
+    pb.setIntensity(1.0);
+    pa.update(DT, 2.0, 1.0);
+    pb.update(DT, 2.0, 1.0);
+    expect(b.getBone("spine").rotation.z).toBe(a.getBone("spine").rotation.z);
+  });
+
+  it("setIntensity が spine sway を motionGain('sway') 倍にする", () => {
+    // rng=0.5 → head drift / posture のターゲットが 0 → spine.z は sway 成分のみ
+    const a = mockVrm();
+    const b = mockVrm();
+    const pa = new ProceduralBones(() => 0.5);
+    pa.bindVrm(a.vrm);
+    const pb = new ProceduralBones(() => 0.5);
+    pb.bindVrm(b.vrm);
+    pb.setIntensity(2);
+    pa.update(DT, 2.0, 1.0);
+    pb.update(DT, 2.0, 1.0);
+    const z1 = a.getBone("spine").rotation.z;
+    const z2 = b.getBone("spine").rotation.z;
+    expect(Math.abs(z1)).toBeGreaterThan(1e-6);
+    expect(z2 / z1).toBeCloseTo(motionGain(2, "sway"), 5);
+  });
+
+  it("setIntensity が head drift（tilt）を motionGain('head') 倍にする", () => {
+    // seed を揃えた2 instance はターゲット選択が同一 → 振幅のみ gain 差
+    const a = mockVrm();
+    const b = mockVrm();
+    const originalRandom = Math.random;
+    Math.random = () => 0;
+    const pa = new ProceduralBones(seededRandom(20));
+    const pb = new ProceduralBones(seededRandom(20));
+    Math.random = originalRandom;
+    pa.bindVrm(a.vrm);
+    pb.bindVrm(b.vrm);
+    pb.setIntensity(2);
+    for (let t = 0; t < 4; t += DT) {
+      pa.update(DT, t, 1.0);
+      pb.update(DT, t, 1.0);
+    }
+    const z1 = a.getBone("head").rotation.z;
+    const z2 = b.getBone("head").rotation.z;
+    expect(Math.abs(z1)).toBeGreaterThan(1e-6);
+    expect(z2 / z1).toBeCloseTo(motionGain(2, "head"), 4);
   });
 });
