@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type MotionAxis, motionGain } from "./motion-gain";
+import { type MotionAxis, motionGain, springParams } from "./motion-gain";
 
 const AXES: MotionAxis[] = ["head", "sway", "posture", "breathing"];
 
@@ -32,5 +32,34 @@ describe("motionGain", () => {
   it("不正値（NaN / 負）は 1.0 にフォールバック / 0 で clamp", () => {
     expect(motionGain(Number.NaN, "head")).toBe(1.0);
     expect(motionGain(-5, "head")).toBe(0);
+  });
+});
+
+describe("springParams", () => {
+  it("default intensity(1.0) で中間的なパラメータを返す", () => {
+    const p = springParams(1.0);
+    expect(p.spineOmega).toBeGreaterThan(3);
+    expect(p.spineOmega).toBeLessThan(10);
+    expect(p.spineZeta).toBeGreaterThan(0.5);
+    expect(p.spineZeta).toBeLessThan(1.0);
+  });
+
+  it("高 intensity で omega が上がり zeta が下がり interval が短くなる", () => {
+    const low = springParams(0.5);
+    const high = springParams(2.5);
+    expect(high.spineOmega).toBeGreaterThan(low.spineOmega);
+    expect(high.spineZeta).toBeLessThan(low.spineZeta);
+    expect(high.headOmega).toBeGreaterThan(low.headOmega);
+    expect(high.headZeta).toBeLessThan(low.headZeta);
+    expect(high.headTimerScale).toBeLessThan(low.headTimerScale);
+  });
+
+  it("omega と zeta が安全範囲に clamp される", () => {
+    const extreme = springParams(3.0);
+    expect(extreme.spineOmega).toBeLessThanOrEqual(15);
+    expect(extreme.spineZeta).toBeGreaterThanOrEqual(0.2);
+    const zero = springParams(0);
+    expect(zero.spineOmega).toBeGreaterThanOrEqual(1);
+    expect(zero.spineZeta).toBeLessThanOrEqual(1.2);
   });
 });
