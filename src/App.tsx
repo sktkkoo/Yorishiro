@@ -1465,6 +1465,7 @@ function App() {
           createSceneScreenshotHandler,
           // Presence intensity:
           createPresenceSetIntensityHandler,
+          createSetMotionIntensityHandler,
           // Voice:
           createVoiceSayHandler,
           createVoicePlayHandler,
@@ -1765,6 +1766,11 @@ function App() {
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
             applyPresenceLevel: (level, source) => applyPresenceLevelFromApp(level, source),
+          }),
+          "motion.set-intensity": createSetMotionIntensityHandler({
+            readConfig,
+            writeConfig,
+            applyToRuntime: (intensity) => getThreeRuntime().setMotionIntensity(intensity),
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({

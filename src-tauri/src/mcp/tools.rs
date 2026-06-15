@@ -343,6 +343,13 @@ pub struct PresenceSetIntensityRequest {
     pub level: String,
 }
 
+/// `motion_intensity_set` の引数。idle モーションの大きさ（0.0-3.0、default 1.0）。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MotionIntensitySetRequest {
+    /// モーション強度。0.0-3.0。1.0 が default（現状）。大きいほど動きが大きい。
+    pub intensity: f64,
+}
+
 /// `journal_write` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JournalWriteRequest {
@@ -813,6 +820,22 @@ impl Charminal {
             &self.app_handle,
             "presence.set-intensity",
             json!({ "level": req.level }),
+        )
+        .await
+    }
+
+    /// 住人の idle モーション（呼吸・揺れ・頭の動き）の大きさを設定する。
+    #[tool(
+        description = "Set the resident's idle motion magnitude (breathing/sway/head movement). 0.0-3.0, default 1.0. Higher = larger, more animated motion."
+    )]
+    async fn motion_intensity_set(
+        &self,
+        Parameters(req): Parameters<MotionIntensitySetRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "motion.set-intensity",
+            json!({ "intensity": req.intensity }),
         )
         .await
     }
