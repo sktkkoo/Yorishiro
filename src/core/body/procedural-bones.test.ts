@@ -314,4 +314,67 @@ describe("ProceduralBones breathing offsets", () => {
     }
     expect(laggedCorrelation).toBeGreaterThan(correlation * 0.5);
   });
+
+  it("addSpineEnvelope で spine が一時的に変化して settle する", () => {
+    const base = mockVrm();
+    const withEnvelope = mockVrm();
+    const baseBones = new ProceduralBones(() => 0.5);
+    const bones = new ProceduralBones(() => 0.5);
+    baseBones.bindVrm(base.vrm);
+    bones.bindVrm(withEnvelope.vrm);
+    for (let t = 0; t < 1; t += DT) {
+      baseBones.update(DT, t, 1.0);
+      bones.update(DT, t, 1.0);
+    }
+    bones.addSpineEnvelope(0.02, 0, 0.2);
+    let peak = 0;
+    for (let t = 1; t < 2; t += DT) {
+      baseBones.update(DT, t, 1.0);
+      bones.update(DT, t, 1.0);
+      const diff = withEnvelope.getBone("spine").rotation.z - base.getBone("spine").rotation.z;
+      peak = Math.max(peak, Math.abs(diff));
+    }
+    expect(peak).toBeGreaterThan(0.0035);
+    for (let t = 2; t < 4; t += DT) {
+      baseBones.update(DT, t, 1.0);
+      bones.update(DT, t, 1.0);
+    }
+    const finalDiff = withEnvelope.getBone("spine").rotation.z - base.getBone("spine").rotation.z;
+    expect(Math.abs(finalDiff)).toBeLessThan(peak * 0.5);
+  });
+
+  it("addPostureEnvelope で posture が一時的にシフトして戻る", () => {
+    const base = mockVrm();
+    const withEnvelope = mockVrm();
+    const baseBones = new ProceduralBones(() => 0.5);
+    const bones = new ProceduralBones(() => 0.5);
+    baseBones.bindVrm(base.vrm);
+    bones.bindVrm(withEnvelope.vrm);
+    for (let t = 0; t < 1; t += DT) {
+      baseBones.update(DT, t, 1.0);
+      bones.update(DT, t, 1.0);
+    }
+    bones.addPostureEnvelope(0.02, 0.5);
+    for (let t = 1; t < 1.3; t += DT) {
+      baseBones.update(DT, t, 1.0);
+      bones.update(DT, t, 1.0);
+    }
+    const shifted = withEnvelope.getBone("spine").rotation.z - base.getBone("spine").rotation.z;
+    expect(Math.abs(shifted)).toBeGreaterThan(0.005);
+    for (let t = 1.3; t < 4; t += DT) {
+      baseBones.update(DT, t, 1.0);
+      bones.update(DT, t, 1.0);
+    }
+    const finalDiff = withEnvelope.getBone("spine").rotation.z - base.getBone("spine").rotation.z;
+    expect(Math.abs(finalDiff)).toBeLessThan(Math.abs(shifted));
+  });
+
+  it("setActivityState('reading') は drift を増幅する(thinking family)", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(seededRandom(31));
+    bones.bindVrm(vrm);
+    bones.setActivityState("reading");
+    for (let t = 0; t < 5; t += DT) bones.update(DT, t, 1.0);
+    expect(Math.abs(getBone("head").rotation.z)).toBeGreaterThan(0);
+  });
 });

@@ -311,10 +311,7 @@ export class Body {
     // const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);
     this.blinkSystem.setState(state);
-    // "thinking family": Claude のターン中は writing 以外ずっと頭を揺らす。
-    // writing を除外するのは Typing.vrma と procedural head drift がぶつかるため。
-    this.proceduralBones.isThinking =
-      state === "thinking" || state === "reading" || state === "running";
+    this.proceduralBones.setActivityState(state);
     if (!this.claimState.isClaimed("expression")) {
       this.applyStateExpressions(state);
     }
