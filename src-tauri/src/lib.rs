@@ -744,8 +744,7 @@ fn prepare_localized_plugin_dir_at(
         ));
     }
 
-    // Claude Code は runtime 側の commands/*.md を読む。source は
-    // commands-{language} から選び、起動ごとに runtime-plugin/commands へ展開する。
+    // Claude Code: .claude-plugin/plugin.json + commands/*.md
     let target_plugin_meta = target_root.join(".claude-plugin");
     let target_commands = target_root.join("commands");
     std::fs::create_dir_all(&target_plugin_meta)
