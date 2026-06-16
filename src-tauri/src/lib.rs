@@ -1,3 +1,4 @@
+mod bundled_examples_gen;
 mod history;
 mod journal;
 mod mcp;
@@ -1374,6 +1375,72 @@ async fn read_last_startup_report() -> Result<String, String> {
     read_last_startup_report_impl(&home)
 }
 
+// ─── Bundled pack ソース取得 ─────────────────────────────────────────
+//
+// bundled-packs/ のソースコードを production binary に埋め込み、
+// Tauri command 経由で取得できるようにする。AI agent（MCP 経由）や
+// pack 作成 wizard が「既存 bundled pack のソースを例として参照する」
+// ときに使う。ファイル内容は build.rs が自動生成する
+// bundled_examples_gen.rs の include_str! で compile 時に確定する。
+
+#[derive(serde::Serialize)]
+struct BundledExampleFileResponse {
+    path: String,
+    content: String,
+}
+
+#[derive(serde::Serialize)]
+struct BundledExamplePackResponse {
+    id: String,
+    kind: String,
+    files: Vec<BundledExampleFileResponse>,
+}
+
+/// 指定 ID の bundled pack のソースファイル一式を返す。
+/// 存在しない ID の場合は利用可能な ID リストを含むエラーを返す。
+#[tauri::command]
+async fn read_bundled_pack_source(id: String) -> Result<BundledExamplePackResponse, String> {
+    use bundled_examples_gen::BUNDLED_EXAMPLES;
+
+    for pack in BUNDLED_EXAMPLES {
+        if pack.id == id {
+            return Ok(BundledExamplePackResponse {
+                id: pack.id.to_string(),
+                kind: pack.kind.to_string(),
+                files: pack
+                    .files
+                    .iter()
+                    .map(|f| BundledExampleFileResponse {
+                        path: f.path.to_string(),
+                        content: f.content.to_string(),
+                    })
+                    .collect(),
+            });
+        }
+    }
+
+    let available: Vec<&str> = BUNDLED_EXAMPLES.iter().map(|p| p.id).collect();
+    Err(format!(
+        "Pack '{}' not found. Available: {:?}",
+        id, available
+    ))
+}
+
+/// 全 bundled pack の ID・kind ペア一覧を返す（ソース本文は含まない）。
+#[tauri::command]
+async fn list_bundled_pack_sources() -> Vec<BundledExamplePackResponse> {
+    use bundled_examples_gen::BUNDLED_EXAMPLES;
+
+    BUNDLED_EXAMPLES
+        .iter()
+        .map(|p| BundledExamplePackResponse {
+            id: p.id.to_string(),
+            kind: p.kind.to_string(),
+            files: Vec::new(),
+        })
+        .collect()
+}
+
 /// `~/.charminal/init.js` があればパスを返す、なければ None。
 /// 起動時に user's init.el 相当として load する対象。
 #[tauri::command]
@@ -2079,6 +2146,8 @@ pub fn run() {
             tts::tts_speak,
             tts::tts_stop,
             tts::tts_synthesize,
+            read_bundled_pack_source,
+            list_bundled_pack_sources,
             history::snapshot_create,
             history::snapshot_list,
             history::snapshot_restore,
@@ -3033,5 +3102,113 @@ mod tutorial_tests {
         super::mark_tutorial_done_impl(&dir).expect("mark 2");
         assert!(super::check_tutorial_done_impl(&dir));
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod bundled_examples_tests {
+    use crate::bundled_examples_gen::BUNDLED_EXAMPLES;
+
+    #[test]
+    fn examples_not_empty() {
+        assert!(
+            !BUNDLED_EXAMPLES.is_empty(),
+            "BUNDLED_EXAMPLES は空であってはならない"
+        );
+    }
+
+    #[test]
+    fn known_pack_has_files() {
+        let pack = BUNDLED_EXAMPLES
+            .iter()
+            .find(|p| p.id == "screen-shake")
+            .expect("screen-shake pack が見つからない");
+        assert_eq!(pack.kind, "effect");
+        assert!(
+            !pack.files.is_empty(),
+            "screen-shake にファイルが含まれていない"
+        );
+        // manifest.json と effect.ts が含まれることを確認
+        let paths: Vec<&str> = pack.files.iter().map(|f| f.path).collect();
+        assert!(paths.contains(&"manifest.json"), "manifest.json が無い");
+        assert!(paths.contains(&"effect.ts"), "effect.ts が無い");
+    }
+
+    #[test]
+    fn scene_pack_includes_lib_subdirectory() {
+        let pack = BUNDLED_EXAMPLES
+            .iter()
+            .find(|p| p.id == "abandoned-factory")
+            .expect("abandoned-factory pack が見つからない");
+        assert_eq!(pack.kind, "scene");
+        let paths: Vec<&str> = pack.files.iter().map(|f| f.path).collect();
+        assert!(
+            paths.contains(&"lib/lights.tsx"),
+            "lib/ サブディレクトリのファイルが含まれていない"
+        );
+    }
+
+    #[test]
+    fn clai_shared_is_persona_kind() {
+        let pack = BUNDLED_EXAMPLES
+            .iter()
+            .find(|p| p.id == "clai-shared")
+            .expect("clai-shared pack が見つからない");
+        assert_eq!(
+            pack.kind, "persona",
+            "clai-shared は personas/ 配下なので kind は persona"
+        );
+        let paths: Vec<&str> = pack.files.iter().map(|f| f.path).collect();
+        assert!(paths.contains(&"persona-factory.ts"));
+    }
+
+    #[test]
+    fn file_content_is_non_empty() {
+        for pack in BUNDLED_EXAMPLES {
+            for file in pack.files {
+                assert!(
+                    !file.content.is_empty(),
+                    "pack={} file={} の content が空",
+                    pack.id,
+                    file.path
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn meta_pack_has_readme() {
+        let pack = BUNDLED_EXAMPLES
+            .iter()
+            .find(|p| p.id == "__meta__")
+            .expect("__meta__ pack が見つからない");
+        assert_eq!(pack.kind, "meta");
+        let paths: Vec<&str> = pack.files.iter().map(|f| f.path).collect();
+        assert!(
+            paths.contains(&"README.md"),
+            "top-level README.md が __meta__ に含まれていない"
+        );
+    }
+
+    #[test]
+    fn all_pack_kinds_are_valid() {
+        let valid_kinds = [
+            "effect",
+            "persona",
+            "scene",
+            "amenity",
+            "ui",
+            "ambient-ui",
+            "shared",
+            "meta",
+        ];
+        for pack in BUNDLED_EXAMPLES {
+            assert!(
+                valid_kinds.contains(&pack.kind),
+                "pack={} の kind={} が不正",
+                pack.id,
+                pack.kind
+            );
+        }
     }
 }
