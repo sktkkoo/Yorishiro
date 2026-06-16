@@ -230,8 +230,7 @@ function formatPackOptionLabel(pack: {
   readonly name?: string;
   readonly origin: "bundled" | "user";
 }): string {
-  const suffix = pack.origin === "user" ? " (user)" : "";
-  return `${pack.name ?? pack.id}${suffix}`;
+  return pack.name ?? pack.id;
 }
 
 export function filterPersonaOptionsForLanguage<T extends { readonly id: string }>(
@@ -2439,7 +2438,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               emptyLabel={strings.noPacks}
               options={scenes.map((s) => ({
                 value: s.id,
-                label: `${s.name ?? s.id}${s.origin === "user" ? " (user)" : ""}`,
+                label: s.name ?? s.id,
               }))}
             />
           </div>
