@@ -29,6 +29,7 @@ use super::types::{SessionActivity, SessionId};
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SpawnSpec {
+    #[serde(rename_all = "camelCase")]
     Agent {
         /// Adapter id ("claude" / "codex" / "opencode" / ...)。
         /// Rust 側 `agent_adapter::lookup` で validate される。
