@@ -841,6 +841,20 @@ describe("IdleMicroexpressionSystem", () => {
     const second = micro.update(0.05, true);
     expect(second?.morph).toBe(MICRO_MORPH_POOL[MICRO_MORPH_POOL.length - 1]);
   });
+
+  it("injectEpisode で指定 morph の one-shot episode を注入できる", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0, ["Fcl_BRW_Joy"]);
+    micro.injectEpisode("Fcl_BRW_Joy", 0.2, 0.4);
+    const event = micro.update(0.12, true);
+    expect(event?.morph).toBe("Fcl_BRW_Joy");
+    expect(event?.weight).toBeGreaterThan(0);
+  });
+
+  it("pool getter は configured pool を read-only に公開する", () => {
+    const pool = ["Fcl_BRW_Joy", "Fcl_BRW_Sorrow"];
+    const micro = new IdleMicroexpressionSystem(() => 0, pool);
+    expect(micro.pool).toEqual(pool);
+  });
 });
 
 // ─── MICRO_*_POOL composition ────────────────────────────
