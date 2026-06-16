@@ -55,6 +55,31 @@ describe("BlinkSystem extensions", () => {
     expect(readingCount).toBeLessThan(idleCount);
   });
 
+  it("reading は idle より瞬き間隔が大幅に長い(生理: 4.5/min vs 17/min)", () => {
+    const rng = (() => {
+      let s = 99;
+      return () => {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return s / 0x7fffffff;
+      };
+    })();
+    const countBlinks = (state: "idle" | "reading", seconds: number): number => {
+      const sys = new BlinkSystem(rng);
+      sys.setState(state);
+      let count = 0;
+      let prev = 0;
+      for (let t = 0; t < seconds; t += DT) {
+        const v = sys.update(DT);
+        if (prev === 0 && v > 0) count++;
+        prev = v;
+      }
+      return count;
+    };
+    const idleBlinks = countBlinks("idle", 60);
+    const readingBlinks = countBlinks("reading", 60);
+    expect(idleBlinks).toBeGreaterThan(readingBlinks * 2);
+  });
+
   it("double blink: 高 rng では 1 秒未満の間隔で連続瞬きが入る", () => {
     const blink = new BlinkSystem(() => 0.99);
     const starts = collectBlinkStarts(blink, 15);
