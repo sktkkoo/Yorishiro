@@ -43,7 +43,7 @@
     ],
     "resources": [
       "resources/charminal-plugin/.claude-plugin/plugin.json",
-      "resources/charminal-plugin/commands/*",
+      "resources/charminal-plugin/.codex-plugin/plugin.json",
       "resources/charminal-plugin/commands-en/*",
       "resources/charminal-plugin/commands-ja/*"
     ]

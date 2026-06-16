@@ -32,7 +32,7 @@
 ## この決定の implication / 制約
 
 - 雛形の内容を増やす（例：keyboard shortcut の commented-out snippet を足す）時は、既に seed 済みの user を上書きしない性質上、**新規インストール or 消去後の next-launch まで届かない**。雛形 update は「すぐに行き渡る」ものではない
-- charm.md の init.js section は「雛形が既にある」前提で書ける（編集ガイドに寄せられる）
+- `/charm:shortcut` の init.js section は「雛形が既にある」前提で書ける（編集ガイドに寄せられる）
 - Rust 側に `seed_user_init_script_impl(&home) -> Result<(), String>` が pure 関数として露出している。env var を触らずに test 可能
 
 ## 関連 reference
@@ -40,4 +40,4 @@
 - 実装: `src-tauri/src/lib.rs` の `USER_INIT_TEMPLATE` / `seed_user_init_script_impl` / `ensure_charminal_dirs`
 - 雛形: `src-tauri/resources/user-init-template.js`
 - 関連: [`bundled-pack-immutability.md`](bundled-pack-immutability.md)、[`user-pack-layout.md`](user-pack-layout.md)、[`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md)
-- guide: `src-tauri/resources/charminal-plugin/commands/charm.md`「init.js（keyboard shortcut / startup hook）」
+- guide: `src-tauri/resources/charminal-plugin/commands-ja/shortcut.md`「init.js（keyboard shortcut / startup hook）」
