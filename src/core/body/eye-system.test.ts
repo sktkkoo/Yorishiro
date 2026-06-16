@@ -58,3 +58,49 @@ describe("EyeSystem saccade event", () => {
     expect(eye.consumeSaccadeEvent()).toBeNull();
   });
 });
+
+describe("EyeSystem.triggerGlance", () => {
+  it("triggerGlance が pendingSaccade を発行する(eye-lead 用)", () => {
+    const eye = new EyeSystem(() => 0.5);
+    eye.triggerGlance(20, -5, 0.6);
+    const event = eye.consumeSaccadeEvent();
+    expect(event).not.toBeNull();
+    expect(event?.origin).toBe("glance");
+    expect(event?.targetYawDeg).toBe(20);
+  });
+
+  it("glance は durationS 後に自動 release され idle に戻る", () => {
+    const eye = new EyeSystem(() => 0.5);
+    eye.triggerGlance(20, 0, 0.3);
+    expect(eye.hasOverride).toBe(true);
+    for (let t = 0; t < 0.4; t += DT) eye.update(DT);
+    expect(eye.hasOverride).toBe(false);
+  });
+
+  it("override hold 中も出力が完全には固定されない(microsaccade 維持=死に目防止)", () => {
+    const seeded = (() => {
+      let s = 7;
+      return () => {
+        s = (s * 1103515245 + 12345) & 0x7fffffff;
+        return s / 0x7fffffff;
+      };
+    })();
+    const eye = new EyeSystem(seeded);
+    eye.triggerGlance(15, 0, 2.0);
+    const outputs: number[] = [];
+    for (let t = 0; t < 1.0; t += DT) {
+      eye.update(DT);
+      outputs.push(eye.getOutput().yaw);
+    }
+    const min = Math.min(...outputs);
+    const max = Math.max(...outputs);
+    expect(max - min).toBeGreaterThan(0.01);
+  });
+
+  it("大振幅 glance は head recruit 閾値を超える magnitude を発行する", () => {
+    const eye = new EyeSystem(() => 0.5);
+    eye.triggerGlance(40, 0, 0.6);
+    const event = eye.consumeSaccadeEvent();
+    expect(event?.magnitude).toBeGreaterThan(0.6);
+  });
+});

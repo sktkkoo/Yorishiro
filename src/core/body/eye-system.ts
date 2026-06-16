@@ -30,6 +30,8 @@ export interface SaccadeEvent {
   readonly targetPitchDeg: number;
   /** この saccade が瞬きを誘発するか（magnitude 閾値 + 確率抽選済み）。 */
   readonly blinkWorthy: boolean;
+  /** 発生源。'glance' は beat 由来で、頭追従の閾値を idle と分けるために使う。 */
+  readonly origin?: "idle" | "glance";
 }
 
 // Gaze-evoked blink: 視線の大移動時、人間は高確率で瞬きを伴う。
@@ -143,6 +145,8 @@ export class EyeSystem {
   // ── Override state ──
   private override: GazeOverride | null = null;
   private nextOverrideId = 0;
+  private glanceHoldRemaining = 0;
+  private glanceOverrideId = 0;
 
   // ── Ambient attention offset ──
   private ambientYaw = 0;
@@ -201,15 +205,33 @@ export class EyeSystem {
 
   update(delta: number): void {
     this.updateAmbient(delta);
-    if (this.override) return; // idle paused during override
+    if (this.override) {
+      this.advanceMicrosaccade(delta); // hold 中も固視微動を維持(死に目防止)
+      if (this.glanceHoldRemaining > 0) {
+        this.glanceHoldRemaining -= delta;
+        if (this.glanceHoldRemaining <= 0) {
+          this.releaseOverride(this.glanceOverrideId);
+          this.glanceOverrideId = 0;
+        }
+      }
+      return;
+    }
     this.updateIdle(delta);
   }
 
   getOutput(): EyeOutput {
     if (this.override) {
       return {
-        yaw: clamp(this.override.yaw + this.ambientYaw, -OUTPUT_MAX_YAW, OUTPUT_MAX_YAW),
-        pitch: clamp(this.override.pitch + this.ambientPitch, -OUTPUT_MAX_PITCH, OUTPUT_MAX_PITCH),
+        yaw: clamp(
+          this.override.yaw + this.microYaw * MAX_YAW + this.ambientYaw,
+          -OUTPUT_MAX_YAW,
+          OUTPUT_MAX_YAW,
+        ),
+        pitch: clamp(
+          this.override.pitch + this.microPitch * MAX_PITCH + this.ambientPitch,
+          -OUTPUT_MAX_PITCH,
+          OUTPUT_MAX_PITCH,
+        ),
       };
     }
     const idle = this.getIdleOutput();
@@ -225,9 +247,36 @@ export class EyeSystem {
     return id;
   }
 
+  /**
+   * beat 由来の視線移動。override を張ると同時に pendingSaccade を発行し、
+   * Body の eye-head coordination(consumeSaccadeEvent → nudgeHeadToward)を
+   * 通して頭を遅れて追従させる(eye-lead)。durationS 後に自動 release。
+   */
+  triggerGlance(yawDeg: number, pitchDeg: number, durationS: number): number {
+    const id = ++this.nextOverrideId;
+    this.override = { id, yaw: yawDeg, pitch: pitchDeg };
+    this.glanceHoldRemaining = durationS;
+    this.glanceOverrideId = id;
+    const magnitude = Math.hypot(yawDeg / MAX_YAW, pitchDeg / MAX_PITCH);
+    if (magnitude > SACCADE_MIN_MAGNITUDE) {
+      this.pendingSaccade = {
+        magnitude,
+        targetYawDeg: yawDeg,
+        targetPitchDeg: pitchDeg,
+        blinkWorthy: magnitude >= GAZE_BLINK_MIN_MAGNITUDE && this.random() < GAZE_BLINK_PROB,
+        origin: "glance",
+      };
+    }
+    return id;
+  }
+
   releaseOverride(id: number): void {
     if (this.override?.id === id) {
       this.override = null;
+      if (this.glanceOverrideId === id) {
+        this.glanceHoldRemaining = 0;
+        this.glanceOverrideId = 0;
+      }
     }
   }
 
@@ -265,19 +314,22 @@ export class EyeSystem {
     this.ambientPitch += (this.ambientPitchTarget - this.ambientPitch) * t;
   }
 
+  private advanceMicrosaccade(delta: number): void {
+    this.microTimer -= delta;
+    if (this.microTimer <= 0) {
+      const amp = 0.012; // 固視微動(やや控えめ、~0.36deg)
+      this.microYawTarget = (this.random() - 0.5) * amp;
+      this.microPitchTarget = (this.random() - 0.5) * amp;
+      this.microTimer = 0.15 + this.random() * 0.35;
+    }
+    const mLerp = Math.min(10.0 * delta, 1.0);
+    this.microYaw += (this.microYawTarget - this.microYaw) * mLerp;
+    this.microPitch += (this.microPitchTarget - this.microPitch) * mLerp;
+  }
+
   private updateIdle(delta: number): void {
     if (!this.isSaccading) {
-      // Micro-saccade during fixation
-      this.microTimer -= delta;
-      if (this.microTimer <= 0) {
-        const amp = 0.018;
-        this.microYawTarget = (this.random() - 0.5) * amp;
-        this.microPitchTarget = (this.random() - 0.5) * amp;
-        this.microTimer = 0.15 + this.random() * 0.35;
-      }
-      const mLerp = Math.min(10.0 * delta, 1.0);
-      this.microYaw += (this.microYawTarget - this.microYaw) * mLerp;
-      this.microPitch += (this.microPitchTarget - this.microPitch) * mLerp;
+      this.advanceMicrosaccade(delta);
 
       // Fixation timer → start saccade
       this.fixationTimer -= delta;
@@ -294,7 +346,13 @@ export class EyeSystem {
           picked.left - this.current.left,
           picked.right - this.current.right,
         );
-        this.saccadeDuration = Math.max(0.04, 0.04 + dist * 0.06);
+        const dYawDeg =
+          (picked.left - picked.right - (this.current.left - this.current.right)) * MAX_YAW;
+        const dPitchDeg =
+          (picked.up - picked.down - (this.current.up - this.current.down)) * MAX_PITCH;
+        const ampDeg = Math.hypot(dYawDeg, dPitchDeg);
+        // main sequence D = D0 + d*A(D0/d は範囲で持つ出発点。research §2)
+        this.saccadeDuration = clamp(0.021 + 0.0025 * ampDeg, 0.024, 0.12);
         this.saccadeProgress = 0;
 
         this.saccadeStart.up = this.current.up;
@@ -317,6 +375,7 @@ export class EyeSystem {
             targetYawDeg: (picked.left - picked.right) * MAX_YAW,
             targetPitchDeg: (picked.up - picked.down) * MAX_PITCH,
             blinkWorthy: dist >= GAZE_BLINK_MIN_MAGNITUDE && this.random() < GAZE_BLINK_PROB,
+            origin: "idle",
           };
         }
 
