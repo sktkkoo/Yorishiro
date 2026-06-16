@@ -5,7 +5,12 @@
  * BlinkSystem (blink timing), and utility functions.
  */
 
+import type { Disposable } from "@charminal/sdk";
+import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
+import * as THREE from "three";
 import { describe, expect, it } from "vitest";
+import type { ClaimKind, ClaimState } from "../../runtime/ui-claim-state";
+import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
 import {
@@ -23,6 +28,84 @@ import {
   MICRO_MOUTH_POOL,
 } from "./idle-microexpression-system";
 import { IdleSquintSystem } from "./idle-squint-system";
+import { Body } from "./index";
+
+function mockBodyVrm(): {
+  readonly vrm: VRM;
+  readonly getBone: (name: VRMHumanBoneName) => THREE.Object3D;
+} {
+  const bones = new Map<VRMHumanBoneName, THREE.Object3D>();
+  const getBone = (name: VRMHumanBoneName): THREE.Object3D => {
+    let bone = bones.get(name);
+    if (!bone) {
+      bone = new THREE.Object3D();
+      bones.set(name, bone);
+    }
+    return bone;
+  };
+  const scene = new THREE.Object3D();
+  const vrm = {
+    meta: { metaVersion: "1" },
+    scene,
+    humanoid: {
+      resetNormalizedPose: () => {},
+      getNormalizedBoneNode: getBone,
+    },
+    expressionManager: {
+      getExpression: () => null,
+      setValue: () => {},
+      update: () => {},
+    },
+    lookAt: {
+      yaw: 0,
+      pitch: 0,
+      applier: { applyYawPitch: () => {} },
+    },
+    update: () => {},
+  } as unknown as VRM;
+  return { vrm, getBone };
+}
+
+function mockClaimState(): ClaimState {
+  const claimed = new Set<ClaimKind>();
+  return {
+    isClaimed: (kind) => claimed.has(kind),
+    claim: (kind): Disposable => {
+      claimed.add(kind);
+      return { dispose: () => claimed.delete(kind) };
+    },
+    releaseAll: () => claimed.clear(),
+  };
+}
+
+function beatTargetOf(body: Body): BeatTarget {
+  return (body as unknown as { buildBeatTarget(): BeatTarget }).buildBeatTarget();
+}
+
+// ─── Body beat target wiring ─────────────────────────────
+
+describe("Body beat target wiring", () => {
+  it("beat glance は triggerGlance 経由で小振幅でも idle では頭を連れる", () => {
+    const { vrm, getBone } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    beatTargetOf(body).glance(0.12, 0, 0.6);
+
+    for (let t = 0; t < 1; t += 1 / 60) body.update(1 / 60, t);
+
+    expect(Math.abs(getBone("head").rotation.y)).toBeGreaterThan(0.005);
+  });
+
+  it("reading 中の beat glance は dead-zone を守り、頭を連れない", () => {
+    const { vrm, getBone } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setState("reading");
+    beatTargetOf(body).glance(0.12, 0, 0.6);
+
+    for (let t = 0; t < 1; t += 1 / 60) body.update(1 / 60, t);
+
+    expect(Math.abs(getBone("head").rotation.y)).toBeLessThan(0.001);
+  });
+});
 
 // ─── ExpressionManager ───────────────────────────────────
 
