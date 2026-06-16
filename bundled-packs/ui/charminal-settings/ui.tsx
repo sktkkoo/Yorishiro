@@ -2010,6 +2010,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
   // 環境音ボリューム（0.0-1.0）。config 読み込み前は null。
   const [ambientVolume, setAmbientVolume] = useState<number | null>(null);
+  // idle motion の大きさ（0.0-3.0）。config 読み込み前は null。
+  const [motionIntensity, setMotionIntensity] = useState<number | null>(null);
   // activeAmbientUi（Aura toggle 等の状態管理用）。
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
   const [language, setLanguage] = useState<AppLanguage>("auto");
@@ -2038,6 +2040,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setAgentPinnedBy(cur.agentPinnedByProfile);
       setAmbientMuted(cur.ambientAudioMuted);
       setAmbientVolume(cur.ambientAudioVolume);
+      setMotionIntensity(cur.motionIntensity);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
@@ -2176,6 +2179,19 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setAmbientAudioVolume(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "ambientAudioVolume",
+    });
+  };
+
+  const onMotionIntensityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (motionIntensity === null) return;
+    const next = Number.parseFloat(e.target.value);
+    void applyConfigUpdate({
+      next,
+      prev: motionIntensity,
+      setLocal: setMotionIntensity,
+      write: (v) => ctx.app.setMotionIntensity(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "motionIntensity",
     });
   };
 
@@ -2484,6 +2500,56 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 accentColor: COLORS.accent,
               }}
             />
+          </div>
+          <div style={{ opacity: 0.7 }}>{strings.motionIntensity}</div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: SPACING.xs,
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
+            }}
+          >
+            <input
+              type="range"
+              min="0"
+              max="3"
+              step="0.05"
+              value={motionIntensity ?? 1}
+              onChange={onMotionIntensityChange}
+              disabled={motionIntensity === null}
+              aria-label={strings.motionIntensity}
+              style={{
+                flex: 1,
+                height: "4px",
+                appearance: "none",
+                WebkitAppearance: "none",
+                background: COLORS.borderSubtle,
+                borderRadius: "2px",
+                outline: "none",
+                cursor: motionIntensity === null ? "default" : "pointer",
+                accentColor: COLORS.accent,
+              }}
+            />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gap: "4px",
+                fontSize: "10px",
+                lineHeight: 1.2,
+                opacity: 0.5,
+                textAlign: "center",
+                overflowWrap: "anywhere",
+              }}
+            >
+              <span>{strings.motionLevelCalm}</span>
+              <span>{strings.motionLevelNormal}</span>
+              <span>{strings.motionLevelLively}</span>
+              <span>{strings.motionLevelOver}</span>
+            </div>
           </div>
         </div>
 

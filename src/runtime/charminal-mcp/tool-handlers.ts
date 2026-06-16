@@ -507,6 +507,35 @@ function requestRecord(request: unknown): Record<string, unknown> {
     : {};
 }
 
+export interface SetMotionIntensityDeps {
+  readonly readConfig: () => Promise<CharminalConfig>;
+  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly applyToRuntime: (intensity: number) => void;
+}
+
+export interface SetMotionIntensityResult {
+  readonly intensity: number;
+}
+
+/**
+ * idle motion 強度を設定する MCP handler。config に永続化 + runtime に即反映。
+ * user の settings スライダー（ctx.app.setMotionIntensity）と同じ効果＝対称性。
+ */
+export function createSetMotionIntensityHandler(deps: SetMotionIntensityDeps) {
+  return async (request: unknown): Promise<SetMotionIntensityResult> => {
+    const record = requestRecord(request);
+    const raw = record.intensity;
+    if (typeof raw !== "number" || !Number.isFinite(raw)) {
+      throw new Error(`invalid motion intensity: ${String(raw)}`);
+    }
+    const intensity = Math.max(0, Math.min(3, raw));
+    const current = await deps.readConfig();
+    await deps.writeConfig({ ...current, motionIntensity: intensity });
+    deps.applyToRuntime(intensity);
+    return { intensity };
+  };
+}
+
 export interface GetPackStateDeps {
   readonly state: UiStateStore;
   readonly getActiveSceneId: () => string | null;

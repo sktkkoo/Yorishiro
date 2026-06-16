@@ -705,6 +705,9 @@ function FirstRunHealthPanel({
 const clampAmbientAudioVolume = (volume: number): number =>
   Number.isFinite(volume) ? Math.max(0, Math.min(1, volume)) : 1;
 
+const clampMotionIntensity = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.min(3, value)) : 1;
+
 function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
@@ -1223,6 +1226,7 @@ function App() {
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
         ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
+        getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
@@ -1461,6 +1465,7 @@ function App() {
           createSceneScreenshotHandler,
           // Presence intensity:
           createPresenceSetIntensityHandler,
+          createSetMotionIntensityHandler,
           // Voice:
           createVoiceSayHandler,
           createVoicePlayHandler,
@@ -1761,6 +1766,11 @@ function App() {
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
             applyPresenceLevel: (level, source) => applyPresenceLevelFromApp(level, source),
+          }),
+          "motion.set-intensity": createSetMotionIntensityHandler({
+            readConfig,
+            writeConfig,
+            applyToRuntime: (intensity) => getThreeRuntime().setMotionIntensity(intensity),
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
@@ -2379,6 +2389,7 @@ function App() {
         terminalAgent: string;
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
+        motionIntensity: number;
         language: AppLanguage;
         voiceFrequency: VoiceFrequency;
       }>,
@@ -2710,6 +2721,11 @@ function App() {
             await updateConfig({ ambientAudioVolume: clamped });
             ambientAudio.setVolume(clamped);
           },
+          setMotionIntensity: async (value) => {
+            const clamped = clampMotionIntensity(value);
+            await updateConfig({ motionIntensity: clamped });
+            getThreeRuntime().setMotionIntensity(clamped);
+          },
           setLanguage: async (language) => {
             const next = pendingConfigWrite.then(async () => {
               const cur = parseConfig(await readCharminalConfigText());
@@ -2750,6 +2766,7 @@ function App() {
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
+              motionIntensity: cur.motionIntensity,
               activeAmbientUi: cur.activeAmbientUi,
               language: cur.language,
               resolvedLanguage,

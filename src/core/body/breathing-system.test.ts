@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 import { BreathingSystem } from "./breathing-system";
+import { motionGain } from "./motion-gain";
 
 /** 決定的な疑似乱数（mulberry32）。 */
 function seededRandom(seed: number): () => number {
@@ -126,5 +127,25 @@ describe("BreathingSystem", () => {
     // ため息周期（25-50s）を跨ぐ 70s で deep breath のピークを観測
     const longPeak = peakOffsetY(sys, 70);
     expect(longPeak).toBeGreaterThan(basePeak * 1.4);
+  });
+
+  it("intensity 1.0 は出力が完全に不変（default 保証）", () => {
+    const a = new BreathingSystem(seededRandom(11));
+    const b = new BreathingSystem(seededRandom(11));
+    b.setIntensity(1.0);
+    for (let t = 0; t < 3; t += DT) {
+      expect(b.update(DT).offsetY).toBe(a.update(DT).offsetY);
+    }
+  });
+
+  it("setIntensity が振幅を motionGain('breathing') 倍にスケールする", () => {
+    const base = new BreathingSystem(seededRandom(12));
+    const big = new BreathingSystem(seededRandom(12));
+    base.setMode("focused"); // 自発ため息を抑止
+    big.setMode("focused");
+    big.setIntensity(2);
+    const basePeak = peakOffsetY(base, 12);
+    const bigPeak = peakOffsetY(big, 12);
+    expect(bigPeak / basePeak).toBeCloseTo(motionGain(2, "breathing"), 5);
   });
 });

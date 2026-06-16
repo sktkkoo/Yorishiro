@@ -301,6 +301,12 @@ export class Body {
     this.lipSyncSource = source;
   }
 
+  /** idle motion 倍率（0-3, 1 で現状）を breathing / procedural bones に伝播する。 */
+  setMotionIntensity(intensity: number): void {
+    this.breathing.setIntensity(intensity);
+    this.proceduralBones.setIntensity(intensity);
+  }
+
   setState(state: EyeState): void {
     // const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);

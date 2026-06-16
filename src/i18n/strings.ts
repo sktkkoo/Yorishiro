@@ -16,6 +16,11 @@ export interface UiStrings {
   readonly unmuteAmbient: string;
   readonly muteAmbient: string;
   readonly ambientVolume: string;
+  readonly motionIntensity: string;
+  readonly motionLevelCalm: string;
+  readonly motionLevelNormal: string;
+  readonly motionLevelLively: string;
+  readonly motionLevelOver: string;
   readonly selectVrmFile: string;
   readonly agentAppliesNextLaunch: string;
   readonly agentControlledByProfile: string;
@@ -110,6 +115,11 @@ const EN: UiStrings = {
   unmuteAmbient: "Unmute ambient sound",
   muteAmbient: "Mute ambient sound",
   ambientVolume: "Ambient volume",
+  motionIntensity: "Motion size",
+  motionLevelCalm: "Calm",
+  motionLevelNormal: "Normal",
+  motionLevelLively: "Lively",
+  motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
   agentAppliesNextLaunch: "Applies from the next agent launch",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
@@ -206,6 +216,11 @@ const JA: UiStrings = {
   unmuteAmbient: "環境音をミュート解除",
   muteAmbient: "環境音をミュート",
   ambientVolume: "環境音ボリューム",
+  motionIntensity: "動きの大きさ",
+  motionLevelCalm: "控えめ",
+  motionLevelNormal: "標準",
+  motionLevelLively: "活発",
+  motionLevelOver: "オーバーアクション",
   selectVrmFile: "VRM ファイルを選択",
   agentAppliesNextLaunch: "※ 次回起動時に反映",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
