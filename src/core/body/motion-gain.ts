@@ -51,10 +51,10 @@ export function springParams(intensity: number): MotionSpringParams {
   const t = (safe - 0.5) / 2.5;
 
   const spineOmega = Math.max(1, Math.min(15, clampedLerp(3.0, 8.0, t)));
-  const spineZeta = Math.max(0.2, Math.min(1.2, clampedLerp(0.9, 0.35, t)));
+  const spineZeta = Math.max(0.2, Math.min(1.2, clampedLerp(0.9, 0.5, t)));
 
   const headOmega = Math.max(1, Math.min(15, clampedLerp(3.0, 10.0, t)));
-  const headZeta = Math.max(0.2, Math.min(1.2, clampedLerp(0.85, 0.3, t)));
+  const headZeta = Math.max(0.2, Math.min(1.2, clampedLerp(0.85, 0.5, t)));
   const headTimerScale = Math.max(0.2, clampedLerp(1.3, 0.4, t));
 
   const armOmega = Math.max(1, spineOmega * 0.5);
@@ -69,4 +69,29 @@ export function springParams(intensity: number): MotionSpringParams {
     armOmega,
     armZeta,
   };
+}
+
+/**
+ * idle beat の発火レート(beats/minute)。
+ * smoothstep で intensity 1.0 以下はほぼゼロ、2.5 付近で活発。
+ */
+export function beatAccentRate(intensity: number): number {
+  const safe = Number.isFinite(intensity) ? Math.max(0, intensity) : 1.0;
+  const t = Math.max(0, Math.min(1, (safe - 1.0) / 2.0));
+  const smooth = t * t * (3 - 2 * t);
+  return 0.2 + (8.0 - 0.2) * smooth;
+}
+
+/**
+ * 平均 mean を保つ右歪み(log-normal)な間隔サンプル。
+ * 一様 jitter だと「機械的な等間隔っぽさ」が残るため、生体的な inter-event
+ * interval(対数正規/ex-Gaussian, 右裾)に寄せる。mean を保存するので平均頻度は不変。
+ * Internal design-record: 2026-06-17-motion-aliveness-research.md §4
+ */
+export function sampleSkewedInterval(mean: number, random: () => number, sigma = 0.5): number {
+  const u1 = Math.max(1e-9, random());
+  const u2 = random();
+  const gaussian = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  const sample = mean * Math.exp(sigma * gaussian - (sigma * sigma) / 2);
+  return Math.min(mean * 3, Math.max(mean * 0.2, sample));
 }
