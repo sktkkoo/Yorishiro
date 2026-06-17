@@ -10,6 +10,7 @@
 
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
+import type { EyeState } from "./eye-system";
 import { motionGain, springParams } from "./motion-gain";
 import { OrganicNoise } from "./organic-noise";
 import { Spring1D } from "./spring";
@@ -76,24 +77,7 @@ export class ProceduralBones {
   private breathChestPitch = 0;
   private breathShoulderLift = 0;
 
-  /** When true, head drift amplitude increases ×1.8 and interval shortens. */
-  private _isThinking = false;
-
-  get isThinking(): boolean {
-    return this._isThinking;
-  }
-
-  set isThinking(value: boolean) {
-    if (this._isThinking === value) return;
-    this._isThinking = value;
-    if (!value) {
-      // thinking → idle: drift target を即リセットして頭が素早く正面に戻るようにする。
-      // 旧実装では amplified drift position からの復帰が遅い lerp で 3-6 秒かかっていた。
-      this.headDriftTargetZ = 0;
-      this.headDriftTargetY = 0;
-      this.headDriftTimer = 0.5 + Math.random() * 1.0;
-    }
-  }
+  private activityState: EyeState = "idle";
 
   // Posture shift state
   private postureLeanZ = 0;
@@ -102,6 +86,11 @@ export class ProceduralBones {
 
   // Startle flinch state（残り時間。0 で非アクティブ）
   private flinchTimer = 0;
+  private spineEnvelopeZ = 0;
+  private spineEnvelopeX = 0;
+  private spineEnvelopeTimer = 0;
+  private postureEnvelope = 0;
+  private postureEnvelopeTimer = 0;
   private intensity = 1.0;
 
   private readonly random: () => number;
@@ -142,6 +131,35 @@ export class ProceduralBones {
     this.armSpringLeftX.setParams(sp.armOmega, sp.armZeta);
     this.armSpringRightZ.setParams(sp.armOmega, sp.armZeta);
     this.armSpringRightX.setParams(sp.armOmega, sp.armZeta);
+  }
+
+  /** state をそのまま受け取り、activity に応じた head drift 調整を行う。 */
+  setActivityState(state: EyeState): void {
+    const wasActive = this.isActiveState(this.activityState);
+    this.activityState = state;
+    if (!this.isActiveState(state) && wasActive) {
+      // active state → idle/writing: drift target を即リセットして頭が素早く正面に戻るようにする。
+      this.headDriftTargetZ = 0;
+      this.headDriftTargetY = 0;
+      this.headDriftTimer = 0.5 + this.random() * 1.0;
+    }
+  }
+
+  private isActiveState(state: EyeState): boolean {
+    return state === "thinking" || state === "reading" || state === "running";
+  }
+
+  /** spine spring target に transient offset を追加。durationS 後に 0 に戻る。 */
+  addSpineEnvelope(z: number, x: number, durationS: number): void {
+    this.spineEnvelopeZ = z;
+    this.spineEnvelopeX = x;
+    this.spineEnvelopeTimer = durationS;
+  }
+
+  /** posture バイアスを一時変更。durationS 後に 0 に戻る。 */
+  addPostureEnvelope(leanZ: number, durationS: number): void {
+    this.postureEnvelope = leanZ;
+    this.postureEnvelopeTimer = durationS;
   }
 
   /** Bind to VRM normalized bones. Call after VRM loads + rest pose setup. */
@@ -203,18 +221,34 @@ export class ProceduralBones {
       this.postureLeanTarget = (this.random() - 0.5) * 2 * POSTURE_LEAN_AMP * postureGain;
       this.postureTimer = POSTURE_MIN_S + this.random() * (POSTURE_MAX_S - POSTURE_MIN_S);
     }
+    const postureLerpSpeed =
+      this.postureEnvelopeTimer > 0 ? Math.max(POSTURE_LERP_SPEED, 1.8) : POSTURE_LERP_SPEED;
     this.postureLeanZ = lerpDelta(
       this.postureLeanZ,
-      this.postureLeanTarget,
-      POSTURE_LERP_SPEED,
+      this.postureLeanTarget + this.postureEnvelope,
+      postureLerpSpeed,
       delta,
     );
 
     // ── Spine sway（continuous noise → spring パススルー）──
     const swayRawZ = this.swaySpineZ.sample(elapsed) * 0.015 * swayGain;
     const swayRawX = this.swaySpineX.sample(elapsed) * 0.008 * swayGain;
-    this.swaySpringZ.update(delta, swayRawZ);
-    this.swaySpringX.update(delta, swayRawX);
+    this.swaySpringZ.update(delta, swayRawZ + this.spineEnvelopeZ);
+    this.swaySpringX.update(delta, swayRawX + this.spineEnvelopeX);
+
+    if (this.spineEnvelopeTimer > 0) {
+      this.spineEnvelopeTimer -= delta;
+      if (this.spineEnvelopeTimer <= 0) {
+        this.spineEnvelopeZ = 0;
+        this.spineEnvelopeX = 0;
+      }
+    }
+    if (this.postureEnvelopeTimer > 0) {
+      this.postureEnvelopeTimer -= delta;
+      if (this.postureEnvelopeTimer <= 0) {
+        this.postureEnvelope = 0;
+      }
+    }
 
     if (this.spineBone && w >= 0.001) {
       this.spineBone.rotation.z = (this.swaySpringZ.pos + this.postureLeanZ) * w;
@@ -225,12 +259,13 @@ export class ProceduralBones {
     if (this.headBone) {
       this.headDriftTimer -= delta;
       if (this.headDriftTimer <= 0) {
-        const ampZ = (this.isThinking ? HEAD_DRIFT_AMP_Z * 1.8 : HEAD_DRIFT_AMP_Z) * headGain;
-        const ampY = (this.isThinking ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y) * headGain;
+        const isActive = this.isActiveState(this.activityState);
+        const ampZ = (isActive ? HEAD_DRIFT_AMP_Z * 1.8 : HEAD_DRIFT_AMP_Z) * headGain;
+        const ampY = (isActive ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y) * headGain;
         this.headDriftTargetZ = (this.random() - 0.5) * 2 * ampZ;
         this.headDriftTargetY = (this.random() - 0.5) * 2 * ampY;
         const sp = springParams(this.intensity);
-        const baseTimer = this.isThinking ? 1.0 + this.random() * 2.0 : 2.0 + this.random() * 3.0;
+        const baseTimer = isActive ? 1.0 + this.random() * 2.0 : 2.0 + this.random() * 3.0;
         this.headDriftTimer = baseTimer * sp.headTimerScale;
       }
       this.headSpringZ.update(delta, this.headDriftTargetZ);

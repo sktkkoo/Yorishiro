@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { type MotionAxis, motionGain, springParams } from "./motion-gain";
+import {
+  beatAccentRate,
+  type MotionAxis,
+  motionGain,
+  sampleSkewedInterval,
+  springParams,
+} from "./motion-gain";
 
 const AXES: MotionAxis[] = ["head", "sway", "posture", "breathing"];
 
@@ -61,5 +67,51 @@ describe("springParams", () => {
     const zero = springParams(0);
     expect(zero.spineOmega).toBeGreaterThanOrEqual(1);
     expect(zero.spineZeta).toBeLessThanOrEqual(1.2);
+  });
+});
+
+describe("beatAccentRate", () => {
+  it("intensity 1.0 以下でほぼゼロに近い", () => {
+    expect(beatAccentRate(0)).toBeLessThan(0.5);
+    expect(beatAccentRate(1.0)).toBeLessThan(0.5);
+  });
+
+  it("intensity 2.5 で活発(5+ beats/min)", () => {
+    expect(beatAccentRate(2.5)).toBeGreaterThan(5);
+  });
+
+  it("単調増加する", () => {
+    expect(beatAccentRate(2.5)).toBeGreaterThan(beatAccentRate(2.0));
+  });
+});
+
+describe("sampleSkewedInterval", () => {
+  it("平均がほぼ mean に保たれる", () => {
+    let s = 12345;
+    const rng = () => {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      return s / 0x7fffffff;
+    };
+    let sum = 0;
+    const n = 5000;
+    for (let i = 0; i < n; i++) sum += sampleSkewedInterval(2.0, rng);
+    const mean = sum / n;
+    expect(mean).toBeGreaterThan(1.6);
+    expect(mean).toBeLessThan(2.4);
+  });
+
+  it("mean*3 を超えない / mean*0.2 を下回らない", () => {
+    const hi = sampleSkewedInterval(2.0, () => 0.9999);
+    const lo = sampleSkewedInterval(2.0, () => 0.0001);
+    expect(hi).toBeLessThanOrEqual(6.0001);
+    expect(lo).toBeGreaterThanOrEqual(0.3999);
+  });
+});
+
+describe("springParams zeta floor", () => {
+  it("高 intensity でも ζ は 0.5 以上(おもちゃ感の是正)", () => {
+    const p = springParams(3.0);
+    expect(p.spineZeta).toBeGreaterThanOrEqual(0.5);
+    expect(p.headZeta).toBeGreaterThanOrEqual(0.5);
   });
 });

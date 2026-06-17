@@ -165,6 +165,21 @@ export class IdleMicroexpressionSystem {
     return this.activeDuration > 0;
   }
 
+  /** 外部から one-shot episode を注入。pool 選択を bypass して指定 morph を使う。 */
+  injectEpisode(morph: string, weight: number, durationS: number): void {
+    if (!this.morphPool.includes(morph)) return;
+    this.activeDuration = durationS;
+    this.activeTimer = durationS;
+    this.activeWeight = weight;
+    this.activeMorph = morph;
+    this.nextTimer = this.pickNextDelay();
+  }
+
+  /** beat scheduler が pool から morph を選ぶための read-only 公開。 */
+  get pool(): ReadonlyArray<string> {
+    return this.morphPool;
+  }
+
   private startEpisode(): void {
     this.activeDuration = DURATION_MIN_S + this.random() * (DURATION_MAX_S - DURATION_MIN_S);
     this.activeTimer = this.activeDuration;

@@ -36,6 +36,9 @@ import type { SubsystemLog } from "../dev-log";
 import type { MouthValues } from "../voice/mouth-values";
 import { MOUTH_KEYS } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
+import { defaultProfiles } from "./beat-library";
+import { IdleBeatScheduler } from "./beat-scheduler";
+import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
 import { BreathingSystem } from "./breathing-system";
 import { CursorAttentionSystem } from "./cursor-attention";
@@ -77,6 +80,9 @@ const BLINK_EXPRESSION_NAME = "blink";
 // gain は「目の移動角の何割を頭が肩代わりするか」（人間はおよそ 2〜3 割）。
 const HEAD_RECRUITMENT_MIN_MAGNITUDE = 0.6;
 const HEAD_RECRUITMENT_GAIN = 0.25;
+// beat glance は idle saccade より小振幅でも頭を連れる(eye-lead を見せる)。
+// ただし reading/writing は dead-zone 厳守=目だけ。
+const GLANCE_HEAD_RECRUITMENT_MIN = 0.08;
 
 // Startle 反射の cooldown。エラーが連発しても痙攣的に反応し続けない
 //（motion-effect-trigger-axes.md の「intrusive な motion」の教訓）。
@@ -130,6 +136,7 @@ export class Body {
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
+  private readonly beatScheduler: IdleBeatScheduler;
   private readonly claimState: ClaimState;
   private readonly devLog?: SubsystemLog;
   /**
@@ -242,6 +249,7 @@ export class Body {
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
+    this.beatScheduler = new IdleBeatScheduler(defaultProfiles);
 
     this.motionScheduler = new MotionScheduler({
       onActivate: async (req) => {
@@ -305,16 +313,15 @@ export class Body {
   setMotionIntensity(intensity: number): void {
     this.breathing.setIntensity(intensity);
     this.proceduralBones.setIntensity(intensity);
+    this.beatScheduler.setIntensity(intensity);
   }
 
   setState(state: EyeState): void {
     // const prevState = this.eyeSystem.state;
     this.eyeSystem.setState(state);
     this.blinkSystem.setState(state);
-    // "thinking family": Claude のターン中は writing 以外ずっと頭を揺らす。
-    // writing を除外するのは Typing.vrma と procedural head drift がぶつかるため。
-    this.proceduralBones.isThinking =
-      state === "thinking" || state === "reading" || state === "running";
+    this.proceduralBones.setActivityState(state);
+    this.beatScheduler.setState(state, this.buildBeatTarget());
     if (!this.claimState.isClaimed("expression")) {
       this.applyStateExpressions(state);
     }
@@ -386,6 +393,32 @@ export class Body {
     this.breathing.triggerDeepBreath();
   }
 
+  private buildBeatTarget(): BeatTarget {
+    return {
+      glance: (yawRad, pitchRad, durationS) => {
+        // EyeSystem が override + pendingSaccade を発行し、自動 release も行う(eye-lead)。
+        this.eyeSystem.triggerGlance(
+          yawRad * (180 / Math.PI),
+          pitchRad * (180 / Math.PI),
+          durationS,
+        );
+      },
+      addSpineEnvelope: (z, x, durationS) => this.proceduralBones.addSpineEnvelope(z, x, durationS),
+      addPostureEnvelope: (leanZ, durationS) =>
+        this.proceduralBones.addPostureEnvelope(leanZ, durationS),
+      triggerDeepBreath: () => this.breathing.triggerDeepBreath(),
+      requestBlink: () => this.blinkSystem.requestBlink(),
+      injectMicroExpression: (region, weight, durationS) => {
+        const channel = this.microChannels.find((ch) => ch.region === region);
+        if (channel && channel.system.pool.length > 0) {
+          const pool = channel.system.pool;
+          const morph = pool[Math.floor(Math.random() * pool.length)];
+          if (morph) channel.system.injectEpisode(morph, weight, durationS);
+        }
+      },
+    };
+  }
+
   update(delta: number, elapsed: number): void {
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
@@ -416,6 +449,8 @@ export class Body {
       this.eyeSystem.state !== "idle" ? "focused" : this.relaxedValue > 0 ? "relaxed" : "idle",
     );
     const breath = this.breathing.update(delta);
+    // 2b. Beat scheduler(proceduralBones の前。beat の envelope を先に反映)
+    this.beatScheduler.update(delta, this.buildBeatTarget(), animationClaimed, expressionClaimed);
     if (!animationClaimed) {
       this.vrm.scene.position.y = breath.offsetY;
       this.proceduralBones.setBreathingOffsets(breath.chestPitch, breath.shoulderLift);
@@ -446,7 +481,12 @@ export class Body {
     const saccade = this.eyeSystem.consumeSaccadeEvent();
     if (saccade) {
       if (saccade.blinkWorthy && !expressionClaimed) this.blinkSystem.requestBlink();
-      if (!animationClaimed && saccade.magnitude >= HEAD_RECRUITMENT_MIN_MAGNITUDE) {
+      const focusState = this.eyeSystem.state === "reading" || this.eyeSystem.state === "writing";
+      const headMin =
+        saccade.origin === "glance" && !focusState
+          ? GLANCE_HEAD_RECRUITMENT_MIN
+          : HEAD_RECRUITMENT_MIN_MAGNITUDE;
+      if (!animationClaimed && !focusState && saccade.magnitude >= headMin) {
         this.proceduralBones.nudgeHeadToward(
           saccade.targetYawDeg * (Math.PI / 180) * HEAD_RECRUITMENT_GAIN,
         );

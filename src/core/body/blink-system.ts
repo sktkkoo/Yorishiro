@@ -5,7 +5,7 @@
  * Body feeds the output value into ExpressionManager as a system-level
  * "blink" expression slot.
  *
- * Timing: 4-7s intervals, close ~50ms (rate 20/s), open ~83ms (rate 12/s).
+ * Timing: idle mean ~3.5s intervals, close ~50ms (rate 20/s), open ~83ms (rate 12/s).
  * Matches human blink physiology measurements.
  *
  * 生きている瞬きのための拡張：
@@ -17,14 +17,14 @@
 
 import type { EyeState } from "./eye-system";
 
-// state 連動の間隔倍率。読字・作業中は瞬きが減り（dry-eye 現象として知られる）、
-// 思考（記憶想起）は認知の切り替わりで瞬きがやや増える。
+// 安静 17/min(≈3.5s), 会話 26/min, 読書 4.5/min(Bentivoglio 1997)。
+// Internal design-record: 2026-06-17-motion-aliveness-research.md §5
 const INTERVAL_SCALE: Record<EyeState, number> = {
   idle: 1.0,
-  thinking: 0.85,
-  reading: 1.6,
-  writing: 1.6,
-  running: 1.2,
+  thinking: 0.66, // 認知の切り替わりでやや増(≈26/min)
+  reading: 3.8, // 読書で激減(≈4.5/min)
+  writing: 3.5,
+  running: 1.0,
 };
 
 const DOUBLE_BLINK_PROB = 0.15;
@@ -52,7 +52,7 @@ export class BlinkSystem {
 
   constructor(random?: () => number) {
     this.random = random ?? Math.random;
-    this.timer = 4.0 + this.random() * 2.0;
+    this.timer = 2.5 + this.random() * 2.0;
   }
 
   /**
@@ -85,7 +85,7 @@ export class BlinkSystem {
     if (this.timer <= 0 && !this.active) {
       this.active = true;
       this.phase = 1;
-      this.timer = (4.0 + this.random() * 3.0) * this.intervalScale;
+      this.timer = (2.5 + this.random() * 2.0) * this.intervalScale;
       this.speedMul = 1 - SPEED_JITTER / 2 + this.random() * SPEED_JITTER;
     }
 
