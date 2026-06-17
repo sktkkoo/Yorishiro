@@ -14,6 +14,7 @@ import type { EyeState } from "./eye-system";
 import { motionGain, springParams } from "./motion-gain";
 import { OrganicNoise } from "./organic-noise";
 import { Spring1D } from "./spring";
+import { StatePoseBlender } from "./state-pose";
 import { createVrmRestPose, type VrmRestPose } from "./vrm-rest-pose";
 
 // ─── Constants ───────────────────────────────────────────
@@ -92,6 +93,7 @@ export class ProceduralBones {
   private postureEnvelope = 0;
   private postureEnvelopeTimer = 0;
   private intensity = 1.0;
+  private readonly statePose = new StatePoseBlender();
 
   private readonly random: () => number;
 
@@ -137,6 +139,7 @@ export class ProceduralBones {
   setActivityState(state: EyeState): void {
     const wasActive = this.isActiveState(this.activityState);
     this.activityState = state;
+    this.statePose.setState(state);
     if (!this.isActiveState(state) && wasActive) {
       // active state → idle/writing: drift target を即リセットして頭が素早く正面に戻るようにする。
       this.headDriftTargetZ = 0;
@@ -211,6 +214,7 @@ export class ProceduralBones {
    */
   update(delta: number, elapsed: number, weight = 1.0): void {
     const w = weight;
+    this.statePose.update(delta);
     const swayGain = motionGain(this.intensity, "sway");
     const headGain = motionGain(this.intensity, "head");
     const postureGain = motionGain(this.intensity, "posture");
@@ -231,8 +235,8 @@ export class ProceduralBones {
     );
 
     // ── Spine sway（continuous noise → spring パススルー）──
-    const swayRawZ = this.swaySpineZ.sample(elapsed) * 0.015 * swayGain;
-    const swayRawX = this.swaySpineX.sample(elapsed) * 0.008 * swayGain;
+    const swayRawZ = this.swaySpineZ.sample(elapsed) * 0.015 * swayGain * this.statePose.swayScale;
+    const swayRawX = this.swaySpineX.sample(elapsed) * 0.008 * swayGain * this.statePose.swayScale;
     this.swaySpringZ.update(delta, swayRawZ + this.spineEnvelopeZ);
     this.swaySpringX.update(delta, swayRawX + this.spineEnvelopeX);
 
@@ -252,21 +256,21 @@ export class ProceduralBones {
 
     if (this.spineBone && w >= 0.001) {
       this.spineBone.rotation.z = (this.swaySpringZ.pos + this.postureLeanZ) * w;
-      this.spineBone.rotation.x = (this.swaySpringX.pos + this.breathChestPitch) * w;
+      this.spineBone.rotation.x =
+        (this.swaySpringX.pos + this.breathChestPitch + this.statePose.spinePitch) * w;
     }
 
     // ── Head drift ──────────────────────────────────────
     if (this.headBone) {
       this.headDriftTimer -= delta;
       if (this.headDriftTimer <= 0) {
-        const isActive = this.isActiveState(this.activityState);
-        const ampZ = (isActive ? HEAD_DRIFT_AMP_Z * 1.8 : HEAD_DRIFT_AMP_Z) * headGain;
-        const ampY = (isActive ? HEAD_DRIFT_AMP_Y * 1.8 : HEAD_DRIFT_AMP_Y) * headGain;
+        const ampZ = HEAD_DRIFT_AMP_Z * headGain * this.statePose.driftAmpScale;
+        const ampY = HEAD_DRIFT_AMP_Y * headGain * this.statePose.driftAmpScale;
         this.headDriftTargetZ = (this.random() - 0.5) * 2 * ampZ;
         this.headDriftTargetY = (this.random() - 0.5) * 2 * ampY;
         const sp = springParams(this.intensity);
-        const baseTimer = isActive ? 1.0 + this.random() * 2.0 : 2.0 + this.random() * 3.0;
-        this.headDriftTimer = baseTimer * sp.headTimerScale;
+        const baseTimer = 2.0 + this.random() * 3.0;
+        this.headDriftTimer = baseTimer * sp.headTimerScale * this.statePose.driftIntervalScale;
       }
       this.headSpringZ.update(delta, this.headDriftTargetZ);
       this.headSpringY.update(delta, this.headDriftTargetY);
@@ -293,7 +297,8 @@ export class ProceduralBones {
         flinchX = Math.sin(Math.PI * p) * FLINCH_PITCH_RAD * w;
       }
       const headArc = Math.abs(this.headSpringZ.pos) * 0.3 * w;
-      const appliedPitchX = this.headLookAtCurrentX + restPitchX + flinchX - headArc;
+      const appliedPitchX =
+        this.headLookAtCurrentX + restPitchX + flinchX - headArc + this.statePose.headPitch * w;
       this.headBone.rotation.x -= this.headLookAtAppliedX;
       this.headBone.rotation.y -= this.headLookAtAppliedY;
       if (w >= 0.001) {

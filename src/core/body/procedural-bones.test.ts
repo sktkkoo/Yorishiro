@@ -377,4 +377,80 @@ describe("ProceduralBones breathing offsets", () => {
     for (let t = 0; t < 5; t += DT) bones.update(DT, t, 1.0);
     expect(Math.abs(getBone("head").rotation.z)).toBeGreaterThan(0);
   });
+
+  it("reading は idle と異なる前傾シルエット(spine.x の中心が違う)", () => {
+    const meanSpineX = (state: "idle" | "reading"): number => {
+      const { vrm, getBone } = mockVrm();
+      const bones = new ProceduralBones(() => 0.5);
+      bones.bindVrm(vrm);
+      bones.setActivityState(state);
+      let sum = 0;
+      let n = 0;
+      for (let t = 0; t < 4; t += DT) {
+        bones.update(DT, t, 1.0);
+        if (t > 2) {
+          sum += getBone("spine").rotation.x;
+          n++;
+        }
+      }
+      return sum / n;
+    };
+
+    expect(Math.abs(meanSpineX("reading") - meanSpineX("idle"))).toBeGreaterThan(0.02);
+  });
+
+  it("reading の連続スウェイ振幅は idle より小さい(swayScale)", () => {
+    const swayRange = (state: "idle" | "reading", intensity: number): number => {
+      const { vrm, getBone } = mockVrm();
+      const bones = new ProceduralBones(seededRandom(7));
+      bones.bindVrm(vrm);
+      bones.setIntensity(intensity);
+      bones.setActivityState(state);
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      for (let t = 0; t < 12; t += DT) {
+        bones.update(DT, t, 1.0);
+        if (t > 2) {
+          const z = getBone("spine").rotation.z;
+          min = Math.min(min, z);
+          max = Math.max(max, z);
+        }
+      }
+      return max - min;
+    };
+
+    expect(swayRange("reading", 1.0)).toBeLessThan(swayRange("idle", 1.0) * 0.7);
+  });
+
+  it("intensity を上げても reading と idle の相対差(swayScale)が保たれる", () => {
+    const swayRange = (state: "idle" | "reading"): number => {
+      const { vrm, getBone } = mockVrm();
+      const bones = new ProceduralBones(seededRandom(7));
+      bones.bindVrm(vrm);
+      bones.setIntensity(3.0);
+      bones.setActivityState(state);
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      for (let t = 0; t < 12; t += DT) {
+        bones.update(DT, t, 1.0);
+        if (t > 2) {
+          const z = getBone("spine").rotation.z;
+          min = Math.min(min, z);
+          max = Math.max(max, z);
+        }
+      }
+      return max - min;
+    };
+
+    expect(swayRange("reading")).toBeLessThan(swayRange("idle") * 0.7);
+  });
+
+  it("held pose は weight 0 では出ない", () => {
+    const { vrm, getBone } = mockVrm();
+    const bones = new ProceduralBones(() => 0.5);
+    bones.bindVrm(vrm);
+    bones.setActivityState("reading");
+    for (let t = 0; t < 3; t += DT) bones.update(DT, t, 0.0);
+    expect(getBone("spine").rotation.x).toBe(0);
+  });
 });
