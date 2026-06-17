@@ -283,7 +283,8 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 ### Development
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Coding conventions, tech stack, development workflow
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution policy and how to participate
+- [`DEVELOPMENT.md`](DEVELOPMENT.md) — Coding conventions, tech stack, development workflow
 - [`CREDITS.md`](CREDITS.md) — OSS and asset credits ([日本語](CREDITS.ja.md))
 
 ---
