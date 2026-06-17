@@ -132,7 +132,7 @@ For recovery paths, safe mode, and issue report details, see [`docs/troubleshoot
 
 The inhabitant constantly observes terminal output. Hooks and text flowing through the PTY are picked up by persona pack triggers, which react instantly with expressions and motions. These reactions bypass the LLM — the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
 
-### Journal [in development]
+### Journal
 
 The inhabitant can write daily entries in `~/.charminal/journal/daily/`. Summaries of notable moments accumulate in `memories.md` and are recalled in future sessions. This is a long-term memory mechanism that persists across sessions.
 
@@ -176,7 +176,7 @@ What works today:
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
-- Journal: long-term memory across sessions [in development]
+- Journal: long-term memory across sessions
 - `/charm:*` commands for interactive pack creation and editing
 - Localization: Japanese / English auto-detection with per-language persona and prompts
 - UI packs: immersive and theater fullscreen layouts
