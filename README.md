@@ -168,7 +168,8 @@ What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
 - Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
-- CLAI, a VRM 3D character that breathes, blinks, and shifts gaze (bundled)
+- CLAI, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
+- Motion size: scale CLAI's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions

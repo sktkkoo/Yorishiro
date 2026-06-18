@@ -2,8 +2,15 @@
 
 ## Unreleased
 
-## 0.5.0 - 2026-06-14
+## 0.5.0 - 2026-06-19
 
+- Motion size: a Settings slider and `motionIntensity` config field (0–3, default 1.0) scale CLAI's idle sway, breathing, and head/posture motion; inhabitants can adjust it through the `motion_intensity_set` MCP tool.
+- Richer idle aliveness: idle beat scheduler (glances, micro-aversions, anticipation), eye-lead gaze with head recruitment, physiological state-dependent blink rates (suppressed while reading), and StatePose blending in ProceduralBones.
+- User scene packs can be authored as R3F (TSX) components, with live reload from nested source edits.
+- Scene layers support a drop-shadow filter.
+- Inhabitants can read bundled pack sources through MCP (`bundled_example_read`) as authoring references.
+- The restore UI now lists up to 30 snapshots.
+- The first-run tutorial was reworked: fixed sleeps removed, effect shortcuts (F1/F3/F4) demonstrated in place, scene color-theme collaboration shown, and the flow now carries through the pack-creation experience.
 - Terminal agent launch is now backed by `TerminalAgent` adapters for Claude Code, Codex, and OpenCode.
 - Codex installs Charminal commands as `$charm-*` skills instead of `/charm:*` slash commands.
 - OpenCode receives Charminal commands as `/charm-*` custom commands through `OPENCODE_CONFIG_CONTENT`.
