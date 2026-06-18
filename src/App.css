@@ -167,6 +167,8 @@ body,
   display: flex;
   flex-direction: column;
   gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .app-error-boundary-restore li {

@@ -291,14 +291,14 @@ describe("buildRestoreRows", () => {
     expect(rows[0].startupStatus).toBe("error");
   });
 
-  it("limits to `limit` rows (default 5)", () => {
-    const many = Array.from({ length: 10 }, (_, i) => ({
-      seq: 10 - i,
+  it("limits to `limit` rows (default 30)", () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      seq: 40 - i,
       ts_ms: 0,
       trigger: "watcher-settled" as const,
       changed: ["pack"],
     }));
-    expect(buildRestoreRows(many, 0, changeText, "ja-JP")).toHaveLength(5);
+    expect(buildRestoreRows(many, 0, changeText, "ja-JP")).toHaveLength(30);
     expect(buildRestoreRows(many, 0, changeText, "ja-JP", 3)).toHaveLength(3);
   });
 

@@ -173,7 +173,7 @@ export function buildRestoreRows(
   nowMs: number,
   s: ChangeStrings,
   locale: string,
-  limit = 5,
+  limit = 30,
 ): RestoreRow[] {
   const recommended = recommendedRestoreSeq(snapshots);
   return snapshots.slice(0, limit).map((entry, index) => ({
