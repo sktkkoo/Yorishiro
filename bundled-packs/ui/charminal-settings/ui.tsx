@@ -47,6 +47,7 @@ import {
   type UiStrings,
 } from "../../../src/i18n/strings";
 import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
+import { getBrowserLocales, resolveLanguage } from "../../../src/runtime/language/language";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
@@ -1725,13 +1726,30 @@ function PackWorkbench({
   );
 }
 
+const GRID_LABEL_COLUMN_WIDTH = "120px";
+
 /** grid の label-value pair 用の共通 grid style。 */
 const gridStyle: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "100px 1fr",
+  gridTemplateColumns: `${GRID_LABEL_COLUMN_WIDTH} 1fr`,
   gap: `${SPACING.sm} ${SPACING.md}`,
   alignItems: "center",
 };
+
+const MOTION_LEVEL_LABEL_LEFTS = ["0%", "33.3333%", "66.6667%", "100%"] as const;
+
+/** range の 0/1/2/3 tick にレベル名を固定する。 */
+function motionLevelLabelStyle(index: number): React.CSSProperties {
+  const isFirst = index === 0;
+  const isLast = index === MOTION_LEVEL_LABEL_LEFTS.length - 1;
+  return {
+    position: "absolute",
+    left: MOTION_LEVEL_LABEL_LEFTS[index] ?? "0%",
+    transform: isFirst ? "translateX(0)" : isLast ? "translateX(-100%)" : "translateX(-50%)",
+    whiteSpace: "nowrap",
+    textAlign: isFirst ? "left" : isLast ? "right" : "center",
+  };
+}
 
 const CREDITS_RISE_KEYFRAMES = `
 @keyframes charminal-credits-rise {
@@ -2015,6 +2033,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
   const [language, setLanguage] = useState<AppLanguage>("auto");
   const [resolvedLanguage, setResolvedLanguage] = useState<ResolvedLanguage>("en");
+  // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
+  const languageChangeSeq = useRef(0);
   const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
   const [presenceLevel, setPresenceLevel] = useState<UiPresenceLevel>(() =>
     ctx.app.getPresenceLevel(),
@@ -2101,13 +2121,25 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const onLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = e.target.value as AppLanguage;
+    const seq = languageChangeSeq.current + 1;
+    languageChangeSeq.current = seq;
+    const prevPersona = persona;
+    const prevResolvedLanguage = resolvedLanguage;
+    const nextResolvedLanguage = resolveLanguage(next, getBrowserLocales());
     void applyConfigUpdate({
       next,
       prev: language,
-      setLocal: setLanguage,
+      setLocal: (v) => {
+        if (seq !== languageChangeSeq.current) return;
+        setLanguage(v);
+        setResolvedLanguage(v === language ? prevResolvedLanguage : nextResolvedLanguage);
+        if (v === language) setPersona(prevPersona);
+      },
       write: async (v) => {
         await ctx.app.setLanguage(v);
         const cur = await ctx.app.getConfig();
+        if (seq !== languageChangeSeq.current) return;
+        setLanguage(cur.language);
         setPersona(cur.primaryPersona);
         setResolvedLanguage(cur.resolvedLanguage);
       },
@@ -2443,6 +2475,61 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             />
           </div>
 
+          {/* Motion Intensity */}
+          <div style={{ opacity: 0.7 }}>{strings.motionIntensity}</div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: SPACING.xs,
+              width: "100%",
+              minWidth: "280px",
+              maxWidth: "360px",
+            }}
+          >
+            <input
+              type="range"
+              min="0"
+              max="3"
+              step="0.05"
+              value={motionIntensity ?? 1}
+              onChange={onMotionIntensityChange}
+              disabled={motionIntensity === null}
+              aria-label={strings.motionIntensity}
+              style={{
+                flex: 1,
+                height: "4px",
+                appearance: "none",
+                WebkitAppearance: "none",
+                background: COLORS.borderSubtle,
+                borderRadius: "2px",
+                outline: "none",
+                cursor: motionIntensity === null ? "default" : "pointer",
+                accentColor: COLORS.accent,
+              }}
+            />
+            <div
+              style={{
+                position: "relative",
+                height: "13px",
+                fontSize: "10px",
+                lineHeight: 1.2,
+                opacity: 0.5,
+              }}
+            >
+              {[
+                { key: "calm", label: strings.motionLevelCalm },
+                { key: "normal", label: strings.motionLevelNormal },
+                { key: "lively", label: strings.motionLevelLively },
+                { key: "over", label: strings.motionLevelOver },
+              ].map((level, index) => (
+                <span key={level.key} style={motionLevelLabelStyle(index)}>
+                  {level.label}
+                </span>
+              ))}
+            </div>
+          </div>
+
           {/* Sidebar */}
           <div style={{ opacity: 0.7 }}>{strings.labelPresence}</div>
           <div>
@@ -2500,56 +2587,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               }}
             />
           </div>
-          <div style={{ opacity: 0.7 }}>{strings.motionIntensity}</div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: SPACING.xs,
-              width: "100%",
-              minWidth: "220px",
-              maxWidth: "360px",
-            }}
-          >
-            <input
-              type="range"
-              min="0"
-              max="3"
-              step="0.05"
-              value={motionIntensity ?? 1}
-              onChange={onMotionIntensityChange}
-              disabled={motionIntensity === null}
-              aria-label={strings.motionIntensity}
-              style={{
-                flex: 1,
-                height: "4px",
-                appearance: "none",
-                WebkitAppearance: "none",
-                background: COLORS.borderSubtle,
-                borderRadius: "2px",
-                outline: "none",
-                cursor: motionIntensity === null ? "default" : "pointer",
-                accentColor: COLORS.accent,
-              }}
-            />
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                gap: "4px",
-                fontSize: "10px",
-                lineHeight: 1.2,
-                opacity: 0.5,
-                textAlign: "center",
-                overflowWrap: "anywhere",
-              }}
-            >
-              <span>{strings.motionLevelCalm}</span>
-              <span>{strings.motionLevelNormal}</span>
-              <span>{strings.motionLevelLively}</span>
-              <span>{strings.motionLevelOver}</span>
-            </div>
-          </div>
         </div>
 
         {/* Voice Summary（Sound の直下） */}
@@ -2562,7 +2599,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div
           style={{
             marginTop: SPACING.xs,
-            marginLeft: `calc(100px + ${SPACING.md})`,
+            marginLeft: `calc(${GRID_LABEL_COLUMN_WIDTH} + ${SPACING.md})`,
             fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}
@@ -2588,7 +2625,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <div
           style={{
             marginTop: SPACING.xs,
-            marginLeft: `calc(100px + ${SPACING.md})`,
+            marginLeft: `calc(${GRID_LABEL_COLUMN_WIDTH} + ${SPACING.md})`,
             fontSize: FONT.sizeXs,
             opacity: 0.5,
           }}

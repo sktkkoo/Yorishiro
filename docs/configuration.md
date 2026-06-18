@@ -46,7 +46,7 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 }
 ```
 
-設定画面の「動きの大きさ」スライダー、UI pack SDK の `ctx.app.setMotionIntensity(value)`、MCP tool の `motion_intensity_set` は同じ config field と runtime setter に到達する。`1.0` は default なので serialize 時に省略される。
+設定画面の「Motion Intensity」スライダー、UI pack SDK の `ctx.app.setMotionIntensity(value)`、MCP tool の `motion_intensity_set` は同じ config field と runtime setter に到達する。`1.0` は default なので serialize 時に省略される。
 
 ### Language
 

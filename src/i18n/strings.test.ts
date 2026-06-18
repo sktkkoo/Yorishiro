@@ -109,6 +109,13 @@ describe("changeStrings", () => {
     expect(s.changeManual).toBe("AIが記録");
     expect(s.changeUnknown).toBe("変更");
   });
+
+  it("keeps Motion Intensity labels aligned across supported UI languages", () => {
+    expect(getStrings("en").motionIntensity).toBe("Motion Intensity");
+    expect(getStrings("ja").motionIntensity).toBe("Motion Intensity");
+    expect(getStrings("en").motionLevelOver).toBe("Over-the-top");
+    expect(getStrings("ja").motionLevelOver).toBe("オーバー");
+  });
 });
 
 describe("restoreConfirmStrings", () => {
