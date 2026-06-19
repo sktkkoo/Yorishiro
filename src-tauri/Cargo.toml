@@ -27,6 +27,11 @@ serde_json = "1"
 portable-pty = "0.8"
 dirs = "6"
 notify = "8.2.0"
+# default-features = false で ssh/https transport を外し、openssl-sys 依存を断つ。
+# history/mod.rs はローカル repo 操作のみ（network 転送なし）なので問題ない。
+# これにより x86_64 クロスコンパイル（Apple Silicon runner 上）で openssl-sys の
+# cross-compile 失敗を回避できる。
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
 # MCP server: rmcp 1.7 + streamable-http-server（SSE の後継）+ axum で
 # localhost に bind する。spike 結果は internal design-record
 # 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5 / 4.6。
