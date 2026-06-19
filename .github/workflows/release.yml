@@ -16,6 +16,10 @@ permissions:
 jobs:
   build-macos:
     strategy:
+      # 片アーキの失敗が他アーキを巻き添えキャンセルしないようにする。
+      # 例：履歴タグ（openssl cross-compile 修正前）を dispatch した場合、x86_64 は
+      # 失敗するが arm64 は成功させ、成功分の .dmg だけでリリースを作る。
+      fail-fast: false
       matrix:
         include:
           - runner: macos-latest
@@ -80,7 +84,9 @@ jobs:
   publish-release:
     needs: [build-macos]
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.tag != '' || startsWith(github.ref, 'refs/tags/v') }}
+    # !cancelled(): build-macos の一部 arch が失敗しても、成功した arch の成果物で
+    # リリースを作る（fail-fast: false と対で機能する）。
+    if: ${{ !cancelled() && (github.event.inputs.tag != '' || startsWith(github.ref, 'refs/tags/v')) }}
     steps:
       - uses: actions/download-artifact@v6
         with:
