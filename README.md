@@ -49,12 +49,15 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 Charminal currently targets macOS.
 
+**Download the latest build** — pick your Mac's chip:
+
 <p>
-  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Download-Apple%20Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
-  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Download-Intel-555555?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Intel" /></a>
+  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
+  &nbsp;
+  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Intel" /></a>
 </p>
 
-The buttons above always grab the latest release. Drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps. (Not sure which chip you have? Apple menu →  About This Mac. M1/M2/M3/M4 → Apple Silicon.) You can also pick a specific version from [Releases](https://github.com/sktkkoo/Charminal/releases).
+These always grab the latest release; drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps. (Not sure which chip? Apple menu →  About This Mac — M1/M2/M3/M4 means Apple Silicon.) You can also pick a specific version from [Releases](https://github.com/sktkkoo/Charminal/releases).
 
 ### Launch (from source)
 
