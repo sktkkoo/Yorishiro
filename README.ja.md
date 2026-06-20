@@ -49,9 +49,7 @@ Charminalはユーザーのローカル環境にインストールされたClaud
 
 ### インストール（macOS）
 
-現在のCharminalはmacOSを主対象にしています。
-
-**最新ビルドをダウンロード** — お使いの Mac のチップを選んでください：
+現在のCharminalはmacOSを主対象にしています。以下から最新版をダウンロードできます。
 
 <p>
   <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Apple Silicon 版をダウンロード" /></a>
@@ -59,7 +57,7 @@ Charminalはユーザーのローカル環境にインストールされたClaud
   <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Intel 版をダウンロード" /></a>
 </p>
 
-いずれも常に最新リリースを取得します。ダウンロードした `.dmg` を開き、`charminal.app` を `/Applications` にドラッグしてください。ビルドはApple Developer IDで署名・公証（notarize）済みのため、特別な操作なしに起動できます。（チップが分からない場合は アップルメニュー →  このMacについて。M1/M2/M3/M4 なら Apple Silicon です。）特定バージョンは [Releases](https://github.com/sktkkoo/Charminal/releases) から選べます。
+ダウンロードした `.dmg` を開き、`charminal.app` を `/Applications` にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
 ### 起動（ソースから）
 

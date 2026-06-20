@@ -47,9 +47,7 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 ### Install (macOS)
 
-Charminal currently targets macOS.
-
-**Download the latest build** — pick your Mac's chip:
+Charminal currently targets macOS. Download the latest build below.
 
 <p>
   <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
@@ -57,7 +55,7 @@ Charminal currently targets macOS.
   <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Intel" /></a>
 </p>
 
-These always grab the latest release; drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps. (Not sure which chip? Apple menu →  About This Mac — M1/M2/M3/M4 means Apple Silicon.) You can also pick a specific version from [Releases](https://github.com/sktkkoo/Charminal/releases).
+Open the `.dmg` and drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
 ### Launch (from source)
 
