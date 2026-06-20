@@ -4,15 +4,16 @@
 
 <h1 align="center">Charminal</h1>
 
-<p align="center"><strong>ターミナルの中の AI に、身体を。</strong></p>
+<p align="center"><strong>ターミナルの中のAIに、身体を。</strong></p>
 
-Charminal は、AI に身体と住環境を与えるターミナルです。ターミナルを含むアプリ全体を、キャラクターが暮らす「住環境」として扱います。
+Charminal は、AI に身体と住環境を与えるターミナルです。
 
 ターミナル上では、 Claude Code やCodexなどのAIエージェントが自動で起動されます。AI が考え込めば視線がさまよい、エラーが出れば反射的に顔がしかめられる。長い処理を待つ時間、ただスピナーが回っているのではなく、そこに誰かがたたずんでいます。
 
-住人は、自分の住む環境を直接操作できます。シーンを切り替え、照明を変え、自分のいる UI さえ組み換える。ユーザーも同じ環境を操作できます。
+住人は、自分の住む環境をリアルタイムに変えられます。照明を変え、シーンを切り替え、UIを組み換えます。ユーザーも同じ環境を直接操作できます。
 
-Charminal は基盤機能を除くほぼすべてが pack という単位で拡張・改変できます。住人に相談するだけで、Charminal は Charminal を書き変えます。住人の見た目や性格だけでなく、UI を含めた空間全体が対象です。気に入らなければ、1クリックで元に戻せます。
+Charminal は拡張性の高いターミナルです。基盤機能を除くほぼすべてが pack という単位で拡張・改変できます。/charmコマンドで相談するだけで、Charminal は Charminal を永続的に書き変えます。住人の見た目や性格だけでなく、シーンや UI を含めた空間全体が対象です。packの変更は即座に反映され、気に入らなければ1クリックで元に戻すことができます。
+
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
