@@ -14,7 +14,7 @@
 
 Charminal is a terminal that gives AI a body and a living space.
 
-AI agents such as Claude Code and Codex launch automatically inside the terminal. When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
+When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
 
 The inhabitant can change the environment it lives in, in real time — changing the lighting, switching scenes, rearranging the UI. Users can directly manipulate the same environment.
 
