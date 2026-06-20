@@ -1,6 +1,6 @@
 # Development Guide
 
-Charminal のローカル開発ガイド。
+Local development guide for Charminal.
 
 ---
 
@@ -8,8 +8,8 @@ Charminal のローカル開発ガイド。
 
 Tauri 2 + React 19 + TypeScript 5.8 + Three.js + @pixiv/three-vrm + xterm.js
 
-- **TypeScript**: canonical runtime（思考・反射・身体・UI 全て）
-- **Rust**: IO 層のみ（PTY / hooks / FS / window）
+- **TypeScript**: canonical runtime (cognition, reflexes, body, UI — everything)
+- **Rust**: IO layer only (PTY / hooks / FS / window)
 
 ## Getting Started
 
@@ -26,7 +26,7 @@ npm run tauri dev    # dev server (port 1430)
 - **TypeScript (`src/`)**: `kebab-case` for directories. Files inside can be camelCase (`logBridge.ts`) or kebab-case (`log-bridge.ts`)
 - **Rust (`src-tauri/src/`)**: `snake_case` for directories and `.rs` files (enforced by rustc per RFC 430)
 
-TS と Rust は構造を 1:1 で mirror するが、命名規則は言語 idiom に従う。
+TS and Rust mirror each other 1:1 in structure, but follow their respective language idioms for naming.
 
 | concept | TS path | Rust path |
 |---|---|---|
@@ -41,92 +41,92 @@ TS と Rust は構造を 1:1 で mirror するが、命名規則は言語 idiom 
 
 ### Comments / docstrings
 
-コメントと docstring は **日本語** で書く。識別子とコード例は対象言語のまま。
+Write comments and docstrings in **Japanese**. Keep identifiers and code examples in their target language.
 
 ## Linting & Formatting
 
-- **TS**: Biome（formatter + linter + import organize を一括管理）
-- **Rust**: rustfmt（[公式 Style Guide](https://doc.rust-lang.org/style-guide/)）+ clippy（`-D warnings` でゲート）
+- **TS**: Biome (formatter + linter + import organizer, all-in-one)
+- **Rust**: rustfmt ([official Style Guide](https://doc.rust-lang.org/style-guide/)) + clippy (gated with `-D warnings`)
 
-| コマンド | 用途 |
+| command | purpose |
 |---|---|
-| `npm run fmt` | auto-fix（Biome --write + cargo fmt） |
-| `npm run check` | read-only 検証（CI 相当） |
-| `npm run lint` | lint のみ |
-| `npm run test:run` | TS test（vitest） |
-| `npm run test:rust` | Rust test（cargo test） |
-| `npm run doc` | API doc 生成（typedoc → `docs/api/typescript/`） |
-| `npm run doc:rust` | Rust API doc 生成（cargo doc） |
+| `npm run fmt` | auto-fix (Biome --write + cargo fmt) |
+| `npm run check` | read-only verification (CI equivalent) |
+| `npm run lint` | lint only |
+| `npm run test:run` | TS tests (vitest) |
+| `npm run test:rust` | Rust tests (cargo test) |
+| `npm run doc` | API doc generation (typedoc → `docs/api/typescript/`) |
+| `npm run doc:rust` | Rust API doc generation (cargo doc) |
 
-Git hook（lefthook）は `npm install` で自動 install される。
+Git hooks (lefthook) are installed automatically via `npm install`.
 
-- **pre-commit**: staged file の軽量 fix
-- **pre-push**: フルゲート（`biome check` / `cargo fmt --check` / `cargo clippy -- -D warnings` / typedoc validation）
+- **pre-commit**: lightweight fix on staged files
+- **pre-push**: full gate (`biome check` / `cargo fmt --check` / `cargo clippy -- -D warnings` / typedoc validation)
 
-> Directory / Identifier naming は linter で強制していない（Biome の `useFilenamingConvention` は意図的に無効）。手動で守ること。
+> Directory / identifier naming is not enforced by linters (Biome's `useFilenamingConvention` is intentionally disabled). Follow the conventions manually.
 
 ## Development Workflow
 
-機能開発は **git worktree** で進める。主ディレクトリは main の共有 baseline として置き、機能ごとに worktree を切る。
+Feature work uses **git worktree**. Keep the primary directory as a shared baseline on `main`, and branch off a worktree per feature.
 
 ```bash
-# worktree 作成
+# Create a worktree
 git worktree add ../Charminal-<feature> -b feat/<feature>
 cd ../Charminal-<feature>
-npm install  # 各 worktree が独自の node_modules を持つ
+npm install  # each worktree has its own node_modules
 
-# 完了後
+# When done
 cd <repo-root>/Charminal
 git merge feat/<feature>
 git worktree remove ../Charminal-<feature>
 git branch -d feat/<feature>
 ```
 
-worktree を切らず main で直接作業していいケース:
+Cases where working directly on `main` (without a worktree) is acceptable:
 
-- 1 ファイル 1 行レベルの typo 修正
-- 並行作業がないとき
+- Single-file, single-line typo fixes
+- No parallel work in progress
 
 ## Documentation
 
-### 構造
+### Structure
 
-| 層 | 場所 | 内容 | 対象読者 |
+| Layer | Location | Content | Audience |
 |---|---|---|---|
-| Navigation | `docs/README.md` + 各 directory の `README.md` | pointer 集（drift しにくい） | 全員 |
-| 公開思想 | `docs/philosophy/` | 作品宣言・原理 | repo を訪れた誰か |
-| 決定 / 制約 | `docs/decisions/` | topic-indexed な設計判断と理由 | dev / contributor |
-| Code 内 README | `src/README.md`, `src-tauri/README.md`, etc. | architecture overview | dev / contributor |
-| 自動生成 | `docs/api/`（`.gitignore` 対象） | typedoc / cargo doc 出力 | dev |
+| Navigation | `docs/README.md` + per-directory `README.md` | pointer collection (drift-resistant) | everyone |
+| Public philosophy | `docs/philosophy/` | project manifestos and principles | anyone visiting the repo |
+| Decisions / constraints | `docs/decisions/` | topic-indexed design decisions and rationale | dev / contributor |
+| In-code README | `src/README.md`, `src-tauri/README.md`, etc. | architecture overview | dev / contributor |
+| Auto-generated | `docs/api/` (`.gitignore`d) | typedoc / cargo doc output | dev |
 
-全体の Navigation は [`docs/README.md`](docs/README.md) から始める。
+Start navigation from [`docs/README.md`](docs/README.md).
 
-### 設計判断
+### Design decisions
 
-設計判断の詳細は [`docs/decisions/`](docs/decisions/) を参照。特に重要な設計境界は [`docs/decisions/critical-constraints.md`](docs/decisions/critical-constraints.md) にまとまっている。
+For detailed design decisions, see [`docs/decisions/`](docs/decisions/). Critical design boundaries are consolidated in [`docs/decisions/critical-constraints.md`](docs/decisions/critical-constraints.md).
 
-### Doc 同期ルール（code 変更時）
+### Doc sync rules (on code changes)
 
-| code 変更 | 更新先 | skip 可？ |
+| Code change | Update target | Skippable? |
 |---|---|---|
-| `src/<top-level>/` 配下に新 directory を追加 | 当該 cluster README + `docs/README.md` の architecture map | ❌ 必須 |
-| `src-tauri/src/` に新 module を追加 | `src-tauri/README.md` + `docs/README.md` | ❌ 必須 |
-| 新しい設計判断が固まった / 既存決定を修正した | `docs/decisions/<topic>.md` を新規 or 改訂履歴 append | ❌ 必須 |
-| Pack 種別 / registry の semantic 変更 | `bundled-packs/README.md` + `src/runtime/README.md` | ❌ 必須 |
-| 個別 file の API / docstring 変更 | 不要（`npm run doc` で fresh 生成） | ✅ skip |
-| Bug fix / 内部実装の変更 | 不要（commit message が source of truth） | ✅ skip |
+| New directory under `src/<top-level>/` | The relevant cluster README + architecture map in `docs/README.md` | ❌ required |
+| New module under `src-tauri/src/` | `src-tauri/README.md` + `docs/README.md` | ❌ required |
+| New design decision finalized / existing decision revised | Create or append revision history in `docs/decisions/<topic>.md` | ❌ required |
+| Pack type / registry semantic changes | `bundled-packs/README.md` + `src/runtime/README.md` | ❌ required |
+| Individual file API / docstring changes | Not needed (`npm run doc` regenerates fresh output) | ✅ skip |
+| Bug fix / internal implementation changes | Not needed (commit message is the source of truth) | ✅ skip |
 
 ## Pack Development
 
-Pack の書き方は [`src/sdk/README.md`](src/sdk/README.md) を参照。bundled pack（[`bundled-packs/`](bundled-packs/)）がリファレンス実装として参照可能。
+For how to write packs, see [`src/sdk/README.md`](src/sdk/README.md). Bundled packs ([`bundled-packs/`](bundled-packs/)) serve as reference implementations.
 
-ユーザー作成 pack は local trusted code として扱う。公開 registry / in-app community install / `/charm:prepare-publish` は未提供なので、`/charm:create` 生成物を sandbox 済み・review 済み・公開配布可能 artifact と説明しない。
+User-created packs are treated as local trusted code. There is no public registry, no in-app community install, and no `/charm:prepare-publish`, so do not describe `/charm:create` output as sandboxed, reviewed, or publicly distributable artifacts.
 
-source checkout で user pack を検査する場合：
+To inspect a user pack from a source checkout:
 
 ```bash
 npm run check:pack -- ~/.charminal/packs/<pack-id>
 npm run check:pack -- --mode publish-candidate ~/.charminal/packs/<pack-id>
 ```
 
-`local-authoring` mode は `/charm:create` 生成物向け。`publish-candidate` mode は将来の registry review 前チェックの preview であり、現時点では正式な公開 gate ではない。公開提出機能はまだ無く、JS / TS scan も AST 実装前の heuristic に留まる。
+`local-authoring` mode is for `/charm:create` output. `publish-candidate` mode is a preview of pre-registry-review checks for the future and is not an official publication gate at this time. The public submission flow does not yet exist, and JS / TS scanning relies on heuristics pending AST implementation.

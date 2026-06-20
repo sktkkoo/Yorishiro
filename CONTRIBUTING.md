@@ -1,26 +1,28 @@
 # Contributing to Charminal
 
-## コントリビュートの方針
+> [日本語版 CONTRIBUTING はこちら](CONTRIBUTING.ja.md)
 
-Charminal は現在、**Pull Request を受け付けていません**。
+## Contribution Policy
 
-歓迎しているもの：
+Charminal does **not** currently accept Pull Requests.
 
-- **バグ報告** — [Issue テンプレート](.github/ISSUE_TEMPLATE/) を使ってください
-- **機能要望・提案** — Issue で自由にどうぞ
-- **質問・議論** — Discussions を使ってください
-- **セキュリティ報告** — [SECURITY.md](SECURITY.md) を参照
+What we welcome:
 
-### Pack による拡張
+- **Bug reports** — please use the [Issue templates](.github/ISSUE_TEMPLATE/)
+- **Feature requests and proposals** — feel free to open an Issue
+- **Questions and discussions** — please use Discussions
+- **Security reports** — see [SECURITY.md](SECURITY.md)
 
-「この機能がほしい」「見た目を変えたい」の多くは、core を変更しなくても **Pack** で実現できます。Pack の作り方は [`src/sdk/README.md`](src/sdk/README.md) を参照してください。`/charm:create` コマンドで会話しながら作成できます。
+### Extension via Packs
 
-## ライセンス
+Many "I want this feature" or "I want to change the look" requests can be realized without touching the core, through **Packs**. See [`src/sdk/README.md`](src/sdk/README.md) for how to write one. You can also create a pack conversationally with the `/charm:create` command.
 
-Charminal は [MIT License](LICENSE) の下で公開されています。
+## License
 
-将来 Pull Request の受け入れを開始する場合、提出されたコードは同じ MIT License の下で提供されたものとして扱います。
+Charminal is released under the [MIT License](LICENSE).
 
-## 開発者向け情報
+If Pull Requests are accepted in the future, submitted code will be treated as offered under the same MIT License.
 
-ローカルでビルド・開発する場合は [DEVELOPMENT.md](DEVELOPMENT.md) を参照してください。
+## For Developers
+
+For local builds and development, see [DEVELOPMENT.md](DEVELOPMENT.md).
