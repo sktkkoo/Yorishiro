@@ -93,6 +93,18 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      # versioned dmg（charminal_<ver>_<arch>.dmg）に加えて、バージョンレスの安定名
+      # コピーを作る。README の `releases/latest/download/<固定名>` 直リンクは、
+      # リリース間でファイル名が固定であることが必須なため。
+      - name: Stage stable-named assets
+        run: |
+          mkdir -p release-assets
+          cp artifacts/**/*.dmg release-assets/ 2>/dev/null || cp artifacts/*.dmg release-assets/
+          cd release-assets
+          for f in *aarch64*.dmg; do [ -e "$f" ] && cp "$f" Charminal-Apple-Silicon.dmg; done
+          for f in *x64*.dmg; do [ -e "$f" ] && cp "$f" Charminal-Intel.dmg; done
+          ls -la
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -100,4 +112,4 @@ jobs:
           draft: true
           generate_release_notes: true
           files: |
-            artifacts/**/*.dmg
+            release-assets/*.dmg
