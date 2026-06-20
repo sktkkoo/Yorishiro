@@ -4,6 +4,12 @@
 
 <h1 align="center">Charminal</h1>
 
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Charminal?style=flat-square"></a>
+  <a href="https://github.com/sktkkoo/Charminal/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/sktkkoo/Charminal?style=flat-square"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square">
+</p>
+
 <p align="center"><strong>ターミナルの中のAIに、身体を。</strong></p>
 
 Charminalは、AIに身体と住環境を与えるターミナルです。
