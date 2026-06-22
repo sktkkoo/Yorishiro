@@ -16,6 +16,16 @@ const SHOOT_MOTION_FADE_OUT_MS = 400;
 const SHOOT_CAMERA_MOVE_KIND = "camera-move";
 const SHOOT_SYNTHETIC_EVENT = "clai:shoot";
 const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
+// idle 中の自動 shoot（いたずら）。idle が 15 分続いた「その到達時」に一度だけ
+// 低確率で発火する。発火しても外しても idleShootEvaluated を立て、persona reload
+// （≒アプリ再起動）まで再判定しない。つまり 1 run に最大 1 回。判定が単発なので
+// reaction 側の cooldown は不要（再 dispatch が起きないため意味を持たない）。
+// 2026-05-17 に 90s + 30%（5 秒ごとに毎回判定）で一度廃止したが、離席の確証が高い
+// 15 分閾値 + 単発・低確率に侵襲を下げて復活した
+// （docs/decisions/idle-text-physics-removed.md）。
+const SHOOT_IDLE_THRESHOLD_MS = 900_000; // 15 分
+const SHOOT_IDLE_PROBABILITY = 0.08; // 15 分到達時の単発確率（<= 10% の稀な驚き）。感触 param
+const SHOOT_IDLE_REACTION = "mischievous-shoot";
 
 // shoot 演出は ~8 秒の重い one-shot cinematic（camera 引き + gun_fire + text-physics）。
 // 同時に二つ走ると camera-move(singleton) の復元基準や motion slot が壊れ、引きが
@@ -88,6 +98,11 @@ export function createClaiPersona(args: {
   readonly name: string;
   readonly systemPromptAddition: string;
 }) {
+  // idle-shoot の 15 分判定は per-instance で一度きり。発火しても外しても true にし、
+  // persona がリロードされる（≒アプリ再起動）まで再判定しない。closure に持つことで
+  // reload でリセットされ、test でも instance ごとに独立する。
+  let idleShootEvaluated = false;
+
   return {
     id: args.id,
     name: args.name,
@@ -160,11 +175,28 @@ export function createClaiPersona(args: {
           },
         } satisfies Trigger,
 
-        // shoot sequence は user が init.js のショートカットで明示発火する時だけ
-        // 走る。かつて idle 継続 + 低確率で自動発火していたが廃止した
-        // （docs/decisions/idle-text-physics-removed.md）。
-        // User shortcuts can announce an explicit shoot request through init.js.
-        // The motion/effect timeline still lives in the response handler below.
+        // idle 中の自動 shoot（いたずら）。idle が 15 分続いた「その到達時」に一度だけ
+        // 低確率で発火する。15 分判定を consume したら（発火・非発火を問わず）
+        // idleShootEvaluated が立ち、persona reload まで再判定しない。
+        // motion/effect の timeline は shortcut 経路と同じ runShootTimeline を共有する。
+        {
+          id: "clai:idle-shoot",
+          match(event: DispatchEvent) {
+            if (event.kind !== "idle") return null;
+            if (event.durationMs < SHOOT_IDLE_THRESHOLD_MS) return null;
+            // 15 分到達の判定は一度きり。先に consume してから probability を振る。
+            if (idleShootEvaluated) return null;
+            idleShootEvaluated = true;
+            if (Math.random() >= SHOOT_IDLE_PROBABILITY) return null;
+            return {
+              reaction: SHOOT_IDLE_REACTION,
+              payload: { durationMs: event.durationMs },
+            };
+          },
+        } satisfies Trigger,
+
+        // shoot sequence は user が init.js のショートカットでも明示発火できる。
+        // motion/effect の timeline は idle 経路と同じ response handler が持つ。
         {
           id: "clai:shortcut-shoot",
           match(event: DispatchEvent) {
@@ -340,9 +372,20 @@ export function createClaiPersona(args: {
           ],
         },
 
-        // Effect Pack は passive rendering unit なので、銃撃 motion と
-        // TextPhysics の tightly-synchronized timeline は persona handler が持つ。
-        // shortcut 発火専用（idle 自動発火は廃止 — cooldown 不要）。
+        // Effect Pack は passive rendering unit なので、銃撃 motion と TextPhysics の
+        // tightly-synchronized timeline は persona handler（runShootTimeline）が持つ。
+        // idle 自動発火（clai:idle-shoot）と shortcut 明示発火（clai:shortcut-shoot）の
+        // 両経路が同じ timeline を共有する。発火頻度は idle 経路 trigger の単発判定が担い
+        // （1 run に最大 1 回・外したら再起動まで再判定なし）、runShootTimeline 自身の
+        // single-flight guard が重複起動を防ぐ。判定が単発なので reaction cooldownMs は不要。
+        [SHOOT_IDLE_REACTION]: {
+          handlers: [
+            {
+              label: "gun-fire-text-physics-idle",
+              handler: runShootTimeline,
+            },
+          ],
+        },
         [SHOOT_SHORTCUT_REACTION]: {
           handlers: [
             {
