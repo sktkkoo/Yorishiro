@@ -311,6 +311,6 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 [MIT](LICENSE)
 
-「Charminal」の名称およびロゴは作者の商標であり、MIT ライセンスの対象には含まれません。コードは MIT の条件で自由に fork・再配布できますが、fork に「Charminal」の名称やロゴを用いて出自を誤認させるような使い方はお控えください。
+MIT ライセンスが許諾するのはソースコード（著作権）のみで、商標権は含みません。「Charminal」の名称およびアイコン/ロゴは作者の商標であり、MIT ライセンスの対象には含まれません。コードは MIT の条件で自由に fork・再配布できますが、fork に「Charminal」の名称やアイコンを用いて出自を誤認させるような使い方はお控えください。
 
 ---

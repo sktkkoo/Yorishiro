@@ -306,6 +306,6 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 [MIT](LICENSE)
 
-The name "Charminal" and its logo are trademarks of the author and are not covered by the MIT license. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Charminal" name or logo for your fork in a way that could cause confusion about its origin.
+The MIT license covers the source code only. The name "Charminal" and its icon/logo are trademarks of the author and are not licensed under MIT. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Charminal" name or icon for your fork in a way that could cause confusion about its origin.
 
 ---
