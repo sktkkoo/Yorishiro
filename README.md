@@ -172,7 +172,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.5.0**
+**v0.5.1**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
