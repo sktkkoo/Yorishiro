@@ -280,15 +280,6 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 ## Documentation
 
-### Philosophy — このプロジェクトの思想
-
-- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的MCP、そしてAIに身体が要る理由（意識と反射の二層構造）
-
-### Security
-
-- [`docs/security.md`](docs/security.md) — 信頼境界とattack surfaceの地図
-- [`SECURITY.md`](SECURITY.md) — セキュリティポリシーと脆弱性報告
-
 ### 設定とカスタマイズ
 
 - [`docs/configuration.md`](docs/configuration.md) — `~/.charminal/config.json` のfield一覧
@@ -299,6 +290,15 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — 開発convention（tech stack / coding / workflow）
 - [`CREDITS.ja.md`](CREDITS.ja.md) — 使っているOSSとassetのクレジット ([English](CREDITS.md))
+
+### Security
+
+- [`docs/security.md`](docs/security.md) — 信頼境界とattack surfaceの地図
+- [`SECURITY.md`](SECURITY.md) — セキュリティポリシーと脆弱性報告
+
+### Philosophy — このプロジェクトの思想
+
+- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的MCP、そしてAIに身体が要る理由（意識と反射の二層構造）
 
 ### Design record（内部 — 別 repo）
 

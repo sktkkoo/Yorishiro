@@ -278,15 +278,6 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 ## Documentation
 
-### Philosophy — what this project believes
-
-- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, the self-referential MCP, and why AI needs a body (the two-layer architecture of mind and reflex)
-
-### Security
-
-- [`docs/security.md`](docs/security.md) — Trust boundaries and attack surface map
-- [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability reporting
-
 ### Configuration & customization
 
 - [`docs/configuration.md`](docs/configuration.md) — Fields of `~/.charminal/config.json`
@@ -298,6 +289,15 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — Contribution policy and how to participate
 - [`DEVELOPMENT.md`](DEVELOPMENT.md) — Coding conventions, tech stack, development workflow
 - [`CREDITS.md`](CREDITS.md) — OSS and asset credits ([日本語](CREDITS.ja.md))
+
+### Security
+
+- [`docs/security.md`](docs/security.md) — Trust boundaries and attack surface map
+- [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability reporting
+
+### Philosophy — what this project believes
+
+- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, the self-referential MCP, and why AI needs a body (the two-layer architecture of mind and reflex)
 
 ---
 
