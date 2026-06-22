@@ -37,12 +37,31 @@ export function CameraControls({ store }: CameraControlsProps) {
     () => ({
       camera: folder({
         tracking: { value: runtime.getCameraTracking(), label: "tracking" },
+        offsetX: {
+          value: 0,
+          min: -3,
+          max: 3,
+          step: 0.01,
+          label: "offset x",
+          render: (get) => get("camera.tracking"),
+        },
+        offsetY: {
+          value: 0,
+          min: -2,
+          max: 2,
+          step: 0.01,
+          label: "offset y",
+          render: (get) => get("camera.tracking"),
+        },
+        offsetZ: {
+          value: 0,
+          min: -3,
+          max: 3,
+          step: 0.01,
+          label: "offset z",
+          render: (get) => get("camera.tracking"),
+        },
         lookAtCharacter: { value: true, label: "look at character" },
-        "tracking offset": folder({
-          offsetX: { value: 0, min: -3, max: 3, step: 0.01, label: "x" },
-          offsetY: { value: 0, min: -2, max: 2, step: 0.01, label: "y" },
-          offsetZ: { value: 0, min: -3, max: 3, step: 0.01, label: "z" },
-        }),
         x: { value: camera.position.x, min: -5, max: 5, step: 0.01, label: "x" },
         y: { value: camera.position.y, min: -2, max: 5, step: 0.01, label: "y" },
         z: { value: camera.position.z, min: 0.1, max: 10, step: 0.01, label: "z" },
