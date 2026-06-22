@@ -36,7 +36,7 @@ export function CameraControls({ store }: CameraControlsProps) {
   const [controls, set] = useControls(
     () => ({
       camera: folder({
-        tracking: { value: runtime.getCameraTracking(), label: "tracking" },
+        tracking: { value: false, label: "tracking" },
         offsetX: {
           value: 0,
           min: -3,
