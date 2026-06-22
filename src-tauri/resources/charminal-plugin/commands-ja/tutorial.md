@@ -86,7 +86,7 @@ Off にしてもらったら:
 
 #### 影を足す
 
-1. Simple Room を複製した scene pack を作る（背景・配色・ライトはそのまま）
+1. Simple Room を複製した scene pack を作る（背景・配色・ライトはそのまま）。**`scene.tsx` で作ること**——`scene.js`（declarative）は R3F component を持たないためライティングが出ず、キャラクターが真っ暗になる
 2. `vrm-slot`（character レイヤー）に `dropShadow` を足す
 3. 影のパラメータは **くっきり黒い影** を基本にする:
    - `offsetX`: 負の値（左へ。light が右上にあるので）。`-20` 前後
@@ -118,14 +118,18 @@ Off にしてもらったら:
 
 ### permission 設定
 
-pack の作成・編集で毎回 permission prompt が出ないよう、使用中の agent に合わせて案内する（影の scene pack 作成の前に設定しておく）:
+pack の作成・編集で毎回 permission prompt が出ないよう、影の scene pack 作成の前に設定しておく。
 
-Claude Code の場合は `~/.claude/settings.json` の `permissions.allow` に追加する。Codex の場合は Codex 側の approval policy を使い、Claude Code 設定は編集しない:
+Claude Code の場合：ユーザーに手動編集させず、**住人が代わりに追加していいか確認してから自動で設定する**。
+
+「pack を作る前に、`~/.claude/settings.json` に pack の read/write permission を追加していい？」と一言聞く。OKが出たら `~/.claude/settings.json` を読み込み、`permissions.allow` に以下を追記して保存する：
 
 ```json
 "Write(~/.charminal/packs/**)",
 "Read(~/.charminal/packs/**)"
 ```
+
+Codex の場合は Codex 側の approval policy を使い、Claude Code 設定は編集しない。
 
 ### キーボード操作
 

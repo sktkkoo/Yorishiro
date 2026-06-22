@@ -94,7 +94,7 @@ Invite naturally, roughly: "See how I'm floating? Let's fix that."
 
 #### Add a shadow
 
-1. Duplicate Simple Room as a new scene pack (keep background, colors, and lights as-is)
+1. Duplicate Simple Room as a new scene pack (keep background, colors, and lights as-is). **Use `scene.tsx`, not `scene.js`** — declarative `scene.js` has no R3F component, so lighting is absent and the character appears completely dark
 2. Add `dropShadow` to the `vrm-slot` (character layer)
 3. Shadow parameters should default to **crisp black shadow**:
    - `offsetX`: negative (leftward — the light is upper-right). Around `-20`
@@ -126,12 +126,20 @@ Once the shadow and colors are set, use `space_effect_play` with `fireworks-voll
 
 ### Permission setup
 
-Before pack creation, explain how to reduce repeated permission prompts. For Claude Code, add these entries to `~/.claude/settings.json` under `permissions.allow`. For Codex, use the current Codex approval policy instead; do not edit Claude Code settings.
+Before pack creation, set up permissions to avoid repeated prompts.
+
+For Claude Code: do not ask the user to edit settings manually. Instead, **ask permission to add the entries automatically**:
+
+"Before we create the pack, can I add pack read/write permissions to `~/.claude/settings.json`?"
+
+If they agree, read `~/.claude/settings.json`, add the following to `permissions.allow`, and save:
 
 ```json
 "Write(~/.charminal/packs/**)",
 "Read(~/.charminal/packs/**)"
 ```
+
+For Codex: use the Codex approval policy instead; do not edit Claude Code settings.
 
 ### Keyboard controls
 
