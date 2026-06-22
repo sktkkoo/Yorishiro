@@ -157,14 +157,15 @@ ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set
 
 ## SDK 型の概要
 
-pack 開発時に参照する型定義の所在:
+SDK の型はすべて `~/.charminal/sdk.d.ts` に bundle される（Charminal が毎起動で書き出すので、packaged build でも常に読める）。中身の内訳：
 
-| ファイル | 内容 |
+| 型 | グループ |
 |---|---|
-| `src/sdk/context.d.ts` | PersonaContext / EffectContext / UiContext / AmbientUiContext |
-| `src/sdk/reaction.d.ts` | DispatchEvent / TriggerMatch / ReactionType |
-| `docs/catalogs/standard-hooks.md` | 標準 hook / DispatchEvent の分類と使い方 |
-| `src/sdk/pack.d.ts` | PersonaDefinition / EffectDefinition / ScenePackDefinition / UiPackDefinition / AmbientUiPackDefinition |
+| PersonaContext / EffectContext / UiContext / AmbientUiContext | contexts |
+| DispatchEvent / TriggerMatch / ReactionType | reactions |
+| PersonaDefinition / EffectDefinition / ScenePackDefinition / UiPackDefinition / AmbientUiPackDefinition | pack definitions |
+
+標準 hook / DispatchEvent カタログは `docs/catalogs/standard-hooks.md`（cwd が Charminal repo のとき読める）。
 
 full API doc は `npm run doc`（typedoc）で生成できる。
 
@@ -219,6 +220,5 @@ safe mode では user pack が一切 load されず、MCP tool（`list_load_erro
 | ファイル | 内容 |
 |---|---|
 | `~/.charminal/sdk-guide.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等。Charminal が毎起動で書き出す） |
-| `docs/catalogs/standard-hooks.md` | 標準 hook / DispatchEvent カタログ |
-| `bundled-packs/` | bundled pack の実例（pattern source） |
-| `docs/philosophy/PHILOSOPHY.md` | 思想的背景 |
+| `bundled_example_read`（MCP tool） | bundled pack のソースを参考にする — id は `list_packs` で確認。source tree がディスクに無い packaged build でも読める。 |
+| `bundled-packs/`・`docs/catalogs/standard-hooks.md`・`docs/philosophy/PHILOSOPHY.md` | ファイルと同内容 — cwd が Charminal repo のとき読める |

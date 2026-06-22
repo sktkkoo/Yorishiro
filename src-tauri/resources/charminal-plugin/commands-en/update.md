@@ -112,12 +112,7 @@ Bundled packs are read-only for user customization. If the user wants to modify 
 
 ### Fork Steps
 
-1. Read the bundled pack:
-   - persona: `bundled-packs/personas/<id>/`
-   - scene: `bundled-packs/scenes/<id>/`
-   - effect: `bundled-packs/effects/<id>/`
-   - ui: `bundled-packs/ui/<id>/`
-   - ambient-ui: `bundled-packs/ambient-ui/<id>/`
+1. Read the bundled pack source with the `bundled_example_read` MCP tool (pass the pack id; confirm ids with `list_packs`). This works in packaged builds too. When cwd is the Charminal repo you can instead read the files directly under `bundled-packs/<kind_plural>/<id>/` (e.g. `personas/`, `scenes/`, `effects/`, `ui/`, `ambient-ui/`).
 2. Create `~/.charminal/packs/<new-id>/` with `manifest.json` and the entry file
 3. Change `manifest.json` id to `<new-id>` and add `"executionClass": "trusted-main-thread-js"` for `.js` / `.tsx` entries, so it does not collide with the bundled pack and remains clearly local trusted code
 4. Change the entry file's exported `id` to `<new-id>`

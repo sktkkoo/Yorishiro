@@ -38,7 +38,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 ## Flow
 
 1. **Ask for one concrete example first.** Pull out one tactile example: "In what situation, what happens, and how should the resident react?"
-2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, use `bundled-packs/` as reference.
+2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, read `bundled-packs/` directly; otherwise read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`).
 3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
 4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences in English explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
 5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative or React+three.js rendering only; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
@@ -456,10 +456,12 @@ Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only
 
 ## Reference Files
 
-- `src/sdk/*.d.ts` - SDK type definitions for pack definitions and contexts
+> In a packaged build the source tree (`src/`, `bundled-packs/`, `docs/`) is not on disk. Read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`); `~/.charminal/sdk.d.ts` (types) and `~/.charminal/sdk-guide.md` (guide) are always available. The `bundled-packs/` / `docs/` paths below apply when cwd is the Charminal repo.
+
+- `~/.charminal/sdk.d.ts` - all SDK type definitions (pack definitions and contexts), rewritten every startup
+- `~/.charminal/sdk-guide.md` - SDK author guide (idioms, twin-trigger co-emission), rewritten every startup
 - `bundled-packs/personas/clai-en/`, `bundled-packs/personas/clai-ja/` - flagship persona pattern source (shared factory in `clai-shared/`)
 - `bundled-packs/amenities/` - amenity pack examples
 - `bundled-packs/ui/` - UI pack examples
 - `bundled-packs/ambient-ui/` - ambient-ui examples
-- `docs/philosophy/PHILOSOPHY.md` - design background
-- `docs/philosophy/PHILOSOPHY.md` - two-layer pack design
+- `docs/philosophy/PHILOSOPHY.md` - design background and two-layer pack design

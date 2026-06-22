@@ -157,16 +157,15 @@ Use `controls_transition({ scope: "common", values, durationMs })` for camera mo
 
 ## SDK Type Overview
 
-Useful type definition files for pack development:
+All SDK types are bundled into `~/.charminal/sdk.d.ts` (Charminal rewrites it on every startup, so it is always available — including in packaged builds). What you'll find there:
 
-| File | Contents |
+| Types | Group |
 |---|---|
-| `src/sdk/context.d.ts` | `PersonaContext` / `EffectContext` / `UiContext` / `AmbientUiContext` |
-| `src/sdk/reaction.d.ts` | `DispatchEvent` / `TriggerMatch` / `ReactionType` |
-| `docs/catalogs/standard-hooks.md` | Standard hook / DispatchEvent classes and usage notes |
-| `src/sdk/pack.d.ts` | `PersonaDefinition` / `EffectDefinition` / `ScenePackDefinition` / `UiPackDefinition` / `AmbientUiPackDefinition` |
+| `PersonaContext` / `EffectContext` / `UiContext` / `AmbientUiContext` | contexts |
+| `DispatchEvent` / `TriggerMatch` / `ReactionType` | reactions |
+| `PersonaDefinition` / `EffectDefinition` / `ScenePackDefinition` / `UiPackDefinition` / `AmbientUiPackDefinition` | pack definitions |
 
-Generate the full API docs with `npm run doc`.
+The standard hook / DispatchEvent catalog lives at `docs/catalogs/standard-hooks.md` (available when cwd is the Charminal repo). Generate the full API docs with `npm run doc`.
 
 ---
 
@@ -219,6 +218,5 @@ Safe mode skips all user packs and lets the user inspect / disable the failing p
 | File | Contents |
 |---|---|
 | `~/.charminal/sdk-guide.md` | SDK documentation, including the twin-trigger co-emission idiom (Charminal writes this on every startup) |
-| `docs/catalogs/standard-hooks.md` | Standard hook / DispatchEvent catalog |
-| `bundled-packs/` | Bundled pack examples and implementation patterns |
-| `docs/philosophy/PHILOSOPHY.md` | Charminal's design background |
+| `bundled_example_read` (MCP tool) | Bundled pack source as a reference — pass a pack id from `list_packs`. Works in packaged builds where the source tree isn't on disk. |
+| `bundled-packs/`, `docs/catalogs/standard-hooks.md`, `docs/philosophy/PHILOSOPHY.md` | Same material as files — available when cwd is the Charminal repo |
