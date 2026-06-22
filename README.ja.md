@@ -22,7 +22,7 @@ AIが考え込めば視線がさまよい、エラーが出れば反射的に顔
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminalは拡張性の高いターミナルです。基盤機能を除くほぼすべてがpackという単位で拡張・改変できます。相談するだけで、CharminalはCharminalを永続的に書き変えます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。packの変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
+Charminalは自己改変可能なターミナルです。基盤機能を除くほぼすべてがpackという単位で拡張・改変できます。相談するだけで、CharminalはCharminalを永続的に書き変えます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。packの変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
 
 **AIと働く時間を、より心地よく、自由で、魅力的なものにする。**
 

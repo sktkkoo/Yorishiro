@@ -22,7 +22,7 @@ The inhabitant can change the environment it lives in, in real time — changing
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminal is a highly extensible terminal. Nearly everything beyond the core is extensible and modifiable through units called packs. Just by talking to the inhabitant, Charminal permanently rewrites itself — not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Pack changes take effect immediately; if you don't like the result, one click reverts it.
+Charminal is a self-modifiable terminal. Nearly everything beyond the core is extensible and modifiable through units called packs. Just by talking to the inhabitant, Charminal permanently rewrites itself — not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Pack changes take effect immediately; if you don't like the result, one click reverts it.
 
 **Make the hours you spend working with AI more comfortable, free, and compelling.**
 
