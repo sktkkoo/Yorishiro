@@ -70,9 +70,8 @@ bundled-packs/
 
 ### amenities/music-shelf
 - **Entry**: `amenity.ts`
-- **Files**: `manifest.json`, `README.md`
+- **Files**: `manifest.json`
 - **役割**: macOS Apple Music の remote control を MCP tool として住人に公開（play / pause / skip / search / queue / volume fade / sleep timer）。住人が「BGM を流す」「曲を変える」等を自律的に行うための capability
-- 詳細：`bundled-packs/amenities/music-shelf/README.md`
 
 ### amenities/pomodoro
 - **Entry**: `amenity.ts`
