@@ -1,7 +1,7 @@
 {
   "name": "charminal",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Charminal — someone who lives in your terminal. A Tauri desktop app pairing Claude Code with a 3D VRM character that shares your workspace.",
   "keywords": [
