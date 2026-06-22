@@ -17,46 +17,61 @@ const SHOOT_CAMERA_MOVE_KIND = "camera-move";
 const SHOOT_SYNTHETIC_EVENT = "clai:shoot";
 const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
 
+// shoot 演出は ~8 秒の重い one-shot cinematic（camera 引き + gun_fire + text-physics）。
+// 同時に二つ走ると camera-move(singleton) の復元基準や motion slot が壊れ、引きが
+// 戻らない / モーションが出ない / 顔が下向きで固まる。reaction の signal は persona 単位で、
+// 同 reaction の連打では abort されない（per-handler ではない）。そこで handler 自身が
+// single-flight guard を持ち、演出が一巡し終えるまで再発火を無視する。flag は演出の実行
+// 時間そのものを lock 期間にするので、別途 cooldown の magic 値を演出長に合わせる必要がない。
+let shootInFlight = false;
+
 const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
-  ctx.log.write({
-    reaction: ctx.event.reaction,
-    note: "gun fire motion with timed text-physics",
-    data: ctx.event.payload,
-  });
+  // 演出中の連打は無視する（前の一巡を壊さない）。
+  if (shootInFlight) return;
+  shootInFlight = true;
+  try {
+    ctx.log.write({
+      reaction: ctx.event.reaction,
+      note: "gun fire motion with timed text-physics",
+      data: ctx.event.payload,
+    });
 
-  ctx.character.interrupt(SHOOT_SHORTCUT_REACTION);
-  const motionHandle = ctx.character.play("anim:VRMA_gun_fire", {
-    fadeInMs: 300,
-    fadeOutMs: 300,
-    weight: 1,
-  });
-  ctx.space.injectEffect({
-    kind: SHOOT_CAMERA_MOVE_KIND,
-    holdMs: SHOOT_CAMERA_HOLD_MS,
-    offset: { z: SHOOT_CAMERA_PULL_Z },
-  });
+    ctx.character.interrupt(SHOOT_SHORTCUT_REACTION);
+    const motionHandle = ctx.character.play("anim:VRMA_gun_fire", {
+      fadeInMs: 300,
+      fadeOutMs: 300,
+      weight: 1,
+    });
+    ctx.space.injectEffect({
+      kind: SHOOT_CAMERA_MOVE_KIND,
+      holdMs: SHOOT_CAMERA_HOLD_MS,
+      offset: { z: SHOOT_CAMERA_PULL_Z },
+    });
 
-  await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
-  if (ctx.signal.aborted) {
-    motionHandle.cancel();
-    return;
+    await ctx.time.after(SHOOT_TEXT_PHYSICS_DELAY_MS);
+    if (ctx.signal.aborted) {
+      motionHandle.cancel();
+      return;
+    }
+
+    ctx.space.injectEffect({
+      kind: "text-physics",
+      origin: SHOOT_TEXT_PHYSICS_ORIGIN,
+      force: SHOOT_TEXT_PHYSICS_FORCE,
+    });
+
+    // text-physics が一巡するまで motion を保持してから release。
+    // 自然 completion を待つだけだと clampWhenFinished で slot が抜けず idle が
+    // preempt できない（state.motion.active に gun_fire が居座り続ける）。
+    await ctx.time.after(SHOOT_MOTION_RELEASE_DELAY_MS);
+    if (ctx.signal.aborted) {
+      motionHandle.cancel();
+      return;
+    }
+    await motionHandle.stop(SHOOT_MOTION_FADE_OUT_MS);
+  } finally {
+    shootInFlight = false;
   }
-
-  ctx.space.injectEffect({
-    kind: "text-physics",
-    origin: SHOOT_TEXT_PHYSICS_ORIGIN,
-    force: SHOOT_TEXT_PHYSICS_FORCE,
-  });
-
-  // text-physics が一巡するまで motion を保持してから release。
-  // 自然 completion を待つだけだと clampWhenFinished で slot が抜けず idle が
-  // preempt できない（state.motion.active に gun_fire が居座り続ける）。
-  await ctx.time.after(SHOOT_MOTION_RELEASE_DELAY_MS);
-  if (ctx.signal.aborted) {
-    motionHandle.cancel();
-    return;
-  }
-  await motionHandle.stop(SHOOT_MOTION_FADE_OUT_MS);
 };
 
 /**
