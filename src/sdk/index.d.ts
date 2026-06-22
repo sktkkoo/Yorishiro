@@ -42,8 +42,11 @@ export type {
   ProceduralLayer,
   ProceduralLayerKind,
   SceneSpec,
+  TerminalTheme,
+  UiTheme,
 } from "./scene";
 export type {
+  ScenePackCameraAPI,
   ScenePackComponentProps,
   ScenePackDefinition,
   ScenePackManifest,
