@@ -218,7 +218,7 @@ safe mode では user pack が一切 load されず、MCP tool（`list_load_erro
 
 | ファイル | 内容 |
 |---|---|
-| `src/sdk/README.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等） |
+| `~/.charminal/sdk-guide.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等。Charminal が毎起動で書き出す） |
 | `docs/catalogs/standard-hooks.md` | 標準 hook / DispatchEvent カタログ |
 | `bundled-packs/` | bundled pack の実例（pattern source） |
 | `docs/philosophy/PHILOSOPHY.md` | 思想的背景 |

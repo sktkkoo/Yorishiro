@@ -241,7 +241,7 @@ Persona is **single-active**. The active persona is selected by `primaryPersona`
 
 1. Decide id, name, and personality direction with the user
 2. Ask whether to switch to it now or only create it
-3. Read a bundled template such as `bundled-packs/personas/clai/persona.md`
+3. Read a bundled template such as `bundled-packs/personas/clai-en/persona.md` (or `clai-ja` for a Japanese-default persona)
 4. Write these files:
 
 `~/.charminal/packs/<id>/manifest.json`:
@@ -457,7 +457,7 @@ Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only
 ## Reference Files
 
 - `src/sdk/*.d.ts` - SDK type definitions for pack definitions and contexts
-- `bundled-packs/personas/clai/` - flagship persona pattern source
+- `bundled-packs/personas/clai-en/`, `bundled-packs/personas/clai-ja/` - flagship persona pattern source (shared factory in `clai-shared/`)
 - `bundled-packs/amenities/` - amenity pack examples
 - `bundled-packs/ui/` - UI pack examples
 - `bundled-packs/ambient-ui/` - ambient-ui examples

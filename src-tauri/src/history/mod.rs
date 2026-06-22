@@ -19,6 +19,7 @@ journal/
 .history/
 .charminal-snapshots/
 sdk.d.ts
+sdk-guide.md
 last-startup.json
 cohabitation.json
 .staging/
@@ -941,6 +942,9 @@ mod tests {
         let ignore = fs::read_to_string(charminal(&home).join(".gitignore")).unwrap();
         assert!(ignore.contains(".charminal-snapshots/"));
         assert!(ignore.contains("cohabitation.json"));
+        // Charminal が毎起動で再生成する bundle ファイルは snapshot 対象外。
+        assert!(ignore.contains("sdk.d.ts"));
+        assert!(ignore.contains("sdk-guide.md"));
         assert!(head_commit(&repo(&home)).unwrap().is_none());
 
         let _ = fs::remove_dir_all(&home);

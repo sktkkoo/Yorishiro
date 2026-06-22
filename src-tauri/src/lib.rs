@@ -980,7 +980,8 @@ async fn poll_hook_signals() -> Vec<String> {
 //   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui}
 //   │       <pack-id>/ui.tsx            # Plan 4 MVP: user UI pack source
 //   ├── config.json                     # 将来の宣言的設定
-//   └── sdk.d.ts                        # Charminal が ship する IDE 用 type hint
+//   ├── sdk.d.ts                        # Charminal が ship する IDE 用 type hint
+//   └── sdk-guide.md                    # Charminal が ship する pack 作者向け narrative ガイド
 //
 // Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
 // Internal design-record: 2026-04-18-user-layer-runtime.md
@@ -1133,6 +1134,30 @@ fn build_bundled_sdk_dts() -> String {
     out
 }
 
+/// Pack 作者向け narrative ガイド（`src/sdk/README.md`）を compile 時に bundle へ含め、
+/// 起動時に `~/.charminal/sdk-guide.md` として書き出す。
+///
+/// production の packaged app には source tree（`src/sdk/`）が無いため、住人 AI が
+/// `read_bundled_pack_source` でも届かないこの narrative を読めるよう、`sdk.d.ts`
+/// （型のみ）と同じ要領で `~/.charminal/` に並べる。型の shape は `sdk.d.ts`、
+/// idiom や設計意図の散文はこちらが担う。
+///
+/// 先頭に do-not-edit の markdown コメントを付ける（`sdk.d.ts` の header と対称。
+/// 毎起動で overwrite される）。README 内の相対リンクは `~/.charminal/` からは
+/// 解決しないが、目的は narrative 本文なので許容する。
+fn build_bundled_sdk_guide() -> String {
+    let mut out = String::from(
+        "<!--\n\
+         Charminal SDK guide — auto-bundled from src/sdk/README.md at build time.\n\
+         Charminal overwrites this file on every startup; do not edit it directly.\n\
+         Relative links in this document point at the Charminal source tree and may\n\
+         not resolve from ~/.charminal/.\n\
+         -->\n\n",
+    );
+    out.push_str(include_str!("../../src/sdk/README.md"));
+    out
+}
+
 /// ~/.charminal/init.js が無いときに seed する雛形。
 ///
 /// sdk.d.ts とは違い、init.js は user の編集対象なので「**存在しないとき
@@ -1152,11 +1177,13 @@ fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
         .map_err(|e| format!("Failed to seed ~/.charminal/init.js: {}", e))
 }
 
-/// Create ~/.charminal/ + ~/.charminal/packs/ and refresh sdk.d.ts. Idempotent.
+/// Create ~/.charminal/ + ~/.charminal/packs/ and refresh sdk.d.ts / sdk-guide.md.
+/// Idempotent.
 ///
-/// sdk.d.ts は user の IDE が「Charminal SDK の shape」を知るためのヒント
-/// ファイル。毎起動で overwrite する（user は編集対象ではない）。
-/// init.js は逆に、無ければ雛形を seed するが存在すれば触らない。
+/// sdk.d.ts（型の shape）と sdk-guide.md（pack 作者向け narrative）は user の IDE /
+/// 住人 AI が Charminal SDK を知るためのヒントファイル。毎起動で overwrite する
+/// （user は編集対象ではない）。init.js は逆に、無ければ雛形を seed するが存在すれば
+/// 触らない。
 #[tauri::command]
 async fn ensure_charminal_dirs() -> Result<(), String> {
     let home = charminal_home_path()?;
@@ -1164,6 +1191,8 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
         .map_err(|e| format!("Failed to create ~/.charminal/packs: {}", e))?;
     std::fs::write(home.join("sdk.d.ts"), build_bundled_sdk_dts())
         .map_err(|e| format!("Failed to write ~/.charminal/sdk.d.ts: {}", e))?;
+    std::fs::write(home.join("sdk-guide.md"), build_bundled_sdk_guide())
+        .map_err(|e| format!("Failed to write ~/.charminal/sdk-guide.md: {}", e))?;
     seed_user_init_script_impl(&home)?;
     // shell integration files (init.zsh / wrapper rc / etc) — idempotent。
     // 失敗しても他の dir 作成は完了しているので fatal にはせず log のみ。
@@ -1586,7 +1615,7 @@ fn has_snapshot_ignored_component(charminal_home: &Path, path: &Path) -> bool {
 
 /// path が watcher trigger 対象（`packs/**` か top-level `init.js`）の変更なら
 /// true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
-/// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`last-startup.json` 等は false。
+/// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`sdk-guide.md`/`last-startup.json` 等は false。
 pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(charminal_home) else {
         return false;
@@ -2239,6 +2268,17 @@ mod sdk_bundle_tests {
         assert!(bundle.contains("export interface UiPackDefinition"));
         assert!(!bundle.contains("from \"./reaction\""));
         assert!(!bundle.contains("from \"./context\""));
+    }
+
+    #[test]
+    fn guide_contains_narrative_and_do_not_edit_header() {
+        let guide = super::build_bundled_sdk_guide();
+        // src/sdk/README.md の narrative がそのまま載っている
+        assert!(guide.contains("@charminal/sdk"));
+        assert!(guide.contains("twin-trigger co-emission"));
+        // 自動生成・編集禁止の注記が markdown コメントとして先頭に付く
+        assert!(guide.starts_with("<!--"));
+        assert!(guide.contains("do not edit"));
     }
 }
 
