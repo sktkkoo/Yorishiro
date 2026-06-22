@@ -49,7 +49,7 @@ bundled-packs/
     └── sounds/              — ambient sound library（Scene Pack の ambient 宣言で参照）
 ```
 
-> User pack は対称的に **flat layout**（`~/.charminal/packs/<id>/<kind>.js`）。混同しない（[memory: feedback_user_pack_layout](../.claude/projects/-Users-user-Charminal/memory/feedback_user_pack_layout.md)）。
+> User pack は対称的に **flat layout**（`~/.charminal/packs/<id>/<kind>.js`）。混同しない。
 
 ---
 
@@ -185,8 +185,6 @@ bundled-packs は Charminal 本体の一部として扱う：
 - バージョンアップで上書きされる
 - user が改変したい場合は `~/.charminal/packs/<id>/` に **fork して** 改変する（ELPA stance）
 - user fork は user 責任（壊れても Charminal は責任を負わない）
-
-詳細：[memory: feedback_bundled_pack_immutability](../.claude/projects/-Users-user-Charminal/memory/feedback_bundled_pack_immutability.md)
 
 ---
 

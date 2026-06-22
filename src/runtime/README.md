@@ -65,7 +65,7 @@ terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) と
 | `ambient-ui-pack-registry/` | **multi-active**（集合） | enable / disable / getActiveSet で操作 | primary UI を奪わない overlay 系 pack（attention aura など）。複数 pack が重なる前提 |
 | Effect (event-driven) | 複数並行 | bundled-over-user の挙動は未確定 | 整理されていない領域、care |
 
-**設計原則**：「scene と effect はどちらも pack だが、動作 model が違うので別 concept として独立に扱う」。表面的類似で統合しない（[memory: feedback_separate_conceptually_distinct_systems](../../.claude/projects/-Users-user-Charminal/memory/feedback_separate_conceptually_distinct_systems.md)）。
+**設計原則**：「scene と effect はどちらも pack だが、動作 model が違うので別 concept として独立に扱う」。表面的類似で統合しない。
 
 ---
 

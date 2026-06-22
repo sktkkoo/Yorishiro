@@ -58,7 +58,7 @@ agent adapter は Rust 本体で bake in する。`~/.charminal/agents/<id>.toml
 理由：
 
 - adapter は **binary spawn + env + temp file 書き込み** を行う。security 境界として user code が触れる場所ではない（[critical-constraints.md](critical-constraints.md) §1 PTY observation のために必要な絶対信頼境界）
-- bundled-packs の immutability stance と consistent ([feedback_bundled_pack_immutability](../../../../.claude/projects/-Users-user-Charminal/memory/feedback_bundled_pack_immutability.md))
+- bundled-packs の immutability stance と consistent
 
 将来 user-declared adapter を許す場合は別 decision を起こす。
 

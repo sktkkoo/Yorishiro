@@ -49,7 +49,7 @@ bundled-packs/
     └── sounds/              — ambient sound library (referenced from a Scene Pack's ambient declaration)
 ```
 
-> User packs use a symmetrically **flat layout** (`~/.charminal/packs/<id>/<kind>.js`). Don't confuse the two ([memory: feedback_user_pack_layout](../.claude/projects/-Users-user-Charminal/memory/feedback_user_pack_layout.md)).
+> User packs use a symmetrically **flat layout** (`~/.charminal/packs/<id>/<kind>.js`). Don't confuse the two.
 
 ---
 
@@ -185,8 +185,6 @@ bundled-packs are treated as part of the Charminal core:
 - Overwritten on version upgrade
 - If a user wants to modify one, they **fork** it into `~/.charminal/packs/<id>/` and modify there (the ELPA stance)
 - A user fork is the user's responsibility (if it breaks, Charminal takes no responsibility)
-
-Details: [memory: feedback_bundled_pack_immutability](../.claude/projects/-Users-user-Charminal/memory/feedback_bundled_pack_immutability.md)
 
 ---
 
