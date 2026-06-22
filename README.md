@@ -26,7 +26,7 @@ Charminal is a self-modifiable terminal. Nearly everything beyond the core is ex
 
 **Make the hours you spend working with AI more comfortable, free, and compelling.**
 
-The time we spend working with AI will only grow longer. Yet the AI beside us remains faceless — an entity whose presence we cannot even locate. Charminal builds not a harness for AI's capabilities, but a harness for its presence — how it feels to be beside an AI.
+The time we spend with AI will only grow longer. Yet the AI beside us remains faceless — an entity whose presence we cannot even locate. Charminal builds not a harness for AI's capabilities, but a harness for its presence — how it feels to be beside an AI.
 
 There is something we once saw in science fiction and anime — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
@@ -91,7 +91,7 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
 | **amenity** | Runtime-active functional fixtures (timers, etc.) with MCP tools, no visual output |
 
-Bundled packs work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands (`$charm-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
+[Bundled packs](bundled-packs/README.en.md) work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands (`$charm-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
 
