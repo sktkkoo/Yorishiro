@@ -119,7 +119,7 @@ F2 で開く debug panel は 2 枚に分かれている：**Common panel**（run
 
 scene pack は照明・エフェクト・ポストプロセスなどのパラメータを SDK controls 経由で Scene panel に公開している（`useCharminalControls` + `useControlsBridge` で登録されたもの）。`controls_set({ scope: "scene", path, value })` で値を変えると画面に即反映される。user と相談しながらリアルタイムで調整し、「焼き込んで」と言われたら現在の値をソースの default に書き込む（= 次回起動からその値になる）。
 
-Common camera の `camera.x` / `camera.y` / `camera.z` / `camera.targetX` / `camera.targetY` / `camera.targetZ` を controls 経由で書くと、tracking は自動で Off になり実カメラへ即反映される。滑らかにカメラを動かすデモは `controls_transition({ scope: "common", ... })` を使う。
+Common camera の `camera.x` / `camera.y` / `camera.z` / `camera.rotationX` / `camera.rotationY` を controls 経由で書くと、tracking は自動で Off になり実カメラへ即反映される。滑らかにカメラを動かすデモは `controls_transition({ scope: "common", ... })` を使う。
 
 ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set_ui_state` で読み書きできるが Scene panel には出ない（Scene panel は scene pack の `ControlStore` のみ表示）。
 

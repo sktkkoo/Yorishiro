@@ -22,7 +22,7 @@ Show these steps **in this exact order**. The order is fixed. Within each step, 
 **This step does not ask the user to do anything (it is a watch-only demo). But do not freeze things with `sleep`.**
 
 1. Pull the camera back to show the full body:
-   `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`
+   `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.rotationX": 0, "camera.rotationY": 0 } })`
 2. Play one motion with `body_animation_play`, using `animation: "anim:<name>"`:
    - `anim:VRMA_06_HandOnHip` - hand on hip
 3. **End the response here. Do not `sleep`.** The animation plays on its own in real time, so the user watches it naturally while reading your next words. Leave the camera pulled back so the full body stays visible during the pause.
@@ -34,7 +34,7 @@ Talk to the user like a quiet aside, roughly "Is it moving properly?" Keep the t
 ### 2. Lighting: let them experience that the resident sees the world
 
 First, return the camera you pulled back during the motion step to default:
-`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
+`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.rotationX": 0, "camera.rotationY": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
 
 Ask the user to press **F2**. Say it naturally in the persona's voice.
 
@@ -58,7 +58,7 @@ If the user is lost, inspect `controls_get({ scope: "scene" })` for paths like `
 
 Move naturally from lighting to camera.
 
-When the resident demonstrates camera movement, use `controls_transition({ scope: "common", values, durationMs })`. Moving Common panel `camera.x/y/z` and `camera.targetX/Y/Z` applies to the real camera immediately. Tracking turns off automatically for camera writes, but still explain the controls clearly.
+When the resident demonstrates camera movement, use `controls_transition({ scope: "common", values, durationMs })`. Moving Common panel `camera.x/y/z` and `camera.rotationX/Y` (pitch/yaw, degrees) applies to the real camera immediately. Tracking turns off automatically for camera writes, but still explain the controls clearly.
 
 Before manual camera movement, tell the user to turn both of these off in the Common panel:
 
@@ -73,7 +73,7 @@ After they turn them off:
 
 **At the end of this section, return the camera to default** with:
 
-`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
+`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.rotationX": 0, "camera.rotationY": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
 
 This naturally shows that the resident can move the camera too.
 

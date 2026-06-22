@@ -119,7 +119,7 @@ The F2 debug UI has two panels: **Common** for runtime-wide controls such as the
 
 Scene packs expose tunable values through SDK controls (`useCharminalControls` + `useControlsBridge`). Use `controls_get({ scope: "scene" })` to inspect paths, then use `controls_set` or `controls_transition` while tuning with the user. When the user asks to bake the result in, write the current values back to the source defaults so they persist on the next launch.
 
-Writing common camera values such as `camera.x`, `camera.y`, `camera.z`, `camera.targetX`, `camera.targetY`, and `camera.targetZ` turns tracking off automatically and applies to the real camera. Use `controls_transition({ scope: "common", ... })` for smooth camera demos.
+Writing common camera values such as `camera.x`, `camera.y`, `camera.z`, `camera.rotationX`, and `camera.rotationY` turns tracking off automatically and applies to the real camera. Use `controls_transition({ scope: "common", ... })` for smooth camera demos.
 
 UI packs can keep their own key-value state through `ctx.state`; that state is accessible through `get_ui_state` / `set_ui_state`, but it does not appear in the Scene panel. The Scene panel is only for scene pack `ControlStore` values.
 

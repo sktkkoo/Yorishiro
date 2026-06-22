@@ -22,7 +22,7 @@ $ARGUMENTS
 
 **⚠️ このステップはユーザーに操作を求めるステップではない（見せるだけのデモ）。ただし `sleep` で固めない。**
 
-1. カメラを引いて全身を見せる。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.targetX": 0, "camera.targetY": 1.0, "camera.targetZ": 0 } })`
+1. カメラを引いて全身を見せる。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.tracking": false, "camera.lookAtCharacter": false, "camera.x": 0, "camera.y": 1.2, "camera.z": 2.5, "camera.rotationX": 0, "camera.rotationY": 0 } })`
 2. `body_animation_play` でモーションを 1 つ再生する（`animation` に `"anim:<名前>"` で渡す）:
    - `anim:VRMA_06_HandOnHip` — 腰に手を当てる
 3. **ここで応答を一旦終える。`sleep` で待たない。** アニメーションは実時間で勝手に再生されるので、相手は次の言葉を読みながら自然に動きを見る。カメラは引いたままにして、全身が見える間を置く。
@@ -33,7 +33,7 @@ $ARGUMENTS
 
 ### 2. ライティング -- 住人がこの世界を見ていることを体験させる
 
-まず、モーションで引いていたカメラをデフォルトに戻す。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
+まず、モーションで引いていたカメラをデフォルトに戻す。`controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.rotationX": 0, "camera.rotationY": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })`
 
 **F2** を押すと debug panel が開く。まずこれを押させる。persona の口調で自然に促す。
 
@@ -54,7 +54,7 @@ F2 で開くのは 2 枚：**Scene panel**（active scene の lighting / post ef
 
 ライティングを触らせた自然な流れで、カメラも触らせる。
 
-住人がカメラ移動を実演するときは `controls_transition({ scope: "common", values, durationMs })` を使う。Common panel の `camera.x/y/z` と `camera.targetX/Y/Z` を動かすと実カメラへ即反映される。この場合、tracking は自動で Off になる。
+住人がカメラ移動を実演するときは `controls_transition({ scope: "common", values, durationMs })` を使う。Common panel の `camera.x/y/z` と `camera.rotationX/Y`（pitch/yaw、度）を動かすと実カメラへ即反映される。この場合、tracking は自動で Off になる。
 
 カメラを手動で動かす前に Common panel の **tracking と look at character を両方 Off にする必要がある**ことを伝える。
 
@@ -67,7 +67,7 @@ Off にしてもらったら:
 2. ユーザーがカメラを動かしたら、`controls_get({ scope: "common" })` で Common panel の `camera.x` / `camera.y` / `camera.z` を読む
 3. 住人が自分が見られている角度に反応する。「近い」「遠い」「上からだと顔が見えない」のように
 
-**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.targetX": 0, "camera.targetY": 1.35, "camera.targetZ": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
+**カメラのセクションが終わったら、住人がカメラをデフォルト位置に戻す。** `controls_transition({ scope: "common", durationMs: 1500, values: { "camera.x": 0, "camera.y": 1.35, "camera.z": 1.1, "camera.rotationX": 0, "camera.rotationY": 0, "camera.fov": 50, "camera.tracking": true, "camera.lookAtCharacter": true } })` で戻す。住人がカメラを操作できることが、この動作で自然に伝わる。
 
 ### 4. Scene 切り替え -- 部屋が丸ごと変わることを見せる
 
