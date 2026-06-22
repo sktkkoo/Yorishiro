@@ -130,7 +130,8 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 ├── last-startup.json # 最新の user pack load report
 ├── journal/         # 住人の日々の記録と記憶
 ├── shell/           # Shell integration スクリプト（自動生成）
-└── sdk.d.ts         # Charminal SDK の型定義（自動生成、編集不要）
+├── sdk.d.ts         # Charminal SDK の型定義（自動生成、編集不要）
+└── sdk-guide.md     # Charminal SDK の pack 作者向けガイド（自動生成、編集不要）
 ```
 
 `config.json` で persona・scene・terminal agentなどを切り替えられます。詳細は [`docs/configuration.md`](docs/configuration.md)。
@@ -155,7 +156,7 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 
 ### コンテキスト共有
 
-画面に見えているものとAIが知っていることのギャップを埋める小さな機能群です。**Terminal Reference Marker**は、ターミナル上の行をCmd+click（またはOption+Shift+dragで矩形選択）すると `[#Term1]` のようなマーカーが入力に挿入され、AIが参照テキストを解決できる仕組みです。**Voice Summary**は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声はmacOSの `say` を使用。他の音声エンジンへの対応も検討中です。
+画面に見えているものとAIが知っていることのギャップを埋める小さな機能群です。**Voice Summary**は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声はmacOSの `say` を使用。他の音声エンジンへの対応も検討中です。**Terminal Reference Marker**は、ターミナル上の行をCmd+click（またはOption+Shift+dragで矩形選択）すると `[#Term1]` のようなマーカーが入力に挿入され、AIが参照テキストを解決できる仕組みです。
 
 ### 自己言及的 MCP
 
@@ -189,7 +190,7 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 - 6 種類のpackによるカスタマイズ（persona / scene / effect / ui / amenity / ambient-ui）
 - 自己言及的MCP（20 以上のtool）— カメラ・ライティング制御を含む
 - 反射層によるPTY観察と即時反応
-- コンテキスト共有: Terminal Reference Marker（Cmd+click / Option+Shift+drag）とVoice Summary
+- コンテキスト共有: Voice SummaryとTerminal Reference Marker（Cmd+click / Option+Shift+drag）
 - Journalによる長期記憶
 - `/charm:*` commandによるpackの対話的な作成・編集
 - ローカライズ: 日本語 / 英語の自動検出、言語別persona・プロンプト

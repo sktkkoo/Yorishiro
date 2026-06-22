@@ -128,7 +128,8 @@ Charminal stores all user data in `~/.charminal/`:
 ├── last-startup.json # Latest user pack load report
 ├── journal/         # Inhabitant's daily entries and memories
 ├── shell/           # Shell integration scripts (auto-generated)
-└── sdk.d.ts         # Charminal SDK type definitions (auto-generated, do not edit)
+├── sdk.d.ts         # Charminal SDK type definitions (auto-generated, do not edit)
+└── sdk-guide.md     # Charminal SDK author guide (auto-generated, do not edit)
 ```
 
 Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
@@ -153,7 +154,7 @@ Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a 
 
 ### Context sharing
 
-A few small features help bridge the gap between what you see on screen and what the AI knows. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say`; support for additional speech engines is planned.
+A few small features help bridge the gap between what you see on screen and what the AI knows. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say`; support for additional speech engines is planned. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text.
 
 ### Self-referential MCP
 
@@ -187,7 +188,7 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
-- Context sharing: Terminal Reference Markers (Cmd+click / Option+Shift+drag) and Voice Summary
+- Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
 - Journal: long-term memory across sessions
 - `/charm:*` commands for interactive pack creation and editing
 - Localization: Japanese / English auto-detection with per-language persona and prompts
