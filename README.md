@@ -221,7 +221,7 @@ Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access w
 
 ## Contributing
 
-Issues and discussions are welcome. **Pull requests are not accepted at this time.**
+Issues and discussions are welcome. **Pull requests are not accepted at this time**, as the project is still being set up.
 
 For security reporting, see [SECURITY.md](SECURITY.md).
 
@@ -305,5 +305,7 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 ## License
 
 [MIT](LICENSE)
+
+The name "Charminal" and its logo are trademarks of the author and are not covered by the MIT license. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Charminal" name or logo for your fork in a way that could cause confusion about its origin.
 
 ---

@@ -223,7 +223,7 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 
 ## Contributing
 
-IssueやDiscussionは歓迎します。**Pull requestは現在受け付けていません。**
+IssueやDiscussionは歓迎します。**Pull requestは準備中のため、現在受け付けていません。**
 
 セキュリティ報告は [SECURITY.md](SECURITY.md) を参照してください。
 
@@ -310,5 +310,7 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 ## License
 
 [MIT](LICENSE)
+
+「Charminal」の名称およびロゴは作者の商標であり、MIT ライセンスの対象には含まれません。コードは MIT の条件で自由に fork・再配布できますが、fork に「Charminal」の名称やロゴを用いて出自を誤認させるような使い方はお控えください。
 
 ---

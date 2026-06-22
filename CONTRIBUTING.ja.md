@@ -4,7 +4,7 @@
 
 ## コントリビュートの方針
 
-Charminal は現在、**Pull Request を受け付けていません**。
+Charminal は準備中のため、**Pull Request を現在受け付けていません**。
 
 歓迎しているもの：
 
