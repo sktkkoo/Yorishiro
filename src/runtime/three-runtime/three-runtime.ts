@@ -301,6 +301,15 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   }
 
   /**
+   * camera が claim されているか（camera-move / UI pack 等が一時占有中）。
+   * render loop の Step1-3 と同じ claim を見る。leva debug controls が claim 中に
+   * camera 位置を上書きして演出（例: 銃撃の camera-move）を打ち消さないための gate。
+   */
+  isCameraClaimed(): boolean {
+    return this.claimState.isClaimed("camera");
+  }
+
+  /**
    * Render loop の pause / resume。
    * paused のとき RAF 自体を停止し、tweenManager.tick / body.update / renderer.render を skip する。
    * sidebar が display:none の間（presence closed）に CPU/GPU を休ませる用途。

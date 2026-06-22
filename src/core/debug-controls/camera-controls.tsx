@@ -81,6 +81,12 @@ export function CameraControls({ store }: CameraControlsProps) {
       runtime.setCameraTracking(controls.tracking);
     }
 
+    // camera-move / UI pack などが camera を claim している間は、leva の手動制御を
+    // 譲る。claim 中に position/fov を毎フレーム書くと、claim 側（例: 銃撃の
+    // camera-move）の applyState を打ち消し、tracking OFF だとカメラが動かなくなる。
+    // render loop (three-runtime tick) の Step1-3 も同じ claim を見て camera 制御を skip する。
+    if (runtime.isCameraClaimed()) return;
+
     if (controls.tracking) {
       camera.position.x += controls.offsetX;
       camera.position.y += controls.offsetY;
@@ -104,8 +110,9 @@ export function CameraControls({ store }: CameraControlsProps) {
   });
 
   // tracking ON 時: base position (offset 込み) を leva の x/y/z に逆流させる。
+  // claim 中は claim 側が camera を制御しているので、その位置を逆流させない。
   useFrame(() => {
-    if (controls.tracking) {
+    if (controls.tracking && !runtime.isCameraClaimed()) {
       const changed =
         Math.abs(camera.position.x - controls.x) > 0.005 ||
         Math.abs(camera.position.y - controls.y) > 0.005 ||

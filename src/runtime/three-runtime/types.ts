@@ -56,6 +56,8 @@ export interface ThreeRuntime {
   /** カメラ自動追従（head tracking）の有効/無効。app-level の設定で、claim とは独立。 */
   setCameraTracking(enabled: boolean): void;
   getCameraTracking(): boolean;
+  /** camera が claim 中か（camera-move / UI pack 等が一時占有）。leva debug controls が claim を尊重するための gate。 */
+  isCameraClaimed(): boolean;
 
   /**
    * Render loop の pause / resume。paused 時は RAF の中身を skip する
