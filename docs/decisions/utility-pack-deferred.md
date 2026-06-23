@@ -5,7 +5,7 @@
 
 ## TL;DR
 
-The `utility` pack type was renamed from `harness` (PR #28, 2026-04-29) and frozen
+The `utility` pack type was renamed from `harness` (2026-04-29) and frozen
 type-only. It was superseded by the `amenity` pack framework on 2026-05-14
 (commit `01e8c41`, "既存 utility pack を置き換える"). The dead `utility` type was
 removed on 2026-05-16. The name is freed for a later local resident-tools concept.
@@ -13,7 +13,7 @@ removed on 2026-05-16. The name is freed for a later local resident-tools concep
 ## Lineage
 
 - pre-2026-04-29: `harness`
-- 2026-04-29 (PR #28): renamed `harness` → `utility`, frozen type-only, removed from charm commands
+- 2026-04-29: renamed `harness` → `utility`, frozen type-only, removed from charm commands
 - 2026-05-14 (commit `01e8c41`): `amenity` framework introduced as the live successor — same motion-free + system-capability + synthetic-event/twin-trigger boundary, execution model reshaped to `activate()` lifecycle + MCP tools
 - 2026-05-16 (branch `retire-utility-pack`): `utility` pack type deleted; provenance source `"utility"` renamed `"system"`; constraints reframed to `amenity`
 
@@ -41,7 +41,7 @@ migrated and no capability was lost. The utility-pack-deferred bundled candidate
 
 ## 改訂履歴
 
-- 2026-04-29: harness → utility にリネーム（PR #28）、同日 charm コマンドから utility の記述を削除
+- 2026-04-29: harness → utility にリネーム、同日 charm コマンドから utility の記述を削除
 
 ## 概要
 
