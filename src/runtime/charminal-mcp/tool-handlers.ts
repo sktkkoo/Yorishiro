@@ -22,7 +22,10 @@ import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
 import type { PresenceResolution } from "../presence-target";
+import type { TerminalCommandRun } from "../terminal-runtime/command-run-store";
+import type { TerminalProblem } from "../terminal-runtime/terminal-problems";
 import type { TerminalReference, TerminalRegionContext } from "../terminal-runtime/types";
+import type { RunTimelineEntry } from "../terminal-runtime/unified-timeline";
 import type { UiStateStore } from "../ui-state-store";
 import {
   type CharminalConfig,
@@ -608,6 +611,97 @@ export function createTerminalContextGetHandler(deps: TerminalContextGetDeps) {
       references: deps.getTerminalReferences(),
     };
   };
+}
+
+export interface TerminalRunsRecentDeps {
+  readonly getCommandRuns: () => ReadonlyArray<TerminalCommandRun>;
+  readonly getTerminalReferences: () => ReadonlyArray<TerminalReference>;
+  readonly getProblems: (sessionId: string, runId: number) => ReadonlyArray<TerminalProblem>;
+  readonly getTimeline: () => ReadonlyArray<RunTimelineEntry>;
+}
+
+export interface TerminalRunsRecentEntry {
+  readonly sessionId: string;
+  readonly id: number;
+  readonly command: string | null;
+  readonly status: TerminalCommandRun["status"];
+  readonly exitCode: number | null;
+  readonly durationMs: number | null;
+  readonly startedAt: number | null;
+  readonly endedAt: number | null;
+  readonly referenceIds: ReadonlyArray<string>;
+  /** 出力から検出した file:line / URL / port / test-fail の metadata（生 output は含まない）。 */
+  readonly problems: ReadonlyArray<TerminalProblem>;
+}
+
+export interface TerminalRunsRecentResponse {
+  readonly runs: ReadonlyArray<TerminalRunsRecentEntry>;
+  /** command / agent tool / loop を時系列に並べた観察 timeline（LoopTimeline, IW-P2）。 */
+  readonly timeline: ReadonlyArray<RunTimelineEntry>;
+}
+
+export function createTerminalRunsRecentHandler(deps: TerminalRunsRecentDeps) {
+  return async (request: unknown): Promise<TerminalRunsRecentResponse> => {
+    const record = requestRecord(request);
+    const limit = clampInteger(record.limit, 1, 100, 20);
+    const referenceIdsByRun = collectReferenceIdsByRun(deps.getTerminalReferences());
+    const runs = deps
+      .getCommandRuns()
+      .slice()
+      .sort(compareCommandRunsDesc)
+      .slice(0, limit)
+      .map(
+        (run): TerminalRunsRecentEntry => ({
+          sessionId: run.sessionId,
+          id: run.id,
+          command: run.command,
+          status: run.status,
+          exitCode: run.exitCode,
+          durationMs: run.durationMs,
+          startedAt: run.startedAt,
+          endedAt: run.endedAt,
+          referenceIds: referenceIdsByRun.get(runKey(run.sessionId, run.id)) ?? [],
+          problems: deps.getProblems(run.sessionId, run.id),
+        }),
+      );
+    return { runs, timeline: deps.getTimeline().slice(0, limit) };
+  };
+}
+
+function collectReferenceIdsByRun(
+  references: ReadonlyArray<TerminalReference>,
+): Map<string, string[]> {
+  const result = new Map<string, string[]>();
+  for (const reference of references) {
+    const runId = reference.context.commandRunId;
+    if (typeof runId !== "number") continue;
+    const key = runKey(reference.context.sessionId, runId);
+    const ids = result.get(key) ?? [];
+    ids.push(reference.id);
+    result.set(key, ids);
+  }
+  return result;
+}
+
+function compareCommandRunsDesc(a: TerminalCommandRun, b: TerminalCommandRun): number {
+  const at = commandRunSortTime(a);
+  const bt = commandRunSortTime(b);
+  if (at !== bt) return bt - at;
+  if (a.sessionId !== b.sessionId) return a.sessionId.localeCompare(b.sessionId);
+  return b.id - a.id;
+}
+
+function commandRunSortTime(run: TerminalCommandRun): number {
+  return run.endedAt ?? run.startedAt ?? 0;
+}
+
+function runKey(sessionId: string, runId: number): string {
+  return `${sessionId}:${runId}`;
+}
+
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(value)));
 }
 
 /* ──────────────────────────────────────────────────────────

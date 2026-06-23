@@ -15,14 +15,19 @@ import {
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import { resolveCommandRunMenuPosition } from "./command-run-menu-position";
+import { type TerminalCommandRun, TerminalCommandRunStore } from "./command-run-store";
+import { decodeOsc633Value } from "./osc633";
 import {
   type OscNotificationCode,
   type TerminalNotification as ParsedTerminalNotification,
   parseOscNotification,
 } from "./osc-notification";
 import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
+import { detectTerminalProblems, type TerminalProblem } from "./terminal-problems";
 import type {
   PtyParams,
+  TerminalCommandRunLocus,
   TerminalCursorClientPosition,
   TerminalLineRect,
   TerminalNotificationEvent,
@@ -82,6 +87,22 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly channel: Channel<ArrayBuffer>;
   private readonly perceptionRef: { current: Perception | null } = { current: null };
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
+  private readonly commandRuns: TerminalCommandRunStore;
+  private readonly oscHandlerDisposables: Disposable[] = [];
+  private hoveredCommandRunId: number | null = null;
+  private hoverProbeLine: number | null = null;
+  private readonly commandRunProblems = new Map<number, ReadonlyArray<TerminalProblem>>();
+  private commandRunMenuTargets: ReadonlyArray<{
+    readonly sessionId: string;
+    readonly label: string;
+  }> = [];
+  private commandRunMenu: HTMLElement | null = null;
+  private commandRunMenuDismiss: ((event: Event) => void) | null = null;
+  private attachLiveBuffer: Uint8Array[] | null = null;
+  private readonly ptyWriteQueue: Array<{ readonly bytes: Uint8Array; readonly replay: boolean }> =
+    [];
+  private writingPtyChunk = false;
+  private currentWriteReplay = false;
 
   private currentParams: PtyParams | null = null;
   private attachedContainer: HTMLElement | null = null;
@@ -95,8 +116,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly notificationListeners = new Set<(event: TerminalNotificationEvent) => void>();
   private readonly userInputListeners = new Set<(data: string) => void>();
   private readonly scrollListeners = new Set<() => void>();
+  private readonly activationListeners = new Set<() => void>();
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
-  private readonly oscHandlerDisposables: Disposable[] = [];
+  private readonly commandRunStartedListeners = new Set<(run: TerminalCommandRun) => void>();
+  private readonly commandRunFinalizedListeners = new Set<(run: TerminalCommandRun) => void>();
   private disposed = false;
   private hidden = false;
   private opacity = 1;
@@ -114,7 +137,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private latestRegionContext: TerminalRegionContext | null = null;
   private terminalReferenceCounter = 0;
   private readonly terminalReferences = new Map<string, TerminalReference>();
-  private writeQueue: Promise<void> = Promise.resolve();
+  private inputWriteQueue: Promise<void> = Promise.resolve();
   private imeComposing = false;
   private imePendingCommitText: string | null = null;
   private imePendingCommitTimer: number | null = null;
@@ -122,6 +145,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
+    this.commandRuns = new TerminalCommandRunStore(sessionId);
     this.term = new XTerm({
       theme: { ...DEFAULT_TERMINAL_THEME },
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
@@ -144,9 +168,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.style.pointerEvents = "auto";
     this.xtermContainer.style.zIndex = "1";
     document.body.appendChild(this.xtermContainer);
+    this.xtermContainer.addEventListener("pointerdown", this.handleActivationEvent);
+    this.xtermContainer.addEventListener("focusin", this.handleActivationEvent);
 
     this.term.open(this.xtermContainer);
     this.installImeCompositionGuard();
+    this.installCommandRunOscHandlers();
     this.installNotificationOscHandlers();
 
     const regionCtx = this.createRegionCanvas();
@@ -162,10 +189,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.channel.onmessage = (data: ArrayBuffer) => {
       if (this.disposed) return;
       const bytes = new Uint8Array(data);
-      this.term.write(bytes);
-      this.notifyPtyDataListeners();
-      const text = this.textDecoder.decode(bytes, { stream: true });
-      this.perceptionRef.current?.onPtyOutput(text);
+      if (this.attachLiveBuffer !== null) {
+        this.attachLiveBuffer.push(bytes);
+        return;
+      }
+      this.handlePtyBytes(bytes, { replay: false });
     };
 
     // PTY exit listener（session の process が終了したら terminal に表示）
@@ -174,6 +202,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
         if (this.disposed) return;
         if (event.payload.session_id !== this.sessionId) return;
+        this.finalizeCommandRun("pty-exit", normalizePtyExitCode(event.payload.code));
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
       if (this.disposed) {
@@ -183,15 +212,18 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       }
     })();
 
+    // ユーザー入力を PTY に流す。IME composition 中の romanized leak は guard する。
     this.term.onData((data) => {
       if (this.disposed) return;
-      const guardedData = this.filterImeData(data);
-      if (guardedData === null) return;
-      this.acceptUserInputData(guardedData);
+      const filtered = this.filterImeData(data);
+      if (filtered === null) return;
+      this.acceptUserInputData(filtered);
     });
 
     // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
     this.term.onScroll(() => {
+      // scroll すると行が動くので hover ハイライトは一旦消す（pointermove で再 hover）。
+      this.setHoveredCommandRun(null);
       for (const listener of Array.from(this.scrollListeners)) {
         listener();
       }
@@ -301,19 +333,28 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.resizeRafId = 0;
     this.ptyExitUnlisten?.();
     this.ptyExitUnlisten = null;
-    this.ptyDataListeners.clear();
-    this.notificationListeners.clear();
-    this.userInputListeners.clear();
-    this.scrollListeners.clear();
-    this.regionContextListeners.clear();
+    this.finalizeCommandRunForSessionDispose();
+    this.clearPtyWriteQueue();
+    this.clearCommandRunDecorations();
     for (const disposable of this.oscHandlerDisposables.splice(0)) {
       disposable.dispose();
     }
+    this.commandRuns.clear();
+    this.ptyDataListeners.clear();
+    this.scrollListeners.clear();
+    this.activationListeners.clear();
+    this.regionContextListeners.clear();
+    this.notificationListeners.clear();
+    this.userInputListeners.clear();
+    this.commandRunStartedListeners.clear();
+    this.commandRunFinalizedListeners.clear();
+    this.xtermContainer.removeEventListener("pointerdown", this.handleActivationEvent);
+    this.xtermContainer.removeEventListener("focusin", this.handleActivationEvent);
+    this.clearImePendingCommitTimer();
     if (this.clearRegionCanvasTimeout !== null) {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
     }
-    this.clearImePendingCommitTimer();
     this.term.dispose();
     if (this.xtermContainer.parentElement) {
       this.xtermContainer.parentElement.removeChild(this.xtermContainer);
@@ -332,6 +373,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {
     if (this.disposed) return;
     const generation = ++this.startGeneration;
+    this.clearPtyWriteQueue();
+    this.clearCommandRunDecorations();
+    this.commandRuns.clear();
     this.term.reset();
 
     void (async () => {
@@ -341,25 +385,32 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           this.syncAttachedRect();
         }
         if (opts.attachFirst) {
-          let attached = false;
+          this.attachLiveBuffer = [];
           try {
-            attached = await sessionAttach({
+            const result = await sessionAttach({
               sessionId: this.sessionId,
               cwd: params.cwd,
               onOutput: this.channel,
             });
+            const bufferedLive = this.attachLiveBuffer;
+            this.attachLiveBuffer = null;
+            if (this.disposed && result.attached) {
+              void sessionDestroy({ sessionId: this.sessionId });
+              return;
+            }
+            if (this.isStaleStart(generation)) return;
+            if (result.attached) {
+              this.handlePtyBytes(new Uint8Array(result.replay), { replay: true });
+              for (const liveBytes of bufferedLive) {
+                this.handlePtyBytes(liveBytes, { replay: false });
+              }
+              this.resyncAttachedPtyDisplay();
+              return;
+            }
           } catch {
-            attached = false;
+            this.attachLiveBuffer = null;
           }
-          if (this.disposed && attached) {
-            void sessionDestroy({ sessionId: this.sessionId });
-            return;
-          }
-          if (this.isStaleStart(generation)) return;
-          if (attached) {
-            this.resyncAttachedPtyDisplay();
-            return;
-          }
+          this.attachLiveBuffer = null;
         }
         if (this.attachedContainer) {
           this.syncAttachedRect();
@@ -597,17 +648,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return result;
   }
 
-  readScreenTailText(maxLines = 12): string {
+  readScreenTailText(maxLines = 28): string {
     const buffer = this.term.buffer.active;
     if (!buffer) return "";
-
-    const rows = Math.max(1, Math.min(this.term.rows, Math.floor(maxLines)));
-    const startRow = Math.max(0, this.term.rows - rows);
+    const rows = Math.max(0, Math.min(maxLines, this.term.rows));
+    const start = Math.max(0, this.term.rows - rows);
     const lines: string[] = [];
-    for (let row = startRow; row < this.term.rows; row++) {
+    for (let row = start; row < this.term.rows; row++) {
       const line = buffer.getLine(buffer.viewportY + row);
-      if (!line) continue;
-      lines.push(line.translateToString(true));
+      lines.push(line?.translateToString(true) ?? "");
     }
     return lines.join("\n");
   }
@@ -627,6 +676,82 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   getTerminalReferences(): ReadonlyArray<TerminalReference> {
     return Array.from(this.terminalReferences.values());
+  }
+
+  getCommandRunsRecent(limit?: number): ReadonlyArray<TerminalCommandRun> {
+    return this.commandRuns.getRecent(limit);
+  }
+
+  getCommandRunLocus(runId: number): TerminalCommandRunLocus | null {
+    const run = this.commandRuns.getRecent().find((candidate) => candidate.id === runId);
+    if (!run) return null;
+    return this.buildCommandRunLocus(run);
+  }
+
+  scrollToAdjacentCommandRun(
+    direction: "next" | "previous",
+    opts?: { readonly failedOnly?: boolean },
+  ): boolean {
+    if (this.disposed) return false;
+    const buffer = this.term.buffer.active;
+    if (!buffer) return false;
+    const viewportY = buffer.viewportY;
+
+    // jump の anchor は run の開始行（startMarker.line）。disposed marker (line < 0) は除外。
+    // failedOnly のときは失敗 run だけを対象にする。
+    const anchors: number[] = [];
+    for (const run of this.commandRuns.getRecent()) {
+      if (opts?.failedOnly && run.status !== "failed") continue;
+      const line = run.startMarker?.line ?? -1;
+      if (line >= 0) anchors.push(line);
+    }
+    if (anchors.length === 0) return false;
+
+    // 現在 viewport より下/上にある最も近い anchor を選ぶ。
+    let target: number | null = null;
+    if (direction === "next") {
+      for (const line of anchors) {
+        if (line > viewportY && (target === null || line < target)) target = line;
+      }
+    } else {
+      for (const line of anchors) {
+        if (line < viewportY && (target === null || line > target)) target = line;
+      }
+    }
+    if (target === null) return false;
+
+    this.term.scrollToLine(target);
+    return true;
+  }
+
+  attachLastFailedRun(): boolean {
+    const run = this.commandRuns.getLastFailedRun();
+    if (!run) return false;
+    return this.captureCommandRunContext(run);
+  }
+
+  attachCommandRunOutput(runId: number): boolean {
+    const run = this.commandRuns.getRecent().find((candidate) => candidate.id === runId);
+    if (!run) return false;
+    return this.captureCommandRunContext(run);
+  }
+
+  subscribeCommandRunStarted(listener: (run: TerminalCommandRun) => void): Disposable {
+    this.commandRunStartedListeners.add(listener);
+    return {
+      dispose: () => {
+        this.commandRunStartedListeners.delete(listener);
+      },
+    };
+  }
+
+  subscribeCommandRunFinalized(listener: (run: TerminalCommandRun) => void): Disposable {
+    this.commandRunFinalizedListeners.add(listener);
+    return {
+      dispose: () => {
+        this.commandRunFinalizedListeners.delete(listener);
+      },
+    };
   }
 
   clearTerminalReferences(): void {
@@ -678,6 +803,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   focus(): void {
     if (this.disposed) return;
     this.term.focus();
+  }
+
+  subscribeActivation(listener: () => void): Disposable {
+    this.activationListeners.add(listener);
+    return {
+      dispose: () => {
+        this.activationListeners.delete(listener);
+      },
+    };
   }
 
   forceRespawn(): void {
@@ -828,7 +962,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.perceptionRef.current?.onUserInput(data);
     this.notifyUserInputListeners(data);
     this.detectClearCommand(data);
-    this.writeQueue = this.writeQueue.then(async () => {
+    this.inputWriteQueue = this.inputWriteQueue.then(async () => {
       try {
         await sessionWrite({ sessionId: this.sessionId, data });
       } catch {
@@ -837,18 +971,474 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     });
   }
 
+  private handlePtyBytes(bytes: Uint8Array, opts: { replay: boolean }): void {
+    if (bytes.length === 0) return;
+    this.ptyWriteQueue.push({ bytes, replay: opts.replay });
+    this.flushPtyWriteQueue();
+    this.notifyPtyDataListeners();
+    if (opts.replay) return;
+    const text = this.textDecoder.decode(bytes, { stream: true });
+    this.perceptionRef.current?.onPtyOutput(text);
+  }
+
+  private flushPtyWriteQueue(): void {
+    if (this.disposed || this.writingPtyChunk) return;
+    const next = this.ptyWriteQueue.shift();
+    if (!next) return;
+    this.writingPtyChunk = true;
+    this.currentWriteReplay = next.replay;
+    this.term.write(next.bytes, () => {
+      this.currentWriteReplay = false;
+      this.writingPtyChunk = false;
+      this.flushPtyWriteQueue();
+    });
+  }
+
+  private clearPtyWriteQueue(): void {
+    this.ptyWriteQueue.length = 0;
+    this.writingPtyChunk = false;
+    this.currentWriteReplay = false;
+  }
+
+  private installCommandRunOscHandlers(): void {
+    this.oscHandlerDisposables.push(
+      this.term.parser.registerOscHandler(133, (data) => this.handleOsc133(data)),
+      this.term.parser.registerOscHandler(633, (data) => this.handleOsc633(data)),
+    );
+  }
+
+  private handleOsc133(data: string): boolean {
+    if (data === "C") {
+      if (this.commandRunEnabled()) {
+        this.startCommandRun();
+      }
+      return true;
+    }
+    if (data === "D" || data.startsWith("D;")) {
+      if (this.commandRunEnabled()) {
+        this.finalizeCommandRun("osc133", parseOsc133ExitCode(data));
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private handleOsc633(data: string): boolean {
+    if (data.startsWith("E;")) {
+      if (this.commandRunEnabled()) {
+        this.commandRuns.setPendingCommand(decodeOsc633Value(data.slice(2)));
+      }
+      return true;
+    }
+    if (data.startsWith("P;")) {
+      if (this.commandRunEnabled()) {
+        this.commandRuns.setCurrentCwd(parseOsc633Cwd(data.slice(2)));
+      }
+      return true;
+    }
+    return false;
+  }
+
+  private commandRunEnabled(): boolean {
+    const spec = this.currentParams?.spec;
+    return spec?.kind === "shell" && (spec.integration ?? true) === true;
+  }
+
+  private startCommandRun(): void {
+    const hadActiveRun = this.commandRuns.getActiveRun() !== null;
+    const started = this.commandRuns.start({
+      startMarker: this.registerMarkerOrNull(),
+      startedAt: this.currentWriteReplay ? null : Date.now(),
+    });
+    if (hadActiveRun || this.currentWriteReplay) return;
+    for (const listener of Array.from(this.commandRunStartedListeners)) {
+      listener(started);
+    }
+  }
+
+  /** finalize した run の出力から Terminal Problems を検出して保持する（live のみ）。 */
+  private detectAndStoreProblems(run: TerminalCommandRun): void {
+    const context = this.buildCommandRunContext(run);
+    if (!context) return;
+    const problems = detectTerminalProblems(context.text);
+    if (problems.length > 0) this.commandRunProblems.set(run.id, problems);
+  }
+
+  /** 指定 run で検出された Terminal Problems（file/url/port/test-fail）。無ければ空配列。 */
+  getCommandRunProblems(runId: number): ReadonlyArray<TerminalProblem> {
+    return this.commandRunProblems.get(runId) ?? [];
+  }
+
+  private finalizeCommandRun(completedBy: "osc133" | "pty-exit", exitCode: number | null): void {
+    const finalized = this.commandRuns.finalizeActive({
+      completedBy,
+      exitCode,
+      endMarker: this.registerMarkerOrNull(),
+      endedAt: this.currentWriteReplay ? null : Date.now(),
+    });
+    if (!finalized || this.currentWriteReplay) return;
+    this.detectAndStoreProblems(finalized);
+    this.notifyCommandRunFinalized(finalized);
+    this.perceptionRef.current?.onCommandBlock({
+      command: finalized.command,
+      exitCode: finalized.exitCode,
+      durationMs: finalized.durationMs,
+      sessionId: this.sessionId,
+    });
+  }
+
+  private notifyCommandRunFinalized(finalized: TerminalCommandRun): void {
+    for (const listener of Array.from(this.commandRunFinalizedListeners)) {
+      listener(finalized);
+    }
+  }
+
+  private finalizeCommandRunForSessionDispose(): void {
+    const finalized = this.commandRuns.finalizeForSessionDispose(
+      Date.now(),
+      this.registerMarkerOrNull(),
+    );
+    if (!finalized) return;
+    this.notifyCommandRunFinalized(finalized);
+  }
+
+  private registerMarkerOrNull(): ReturnType<XTerm["registerMarker"]> | null {
+    try {
+      return this.term.registerMarker(0);
+    } catch {
+      return null;
+    }
+  }
+
+  private clearCommandRunDecorations(): void {
+    this.closeCommandRunMenu();
+    this.setHoveredCommandRun(null);
+    this.commandRunProblems.clear();
+  }
+
+  /** buffer の絶対行 line がどの command run の範囲内かを返す（無ければ null）。 */
+  private commandRunAtLine(line: number): TerminalCommandRun | null {
+    for (const run of this.commandRuns.getRecent()) {
+      const start = run.startMarker?.line ?? -1;
+      if (start < 0) continue;
+      const end = run.endMarker?.line ?? start;
+      if (line >= start && line <= end) return run;
+    }
+    return null;
+  }
+
+  /** hover 中の command run を更新し、その行範囲を region canvas に淡くハイライトする。 */
+  private setHoveredCommandRun(run: TerminalCommandRun | null): void {
+    const id = run?.id ?? null;
+    if (id === this.hoveredCommandRunId) return;
+    this.hoveredCommandRunId = id;
+    this.drawCommandRunHighlight(run);
+  }
+
+  /** command block 全体の行範囲を viewport row に変換し region canvas に矩形を描く。 */
+  private drawCommandRunHighlight(run: TerminalCommandRun | null): void {
+    if (!run || this.regionDrag) {
+      this.clearRegionCanvasNow();
+      return;
+    }
+    const start = run.startMarker?.line ?? -1;
+    if (start < 0) {
+      this.clearRegionCanvasNow();
+      return;
+    }
+    const end = run.endMarker?.line ?? start;
+    const viewportY = this.term.buffer.active.viewportY;
+    const rows = this.term.rows;
+    const startRow = Math.max(0, start - viewportY);
+    const endRow = Math.min(rows - 1, end - viewportY);
+    if (endRow < startRow) {
+      this.clearRegionCanvasNow();
+      return;
+    }
+    const rect = this.xtermContainer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const cellHeight = rect.height / rows;
+    const top = startRow * cellHeight;
+    const bottom = (endRow + 1) * cellHeight;
+    const polygon: ReadonlyArray<RegionPoint> = [
+      { x: 0, y: top },
+      { x: rect.width, y: top },
+      { x: rect.width, y: bottom },
+      { x: 0, y: bottom },
+    ];
+    this.drawRegionHighlight(polygon);
+  }
+
+  /**
+   * badge click で開く attach verb menu。run 由来の 2 verb（この出力 / 直近の失敗）を出す。
+   * 範囲選択の attach は既存 Option+Shift+drag が担うので menu には含めない。
+   * PTY へは書かず、選んだ verb は既存 reference 経路に乗せる。
+   */
+  /** クリック位置の buffer 行を返す（viewport 外なら null）。 */
+  private lineFromClientY(clientY: number): number | null {
+    const rect = this.xtermContainer.getBoundingClientRect();
+    if (rect.height === 0) return null;
+    const row = Math.floor((clientY - rect.top) / (rect.height / this.term.rows));
+    if (row < 0 || row >= this.term.rows) return null;
+    return this.term.buffer.active.viewportY + row;
+  }
+
+  /** 通常クリックが command block 上なら attach menu を開く（Cmd+click は別経路）。 */
+  private handleCommandRunClick(event: MouseEvent): void {
+    if (this.disposed) return;
+    if (event.metaKey || event.altKey || event.shiftKey || event.button !== 0) return;
+    const line = this.lineFromClientY(event.clientY);
+    if (line === null) return;
+    const run = this.commandRunAtLine(line);
+    if (!run) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.openCommandRunMenu(run, {
+      top: event.clientY,
+      bottom: event.clientY,
+      left: event.clientX,
+    });
+  }
+
+  /** pointermove で command block を hover 検出しハイライトする（drag 中は無視）。 */
+  private handleCommandRunHover(event: MouseEvent): void {
+    if (this.disposed || this.regionDrag) return;
+    const line = this.lineFromClientY(event.clientY);
+    // 同じ行の move では reflow（getBoundingClientRect）と run 走査を避ける。
+    if (line === this.hoverProbeLine) return;
+    this.hoverProbeLine = line;
+    this.setHoveredCommandRun(line === null ? null : this.commandRunAtLine(line));
+  }
+
+  setCommandRunMenuTargets(
+    targets: ReadonlyArray<{ readonly sessionId: string; readonly label: string }>,
+  ): void {
+    this.commandRunMenuTargets = targets;
+  }
+
+  /**
+   * run の出力テキストを別 session の入力欄へ user gesture として書き込む。
+   * 人間が menu で送信先を選んだ操作の代行であって、住人 AI による PTY write ではない
+   * （observation-only は維持）。改行は実行を誘発しないよう空白に畳む。
+   */
+  private sendCommandRunToSession(run: TerminalCommandRun, targetSessionId: string): boolean {
+    const context = this.buildCommandRunContext(run);
+    if (!context || context.text === "") return false;
+    const oneLine = context.text.replace(/\r?\n/g, " ").trim();
+    if (oneLine === "") return false;
+    // 送信先の入力欄が巨大な 1 行で埋まらないよう上限で切る。
+    const payload = oneLine.length > 2000 ? `${oneLine.slice(0, 2000)}…` : oneLine;
+    void sessionWrite({ sessionId: targetSessionId, data: payload }).catch(() => {});
+    return true;
+  }
+
+  private openCommandRunMenu(
+    run: TerminalCommandRun,
+    anchorRect: { readonly top: number; readonly bottom: number; readonly left: number },
+  ): void {
+    this.closeCommandRunMenu();
+    const menu = document.createElement("div");
+    menu.className = "command-run-menu";
+    menu.style.position = "fixed";
+    // 位置は append 後に実寸を測ってから決める（flip 判定に menu の高さが要る）。
+    menu.style.visibility = "hidden";
+
+    const items: ReadonlyArray<{
+      readonly attach: string;
+      readonly label: string;
+      readonly run: () => boolean;
+    }> = [
+      {
+        attach: "this-output",
+        label: "この出力を添付",
+        run: () => this.attachCommandRunOutput(run.id),
+      },
+      {
+        attach: "last-failed",
+        label: "直近の失敗を添付",
+        run: () => this.attachLastFailedRun(),
+      },
+      ...this.commandRunMenuTargets.map((target) => ({
+        attach: `send:${target.sessionId}`,
+        label: `${target.label} に送る`,
+        run: () => this.sendCommandRunToSession(run, target.sessionId),
+      })),
+    ];
+    for (const item of items) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "command-run-menu__item";
+      button.dataset.attach = item.attach;
+      button.textContent = item.label;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        item.run();
+        this.closeCommandRunMenu();
+      });
+      menu.appendChild(button);
+    }
+    document.body.appendChild(menu);
+    this.commandRunMenu = menu;
+
+    // badge の画面位置に応じて menu を上下 flip + 横を画面内に clamp する。
+    // terminal が最下部にあっても menu が viewport 外に出ないようにする。
+    const menuRect = menu.getBoundingClientRect();
+    const pos = resolveCommandRunMenuPosition(
+      anchorRect,
+      { width: menuRect.width, height: menuRect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    menu.style.top = `${pos.top}px`;
+    menu.style.left = `${pos.left}px`;
+    menu.style.visibility = "visible";
+
+    const dismiss = (event: Event) => {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") this.closeCommandRunMenu();
+        return;
+      }
+      if (this.commandRunMenu && !this.commandRunMenu.contains(event.target as Node)) {
+        this.closeCommandRunMenu();
+      }
+    };
+    document.addEventListener("mousedown", dismiss, { capture: true });
+    document.addEventListener("keydown", dismiss, { capture: true });
+    this.commandRunMenuDismiss = dismiss;
+  }
+
+  private closeCommandRunMenu(): void {
+    if (this.commandRunMenuDismiss) {
+      document.removeEventListener("mousedown", this.commandRunMenuDismiss, { capture: true });
+      document.removeEventListener("keydown", this.commandRunMenuDismiss, { capture: true });
+      this.commandRunMenuDismiss = null;
+    }
+    if (this.commandRunMenu) {
+      this.commandRunMenu.remove();
+      this.commandRunMenu = null;
+    }
+  }
+
+  private captureCommandRunContext(run: TerminalCommandRun): boolean {
+    const context = this.buildCommandRunContext(run);
+    if (!context) return false;
+    this.latestRegionContext = context;
+    this.addTerminalReference(context);
+    if (context.polygon.length > 0) {
+      this.drawRegionHighlight(context.polygon);
+      this.scheduleRegionCanvasClear();
+    }
+    for (const listener of Array.from(this.regionContextListeners)) {
+      listener(context);
+    }
+    return true;
+  }
+
+  private buildCommandRunContext(run: TerminalCommandRun): TerminalRegionContext | null {
+    const locus = this.buildCommandRunLocus(run);
+    if (!locus) return null;
+
+    const startLine = run.startMarker?.line ?? -1;
+    const endLine = run.endMarker?.line ?? -1;
+    const buffer = this.term.buffer.active;
+    if (!buffer) return null;
+
+    const firstLine = Math.min(startLine, endLine);
+    const lastLine = Math.max(startLine, endLine);
+    const lines: string[] = [];
+    for (let lineIndex = firstLine; lineIndex <= lastLine; lineIndex++) {
+      const line = buffer.getLine(lineIndex);
+      if (line) {
+        lines.push(line.translateToString(true));
+      }
+    }
+    const text = lines.join("\n").trim();
+    if (text === "") return null;
+
+    return {
+      kind: "terminal-region-context",
+      sessionId: this.sessionId,
+      text,
+      capturedAt: Date.now(),
+      gesture: "command-run-click",
+      commandRunId: run.id,
+      viewport: locus.viewport,
+      range: locus.range,
+      rect: locus.rect,
+      polygon: locus.polygon.map((point) => ({ ...point })),
+    };
+  }
+
+  private buildCommandRunLocus(run: TerminalCommandRun): TerminalCommandRunLocus | null {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return null;
+    const startLine = run.startMarker?.line ?? -1;
+    const currentLine = buffer.baseY + buffer.cursorY;
+    const endLine = run.endMarker?.line ?? (run.status === "running" ? currentLine : -1);
+    if (startLine < 0 || endLine < 0) return null;
+
+    const firstLine = Math.min(startLine, endLine);
+    const lastLine = Math.max(startLine, endLine);
+    const rect = this.xtermContainer.getBoundingClientRect();
+    const cellHeight = this.term.rows > 0 ? rect.height / this.term.rows : 0;
+    const viewportStart = buffer.viewportY;
+    const viewportEnd = viewportStart + Math.max(0, this.term.rows - 1);
+    if (lastLine < viewportStart || firstLine > viewportEnd) return null;
+    const visibleStartRow = clamp(firstLine - viewportStart, 0, Math.max(0, this.term.rows - 1));
+    const visibleEndRow = clamp(lastLine - viewportStart, 0, Math.max(0, this.term.rows - 1));
+    const top = Math.min(visibleStartRow, visibleEndRow) * cellHeight;
+    const bottom = (Math.max(visibleStartRow, visibleEndRow) + 1) * cellHeight;
+    const polygon: ReadonlyArray<RegionPoint> =
+      rect.width > 0 && bottom > top
+        ? [
+            { x: 0, y: top },
+            { x: rect.width, y: top },
+            { x: rect.width, y: bottom },
+            { x: 0, y: bottom },
+          ]
+        : [];
+
+    return {
+      kind: "terminal-command-run-locus",
+      sessionId: this.sessionId,
+      commandRunId: run.id,
+      viewport: {
+        viewportY: buffer.viewportY,
+        rows: this.term.rows,
+        cols: this.term.cols,
+      },
+      range: {
+        startRow: visibleStartRow,
+        endRow: visibleEndRow,
+        startCol: 0,
+        endCol: Math.max(0, this.term.cols - 1),
+      },
+      rect: {
+        x: rect.left,
+        y: rect.top + top,
+        width: rect.width,
+        height: Math.max(0, bottom - top),
+      },
+      polygon: polygon.map((point) => ({ ...point })),
+    };
+  }
+
   private readonly handleViewportResize = (): void => {
     this.syncAttachedRect();
+  };
+
+  private readonly handleActivationEvent = (): void => {
+    if (this.disposed) return;
+    for (const listener of Array.from(this.activationListeners)) {
+      listener();
+    }
   };
 
   private detectClearCommand(data: string): void {
     if (data.includes("\r") || data.includes("\n")) {
       const line = this.recentInput.trim();
       if (line === "/clear" || line === "/compact") {
-        // ESC[3J (Erase Saved Lines): scrollback だけ破棄し、可視領域と
-        // カーソルは一切触らない。term.clear() はカーソル行以外を全消去し
-        // ink TUI の相対描画モデルを狂わせるため使わない。
-        this.term.write("\x1b[3J");
+        this.term.clear();
       }
       this.recentInput = "";
     } else if (data === "\x7f") {
@@ -888,6 +1478,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.lastFitH = h;
       this.fitAddon.fit();
     }
+    this.setHoveredCommandRun(null);
   }
 
   private createRegionCanvas(): {
@@ -996,9 +1587,20 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private installRegionSelectionHandlers(): void {
-    this.xtermContainer.addEventListener("click", (event) => this.handleMetaClick(event), {
-      capture: true,
-    });
+    this.xtermContainer.addEventListener(
+      "click",
+      (event) => {
+        // 通常クリックは command block → attach menu、Cmd+click は 1 行 region context。
+        this.handleCommandRunClick(event);
+        this.handleMetaClick(event);
+      },
+      { capture: true },
+    );
+    // command block の hover ハイライト（drag 用 pointermove とは別、capture なし）。
+    this.xtermContainer.addEventListener("pointermove", (event) =>
+      this.handleCommandRunHover(event),
+    );
+    this.xtermContainer.addEventListener("pointerleave", () => this.setHoveredCommandRun(null));
 
     this.xtermContainer.addEventListener(
       "pointerdown",
@@ -1077,9 +1679,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private addTerminalReference(context: TerminalRegionContext): string {
     this.terminalReferenceCounter++;
-    const id = `Term${this.terminalReferenceCounter}`;
+    const localId = `Term${this.terminalReferenceCounter}`;
+    const id = `${this.sessionId}:${localId}`;
     this.terminalReferences.set(id, { id, context });
-    const marker = `[#${id}] `;
+    const marker = `[#${localId}] `;
     void sessionWrite({ sessionId: this.sessionId, data: marker }).catch(() => {});
     return id;
   }
@@ -1223,6 +1826,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private clearRegionCanvasNow(): void {
     if (!this.regionCtx) return;
+    this.clearImePendingCommitTimer();
     if (this.clearRegionCanvasTimeout !== null) {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
@@ -1232,6 +1836,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private scheduleRegionCanvasClear(): void {
+    this.clearImePendingCommitTimer();
     if (this.clearRegionCanvasTimeout !== null) {
       window.clearTimeout(this.clearRegionCanvasTimeout);
     }
@@ -1273,6 +1878,31 @@ function specEqual(a: SpawnSpec, b: SpawnSpec): boolean {
 function describeSpec(spec: SpawnSpec): string {
   if (spec.kind === "agent") return spec.agent;
   return spec.command ?? "shell";
+}
+
+function parseOsc133ExitCode(data: string): number | null {
+  if (data === "D") return null;
+  const raw = data.slice(2);
+  if (raw === "") return null;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) ? value : null;
+}
+
+function normalizePtyExitCode(code: number): number | null {
+  return code >= 0 ? code : null;
+}
+
+function parseOsc633Cwd(data: string): string | null {
+  for (const part of data.split(";")) {
+    if (part.startsWith("Cwd=")) {
+      return decodeOsc633Value(part.slice("Cwd=".length));
+    }
+  }
+  return null;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 function rectanglePolygon(start: RegionPoint, current: RegionPoint): ReadonlyArray<RegionPoint> {

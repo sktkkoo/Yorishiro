@@ -7,7 +7,9 @@ use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter};
 
-use crate::sessions::{PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec};
+use crate::sessions::{
+    AttachResult, PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec,
+};
 
 /// Queue of hook signals for frontend polling (fallback when Tauri emit doesn't reach webview).
 static HOOK_SIGNAL_QUEUE: std::sync::LazyLock<Mutex<Vec<String>>> =
@@ -408,9 +410,17 @@ impl PtyState {
         Ok(())
     }
 
-    pub fn attach(&self, session_id: &str, cwd: Option<String>, on_output: Channel) -> bool {
+    pub fn attach(
+        &self,
+        session_id: &str,
+        cwd: Option<String>,
+        on_output: Channel,
+    ) -> AttachResult {
         let Some(session) = self.session_or_default(session_id) else {
-            return false;
+            return AttachResult {
+                attached: false,
+                replay: Vec::new(),
+            };
         };
         session.attach(cwd, on_output)
     }

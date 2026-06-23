@@ -157,6 +157,14 @@ pub struct StateGetRequest {}
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TerminalContextGetRequest {}
 
+/// `terminal_runs_recent` の引数。limit 省略時は TS 側 default。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TerminalRunsRecentRequest {
+    /// 返す command run の最大数（TS runtime 側で clamp される）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
 /// `body_expression_set` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyExpressionSetRequest {
@@ -689,6 +697,22 @@ impl Charminal {
         emit_to(&self.app_handle, "terminal.context.get", json!({})).await
     }
 
+    /// terminal_runs_recent: command run の sensitive metadata だけを返す。output text は返さない。
+    #[tool(
+        description = "Return recent terminal command run metadata only. Includes command/status/exit/duration and user-created terminal reference ids when present; never returns command output text or cwd."
+    )]
+    async fn terminal_runs_recent(
+        &self,
+        Parameters(req): Parameters<TerminalRunsRecentRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(
+            &self.app_handle,
+            "terminal.runs.recent",
+            json!({ "limit": req.limit }),
+        )
+        .await
+    }
+
     /// body_expression_set: VRM expression preset を設定（意識層 → 身体の path のみ、
     /// 反射層は別の non-MCP path を使う）。
     #[tool(
@@ -1080,6 +1104,7 @@ impl ServerHandler for Charminal {
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
                 "- 現在の状態確認 → state_get\n",
                 "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
+                "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
                 "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",
                 "- 表情だけ変える → body_expression_set\n",

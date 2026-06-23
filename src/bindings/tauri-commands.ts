@@ -45,7 +45,7 @@ export type SpawnSpec =
       /** shell binary 上書き。null で `$SHELL` を使う。 */
       readonly command?: string | null;
       /**
-       * Charminal 側 instrumentation（OSC 133 wrapper rc）の有無。default true。
+       * Charminal 側 instrumentation（OSC 133 / 633 wrapper rc）の有無。default true。
        * false なら raw shell 起動で、住人は cell 観察のみ（command 単位の status
        * は読めない）。known でない shell（sh / dash 等）には integration が無視される。
        */
@@ -121,11 +121,16 @@ export interface SessionAttachArgs {
   readonly onOutput: Channel<ArrayBuffer>;
 }
 
+export interface SessionAttachResult {
+  readonly attached: boolean;
+  readonly replay: ReadonlyArray<number>;
+}
+
 /**
  * 既存 session に新しい channel を繋ぎ直す（webview HMR reload など）。
- * Returns true if re-attached、false なら caller が spawn 必要。
+ * live output は raw Channel のまま、replay bytes だけ invoke response で返す。
  */
-export const sessionAttach = (args: SessionAttachArgs): Promise<boolean> =>
+export const sessionAttach = (args: SessionAttachArgs): Promise<SessionAttachResult> =>
   call("session_attach", args);
 
 export interface SessionDetachArgs {

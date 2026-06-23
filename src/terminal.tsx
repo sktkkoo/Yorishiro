@@ -16,19 +16,23 @@ const SCREEN_ATTENTION_SCAN_MS = 80;
 interface TerminalProps {
   readonly sessionId: string;
   readonly visible: boolean;
+  readonly active: boolean;
   readonly spec: SpawnSpec;
   readonly cwd: string | null;
   readonly perception: Perception | null;
   readonly attachFirst?: boolean;
+  readonly onActivate?: (sessionId: string) => void;
 }
 
 export default function Terminal({
   sessionId,
   visible,
+  active,
   spec,
   cwd,
   perception,
   attachFirst = false,
+  onActivate,
 }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
   const outputSettleTimerRef = useRef<number | null>(null);
@@ -95,7 +99,7 @@ export default function Terminal({
   }, [sessionId]);
 
   // visible が変わるたびに attach/detach を切り替える。
-  // inactive session は detachContainer() で RAF 停止 + visibility:hidden。
+  // 非表示 session は detachContainer() で RAF 停止 + visibility:hidden。
   useEffect(() => {
     const placeholder = placeholderRef.current;
     if (!placeholder) return;
@@ -104,7 +108,6 @@ export default function Terminal({
       getSessionStatusStore().markActive(sessionId);
       runtime.attachTo(placeholder);
       runtime.setTheme(getCurrentTerminalTheme());
-      runtime.focus();
       void sessionRefreshTheme({ sessionId }).catch((err) => {
         console.warn("[terminal-theme] failed to refresh agent theme:", err);
       });
@@ -113,6 +116,16 @@ export default function Terminal({
     }
     return () => runtime.detachContainer();
   }, [sessionId, visible]);
+
+  useEffect(() => {
+    if (visible && active) getTerminalRuntime(sessionId).focus();
+  }, [sessionId, visible, active]);
+
+  useEffect(() => {
+    if (!onActivate) return;
+    const sub = getTerminalRuntime(sessionId).subscribeActivation(() => onActivate(sessionId));
+    return () => sub.dispose();
+  }, [sessionId, onActivate]);
 
   useEffect(() => {
     getTerminalRuntime(sessionId).updatePtyParams({ spec, cwd }, { attachFirst });
@@ -127,7 +140,9 @@ export default function Terminal({
       ref={placeholderRef}
       className="terminal-container"
       data-session-id={sessionId}
-      data-active={visible ? "true" : "false"}
+      data-visible={visible ? "true" : "false"}
+      data-presented={visible ? "true" : "false"}
+      data-active={active ? "true" : "false"}
     />
   );
 }

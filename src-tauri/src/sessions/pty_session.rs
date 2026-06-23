@@ -7,7 +7,7 @@
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -144,6 +144,30 @@ pub(super) struct RingBuffer {
     cursor: usize,
     /// Total bytes ever written. `min(len, capacity)` gives current fill.
     len: usize,
+}
+
+/// WebView reconnect 時の attach 結果。live output の Channel は従来どおり
+/// `InvokeResponseBody::Raw` のまま保ち、replay 分だけ invoke response で返す。
+#[derive(Debug, Clone, Serialize)]
+pub struct AttachResult {
+    pub attached: bool,
+    pub replay: Vec<u8>,
+}
+
+impl AttachResult {
+    fn detached() -> Self {
+        Self {
+            attached: false,
+            replay: Vec::new(),
+        }
+    }
+
+    fn attached(replay: Vec<u8>) -> Self {
+        Self {
+            attached: true,
+            replay,
+        }
+    }
 }
 
 /// 64 KB — enough for several screenfuls of terminal output.
@@ -439,7 +463,7 @@ impl PtySession {
     /// 既存の PTY に新しい channel を繋ぎ直す（WebView HMR reload）。ring
     /// buffer を replay して terminal 状態を復元してから channel swap する。
     /// PTY が dead か cwd が違うと false を返す。
-    pub fn attach(&self, cwd: Option<String>, on_output: Channel) -> bool {
+    pub fn attach(&self, cwd: Option<String>, on_output: Channel) -> AttachResult {
         let is_alive = {
             let mut guard = lock_or_recover(&self.child);
             guard
@@ -449,21 +473,23 @@ impl PtySession {
                 .unwrap_or(false)
         };
         if !is_alive {
-            return false;
+            return AttachResult::detached();
         }
 
         let cwd_matches = *lock_or_recover(&self.spawned_cwd) == cwd;
         if !cwd_matches {
-            return false;
+            return AttachResult::detached();
         }
 
-        let replay = lock_or_recover(&self.ring_buffer).read();
-        if !replay.is_empty() {
-            let _ = on_output.send(InvokeResponseBody::Raw(replay));
-        }
-
-        *lock_or_recover(&self.output_channel) = Some(on_output);
-        true
+        // reader thread と同じ lock order（ring → channel）で、replay read と
+        // channel swap の間に live chunk が落ちる隙間を作らない。
+        let replay = {
+            let ring = lock_or_recover(&self.ring_buffer);
+            let replay = ring.read();
+            *lock_or_recover(&self.output_channel) = Some(on_output);
+            replay
+        };
+        AttachResult::attached(replay)
     }
 
     pub fn detach(&self) {

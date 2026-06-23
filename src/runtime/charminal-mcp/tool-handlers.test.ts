@@ -49,6 +49,7 @@ import {
   createSpaceEffectPlayHandler,
   createStateGetHandler,
   createTerminalContextGetHandler,
+  createTerminalRunsRecentHandler,
   createUiActivateHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
@@ -59,6 +60,42 @@ import {
  * test 内で必要な subset を `as unknown as <T>` で narrow する。
  */
 type CameraLike = THREE.PerspectiveCamera;
+
+function makeRun(overrides: {
+  readonly id: number;
+  readonly sessionId: string;
+  readonly endedAt: number | null;
+}) {
+  return {
+    id: overrides.id,
+    sessionId: overrides.sessionId,
+    command: `cmd-${overrides.id}`,
+    cwd: null,
+    status: "succeeded" as const,
+    completedBy: "osc133" as const,
+    exitCode: 0,
+    startedAt: null,
+    endedAt: overrides.endedAt,
+    durationMs: null,
+    startMarker: null,
+    endMarker: null,
+  };
+}
+
+function makeContext() {
+  return {
+    kind: "terminal-region-context" as const,
+    sessionId: "shell-1",
+    text: "captured output",
+    capturedAt: 1600,
+    gesture: "command-run-click" as const,
+    commandRunId: 1,
+    viewport: { viewportY: 0, rows: 24, cols: 80 },
+    range: { startRow: 1, endRow: 2, startCol: 0, endCol: 79 },
+    rect: { x: 0, y: 0, width: 100, height: 20 },
+    polygon: [],
+  };
+}
 
 function makeControlStore(
   inputs: Record<string, Record<string, unknown>>,
@@ -97,12 +134,12 @@ describe("createTerminalContextGetHandler", () => {
     };
     const handler = createTerminalContextGetHandler({
       getLatestRegionContext: () => context,
-      getTerminalReferences: () => [{ id: "Term1", context }],
+      getTerminalReferences: () => [{ id: "default-session:Term1", context }],
     });
 
     await expect(handler({})).resolves.toEqual({
       context,
-      references: [{ id: "Term1", context }],
+      references: [{ id: "default-session:Term1", context }],
     });
   });
 
@@ -113,6 +150,119 @@ describe("createTerminalContextGetHandler", () => {
     });
 
     await expect(handler({})).resolves.toEqual({ context: null, references: [] });
+  });
+});
+
+describe("createTerminalRunsRecentHandler", () => {
+  it("returns sensitive metadata-only recent command runs", async () => {
+    const handler = createTerminalRunsRecentHandler({
+      getTimeline: () => [],
+      getProblems: () => [{ type: "file", value: "src/foo.ts:12" }],
+      getCommandRuns: () => [
+        {
+          id: 1,
+          sessionId: "shell-1",
+          command: "npm test",
+          cwd: "/secret/repo",
+          status: "failed",
+          completedBy: "osc133",
+          exitCode: 1,
+          startedAt: 1000,
+          endedAt: 1500,
+          durationMs: 500,
+          startMarker: null,
+          endMarker: null,
+        },
+      ],
+      getTerminalReferences: () => [
+        {
+          id: "shell-1:Term1",
+          context: {
+            kind: "terminal-region-context",
+            sessionId: "shell-1",
+            text: "output text must not be included by terminal_runs_recent",
+            capturedAt: 1600,
+            gesture: "command-run-click",
+            commandRunId: 1,
+            viewport: { viewportY: 0, rows: 24, cols: 80 },
+            range: { startRow: 1, endRow: 2, startCol: 0, endCol: 10 },
+            rect: { x: 0, y: 0, width: 10, height: 10 },
+            polygon: [],
+          },
+        },
+      ],
+    });
+
+    await expect(handler({ limit: 10 })).resolves.toEqual({
+      runs: [
+        {
+          sessionId: "shell-1",
+          id: 1,
+          command: "npm test",
+          status: "failed",
+          exitCode: 1,
+          durationMs: 500,
+          startedAt: 1000,
+          endedAt: 1500,
+          referenceIds: ["shell-1:Term1"],
+          problems: [{ type: "file", value: "src/foo.ts:12" }],
+        },
+      ],
+      timeline: [],
+    });
+  });
+
+  it("keeps reference ids session-scoped when local markers collide", async () => {
+    const handler = createTerminalRunsRecentHandler({
+      getTimeline: () => [],
+      getProblems: () => [],
+      getCommandRuns: () => [
+        makeRun({ id: 1, sessionId: "shell-1", endedAt: 2000 }),
+        makeRun({ id: 1, sessionId: "shell-2", endedAt: 1000 }),
+      ],
+      getTerminalReferences: () => [
+        {
+          id: "shell-1:Term1",
+          context: {
+            ...makeContext(),
+            sessionId: "shell-1",
+            commandRunId: 1,
+          },
+        },
+        {
+          id: "shell-2:Term1",
+          context: {
+            ...makeContext(),
+            sessionId: "shell-2",
+            commandRunId: 1,
+          },
+        },
+      ],
+    });
+
+    const result = await handler({ limit: 10 });
+
+    expect(result.runs.map((run) => [run.sessionId, run.referenceIds])).toEqual([
+      ["shell-1", ["shell-1:Term1"]],
+      ["shell-2", ["shell-2:Term1"]],
+    ]);
+  });
+
+  it("clamps limit and sorts newest first", async () => {
+    const handler = createTerminalRunsRecentHandler({
+      getTimeline: () => [],
+      getProblems: () => [],
+      getCommandRuns: () => [
+        makeRun({ id: 1, sessionId: "shell-1", endedAt: 1000 }),
+        makeRun({ id: 2, sessionId: "shell-1", endedAt: 3000 }),
+        makeRun({ id: 3, sessionId: "shell-1", endedAt: 2000 }),
+      ],
+      getTerminalReferences: () => [],
+    });
+
+    const result = await handler({ limit: 2.8 });
+
+    expect(result.runs.map((run) => run.id)).toEqual([2, 3]);
   });
 });
 

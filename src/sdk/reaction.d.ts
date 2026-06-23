@@ -66,6 +66,7 @@ export type DispatchEvent = ObservedEvent | DerivedEvent | SyntheticEvent;
  */
 export type ObservedEvent =
   | PtyOutputEvent
+  | CommandBlockEvent
   | HookSignalEvent
   | UserInputEvent
   | WindowEvent
@@ -80,10 +81,22 @@ export type ObservedEvent =
  */
 export type DerivedEvent = IdleEvent | ToolActivityEvent;
 
+export type SessionId = string;
+
 export interface PtyOutputEvent {
   readonly kind: "pty-output";
   /** PTY から流れてきた生 text（ANSI escape を含む可能性） */
   readonly text: string;
+  readonly timestamp: number;
+}
+
+export interface CommandBlockEvent {
+  readonly kind: "command-block";
+  /** OSC 633;E から得た command。未取得の degraded path では null。 */
+  readonly command: string | null;
+  readonly exitCode: number | null;
+  readonly durationMs: number | null;
+  readonly sessionId: SessionId;
   readonly timestamp: number;
 }
 

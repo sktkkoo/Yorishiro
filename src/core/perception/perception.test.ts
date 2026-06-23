@@ -81,6 +81,47 @@ describe("Perception", () => {
     });
   });
 
+  // ── Command block ─────────────────────────────────────────
+
+  describe("onCommandBlock", () => {
+    it("dispatches CommandBlockEvent with host-stamped session id", () => {
+      const { perception, dispatched } = createStack();
+      clockMs = 2500;
+
+      perception.onCommandBlock({
+        command: "npm test",
+        exitCode: 1,
+        durationMs: 1200,
+        sessionId: "shell-1",
+      });
+
+      expect(dispatched).toHaveLength(1);
+      const event = dispatched[0];
+      expect(event.kind).toBe("command-block");
+      if (event.kind === "command-block") {
+        expect(event.command).toBe("npm test");
+        expect(event.exitCode).toBe(1);
+        expect(event.durationMs).toBe(1200);
+        expect(event.sessionId).toBe("shell-1");
+        expect(event.timestamp).toBe(2500);
+      }
+    });
+
+    it("does not dispatch after dispose", () => {
+      const { perception, dispatched } = createStack();
+      perception.dispose();
+
+      perception.onCommandBlock({
+        command: "npm test",
+        exitCode: 0,
+        durationMs: 100,
+        sessionId: "shell-1",
+      });
+
+      expect(dispatched).toHaveLength(0);
+    });
+  });
+
   // ── Hook signals ────────────────────────────────────────────
 
   describe("onHookSignal", () => {

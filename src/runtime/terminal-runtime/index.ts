@@ -9,6 +9,8 @@
  *                         2026-05-05-multi-pane-terminal.md。
  */
 
+export { type AgentToolRun, getAgentToolRunStore } from "./agent-tool-run-store";
+export { getLoopRunStore, type LoopRun } from "./loop-run-store";
 export {
   DEFAULT_TERMINAL_THEME,
   disposeTerminalRuntime,
@@ -16,3 +18,4 @@ export {
   getTerminalRuntime,
 } from "./terminal-runtime";
 export type { PtyParams, TerminalRuntime } from "./types";
+export { mergeRunTimeline, type RunTimelineEntry } from "./unified-timeline";

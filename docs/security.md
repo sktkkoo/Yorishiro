@@ -52,9 +52,10 @@ before relying on any of them:
   (`127.0.0.1`, loopback only) has no caller identification, no per-tier
   approval, no audit log, and no rate limit. All tools exposed by
   `src-tauri/src/mcp/tools.rs` are reachable by any process running as the same
-  user, including pack toggles, screenshots, voice, journal, controls, and
-  history restore. `enable_pack` / `disable_pack` mutate `config.json` without
-  an approval prompt; the change is reversible (re-enable + history snapshots).
+  user, including pack toggles, screenshots, voice, journal, controls, terminal
+  context / command run metadata, and history restore. `enable_pack` /
+  `disable_pack` mutate `config.json` without an approval prompt; the change is
+  reversible (re-enable + history snapshots).
   Tracked in [`decisions/mcp-trust-tiers.md`](decisions/mcp-trust-tiers.md)
   "Implementation status".
 - **No outbound network.** The Rust host has no HTTP client. Screenshots and TTS

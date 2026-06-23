@@ -541,16 +541,68 @@ body,
 }
 
 /* ── Terminal ───────────────────────────────────────── */
+.terminal-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+.terminal-workspace--single {
+  flex-direction: row;
+}
+
+.terminal-workspace--paired {
+  flex-direction: row;
+}
+
+.terminal-workspace-pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+.terminal-workspace-pane--primary {
+  flex: 0 0 var(--terminal-workspace-left, 50%);
+}
+
+.terminal-workspace-pane--secondary {
+  flex: 1 1 auto;
+}
+
+.terminal-workspace-resizer {
+  flex: 0 0 4px;
+  align-self: stretch;
+  position: relative;
+  z-index: 6;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: color-mix(in srgb, var(--charminal-fg) 12%, transparent);
+  opacity: 0.5;
+  cursor: col-resize;
+}
+
+.terminal-workspace-resizer:hover,
+.terminal-workspace-resizer:focus-visible {
+  opacity: 0.8;
+}
+
 .terminal-container {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   /* 左側にだけ余白を入れる（文字が sidebar 境界に張り付かないように）。
      右側は xterm の scrollbar が自然な端になるので padding 不要。 */
   padding-left: 10px;
 }
 
-.terminal-container[data-active="false"] {
+.terminal-container[data-visible="false"],
+.terminal-container[data-presented="false"] {
   display: none !important;
 }
 
@@ -921,4 +973,107 @@ body,
 .tab-indicator-hint {
   margin-left: auto;
   opacity: 0.5;
+}
+
+/* ── Workspace sidebar ─────────────────────────────── */
+/* 今 open な attention item（失敗 / 遅延完了 / 実行中）を控えめに並べる。
+   家の気配であって管制室 dashboard ではないので、item が無いときは component
+   ごと非表示になり、ここは空間を占有しない。観察のみ・click は受けない。 */
+.workspace-sidebar {
+  position: fixed;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  max-width: 280px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(15, 25, 35, 0.7);
+  backdrop-filter: blur(4px);
+  font-size: 11px;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  color: #eceff4;
+  opacity: 0.78;
+  user-select: none;
+  pointer-events: none;
+}
+
+.workspace-sidebar-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workspace-sidebar-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.workspace-sidebar-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #88c0d0;
+}
+
+.workspace-sidebar-item.severity-medium .workspace-sidebar-dot {
+  background: #ebcb8b;
+}
+
+.workspace-sidebar-item.severity-high .workspace-sidebar-dot {
+  background: #bf616a;
+}
+
+.workspace-sidebar-label {
+  flex: 0 0 auto;
+}
+
+.workspace-sidebar-session {
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+
+.workspace-sidebar-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.55;
+}
+
+/* command run badge の attach verb menu（この出力 / 直近の失敗）。 */
+.command-run-menu {
+  position: fixed;
+  z-index: 10001;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 8px;
+  background: rgba(15, 25, 35, 0.96);
+  border: 1px solid rgba(120, 200, 220, 0.25);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+}
+
+.command-run-menu__item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: #d7eef0;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.command-run-menu__item:hover {
+  background: rgba(120, 200, 220, 0.16);
 }
