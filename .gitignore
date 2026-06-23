@@ -13,8 +13,7 @@ dist-ssr
 *.local
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode/
 .idea
 .DS_Store
 *.suo
@@ -25,7 +24,6 @@ dist-ssr
 
 # Worktrees (local dev only)
 .worktrees/
-.claude/worktrees/
 
 # Charminal-specific
 .charminal/cache/
@@ -47,6 +45,7 @@ CLAUDE.md
 AGENTS.md
 
 # AI skill / plugin definitions (internal tooling)
+.claude/
 .agents/
 .superpowers/
 docs/superpowers/
