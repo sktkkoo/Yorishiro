@@ -85,28 +85,27 @@ const START_Y_OFFSET = 30;
 const WOBBLE_CYCLES = 5;
 /** 左右揺らぎの最大振幅（CSS px 基準）、t=0 で最大、apex で 0 に収束。 */
 const WOBBLE_AMPLITUDE = 7;
-/** 毎フレーム trail を残す割合（大きいほど尾が長い）。 */
-const TRAIL_FADE = 0.92;
+/** 毎フレーム trail を残す割合（大きいほど尾が長い）。流れ過ぎないよう尾は短め。 */
+const TRAIL_FADE = 0.84;
 /** trail を確実に 0 へ落とすための減算項（8bit の量子化で消え残るのを防ぐ）。 */
-const TRAIL_FLOOR = 0.009;
-/** 重力（px/s²、画面下向き）。画面解像度でスケールする。 */
-const GRAVITY = 520;
-/** drag の時定数（s）。小さいほど早く失速する。 */
-const DRAG_TAU = 0.9;
-/** 爆発粒の初速レンジ（px/s、画面解像度でスケール）。 */
-const SPEED_MIN = 130;
-const SPEED_MAX = 680;
-/** 粒寿命レンジ（s）。長めに取って bloom を画面に残す。 */
-const LIFE_MIN = 1.3;
-const LIFE_MAX = 3.0;
-/** 粒の基準サイズレンジ（CSS px 基準、稀に大きな星を混ぜる）。発光感のため太め。 */
-const SIZE_MIN = 3.2;
-const SIZE_MAX = 7.5;
-/** options.count に対する実 GPU 粒数の倍率。GPU は粒数にほぼ無依存なので、
- *  見栄えのために増やす。総数は MIN/MAX でクランプ。 */
-const DENSITY = 14;
-const PARTICLE_MIN = 260;
-const PARTICLE_MAX = 2000;
+const TRAIL_FLOOR = 0.01;
+/** 重力（px/s²、画面下向き）。画面解像度でスケールする。雨だれ化を抑えるため弱め。 */
+const GRAVITY = 120;
+/** drag の時定数（s）。小さいほど早く失速する。強めの drag で「ふわっと開いて漂う」。 */
+const DRAG_TAU = 0.46;
+/** 爆発粒の初速レンジ（px/s、画面解像度でスケール）。ゆっくり開くため抑えめ。 */
+const SPEED_MIN = 80;
+const SPEED_MAX = 340;
+/** 粒寿命レンジ（s）。長めに取って bloom をふわっと残す。 */
+const LIFE_MIN = 1.5;
+const LIFE_MAX = 3.4;
+/** 粒の基準サイズレンジ（CSS px 基準、稀に大きな星を混ぜる）。柔らかい綿毛感のため大きめ。 */
+const SIZE_MIN = 5.0;
+const SIZE_MAX = 11.0;
+/** options.count に対する実 GPU 粒数の倍率。細かすぎないよう粒は大きく数は控えめに。 */
+const DENSITY = 9;
+const PARTICLE_MIN = 180;
+const PARTICLE_MAX = 1200;
 /** base hue からの揺らぎ幅（0-1 hue 空間、±この値）。 */
 const HUE_SPREAD = 0.06;
 /** 解像度スケールの基準高さ（px）。buffer 高さ / これでサイズ・速度を倍率。 */
@@ -187,11 +186,11 @@ void main() {
   float life = clamp(t / a_maxLife, 0.0, 1.0);
   float fade = 1.0 - life;
   // twinkle（粒ごとに位相と周期を散らす）。
-  float tw = 0.82 + 0.18 * sin(t * (7.0 + a_seed * 13.0) + a_seed * 31.4);
-  // 爆発直後の白熱ブースト。
-  float flash = 1.0 + 2.4 * exp(-t * 7.0);
-  // fade^1.25 で bloom を fade² より長く保つ。
-  v_alpha = pow(fade, 1.25) * tw * flash;
+  float tw = 0.84 + 0.16 * sin(t * (6.0 + a_seed * 11.0) + a_seed * 31.4);
+  // 爆発直後の白熱ブースト（柔らかめ）。
+  float flash = 1.0 + 1.5 * exp(-t * 5.5);
+  // fade^1.1 で bloom をふわっと長く保つ。
+  v_alpha = pow(fade, 1.1) * tw * flash;
 
   float hue = u_baseHue + (a_seed - 0.5) * u_hueSpread;
   v_color = hue2rgb(hue);
@@ -200,7 +199,8 @@ void main() {
   vec2 clip = (pos / u_resolution) * 2.0 - 1.0;
   clip.y = -clip.y;
   gl_Position = vec4(clip, 0.0, 1.0);
-  gl_PointSize = clamp(a_size * (0.58 + 0.42 * fade), 2.0, u_sizeMax);
+  // サイズは寿命をかけてゆっくり縮む程度に留め、ふっくらした見た目を保つ。
+  gl_PointSize = clamp(a_size * (0.72 + 0.28 * fade), 2.0, u_sizeMax);
 }`;
 
 /** 円形ソフトグロー。premultiplied 加算用に `vec4(rgb·a, a)` を出力。 */
@@ -214,12 +214,12 @@ void main() {
   float r = length(d) * 2.0;          // 0=中心, 1=縁
   if (r > 1.0) discard;
   float core = smoothstep(1.0, 0.0, r);
-  // 鋭い芯 + 広いハローの二層で発光感を強める。
-  float glow = pow(core, 1.7) + 0.45 * pow(core, 5.0);
+  // 広いハロー主体の柔らかいグロー（鋭い芯は控えめ）。綿毛のような発光に。
+  float glow = pow(core, 1.35) + 0.22 * pow(core, 3.0);
   float a = glow * v_alpha;
   if (a <= 0.003) discard;
-  // 芯ほど白熱、全体の輝度を底上げ。
-  vec3 c = mix(v_color, vec3(1.0), core * core * 0.75) * 1.35;
+  // 芯ほど白へ寄せるが控えめ、全体の輝度を底上げ。
+  vec3 c = mix(v_color, vec3(1.0), core * core * 0.55) * 1.28;
   frag = vec4(c * a, a);
 }`;
 
@@ -381,9 +381,10 @@ function setupScene(gl: WebGL2RenderingContext, options: FireworksOptions): Scen
   const burstData = new Float32Array(particleCount * STRIDE_FLOATS);
   for (let i = 0; i < particleCount; i++) {
     const angle = Math.random() * Math.PI * 2;
-    // sqrt 分布で外殻に粒を寄せ、丸い burst に見せる。30% は低速の残り火。
-    const isEmber = Math.random() < 0.3;
-    const speedT = isEmber ? Math.random() * 0.35 : 0.35 + Math.sqrt(Math.random()) * 0.65;
+    // 速度を一様に散らして中身まで満たし、外殻に粒が寄った硬い放射スポークを避ける。
+    // 35% は低速の残り火で芯をふっくらさせる。
+    const isEmber = Math.random() < 0.35;
+    const speedT = isEmber ? Math.random() * 0.4 : 0.25 + Math.random() * 0.75;
     const speed = (SPEED_MIN + (SPEED_MAX - SPEED_MIN) * speedT) * scale;
     const maxLife = LIFE_MIN + Math.random() * (LIFE_MAX - LIFE_MIN) + (isEmber ? 0.4 : 0);
     // 稀に大きな星。
