@@ -42,6 +42,9 @@ jobs:
 
       - run: npm ci
 
+      - name: Generate Rust build artifacts (bundled_examples_gen.rs)
+        run: cargo build --manifest-path src-tauri/Cargo.toml
+
       - run: npm run check
 
   test:
