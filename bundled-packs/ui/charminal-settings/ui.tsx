@@ -18,7 +18,6 @@ import type {
   UiContext,
   UiHealthReport,
   UiPackDefinition,
-  UiPresenceLevel,
 } from "@charminal/sdk";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -2036,9 +2035,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
   const languageChangeSeq = useRef(0);
   const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
-  const [presenceLevel, setPresenceLevel] = useState<UiPresenceLevel>(() =>
-    ctx.app.getPresenceLevel(),
-  );
   const [configLoaded, setConfigLoaded] = useState(false);
   const personas = ctx.app.listPersonas();
   const visiblePersonas = filterPersonaOptionsForLanguage(personas, resolvedLanguage);
@@ -2070,19 +2066,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       aborted = true;
     };
   }, [ctx]);
-
-  useEffect(() => {
-    const onPresenceChanged = (event: Event) => {
-      const detail = event instanceof CustomEvent ? event.detail : null;
-      if (detail?.level === "default" || detail?.level === "closed") {
-        setPresenceLevel(detail.level);
-      }
-    };
-    window.addEventListener("charminal:presence-level-changed", onPresenceChanged);
-    return () => {
-      window.removeEventListener("charminal:presence-level-changed", onPresenceChanged);
-    };
-  }, []);
 
   const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = configPrimaryPersonaForSelection(e.target.value);
@@ -2169,18 +2152,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setAmbientAudioMuted(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "ambientAudioMuted",
-    });
-  };
-
-  const onPresenceToggle = () => {
-    const next: UiPresenceLevel = presenceLevel === "default" ? "closed" : "default";
-    void applyConfigUpdate({
-      next,
-      prev: presenceLevel,
-      setLocal: setPresenceLevel,
-      write: (level) => ctx.app.setPresenceLevel(level),
-      emitEvent: (n, p) => ctx.emitEvent(n, p),
-      field: "presenceLevel",
     });
   };
 
@@ -2280,10 +2251,10 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     <div
       style={{
         position: "absolute",
-        top: 0,
+        top: "var(--title-bar-height, 32px)",
         left: "var(--sidebar-width)",
         width: "calc(100% - var(--sidebar-width))",
-        height: "100vh",
+        height: "calc(100vh - var(--title-bar-height, 32px))",
         background: COLORS.bgPanel,
         color: COLORS.fg,
         fontFamily: FONT.family,
@@ -2528,12 +2499,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 </span>
               ))}
             </div>
-          </div>
-
-          {/* Sidebar */}
-          <div style={{ opacity: 0.7 }}>{strings.labelPresence}</div>
-          <div>
-            <Toggle checked={presenceLevel === "default"} onChange={onPresenceToggle} />
           </div>
 
           {/* Aura */}

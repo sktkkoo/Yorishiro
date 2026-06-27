@@ -165,7 +165,7 @@ describe("terminal agent options", () => {
 });
 
 describe("settings presence target", () => {
-  it("declares shell presence so the in-settings Open/Close switch can operate", async () => {
+  it("declares shell presence for settings UI placement", async () => {
     const settingsPack = (await import("./ui")).default;
 
     expect(settingsPack.layout.presence).toEqual({ target: "shell" });
