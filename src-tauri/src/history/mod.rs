@@ -430,7 +430,7 @@ pub(crate) fn snapshot_list_impl(home_root: &Path) -> Result<Vec<SnapshotEntry>,
             entries.push(entry);
         }
     }
-    entries.sort_by(|a, b| b.seq.cmp(&a.seq));
+    entries.sort_by_key(|e| std::cmp::Reverse(e.seq));
     entries.truncate(DEFAULT_KEEP);
     Ok(entries)
 }
