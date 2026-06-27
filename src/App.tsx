@@ -222,6 +222,9 @@ import * as CharminalR3f from "./sdk/r3f";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import Terminal from "./terminal";
+import TitleBar from "./title-bar";
+import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
+import { shouldResumeHostPresenceForUiActivation } from "./ui-pack-activation";
 import "./App.css";
 
 function mergeSystemPromptParts(
@@ -584,10 +587,6 @@ function isHostDefaultPresenceClosed(): boolean {
   return getCurrentSidebarWidth() <= 0 || shell?.classList.contains("presence-closed") === true;
 }
 
-function layoutNeedsHostPresenceResume(layout: UiLayout): boolean {
-  return layout.sidebar?.width === "fullscreen";
-}
-
 type PresenceApplyTarget = "active-ui" | "host-default";
 
 function buildPresenceDeps(target: PresenceApplyTarget = "active-ui"): PresenceIntensityDeps {
@@ -731,6 +730,8 @@ function App() {
   }));
   const appLanguageRef = useRef(appLanguage);
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
+  const sidebarOpen = useSidebarOpen();
+  const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
@@ -804,6 +805,11 @@ function App() {
     },
     [],
   );
+
+  const handleToggleSidebar = useCallback(() => {
+    const nextLevel: PresenceLevel = sidebarOpen ? "closed" : "default";
+    applyPresenceLevelFromApp(nextLevel, "settings");
+  }, [applyPresenceLevelFromApp, sidebarOpen]);
 
   const restorePresenceFromPrompt = useCallback(() => {
     const state = getPresenceState();
@@ -2818,9 +2824,13 @@ function App() {
       // ここで開けたいのは host default shell なので、active-ui contract ではなく
       // host-default surface を即時復帰する（presence tween は stage tween と競合させない）。
       if (
-        layoutNeedsHostPresenceResume(entry.pack.layout) ||
-        getPresenceState().level === "closed" ||
-        isHostDefaultPresenceClosed()
+        shouldResumeHostPresenceForUiActivation({
+          entryId: entry.id,
+          layout: entry.pack.layout,
+          presenceLevel: getPresenceState().level,
+          hostDefaultClosed: isHostDefaultPresenceClosed(),
+          settingsPackId: SETTINGS_PACK_ID,
+        })
       ) {
         applyPresenceLevelFromApp("default", "default", { immediate: true }, "host-default");
         syncPresenceLevelStyles("default");
@@ -3502,6 +3512,14 @@ function App() {
 
   return (
     <div className="app">
+      <TitleBar
+        sidebarOpen={sidebarOpen}
+        settingsActive={settingsActive}
+        sidebarLabel={strings.labelPresence}
+        settingsLabel={strings.settings}
+        onToggleSidebar={handleToggleSidebar}
+        onOpenSettings={handleOpenSettings}
+      />
       {runtimeLevaStore ? (
         <LevaPanel
           store={runtimeLevaStore}
@@ -3526,67 +3544,64 @@ function App() {
           titleBar={{ title: "Scene", drag: true, filter: true, position: { x: -300, y: 0 } }}
         />
       ) : null}
-      <div
-        className="shell-column"
-        // .shell-column は App と同寿命で条件 unmount しない。register は置換
-        // semantics、ref が null で呼ばれても if(el) で no-op なので unregister 不要。
-        ref={(el) => {
-          if (el) getSurfaceRegistry().register("shell", el);
-        }}
-      >
-        <Sidebar
-          folderName={folderName}
-          onPickFolder={handlePickFolder}
-          onOpenSettings={handleOpenSettings}
-          settingsLabel={strings.settings}
-        />
-        <CharacterSurface
-          vrmUrl={vrmUrl}
-          onBodyReady={handleBodyReady}
-          bodyDevLog={bodyDevLog}
-          scene={renderedSceneEntry}
-        />
-      </div>
-      {canMountTerminals && (
-        <>
-          {tabState.sessions.map((sessionId) => {
-            const sessionCwd = tabManager.getSessionCwd(sessionId);
-            return (
-              <Terminal
-                key={sessionId}
-                sessionId={sessionId}
-                visible={sessionId === tabState.activeSessionId}
-                spec={
-                  sessionId === DEFAULT_SESSION_ID
-                    ? withAgentRuntimeFields(
-                        defaultSpec ?? {
-                          kind: "agent",
-                          agent: terminalAgent,
-                        },
-                        resolvedSystemPrompt,
-                        localizedPluginDir,
-                      )
-                    : { kind: "shell", integration: true }
-                }
-                cwd={sessionCwd === undefined ? cwd : sessionCwd}
-                perception={sessionId === tabState.activeSessionId ? perception : null}
-                attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
-              />
-            );
-          })}
-          <TabIndicator
-            state={tabState}
-            labels={
-              new Map([
-                [DEFAULT_SESSION_ID, terminalAgent],
-                ...tabState.sessions
-                  .filter((id) => id !== DEFAULT_SESSION_ID)
-                  .map((id) => [id, id] as const),
-              ])
-            }
+      <div className="app-body">
+        <div
+          className="shell-column"
+          // .shell-column は App と同寿命で条件 unmount しない。register は置換
+          // semantics、ref が null で呼ばれても if(el) で no-op なので unregister 不要。
+          ref={(el) => {
+            if (el) getSurfaceRegistry().register("shell", el);
+          }}
+        >
+          <Sidebar folderName={folderName} onPickFolder={handlePickFolder} />
+          <CharacterSurface
+            vrmUrl={vrmUrl}
+            onBodyReady={handleBodyReady}
+            bodyDevLog={bodyDevLog}
+            scene={renderedSceneEntry}
           />
-        </>
-      )}
+        </div>
+        {canMountTerminals && (
+          <>
+            {tabState.sessions.map((sessionId) => {
+              const sessionCwd = tabManager.getSessionCwd(sessionId);
+              return (
+                <Terminal
+                  key={sessionId}
+                  sessionId={sessionId}
+                  visible={sessionId === tabState.activeSessionId}
+                  spec={
+                    sessionId === DEFAULT_SESSION_ID
+                      ? withAgentRuntimeFields(
+                          defaultSpec ?? {
+                            kind: "agent",
+                            agent: terminalAgent,
+                          },
+                          resolvedSystemPrompt,
+                          localizedPluginDir,
+                        )
+                      : { kind: "shell", integration: true }
+                  }
+                  cwd={sessionCwd === undefined ? cwd : sessionCwd}
+                  perception={sessionId === tabState.activeSessionId ? perception : null}
+                  attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
+                />
+              );
+            })}
+            <TabIndicator
+              state={tabState}
+              labels={
+                new Map([
+                  [DEFAULT_SESSION_ID, terminalAgent],
+                  ...tabState.sessions
+                    .filter((id) => id !== DEFAULT_SESSION_ID)
+                    .map((id) => [id, id] as const),
+                ])
+              }
+            />
+          </>
+        )}
+      </div>
       {firstRunHealth && (
         <FirstRunHealthPanel
           report={firstRunHealth}
