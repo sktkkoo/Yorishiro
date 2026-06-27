@@ -5,13 +5,13 @@ import fireworks from "./effect";
 /**
  * fireworks effect pack の unit test。
  *
- * 粒の具体的な動き（速度・gravity・色の hue 値など）は brittle になるため
- * test しない。肌触り parameter は帰納的に実装中で調整する
- * （CLAUDE.md「感触 parameter は帰納的に」方針）。
+ * 粒の具体的な動き（速度・gravity・色の hue 値など）と GPU シェーダーの描画は
+ * brittle / jsdom で再現不可なため test しない。肌触り parameter は帰納的に
+ * 実装中で調整する（CLAUDE.md「感触 parameter は帰納的に」方針）。
  *
  * ここで守るのは pack の「形」と lifecycle の 4 点のみ：
  *   1. pack が EffectDefinition の shape を満たすこと
- *   2. `drawOnCanvas` が 1 回だけ呼ばれること
+ *   2. `drawOnGLCanvas` が 1 回だけ呼ばれること（GPU overlay を acquire する）
  *   3. `time.after(durationMs)` で lifecycle を刻むこと
  *   4. 成功・失敗どちらの経路でも canvas handle が dispose されること
  */
@@ -25,14 +25,18 @@ interface FireworksOptions {
 /**
  * mock ctx を組み立てる helper。個々の test で必要なフィールドだけ override する。
  * screen-shake の test pattern と同じ構造。
+ *
+ * drawOnGLCanvas の mock は draw callback を呼ばない（jsdom に WebGL2 が無い）。
+ * その結果 effect 内の RAF loop は起動せず、lifecycle（after / dispose）だけが
+ * 検証対象になる。
  */
 function createMockCtx(overrides: {
   after?: (ms: number) => Promise<void>;
-  drawOnCanvasReturn?: { dispose: ReturnType<typeof vi.fn> };
-  drawOnCanvas?: ReturnType<typeof vi.fn>;
+  drawOnGLCanvasReturn?: { dispose: ReturnType<typeof vi.fn> };
+  drawOnGLCanvas?: ReturnType<typeof vi.fn>;
 }) {
-  const dispose = overrides.drawOnCanvasReturn?.dispose ?? vi.fn();
-  const drawOnCanvas = overrides.drawOnCanvas ?? vi.fn(() => ({ dispose }));
+  const dispose = overrides.drawOnGLCanvasReturn?.dispose ?? vi.fn();
+  const drawOnGLCanvas = overrides.drawOnGLCanvas ?? vi.fn(() => ({ dispose }));
   // explicit type で (ms: number) signature を渡し、after.mock.calls[0][0] が
   // number として推論されるようにする。
   const after = vi.fn<(ms: number) => Promise<void>>(overrides.after ?? (() => Promise.resolve()));
@@ -44,11 +48,11 @@ function createMockCtx(overrides: {
       addShakeFilter: vi.fn(),
       addCssFilter: vi.fn(),
       addParticles: vi.fn(),
-      drawOnCanvas,
+      drawOnGLCanvas,
     },
     audio: { play: vi.fn(async () => {}) },
   } as unknown as EffectContext<FireworksOptions>;
-  return { ctx, dispose, drawOnCanvas, after };
+  return { ctx, dispose, drawOnGLCanvas, after };
 }
 
 describe("fireworks effect", () => {
@@ -57,8 +61,8 @@ describe("fireworks effect", () => {
     expect(fireworks.type).toBe("effect");
   });
 
-  it("acquires an overlay canvas via drawOnCanvas exactly once", async () => {
-    const { ctx, drawOnCanvas } = createMockCtx({});
+  it("acquires an overlay canvas via drawOnGLCanvas exactly once", async () => {
+    const { ctx, drawOnGLCanvas } = createMockCtx({});
 
     await fireworks.run(ctx, {
       origin: { x: 0.5, y: 0.3 },
@@ -66,7 +70,7 @@ describe("fireworks effect", () => {
       durationMs: 1000,
     });
 
-    expect(drawOnCanvas).toHaveBeenCalledOnce();
+    expect(drawOnGLCanvas).toHaveBeenCalledOnce();
   });
 
   it("extends a short durationMs so the burst is not cut mid-animation", async () => {
