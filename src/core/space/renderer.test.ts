@@ -125,13 +125,26 @@ interface FakeMountLike {
 const makeFakeContext = (): CanvasRenderingContext2D =>
   ({ scale: vi.fn() }) as unknown as CanvasRenderingContext2D;
 
-const makeFakeCanvas = (ctx: CanvasRenderingContext2D | null): FakeCanvasLike => {
+/** drawOnGLCanvas 用の fake WebGL2 context。viewport の呼び出しだけ観測する。 */
+const makeFakeGl = (): WebGL2RenderingContext =>
+  ({
+    viewport: vi.fn(),
+    drawingBufferWidth: 0,
+    drawingBufferHeight: 0,
+  }) as unknown as WebGL2RenderingContext;
+
+const makeFakeCanvas = (
+  ctx: CanvasRenderingContext2D | null,
+  gl: WebGL2RenderingContext | null,
+): FakeCanvasLike => {
   const canvas: FakeCanvasLike = {
     style: {},
     width: 0,
     height: 0,
     parentElements: [],
-    getContext: vi.fn().mockReturnValue(ctx),
+    // getContext は要求された種別で振り分ける。"webgl2"/"webgl" は gl、
+    // それ以外（"2d"）は 2D context を返す。
+    getContext: vi.fn((type: string) => (type === "webgl2" || type === "webgl" ? gl : ctx)),
     remove: vi.fn(function remove(this: unknown): void {
       const c = canvas;
       // 最後に append された parent から自分を外す（1 回しか発生しない想定）。
@@ -178,6 +191,7 @@ interface DomHarness {
   readonly canvases: FakeCanvasLike[];
   readonly divs: FakeDivLike[];
   ctx: CanvasRenderingContext2D | null;
+  gl: WebGL2RenderingContext | null;
   dpr: number;
   width: number;
   height: number;
@@ -185,6 +199,7 @@ interface DomHarness {
 
 const makeDomHarness = (overrides?: {
   ctx?: CanvasRenderingContext2D | null;
+  gl?: WebGL2RenderingContext | null;
   dpr?: number;
   width?: number;
   height?: number;
@@ -194,12 +209,13 @@ const makeDomHarness = (overrides?: {
     canvases: [],
     divs: [],
     ctx: overrides?.ctx === undefined ? makeFakeContext() : overrides.ctx,
+    gl: overrides?.gl === undefined ? makeFakeGl() : overrides.gl,
     dpr: overrides?.dpr ?? 1,
     width: overrides?.width ?? 1024,
     height: overrides?.height ?? 768,
     dom: {
       createCanvas: () => {
-        const canvas = makeFakeCanvas(harness.ctx);
+        const canvas = makeFakeCanvas(harness.ctx, harness.gl);
         harness.canvases.push(canvas);
         return canvas as unknown as HTMLCanvasElement;
       },
@@ -344,6 +360,141 @@ describe("Renderer.drawOnCanvas", () => {
     const mount = makeFakeMount();
     const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
     const handle = renderer.drawOnCanvas(() => {});
+    const canvas = harness.canvases[0];
+    expect(canvas?.style.position).toBe("fixed");
+    expect(canvas?.style.inset).toBe("0");
+    expect(canvas?.style.width).toBe("100vw");
+    expect(canvas?.style.height).toBe("100vh");
+    expect(canvas?.style.pointerEvents).toBe("none");
+    expect(canvas?.style.zIndex).toBe("9999");
+    handle.dispose();
+  });
+});
+
+// ─── drawOnGLCanvas ───────────────────────────────────────
+
+describe("Renderer.drawOnGLCanvas", () => {
+  const makeRenderer = (harness: DomHarness, canvasMount?: HTMLElement): Renderer =>
+    new Renderer({
+      shakeTarget: { style: { transform: "" } } as unknown as HTMLElement,
+      canvasMount,
+      dom: harness.dom,
+    });
+
+  it("returns a Disposable handle", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.drawOnGLCanvas(() => {});
+    expect(typeof handle.dispose).toBe("function");
+    handle.dispose();
+  });
+
+  it("canvasMount に渡した element に canvas を append する", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.drawOnGLCanvas(() => {});
+    expect(mount.appendChild).toHaveBeenCalledTimes(1);
+    expect(mount.children.length).toBe(1);
+    expect(mount.children[0]).toBe(harness.canvases[0]);
+    handle.dispose();
+  });
+
+  it("canvasMount を省略すると dom.getDefaultCanvasMount() の返り値が使われる", () => {
+    const fakeDefaultMount = makeFakeMount();
+    const harness = makeDomHarness({
+      defaultCanvasMount: fakeDefaultMount as unknown as HTMLElement,
+    });
+    const renderer = makeRenderer(harness);
+    const handle = renderer.drawOnGLCanvas(() => {});
+    expect(fakeDefaultMount.appendChild).toHaveBeenCalledTimes(1);
+    expect(fakeDefaultMount.children.length).toBe(1);
+    handle.dispose();
+  });
+
+  it("getContext('webgl2') の結果を draw callback にそのまま渡す", () => {
+    const gl = makeFakeGl();
+    const harness = makeDomHarness({ gl });
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const draw = vi.fn();
+    const handle = renderer.drawOnGLCanvas(draw);
+    expect(draw).toHaveBeenCalledTimes(1);
+    expect(draw).toHaveBeenCalledWith(gl);
+    handle.dispose();
+  });
+
+  it("draw callback は 1 回だけ呼ばれる（毎フレームは呼ばない）", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const draw = vi.fn();
+    const handle = renderer.drawOnGLCanvas(draw);
+    expect(draw).toHaveBeenCalledTimes(1);
+    handle.dispose();
+    expect(draw).toHaveBeenCalledTimes(1);
+  });
+
+  it("getContext が null を返す場合は throw せず Disposable を返す", () => {
+    const harness = makeDomHarness({ gl: null });
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const draw = vi.fn();
+    let handle: { dispose: () => void } | undefined;
+    expect(() => {
+      handle = renderer.drawOnGLCanvas(draw);
+    }).not.toThrow();
+    expect(handle).toBeDefined();
+    expect(typeof handle?.dispose).toBe("function");
+    // gl が取れない以上 draw callback は呼ばない（無効な gl を渡さない）。
+    expect(draw).not.toHaveBeenCalled();
+    expect(() => handle?.dispose()).not.toThrow();
+  });
+
+  it("dispose で canvas が parent から remove される", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.drawOnGLCanvas(() => {});
+    const canvas = harness.canvases[0];
+    expect(mount.children).toContain(canvas);
+    handle.dispose();
+    expect(canvas?.remove).toHaveBeenCalledTimes(1);
+    expect(mount.children).not.toContain(canvas);
+  });
+
+  it("dispose は冪等：2 回呼んでも例外なし、canvas.remove は 1 回だけ発生する", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.drawOnGLCanvas(() => {});
+    const canvas = harness.canvases[0];
+    expect(() => {
+      handle.dispose();
+      handle.dispose();
+    }).not.toThrow();
+    expect(canvas?.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("HiDPI を考慮した canvas.width / height を設定し gl.viewport(0,0,w,h) を呼ぶ", () => {
+    const gl = makeFakeGl();
+    const harness = makeDomHarness({ gl, dpr: 2, width: 800, height: 600 });
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.drawOnGLCanvas(() => {});
+    const canvas = harness.canvases[0];
+    expect(canvas?.width).toBe(1600); // 800 * 2
+    expect(canvas?.height).toBe(1200); // 600 * 2
+    expect(gl.viewport).toHaveBeenCalledWith(0, 0, 1600, 1200);
+    handle.dispose();
+  });
+
+  it("overlay の fixed style（position / inset / pointer-events / z-index）が canvas に適用される", () => {
+    const harness = makeDomHarness();
+    const mount = makeFakeMount();
+    const renderer = makeRenderer(harness, mount as unknown as HTMLElement);
+    const handle = renderer.drawOnGLCanvas(() => {});
     const canvas = harness.canvases[0];
     expect(canvas?.style.position).toBe("fixed");
     expect(canvas?.style.inset).toBe("0");
