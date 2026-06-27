@@ -1,20 +1,13 @@
-import { Folder, Settings } from "lucide-react";
+import { Folder } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { getSurfaceRegistry } from "./runtime/surface-registry";
 
 interface SidebarProps {
   readonly folderName: string;
   readonly onPickFolder: () => void;
-  readonly onOpenSettings: () => void;
-  readonly settingsLabel: string;
 }
 
-export default function Sidebar({
-  folderName,
-  onPickFolder,
-  onOpenSettings,
-  settingsLabel,
-}: SidebarProps) {
+export default function Sidebar({ folderName, onPickFolder }: SidebarProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // NOTE: React StrictMode の effect 二重実行は cleanup→re-register の順で進み、
@@ -33,15 +26,6 @@ export default function Sidebar({
         <button type="button" className="folder-btn" onClick={onPickFolder} title={folderName}>
           <Folder className="folder-icon" size={14} aria-hidden="true" />
           <span className="folder-name">{folderName}</span>
-        </button>
-        <button
-          type="button"
-          className="settings-btn"
-          onClick={onOpenSettings}
-          aria-label={settingsLabel}
-          title={settingsLabel}
-        >
-          <Settings size={14} aria-hidden="true" />
         </button>
       </div>
     </div>

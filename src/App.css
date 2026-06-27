@@ -1,4 +1,5 @@
 :root {
+  --title-bar-height: 32px;
   --sidebar-width: 280px;
   /* Shell width animates; scene/VRM content keeps this stable render width. */
   --sidebar-content-width: 280px;
@@ -44,8 +45,69 @@ body,
 /* ── Layout ─────────────────────────────────────────── */
 .app {
   display: flex;
+  flex-direction: column;
   height: 100vh;
   width: 100vw;
+  min-height: 0;
+}
+
+.app-body {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Title bar ─────────────────────────────────────── */
+.title-bar {
+  flex: 0 0 var(--title-bar-height);
+  height: var(--title-bar-height);
+  display: flex;
+  align-items: center;
+  padding: 0 12px 0 76px;
+  background: rgba(10, 17, 24, 0.92);
+  border-bottom: 1px solid var(--charminal-border);
+  color: var(--charminal-button-fg);
+  user-select: none;
+}
+
+.title-bar-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+}
+
+.title-bar-button {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--charminal-button-fg);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+
+.title-bar-button:hover,
+.title-bar-button:focus-visible {
+  background: var(--charminal-accent-soft);
+  color: var(--charminal-fg);
+  outline: none;
+}
+
+.title-bar-button.is-active {
+  background: var(--charminal-accent-soft);
+  color: var(--charminal-accent);
 }
 
 /* ── Runtime crash recovery ─────────────────────────── */
@@ -481,6 +543,7 @@ body,
 /* ── Terminal ───────────────────────────────────────── */
 .terminal-container {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   /* 左側にだけ余白を入れる（文字が sidebar 境界に張り付かないように）。
      右側は xterm の scrollbar が自然な端になるので padding 不要。 */
@@ -525,26 +588,6 @@ body,
 
 .sidebar-top-row .folder-btn {
   flex: 1;
-}
-
-.settings-btn {
-  background: transparent;
-  color: inherit;
-  opacity: 0.7;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  cursor: pointer;
-  padding: 0;
-  font: inherit;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  aspect-ratio: 1;
-}
-
-.settings-btn:hover {
-  opacity: 1;
 }
 
 /* ── First-run health check ─────────────────────────── */
