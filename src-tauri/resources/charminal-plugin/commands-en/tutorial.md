@@ -86,9 +86,25 @@ This naturally shows that the resident can move the camera too.
 
 ### 5. Build your own world: scene pack with shadow and color theme
 
-**The user's first experience of creating a scene and changing the world's colors.** Right after returning to Simple Room, the resident notices the character has no shadow.
+**The user's first experience of creating a scene and changing the world's colors.**
 
-Invite naturally, roughly: "See how I'm floating? Let's fix that."
+#### What is a pack (briefly)
+
+Before creating a scene pack, give a brief explanation of what a **pack** is. Keep it short.
+
+- A pack is a set of files that defines some aspect of Charminal's look or behavior. There are different kinds: scene (room appearance), persona (personality), effect (visual effects), and more
+- The debug panel changes they made earlier with F2 (light colors, etc.) **are lost when the app restarts**. The debug panel is a live playground for experimentation
+- Writing those same changes into a pack makes them permanent. **A pack is persistent configuration**
+
+Something like: "Those light colors you changed earlier? They disappear when you restart. Put them in a pack and they stick around."
+
+#### Why add a shadow
+
+Right after returning to Simple Room, the resident notices there is no shadow behind the character.
+
+This shadow is **not a ground shadow under the character's feet — it is a drop shadow cast by the character onto the wall behind them** (CSS drop-shadow). The character stands in front of the background wall, and without a shadow it looks flat, as if pasted directly onto the wall with no depth.
+
+Invite naturally, roughly: "See how there's no shadow on the wall? Looks flat, like I'm stuck to it. Let's fix that."
 
 **Guide the user to create a scene pack through `/charm:create`.** Pass these requirements:
 
@@ -111,10 +127,23 @@ Once the shadow is set, **invite them to change the colors.** A scene pack decla
 1. Roughly: "You made your own room — want to pick the colors too?"
 2. Ask their preference: warm, cool, bright, dark, or based on an existing scheme (Nord, Gruvbox, Catppuccin, Everforest, etc.)
 3. Edit the `terminal` and `ui` sections in scene.tsx together. Not every field needs to be filled — omitted fields fall back to defaults
+
+**⚠️ The terminal background (`terminal.background`) and UI backgrounds (`ui.background` / `ui.sidebarBackground`) have the biggest visual impact.** Changing only text colors while the background stays black makes little difference. Based on user preference, change the background color boldly — that is what makes the world feel truly different. For example, flipping from Simple Room's dark (`#141619`) to a Misty Grasslands-style light (`#d6dcc8`), or shifting to a deep navy or rich bordeaux. **Maintain sufficient contrast ratio between background and foreground for readability and design quality.**
+
 4. **Tip: matching `ui.accent` to `terminal.cursor` gives natural cohesion.** Share this as a helpful hint
 5. Save → hot reload. Terminal text, background, cursor, sidebar — everything changes in an instant
 
 That "I saved the file and the whole world changed" moment is the point where Charminal stops feeling like only a terminal.
+
+#### Set a background image
+
+After the colors are settled, mention that **a wallpaper can be set as background**.
+
+1. Something like: "You can also put an image behind everything. Want to try?"
+2. Open F1 (settings) and point out the **Load Background** button for picking an image file
+3. The background image layers on top of the scene colors. A dark scene with a bright wallpaper, or vice versa, can look interesting
+
+Do not go deep. Just mention it as an option and let them try if interested.
 
 6. When satisfied, write the new scene id into `config.json`'s `activeScene` to persist it
 
