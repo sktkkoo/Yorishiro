@@ -15,7 +15,7 @@ import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 export function Lights() {
   const lightRef = useRef<ThreeSpotLight>(null);
   const [controls, setControls] = useCharminalControls("lights", () => ({
-    intensity: { value: 1.5, min: 0, max: 3, step: 0.01, label: "intensity" },
+    intensity: { value: 1.2, min: 0, max: 3, step: 0.01, label: "intensity" },
     color: { value: "#ffe8ea", label: "color" },
     x: { value: -0.2, min: -5, max: 5, step: 0.1, label: "X" },
     y: { value: 1.9, min: -5, max: 5, step: 0.1, label: "Y" },
