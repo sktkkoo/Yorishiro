@@ -22,7 +22,13 @@ function deferred<T>(): Deferred<T> {
 const mockState = vi.hoisted(() => {
   const state: {
     channels: Array<{ onmessage: ((data: ArrayBuffer) => void) | null }>;
-    terminals: Array<{ writes: unknown[]; clearCalls: number; disposed: boolean }>;
+    terminals: Array<{
+      writes: unknown[];
+      clearCalls: number;
+      disposed: boolean;
+      textarea: HTMLTextAreaElement;
+      customKeyEventHandler?: (event: KeyboardEvent) => boolean;
+    }>;
     fitCalls: number;
     focusCalls: number;
     unlisten: ReturnType<typeof vi.fn>;
@@ -85,6 +91,8 @@ vi.mock("@xterm/xterm", () => ({
     writes: unknown[] = [];
     clearCalls = 0;
     disposed = false;
+    textarea = document.createElement("textarea");
+    customKeyEventHandler?: (event: KeyboardEvent) => boolean;
     buffer = { active: null };
     parser = {
       registerOscHandler: (code: number, handler: (data: string) => boolean) => {
@@ -105,7 +113,9 @@ vi.mock("@xterm/xterm", () => ({
     }
 
     loadAddon(): void {}
-    open(): void {}
+    open(parent?: HTMLElement): void {
+      parent?.appendChild(this.textarea);
+    }
     reset(): void {
       this.writes = [];
     }
@@ -117,6 +127,9 @@ vi.mock("@xterm/xterm", () => ({
     }
     onData(handler: (data: string) => void): void {
       mockState.dataHandlers.push(handler);
+    }
+    attachCustomKeyEventHandler(handler: (event: KeyboardEvent) => boolean): void {
+      this.customKeyEventHandler = handler;
     }
     onResize(): void {}
     onScroll(): void {}
@@ -321,6 +334,70 @@ describe("TerminalRuntime", () => {
 
     expect(terminal.clearCalls).toBe(0);
     expect(terminal.writes).toContain("\x1b[3J");
+  });
+
+  it("suppresses intermediate IME data while composition is active", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    mockState.dataHandlers[0]?.("g");
+    await flushMicrotasks();
+
+    expect(received).toEqual([]);
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    sub.dispose();
+  });
+
+  it("replaces stale xterm IME output with compositionend committed text", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "背景の" }));
+    mockState.dataHandlers[0]?.("景a");
+    await flushMicrotasks();
+
+    expect(received).toEqual(["背景の"]);
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({ sessionId: "shell-1", data: "背景の" });
+    expect(mockState.sessionWrite).not.toHaveBeenCalledWith({ sessionId: "shell-1", data: "景a" });
+    sub.dispose();
+  });
+
+  it("leaves xterm IME output alone when compositionend has no committed data", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "" }));
+    mockState.dataHandlers[0]?.("変換");
+    await flushMicrotasks();
+
+    expect(received).toEqual(["変換"]);
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({ sessionId: "shell-1", data: "変換" });
+    sub.dispose();
+  });
+
+  it("suppresses printable xterm key events during IME composition", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+
+    const event = new KeyboardEvent("keydown", { key: "g" });
+    expect(terminal.customKeyEventHandler?.(event)).toBe(false);
   });
 
   // attachTo は同期的に syncAttachedRect を 1 回呼ぶ（RAF を回さなくても
