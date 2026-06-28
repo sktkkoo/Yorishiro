@@ -371,6 +371,10 @@ type MutableLayer = {
   backgroundImage?: string;
   blur?: number;
   opacity?: number;
+  mediaOffsetX?: number;
+  mediaOffsetY?: number;
+  mediaScale?: number;
+  mediaRotation?: number;
 };
 
 function sceneLayerTargetKey(target: UiSceneLayerTarget): string | null {
@@ -430,7 +434,25 @@ function applySceneLayerPatch(layer: Layer, patch: UiSceneLayerPatch): Layer {
       next.opacity = patch.opacity;
     }
   }
+  applyNumericMediaPatch(next, patch);
   return next;
+}
+
+/**
+ * media transform 系（offset/scale/rotation）の数値フィールドを patch から当てる。
+ * null は削除（= default に戻す）、undefined は据え置き。
+ */
+function applyNumericMediaPatch(next: MutableLayer, patch: UiSceneLayerPatch): void {
+  const fields = ["mediaOffsetX", "mediaOffsetY", "mediaScale", "mediaRotation"] as const;
+  for (const field of fields) {
+    if (!(field in patch)) continue;
+    const value = patch[field];
+    if (value === null) {
+      delete next[field];
+    } else if (value !== undefined) {
+      next[field] = value;
+    }
+  }
 }
 
 /**

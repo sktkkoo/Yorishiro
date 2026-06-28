@@ -1,7 +1,7 @@
 // src/core/scene/scene-compositor.test.ts
 
 import { describe, expect, it } from "vitest";
-import { isVideoLayer, isVideoSrc, layerStyle } from "./scene-compositor";
+import { isVideoLayer, isVideoSrc, layerStyle, mediaStyle } from "./scene-compositor";
 import type { Layer } from "./types";
 
 describe("layerStyle", () => {
@@ -148,5 +148,51 @@ describe("isVideoLayer", () => {
 
   it("falls back to src extension when mediaType is omitted", () => {
     expect(isVideoLayer({ id: "bg", src: "/path/bg.webm" })).toBe(true);
+  });
+});
+
+describe("mediaStyle", () => {
+  it("returns no transform when no media transform fields are set", () => {
+    const style = mediaStyle({ id: "bg" });
+    expect(style.transform).toBeUndefined();
+    expect(style.objectFit).toBe("cover");
+  });
+
+  it("applies translate when offsetX is set (offsetY defaults to 0)", () => {
+    const style = mediaStyle({ id: "bg", mediaOffsetX: 10 });
+    expect(style.transform).toBe("translate(10%, 0%)");
+  });
+
+  it("applies translate when only offsetY is set (offsetX defaults to 0)", () => {
+    const style = mediaStyle({ id: "bg", mediaOffsetY: -15 });
+    expect(style.transform).toBe("translate(0%, -15%)");
+  });
+
+  it("applies scale when mediaScale is set", () => {
+    const style = mediaStyle({ id: "bg", mediaScale: 1.5 });
+    expect(style.transform).toBe("scale(1.5)");
+  });
+
+  it("applies rotate when mediaRotation is set", () => {
+    const style = mediaStyle({ id: "bg", mediaRotation: 45 });
+    expect(style.transform).toBe("rotate(45deg)");
+  });
+
+  it("combines translate / scale / rotate in order", () => {
+    const style = mediaStyle({
+      id: "bg",
+      mediaOffsetX: 5,
+      mediaOffsetY: -5,
+      mediaScale: 2,
+      mediaRotation: 90,
+    });
+    expect(style.transform).toBe("translate(5%, -5%) scale(2) rotate(90deg)");
+  });
+
+  it("does not mutate the shared coverStyle (identity differs when transformed)", () => {
+    const plain = mediaStyle({ id: "bg" });
+    const transformed = mediaStyle({ id: "bg", mediaScale: 2 });
+    expect(transformed).not.toBe(plain);
+    expect(plain.transform).toBeUndefined();
   });
 });

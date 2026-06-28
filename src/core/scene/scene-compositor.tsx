@@ -106,6 +106,27 @@ export function layerStyle(layer: Layer): CSSProperties {
   return style;
 }
 
+/**
+ * media（img / video）要素の inline style を作る pure 関数。test 対象。
+ * coverStyle をベースに、layer の offset/scale/rotation から CSS transform を組む。
+ * 値が全て省略されていれば transform は付けない（= 既存挙動と完全に一致）。
+ */
+export function mediaStyle(layer: Layer): CSSProperties {
+  const transforms: string[] = [];
+  const { mediaOffsetX, mediaOffsetY } = layer;
+  if (typeof mediaOffsetX === "number" || typeof mediaOffsetY === "number") {
+    transforms.push(`translate(${mediaOffsetX ?? 0}%, ${mediaOffsetY ?? 0}%)`);
+  }
+  if (typeof layer.mediaScale === "number") {
+    transforms.push(`scale(${layer.mediaScale})`);
+  }
+  if (typeof layer.mediaRotation === "number") {
+    transforms.push(`rotate(${layer.mediaRotation}deg)`);
+  }
+  if (transforms.length === 0) return coverStyle;
+  return { ...coverStyle, transform: transforms.join(" ") };
+}
+
 export function SceneCompositor({ scene, children }: SceneCompositorProps) {
   return (
     <div className="scene-compositor" style={containerStyle}>
@@ -116,9 +137,9 @@ export function SceneCompositor({ scene, children }: SceneCompositorProps) {
           ) : null}
           {layer.src !== undefined ? (
             isVideoLayer(layer) ? (
-              <video src={layer.src} autoPlay muted loop playsInline style={coverStyle} />
+              <video src={layer.src} autoPlay muted loop playsInline style={mediaStyle(layer)} />
             ) : (
-              <img src={layer.src} alt="" style={coverStyle} />
+              <img src={layer.src} alt="" style={mediaStyle(layer)} />
             )
           ) : null}
           {layer.role === "character" ? children : null}
