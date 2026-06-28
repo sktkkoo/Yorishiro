@@ -1470,18 +1470,22 @@ function App() {
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
             createAmenityContext,
-            onInitChanged: () => {
+            // init.js は hot reload される。成功したら（過去の build が残した）
+            // 「⌘R で再読込」marker を外し、失敗時だけ marker を付けて手動 reload を促す。
+            onInitReloaded: ({ ran }) => {
               void (async () => {
                 try {
                   const { getCurrentWindow } = await import("@tauri-apps/api/window");
                   const win = getCurrentWindow();
                   const current = await win.title();
-                  const next = appendInitChangedMarker(current);
+                  const next = ran
+                    ? stripInitChangedMarker(current)
+                    : appendInitChangedMarker(current);
                   if (next !== current) await win.setTitle(next);
                 } catch (err) {
                   appLog.write({
                     phase: "init-changed-title",
-                    note: "failed to append init.js-changed marker to window title",
+                    note: "failed to update init.js reload marker on window title",
                     data: { error: err instanceof Error ? err.message : String(err) },
                   });
                 }

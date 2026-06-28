@@ -26,6 +26,8 @@ import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
+import type { InitScope } from "./init-scope";
+import { type LoadInitScriptDeps, reloadInitScript } from "./init-script";
 import { readManifestForEntry, validatePackExecutionPolicy } from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
@@ -47,6 +49,23 @@ export interface StartPackWatcherDeps {
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
   readonly onInitChanged?: () => void;
+  /**
+   * init.js hot reload 用の deps と、現在 active な init scope の holder。
+   * 未指定なら従来通り「変更を log + onInitChanged のみ」（reload しない）。
+   */
+  readonly initReload?: InitReloadConfig;
+}
+
+/**
+ * watcher が init.js 変更時に reloadInitScript を呼ぶための束ね。`buildDeps` は
+ * 毎回新しい `LoadInitScriptDeps` を作る（cache-bust import path 等を都度組む）。
+ * `handleRef.current` が現在 active な scope で、reload 後に差し替える。
+ */
+export interface InitReloadConfig {
+  readonly buildDeps: () => LoadInitScriptDeps;
+  readonly handleRef: { current: InitScope | null };
+  /** reload 成否を呼び出し側へ通知する（title marker の付け外し等）。 */
+  readonly onReloaded?: (result: { ran: boolean; error?: string }) => void;
 }
 
 export interface PackWatcherHandle {
@@ -121,15 +140,7 @@ async function handleLayerEvent(
       return;
 
     case "init-changed":
-      // init.js は明示 reload 契約。再実行はしない。
-      // 理由: docs/decisions/init-js-hot-reload.md
-      // ここでは変更を title suffix で可視化するだけ。
-      deps.initScriptLog.write({
-        phase: "reload",
-        note: "init.js changed; press Cmd/Ctrl+R to reload",
-        data: { path: action.path },
-      });
-      deps.onInitChanged?.();
+      await handleInitChanged(action, deps);
       return;
 
     case "remove-pack": {
@@ -147,6 +158,38 @@ async function handleLayerEvent(
     case "reload-pack":
       await reloadPack(action, deps, tauri);
       return;
+  }
+}
+
+/**
+ * init.js の変更を hot reload に落とす。`initReload` が無いときは従来の挙動
+ * （log + onInitChanged）に劣化させ、Cmd/Ctrl+R 経路でも壊れないようにする。
+ */
+async function handleInitChanged(
+  action: Extract<WatcherAction, { type: "init-changed" }>,
+  deps: StartPackWatcherDeps,
+): Promise<void> {
+  if (deps.initReload === undefined) {
+    deps.initScriptLog.write({
+      phase: "reload",
+      note: "init.js changed; press Cmd/Ctrl+R to reload",
+      data: { path: action.path },
+    });
+    deps.onInitChanged?.();
+    return;
+  }
+
+  const { buildDeps, handleRef, onReloaded } = deps.initReload;
+  try {
+    const result = await reloadInitScript(buildDeps(), handleRef.current);
+    handleRef.current = result.handle;
+    onReloaded?.({ ran: result.ran, error: result.error });
+  } catch (err) {
+    deps.initScriptLog.write({
+      phase: "reload",
+      note: "init.js hot reload crashed",
+      data: { path: action.path, error: errorMessage(err) },
+    });
   }
 }
 

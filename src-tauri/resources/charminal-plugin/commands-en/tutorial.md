@@ -180,7 +180,7 @@ Here, hand over the remaining keys that switch how the world is *seen*. All thre
 - **F3** - theater mode. Hides the sidebar chrome and terminal, leaving only the character fullscreen
 - **F4** - immersive mode. The terminal background turns transparent and the character sits behind the text
 
-Edit `init.js` to add your own keys (restart to apply).
+Edit `init.js` to add your own keys (saved changes apply automatically — init.js is hot reloaded).
 
 - **Cmd+T** opens a new shell tab. A plain shell, separate from the agent
 - **Cmd+W** closes the active tab (the main tab cannot be closed)

@@ -27,7 +27,13 @@ import type { UiPackRegistry } from "../ui-pack-registry";
 import type { AmenityContextFactory } from "./amenity-activation";
 import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
 import { parseConfig } from "./config";
-import { type EffectRequester, type LoadInitScriptResult, loadInitScript } from "./init-script";
+import { InitScope } from "./init-scope";
+import {
+  type EffectRequester,
+  type LoadInitScriptDeps,
+  type LoadInitScriptResult,
+  loadInitScript,
+} from "./init-script";
 import {
   type EffectRegistrar,
   type LoadUserPacksResult,
@@ -55,6 +61,12 @@ export interface LoadUserLayerDeps {
   readonly initScriptLog: SubsystemLog;
   readonly tweenManager?: TweenManager;
   readonly onInitChanged?: () => void;
+  /**
+   * init.js hot reload の成否を通知する。`ran` が true なら新 shortcut が有効に
+   * なったので reload 待ち marker を外す、false ならエラー表示、等の用途。
+   * 未指定でも hot reload 自体は動く。
+   */
+  readonly onInitReloaded?: (result: { ran: boolean; error?: string }) => void;
 }
 
 export interface LoadUserLayerResult {
@@ -108,6 +120,29 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     return await import(/* @vite-ignore */ url);
   };
 
+  // init.js の deps を一度組んで初回 load と watcher reload で共用する。
+  // import path は呼ぶたび cache-bust URL を作り直すので、関数として保持する。
+  const buildInitDeps = (): LoadInitScriptDeps => ({
+    effectPackRunner: deps.effectPackRunner,
+    personaRegistry: deps.personaRegistry,
+    personaDefaults: deps.personaDefaults,
+    effectDispatcher: deps.effectDispatcher,
+    emitEvent: deps.emitEvent,
+    devLog: deps.initScriptLog,
+    setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
+    getActiveUi: () => deps.uiPackRegistry.getActiveUiId(),
+    tweenManager: deps.tweenManager,
+    fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
+    importModule: async (path) => {
+      const url = await buildCacheBustUrl(path);
+      return await import(/* @vite-ignore */ url);
+    },
+  });
+
+  // watcher と共有する init scope holder。初回 load 後に handle を格納し、
+  // reload で差し替える。safe-mode では init を走らせないので null のまま。
+  const initHandleRef: { current: InitScope | null } = { current: null };
+
   let packs: LoadUserPacksResult;
   if (safeMode) {
     packs = { loaded: [], failed: [] };
@@ -138,25 +173,12 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   }
 
   // safe-mode 時は LoadInitScriptResult の「skip」相当として { ran: false } を返す。
-  // LoadInitScriptResult は { ran: boolean; error?: string } なので literal で足りる。
   const init: LoadInitScriptResult = safeMode
-    ? { ran: false }
-    : await loadInitScript({
-        effectPackRunner: deps.effectPackRunner,
-        personaRegistry: deps.personaRegistry,
-        personaDefaults: deps.personaDefaults,
-        effectDispatcher: deps.effectDispatcher,
-        emitEvent: deps.emitEvent,
-        devLog: deps.initScriptLog,
-        setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
-        getActiveUi: () => deps.uiPackRegistry.getActiveUiId(),
-        tweenManager: deps.tweenManager,
-        fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
-        importModule: async (path) => {
-          const url = await buildCacheBustUrl(path);
-          return await import(/* @vite-ignore */ url);
-        },
-      });
+    ? { ran: false, handle: new InitScope() }
+    : await loadInitScript(buildInitDeps());
+  if (!safeMode) {
+    initHandleRef.current = init.handle;
+  }
 
   const watcher = await startPackWatcher({
     effectPackRunner: deps.effectPackRunner,
@@ -171,6 +193,12 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
     onInitChanged: deps.onInitChanged,
+    // safe-mode でも watcher は張る（rescue 中に user が init.js を直すと反映できる）。
+    initReload: {
+      buildDeps: buildInitDeps,
+      handleRef: initHandleRef,
+      onReloaded: deps.onInitReloaded,
+    },
   });
 
   return { packs, init, watcher, safeMode };
