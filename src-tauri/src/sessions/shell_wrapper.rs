@@ -539,6 +539,30 @@ mod tests {
     }
 
     #[test]
+    fn init_scripts_install_agent_shim_functions_after_user_rc() {
+        let root = fresh_temp_root("agent-shim-init");
+        ensure_shell_files(&root).expect("ensure_shell_files");
+        let shell = root.join("shell");
+
+        let zsh = fs::read_to_string(shell.join("init.zsh")).unwrap();
+        assert!(zsh.contains("__charminal_install_agent_shims"));
+        assert!(zsh.contains("claude()"));
+        assert!(zsh.contains("codex()"));
+
+        let bash = fs::read_to_string(shell.join("init.bash")).unwrap();
+        assert!(bash.contains("__charminal_install_agent_shims"));
+        assert!(bash.contains("claude()"));
+        assert!(bash.contains("codex()"));
+
+        let fish = fs::read_to_string(shell.join("init.fish")).unwrap();
+        assert!(fish.contains("function __charminal_install_agent_shims"));
+        assert!(fish.contains("function claude"));
+        assert!(fish.contains("function codex"));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn ensure_does_not_touch_user_files() {
         let root = fresh_temp_root("user-files");
         let shell = root.join("shell");

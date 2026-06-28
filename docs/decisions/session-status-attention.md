@@ -75,6 +75,7 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 
 - `claude` shim は real `claude` を PATH から探し、自分自身 / shim dir を skip して、session-local `claude-hooks.json` を `--settings` で差し込む。hook command は `~/.charminal/shell/hooks/hook-*.sh` に集約し、`CHARMINAL_SESSION_ID` を query に載せて `127.0.0.1:<port>/hook/...` へ POST する。`PermissionRequest` も含める。
 - `codex` shim は cmux と同じ per-invocation 方式で `--enable hooks` / `--dangerously-bypass-hook-trust` / `-c hooks.Event=...` を差し込む。対象は session entrypoint（bare / prompt / `exec` / `resume`）に限定し、`login` / `doctor` / `--help` 等は real binary passthrough。`SessionStart` / `UserPromptSubmit` / `Stop` / `PreToolUse` / `PostToolUse` / `PermissionRequest` を送る。
+- user rc が `~/.local/bin` などを PATH 先頭へ再 prepend するため、spawn env の PATH だけでは負ける。Charminal の `init.zsh` / `init.bash` / `init.fish` は user rc の後に走るので、そこで shim dir を PATH 先頭へ戻し、`claude()` / `codex()` shell function を定義する（cmux zsh integration と同じ「後勝ち」方式）。したがって確認には `which claude` より `type claude` / `functions claude` を使う。
 - wrapper は `CHARMINAL_AGENT_SHIMS_DISABLED=1` または `CHARMINAL_SESSION_ID` 不在では real binary passthrough。global な `~/.claude` / `~/.codex` を触る persistent hook install はまだ入れない（custom launcher / subrouter 対応用の明示 opt-in として deferred）。
 
 ## なぜそう決めたか
@@ -120,3 +121,4 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - 2026-06-28 rev.5: Claude `Notification` hook 自体の発火遅延に対し、xterm screen buffer 末尾を読む `readScreenTailText` + `screen-attention-detector` を `input` badge の low-latency primary path に変更。screen 由来 attention を hook / OSC より権威化し、解除直後の late hook / OSC resurrection を抑止する仕様を追加。
 - 2026-06-28 rev.6: shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` と per-session PATH shim（`claude` / `codex`）を注入する実装に更新。hook server は `?sessionId=` を payload に stamp し、App は main fallback ではなく該当 session に attention / clear を適用する。
 - 2026-06-28 rev.7: shell 手動起動 Claude で `input` が出ない実機報告を受け、Claude shim / main Claude hooks に `PermissionRequest` を追加。Claude は actionable approval、Codex は screen fast path authoritative という cmux の分類に合わせる。
+- 2026-06-28 rev.8: user `.zshrc` 等が shim dir より前に `~/.local/bin` を再 prepend する問題に対応。init script（user rc 後）で PATH を戻し、`claude()` / `codex()` shell function を定義して shim を後勝ちさせる。

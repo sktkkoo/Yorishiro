@@ -10,3 +10,37 @@ end
 function __charminal_postexec --on-event fish_postexec
     printf '\e]133;D;%s\a' $status
 end
+
+function __charminal_path_prepend_unique_directory --argument-names directory
+    test -n "$directory"; and test -d "$directory"; or return 0
+    set -l next_path "$directory"
+    for entry in $PATH
+        test -z "$entry"; and continue
+        test "$entry" = "$directory"; and continue
+        set -a next_path "$entry"
+    end
+    set -gx PATH $next_path
+end
+
+function __charminal_install_agent_shims
+    set -q CHARMINAL_AGENT_SHIM_ROOT; or return 0
+    test -n "$CHARMINAL_AGENT_SHIM_ROOT"; and test -d "$CHARMINAL_AGENT_SHIM_ROOT"; or return 0
+
+    __charminal_path_prepend_unique_directory "$CHARMINAL_AGENT_SHIM_ROOT"
+
+    functions -e claude >/dev/null 2>&1
+    functions -e codex >/dev/null 2>&1
+
+    if test -x "$CHARMINAL_AGENT_SHIM_ROOT/claude"
+        function claude
+            "$CHARMINAL_AGENT_SHIM_ROOT/claude" $argv
+        end
+    end
+    if test -x "$CHARMINAL_AGENT_SHIM_ROOT/codex"
+        function codex
+            "$CHARMINAL_AGENT_SHIM_ROOT/codex" $argv
+        end
+    end
+end
+
+__charminal_install_agent_shims

@@ -24,3 +24,41 @@ case "${PROMPT_COMMAND:-}" in
     "") PROMPT_COMMAND="__charminal_precmd" ;;
     *) PROMPT_COMMAND="__charminal_precmd; ${PROMPT_COMMAND}" ;;
 esac
+
+__charminal_path_prepend_unique_directory() {
+    local directory="$1"
+    local current="${2:-$PATH}"
+    [ -n "$directory" ] && [ -d "$directory" ] || return 0
+    local old_ifs="$IFS"
+    local next="$directory"
+    local entry
+    IFS=:
+    for entry in $current; do
+        [ -z "$entry" ] && continue
+        [ "$entry" = "$directory" ] && continue
+        next="$next:$entry"
+    done
+    IFS="$old_ifs"
+    printf '%s\n' "$next"
+}
+
+__charminal_install_agent_shims() {
+    local shim_root="${CHARMINAL_AGENT_SHIM_ROOT:-}"
+    [ -n "$shim_root" ] && [ -d "$shim_root" ] || return 0
+
+    PATH="$(__charminal_path_prepend_unique_directory "$shim_root" "${PATH-}")"
+    export PATH
+    hash -r >/dev/null 2>&1 || true
+
+    unalias claude >/dev/null 2>&1 || true
+    unalias codex >/dev/null 2>&1 || true
+
+    if [ -x "$shim_root/claude" ]; then
+        claude() { "$CHARMINAL_AGENT_SHIM_ROOT/claude" "$@"; }
+    fi
+    if [ -x "$shim_root/codex" ]; then
+        codex() { "$CHARMINAL_AGENT_SHIM_ROOT/codex" "$@"; }
+    fi
+}
+
+__charminal_install_agent_shims
