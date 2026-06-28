@@ -127,6 +127,9 @@ Once the shadow is set, **invite them to change the colors.** A scene pack decla
 1. Roughly: "You made your own room — want to pick the colors too?"
 2. Ask their preference: warm, cool, bright, dark, or based on an existing scheme (Nord, Gruvbox, Catppuccin, Everforest, etc.)
 3. Edit the `terminal` and `ui` sections in scene.tsx together. Not every field needs to be filled — omitted fields fall back to defaults
+
+**⚠️ The terminal background (`terminal.background`) and UI backgrounds (`ui.background` / `ui.sidebarBackground`) have the biggest visual impact.** Changing only text colors while the background stays black makes little difference. Based on user preference, change the background color boldly — that is what makes the world feel truly different. For example, flipping from Simple Room's dark (`#141619`) to a Misty Grasslands-style light (`#d6dcc8`), or shifting to a deep navy or rich bordeaux. **Maintain sufficient contrast ratio between background and foreground for readability and design quality.**
+
 4. **Tip: matching `ui.accent` to `terminal.cursor` gives natural cohesion.** Share this as a helpful hint
 5. Save → hot reload. Terminal text, background, cursor, sidebar — everything changes in an instant
 
