@@ -584,7 +584,13 @@ function parseHookAttentionSignal(
   const obj = parsed as Record<string, unknown>;
   if (obj.event !== "notification" && obj.event !== "permission-request") return null;
   const message = typeof obj.message === "string" ? obj.message.trim() : "";
-  const toolName = typeof obj.tool_name === "string" ? obj.tool_name.trim() : "";
+  const rawToolName =
+    typeof obj.tool_name === "string"
+      ? obj.tool_name
+      : typeof obj.toolName === "string"
+        ? obj.toolName
+        : "";
+  const toolName = rawToolName.trim();
   const agent = typeof obj.agent === "string" ? obj.agent.trim() : "";
   const title = agent === "codex" ? "Codex" : "Claude Code";
   const fallback =

@@ -119,6 +119,10 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
                     { "type": "command", "command": notify_cmd }
                 ]
             }],
+            "PermissionRequest": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/permission-request", windows) }]
+            }],
         }
     })
     .to_string()
@@ -544,6 +548,7 @@ mod tests {
         assert!(hooks.contains_key("PostToolUseFailure"));
         assert!(hooks.contains_key("Stop"));
         assert!(hooks.contains_key("Notification"));
+        assert!(hooks.contains_key("PermissionRequest"));
         let notification = hooks["Notification"][0]["hooks"].as_array().unwrap();
         assert_eq!(notification.len(), 2);
         assert!(notification[0]["command"]
@@ -554,6 +559,10 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("hook-notify-osc.py"));
+        assert!(hooks["PermissionRequest"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("/hook/permission-request"));
     }
 
     #[test]

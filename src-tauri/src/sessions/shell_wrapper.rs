@@ -188,6 +188,10 @@ fn claude_hooks_json(hooks_dir: &HookScripts) -> String {
             "Notification": [{
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.notification) }]
+            }],
+            "PermissionRequest": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.permission_request) }]
             }]
         }
     })
@@ -676,6 +680,12 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("hook-notification.sh"));
+        assert!(
+            parsed["hooks"]["PermissionRequest"][0]["hooks"][0]["command"]
+                .as_str()
+                .unwrap()
+                .contains("hook-permission-request.sh")
+        );
 
         let _ = fs::remove_dir_all(&root);
     }

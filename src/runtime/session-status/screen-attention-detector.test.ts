@@ -33,6 +33,35 @@ describe("detectScreenAttentionRequest", () => {
     });
   });
 
+  it("detects Claude do-you-want-to-run prompts", () => {
+    const detection = detectScreenAttentionRequest(`
+      Claude wants to run a command:
+      Bash(git status --short)
+      Do you want Claude to run this command?
+      1. Yes
+      2. No
+    `);
+
+    expect(detection).toMatchObject({
+      title: "Claude Code",
+      kind: "permission-prompt",
+    });
+  });
+
+  it("detects generic do-you-want-to-proceed prompts", () => {
+    const detection = detectScreenAttentionRequest(`
+      Bash(npm run build)
+      Do you want to proceed?
+      ❯ Yes
+        No
+    `);
+
+    expect(detection).toMatchObject({
+      title: "Agent",
+      kind: "permission-prompt",
+    });
+  });
+
   it("detects Codex approval prompts", () => {
     const detection = detectScreenAttentionRequest(`
       Codex needs approval to run this command

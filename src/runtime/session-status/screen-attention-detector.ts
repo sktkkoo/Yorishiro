@@ -69,12 +69,16 @@ function isClaudePermissionPrompt(joined: string, lower: string): boolean {
     return false;
   }
   return (
-    /\bdo you want to (?:allow|proceed|continue)\b/i.test(joined) ||
+    /\bdo you want (?:claude )?to (?:allow|proceed|continue|run|execute|use|make|apply)\b/i.test(
+      joined,
+    ) ||
     /\bclaude(?:\s+code)?\b.{0,120}\b(?:needs|requires|requests|is requesting)\b.{0,120}\b(?:permission|approval)\b/i.test(
       joined,
     ) ||
     /\b(?:permission|approval)\b.{0,80}\b(?:required|requested|needed)\b/i.test(joined) ||
-    /\ballow\b.{0,80}\b(?:bash|command|tool|edit|file|network|write|read)\b.{0,20}\?/i.test(joined)
+    /\b(?:allow|approve)\b.{0,80}\b(?:bash|command|tool|edit|file|network|write|read|operation|action)\b.{0,20}\?/i.test(
+      joined,
+    )
   );
 }
 
@@ -93,8 +97,10 @@ function isCodexApprovalPrompt(joined: string, lower: string): boolean {
 
 function isGenericPermissionPrompt(joined: string): boolean {
   return (
-    /\bdo you want to (?:allow|proceed|continue)\b/i.test(joined) ||
-    /\ballow\b.{0,80}\b(?:command|tool|action|edit|network|file|write|read)\b.{0,20}\?/i.test(
+    /\bdo you want (?:\w+ )?to (?:allow|proceed|continue|run|execute|use|make|apply)\b/i.test(
+      joined,
+    ) ||
+    /\b(?:allow|approve)\b.{0,80}\b(?:command|tool|action|edit|network|file|write|read|operation)\b.{0,20}\?/i.test(
       joined,
     )
   );

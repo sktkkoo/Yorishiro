@@ -25,7 +25,7 @@ TabIndicator が `run` を出せるよう、PTY 出力が来たら `running-comm
 
 ### 3. 許可待ちの観察源：screen buffer fast path ＋ agent hook / OSC fallback
 
-Claude Code の `Notification` hook は permission prompt 表示から数秒（環境によって 10 秒級）遅れて発火することがある。Charminal 内部の HTTP hook server → Tauri event → App は即時化済みなので、残るラグは upstream hook 発火タイミングにある。`PermissionRequest` hook は auto-allowed tool でも発火しうるため、「許可待ち」判定の fast path には使わない。
+Claude Code の `Notification` hook は permission prompt 表示から数秒（環境によって 10 秒級）遅れて発火することがある。Charminal 内部の HTTP hook server → Tauri event → App は即時化済みなので、残るラグは upstream hook 発火タイミングにある。Claude の `PermissionRequest` は cmux と同じく actionable approval として扱い、`/hook/permission-request` に送る。Codex の `PermissionRequest` は Codex 自身の reviewer 前に走ることがあるため、screen fast path を authoritative に残す。
 
 そこで `terminal-runtime.readScreenTailText()` で xterm screen buffer 末尾を DOM geometry 非依存に読み、`screen-attention-detector` が Claude Code / Codex / generic な permission prompt 文面を検出する。Terminal は PTY chunk 後に短く debounce（約 80ms）して screen scan し、検出したら `markScreenAttentionRequest()` する。これが release 時点の `input` badge の主経路。非 active tab でも xterm buffer は保持されるため、detached / hidden 中の session でも読める。
 
@@ -73,7 +73,7 @@ cmux（`manaflow-ai/cmux`、調査 snapshot `05c03cf5ac3640485f53623731ea416d642
 
 Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` / `CHARMINAL_AGENT_SHIM_ROOT` を環境へ入れ、`~/.charminal/shell/session-shims/<session>/` を `PATH` 先頭へ prepend する。この directory に `claude` / `codex` shim を生成する。
 
-- `claude` shim は real `claude` を PATH から探し、自分自身 / shim dir を skip して、session-local `claude-hooks.json` を `--settings` で差し込む。hook command は `~/.charminal/shell/hooks/hook-*.sh` に集約し、`CHARMINAL_SESSION_ID` を query に載せて `127.0.0.1:<port>/hook/...` へ POST する。
+- `claude` shim は real `claude` を PATH から探し、自分自身 / shim dir を skip して、session-local `claude-hooks.json` を `--settings` で差し込む。hook command は `~/.charminal/shell/hooks/hook-*.sh` に集約し、`CHARMINAL_SESSION_ID` を query に載せて `127.0.0.1:<port>/hook/...` へ POST する。`PermissionRequest` も含める。
 - `codex` shim は cmux と同じ per-invocation 方式で `--enable hooks` / `--dangerously-bypass-hook-trust` / `-c hooks.Event=...` を差し込む。対象は session entrypoint（bare / prompt / `exec` / `resume`）に限定し、`login` / `doctor` / `--help` 等は real binary passthrough。`SessionStart` / `UserPromptSubmit` / `Stop` / `PreToolUse` / `PostToolUse` / `PermissionRequest` を送る。
 - wrapper は `CHARMINAL_AGENT_SHIMS_DISABLED=1` または `CHARMINAL_SESSION_ID` 不在では real binary passthrough。global な `~/.claude` / `~/.codex` を触る persistent hook install はまだ入れない（custom launcher / subrouter 対応用の明示 opt-in として deferred）。
 
@@ -92,7 +92,7 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - **attention を `activity` に畳む**：却下。OSC133 由来 activity と概念が違い、上書き合戦になる。独立 field にする。
 - **HTTP-only / OSC-only**：却下。OSC は emit 失敗が silent、HTTP は session 属性を持たない限り main agent に寄ってしまう。両建てにしつつ、非 main は wrapper で sessionId を注入する。
 - **`Notification` hook を low-latency 入口にする**：却下。Charminal 内部配信を immediate にしても hook 自体が数秒遅れて発火するため、`input` badge の体感 latency を解決しない。
-- **`PermissionRequest` hook を low-latency 入口にする**：却下。auto-allowed tool でも発火しうるため、許可待ちでない tool use を `input` と誤検出する。
+- **Codex `PermissionRequest` だけを low-latency 入口にする**：却下。Codex は auto-allowed / reviewer 前にも発火しうるため、screen fast path と post-tool clear を組み合わせる。Claude `PermissionRequest` は actionable approval として採用。
 - **`PreToolUse` で解除**：却下。permission gate と発火タイミングが近く、解除が早すぎるリスク。
 - **非 main session を exit で即 close**：却下。`failed` badge を見る前に消える。
 
@@ -119,3 +119,4 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - 2026-06-28 rev.4: cmux 公開実装を再調査し、「agent approval 検出 = OSC 受動観察中心」という前提を修正。cmux は surface env + per-surface PATH shim + wrapper-injected hooks + socket/feed で手動起動 `claude` / `codex` を attribute する。Charminal の非 main shell agent 検出は wrapper / hook 注入が必要、と明記。
 - 2026-06-28 rev.5: Claude `Notification` hook 自体の発火遅延に対し、xterm screen buffer 末尾を読む `readScreenTailText` + `screen-attention-detector` を `input` badge の low-latency primary path に変更。screen 由来 attention を hook / OSC より権威化し、解除直後の late hook / OSC resurrection を抑止する仕様を追加。
 - 2026-06-28 rev.6: shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` と per-session PATH shim（`claude` / `codex`）を注入する実装に更新。hook server は `?sessionId=` を payload に stamp し、App は main fallback ではなく該当 session に attention / clear を適用する。
+- 2026-06-28 rev.7: shell 手動起動 Claude で `input` が出ない実機報告を受け、Claude shim / main Claude hooks に `PermissionRequest` を追加。Claude は actionable approval、Codex は screen fast path authoritative という cmux の分類に合わせる。
