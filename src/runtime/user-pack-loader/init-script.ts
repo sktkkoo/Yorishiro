@@ -49,6 +49,11 @@ export interface CharminalInitContext {
   dispatchEffect(request: SpaceEffectRequest): void;
   emitEvent(name: string, payload?: unknown): void;
   setActiveUi(id: string | null): void;
+  /**
+   * 現在 active な UI pack の id（無ければ null）。F3/F4 のようなトグルを、ローカル真偽値で
+   * はなく実状態から決めたいとき使う（ボタンで全画面を閉じても次のキーで即トグルできる）。
+   */
+  getActiveUi(): string | null;
   /** Per-frame parameter 補間。init scope で開始した tween はアプリ終了まで有効。 */
   tween: TweenAPI;
 }
@@ -61,6 +66,7 @@ export interface LoadInitScriptDeps {
   readonly personaDefaults?: PersonaDefinition;
   readonly emitEvent?: (name: string, payload?: unknown) => void;
   readonly setActiveUi?: (id: string | null) => void;
+  readonly getActiveUi?: () => string | null;
   readonly tweenManager?: TweenManager;
   /**
    * Tauri の user_init_script_path を叩いて init.js の absolute path を返す。
@@ -124,6 +130,9 @@ const makeInitContext = (
       throw new Error("setActiveUi is not available in this runtime");
     }
     deps.setActiveUi(id);
+  },
+  getActiveUi() {
+    return deps.getActiveUi ? deps.getActiveUi() : null;
   },
   tween: {
     start(key, to, durationMs, apply, options) {

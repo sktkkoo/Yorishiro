@@ -225,7 +225,10 @@ import Sidebar from "./sidebar";
 import Terminal from "./terminal";
 import TitleBar from "./title-bar";
 import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
-import { shouldResumeHostPresenceForUiActivation } from "./ui-pack-activation";
+import {
+  layoutNeedsHostPresenceResume,
+  shouldResumeHostPresenceForUiActivation,
+} from "./ui-pack-activation";
 import "./App.css";
 
 function mergeSystemPromptParts(
@@ -822,6 +825,9 @@ function App() {
     resolved: resolveLanguage("auto", getBrowserLocales()),
   }));
   const appLanguageRef = useRef(appLanguage);
+  // トップバーのボタンで全画面 UI pack を閉じるとき、stage-close を closed presence
+  // （＝ターミナルだけ）へ一続きに着地させたい意思を playStage へ伝える 1-shot フラグ。
+  const exitFullscreenToClosedRef = useRef(false);
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const sidebarOpen = useSidebarOpen();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
@@ -900,6 +906,16 @@ function App() {
   );
 
   const handleToggleSidebar = useCallback(() => {
+    // 全画面 UI pack（theater/immersive 等、sidebar を fullscreen 占有する pack）が出ている
+    // ときは、ボタンを「全画面を閉じる」操作にする。setActiveUi(null) が stage-close を
+    // 再生し、exitFullscreenToClosedRef により closed presence（＝ターミナルだけ）へ一続きに
+    // 着地する。閉じたあとの押下は通常どおり closed→default（普通のサイドバー表示）に戻る。
+    const activeUi = getUiRegistry().getActiveUi();
+    if (activeUi && layoutNeedsHostPresenceResume(activeUi.pack.layout)) {
+      exitFullscreenToClosedRef.current = true;
+      getUiRegistry().setActiveUi(null);
+      return;
+    }
     const nextLevel: PresenceLevel = sidebarOpen ? "closed" : "default";
     applyPresenceLevelFromApp(nextLevel, "settings");
   }, [applyPresenceLevelFromApp, sidebarOpen]);
@@ -2447,13 +2463,37 @@ function App() {
       return { shell, character, chrome };
     };
 
-    const playStage = (direction: "open" | "close") => {
+    // closed を確定する：width 0 / presence-closed / render pause / level=closed / event 発火。
+    // 全画面 pack をボタンで閉じたあとの「ターミナルだけ」着地に使う。
+    const settlePresenceClosed = () => {
+      // 着地直前に別の UI pack が出ていたら何もしない（その pack の状態を尊重）。
+      if (getUiRegistry().getActiveUiId() !== null) return;
+      applyPresenceLevelFromApp("closed", "settings", { immediate: true }, "host-default");
+      syncPresenceLevelStyles("closed");
+    };
+
+    const playStage = (direction: "open" | "close", exitToClosed = false) => {
       const surfaces = getStageSurfaces();
       if (!surfaces) return;
-      void playStageTransition(direction, surfaces, {
+      // exitToClosed のときだけ、closed presence（ターミナルだけ）へ一続きに畳む。
+      // それ以外（F3 トグル等）は従来どおり 280（サイドバー表示）へ。
+      const toClosed = direction === "close" && exitToClosed;
+      if (toClosed) {
+        // inline width クリア後の着地点を CSS 0 にして、フルスクリーン→0 を途切れず見せる。
+        // presence-closed クラス（display:none）はアニメ中は付けない——付けると shell-column が
+        // 消えて閉じアニメが見えなくなる。完了後に settlePresenceClosed で正式に確定する。
+        syncPresenceClosedStyles(document.documentElement, null, true);
+      }
+      const transition = playStageTransition(direction, surfaces, {
         tweenManager: getThreeRuntime().getTweenManager(),
         viewportWidth: () => window.innerWidth,
+        closeCollapsedWidthPx: toClosed ? 0 : undefined,
       });
+      if (toClosed) {
+        void transition.then(settlePresenceClosed);
+      } else {
+        void transition;
+      }
     };
 
     const refitActiveTerminal = () => {
@@ -2931,9 +2971,18 @@ function App() {
       setSceneLayerOverrides([]);
 
       if (!entry) {
-        // 前 pack が stage 遷移なら、reset 後の素の状態から「閉じアニメ」を再生する
-        // （resetLayout で end-state を一旦 clear → playStage("close") が反対端へ override して tween）。
-        if (prevLayout?.transition?.kind === "stage") playStage("close");
+        // トップバーのボタンで全画面 pack を閉じたか（closed presence＝ターミナルだけへ着地）。
+        // 1-shot フラグはここで必ず消費する（pack 種別に関わらずリークさせない）。
+        const exitToClosed = exitFullscreenToClosedRef.current;
+        exitFullscreenToClosedRef.current = false;
+        if (prevLayout?.transition?.kind === "stage") {
+          // 前 pack が stage 遷移（theater 等）：reset 後の素の状態から「閉じアニメ」を再生する
+          // （resetLayout で end-state を一旦 clear → playStage("close") が反対端へ override して tween）。
+          playStage("close", exitToClosed);
+        } else if (exitToClosed) {
+          // 非 stage の全画面 pack（immersive 等）：閉じアニメは無いので即 closed presence へ。
+          settlePresenceClosed();
+        }
         return;
       }
 

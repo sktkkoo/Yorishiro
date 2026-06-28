@@ -118,4 +118,28 @@ describe("playStageTransition", () => {
     expect(surfaces.character.style.width).toBe("");
     expect(surfaces.chrome.style.marginTop).toBe("");
   });
+
+  it("close: 既定では shell/character を 280px まで畳む", async () => {
+    const surfaces = makeSurfaces();
+    const { tm, calls } = makeTweenManager();
+
+    await playStageTransition("close", surfaces, { tweenManager: tm, viewportWidth: () => 1000 });
+
+    expect(calls.find((c) => c.key === "stage.shell")?.to).toBe(280);
+    expect(calls.find((c) => c.key === "stage.char")?.to).toBe(280);
+  });
+
+  it("close: closeCollapsedWidthPx を渡すとその幅まで畳む（0 でターミナルだけに着地）", async () => {
+    const surfaces = makeSurfaces();
+    const { tm, calls } = makeTweenManager();
+
+    await playStageTransition("close", surfaces, {
+      tweenManager: tm,
+      viewportWidth: () => 1000,
+      closeCollapsedWidthPx: 0,
+    });
+
+    expect(calls.find((c) => c.key === "stage.shell")?.to).toBe(0);
+    expect(calls.find((c) => c.key === "stage.char")?.to).toBe(0);
+  });
 });

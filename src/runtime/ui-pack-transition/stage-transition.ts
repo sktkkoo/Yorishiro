@@ -29,6 +29,12 @@ export interface StageTransitionDeps {
   readonly tweenManager: TweenManager;
   /** 100vw を px に解決する（通常 window.innerWidth）。 */
   readonly viewportWidth: () => number;
+  /**
+   * close 時に shell/character を畳む先の幅(px)。既定は COLLAPSED_WIDTH_PX(280)＝通常の
+   * サイドバー表示。0 を渡すと「ターミナルだけ」へ一続きに畳む（closed presence 着地）。
+   * open には影響しない。
+   */
+  readonly closeCollapsedWidthPx?: number;
 }
 
 /** 畳んだ状態の幅。App.css の --sidebar-width / --sidebar-content-width 初期値に一致。 */
@@ -135,6 +141,8 @@ export async function playStageTransition(
 
   // close — resetLayout が inline を clear 済み（shell/char は CSS 280px、chrome は
   // display:"" / marginTop なし）。end-state へ上書きしてから start へ tween。
+  // collapsed: 既定 280（通常サイドバー）。0 を渡すと「ターミナルだけ」へ一続きに畳む。
+  const collapsed = deps.closeCollapsedWidthPx ?? COLLAPSED_WIDTH_PX;
   setShell(vw);
   setChar(vw);
   // chrome を可視化して退避量を測り、畳んだ（上へ退避した）状態から開始する。
@@ -144,8 +152,8 @@ export async function playStageTransition(
 
   // ① shell/character を畳む
   await Promise.all([
-    tweenTo(tm, "stage.shell", vw, COLLAPSED_WIDTH_PX, WIDTH_MS, setShell),
-    tweenTo(tm, "stage.char", vw, COLLAPSED_WIDTH_PX, WIDTH_MS, setChar),
+    tweenTo(tm, "stage.shell", vw, collapsed, WIDTH_MS, setShell),
+    tweenTo(tm, "stage.char", vw, collapsed, WIDTH_MS, setChar),
   ]);
   if (!isCurrent()) return;
   // inline を外して CSS（--sidebar-width / --sidebar-content-width）へ返す
