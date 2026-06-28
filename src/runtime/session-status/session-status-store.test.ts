@@ -160,6 +160,7 @@ describe("SessionStatusStore", () => {
     store.markOutput("s1");
     expect(store.get("s1")).toMatchObject({
       lifecycle: "running",
+      activity: "running-command",
       unread: false,
       lastActivityAt: 200,
     });
@@ -170,6 +171,36 @@ describe("SessionStatusStore", () => {
 
     expect(store.get("s1")?.lastActivityAt).toBe(300);
     expect(notifyCount).toBe(afterFirstOutput);
+  });
+
+  it("settles transient output running state back to idle", () => {
+    const { store, tick } = createStore();
+    store.markOutput("s1");
+
+    tick(400);
+    store.settleOutput("s1");
+
+    expect(store.get("s1")).toMatchObject({
+      lifecycle: "running",
+      activity: "idle",
+      lastActivityAt: 400,
+    });
+  });
+
+  it("settleOutput does not clear awaiting-input attention", () => {
+    const { store } = createStore();
+    store.markOutput("s1");
+    store.markAttentionRequest("s1", { title: "Claude", body: "Permission needed" });
+
+    store.settleOutput("s1");
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Claude",
+        body: "Permission needed",
+      },
+    });
   });
 
   it("records terminal-native attention requests as awaiting-input", () => {
@@ -231,6 +262,7 @@ describe("SessionStatusStore", () => {
 
     expect(store.get("s1")).toMatchObject({
       lifecycle: "running",
+      activity: "running-command",
       exitCode: null,
     });
   });

@@ -6,6 +6,8 @@ import { getSessionStatusStore } from "./runtime/session-status";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
 
+const OUTPUT_SETTLE_MS = 800;
+
 interface TerminalProps {
   readonly sessionId: string;
   readonly visible: boolean;
@@ -24,6 +26,7 @@ export default function Terminal({
   attachFirst = false,
 }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
+  const outputSettleTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const status = getSessionStatusStore();
@@ -31,6 +34,13 @@ export default function Terminal({
     const runtime = getTerminalRuntime(sessionId);
     const sub = runtime.subscribePtyData(() => {
       status.markOutput(sessionId);
+      if (outputSettleTimerRef.current !== null) {
+        window.clearTimeout(outputSettleTimerRef.current);
+      }
+      outputSettleTimerRef.current = window.setTimeout(() => {
+        outputSettleTimerRef.current = null;
+        status.settleOutput(sessionId);
+      }, OUTPUT_SETTLE_MS);
     });
     const notificationSub = runtime.subscribeNotification((event) => {
       status.markAttentionRequest(sessionId, {
@@ -39,6 +49,10 @@ export default function Terminal({
       });
     });
     return () => {
+      if (outputSettleTimerRef.current !== null) {
+        window.clearTimeout(outputSettleTimerRef.current);
+        outputSettleTimerRef.current = null;
+      }
       sub.dispose();
       notificationSub.dispose();
     };

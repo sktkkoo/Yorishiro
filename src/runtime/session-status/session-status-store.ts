@@ -183,10 +183,24 @@ export class SessionStatusStore {
         current.lifecycle === "starting" || current.lifecycle === "exited"
           ? "running"
           : current.lifecycle,
+      activity: "running-command",
       exitCode: current.lifecycle === "exited" ? null : current.exitCode,
       unread: current.unread || unread,
       lastActivityAt: this.now(),
     });
+  }
+
+  /**
+   * PTY output burst が静まった時に呼ぶ。`markOutput` が立てた
+   * transient running-command だけを idle に戻す。
+   *
+   * OSC notification などで `awaiting-input` へ遷移した後に、古い idle timer が
+   * その状態を消してしまわないよう、running-command 以外は触らない。
+   */
+  settleOutput(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.activity !== "running-command") return;
+    this.commit({ ...current, activity: "idle", lastActivityAt: this.now() });
   }
 
   /**
