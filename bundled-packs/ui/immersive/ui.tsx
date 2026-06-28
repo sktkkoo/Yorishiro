@@ -33,10 +33,17 @@ const immersive: UiPackDefinition = {
     sidebar: { width: "fullscreen" },
     // folder / gear 行を非表示。
     chrome: { visible: false },
-    // terminal を画面全体に固定配置し、背景のみ透明化する（element opacity 版から移行）。
-    // 文字は不透明のまま読め、背後の character + scene が鮮明に透ける。
+    // terminal を（常設タイトルバーの下の）作業域いっぱいに固定配置し、背景のみ透明化する
+    // （element opacity 版から移行）。文字は不透明のまま読め、背後の character + scene が鮮明に透ける。
+    // top/height にタイトルバー高さ(--title-bar-height)を織り込むのは、terminal がタイトルバーへ
+    // はみ出してサイドバートグル等のボタンを覆い隠さないようにするため。
     terminal: {
-      position: { top: "0", left: "0", width: "100vw", height: "100vh" },
+      position: {
+        top: "var(--title-bar-height)",
+        left: "0",
+        width: "100vw",
+        height: "calc(100vh - var(--title-bar-height))",
+      },
       transparentBackground: true,
     },
   },

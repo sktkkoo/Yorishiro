@@ -149,6 +149,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
         emitEvent: deps.emitEvent,
         devLog: deps.initScriptLog,
         setActiveUi: (id) => deps.uiPackRegistry.setActiveUi(id),
+        getActiveUi: () => deps.uiPackRegistry.getActiveUiId(),
         tweenManager: deps.tweenManager,
         fetchInitScriptPath: () => invoke<string | null>("user_init_script_path"),
         importModule: async (path) => {

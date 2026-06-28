@@ -47,9 +47,19 @@
  */
 
 let desaturated = false;
-let settingsVisible = false;
-let theaterVisible = false;
-let immersiveVisible = false;
+
+// Toggle a UI pack from its *actual* active state rather than a local flag.
+// Keeps F1/F3/F4 in sync even when the pack is dismissed another way (e.g.
+// closing the fullscreen view with the title-bar sidebar button), so a single
+// keypress always re-opens it. ctx.getActiveUi may be absent on older Charminal
+// builds — fall back to null (always open).
+// 実際の active UI からトグルする（ローカル真偽値ではなく）。タイトルバーの
+// サイドバーボタンなど別経路で閉じられても状態がズレないので、キー 1 回で必ず開き直せる。
+// 旧ビルドには ctx.getActiveUi が無いことがある——その場合は null（常に開く側）。
+const toggleUi = (ctx, id) => {
+  const active = ctx.getActiveUi ? ctx.getActiveUi() : null;
+  ctx.setActiveUi(active === id ? null : id);
+};
 
 export default (ctx) => {
   window.addEventListener(
@@ -58,20 +68,17 @@ export default (ctx) => {
       if (!e.repeat && e.code === "F1") {
         e.preventDefault();
         e.stopImmediatePropagation();
-        settingsVisible = !settingsVisible;
-        ctx.setActiveUi(settingsVisible ? "charminal-settings" : null);
+        toggleUi(ctx, "charminal-settings");
       }
       if (!e.repeat && e.code === "F3") {
         e.preventDefault();
         e.stopImmediatePropagation();
-        theaterVisible = !theaterVisible;
-        ctx.setActiveUi(theaterVisible ? "theater" : null);
+        toggleUi(ctx, "theater");
       }
       if (!e.repeat && e.code === "F4") {
         e.preventDefault();
         e.stopImmediatePropagation();
-        immersiveVisible = !immersiveVisible;
-        ctx.setActiveUi(immersiveVisible ? "immersive" : null);
+        toggleUi(ctx, "immersive");
       }
       if (e.metaKey && e.shiftKey && e.code === "KeyF") {
         e.preventDefault();

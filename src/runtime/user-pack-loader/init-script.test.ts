@@ -351,4 +351,51 @@ describe("loadInitScript", () => {
     expect(result.ran).toBe(true);
     expect(selected).toEqual(["camera-lighting-panel", null]);
   });
+
+  it("ctx.getActiveUi returns the active UI id from the dep", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    let observed: string | null = "unset";
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      observed = ctx.getActiveUi();
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      getActiveUi: () => "theater",
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(observed).toBe("theater");
+  });
+
+  it("ctx.getActiveUi returns null when no getActiveUi dep is provided", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    let observed: string | null = "unset";
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      observed = ctx.getActiveUi();
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(observed).toBe(null);
+  });
 });
