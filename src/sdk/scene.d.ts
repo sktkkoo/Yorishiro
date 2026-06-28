@@ -52,6 +52,17 @@ export interface Layer {
   /** 0-1。省略は 1（完全不透明）。 */
   readonly opacity?: number;
   /**
+   * media（img / video）の水平オフセット。要素サイズに対する %。省略は 0。
+   * objectFit:cover の表示位置をパンするための値。layer 全体ではなく media のみに効く。
+   */
+  readonly mediaOffsetX?: number;
+  /** media の垂直オフセット。要素サイズに対する %。省略は 0。 */
+  readonly mediaOffsetY?: number;
+  /** media の拡大率。1 が等倍。省略は 1。 */
+  readonly mediaScale?: number;
+  /** media の回転角（deg）。省略は 0。 */
+  readonly mediaRotation?: number;
+  /**
    * per-layer のドロップシャドウ（CSS `filter: drop-shadow()`）。
    * character レイヤーに付けると VRM のシルエット影になる（透過 canvas の alpha を拾う）。
    * 2D の screen-space オフセット影で、床への遠近投影ではない。

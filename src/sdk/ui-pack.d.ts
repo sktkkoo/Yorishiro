@@ -372,6 +372,14 @@ export interface UiSceneLayerPatch {
   readonly blur?: number | null;
   /** 0-1。null でリセット（= 1 に戻る）。 */
   readonly opacity?: number | null;
+  /** media の水平オフセット（%）。null でリセット（= 0）。 */
+  readonly mediaOffsetX?: number | null;
+  /** media の垂直オフセット（%）。null でリセット（= 0）。 */
+  readonly mediaOffsetY?: number | null;
+  /** media の拡大率。null でリセット（= 1）。 */
+  readonly mediaScale?: number | null;
+  /** media の回転角（deg）。null でリセット（= 0）。 */
+  readonly mediaRotation?: number | null;
 }
 
 export interface UiSceneAPI {

@@ -1,7 +1,7 @@
 // src/core/scene/scene-compositor.test.ts
 
 import { describe, expect, it } from "vitest";
-import { isVideoLayer, isVideoSrc, layerStyle } from "./scene-compositor";
+import { isVideoLayer, isVideoSrc, layerStyle, mediaStyle } from "./scene-compositor";
 import type { Layer } from "./types";
 
 describe("layerStyle", () => {
@@ -148,5 +148,67 @@ describe("isVideoLayer", () => {
 
   it("falls back to src extension when mediaType is omitted", () => {
     expect(isVideoLayer({ id: "bg", src: "/path/bg.webm" })).toBe(true);
+  });
+});
+
+describe("mediaStyle", () => {
+  it("sizes the element to cover the viewport (cqw/cqh + --media-aspect)", () => {
+    const style = mediaStyle({ id: "bg" });
+    expect(style.position).toBe("absolute");
+    expect(style.width).toBe("max(100cqw, calc(100cqh * var(--media-aspect, 1)))");
+    expect(style.height).toBe("max(100cqh, calc(100cqw / var(--media-aspect, 1)))");
+  });
+
+  it("always centers with translate(-50%, -50%) when no transform fields are set", () => {
+    const style = mediaStyle({ id: "bg" });
+    expect(style.transform).toBe("translate(-50%, -50%)");
+  });
+
+  it("appends translate after centering when offsetX is set (offsetY defaults to 0)", () => {
+    const style = mediaStyle({ id: "bg", mediaOffsetX: 10 });
+    expect(style.transform).toBe("translate(-50%, -50%) translate(10%, 0%)");
+  });
+
+  it("appends translate after centering when only offsetY is set", () => {
+    const style = mediaStyle({ id: "bg", mediaOffsetY: -15 });
+    expect(style.transform).toBe("translate(-50%, -50%) translate(0%, -15%)");
+  });
+
+  it("appends scale after centering when mediaScale is set", () => {
+    const style = mediaStyle({ id: "bg", mediaScale: 1.5 });
+    expect(style.transform).toBe("translate(-50%, -50%) scale(1.5)");
+  });
+
+  it("appends rotate after centering when mediaRotation is set", () => {
+    const style = mediaStyle({ id: "bg", mediaRotation: 45 });
+    expect(style.transform).toBe("translate(-50%, -50%) rotate(45deg)");
+  });
+
+  it("composes centering + translate + scale + rotate in order", () => {
+    const style = mediaStyle({
+      id: "bg",
+      mediaOffsetX: 5,
+      mediaOffsetY: -5,
+      mediaScale: 2,
+      mediaRotation: 90,
+    });
+    expect(style.transform).toBe("translate(-50%, -50%) translate(5%, -5%) scale(2) rotate(90deg)");
+  });
+
+  it("does not mutate the shared base style across calls", () => {
+    const plain = mediaStyle({ id: "bg" });
+    const transformed = mediaStyle({ id: "bg", mediaScale: 2 });
+    expect(transformed).not.toBe(plain);
+    expect(plain.transform).toBe("translate(-50%, -50%)");
+  });
+});
+
+describe("layerStyle container-type for media layers", () => {
+  it("adds container-type: size when the layer has a media src", () => {
+    expect(layerStyle({ id: "bg", src: "/x.png" }).containerType).toBe("size");
+  });
+
+  it("omits container-type when the layer has no src", () => {
+    expect(layerStyle({ id: "bg" }).containerType).toBeUndefined();
   });
 });
