@@ -43,6 +43,8 @@ export const KEYS = {
   SURFACE_REGISTRY: "surface:registry",
   /** SessionRegistry singleton: 全 session の descriptor / lifecycle / activity と event dispatch。 */
   SESSION_REGISTRY: "session:registry",
+  /** SessionStatusStore singleton: session ごとの観察状態（lifecycle/activity/unread/exit）を UI 向けに集約する read model。 */
+  SESSION_STATUS_STORE: "session-status:store",
   /** SessionTabManager singleton: session タブの状態管理 + auto-respawn。 */
   SESSION_TAB_MANAGER: "session-tabs:manager",
 } as const;

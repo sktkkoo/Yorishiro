@@ -15,11 +15,17 @@ import {
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import {
+  type OscNotificationCode,
+  type TerminalNotification as ParsedTerminalNotification,
+  parseOscNotification,
+} from "./osc-notification";
 import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
 import type {
   PtyParams,
   TerminalCursorClientPosition,
   TerminalLineRect,
+  TerminalNotificationEvent,
   TerminalReference,
   TerminalRegionContext,
   TerminalRuntime,
@@ -85,8 +91,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastUserInputAt = -Infinity;
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
+  private readonly notificationListeners = new Set<(event: TerminalNotificationEvent) => void>();
   private readonly scrollListeners = new Set<() => void>();
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
+  private readonly oscHandlerDisposables: Disposable[] = [];
   private disposed = false;
   private hidden = false;
   private opacity = 1;
@@ -131,6 +139,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     document.body.appendChild(this.xtermContainer);
 
     this.term.open(this.xtermContainer);
+    this.installNotificationOscHandlers();
 
     const regionCtx = this.createRegionCanvas();
     this.regionCanvas = regionCtx?.canvas ?? null;
@@ -294,8 +303,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.ptyExitUnlisten?.();
     this.ptyExitUnlisten = null;
     this.ptyDataListeners.clear();
+    this.notificationListeners.clear();
     this.scrollListeners.clear();
     this.regionContextListeners.clear();
+    for (const disposable of this.oscHandlerDisposables.splice(0)) {
+      disposable.dispose();
+    }
     if (this.clearRegionCanvasTimeout !== null) {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
@@ -614,6 +627,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  subscribeNotification(listener: (event: TerminalNotificationEvent) => void): Disposable {
+    this.notificationListeners.add(listener);
+    return {
+      dispose: () => {
+        this.notificationListeners.delete(listener);
+      },
+    };
+  }
+
   subscribeViewportScroll(listener: () => void): Disposable {
     this.scrollListeners.add(listener);
     return {
@@ -646,6 +668,34 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private notifyPtyDataListeners(): void {
     for (const listener of Array.from(this.ptyDataListeners)) {
       listener();
+    }
+  }
+
+  private installNotificationOscHandlers(): void {
+    if (!this.term.parser) return;
+    this.oscHandlerDisposables.push(
+      this.term.parser.registerOscHandler(9, (data) => this.handleNotificationOsc(9, data)),
+      this.term.parser.registerOscHandler(99, (data) => this.handleNotificationOsc(99, data)),
+      this.term.parser.registerOscHandler(777, (data) => this.handleNotificationOsc(777, data)),
+    );
+  }
+
+  private handleNotificationOsc(code: OscNotificationCode, data: string): boolean {
+    const notification = parseOscNotification(code, data);
+    if (notification === null) return false;
+    this.notifyNotificationListeners(notification);
+    return true;
+  }
+
+  private notifyNotificationListeners(notification: ParsedTerminalNotification): void {
+    const event: TerminalNotificationEvent = {
+      sessionId: this.sessionId,
+      title: notification.title,
+      body: notification.body,
+      receivedAt: Date.now(),
+    };
+    for (const listener of Array.from(this.notificationListeners)) {
+      listener(event);
     }
   }
 

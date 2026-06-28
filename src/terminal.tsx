@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { type SpawnSpec, sessionRefreshTheme } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
+import { getSessionStatusStore } from "./runtime/session-status";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
 
@@ -24,6 +25,25 @@ export default function Terminal({
 }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    const status = getSessionStatusStore();
+    status.register(sessionId);
+    const runtime = getTerminalRuntime(sessionId);
+    const sub = runtime.subscribePtyData(() => {
+      status.markOutput(sessionId);
+    });
+    const notificationSub = runtime.subscribeNotification((event) => {
+      status.markAttentionRequest(sessionId, {
+        title: event.title,
+        body: event.body,
+      });
+    });
+    return () => {
+      sub.dispose();
+      notificationSub.dispose();
+    };
+  }, [sessionId]);
+
   // visible が変わるたびに attach/detach を切り替える。
   // inactive session は detachContainer() で RAF 停止 + visibility:hidden。
   useEffect(() => {
@@ -31,6 +51,7 @@ export default function Terminal({
     if (!placeholder) return;
     const runtime = getTerminalRuntime(sessionId);
     if (visible) {
+      getSessionStatusStore().markActive(sessionId);
       runtime.attachTo(placeholder);
       runtime.setTheme(getCurrentTerminalTheme());
       runtime.focus();

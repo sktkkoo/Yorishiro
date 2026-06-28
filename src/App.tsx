@@ -163,6 +163,7 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
+import { getSessionStatusStore, type SessionStatus } from "./runtime/session-status";
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
@@ -1989,6 +1990,10 @@ function App() {
   );
 
   const [tabState, setTabState] = useState<SessionTabState>(() => tabManager.getState());
+  const sessionStatusStore = useMemo(() => getSessionStatusStore(), []);
+  const [sessionStatuses, setSessionStatuses] = useState<ReadonlyArray<SessionStatus>>(() =>
+    sessionStatusStore.list(),
+  );
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
   const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
   if (preferredActiveSessionIdRef.current === undefined) {
@@ -1998,6 +2003,30 @@ function App() {
   useEffect(() => {
     return tabManager.subscribe(setTabState);
   }, [tabManager]);
+
+  useEffect(() => {
+    return sessionStatusStore.subscribe(() => {
+      setSessionStatuses(sessionStatusStore.list());
+    });
+  }, [sessionStatusStore]);
+
+  useEffect(() => {
+    const liveSessionIds = new Set(tabState.sessions);
+    for (const sessionId of tabState.sessions) {
+      sessionStatusStore.register(sessionId);
+    }
+    for (const status of sessionStatusStore.list()) {
+      if (!liveSessionIds.has(status.sessionId)) {
+        sessionStatusStore.remove(status.sessionId);
+      }
+    }
+    sessionStatusStore.markActive(tabState.activeSessionId);
+  }, [sessionStatusStore, tabState.activeSessionId, tabState.sessions]);
+
+  const sessionStatusById = useMemo(
+    () => new Map(sessionStatuses.map((status) => [status.sessionId, status] as const)),
+    [sessionStatuses],
+  );
 
   useEffect(() => {
     if (!isUserLayerReady) return;
@@ -3433,6 +3462,7 @@ function App() {
       const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
         if (disposed) return;
+        sessionStatusStore.recordExit(event.payload.session_id, event.payload.code);
         tabManager.handleSessionExit(event.payload.session_id, event.payload.code);
       });
       if (disposed) {
@@ -3446,7 +3476,7 @@ function App() {
       disposed = true;
       ptyExitCleanupRef.current?.();
     };
-  }, [isUserLayerReady, tabManager]);
+  }, [isUserLayerReady, sessionStatusStore, tabManager]);
 
   // Rust 側の app_screenshot は撮影完了後に "charminal:screen-flash" を emit する。
   // ここで listen して screen-flash effect を dispatch することで、
@@ -3598,6 +3628,7 @@ function App() {
                     .map((id) => [id, id] as const),
                 ])
               }
+              statuses={sessionStatusById}
             />
           </>
         )}

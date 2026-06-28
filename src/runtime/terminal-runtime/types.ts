@@ -57,6 +57,14 @@ export interface TerminalReference {
   readonly context: TerminalRegionContext;
 }
 
+/** Terminal が受動的に拾った OSC 9/99/777 notification。 */
+export interface TerminalNotificationEvent {
+  readonly sessionId: string;
+  readonly title: string | null;
+  readonly body: string;
+  readonly receivedAt: number;
+}
+
 export interface TerminalRegionContext {
   readonly kind: "terminal-region-context";
   readonly sessionId: string;
@@ -173,6 +181,12 @@ export interface TerminalRuntime {
    * 取得する。dispose で listener を外す。
    */
   subscribePtyData(listener: () => void): Disposable;
+
+  /**
+   * OSC 9 / 99 / 777 notification を受動的に拾ったときに listener を呼ぶ。
+   * agent の permission / turn complete などの注意要求を表す。PTY write なし。
+   */
+  subscribeNotification(listener: (event: TerminalNotificationEvent) => void): Disposable;
 
   /**
    * ターミナルのカラーテーマを更新する。scene 切替時に呼ばれる。

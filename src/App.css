@@ -896,6 +896,28 @@ body,
   opacity: 1;
 }
 
+.tab-indicator-item.unread {
+  color: #ffffff;
+}
+
+.tab-indicator-item.noteworthy {
+  color: #ffb4c2;
+}
+
+.tab-indicator-status {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(236, 239, 244, 0.72);
+  font-size: 10px;
+}
+
+.tab-indicator-item.noteworthy .tab-indicator-status {
+  background: rgba(255, 107, 138, 0.18);
+  color: #ffd7df;
+}
+
 .tab-indicator-hint {
   margin-left: auto;
   opacity: 0.5;
