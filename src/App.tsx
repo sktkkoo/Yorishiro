@@ -552,6 +552,27 @@ function queryMountedSessionIds(): string[] {
   );
 }
 
+/**
+ * hook server から polling した signal JSON を見て、notification なら
+ * attention request（許可待ち / 入力待ち）の本文を返す。それ以外は null。
+ *
+ * OSC 経路（hook-notify-osc.py → /dev/tty）は補助で、こちらの HTTP 経路を
+ * first-class にすることで「OSC が tty に書けなかった」failure に強くする。
+ */
+function parseHookNotificationSignal(sig: string): { title: string; body: string } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as Record<string, unknown>;
+  if (obj.event !== "notification") return null;
+  const message = typeof obj.message === "string" ? obj.message.trim() : "";
+  return { title: "Claude Code", body: message.length > 0 ? message : "Waiting for you" };
+}
+
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
@@ -3104,6 +3125,11 @@ function App() {
           }
           for (const sig of signals) {
             perception.onHookSignal(sig);
+            const notification = parseHookNotificationSignal(sig);
+            if (notification) {
+              const sessionId = tabManager.getState().activeSessionId;
+              sessionStatusStore.markAttentionRequest(sessionId, notification);
+            }
           }
         } catch (err) {
           console.warn("[App] poll_hook_signals failed:", err);
@@ -3118,7 +3144,7 @@ function App() {
     return () => {
       polling = false;
     };
-  }, [perception, devLog]);
+  }, [perception, devLog, sessionStatusStore, tabManager]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
@@ -3462,7 +3488,9 @@ function App() {
       const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
         if (disposed) return;
-        sessionStatusStore.recordExit(event.payload.session_id, event.payload.code);
+        if (event.payload.session_id !== tabManager.getState().mainSessionId) {
+          sessionStatusStore.recordExit(event.payload.session_id, event.payload.code);
+        }
         tabManager.handleSessionExit(event.payload.session_id, event.payload.code);
       });
       if (disposed) {

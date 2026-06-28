@@ -289,6 +289,7 @@ pub fn start_hook_server(_app: AppHandle) {
                         "/hook/pre-tool-use" => Some("pre-tool-use"),
                         "/hook/post-tool-use" => Some("post-tool-use"),
                         "/hook/post-tool-failure" => Some("post-tool-failure"),
+                        "/hook/notification" => Some("notification"),
                         "/hook" => None,
                         _ => None,
                     };
