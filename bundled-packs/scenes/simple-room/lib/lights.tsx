@@ -15,15 +15,15 @@ import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 export function Lights() {
   const lightRef = useRef<ThreeSpotLight>(null);
   const [controls, setControls] = useCharminalControls("lights", () => ({
-    intensity: { value: 3, min: 0, max: 3, step: 0.01, label: "intensity" },
+    intensity: { value: 2, min: 0, max: 3, step: 0.01, label: "intensity" },
     color: { value: "#ffe8ea", label: "color" },
     x: { value: -0.2, min: -5, max: 5, step: 0.1, label: "X" },
-    y: { value: 2.3, min: -5, max: 5, step: 0.1, label: "Y" },
+    y: { value: 1.9, min: -5, max: 5, step: 0.1, label: "Y" },
     z: { value: 0.4, min: -5, max: 5, step: 0.1, label: "Z" },
     targetX: { value: 0.1, min: -3, max: 3, step: 0.1, label: "target X" },
-    targetY: { value: 0.7, min: -1, max: 3, step: 0.1, label: "target Y" },
+    targetY: { value: 0.2, min: -1, max: 3, step: 0.1, label: "target Y" },
     targetZ: { value: 0, min: -3, max: 3, step: 0.1, label: "target Z" },
-    angle: { value: 0.3, min: 0.05, max: 1.5, step: 0.01, label: "angle" },
+    angle: { value: 0.85, min: 0.05, max: 1.5, step: 0.01, label: "angle" },
     penumbra: { value: 0.74, min: 0, max: 1, step: 0.01, label: "penumbra" },
     distance: { value: 1.4, min: 0, max: 20, step: 0.1, label: "distance" },
     decay: { value: 1.1, min: 0, max: 5, step: 0.1, label: "decay" },
