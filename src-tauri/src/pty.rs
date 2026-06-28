@@ -1,9 +1,10 @@
 use serde::Serialize;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tauri::ipc::Channel;
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::sessions::{PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec};
 
@@ -214,8 +215,9 @@ print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "a
 }
 
 /// Start a minimal HTTP server that receives hook signals from Claude Code.
-/// Pushes each signal into `HOOK_SIGNAL_QUEUE` for frontend polling.
-pub fn start_hook_server(_app: AppHandle) {
+/// Emits each signal to the WebView immediately and also pushes it into
+/// `HOOK_SIGNAL_QUEUE` as polling fallback.
+pub fn start_hook_server(app: AppHandle) {
     std::thread::spawn(move || {
         let listener = match TcpListener::bind(format!("127.0.0.1:{}", HOOK_SERVER_PORT)) {
             Ok(l) => l,
@@ -228,97 +230,93 @@ pub fn start_hook_server(_app: AppHandle) {
             }
         };
         for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { continue };
-            let mut buf = Vec::new();
-            let mut tmp = [0u8; 8192];
-            loop {
-                match stream.read(&mut tmp) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        buf.extend_from_slice(&tmp[..n]);
-                        if buf.len() > 512 * 1024 {
-                            break;
-                        }
-                        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
-                            let hdr = String::from_utf8_lossy(&buf);
-                            let content_len = hdr
-                                .lines()
-                                .find_map(|l| {
-                                    let lower = l.to_ascii_lowercase();
-                                    lower
-                                        .strip_prefix("content-length:")
-                                        .and_then(|v| v.trim().parse::<usize>().ok())
-                                })
-                                .unwrap_or(0);
-                            if let Some(body_off) = hdr.find("\r\n\r\n").map(|p| p + 4) {
-                                if buf.len() >= body_off + content_len {
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-            let data = String::from_utf8_lossy(&buf);
-
-            let path = data
-                .lines()
-                .next()
-                .unwrap_or("")
-                .split_whitespace()
-                .nth(1)
-                .unwrap_or("/");
-
-            eprintln!(
-                "[hook-server] path={} buf_len={} data_len={}",
-                path,
-                buf.len(),
-                data.len()
-            );
-
-            if let Some(body_start) = data.find("\r\n\r\n") {
-                let body = data[body_start + 4..].trim();
-                eprintln!(
-                    "[hook-server] body_len={} body_preview={}",
-                    body.len(),
-                    &body[..body.len().min(200)]
-                );
-                if !body.is_empty() {
-                    let event_type = match path {
-                        "/hook/pre-tool-use" => Some("pre-tool-use"),
-                        "/hook/post-tool-use" => Some("post-tool-use"),
-                        "/hook/post-tool-failure" => Some("post-tool-failure"),
-                        "/hook/notification" => Some("notification"),
-                        "/hook" => None,
-                        _ => None,
-                    };
-
-                    let final_body = if let Some(event) = event_type {
-                        if let Ok(mut obj) = serde_json::from_str::<serde_json::Value>(body) {
-                            if let Some(map) = obj.as_object_mut() {
-                                map.insert("event".to_string(), serde_json::json!(event));
-                                obj.to_string()
-                            } else {
-                                body.to_string()
-                            }
-                        } else {
-                            body.to_string()
-                        }
-                    } else {
-                        body.to_string()
-                    };
-
-                    // Push to polling queue — frontend drains via poll_hook_signals
-                    if let Ok(mut q) = HOOK_SIGNAL_QUEUE.lock() {
-                        q.push(final_body);
-                    }
-                }
-            }
-            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
-            let _ = stream.write_all(resp.as_bytes());
+            let Ok(stream) = stream else { continue };
+            let app = app.clone();
+            std::thread::spawn(move || handle_hook_stream(app, stream));
         }
     });
+}
+
+fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 8192];
+    loop {
+        match stream.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&tmp[..n]);
+                if buf.len() > 512 * 1024 {
+                    break;
+                }
+                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                    let hdr = String::from_utf8_lossy(&buf);
+                    let content_len = hdr
+                        .lines()
+                        .find_map(|l| {
+                            let lower = l.to_ascii_lowercase();
+                            lower
+                                .strip_prefix("content-length:")
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                        })
+                        .unwrap_or(0);
+                    if let Some(body_off) = hdr.find("\r\n\r\n").map(|p| p + 4) {
+                        if buf.len() >= body_off + content_len {
+                            break;
+                        }
+                    }
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    let data = String::from_utf8_lossy(&buf);
+
+    let path = data
+        .lines()
+        .next()
+        .unwrap_or("")
+        .split_whitespace()
+        .nth(1)
+        .unwrap_or("/");
+
+    if let Some(body_start) = data.find("\r\n\r\n") {
+        let body = data[body_start + 4..].trim();
+        if !body.is_empty() {
+            let event_type = match path {
+                "/hook/pre-tool-use" => Some("pre-tool-use"),
+                "/hook/post-tool-use" => Some("post-tool-use"),
+                "/hook/post-tool-failure" => Some("post-tool-failure"),
+                "/hook/notification" => Some("notification"),
+                "/hook" => None,
+                _ => None,
+            };
+
+            let final_body = if let Some(event) = event_type {
+                if let Ok(mut obj) = serde_json::from_str::<serde_json::Value>(body) {
+                    if let Some(map) = obj.as_object_mut() {
+                        map.insert("event".to_string(), serde_json::json!(event));
+                        obj.to_string()
+                    } else {
+                        body.to_string()
+                    }
+                } else {
+                    body.to_string()
+                }
+            } else {
+                body.to_string()
+            };
+
+            // Immediate path: WebView receives without waiting for polling.
+            let _ = app.emit("hook-signal", final_body.clone());
+            // Fallback path: frontend drains via poll_hook_signals if event delivery misses.
+            if let Ok(mut q) = HOOK_SIGNAL_QUEUE.lock() {
+                q.push(final_body);
+            }
+        }
+    }
+    let resp = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    let _ = stream.write_all(resp.as_bytes());
 }
 
 // ─── PTY state (facade) ─────────────────────────────────────────

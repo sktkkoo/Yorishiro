@@ -25,7 +25,7 @@ TabIndicator が `run` を出せるよう、PTY 出力が来たら `running-comm
 
 cmux の notification ring の正体は、特別な IPC ではなく terminal 出力に流れる **OSC 9 / 99 / 777 を受動的に拾う**こと。Charminal は `terminal-runtime` に `registerOscHandler(9/99/777)` を足し、host が sessionId を stamp して `markAttentionRequest()` に流す（OSC133/633 の隣・既存 infra の延長、PTY write なし）。
 
-ただし OSC 経路は emit 側（hook が `/dev/tty` へ echo）が失敗すると silent に落ちる。そこで **HTTP `/hook/notification` を first-class** にし、hook server が `event:"notification"` で tag → App の poll loop が `markAttentionRequest()` する経路を主たる堅い入口にする。OSC は補助。
+ただし OSC 経路は emit 側（hook が `/dev/tty` へ echo）が失敗すると silent に落ちる。そこで **HTTP `/hook/notification` を first-class** にし、hook server が `event:"notification"` で tag → **Tauri event `hook-signal` で即時 emit** → App が `markAttentionRequest()` する経路を主たる堅い入口にする。polling（`poll_hook_signals`）は event delivery を取りこぼした時の fallback。OSC は補助。
 
 ### 4. 「attention request」であって「awaiting-input」専用ではない（概念分離）
 
@@ -71,7 +71,7 @@ Claude Code は `Notification` hook に (a) HTTP POST と (b) `hook-notify-osc.p
 - **要 rebuild / 新 session**：`Notification` hook は session spawn 時に `hooks.json` へ書かれるため、Rust 変更後は再ビルド + agent 再起動が必要。
 - **mouse-click approve の残存**：マウスでクリック確定した場合、keystroke 解除に乗らず `stop` hook（ターン終了）まで badge が残る。許容。
 - **deferred**：Rust `SessionRegistry` の OSC133 activity（shell の running-command / idle）を TS `SessionStatusStore` に bridge する配線（§2 の heuristic を精密化）。Codex の OSC notification 実機検証。attention の persona reflex / aura 連動（cmux の pane glow 相当）。
-- 主な source：`src/runtime/session-status/`（store / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（hook poll → markAttentionRequest / clearAttention）、`src-tauri/src/pty.rs`（`Notification` hook + `hook-notify-osc.py` + `/hook/notification` tag）。
+- 主な source：`src/runtime/session-status/`（store / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（`hook-signal` event / fallback poll → markAttentionRequest / clearAttention）、`src-tauri/src/pty.rs`（`Notification` hook + `hook-notify-osc.py` + `/hook/notification` tag + immediate Tauri emit）。
 
 ## 関連 reference
 
@@ -82,3 +82,4 @@ Claude Code は `Notification` hook に (a) HTTP POST と (b) `hook-notify-osc.p
 ## 改訂履歴
 
 - 2026-06-28: 初版。SessionStatusStore（観察 read model）+ TabIndicator badge、awaiting-input の OSC/HTTP 二系統入口、sticky + 限定解除（確定入力 / stop・prompt hook、focus・mouse/focus report では消さない）、attribution（OSC=host-stamp / HTTP=agent main）、非 main exit 保持を確定。Rust OSC133 activity の TS bridge は deferred。
+- 2026-06-28 rev.2: `input` 表示の数秒〜10 秒級ラグを受け、HTTP hook server → App を polling only から **Tauri event `hook-signal` immediate + polling fallback** に変更。hook server は connection ごとに処理し、read timeout を持つ。decision 本文に反映。

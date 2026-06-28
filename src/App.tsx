@@ -3131,8 +3131,27 @@ function App() {
 
   useEffect(() => {
     let polling = true;
+    let unlistenHookSignal: (() => void) | null = null;
     const appLog = createSubsystemLog(devLog, "App");
     appLog.write({ phase: "polling", note: "starting hook-signal polling" });
+
+    const handleSignal = (sig: string): void => {
+      perception.onHookSignal(sig);
+      const agentSessionId = tabManager.getState().mainSessionId;
+      const notification = parseHookNotificationSignal(sig);
+      if (notification) {
+        sessionStatusStore.markAttentionRequest(agentSessionId, notification);
+      } else if (isAttentionResolvingSignal(sig)) {
+        sessionStatusStore.clearAttention(agentSessionId);
+      }
+    };
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlistenHookSignal = await listen<string>("hook-signal", (event) => {
+        handleSignal(event.payload);
+      });
+    })();
 
     const poll = async () => {
       appLog.write({ phase: "polling", note: "loop started" });
@@ -3143,14 +3162,7 @@ function App() {
             appLog.write({ phase: "polling", note: "polled signals", data: signals });
           }
           for (const sig of signals) {
-            perception.onHookSignal(sig);
-            const agentSessionId = tabManager.getState().mainSessionId;
-            const notification = parseHookNotificationSignal(sig);
-            if (notification) {
-              sessionStatusStore.markAttentionRequest(agentSessionId, notification);
-            } else if (isAttentionResolvingSignal(sig)) {
-              sessionStatusStore.clearAttention(agentSessionId);
-            }
+            handleSignal(sig);
           }
         } catch (err) {
           console.warn("[App] poll_hook_signals failed:", err);
@@ -3164,6 +3176,7 @@ function App() {
 
     return () => {
       polling = false;
+      unlistenHookSignal?.();
     };
   }, [perception, devLog, sessionStatusStore, tabManager]);
 
