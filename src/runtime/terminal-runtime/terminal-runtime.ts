@@ -33,6 +33,7 @@ import type {
 } from "./types";
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
+const IME_POST_COMMIT_SUPPRESS_MS = 80;
 
 /** xterm.js の初期カラーテーマ。scene が未設定の時のフォールバック。 */
 export const DEFAULT_TERMINAL_THEME: XTermTheme = {
@@ -113,6 +114,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private latestRegionContext: TerminalRegionContext | null = null;
   private terminalReferenceCounter = 0;
   private readonly terminalReferences = new Map<string, TerminalReference>();
+  private writeQueue: Promise<void> = Promise.resolve();
+  private imeComposing = false;
+  private imePendingCommitText: string | null = null;
+  private imePendingCommitTimer: number | null = null;
+  private imeSuppressPrintableUntil = -Infinity;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -140,6 +146,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     document.body.appendChild(this.xtermContainer);
 
     this.term.open(this.xtermContainer);
+    this.installImeCompositionGuard();
     this.installNotificationOscHandlers();
 
     const regionCtx = this.createRegionCanvas();
@@ -176,21 +183,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       }
     })();
 
-    // ユーザー入力を PTY に流す
-    let writeQueue: Promise<void> = Promise.resolve();
     this.term.onData((data) => {
       if (this.disposed) return;
-      this.lastUserInputAt = performance.now();
-      this.perceptionRef.current?.onUserInput(data);
-      this.notifyUserInputListeners(data);
-      this.detectClearCommand(data);
-      writeQueue = writeQueue.then(async () => {
-        try {
-          await sessionWrite({ sessionId: this.sessionId, data });
-        } catch {
-          // PTY already closed — silent
-        }
-      });
+      const guardedData = this.filterImeData(data);
+      if (guardedData === null) return;
+      this.acceptUserInputData(guardedData);
     });
 
     // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
@@ -316,6 +313,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
     }
+    this.clearImePendingCommitTimer();
     this.term.dispose();
     if (this.xtermContainer.parentElement) {
       this.xtermContainer.parentElement.removeChild(this.xtermContainer);
@@ -730,6 +728,113 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     for (const listener of Array.from(this.userInputListeners)) {
       listener(data);
     }
+  }
+
+  // Tauri WebView can leak romanized IME key data through xterm before the committed text arrives.
+  private installImeCompositionGuard(): void {
+    const textarea = this.term.textarea;
+    if (!textarea) return;
+
+    textarea.addEventListener("compositionstart", () => {
+      this.imeComposing = true;
+      this.imePendingCommitText = null;
+      this.clearImePendingCommitTimer();
+    });
+
+    textarea.addEventListener("compositionend", (event) => {
+      this.imeComposing = false;
+
+      const committedText = event.data;
+      if (committedText.length === 0) return;
+
+      this.imeSuppressPrintableUntil = performance.now() + IME_POST_COMMIT_SUPPRESS_MS;
+      this.imePendingCommitText = committedText;
+      this.clearImePendingCommitTimer();
+      this.imePendingCommitTimer = window.setTimeout(() => {
+        this.imePendingCommitTimer = null;
+        this.flushPendingImeCommit();
+      }, 0);
+    });
+
+    this.term.attachCustomKeyEventHandler((event) => {
+      if (this.shouldSuppressImeKeyEvent(event)) return false;
+      return true;
+    });
+  }
+
+  private shouldSuppressImeKeyEvent(event: KeyboardEvent): boolean {
+    if (!this.isPrintableKeyboardEvent(event)) return false;
+    if (this.imeComposing || event.isComposing) return true;
+    return performance.now() <= this.imeSuppressPrintableUntil;
+  }
+
+  private isPrintableKeyboardEvent(event: KeyboardEvent): boolean {
+    if (event.ctrlKey || event.metaKey || event.altKey) return false;
+    return event.key.length === 1;
+  }
+
+  private filterImeData(data: string): string | null {
+    if (this.imeComposing) {
+      return null;
+    }
+
+    const pendingText = this.imePendingCommitText;
+    if (pendingText !== null) {
+      this.imePendingCommitText = null;
+      this.clearImePendingCommitTimer();
+      this.imeSuppressPrintableUntil = performance.now() + IME_POST_COMMIT_SUPPRESS_MS;
+      if (this.containsControlData(data)) {
+        this.acceptUserInputData(pendingText);
+        return null;
+      }
+      return pendingText;
+    }
+
+    if (performance.now() <= this.imeSuppressPrintableUntil && this.isPrintableTerminalData(data)) {
+      return null;
+    }
+
+    return data;
+  }
+
+  private flushPendingImeCommit(): void {
+    const pendingText = this.imePendingCommitText;
+    if (pendingText === null || this.disposed) return;
+    this.imePendingCommitText = null;
+    this.imeSuppressPrintableUntil = performance.now() + IME_POST_COMMIT_SUPPRESS_MS;
+    this.acceptUserInputData(pendingText);
+  }
+
+  private clearImePendingCommitTimer(): void {
+    if (this.imePendingCommitTimer === null) return;
+    window.clearTimeout(this.imePendingCommitTimer);
+    this.imePendingCommitTimer = null;
+  }
+
+  private containsControlData(data: string): boolean {
+    for (let i = 0; i < data.length; i++) {
+      const code = data.charCodeAt(i);
+      if (code < 0x20 || code === 0x7f) return true;
+    }
+    return false;
+  }
+
+  private isPrintableTerminalData(data: string): boolean {
+    return data.length > 0 && !this.containsControlData(data);
+  }
+
+  private acceptUserInputData(data: string): void {
+    this.lastUserInputAt = performance.now();
+    this.perceptionRef.current?.onUserInput(data);
+    this.notifyUserInputListeners(data);
+    this.detectClearCommand(data);
+    this.writeQueue = this.writeQueue.then(async () => {
+      try {
+        await sessionWrite({ sessionId: this.sessionId, data });
+      } catch {
+        // PTY already closed — silent
+      }
+    });
   }
 
   private readonly handleViewportResize = (): void => {
