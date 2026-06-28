@@ -799,6 +799,25 @@ export interface RendererAPI {
   addCameraMove(config: CameraMoveConfig): Disposable;
   /** Canvas に直接描画 */
   drawOnCanvas(draw: (ctx: CanvasRenderingContext2D) => void): Disposable;
+  /**
+   * WebGL2 canvas に直接描画（GPU シェーダー用）。`drawOnCanvas` の WebGL 版。
+   *
+   * 全画面 overlay の canvas を 1 つ acquire し、`webgl2` context を 1 回だけ
+   * draw callback に渡す。drawOnCanvas と同じく runtime 側で毎フレーム再呼出し
+   * はしない——pack は closure で gl を保持し自前 RAF loop を回す。viewport は
+   * backing store の実 pixel（HiDPI 込み）に合わせて設定済みで渡る。pack は
+   * `gl.drawingBufferWidth / drawingBufferHeight` を画面寸法として使えばよい
+   * （dpr は backing store に畳み込まれているので別途意識しなくてよい）。
+   *
+   * WebGL2 が使えない環境（headless / 一部の古い webview）では `getContext`
+   * が null を返すため draw callback は呼ばれず、cleanup だけが担保される。
+   * pack 側は「呼ばれなければ no-op」を前提に書くこと。
+   *
+   * Disposable.dispose で canvas を DOM から remove する。GL resource
+   * （program / buffer / texture / framebuffer）の解放は pack 側の責務
+   * （自前 RAF の cancel と合わせて signal abort 時に行う）。
+   */
+  drawOnGLCanvas(draw: (gl: WebGL2RenderingContext) => void): Disposable;
   /** DOM overlay layer を追加。container 内で自由に DOM 操作可能 */
   addDomLayer(setup: (container: HTMLDivElement) => void): Disposable;
   /** 画面振動フィルタを追加 */

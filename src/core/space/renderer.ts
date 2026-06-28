@@ -308,6 +308,64 @@ export class Renderer implements RendererAPI {
   }
 
   /**
+   * 画面全面 overlay の WebGL2 canvas を生成し、`webgl2` context を 1 回だけ
+   * draw callback に渡す（GPU シェーダー effect 用）。drawOnCanvas と同じ
+   * overlay 原則（全画面 fixed / pointer 透過 / z-index 9999 / HiDPI backing
+   * store）に従う。
+   *
+   * drawOnCanvas が ctx.scale(dpr,dpr) で論理座標へ正規化するのに対し、
+   * WebGL では viewport を backing store の実 pixel に合わせるだけ——pack は
+   * `gl.drawingBufferWidth / Height` を画面寸法として clip 変換すればよい
+   * （dpr が backing store に畳み込まれるので point size も自動で物理 size に
+   * スケールする）。
+   *
+   * GL resource の解放は pack 側の責務。ここは canvas の DOM 着脱だけを
+   * 冪等に担保する。webgl2 が取れない環境では draw を呼ばず cleanup のみ。
+   */
+  drawOnGLCanvas(draw: (gl: WebGL2RenderingContext) => void): Disposable {
+    const canvas = this.dom.createCanvas();
+
+    Object.assign(canvas.style, CANVAS_OVERLAY_STYLES);
+
+    const dpr = this.dom.getDevicePixelRatio();
+    canvas.width = this.dom.getWindowWidth() * dpr;
+    canvas.height = this.dom.getWindowHeight() * dpr;
+
+    const mount = this.resolveCanvasMount();
+    mount.appendChild(canvas);
+
+    let disposed = false;
+    const disposable: Disposable = {
+      dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        canvas.remove();
+      },
+    };
+
+    // premultipliedAlpha: pack は premultiplied color を出力し blendFunc(ONE,ONE)
+    // で加算合成する前提。alpha も蓄積されるので overlay が page 上で正しく
+    // 合成される（mix-blend-mode に依存しない）。
+    const gl = canvas.getContext("webgl2", {
+      alpha: true,
+      premultipliedAlpha: true,
+      antialias: true,
+      depth: false,
+      stencil: false,
+    });
+    if (gl === null) {
+      // webgl2 が使えない環境（test / 古い webview 等）では draw を呼ばず、
+      // cleanup だけ担保する。
+      return disposable;
+    }
+
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    draw(gl);
+
+    return disposable;
+  }
+
+  /**
    * 画面全面 overlay の div を生成し、setup callback を 1 回だけ呼ぶ。
    * pack は container 内で自由に DOM 操作可能。
    * Disposable.dispose で div を DOM から remove する。冪等実装。

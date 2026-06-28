@@ -31,6 +31,7 @@ const makeRendererStub = (): RendererAPI => ({
   addParticles: vi.fn(() => ({ dispose: () => {}, completion: Promise.resolve() })),
   addCameraMove: vi.fn(() => ({ dispose: () => {} })),
   drawOnCanvas: vi.fn(() => ({ dispose: () => {} })),
+  drawOnGLCanvas: vi.fn(() => ({ dispose: () => {} })),
   addDomLayer: vi.fn(() => ({ dispose: () => {} })),
   queryTerminalCells: vi.fn(() => null),
 });
