@@ -18,6 +18,12 @@
   - `ctx.registerShortcut(spec, handler)` — keydown(capture) を張り、Disposable を返し、scope に積む。
   - `ctx.onDispose(cleanup)` — 手書き listener / timer の後始末を scope に積む。
   - `InitScope`（`src/runtime/user-pack-loader/init-scope.ts`）が LIFO で dispose。1 つ throw しても残りは走る。
+- **register\* の reload 扱い（非対称・意図的）**：
+  - `ctx.registerEffect` は **即時 register** し Disposable を scope に積む。effect register は dispatcher への listener 追加（非破壊・加算）なので、失敗時は staging scope の dispose で巻き取れ、reload で旧 listener が累積しない（pitfall #9 を hot reload でも防ぐ）。
+  - `ctx.registerPersona` は **commit を遅延**。persona register は同 id を即座に置換する破壊的操作で、置換された旧 entry は復元できない。register 後に init.js が throw すると「前の persona を失ったまま新 persona も入らない」状態になりうる。そこで run 中は validate と entry 構築だけ（型違反はここで同期 throw）行い、実 register は default() 成功後の **commit phase** でまとめて適用する。失敗時は commit を走らせないので前の persona が無傷で生き残る（transactional）。
+- **init.js の削除は error ではなく「init 無し」への正常遷移**：reload 時に file が無ければ（`fetchInitScriptPath` が null）旧 scope を畳んで空 scope に移る。削除して shortcut を消したのに古い binding が残り続ける、を防ぐ（`LoadInitScriptResult.missing`）。
+- **safe mode は init.js を実行しない（recovery 契約）**：起動時 skip に加え、watcher の `initReload` 配線も safe mode では張らない。safe mode 中の init.js 変更は legacy の log / title marker に留め、reload しない（`runtime-wire.ts`）。
+- **reload は single-flight で逐次化**：Tauri Channel は次 message を待たず delivery しうるため、async reload が並行すると同じ previous handle から二重に差し替わり scope が leak する。watcher 側に Promise chain（`queueRef`）を持ち、init.js 変更イベントを直列処理する（`watcher.ts` `handleInitChanged`）。
 - **transactional reload**：新 init.js を staging scope で run → `ran === true` なら旧 scope を dispose して差し替え、`ran === false`（import 失敗 / default が function でない / throw）なら staging scope を捨てて **旧 scope を温存**。壊れた保存で動いていた shortcut を失わない。
 - watcher の検知ロジック（`watcher-logic.ts`：`init.js` → `init-changed`）は不変。`handleLayerEvent` の no-op 表示を実 reload 呼び出しに置換する。
 - title marker は廃止せず **意味を反転**：reload 成功で marker を外し、失敗時だけ marker を付けて手動 reload を促す（`src/App.tsx` `onInitReloaded`）。
@@ -51,7 +57,7 @@ init.js は本質的に「何でもできる」層。v1 では pack と同じ ho
 ## 将来（v1 の scope 外）
 
 - **top-level leak の縮小**：現状 top-level の生 listener は scope 外。必要なら「default 取得前後で軽量に warn する linter / check:pack 警告」を足し、生 listener には `ctx.onDispose` を促す（破壊はしないが二重化を可視化）。
-- **generation token**：複数保存が高速連続したときの reload 競合を debounce / single-flight で抑える（現状は watcher の settle に依存）。本当に問題化したら足す。
+- **reload debounce**：高速連続保存は `queueRef` で直列化済み（competing handle の leak は解消）。さらに無駄 reload を減らしたいなら mtime debounce を足せるが、現状の逐次化で正しさは担保されているので必須ではない。
 - **shortcut 画面**：非コーダー向けに設定画面内（CREDITS と同様の overlay）でショートカット編集 UI を将来検討。`plans/2026-06-28-init-js-hot-reload-plan.md`「Future」参照。実装しても本 hot reload の上に乗る friendlier editor であり、置き換えではない。
 
 ## 関連

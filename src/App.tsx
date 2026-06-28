@@ -1472,15 +1472,16 @@ function App() {
             createAmenityContext,
             // init.js は hot reload される。成功したら（過去の build が残した）
             // 「⌘R で再読込」marker を外し、失敗時だけ marker を付けて手動 reload を促す。
-            onInitReloaded: ({ ran }) => {
+            onInitReloaded: ({ ran, missing }) => {
               void (async () => {
                 try {
                   const { getCurrentWindow } = await import("@tauri-apps/api/window");
                   const win = getCurrentWindow();
                   const current = await win.title();
-                  const next = ran
-                    ? stripInitChangedMarker(current)
-                    : appendInitChangedMarker(current);
+                  const next =
+                    ran || missing
+                      ? stripInitChangedMarker(current)
+                      : appendInitChangedMarker(current);
                   if (next !== current) await win.setTitle(next);
                 } catch (err) {
                   appLog.write({

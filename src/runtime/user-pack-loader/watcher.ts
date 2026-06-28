@@ -64,8 +64,18 @@ export interface StartPackWatcherDeps {
 export interface InitReloadConfig {
   readonly buildDeps: () => LoadInitScriptDeps;
   readonly handleRef: { current: InitScope | null };
-  /** reload 成否を呼び出し側へ通知する（title marker の付け外し等）。 */
-  readonly onReloaded?: (result: { ran: boolean; error?: string }) => void;
+  /**
+   * init.js reload の single-flight queue。Tauri Channel は次の message を待たずに
+   * delivery しうるので、async reload が並行すると同じ previous handle から二重に
+   * 差し替わり scope が leak する。ここに Promise chain を保持し、変更イベントを
+   * 逐次処理する。
+   */
+  readonly queueRef: { current: Promise<void> };
+  /**
+   * reload 成否を呼び出し側へ通知する（title marker の付け外し等）。
+   * `missing` は init.js が削除された正常遷移（error ではない）。
+   */
+  readonly onReloaded?: (result: { ran: boolean; error?: string; missing?: boolean }) => void;
 }
 
 export interface PackWatcherHandle {
@@ -180,17 +190,25 @@ async function handleInitChanged(
   }
 
   const { buildDeps, handleRef, onReloaded } = deps.initReload;
-  try {
-    const result = await reloadInitScript(buildDeps(), handleRef.current);
-    handleRef.current = result.handle;
-    onReloaded?.({ ran: result.ran, error: result.error });
-  } catch (err) {
-    deps.initScriptLog.write({
-      phase: "reload",
-      note: "init.js hot reload crashed",
-      data: { path: action.path, error: errorMessage(err) },
-    });
-  }
+  const { queueRef } = deps.initReload;
+  const runReload = async (): Promise<void> => {
+    try {
+      const result = await reloadInitScript(buildDeps(), handleRef.current);
+      handleRef.current = result.handle;
+      onReloaded?.({ ran: result.ran, error: result.error, missing: result.missing });
+    } catch (err) {
+      deps.initScriptLog.write({
+        phase: "reload",
+        note: "init.js hot reload crashed",
+        data: { path: action.path, error: errorMessage(err) },
+      });
+    }
+  };
+
+  const queued = queueRef.current.catch(() => {}).then(runReload);
+  // Keep the chain alive even if a future edit somehow throws outside runReload.
+  queueRef.current = queued.catch(() => {});
+  await queued;
 }
 
 async function reloadPack(

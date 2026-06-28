@@ -66,7 +66,7 @@ export interface LoadUserLayerDeps {
    * なったので reload 待ち marker を外す、false ならエラー表示、等の用途。
    * 未指定でも hot reload 自体は動く。
    */
-  readonly onInitReloaded?: (result: { ran: boolean; error?: string }) => void;
+  readonly onInitReloaded?: (result: { ran: boolean; error?: string; missing?: boolean }) => void;
 }
 
 export interface LoadUserLayerResult {
@@ -142,6 +142,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   // watcher と共有する init scope holder。初回 load 後に handle を格納し、
   // reload で差し替える。safe-mode では init を走らせないので null のまま。
   const initHandleRef: { current: InitScope | null } = { current: null };
+  const initReloadQueueRef: { current: Promise<void> } = { current: Promise.resolve() };
 
   let packs: LoadUserPacksResult;
   if (safeMode) {
@@ -193,12 +194,17 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
     onInitChanged: deps.onInitChanged,
-    // safe-mode でも watcher は張る（rescue 中に user が init.js を直すと反映できる）。
-    initReload: {
-      buildDeps: buildInitDeps,
-      handleRef: initHandleRef,
-      onReloaded: deps.onInitReloaded,
-    },
+    // safe mode は recovery 契約として user packs と init.js を実行しない。
+    // watcher は diagnostics / snapshot 用に張るが、init.js 変更時も reload はせず
+    // legacy の log/title marker に留める。
+    initReload: safeMode
+      ? undefined
+      : {
+          buildDeps: buildInitDeps,
+          handleRef: initHandleRef,
+          queueRef: initReloadQueueRef,
+          onReloaded: deps.onInitReloaded,
+        },
   });
 
   return { packs, init, watcher, safeMode };
