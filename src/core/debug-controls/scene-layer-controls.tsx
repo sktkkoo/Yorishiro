@@ -101,7 +101,7 @@ function SceneLayerControlsInner({ store }: SceneLayerControlsProps) {
           "background",
           "mediaRotation",
         ),
-        backgroundFile: { value: NO_MEDIA, editable: false, label: "background media" },
+        backgroundFile: { value: NO_MEDIA, editable: false, label: "background" },
         "load bg": button(() => backgroundInputRef.current?.click()),
         "clear bg": button(() => {
           revokeUrl(backgroundUrlRef.current);
@@ -124,7 +124,7 @@ function SceneLayerControlsInner({ store }: SceneLayerControlsProps) {
           "foreground",
           "mediaRotation",
         ),
-        foregroundFile: { value: NO_MEDIA, editable: false, label: "foreground media" },
+        foregroundFile: { value: NO_MEDIA, editable: false, label: "foreground" },
         "load fg": button(() => foregroundInputRef.current?.click()),
         "clear fg": button(() => {
           revokeUrl(foregroundUrlRef.current);
