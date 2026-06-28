@@ -22,3 +22,39 @@ fi
 if [[ -z "${preexec_functions[(r)__charminal_preexec]:-}" ]]; then
     preexec_functions+=(__charminal_preexec)
 fi
+
+__charminal_path_prepend_unique_directory() {
+    local directory="$1"
+    local current="${2:-$PATH}"
+    [[ -n "$directory" && -d "$directory" ]] || return 0
+    local -a entries next
+    entries=("${(@s/:/)current}")
+    next=("$directory")
+    local entry
+    for entry in "${entries[@]}"; do
+        [[ -z "$entry" || "$entry" == "$directory" ]] && continue
+        next+=("$entry")
+    done
+    print -r -- "${(j/:/)next}"
+}
+
+__charminal_install_agent_shims() {
+    local shim_root="${CHARMINAL_AGENT_SHIM_ROOT:-}"
+    [[ -n "$shim_root" && -d "$shim_root" ]] || return 0
+
+    PATH="$(__charminal_path_prepend_unique_directory "$shim_root" "${PATH-}")"
+    export PATH
+    hash -r >/dev/null 2>&1 || rehash >/dev/null 2>&1 || true
+
+    builtin unalias claude >/dev/null 2>&1 || true
+    builtin unalias codex >/dev/null 2>&1 || true
+
+    if [[ -x "$shim_root/claude" ]]; then
+        claude() { "$CHARMINAL_AGENT_SHIM_ROOT/claude" "$@"; }
+    fi
+    if [[ -x "$shim_root/codex" ]]; then
+        codex() { "$CHARMINAL_AGENT_SHIM_ROOT/codex" "$@"; }
+    fi
+}
+
+__charminal_install_agent_shims

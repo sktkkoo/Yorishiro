@@ -191,11 +191,20 @@ export class SessionTabManager {
   }
 
   /**
-   * PTY exit event のハンドラ。非 main なら close、main なら auto-respawn logic。
+   * PTY exit event のハンドラ。
+   *
+   * 非 main session は即 close しない。閉じると「この shell が落ちた /
+   * 失敗した」という tab badge をユーザーが見る前に消えてしまうため、
+   * release foundation では exited session を残し、ユーザーが Cmd+W で
+   * 明示的に閉じる設計にする。
+   *
+   * main session だけは従来どおり auto-respawn する。
    */
-  handleSessionExit(sessionId: SessionId, _exitCode: number): void {
+  handleSessionExit(sessionId: SessionId, exitCode: number): void {
     if (sessionId !== this.state.mainSessionId) {
-      this.close(sessionId);
+      if (this.state.sessions.includes(sessionId)) {
+        this.emitEvent("session-exited", { sessionId, exitCode });
+      }
       return;
     }
 

@@ -163,6 +163,7 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
+import { getSessionStatusStore, type SessionStatus } from "./runtime/session-status";
 import type { SessionTabState } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
@@ -549,6 +550,98 @@ function queryMountedSessionIds(): string[] {
   return [...document.querySelectorAll<HTMLElement>(".terminal-container")].flatMap((el) =>
     el.dataset.sessionId ? [el.dataset.sessionId] : [],
   );
+}
+
+/**
+ * hook server から polling した signal JSON を見て、notification なら
+ * attention request（許可待ち / 入力待ち）の本文を返す。それ以外は null。
+ *
+ * `input` badge の主経路は screen fast path（screen-attention-detector）。
+ * agent hook（HTTP `/hook/...`）はその fallback / 汎用 attention 経路。
+ */
+function parseHookTargetSessionId(sig: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const sessionId = (parsed as Record<string, unknown>).sessionId;
+  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
+}
+
+function parseHookAttentionSignal(
+  sig: string,
+): { title: string; body: string; source: "hook"; sessionId: string | null } | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const obj = parsed as Record<string, unknown>;
+  if (obj.event !== "notification" && obj.event !== "permission-request") return null;
+  const message = typeof obj.message === "string" ? obj.message.trim() : "";
+  const rawToolName =
+    typeof obj.tool_name === "string"
+      ? obj.tool_name
+      : typeof obj.toolName === "string"
+        ? obj.toolName
+        : "";
+  const toolName = rawToolName.trim();
+  const agent = typeof obj.agent === "string" ? obj.agent.trim() : "";
+  const title = agent === "codex" ? "Codex" : "Claude Code";
+  const fallback =
+    obj.event === "permission-request"
+      ? toolName.length > 0
+        ? `Permission requested for ${toolName}`
+        : "Permission requested"
+      : "Waiting for you";
+  return {
+    title,
+    body: message.length > 0 ? message : fallback,
+    source: "hook",
+    sessionId: parseHookTargetSessionId(sig),
+  };
+}
+
+/**
+ * hook signal が「agent はもう許可待ちではない」を意味するか。
+ *
+ * `stop`（ターン終了）と `prompt`（UserPromptSubmit = ユーザーが次の入力を送った）は、
+ * いずれも「待機を抜けた」確実なシグナル。これらで許可待ち badge を解除する。
+ * approve をマウスでクリックした等、keystroke 経路で拾えないケースの保険。
+ */
+function isAttentionResolvingSignal(sig: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const event = (parsed as Record<string, unknown>).event;
+  return (
+    event === "stop" ||
+    event === "prompt" ||
+    event === "post-tool-use" ||
+    event === "post-tool-failure"
+  );
+}
+
+/** Rust hook server が付与する seq。immediate event と polling fallback の dedup に使う。 */
+function hookSignalSeq(sig: string): number | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const seq = (parsed as Record<string, unknown>)._charminal_seq;
+  return typeof seq === "number" && Number.isFinite(seq) ? seq : null;
 }
 
 // presence による sidebar 幅 mutation の単一 writer。
@@ -1989,6 +2082,10 @@ function App() {
   );
 
   const [tabState, setTabState] = useState<SessionTabState>(() => tabManager.getState());
+  const sessionStatusStore = useMemo(() => getSessionStatusStore(), []);
+  const [sessionStatuses, setSessionStatuses] = useState<ReadonlyArray<SessionStatus>>(() =>
+    sessionStatusStore.list(),
+  );
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
   const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
   if (preferredActiveSessionIdRef.current === undefined) {
@@ -1998,6 +2095,30 @@ function App() {
   useEffect(() => {
     return tabManager.subscribe(setTabState);
   }, [tabManager]);
+
+  useEffect(() => {
+    return sessionStatusStore.subscribe(() => {
+      setSessionStatuses(sessionStatusStore.list());
+    });
+  }, [sessionStatusStore]);
+
+  useEffect(() => {
+    const liveSessionIds = new Set(tabState.sessions);
+    for (const sessionId of tabState.sessions) {
+      sessionStatusStore.register(sessionId);
+    }
+    for (const status of sessionStatusStore.list()) {
+      if (!liveSessionIds.has(status.sessionId)) {
+        sessionStatusStore.remove(status.sessionId);
+      }
+    }
+    sessionStatusStore.markActive(tabState.activeSessionId);
+  }, [sessionStatusStore, tabState.activeSessionId, tabState.sessions]);
+
+  const sessionStatusById = useMemo(
+    () => new Map(sessionStatuses.map((status) => [status.sessionId, status] as const)),
+    [sessionStatuses],
+  );
 
   useEffect(() => {
     if (!isUserLayerReady) return;
@@ -3060,10 +3181,47 @@ function App() {
 
   // ── Hook-signal listener (global, independent of PTY lifecycle) ──
 
+  const handledHookSignalSeqsRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
     let polling = true;
+    let unlistenHookSignal: (() => void) | null = null;
     const appLog = createSubsystemLog(devLog, "App");
     appLog.write({ phase: "polling", note: "starting hook-signal polling" });
+
+    const handleSignal = (sig: string): void => {
+      const seq = hookSignalSeq(sig);
+      if (seq !== null) {
+        const handled = handledHookSignalSeqsRef.current;
+        if (handled.has(seq)) return;
+        handled.add(seq);
+        // immediate/polling の短い重複 window だけを潰せればよいので小さな
+        // FIFO set にする。current seq は残す。
+        if (handled.size > 512) {
+          const oldest = handled.values().next().value;
+          if (typeof oldest === "number") handled.delete(oldest);
+        }
+      }
+      perception.onHookSignal(sig);
+      const fallbackSessionId = tabManager.getState().mainSessionId;
+      const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
+      const notification = parseHookAttentionSignal(sig);
+      if (notification) {
+        sessionStatusStore.markAttentionRequest(
+          notification.sessionId ?? targetSessionId,
+          notification,
+        );
+      } else if (isAttentionResolvingSignal(sig)) {
+        sessionStatusStore.clearAttention(targetSessionId);
+      }
+    };
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      unlistenHookSignal = await listen<string>("hook-signal", (event) => {
+        handleSignal(event.payload);
+      });
+    })();
 
     const poll = async () => {
       appLog.write({ phase: "polling", note: "loop started" });
@@ -3074,7 +3232,7 @@ function App() {
             appLog.write({ phase: "polling", note: "polled signals", data: signals });
           }
           for (const sig of signals) {
-            perception.onHookSignal(sig);
+            handleSignal(sig);
           }
         } catch (err) {
           console.warn("[App] poll_hook_signals failed:", err);
@@ -3088,8 +3246,9 @@ function App() {
 
     return () => {
       polling = false;
+      unlistenHookSignal?.();
     };
-  }, [perception, devLog]);
+  }, [perception, devLog, sessionStatusStore, tabManager]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
@@ -3433,6 +3592,9 @@ function App() {
       const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen<{ session_id: string; code: number }>("pty-exit", (event) => {
         if (disposed) return;
+        if (event.payload.session_id !== tabManager.getState().mainSessionId) {
+          sessionStatusStore.recordExit(event.payload.session_id, event.payload.code);
+        }
         tabManager.handleSessionExit(event.payload.session_id, event.payload.code);
       });
       if (disposed) {
@@ -3446,7 +3608,7 @@ function App() {
       disposed = true;
       ptyExitCleanupRef.current?.();
     };
-  }, [isUserLayerReady, tabManager]);
+  }, [isUserLayerReady, sessionStatusStore, tabManager]);
 
   // Rust 側の app_screenshot は撮影完了後に "charminal:screen-flash" を emit する。
   // ここで listen して screen-flash effect を dispatch することで、
@@ -3598,6 +3760,7 @@ function App() {
                     .map((id) => [id, id] as const),
                 ])
               }
+              statuses={sessionStatusById}
             />
           </>
         )}

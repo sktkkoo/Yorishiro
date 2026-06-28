@@ -316,6 +316,12 @@ impl PtySession {
                 if *integration {
                     let charminal_home = dirs::home_dir().map(|h| h.join(".charminal"));
                     if let Some(home) = charminal_home {
+                        super::shell_wrapper::apply_agent_shim_env(
+                            &mut cmd,
+                            &home,
+                            &self.session_id,
+                            crate::pty::HOOK_SERVER_PORT,
+                        );
                         super::shell_wrapper::apply_integration(&mut cmd, &binary, &home);
                     }
                 }

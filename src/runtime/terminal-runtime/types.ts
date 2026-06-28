@@ -57,6 +57,14 @@ export interface TerminalReference {
   readonly context: TerminalRegionContext;
 }
 
+/** Terminal が受動的に拾った OSC 9/99/777 notification。 */
+export interface TerminalNotificationEvent {
+  readonly sessionId: string;
+  readonly title: string | null;
+  readonly body: string;
+  readonly receivedAt: number;
+}
+
 export interface TerminalRegionContext {
   readonly kind: "terminal-region-context";
   readonly sessionId: string;
@@ -175,6 +183,18 @@ export interface TerminalRuntime {
   subscribePtyData(listener: () => void): Disposable;
 
   /**
+   * OSC 9 / 99 / 777 notification を受動的に拾ったときに listener を呼ぶ。
+   * agent の permission / turn complete などの注意要求を表す。PTY write なし。
+   */
+  subscribeNotification(listener: (event: TerminalNotificationEvent) => void): Disposable;
+
+  /**
+   * User key input が PTY へ送られる直前に listener を呼ぶ。
+   * 許可待ち attention の明示解除など、UI read model 更新に使う。
+   */
+  subscribeUserInput(listener: (data: string) => void): Disposable;
+
+  /**
    * ターミナルのカラーテーマを更新する。scene 切替時に呼ばれる。
    * partial merge で、指定された field だけ上書きする。
    */
@@ -199,6 +219,15 @@ export interface TerminalRuntime {
    * 意味分類はここではしない（producer 側の責務）。
    */
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
+
+  /**
+   * xterm の screen buffer 末尾を text として読む（最終行付近だけ）。
+   *
+   * getViewportLineRects() と違い DOM rect に依存しないため、非 active tab で
+   * xterm container が hidden / detached の間も使える。agent の許可待ち prompt
+   * は hook より先に画面へ出るので、低遅延の observation fast-path に使う。
+   */
+  readScreenTailText(maxLines?: number): string;
 
   /**
    * Option+Shift+drag / Command+click で capture した最新 terminal context を返す。

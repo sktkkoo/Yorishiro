@@ -264,10 +264,18 @@ describe("SessionTabManager", () => {
   // ── auto-respawn ──────────────────────────────────────────────
 
   describe("handleSessionExit / auto-respawn", () => {
-    it("非 main session の exit は close として扱う", () => {
+    it("非 main session の exit は tab を残して通知する", () => {
+      const events: Array<{ name: string; payload: Record<string, unknown> }> = [];
+      manager = new SessionTabManager(MAIN, {
+        onEvent: (name, payload) => events.push({ name, payload }),
+      });
       const id = manager.openShell(null);
-      manager.handleSessionExit(id, 0);
-      expect(manager.getState().sessions).not.toContain(id);
+      manager.handleSessionExit(id, 2);
+      expect(manager.getState().sessions).toContain(id);
+      expect(events).toContainEqual({
+        name: "session-exited",
+        payload: { sessionId: id, exitCode: 2 },
+      });
     });
 
     it("main exit で lifetime > 5s なら count リセット + respawn", () => {
