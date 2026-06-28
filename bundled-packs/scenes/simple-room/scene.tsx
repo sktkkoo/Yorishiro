@@ -31,8 +31,8 @@ const definition: ScenePackDefinition = {
       {
         id: "backdrop",
         role: "background",
-        // 中立 charcoal の素直な縦グラデのみ。出所のない radial 光だまりは置かない。
-        backgroundImage: "linear-gradient(180deg, #26282c 0%, #16181b 100%)",
+        // 中立 charcoal の一色。グラデも radial も置かない静かな壁。陰影は vignette に任せる。
+        backgroundColor: "#1c1e21",
       },
       {
         id: "vrm-slot",
