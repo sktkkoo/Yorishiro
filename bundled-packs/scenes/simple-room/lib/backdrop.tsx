@@ -1,5 +1,5 @@
 /**
- * simple-room の背景. 中立 charcoal gradient + 色の付かない光だまりを shader quad で描画.
+ * simple-room の背景. 中立 charcoal の一色 + vignette を shader quad で描画.
  *
  * NOTE: 現構成では未使用（背景は scene.tsx の DOM layer = CSS gradient が描く）。
  * 色は scene.tsx と同期させておく。腐敗防止のための保守対象。
@@ -19,16 +19,8 @@ const fragmentShader = `
   precision highp float;
   varying vec2 vUv;
   void main() {
-    // linear-gradient(180deg, #26282c 0%, #16181b 100%)
-    vec3 top = vec3(0.149, 0.157, 0.173);
-    vec3 bottom = vec3(0.086, 0.094, 0.106);
-    vec3 color = mix(bottom, top, vUv.y);
-
-    // radial-gradient(ellipse at 50% 30%, rgba(198,204,212,0.10), transparent 70%)
-    vec2 center = vec2(0.5, 0.7);
-    float dist = length((vUv - center) * vec2(1.0, 0.7));
-    float radial = smoothstep(0.7, 0.0, dist) * 0.10;
-    color += vec3(0.776, 0.800, 0.831) * radial;
+    // 単色 charcoal #1c1e21
+    vec3 color = vec3(0.110, 0.118, 0.129);
 
     // vignette: radial-gradient(ellipse at 50% 60%, transparent 60%, rgba(0,0,0,0.35) 100%)
     vec2 vigCenter = vec2(0.5, 0.4);
