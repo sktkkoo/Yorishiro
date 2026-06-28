@@ -44,6 +44,7 @@ export interface SessionAttention {
   readonly title: string | null;
   readonly body: string;
   readonly receivedAt: number;
+  readonly source: "hook" | "osc" | "screen";
 }
 
 /**
@@ -62,6 +63,8 @@ export type SessionStatusBadge =
 export interface SessionStatusStoreOptions {
   /** 時刻ソース。test で差し替え可能にするため注入式（既定 Date.now）。 */
   readonly now?: () => number;
+  /** clear 直後に遅れて来た hook/OSC 通知を古い signal と見なして無視する時間。 */
+  readonly lateAttentionSuppressMs?: number;
 }
 
 type Listener = () => void;
@@ -124,11 +127,14 @@ export class SessionStatusStore {
   private readonly statuses = new Map<SessionId, SessionStatus>();
   private readonly listeners = new Set<Listener>();
   private readonly now: () => number;
+  private readonly lateAttentionSuppressMs: number;
   /** active session は unread を持たない。markOutput 時の判定に使う。 */
   private activeSessionId: SessionId | null = null;
+  private readonly lastAttentionClearedAt = new Map<SessionId, number>();
 
   constructor(options: SessionStatusStoreOptions = {}) {
     this.now = options.now ?? (() => Date.now());
+    this.lateAttentionSuppressMs = options.lateAttentionSuppressMs ?? 10000;
   }
 
   /** session を store に登録する。既存なら no-op。 */
@@ -229,13 +235,46 @@ export class SessionStatusStore {
    */
   markAttentionRequest(
     sessionId: SessionId,
-    notification: { readonly title: string | null; readonly body: string },
+    notification: {
+      readonly title: string | null;
+      readonly body: string;
+      readonly source?: SessionAttention["source"];
+    },
   ): void {
     const body = notification.body.trim();
     if (body.length === 0) return;
     const title = notification.title?.trim() ?? "";
+    const source = notification.source ?? "osc";
     const current = this.ensure(sessionId);
     const receivedAt = this.now();
+    const lastClearedAt = this.lastAttentionClearedAt.get(sessionId);
+    if (
+      current.attention === null &&
+      source !== "screen" &&
+      lastClearedAt !== undefined &&
+      receivedAt - lastClearedAt >= 0 &&
+      receivedAt - lastClearedAt < this.lateAttentionSuppressMs
+    ) {
+      return;
+    }
+
+    if (
+      current.activity === "awaiting-input" &&
+      current.attention?.source === "screen" &&
+      source !== "screen"
+    ) {
+      return;
+    }
+
+    if (
+      current.activity === "awaiting-input" &&
+      current.attention?.title === (title.length > 0 ? title : null) &&
+      current.attention.body === body &&
+      current.attention.source === source
+    ) {
+      return;
+    }
+
     const unread = sessionId !== this.activeSessionId;
     this.commit({
       ...current,
@@ -244,10 +283,32 @@ export class SessionStatusStore {
         title: title.length > 0 ? title : null,
         body,
         receivedAt,
+        source,
       },
       unread: current.unread || unread,
       lastActivityAt: receivedAt,
     });
+  }
+
+  /**
+   * 画面末尾に許可待ち prompt が見えていることを fast path として記録する。
+   * 同じ screen prompt を output chunk ごとに再通知しないよう body/title で冪等化する。
+   */
+  markScreenAttentionRequest(
+    sessionId: SessionId,
+    notification: { readonly title: string | null; readonly body: string },
+  ): void {
+    this.markAttentionRequest(sessionId, { ...notification, source: "screen" });
+  }
+
+  /**
+   * screen fast path が「もう prompt が画面にない」と判断したときだけ screen 由来の
+   * attention を解除する。hook/OSC 由来は screen scan では解除しない。
+   */
+  clearScreenAttention(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.attention?.source !== "screen") return;
+    this.clearAttention(sessionId);
   }
 
   /** active session を切り替える。新 active の unread は解除する。 */
@@ -270,12 +331,14 @@ export class SessionStatusStore {
   clearAttention(sessionId: SessionId): void {
     const current = this.statuses.get(sessionId);
     if (!current || current.attention === null) return;
+    const clearedAt = this.now();
+    this.lastAttentionClearedAt.set(sessionId, clearedAt);
     this.commit({
       ...current,
       activity: current.activity === "awaiting-input" ? "idle" : current.activity,
       attention: null,
       unread: false,
-      lastActivityAt: this.now(),
+      lastActivityAt: clearedAt,
     });
   }
 
@@ -355,7 +418,12 @@ function shallowEqualRenderableStatus(a: SessionStatus, b: SessionStatus): boole
 
 function equalAttention(a: SessionAttention | null, b: SessionAttention | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.title === b.title && a.body === b.body && a.receivedAt === b.receivedAt;
+  return (
+    a.title === b.title &&
+    a.body === b.body &&
+    a.receivedAt === b.receivedAt &&
+    a.source === b.source
+  );
 }
 
 /** webview-lifetime singleton accessor（HMR 越しに同一 instance）。 */

@@ -599,6 +599,21 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return result;
   }
 
+  readScreenTailText(maxLines = 12): string {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return "";
+
+    const rows = Math.max(1, Math.min(this.term.rows, Math.floor(maxLines)));
+    const startRow = Math.max(0, this.term.rows - rows);
+    const lines: string[] = [];
+    for (let row = startRow; row < this.term.rows; row++) {
+      const line = buffer.getLine(buffer.viewportY + row);
+      if (!line) continue;
+      lines.push(line.translateToString(true));
+    }
+    return lines.join("\n");
+  }
+
   getLatestRegionContext(): TerminalRegionContext | null {
     return this.latestRegionContext;
   }

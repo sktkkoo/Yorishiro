@@ -56,6 +56,7 @@ describe("TabIndicator", () => {
             title: "Claude",
             body: "Permission needed",
             receivedAt: 2,
+            source: "hook",
           },
         }),
       ],

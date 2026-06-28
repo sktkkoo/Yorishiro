@@ -221,6 +221,15 @@ export interface TerminalRuntime {
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
 
   /**
+   * xterm の screen buffer 末尾を text として読む（最終行付近だけ）。
+   *
+   * getViewportLineRects() と違い DOM rect に依存しないため、非 active tab で
+   * xterm container が hidden / detached の間も使える。agent の許可待ち prompt
+   * は hook より先に画面へ出るので、低遅延の observation fast-path に使う。
+   */
+  readScreenTailText(maxLines?: number): string;
+
+  /**
    * Option+Shift+drag / Command+click で capture した最新 terminal context を返す。
    * 未選択 / 空選択なら null。
    */

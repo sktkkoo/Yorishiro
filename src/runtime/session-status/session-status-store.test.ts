@@ -232,6 +232,7 @@ describe("SessionStatusStore", () => {
         title: "Claude",
         body: "Permission needed to run Bash(ls)",
         receivedAt: 250,
+        source: "osc",
       },
       unread: true,
       lastActivityAt: 250,
@@ -288,6 +289,86 @@ describe("SessionStatusStore", () => {
       activity: "idle",
       attention: null,
     });
+  });
+
+  it("records screen attention idempotently", () => {
+    const { store, tick } = createStore();
+    store.register("s1");
+    let notifyCount = 0;
+    store.subscribe(() => notifyCount++);
+
+    tick(100);
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+
+    expect(notifyCount).toBe(1);
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Claude Code",
+        body: "Allow command?",
+        receivedAt: 100,
+        source: "screen",
+      },
+    });
+  });
+
+  it("clears only screen-sourced attention when the prompt disappears from the screen", () => {
+    const { store } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    store.clearScreenAttention("s1");
+    expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
+
+    store.markAttentionRequest("s2", {
+      title: "Claude Code",
+      body: "Permission needed",
+      source: "hook",
+    });
+    store.clearScreenAttention("s2");
+    expect(store.get("s2")).toMatchObject({
+      activity: "awaiting-input",
+      attention: { source: "hook" },
+    });
+  });
+
+  it("keeps screen attention authoritative over late hooks while prompt is visible", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(200);
+    store.markAttentionRequest("s1", {
+      title: "Claude Code",
+      body: "Waiting for you",
+      source: "hook",
+    });
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Claude Code",
+        body: "Allow command?",
+        receivedAt: 100,
+        source: "screen",
+      },
+    });
+  });
+
+  it("suppresses late hook attention immediately after user cleared screen attention", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.clearAttention("s1");
+    tick(100);
+    store.markAttentionRequest("s1", {
+      title: "Claude Code",
+      body: "Allow command?",
+      source: "hook",
+    });
+
+    expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
   });
 
   it("clears stale exit code when lifecycle starts again", () => {

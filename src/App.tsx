@@ -559,7 +559,9 @@ function queryMountedSessionIds(): string[] {
  * OSC 経路（hook-notify-osc.py → /dev/tty）は補助で、こちらの HTTP 経路を
  * first-class にすることで「OSC が tty に書けなかった」failure に強くする。
  */
-function parseHookNotificationSignal(sig: string): { title: string; body: string } | null {
+function parseHookNotificationSignal(
+  sig: string,
+): { title: string; body: string; source: "hook" } | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(sig);
@@ -570,7 +572,11 @@ function parseHookNotificationSignal(sig: string): { title: string; body: string
   const obj = parsed as Record<string, unknown>;
   if (obj.event !== "notification") return null;
   const message = typeof obj.message === "string" ? obj.message.trim() : "";
-  return { title: "Claude Code", body: message.length > 0 ? message : "Waiting for you" };
+  return {
+    title: "Claude Code",
+    body: message.length > 0 ? message : "Waiting for you",
+    source: "hook",
+  };
 }
 
 /**

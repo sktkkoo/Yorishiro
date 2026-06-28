@@ -254,6 +254,33 @@ describe("TerminalRuntime", () => {
     sub.dispose();
   });
 
+  it("reads screen tail text from xterm buffer without DOM geometry", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0] as unknown as {
+      buffer: {
+        active: {
+          viewportY: number;
+          getLine: (index: number) => { translateToString: () => string } | null;
+        };
+      };
+    };
+    terminal.buffer = {
+      active: {
+        viewportY: 0,
+        getLine: (index: number) => {
+          const lines = new Map([
+            [22, "Claude needs your permission"],
+            [23, "Allow command?"],
+          ]);
+          const text = lines.get(index);
+          return text ? { translateToString: () => text } : null;
+        },
+      },
+    };
+
+    expect(runtime.readScreenTailText(2)).toBe("Claude needs your permission\nAllow command?");
+  });
+
   it("emits subscribeUserInput on user keystrokes", () => {
     const runtime = getTerminalRuntime("shell-1");
     const received: string[] = [];

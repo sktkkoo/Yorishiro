@@ -6,6 +6,10 @@
  */
 
 export {
+  detectScreenAttentionRequest,
+  type ScreenAttentionDetection,
+} from "./screen-attention-detector";
+export {
   deriveSessionStatusBadge,
   getSessionStatusStore,
   isAttentionClearingInput,
