@@ -243,6 +243,57 @@ pub fn start_hook_server(app: AppHandle) {
     });
 }
 
+fn split_path_query(raw_path: &str) -> (&str, Option<&str>) {
+    match raw_path.split_once('?') {
+        Some((path, query)) => (path, Some(query)),
+        None => (raw_path, None),
+    }
+}
+
+fn query_param(query: Option<&str>, key: &str) -> Option<String> {
+    let query = query?;
+    for pair in query.split('&') {
+        let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+        if k == key {
+            let decoded = percent_decode_query(v);
+            if !decoded.is_empty() {
+                return Some(decoded);
+            }
+        }
+    }
+    None
+}
+
+fn percent_decode_query(value: &str) -> String {
+    let mut out = Vec::with_capacity(value.len());
+    let bytes = value.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'+' => {
+                out.push(b' ');
+                i += 1;
+            }
+            b'%' if i + 2 < bytes.len() => {
+                let h1 = (bytes[i + 1] as char).to_digit(16);
+                let h2 = (bytes[i + 2] as char).to_digit(16);
+                if let (Some(h1), Some(h2)) = (h1, h2) {
+                    out.push(((h1 << 4) | h2) as u8);
+                    i += 3;
+                } else {
+                    out.push(bytes[i]);
+                    i += 1;
+                }
+            }
+            b => {
+                out.push(b);
+                i += 1;
+            }
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut buf = Vec::new();
@@ -278,22 +329,29 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
     }
     let data = String::from_utf8_lossy(&buf);
 
-    let path = data
+    let raw_path = data
         .lines()
         .next()
         .unwrap_or("")
         .split_whitespace()
         .nth(1)
         .unwrap_or("/");
+    let (path, query) = split_path_query(raw_path);
+    let session_id = query_param(query, "sessionId");
+    let agent = query_param(query, "agent");
 
     if let Some(body_start) = data.find("\r\n\r\n") {
         let body = data[body_start + 4..].trim();
         if !body.is_empty() {
             let event_type = match path {
+                "/hook/prompt" => Some("prompt"),
+                "/hook/stop" => Some("stop"),
+                "/hook/session-start" => Some("session-start"),
                 "/hook/pre-tool-use" => Some("pre-tool-use"),
                 "/hook/post-tool-use" => Some("post-tool-use"),
                 "/hook/post-tool-failure" => Some("post-tool-failure"),
                 "/hook/notification" => Some("notification"),
+                "/hook/permission-request" => Some("permission-request"),
                 "/hook" => None,
                 _ => None,
             };
@@ -306,6 +364,12 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
                     let map = obj.as_object_mut().expect("checked is_object");
                     if let Some(event) = event_type {
                         map.insert("event".to_string(), serde_json::json!(event));
+                    }
+                    if let Some(session_id) = &session_id {
+                        map.insert("sessionId".to_string(), serde_json::json!(session_id));
+                    }
+                    if let Some(agent) = &agent {
+                        map.insert("agent".to_string(), serde_json::json!(agent));
                     }
                     map.insert("_charminal_seq".to_string(), serde_json::json!(seq));
                     obj.to_string()
@@ -502,5 +566,22 @@ mod tests {
         let stdin = build_hook_stdin_command(19001, "/hook/pre-tool-use", true);
         assert!(stdin.contains("[Console]::In.ReadToEnd()"));
         assert!(stdin.contains("http://127.0.0.1:19001/hook/pre-tool-use"));
+    }
+
+    #[test]
+    fn hook_path_query_extracts_session_and_agent() {
+        let (path, query) = split_path_query("/hook/notification?sessionId=shell-1&agent=codex");
+        assert_eq!(path, "/hook/notification");
+        assert_eq!(query_param(query, "sessionId"), Some("shell-1".to_string()));
+        assert_eq!(query_param(query, "agent"), Some("codex".to_string()));
+    }
+
+    #[test]
+    fn hook_query_percent_decodes_values() {
+        let (_, query) = split_path_query("/hook/prompt?sessionId=shell%3A1+copy");
+        assert_eq!(
+            query_param(query, "sessionId"),
+            Some("shell:1 copy".to_string())
+        );
     }
 }

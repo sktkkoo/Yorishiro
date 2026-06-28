@@ -11,9 +11,7 @@
 
 use std::fs;
 use std::io;
-use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// `~/.charminal/shell/init.zsh` — OSC 133 emit を zsh の hook に登録する。
 /// PROMPT は触らず、precmd / preexec function array にのみ append する
@@ -78,6 +76,315 @@ fn write_if_different(path: &Path, content: &str) -> io::Result<()> {
         }
     }
     fs::write(path, content)
+}
+
+fn write_executable_if_different(path: &Path, content: &str) -> io::Result<()> {
+    write_if_different(path, content)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+fn sh_single_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+fn sanitize_session_component(session_id: &str) -> String {
+    let mut out = String::with_capacity(session_id.len());
+    for ch in session_id.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        "session".to_string()
+    } else {
+        out
+    }
+}
+
+fn path_prepend_unique(prepend: &Path, current: &str) -> String {
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    let prepend = prepend.to_string_lossy().to_string();
+    let mut entries = vec![prepend.clone()];
+    for entry in current.split(sep) {
+        if entry.is_empty() || entry == prepend {
+            continue;
+        }
+        entries.push(entry.to_string());
+    }
+    entries.join(sep)
+}
+
+fn hook_script(shell_dir: &Path, file_name: &str, endpoint: &str) -> io::Result<PathBuf> {
+    let hooks_dir = shell_dir.join("hooks");
+    fs::create_dir_all(&hooks_dir)?;
+    let path = hooks_dir.join(file_name);
+    let script = format!(
+        r#"#!/bin/sh
+port="${{CHARMINAL_HOOK_PORT:-19001}}"
+session="${{CHARMINAL_SESSION_ID:-}}"
+agent="${{CHARMINAL_AGENT_KIND:-}}"
+body="$(cat 2>/dev/null || true)"
+if [ -z "$body" ]; then
+  body="{{}}"
+fi
+url="http://127.0.0.1:${{port}}{endpoint}?sessionId=${{session}}&agent=${{agent}}"
+if command -v curl >/dev/null 2>&1; then
+  printf '%s' "$body" | curl -s -m 1 -X POST --data-binary @- "$url" >/dev/null 2>&1 || true
+fi
+printf '{{}}'
+"#,
+    );
+    write_executable_if_different(&path, &script)?;
+    Ok(path)
+}
+
+fn command_path_for_hook(path: &Path) -> String {
+    // Claude Code は command を shell で実行する。space を含む HOME に備え quote する。
+    sh_single_quote(&path.to_string_lossy())
+}
+
+fn toml_literal_command(path: &Path) -> String {
+    // Codex hook は runtime によって shell 経由 / direct exec が揺れるため、
+    // cmux と同じく「実行可能 script path だけ」を渡す。通常の macOS HOME では
+    // space を含まない前提。path に ''' が入る場合だけ安全側で空にする。
+    let raw = path.to_string_lossy();
+    if raw.contains("'''") {
+        String::new()
+    } else {
+        raw.into_owned()
+    }
+}
+
+fn claude_hooks_json(hooks_dir: &HookScripts) -> String {
+    serde_json::json!({
+        "hooks": {
+            "UserPromptSubmit": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.prompt) }]
+            }],
+            "PreToolUse": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.pre_tool_use) }]
+            }],
+            "PostToolUse": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.post_tool_use) }]
+            }],
+            "PostToolUseFailure": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.post_tool_failure) }]
+            }],
+            "Stop": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.stop) }]
+            }],
+            "Notification": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.notification) }]
+            }]
+        }
+    })
+    .to_string()
+}
+
+struct HookScripts {
+    prompt: PathBuf,
+    stop: PathBuf,
+    pre_tool_use: PathBuf,
+    post_tool_use: PathBuf,
+    post_tool_failure: PathBuf,
+    notification: PathBuf,
+    session_start: PathBuf,
+    permission_request: PathBuf,
+}
+
+fn ensure_hook_scripts(shell_dir: &Path) -> io::Result<HookScripts> {
+    Ok(HookScripts {
+        prompt: hook_script(shell_dir, "hook-prompt.sh", "/hook/prompt")?,
+        stop: hook_script(shell_dir, "hook-stop.sh", "/hook/stop")?,
+        pre_tool_use: hook_script(shell_dir, "hook-pre-tool-use.sh", "/hook/pre-tool-use")?,
+        post_tool_use: hook_script(shell_dir, "hook-post-tool-use.sh", "/hook/post-tool-use")?,
+        post_tool_failure: hook_script(
+            shell_dir,
+            "hook-post-tool-failure.sh",
+            "/hook/post-tool-failure",
+        )?,
+        notification: hook_script(shell_dir, "hook-notification.sh", "/hook/notification")?,
+        session_start: hook_script(shell_dir, "hook-session-start.sh", "/hook/session-start")?,
+        permission_request: hook_script(
+            shell_dir,
+            "hook-permission-request.sh",
+            "/hook/permission-request",
+        )?,
+    })
+}
+
+fn claude_shim_script(settings_path: &Path) -> String {
+    let settings = sh_single_quote(&settings_path.to_string_lossy());
+    r#"#!/bin/sh
+if [ "${CHARMINAL_AGENT_SHIMS_DISABLED:-}" = "1" ] || [ -z "${CHARMINAL_SESSION_ID:-}" ]; then
+  exec_real=1
+else
+  exec_real=0
+fi
+self_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+find_real() {
+  old_ifs="$IFS"
+  IFS=:
+  for d in ${PATH:-}; do
+    [ "$d" = "$self_dir" ] && continue
+    candidate="$d/claude"
+    [ -x "$candidate" ] || continue
+    [ "$candidate" = "$0" ] && continue
+    printf '%s' "$candidate"
+    IFS="$old_ifs"
+    return 0
+  done
+  IFS="$old_ifs"
+  return 1
+}
+real="$(find_real)" || { echo "Error: claude not found in PATH" >&2; exit 127; }
+if [ "$exec_real" = "1" ]; then
+  exec "$real" "$@"
+fi
+export CHARMINAL_AGENT_KIND=claude
+exec "$real" --settings __SETTINGS__ "$@"
+"#
+    .replace("__SETTINGS__", &settings)
+}
+
+fn codex_hook_arg(event: &str, path: &Path, timeout_ms: u32) -> String {
+    let command = toml_literal_command(path);
+    format!(
+        "hooks.{event}=[{{hooks=[{{type=\"command\",command='''{command}''',timeout={timeout_ms}}}]}}]"
+    )
+}
+
+fn codex_shim_script(hooks: &HookScripts) -> String {
+    let args = [
+        codex_hook_arg("SessionStart", &hooks.session_start, 10000),
+        codex_hook_arg("UserPromptSubmit", &hooks.prompt, 10000),
+        codex_hook_arg("Stop", &hooks.stop, 10000),
+        codex_hook_arg("PreToolUse", &hooks.pre_tool_use, 120000),
+        codex_hook_arg("PostToolUse", &hooks.post_tool_use, 10000),
+        codex_hook_arg("PermissionRequest", &hooks.permission_request, 120000),
+    ];
+    let mut injection = String::new();
+    for arg in args {
+        injection.push_str("  -c ");
+        injection.push_str(&sh_single_quote(&arg));
+        injection.push_str(" \\\n");
+    }
+
+    format!(
+        r#"#!/bin/sh
+self_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+find_real() {{
+  old_ifs="$IFS"
+  IFS=:
+  for d in ${{PATH:-}}; do
+    [ "$d" = "$self_dir" ] && continue
+    candidate="$d/codex"
+    [ -x "$candidate" ] || continue
+    [ "$candidate" = "$0" ] && continue
+    printf '%s' "$candidate"
+    IFS="$old_ifs"
+    return 0
+  done
+  IFS="$old_ifs"
+  return 1
+}}
+should_inject() {{
+  [ "$#" -eq 0 ] && return 0
+  skip=0
+  for arg in "$@"; do
+    if [ "$skip" = "1" ]; then skip=0; continue; fi
+    case "$arg" in
+      -c|--config|-m|--model|-p|--profile|-C|--cd|--remote|-a|--ask-for-approval|-s|--sandbox|--output-last-message|--enable|--disable)
+        skip=1; continue ;;
+      --help|-h|-V|--version)
+        return 1 ;;
+      --)
+        return 0 ;;
+      -*)
+        continue ;;
+      exec|e|resume)
+        return 0 ;;
+      review|login|logout|mcp|plugin|mcp-server|app-server|remote-control|app|completion|update|doctor|sandbox|debug|apply|a|archive|delete|unarchive|fork|cloud|exec-server|features|help)
+        return 1 ;;
+      *)
+        return 0 ;;
+    esac
+  done
+  return 0
+}}
+real="$(find_real)" || {{ echo "Error: codex not found in PATH" >&2; exit 127; }}
+if [ "${{CHARMINAL_AGENT_SHIMS_DISABLED:-}}" = "1" ] || [ -z "${{CHARMINAL_SESSION_ID:-}}" ] || ! should_inject "$@"; then
+  exec "$real" "$@"
+fi
+export CHARMINAL_AGENT_KIND=codex
+exec "$real" \
+  --enable hooks \
+  --dangerously-bypass-hook-trust \
+{injection}  "$@"
+"#
+    )
+}
+
+/// shell session 内で手動起動された `claude` / `codex` を Charminal に紐づける
+/// per-session PATH shim を用意する。cmux と同じく、Charminal 内の shell にだけ
+/// env + PATH を注入し、wrapper 失敗時は real binary へ pass-through する。
+pub fn prepare_agent_command_shims(charminal_home: &Path, session_id: &str) -> io::Result<PathBuf> {
+    let shell_dir = charminal_home.join("shell");
+    let hooks = ensure_hook_scripts(&shell_dir)?;
+    let shim_dir = shell_dir
+        .join("session-shims")
+        .join(sanitize_session_component(session_id));
+    fs::create_dir_all(&shim_dir)?;
+
+    let claude_settings_path = shim_dir.join("claude-hooks.json");
+    write_if_different(&claude_settings_path, &claude_hooks_json(&hooks))?;
+    write_executable_if_different(
+        &shim_dir.join("claude"),
+        &claude_shim_script(&claude_settings_path),
+    )?;
+    write_executable_if_different(&shim_dir.join("codex"), &codex_shim_script(&hooks))?;
+
+    // port は env で渡すので file 内容は session 間で共有できるが、session ごとの
+    // shim dir にしておくと self-skip / cleanup / debug が分かりやすい。
+    Ok(shim_dir)
+}
+
+pub fn apply_agent_shim_env(
+    cmd: &mut portable_pty::CommandBuilder,
+    charminal_home: &Path,
+    session_id: &str,
+    hook_port: u16,
+) {
+    match prepare_agent_command_shims(charminal_home, session_id) {
+        Ok(shim_dir) => {
+            cmd.env("CHARMINAL_SESSION_ID", session_id);
+            cmd.env("CHARMINAL_HOOK_PORT", hook_port.to_string());
+            cmd.env("CHARMINAL_AGENT_SHIM_ROOT", &shim_dir);
+            cmd.env(
+                "PATH",
+                path_prepend_unique(&shim_dir, &crate::build_path_env()),
+            );
+        }
+        Err(err) => {
+            eprintln!(
+                "[shell-wrapper] failed to prepare agent command shims for {}: {}",
+                session_id, err
+            );
+        }
+    }
 }
 
 /// shell binary path から basename を抽出して、known な shell 名（zsh / bash /
@@ -336,6 +643,48 @@ mod tests {
         let after = fs::read_to_string(&hook).unwrap();
         assert_eq!(after, "# user customized");
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn prepare_agent_command_shims_writes_claude_and_codex_wrappers() {
+        let root = fresh_temp_root("agent-shims");
+        ensure_shell_files(&root).expect("ensure_shell_files");
+
+        let shim_dir =
+            prepare_agent_command_shims(&root, "shell:1").expect("prepare_agent_command_shims");
+
+        assert!(shim_dir.ends_with("shell_1"));
+        let claude = shim_dir.join("claude");
+        let codex = shim_dir.join("codex");
+        let settings = shim_dir.join("claude-hooks.json");
+        assert!(claude.is_file());
+        assert!(codex.is_file());
+        assert!(settings.is_file());
+
+        let claude_script = fs::read_to_string(&claude).unwrap();
+        assert!(claude_script.contains("--settings"));
+        assert!(claude_script.contains("CHARMINAL_AGENT_KIND=claude"));
+
+        let codex_script = fs::read_to_string(&codex).unwrap();
+        assert!(codex_script.contains("--enable hooks"));
+        assert!(codex_script.contains("hooks.PermissionRequest"));
+        assert!(codex_script.contains("CHARMINAL_AGENT_KIND=codex"));
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
+        assert!(parsed["hooks"]["Notification"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("hook-notification.sh"));
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn path_prepend_unique_moves_shim_to_front_once() {
+        let shim = Path::new("/tmp/charminal-shim");
+        let path = path_prepend_unique(shim, "/usr/bin:/tmp/charminal-shim:/bin");
+        assert_eq!(path, "/tmp/charminal-shim:/usr/bin:/bin");
     }
 
     #[test]

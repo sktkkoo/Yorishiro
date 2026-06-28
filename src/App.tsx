@@ -559,9 +559,21 @@ function queryMountedSessionIds(): string[] {
  * OSC 経路（hook-notify-osc.py → /dev/tty）は補助で、こちらの HTTP 経路を
  * first-class にすることで「OSC が tty に書けなかった」failure に強くする。
  */
-function parseHookNotificationSignal(
+function parseHookTargetSessionId(sig: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const sessionId = (parsed as Record<string, unknown>).sessionId;
+  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
+}
+
+function parseHookAttentionSignal(
   sig: string,
-): { title: string; body: string; source: "hook" } | null {
+): { title: string; body: string; source: "hook"; sessionId: string | null } | null {
   let parsed: unknown;
   try {
     parsed = JSON.parse(sig);
@@ -570,12 +582,22 @@ function parseHookNotificationSignal(
   }
   if (typeof parsed !== "object" || parsed === null) return null;
   const obj = parsed as Record<string, unknown>;
-  if (obj.event !== "notification") return null;
+  if (obj.event !== "notification" && obj.event !== "permission-request") return null;
   const message = typeof obj.message === "string" ? obj.message.trim() : "";
+  const toolName = typeof obj.tool_name === "string" ? obj.tool_name.trim() : "";
+  const agent = typeof obj.agent === "string" ? obj.agent.trim() : "";
+  const title = agent === "codex" ? "Codex" : "Claude Code";
+  const fallback =
+    obj.event === "permission-request"
+      ? toolName.length > 0
+        ? `Permission requested for ${toolName}`
+        : "Permission requested"
+      : "Waiting for you";
   return {
-    title: "Claude Code",
-    body: message.length > 0 ? message : "Waiting for you",
+    title,
+    body: message.length > 0 ? message : fallback,
     source: "hook",
+    sessionId: parseHookTargetSessionId(sig),
   };
 }
 
@@ -595,7 +617,12 @@ function isAttentionResolvingSignal(sig: string): boolean {
   }
   if (typeof parsed !== "object" || parsed === null) return false;
   const event = (parsed as Record<string, unknown>).event;
-  return event === "stop" || event === "prompt";
+  return (
+    event === "stop" ||
+    event === "prompt" ||
+    event === "post-tool-use" ||
+    event === "post-tool-failure"
+  );
 }
 
 /** Rust hook server が付与する seq。immediate event と polling fallback の dedup に使う。 */
@@ -3170,12 +3197,16 @@ function App() {
         }
       }
       perception.onHookSignal(sig);
-      const agentSessionId = tabManager.getState().mainSessionId;
-      const notification = parseHookNotificationSignal(sig);
+      const fallbackSessionId = tabManager.getState().mainSessionId;
+      const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
+      const notification = parseHookAttentionSignal(sig);
       if (notification) {
-        sessionStatusStore.markAttentionRequest(agentSessionId, notification);
+        sessionStatusStore.markAttentionRequest(
+          notification.sessionId ?? targetSessionId,
+          notification,
+        );
       } else if (isAttentionResolvingSignal(sig)) {
-        sessionStatusStore.clearAttention(agentSessionId);
+        sessionStatusStore.clearAttention(targetSessionId);
       }
     };
 

@@ -9,9 +9,9 @@
 
 各 session の「いま何が起きているか」を UI 向けに畳む **observation-only な read model**（`SessionStatusStore`）を持つ。lifecycle / activity / unread / exit に加え、agent の **注意要求（attention）** を集約し、TabIndicator に単一 badge（`start` / `run` / `idle` / `input` / `done` / `failed` / `exited`）として出す。
 
-「許可待ち（`input`）」は、release 前の体感 latency 対策として **xterm screen buffer 末尾の permission prompt を低遅延 fast path として読む**。agent hook 由来の attention signal と terminal-native な notification OSC（9/99/777）は fallback / 汎用 attention 経路として残す。許可待ちは sticky（出力 / focus では消えない）で、**確定入力、screen 上からの prompt 消失、agent の resume hook（stop / prompt）で解除**する。PTY observation-only（[critical-constraints §1](critical-constraints.md)）は一切緩めない。
+「許可待ち（`input`）」は、release 前の体感 latency 対策として **xterm screen buffer 末尾の permission prompt を低遅延 fast path として読む**。さらに cmux 型の **per-session PATH shim** を shell session に注入し、手動起動された `claude` / `codex` から sessionId 付き hook signal を返せるようにする。agent hook 由来の attention signal と terminal-native な notification OSC（9/99/777）は fallback / 汎用 attention 経路として残す。許可待ちは sticky（出力 / focus では消えない）で、**確定入力、screen 上からの prompt 消失、agent の resume hook（stop / prompt / post-tool）で解除**する。PTY observation-only（[critical-constraints §1](critical-constraints.md)）は一切緩めない。
 
-現状の Charminal で最も低遅延に検出できるのは、その terminal screen に実際に permission prompt が描かれるケース。hook / OSC だけで安定検出できるのは、Charminal が起動時に hooks / OSC を注入した main agent、またはその terminal session に OSC notification が直接出た場合。shell tab でユーザーが手動起動した `claude` / `codex` の許可待ちを非 main session に正しく attribute する恒久策は、cmux と同じく shell 起動環境に per-session wrapper / shim を入れること（§8）。
+現状の Charminal で最も低遅延に検出できるのは、その terminal screen に実際に permission prompt が描かれるケース。hook / OSC による安定検出は、Charminal が起動時に hooks / OSC を注入した main agent に加え、shell session に注入した `~/.charminal/shell/session-shims/<session>/claude|codex` 経由で手動起動された agent も対象にする（§8）。
 
 ## 何を決めたか
 
@@ -44,13 +44,13 @@ OSC notification / Notification hook は「許可待ち」だけでなく「turn
 - 解除するのは 3 経路のみ：
   1. **確定入力**：非 ESC の keystroke（Enter / 文字 / 数字）。マウス報告・focus 報告・矢印などの **ESC 始まり sequence は無視**する（`isAttentionClearingInput`）。これらは agent TUI の mouse tracking / focus reporting で `term.onData` に流入するため、無視しないと「マウスを動かしただけ / フォーカスが変わっただけ」で消える。
   2. **screen prompt 消失**：screen fast path 由来の attention は、次の scan で prompt が見えなくなったら解除する。マウスクリック approve 等、keystroke 解除に乗らないケースの主経路。
-  3. **agent resume hook**：`stop`（ターン終了）/ `prompt`（UserPromptSubmit）。screen scan が取りこぼした時の保険。`PreToolUse` は permission gate と発火が近く早すぎる解除になりうるので採らない。
+  3. **agent resume hook**：`stop`（ターン終了）/ `prompt`（UserPromptSubmit）/ `post-tool-use` / `post-tool-failure`。screen scan が取りこぼした時の保険。`PreToolUse` は permission gate と発火が近く早すぎる解除になりうるので採らない。
 
 screen fast path が出した attention は hook / OSC より権威を持つ。prompt が画面に見えている間に遅れて来た hook notification で source を上書きしない。またユーザー入力 / screen 消失で解除した直後に遅れて来た hook / OSC は短時間（既定 10 秒）抑止し、古い通知で `input` が復活しないようにする。
 
 ### 6. attribution と exit の扱い
 
-- OSC 経路は `sessionId` を host-stamp（詐称不可）。HTTP hook 経路は Charminal の session id を持たないので、**agent = main session**を宛先にする（裏タブの agent が許可待ちでも agent タブに出す）。
+- OSC 経路は `sessionId` を host-stamp（詐称不可）。HTTP hook 経路は、payload/query に `sessionId` があればその session に attribute し、無ければ **agent = main session**を fallback 宛先にする。shell shims は `CHARMINAL_SESSION_ID` を query に載せるため、非 main shell agent も該当 tab に `input` を出せる。
 - `pty-exit` の `recordExit` は **非 main session のみ**。main は auto-respawn するので exit badge を出さない。
 - 非 main session は exit しても **即 close しない**（`done` / `failed` を見せ、ユーザーが Cmd+W で閉じる）。
 
@@ -58,9 +58,9 @@ screen fast path が出した attention は hook / OSC より権威を持つ。p
 
 Claude Code は `Notification` hook に (a) HTTP POST と (b) `hook-notify-osc.py`（stdin の `message` を読んで `/dev/tty` に OSC 777 を書く）を仕込む。Codex は hook / notification API の実機確認が必要。どちらも受信側（registerOscHandler / hook poll）は観察だけで、PTY へ書かない。
 
-### 8. 手動起動 shell agent と cmux 調査（2026-06-28）
+### 8. 手動起動 shell agent と cmux 型 per-session shim（2026-06-28）
 
-結論：現状の Charminal は、main agent 以外の shell でユーザーが手動起動した `claude` / `codex` の許可待ちを安定検出できない。検出できるのは、agent がその terminal に notification OSC を直接吐いた場合だけで、`sessionId` 付きの hook signal は注入されていない。特に HTTP hook fallback は現在 main agent 前提なので、非 main shell agent に attribute できない。
+結論：screen fast path だけでは低遅延の保険にはなるが、agent の semantic event / sessionId attribution は安定しない。cmux と同じく、shell session の spawn 時に session context を環境へ入れ、`PATH` 先頭に per-session shim directory を置く方式を採る。
 
 cmux（`manaflow-ai/cmux`、調査 snapshot `05c03cf5ac3640485f53623731ea416d642e8007`）は、端末画面や TUI 文字列を読んで推定していない。仕組みは次の組み合わせ。
 
@@ -71,13 +71,17 @@ cmux（`manaflow-ai/cmux`、調査 snapshot `05c03cf5ac3640485f53623731ea416d642
 - persistent hook install も持つ。Codex では `cmux hooks setup --agent codex` が `~/.codex/hooks.json` を触る経路で、custom launcher / subrouter が PATH wrapper を bypass する場合の保険。source: [CMUXCLI+AgentHookDefinitions.swift](https://github.com/manaflow-ai/cmux/blob/05c03cf5ac3640485f53623731ea416d642e8007/CLI/CMUXCLI%2BAgentHookDefinitions.swift#L156-L177), [AutomationSection.swift](https://github.com/manaflow-ai/cmux/blob/05c03cf5ac3640485f53623731ea416d642e8007/Packages/macOS/CmuxSettingsUI/Sources/CmuxSettingsUI/Sections/AutomationSection.swift#L229-L265)
 - Feed classifier は event semantics を分ける。Claude `PermissionRequest` は actionable approval、Codex `PermissionRequest` は Codex 自身の reviewer 前に走るため telemetry 扱いにしている。source: [FeedEventClassifier.swift](https://github.com/manaflow-ai/cmux/blob/05c03cf5ac3640485f53623731ea416d642e8007/CLI/FeedEventClassifier.swift#L163-L190)
 
-Charminal で同等にするなら、非 main shell session の spawn 時に `CHARMINAL_SESSION_ID` / hook endpoint or socket / bundled CLI path を環境へ入れ、per-session temp directory に `claude` / `codex` shim を置いて `PATH` 先頭へ prepend する。wrapper は outside Charminal / stale endpoint / opt-out では必ず real binary に pass-through し、inside Charminal だけ hooks を注入して session id 付き signal を backend に送る。global な `~/.claude` / `~/.codex` を触る persistent hook install は、custom launcher 対応用の明示 opt-in に留める。
+Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` / `CHARMINAL_AGENT_SHIM_ROOT` を環境へ入れ、`~/.charminal/shell/session-shims/<session>/` を `PATH` 先頭へ prepend する。この directory に `claude` / `codex` shim を生成する。
+
+- `claude` shim は real `claude` を PATH から探し、自分自身 / shim dir を skip して、session-local `claude-hooks.json` を `--settings` で差し込む。hook command は `~/.charminal/shell/hooks/hook-*.sh` に集約し、`CHARMINAL_SESSION_ID` を query に載せて `127.0.0.1:<port>/hook/...` へ POST する。
+- `codex` shim は cmux と同じ per-invocation 方式で `--enable hooks` / `--dangerously-bypass-hook-trust` / `-c hooks.Event=...` を差し込む。対象は session entrypoint（bare / prompt / `exec` / `resume`）に限定し、`login` / `doctor` / `--help` 等は real binary passthrough。`SessionStart` / `UserPromptSubmit` / `Stop` / `PreToolUse` / `PostToolUse` / `PermissionRequest` を送る。
+- wrapper は `CHARMINAL_AGENT_SHIMS_DISABLED=1` または `CHARMINAL_SESSION_ID` 不在では real binary passthrough。global な `~/.claude` / `~/.codex` を触る persistent hook install はまだ入れない（custom launcher / subrouter 対応用の明示 opt-in として deferred）。
 
 ## なぜそう決めたか
 
 - **observation-only が核**。許可待ち検出は「観察の解像度」を上げる話で、PTY write / session 駆動には踏み込まない（[critical-constraints §1](critical-constraints.md) / [loop-presence-layer](loop-presence-layer.md)）。
 - **低 latency を優先**。permission / notification hook は意味的には強いが、Claude Code では実 prompt 表示から数秒遅れることがある。release で「気づける terminal」を作るには、prompt が最初に現れる screen buffer を fast path にするのが最も実用的。
-- **両 agent 対応**。screen buffer は agent が最終的に terminal に prompt を描く限り Claude / Codex どちらでも効く。OSC は terminal-native な補助信号として agent 種別をまたげるが、非 main shell agent の恒久的 attribution には wrapper / hook 注入が必要。
+- **両 agent 対応**。screen buffer は agent が最終的に terminal に prompt を描く限り Claude / Codex どちらでも効く。OSC は terminal-native な補助信号として agent 種別をまたげる。非 main shell agent の semantic attribution は wrapper / hook 注入で担保する。
 - **early-clear を避ける**のが実運用上の主因だった。mouse/focus report が `onData` に来るため「入力で解除」が広すぎ、focus 解除も「見ただけで消える」。sticky + 限定解除が正しい挙動。
 - **presence over spectacle**。許可待ちは noteworthy（赤系強調）として扱い、全 command には反応しない（[presence-over-spectacle](presence-over-spectacle.md) / [interaction-as-presence](interaction-as-presence.md)）。
 
@@ -96,10 +100,10 @@ Charminal で同等にするなら、非 main shell session の spawn 時に `CH
 
 - **PTY observation-only 不変**：notification は出力 stream を読むだけ。`loop_announce` 等と同じ observation channel。
 - **要 rebuild / 新 session**：`Notification` hook は session spawn 時に `hooks.json` へ書かれるため、Rust 変更後は再ビルド + agent 再起動が必要。
-- **手動 shell agent は screen fast path の範囲で対応**：`claude` / `codex` を shell tab で手動起動しても、prompt が terminal screen に出れば `input` は検出できる。ただし hook 由来の structured event / sessionId 付き attribution / non-visible semantic events までは得られない。cmux 型の per-session PATH shim は恒久策として deferred。
+- **手動 shell agent は per-session shim 経由で対応**：Charminal shell で手動起動した `claude` / `codex` は PATH 先頭の shim を通れば sessionId 付き hook signal を返す。user が絶対 path で binary を呼ぶ / alias が PATH より優先する / `CHARMINAL_AGENT_SHIMS_DISABLED=1` の場合は screen fast path のみ。
 - **screen 文面 heuristic**：agent UI 文面変更に弱い。`screen-attention-detector` は純粋関数 + test で保護し、Claude / Codex の実 UI に合わせて調整する。
-- **deferred**：Rust `SessionRegistry` の OSC133 activity（shell の running-command / idle）を TS `SessionStatusStore` に bridge する配線（§2 の heuristic を精密化）。Codex hook / notification 実機検証。shell session 用 `claude` / `codex` wrapper。attention の persona reflex / aura 連動（cmux の pane glow 相当）。
-- 主な source：`src/runtime/session-status/`（store / `screen-attention-detector` / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`readScreenTailText` / `osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（`hook-signal` event / fallback poll → markAttentionRequest / clearAttention）、`src-tauri/src/pty.rs`（`Notification` hook + `hook-notify-osc.py` + `/hook/notification` tag + immediate Tauri emit）。
+- **deferred**：Rust `SessionRegistry` の OSC133 activity（shell の running-command / idle）を TS `SessionStatusStore` に bridge する配線（§2 の heuristic を精密化）。Codex hook / notification 実機検証。persistent hook install（PATH shim bypass 対応）。attention の persona reflex / aura 連動（cmux の pane glow 相当）。
+- 主な source：`src/runtime/session-status/`（store / `screen-attention-detector` / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`readScreenTailText` / `osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（`hook-signal` event / fallback poll → markAttentionRequest / clearAttention）、`src-tauri/src/sessions/shell_wrapper.rs`（per-session `claude` / `codex` shim + hook scripts）、`src-tauri/src/pty.rs`（hook server + sessionId query stamp + `Notification` hook + immediate Tauri emit）。
 
 ## 関連 reference
 
@@ -114,3 +118,4 @@ Charminal で同等にするなら、非 main shell session の spawn 時に `CH
 - 2026-06-28 rev.3: polling fallback が古い notification を再処理して `input` を復活させうる問題を受け、Rust hook server が `_charminal_seq` を stamp、App が seq で immediate/polling の重複を dedup する仕様を追加。
 - 2026-06-28 rev.4: cmux 公開実装を再調査し、「agent approval 検出 = OSC 受動観察中心」という前提を修正。cmux は surface env + per-surface PATH shim + wrapper-injected hooks + socket/feed で手動起動 `claude` / `codex` を attribute する。Charminal の非 main shell agent 検出は wrapper / hook 注入が必要、と明記。
 - 2026-06-28 rev.5: Claude `Notification` hook 自体の発火遅延に対し、xterm screen buffer 末尾を読む `readScreenTailText` + `screen-attention-detector` を `input` badge の low-latency primary path に変更。screen 由来 attention を hook / OSC より権威化し、解除直後の late hook / OSC resurrection を抑止する仕様を追加。
+- 2026-06-28 rev.6: shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` と per-session PATH shim（`claude` / `codex`）を注入する実装に更新。hook server は `?sessionId=` を payload に stamp し、App は main fallback ではなく該当 session に attention / clear を適用する。
