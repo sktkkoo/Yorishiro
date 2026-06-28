@@ -573,6 +573,25 @@ function parseHookNotificationSignal(sig: string): { title: string; body: string
   return { title: "Claude Code", body: message.length > 0 ? message : "Waiting for you" };
 }
 
+/**
+ * hook signal が「agent はもう許可待ちではない」を意味するか。
+ *
+ * `stop`（ターン終了）と `prompt`（UserPromptSubmit = ユーザーが次の入力を送った）は、
+ * いずれも「待機を抜けた」確実なシグナル。これらで許可待ち badge を解除する。
+ * approve をマウスでクリックした等、keystroke 経路で拾えないケースの保険。
+ */
+function isAttentionResolvingSignal(sig: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return false;
+  }
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const event = (parsed as Record<string, unknown>).event;
+  return event === "stop" || event === "prompt";
+}
+
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
@@ -3125,10 +3144,12 @@ function App() {
           }
           for (const sig of signals) {
             perception.onHookSignal(sig);
+            const agentSessionId = tabManager.getState().mainSessionId;
             const notification = parseHookNotificationSignal(sig);
             if (notification) {
-              const sessionId = tabManager.getState().activeSessionId;
-              sessionStatusStore.markAttentionRequest(sessionId, notification);
+              sessionStatusStore.markAttentionRequest(agentSessionId, notification);
+            } else if (isAttentionResolvingSignal(sig)) {
+              sessionStatusStore.clearAttention(agentSessionId);
             }
           }
         } catch (err) {
