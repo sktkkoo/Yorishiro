@@ -25,7 +25,7 @@ TabIndicator が `run` を出せるよう、PTY 出力が来たら `running-comm
 
 cmux の notification ring の正体は、特別な IPC ではなく terminal 出力に流れる **OSC 9 / 99 / 777 を受動的に拾う**こと。Charminal は `terminal-runtime` に `registerOscHandler(9/99/777)` を足し、host が sessionId を stamp して `markAttentionRequest()` に流す（OSC133/633 の隣・既存 infra の延長、PTY write なし）。
 
-ただし OSC 経路は emit 側（hook が `/dev/tty` へ echo）が失敗すると silent に落ちる。そこで **HTTP `/hook/notification` を first-class** にし、hook server が `event:"notification"` で tag → **Tauri event `hook-signal` で即時 emit** → App が `markAttentionRequest()` する経路を主たる堅い入口にする。polling（`poll_hook_signals`）は event delivery を取りこぼした時の fallback。OSC は補助。
+ただし OSC 経路は emit 側（hook が `/dev/tty` へ echo）が失敗すると silent に落ちる。そこで **HTTP `/hook/notification` を first-class** にし、hook server が `event:"notification"` で tag → **Tauri event `hook-signal` で即時 emit** → App が `markAttentionRequest()` する経路を主たる堅い入口にする。polling（`poll_hook_signals`）は event delivery を取りこぼした時の fallback。即時 event と polling fallback で同一 signal が二重処理されないよう、Rust が `_charminal_seq` を stamp し、App は seq で dedup する。OSC は補助。
 
 ### 4. 「attention request」であって「awaiting-input」専用ではない（概念分離）
 
@@ -83,3 +83,4 @@ Claude Code は `Notification` hook に (a) HTTP POST と (b) `hook-notify-osc.p
 
 - 2026-06-28: 初版。SessionStatusStore（観察 read model）+ TabIndicator badge、awaiting-input の OSC/HTTP 二系統入口、sticky + 限定解除（確定入力 / stop・prompt hook、focus・mouse/focus report では消さない）、attribution（OSC=host-stamp / HTTP=agent main）、非 main exit 保持を確定。Rust OSC133 activity の TS bridge は deferred。
 - 2026-06-28 rev.2: `input` 表示の数秒〜10 秒級ラグを受け、HTTP hook server → App を polling only から **Tauri event `hook-signal` immediate + polling fallback** に変更。hook server は connection ごとに処理し、read timeout を持つ。decision 本文に反映。
+- 2026-06-28 rev.3: polling fallback が古い notification を再処理して `input` を復活させうる問題を受け、Rust hook server が `_charminal_seq` を stamp、App が seq で immediate/polling の重複を dedup する仕様を追加。

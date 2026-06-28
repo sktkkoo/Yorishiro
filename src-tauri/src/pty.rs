@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::ipc::Channel;
@@ -11,6 +12,11 @@ use crate::sessions::{PtySession, SessionDescriptor, SessionKind, SessionRegistr
 /// Queue of hook signals for frontend polling (fallback when Tauri emit doesn't reach webview).
 static HOOK_SIGNAL_QUEUE: std::sync::LazyLock<Mutex<Vec<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(Vec::new()));
+
+/// Monotonic id stamped on every hook signal. Frontend dedups by this so the
+/// immediate Tauri-event path and the polling fallback never double-process the
+/// same signal (which could resurrect already-cleared state).
+static HOOK_SEQ: AtomicU64 = AtomicU64::new(1);
 
 /// Drain all queued hook signals. Called by the poll_hook_signals Tauri command.
 pub fn drain_hook_signals() -> Vec<String> {
@@ -292,19 +298,23 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
                 _ => None,
             };
 
-            let final_body = if let Some(event) = event_type {
-                if let Ok(mut obj) = serde_json::from_str::<serde_json::Value>(body) {
-                    if let Some(map) = obj.as_object_mut() {
+            // 同一 signal を immediate event と polling fallback の両方で配るので、
+            // monotonic な _charminal_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
+            let seq = HOOK_SEQ.fetch_add(1, Ordering::Relaxed);
+            let final_body = match serde_json::from_str::<serde_json::Value>(body) {
+                Ok(mut obj) if obj.is_object() => {
+                    let map = obj.as_object_mut().expect("checked is_object");
+                    if let Some(event) = event_type {
                         map.insert("event".to_string(), serde_json::json!(event));
-                        obj.to_string()
-                    } else {
-                        body.to_string()
                     }
-                } else {
+                    map.insert("_charminal_seq".to_string(), serde_json::json!(seq));
+                    obj.to_string()
+                }
+                _ => {
+                    // 非 JSON object の body は dedup 不能だが、現状の hook は全て
+                    // JSON object なので実害はない。raw のまま渡す。
                     body.to_string()
                 }
-            } else {
-                body.to_string()
             };
 
             // Immediate path: WebView receives without waiting for polling.

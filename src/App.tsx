@@ -592,6 +592,19 @@ function isAttentionResolvingSignal(sig: string): boolean {
   return event === "stop" || event === "prompt";
 }
 
+/** Rust hook server が付与する seq。immediate event と polling fallback の dedup に使う。 */
+function hookSignalSeq(sig: string): number | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const seq = (parsed as Record<string, unknown>)._charminal_seq;
+  return typeof seq === "number" && Number.isFinite(seq) ? seq : null;
+}
+
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
@@ -3129,6 +3142,8 @@ function App() {
 
   // ── Hook-signal listener (global, independent of PTY lifecycle) ──
 
+  const handledHookSignalSeqsRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
     let polling = true;
     let unlistenHookSignal: (() => void) | null = null;
@@ -3136,6 +3151,18 @@ function App() {
     appLog.write({ phase: "polling", note: "starting hook-signal polling" });
 
     const handleSignal = (sig: string): void => {
+      const seq = hookSignalSeq(sig);
+      if (seq !== null) {
+        const handled = handledHookSignalSeqsRef.current;
+        if (handled.has(seq)) return;
+        handled.add(seq);
+        // immediate/polling の短い重複 window だけを潰せればよいので小さな
+        // FIFO set にする。current seq は残す。
+        if (handled.size > 512) {
+          const oldest = handled.values().next().value;
+          if (typeof oldest === "number") handled.delete(oldest);
+        }
+      }
       perception.onHookSignal(sig);
       const agentSessionId = tabManager.getState().mainSessionId;
       const notification = parseHookNotificationSignal(sig);
