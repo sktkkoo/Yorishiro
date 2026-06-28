@@ -22,7 +22,7 @@ function deferred<T>(): Deferred<T> {
 const mockState = vi.hoisted(() => {
   const state: {
     channels: Array<{ onmessage: ((data: ArrayBuffer) => void) | null }>;
-    terminals: Array<{ writes: unknown[]; disposed: boolean }>;
+    terminals: Array<{ writes: unknown[]; clearCalls: number; disposed: boolean }>;
     fitCalls: number;
     focusCalls: number;
     unlisten: ReturnType<typeof vi.fn>;
@@ -83,6 +83,7 @@ vi.mock("@xterm/xterm", () => ({
     rows = 24;
     options: { theme?: unknown };
     writes: unknown[] = [];
+    clearCalls = 0;
     disposed = false;
     buffer = { active: null };
     parser = {
@@ -123,7 +124,9 @@ vi.mock("@xterm/xterm", () => ({
       mockState.focusCalls++;
     }
     refresh(): void {}
-    clear(): void {}
+    clear(): void {
+      this.clearCalls++;
+    }
   },
 }));
 
@@ -292,6 +295,32 @@ describe("TerminalRuntime", () => {
 
     expect(received).toEqual(["y"]);
     sub.dispose();
+  });
+
+  it("/clear は xterm の可視画面を消さず scrollback だけ消す", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+
+    for (const ch of "/clear") {
+      mockState.dataHandlers[0]?.(ch);
+    }
+    mockState.dataHandlers[0]?.("\r");
+
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.writes).toContain("\x1b[3J");
+  });
+
+  it("/compact も xterm の可視画面を消さず scrollback だけ消す", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+
+    for (const ch of "/compact") {
+      mockState.dataHandlers[0]?.(ch);
+    }
+    mockState.dataHandlers[0]?.("\r");
+
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.writes).toContain("\x1b[3J");
   });
 
   // attachTo は同期的に syncAttachedRect を 1 回呼ぶ（RAF を回さなくても

@@ -740,7 +740,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     if (data.includes("\r") || data.includes("\n")) {
       const line = this.recentInput.trim();
       if (line === "/clear" || line === "/compact") {
-        this.term.clear();
+        // ESC[3J (Erase Saved Lines): scrollback だけ破棄し、可視領域と
+        // カーソルは一切触らない。term.clear() はカーソル行以外を全消去し
+        // ink TUI の相対描画モデルを狂わせるため使わない。
+        this.term.write("\x1b[3J");
       }
       this.recentInput = "";
     } else if (data === "\x7f") {
