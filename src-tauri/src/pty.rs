@@ -71,6 +71,15 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
         format!("{} {}", python, sh_single_quote(&reminder_script))
     };
 
+    // Claude Code Notification hook から OSC 777 notify を tty に echo する。
+    // terminal-runtime が受動的に拾い、awaiting-input badge に変換する（cmux 方式）。
+    let notify_script = build_notify_osc_script_path();
+    let notify_cmd = if windows {
+        format!("{} \"{}\"", python, notify_script.replace('\\', "\\\\"))
+    } else {
+        format!("{} {}", python, sh_single_quote(&notify_script))
+    };
+
     serde_json::json!({
         "hooks": {
             "UserPromptSubmit": [{
@@ -96,6 +105,13 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": build_hook_command(port, r#"{"event":"stop"}"#, windows) }]
             }],
+            "Notification": [{
+                "matcher": "",
+                "hooks": [
+                    { "type": "command", "command": build_hook_stdin_command(port, "/hook/notification", windows) },
+                    { "type": "command", "command": notify_cmd }
+                ]
+            }],
         }
     })
     .to_string()
@@ -109,6 +125,56 @@ fn build_reminder_script_path() -> String {
         .join("hook-reminder.py")
         .to_string_lossy()
         .to_string()
+}
+
+/// Notification → OSC echo script のパスを返す。script は
+/// ensure_notify_osc_script() で配置。
+fn build_notify_osc_script_path() -> String {
+    let home = dirs::home_dir().unwrap_or_default();
+    home.join(".charminal")
+        .join("shell")
+        .join("hook-notify-osc.py")
+        .to_string_lossy()
+        .to_string()
+}
+
+/// Notification hook 用の OSC echo script を ~/.charminal/shell/ に配置する。
+/// Claude Code の Notification(stdin JSON `message`) を受け、controlling tty に
+/// OSC 777 notify を書き出す。terminal-runtime がこれを awaiting-input として拾う。
+pub fn ensure_notify_osc_script() -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("home directory not found")?;
+    let dir = home.join(".charminal").join("shell");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("shell ディレクトリの作成に失敗: {e}"))?;
+
+    let script_path = dir.join("hook-notify-osc.py");
+    let script = r#"import json, sys
+
+# Claude Code Notification hook。stdin の JSON から message を取り出し、
+# controlling tty に OSC 777 notify を書き出す。Charminal の terminal-runtime が
+# OSC 9/99/777 を拾って awaiting-input badge に変換する。
+# 失敗しても Claude を止めないよう、例外は握りつぶして exit 0 で抜ける。
+try:
+    raw = sys.stdin.read()
+    data = json.loads(raw) if raw.strip() else {}
+except Exception:
+    data = {}
+
+message = data.get("message") or "Waiting for you"
+message = " ".join(str(message).split())
+if len(message) > 200:
+    message = message[:197] + "..."
+
+try:
+    with open("/dev/tty", "w") as tty:
+        tty.write("\x1b]777;notify;Claude Code;" + message + "\x07")
+        tty.flush()
+except Exception:
+    pass
+"#;
+
+    std::fs::write(&script_path, script)
+        .map_err(|e| format!("notify OSC script の書き込みに失敗: {e}"))?;
+    Ok(())
 }
 
 /// Reminder script を ~/.charminal/shell/ に配置する。起動時に呼ぶ。
@@ -404,6 +470,17 @@ mod tests {
         assert!(hooks.contains_key("PreToolUse"));
         assert!(hooks.contains_key("PostToolUseFailure"));
         assert!(hooks.contains_key("Stop"));
+        assert!(hooks.contains_key("Notification"));
+        let notification = hooks["Notification"][0]["hooks"].as_array().unwrap();
+        assert_eq!(notification.len(), 2);
+        assert!(notification[0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("/hook/notification"));
+        assert!(notification[1]["command"]
+            .as_str()
+            .unwrap()
+            .contains("hook-notify-osc.py"));
     }
 
     #[test]
