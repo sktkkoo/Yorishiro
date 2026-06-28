@@ -241,6 +241,35 @@ describe("SessionStatusStore", () => {
     expect(notifyCount).toBe(0);
   });
 
+  it("keeps awaiting-input sticky through ongoing pty output", () => {
+    const { store } = createStore();
+    store.markActive("other");
+    store.markAttentionRequest("s2", { title: "Claude", body: "Permission needed" });
+
+    // 許可待ち中も agent の TUI 再描画で出力が来るが、許可待ちは消えない。
+    store.markOutput("s2");
+    store.markOutput("s2");
+
+    expect(store.get("s2")).toMatchObject({
+      activity: "awaiting-input",
+      attention: { title: "Claude", body: "Permission needed" },
+    });
+  });
+
+  it("clears awaiting-input when the session becomes active", () => {
+    const { store } = createStore();
+    store.markActive("other");
+    store.markAttentionRequest("s2", { title: "Claude", body: "Permission needed" });
+
+    store.markActive("s2");
+
+    expect(store.get("s2")).toMatchObject({
+      activity: "idle",
+      attention: null,
+      unread: false,
+    });
+  });
+
   it("clears stale exit code when lifecycle starts again", () => {
     const { store } = createStore();
     store.recordExit("s1", 1);

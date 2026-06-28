@@ -183,7 +183,10 @@ export class SessionStatusStore {
         current.lifecycle === "starting" || current.lifecycle === "exited"
           ? "running"
           : current.lifecycle,
-      activity: "running-command",
+      // awaiting-input（OSC notification 由来の許可待ち）は sticky。agent の TUI が
+      // 待機中も画面を再描画し続けるので、その出力で許可待ちを消さない。focus
+      // （markActive）で初めて解除する。
+      activity: current.activity === "awaiting-input" ? "awaiting-input" : "running-command",
       exitCode: current.lifecycle === "exited" ? null : current.exitCode,
       unread: current.unread || unread,
       lastActivityAt: this.now(),
@@ -238,8 +241,14 @@ export class SessionStatusStore {
       this.register(sessionId);
       return;
     }
-    if (!current.unread) return;
-    this.commit({ ...current, unread: false });
+    if (!current.unread && current.activity !== "awaiting-input") return;
+    this.commit({
+      ...current,
+      activity: current.activity === "awaiting-input" ? "idle" : current.activity,
+      attention: current.activity === "awaiting-input" ? null : current.attention,
+      unread: false,
+      lastActivityAt: this.now(),
+    });
   }
 
   /** process 終了を記録する（lifecycle=exited + exitCode）。 */
