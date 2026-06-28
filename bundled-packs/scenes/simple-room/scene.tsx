@@ -31,9 +31,8 @@ const definition: ScenePackDefinition = {
       {
         id: "backdrop",
         role: "background",
-        // 中立 charcoal（青みは気配程度に脱飽和）＋ 色の付かない柔らかい光だまり。
-        backgroundImage:
-          "radial-gradient(ellipse at 50% 30%, rgba(198, 204, 212, 0.10) 0%, transparent 70%), linear-gradient(180deg, #26282c 0%, #16181b 100%)",
+        // 中立 charcoal の素直な縦グラデのみ。出所のない radial 光だまりは置かない。
+        backgroundImage: "linear-gradient(180deg, #26282c 0%, #16181b 100%)",
       },
       {
         id: "vrm-slot",
