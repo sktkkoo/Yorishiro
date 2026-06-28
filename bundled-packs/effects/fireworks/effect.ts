@@ -72,7 +72,7 @@ const RISE_MS = 2000;
 const RISE_JITTER_MS = 100;
 /** burst 後の粒が自然に fade しきるまでの buffer（ms）。LIFE 上限と trail の
  *  減衰を見込んで余裕を取る。 */
-const BURST_FADE_TAIL_MS = 2600;
+const BURST_FADE_TAIL_MS = 2500;
 /** 1 発が natural に演じ終わるまでの最低所要時間。options.durationMs がこれを
  *  下回る場合、pack が延長して burst が途中で切れないようにする。 */
 const MIN_EFFECT_MS = RISE_MS + RISE_JITTER_MS + BURST_FADE_TAIL_MS;
@@ -85,29 +85,30 @@ const START_Y_OFFSET = 30;
 const WOBBLE_CYCLES = 5;
 /** 左右揺らぎの最大振幅（CSS px 基準）、t=0 で最大、apex で 0 に収束。 */
 const WOBBLE_AMPLITUDE = 7;
-/** 毎フレーム trail を残す割合（大きいほど尾が長い）。流れ過ぎないよう尾は短め。 */
-const TRAIL_FADE = 0.84;
+/** 毎フレーム trail を残す割合（大きいほど尾が長い）。CPU 版 FADE_ALPHA=0.12 ≈ 1-0.12=0.88 相当。 */
+const TRAIL_FADE = 0.88;
 /** trail を確実に 0 へ落とすための減算項（8bit の量子化で消え残るのを防ぐ）。 */
 const TRAIL_FLOOR = 0.01;
-/** 重力（px/s²、画面下向き）。画面解像度でスケールする。雨だれ化を抑えるため弱め。 */
-const GRAVITY = 120;
-/** drag の時定数（s）。小さいほど早く失速する。強めの drag で「ふわっと開いて漂う」。 */
-const DRAG_TAU = 0.46;
-/** 爆発粒の初速レンジ（px/s、画面解像度でスケール）。ゆっくり開くため抑えめ。 */
-const SPEED_MIN = 80;
-const SPEED_MAX = 340;
-/** 粒寿命レンジ（s）。長めに取って bloom をふわっと残す。 */
-const LIFE_MIN = 1.5;
-const LIFE_MAX = 3.4;
-/** 粒の基準サイズレンジ（CSS px 基準、稀に大きな星を混ぜる）。柔らかい綿毛感のため大きめ。 */
-const SIZE_MIN = 5.0;
-const SIZE_MAX = 11.0;
-/** options.count に対する実 GPU 粒数の倍率。細かすぎないよう粒は大きく数は控えめに。 */
-const DENSITY = 9;
-const PARTICLE_MIN = 180;
-const PARTICLE_MAX = 1200;
-/** base hue からの揺らぎ幅（0-1 hue 空間、±この値）。 */
-const HUE_SPREAD = 0.06;
+/** 重力（px/s²、画面下向き）。CPU 版 0.05 px/frame² ≈ 180 px/s² 相当。 */
+const GRAVITY = 180;
+/** drag の時定数（s）。CPU 版の per-frame drag 0.985 ≈ τ≈1.1s 相当だが、
+ *  GPU 版は解析解なのでやや短めに取ってテンポよく収まらせる。 */
+const DRAG_TAU = 0.55;
+/** 爆発粒の初速レンジ（px/s、画面解像度でスケール）。CPU 版 2.0-4.6 px/frame ≈ 120-276 px/s 相当。 */
+const SPEED_MIN = 120;
+const SPEED_MAX = 280;
+/** 粒寿命レンジ（s）。CPU 版 80-130 frame ≈ 1.3-2.2s 相当。 */
+const LIFE_MIN = 1.3;
+const LIFE_MAX = 2.2;
+/** 粒の基準サイズレンジ（CSS px 基準）。glow が映えるよう大きめに。 */
+const SIZE_MIN = 4.5;
+const SIZE_MAX = 9.0;
+/** options.count をそのまま粒数に使う（CPU 版と同じ）。DENSITY=1 で倍率なし。 */
+const DENSITY = 1;
+const PARTICLE_MIN = 30;
+const PARTICLE_MAX = 300;
+/** base hue からの揺らぎ幅（0-1 hue 空間、±この値）。CPU 版 ±15° ≈ ±0.042。 */
+const HUE_SPREAD = 0.042;
 /** 解像度スケールの基準高さ（px）。buffer 高さ / これでサイズ・速度を倍率。 */
 const REFERENCE_HEIGHT = 900;
 /** rocket の発光点数（head + sparks）。trail バッファが尾を作るので少数で足りる。 */
@@ -214,7 +215,6 @@ void main() {
   float r = length(d) * 2.0;          // 0=中心, 1=縁
   if (r > 1.0) discard;
   float core = smoothstep(1.0, 0.0, r);
-  // 広いハロー主体の柔らかいグロー（鋭い芯は控えめ）。綿毛のような発光に。
   float glow = pow(core, 1.35) + 0.22 * pow(core, 3.0);
   float a = glow * v_alpha;
   if (a <= 0.003) discard;
