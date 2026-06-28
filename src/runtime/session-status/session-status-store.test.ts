@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionActivity, SessionLifecycle } from "../sessions/types";
 import {
   deriveSessionStatusBadge,
+  isAttentionClearingInput,
   isNoteworthyBadge,
   type SessionStatus,
   SessionStatusStore,
@@ -56,6 +57,18 @@ describe("deriveSessionStatusBadge", () => {
     expect(isNoteworthyBadge("exited-fail")).toBe(true);
     expect(isNoteworthyBadge("running")).toBe(false);
     expect(isNoteworthyBadge("exited-ok")).toBe(false);
+  });
+
+  it("classifies only non-escape input as attention-clearing", () => {
+    expect(isAttentionClearingInput("y")).toBe(true);
+    expect(isAttentionClearingInput("\r")).toBe(true);
+    expect(isAttentionClearingInput("\n")).toBe(true);
+
+    // 矢印キー・マウス報告・focus reporting は ESC 始まりなので解除しない。
+    expect(isAttentionClearingInput("\x1b[A")).toBe(false);
+    expect(isAttentionClearingInput("\x1b[<0;10;10M")).toBe(false);
+    expect(isAttentionClearingInput("\x1b[I")).toBe(false);
+    expect(isAttentionClearingInput("")).toBe(false);
   });
 });
 

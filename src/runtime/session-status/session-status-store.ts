@@ -92,6 +92,22 @@ export function isNoteworthyBadge(badge: SessionStatusBadge): boolean {
   return badge === "awaiting-input" || badge === "exited-fail";
 }
 
+/**
+ * その PTY 入力を「許可待ちへの応答」と見なして attention を解除してよいか。
+ *
+ * agent の TUI はマウストラッキング / focus reporting を有効にするため、
+ * マウス移動・focus 変化・矢印キー・bracketed paste などが ESC で始まる制御
+ * sequence として `term.onData` に流れてくる。これらは「まだ応答していない」
+ * ナビゲーション / 環境イベントなので解除しない。Enter や文字・数字など、
+ * 実際に選択を確定する入力でのみ解除する。
+ */
+export function isAttentionClearingInput(data: string): boolean {
+  if (data.length === 0) return false;
+  // ESC 始まり = 矢印 / function / mouse report / focus report / bracketed paste。
+  if (data.charCodeAt(0) === 0x1b) return false;
+  return true;
+}
+
 const DEFAULT_STATUS: Omit<SessionStatus, "sessionId" | "lastActivityAt"> = {
   lifecycle: "starting",
   activity: "idle",

@@ -8,6 +8,7 @@
 export {
   deriveSessionStatusBadge,
   getSessionStatusStore,
+  isAttentionClearingInput,
   isNoteworthyBadge,
   type SessionAttention,
   type SessionStatus,

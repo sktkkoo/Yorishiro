@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { type SpawnSpec, sessionRefreshTheme } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
-import { getSessionStatusStore } from "./runtime/session-status";
+import { getSessionStatusStore, isAttentionClearingInput } from "./runtime/session-status";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
 
@@ -48,8 +48,10 @@ export default function Terminal({
         body: event.body,
       });
     });
-    const inputSub = runtime.subscribeUserInput(() => {
-      status.clearAttention(sessionId);
+    const inputSub = runtime.subscribeUserInput((data) => {
+      if (isAttentionClearingInput(data)) {
+        status.clearAttention(sessionId);
+      }
     });
     return () => {
       if (outputSettleTimerRef.current !== null) {
