@@ -92,6 +92,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly notificationListeners = new Set<(event: TerminalNotificationEvent) => void>();
+  private readonly userInputListeners = new Set<(data: string) => void>();
   private readonly scrollListeners = new Set<() => void>();
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
   private readonly oscHandlerDisposables: Disposable[] = [];
@@ -181,6 +182,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       if (this.disposed) return;
       this.lastUserInputAt = performance.now();
       this.perceptionRef.current?.onUserInput(data);
+      this.notifyUserInputListeners(data);
       this.detectClearCommand(data);
       writeQueue = writeQueue.then(async () => {
         try {
@@ -304,6 +306,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.ptyExitUnlisten = null;
     this.ptyDataListeners.clear();
     this.notificationListeners.clear();
+    this.userInputListeners.clear();
     this.scrollListeners.clear();
     this.regionContextListeners.clear();
     for (const disposable of this.oscHandlerDisposables.splice(0)) {
@@ -636,6 +639,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  subscribeUserInput(listener: (data: string) => void): Disposable {
+    this.userInputListeners.add(listener);
+    return {
+      dispose: () => {
+        this.userInputListeners.delete(listener);
+      },
+    };
+  }
+
   subscribeViewportScroll(listener: () => void): Disposable {
     this.scrollListeners.add(listener);
     return {
@@ -696,6 +708,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
     for (const listener of Array.from(this.notificationListeners)) {
       listener(event);
+    }
+  }
+
+  private notifyUserInputListeners(data: string): void {
+    for (const listener of Array.from(this.userInputListeners)) {
+      listener(data);
     }
   }
 

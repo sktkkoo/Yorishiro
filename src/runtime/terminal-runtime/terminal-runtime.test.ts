@@ -27,6 +27,8 @@ const mockState = vi.hoisted(() => {
     focusCalls: number;
     unlisten: ReturnType<typeof vi.fn>;
     listen: ReturnType<typeof vi.fn>;
+    oscHandlers: Map<number, (data: string) => boolean>;
+    dataHandlers: Array<(data: string) => void>;
     sessionAttach: ReturnType<typeof vi.fn>;
     sessionDestroy: ReturnType<typeof vi.fn>;
     sessionRefreshTheme: ReturnType<typeof vi.fn>;
@@ -40,6 +42,8 @@ const mockState = vi.hoisted(() => {
     focusCalls: 0,
     unlisten: vi.fn(),
     listen: vi.fn(),
+    oscHandlers: new Map(),
+    dataHandlers: [],
     sessionAttach: vi.fn(),
     sessionDestroy: vi.fn(),
     sessionRefreshTheme: vi.fn(),
@@ -81,6 +85,18 @@ vi.mock("@xterm/xterm", () => ({
     writes: unknown[] = [];
     disposed = false;
     buffer = { active: null };
+    parser = {
+      registerOscHandler: (code: number, handler: (data: string) => boolean) => {
+        mockState.oscHandlers.set(code, handler);
+        return {
+          dispose: () => {
+            if (mockState.oscHandlers.get(code) === handler) {
+              mockState.oscHandlers.delete(code);
+            }
+          },
+        };
+      },
+    };
 
     constructor(options: { theme?: unknown }) {
       this.options = options;
@@ -98,7 +114,9 @@ vi.mock("@xterm/xterm", () => ({
     dispose(): void {
       this.disposed = true;
     }
-    onData(): void {}
+    onData(handler: (data: string) => void): void {
+      mockState.dataHandlers.push(handler);
+    }
     onResize(): void {}
     onScroll(): void {}
     focus(): void {
@@ -135,6 +153,8 @@ describe("TerminalRuntime", () => {
     mockState.fitCalls = 0;
     mockState.focusCalls = 0;
     mockState.unlisten.mockClear();
+    mockState.oscHandlers.clear();
+    mockState.dataHandlers.length = 0;
     mockState.listen.mockClear();
     mockState.listen.mockResolvedValue(mockState.unlisten);
     mockState.sessionAttach.mockReset();
@@ -218,6 +238,33 @@ describe("TerminalRuntime", () => {
 
     expect(terminal.disposed).toBe(true);
     expect(terminal.writes).toHaveLength(1);
+  });
+
+  it("emits subscribeNotification when OSC 777 notify arrives", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const received: Array<{ title: string | null; body: string }> = [];
+    const sub = runtime.subscribeNotification((event) => {
+      received.push({ title: event.title, body: event.body });
+    });
+
+    const handled = mockState.oscHandlers.get(777)?.("notify;Claude;Permission needed");
+
+    expect(handled).toBe(true);
+    expect(received).toEqual([{ title: "Claude", body: "Permission needed" }]);
+    sub.dispose();
+  });
+
+  it("emits subscribeUserInput on user keystrokes", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    mockState.dataHandlers[0]?.("y");
+
+    expect(received).toEqual(["y"]);
+    sub.dispose();
   });
 
   // attachTo は同期的に syncAttachedRect を 1 回呼ぶ（RAF を回さなくても

@@ -179,15 +179,16 @@ export class SessionStatusStore {
     const unread = sessionId !== this.activeSessionId;
     this.commit({
       ...current,
-      lifecycle:
-        current.lifecycle === "starting" || current.lifecycle === "exited"
-          ? "running"
-          : current.lifecycle,
+      lifecycle: current.lifecycle === "starting" ? "running" : current.lifecycle,
       // awaiting-input（OSC notification 由来の許可待ち）は sticky。agent の TUI が
-      // 待機中も画面を再描画し続けるので、その出力で許可待ちを消さない。focus
-      // （markActive）で初めて解除する。
-      activity: current.activity === "awaiting-input" ? "awaiting-input" : "running-command",
-      exitCode: current.lifecycle === "exited" ? null : current.exitCode,
+      // 待機中も画面を再描画し続けるので、その出力で許可待ちを消さない。実際に
+      // 応答したと見なせるユーザー入力（clearAttention）でのみ解除する。
+      activity:
+        current.lifecycle === "exited"
+          ? current.activity
+          : current.activity === "awaiting-input"
+            ? "awaiting-input"
+            : "running-command",
       unread: current.unread || unread,
       lastActivityAt: this.now(),
     });
@@ -241,11 +242,22 @@ export class SessionStatusStore {
       this.register(sessionId);
       return;
     }
-    if (!current.unread && current.activity !== "awaiting-input") return;
+    if (!current.unread) return;
+    this.commit({
+      ...current,
+      unread: false,
+      lastActivityAt: this.now(),
+    });
+  }
+
+  /** ユーザー入力など、実際に注意要求へ応答したと見なせる操作で明示解除する。 */
+  clearAttention(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.attention === null) return;
     this.commit({
       ...current,
       activity: current.activity === "awaiting-input" ? "idle" : current.activity,
-      attention: current.activity === "awaiting-input" ? null : current.attention,
+      attention: null,
       unread: false,
       lastActivityAt: this.now(),
     });

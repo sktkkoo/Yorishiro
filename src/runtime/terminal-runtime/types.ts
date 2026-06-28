@@ -189,6 +189,12 @@ export interface TerminalRuntime {
   subscribeNotification(listener: (event: TerminalNotificationEvent) => void): Disposable;
 
   /**
+   * User key input が PTY へ送られる直前に listener を呼ぶ。
+   * 許可待ち attention の明示解除など、UI read model 更新に使う。
+   */
+  subscribeUserInput(listener: (data: string) => void): Disposable;
+
+  /**
    * ターミナルのカラーテーマを更新する。scene 切替時に呼ばれる。
    * partial merge で、指定された field だけ上書きする。
    */

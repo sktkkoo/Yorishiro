@@ -48,6 +48,9 @@ export default function Terminal({
         body: event.body,
       });
     });
+    const inputSub = runtime.subscribeUserInput(() => {
+      status.clearAttention(sessionId);
+    });
     return () => {
       if (outputSettleTimerRef.current !== null) {
         window.clearTimeout(outputSettleTimerRef.current);
@@ -55,6 +58,7 @@ export default function Terminal({
       }
       sub.dispose();
       notificationSub.dispose();
+      inputSub.dispose();
     };
   }, [sessionId]);
 

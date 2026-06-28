@@ -256,17 +256,24 @@ describe("SessionStatusStore", () => {
     });
   });
 
-  it("clears awaiting-input when the session becomes active", () => {
+  it("keeps awaiting-input on focus and clears it on user input", () => {
     const { store } = createStore();
     store.markActive("other");
     store.markAttentionRequest("s2", { title: "Claude", body: "Permission needed" });
 
+    // focus（タブを見ただけ）では許可待ちは消えない — まだ承認していない。
     store.markActive("s2");
+    expect(store.get("s2")).toMatchObject({
+      activity: "awaiting-input",
+      attention: { title: "Claude", body: "Permission needed" },
+      unread: false,
+    });
 
+    // 実際に応答した（ユーザー入力）ら解除する。
+    store.clearAttention("s2");
     expect(store.get("s2")).toMatchObject({
       activity: "idle",
       attention: null,
-      unread: false,
     });
   });
 
@@ -283,16 +290,16 @@ describe("SessionStatusStore", () => {
     });
   });
 
-  it("treats output after an exit as a running replacement session", () => {
+  it("keeps the exited badge when trailing output arrives after exit", () => {
     const { store } = createStore();
     store.recordExit("s1", 1);
 
+    // pty-exit と Channel output の順序次第で来る末尾出力で exit badge を消さない。
     store.markOutput("s1");
 
     expect(store.get("s1")).toMatchObject({
-      lifecycle: "running",
-      activity: "running-command",
-      exitCode: null,
+      lifecycle: "exited",
+      exitCode: 1,
     });
   });
 
