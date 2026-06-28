@@ -75,6 +75,36 @@ describe("detectScreenAttentionRequest", () => {
     });
   });
 
+  it("detects Codex allow-to-run prompts", () => {
+    const detection = detectScreenAttentionRequest(`
+      Allow Codex to run \`npm test -- --run\`?
+
+      1. Yes
+      2. No
+    `);
+
+    expect(detection).toMatchObject({
+      title: "Codex",
+      kind: "permission-prompt",
+    });
+  });
+
+  it("detects choice menus even when the prompt header scrolled out", () => {
+    const detection = detectScreenAttentionRequest(`
+      Bash(npm run build)
+      command preview line 1
+      command preview line 2
+      1. Yes
+      2. Yes, and don't ask again
+      3. No
+    `);
+
+    expect(detection).toMatchObject({
+      title: "Agent",
+      kind: "permission-prompt",
+    });
+  });
+
   it("does not treat ordinary output as attention", () => {
     expect(
       detectScreenAttentionRequest(`

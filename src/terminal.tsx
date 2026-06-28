@@ -40,7 +40,7 @@ export default function Terminal({
     const runtime = getTerminalRuntime(sessionId);
     const scanScreenAttention = () => {
       screenAttentionScanTimerRef.current = null;
-      const detection = detectScreenAttentionRequest(runtime.readScreenTailText(14));
+      const detection = detectScreenAttentionRequest(runtime.readScreenTailText(28));
       if (detection) {
         status.markScreenAttentionRequest(sessionId, {
           title: detection.title,
