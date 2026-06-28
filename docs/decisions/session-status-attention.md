@@ -25,13 +25,16 @@ TabIndicator が `run` を出せるよう、PTY 出力が来たら `running-comm
 
 ### 3. 許可待ちの観察源：screen buffer fast path ＋ agent hook / OSC fallback
 
-Claude Code の `Notification` hook は permission prompt 表示から数秒（環境によって 10 秒級）遅れて発火することがある。Charminal 内部の HTTP hook server → Tauri event → App は即時化済みなので、残るラグは upstream hook 発火タイミングにある。Claude の `PermissionRequest` は cmux と同じく actionable approval として扱い、`/hook/permission-request` に送る。Codex の `PermissionRequest` は Codex 自身の reviewer 前に走ることがあるため、screen fast path を authoritative に残す。
+許可待ち（`input`）は次の 4 層で観察する。上ほど低遅延 / 主、下ほど fallback。
 
-そこで `terminal-runtime.readScreenTailText()` で xterm screen buffer 末尾を DOM geometry 非依存に読み、`screen-attention-detector` が Claude Code / Codex / generic な permission prompt 文面を検出する。Terminal は PTY chunk 後に短く debounce（約 80ms）して screen scan し、検出したら `markScreenAttentionRequest()` する。これが release 時点の `input` badge の主経路。非 active tab でも xterm buffer は保持されるため、detached / hidden 中の session でも読める。
+1. **screen fast path（主）**: `terminal-runtime.readScreenTailText()` で xterm screen buffer 末尾を DOM geometry 非依存に読み、`screen-attention-detector` が permission prompt 文面を検出する。PTY chunk 後 ~80ms debounce で scan。prompt が画面に出た瞬間に拾えるので、hook 発火遅延の影響を受けない。非 active tab でも buffer は保持されるため detached / hidden session でも効く。
+2. **agent hook（fallback / attribution）**: Claude は `Notification` / `PermissionRequest` hook、Codex は shim 注入の per-invocation hook を HTTP `/hook/...` に送る。`sessionId` query を載せるので手動起動 shell agent も該当 tab に attribute できる（§8）。Claude `PermissionRequest` は actionable approval として扱う。Codex `PermissionRequest` は Codex の reviewer 前に走りうるので screen fast path を authoritative に残す。
+3. **OSC notification（受信のみ）**: `registerOscHandler(9/99/777)` で agent / shell が同一 terminal に自発的に出した notification OSC を拾う。host が sessionId を stamp できるが、「その session の PTY に実際に書かれた場合」しか見えない。
+4. **post-tool / resume / 確定入力（解除）**: §5。
 
-Charminal の受信側は `terminal-runtime` の `registerOscHandler(9/99/777)` で terminal 出力に流れた notification OSC も拾える。これは host が sessionId を stamp できるため attribution は強い。ただし OSC は「その session の PTY に実際に書かれた場合」しか見えず、agent の permission state を汎用に推定する仕組みではない。
+Claude Code の `Notification` hook は permission prompt 表示から数秒（環境によって 10 秒級）遅れて発火することがあり、Charminal 内部の HTTP hook server → Tauri event → App を即時化しても upstream の発火遅延は残る。そのため screen fast path を主経路に据えた。
 
-agent hook は fallback / 汎用 attention 経路。Claude `Notification` hook など agent が明示的に「ユーザー注意要求」を出すイベントを、HTTP `/hook/notification` などの host 経路で `markAttentionRequest(source:"hook")` に流す。OSC は同一 terminal への lightweight signal として残すが、emit 側（hook が `/dev/tty` へ echo）が失敗すると silent に落ちるため、hook 経路の代替ではなく補助。
+Charminal 側から hook notification を OSC 777 へ echo して自分で拾い直す経路（旧 `hook-notify-osc.py`）は、screen fast path + HTTP hook attribution が安定したため削除した。OSC は「受信」だけ残す。
 
 ### 4. 「attention request」であって「awaiting-input」専用ではない（概念分離）
 
@@ -56,7 +59,7 @@ screen fast path が出した attention は hook / OSC より権威を持つ。p
 
 ### 7. emit 側は要設定、受信は純粋な観察
 
-Claude Code は `Notification` hook に (a) HTTP POST と (b) `hook-notify-osc.py`（stdin の `message` を読んで `/dev/tty` に OSC 777 を書く）を仕込む。Codex は hook / notification API の実機確認が必要。どちらも受信側（registerOscHandler / hook poll）は観察だけで、PTY へ書かない。
+Claude Code は `Notification` / `PermissionRequest` hook で HTTP POST する。Codex は shim が per-invocation hook を注入する。どちらも受信側（registerOscHandler / hook poll）は観察だけで、PTY へ書かない。
 
 ### 8. 手動起動 shell agent と cmux 型 per-session shim（2026-06-28）
 
@@ -122,3 +125,4 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - 2026-06-28 rev.6: shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` と per-session PATH shim（`claude` / `codex`）を注入する実装に更新。hook server は `?sessionId=` を payload に stamp し、App は main fallback ではなく該当 session に attention / clear を適用する。
 - 2026-06-28 rev.7: shell 手動起動 Claude で `input` が出ない実機報告を受け、Claude shim / main Claude hooks に `PermissionRequest` を追加。Claude は actionable approval、Codex は screen fast path authoritative という cmux の分類に合わせる。
 - 2026-06-28 rev.8: user `.zshrc` 等が shim dir より前に `~/.local/bin` を再 prepend する問題に対応。init script（user rc 後）で PATH を戻し、`claude()` / `codex()` shell function を定義して shim を後勝ちさせる。
+- 2026-06-28 rev.9: 観察源を 4 層（screen fast path / agent hook / OSC 受信 / 解除）として整理。screen fast path + HTTP hook attribution が安定したため、Charminal 自身が hook を OSC 777 へ echo する `hook-notify-osc.py` 経路を削除（OSC は受信のみ残す）。

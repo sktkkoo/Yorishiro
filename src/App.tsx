@@ -556,8 +556,8 @@ function queryMountedSessionIds(): string[] {
  * hook server から polling した signal JSON を見て、notification なら
  * attention request（許可待ち / 入力待ち）の本文を返す。それ以外は null。
  *
- * OSC 経路（hook-notify-osc.py → /dev/tty）は補助で、こちらの HTTP 経路を
- * first-class にすることで「OSC が tty に書けなかった」failure に強くする。
+ * `input` badge の主経路は screen fast path（screen-attention-detector）。
+ * agent hook（HTTP `/hook/...`）はその fallback / 汎用 attention 経路。
  */
 function parseHookTargetSessionId(sig: string): string | null {
   let parsed: unknown;
