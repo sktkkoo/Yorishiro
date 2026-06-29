@@ -4,7 +4,7 @@
 
 ## Contribution Policy
 
-Charminal is still being set up, so Pull Requests are **not** accepted at this time.
+Pull requests are not accepted yet; this will be revisited after the pack API and security boundary stabilize.
 
 What we welcome:
 

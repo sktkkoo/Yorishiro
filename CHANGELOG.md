@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Contribution policy clarified: pull requests remain closed and will be revisited after the pack API and security boundary stabilize (README / CONTRIBUTING, EN/JA).
+- Added a top-of-README security note (EN/JA): user packs are local trusted code and are not sandboxed; in-app community pack distribution is not implemented yet.
+- Added `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
+- `scripts/fetch-assets.mjs` no longer fails on a fresh clone: a missing external asset store now warns and continues so source builds still run. Release/packaging builds set `CHARMINAL_ASSETS_REQUIRED=1` to fail closed when assets are absent.
+- Asset credits tidied: the bundled `abandoned-factory_piano-loop.mp3` (CC0) is now listed in `CREDITS.md` / `CREDITS.ja.md`, and the shared sounds credits table no longer carries unshipped TBD entries.
+- `abandoned-factory` scene no longer declares ambient `sound:` references that ship no audio; it keeps the bundled CC0 piano loop.
+- Fixed a stale scene-controls unit test so the suite reflects the current `simple-room` lighting rig.
+
 ## 0.5.1 - 2026-06-22
 
 - The SDK author guide is now shipped to `~/.charminal/sdk-guide.md` (rewritten on every startup), so the inhabitant AI can read the pack-authoring narrative even in packaged builds where the source tree is absent.

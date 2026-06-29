@@ -38,6 +38,8 @@ Much of Charminal's own development has been done as a collaboration with the in
 
 ## Getting Started
 
+> **Security note:** User packs are local trusted code, like shell scripts or editor extensions — they are not sandboxed and run with your own authority. Only install packs from sources you trust. In-app community pack distribution is not implemented yet. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
+
 ### Prerequisites
 
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
@@ -221,7 +223,7 @@ Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access w
 
 ## Contributing
 
-Issues and discussions are welcome. **Pull requests are not accepted at this time**, as the project is still being set up.
+Issues and discussions are welcome. **Pull requests are not accepted yet; this will be revisited after the pack API and security boundary stabilize.**
 
 For security reporting, see [SECURITY.md](SECURITY.md).
 

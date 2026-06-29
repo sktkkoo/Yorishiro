@@ -70,7 +70,7 @@ jobs:
           else
             ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets"
           fi
-          CHARMINAL_ASSETS_DIR="$ASSET_SRC" node scripts/fetch-assets.mjs
+          CHARMINAL_ASSETS_REQUIRED=1 CHARMINAL_ASSETS_DIR="$ASSET_SRC" node scripts/fetch-assets.mjs
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

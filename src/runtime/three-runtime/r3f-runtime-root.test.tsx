@@ -314,9 +314,9 @@ describe("R3fRuntimeRoot", () => {
     });
 
     const sceneStore = getActiveSceneLevaStore();
-    expect(sceneStore?.get("lights.directionalIntensity")).toBe(0.8);
-    expect(sceneStore?.get("lights.ambientIntensity")).toBe(0.4);
-    expect(levaStore.get("lights.directionalIntensity")).toBeUndefined();
+    expect(sceneStore?.get("lights.intensity")).toBe(1.2);
+    expect(sceneStore?.get("lights.color")).toBe("#ffe8ea");
+    expect(levaStore.get("lights.intensity")).toBeUndefined();
   });
 
   it("registers scene layer controls into the active scene store", () => {

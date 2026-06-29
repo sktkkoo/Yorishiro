@@ -8,7 +8,7 @@ CLAI がかつてここで、もう一人の自分のような誰かとすれ違
 - **3-light rig**: cool 天光（DirectionalLight、上から弱く） + warm lantern（PointLight、不規則に明滅） + cool CRT（PointLight、信号 flicker）
 - **FBX/GLTF props**: lantern, CRT TV, 倒れた椅子, 床の散らばり, 大型機械, oil drum, 木箱の山
 - **Post-process**: cool grade / grain / scanline / chromatic aberration / halation / TV static / tracking wobble / vignette
-- **Ambient audio**: distant-machine-hum + crt-static
+- **Ambient audio**: piano-loop（同梱・CC0）
 
 ## 関連
 

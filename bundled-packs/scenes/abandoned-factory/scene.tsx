@@ -75,11 +75,7 @@ const definition: ScenePackDefinition = {
   scene: {
     id: "abandoned-factory",
     layers: [],
-    ambient: [
-      { src: "sound:abandoned-factory/distant-machine-hum", volume: 0.1 },
-      { src: "sound:abandoned-factory/crt-static", volume: 0.06 },
-      { src: "./assets/abandoned-factory_piano-loop.mp3", volume: 0.15 },
-    ],
+    ambient: [{ src: "./assets/abandoned-factory_piano-loop.mp3", volume: 0.15 }],
     terminal: {
       background: "#1a1a19",
       foreground: "#a0a09a",
