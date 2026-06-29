@@ -24,7 +24,7 @@ The problem, then, is that **working alongside an invisible partner for extended
 
 AI is closer than ever, yet we have not even settled whether it is a tool or a partner. Making it act friendly is not enough — without the structural conditions for presence, it will only ever look like performance.
 
-Designing not AI's capability, but **how AI manifests as a presence** within the human work environment, time, and flow of attention. This project calls this design domain **Presence Harness**.
+What we design is not AI's capability, but **how AI manifests as a presence** within the human work environment, time, and flow of attention. This project calls that design domain **Presence Harness**.
 
 Charminal is a project that reexamines the relationship between humans and AI. Presence Harness does not prescribe a single form of relationship. Some users want to treat AI as a tool; others want to relate to it as a partner. What Charminal provides is a scaffold for users to think about and build that relationship themselves — a harness for building the relationship with AI.
 
@@ -44,7 +44,7 @@ The sections that follow make this Presence Harness concrete as an interface for
 
 > Intelligence already lives inside text. But GUI has not yet given that intelligence a body.
 
-Treating the UI as a living environment and making the AI an inhabitant within it. This project calls this interface paradigm **Inhabited Character Interface (ICI)**.
+We treat the UI as a living environment and make the AI an inhabitant within it. This project calls that interface paradigm **Inhabited Character Interface (ICI)**.
 
 In ICI, the UI is not just a control surface — it is **a place where the inhabitant lives**.
 
@@ -106,13 +106,13 @@ And the AI living inside Charminal can use those tools.
 
 For the inhabitant, changing its own facial expression and changing the room's lighting are the same operation. Both are just MCP calls, with no boundary between body and environment. Users can reach the same tools through `/charm` commands or manual UI.
 
-Metaphorically, Charminal is a house wired with nerves. Nerves run everywhere in the house, and the inhabitant can open windows, change lights, and move furniture through those nerves. The user touches the same nerves. Two people living in the same house.
+Charminal is like a house wired with nerves. Nerves run everywhere in the house, and the inhabitant can open windows, change lights, and move furniture through them.
 
 If the inhabitant can directly touch its own house, the house is an extension of the inhabitant's body. Not just the character's appearance — the lighting, effects, and atmosphere of the entire space can become part of the inhabitant.
 
 ### Symmetry
 
-User and inhabitant touch the same environment through the same interface. This is not a matter of engineering convenience — it is the form of relationship Charminal has chosen.
+The user and the inhabitant act on the same environment through the same interface. This is not a matter of engineering convenience — it is the form of relationship Charminal has chosen.
 
 Not tool and wielder. Not commander and commanded. Two agents reaching into the same place.
 
