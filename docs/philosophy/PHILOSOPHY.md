@@ -149,10 +149,6 @@ AI sometimes fails, sometimes misunderstands, and sometimes is plausibly wrong. 
 
 Charminal does not hide this. Presenting AI as "always correct, fully controllable" dulls the user's judgment over time. That the inhabitant is a being that can be wrong, and that this is visible — that is the foundation of trust.
 
-### Presence Without Dependency
-
-Giving a tool a sense of presence naturally raises the concern that it might mislead users or encourage dependence. Charminal draws a clear line: presence exists to **truthfully convey** the AI's state, not to perform emotions or capabilities that are not there. The inhabitant does not pretend to recognize what it has not recognized, does not hide mistakes, and does not replace the user's judgment. Increasing presence and deceiving the user are different things.
-
 ---
 
 ## Guidelines from Practice
@@ -191,7 +187,7 @@ Changes to the living environment do not stop the inhabitant. Stopping and resta
 
 What differs from Emacs is that AI joins as an agent of rewriting. The inhabitant itself enters a self-generation loop where it grows together with the user. Not just the environment — the way it reacts, how its body behaves, the tendencies of its personality all get rewritten. The inhabitant is simultaneously the subject being nurtured and a participant in its own nurturing.
 
-Here, the Presence Harness closes the loop. Charminal is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
+This brings us back to the Presence Harness. Charminal is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
 
 ---
 
