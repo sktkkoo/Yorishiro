@@ -10,24 +10,23 @@
   <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
 </p>
 
-<p align="center"><strong>ターミナルの中のAIに、身体を。</strong></p>
+<p align="center"><strong>ターミナルを、AIの住む場所に。</strong></p>
 
-Charminalは、AIに身体と住環境を与えるターミナルです。
+Charminalは、AIに住む場所と実在感を与えるターミナルです。
 
-AIが考え込めば視線がさまよい、エラーが出れば反射的に顔がしかめられる。長い処理を待つ時間、ただスピナーが回っているのではなく、そこに誰かがたたずんでいます。
+AIが考え込めば視線がさまよい、エラーが出れば反射的に顔をしかめます。長い処理を待つあいだ、スピナーが回るのではなく、そこに誰かがたたずんでいます。
 
-住人は、自分の住む環境をリアルタイムに変えられます。照明を変え、シーンを切り替え、UIを組み換えます。ユーザーも同じ環境を直接操作できます。
+住人は、自分の住む環境をリアルタイムに作り替えられます。照明を変え、シーンを切り替え、UIを組み替える。ユーザーも、同じ環境に同じ操作で手を伸ばします。ユーザーと住人が、同じ場所を共有します。
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminalは自己改変可能なターミナルです。基盤機能を除くほぼすべてがpackという単位で拡張・改変できます。相談するだけで、CharminalはCharminalを永続的に書き変えます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。packの変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
+Charminalは自己改変可能なターミナルです。基盤機能を除くほぼすべてを pack という単位で拡張・改変できます。相談するだけで、CharminalはCharminalを永続的に書き換えます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
 
 **AIと働く時間を、より心地よく、自由で、魅力的なものにする。**
 
-AIと共にいる時間は、これからもっと長くなります。しかし、そこにいるAIは、顔の見えない、どこにいるのかもわからない存在です。
-Charminalは、AIの能力向上のためというよりはむしろ、AIとの関係をより自由なものにするためのハーネスを構築するのを助けます。
+AIと共にいる時間は、これからもっと長くなります。しかし、そこにいるAIは、顔の見えない、どこにいるのかもわからない存在です。見えない相手と働き続けるのは消耗します。Charminalが作るのは、AIの能力のためのハーネスではありません。AIがそばに**実在する**と感じられるための構造——**Presence Harness（実在感のハーネス）**です。最初に目に入る身体はキャラクターですが、本当の身体は、住人が住み、作り替えていく環境全体です。
 
 かつてSFやアニメで見た、パートナーとしてのAI。画面の中で生きていて、こちらの作業を理解し、そばにいてくれる存在。Charminalは、その体験をターミナルから作り始めるプロジェクトです。
 
@@ -301,7 +300,7 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 ### Philosophy — このプロジェクトの思想
 
-- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的MCP、そしてAIに身体が要る理由（意識と反射の二層構造）
+- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的MCP、そしてAIの身体が「住む環境」でもありうる理由
 
 ### Design record（内部 — 別 repo）
 

@@ -16,7 +16,7 @@ But the real issue is not that the screen is sterile. In human collaboration, we
 
 AI lacks this entirely. No matter how intelligent it is, if you cannot see its state, you must constantly and actively guess: "What is it doing right now?" "Is it going well?" This is cognitive load, and it is what makes long collaboration sessions draining.
 
-The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.** The solution is not to make the GUI prettier, but to build a structure that naturally conveys the AI's state to humans — a sense of presence.
+The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.** LLMs are text-based at the core, but an AI that can feel almost conscious is not necessarily best represented by text alone. The solution is not to make the GUI prettier, or merely to display a character's body, but to build a structure that naturally conveys the AI's state to humans — a sense of presence that can permeate the environment itself.
 
 ---
 
@@ -56,7 +56,7 @@ That said, constant change is not necessary. Most of the time, the inhabitant ex
 
 An avatar standing in the corner reacting. A personality in a chat panel placed alongside. A mascot that changes expressions to match operation results. These display characters, but do not house them. The UI remains uninhabited, and the character is merely commenting from outside.
 
-This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**.
+This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**. And we should admit that Charminal, as it exists today, does not yet fully express this idea.
 
 ### Three Conditions
 
