@@ -75,11 +75,11 @@ npm run tauri dev
 
 Claude Code内で`/charm:help`、`/charm:create`などの`/charm:*`コマンドを入力すると、Charminal専用のコマンドが起動します。packの作成・編集・チュートリアルなどを対話的に行えます。
 
-Codexでは`$charm-help`、`$charm-create`のように`$charm-*`を使います（Codexはカスタムの`/`コマンドに対応していないため、Charminalは代わりに`$charm-*` skillとして登録します）。
+Codexでは`$charm-help`、`$charm-create`のように`$charm-*`を使います（Codexはカスタムの`/`コマンドに対応していないため、Charminalは代わりに`$charm-*`スキルとして登録します）。
 
 ### 言語
 
-Charminalは`language: "auto"`を既定値として、起動時にアプリ言語を自動検出します。日本語環境では日本語UI、日本語default persona、日本語のglobal prompt guidance、日本語の`/charm:*`（Codexでは`$charm-*`）command promptを使います。それ以外の環境では英語を使います。設定画面または`~/.charminal/config.json`から変更できます。
+Charminalは`language: "auto"`を既定値として、起動時にアプリ言語を自動検出します。日本語環境では日本語UI、日本語default persona、日本語のglobal prompt guidance、日本語の`/charm:*`（Codexでは`$charm-*`）コマンドプロンプトを使います。それ以外の環境では英語を使います。設定画面または`~/.charminal/config.json`から変更できます。
 
 ### Pack
 
@@ -137,7 +137,7 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 
 `config.json`でpersona・scene・terminal agentなどを切り替えられます。詳細は[`docs/configuration.md`](docs/configuration.md)。
 
-復旧手順、safe mode、issue報告時に必要な情報は[`docs/troubleshooting.md`](docs/troubleshooting.md)を参照してください。
+復旧手順、safe mode、issue報告時に必要な情報は[`docs/troubleshooting.ja.md`](docs/troubleshooting.ja.md)を参照してください。
 
 ---
 
@@ -165,11 +165,11 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 
 この仕組みには三つの特徴があります。
 
-**身体と環境が同じインターフェース。** 住人にとって、自分の表情を変えることと部屋の照明を変えることは同じ操作です。身体と空間のあいだにAPIの境目がなく、すべてがMCP toolとして並んでいます。
+**身体と環境が同じインターフェース。** 住人にとって、自分の表情を変えることと部屋の照明を変えることは同じ操作です。身体と空間のあいだにAPIの境目がなく、すべてがMCPツールとして並んでいます。
 
 **ユーザーと住人の対称性。** ユーザーがUIで操作できるものと、住人がMCPで操作できるものは（一部を除いて）同じです。ユーザーがカメラの画角を変えれば住人はそれを認識できるし、ユーザーは夜に照明を暖色に変えてもらうよう住人に頼むこともできます。
 
-**経路の有無が境界になる。** MCPの経路は住人の身体と空間には通っていますが、ユーザーの作業ファイルやClaude Code / Codexの思考過程には通っていません。「触るな」というルールをClaude Code / Codexに守らせるのではなく、そもそも経路が存在しないという構造で安全性と自律性を担保します。
+**経路の有無が境界になる。** MCPの経路は住人の身体と空間には通っていますが、ユーザーの作業ファイルやClaude Code/Codexの思考過程には通っていません。「触るな」というルールをClaude Code/Codexに守らせるのではなく、そもそも経路が存在しないという構造で安全性と自律性を担保します。
 
 ---
 
@@ -177,7 +177,7 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 
 **v0.5.1**
 
-実装phaseの途中です。API・データ形状・pack仕様は今後変わります。
+実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
 今できること：
 
@@ -193,7 +193,7 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 - 反射層によるPTY観察と即時反応
 - コンテキスト共有: Voice SummaryとTerminal Reference Marker（Cmd+click / Option+Shift+drag）
 - Journalによる長期記憶
-- `/charm:*` commandによるpackの対話的な作成・編集
+- `/charm:*`コマンドによるpackの対話的な作成・編集
 - ローカライズ: 日本語/英語の自動検出、言語別persona・プロンプト
 - UI pack: immersive/theaterのフルスクリーンレイアウト
 - Pack診断: ヘルスチェック、修復ハンドオフ、ローカルpackの検証
@@ -206,7 +206,7 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 
 ## Experimental
 
-正式サポートはClaude Codeです。Codexは **experimental（実験的）**な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。capabilityはagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照。
+正式サポートはClaude Codeです。Codexは**experimental（実験的）**な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
 
 ### Codex support（実験的）
 
@@ -218,7 +218,7 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 }
 ```
 
-自動起動・persona prompt overlay・PTY observation・Charminal MCP accessが動作します。`/charm:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$charm-*` skillとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのCharminal reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
+自動起動・persona prompt overlay・PTY observation・Charminal MCP accessが動作します。`/charm:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$charm-*`スキルとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのCharminal reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
 
 ---
 
@@ -266,7 +266,7 @@ npm run tauri dev # デスクトップアプリとして起動
 
 ### Scripts
 
-| command | 用途 |
+| コマンド | 用途 |
 |---|---|
 | `npm run dev` | Vite dev serverのみ（browser preview用） |
 | `npm run tauri dev` | Tauriアプリとして起動 |
@@ -275,6 +275,8 @@ npm run tauri dev # デスクトップアプリとして起動
 | `npm run test` | Vitest（watch） |
 | `npm run test:run` | Vitest（one-shot） |
 | `npm run test:rust` | `cargo test` |
+| `npm run doc` | TypeScript SDK APIドキュメントを生成 |
+| `npm run doc:rust` | Rust APIドキュメントを生成 |
 
 buildを公開する前のsmoke testには[`docs/release-checklist.md`](docs/release-checklist.md)を使います。
 
@@ -290,7 +292,8 @@ buildを公開する前のsmoke testには[`docs/release-checklist.md`](docs/rel
 
 ### Development
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — 開発convention（tech stack / coding / workflow）
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — コントリビュート方針と参加方法
+- [`DEVELOPMENT.md`](DEVELOPMENT.md) — 開発ワークフロー、技術スタック、コーディング規約
 - [`CREDITS.ja.md`](CREDITS.ja.md) — 使っているOSSとassetのクレジット ([English](CREDITS.md))
 
 ### Security
