@@ -118,6 +118,7 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 Bundled ambient audio, referenced by scene packs via `sound:<name>`. The per-file list and licenses are maintained in [`bundled-packs/shared/sounds/README.md`](bundled-packs/shared/sounds/README.md).
 
 - `calming-rain.mp3` — [Pixabay](https://pixabay.com/) — [Pixabay Content License](https://pixabay.com/service/license-summary/) (no attribution required, commercial use permitted)
+- `bundled-packs/scenes/abandoned-factory/assets/abandoned-factory_piano-loop.mp3` — "Piano Loops 208 Octave Up Short Loop 120 BPM" by josefpres — [freesound.org](https://freesound.org/people/josefpres/sounds/852739/) — [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain dedication). Per-file terms are also recorded in [`bundled-packs/scenes/abandoned-factory/assets/LICENSE`](bundled-packs/scenes/abandoned-factory/assets/LICENSE).
 
 CLAI's pre-recorded voice clips are not bundled in this release.
 

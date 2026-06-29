@@ -87,23 +87,36 @@ async function main() {
   console.log(`fetch-assets: external store = ${externalRoot}`);
 
   if (!(await exists(externalRoot))) {
-    if (process.env.CI) {
-      console.warn("fetch-assets: CI mode — external asset store not found, skipping.");
-      return;
-    }
-    console.error(`
-fetch-assets: external asset store not found.
+    // Release builds must ship the full asset set: fail closed so a missing /
+    // mis-downloaded store never produces an incomplete bundle.
+    if (process.env.CHARMINAL_ASSETS_REQUIRED) {
+      console.error(`
+fetch-assets: external asset store not found, but CHARMINAL_ASSETS_REQUIRED is set.
 
 Expected at: ${externalRoot}
 
-Set up the store with:
-  mkdir -p ${externalRoot}/{animations,voices}
-  # then place .vrma / voice files inside (see CREDITS.md for sources)
-
-Or override the location:
+This is a release/packaging build that must include third-party assets
+(VRMA animations, voices, bundled VRM). Provide the store and retry:
   CHARMINAL_ASSETS_DIR=/path/to/assets npm run fetch-assets
 `);
-    process.exit(1);
+      process.exit(1);
+    }
+
+    // Local dev / fresh clone / CI: degrade gracefully. The app still builds and
+    // runs; character animation and voice are limited until assets are present.
+    // See README "Setup" and CREDITS.md for how to obtain the third-party assets.
+    console.warn(`
+fetch-assets: external asset store not found — continuing without bundled assets.
+
+Expected at: ${externalRoot}
+
+The app will build and run, but character animation, voice, and the bundled VRM
+will be limited. To enable them, place the third-party assets (see CREDITS.md)
+under the store and re-run:
+  mkdir -p ${externalRoot}/{animations,voices,models}
+  CHARMINAL_ASSETS_DIR=/path/to/assets npm run fetch-assets
+`);
+    return;
   }
 
   for (const target of TARGETS) {
