@@ -12,7 +12,7 @@
 
 <p align="center"><strong>A terminal your AI lives in.</strong></p>
 
-Charminal is a terminal that runs Claude Code or Codex and gives your AI a place to live — and a sense of presence.
+Charminal is a terminal that gives your AI a place to live — and a sense of presence.
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
 
