@@ -58,7 +58,7 @@ That said, constant change is not necessary. Most of the time, the inhabitant ex
 
 An avatar standing in the corner reacting. A personality in a chat panel placed alongside. A mascot that changes expressions to match operation results. These display characters, but do not house them. The UI remains uninhabited, and the character is merely commenting from outside.
 
-Desktop mascots such as Shimeji, Clippy, and desktop pets belong to a lineage of placing characters outside the UI. Charminal asks what it means to let a character **inhabit** the UI.
+There is a long history of placing characters on screen. But many such attempts place the character outside the UI. Charminal asks what it means to let a character **inhabit** the UI.
 
 This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**. And we should admit that Charminal, as it exists today, does not yet fully express this idea.
 
