@@ -28,13 +28,13 @@ Designing not AI's capability, but **how AI manifests as a presence** within the
 
 Charminal is a project that reexamines the relationship between humans and AI. Presence Harness does not prescribe a single form of relationship. Some users want to treat AI as a tool; others want to relate to it as a partner. What Charminal provides is a scaffold for users to think about and build that relationship themselves — a harness for building the relationship with AI.
 
-Mitchell Hashimoto's **Agent = Model + Harness** describes scaffolding for making AI work correctly (a capability harness). Tools, runtime, guardrails, memory, feedback loops.
+Mitchell Hashimoto's **Agent = Model + Harness** describes scaffolding for making AI operate correctly (a capability harness): tools, runtime, guardrails, memory, feedback loops.
 
-Presence Harness shares similar building blocks, but with a different purpose. A capability harness is built to make AI **work correctly**. A Presence Harness is built to make AI **feel like it is there**.
+Presence Harness shares similar building blocks, but with a different purpose. A capability harness is built to make AI **operate correctly**. A Presence Harness is built to make AI **feel like it is there**.
 
 When Claude Code throws an error, for example: the capability harness handles how to process and retry the error. The Presence Harness is where the character's face grimaces and the screen shudders slightly at that moment. Different layers doing different work in response to the same event.
 
-The relationship between the two: **independent in operation, shared in state.** A capability harness alone yields an AI that is smart but does not feel present. A presence harness alone yields something that seems to be there but cannot do anything. Only when both come together do you get an AI that is both capable and felt.
+The relationship between the two: **independent in operation, shared in state.** A capability harness alone yields an AI that is smart but does not feel present. A presence harness alone yields something that seems to be there but cannot do anything. Only when both come together do you get an AI that is both capable and present.
 
 The sections that follow make this Presence Harness concrete as an interface form (ICI) and as an implementation mechanism (the two layers of consciousness and reflex).
 
@@ -88,13 +88,13 @@ The conscious layer (capability) and reflex layer (presence) respond independent
 
 ### Three Moments of Presence
 
-Three typical moments when a character is felt to be "there":
+Three typical moments when an inhabitant feels present:
 
 **Filling the void.** While Claude Code is thinking and output has stopped, the VRM moves subtly. Instead of a spinner, someone is there.
 
 **Reaction preceding consciousness.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before consciousness catches up, you feel a subject there. The architecture where the reflex layer moves before the conscious layer is a structural guarantee that it is "not acting."
 
-**Emergence beyond expectation.** An inhabitant that only moves mechanically through reflexes becomes an apparatus. The inhabitant moving on its own, unrelated to work. Once an unexpected movement occurs even once, that character becomes "someone who might do anything." But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
+**Emergence beyond expectation.** An inhabitant that only moves mechanically through reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. When something unexpected happens, the character becomes someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
 ---
 
@@ -187,11 +187,11 @@ Charminal's packs support hot reload. This means Charminal is a living system th
 
 The hard core is the Rust IO layer and TypeScript runtime/SDK. The living surface is the pack layer under `~/.charminal/packs/`. When the user writes, it is reflected live; the AI also participates in rewriting through `/charm`.
 
-Changes to the living environment do not stop the inhabitant. Stopping and restarting severs the inhabitant's continuity and destroys inhabitance. In the lineage of Smalltalk, Lisp Machine, and Emacs. Using the system, using it, and building it happen in the same place at the same time. But the system's core is solid — what the living system targets is the expressive layer: the inhabitant's body, space, reactions, and memories.
+Changes to the living environment do not stop the inhabitant. Stopping and restarting severs the inhabitant's continuity and breaks the feeling that someone keeps living there. In the lineage of Smalltalk, Lisp Machine, and Emacs, using the system and building the system happen in the same place at the same time. But the system's core is solid — what the living system targets is the expressive layer: the inhabitant's body, space, reactions, and memories.
 
 What differs from Emacs is that AI joins as an agent of rewriting. The inhabitant itself enters a self-generation loop where it grows together with the user. Not just the environment — the way it reacts, how its body behaves, the tendencies of its personality all get rewritten. The inhabitant is simultaneously the subject being nurtured and a participant in its own nurturing.
 
-Here, the Presence Harness closes the loop. Charminal is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the very scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
+Here, the Presence Harness closes the loop. Charminal is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
 
 ---
 
