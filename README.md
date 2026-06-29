@@ -16,7 +16,7 @@ Charminal is a terminal that gives your AI a place to live — and a sense of pr
 
 When the AI is deep in thought, its gaze wanders. When an error hits, its face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
 
-The inhabitant can reshape the space it lives in, in real time — changing the lighting, switching scenes, rearranging the UI. You reach into the same space through the same controls. You and the inhabitant share one place.
+The inhabitant can reshape the space it lives in, in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly. The inhabitant and the user share one environment.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>

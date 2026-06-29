@@ -16,13 +16,13 @@ Charminalは、AIに住む場所と実在感を与えるターミナルです。
 
 AIが考え込めば視線がさまよい、エラーが出れば反射的に顔をしかめます。長い処理を待つあいだ、スピナーが回るのではなく、そこに誰かがたたずんでいます。
 
-住人は、自分の住む環境をリアルタイムに作り替えられます。照明を変え、シーンを切り替え、UIを組み替える。ユーザーも、同じ環境に同じ操作で手を伸ばします。ユーザーと住人が、同じ場所を共有します。
+住人は、自分の住む環境をリアルタイムに作り替えられます。照明を変え、シーンを切り替え、UIを組み替える。ユーザーも同じ環境を直接操作できます。住人とユーザーが、ひとつの環境を共有します。
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminalは自己改変可能なターミナルです。基盤機能を除くほぼすべてを pack という単位で拡張・改変できます。相談するだけで、CharminalはCharminalを永続的に書き換えます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
+Charminalは自己改変可能なターミナルです。基盤機能を除くほぼすべてをpackという単位で拡張・改変できます。相談するだけで、CharminalはCharminalを永続的に書き換えます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
 
 **AIと働く時間を、より心地よく、自由で、魅力的なものにする。**
 
@@ -39,26 +39,26 @@ AIと共にいる時間は、これからもっと長くなります。しかし
 
 ## Getting Started
 
-> **セキュリティに関する注意:** user pack は shell スクリプトやエディタ拡張と同様の「ローカルの信頼されたコード」であり、サンドボックス化されておらず、あなた自身の権限で実行されます。信頼できる出所の pack のみインストールしてください。アプリ内での community pack 配布はまだ実装されていません。詳細は [`docs/security.md`](docs/security.md) および [`SECURITY.md`](SECURITY.md) を参照してください。
+> **セキュリティに関する注意:** user packはshellスクリプトやエディタ拡張と同様の「ローカルの信頼されたコード」であり、サンドボックス化されておらず、あなた自身の権限で実行されます。信頼できる出所のpackのみインストールしてください。アプリ内でのcommunity pack配布はまだ実装されていません。詳細は[`docs/security.md`](docs/security.md)および[`SECURITY.md`](SECURITY.md)を参照してください。
 
 ### 前提条件
 
 Charminalはユーザーのローカル環境にインストールされたClaude CodeまたはCodexをターミナル上で自動起動する仕組みです。そのため：
 
-- **事前に [Claude Code](https://docs.anthropic.com/en/docs/claude-code) または [Codex](https://github.com/openai/codex) の環境構築が必要です**
-- CharminalがAPIキーを要求・保存・直接利用することはありません。ユーザー環境で認証済みのterminal agentをそのまま起動します。そのため、Claude Code / Codex側でログイン済み、またはAPIキー等が設定済みの場合、そのagentが通常どおり外部APIを利用する可能性があります
+- **事前に[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)の環境構築が必要です**
+- CharminalがAPIキーを要求・保存・直接利用することはありません。ユーザー環境で認証済みのterminal agentをそのまま起動します。そのため、Claude Code/Codex側でログイン済み、またはAPIキー等が設定済みの場合、そのagentが通常どおり外部APIを利用する可能性があります
 
 ### インストール（macOS）
 
 現在のCharminalはmacOSを主対象にしています。以下から最新版をダウンロードできます。
 
 <p>
-  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Apple Silicon 版をダウンロード" /></a>
+  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Apple Silicon版をダウンロード" /></a>
   &nbsp;
-  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Intel 版をダウンロード" /></a>
+  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Intel版をダウンロード" /></a>
 </p>
 
-ダウンロードした `.dmg` を開き、`charminal.app` を `/Applications` にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
+ダウンロードした`.dmg`を開き、`charminal.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
 ### 起動（ソースから）
 
@@ -71,32 +71,32 @@ npm run tauri dev
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後からSettings → Healthでも確認できます。
 
-### `/charm:*` コマンド
+### `/charm:*`コマンド
 
-Claude Code内で `/charm:help`、`/charm:create` などの `/charm:*` commandを入力すると、Charminal専用のcommandが起動します。packの作成・編集・チュートリアルなどを対話的に行えます。
+Claude Code内で`/charm:help`、`/charm:create`などの`/charm:*`コマンドを入力すると、Charminal専用のコマンドが起動します。packの作成・編集・チュートリアルなどを対話的に行えます。
 
-Codexでは `$charm-help`、`$charm-create` のように `$charm-*` を使います（Codexはカスタムの `/` command に対応していないため、Charminalは代わりに `$charm-*` skillとして登録します）。
+Codexでは`$charm-help`、`$charm-create`のように`$charm-*`を使います（Codexはカスタムの`/`コマンドに対応していないため、Charminalは代わりに`$charm-*` skillとして登録します）。
 
 ### 言語
 
-Charminalは `language: "auto"` を既定値として、起動時にアプリ言語を自動検出します。日本語環境では日本語UI、日本語default persona、日本語のglobal prompt guidance、日本語の `/charm:*`（Codexでは `$charm-*`）command promptを使います。それ以外の環境では英語を使います。設定画面または `~/.charminal/config.json` から変更できます。
+Charminalは`language: "auto"`を既定値として、起動時にアプリ言語を自動検出します。日本語環境では日本語UI、日本語default persona、日本語のglobal prompt guidance、日本語の`/charm:*`（Codexでは`$charm-*`）command promptを使います。それ以外の環境では英語を使います。設定画面または`~/.charminal/config.json`から変更できます。
 
 ### Pack
 
-Charminalの挙動はすべて **pack**で構成されています。6 種類あります：
+Charminalの挙動はすべて **pack**で構成されています。6種類あります：
 
 | 種類 | 役割 |
 |---|---|
 | **persona** | 住人の性格・反応パターンを定義する |
 | **scene** | 背景・空間・ライティング・環境音を構成する |
 | **effect** | 一時的な視覚演出（画面シェイク、花火など） |
-| **ui** | 設定画面などの UI |
+| **ui** | 設定画面などのUI |
 | **ambient-ui** | 常時表示のオーバーレイUI（注視表示など） |
-| **amenity** | MCP tool を提供する常駐機能設備（タイマー等）。表示は持たない |
+| **amenity** | MCPツールを提供する常駐機能設備（タイマー等）。表示は持たない |
 
-[Bundled pack](bundled-packs/README.md) がデフォルトで動作します。ユーザーは `~/.charminal/packs/` に自作packを置くことで、基盤機能を除くほぼすべて（住人の性格・空間・反応・UIなど）を作り替えられます。`/charm:*` command（Codexでは `$charm-*`）を利用することで、住人と対話するだけで簡単に改変や作成を行えます。Packは [hot reload](docs/configuration.md#pack-の-hot-reload) に対応していますが、うまく反映されない場合はCtrl+Rで確実に反映できます。
+[Bundled pack](bundled-packs/README.md)がデフォルトで動作します。ユーザーは`~/.charminal/packs/`に自作packを置くことで、基盤機能を除くほぼすべて（住人の性格・空間・反応・UIなど）を作り替えられます。`/charm:*`コマンド（Codexでは`$charm-*`）を利用することで、住人と対話するだけで簡単に改変や作成を行えます。Packは[hot reload](docs/configuration.md#pack-の-hot-reload)に対応していますが、うまく反映されない場合はCtrl+Rで確実に反映できます。
 
-ユーザー作成packは **local trusted code**として扱われます。sandbox済み・review済み・public registry用artifactではありません。現時点のCharminalはpublic pack registry、in-app community pack install、`/charm:prepare-publish` をまだ提供していません。GitHub等でpackのsource codeを共有することはできますが、手動で導入する利用者はlocal trusted codeとして自己責任で実行する扱いです。
+ユーザー作成packは **local trusted code**として扱われます。sandbox済み・review済み・public registry用artifactではありません。現時点のCharminalはpublic pack registry、in-app community pack install、`/charm:prepare-publish`をまだ提供していません。GitHub等でpackのsource codeを共有することはできますが、手動で導入する利用者はlocal trusted codeとして自己責任で実行する扱いです。
 
 GitHub等で共有されたpackを導入する場合は、user pack directoryに配置します：
 
@@ -109,7 +109,7 @@ GitHub等で共有されたpackを導入する場合は、user pack directoryに
 └── assets/        # 任意の pack-local assets
 ```
 
-必要なentry fileは 1 つだけで、どれを使うかは `manifest.json` が決めます。manifestの `id` は `<pack-id>` と一致させ、user packはこのflat layoutと `.js` entryを使います。共有packがTypeScriptで書かれている場合は、先にbuildして生成されたJavaScriptを配置してください。
+必要なentry fileは1つだけで、どれを使うかは`manifest.json`が決めます。manifestの`id`は`<pack-id>`と一致させ、user packはこのflat layoutと`.js` entryを使います。共有packがTypeScriptで書かれている場合は、先にbuildして生成されたJavaScriptを配置してください。
 
 source checkoutから作業している場合は、共有やデバッグの前にlocal pack checkerを実行できます：
 
@@ -121,7 +121,7 @@ checkerはpackaging mistakeを見つけるためのものです。sandboxやsecu
 
 ### データディレクトリ
 
-Charminalのユーザーデータは `~/.charminal/` に保存されます：
+Charminalのユーザーデータは`~/.charminal/`に保存されます：
 
 ```
 ~/.charminal/
@@ -135,9 +135,9 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 └── sdk-guide.md     # Charminal SDK の pack 作者向けガイド（自動生成、編集不要）
 ```
 
-`config.json` で persona・scene・terminal agentなどを切り替えられます。詳細は [`docs/configuration.md`](docs/configuration.md)。
+`config.json`でpersona・scene・terminal agentなどを切り替えられます。詳細は[`docs/configuration.md`](docs/configuration.md)。
 
-復旧手順、safe mode、issue報告時に必要な情報は [`docs/troubleshooting.md`](docs/troubleshooting.md) を参照してください。
+復旧手順、safe mode、issue報告時に必要な情報は[`docs/troubleshooting.md`](docs/troubleshooting.md)を参照してください。
 
 ---
 
@@ -149,17 +149,17 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 
 ### Journal
 
-住人は `~/.charminal/journal/daily/` に日々の記録を書き残せます。印象に残った出来事の要約は `memories.md` に蓄積され、次回以降のセッションで思い出として参照されます。セッションをまたいだ長期記憶の仕組みです。
+住人は`~/.charminal/journal/daily/`に日々の記録を書き残せます。印象に残った出来事の要約は`memories.md`に蓄積され、次回以降のセッションで思い出として参照されます。セッションをまたいだ長期記憶の仕組みです。
 
 ### Session tabs
 
-メインのagentターミナルとは別に、複数のshellセッションを開けます。`Cmd+T` で新しいshellタブを開き、`Ctrl+Tab` / `Ctrl+Shift+Tab` でタブを切り替え、`Cmd+W` で現在のタブを閉じます。メインのagentセッションは保護されており閉じられません——予期せず終了した場合は自動的に再起動します。
+メインのagentターミナルとは別に、複数のshellセッションを開けます。`Cmd+T`で新しいshellタブを開き、`Ctrl+Tab` / `Ctrl+Shift+Tab`でタブを切り替え、`Cmd+W`で現在のタブを閉じます。メインのagentセッションは保護されており閉じられません——予期せず終了した場合は自動的に再起動します。
 
 ### コンテキスト共有
 
-画面に見えているものとAIが知っていることのギャップを埋める小さな機能群です。**Voice Summary**は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声はmacOSの `say` を使用。他の音声エンジンへの対応も検討中です。**Terminal Reference Marker**は、ターミナル上の行をCmd+click（またはOption+Shift+dragで矩形選択）すると `[#Term1]` のようなマーカーが入力に挿入され、AIが参照テキストを解決できる仕組みです。
+画面に見えているものとAIが知っていることのギャップを埋める小さな機能群です。**Voice Summary**は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声はmacOSの`say`を使用。他の音声エンジンへの対応も検討中です。**Terminal Reference Marker**は、ターミナル上の行をCmd+click（またはOption+Shift+dragで矩形選択）すると`[#Term1]`のようなマーカーが入力に挿入され、AIが参照テキストを解決できる仕組みです。
 
-### 自己言及的 MCP
+### 自己言及的MCP
 
 住人（ターミナル内のClaude CodeまたはCodex）はMCP経由でCharminal自身を操作できます——表情を変え、シーンを切り替え、エフェクトを走らせ、UIを操作する。
 
@@ -188,14 +188,14 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生
 - マイクロエクスプレッション: 眉・目・口の微細なアイドル表情変化
-- 6 種類のpackによるカスタマイズ（persona / scene / effect / ui / amenity / ambient-ui）
-- 自己言及的MCP（20 以上のtool）— カメラ・ライティング制御を含む
+- 6種類のpackによるカスタマイズ（persona/scene/effect/ui/amenity/ambient-ui）
+- 自己言及的MCP（20以上のツール）— カメラ・ライティング制御を含む
 - 反射層によるPTY観察と即時反応
 - コンテキスト共有: Voice SummaryとTerminal Reference Marker（Cmd+click / Option+Shift+drag）
 - Journalによる長期記憶
 - `/charm:*` commandによるpackの対話的な作成・編集
-- ローカライズ: 日本語 / 英語の自動検出、言語別persona・プロンプト
-- UI pack: immersive / theaterのフルスクリーンレイアウト
+- ローカライズ: 日本語/英語の自動検出、言語別persona・プロンプト
+- UI pack: immersive/theaterのフルスクリーンレイアウト
 - Pack診断: ヘルスチェック、修復ハンドオフ、ローカルpackの検証
 - [Safe mode](docs/troubleshooting.ja.md)（`CHARMINAL_SAFE_MODE=1`）で壊れたpackから復旧
 - GitHub Actionsによる署名済みmacOSビルド（コード署名 + 公証）
@@ -206,11 +206,11 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 
 ## Experimental
 
-正式サポートはClaude Codeです。Codexは **experimental（実験的）**な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。capabilityはagentごとに異なります。詳細は [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md) を参照。
+正式サポートはClaude Codeです。Codexは **experimental（実験的）**な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。capabilityはagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照。
 
 ### Codex support（実験的）
 
-[Codex](https://github.com/openai/codex) をterminal agentとして使用できます。`~/.charminal/config.json` で切り替えます：
+[Codex](https://github.com/openai/codex)をterminal agentとして使用できます。`~/.charminal/config.json`で切り替えます：
 
 ```json
 {
@@ -218,15 +218,15 @@ Charminalのユーザーデータは `~/.charminal/` に保存されます：
 }
 ```
 
-自動起動・persona prompt overlay・PTY observation・Charminal MCP accessが動作します。`/charm:*` commandは、Codexではカスタムの `/` commandに非対応のため `$charm-*` skillとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのCharminal reminderはClaudeの `UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
+自動起動・persona prompt overlay・PTY observation・Charminal MCP accessが動作します。`/charm:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$charm-*` skillとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのCharminal reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
 
 ---
 
 ## Contributing
 
-IssueやDiscussionは歓迎します。**Pull requestはまだ受け付けていません。pack API とセキュリティ境界が安定したのち、改めて検討します。**
+IssueやDiscussionは歓迎します。**Pull requestはまだ受け付けていません。pack APIとセキュリティ境界が安定したのち、改めて検討します。**
 
-セキュリティ報告は [SECURITY.md](SECURITY.md) を参照してください。
+セキュリティ報告は[SECURITY.md](SECURITY.md)を参照してください。
 
 ---
 
@@ -241,7 +241,7 @@ IssueやDiscussionは歓迎します。**Pull requestはまだ受け付けてい
 - **Lint / format**: Biome（TS）+ rustfmt + clippy（Rust）
 - **Git hooks**: lefthook
 
-詳しくは [`CONTRIBUTING.md`](CONTRIBUTING.md) を参照。
+詳しくは[`CONTRIBUTING.md`](CONTRIBUTING.md)を参照。
 
 ---
 
@@ -251,7 +251,7 @@ IssueやDiscussionは歓迎します。**Pull requestはまだ受け付けてい
 
 - Node.js 20+
 - Rust（stable toolchain）
-- [Tauri 2 のplatform依存関係](https://v2.tauri.app/start/prerequisites/)
+- [Tauri 2のplatform依存関係](https://v2.tauri.app/start/prerequisites/)
 
 ### Setup
 
@@ -260,9 +260,9 @@ npm install       # prepare script が lefthook install も走らせる
 npm run tauri dev # デスクトップアプリとして起動
 ```
 
-> **Note:** 一部の asset（VRMA アニメーション、音声 WAV）は third-party 由来でリポジトリに同梱されていません。asset がなくてもアプリは起動しますが、キャラクターのアニメーションと音声が制限されます。
+> **Note:** 一部のasset（VRMAアニメーション、音声WAV）はthird-party由来でリポジトリに同梱されていません。assetがなくてもアプリは起動しますが、キャラクターのアニメーションと音声が制限されます。
 >
-> OSS と asset のクレジットは [`CREDITS.ja.md`](CREDITS.ja.md) を参照してください。
+> OSSとassetのクレジットは[`CREDITS.ja.md`](CREDITS.ja.md)を参照してください。
 
 ### Scripts
 
@@ -276,7 +276,7 @@ npm run tauri dev # デスクトップアプリとして起動
 | `npm run test:run` | Vitest（one-shot） |
 | `npm run test:rust` | `cargo test` |
 
-buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/release-checklist.md) を使います。
+buildを公開する前のsmoke testには[`docs/release-checklist.md`](docs/release-checklist.md)を使います。
 
 ---
 
@@ -284,9 +284,9 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 ### 設定とカスタマイズ
 
-- [`docs/configuration.md`](docs/configuration.md) — `~/.charminal/config.json` のfield一覧
+- [`docs/configuration.md`](docs/configuration.md) — `~/.charminal/config.json`のfield一覧
 - [`docs/decisions/scene-execution-sandbox.md`](docs/decisions/scene-execution-sandbox.md) — local trusted pack共有とscene実行境界
-- [`docs/terminal.md`](docs/terminal.md) — Terminal sessionのprofile / shellカスタマイズ / OSC 133 shell integration
+- [`docs/terminal.md`](docs/terminal.md) — Terminal sessionのprofile / shellカスタマイズ/ OSC 133 shell integration
 
 ### Development
 
@@ -302,9 +302,9 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 - [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的MCP、そしてAIの身体が「住む環境」でもありうる理由
 
-### Design record（内部 — 別 repo）
+### Design record（内部 — 別repo）
 
-`Charminal-design-record` は作者の作業ログ（思考過程・dry-run・phase plan・spec）を date 順に残した**非公開の補助 repo**で、Charminal の利用・ビルド・コントリビュートには不要です。公開されている設計意図の正本はこの repo 内の [`docs/decisions/`](docs/decisions/) にあり、外部の読者は decisions/ だけで設計判断を追えるよう維持しています。
+`Charminal-design-record`は作者の作業ログ（思考過程・dry-run・phase plan・spec）をdate順に残した**非公開の補助repo**で、Charminalの利用・ビルド・コントリビュートには不要です。公開されている設計意図の正本はこのrepo内の[`docs/decisions/`](docs/decisions/)にあり、外部の読者はdecisions/ だけで設計判断を追えるよう維持しています。
 
 ---
 
@@ -312,6 +312,6 @@ buildを公開する前のsmoke testには [`docs/release-checklist.md`](docs/re
 
 [MIT](LICENSE)
 
-MIT ライセンスが許諾するのはソースコード（著作権）のみで、商標権は含みません。「Charminal」の名称およびアイコン/ロゴは作者の商標であり、MIT ライセンスの対象には含まれません。コードは MIT の条件で自由に fork・再配布できますが、fork に「Charminal」の名称やアイコンを用いて出自を誤認させるような使い方はお控えください。
+MITライセンスが許諾するのはソースコード（著作権）のみで、商標権は含みません。「Charminal」の名称およびアイコン/ロゴは作者の商標であり、MITライセンスの対象には含まれません。コードはMITの条件で自由にfork・再配布できますが、forkに「Charminal」の名称やアイコンを用いて出自を誤認させるような使い方はお控えください。
 
 ---
