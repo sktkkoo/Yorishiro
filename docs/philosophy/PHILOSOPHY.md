@@ -94,7 +94,7 @@ Three typical moments when an inhabitant feels present:
 
 **Reaction preceding consciousness.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before consciousness catches up, you feel a subject there. The architecture where the reflex layer moves before the conscious layer is a structural guarantee that it is "not acting."
 
-**Emergence beyond expectation.** An inhabitant that only moves mechanically through reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. When something unexpected happens, the character becomes someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
+**Emergence beyond expectation.** An inhabitant that only follows reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. Such unexpected flickers make the inhabitant someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
 ---
 

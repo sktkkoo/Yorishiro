@@ -26,9 +26,9 @@ Charminal is also self-modifiable. Nearly everything beyond the core is extensib
 
 **Make the hours you spend working with AI more comfortable, open-ended, and compelling.**
 
-The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Charminal builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but the real body is the environment the inhabitant lives in and reshapes.
+The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Charminal builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Charminal, the environment the inhabitant lives in and reshapes also becomes part of that body.
 
-There is something we once saw in science fiction and anime — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
+There is something we once saw in fiction — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
 Much of Charminal itself has been developed in collaboration with the inhabitant running inside it.
 
