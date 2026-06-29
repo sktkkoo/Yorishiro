@@ -12,25 +12,25 @@
 
 <p align="center"><strong>A terminal your AI lives in.</strong></p>
 
-Charminal is a terminal that gives your AI a place to live — and a sense of presence.
+Charminal is a terminal that runs Claude Code or Codex and gives your AI a place to live — and a sense of presence.
 
-When the AI is deep in thought, its gaze wanders. When an error hits, its face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
+When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
 
-The inhabitant can reshape the space it lives in, in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly. The inhabitant and the user share one environment.
+The inhabitant and the user share one environment. The inhabitant can reshape that environment in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminal is a self-modifiable terminal. Nearly everything beyond the core is extensible and modifiable through units called packs. Just by talking to the inhabitant, Charminal permanently rewrites itself — not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
+Charminal is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
-**Make the hours you spend working with AI more comfortable, free, and compelling.**
+**Make the hours you spend working with AI more comfortable, open-ended, and compelling.**
 
-The time we spend with AI will only grow longer — yet the AI beside us stays faceless, an entity whose presence we cannot even locate. Working next to an invisible partner is draining. Charminal builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The body you notice first is the character, but the real body is the whole environment the inhabitant lives in and remakes.
+The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Charminal builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but the real body is the environment the inhabitant lives in and reshapes.
 
 There is something we once saw in science fiction and anime — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
-Much of Charminal's own development has been done as a collaboration with the inhabitant running on Charminal itself.
+Much of Charminal itself has been developed in collaboration with the inhabitant running inside it.
 
 > [日本語版 README はこちら](README.ja.md)
 
