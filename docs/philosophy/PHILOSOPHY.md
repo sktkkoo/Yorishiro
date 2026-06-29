@@ -70,7 +70,7 @@ For something to qualify as ICI, at least the following three conditions must ho
 2. **The inhabitant's existence and behavior manifest as changes in the environment.** Not confined within the avatar — the environment itself can be altered by the inhabitant.
 3. **The user can manipulate the environment through the UI.** Changes the user makes to the environment affect the inhabitant's behavior.
 
-The inhabitant need not be humanoid. A shadow, particles, a voice, a gaze — any of these will do. What matters is **the feeling that someone lives there**.
+The inhabitant need not be humanoid. A shadow, particles, a voice, a gaze — any of these will do. What matters is **the feeling that someone lives there**. For example, the mouse cursor in Codex's computer use is part of the capability harness and, at the same time, lends the AI a sense of presence.
 
 ---
 
