@@ -56,7 +56,7 @@ That said, constant change is not necessary. Most of the time, the inhabitant ex
 
 ### What ICI Is Not
 
-An avatar standing in the corner reacting. A personality in a chat panel placed alongside. A mascot that changes expressions to match operation results. These display characters, but do not house them. The UI remains uninhabited, and the character is merely commenting from outside.
+An avatar standing in the corner reacting. A personality in a chat panel placed alongside. A mascot that changes expressions to match operation results. These display characters, but the UI remains uninhabited, and the character is merely commenting from outside.
 
 There is a long history of placing characters on screen. But many such attempts place the character outside the UI. Charminal asks what it means to let a character **inhabit** the UI.
 
