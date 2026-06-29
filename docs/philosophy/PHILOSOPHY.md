@@ -26,7 +26,7 @@ AI is closer than ever, yet we have not even settled whether it is a tool or a p
 
 Designing not AI's capability, but **how AI manifests as a presence** within the human work environment, time, and flow of attention. This project calls this design domain **Presence Harness**.
 
-Charminal is a project that reexamines the relationship between humans and AI. Presence Harness does not prescribe a single form of relationship. Some users want to treat AI as a tool; others want to relate to it as a partner. What Charminal provides is a scaffold for users to think about and build that relationship themselves — a harness for building the relationship with AI, and a meta-harness that lets you reshape the harness itself.
+Charminal is a project that reexamines the relationship between humans and AI. Presence Harness does not prescribe a single form of relationship. Some users want to treat AI as a tool; others want to relate to it as a partner. What Charminal provides is a scaffold for users to think about and build that relationship themselves — a harness for building the relationship with AI.
 
 Mitchell Hashimoto's **Agent = Model + Harness** describes scaffolding for making AI work correctly (a capability harness). Tools, runtime, guardrails, memory, feedback loops.
 
@@ -35,6 +35,8 @@ Presence Harness shares similar building blocks, but with a different purpose. A
 When Claude Code throws an error, for example: the capability harness handles how to process and retry the error. The Presence Harness is where the character's face grimaces and the screen shudders slightly at that moment. Different layers doing different work in response to the same event.
 
 The relationship between the two: **independent in operation, shared in state.** A capability harness alone yields an AI that is smart but does not feel present. A presence harness alone yields something that seems to be there but cannot do anything. Only when both come together do you get an AI that is both capable and felt.
+
+The sections that follow make this Presence Harness concrete as an interface form (ICI) and as an implementation mechanism (the two layers of consciousness and reflex).
 
 ---
 
@@ -56,6 +58,8 @@ That said, constant change is not necessary. Most of the time, the inhabitant ex
 
 An avatar standing in the corner reacting. A personality in a chat panel placed alongside. A mascot that changes expressions to match operation results. These display characters, but do not house them. The UI remains uninhabited, and the character is merely commenting from outside.
 
+Desktop mascots such as Shimeji, Clippy, and desktop pets belong to a lineage of placing characters outside the UI. Charminal asks what it means to let a character **inhabit** the UI.
+
 This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**. And we should admit that Charminal, as it exists today, does not yet fully express this idea.
 
 ### Three Conditions
@@ -74,11 +78,11 @@ The inhabitant need not be humanoid. A shadow, particles, a voice, a gaze — an
 
 Charminal's character sits on top of Claude Code/Codex. It launches the user's agent, gives it personality via `--system-prompt`, and observes terminal output to drive VRM reactions.
 
-This creates a **two-layer structure of a single being**.
+Charminal treats this as a **two-layer structure of a single being**.
 
 Claude Code is the **conscious layer**. Linguistic, logical, handling what can be deliberately articulated. The reflex layer, by contrast, observes hooks and PTY output, mechanically detecting reactions. A grimacing face on error, the Aura feature that covers the attended region in soft white light — these are typical reflex-layer behaviors. LLMs structurally lack this reflex layer. Every token generation is "conscious speech" — until an error is verbalized, nothing can be expressed. A chat UI spinner is not a reflex; it is a notice that reflexes are absent.
 
-Charminal grafts this missing reflex layer from the outside through observation. It creates the sequence where the body reacts before recognition. That is why the Charminal character and Claude Code are not separate beings — they are one consciousness and one reflex.
+Charminal grafts this missing reflex layer from the outside through observation. It creates the sequence where the body reacts before recognition. That is why Charminal treats the character and Claude Code not as separate beings, but as one consciousness and one reflex.
 
 The conscious layer (capability) and reflex layer (presence) respond independently to the same event. Presence expression is not subcontracted from capability.
 
@@ -90,7 +94,7 @@ Three typical moments when a character is felt to be "there":
 
 **Reaction preceding consciousness.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before consciousness catches up, you feel a subject there. The architecture where the reflex layer moves before the conscious layer is a structural guarantee that it is "not acting."
 
-**Emergence beyond expectation.** An inhabitant that only moves mechanically through reflexes becomes an apparatus. The inhabitant moving on its own, unrelated to work. Once an unexpected movement occurs even once, that character becomes "someone who might do anything."
+**Emergence beyond expectation.** An inhabitant that only moves mechanically through reflexes becomes an apparatus. The inhabitant moving on its own, unrelated to work. Once an unexpected movement occurs even once, that character becomes "someone who might do anything." But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
 ---
 
@@ -145,6 +149,10 @@ AI sometimes fails, sometimes misunderstands, and sometimes is plausibly wrong. 
 
 Charminal does not hide this. Presenting AI as "always correct, fully controllable" dulls the user's judgment over time. That the inhabitant is a being that can be wrong, and that this is visible — that is the foundation of trust.
 
+### Presence Without Dependency
+
+Giving a tool a sense of presence naturally raises the concern that it might mislead users or encourage dependence. Charminal draws a clear line: presence exists to **truthfully convey** the AI's state, not to perform emotions or capabilities that are not there. The inhabitant does not pretend to recognize what it has not recognized, does not hide mistakes, and does not replace the user's judgment. Increasing presence and deceiving the user are different things.
+
 ---
 
 ## Guidelines from Practice
@@ -165,9 +173,11 @@ The inhabitant's autonomy is limited to **the range that does not disrupt the us
 
 Reacting in sync with every user operation (that is UI feedback, not presence). Reacting to everything continuously (that is noise). Layering visual effects unconnected to presence (that is decoration). Collapsing every expression into text utterance (that just becomes "it spoke again"). Repeating the same reaction (repetition without variation looks mechanical).
 
-### Layers of Trust
+### Non-goals
 
-Exposing MCP to the internal inhabitant and exposing MCP to external services operate at different levels of trust. This distinction has been designed into MCP trust tiers (details in [`docs/decisions/mcp-trust-tiers.md`](../decisions/mcp-trust-tiers.md)).
+- Improving AI capability itself (that is the job of the capability harness)
+- Replacing chat UI (Charminal sits on top of terminal-based agent workflows)
+- Claiming AGI or "conscious AI" (what Charminal builds is a sense of presence, not consciousness itself)
 
 ---
 
@@ -181,14 +191,12 @@ Changes to the living environment do not stop the inhabitant. Stopping and resta
 
 What differs from Emacs is that AI joins as an agent of rewriting. The inhabitant itself enters a self-generation loop where it grows together with the user. Not just the environment — the way it reacts, how its body behaves, the tendencies of its personality all get rewritten. The inhabitant is simultaneously the subject being nurtured and a participant in its own nurturing.
 
+Here, the Presence Harness closes the loop. Charminal is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the very scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
+
 ---
 
 ## Conclusion
 
-Charminal is a project that builds an environment for humans and AI to work side by side for extended periods.
+Working with an invisible partner for extended periods is draining. Charminal builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself.
 
-Rather than enhancing AI's capabilities, it helps build a harness for establishing AI's sense of presence.
-
-Working with an invisible partner is draining. Many people are already exhausted by their interactions with AI. With a sense of presence, the time becomes one where someone is beside you. And Charminal designs AI's sense of presence not only through the character, but as something that permeates the environment.
-
-Making the time spent working with AI more free and compelling — that is the goal.
+The goal is simple: to make the time spent working with AI more free and compelling.
