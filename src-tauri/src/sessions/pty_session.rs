@@ -7,7 +7,7 @@
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::ipc::{Channel, InvokeResponseBody};
@@ -18,6 +18,12 @@ use crate::pty::PtyExit;
 use super::osc133::{Osc133Parser, OscEvent};
 use super::registry::SessionRegistry;
 use super::types::{SessionActivity, SessionId};
+
+#[derive(Clone, Serialize)]
+struct PtyCwdChanged {
+    session_id: String,
+    cwd: String,
+}
 
 // ─── SpawnSpec ──────────────────────────────────────────────────
 
@@ -400,6 +406,17 @@ impl PtySession {
                                     registry_for_thread.set_activity(
                                         &session_id_for_thread,
                                         SessionActivity::Idle,
+                                    );
+                                }
+                                OscEvent::CurrentDir { cwd } => {
+                                    registry_for_thread
+                                        .set_cwd(&session_id_for_thread, cwd.clone());
+                                    let _ = app_handle.emit(
+                                        "pty-cwd-changed",
+                                        PtyCwdChanged {
+                                            session_id: session_id_for_thread.clone(),
+                                            cwd,
+                                        },
                                     );
                                 }
                                 OscEvent::PromptStart | OscEvent::PromptEnd => {

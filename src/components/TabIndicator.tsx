@@ -9,6 +9,7 @@ interface TabIndicatorProps {
   readonly labels: ReadonlyMap<SessionId, string>;
   /** session id → 観察状態。未接続なら従来どおり active dot だけ表示する。 */
   readonly statuses?: ReadonlyMap<SessionId, SessionStatus>;
+  readonly hookBadges?: ReadonlyMap<SessionId, string>;
   /** タブ選択。未指定なら表示専用。 */
   readonly onSelectSession?: (sessionId: SessionId) => void;
   readonly onAddSession?: () => void;
@@ -23,6 +24,7 @@ export default function TabIndicator({
   state,
   labels,
   statuses,
+  hookBadges,
   onSelectSession,
   onAddSession,
   onCloseSession,
@@ -35,10 +37,12 @@ export default function TabIndicator({
           const isMain = id === state.mainSessionId;
           const label = labels.get(id) ?? id;
           const status = statuses?.get(id) ?? null;
+          const hookBadge = hookBadges?.get(id) ?? null;
           const badge = status ? deriveSessionStatusBadge(status) : null;
           const icon = badge ? stateIconForBadge(badge, status?.unread === true) : null;
           const flags = [
             isActive ? "active" : "",
+            isMain ? "is-main" : "",
             status?.unread ? "unread" : "",
             badge ? `badge-${badge}` : "",
           ]
@@ -62,6 +66,13 @@ export default function TabIndicator({
                   />
                 ) : null}
                 <span className="tab-indicator-label">{label}</span>
+                <span
+                  className={`tab-indicator-hook-badge${hookBadge ? "" : " is-empty"}`}
+                  aria-hidden={hookBadge ? undefined : "true"}
+                  title={hookBadge ? `Hook: ${hookBadge}` : undefined}
+                >
+                  {hookBadge ?? ""}
+                </span>
               </button>
               {!isMain && onCloseSession ? (
                 <button

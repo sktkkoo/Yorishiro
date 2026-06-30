@@ -117,6 +117,33 @@ describe("SessionTabManager", () => {
     });
   });
 
+  describe("updateSessionCwd", () => {
+    it("updates cwd and emits state to refresh labels", () => {
+      const shell = manager.openShell("/work/a");
+      const states: SessionTabState[] = [];
+      manager.subscribe((state) => states.push(state));
+      const beforeSessions = manager.getState().sessions;
+
+      manager.updateSessionCwd(shell, "/work/b");
+
+      expect(manager.getSessionCwd(shell)).toBe("/work/b");
+      expect(states).toHaveLength(1);
+      expect(states[0].sessions).toEqual([MAIN, shell]);
+      expect(states[0].sessions).not.toBe(beforeSessions);
+    });
+
+    it("ignores unchanged and unknown cwd updates", () => {
+      const shell = manager.openShell("/work/a");
+      const states: SessionTabState[] = [];
+      manager.subscribe((state) => states.push(state));
+
+      manager.updateSessionCwd(shell, "/work/a");
+      manager.updateSessionCwd("missing", "/work/b");
+
+      expect(states).toEqual([]);
+    });
+  });
+
   // ── close ─────────────────────────────────────────────────────
 
   describe("close", () => {

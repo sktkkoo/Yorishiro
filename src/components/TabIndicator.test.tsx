@@ -107,6 +107,42 @@ describe("TabIndicator", () => {
     expect(screen.queryByText("input")).toBeNull();
   });
 
+  it("reserves hook badge space and renders active hook labels", () => {
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        hookBadges={new Map([["shell-1", "pre-tool-use"]])}
+      />,
+    );
+
+    expect(screen.getByText("pre-tool-use")).toBeTruthy();
+    const badgeSlots = document.querySelectorAll(".tab-indicator-hook-badge");
+    expect(badgeSlots).toHaveLength(2);
+    expect(badgeSlots[0].classList.contains("is-empty")).toBe(true);
+  });
+
+  it("marks the main tab for wider primary presentation", () => {
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+      />,
+    );
+
+    expect(document.querySelector(".tab-indicator-item.is-main")).toBeTruthy();
+  });
+
   it("calls onSelectSession when a tab is clicked", () => {
     const onSelectSession = vi.fn();
 

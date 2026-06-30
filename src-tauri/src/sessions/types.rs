@@ -77,4 +77,8 @@ pub enum SessionEvent {
         id: SessionId,
         activity: SessionActivity,
     },
+    SessionCwdChanged {
+        id: SessionId,
+        cwd: String,
+    },
 }

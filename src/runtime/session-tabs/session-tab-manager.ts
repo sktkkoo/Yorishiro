@@ -126,6 +126,14 @@ export class SessionTabManager {
     return this.sessionCwds.get(sessionId);
   }
 
+  updateSessionCwd(sessionId: SessionId, cwd: string): void {
+    if (!this.state.sessions.includes(sessionId)) return;
+    if (this.sessionCwds.get(sessionId) === cwd) return;
+    this.sessionCwds.set(sessionId, cwd);
+    this.setState({ ...this.state, sessions: [...this.state.sessions] });
+    this.emitEvent("session-cwd-changed", { sessionId, cwd });
+  }
+
   shouldAttachExistingSession(sessionId: SessionId): boolean {
     return this.restoredSessionIds.has(sessionId);
   }

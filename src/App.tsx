@@ -355,6 +355,7 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const VRM_STORAGE_KEY = "charminal:vrm";
+const HOOK_BADGE_VISIBLE_MS = 6000;
 
 interface RestoreDialogRequest {
   readonly seq: number;
@@ -598,6 +599,20 @@ function parseHookTargetSessionId(sig: string): string | null {
   if (typeof parsed !== "object" || parsed === null) return null;
   const sessionId = (parsed as Record<string, unknown>).sessionId;
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
+}
+
+function parseHookBadgeLabel(sig: string): string | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sig);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const event = (parsed as Record<string, unknown>).event;
+  if (typeof event !== "string") return null;
+  const label = event.trim();
+  return label.length > 0 ? label : null;
 }
 
 function parseHookAttentionSignal(
@@ -2133,6 +2148,10 @@ function App() {
   const [sessionStatuses, setSessionStatuses] = useState<ReadonlyArray<SessionStatus>>(() =>
     sessionStatusStore.list(),
   );
+  const [sessionHookBadges, setSessionHookBadges] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const sessionHookBadgeTimersRef = useRef<Map<string, number>>(new Map());
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
   const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
   if (preferredActiveSessionIdRef.current === undefined) {
@@ -2166,6 +2185,37 @@ function App() {
     () => new Map(sessionStatuses.map((status) => [status.sessionId, status] as const)),
     [sessionStatuses],
   );
+
+  const showSessionHookBadge = useCallback((sessionId: string, label: string) => {
+    const currentTimer = sessionHookBadgeTimersRef.current.get(sessionId);
+    if (currentTimer !== undefined) {
+      window.clearTimeout(currentTimer);
+    }
+    setSessionHookBadges((prev) => {
+      const next = new Map(prev);
+      next.set(sessionId, label);
+      return next;
+    });
+    const timer = window.setTimeout(() => {
+      sessionHookBadgeTimersRef.current.delete(sessionId);
+      setSessionHookBadges((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Map(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }, HOOK_BADGE_VISIBLE_MS);
+    sessionHookBadgeTimersRef.current.set(sessionId, timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of sessionHookBadgeTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      sessionHookBadgeTimersRef.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isUserLayerReady) return;
@@ -3285,6 +3335,10 @@ function App() {
       perception.onHookSignal(sig);
       const fallbackSessionId = tabManager.getState().mainSessionId;
       const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
+      const hookBadge = parseHookBadgeLabel(sig);
+      if (hookBadge !== null) {
+        showSessionHookBadge(targetSessionId, hookBadge);
+      }
       const notification = parseHookAttentionSignal(sig);
       if (notification) {
         sessionStatusStore.markAttentionRequest(
@@ -3328,7 +3382,7 @@ function App() {
       polling = false;
       unlistenHookSignal?.();
     };
-  }, [perception, devLog, sessionStatusStore, tabManager]);
+  }, [perception, devLog, sessionStatusStore, showSessionHookBadge, tabManager]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
@@ -3706,6 +3760,33 @@ function App() {
     };
   }, [isUserLayerReady, sessionStatusStore, tabManager]);
 
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen<{ session_id: string; cwd: string }>(
+        "pty-cwd-changed",
+        (event) => {
+          if (disposed) return;
+          tabManager.updateSessionCwd(event.payload.session_id, event.payload.cwd);
+        },
+      );
+      if (disposed) {
+        unlisten();
+      } else {
+        cleanup = unlisten;
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, [isUserLayerReady, tabManager]);
+
   // Rust 側の app_screenshot は撮影完了後に "charminal:screen-flash" を emit する。
   // ここで listen して screen-flash effect を dispatch することで、
   // OS-level screenshot 撮影直後の視覚フィードバックを提供する。
@@ -3782,6 +3863,7 @@ function App() {
             state={tabState}
             labels={sessionTabLabels}
             statuses={sessionStatusById}
+            hookBadges={sessionHookBadges}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}

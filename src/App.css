@@ -912,18 +912,18 @@ body,
 }
 
 .tab-indicator-item {
-  max-width: 190px;
-  min-width: 0;
+  width: 214px;
+  min-width: 168px;
+  max-width: 260px;
   height: 27px;
-  flex: 0 1 auto;
+  flex: 0 0 214px;
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 0 4px 0 9px;
-  border: 1px solid transparent;
-  border-bottom-color: transparent;
-  border-radius: 7px 7px 0 0;
-  background: rgba(255, 255, 255, 0.025);
+  padding: 0 4px 0 10px;
+  border: 0;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.035);
   color: var(--charminal-button-fg);
   position: relative;
   transition:
@@ -931,6 +931,15 @@ body,
     border-color 0.15s,
     color 0.15s,
     opacity 0.15s;
+}
+
+.tab-indicator-item.is-main {
+  width: 270px;
+  min-width: 230px;
+  max-width: 340px;
+  flex-basis: 270px;
+  background: rgba(77, 217, 207, 0.055);
+  color: rgba(236, 239, 244, 0.86);
 }
 
 .tab-indicator-tab,
@@ -957,8 +966,30 @@ body,
 
 .tab-indicator-label {
   min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tab-indicator-hook-badge {
+  width: 58px;
+  min-width: 58px;
+  max-width: 58px;
+  flex: 0 0 58px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: rgba(214, 177, 92, 0.16);
+  color: #e8ca82;
+  font-size: 9px;
+  line-height: 13px;
+  text-align: center;
+}
+
+.tab-indicator-hook-badge.is-empty {
+  background: transparent;
+  color: transparent;
 }
 
 .tab-indicator-close {
@@ -996,12 +1027,14 @@ body,
 }
 
 .tab-indicator-item.active {
-  background: var(--charminal-bg);
-  border-color: var(--charminal-border);
-  border-bottom-color: var(--charminal-bg);
+  background: rgba(15, 25, 35, 0.98);
   color: var(--charminal-fg);
   z-index: 1;
-  box-shadow: 0 1px 0 var(--charminal-bg);
+  box-shadow: inset 0 -1px 0 rgba(15, 25, 35, 0.98);
+}
+
+.tab-indicator-item.is-main.active {
+  background: rgba(18, 32, 44, 1);
 }
 
 .tab-indicator-item:hover .tab-indicator-close,
