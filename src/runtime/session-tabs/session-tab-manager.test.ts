@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionDescriptor, SessionId } from "../sessions/types";
+import type { SessionTabState } from "./types";
 
 vi.mock("../../bindings/tauri-commands", () => ({
   sessionDestroy: vi.fn().mockResolvedValue(undefined),
