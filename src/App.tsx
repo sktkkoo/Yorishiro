@@ -3814,35 +3814,32 @@ function App() {
             scene={renderedSceneEntry}
           />
         </div>
-        {canMountTerminals && (
-          <>
-            {tabState.sessions.map((sessionId) => {
-              const sessionCwd = tabManager.getSessionCwd(sessionId);
-              return (
-                <Terminal
-                  key={sessionId}
-                  sessionId={sessionId}
-                  visible={sessionId === tabState.activeSessionId}
-                  spec={
-                    sessionId === DEFAULT_SESSION_ID
-                      ? withAgentRuntimeFields(
-                          defaultSpec ?? {
-                            kind: "agent",
-                            agent: terminalAgent,
-                          },
-                          resolvedSystemPrompt,
-                          localizedPluginDir,
-                        )
-                      : { kind: "shell", integration: true }
-                  }
-                  cwd={sessionCwd === undefined ? cwd : sessionCwd}
-                  perception={sessionId === tabState.activeSessionId ? perception : null}
-                  attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
-                />
-              );
-            })}
-          </>
-        )}
+        {canMountTerminals &&
+          tabState.sessions.map((sessionId) => {
+            const sessionCwd = tabManager.getSessionCwd(sessionId);
+            return (
+              <Terminal
+                key={sessionId}
+                sessionId={sessionId}
+                visible={sessionId === tabState.activeSessionId}
+                spec={
+                  sessionId === DEFAULT_SESSION_ID
+                    ? withAgentRuntimeFields(
+                        defaultSpec ?? {
+                          kind: "agent",
+                          agent: terminalAgent,
+                        },
+                        resolvedSystemPrompt,
+                        localizedPluginDir,
+                      )
+                    : { kind: "shell", integration: true }
+                }
+                cwd={sessionCwd === undefined ? cwd : sessionCwd}
+                perception={sessionId === tabState.activeSessionId ? perception : null}
+                attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
+              />
+            );
+          })}
       </div>
       {firstRunHealth && (
         <FirstRunHealthPanel
