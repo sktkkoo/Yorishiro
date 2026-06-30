@@ -920,7 +920,7 @@ body,
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 0 4px 0 10px;
+  padding: 0 4px 0 7px;
   border: 0;
   border-radius: 0;
   background: rgba(255, 255, 255, 0.035);
@@ -959,12 +959,14 @@ body,
   height: 100%;
   white-space: nowrap;
   overflow: hidden;
+  text-align: left;
 }
 
 .tab-indicator-label {
   min-width: 0;
   flex: 1 1 auto;
   overflow: hidden;
+  text-align: left;
   text-overflow: ellipsis;
 }
 

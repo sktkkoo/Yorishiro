@@ -87,6 +87,32 @@ describe("TabIndicator", () => {
     expect(screen.queryByText("◆")).toBeNull();
   });
 
+  it("keeps tab labels as the leading content when status icons are visible", () => {
+    const statuses = new Map([
+      ["default-session", baseStatus("default-session", { activity: "running-command" })],
+      ["shell-1", baseStatus("shell-1", { activity: "awaiting-input" })],
+    ]);
+
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "~/Charminal"],
+          ])
+        }
+        statuses={statuses}
+      />,
+    );
+
+    const personaTab = screen.getByRole("tab", { name: /claude/ });
+    const pathTab = screen.getByRole("tab", { name: /~\/Charminal/ });
+
+    expect(personaTab.firstElementChild?.classList.contains("tab-indicator-label")).toBe(true);
+    expect(pathTab.firstElementChild?.classList.contains("tab-indicator-label")).toBe(true);
+  });
+
   it("does not render an ambiguous dot for unread idle tabs", () => {
     const statuses = new Map([
       ["default-session", baseStatus("default-session", { unread: true })],

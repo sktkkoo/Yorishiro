@@ -58,6 +58,7 @@ export default function TabIndicator({
                 aria-selected={isActive}
                 onClick={() => onSelectSession?.(id)}
               >
+                <span className="tab-indicator-label">{label}</span>
                 {icon ? (
                   <span
                     className={`tab-indicator-state state-${icon.kind}`}
@@ -67,7 +68,6 @@ export default function TabIndicator({
                     {icon.text ?? ""}
                   </span>
                 ) : null}
-                <span className="tab-indicator-label">{label}</span>
                 <span
                   className={`tab-indicator-hook-badge${hookBadge ? "" : " is-empty"}`}
                   aria-hidden={hookBadge ? undefined : "true"}
