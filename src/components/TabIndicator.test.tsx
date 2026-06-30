@@ -43,7 +43,7 @@ describe("TabIndicator", () => {
     expect(screen.getByRole("tab", { name: /claude/ })).toBeTruthy();
   });
 
-  it("renders status badges and unread marker", () => {
+  it("renders status icons without text badges", () => {
     const statuses = new Map([
       ["default-session", baseStatus("default-session", { activity: "running-command" })],
       [
@@ -75,11 +75,36 @@ describe("TabIndicator", () => {
       />,
     );
 
-    expect(screen.getByText(/● claude/)).toBeTruthy();
-    expect(screen.getByText("run")).toBeTruthy();
-    expect(screen.getByText(/◆ shell-1/)).toBeTruthy();
-    expect(screen.getByText("failed")).toBeTruthy();
-    expect(screen.getByText(/◆ shell-1/).getAttribute("title")).toBe("Claude: Permission needed");
+    expect(screen.getByRole("tab", { name: /claude/ })).toBeTruthy();
+    expect(screen.getByLabelText("Running")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: /shell-1/ }).getAttribute("title")).toBe(
+      "Claude: Permission needed",
+    );
+    expect(screen.getByLabelText("Failed")).toBeTruthy();
+    expect(screen.queryByText("run")).toBeNull();
+    expect(screen.queryByText("failed")).toBeNull();
+    expect(screen.queryByText("◆")).toBeNull();
+  });
+
+  it("renders awaiting input as a state icon", () => {
+    const statuses = new Map([
+      ["default-session", baseStatus("default-session", { activity: "awaiting-input" })],
+    ]);
+
+    render(
+      <TabIndicator
+        state={{
+          sessions: ["default-session"],
+          activeSessionId: "default-session",
+          mainSessionId: "default-session",
+        }}
+        labels={new Map([["default-session", "claude"]])}
+        statuses={statuses}
+      />,
+    );
+
+    expect(screen.getByLabelText("Needs input")).toBeTruthy();
+    expect(screen.queryByText("input")).toBeNull();
   });
 
   it("calls onSelectSession when a tab is clicked", () => {

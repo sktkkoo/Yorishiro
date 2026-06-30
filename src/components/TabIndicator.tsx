@@ -1,9 +1,5 @@
 import { Plus, X } from "lucide-react";
-import {
-  deriveSessionStatusBadge,
-  isNoteworthyBadge,
-  type SessionStatus,
-} from "../runtime/session-status";
+import { deriveSessionStatusBadge, type SessionStatus } from "../runtime/session-status";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
 
@@ -39,10 +35,10 @@ export default function TabIndicator({
         const label = labels.get(id) ?? id;
         const status = statuses?.get(id) ?? null;
         const badge = status ? deriveSessionStatusBadge(status) : null;
+        const icon = badge ? stateIconForBadge(badge, status?.unread === true) : null;
         const flags = [
           isActive ? "active" : "",
           status?.unread ? "unread" : "",
-          badge && isNoteworthyBadge(badge) ? "noteworthy" : "",
           badge ? `badge-${badge}` : "",
         ]
           .filter(Boolean)
@@ -57,8 +53,14 @@ export default function TabIndicator({
               aria-selected={isActive}
               onClick={() => onSelectSession?.(id)}
             >
-              {status?.unread ? "◆" : isActive ? "●" : "○"} {label}
-              {badge ? <span className="tab-indicator-status">{badgeLabel(badge)}</span> : null}
+              {icon ? (
+                <span
+                  className={`tab-indicator-state state-${icon.kind}`}
+                  role="img"
+                  aria-label={icon.label}
+                />
+              ) : null}
+              <span className="tab-indicator-label">{label}</span>
             </button>
             {!isMain && onCloseSession ? (
               <button
@@ -89,25 +91,33 @@ export default function TabIndicator({
   );
 }
 
-function attentionTitle(attention: NonNullable<SessionStatus["attention"]>): string {
-  return attention.title ? `${attention.title}: ${attention.body}` : attention.body;
+type StateIcon = {
+  readonly kind: "running" | "input" | "failed" | "done" | "exited" | "unread";
+  readonly label: string;
+};
+
+function stateIconForBadge(
+  badge: ReturnType<typeof deriveSessionStatusBadge>,
+  unread: boolean,
+): StateIcon | null {
+  switch (badge) {
+    case "starting":
+      return { kind: "running", label: "Starting" };
+    case "running":
+      return { kind: "running", label: "Running" };
+    case "awaiting-input":
+      return { kind: "input", label: "Needs input" };
+    case "exited-fail":
+      return { kind: "failed", label: "Failed" };
+    case "exited-ok":
+      return { kind: "done", label: "Done" };
+    case "exited-unknown":
+      return { kind: "exited", label: "Exited" };
+    case "idle":
+      return unread ? { kind: "unread", label: "Unread output" } : null;
+  }
 }
 
-function badgeLabel(badge: ReturnType<typeof deriveSessionStatusBadge>): string {
-  switch (badge) {
-    case "awaiting-input":
-      return "input";
-    case "exited-fail":
-      return "failed";
-    case "exited-ok":
-      return "done";
-    case "exited-unknown":
-      return "exited";
-    case "running":
-      return "run";
-    case "starting":
-      return "start";
-    case "idle":
-      return "idle";
-  }
+function attentionTitle(attention: NonNullable<SessionStatus["attention"]>): string {
+  return attention.title ? `${attention.title}: ${attention.body}` : attention.body;
 }
