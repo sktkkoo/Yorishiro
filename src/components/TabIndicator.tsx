@@ -3,13 +3,21 @@ import { deriveSessionStatusBadge, type SessionStatus } from "../runtime/session
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
 
+export type TabIndicatorBadgeTone = "agent-hook" | "charminal";
+
+export interface TabIndicatorBadge {
+  readonly label: string;
+  readonly tone: TabIndicatorBadgeTone;
+  readonly title?: string;
+}
+
 interface TabIndicatorProps {
   readonly state: SessionTabState;
   /** session id → 表示ラベル。見つからなければ id をそのまま表示。 */
   readonly labels: ReadonlyMap<SessionId, string>;
   /** session id → 観察状態。未接続なら従来どおり active dot だけ表示する。 */
   readonly statuses?: ReadonlyMap<SessionId, SessionStatus>;
-  readonly hookBadges?: ReadonlyMap<SessionId, string>;
+  readonly hookBadges?: ReadonlyMap<SessionId, TabIndicatorBadge>;
   /** タブ選択。未指定なら表示専用。 */
   readonly onSelectSession?: (sessionId: SessionId) => void;
   readonly onAddSession?: () => void;
@@ -43,6 +51,7 @@ export default function TabIndicator({
           const flags = [
             isActive ? "active" : "",
             isMain ? "is-main" : "",
+            state.sessions.length === 1 ? "is-single" : "",
             status?.unread ? "unread" : "",
             badge ? `badge-${badge}` : "",
           ]
@@ -68,13 +77,14 @@ export default function TabIndicator({
                     {icon.text ?? ""}
                   </span>
                 ) : null}
-                <span
-                  className={`tab-indicator-hook-badge${hookBadge ? "" : " is-empty"}`}
-                  aria-hidden={hookBadge ? undefined : "true"}
-                  title={hookBadge ? `Hook: ${hookBadge}` : undefined}
-                >
-                  {hookBadge ?? ""}
-                </span>
+                {hookBadge ? (
+                  <span
+                    className={`tab-indicator-hook-badge tone-${hookBadge.tone}`}
+                    title={hookBadge.title}
+                  >
+                    {hookBadge.label}
+                  </span>
+                ) : null}
               </button>
               {!isMain && onCloseSession ? (
                 <button

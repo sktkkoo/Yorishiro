@@ -102,6 +102,53 @@ describe("EventBus", () => {
   });
 
   describe("external dispatch", () => {
+    it("notifies dispatch subscribers before trigger handling", () => {
+      const { bus } = createTestBus();
+      const order: string[] = [];
+      const listener = vi.fn(() => order.push("listener"));
+      const handler = vi.fn<ReactionHandler>(() => {
+        order.push("handler");
+      });
+      bus.subscribeDispatch(listener);
+      bus.register(alwaysMatch("pleased"), handler, makePersonaSource());
+
+      const event = makeUserEvent("hi");
+      bus.dispatch(event);
+
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(listener).toHaveBeenCalledWith(event);
+      expect(handler).toHaveBeenCalledTimes(1);
+      expect(order).toEqual(["listener", "handler"]);
+    });
+
+    it("stops notifying a dispatch subscriber after disposal", () => {
+      const { bus } = createTestBus();
+      const listener = vi.fn();
+      const subscription = bus.subscribeDispatch(listener);
+
+      subscription.dispose();
+      bus.dispatch(makeUserEvent("hi"));
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it("logs dispatch subscriber errors without blocking handlers", () => {
+      const { bus, logger } = createTestBus();
+      const handler = vi.fn<ReactionHandler>();
+      bus.subscribeDispatch(() => {
+        throw new Error("listener failed");
+      });
+      bus.register(alwaysMatch("pleased"), handler, makePersonaSource());
+
+      bus.dispatch(makeUserEvent("hi"));
+
+      expect(logger.error).toHaveBeenCalledWith(
+        "EventBus: dispatch listener threw",
+        expect.objectContaining({ eventKind: "user-input", error: "listener failed" }),
+      );
+      expect(handler).toHaveBeenCalledTimes(1);
+    });
+
     it("calls the handler when a trigger matches, passing a ReactionEvent", () => {
       const { bus } = createTestBus();
       const handler = vi.fn<ReactionHandler>();

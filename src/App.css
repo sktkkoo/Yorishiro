@@ -93,21 +93,28 @@ body,
   color: #b8b8b8;
   cursor: pointer;
   transition:
-    background 0.15s,
-    border-color 0.15s,
     color 0.15s,
     opacity 0.15s;
 }
 
+.title-bar-button svg {
+  opacity: 0.68;
+  transition: opacity 0.15s;
+}
+
 .title-bar-button:hover,
 .title-bar-button:focus-visible {
-  background: rgba(255, 255, 255, 0.07);
   color: #f0f0f0;
   outline: none;
 }
 
+.title-bar-button:hover svg,
+.title-bar-button:focus-visible svg,
+.title-bar-button.is-active svg {
+  opacity: 1;
+}
+
 .title-bar-button.is-active {
-  background: rgba(255, 255, 255, 0.1);
   color: #f0f0f0;
 }
 
@@ -934,8 +941,8 @@ body,
 }
 
 .tab-indicator-item.is-main {
-  background: rgba(255, 255, 255, 0.06);
-  color: #d0d0d0;
+  background: rgba(255, 255, 255, 0.075);
+  color: #d6d6d6;
 }
 
 .tab-indicator-tab,
@@ -964,31 +971,35 @@ body,
 
 .tab-indicator-label {
   min-width: 0;
-  flex: 1 1 auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   overflow: hidden;
   text-align: left;
   text-overflow: ellipsis;
 }
 
 .tab-indicator-hook-badge {
-  width: 58px;
-  min-width: 58px;
-  max-width: 58px;
-  flex: 0 0 58px;
+  min-width: 0;
+  max-width: 74px;
+  flex: 0 0 auto;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   border-radius: 4px;
-  padding: 1px 5px;
-  background: rgba(255, 255, 255, 0.11);
-  color: #d8d8d8;
+  padding: 1px 4px;
   font-size: 9px;
   line-height: 13px;
   text-align: center;
 }
 
-.tab-indicator-hook-badge.is-empty {
-  background: transparent;
-  color: transparent;
+.tab-indicator-hook-badge.tone-agent-hook {
+  background: rgba(255, 255, 255, 0.11);
+  color: #d8d8d8;
+}
+
+.tab-indicator-hook-badge.tone-charminal {
+  background: rgba(95, 126, 94, 0.3);
+  color: #d7e2d2;
 }
 
 .tab-indicator-close {
@@ -1034,6 +1045,12 @@ body,
 
 .tab-indicator-item.is-main.active {
   background: rgba(104, 104, 108, 0.78);
+}
+
+.tab-indicator-item.is-main.is-single.active {
+  background: rgba(255, 255, 255, 0.075);
+  color: #d6d6d6;
+  box-shadow: none;
 }
 
 .tab-indicator-item:hover .tab-indicator-close,

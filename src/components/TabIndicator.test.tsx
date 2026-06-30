@@ -87,7 +87,7 @@ describe("TabIndicator", () => {
     expect(screen.queryByText("◆")).toBeNull();
   });
 
-  it("keeps tab labels as the leading content when status icons are visible", () => {
+  it("keeps status icons and badges immediately after the tab label", () => {
     const statuses = new Map([
       ["default-session", baseStatus("default-session", { activity: "running-command" })],
       ["shell-1", baseStatus("shell-1", { activity: "awaiting-input" })],
@@ -103,6 +103,7 @@ describe("TabIndicator", () => {
           ])
         }
         statuses={statuses}
+        hookBadges={new Map([["shell-1", { label: "pre-tool-use", tone: "agent-hook" }]])}
       />,
     );
 
@@ -111,6 +112,8 @@ describe("TabIndicator", () => {
 
     expect(personaTab.firstElementChild?.classList.contains("tab-indicator-label")).toBe(true);
     expect(pathTab.firstElementChild?.classList.contains("tab-indicator-label")).toBe(true);
+    expect(pathTab.children[1]?.classList.contains("tab-indicator-state")).toBe(true);
+    expect(pathTab.children[2]?.classList.contains("tab-indicator-hook-badge")).toBe(true);
   });
 
   it("does not render an ambiguous dot for unread idle tabs", () => {
@@ -155,7 +158,7 @@ describe("TabIndicator", () => {
     expect(screen.queryByText("input")).toBeNull();
   });
 
-  it("reserves hook badge space and renders active hook labels", () => {
+  it("renders active hook labels without reserving empty badge slots", () => {
     render(
       <TabIndicator
         state={state()}
@@ -165,14 +168,44 @@ describe("TabIndicator", () => {
             ["shell-1", "shell-1"],
           ])
         }
-        hookBadges={new Map([["shell-1", "pre-tool-use"]])}
+        hookBadges={new Map([["shell-1", { label: "pre-tool-use", tone: "agent-hook" }]])}
       />,
     );
 
     expect(screen.getByText("pre-tool-use")).toBeTruthy();
     const badgeSlots = document.querySelectorAll(".tab-indicator-hook-badge");
-    expect(badgeSlots).toHaveLength(2);
-    expect(badgeSlots[0].classList.contains("is-empty")).toBe(true);
+    expect(badgeSlots).toHaveLength(1);
+    expect(badgeSlots[0].classList.contains("tone-agent-hook")).toBe(true);
+  });
+
+  it("renders Charminal trigger badges with a distinct tone", () => {
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        hookBadges={
+          new Map([
+            [
+              "default-session",
+              {
+                label: "trigger:session-opened",
+                tone: "charminal",
+                title: "Charminal trigger: session-opened",
+              },
+            ],
+          ])
+        }
+      />,
+    );
+
+    const badge = screen.getByText("trigger:session-opened");
+    expect(badge.classList.contains("tone-charminal")).toBe(true);
+    expect(badge.getAttribute("title")).toBe("Charminal trigger: session-opened");
   });
 
   it("marks the main tab for primary presentation", () => {
@@ -189,6 +222,24 @@ describe("TabIndicator", () => {
     );
 
     expect(document.querySelector(".tab-indicator-item.is-main")).toBeTruthy();
+  });
+
+  it("marks a single main tab separately from multi-tab active state", () => {
+    render(
+      <TabIndicator
+        state={{
+          sessions: ["default-session"],
+          activeSessionId: "default-session",
+          mainSessionId: "default-session",
+        }}
+        labels={new Map([["default-session", "claude"]])}
+      />,
+    );
+
+    const tabItem = document.querySelector(".tab-indicator-item");
+    expect(tabItem?.classList.contains("is-main")).toBe(true);
+    expect(tabItem?.classList.contains("is-single")).toBe(true);
+    expect(tabItem?.classList.contains("active")).toBe(true);
   });
 
   it("calls onSelectSession when a tab is clicked", () => {

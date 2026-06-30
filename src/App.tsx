@@ -3,6 +3,7 @@ import type {
   AmbientAudioState,
   AmbientUiContext,
   Disposable,
+  SyntheticEvent,
   Trigger,
   TweenAPI,
   UiClaimAPI,
@@ -81,7 +82,7 @@ import {
   formatMainSessionTabLabel,
   formatShellSessionTabLabel,
 } from "./components/session-tab-labels";
-import TabIndicator from "./components/TabIndicator";
+import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -613,6 +614,28 @@ function parseHookBadgeLabel(sig: string): string | null {
   if (typeof event !== "string") return null;
   const label = event.trim();
   return label.length > 0 ? label : null;
+}
+
+function createAgentHookBadge(label: string): TabIndicatorBadge {
+  return {
+    label,
+    tone: "agent-hook",
+    title: `Agent hook: ${label}`,
+  };
+}
+
+function createCharminalTriggerBadge(event: SyntheticEvent): TabIndicatorBadge {
+  return {
+    label: `trigger:${event.name}`,
+    tone: "charminal",
+    title: `Charminal trigger: ${event.source.packId}/${event.name}`,
+  };
+}
+
+function parseSyntheticTargetSessionId(payload: unknown): string | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const sessionId = (payload as Record<string, unknown>).sessionId;
+  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
 }
 
 function parseHookAttentionSignal(
@@ -2148,9 +2171,9 @@ function App() {
   const [sessionStatuses, setSessionStatuses] = useState<ReadonlyArray<SessionStatus>>(() =>
     sessionStatusStore.list(),
   );
-  const [sessionHookBadges, setSessionHookBadges] = useState<ReadonlyMap<string, string>>(
-    () => new Map(),
-  );
+  const [sessionHookBadges, setSessionHookBadges] = useState<
+    ReadonlyMap<string, TabIndicatorBadge>
+  >(() => new Map());
   const sessionHookBadgeTimersRef = useRef<Map<string, number>>(new Map());
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
   const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
@@ -2186,14 +2209,14 @@ function App() {
     [sessionStatuses],
   );
 
-  const showSessionHookBadge = useCallback((sessionId: string, label: string) => {
+  const showSessionHookBadge = useCallback((sessionId: string, badge: TabIndicatorBadge) => {
     const currentTimer = sessionHookBadgeTimersRef.current.get(sessionId);
     if (currentTimer !== undefined) {
       window.clearTimeout(currentTimer);
     }
     setSessionHookBadges((prev) => {
       const next = new Map(prev);
-      next.set(sessionId, label);
+      next.set(sessionId, badge);
       return next;
     });
     const timer = window.setTimeout(() => {
@@ -2216,6 +2239,19 @@ function App() {
       sessionHookBadgeTimersRef.current.clear();
     };
   }, []);
+
+  useEffect(() => {
+    const subscription = runtime.bus.subscribeDispatch((event) => {
+      if (event.kind !== "synthetic" || event.source.type !== "system") return;
+      const state = tabManager.getState();
+      const targetSessionId =
+        parseSyntheticTargetSessionId(event.payload) ??
+        state.activeSessionId ??
+        state.mainSessionId;
+      showSessionHookBadge(targetSessionId, createCharminalTriggerBadge(event));
+    });
+    return () => subscription.dispose();
+  }, [runtime.bus, showSessionHookBadge, tabManager]);
 
   useEffect(() => {
     if (!isUserLayerReady) return;
@@ -3337,7 +3373,7 @@ function App() {
       const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
       const hookBadge = parseHookBadgeLabel(sig);
       if (hookBadge !== null) {
-        showSessionHookBadge(targetSessionId, hookBadge);
+        showSessionHookBadge(targetSessionId, createAgentHookBadge(hookBadge));
       }
       const notification = parseHookAttentionSignal(sig);
       if (notification) {

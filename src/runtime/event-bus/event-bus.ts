@@ -81,6 +81,8 @@ export interface Registration {
   dispose(): void;
 }
 
+export type DispatchListener = (event: DispatchEvent) => void;
+
 interface RegistryEntry {
   readonly trigger: Trigger;
   readonly handler: ReactionHandler;
@@ -123,6 +125,7 @@ export class EventBus {
   private readonly devLog?: SubsystemLog;
 
   private readonly entries = new Map<number, RegistryEntry>();
+  private readonly dispatchListeners = new Set<DispatchListener>();
   private nextId = 0;
 
   constructor(deps: EventBusDeps) {
@@ -139,6 +142,15 @@ export class EventBus {
     return {
       dispose: () => {
         this.entries.delete(id);
+      },
+    };
+  }
+
+  subscribeDispatch(listener: DispatchListener): Registration {
+    this.dispatchListeners.add(listener);
+    return {
+      dispose: () => {
+        this.dispatchListeners.delete(listener);
       },
     };
   }
@@ -172,6 +184,8 @@ export class EventBus {
   // ─── internals ────────────────────────────────────────────────
 
   private dispatchAtDepth(event: DispatchEvent, depth: number): void {
+    this.notifyDispatchListeners(event);
+
     // Collect matching (entry, reactionEvent) pairs synchronously.
     const matched: Array<{ entry: RegistryEntry; reactionEvent: ReactionEvent }> = [];
     for (const entry of this.entries.values()) {
@@ -206,6 +220,19 @@ export class EventBus {
       this.schedule(() => {
         this.runHandler(entry, reactionEvent, depth);
       });
+    }
+  }
+
+  private notifyDispatchListeners(event: DispatchEvent): void {
+    for (const listener of this.dispatchListeners) {
+      try {
+        listener(event);
+      } catch (err) {
+        this.logger.error("EventBus: dispatch listener threw", {
+          eventKind: event.kind,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
 
