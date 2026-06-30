@@ -17,8 +17,8 @@ interface TabIndicatorProps {
 }
 
 /**
- * Session が 2 つ以上のとき title bar に表示する最小タブ列。
- * 1 session のときは null を返す（非表示）。
+ * title bar に表示する session tab 列。
+ * main session だけの場合も表示する。
  */
 export default function TabIndicator({
   state,
@@ -26,8 +26,6 @@ export default function TabIndicator({
   statuses,
   onSelectSession,
 }: TabIndicatorProps) {
-  if (state.sessions.length <= 1) return null;
-
   return (
     <div className="tab-indicator" role="tablist" aria-label="Terminal sessions">
       {state.sessions.map((id) => {

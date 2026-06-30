@@ -77,6 +77,10 @@ import {
 } from "./bundled-packs";
 import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
+import {
+  formatMainSessionTabLabel,
+  formatShellSessionTabLabel,
+} from "./components/session-tab-labels";
 import TabIndicator from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
@@ -2274,7 +2278,7 @@ function App() {
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
   // （philosophy: docs/philosophy/PHILOSOPHY.md 「観察の境界」）。
   const personaRegistry = getPersonaRegistry();
-  const [, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
+  const [primaryPersonaState, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
     personaRegistry.getActivePersona(),
   );
   useEffect(() => {
@@ -3635,6 +3639,22 @@ function App() {
     [cwd, strings.defaultFolderName],
   );
 
+  const sessionTabLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const sessionId of tabState.sessions) {
+      if (sessionId === tabState.mainSessionId) {
+        labels.set(sessionId, formatMainSessionTabLabel(primaryPersonaState?.name));
+        continue;
+      }
+      const sessionCwd = tabManager.getSessionCwd(sessionId);
+      labels.set(
+        sessionId,
+        formatShellSessionTabLabel(sessionCwd === undefined ? cwd : sessionCwd),
+      );
+    }
+    return labels;
+  }, [cwd, primaryPersonaState?.name, tabManager, tabState.mainSessionId, tabState.sessions]);
+
   // ── Settings: close-requested listener ─────────────────────
 
   useEffect(() => {
@@ -3760,14 +3780,7 @@ function App() {
         tabs={
           <TabIndicator
             state={tabState}
-            labels={
-              new Map([
-                [DEFAULT_SESSION_ID, terminalAgent],
-                ...tabState.sessions
-                  .filter((id) => id !== DEFAULT_SESSION_ID)
-                  .map((id) => [id, id] as const),
-              ])
-            }
+            labels={sessionTabLabels}
             statuses={sessionStatusById}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
           />

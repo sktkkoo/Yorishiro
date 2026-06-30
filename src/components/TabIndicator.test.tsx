@@ -28,8 +28,8 @@ const baseStatus = (sessionId: string, overrides: Partial<SessionStatus> = {}): 
 });
 
 describe("TabIndicator", () => {
-  it("does not render with a single session", () => {
-    const { container } = render(
+  it("renders the main tab with a single session", () => {
+    render(
       <TabIndicator
         state={{
           sessions: ["default-session"],
@@ -40,7 +40,7 @@ describe("TabIndicator", () => {
       />,
     );
 
-    expect(container.textContent).toBe("");
+    expect(screen.getByRole("tab", { name: /claude/ })).toBeTruthy();
   });
 
   it("renders status badges and unread marker", () => {
