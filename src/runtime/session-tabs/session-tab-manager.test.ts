@@ -68,6 +68,7 @@ describe("SessionTabManager", () => {
       expect(state.activeSessionId).toBe(id);
       expect(state.sessions.length).toBe(2);
       expect(manager.getSessionCwd(id)).toBe("/tmp/work");
+      expect(manager.getSessionLaunchCwd(id)).toBe("/tmp/work");
     });
 
     it("連続呼び出しで id が衝突しない", () => {
@@ -99,6 +100,7 @@ describe("SessionTabManager", () => {
       expect(manager.getSessionCwd(MAIN)).toBe("/work/main");
       expect(manager.getSessionCwd("shell-1")).toBe("/work/a");
       expect(manager.getSessionCwd("shell-2")).toBeNull();
+      expect(manager.getSessionLaunchCwd("shell-1")).toBe("/work/a");
       expect(manager.shouldAttachExistingSession(MAIN)).toBe(true);
       expect(manager.shouldAttachExistingSession("shell-1")).toBe(true);
     });
@@ -128,6 +130,7 @@ describe("SessionTabManager", () => {
       manager.updateSessionCwd(shell, "/work/b");
 
       expect(manager.getSessionCwd(shell)).toBe("/work/b");
+      expect(manager.getSessionLaunchCwd(shell)).toBe("/work/a");
       expect(states).toHaveLength(1);
       expect(states[0].sessions).toEqual([MAIN, shell]);
       expect(states[0].sessions).not.toBe(beforeSessions);

@@ -24,6 +24,7 @@ export interface SessionTabManagerDeps {
 
 export class SessionTabManager {
   private state: SessionTabState;
+  private readonly sessionLaunchCwds = new Map<SessionId, string | null>();
   private readonly sessionCwds = new Map<SessionId, string | null>();
   private readonly restoredSessionIds = new Set<SessionId>();
   private listeners = new Set<SessionTabListener>();
@@ -65,6 +66,7 @@ export class SessionTabManager {
   openShell(cwd: string | null): SessionId {
     this.counter++;
     const sessionId: SessionId = `shell-${this.counter}`;
+    this.sessionLaunchCwds.set(sessionId, cwd);
     this.sessionCwds.set(sessionId, cwd);
 
     this.setState({
@@ -93,9 +95,11 @@ export class SessionTabManager {
     const uniqueSessions = [...new Set(sessions)];
     if (uniqueSessions.length === 0) return;
 
+    this.sessionLaunchCwds.clear();
     this.sessionCwds.clear();
     this.restoredSessionIds.clear();
     for (const descriptor of descriptors) {
+      this.sessionLaunchCwds.set(descriptor.id, descriptor.cwd);
       this.sessionCwds.set(descriptor.id, descriptor.cwd);
       this.restoredSessionIds.add(descriptor.id);
     }
@@ -126,6 +130,10 @@ export class SessionTabManager {
     return this.sessionCwds.get(sessionId);
   }
 
+  getSessionLaunchCwd(sessionId: SessionId): string | null | undefined {
+    return this.sessionLaunchCwds.get(sessionId);
+  }
+
   updateSessionCwd(sessionId: SessionId, cwd: string): void {
     if (!this.state.sessions.includes(sessionId)) return;
     if (this.sessionCwds.get(sessionId) === cwd) return;
@@ -145,6 +153,7 @@ export class SessionTabManager {
 
     disposeTerminalRuntime(sessionId);
     void sessionDestroy({ sessionId });
+    this.sessionLaunchCwds.delete(sessionId);
     this.sessionCwds.delete(sessionId);
     this.restoredSessionIds.delete(sessionId);
 

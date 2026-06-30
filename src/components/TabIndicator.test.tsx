@@ -127,7 +127,7 @@ describe("TabIndicator", () => {
     expect(badgeSlots[0].classList.contains("is-empty")).toBe(true);
   });
 
-  it("marks the main tab for wider primary presentation", () => {
+  it("marks the main tab for primary presentation", () => {
     render(
       <TabIndicator
         state={state()}

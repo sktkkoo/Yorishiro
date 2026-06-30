@@ -160,14 +160,10 @@ impl SessionRegistry {
     }
 
     pub fn set_cwd(&self, id: &str, cwd: String) {
-        let mut guard = self.lock();
-        let Some(descriptor) = guard.descriptors.get_mut(id) else {
-            return;
-        };
-        if descriptor.cwd.as_deref() == Some(cwd.as_str()) {
+        let guard = self.lock();
+        if !guard.descriptors.contains_key(id) {
             return;
         }
-        descriptor.cwd = Some(cwd.clone());
         let event = SessionEvent::SessionCwdChanged {
             id: id.to_string(),
             cwd,
@@ -315,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn set_cwd_updates_descriptor_and_emits_event() {
+    fn set_cwd_emits_event_without_changing_launch_descriptor() {
         let reg = SessionRegistry::new();
         reg.add(make_descriptor("a"));
         let received = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
@@ -328,7 +324,7 @@ mod tests {
 
         reg.set_cwd("a", "/tmp/project".to_string());
 
-        assert_eq!(reg.get("a").unwrap().cwd, Some("/tmp/project".to_string()));
+        assert_eq!(reg.get("a").unwrap().cwd, None);
         assert_eq!(*received.lock().unwrap(), vec!["/tmp/project".to_string()]);
     }
 }

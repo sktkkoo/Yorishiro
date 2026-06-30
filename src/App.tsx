@@ -3913,7 +3913,7 @@ function App() {
         </div>
         {canMountTerminals &&
           tabState.sessions.map((sessionId) => {
-            const sessionCwd = tabManager.getSessionCwd(sessionId);
+            const sessionLaunchCwd = tabManager.getSessionLaunchCwd(sessionId);
             return (
               <Terminal
                 key={sessionId}
@@ -3931,7 +3931,7 @@ function App() {
                       )
                     : { kind: "shell", integration: true }
                 }
-                cwd={sessionCwd === undefined ? cwd : sessionCwd}
+                cwd={sessionLaunchCwd === undefined ? cwd : sessionLaunchCwd}
                 perception={sessionId === tabState.activeSessionId ? perception : null}
                 attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
               />
