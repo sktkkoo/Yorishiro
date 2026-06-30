@@ -41,6 +41,7 @@ pub enum SessionActivity {
 /// Session の identity / 構成情報。Registry が外に出す唯一の record。
 /// mutable な lifecycle / activity は別 channel で取る。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SessionDescriptor {
     pub id: SessionId,
     pub profile_id: String,
@@ -50,6 +51,42 @@ pub struct SessionDescriptor {
     pub display_cwd: Option<String>,
     /// epoch milliseconds at session creation。
     pub started_at: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_descriptor_serializes_for_typescript_binding() {
+        let descriptor = SessionDescriptor {
+            id: "shell-1".to_string(),
+            profile_id: "shell".to_string(),
+            kind: SessionKind::Shell,
+            label: "shell".to_string(),
+            cwd: Some("/work/launch".to_string()),
+            display_cwd: Some("/work/current".to_string()),
+            started_at: 42,
+        };
+
+        let value = serde_json::to_value(&descriptor).expect("serialize descriptor");
+
+        assert_eq!(
+            value,
+            serde_json::json!({
+                "id": "shell-1",
+                "profileId": "shell",
+                "kind": "shell",
+                "label": "shell",
+                "cwd": "/work/launch",
+                "displayCwd": "/work/current",
+                "startedAt": 42,
+            })
+        );
+        assert!(value.get("display_cwd").is_none());
+        assert!(value.get("started_at").is_none());
+        assert!(value.get("profile_id").is_none());
+    }
 }
 
 /// Registry が emit する event。serde tag で TS 側 discriminated union と整合。
