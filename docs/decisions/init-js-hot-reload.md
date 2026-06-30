@@ -26,7 +26,7 @@
 - **reload は single-flight で逐次化**：Tauri Channel は次 message を待たず delivery しうるため、async reload が並行すると同じ previous handle から二重に差し替わり scope が leak する。watcher 側に Promise chain（`queueRef`）を持ち、init.js 変更イベントを直列処理する（`watcher.ts` `handleInitChanged`）。
 - **transactional reload**：新 init.js を staging scope で run → `ran === true` なら旧 scope を dispose して差し替え、`ran === false`（import 失敗 / default が function でない / throw）なら staging scope を捨てて **旧 scope を温存**。壊れた保存で動いていた shortcut を失わない。
 - watcher の検知ロジック（`watcher-logic.ts`：`init.js` → `init-changed`）は不変。`handleLayerEvent` の no-op 表示を実 reload 呼び出しに置換する。
-- title marker は廃止せず **意味を反転**：reload 成功で marker を外し、失敗時だけ marker を付けて手動 reload を促す（`src/App.tsx` `onInitReloaded`）。
+- title marker は廃止せず **意味を反転**：reload 成功で marker を外し、失敗時だけ `init.js reload failed` marker を付ける。手動 reload を促すのではなく、前の init scope を維持したまま自動再試行待ちであることを可視化する（`src/App.tsx` `onInitReloaded`）。
 - **runtime auto-capture 方式は引き続き却下**（下記「なぜ」）。internal design-record: `2026-05-31-init-js-hot-reload-design.md`（§1–§10 が却下案）と `plans/2026-06-28-init-js-hot-reload-plan.md`（v2）。
 
 ## なぜそう決めたか

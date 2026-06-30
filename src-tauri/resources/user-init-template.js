@@ -2,8 +2,8 @@
  * ~/.charminal/init.js — Charminal startup script.
  * Charminal の起動時スクリプトです。
  *
- * The default-exported function runs once when Charminal starts.
- * default export の関数は Charminal 起動時に 1 回実行されます。
+ * The default-exported function runs at startup and after saved changes are hot reloaded.
+ * default export の関数は起動時と保存後の hot reload で実行されます。
  *
  * ctx provides / ctx で使えるもの:
  *

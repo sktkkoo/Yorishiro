@@ -1,35 +1,39 @@
 import { describe, expect, it } from "vitest";
 import {
-  appendInitChangedMarker,
-  INIT_CHANGED_MARKER,
-  stripInitChangedMarker,
+  appendInitReloadErrorMarker,
+  INIT_RELOAD_ERROR_MARKER,
+  stripInitReloadErrorMarker,
 } from "./init-changed-title";
 
-describe("init-changed title marker", () => {
-  it("window title に init.js 変更 marker を追加する", () => {
-    expect(appendInitChangedMarker("Charminal")).toBe(`Charminal${INIT_CHANGED_MARKER}`);
+describe("init reload title marker", () => {
+  it("window title に init.js reload error marker を追加する", () => {
+    expect(appendInitReloadErrorMarker("Charminal")).toBe(`Charminal${INIT_RELOAD_ERROR_MARKER}`);
   });
 
   it("既に marker が付いている title には二重付与しない", () => {
-    const title = `Charminal${INIT_CHANGED_MARKER}`;
+    const title = `Charminal${INIT_RELOAD_ERROR_MARKER}`;
 
-    expect(appendInitChangedMarker(title)).toBe(title);
+    expect(appendInitReloadErrorMarker(title)).toBe(title);
   });
 
   it("追加した marker を剥がすと元の title に戻る", () => {
     const title = "Charminal";
-    const appended = appendInitChangedMarker(title);
+    const appended = appendInitReloadErrorMarker(title);
 
-    expect(stripInitChangedMarker(appended)).toBe(title);
+    expect(stripInitReloadErrorMarker(appended)).toBe(title);
   });
 
   it("marker が無い title は strip しても変えない", () => {
-    expect(stripInitChangedMarker("Charminal")).toBe("Charminal");
+    expect(stripInitReloadErrorMarker("Charminal")).toBe("Charminal");
   });
 
   it("Safe Mode suffix を保持したまま marker だけを剥がす", () => {
-    const title = `Charminal (Safe Mode)${INIT_CHANGED_MARKER}`;
+    const title = `Charminal (Safe Mode)${INIT_RELOAD_ERROR_MARKER}`;
 
-    expect(stripInitChangedMarker(title)).toBe("Charminal (Safe Mode)");
+    expect(stripInitReloadErrorMarker(title)).toBe("Charminal (Safe Mode)");
+  });
+
+  it("旧ビルドの Cmd+R marker も剥がす", () => {
+    expect(stripInitReloadErrorMarker("Charminal — init.js changed (⌘R)")).toBe("Charminal");
   });
 });

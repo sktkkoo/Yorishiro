@@ -213,8 +213,8 @@ import {
   withPrimaryPersonaSet,
 } from "./runtime/user-pack-loader/config";
 import {
-  appendInitChangedMarker,
-  stripInitChangedMarker,
+  appendInitReloadErrorMarker,
+  stripInitReloadErrorMarker,
 } from "./runtime/user-pack-loader/init-changed-title";
 import * as CharminalControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
@@ -1470,8 +1470,8 @@ function App() {
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
             createAmenityContext,
-            // init.js は hot reload される。成功したら（過去の build が残した）
-            // 「⌘R で再読込」marker を外し、失敗時だけ marker を付けて手動 reload を促す。
+            // init.js は hot reload される。成功したら error marker を外し、
+            // 失敗時だけ marker を付けて、前の init scope が維持されていることを可視化する。
             onInitReloaded: ({ ran, missing }) => {
               void (async () => {
                 try {
@@ -1480,13 +1480,13 @@ function App() {
                   const current = await win.title();
                   const next =
                     ran || missing
-                      ? stripInitChangedMarker(current)
-                      : appendInitChangedMarker(current);
+                      ? stripInitReloadErrorMarker(current)
+                      : appendInitReloadErrorMarker(current);
                   if (next !== current) await win.setTitle(next);
                 } catch (err) {
                   appLog.write({
-                    phase: "init-changed-title",
-                    note: "failed to update init.js reload marker on window title",
+                    phase: "init-reload-title",
+                    note: "failed to update init.js error marker on window title",
                     data: { error: err instanceof Error ? err.message : String(err) },
                   });
                 }
@@ -1535,18 +1535,18 @@ function App() {
       //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
       userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt, pluginDir });
 
-      // ─ Step 4: 前回 reload 待ち marker を title から剥がす（独立な失敗で MCP に影響しない）─
+      // ─ Step 4: 前回 init.js error marker を title から剥がす（独立な失敗で MCP に影響しない）─
       // native window title は webview reload を跨いで残るため、boot 時に明示的に掃除する。
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const win = getCurrentWindow();
         const current = await win.title();
-        const next = stripInitChangedMarker(current);
+        const next = stripInitReloadErrorMarker(current);
         if (next !== current) await win.setTitle(next);
       } catch (err) {
         appLog.write({
-          phase: "init-changed-title",
-          note: "failed to strip init.js-changed marker from window title",
+          phase: "init-reload-title",
+          note: "failed to strip init.js error marker from window title",
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }

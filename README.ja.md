@@ -126,7 +126,7 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 ```
 ~/.charminal/
 ├── config.json      # Persona・scene・terminal agent などの設定
-├── init.js          # 起動時に実行されるユーザースクリプト（Emacs の init.el 相当）
+├── init.js          # 起動時と保存時の hot reload で実行されるユーザースクリプト
 ├── packs/           # ユーザー作成の pack
 ├── last-startup.json # 最新の user pack load report
 ├── journal/         # 住人の日々の記録と記憶
