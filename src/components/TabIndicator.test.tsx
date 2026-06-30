@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionStatus } from "../runtime/session-status";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import TabIndicator from "./TabIndicator";
@@ -80,5 +80,26 @@ describe("TabIndicator", () => {
     expect(screen.getByText(/◆ shell-1/)).toBeTruthy();
     expect(screen.getByText("failed")).toBeTruthy();
     expect(screen.getByText(/◆ shell-1/).getAttribute("title")).toBe("Claude: Permission needed");
+  });
+
+  it("calls onSelectSession when a tab is clicked", () => {
+    const onSelectSession = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        onSelectSession={onSelectSession}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: /shell-1/ }));
+
+    expect(onSelectSession).toHaveBeenCalledWith("shell-1");
   });
 });

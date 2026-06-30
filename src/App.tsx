@@ -3757,6 +3757,21 @@ function App() {
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
+        tabs={
+          <TabIndicator
+            state={tabState}
+            labels={
+              new Map([
+                [DEFAULT_SESSION_ID, terminalAgent],
+                ...tabState.sessions
+                  .filter((id) => id !== DEFAULT_SESSION_ID)
+                  .map((id) => [id, id] as const),
+              ])
+            }
+            statuses={sessionStatusById}
+            onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+          />
+        }
       />
       {runtimeLevaStore ? (
         <LevaPanel
@@ -3826,18 +3841,6 @@ function App() {
                 />
               );
             })}
-            <TabIndicator
-              state={tabState}
-              labels={
-                new Map([
-                  [DEFAULT_SESSION_ID, terminalAgent],
-                  ...tabState.sessions
-                    .filter((id) => id !== DEFAULT_SESSION_ID)
-                    .map((id) => [id, id] as const),
-                ])
-              }
-              statuses={sessionStatusById}
-            />
           </>
         )}
       </div>

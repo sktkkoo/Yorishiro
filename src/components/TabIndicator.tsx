@@ -12,17 +12,24 @@ interface TabIndicatorProps {
   readonly labels: ReadonlyMap<SessionId, string>;
   /** session id → 観察状態。未接続なら従来どおり active dot だけ表示する。 */
   readonly statuses?: ReadonlyMap<SessionId, SessionStatus>;
+  /** タブ選択。未指定なら表示専用。 */
+  readonly onSelectSession?: (sessionId: SessionId) => void;
 }
 
 /**
- * Session が 2 つ以上のとき xterm 領域の下に表示する最小インジケーター。
+ * Session が 2 つ以上のとき title bar に表示する最小タブ列。
  * 1 session のときは null を返す（非表示）。
  */
-export default function TabIndicator({ state, labels, statuses }: TabIndicatorProps) {
+export default function TabIndicator({
+  state,
+  labels,
+  statuses,
+  onSelectSession,
+}: TabIndicatorProps) {
   if (state.sessions.length <= 1) return null;
 
   return (
-    <div className="tab-indicator">
+    <div className="tab-indicator" role="tablist" aria-label="Terminal sessions">
       {state.sessions.map((id) => {
         const isActive = id === state.activeSessionId;
         const label = labels.get(id) ?? id;
@@ -37,17 +44,20 @@ export default function TabIndicator({ state, labels, statuses }: TabIndicatorPr
           .filter(Boolean)
           .join(" ");
         return (
-          <span
+          <button
+            type="button"
             key={id}
             className={`tab-indicator-item ${flags}`}
             title={status?.attention ? attentionTitle(status.attention) : label}
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onSelectSession?.(id)}
           >
             {status?.unread ? "◆" : isActive ? "●" : "○"} {label}
             {badge ? <span className="tab-indicator-status">{badgeLabel(badge)}</span> : null}
-          </span>
+          </button>
         );
       })}
-      <span className="tab-indicator-hint">Ctrl+Tab</span>
     </div>
   );
 }

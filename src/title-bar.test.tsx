@@ -72,6 +72,12 @@ describe("TitleBar", () => {
     expect(settingsButton.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("renders tabs inside the title bar", () => {
+    renderTitleBar({ tabs: <button type="button">shell-1</button> });
+
+    expect(screen.getByRole("button", { name: "shell-1" })).toBeTruthy();
+  });
+
   it("keeps only the title bar root as a Tauri drag region", () => {
     const { container } = renderTitleBar();
     const root = container.firstElementChild;
