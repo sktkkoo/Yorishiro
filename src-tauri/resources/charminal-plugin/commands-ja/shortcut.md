@@ -11,7 +11,7 @@ $ARGUMENTS
 
 ## 概要
 
-`~/.charminal/init.js` は Emacs の `init.el` 相当——起動時に 1 回だけ走る生の JS script。主な用途はキーボードショートカットの登録。
+`~/.charminal/init.js` は Emacs の `init.el` 相当——起動時に走り、保存時にも hot reload で再実行される生の JS script。主な用途はキーボードショートカットの登録。
 
 - 初回起動時に雛形が自動配置される（空の `export default (ctx) => { ... }`）
 - 消した場合は次回起動で再生成される

@@ -172,8 +172,8 @@ async function handleLayerEvent(
 }
 
 /**
- * init.js の変更を hot reload に落とす。`initReload` が無いときは従来の挙動
- * （log + onInitChanged）に劣化させ、Cmd/Ctrl+R 経路でも壊れないようにする。
+ * init.js の変更を hot reload に落とす。`initReload` が無いときは fallback の
+ * log + marker 表示に劣化させ、safe mode / legacy 経路でも壊れないようにする。
  */
 async function handleInitChanged(
   action: Extract<WatcherAction, { type: "init-changed" }>,
@@ -182,7 +182,7 @@ async function handleInitChanged(
   if (deps.initReload === undefined) {
     deps.initScriptLog.write({
       phase: "reload",
-      note: "init.js changed; press Cmd/Ctrl+R to reload",
+      note: "init.js changed; hot reload unavailable for this session",
       data: { path: action.path },
     });
     deps.onInitChanged?.();

@@ -11,7 +11,7 @@ You are helping the user add, edit, or list Charminal keyboard shortcuts.
 
 ## Overview
 
-`~/.charminal/init.js` is Charminal's startup script, similar to Emacs `init.el`. It runs once when Charminal starts. Its main use is registering keyboard shortcuts.
+`~/.charminal/init.js` is Charminal's startup script, similar to Emacs `init.el`. It runs when Charminal starts and runs again on hot reload after saves. Its main use is registering keyboard shortcuts.
 
 - Charminal creates a template on first launch
 - If the file is deleted, Charminal creates it again on the next launch

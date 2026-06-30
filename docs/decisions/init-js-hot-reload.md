@@ -1,9 +1,9 @@
 # init.js の hot reload
 
-> このファイルは「**init.js を編集したとき何が起きるか / なぜ pack のように自動反映しないか**」で設計判断する時に読む。対象：dev / AI / pack 作者。
+> このファイルは「**init.js を編集したとき何が起きるか / どう安全に自動反映するか**」で設計判断する時に読む。対象：dev / AI / pack 作者。
 
 **Status**: active（v2：opt-in scope を畳む in-place hot reload） / auto-capture 方式は依然却下
-**Last updated**: 2026-06-28
+**Last updated**: 2026-06-30
 
 ## TL;DR
 
@@ -50,9 +50,9 @@ v1 の核心は「init.js の副作用は runtime が追跡できない」だっ
 
 修正（ctx.* 呼び出し中は capture を suspend）は、現在・将来の全同期 fan-out 経路を漏れなく suspend する whack-a-mole で、1 つ忘れれば本体が壊れる。[認知負荷 lens](cognitive-load-design-lens.md)（追跡 layer / 保持 state を増やすな）と「large-diff は質で代償を払う」に反する。**v2 はこの whack-a-mole を回避する**：global を一切 wrap せず、明示登録された disposable しか触らないので、誤捕捉も top-level 取りこぼしによる「本体破壊」も構造的に起きない（top-level の生 listener は user 自身の二重化に留まる）。
 
-### 明示 reload 契約という選択
+### v1 の手動反映から v2 の hot reload へ
 
-init.js は本質的に「何でもできる」層。v1 では pack と同じ hot reload 体験を急いで揃えるより Emacs `init.el` 的な「明示 reload 契約」を選んだ。v2 では、auto-capture を避けつつ **opt-in scope** で安全に畳める目処が立ったため hot reload を解禁する。生 JS の自由（top-level 副作用）は残しつつ、推奨経路（`ctx.registerShortcut` / `ctx.onDispose`）を使えば reload 安全、という二層構造にした。
+init.js は本質的に「何でもできる」層。v1 では pack と同じ hot reload 体験を急いで揃えず、Emacs `init.el` 的に user が明示的に反映する前提を置いていた。v2 では、auto-capture を避けつつ **opt-in scope** で安全に畳める目処が立ったため hot reload を解禁する。生 JS の自由（top-level 副作用）は残しつつ、推奨経路（`ctx.registerShortcut` / `ctx.onDispose`）を使えば reload 安全、という二層構造にした。
 
 ## 将来（v1 の scope 外）
 
