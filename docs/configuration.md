@@ -99,7 +99,7 @@ Changing language from the settings screen updates UI labels and bundled persona
 
 `~/.charminal/packs/` 以下の pack ファイルは hot reload に対応しており、保存するだけでアプリを再起動せずに反映される。
 
-ただし `init.js` など初期化時に一度だけ読まれるファイルは hot reload の対象外。変更後は Ctrl+R（Reload）で明示的に再読み込みする。`init.js` を変更すると window title に `— init.js changed (⌘R)` が表示される。hot reload がうまく効かない場合も Ctrl+R で確実に反映できる。
+`init.js` も hot reload に対応する。保存すると Charminal が自動で再実行し、`ctx.registerShortcut` で登録したショートカットは再読込のたびに解除＆再登録される（アプリ再起動も Ctrl+R も不要）。保存内容に構文 / 実行エラーがある場合は、直前の動いていた `init.js` を保持したまま window title に `— init.js changed (⌘R)` を表示してエラーを log に残す。修正して保存し直せば自動で再試行される。手書きの `window.addEventListener` / timer を使う場合は `ctx.onDispose` で後始末を登録すると、再読込での二重化を防げる。
 
 ## Terminal Agent
 

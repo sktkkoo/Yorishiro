@@ -6,8 +6,9 @@
  * `history_*` 経由で住人 AI に等しく公開する（対称性原則・SELF_REFERENTIAL_MCP）。
  *
  * ⚠️ restore は破壊的（full-replace）。実装は確認 UX を経てから戻す。
- * journal / memories は復元対象外（常に preserve）。config.json / init.js を
- * 含む復元はアプリ再読み込みが必要（hot-reload されない）。
+ * journal / memories は復元対象外（常に preserve）。config.json を含む復元は
+ * アプリ再読み込みが必要。init.js は通常の保存と同じく watcher で hot reload される
+ * が、restore UX は full-replace 後の整合性のためアプリ再読み込みを選べる。
  */
 
 export interface SnapshotEntry {
@@ -35,8 +36,8 @@ export interface HistoryAPI {
   snapshot(label?: string): Promise<number>;
   /**
    * seq の snapshot に full-replace で戻す。確認 UX を経て、戻したら true、
-   * ユーザーが拒否したら false。config.json / init.js を含む場合は反映に
-   * 再読み込みが必要。
+   * ユーザーが拒否したら false。config.json を含む場合は反映に再読み込みが必要。
+   * init.js は watcher hot reload の対象。
    */
   restore(seq: number): Promise<boolean>;
 }

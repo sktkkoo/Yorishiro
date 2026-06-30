@@ -11,18 +11,18 @@ $ARGUMENTS
 
 ## 概要
 
-`~/.charminal/init.js` は Emacs の `init.el` 相当——起動時に 1 回だけ走る生の JS script。主な用途はキーボードショートカットの登録。
+`~/.charminal/init.js` は Emacs の `init.el` 相当——起動時に走り、保存時にも hot reload で再実行される生の JS script。主な用途はキーボードショートカットの登録。
 
 - 初回起動時に雛形が自動配置される（空の `export default (ctx) => { ... }`）
 - 消した場合は次回起動で再生成される
-- **自動 hot reload は無い** — 変更したら **Cmd/Ctrl+R で reload** する（`window.location.reload()` で init.js が再実行される。アプリ全体の再起動は不要）
+- **init.js は hot reload される** — 保存すると Charminal が自動で再実行する（Cmd/Ctrl+R も再起動も不要）。`ctx.registerShortcut` で登録したショートカットは再読込のたびに解除＆再登録される。保存した内容に構文/実行エラーがあると、Charminal は直前の動く init.js を保持してエラーを log に残す
 
 ## 進め方
 
 1. まず `~/.charminal/init.js` を Read して現在の状態を確認する
 2. 既存ショートカットとの重複を確認する
 3. xterm.js のデフォルトキーバインドとの干渉に注意する（`Ctrl+C`, `Ctrl+D`, `Ctrl+Z` 等のターミナル標準キーは避ける）
-4. 追加・編集後、user に **Cmd/Ctrl+R で reload が必要**（アプリ全体の再起動ではない）な旨を伝える
+4. 追加・編集後、user に **保存すれば自動で反映される**（init.js は hot reload される）旨を伝える
 
 ## Context API
 
@@ -35,6 +35,8 @@ default export 関数が受け取る `CharminalInitContext`:
 | `dispatchEffect(request)` | 登録済み effect を 1 回走らせる（built-in も user effect も同じ） |
 | `emitEvent(name, payload?)` | persona の trigger loop に synthetic event を流す |
 | `setActiveUi(id)` | active な UI pack を切り替える（`null` で解除） |
+| `registerShortcut(spec, handler)` | キーボードショートカットを登録する。端末より先に keydown を capture し、既定で `preventDefault` + `stopImmediatePropagation` する。再読込時に自動解除。`Disposable` を返す |
+| `onDispose(cleanup)` | この init scope が差し替わる（次の再読込）/ 終了するときに `cleanup` を呼ぶ。手書きの `window.addEventListener` / timer の後始末に使う |
 
 生 JS の API（`window.addEventListener` / `setTimeout` / `fetch` 等）も全部使える。
 
@@ -43,17 +45,23 @@ default export 関数が受け取る `CharminalInitContext`:
 ```javascript
 // ~/.charminal/init.js
 export default (ctx) => {
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      if (e.metaKey && e.shiftKey && e.key === "F") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        // ここにアクションを書く
-      }
-    },
-    { capture: true },
-  );
+  // 推奨: ctx.registerShortcut。指定した modifier だけを制約し、preventDefault と
+  // stopImmediatePropagation は既定 ON。init.js の再読込時に自動で解除される。
+  ctx.registerShortcut({ code: "KeyF", meta: true, shift: true }, () => {
+    // ここにアクションを書く
+  });
+};
+```
+
+`InitShortcutSpec` の field: `code`（`KeyF`/`F1` などの物理キー）, `key`（文字）, `meta`/`ctrl`/`alt`/`shift`（指定したものだけ制約）, `repeat`（`false` で押しっぱなしの連射を無視）, 既定 true の `preventDefault`/`stopPropagation`/`capture`。
+
+listener や timer を手書きするときは `ctx.onDispose` と組み合わせて、再読込で二重化しないようにする:
+
+```javascript
+export default (ctx) => {
+  const onKey = (e) => { /* ... */ };
+  window.addEventListener("keydown", onKey, { capture: true });
+  ctx.onDispose(() => window.removeEventListener("keydown", onKey, { capture: true }));
 };
 ```
 

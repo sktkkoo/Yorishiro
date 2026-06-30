@@ -11,7 +11,14 @@ import { describe, expect, it } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";
 import type { PersonaEntry } from "../persona-registry";
-import { type CharminalInitContext, type EffectRequester, loadInitScript } from "./init-script";
+import type { InitDisposable, InitShortcutSpec } from "./init-scope";
+import {
+  type CharminalInitContext,
+  type EffectRequester,
+  loadInitScript,
+  reloadInitScript,
+  type ShortcutInstaller,
+} from "./init-script";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
 // ─── fixtures ─────────────────────────────────────────────────────
@@ -35,15 +42,23 @@ const validPersonaPack = {
 
 interface EffectRegistrarFake extends EffectRegistrar {
   readonly registered: EffectDefinition[];
+  /** dispose() が呼ばれた pack。hot reload で旧 listener が畳まれたか検証する。 */
+  readonly disposed: EffectDefinition[];
 }
 
 const makeEffectRegistrar = (): EffectRegistrarFake => {
   const registered: EffectDefinition[] = [];
+  const disposed: EffectDefinition[] = [];
   return {
     registered,
+    disposed,
     register(pack) {
       registered.push(pack);
-      return { dispose: () => {} };
+      return {
+        dispose: () => {
+          disposed.push(pack);
+        },
+      };
     },
   };
 };
@@ -60,6 +75,35 @@ const makePersonaRegistrar = (): PersonaRegistrarFake => {
       registered.push(entry);
       return { dispose: () => {} };
     },
+  };
+};
+
+/**
+ * SingleActiveRegistry の identity-based dispose を模す persona registry fake。
+ * 同 id を register すると map を後勝ちで置換し、返す dispose は
+ * 「map[id] が今もその entry のときだけ削除」する（置換済みの旧 handle dispose は
+ * no-op）。`activeId()` で現在 active な persona id を観測する。
+ */
+interface LastWinsPersonaRegistrarFake extends PersonaRegistrar {
+  activeId(id: string): string | null;
+  readonly registeredCount: () => number;
+}
+
+const makeLastWinsPersonaRegistrar = (): LastWinsPersonaRegistrarFake => {
+  const map = new Map<string, PersonaEntry>();
+  let registeredCount = 0;
+  return {
+    register(entry) {
+      registeredCount += 1;
+      map.set(entry.id, entry);
+      return {
+        dispose: () => {
+          if (map.get(entry.id) === entry) map.delete(entry.id);
+        },
+      };
+    },
+    activeId: (id) => (map.has(id) ? id : null),
+    registeredCount: () => registeredCount,
   };
 };
 
@@ -397,5 +441,379 @@ describe("loadInitScript", () => {
 
     expect(result.ran).toBe(true);
     expect(observed).toBe(null);
+  });
+});
+
+// ─── hot reload / lifecycle ───────────────────────────────────────
+
+/** registerShortcut が叩く installer の fake。install/dispose を記録する。 */
+const makeShortcutInstaller = (): {
+  installer: ShortcutInstaller;
+  installed: InitShortcutSpec[];
+  disposed: number;
+  fire: (specMatches: (s: InitShortcutSpec) => boolean, event: KeyboardEvent) => void;
+} => {
+  const installed: InitShortcutSpec[] = [];
+  const handlers: Array<{ spec: InitShortcutSpec; handler: (e: KeyboardEvent) => void }> = [];
+  let disposed = 0;
+  const installer: ShortcutInstaller = (spec, handler) => {
+    installed.push(spec);
+    const entry = { spec, handler };
+    handlers.push(entry);
+    const disposable: InitDisposable = {
+      dispose: () => {
+        disposed += 1;
+      },
+    };
+    return disposable;
+  };
+  return {
+    installer,
+    installed,
+    get disposed() {
+      return disposed;
+    },
+    fire: (specMatches, event) => {
+      for (const { spec, handler } of handlers) {
+        if (specMatches(spec)) handler(event);
+      }
+    },
+  };
+};
+
+describe("init lifecycle: onDispose + registerShortcut", () => {
+  it("ctx.onDispose cleanups run when the handle is disposed", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    let cleaned = false;
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      ctx.onDispose(() => {
+        cleaned = true;
+      });
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(cleaned).toBe(false);
+    result.handle.dispose();
+    expect(cleaned).toBe(true);
+  });
+
+  it("registerShortcut installs via the injected installer and disposes with the scope", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    const shortcuts = makeShortcutInstaller();
+    let fired = 0;
+
+    const userDefault = (ctx: CharminalInitContext): void => {
+      ctx.registerShortcut({ code: "KeyF", meta: true }, () => {
+        fired += 1;
+      });
+    };
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      installShortcutListener: shortcuts.installer,
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({ default: userDefault }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(shortcuts.installed).toHaveLength(1);
+    shortcuts.fire((s) => s.code === "KeyF", {} as KeyboardEvent);
+    expect(fired).toBe(1);
+
+    result.handle.dispose();
+    expect(shortcuts.disposed).toBe(1);
+  });
+});
+
+describe("reloadInitScript", () => {
+  it("disposes the previous scope and activates the new one on success", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    const cleaned: string[] = [];
+
+    const makeDeps = (tag: string) => ({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.onDispose(() => cleaned.push(tag));
+        },
+      }),
+    });
+
+    const first = await loadInitScript(makeDeps("first"));
+    expect(first.ran).toBe(true);
+
+    const reloaded = await reloadInitScript(makeDeps("second"), first.handle);
+    expect(reloaded.ran).toBe(true);
+    // old scope disposed, new scope not yet
+    expect(cleaned).toEqual(["first"]);
+
+    reloaded.handle.dispose();
+    expect(cleaned).toEqual(["first", "second"]);
+  });
+
+  it("keeps the previous scope when the reload fails", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    const cleaned: string[] = [];
+    const stagedDisposed: string[] = [];
+
+    const goodDeps = {
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.onDispose(() => cleaned.push("good"));
+        },
+      }),
+    };
+
+    const first = await loadInitScript(goodDeps);
+    expect(first.ran).toBe(true);
+
+    const badDeps = {
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          // stage a cleanup, then throw — the staged scope must be disposed.
+          ctx.onDispose(() => stagedDisposed.push("staged"));
+          throw new Error("bad edit");
+        },
+      }),
+    };
+
+    const reloaded = await reloadInitScript(badDeps, first.handle);
+    expect(reloaded.ran).toBe(false);
+    expect(reloaded.error).toBe("bad edit");
+    // previous scope kept alive (not disposed)…
+    expect(cleaned).toEqual([]);
+    // …and the failed staging scope was cleaned up.
+    expect(stagedDisposed).toEqual(["staged"]);
+    // returned handle is the previous one
+    expect(reloaded.handle).toBe(first.handle);
+  });
+
+  it("handles reload when there is no previous scope", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+
+    const reloaded = await reloadInitScript(
+      {
+        effectPackRunner: effectReg,
+        personaRegistry: personaReg,
+        devLog: subsystem,
+        effectDispatcher: makeEffectDispatcher(),
+        fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+        importModule: async () => ({ default: (_ctx: CharminalInitContext) => {} }),
+      },
+      null,
+    );
+
+    expect(reloaded.ran).toBe(true);
+    expect(reloaded.handle).toBeDefined();
+  });
+});
+
+// ─── transactional register: effect + persona ─────────────────────
+
+describe("register* hot-reload semantics", () => {
+  it("registers effects immediately and disposes them with the scope (no listener leak)", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+
+    const deps = {
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.registerEffect(validEffectPack);
+        },
+      }),
+    };
+
+    const result = await loadInitScript(deps);
+    expect(result.ran).toBe(true);
+    expect(effectReg.registered).toEqual([validEffectPack]);
+    expect(effectReg.disposed).toEqual([]);
+
+    // scope dispose → effect listener も外れる（reload で旧 listener が累積しない）。
+    result.handle.dispose();
+    expect(effectReg.disposed).toEqual([validEffectPack]);
+  });
+
+  it("a successful reload disposes the previous effect listener exactly once", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+
+    const deps = {
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.registerEffect(validEffectPack);
+        },
+      }),
+    };
+
+    const first = await loadInitScript(deps);
+    const reloaded = await reloadInitScript(deps, first.handle);
+    expect(reloaded.ran).toBe(true);
+    // 2 回 register（旧+新）したが、旧 1 つだけ dispose 済み。
+    expect(effectReg.registered).toHaveLength(2);
+    expect(effectReg.disposed).toHaveLength(1);
+  });
+
+  it("defers persona registration until the run succeeds (commit)", async () => {
+    const effectReg = makeEffectRegistrar();
+    const persona = makeLastWinsPersonaRegistrar();
+    const { subsystem } = makeDevLog();
+
+    const result = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: persona,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.registerPersona(validPersonaPack);
+        },
+      }),
+    });
+
+    expect(result.ran).toBe(true);
+    expect(persona.activeId("init-persona")).toBe("init-persona");
+    expect(persona.registeredCount()).toBe(1);
+  });
+
+  it("a failed reload that registered a persona keeps the previous persona", async () => {
+    const effectReg = makeEffectRegistrar();
+    const persona = makeLastWinsPersonaRegistrar();
+    const { subsystem } = makeDevLog();
+
+    // 1st: register persona "init-persona" successfully.
+    const first = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: persona,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.registerPersona(validPersonaPack);
+        },
+      }),
+    });
+    expect(first.ran).toBe(true);
+    expect(persona.activeId("init-persona")).toBe("init-persona");
+
+    // 2nd (reload): register a *valid* persona with the same id, then throw.
+    const reloaded = await reloadInitScript(
+      {
+        effectPackRunner: effectReg,
+        personaRegistry: persona,
+        devLog: subsystem,
+        effectDispatcher: makeEffectDispatcher(),
+        fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+        importModule: async () => ({
+          default: (ctx: CharminalInitContext) => {
+            ctx.registerPersona(validPersonaPack);
+            throw new Error("late failure after registerPersona");
+          },
+        }),
+      },
+      first.handle,
+    );
+
+    expect(reloaded.ran).toBe(false);
+    // commit が走っていないので 2 回目の register は起きず、前の persona が無傷。
+    expect(persona.registeredCount()).toBe(1);
+    expect(persona.activeId("init-persona")).toBe("init-persona");
+    expect(reloaded.handle).toBe(first.handle);
+  });
+});
+
+// ─── deleting init.js ─────────────────────────────────────────────
+
+describe("reloadInitScript: file removal", () => {
+  it("treats a missing init.js as a clean transition to an empty scope", async () => {
+    const effectReg = makeEffectRegistrar();
+    const personaReg = makePersonaRegistrar();
+    const { subsystem } = makeDevLog();
+    const cleaned: string[] = [];
+
+    const first = await loadInitScript({
+      effectPackRunner: effectReg,
+      personaRegistry: personaReg,
+      devLog: subsystem,
+      effectDispatcher: makeEffectDispatcher(),
+      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      importModule: async () => ({
+        default: (ctx: CharminalInitContext) => {
+          ctx.onDispose(() => cleaned.push("first"));
+        },
+      }),
+    });
+    expect(first.ran).toBe(true);
+
+    // init.js deleted → fetchInitScriptPath returns null.
+    const reloaded = await reloadInitScript(
+      {
+        effectPackRunner: effectReg,
+        personaRegistry: personaReg,
+        devLog: subsystem,
+        effectDispatcher: makeEffectDispatcher(),
+        fetchInitScriptPath: async () => null,
+        importModule: async () => ({}),
+      },
+      first.handle,
+    );
+
+    expect(reloaded.ran).toBe(false);
+    expect(reloaded.missing).toBe(true);
+    expect(reloaded.error).toBeUndefined();
+    // 旧 scope は畳まれている（古い shortcut / listener が残らない）。
+    expect(cleaned).toEqual(["first"]);
+    // 新しい handle は空 scope（前の handle ではない）。
+    expect(reloaded.handle).not.toBe(first.handle);
   });
 });
