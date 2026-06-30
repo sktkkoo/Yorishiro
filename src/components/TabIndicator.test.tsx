@@ -81,9 +81,31 @@ describe("TabIndicator", () => {
       "Claude: Permission needed",
     );
     expect(screen.getByLabelText("Failed")).toBeTruthy();
+    expect(screen.getByText("!")).toBeTruthy();
     expect(screen.queryByText("run")).toBeNull();
     expect(screen.queryByText("failed")).toBeNull();
     expect(screen.queryByText("◆")).toBeNull();
+  });
+
+  it("does not render an ambiguous dot for unread idle tabs", () => {
+    const statuses = new Map([
+      ["default-session", baseStatus("default-session", { unread: true })],
+    ]);
+
+    render(
+      <TabIndicator
+        state={{
+          sessions: ["default-session"],
+          activeSessionId: "default-session",
+          mainSessionId: "default-session",
+        }}
+        labels={new Map([["default-session", "claude"]])}
+        statuses={statuses}
+      />,
+    );
+
+    expect(screen.queryByLabelText("Unread output")).toBeNull();
+    expect(document.querySelector(".tab-indicator-state.state-unread")).toBeNull();
   });
 
   it("renders awaiting input as a state icon", () => {

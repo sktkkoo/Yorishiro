@@ -39,7 +39,7 @@ export default function TabIndicator({
           const status = statuses?.get(id) ?? null;
           const hookBadge = hookBadges?.get(id) ?? null;
           const badge = status ? deriveSessionStatusBadge(status) : null;
-          const icon = badge ? stateIconForBadge(badge, status?.unread === true) : null;
+          const icon = badge ? stateIconForBadge(badge) : null;
           const flags = [
             isActive ? "active" : "",
             isMain ? "is-main" : "",
@@ -63,7 +63,9 @@ export default function TabIndicator({
                     className={`tab-indicator-state state-${icon.kind}`}
                     role="img"
                     aria-label={icon.label}
-                  />
+                  >
+                    {icon.text ?? ""}
+                  </span>
                 ) : null}
                 <span className="tab-indicator-label">{label}</span>
                 <span
@@ -105,14 +107,12 @@ export default function TabIndicator({
 }
 
 type StateIcon = {
-  readonly kind: "running" | "input" | "failed" | "done" | "exited" | "unread";
+  readonly kind: "running" | "input" | "failed";
   readonly label: string;
+  readonly text?: string;
 };
 
-function stateIconForBadge(
-  badge: ReturnType<typeof deriveSessionStatusBadge>,
-  unread: boolean,
-): StateIcon | null {
+function stateIconForBadge(badge: ReturnType<typeof deriveSessionStatusBadge>): StateIcon | null {
   switch (badge) {
     case "starting":
       return { kind: "running", label: "Starting" };
@@ -121,13 +121,12 @@ function stateIconForBadge(
     case "awaiting-input":
       return { kind: "input", label: "Needs input" };
     case "exited-fail":
-      return { kind: "failed", label: "Failed" };
+      return { kind: "failed", label: "Failed", text: "!" };
     case "exited-ok":
-      return { kind: "done", label: "Done" };
     case "exited-unknown":
-      return { kind: "exited", label: "Exited" };
+      return null;
     case "idle":
-      return unread ? { kind: "unread", label: "Unread output" } : null;
+      return null;
   }
 }
 
