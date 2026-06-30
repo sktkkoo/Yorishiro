@@ -28,54 +28,56 @@ export default function TabIndicator({
   onCloseSession,
 }: TabIndicatorProps) {
   return (
-    <div className="tab-indicator" role="tablist" aria-label="Terminal sessions">
-      {state.sessions.map((id) => {
-        const isActive = id === state.activeSessionId;
-        const isMain = id === state.mainSessionId;
-        const label = labels.get(id) ?? id;
-        const status = statuses?.get(id) ?? null;
-        const badge = status ? deriveSessionStatusBadge(status) : null;
-        const icon = badge ? stateIconForBadge(badge, status?.unread === true) : null;
-        const flags = [
-          isActive ? "active" : "",
-          status?.unread ? "unread" : "",
-          badge ? `badge-${badge}` : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return (
-          <span key={id} className={`tab-indicator-item ${flags}`}>
-            <button
-              type="button"
-              className="tab-indicator-tab"
-              title={status?.attention ? attentionTitle(status.attention) : label}
-              role="tab"
-              aria-selected={isActive}
-              onClick={() => onSelectSession?.(id)}
-            >
-              {icon ? (
-                <span
-                  className={`tab-indicator-state state-${icon.kind}`}
-                  role="img"
-                  aria-label={icon.label}
-                />
-              ) : null}
-              <span className="tab-indicator-label">{label}</span>
-            </button>
-            {!isMain && onCloseSession ? (
+    <div className="tab-indicator">
+      <div className="tab-indicator-tabs" role="tablist" aria-label="Terminal sessions">
+        {state.sessions.map((id) => {
+          const isActive = id === state.activeSessionId;
+          const isMain = id === state.mainSessionId;
+          const label = labels.get(id) ?? id;
+          const status = statuses?.get(id) ?? null;
+          const badge = status ? deriveSessionStatusBadge(status) : null;
+          const icon = badge ? stateIconForBadge(badge, status?.unread === true) : null;
+          const flags = [
+            isActive ? "active" : "",
+            status?.unread ? "unread" : "",
+            badge ? `badge-${badge}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return (
+            <span key={id} className={`tab-indicator-item ${flags}`}>
               <button
                 type="button"
-                className="tab-indicator-close"
-                aria-label={`Close ${label}`}
-                title={`Close ${label}`}
-                onClick={() => onCloseSession(id)}
+                className="tab-indicator-tab"
+                title={status?.attention ? attentionTitle(status.attention) : label}
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => onSelectSession?.(id)}
               >
-                <X size={12} strokeWidth={2} aria-hidden="true" />
+                {icon ? (
+                  <span
+                    className={`tab-indicator-state state-${icon.kind}`}
+                    role="img"
+                    aria-label={icon.label}
+                  />
+                ) : null}
+                <span className="tab-indicator-label">{label}</span>
               </button>
-            ) : null}
-          </span>
-        );
-      })}
+              {!isMain && onCloseSession ? (
+                <button
+                  type="button"
+                  className="tab-indicator-close"
+                  aria-label={`Close ${label}`}
+                  title={`Close ${label}`}
+                  onClick={() => onCloseSession(id)}
+                >
+                  <X size={12} strokeWidth={2} aria-hidden="true" />
+                </button>
+              ) : null}
+            </span>
+          );
+        })}
+      </div>
       {onAddSession ? (
         <button
           type="button"

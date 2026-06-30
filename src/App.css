@@ -888,17 +888,26 @@ body,
   height: 100%;
   display: flex;
   align-items: flex-end;
-  gap: 1px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: none;
+  gap: 3px;
   font-size: 11px;
   font-family: "JetBrains Mono", "Fira Code", monospace;
   color: var(--charminal-button-fg);
   user-select: none;
+  overflow: hidden;
 }
 
-.tab-indicator::-webkit-scrollbar {
+.tab-indicator-tabs {
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.tab-indicator-tabs::-webkit-scrollbar {
   display: none;
 }
 
@@ -964,7 +973,7 @@ body,
   width: 24px;
   height: 24px;
   flex: 0 0 24px;
-  margin: 0 0 2px 3px;
+  margin: 0 0 2px;
   border: 1px solid transparent;
   border-radius: 6px;
   color: var(--charminal-button-fg);
