@@ -182,8 +182,8 @@ import {
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
-import { DEFAULT_TERMINAL_THEME, getTerminalRuntime } from "./runtime/terminal-runtime";
-import { initTerminalTheme } from "./runtime/terminal-theme";
+import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { initTerminalTheme, syncCurrentTerminalTheme } from "./runtime/terminal-theme";
 import {
   getRuntimeLevaStore,
   useRuntimeLevaStore,
@@ -2294,7 +2294,7 @@ function App() {
   useEffect(() => {
     if (!isUserLayerReady) return;
     const sub = scenePackRegistry.subscribeActive((scene) => {
-      const theme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
+      const theme = syncCurrentTerminalTheme(scene);
       for (const sessionId of tabManager.getState().sessions) {
         const rt = getTerminalRuntime(sessionId);
         rt.setTheme(theme);

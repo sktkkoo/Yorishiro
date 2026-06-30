@@ -3,11 +3,14 @@
  * lifecycle helper。
  *
  * Boot 時に一度呼び、registry の active scene 変化を購読する。Subscriber は
- * SceneSpec の `terminal` field を `setTheme` に渡す。scene が terminal を
- * 宣言していない場合は DEFAULT_TERMINAL_THEME にフォールバックする。
+ * CSS variables と「新規/再表示 terminal が読む現在テーマ」を更新する。
+ * scene が terminal を宣言していない場合は DEFAULT_TERMINAL_THEME に
+ * フォールバックする。
  */
 
 import type { SceneSpec, UiTheme } from "../../sdk/scene";
+import { getOrInit } from "../hot-data";
+import { KEYS } from "../module-registry/keys";
 import type { Disposable, ScenePackRegistry } from "../scene-pack-registry";
 import type { TerminalRuntime } from "../terminal-runtime";
 import { DEFAULT_TERMINAL_THEME } from "../terminal-runtime";
@@ -67,15 +70,40 @@ export interface InitTerminalThemeResult {
   readonly dispose: () => void;
 }
 
+type ResolvedTerminalTheme = Parameters<TerminalRuntime["setTheme"]>[0];
+
+interface TerminalThemeState {
+  currentTerminalTheme: ResolvedTerminalTheme;
+}
+
+function getTerminalThemeState(): TerminalThemeState {
+  return getOrInit(KEYS.TERMINAL_THEME_STATE, () => ({
+    currentTerminalTheme: { ...DEFAULT_TERMINAL_THEME },
+  }));
+}
+
+/**
+ * scene.terminal は partial theme なので、毎回 default に merge してから適用する。
+ * これにより、前 scene の未指定 color が次 scene に残らない。
+ */
+export function resolveTerminalTheme(scene: SceneSpec | null): ResolvedTerminalTheme {
+  return { ...DEFAULT_TERMINAL_THEME, ...(scene?.terminal ?? {}) };
+}
+
 /** 現在適用中のターミナルテーマ。新タブ表示時に適用するために保持する。 */
-let currentTerminalTheme: Parameters<TerminalRuntime["setTheme"]>[0] = DEFAULT_TERMINAL_THEME;
+export function syncCurrentTerminalTheme(scene: SceneSpec | null): ResolvedTerminalTheme {
+  const theme = resolveTerminalTheme(scene);
+  getTerminalThemeState().currentTerminalTheme = theme;
+  applyUiTheme(scene?.ui);
+  return theme;
+}
 
 /**
  * 現在のターミナルテーマを返す。Terminal コンポーネントが visible になった時に
  * 呼んで setTheme に渡す用途。
  */
-export function getCurrentTerminalTheme(): Parameters<TerminalRuntime["setTheme"]>[0] {
-  return currentTerminalTheme;
+export function getCurrentTerminalTheme(): ResolvedTerminalTheme {
+  return getTerminalThemeState().currentTerminalTheme;
 }
 
 /**
@@ -85,8 +113,7 @@ export function getCurrentTerminalTheme(): Parameters<TerminalRuntime["setTheme"
  */
 export function initTerminalTheme(registry: ScenePackRegistry): InitTerminalThemeResult {
   const apply = (scene: SceneSpec | null): void => {
-    currentTerminalTheme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
-    applyUiTheme(scene?.ui);
+    syncCurrentTerminalTheme(scene);
   };
 
   const sub: Disposable = registry.subscribeActive(apply);

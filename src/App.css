@@ -485,7 +485,7 @@ body,
   background: var(--charminal-button-bg);
   border: 1px solid var(--charminal-border);
   border-radius: 8px;
-  color: #b7c5d3;
+  color: var(--charminal-button-fg);
   font-size: 12px;
   cursor: pointer;
   transition:
