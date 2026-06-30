@@ -5,6 +5,10 @@
  */
 
 export { installTabKeybindings } from "./keybindings";
-export type { SessionTabManagerDeps } from "./session-tab-manager";
+export type {
+  SessionTabCwdPersistence,
+  SessionTabCwdSnapshot,
+  SessionTabManagerDeps,
+} from "./session-tab-manager";
 export { SessionTabManager } from "./session-tab-manager";
 export type { SessionTabListener, SessionTabState } from "./types";

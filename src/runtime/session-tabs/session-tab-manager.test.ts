@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionDescriptor, SessionId } from "../sessions/types";
+import type { SessionTabCwdPersistence, SessionTabCwdSnapshot } from "./session-tab-manager";
 import type { SessionTabState } from "./types";
 
 vi.mock("../../bindings/tauri-commands", () => ({
@@ -35,6 +36,22 @@ function descriptor(overrides: Partial<SessionDescriptor> & { id: string }): Ses
     displayCwd: null,
     startedAt: 1,
     ...overrides,
+  };
+}
+
+function makeMemoryCwdPersistence(initial: ReadonlyArray<SessionTabCwdSnapshot> = []): {
+  readonly persistence: SessionTabCwdPersistence;
+  readonly snapshots: () => ReadonlyArray<SessionTabCwdSnapshot>;
+} {
+  let snapshots = [...initial];
+  return {
+    persistence: {
+      load: () => snapshots,
+      save: (next) => {
+        snapshots = [...next];
+      },
+    },
+    snapshots: () => snapshots,
   };
 }
 
@@ -120,6 +137,47 @@ describe("SessionTabManager", () => {
 
       expect(manager.getSessionCwd("shell-1")).toBe("/work/current");
       expect(manager.getSessionLaunchCwd("shell-1")).toBe("/work/launch");
+    });
+
+    it("falls back to persisted display cwd when restored descriptor lacks displayCwd", () => {
+      const memory = makeMemoryCwdPersistence();
+      manager = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
+      const shell = manager.openShell("/work/launch");
+      manager.updateSessionCwd(shell, "/work/current");
+
+      const reloaded = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
+      reloaded.restoreSessions(
+        [descriptor({ id: shell, cwd: "/work/launch", displayCwd: null, startedAt: 42 })],
+        shell,
+      );
+
+      expect(reloaded.getSessionCwd(shell)).toBe("/work/current");
+      expect(reloaded.getSessionLaunchCwd(shell)).toBe("/work/launch");
+      expect(memory.snapshots()).toContainEqual({
+        sessionId: shell,
+        launchCwd: "/work/launch",
+        displayCwd: "/work/current",
+        startedAt: 42,
+      });
+    });
+
+    it("does not apply persisted display cwd to a different restored session", () => {
+      const memory = makeMemoryCwdPersistence([
+        {
+          sessionId: "shell-1",
+          launchCwd: "/work/launch",
+          displayCwd: "/work/current",
+          startedAt: 7,
+        },
+      ]);
+      manager = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
+
+      manager.restoreSessions(
+        [descriptor({ id: "shell-1", cwd: "/work/launch", displayCwd: null, startedAt: 42 })],
+        "shell-1",
+      );
+
+      expect(manager.getSessionCwd("shell-1")).toBe("/work/launch");
     });
 
     it("preferred active が存在しない場合は現在 active を維持し、無理なら main に戻す", () => {

@@ -20,18 +20,33 @@ const RESPAWN_BACKOFF_MS = [0, 2_000, 4_000];
 /** ICI 連携用の event callback。EventBus との結合を避けるため callback 形式で注入する。 */
 export interface SessionTabManagerDeps {
   readonly onEvent?: (name: string, payload: Record<string, unknown>) => void;
+  readonly cwdPersistence?: SessionTabCwdPersistence;
+}
+
+export interface SessionTabCwdSnapshot {
+  readonly sessionId: SessionId;
+  readonly launchCwd: string | null;
+  readonly displayCwd: string | null;
+  readonly startedAt: number | null;
+}
+
+export interface SessionTabCwdPersistence {
+  load(): ReadonlyArray<SessionTabCwdSnapshot>;
+  save(snapshots: ReadonlyArray<SessionTabCwdSnapshot>): void;
 }
 
 export class SessionTabManager {
   private state: SessionTabState;
   private readonly sessionLaunchCwds = new Map<SessionId, string | null>();
   private readonly sessionCwds = new Map<SessionId, string | null>();
+  private readonly sessionStartedAts = new Map<SessionId, number | null>();
   private readonly restoredSessionIds = new Set<SessionId>();
   private listeners = new Set<SessionTabListener>();
   private counter = 0;
   private respawnCount = 0;
   private spawnTime = Date.now();
   private readonly onEvent: ((name: string, payload: Record<string, unknown>) => void) | null;
+  private readonly cwdPersistence: SessionTabCwdPersistence | null;
 
   constructor(mainSessionId: SessionId, deps?: SessionTabManagerDeps) {
     this.state = {
@@ -40,6 +55,7 @@ export class SessionTabManager {
       mainSessionId,
     };
     this.onEvent = deps?.onEvent ?? null;
+    this.cwdPersistence = deps?.cwdPersistence ?? null;
   }
 
   /** 現在の immutable state を返す。 */
@@ -68,12 +84,14 @@ export class SessionTabManager {
     const sessionId: SessionId = `shell-${this.counter}`;
     this.sessionLaunchCwds.set(sessionId, cwd);
     this.sessionCwds.set(sessionId, cwd);
+    this.sessionStartedAts.set(sessionId, null);
 
     this.setState({
       ...this.state,
       sessions: [...this.state.sessions, sessionId],
       activeSessionId: sessionId,
     });
+    this.persistSessionCwds();
     this.emitEvent("session-opened", { sessionId, kind: "shell" });
 
     return sessionId;
@@ -97,10 +115,18 @@ export class SessionTabManager {
 
     this.sessionLaunchCwds.clear();
     this.sessionCwds.clear();
+    this.sessionStartedAts.clear();
     this.restoredSessionIds.clear();
+    const persisted = new Map(
+      (this.cwdPersistence?.load() ?? []).map((snapshot) => [snapshot.sessionId, snapshot]),
+    );
     for (const descriptor of descriptors) {
       this.sessionLaunchCwds.set(descriptor.id, descriptor.cwd);
-      this.sessionCwds.set(descriptor.id, descriptor.displayCwd ?? descriptor.cwd);
+      this.sessionStartedAts.set(descriptor.id, descriptor.startedAt);
+      this.sessionCwds.set(
+        descriptor.id,
+        descriptor.displayCwd ?? this.resolvePersistedDisplayCwd(descriptor, persisted),
+      );
       this.restoredSessionIds.add(descriptor.id);
     }
 
@@ -124,6 +150,7 @@ export class SessionTabManager {
       sessions: uniqueSessions,
       activeSessionId,
     });
+    this.persistSessionCwds();
   }
 
   getSessionCwd(sessionId: SessionId): string | null | undefined {
@@ -139,6 +166,7 @@ export class SessionTabManager {
     if (this.sessionCwds.get(sessionId) === cwd) return;
     this.sessionCwds.set(sessionId, cwd);
     this.setState({ ...this.state, sessions: [...this.state.sessions] });
+    this.persistSessionCwds();
     this.emitEvent("session-cwd-changed", { sessionId, cwd });
   }
 
@@ -155,6 +183,7 @@ export class SessionTabManager {
     void sessionDestroy({ sessionId });
     this.sessionLaunchCwds.delete(sessionId);
     this.sessionCwds.delete(sessionId);
+    this.sessionStartedAts.delete(sessionId);
     this.restoredSessionIds.delete(sessionId);
 
     const remaining = this.state.sessions.filter((id) => id !== sessionId);
@@ -169,6 +198,7 @@ export class SessionTabManager {
       sessions: remaining,
       activeSessionId: nextActive,
     });
+    this.persistSessionCwds();
     this.emitEvent("session-closed", { sessionId });
   }
 
@@ -272,6 +302,36 @@ export class SessionTabManager {
     for (const listener of this.listeners) {
       listener(next);
     }
+  }
+
+  private resolvePersistedDisplayCwd(
+    descriptor: SessionDescriptor,
+    persisted: ReadonlyMap<SessionId, SessionTabCwdSnapshot>,
+  ): string | null {
+    const snapshot = persisted.get(descriptor.id);
+    if (!snapshot) return descriptor.cwd;
+    if (snapshot.launchCwd !== descriptor.cwd) return descriptor.cwd;
+    if (snapshot.startedAt !== null && snapshot.startedAt !== descriptor.startedAt) {
+      return descriptor.cwd;
+    }
+    return snapshot.displayCwd;
+  }
+
+  private persistSessionCwds(): void {
+    if (!this.cwdPersistence) return;
+    const snapshots: SessionTabCwdSnapshot[] = [];
+    for (const sessionId of this.state.sessions) {
+      const launchCwd = this.sessionLaunchCwds.get(sessionId);
+      const displayCwd = this.sessionCwds.get(sessionId);
+      if (launchCwd === undefined || displayCwd === undefined) continue;
+      snapshots.push({
+        sessionId,
+        launchCwd,
+        displayCwd,
+        startedAt: this.sessionStartedAts.get(sessionId) ?? null,
+      });
+    }
+    this.cwdPersistence.save(snapshots);
   }
 
   // ── テスト用ヘルパー ─────────────────────────────────────────

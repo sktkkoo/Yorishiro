@@ -169,7 +169,11 @@ import {
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
 import { getSessionStatusStore, type SessionStatus } from "./runtime/session-status";
-import type { SessionTabState } from "./runtime/session-tabs";
+import type {
+  SessionTabCwdPersistence,
+  SessionTabCwdSnapshot,
+  SessionTabState,
+} from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
   DEFAULT_SESSION_ID,
@@ -355,6 +359,7 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
+const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
 const VRM_STORAGE_KEY = "charminal:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
 
@@ -363,6 +368,45 @@ interface RestoreDialogRequest {
   readonly changeText: string;
   readonly timeText: string;
   readonly runRestore: () => Promise<void>;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isSessionTabCwdSnapshot(value: unknown): value is SessionTabCwdSnapshot {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.sessionId === "string" &&
+    isNullableString(record.launchCwd) &&
+    isNullableString(record.displayCwd) &&
+    (record.startedAt === null ||
+      (typeof record.startedAt === "number" && Number.isFinite(record.startedAt)))
+  );
+}
+
+function createSessionTabCwdPersistence(storage: Storage): SessionTabCwdPersistence {
+  return {
+    load: () => {
+      try {
+        const raw = storage.getItem(SESSION_TAB_CWD_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(isSessionTabCwdSnapshot);
+      } catch {
+        return [];
+      }
+    },
+    save: (snapshots) => {
+      try {
+        storage.setItem(SESSION_TAB_CWD_STORAGE_KEY, JSON.stringify(snapshots));
+      } catch {
+        // localStorage failure should not affect session operation.
+      }
+    },
+  };
 }
 
 type SceneLayerOverride = {
@@ -2155,6 +2199,7 @@ function App() {
         KEYS.SESSION_TAB_MANAGER,
         () =>
           new SessionTabManager(DEFAULT_SESSION_ID, {
+            cwdPersistence: createSessionTabCwdPersistence(window.localStorage),
             onEvent: (name, payload) => {
               runtime.bus.emitSynthetic(
                 { type: "system", packId: "charminal:session-tabs" },
