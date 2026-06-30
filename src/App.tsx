@@ -3819,8 +3819,8 @@ function App() {
   // ── Session tab keybindings ────────────────────────────────
   useEffect(() => {
     if (!isUserLayerReady) return;
-    return installTabKeybindings(tabManager);
-  }, [isUserLayerReady, tabManager]);
+    return installTabKeybindings(tabManager, { getNewSessionCwd: () => cwd });
+  }, [cwd, isUserLayerReady, tabManager]);
 
   // ── PTY exit → auto-respawn / tab close ────────────────────
   const ptyExitCleanupRef = useRef<(() => void) | null>(null);

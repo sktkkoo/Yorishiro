@@ -96,6 +96,14 @@ export class SessionRegistry {
     this.emit({ type: "session-activity-changed", id, activity });
   }
 
+  setCwd(id: SessionId, cwd: string): void {
+    const descriptor = this.descriptors.get(id);
+    if (!descriptor) return;
+    if (descriptor.displayCwd === cwd) return;
+    this.descriptors.set(id, { ...descriptor, displayCwd: cwd });
+    this.emit({ type: "session-cwd-changed", id, cwd });
+  }
+
   /**
    * 全 event を購読する。返値の関数を呼ぶと subscribe を解除する。
    */

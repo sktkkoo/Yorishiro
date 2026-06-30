@@ -55,6 +55,11 @@ export type SessionEvent =
       readonly type: "session-activity-changed";
       readonly id: SessionId;
       readonly activity: SessionActivity;
+    }
+  | {
+      readonly type: "session-cwd-changed";
+      readonly id: SessionId;
+      readonly cwd: string;
     };
 
 /**

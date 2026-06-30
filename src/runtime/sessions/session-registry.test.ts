@@ -140,6 +140,21 @@ describe("SessionRegistry — events", () => {
       { type: "session-activity-changed", id: "a", activity: "running-command" },
     ]);
   });
+
+  it("setCwd() updates displayCwd and emits without changing launch cwd", () => {
+    const reg = new SessionRegistry();
+    reg.add(makeDescriptor("a", { cwd: "/work/launch" }));
+    const events: SessionEvent[] = [];
+    reg.on((e) => events.push(e));
+
+    reg.setCwd("a", "/work/current");
+
+    expect(reg.get("a")).toMatchObject({
+      cwd: "/work/launch",
+      displayCwd: "/work/current",
+    });
+    expect(events).toEqual([{ type: "session-cwd-changed", id: "a", cwd: "/work/current" }]);
+  });
 });
 
 describe("SessionRegistry — subscription", () => {

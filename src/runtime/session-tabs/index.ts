@@ -4,6 +4,7 @@
  * Session タブの状態管理 + keybindings + auto-respawn。
  */
 
+export type { TabKeybindingOptions } from "./keybindings";
 export { installTabKeybindings } from "./keybindings";
 export type {
   SessionTabCwdPersistence,
