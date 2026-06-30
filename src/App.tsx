@@ -895,6 +895,7 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const sidebarOpen = useSidebarOpen();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
+  const [tabMetadataBadgesEnabled, setTabMetadataBadgesEnabled] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
@@ -1407,6 +1408,7 @@ function App() {
         ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
+        setTabMetadataBadgesEnabled(config.tabMetadataBadges);
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
         appLanguageRef.current = { configured: configuredLanguage, resolved: resolvedLanguage };
@@ -2286,19 +2288,21 @@ function App() {
   const canMountTerminals =
     isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
 
-  // scene 変更時に active session の terminal テーマを更新する。
-  // initTerminalTheme は runtime factory 内で DEFAULT_SESSION_ID 固定のため、
-  // shell tab が active の場合に scene 変更が反映されない問題を補完する。
+  // scene 変更時に全 session の terminal テーマを更新する。
+  // initTerminalTheme は current theme と CSS vars の更新だけを担当するため、
+  // 既に mount 済みの各 TerminalRuntime へここで即時適用する。
   useEffect(() => {
     if (!isUserLayerReady) return;
     const sub = scenePackRegistry.subscribeActive((scene) => {
-      const activeId = tabManager.getState().activeSessionId;
-      const rt = getTerminalRuntime(activeId);
-      rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
-      rt.refit();
-      void sessionRefreshTheme({ sessionId: activeId }).catch((err) => {
-        console.warn("[terminal-theme] failed to refresh agent theme:", err);
-      });
+      const theme = scene?.terminal ?? DEFAULT_TERMINAL_THEME;
+      for (const sessionId of tabManager.getState().sessions) {
+        const rt = getTerminalRuntime(sessionId);
+        rt.setTheme(theme);
+        rt.refit();
+        void sessionRefreshTheme({ sessionId }).catch((err) => {
+          console.warn("[terminal-theme] failed to refresh agent theme:", err);
+        });
+      }
     });
     return () => sub.dispose();
   }, [isUserLayerReady, scenePackRegistry, tabManager]);
@@ -2682,6 +2686,7 @@ function App() {
         motionIntensity: number;
         language: AppLanguage;
         voiceFrequency: VoiceFrequency;
+        tabMetadataBadges: boolean;
       }>,
     ): Promise<void> => {
       const next = pendingConfigWrite.then(async () => {
@@ -3039,6 +3044,10 @@ function App() {
             return next;
           },
           setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
+          setTabMetadataBadges: async (enabled) => {
+            await updateConfig({ tabMetadataBadges: enabled });
+            setTabMetadataBadgesEnabled(enabled);
+          },
           getPresenceLevel: () => getPresenceState().level,
           setPresenceLevel: async (level) => {
             const result = applyPresenceLevelFromApp(level, "settings");
@@ -3061,6 +3070,7 @@ function App() {
               language: cur.language,
               resolvedLanguage,
               voiceFrequency: cur.voiceFrequency,
+              tabMetadataBadges: cur.tabMetadataBadges,
             };
           },
         },
@@ -3899,7 +3909,7 @@ function App() {
             state={tabState}
             labels={sessionTabLabels}
             statuses={sessionStatusById}
-            hookBadges={sessionHookBadges}
+            hookBadges={tabMetadataBadgesEnabled ? sessionHookBadges : undefined}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}

@@ -16,6 +16,7 @@ const makeDescriptor = (
   kind: "shell",
   label: id,
   cwd: null,
+  displayCwd: null,
   startedAt: 0,
   ...overrides,
 });

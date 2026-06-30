@@ -17,20 +17,20 @@ import { DEFAULT_TERMINAL_THEME } from "../terminal-runtime";
 // ---------------------------------------------------------------------------
 
 const DEFAULT_UI_THEME: Required<UiTheme> = {
-  background: "#0f1923",
-  foreground: "#eceff4",
-  foregroundDim: "rgba(236, 239, 244, 0.55)",
-  sidebarBackground: "#0a1118",
-  panelBackground: "rgba(14, 23, 34, 0.96)",
-  border: "rgba(59, 80, 104, 0.5)",
-  buttonBackground: "#243447",
-  buttonForeground: "#a8b8cc",
+  background: "#141619",
+  foreground: "#e8ebe7",
+  foregroundDim: "rgba(232, 235, 231, 0.55)",
+  sidebarBackground: "#0e0f11",
+  panelBackground: "rgba(20, 22, 25, 0.96)",
+  border: "rgba(120, 134, 124, 0.28)",
+  buttonBackground: "#24282b",
+  buttonForeground: "#aab4ac",
   inputBackground: "rgba(255, 255, 255, 0.04)",
-  accent: "rgba(77, 217, 207, 1)",
-  accentSoft: "rgba(77, 217, 207, 0.08)",
-  accentBorder: "rgba(77, 217, 207, 0.25)",
-  muted: "#3b5068",
-  glow: "rgba(77, 217, 207, 0.06)",
+  accent: "rgba(142, 176, 156, 1)",
+  accentSoft: "rgba(142, 176, 156, 0.08)",
+  accentBorder: "rgba(142, 176, 156, 0.25)",
+  muted: "#56615b",
+  glow: "rgba(142, 176, 156, 0.06)",
 };
 
 /** UiTheme の各 field を CSS カスタムプロパティ名にマッピング */

@@ -160,10 +160,14 @@ impl SessionRegistry {
     }
 
     pub fn set_cwd(&self, id: &str, cwd: String) {
-        let guard = self.lock();
-        if !guard.descriptors.contains_key(id) {
+        let mut guard = self.lock();
+        let Some(descriptor) = guard.descriptors.get_mut(id) else {
+            return;
+        };
+        if descriptor.display_cwd.as_deref() == Some(cwd.as_str()) {
             return;
         }
+        descriptor.display_cwd = Some(cwd.clone());
         let event = SessionEvent::SessionCwdChanged {
             id: id.to_string(),
             cwd,
@@ -203,6 +207,7 @@ mod tests {
             kind: SessionKind::Shell,
             label: id.to_string(),
             cwd: None,
+            display_cwd: None,
             started_at: 0,
         }
     }
@@ -311,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn set_cwd_emits_event_without_changing_launch_descriptor() {
+    fn set_cwd_updates_display_cwd_without_changing_launch_descriptor() {
         let reg = SessionRegistry::new();
         reg.add(make_descriptor("a"));
         let received = std::sync::Arc::new(Mutex::new(Vec::<String>::new()));
@@ -325,6 +330,10 @@ mod tests {
         reg.set_cwd("a", "/tmp/project".to_string());
 
         assert_eq!(reg.get("a").unwrap().cwd, None);
+        assert_eq!(
+            reg.get("a").unwrap().display_cwd,
+            Some("/tmp/project".to_string())
+        );
         assert_eq!(*received.lock().unwrap(), vec!["/tmp/project".to_string()]);
     }
 }

@@ -47,6 +47,7 @@ pub struct SessionDescriptor {
     pub kind: SessionKind,
     pub label: String,
     pub cwd: Option<String>,
+    pub display_cwd: Option<String>,
     /// epoch milliseconds at session creation。
     pub started_at: u64,
 }

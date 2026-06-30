@@ -32,6 +32,7 @@ function descriptor(overrides: Partial<SessionDescriptor> & { id: string }): Ses
     kind: overrides.id === MAIN ? "agent" : "shell",
     label: overrides.id,
     cwd: null,
+    displayCwd: null,
     startedAt: 1,
     ...overrides,
   };
@@ -103,6 +104,22 @@ describe("SessionTabManager", () => {
       expect(manager.getSessionLaunchCwd("shell-1")).toBe("/work/a");
       expect(manager.shouldAttachExistingSession(MAIN)).toBe(true);
       expect(manager.shouldAttachExistingSession("shell-1")).toBe(true);
+    });
+
+    it("restores display cwd separately from launch cwd after webview reload", () => {
+      manager.restoreSessions(
+        [
+          descriptor({
+            id: "shell-1",
+            cwd: "/work/launch",
+            displayCwd: "/work/current",
+          }),
+        ],
+        "shell-1",
+      );
+
+      expect(manager.getSessionCwd("shell-1")).toBe("/work/current");
+      expect(manager.getSessionLaunchCwd("shell-1")).toBe("/work/launch");
     });
 
     it("preferred active が存在しない場合は現在 active を維持し、無理なら main に戻す", () => {

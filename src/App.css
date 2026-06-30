@@ -7,20 +7,20 @@
   --leva-panel-width: 0px;
 
   /* Scene theme colors — scene 切替時に JS から上書きされる */
-  --charminal-bg: #0f1923;
-  --charminal-fg: #eceff4;
-  --charminal-fg-dim: rgba(236, 239, 244, 0.55);
-  --charminal-sidebar-bg: #0a1118;
-  --charminal-panel-bg: rgba(14, 23, 34, 0.96);
-  --charminal-border: rgba(59, 80, 104, 0.5);
-  --charminal-button-bg: #243447;
-  --charminal-button-fg: #a8b8cc;
+  --charminal-bg: #141619;
+  --charminal-fg: #e8ebe7;
+  --charminal-fg-dim: rgba(232, 235, 231, 0.55);
+  --charminal-sidebar-bg: #0e0f11;
+  --charminal-panel-bg: rgba(20, 22, 25, 0.96);
+  --charminal-border: rgba(120, 134, 124, 0.28);
+  --charminal-button-bg: #24282b;
+  --charminal-button-fg: #aab4ac;
   --charminal-input-bg: rgba(255, 255, 255, 0.04);
-  --charminal-accent: rgba(77, 217, 207, 1);
-  --charminal-accent-soft: rgba(77, 217, 207, 0.08);
-  --charminal-accent-border: rgba(77, 217, 207, 0.25);
-  --charminal-muted: #3b5068;
-  --charminal-glow: rgba(77, 217, 207, 0.06);
+  --charminal-accent: rgba(142, 176, 156, 1);
+  --charminal-accent-soft: rgba(142, 176, 156, 0.08);
+  --charminal-accent-border: rgba(142, 176, 156, 0.25);
+  --charminal-muted: #56615b;
+  --charminal-glow: rgba(142, 176, 156, 0.06);
 }
 
 /* ── Reset ──────────────────────────────────────────── */
@@ -220,8 +220,8 @@ body,
   border-radius: 8px;
   border: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));
   padding: 8px 12px;
-  background: var(--charminal-button-bg, #243447);
-  color: var(--charminal-fg, #e6edf3);
+  background: var(--charminal-button-bg, #24282b);
+  color: var(--charminal-fg, #e8ebe7);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -294,8 +294,8 @@ body,
   border-radius: 8px;
   border: 1px solid var(--charminal-border, rgba(125, 148, 176, 0.35));
   padding: 6px 10px;
-  background: var(--charminal-button-bg, #243447);
-  color: var(--charminal-fg, #e6edf3);
+  background: var(--charminal-button-bg, #24282b);
+  color: var(--charminal-fg, #e8ebe7);
   font: inherit;
   font-size: 12px;
   cursor: pointer;

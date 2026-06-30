@@ -393,6 +393,7 @@ impl PtyState {
             kind,
             label: profile_id.to_string(),
             cwd: cwd.clone(),
+            display_cwd: None,
             started_at: now_millis(),
         });
 

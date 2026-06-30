@@ -42,6 +42,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -63,6 +64,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -84,6 +86,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -105,6 +108,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -126,6 +130,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -147,6 +152,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -173,6 +179,7 @@ describe("parseConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -199,6 +206,13 @@ describe("parseConfig", () => {
     const config = parseConfig('{"terminalAgent": "unknown"}');
     expect(config.terminalAgent).toBe("claude");
   });
+
+  it("reads tabMetadataBadges only when explicitly true", () => {
+    expect(parseConfig("{}").tabMetadataBadges).toBe(false);
+    expect(parseConfig('{"tabMetadataBadges": true}').tabMetadataBadges).toBe(true);
+    expect(parseConfig('{"tabMetadataBadges": false}').tabMetadataBadges).toBe(false);
+    expect(parseConfig('{"tabMetadataBadges": "true"}').tabMetadataBadges).toBe(false);
+  });
 });
 
 describe("serializeConfig", () => {
@@ -216,6 +230,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -237,6 +252,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -271,6 +287,7 @@ describe("serializeConfig", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "codex",
       ambientAudioMuted: true,
@@ -293,6 +310,13 @@ describe("serializeConfig", () => {
     const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "opencode" };
     const text = serializeConfig(cfg);
     expect(parseConfig(text).terminalAgent).toBe("opencode");
+  });
+
+  it("writes tabMetadataBadges only when enabled", () => {
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, tabMetadataBadges: true }))).toEqual({
+      tabMetadataBadges: true,
+    });
   });
 });
 
@@ -344,6 +368,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,
@@ -366,6 +391,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       activeScene: null,
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+      tabMetadataBadges: false,
       language: "auto",
       terminalAgent: "claude",
       ambientAudioMuted: false,

@@ -12,6 +12,7 @@
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
+ * - `tabMetadataBadges: boolean`（optional）: top bar tab に hook / trigger badge を表示する
  * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
  * - `terminalAgent: string`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
@@ -46,6 +47,8 @@ export interface CharminalConfig {
   readonly activeUi: string | null;
   /** 同時有効化される ambient-ui pack の id 一覧。複数 active 可。 */
   readonly activeAmbientUi: ReadonlyArray<string>;
+  /** Top bar tab に hook / trigger badge を表示する。 */
+  readonly tabMetadataBadges: boolean;
   /** UI / persona fallback / command prompt の言語。`auto` なら起動時 locale から解決する。 */
   readonly language: AppLanguage;
   /** Terminal で自動起動する coding agent。未指定なら Claude Code。 */
@@ -84,6 +87,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   activeScene: null,
   activeUi: null,
   activeAmbientUi: ["attention-aura", "pomodoro-ui"],
+  tabMetadataBadges: false,
   language: DEFAULT_LANGUAGE,
   terminalAgent: "claude",
   ambientAudioMuted: false,
@@ -257,6 +261,7 @@ export function parseConfig(text: string): CharminalConfig {
     activeUi: toNullableString(obj.activeUi),
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
+    tabMetadataBadges: toBoolean(obj.tabMetadataBadges),
     language: toAppLanguage(obj.language),
     terminalAgent: toTerminalAgent(obj.terminalAgent),
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
@@ -284,6 +289,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (!stringArraysEqual(cfg.activeAmbientUi, EMPTY_CONFIG.activeAmbientUi)) {
     out.activeAmbientUi = [...cfg.activeAmbientUi];
   }
+  if (cfg.tabMetadataBadges) out.tabMetadataBadges = true;
   if (cfg.language !== DEFAULT_LANGUAGE) out.language = cfg.language;
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;

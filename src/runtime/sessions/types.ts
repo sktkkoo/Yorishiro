@@ -36,6 +36,7 @@ export interface SessionDescriptor {
   readonly kind: SessionKind;
   readonly label: string;
   readonly cwd: string | null;
+  readonly displayCwd: string | null;
   readonly startedAt: number;
 }
 

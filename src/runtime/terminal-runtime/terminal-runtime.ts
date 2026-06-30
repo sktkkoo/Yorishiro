@@ -37,28 +37,28 @@ const IME_POST_COMMIT_SUPPRESS_MS = 80;
 
 /** xterm.js の初期カラーテーマ。scene が未設定の時のフォールバック。 */
 export const DEFAULT_TERMINAL_THEME: XTermTheme = {
-  background: "#0f1923",
-  foreground: "#eceff4",
-  cursor: "#4dd9cf",
-  cursorAccent: "#0f1923",
-  selectionBackground: "#243447",
-  selectionForeground: "#eceff4",
-  black: "#0f1923",
-  red: "#ff6b8a",
-  green: "#4dd9cf",
-  yellow: "#f0c674",
-  blue: "#81a2be",
-  magenta: "#b294bb",
-  cyan: "#39c5bb",
-  white: "#eceff4",
-  brightBlack: "#3b5068",
-  brightRed: "#ff8da5",
-  brightGreen: "#6eded6",
-  brightYellow: "#f5d6a0",
-  brightBlue: "#a8c8e0",
-  brightMagenta: "#c9aed0",
-  brightCyan: "#7eeee6",
-  brightWhite: "#ffffff",
+  background: "#141619",
+  foreground: "#e8ebe7",
+  cursor: "#8eb09c",
+  cursorAccent: "#141619",
+  selectionBackground: "#28302b",
+  selectionForeground: "#e8ebe7",
+  black: "#141619",
+  red: "#d28a8a",
+  green: "#9cbd8a",
+  yellow: "#d8b777",
+  blue: "#8aa0bd",
+  magenta: "#a896b8",
+  cyan: "#7bb0ab",
+  white: "#d8dbd6",
+  brightBlack: "#56615b",
+  brightRed: "#e0a0a0",
+  brightGreen: "#b3d1a3",
+  brightYellow: "#e6cb95",
+  brightBlue: "#a6bcd6",
+  brightMagenta: "#c0b0cf",
+  brightCyan: "#9accc6",
+  brightWhite: "#f3f4f1",
 };
 
 /**
@@ -484,24 +484,24 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const cellWidth = rect.width / this.term.cols;
     const cellHeight = rect.height / this.term.rows;
 
-    const DEFAULT_FG = "#eceff4";
+    const DEFAULT_FG = "#e8ebe7";
     const ANSI_COLORS: Record<number, string> = {
-      0: "#0f1923",
-      1: "#ff6b8a",
-      2: "#4dd9cf",
-      3: "#f0c674",
-      4: "#81a2be",
-      5: "#b294bb",
-      6: "#39c5bb",
-      7: "#eceff4",
-      8: "#3b5068",
-      9: "#ff8da5",
-      10: "#6eded6",
-      11: "#f5d6a0",
-      12: "#a8c8e0",
-      13: "#c9aed0",
-      14: "#7eeee6",
-      15: "#ffffff",
+      0: "#141619",
+      1: "#d28a8a",
+      2: "#9cbd8a",
+      3: "#d8b777",
+      4: "#8aa0bd",
+      5: "#a896b8",
+      6: "#7bb0ab",
+      7: "#d8dbd6",
+      8: "#56615b",
+      9: "#e0a0a0",
+      10: "#b3d1a3",
+      11: "#e6cb95",
+      12: "#a6bcd6",
+      13: "#c0b0cf",
+      14: "#9accc6",
+      15: "#f3f4f1",
     };
 
     const cells: Array<{
@@ -1185,9 +1185,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const ctx = this.regionCtx;
     ctx.save();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = "rgba(77, 217, 207, 0.95)";
-    ctx.fillStyle = "rgba(77, 217, 207, 0.14)";
-    ctx.shadowColor = "rgba(77, 217, 207, 0.6)";
+    ctx.strokeStyle = "rgba(142, 176, 156, 0.95)";
+    ctx.fillStyle = "rgba(142, 176, 156, 0.14)";
+    ctx.shadowColor = "rgba(142, 176, 156, 0.6)";
     ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(polygon[0].x, polygon[0].y);
@@ -1210,7 +1210,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     const ctx = this.regionCtx;
     ctx.save();
-    ctx.fillStyle = "rgba(77, 217, 207, 0.22)";
+    ctx.fillStyle = "rgba(142, 176, 156, 0.22)";
     ctx.beginPath();
     ctx.moveTo(polygon[0].x, polygon[0].y);
     for (const point of polygon.slice(1)) {

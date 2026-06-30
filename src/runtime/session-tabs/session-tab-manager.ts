@@ -100,7 +100,7 @@ export class SessionTabManager {
     this.restoredSessionIds.clear();
     for (const descriptor of descriptors) {
       this.sessionLaunchCwds.set(descriptor.id, descriptor.cwd);
-      this.sessionCwds.set(descriptor.id, descriptor.cwd);
+      this.sessionCwds.set(descriptor.id, descriptor.displayCwd ?? descriptor.cwd);
       this.restoredSessionIds.add(descriptor.id);
     }
 
