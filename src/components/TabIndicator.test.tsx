@@ -102,4 +102,63 @@ describe("TabIndicator", () => {
 
     expect(onSelectSession).toHaveBeenCalledWith("shell-1");
   });
+
+  it("calls onAddSession from the add button", () => {
+    const onAddSession = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        onAddSession={onAddSession}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New terminal tab" }));
+
+    expect(onAddSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not render a close button for the main tab", () => {
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        onCloseSession={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Close claude" })).toBeNull();
+  });
+
+  it("calls onCloseSession from shell tab close buttons", () => {
+    const onCloseSession = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        onCloseSession={onCloseSession}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Close shell-1" }));
+
+    expect(onCloseSession).toHaveBeenCalledWith("shell-1");
+  });
 });

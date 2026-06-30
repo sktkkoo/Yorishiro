@@ -3783,6 +3783,8 @@ function App() {
             labels={sessionTabLabels}
             statuses={sessionStatusById}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+            onAddSession={() => tabManager.openShell(cwd)}
+            onCloseSession={(sessionId) => tabManager.close(sessionId)}
           />
         }
       />

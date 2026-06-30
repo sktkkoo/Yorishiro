@@ -909,17 +909,12 @@ body,
   flex: 0 1 auto;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
+  gap: 2px;
+  padding: 0 3px 0 8px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
   color: var(--charminal-button-fg);
-  font: inherit;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
   transition:
     background 0.15s,
     border-color 0.15s,
@@ -927,10 +922,57 @@ body,
     opacity 0.15s;
 }
 
+.tab-indicator-tab,
+.tab-indicator-close,
+.tab-indicator-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab-indicator-tab {
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-indicator-close {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border-radius: 4px;
+  opacity: 0.62;
+}
+
+.tab-indicator-add {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 6px;
+  color: var(--charminal-button-fg);
+}
+
 .tab-indicator-item:hover,
-.tab-indicator-item:focus-visible {
+.tab-indicator-item:focus-within,
+.tab-indicator-add:hover,
+.tab-indicator-add:focus-visible {
   background: rgba(255, 255, 255, 0.06);
   color: var(--charminal-fg);
+  outline: none;
+}
+
+.tab-indicator-close:hover,
+.tab-indicator-close:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
   outline: none;
 }
 

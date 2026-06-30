@@ -1,3 +1,4 @@
+import { Plus, X } from "lucide-react";
 import {
   deriveSessionStatusBadge,
   isNoteworthyBadge,
@@ -14,6 +15,8 @@ interface TabIndicatorProps {
   readonly statuses?: ReadonlyMap<SessionId, SessionStatus>;
   /** タブ選択。未指定なら表示専用。 */
   readonly onSelectSession?: (sessionId: SessionId) => void;
+  readonly onAddSession?: () => void;
+  readonly onCloseSession?: (sessionId: SessionId) => void;
 }
 
 /**
@@ -25,11 +28,14 @@ export default function TabIndicator({
   labels,
   statuses,
   onSelectSession,
+  onAddSession,
+  onCloseSession,
 }: TabIndicatorProps) {
   return (
     <div className="tab-indicator" role="tablist" aria-label="Terminal sessions">
       {state.sessions.map((id) => {
         const isActive = id === state.activeSessionId;
+        const isMain = id === state.mainSessionId;
         const label = labels.get(id) ?? id;
         const status = statuses?.get(id) ?? null;
         const badge = status ? deriveSessionStatusBadge(status) : null;
@@ -42,20 +48,43 @@ export default function TabIndicator({
           .filter(Boolean)
           .join(" ");
         return (
-          <button
-            type="button"
-            key={id}
-            className={`tab-indicator-item ${flags}`}
-            title={status?.attention ? attentionTitle(status.attention) : label}
-            role="tab"
-            aria-selected={isActive}
-            onClick={() => onSelectSession?.(id)}
-          >
-            {status?.unread ? "◆" : isActive ? "●" : "○"} {label}
-            {badge ? <span className="tab-indicator-status">{badgeLabel(badge)}</span> : null}
-          </button>
+          <span key={id} className={`tab-indicator-item ${flags}`}>
+            <button
+              type="button"
+              className="tab-indicator-tab"
+              title={status?.attention ? attentionTitle(status.attention) : label}
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => onSelectSession?.(id)}
+            >
+              {status?.unread ? "◆" : isActive ? "●" : "○"} {label}
+              {badge ? <span className="tab-indicator-status">{badgeLabel(badge)}</span> : null}
+            </button>
+            {!isMain && onCloseSession ? (
+              <button
+                type="button"
+                className="tab-indicator-close"
+                aria-label={`Close ${label}`}
+                title={`Close ${label}`}
+                onClick={() => onCloseSession(id)}
+              >
+                <X size={12} strokeWidth={2} aria-hidden="true" />
+              </button>
+            ) : null}
+          </span>
         );
       })}
+      {onAddSession ? (
+        <button
+          type="button"
+          className="tab-indicator-add"
+          aria-label="New terminal tab"
+          title="New terminal tab"
+          onClick={onAddSession}
+        >
+          <Plus size={13} strokeWidth={2} aria-hidden="true" />
+        </button>
+      ) : null}
     </div>
   );
 }
