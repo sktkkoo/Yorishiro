@@ -161,6 +161,12 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+function interruptNoticeElement(): HTMLElement {
+  const el = document.body.querySelector<HTMLElement>(".terminal-runtime-notice");
+  if (!el) throw new Error("interrupt notice element not found");
+  return el;
+}
+
 describe("TerminalRuntime", () => {
   beforeEach(() => {
     _clearForTest();
@@ -308,6 +314,100 @@ describe("TerminalRuntime", () => {
 
     expect(received).toEqual(["y"]);
     sub.dispose();
+  });
+
+  it("suppresses first Ctrl+C data in all interrupt protection mode", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("all");
+
+    mockState.dataHandlers[0]?.("\x03");
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    expect(interruptNoticeElement().textContent).toContain("Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Ctrl+C ignored");
+  });
+
+  it("allows first Ctrl+C data and suppresses repeated Ctrl+C data in repeated mode", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("repeated");
+
+    mockState.dataHandlers[0]?.("\x03");
+    mockState.dataHandlers[0]?.("\x03");
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({
+      sessionId: "shell-1",
+      data: "\x03",
+    });
+    expect(interruptNoticeElement().textContent).toContain("Second Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Second Ctrl+C ignored");
+  });
+
+  it("allows Ctrl+C again in repeated mode after non-interrupt input", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setInterruptProtectionMode("repeated");
+
+    mockState.dataHandlers[0]?.("\x03");
+    mockState.dataHandlers[0]?.("x");
+    mockState.dataHandlers[0]?.("\x03");
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite).toHaveBeenCalledTimes(3);
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(1, {
+      sessionId: "shell-1",
+      data: "\x03",
+    });
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(2, {
+      sessionId: "shell-1",
+      data: "x",
+    });
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(3, {
+      sessionId: "shell-1",
+      data: "\x03",
+    });
+  });
+
+  it("blocks first Ctrl+C at keydown in all interrupt protection mode", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("all");
+
+    const handled = terminal.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+
+    expect(handled).toBe(false);
+    expect(interruptNoticeElement().textContent).toContain("Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Ctrl+C ignored");
+  });
+
+  it("allows first Ctrl+C keydown and blocks repeated Ctrl+C keydown in repeated mode", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("repeated");
+
+    const first = terminal.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+    terminal.customKeyEventHandler?.(new KeyboardEvent("keyup", { key: "c", ctrlKey: true }));
+    const second = terminal.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    expect(interruptNoticeElement().textContent).toContain("Second Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Second Ctrl+C ignored");
   });
 
   it("/clear は xterm の可視画面を消さず scrollback だけ消す", () => {

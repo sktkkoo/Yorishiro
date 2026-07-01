@@ -189,6 +189,7 @@ import {
   DEFAULT_SESSION_ID,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
+  resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
 } from "./runtime/sessions";
 import {
@@ -3891,26 +3892,31 @@ function App() {
         {canMountTerminals &&
           tabState.sessions.map((sessionId) => {
             const sessionLaunchCwd = tabManager.getSessionLaunchCwd(sessionId);
+            const spec =
+              sessionId === DEFAULT_SESSION_ID
+                ? withAgentRuntimeFields(
+                    defaultSpec ?? {
+                      kind: "agent",
+                      agent: terminalAgent,
+                    },
+                    resolvedSystemPrompt,
+                    localizedPluginDir,
+                  )
+                : { kind: "shell" as const, integration: true };
+            const interruptProtectionMode =
+              sessionId === DEFAULT_SESSION_ID
+                ? resolveInterruptProtectionModeForSpawnSpec(spec)
+                : "none";
             return (
               <Terminal
                 key={sessionId}
                 sessionId={sessionId}
                 visible={sessionId === tabState.activeSessionId}
-                spec={
-                  sessionId === DEFAULT_SESSION_ID
-                    ? withAgentRuntimeFields(
-                        defaultSpec ?? {
-                          kind: "agent",
-                          agent: terminalAgent,
-                        },
-                        resolvedSystemPrompt,
-                        localizedPluginDir,
-                      )
-                    : { kind: "shell", integration: true }
-                }
+                spec={spec}
                 cwd={sessionLaunchCwd === undefined ? cwd : sessionLaunchCwd}
                 perception={sessionId === tabState.activeSessionId ? perception : null}
                 attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
+                interruptProtectionMode={interruptProtectionMode}
               />
             );
           })}
