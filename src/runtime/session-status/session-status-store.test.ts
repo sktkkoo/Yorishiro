@@ -394,6 +394,37 @@ describe("SessionStatusStore", () => {
     expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
   });
 
+  it("suppresses stale screen attention immediately after user cleared the same prompt", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.clearAttention("s1");
+    tick(100);
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+
+    expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
+  });
+
+  it("allows a different screen attention after user cleared a previous prompt", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.clearAttention("s1");
+    tick(100);
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow edit?" });
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Claude Code",
+        body: "Allow edit?",
+        source: "screen",
+      },
+    });
+  });
+
   it("does not suppress loop lifecycle attention after user cleared screen attention", () => {
     const { store, tick } = createStore();
 

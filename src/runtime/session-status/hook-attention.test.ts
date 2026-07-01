@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hookSignalSeq,
+  isAttentionNotificationMessage,
   isAttentionResolvingSignal,
   parseHookAttentionSignal,
   parseHookTargetSessionId,
@@ -38,7 +39,7 @@ describe("hook attention parsing", () => {
     ).toBeNull();
   });
 
-  it("keeps input-wait notifications as attention requests", () => {
+  it("ignores generic prompt-ready notifications", () => {
     expect(
       parseHookAttentionSignal(
         JSON.stringify({
@@ -48,12 +49,15 @@ describe("hook attention parsing", () => {
           sessionId: "shell-1",
         }),
       ),
-    ).toEqual({
-      title: "Codex",
-      body: "Codex is waiting for your input",
-      source: "hook",
-      sessionId: "shell-1",
-    });
+    ).toBeNull();
+  });
+
+  it("classifies only input or approval notifications as attention-worthy", () => {
+    expect(isAttentionNotificationMessage("Task completed")).toBe(false);
+    expect(isAttentionNotificationMessage("Build finished successfully")).toBe(false);
+    expect(isAttentionNotificationMessage("Codex is waiting for your input")).toBe(false);
+    expect(isAttentionNotificationMessage("Permission needed to run Bash(ls)")).toBe(true);
+    expect(isAttentionNotificationMessage("Approval required before continuing")).toBe(true);
   });
 
   it("uses pre-tool-use as an approval-wait resolving signal", () => {

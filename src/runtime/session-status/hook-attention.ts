@@ -95,12 +95,9 @@ function parseHookTargetSessionIdFromObject(obj: Record<string, unknown>): strin
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
 }
 
-function isAttentionNotificationMessage(message: string): boolean {
+export function isAttentionNotificationMessage(message: string): boolean {
   if (message.length === 0) return false;
   return (
-    /\b(?:waiting for|needs|requires|requests?)\b.{0,80}\b(?:you|input|approval|permission|confirmation|response)\b/i.test(
-      message,
-    ) ||
     /\b(?:permission|approval|input|confirmation)\b.{0,80}\b(?:required|requested|needed|waiting)\b/i.test(
       message,
     ) ||

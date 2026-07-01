@@ -8,6 +8,7 @@
 export {
   type HookAttentionSignal,
   hookSignalSeq,
+  isAttentionNotificationMessage,
   isAttentionResolvingSignal,
   parseHookAttentionSignal,
   parseHookTargetSessionId,
