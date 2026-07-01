@@ -168,7 +168,14 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
-import { getSessionStatusStore, type SessionStatus } from "./runtime/session-status";
+import {
+  getSessionStatusStore,
+  hookSignalSeq,
+  isAttentionResolvingSignal,
+  parseHookAttentionSignal,
+  parseHookTargetSessionId,
+  type SessionStatus,
+} from "./runtime/session-status";
 import type {
   SessionTabCwdPersistence,
   SessionTabCwdSnapshot,
@@ -627,25 +634,6 @@ function queryMountedSessionIds(): string[] {
   );
 }
 
-/**
- * hook server から polling した signal JSON を見て、notification なら
- * attention request（許可待ち / 入力待ち）の本文を返す。それ以外は null。
- *
- * `input` badge の主経路は screen fast path（screen-attention-detector）。
- * agent hook（HTTP `/hook/...`）はその fallback / 汎用 attention 経路。
- */
-function parseHookTargetSessionId(sig: string): string | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const sessionId = (parsed as Record<string, unknown>).sessionId;
-  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
-}
-
 function parseHookBadgeLabel(sig: string): string | null {
   let parsed: unknown;
   try {
@@ -680,79 +668,6 @@ function parseSyntheticTargetSessionId(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null) return null;
   const sessionId = (payload as Record<string, unknown>).sessionId;
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
-}
-
-function parseHookAttentionSignal(
-  sig: string,
-): { title: string; body: string; source: "hook"; sessionId: string | null } | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const obj = parsed as Record<string, unknown>;
-  if (obj.event !== "notification" && obj.event !== "permission-request") return null;
-  const message = typeof obj.message === "string" ? obj.message.trim() : "";
-  const rawToolName =
-    typeof obj.tool_name === "string"
-      ? obj.tool_name
-      : typeof obj.toolName === "string"
-        ? obj.toolName
-        : "";
-  const toolName = rawToolName.trim();
-  const agent = typeof obj.agent === "string" ? obj.agent.trim() : "";
-  const title = agent === "codex" ? "Codex" : "Claude Code";
-  const fallback =
-    obj.event === "permission-request"
-      ? toolName.length > 0
-        ? `Permission requested for ${toolName}`
-        : "Permission requested"
-      : "Waiting for you";
-  return {
-    title,
-    body: message.length > 0 ? message : fallback,
-    source: "hook",
-    sessionId: parseHookTargetSessionId(sig),
-  };
-}
-
-/**
- * hook signal が「agent はもう許可待ちではない」を意味するか。
- *
- * `stop`（ターン終了）と `prompt`（UserPromptSubmit = ユーザーが次の入力を送った）は、
- * いずれも「待機を抜けた」確実なシグナル。これらで許可待ち badge を解除する。
- * approve をマウスでクリックした等、keystroke 経路で拾えないケースの保険。
- */
-function isAttentionResolvingSignal(sig: string): boolean {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return false;
-  }
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const event = (parsed as Record<string, unknown>).event;
-  return (
-    event === "stop" ||
-    event === "prompt" ||
-    event === "post-tool-use" ||
-    event === "post-tool-failure"
-  );
-}
-
-/** Rust hook server が付与する seq。immediate event と polling fallback の dedup に使う。 */
-function hookSignalSeq(sig: string): number | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const seq = (parsed as Record<string, unknown>)._charminal_seq;
-  return typeof seq === "number" && Number.isFinite(seq) ? seq : null;
 }
 
 // presence による sidebar 幅 mutation の単一 writer。

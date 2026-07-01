@@ -6,6 +6,13 @@
  */
 
 export {
+  type HookAttentionSignal,
+  hookSignalSeq,
+  isAttentionResolvingSignal,
+  parseHookAttentionSignal,
+  parseHookTargetSessionId,
+} from "./hook-attention";
+export {
   detectScreenAttentionRequest,
   type ScreenAttentionDetection,
 } from "./screen-attention-detector";
