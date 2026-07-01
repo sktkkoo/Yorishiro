@@ -122,6 +122,7 @@ function loopBadge(label: string, event: LoopLifecycleEvent): TabIndicatorBadge 
 function targetSessionIdForEvent(event: DispatchEvent, state: SessionTabState): SessionId {
   const fromPayload = payloadSessionId(event);
   if (fromPayload !== null) return fromPayload;
+  if (event.kind === "hook-signal" || event.kind === "loop-lifecycle") return state.mainSessionId;
   return state.activeSessionId ?? state.mainSessionId;
 }
 

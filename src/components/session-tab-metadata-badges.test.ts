@@ -97,6 +97,20 @@ describe("deriveSessionTabMetadataBadge", () => {
         state,
       ),
     ).toBeNull();
+
+    expect(
+      deriveSessionTabMetadataBadge(
+        {
+          kind: "hook-signal",
+          signal: {
+            name: "post-tool-failure",
+            payload: { tool_name: "Bash" },
+          },
+          timestamp: 100,
+        },
+        state,
+      )?.sessionId,
+    ).toBe("default-session");
   });
 
   it("shows notable loop lifecycle phases", () => {
@@ -125,6 +139,12 @@ describe("deriveSessionTabMetadataBadge", () => {
         state,
       )?.badge.label,
     ).toBe("loop:done");
+    expect(
+      deriveSessionTabMetadataBadge(
+        { kind: "loop-lifecycle", phase: "completed", agent: "claude", timestamp: 100 },
+        state,
+      )?.sessionId,
+    ).toBe("default-session");
   });
 
   it("hides noisy lifecycle and derived events", () => {
@@ -194,6 +214,38 @@ describe("deriveSessionTabStatusAttention", () => {
         sessionId: "shell-2",
       });
     }
+  });
+
+  it("targets the main session for loop lifecycle events without a sessionId", () => {
+    expect(
+      deriveSessionTabStatusAttention(
+        {
+          kind: "loop-lifecycle",
+          phase: "blocked-on-approval",
+          agent: "codex",
+          timestamp: 100,
+        },
+        state,
+      ),
+    ).toMatchObject({
+      action: "mark-loop-blocked",
+      sessionId: "default-session",
+    });
+
+    expect(
+      deriveSessionTabStatusAttention(
+        {
+          kind: "loop-lifecycle",
+          phase: "completed",
+          agent: "codex",
+          timestamp: 100,
+        },
+        state,
+      ),
+    ).toEqual({
+      action: "clear-loop-blocked",
+      sessionId: "default-session",
+    });
   });
 
   it("ignores non-loop events", () => {
