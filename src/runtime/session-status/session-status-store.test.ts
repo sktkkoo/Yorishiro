@@ -163,6 +163,21 @@ describe("SessionStatusStore", () => {
     expect(store.getActiveSessionId()).toBe("s2");
   });
 
+  it("notifies when active session changes even if unread does not change", () => {
+    const { store } = createStore();
+    store.register("s1");
+    store.register("s2");
+    let notifyCount = 0;
+    store.subscribe(() => notifyCount++);
+
+    store.markActive("s1");
+    store.markActive("s1");
+    store.markActive("s2");
+
+    expect(notifyCount).toBe(2);
+    expect(store.getActiveSessionId()).toBe("s2");
+  });
+
   it("does not notify when PTY output only advances lastActivityAt", () => {
     const { store, tick } = createStore();
     let notifyCount = 0;

@@ -335,13 +335,17 @@ export class SessionStatusStore {
 
   /** active session を切り替える。新 active の unread は解除する。 */
   markActive(sessionId: SessionId): void {
+    const previousActiveSessionId = this.activeSessionId;
     this.activeSessionId = sessionId;
     const current = this.statuses.get(sessionId);
     if (!current) {
       this.register(sessionId);
       return;
     }
-    if (!current.unread) return;
+    if (!current.unread) {
+      if (previousActiveSessionId !== sessionId) this.notify();
+      return;
+    }
     this.commit({
       ...current,
       unread: false,
