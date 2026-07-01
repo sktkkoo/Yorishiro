@@ -3,7 +3,6 @@ import type {
   AmbientAudioState,
   AmbientUiContext,
   Disposable,
-  SyntheticEvent,
   Trigger,
   TweenAPI,
   UiClaimAPI,
@@ -82,6 +81,7 @@ import {
   formatMainSessionTabLabel,
   formatShellSessionTabLabel,
 } from "./components/session-tab-labels";
+import { deriveSessionTabMetadataBadge } from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
@@ -632,42 +632,6 @@ function queryMountedSessionIds(): string[] {
   return [...document.querySelectorAll<HTMLElement>(".terminal-container")].flatMap((el) =>
     el.dataset.sessionId ? [el.dataset.sessionId] : [],
   );
-}
-
-function parseHookBadgeLabel(sig: string): string | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const event = (parsed as Record<string, unknown>).event;
-  if (typeof event !== "string") return null;
-  const label = event.trim();
-  return label.length > 0 ? label : null;
-}
-
-function createAgentHookBadge(label: string): TabIndicatorBadge {
-  return {
-    label,
-    tone: "agent-hook",
-    title: `Agent hook: ${label}`,
-  };
-}
-
-function createCharminalTriggerBadge(event: SyntheticEvent): TabIndicatorBadge {
-  return {
-    label: `trigger:${event.name}`,
-    tone: "charminal",
-    title: `Charminal trigger: ${event.source.packId}/${event.name}`,
-  };
-}
-
-function parseSyntheticTargetSessionId(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const sessionId = (payload as Record<string, unknown>).sessionId;
-  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
 }
 
 // presence による sidebar 幅 mutation の単一 writer。
@@ -2204,13 +2168,9 @@ function App() {
 
   useEffect(() => {
     const subscription = runtime.bus.subscribeDispatch((event) => {
-      if (event.kind !== "synthetic" || event.source.type !== "system") return;
-      const state = tabManager.getState();
-      const targetSessionId =
-        parseSyntheticTargetSessionId(event.payload) ??
-        state.activeSessionId ??
-        state.mainSessionId;
-      showSessionHookBadge(targetSessionId, createCharminalTriggerBadge(event));
+      const decision = deriveSessionTabMetadataBadge(event, tabManager.getState());
+      if (decision === null) return;
+      showSessionHookBadge(decision.sessionId, decision.badge);
     });
     return () => subscription.dispose();
   }, [runtime.bus, showSessionHookBadge, tabManager]);
@@ -3341,10 +3301,6 @@ function App() {
       perception.onHookSignal(sig);
       const fallbackSessionId = tabManager.getState().mainSessionId;
       const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
-      const hookBadge = parseHookBadgeLabel(sig);
-      if (hookBadge !== null) {
-        showSessionHookBadge(targetSessionId, createAgentHookBadge(hookBadge));
-      }
       const notification = parseHookAttentionSignal(sig);
       if (notification) {
         sessionStatusStore.markAttentionRequest(
@@ -3388,7 +3344,7 @@ function App() {
       polling = false;
       unlistenHookSignal?.();
     };
-  }, [perception, devLog, sessionStatusStore, showSessionHookBadge, tabManager]);
+  }, [perception, devLog, sessionStatusStore, tabManager]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
