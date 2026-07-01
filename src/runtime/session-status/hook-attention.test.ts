@@ -63,6 +63,8 @@ describe("hook attention parsing", () => {
   it("uses pre-tool-use as an approval-wait resolving signal", () => {
     expect(isAttentionResolvingSignal(JSON.stringify({ event: "pre-tool-use" }))).toBe(true);
     expect(isAttentionResolvingSignal(JSON.stringify({ event: "post-tool-use" }))).toBe(true);
+    expect(isAttentionResolvingSignal(JSON.stringify({ event: "permission-denied" }))).toBe(true);
+    expect(isAttentionResolvingSignal(JSON.stringify({ event: "stop-failure" }))).toBe(true);
     expect(isAttentionResolvingSignal(JSON.stringify({ event: "permission-request" }))).toBe(false);
   });
 

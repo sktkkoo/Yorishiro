@@ -95,11 +95,15 @@ export interface HookSignalEvent {
 
 export interface HookSignal {
   readonly name: /**
-   * Claude Code 公式 hook `PreToolUse` のブリッジ。
-   *
-   * 発火タイミング: tool 呼び出しの直前。
-   * 用途: tool 実行の検出、診断 aura のような tool-activity driven の反応。
+   * Claude Code / Codex 公式 hook `SessionStart` のブリッジ。
    */
+    | "session-start"
+    /**
+     * Claude Code 公式 hook `PreToolUse` のブリッジ。
+     *
+     * 発火タイミング: tool 呼び出しの直前。
+     * 用途: tool 実行の検出、診断 aura のような tool-activity driven の反応。
+     */
     | "pre-tool-use"
     /**
      * Claude Code 公式 hook `PostToolUse` のブリッジ。
@@ -115,6 +119,18 @@ export interface HookSignal {
      * 用途: エラー反応、失敗診断。
      */
     | "post-tool-failure"
+    /**
+     * Claude Code 公式 hook `PostToolBatch` のブリッジ。
+     */
+    | "post-tool-batch"
+    /**
+     * Claude Code / Codex 公式 hook `PermissionRequest` のブリッジ。
+     */
+    | "permission-request"
+    /**
+     * Claude Code 公式 hook `PermissionDenied` のブリッジ。
+     */
+    | "permission-denied"
     /**
      * Claude Code 公式 hook `UserPromptSubmit` のブリッジ。
      *
@@ -136,12 +152,40 @@ export interface HookSignal {
      */
     | "stop"
     /**
+     * Claude Code 公式 hook `StopFailure` のブリッジ。
+     */
+    | "stop-failure"
+    /**
      * Claude Code 公式 hook `Notification` のブリッジ。
      *
      * 発火タイミング: Claude が notification を発行した時。
      * 用途: notification に応じた反応（例：warning 類）。
      */
-    | "notification";
+    | "notification"
+    /**
+     * Claude Code / Codex subagent lifecycle hooks のブリッジ。
+     */
+    | "subagent-start"
+    | "subagent-stop"
+    /**
+     * Claude Code task lifecycle hooks のブリッジ。
+     */
+    | "task-created"
+    | "task-completed"
+    /**
+     * Claude Code / Codex compaction lifecycle hooks のブリッジ。
+     */
+    | "pre-compact"
+    | "post-compact"
+    /**
+     * Claude Code MCP elicitation lifecycle hooks のブリッジ。
+     */
+    | "elicitation"
+    | "elicitation-result"
+    /**
+     * Claude Code 公式 hook `SessionEnd` のブリッジ。
+     */
+    | "session-end";
   readonly payload?: unknown;
 }
 

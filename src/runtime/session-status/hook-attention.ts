@@ -63,7 +63,9 @@ export function isAttentionResolvingSignal(sig: string): boolean {
     obj.event === "prompt" ||
     obj.event === "pre-tool-use" ||
     obj.event === "post-tool-use" ||
-    obj.event === "post-tool-failure"
+    obj.event === "post-tool-failure" ||
+    obj.event === "permission-denied" ||
+    obj.event === "stop-failure"
   );
 }
 

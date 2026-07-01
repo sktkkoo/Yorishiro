@@ -165,6 +165,10 @@ fn toml_literal_command(path: &Path) -> String {
 fn claude_hooks_json(hooks_dir: &HookScripts) -> String {
     serde_json::json!({
         "hooks": {
+            "SessionStart": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.session_start) }]
+            }],
             "UserPromptSubmit": [{
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.prompt) }]
@@ -181,9 +185,17 @@ fn claude_hooks_json(hooks_dir: &HookScripts) -> String {
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.post_tool_failure) }]
             }],
+            "PostToolBatch": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.post_tool_batch) }]
+            }],
             "Stop": [{
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.stop) }]
+            }],
+            "StopFailure": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.stop_failure) }]
             }],
             "Notification": [{
                 "matcher": "",
@@ -192,6 +204,46 @@ fn claude_hooks_json(hooks_dir: &HookScripts) -> String {
             "PermissionRequest": [{
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.permission_request) }]
+            }],
+            "PermissionDenied": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.permission_denied) }]
+            }],
+            "SubagentStart": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.subagent_start) }]
+            }],
+            "SubagentStop": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.subagent_stop) }]
+            }],
+            "TaskCreated": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.task_created) }]
+            }],
+            "TaskCompleted": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.task_completed) }]
+            }],
+            "PreCompact": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.pre_compact) }]
+            }],
+            "PostCompact": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.post_compact) }]
+            }],
+            "Elicitation": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.elicitation) }]
+            }],
+            "ElicitationResult": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.elicitation_result) }]
+            }],
+            "SessionEnd": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": command_path_for_hook(&hooks_dir.session_end) }]
             }]
         }
     })
@@ -204,9 +256,21 @@ struct HookScripts {
     pre_tool_use: PathBuf,
     post_tool_use: PathBuf,
     post_tool_failure: PathBuf,
+    post_tool_batch: PathBuf,
     notification: PathBuf,
     session_start: PathBuf,
+    session_end: PathBuf,
     permission_request: PathBuf,
+    permission_denied: PathBuf,
+    subagent_start: PathBuf,
+    subagent_stop: PathBuf,
+    task_created: PathBuf,
+    task_completed: PathBuf,
+    stop_failure: PathBuf,
+    pre_compact: PathBuf,
+    post_compact: PathBuf,
+    elicitation: PathBuf,
+    elicitation_result: PathBuf,
 }
 
 fn ensure_hook_scripts(shell_dir: &Path) -> io::Result<HookScripts> {
@@ -220,12 +284,36 @@ fn ensure_hook_scripts(shell_dir: &Path) -> io::Result<HookScripts> {
             "hook-post-tool-failure.sh",
             "/hook/post-tool-failure",
         )?,
+        post_tool_batch: hook_script(
+            shell_dir,
+            "hook-post-tool-batch.sh",
+            "/hook/post-tool-batch",
+        )?,
         notification: hook_script(shell_dir, "hook-notification.sh", "/hook/notification")?,
         session_start: hook_script(shell_dir, "hook-session-start.sh", "/hook/session-start")?,
+        session_end: hook_script(shell_dir, "hook-session-end.sh", "/hook/session-end")?,
         permission_request: hook_script(
             shell_dir,
             "hook-permission-request.sh",
             "/hook/permission-request",
+        )?,
+        permission_denied: hook_script(
+            shell_dir,
+            "hook-permission-denied.sh",
+            "/hook/permission-denied",
+        )?,
+        subagent_start: hook_script(shell_dir, "hook-subagent-start.sh", "/hook/subagent-start")?,
+        subagent_stop: hook_script(shell_dir, "hook-subagent-stop.sh", "/hook/subagent-stop")?,
+        task_created: hook_script(shell_dir, "hook-task-created.sh", "/hook/task-created")?,
+        task_completed: hook_script(shell_dir, "hook-task-completed.sh", "/hook/task-completed")?,
+        stop_failure: hook_script(shell_dir, "hook-stop-failure.sh", "/hook/stop-failure")?,
+        pre_compact: hook_script(shell_dir, "hook-pre-compact.sh", "/hook/pre-compact")?,
+        post_compact: hook_script(shell_dir, "hook-post-compact.sh", "/hook/post-compact")?,
+        elicitation: hook_script(shell_dir, "hook-elicitation.sh", "/hook/elicitation")?,
+        elicitation_result: hook_script(
+            shell_dir,
+            "hook-elicitation-result.sh",
+            "/hook/elicitation-result",
         )?,
     })
 }
@@ -279,6 +367,10 @@ fn codex_shim_script(hooks: &HookScripts) -> String {
         codex_hook_arg("PreToolUse", &hooks.pre_tool_use, 120000),
         codex_hook_arg("PostToolUse", &hooks.post_tool_use, 10000),
         codex_hook_arg("PermissionRequest", &hooks.permission_request, 120000),
+        codex_hook_arg("PreCompact", &hooks.pre_compact, 10000),
+        codex_hook_arg("PostCompact", &hooks.post_compact, 10000),
+        codex_hook_arg("SubagentStart", &hooks.subagent_start, 10000),
+        codex_hook_arg("SubagentStop", &hooks.subagent_stop, 10000),
     ];
     let mut injection = String::new();
     for arg in args {
@@ -696,6 +788,8 @@ mod tests {
         let codex_script = fs::read_to_string(&codex).unwrap();
         assert!(codex_script.contains("--enable hooks"));
         assert!(codex_script.contains("hooks.PermissionRequest"));
+        assert!(codex_script.contains("hooks.PreCompact"));
+        assert!(codex_script.contains("hooks.SubagentStop"));
         assert!(codex_script.contains("CHARMINAL_AGENT_KIND=codex"));
 
         let parsed: serde_json::Value =
@@ -710,6 +804,14 @@ mod tests {
                 .unwrap()
                 .contains("hook-permission-request.sh")
         );
+        assert!(parsed["hooks"]["TaskCompleted"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("hook-task-completed.sh"));
+        assert!(parsed["hooks"]["StopFailure"][0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .contains("hook-stop-failure.sh"));
 
         let _ = fs::remove_dir_all(&root);
     }

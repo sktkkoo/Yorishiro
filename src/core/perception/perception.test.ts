@@ -142,6 +142,39 @@ describe("Perception", () => {
       }
     });
 
+    it("maps additional official hook events without deriving loop lifecycle", () => {
+      const { perception, dispatched } = createStack();
+
+      perception.onHookSignal('{"event":"permission-request","tool_name":"Bash"}');
+      perception.onHookSignal('{"event":"permission-denied","tool_name":"Bash"}');
+      perception.onHookSignal('{"event":"task-completed"}');
+      perception.onHookSignal('{"event":"stop-failure","error":"rate_limit"}');
+      perception.onHookSignal('{"event":"pre-compact"}');
+      perception.onHookSignal('{"event":"post-compact"}');
+      perception.onHookSignal('{"event":"session-end"}');
+
+      expect(dispatched.map((event) => event.kind)).toEqual([
+        "hook-signal",
+        "hook-signal",
+        "hook-signal",
+        "hook-signal",
+        "hook-signal",
+        "hook-signal",
+        "hook-signal",
+      ]);
+      expect(
+        dispatched.map((event) => (event.kind === "hook-signal" ? event.signal.name : null)),
+      ).toEqual([
+        "permission-request",
+        "permission-denied",
+        "task-completed",
+        "stop-failure",
+        "pre-compact",
+        "post-compact",
+        "session-end",
+      ]);
+    });
+
     it("ignores malformed JSON", () => {
       const { perception, dispatched } = createStack();
 
