@@ -1,4 +1,5 @@
 import { PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import type { ReactNode } from "react";
 
 export interface TitleBarProps {
   readonly onToggleSidebar: () => void;
@@ -7,6 +8,7 @@ export interface TitleBarProps {
   readonly settingsActive: boolean;
   readonly settingsLabel: string;
   readonly sidebarLabel: string;
+  readonly tabs?: ReactNode;
 }
 
 export default function TitleBar({
@@ -16,6 +18,7 @@ export default function TitleBar({
   settingsActive,
   settingsLabel,
   sidebarLabel,
+  tabs,
 }: TitleBarProps) {
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
 
@@ -45,6 +48,7 @@ export default function TitleBar({
           <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
         </button>
       </div>
+      <div className="title-bar-tabs">{tabs}</div>
     </header>
   );
 }

@@ -27,11 +27,13 @@ pub enum OscEvent {
     CommandStart,
     /// `OSC 133 ; D[;<exit_code>]` — command 終了。exit_code は marker に乗ってる場合のみ。
     CommandEnd { exit_code: Option<i32> },
+    /// `OSC 7 ; file://...` — current working directory notification。
+    CurrentDir { cwd: String },
 }
 
 /// OSC body の最大長。これを超えたら malformed として捨てる。
-/// 通常 "133;D;<exit>" は 10 byte 程度で収まる。
-const MAX_OSC_BODY: usize = 64;
+/// OSC 7 cwd は長い path を運ぶため、通常の OSC 133 marker より余裕を持つ。
+const MAX_OSC_BODY: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -139,6 +141,9 @@ impl Default for Osc133Parser {
 /// それ以外は None。
 fn parse_osc133(body: &[u8]) -> Option<OscEvent> {
     let s = std::str::from_utf8(body).ok()?;
+    if let Some(cwd) = parse_osc7_cwd(s) {
+        return Some(OscEvent::CurrentDir { cwd });
+    }
     let rest = s.strip_prefix("133;")?;
     let mut parts = rest.splitn(2, ';');
     let code = parts.next()?;
@@ -152,6 +157,16 @@ fn parse_osc133(body: &[u8]) -> Option<OscEvent> {
         }
         _ => None,
     }
+}
+
+fn parse_osc7_cwd(s: &str) -> Option<String> {
+    let rest = s.strip_prefix("7;file://")?;
+    let path_start = rest.find('/')?;
+    let cwd = &rest[path_start..];
+    if cwd.is_empty() {
+        return None;
+    }
+    Some(cwd.to_string())
 }
 
 #[cfg(test)]
@@ -200,6 +215,18 @@ mod tests {
         let mut p = Osc133Parser::new();
         let events = feed_str(&mut p, b"\x1b]133;A\x07\x1b]133;B\x07");
         assert_eq!(events, vec![OscEvent::PromptStart, OscEvent::PromptEnd]);
+    }
+
+    #[test]
+    fn parses_osc7_current_directory() {
+        let mut p = Osc133Parser::new();
+        let events = feed_str(&mut p, b"\x1b]7;file:///Users/alice/Charminal\x07");
+        assert_eq!(
+            events,
+            vec![OscEvent::CurrentDir {
+                cwd: "/Users/alice/Charminal".to_string()
+            }]
+        );
     }
 
     #[test]

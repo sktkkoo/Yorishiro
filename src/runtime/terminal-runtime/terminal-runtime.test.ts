@@ -567,7 +567,7 @@ describe("TerminalRuntime", () => {
   it("setBackgroundTransparent しなければ透明化されず class も付かない（既定）", () => {
     getTerminalRuntime("shell-1"); // runtime/terminal を生成（呼ばずに既定を確認）
 
-    expect(themeBg()).toBe("#0f1923");
+    expect(themeBg()).toBe("#141619");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
   });
 });

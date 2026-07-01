@@ -10,6 +10,7 @@ __charminal_preexec() {
 __charminal_precmd() {
     local exit_code=$?
     printf '\e]133;D;%s\a' "$exit_code"
+    printf '\e]7;file://%s\a' "$PWD"
 }
 
 # bash には preexec hook が標準で無い。DEBUG trap を 1 度だけ設定する。

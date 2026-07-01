@@ -6,4 +6,6 @@ export {
   getCurrentTerminalTheme,
   type InitTerminalThemeResult,
   initTerminalTheme,
+  resolveTerminalTheme,
+  syncCurrentTerminalTheme,
 } from "./wire";
