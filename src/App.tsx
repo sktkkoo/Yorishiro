@@ -81,7 +81,10 @@ import {
   formatMainSessionTabLabel,
   formatShellSessionTabLabel,
 } from "./components/session-tab-labels";
-import { deriveSessionTabMetadataBadge } from "./components/session-tab-metadata-badges";
+import {
+  deriveSessionTabMetadataBadge,
+  deriveSessionTabStatusAttention,
+} from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
@@ -2168,12 +2171,23 @@ function App() {
 
   useEffect(() => {
     const subscription = runtime.bus.subscribeDispatch((event) => {
-      const decision = deriveSessionTabMetadataBadge(event, tabManager.getState());
-      if (decision === null) return;
-      showSessionHookBadge(decision.sessionId, decision.badge);
+      const state = tabManager.getState();
+      const attentionDecision = deriveSessionTabStatusAttention(event, state);
+      if (attentionDecision?.action === "mark-loop-blocked") {
+        sessionStatusStore.markAttentionRequest(
+          attentionDecision.sessionId,
+          attentionDecision.notification,
+        );
+      } else if (attentionDecision?.action === "clear-loop-blocked") {
+        sessionStatusStore.clearLoopAttention(attentionDecision.sessionId);
+      }
+
+      const badgeDecision = deriveSessionTabMetadataBadge(event, state);
+      if (badgeDecision === null) return;
+      showSessionHookBadge(badgeDecision.sessionId, badgeDecision.badge);
     });
     return () => subscription.dispose();
-  }, [runtime.bus, showSessionHookBadge, tabManager]);
+  }, [runtime.bus, sessionStatusStore, showSessionHookBadge, tabManager]);
 
   useEffect(() => {
     if (!isUserLayerReady) return;

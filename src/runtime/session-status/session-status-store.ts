@@ -44,7 +44,7 @@ export interface SessionAttention {
   readonly title: string | null;
   readonly body: string;
   readonly receivedAt: number;
-  readonly source: "hook" | "osc" | "screen";
+  readonly source: "hook" | "osc" | "screen" | "loop";
 }
 
 /**
@@ -251,6 +251,7 @@ export class SessionStatusStore {
     if (
       current.attention === null &&
       source !== "screen" &&
+      source !== "loop" &&
       lastClearedAt !== undefined &&
       receivedAt - lastClearedAt >= 0 &&
       receivedAt - lastClearedAt < this.lateAttentionSuppressMs
@@ -261,6 +262,7 @@ export class SessionStatusStore {
     if (
       current.activity === "awaiting-input" &&
       current.attention?.source === "screen" &&
+      source !== "loop" &&
       source !== "screen"
     ) {
       return;
@@ -309,6 +311,19 @@ export class SessionStatusStore {
     const current = this.statuses.get(sessionId);
     if (!current || current.attention?.source !== "screen") return;
     this.clearAttention(sessionId);
+  }
+
+  /** loop lifecycle が進行/終了したとき、loop 由来の sticky attention だけを解除する。 */
+  clearLoopAttention(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.attention?.source !== "loop") return;
+    this.commit({
+      ...current,
+      activity: current.activity === "awaiting-input" ? "idle" : current.activity,
+      attention: null,
+      unread: false,
+      lastActivityAt: this.now(),
+    });
   }
 
   /** active session を切り替える。新 active の unread は解除する。 */

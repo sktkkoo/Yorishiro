@@ -1,12 +1,30 @@
 import type { DispatchEvent, HookSignalEvent, LoopLifecycleEvent } from "@charminal/sdk";
+import type { SessionAttention } from "../runtime/session-status/session-status-store";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
 import type { TabIndicatorBadge } from "./TabIndicator";
+
+const SYSTEM_SYNTHETIC_METADATA_BADGE_NAMES = new Set([
+  "charminal-settings:write-failed",
+  "pomodoro:session-completed",
+  "session-respawn-failed",
+]);
 
 export interface SessionTabMetadataBadgeDecision {
   readonly sessionId: SessionId;
   readonly badge: TabIndicatorBadge;
 }
+
+export type SessionTabStatusAttentionDecision =
+  | {
+      readonly action: "mark-loop-blocked";
+      readonly sessionId: SessionId;
+      readonly notification: Pick<SessionAttention, "title" | "body" | "source">;
+    }
+  | {
+      readonly action: "clear-loop-blocked";
+      readonly sessionId: SessionId;
+    };
 
 /**
  * EventBus dispatch stream から、top bar の session tab に短時間表示する metadata
@@ -28,8 +46,34 @@ export function deriveSessionTabMetadataBadge(
   };
 }
 
+export function deriveSessionTabStatusAttention(
+  event: DispatchEvent,
+  state: SessionTabState,
+): SessionTabStatusAttentionDecision | null {
+  if (event.kind !== "loop-lifecycle") return null;
+  const sessionId = targetSessionIdForEvent(event, state);
+
+  if (event.phase === "blocked-on-approval") {
+    return {
+      action: "mark-loop-blocked",
+      sessionId,
+      notification: {
+        title: "Loop",
+        body: "Blocked on approval",
+        source: "loop",
+      },
+    };
+  }
+
+  return {
+    action: "clear-loop-blocked",
+    sessionId,
+  };
+}
+
 function badgeForEvent(event: DispatchEvent): TabIndicatorBadge | null {
   if (event.kind === "synthetic" && event.source.type === "system") {
+    if (!SYSTEM_SYNTHETIC_METADATA_BADGE_NAMES.has(event.name)) return null;
     return {
       label: `trigger:${event.name}`,
       tone: "charminal",
@@ -54,14 +98,12 @@ function badgeForHookSignal(event: HookSignalEvent): TabIndicatorBadge | null {
 
 function badgeForLoopLifecycle(event: LoopLifecycleEvent): TabIndicatorBadge | null {
   switch (event.phase) {
-    case "blocked-on-approval":
-      return loopBadge("loop:blocked", event);
-    case "progress-milestone":
-      return loopBadge("loop:milestone", event);
     case "failed":
       return loopBadge("loop:failed", event);
     case "completed":
       return loopBadge("loop:done", event);
+    case "blocked-on-approval":
+    case "progress-milestone":
     case "started":
     case "iterating":
       return null;

@@ -333,6 +333,29 @@ describe("SessionStatusStore", () => {
     });
   });
 
+  it("clears only loop-sourced attention when loop lifecycle moves on", () => {
+    const { store } = createStore();
+
+    store.markAttentionRequest("s1", {
+      title: "Loop",
+      body: "Blocked on approval",
+      source: "loop",
+    });
+    store.clearLoopAttention("s1");
+    expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
+
+    store.markAttentionRequest("s2", {
+      title: "Claude Code",
+      body: "Permission needed",
+      source: "hook",
+    });
+    store.clearLoopAttention("s2");
+    expect(store.get("s2")).toMatchObject({
+      activity: "awaiting-input",
+      attention: { source: "hook" },
+    });
+  });
+
   it("keeps screen attention authoritative over late hooks while prompt is visible", () => {
     const { store, tick } = createStore();
 
@@ -369,6 +392,50 @@ describe("SessionStatusStore", () => {
     });
 
     expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
+  });
+
+  it("does not suppress loop lifecycle attention after user cleared screen attention", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.clearAttention("s1");
+    tick(100);
+    store.markAttentionRequest("s1", {
+      title: "Loop",
+      body: "Blocked on approval",
+      source: "loop",
+    });
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Loop",
+        body: "Blocked on approval",
+        source: "loop",
+      },
+    });
+  });
+
+  it("allows loop lifecycle attention to supersede screen attention", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.markAttentionRequest("s1", {
+      title: "Loop",
+      body: "Blocked on approval",
+      source: "loop",
+    });
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Loop",
+        body: "Blocked on approval",
+        source: "loop",
+      },
+    });
   });
 
   it("clears stale exit code when lifecycle starts again", () => {

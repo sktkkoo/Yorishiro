@@ -1,7 +1,10 @@
 import type { DispatchEvent, SyntheticEvent } from "@charminal/sdk";
 import { describe, expect, it } from "vitest";
 import type { SessionTabState } from "../runtime/session-tabs/types";
-import { deriveSessionTabMetadataBadge } from "./session-tab-metadata-badges";
+import {
+  deriveSessionTabMetadataBadge,
+  deriveSessionTabStatusAttention,
+} from "./session-tab-metadata-badges";
 
 const state: SessionTabState = {
   sessions: ["default-session", "shell-1"],
@@ -18,20 +21,27 @@ const systemSynthetic = (name: string, payload: unknown = undefined): SyntheticE
 });
 
 describe("deriveSessionTabMetadataBadge", () => {
-  it("shows system synthetic events and targets payload sessionId when present", () => {
+  it("shows only allowlisted system synthetic events and targets payload sessionId when present", () => {
     expect(
       deriveSessionTabMetadataBadge(
-        systemSynthetic("session-opened", { sessionId: "shell-2" }),
+        systemSynthetic("session-respawn-failed", { sessionId: "shell-2" }),
         state,
       ),
     ).toEqual({
       sessionId: "shell-2",
       badge: {
-        label: "trigger:session-opened",
+        label: "trigger:session-respawn-failed",
         tone: "charminal",
-        title: "Charminal trigger: charminal:session-tabs/session-opened",
+        title: "Charminal trigger: charminal:session-tabs/session-respawn-failed",
       },
     });
+
+    expect(
+      deriveSessionTabMetadataBadge(
+        systemSynthetic("session-opened", { sessionId: "shell-2" }),
+        state,
+      ),
+    ).toBeNull();
   });
 
   it("falls back to the active session for badge-worthy events without a sessionId", () => {
@@ -95,21 +105,14 @@ describe("deriveSessionTabMetadataBadge", () => {
         { kind: "loop-lifecycle", phase: "blocked-on-approval", agent: "codex", timestamp: 100 },
         state,
       ),
-    ).toMatchObject({
-      sessionId: "shell-1",
-      badge: {
-        label: "loop:blocked",
-        tone: "charminal",
-        title: "Loop lifecycle: blocked-on-approval (codex)",
-      },
-    });
+    ).toBeNull();
 
     expect(
       deriveSessionTabMetadataBadge(
         { kind: "loop-lifecycle", phase: "progress-milestone", agent: null, timestamp: 100 },
         state,
-      )?.badge.label,
-    ).toBe("loop:milestone");
+      ),
+    ).toBeNull();
     expect(
       deriveSessionTabMetadataBadge(
         { kind: "loop-lifecycle", phase: "failed", agent: "claude", timestamp: 100 },
@@ -140,5 +143,62 @@ describe("deriveSessionTabMetadataBadge", () => {
     for (const event of hidden) {
       expect(deriveSessionTabMetadataBadge(event, state)).toBeNull();
     }
+  });
+});
+
+describe("deriveSessionTabStatusAttention", () => {
+  it("turns blocked-on-approval into sticky loop attention", () => {
+    expect(
+      deriveSessionTabStatusAttention(
+        {
+          kind: "loop-lifecycle",
+          phase: "blocked-on-approval",
+          agent: "codex",
+          detail: { sessionId: "shell-2" },
+          timestamp: 100,
+        },
+        state,
+      ),
+    ).toEqual({
+      action: "mark-loop-blocked",
+      sessionId: "shell-2",
+      notification: {
+        title: "Loop",
+        body: "Blocked on approval",
+        source: "loop",
+      },
+    });
+  });
+
+  it("clears sticky loop attention when loop lifecycle moves on", () => {
+    for (const phase of [
+      "started",
+      "iterating",
+      "progress-milestone",
+      "failed",
+      "completed",
+    ] as const) {
+      expect(
+        deriveSessionTabStatusAttention(
+          {
+            kind: "loop-lifecycle",
+            phase,
+            agent: null,
+            detail: { sessionId: "shell-2" },
+            timestamp: 100,
+          },
+          state,
+        ),
+      ).toEqual({
+        action: "clear-loop-blocked",
+        sessionId: "shell-2",
+      });
+    }
+  });
+
+  it("ignores non-loop events", () => {
+    expect(
+      deriveSessionTabStatusAttention(systemSynthetic("pomodoro:session-completed"), state),
+    ).toBeNull();
   });
 });
