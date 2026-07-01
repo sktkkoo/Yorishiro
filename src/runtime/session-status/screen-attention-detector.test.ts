@@ -114,4 +114,32 @@ describe("detectScreenAttentionRequest", () => {
       `),
     ).toBeNull();
   });
+
+  it("does not treat Codex model selection as approval attention", () => {
+    expect(
+      detectScreenAttentionRequest(`
+        Select model
+
+        ❯ 1. gpt-5-codex high
+          2. gpt-5-codex medium
+          3. gpt-5
+
+        Enter to select · Esc to cancel
+      `),
+    ).toBeNull();
+  });
+
+  it("does not treat slash command menus as approval attention", () => {
+    expect(
+      detectScreenAttentionRequest(`
+        Slash commands
+
+        ❯ /model   Select model
+          /clear   Clear conversation
+          /help    Show help
+
+        Enter to select · Esc to cancel
+      `),
+    ).toBeNull();
+  });
 });

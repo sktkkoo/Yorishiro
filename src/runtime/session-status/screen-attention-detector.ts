@@ -121,20 +121,36 @@ function isInteractiveChoicePrompt(lines: ReadonlyArray<string>): boolean {
   const ynHint =
     /\(y\/n\)|\[y\/n\]|\by\/n\b|press\s+y\b|esc\s+to\s+(?:cancel|reject|deny|go back|interrupt)/i;
 
+  const hasAttentionContext = hasInteractiveChoiceAttentionContext(lines);
   let aff = false;
   let neg = false;
   let options = 0;
   for (const line of lines) {
-    if (ynHint.test(line)) return true;
+    if (ynHint.test(line) && hasAttentionContext) return true;
     if (numbered.test(line) || bareChoice(line)) {
       options += 1;
       if (affirmative.test(line)) aff = true;
       if (negative.test(line)) neg = true;
     }
   }
+  if (!hasAttentionContext) return false;
   if (aff && neg) return true;
   // 「Yes」系が複数並ぶ（Yes / Yes, always …）形も入力待ちと見なす。
   return aff && options >= 2;
+}
+
+function hasInteractiveChoiceAttentionContext(lines: ReadonlyArray<string>): boolean {
+  const contextLines = lines.filter(
+    (line) =>
+      !/^\d+\s*[.)]\s+\S/.test(line) &&
+      !/^(?:yes|no|allow|approve|deny|reject|cancel|proceed|always|skip|abort)\b/i.test(line) &&
+      !/^\s*(?:enter|return)\s+to\s+select\b/i.test(line) &&
+      !/^\s*esc\s+to\s+(?:cancel|go back)\b/i.test(line),
+  );
+  const context = contextLines.join(" ");
+  return /\b(?:permission|approval|approve|allow|deny|run|execute|command|tool|edit|write|read|network|file|bash|shell|apply|proceed|continue|confirm)\b/i.test(
+    context,
+  );
 }
 
 function extractPromptBody(lines: ReadonlyArray<string>, joined: string): string {

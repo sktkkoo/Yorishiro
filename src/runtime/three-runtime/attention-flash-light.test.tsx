@@ -4,6 +4,7 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type SessionStatus, SessionStatusStore } from "../session-status";
 import {
+  ATTENTION_FLASH_HZ,
   AttentionFlashLight,
   computeAttentionFlashLightIntensity,
   deriveAttentionFlashLightState,
@@ -91,7 +92,7 @@ describe("attention flash light state", () => {
 
   it("keeps pulse intensity bounded and red-flash shaped", () => {
     const start = computeAttentionFlashLightIntensity(0);
-    const peak = computeAttentionFlashLightIntensity(1 / (2 * 1.35));
+    const peak = computeAttentionFlashLightIntensity(1 / (2 * ATTENTION_FLASH_HZ));
 
     expect(start.ambient).toBeGreaterThanOrEqual(0.04);
     expect(start.spot).toBeLessThan(peak.spot);

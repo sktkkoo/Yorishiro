@@ -10,7 +10,7 @@ import {
 import type { SessionId } from "../sessions/types";
 
 const ATTENTION_RED = "#ff2f28";
-const FLASH_HZ = 1.35;
+export const ATTENTION_FLASH_HZ = 0.6;
 
 export interface AttentionFlashLightState {
   readonly active: boolean;
@@ -57,7 +57,7 @@ export function readActiveSessionAttentionFlashLightState(
 export function computeAttentionFlashLightIntensity(
   elapsedSeconds: number,
 ): AttentionFlashLightIntensity {
-  const wave = (Math.sin(elapsedSeconds * Math.PI * 2 * FLASH_HZ - Math.PI / 2) + 1) / 2;
+  const wave = (Math.sin(elapsedSeconds * Math.PI * 2 * ATTENTION_FLASH_HZ - Math.PI / 2) + 1) / 2;
   const eased = wave * wave;
   return {
     ambient: 0.04 + eased * 0.16,
