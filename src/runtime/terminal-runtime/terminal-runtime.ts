@@ -22,6 +22,7 @@ import {
 } from "./osc-notification";
 import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
 import type {
+  InterruptProtectionMode,
   PtyParams,
   TerminalCursorClientPosition,
   TerminalLineRect,
@@ -34,6 +35,8 @@ import type {
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
 const IME_POST_COMMIT_SUPPRESS_MS = 80;
+const INTERRUPT_NOTICE_THROTTLE_MS = 1000;
+const INTERRUPT_NOTICE_VISIBLE_MS = 1800;
 
 /** xterm.js の初期カラーテーマ。scene が未設定の時のフォールバック。 */
 export const DEFAULT_TERMINAL_THEME: XTermTheme = {
@@ -77,6 +80,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly term: XTerm;
   private readonly fitAddon: FitAddon;
   private readonly xtermContainer: HTMLDivElement;
+  private readonly interruptNoticeElement: HTMLDivElement;
   private readonly regionCanvas: HTMLCanvasElement | null;
   private readonly regionCtx: CanvasRenderingContext2D | null;
   private readonly channel: Channel<ArrayBuffer>;
@@ -90,6 +94,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastFitW = 0;
   private lastFitH = 0;
   private lastUserInputAt = -Infinity;
+  private lastInterruptNoticeAt = -Infinity;
+  private interruptNoticeHideTimer: number | null = null;
+  private repeatedInterruptKeyArmed = false;
+  private repeatedInterruptInputArmed = false;
+  private interruptProtectionMode: InterruptProtectionMode = "none";
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly notificationListeners = new Set<(event: TerminalNotificationEvent) => void>();
@@ -146,6 +155,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     document.body.appendChild(this.xtermContainer);
 
     this.term.open(this.xtermContainer);
+    this.interruptNoticeElement = this.createInterruptNoticeElement();
+    this.xtermContainer.appendChild(this.interruptNoticeElement);
     this.installImeCompositionGuard();
     this.installNotificationOscHandlers();
 
@@ -313,6 +324,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
     }
+    this.clearInterruptNoticeTimer();
     this.clearImePendingCommitTimer();
     this.term.dispose();
     if (this.xtermContainer.parentElement) {
@@ -680,6 +692,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.focus();
   }
 
+  setInterruptProtectionMode(mode: InterruptProtectionMode): void {
+    this.interruptProtectionMode = mode;
+    if (mode === "none") {
+      this.repeatedInterruptKeyArmed = false;
+      this.repeatedInterruptInputArmed = false;
+      this.lastInterruptNoticeAt = -Infinity;
+    }
+  }
+
   forceRespawn(): void {
     if (this.disposed) return;
     if (!this.currentParams) return;
@@ -757,9 +778,37 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     });
 
     this.term.attachCustomKeyEventHandler((event) => {
+      if (this.shouldSuppressProtectedInterruptKeyEvent(event)) return false;
       if (this.shouldSuppressImeKeyEvent(event)) return false;
       return true;
     });
+  }
+
+  private shouldSuppressProtectedInterruptKeyEvent(event: KeyboardEvent): boolean {
+    if (this.interruptProtectionMode === "none") return false;
+    if (!this.isInterruptKeyEvent(event)) {
+      if (this.interruptProtectionMode === "repeated" && event.type === "keydown") {
+        this.repeatedInterruptKeyArmed = false;
+      }
+      return false;
+    }
+    if (this.interruptProtectionMode === "all") {
+      this.showInterruptProtectedNotice("all");
+      return true;
+    }
+
+    if (!this.repeatedInterruptKeyArmed) {
+      this.repeatedInterruptKeyArmed = true;
+      return false;
+    }
+    this.showInterruptProtectedNotice("repeated");
+    return true;
+  }
+
+  private isInterruptKeyEvent(event: KeyboardEvent): boolean {
+    if (event.type !== "keydown") return false;
+    if (!event.ctrlKey || event.metaKey || event.altKey) return false;
+    return event.key.toLowerCase() === "c";
   }
 
   private shouldSuppressImeKeyEvent(event: KeyboardEvent): boolean {
@@ -824,6 +873,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private acceptUserInputData(data: string): void {
+    if (this.shouldSuppressProtectedInterruptData(data)) return;
     this.lastUserInputAt = performance.now();
     this.perceptionRef.current?.onUserInput(data);
     this.notifyUserInputListeners(data);
@@ -835,6 +885,62 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         // PTY already closed — silent
       }
     });
+  }
+
+  private shouldSuppressProtectedInterruptData(data: string): boolean {
+    if (this.interruptProtectionMode === "none") return false;
+    if (!data.includes("\x03")) {
+      if (this.interruptProtectionMode === "repeated") {
+        this.repeatedInterruptInputArmed = false;
+      }
+      return false;
+    }
+    if (this.interruptProtectionMode === "all") {
+      this.showInterruptProtectedNotice("all");
+      return true;
+    }
+
+    if (!this.repeatedInterruptInputArmed) {
+      this.repeatedInterruptInputArmed = true;
+      return false;
+    }
+    this.showInterruptProtectedNotice("repeated");
+    return true;
+  }
+
+  private createInterruptNoticeElement(): HTMLDivElement {
+    const element = document.createElement("div");
+    element.className = "terminal-runtime-notice";
+    element.hidden = true;
+    element.setAttribute("role", "status");
+    element.setAttribute("aria-live", "polite");
+    element.setAttribute("aria-atomic", "true");
+    return element;
+  }
+
+  private showInterruptProtectedNotice(mode: Exclude<InterruptProtectionMode, "none">): void {
+    const now = performance.now();
+    if (now - this.lastInterruptNoticeAt <= INTERRUPT_NOTICE_THROTTLE_MS) return;
+    this.lastInterruptNoticeAt = now;
+    const message =
+      mode === "all"
+        ? "[Ctrl+C ignored in the main agent tab]"
+        : "[Second Ctrl+C ignored to keep the main agent running]";
+    this.interruptNoticeElement.textContent = message;
+    this.interruptNoticeElement.hidden = false;
+    this.interruptNoticeElement.classList.add("is-visible");
+    this.clearInterruptNoticeTimer();
+    this.interruptNoticeHideTimer = window.setTimeout(() => {
+      this.interruptNoticeHideTimer = null;
+      this.interruptNoticeElement.classList.remove("is-visible");
+      this.interruptNoticeElement.hidden = true;
+    }, INTERRUPT_NOTICE_VISIBLE_MS);
+  }
+
+  private clearInterruptNoticeTimer(): void {
+    if (this.interruptNoticeHideTimer === null) return;
+    window.clearTimeout(this.interruptNoticeHideTimer);
+    this.interruptNoticeHideTimer = null;
   }
 
   private readonly handleViewportResize = (): void => {

@@ -7,7 +7,7 @@ import {
   getSessionStatusStore,
   isAttentionClearingInput,
 } from "./runtime/session-status";
-import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import { getTerminalRuntime, type InterruptProtectionMode } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
 
 const OUTPUT_SETTLE_MS = 800;
@@ -20,6 +20,7 @@ interface TerminalProps {
   readonly cwd: string | null;
   readonly perception: Perception | null;
   readonly attachFirst?: boolean;
+  readonly interruptProtectionMode?: InterruptProtectionMode;
 }
 
 export default function Terminal({
@@ -29,6 +30,7 @@ export default function Terminal({
   cwd,
   perception,
   attachFirst = false,
+  interruptProtectionMode = "none",
 }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
   const outputSettleTimerRef = useRef<number | null>(null);
@@ -121,6 +123,10 @@ export default function Terminal({
   useEffect(() => {
     getTerminalRuntime(sessionId).setPerception(perception);
   }, [sessionId, perception]);
+
+  useEffect(() => {
+    getTerminalRuntime(sessionId).setInterruptProtectionMode(interruptProtectionMode);
+  }, [sessionId, interruptProtectionMode]);
 
   return (
     <div
