@@ -208,6 +208,24 @@ describe("TabIndicator", () => {
     expect(badge.getAttribute("title")).toBe("Charminal trigger: session-opened");
   });
 
+  it("renders failure badges with a danger tone", () => {
+    render(
+      <TabIndicator
+        state={state()}
+        labels={
+          new Map([
+            ["default-session", "claude"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        hookBadges={new Map([["default-session", { label: "tool-failed", tone: "danger" }]])}
+      />,
+    );
+
+    const badge = screen.getByText("tool-failed");
+    expect(badge.classList.contains("tone-danger")).toBe(true);
+  });
+
   it("marks the main tab for primary presentation", () => {
     render(
       <TabIndicator

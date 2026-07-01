@@ -31,7 +31,7 @@ describe("deriveSessionTabMetadataBadge", () => {
       sessionId: "shell-2",
       badge: {
         label: "trigger:session-respawn-failed",
-        tone: "charminal",
+        tone: "danger",
         title: "Charminal trigger: charminal:session-tabs/session-respawn-failed",
       },
     });
@@ -82,7 +82,7 @@ describe("deriveSessionTabMetadataBadge", () => {
       sessionId: "shell-2",
       badge: {
         label: "tool-failed",
-        tone: "agent-hook",
+        tone: "danger",
         title: "Agent hook: post-tool-failure",
       },
     });
@@ -131,14 +131,14 @@ describe("deriveSessionTabMetadataBadge", () => {
       deriveSessionTabMetadataBadge(
         { kind: "loop-lifecycle", phase: "failed", agent: "claude", timestamp: 100 },
         state,
-      )?.badge.label,
-    ).toBe("loop:failed");
+      )?.badge,
+    ).toMatchObject({ label: "loop:failed", tone: "danger" });
     expect(
       deriveSessionTabMetadataBadge(
         { kind: "loop-lifecycle", phase: "completed", agent: "claude", timestamp: 100 },
         state,
-      )?.badge.label,
-    ).toBe("loop:done");
+      )?.badge,
+    ).toMatchObject({ label: "loop:done", tone: "charminal" });
     expect(
       deriveSessionTabMetadataBadge(
         { kind: "loop-lifecycle", phase: "completed", agent: "claude", timestamp: 100 },

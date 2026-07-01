@@ -77,7 +77,7 @@ function badgeForEvent(event: DispatchEvent): TabIndicatorBadge | null {
     if (!SYSTEM_SYNTHETIC_METADATA_BADGE_NAMES.has(event.name)) return null;
     return {
       label: `trigger:${event.name}`,
-      tone: "charminal",
+      tone: systemSyntheticBadgeTone(event.name),
       title: `Charminal trigger: ${event.source.packId}/${event.name}`,
     };
   }
@@ -92,7 +92,7 @@ function badgeForHookSignal(event: HookSignalEvent): TabIndicatorBadge | null {
   if (event.signal.name !== "post-tool-failure") return null;
   return {
     label: "tool-failed",
-    tone: "agent-hook",
+    tone: "danger",
     title: "Agent hook: post-tool-failure",
   };
 }
@@ -115,9 +115,13 @@ function loopBadge(label: string, event: LoopLifecycleEvent): TabIndicatorBadge 
   const agent = event.agent ? ` (${event.agent})` : "";
   return {
     label,
-    tone: "charminal",
+    tone: event.phase === "failed" ? "danger" : "charminal",
     title: `Loop lifecycle: ${event.phase}${agent}`,
   };
+}
+
+function systemSyntheticBadgeTone(name: string): TabIndicatorBadge["tone"] {
+  return name.endsWith("-failed") ? "danger" : "charminal";
 }
 
 function targetSessionIdForEvent(event: DispatchEvent, state: SessionTabState): SessionId {

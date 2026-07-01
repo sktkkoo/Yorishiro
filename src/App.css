@@ -1002,6 +1002,11 @@ body,
   color: #d7e2d2;
 }
 
+.tab-indicator-hook-badge.tone-danger {
+  background: rgba(255, 95, 95, 0.18);
+  color: #ffc2c2;
+}
+
 .tab-indicator-close {
   width: 17px;
   height: 17px;
