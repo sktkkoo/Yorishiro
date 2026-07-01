@@ -107,3 +107,13 @@ export function isAttentionNotificationMessage(message: string): boolean {
     /(?:入力待ち|入力が必要|承認待ち|承認が必要|許可待ち|許可が必要|確認が必要)/.test(message)
   );
 }
+
+export function isOscAttentionNotificationMessage(message: string): boolean {
+  if (isAttentionNotificationMessage(message)) return true;
+  if (message.length === 0) return false;
+  return (
+    /\b(?:agent|claude|codex)\b.{0,80}\bwaiting for (?:your )?input\b/i.test(message) ||
+    /\bneeds input\b/i.test(message) ||
+    /\brequires approval\b/i.test(message)
+  );
+}
