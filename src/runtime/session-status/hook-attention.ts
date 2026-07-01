@@ -63,7 +63,9 @@ export function isAttentionResolvingSignal(sig: string): boolean {
     obj.event === "prompt" ||
     obj.event === "pre-tool-use" ||
     obj.event === "post-tool-use" ||
-    obj.event === "post-tool-failure"
+    obj.event === "post-tool-failure" ||
+    obj.event === "permission-denied" ||
+    obj.event === "stop-failure"
   );
 }
 
@@ -95,16 +97,23 @@ function parseHookTargetSessionIdFromObject(obj: Record<string, unknown>): strin
   return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
 }
 
-function isAttentionNotificationMessage(message: string): boolean {
+export function isAttentionNotificationMessage(message: string): boolean {
   if (message.length === 0) return false;
   return (
-    /\b(?:waiting for|needs|requires|requests?)\b.{0,80}\b(?:you|input|approval|permission|confirmation|response)\b/i.test(
-      message,
-    ) ||
     /\b(?:permission|approval|input|confirmation)\b.{0,80}\b(?:required|requested|needed|waiting)\b/i.test(
       message,
     ) ||
     /\b(?:approve|allow|confirm|continue|proceed)\b.{0,80}\?/i.test(message) ||
     /(?:入力待ち|入力が必要|承認待ち|承認が必要|許可待ち|許可が必要|確認が必要)/.test(message)
+  );
+}
+
+export function isOscAttentionNotificationMessage(message: string): boolean {
+  if (isAttentionNotificationMessage(message)) return true;
+  if (message.length === 0) return false;
+  return (
+    /\b(?:agent|claude|codex)\b.{0,80}\bwaiting for (?:your )?input\b/i.test(message) ||
+    /\bneeds input\b/i.test(message) ||
+    /\brequires approval\b/i.test(message)
   );
 }

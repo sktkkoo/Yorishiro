@@ -8,7 +8,9 @@
 export {
   type HookAttentionSignal,
   hookSignalSeq,
+  isAttentionNotificationMessage,
   isAttentionResolvingSignal,
+  isOscAttentionNotificationMessage,
   parseHookAttentionSignal,
   parseHookTargetSessionId,
 } from "./hook-attention";

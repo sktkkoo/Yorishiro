@@ -6,6 +6,7 @@ import {
   detectScreenAttentionRequest,
   getSessionStatusStore,
   isAttentionClearingInput,
+  isOscAttentionNotificationMessage,
 } from "./runtime/session-status";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
@@ -68,6 +69,7 @@ export default function Terminal({
       }, OUTPUT_SETTLE_MS);
     });
     const notificationSub = runtime.subscribeNotification((event) => {
+      if (!isOscAttentionNotificationMessage(event.body)) return;
       status.markAttentionRequest(sessionId, {
         title: event.title,
         body: event.body,

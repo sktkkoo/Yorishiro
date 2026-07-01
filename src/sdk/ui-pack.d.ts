@@ -257,7 +257,7 @@ export interface UiAppAPI {
   setLanguage(language: AppLanguage): Promise<void>;
   /** TTS 音声の利用頻度を設定する。次回セッションから反映。 */
   setVoiceFrequency(voiceFrequency: "on" | "off"): Promise<void>;
-  /** Top bar tab の hook / trigger badge 表示を切り替える。 */
+  /** Legacy debug tab metadata badge flag. Practical allowlisted badges are shown independently. */
   setTabMetadataBadges(enabled: boolean): Promise<void>;
   /** character/sidebar の presence 表示状態を取得する。 */
   getPresenceLevel(): UiPresenceLevel;
@@ -283,6 +283,7 @@ export interface UiAppAPI {
     readonly language: AppLanguage;
     readonly resolvedLanguage: ResolvedLanguage;
     readonly voiceFrequency: "on" | "off";
+    /** Legacy debug tab metadata badge flag. */
     readonly tabMetadataBadges: boolean;
   }>;
 }

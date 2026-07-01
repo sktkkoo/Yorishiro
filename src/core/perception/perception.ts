@@ -52,14 +52,44 @@ const mapHookEvent = (event: string): HookSignal["name"] | null => {
   switch (event) {
     case "prompt":
       return "user-prompt-submit";
+    case "session-start":
+      return "session-start";
+    case "session-end":
+      return "session-end";
     case "pre-tool-use":
       return "pre-tool-use";
     case "post-tool-use":
       return "post-tool-use";
     case "post-tool-failure":
       return "post-tool-failure";
+    case "post-tool-batch":
+      return "post-tool-batch";
+    case "permission-request":
+      return "permission-request";
+    case "permission-denied":
+      return "permission-denied";
     case "stop":
       return "stop";
+    case "stop-failure":
+      return "stop-failure";
+    case "notification":
+      return "notification";
+    case "subagent-start":
+      return "subagent-start";
+    case "subagent-stop":
+      return "subagent-stop";
+    case "task-created":
+      return "task-created";
+    case "task-completed":
+      return "task-completed";
+    case "pre-compact":
+      return "pre-compact";
+    case "post-compact":
+      return "post-compact";
+    case "elicitation":
+      return "elicitation";
+    case "elicitation-result":
+      return "elicitation-result";
     default:
       return null;
   }

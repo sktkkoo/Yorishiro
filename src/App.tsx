@@ -3,7 +3,6 @@ import type {
   AmbientAudioState,
   AmbientUiContext,
   Disposable,
-  SyntheticEvent,
   Trigger,
   TweenAPI,
   UiClaimAPI,
@@ -82,6 +81,10 @@ import {
   formatMainSessionTabLabel,
   formatShellSessionTabLabel,
 } from "./components/session-tab-labels";
+import {
+  deriveSessionTabMetadataBadge,
+  deriveSessionTabStatusAttention,
+} from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
@@ -634,42 +637,6 @@ function queryMountedSessionIds(): string[] {
   );
 }
 
-function parseHookBadgeLabel(sig: string): string | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const event = (parsed as Record<string, unknown>).event;
-  if (typeof event !== "string") return null;
-  const label = event.trim();
-  return label.length > 0 ? label : null;
-}
-
-function createAgentHookBadge(label: string): TabIndicatorBadge {
-  return {
-    label,
-    tone: "agent-hook",
-    title: `Agent hook: ${label}`,
-  };
-}
-
-function createCharminalTriggerBadge(event: SyntheticEvent): TabIndicatorBadge {
-  return {
-    label: `trigger:${event.name}`,
-    tone: "charminal",
-    title: `Charminal trigger: ${event.source.packId}/${event.name}`,
-  };
-}
-
-function parseSyntheticTargetSessionId(payload: unknown): string | null {
-  if (typeof payload !== "object" || payload === null) return null;
-  const sessionId = (payload as Record<string, unknown>).sessionId;
-  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
-}
-
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
@@ -854,7 +821,8 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const sidebarOpen = useSidebarOpen();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
-  const [tabMetadataBadgesEnabled, setTabMetadataBadgesEnabled] = useState(false);
+  // Historical debug switch. Practical tab metadata badges are allowlisted and always shown.
+  const [, setTabMetadataBadgesEnabled] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
@@ -2204,16 +2172,23 @@ function App() {
 
   useEffect(() => {
     const subscription = runtime.bus.subscribeDispatch((event) => {
-      if (event.kind !== "synthetic" || event.source.type !== "system") return;
       const state = tabManager.getState();
-      const targetSessionId =
-        parseSyntheticTargetSessionId(event.payload) ??
-        state.activeSessionId ??
-        state.mainSessionId;
-      showSessionHookBadge(targetSessionId, createCharminalTriggerBadge(event));
+      const attentionDecision = deriveSessionTabStatusAttention(event, state);
+      if (attentionDecision?.action === "mark-loop-blocked") {
+        sessionStatusStore.markAttentionRequest(
+          attentionDecision.sessionId,
+          attentionDecision.notification,
+        );
+      } else if (attentionDecision?.action === "clear-loop-blocked") {
+        sessionStatusStore.clearLoopAttention(attentionDecision.sessionId);
+      }
+
+      const badgeDecision = deriveSessionTabMetadataBadge(event, state);
+      if (badgeDecision === null) return;
+      showSessionHookBadge(badgeDecision.sessionId, badgeDecision.badge);
     });
     return () => subscription.dispose();
-  }, [runtime.bus, showSessionHookBadge, tabManager]);
+  }, [runtime.bus, sessionStatusStore, showSessionHookBadge, tabManager]);
 
   useEffect(() => {
     if (!isUserLayerReady) return;
@@ -3341,10 +3316,6 @@ function App() {
       perception.onHookSignal(sig);
       const fallbackSessionId = tabManager.getState().mainSessionId;
       const targetSessionId = parseHookTargetSessionId(sig) ?? fallbackSessionId;
-      const hookBadge = parseHookBadgeLabel(sig);
-      if (hookBadge !== null) {
-        showSessionHookBadge(targetSessionId, createAgentHookBadge(hookBadge));
-      }
       const notification = parseHookAttentionSignal(sig);
       if (notification) {
         sessionStatusStore.markAttentionRequest(
@@ -3352,7 +3323,7 @@ function App() {
           notification,
         );
       } else if (isAttentionResolvingSignal(sig)) {
-        sessionStatusStore.clearAttention(targetSessionId);
+        sessionStatusStore.clearNonLoopAttention(targetSessionId);
       }
     };
 
@@ -3388,7 +3359,7 @@ function App() {
       polling = false;
       unlistenHookSignal?.();
     };
-  }, [perception, devLog, sessionStatusStore, showSessionHookBadge, tabManager]);
+  }, [perception, devLog, sessionStatusStore, tabManager]);
 
   // NOTE: perception.dispose() is NOT called in useEffect cleanup.
   // StrictMode runs cleanup even for [] deps, which would dispose the
@@ -3869,7 +3840,7 @@ function App() {
             state={tabState}
             labels={sessionTabLabels}
             statuses={sessionStatusById}
-            hookBadges={tabMetadataBadgesEnabled ? sessionHookBadges : undefined}
+            hookBadges={sessionHookBadges}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}
