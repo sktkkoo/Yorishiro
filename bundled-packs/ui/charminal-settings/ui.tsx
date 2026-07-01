@@ -2035,7 +2035,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
   const languageChangeSeq = useRef(0);
   const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
-  const [tabMetadataBadges, setTabMetadataBadges] = useState(false);
   const [configLoaded, setConfigLoaded] = useState(false);
   const personas = ctx.app.listPersonas();
   const visiblePersonas = filterPersonaOptionsForLanguage(personas, resolvedLanguage);
@@ -2061,7 +2060,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
       setVoiceFrequency(cur.voiceFrequency ?? "on");
-      setTabMetadataBadges(cur.tabMetadataBadges);
       setConfigLoaded(true);
     });
     return () => {
@@ -2142,17 +2140,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setVoiceFrequency(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "voiceFrequency",
-    });
-  };
-
-  const onTabMetadataBadgesToggle = () => {
-    void applyConfigUpdate({
-      next: !tabMetadataBadges,
-      prev: tabMetadataBadges,
-      setLocal: setTabMetadataBadges,
-      write: (v) => ctx.app.setTabMetadataBadges(v),
-      emitEvent: (n, p) => ctx.emitEvent(n, p),
-      field: "tabMetadataBadges",
     });
   };
 
@@ -2518,16 +2505,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           <div style={{ opacity: 0.7 }}>{strings.labelAura}</div>
           <div>
             <Toggle checked={auraEnabled} onChange={onAuraToggle} />
-          </div>
-
-          {/* Tab badges */}
-          <div style={{ opacity: 0.7 }}>{strings.labelTabBadges}</div>
-          <div>
-            <Toggle
-              checked={tabMetadataBadges}
-              disabled={!configLoaded}
-              onChange={onTabMetadataBadgesToggle}
-            />
           </div>
         </div>
 

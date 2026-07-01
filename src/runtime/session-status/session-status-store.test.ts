@@ -438,6 +438,42 @@ describe("SessionStatusStore", () => {
     });
   });
 
+  it("does not clear loop attention from hook resolving signals", () => {
+    const { store } = createStore();
+
+    store.markAttentionRequest("s1", {
+      title: "Loop",
+      body: "Blocked on approval",
+      source: "loop",
+    });
+    store.clearNonLoopAttention("s1");
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Loop",
+        body: "Blocked on approval",
+        source: "loop",
+      },
+    });
+  });
+
+  it("clears non-loop attention from hook resolving signals", () => {
+    const { store } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    store.clearNonLoopAttention("s1");
+    expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
+
+    store.markAttentionRequest("s2", {
+      title: "Claude Code",
+      body: "Permission needed",
+      source: "hook",
+    });
+    store.clearNonLoopAttention("s2");
+    expect(store.get("s2")).toMatchObject({ activity: "idle", attention: null });
+  });
+
   it("clears stale exit code when lifecycle starts again", () => {
     const { store } = createStore();
     store.recordExit("s1", 1);

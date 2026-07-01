@@ -821,7 +821,8 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const sidebarOpen = useSidebarOpen();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
-  const [tabMetadataBadgesEnabled, setTabMetadataBadgesEnabled] = useState(false);
+  // Historical debug switch. Practical tab metadata badges are allowlisted and always shown.
+  const [, setTabMetadataBadgesEnabled] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
@@ -3322,7 +3323,7 @@ function App() {
           notification,
         );
       } else if (isAttentionResolvingSignal(sig)) {
-        sessionStatusStore.clearAttention(targetSessionId);
+        sessionStatusStore.clearNonLoopAttention(targetSessionId);
       }
     };
 
@@ -3839,7 +3840,7 @@ function App() {
             state={tabState}
             labels={sessionTabLabels}
             statuses={sessionStatusById}
-            hookBadges={tabMetadataBadgesEnabled ? sessionHookBadges : undefined}
+            hookBadges={sessionHookBadges}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}

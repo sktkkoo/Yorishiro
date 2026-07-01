@@ -357,6 +357,16 @@ export class SessionStatusStore {
     });
   }
 
+  /**
+   * hook signal が「許可待ちは解消した」と示したときの解除経路。
+   * loop lifecycle 由来の sticky attention は loop lifecycle 側でだけ解除する。
+   */
+  clearNonLoopAttention(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.attention?.source === "loop") return;
+    this.clearAttention(sessionId);
+  }
+
   /** process 終了を記録する（lifecycle=exited + exitCode）。 */
   recordExit(sessionId: SessionId, exitCode: number | null): void {
     const current = this.ensure(sessionId);

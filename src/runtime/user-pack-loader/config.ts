@@ -12,7 +12,7 @@
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
- * - `tabMetadataBadges: boolean`（optional）: top bar tab に hook / trigger badge を表示する
+ * - `tabMetadataBadges: boolean`（optional）: legacy debug tab metadata badge flag
  * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
  * - `terminalAgent: string`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
@@ -47,7 +47,7 @@ export interface CharminalConfig {
   readonly activeUi: string | null;
   /** 同時有効化される ambient-ui pack の id 一覧。複数 active 可。 */
   readonly activeAmbientUi: ReadonlyArray<string>;
-  /** Top bar tab に hook / trigger badge を表示する。 */
+  /** Legacy debug flag. Practical allowlisted tab metadata badges are shown independently. */
   readonly tabMetadataBadges: boolean;
   /** UI / persona fallback / command prompt の言語。`auto` なら起動時 locale から解決する。 */
   readonly language: AppLanguage;
