@@ -77,7 +77,15 @@ import {
 } from "./bundled-packs";
 import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
-import TabIndicator from "./components/TabIndicator";
+import {
+  formatMainSessionTabLabel,
+  formatShellSessionTabLabel,
+} from "./components/session-tab-labels";
+import {
+  deriveSessionTabMetadataBadge,
+  deriveSessionTabStatusAttention,
+} from "./components/session-tab-metadata-badges";
+import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import TerminalWorkspace from "./components/TerminalWorkspace";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
@@ -164,13 +172,25 @@ import {
   type ScenePackEntry,
   type ScenePackRegistry,
 } from "./runtime/scene-pack-registry";
-import { getSessionStatusStore, type SessionStatus } from "./runtime/session-status";
-import type { SessionTabState } from "./runtime/session-tabs";
+import {
+  getSessionStatusStore,
+  hookSignalSeq,
+  isAttentionResolvingSignal,
+  parseHookAttentionSignal,
+  parseHookTargetSessionId,
+  type SessionStatus,
+} from "./runtime/session-status";
+import type {
+  SessionTabCwdPersistence,
+  SessionTabCwdSnapshot,
+  SessionTabState,
+} from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
   DEFAULT_SESSION_ID,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
+  resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
   type SessionId,
 } from "./runtime/sessions";
@@ -180,14 +200,13 @@ import {
 } from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
 import {
-  DEFAULT_TERMINAL_THEME,
   getAgentToolRunStore,
   getAllTerminalRuntimes,
   getLoopRunStore,
   getTerminalRuntime,
   mergeRunTimeline,
 } from "./runtime/terminal-runtime";
-import { initTerminalTheme } from "./runtime/terminal-theme";
+import { initTerminalTheme, syncCurrentTerminalTheme } from "./runtime/terminal-theme";
 import {
   getRuntimeLevaStore,
   useRuntimeLevaStore,
@@ -222,8 +241,8 @@ import {
   withPrimaryPersonaSet,
 } from "./runtime/user-pack-loader/config";
 import {
-  appendInitChangedMarker,
-  stripInitChangedMarker,
+  appendInitReloadErrorMarker,
+  stripInitReloadErrorMarker,
 } from "./runtime/user-pack-loader/init-changed-title";
 import {
   getWorkspaceAttentionStore,
@@ -363,13 +382,54 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
 
 const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
+const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
 const VRM_STORAGE_KEY = "charminal:vrm";
+const HOOK_BADGE_VISIBLE_MS = 6000;
 
 interface RestoreDialogRequest {
   readonly seq: number;
   readonly changeText: string;
   readonly timeText: string;
   readonly runRestore: () => Promise<void>;
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return typeof value === "string" || value === null;
+}
+
+function isSessionTabCwdSnapshot(value: unknown): value is SessionTabCwdSnapshot {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.sessionId === "string" &&
+    isNullableString(record.launchCwd) &&
+    isNullableString(record.displayCwd) &&
+    (record.startedAt === null ||
+      (typeof record.startedAt === "number" && Number.isFinite(record.startedAt)))
+  );
+}
+
+function createSessionTabCwdPersistence(storage: Storage): SessionTabCwdPersistence {
+  return {
+    load: () => {
+      try {
+        const raw = storage.getItem(SESSION_TAB_CWD_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed: unknown = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(isSessionTabCwdSnapshot);
+      } catch {
+        return [];
+      }
+    },
+    save: (snapshots) => {
+      try {
+        storage.setItem(SESSION_TAB_CWD_STORAGE_KEY, JSON.stringify(snapshots));
+      } catch {
+        // localStorage failure should not affect session operation.
+      }
+    },
+  };
 }
 
 type SceneLayerOverride = {
@@ -590,98 +650,6 @@ function queryMountedSessionIds(): string[] {
   );
 }
 
-/**
- * hook server から polling した signal JSON を見て、notification なら
- * attention request（許可待ち / 入力待ち）の本文を返す。それ以外は null。
- *
- * `input` badge の主経路は screen fast path（screen-attention-detector）。
- * agent hook（HTTP `/hook/...`）はその fallback / 汎用 attention 経路。
- */
-function parseHookTargetSessionId(sig: string): string | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const sessionId = (parsed as Record<string, unknown>).sessionId;
-  return typeof sessionId === "string" && sessionId.trim().length > 0 ? sessionId.trim() : null;
-}
-
-function parseHookAttentionSignal(
-  sig: string,
-): { title: string; body: string; source: "hook"; sessionId: string | null } | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const obj = parsed as Record<string, unknown>;
-  if (obj.event !== "notification" && obj.event !== "permission-request") return null;
-  const message = typeof obj.message === "string" ? obj.message.trim() : "";
-  const rawToolName =
-    typeof obj.tool_name === "string"
-      ? obj.tool_name
-      : typeof obj.toolName === "string"
-        ? obj.toolName
-        : "";
-  const toolName = rawToolName.trim();
-  const agent = typeof obj.agent === "string" ? obj.agent.trim() : "";
-  const title = agent === "codex" ? "Codex" : "Claude Code";
-  const fallback =
-    obj.event === "permission-request"
-      ? toolName.length > 0
-        ? `Permission requested for ${toolName}`
-        : "Permission requested"
-      : "Waiting for you";
-  return {
-    title,
-    body: message.length > 0 ? message : fallback,
-    source: "hook",
-    sessionId: parseHookTargetSessionId(sig),
-  };
-}
-
-/**
- * hook signal が「agent はもう許可待ちではない」を意味するか。
- *
- * `stop`（ターン終了）と `prompt`（UserPromptSubmit = ユーザーが次の入力を送った）は、
- * いずれも「待機を抜けた」確実なシグナル。これらで許可待ち badge を解除する。
- * approve をマウスでクリックした等、keystroke 経路で拾えないケースの保険。
- */
-function isAttentionResolvingSignal(sig: string): boolean {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return false;
-  }
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const event = (parsed as Record<string, unknown>).event;
-  return (
-    event === "stop" ||
-    event === "prompt" ||
-    event === "post-tool-use" ||
-    event === "post-tool-failure"
-  );
-}
-
-/** Rust hook server が付与する seq。immediate event と polling fallback の dedup に使う。 */
-function hookSignalSeq(sig: string): number | null {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(sig);
-  } catch {
-    return null;
-  }
-  if (typeof parsed !== "object" || parsed === null) return null;
-  const seq = (parsed as Record<string, unknown>)._charminal_seq;
-  return typeof seq === "number" && Number.isFinite(seq) ? seq : null;
-}
-
 interface TerminalPresentation {
   readonly hidden: boolean;
   readonly opacity: number;
@@ -726,7 +694,6 @@ function applyTerminalPresentation(sessionId: string, presentation: TerminalPres
   runtime.setOpacity(presentation.opacity);
   runtime.setBackgroundTransparent(presentation.backgroundTransparent);
 }
-
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
@@ -911,6 +878,8 @@ function App() {
   const strings = useMemo(() => getStrings(appLanguage.resolved), [appLanguage.resolved]);
   const sidebarOpen = useSidebarOpen();
   const settingsActive = useSettingsActive(SETTINGS_PACK_ID);
+  // Historical debug switch. Practical tab metadata badges are allowlisted and always shown.
+  const [, setTabMetadataBadgesEnabled] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
@@ -1423,6 +1392,7 @@ function App() {
         ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
+        setTabMetadataBadgesEnabled(config.tabMetadataBadges);
         configuredLanguage = config.language;
         resolvedLanguage = resolveLanguage(configuredLanguage, getBrowserLocales());
         appLanguageRef.current = { configured: configuredLanguage, resolved: resolvedLanguage };
@@ -1528,18 +1498,23 @@ function App() {
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
             createAmenityContext,
-            onInitChanged: () => {
+            // init.js は hot reload される。成功したら error marker を外し、
+            // 失敗時だけ marker を付けて、前の init scope が維持されていることを可視化する。
+            onInitReloaded: ({ ran, missing }) => {
               void (async () => {
                 try {
                   const { getCurrentWindow } = await import("@tauri-apps/api/window");
                   const win = getCurrentWindow();
                   const current = await win.title();
-                  const next = appendInitChangedMarker(current);
+                  const next =
+                    ran || missing
+                      ? stripInitReloadErrorMarker(current)
+                      : appendInitReloadErrorMarker(current);
                   if (next !== current) await win.setTitle(next);
                 } catch (err) {
                   appLog.write({
-                    phase: "init-changed-title",
-                    note: "failed to append init.js-changed marker to window title",
+                    phase: "init-reload-title",
+                    note: "failed to update init.js error marker on window title",
                     data: { error: err instanceof Error ? err.message : String(err) },
                   });
                 }
@@ -1588,18 +1563,18 @@ function App() {
       //   以下 step は Terminal とは独立に走るので、失敗しても Terminal の表示は止まらない。
       userLayerReadyResolve({ terminalAgent, defaultSpec, systemPrompt, pluginDir });
 
-      // ─ Step 4: 前回 reload 待ち marker を title から剥がす（独立な失敗で MCP に影響しない）─
+      // ─ Step 4: 前回 init.js error marker を title から剥がす（独立な失敗で MCP に影響しない）─
       // native window title は webview reload を跨いで残るため、boot 時に明示的に掃除する。
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const win = getCurrentWindow();
         const current = await win.title();
-        const next = stripInitChangedMarker(current);
+        const next = stripInitReloadErrorMarker(current);
         if (next !== current) await win.setTitle(next);
       } catch (err) {
         appLog.write({
-          phase: "init-changed-title",
-          note: "failed to strip init.js-changed marker from window title",
+          phase: "init-reload-title",
+          note: "failed to strip init.js error marker from window title",
           data: { error: err instanceof Error ? err.message : String(err) },
         });
       }
@@ -2183,6 +2158,7 @@ function App() {
         KEYS.SESSION_TAB_MANAGER,
         () =>
           new SessionTabManager(DEFAULT_SESSION_ID, {
+            cwdPersistence: createSessionTabCwdPersistence(window.localStorage),
             onEvent: (name, payload) => {
               runtime.bus.emitSynthetic(
                 { type: "system", packId: "charminal:session-tabs" },
@@ -2201,6 +2177,10 @@ function App() {
   const [sessionStatuses, setSessionStatuses] = useState<ReadonlyArray<SessionStatus>>(() =>
     sessionStatusStore.list(),
   );
+  const [sessionHookBadges, setSessionHookBadges] = useState<
+    ReadonlyMap<string, TabIndicatorBadge>
+  >(() => new Map());
+  const sessionHookBadgeTimersRef = useRef<Map<string, number>>(new Map());
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
   const visibleTerminalSessionIdSet = useMemo(
     () => new Set<SessionId>([tabState.activeSessionId]),
@@ -2265,6 +2245,57 @@ function App() {
     [sessionStatuses],
   );
 
+  const showSessionHookBadge = useCallback((sessionId: string, badge: TabIndicatorBadge) => {
+    const currentTimer = sessionHookBadgeTimersRef.current.get(sessionId);
+    if (currentTimer !== undefined) {
+      window.clearTimeout(currentTimer);
+    }
+    setSessionHookBadges((prev) => {
+      const next = new Map(prev);
+      next.set(sessionId, badge);
+      return next;
+    });
+    const timer = window.setTimeout(() => {
+      sessionHookBadgeTimersRef.current.delete(sessionId);
+      setSessionHookBadges((prev) => {
+        if (!prev.has(sessionId)) return prev;
+        const next = new Map(prev);
+        next.delete(sessionId);
+        return next;
+      });
+    }, HOOK_BADGE_VISIBLE_MS);
+    sessionHookBadgeTimersRef.current.set(sessionId, timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const timer of sessionHookBadgeTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      sessionHookBadgeTimersRef.current.clear();
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = runtime.bus.subscribeDispatch((event) => {
+      const state = tabManager.getState();
+      const attentionDecision = deriveSessionTabStatusAttention(event, state);
+      if (attentionDecision?.action === "mark-loop-blocked") {
+        sessionStatusStore.markAttentionRequest(
+          attentionDecision.sessionId,
+          attentionDecision.notification,
+        );
+      } else if (attentionDecision?.action === "clear-loop-blocked") {
+        sessionStatusStore.clearLoopAttention(attentionDecision.sessionId);
+      }
+
+      const badgeDecision = deriveSessionTabMetadataBadge(event, state);
+      if (badgeDecision === null) return;
+      showSessionHookBadge(badgeDecision.sessionId, badgeDecision.badge);
+    });
+    return () => subscription.dispose();
+  }, [runtime.bus, sessionStatusStore, showSessionHookBadge, tabManager]);
+
   useEffect(() => {
     if (!isUserLayerReady) return;
     let cancelled = false;
@@ -2293,18 +2324,6 @@ function App() {
 
   const canMountTerminals =
     isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
-  // session id → 表示ラベル。main session は agent 名、それ以外は id をそのまま。
-  // TabIndicator で使う。
-  const sessionLabels = useMemo(
-    () =>
-      new Map<SessionId, string>([
-        [DEFAULT_SESSION_ID, terminalAgent],
-        ...tabState.sessions
-          .filter((id) => id !== DEFAULT_SESSION_ID)
-          .map((id) => [id, id] as const),
-      ]),
-    [terminalAgent, tabState.sessions],
-  );
   const getTerminalSpec = useCallback(
     (sessionId: SessionId): SpawnSpec => {
       if (sessionId !== DEFAULT_SESSION_ID) {
@@ -2322,8 +2341,13 @@ function App() {
     [defaultSpec, terminalAgent, resolvedSystemPrompt, localizedPluginDir],
   );
   const getSessionCwd = useCallback(
-    (sessionId: SessionId) => tabManager.getSessionCwd(sessionId),
+    (sessionId: SessionId) => tabManager.getSessionLaunchCwd(sessionId),
     [tabManager],
+  );
+  const getInterruptProtectionMode = useCallback(
+    (sessionId: SessionId, spec: SpawnSpec) =>
+      sessionId === DEFAULT_SESSION_ID ? resolveInterruptProtectionModeForSpawnSpec(spec) : "none",
+    [],
   );
   const shouldAttachExistingSession = useCallback(
     (sessionId: SessionId) => tabManager.shouldAttachExistingSession(sessionId),
@@ -2334,16 +2358,16 @@ function App() {
     [tabManager],
   );
 
-  // scene 変更時に表示中 terminal のテーマを更新する。
-  // initTerminalTheme は runtime factory 内で DEFAULT_SESSION_ID 固定のため、
-  // shell tab が active の場合に scene 変更が反映されない問題を補完する。
+  // scene 変更時に全 session の terminal テーマを更新する。
+  // initTerminalTheme は current theme と CSS vars の更新だけを担当するため、
+  // 既に mount 済みの各 TerminalRuntime へここで即時適用する。
   useEffect(() => {
     if (!isUserLayerReady) return;
     const sub = scenePackRegistry.subscribeActive((scene) => {
-      for (const sessionId of queryMountedSessionIds()) {
-        if (!visibleTerminalSessionIdSetRef.current.has(sessionId)) continue;
+      const theme = syncCurrentTerminalTheme(scene);
+      for (const sessionId of tabManager.getState().sessions) {
         const rt = getTerminalRuntime(sessionId);
-        rt.setTheme(scene?.terminal ?? DEFAULT_TERMINAL_THEME);
+        rt.setTheme(theme);
         rt.refit();
         void sessionRefreshTheme({ sessionId }).catch((err) => {
           console.warn("[terminal-theme] failed to refresh agent theme:", err);
@@ -2351,7 +2375,7 @@ function App() {
       }
     });
     return () => sub.dispose();
-  }, [isUserLayerReady, scenePackRegistry]);
+  }, [isUserLayerReady, scenePackRegistry, tabManager]);
 
   // active scene entry を Registry から subscribe して React state に流す。
   // SceneSpec が必要な UI context 系は entry.scene から既存どおり組み立てる。
@@ -2414,7 +2438,7 @@ function App() {
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
   // （philosophy: docs/philosophy/PHILOSOPHY.md 「観察の境界」）。
   const personaRegistry = getPersonaRegistry();
-  const [, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
+  const [primaryPersonaState, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
     personaRegistry.getActivePersona(),
   );
   useEffect(() => {
@@ -2720,6 +2744,7 @@ function App() {
         motionIntensity: number;
         language: AppLanguage;
         voiceFrequency: VoiceFrequency;
+        tabMetadataBadges: boolean;
       }>,
     ): Promise<void> => {
       const next = pendingConfigWrite.then(async () => {
@@ -3077,6 +3102,10 @@ function App() {
             return next;
           },
           setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
+          setTabMetadataBadges: async (enabled) => {
+            await updateConfig({ tabMetadataBadges: enabled });
+            setTabMetadataBadgesEnabled(enabled);
+          },
           getPresenceLevel: () => getPresenceState().level,
           setPresenceLevel: async (level) => {
             const result = applyPresenceLevelFromApp(level, "settings");
@@ -3099,6 +3128,7 @@ function App() {
               language: cur.language,
               resolvedLanguage,
               voiceFrequency: cur.voiceFrequency,
+              tabMetadataBadges: cur.tabMetadataBadges,
             };
           },
         },
@@ -3438,7 +3468,7 @@ function App() {
           notification,
         );
       } else if (isAttentionResolvingSignal(sig)) {
-        sessionStatusStore.clearAttention(targetSessionId);
+        sessionStatusStore.clearNonLoopAttention(targetSessionId);
       }
     };
 
@@ -3800,6 +3830,22 @@ function App() {
     [cwd, strings.defaultFolderName],
   );
 
+  const sessionTabLabels = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const sessionId of tabState.sessions) {
+      if (sessionId === tabState.mainSessionId) {
+        labels.set(sessionId, formatMainSessionTabLabel(primaryPersonaState?.name));
+        continue;
+      }
+      const sessionCwd = tabManager.getSessionCwd(sessionId);
+      labels.set(
+        sessionId,
+        formatShellSessionTabLabel(sessionCwd === undefined ? cwd : sessionCwd),
+      );
+    }
+    return labels;
+  }, [cwd, primaryPersonaState?.name, tabManager, tabState.mainSessionId, tabState.sessions]);
+
   // ── Settings: close-requested listener ─────────────────────
 
   useEffect(() => {
@@ -3819,8 +3865,8 @@ function App() {
   // ── Session tab keybindings ────────────────────────────────
   useEffect(() => {
     if (!isUserLayerReady) return;
-    return installTabKeybindings(tabManager);
-  }, [isUserLayerReady, tabManager]);
+    return installTabKeybindings(tabManager, { getNewSessionCwd: () => cwd });
+  }, [cwd, isUserLayerReady, tabManager]);
 
   // ── PTY exit → auto-respawn / tab close ────────────────────
   const ptyExitCleanupRef = useRef<(() => void) | null>(null);
@@ -3850,6 +3896,33 @@ function App() {
       ptyExitCleanupRef.current?.();
     };
   }, [isUserLayerReady, sessionStatusStore, tabManager]);
+
+  useEffect(() => {
+    if (!isUserLayerReady) return;
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen<{ session_id: string; cwd: string }>(
+        "pty-cwd-changed",
+        (event) => {
+          if (disposed) return;
+          tabManager.updateSessionCwd(event.payload.session_id, event.payload.cwd);
+        },
+      );
+      if (disposed) {
+        unlisten();
+      } else {
+        cleanup = unlisten;
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, [isUserLayerReady, tabManager]);
 
   // Rust 側の app_screenshot は撮影完了後に "charminal:screen-flash" を emit する。
   // ここで listen して screen-flash effect を dispatch することで、
@@ -3948,6 +4021,17 @@ function App() {
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
+        tabs={
+          <TabIndicator
+            state={tabState}
+            labels={sessionTabLabels}
+            statuses={sessionStatusById}
+            hookBadges={sessionHookBadges}
+            onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+            onAddSession={() => tabManager.openShell(cwd)}
+            onCloseSession={(sessionId) => tabManager.close(sessionId)}
+          />
+        }
       />
       {runtimeLevaStore ? (
         <LevaPanel
@@ -3991,19 +4075,17 @@ function App() {
           />
         </div>
         {canMountTerminals && (
-          <>
-            <TerminalWorkspace
-              sessions={tabState.sessions}
-              activeSessionId={tabState.activeSessionId}
-              cwd={cwd}
-              getSessionCwd={getSessionCwd}
-              getSpec={getTerminalSpec}
-              perception={perception}
-              shouldAttachExistingSession={shouldAttachExistingSession}
-              onActivate={handleTerminalActivate}
-            />
-            <TabIndicator state={tabState} labels={sessionLabels} statuses={sessionStatusById} />
-          </>
+          <TerminalWorkspace
+            sessions={tabState.sessions}
+            activeSessionId={tabState.activeSessionId}
+            cwd={cwd}
+            getSessionCwd={getSessionCwd}
+            getSpec={getTerminalSpec}
+            getInterruptProtectionMode={getInterruptProtectionMode}
+            perception={perception}
+            shouldAttachExistingSession={shouldAttachExistingSession}
+            onActivate={handleTerminalActivate}
+          />
         )}
       </div>
       {firstRunHealth && (

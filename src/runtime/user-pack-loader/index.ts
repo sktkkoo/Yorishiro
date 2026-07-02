@@ -23,11 +23,20 @@ export {
 } from "./config";
 export { filterDisabledPacks } from "./disabled-list";
 export {
+  type InitDisposable,
+  InitScope,
+  type InitShortcutSpec,
+  matchShortcut,
+  type ShortcutKeyEvent,
+} from "./init-scope";
+export {
   type CharminalInitContext,
   type EffectRequester,
   type LoadInitScriptDeps,
   type LoadInitScriptResult,
   loadInitScript,
+  reloadInitScript,
+  type ShortcutInstaller,
 } from "./init-script";
 export { buildLoadReport, type LoadReport, type LoadResultEntry } from "./load-report";
 export {

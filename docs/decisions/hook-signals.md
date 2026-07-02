@@ -6,7 +6,9 @@
 
 ## 結論
 
-Charminal は Claude Code 公式 hook lifecycle (`UserPromptSubmit`、`PreToolUse`、`PostToolUseFailure`、`Stop` 等) を install し、SDK 側で `HookSignal["name"]` の kebab-case に mapping する。各 signal の発火タイミングを正しく理解せずに使うと、UI semantic と乖離した実装になる。特に `user-prompt-submit` は user の Enter 押下瞬間ではなく、**次ターン処理開始境界** で fire することは設計判断の根幹に関わる。
+Charminal は Claude Code / Codex 公式 hook lifecycle (`UserPromptSubmit`、`PreToolUse`、`PostToolUseFailure`、`PermissionRequest`、`Stop` 等) を install し、SDK 側で `HookSignal["name"]` の kebab-case に mapping する。各 signal の発火タイミングを正しく理解せずに使うと、UI semantic と乖離した実装になる。特に `user-prompt-submit` は user の Enter 押下瞬間ではなく、**次ターン処理開始境界** で fire することは設計判断の根幹に関わる。
+
+`hook-signal` は汎用 agent lifecycle の trigger であり、`loop-lifecycle` ではない。`PermissionRequest` は承認待ち UI、`TaskCompleted` は task/subtask 完了、`Stop` は turn 終了として扱う。loop engineering の進行・停滞・完了は MCP `loop_announce` / pack `ctx.loop.announce` の明示 signal で表す。
 
 ## 各 signal の実態
 
@@ -15,9 +17,16 @@ Charminal は Claude Code 公式 hook lifecycle (`UserPromptSubmit`、`PreToolUs
 | `PreToolUse` | `pre-tool-use` | tool 呼び出しの直前 | tool 実行検出、診断 aura 等 |
 | `PostToolUse` | `post-tool-use` | tool が正常に完了した直後 | 完了検出、完了後の状態遷移 |
 | `PostToolUseFailure` | `post-tool-failure` | tool が失敗した直後 | エラー反応、失敗診断 |
+| `PermissionRequest` | `permission-request` | approval prompt の直前 | 承認待ち UI、attention |
+| `PermissionDenied` | `permission-denied` | auto mode classifier が tool を拒否 | policy/denial reaction、attention clear |
 | `UserPromptSubmit` | `user-prompt-submit` | **次ターン処理開始境界**（前ターン応答完了後） | ターン境界の状態遷移（Body state → thinking 等） |
 | `Stop` | `stop` | Claude 応答完了（ターン終了） | ターン終了検出、idle 状態へ遷移 |
+| `StopFailure` | `stop-failure` | API error で turn 終了 | failure reaction、alert |
 | `Notification` | `notification` | Claude が notification を発行した時 | notification に応じた反応 |
+| `TaskCreated` / `TaskCompleted` | `task-created` / `task-completed` | task marker の作成・完了 | task/subtask reaction |
+| `SubagentStart` / `SubagentStop` | `subagent-start` / `subagent-stop` | subagent 開始・終了 | delegated work の反応 |
+| `PreCompact` / `PostCompact` | `pre-compact` / `post-compact` | compaction 前後 | context 管理 reaction |
+| `SessionStart` / `SessionEnd` | `session-start` / `session-end` | session 開始・終了 | session lifecycle reaction |
 
 ## なぜ user-prompt-submit は遅延するのか
 

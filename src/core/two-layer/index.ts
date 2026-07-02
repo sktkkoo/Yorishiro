@@ -1,5 +1,5 @@
 /**
- * TwoLayer — 意識層（Claude Code）と反射層（primitives）を orchestrate する runtime coordinator。ログ回路経由の情報受け渡しを仲介する
+ * TwoLayer — 思考層（Claude Code）と反射層（primitives）を orchestrate する runtime coordinator。ログ回路経由の情報受け渡しを仲介する
  *
  * Philosophy: docs/philosophy/PHILOSOPHY.md「二つの層」
  * SDK surface: 特定の SDK API に直接対応しない（orchestration layer）

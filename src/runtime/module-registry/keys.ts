@@ -27,6 +27,8 @@ export const KEYS = {
   SCENE_PACK_REGISTRY: "scene-pack:registry",
   /** TerminalRuntime singleton (Phase 0b v2): xterm + PTY Channel の webview-lifetime 保持。 */
   TERMINAL_RUNTIME: "terminal:runtime",
+  /** Terminal scene theme state: HMR 後の新規 Terminal も現在 scene の theme を参照する。 */
+  TERMINAL_THEME_STATE: "terminal-theme:state",
   /** ClaimState singleton (ui-pack plan 2): UI pack が本体自動処理を一時 suspend する状態。 */
   UI_CLAIM_STATE: "ui-claim:state",
   /** UiPackRegistry singleton (ui-pack plan): 登録済み UI pack と active state。 */

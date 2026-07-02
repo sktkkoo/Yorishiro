@@ -25,6 +25,7 @@ import { decodeOsc633Value } from "./osc633";
 import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
 import { detectTerminalProblems, type TerminalProblem } from "./terminal-problems";
 import type {
+  InterruptProtectionMode,
   PtyParams,
   TerminalCommandRunLocus,
   TerminalCursorClientPosition,
@@ -38,31 +39,33 @@ import type {
 
 const TYPING_CURSOR_ACTIVE_MS = 2000;
 const IME_POST_COMMIT_SUPPRESS_MS = 80;
+const INTERRUPT_NOTICE_THROTTLE_MS = 1000;
+const INTERRUPT_NOTICE_VISIBLE_MS = 1800;
 
 /** xterm.js の初期カラーテーマ。scene が未設定の時のフォールバック。 */
 export const DEFAULT_TERMINAL_THEME: XTermTheme = {
-  background: "#0f1923",
-  foreground: "#eceff4",
-  cursor: "#4dd9cf",
-  cursorAccent: "#0f1923",
-  selectionBackground: "#243447",
-  selectionForeground: "#eceff4",
-  black: "#0f1923",
-  red: "#ff6b8a",
-  green: "#4dd9cf",
-  yellow: "#f0c674",
-  blue: "#81a2be",
-  magenta: "#b294bb",
-  cyan: "#39c5bb",
-  white: "#eceff4",
-  brightBlack: "#3b5068",
-  brightRed: "#ff8da5",
-  brightGreen: "#6eded6",
-  brightYellow: "#f5d6a0",
-  brightBlue: "#a8c8e0",
-  brightMagenta: "#c9aed0",
-  brightCyan: "#7eeee6",
-  brightWhite: "#ffffff",
+  background: "#141619",
+  foreground: "#e8ebe7",
+  cursor: "#8eb09c",
+  cursorAccent: "#141619",
+  selectionBackground: "#28302b",
+  selectionForeground: "#e8ebe7",
+  black: "#141619",
+  red: "#d28a8a",
+  green: "#9cbd8a",
+  yellow: "#d8b777",
+  blue: "#8aa0bd",
+  magenta: "#a896b8",
+  cyan: "#7bb0ab",
+  white: "#d8dbd6",
+  brightBlack: "#56615b",
+  brightRed: "#e0a0a0",
+  brightGreen: "#b3d1a3",
+  brightYellow: "#e6cb95",
+  brightBlue: "#a6bcd6",
+  brightMagenta: "#c0b0cf",
+  brightCyan: "#9accc6",
+  brightWhite: "#f3f4f1",
 };
 
 /**
@@ -81,6 +84,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly term: XTerm;
   private readonly fitAddon: FitAddon;
   private readonly xtermContainer: HTMLDivElement;
+  private readonly interruptNoticeElement: HTMLDivElement;
   private readonly regionCanvas: HTMLCanvasElement | null;
   private readonly regionCtx: CanvasRenderingContext2D | null;
   private readonly channel: Channel<ArrayBuffer>;
@@ -102,6 +106,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private lastFitW = 0;
   private lastFitH = 0;
   private lastUserInputAt = -Infinity;
+  private lastInterruptNoticeAt = -Infinity;
+  private interruptNoticeHideTimer: number | null = null;
+  private repeatedInterruptKeyArmed = false;
+  private repeatedInterruptInputArmed = false;
+  private interruptProtectionMode: InterruptProtectionMode = "none";
   private recentInput = "";
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly notificationListeners = new Set<(event: TerminalNotificationEvent) => void>();
@@ -163,6 +172,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.addEventListener("focusin", this.handleActivationEvent);
 
     this.term.open(this.xtermContainer);
+    this.interruptNoticeElement = this.createInterruptNoticeElement();
+    this.xtermContainer.appendChild(this.interruptNoticeElement);
     this.installImeCompositionGuard();
     this.installCommandRunOscHandlers();
     this.installNotificationOscHandlers();
@@ -344,6 +355,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
     }
+    this.clearInterruptNoticeTimer();
     this.term.dispose();
     if (this.xtermContainer.parentElement) {
       this.xtermContainer.parentElement.removeChild(this.xtermContainer);
@@ -524,24 +536,24 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const cellWidth = rect.width / this.term.cols;
     const cellHeight = rect.height / this.term.rows;
 
-    const DEFAULT_FG = "#eceff4";
+    const DEFAULT_FG = "#e8ebe7";
     const ANSI_COLORS: Record<number, string> = {
-      0: "#0f1923",
-      1: "#ff6b8a",
-      2: "#4dd9cf",
-      3: "#f0c674",
-      4: "#81a2be",
-      5: "#b294bb",
-      6: "#39c5bb",
-      7: "#eceff4",
-      8: "#3b5068",
-      9: "#ff8da5",
-      10: "#6eded6",
-      11: "#f5d6a0",
-      12: "#a8c8e0",
-      13: "#c9aed0",
-      14: "#7eeee6",
-      15: "#ffffff",
+      0: "#141619",
+      1: "#d28a8a",
+      2: "#9cbd8a",
+      3: "#d8b777",
+      4: "#8aa0bd",
+      5: "#a896b8",
+      6: "#7bb0ab",
+      7: "#d8dbd6",
+      8: "#56615b",
+      9: "#e0a0a0",
+      10: "#b3d1a3",
+      11: "#e6cb95",
+      12: "#a6bcd6",
+      13: "#c0b0cf",
+      14: "#9accc6",
+      15: "#f3f4f1",
     };
 
     const cells: Array<{
@@ -803,6 +815,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     };
   }
 
+  setInterruptProtectionMode(mode: InterruptProtectionMode): void {
+    this.interruptProtectionMode = mode;
+    if (mode === "none") {
+      this.repeatedInterruptKeyArmed = false;
+      this.repeatedInterruptInputArmed = false;
+      this.lastInterruptNoticeAt = -Infinity;
+    }
+  }
+
   forceRespawn(): void {
     if (this.disposed) return;
     if (!this.currentParams) return;
@@ -880,9 +901,37 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     });
 
     this.term.attachCustomKeyEventHandler((event) => {
+      if (this.shouldSuppressProtectedInterruptKeyEvent(event)) return false;
       if (this.shouldSuppressImeKeyEvent(event)) return false;
       return true;
     });
+  }
+
+  private shouldSuppressProtectedInterruptKeyEvent(event: KeyboardEvent): boolean {
+    if (this.interruptProtectionMode === "none") return false;
+    if (!this.isInterruptKeyEvent(event)) {
+      if (this.interruptProtectionMode === "repeated" && event.type === "keydown") {
+        this.repeatedInterruptKeyArmed = false;
+      }
+      return false;
+    }
+    if (this.interruptProtectionMode === "all") {
+      this.showInterruptProtectedNotice("all");
+      return true;
+    }
+
+    if (!this.repeatedInterruptKeyArmed) {
+      this.repeatedInterruptKeyArmed = true;
+      return false;
+    }
+    this.showInterruptProtectedNotice("repeated");
+    return true;
+  }
+
+  private isInterruptKeyEvent(event: KeyboardEvent): boolean {
+    if (event.type !== "keydown") return false;
+    if (!event.ctrlKey || event.metaKey || event.altKey) return false;
+    return event.key.toLowerCase() === "c";
   }
 
   private shouldSuppressImeKeyEvent(event: KeyboardEvent): boolean {
@@ -947,6 +996,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private acceptUserInputData(data: string): void {
+    if (this.shouldSuppressProtectedInterruptData(data)) return;
     this.lastUserInputAt = performance.now();
     this.perceptionRef.current?.onUserInput(data);
     this.notifyUserInputListeners(data);
@@ -1205,6 +1255,62 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       },
       polygon: polygon.map((point) => ({ ...point })),
     };
+  }
+
+  private shouldSuppressProtectedInterruptData(data: string): boolean {
+    if (this.interruptProtectionMode === "none") return false;
+    if (!data.includes("\x03")) {
+      if (this.interruptProtectionMode === "repeated") {
+        this.repeatedInterruptInputArmed = false;
+      }
+      return false;
+    }
+    if (this.interruptProtectionMode === "all") {
+      this.showInterruptProtectedNotice("all");
+      return true;
+    }
+
+    if (!this.repeatedInterruptInputArmed) {
+      this.repeatedInterruptInputArmed = true;
+      return false;
+    }
+    this.showInterruptProtectedNotice("repeated");
+    return true;
+  }
+
+  private createInterruptNoticeElement(): HTMLDivElement {
+    const element = document.createElement("div");
+    element.className = "terminal-runtime-notice";
+    element.hidden = true;
+    element.setAttribute("role", "status");
+    element.setAttribute("aria-live", "polite");
+    element.setAttribute("aria-atomic", "true");
+    return element;
+  }
+
+  private showInterruptProtectedNotice(mode: Exclude<InterruptProtectionMode, "none">): void {
+    const now = performance.now();
+    if (now - this.lastInterruptNoticeAt <= INTERRUPT_NOTICE_THROTTLE_MS) return;
+    this.lastInterruptNoticeAt = now;
+    const message =
+      mode === "all"
+        ? "[Ctrl+C ignored in the main agent tab]"
+        : "[Second Ctrl+C ignored to keep the main agent running]";
+    this.interruptNoticeElement.textContent = message;
+    this.interruptNoticeElement.hidden = false;
+    this.interruptNoticeElement.classList.add("is-visible");
+    this.clearInterruptNoticeTimer();
+    this.interruptNoticeHideTimer = window.setTimeout(() => {
+      this.interruptNoticeHideTimer = null;
+      this.interruptNoticeElement.classList.remove("is-visible");
+      this.interruptNoticeElement.hidden = true;
+    }, INTERRUPT_NOTICE_VISIBLE_MS);
+  }
+
+  private clearInterruptNoticeTimer(): void {
+    if (this.interruptNoticeHideTimer === null) return;
+    window.clearTimeout(this.interruptNoticeHideTimer);
+    this.interruptNoticeHideTimer = null;
   }
 
   private readonly handleViewportResize = (): void => {
@@ -1565,9 +1671,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const ctx = this.regionCtx;
     ctx.save();
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = "rgba(77, 217, 207, 0.95)";
-    ctx.fillStyle = "rgba(77, 217, 207, 0.14)";
-    ctx.shadowColor = "rgba(77, 217, 207, 0.6)";
+    ctx.strokeStyle = "rgba(142, 176, 156, 0.95)";
+    ctx.fillStyle = "rgba(142, 176, 156, 0.14)";
+    ctx.shadowColor = "rgba(142, 176, 156, 0.6)";
     ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(polygon[0].x, polygon[0].y);
@@ -1590,7 +1696,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     const ctx = this.regionCtx;
     ctx.save();
-    ctx.fillStyle = "rgba(77, 217, 207, 0.22)";
+    ctx.fillStyle = "rgba(142, 176, 156, 0.22)";
     ctx.beginPath();
     ctx.moveTo(polygon[0].x, polygon[0].y);
     for (const point of polygon.slice(1)) {

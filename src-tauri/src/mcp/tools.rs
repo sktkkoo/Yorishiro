@@ -713,7 +713,7 @@ impl Charminal {
         .await
     }
 
-    /// body_expression_set: VRM expression preset を設定（意識層 → 身体の path のみ、
+    /// body_expression_set: VRM expression preset を設定（思考層 → 身体の path のみ、
     /// 反射層は別の non-MCP path を使う）。
     #[tool(
         description = "Set the resident's facial expression preset. Defaults to a short transient expression that auto-releases; pass durationMs:0 or hold:true to keep it until explicitly released."

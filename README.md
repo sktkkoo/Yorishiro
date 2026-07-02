@@ -10,27 +10,27 @@
   <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
 </p>
 
-<p align="center"><strong>A body for the AI in your terminal.</strong></p>
+<p align="center"><strong>A terminal your AI lives in.</strong></p>
 
-Charminal is a terminal that gives AI a body and a living space.
+Charminal is a terminal that gives your AI a place to live — and a sense of presence.
 
-When the AI is deep in thought, its gaze wanders. When an error hits, the face grimaces reflexively. During a long-running process, instead of a spinner, someone is standing there.
+When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
 
-The inhabitant can change the environment it lives in, in real time — changing the lighting, switching scenes, rearranging the UI. Users can directly manipulate the same environment.
+The inhabitant and the user share one environment. The inhabitant can reshape that environment in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminal is a self-modifiable terminal. Nearly everything beyond the core is extensible and modifiable through units called packs. Just by talking to the inhabitant, Charminal permanently rewrites itself — not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Pack changes take effect immediately; if you don't like the result, one click reverts it.
+Charminal is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
-**Make the hours you spend working with AI more comfortable, free, and compelling.**
+**Make the hours you spend working with AI more comfortable, open-ended, and compelling.**
 
-The time we spend with AI will only grow longer. Yet the AI beside us remains faceless — an entity whose presence we cannot even locate. Charminal builds not a harness for AI's capabilities, but a harness for its presence — how it feels to be beside an AI.
+The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Charminal builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Charminal, the environment the inhabitant lives in and reshapes also becomes part of that body.
 
-There is something we once saw in science fiction and anime — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
+There is something we once saw in fiction — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
 
-Much of Charminal's own development has been done as a collaboration with the inhabitant running on Charminal itself.
+Much of Charminal itself has been developed in collaboration with the inhabitant running inside it.
 
 > [日本語版 README はこちら](README.ja.md)
 
@@ -125,7 +125,7 @@ Charminal stores all user data in `~/.charminal/`:
 ```
 ~/.charminal/
 ├── config.json      # Persona, scene, terminal agent, and other settings
-├── init.js          # User startup script, runs on launch (like Emacs init.el)
+├── init.js          # User startup script, runs on launch and hot reloads on save
 ├── packs/           # User-created packs
 ├── last-startup.json # Latest user pack load report
 ├── journal/         # Inhabitant's daily entries and memories
@@ -300,7 +300,7 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 ### Philosophy — what this project believes
 
-- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, the self-referential MCP, and why AI needs a body (the two-layer architecture of mind and reflex)
+- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, the self-referential MCP, and why an AI's body can be the environment it lives in
 
 ---
 

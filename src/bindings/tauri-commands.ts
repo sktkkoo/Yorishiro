@@ -61,6 +61,7 @@ export interface SessionDescriptor {
   readonly kind: "shell" | "agent";
   readonly label: string;
   readonly cwd: string | null;
+  readonly displayCwd: string | null;
   readonly startedAt: number;
 }
 

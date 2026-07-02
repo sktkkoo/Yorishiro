@@ -51,6 +51,7 @@ const mockState = vi.hoisted(() => {
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
       dataHandler?: (data: string) => void;
     }>;
+    dataHandlers: Array<(data: string) => void>;
     decorations: Array<{ element: HTMLElement; dispose: ReturnType<typeof vi.fn> }>;
     oscHandlers: Map<number, (data: string) => boolean | Promise<boolean>>;
     eventListeners: Map<string, Array<(event: { payload: unknown }) => void>>;
@@ -70,6 +71,7 @@ const mockState = vi.hoisted(() => {
   } = {
     channels: [],
     terminals: [],
+    dataHandlers: [],
     decorations: [],
     oscHandlers: new Map(),
     eventListeners: new Map(),
@@ -191,6 +193,7 @@ vi.mock("@xterm/xterm", () => ({
     }
     onData(handler: (data: string) => void): void {
       this.dataHandler = handler;
+      mockState.dataHandlers.push(handler);
     }
     onResize(): void {}
     onScroll(): void {}
@@ -261,6 +264,12 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+function interruptNoticeElement(): HTMLElement {
+  const el = document.body.querySelector<HTMLElement>(".terminal-runtime-notice");
+  if (!el) throw new Error("interrupt notice element not found");
+  return el;
+}
+
 describe("TerminalRuntime", () => {
   beforeEach(() => {
     _clearForTest();
@@ -270,6 +279,7 @@ describe("TerminalRuntime", () => {
     }
     mockState.channels.length = 0;
     mockState.terminals.length = 0;
+    mockState.dataHandlers.length = 0;
     mockState.decorations.length = 0;
     mockState.oscHandlers.clear();
     mockState.eventListeners.clear();
@@ -779,6 +789,244 @@ describe("TerminalRuntime", () => {
     expect(terminal.writes).toHaveLength(1);
   });
 
+  it("emits subscribeNotification when OSC 777 notify arrives", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const received: Array<{ title: string | null; body: string }> = [];
+    const sub = runtime.subscribeNotification((event) => {
+      received.push({ title: event.title, body: event.body });
+    });
+
+    const handled = mockState.oscHandlers.get(777)?.("notify;Claude;Permission needed");
+
+    expect(handled).toBe(true);
+    expect(received).toEqual([{ title: "Claude", body: "Permission needed" }]);
+    sub.dispose();
+  });
+
+  it("reads screen tail text from xterm buffer without DOM geometry", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0] as unknown as {
+      buffer: {
+        active: {
+          viewportY: number;
+          getLine: (index: number) => { translateToString: () => string } | null;
+        };
+      };
+    };
+    terminal.buffer = {
+      active: {
+        viewportY: 0,
+        getLine: (index: number) => {
+          const lines = new Map([
+            [22, "Claude needs your permission"],
+            [23, "Allow command?"],
+          ]);
+          const text = lines.get(index);
+          return text ? { translateToString: () => text } : null;
+        },
+      },
+    };
+
+    expect(runtime.readScreenTailText(2)).toBe("Claude needs your permission\nAllow command?");
+  });
+
+  it("emits subscribeUserInput on user keystrokes", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    mockState.dataHandlers[0]?.("y");
+
+    expect(received).toEqual(["y"]);
+    sub.dispose();
+  });
+
+  it("suppresses first Ctrl+C data in all interrupt protection mode", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("all");
+
+    mockState.dataHandlers[0]?.("\x03");
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    expect(interruptNoticeElement().textContent).toContain("Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Ctrl+C ignored");
+  });
+
+  it("allows first Ctrl+C data and suppresses repeated Ctrl+C data in repeated mode", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("repeated");
+
+    mockState.dataHandlers[0]?.("\x03");
+    mockState.dataHandlers[0]?.("\x03");
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite).toHaveBeenCalledOnce();
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({
+      sessionId: "shell-1",
+      data: "\x03",
+    });
+    expect(interruptNoticeElement().textContent).toContain("Second Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Second Ctrl+C ignored");
+  });
+
+  it("allows Ctrl+C again in repeated mode after non-interrupt input", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setInterruptProtectionMode("repeated");
+
+    mockState.dataHandlers[0]?.("\x03");
+    mockState.dataHandlers[0]?.("x");
+    mockState.dataHandlers[0]?.("\x03");
+    await flushMicrotasks();
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(mockState.sessionWrite).toHaveBeenCalledTimes(3);
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(1, {
+      sessionId: "shell-1",
+      data: "\x03",
+    });
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(2, {
+      sessionId: "shell-1",
+      data: "x",
+    });
+    expect(mockState.sessionWrite).toHaveBeenNthCalledWith(3, {
+      sessionId: "shell-1",
+      data: "\x03",
+    });
+  });
+
+  it("blocks first Ctrl+C at keydown in all interrupt protection mode", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("all");
+
+    const handled = terminal.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+
+    expect(handled).toBe(false);
+    expect(interruptNoticeElement().textContent).toContain("Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Ctrl+C ignored");
+  });
+
+  it("allows first Ctrl+C keydown and blocks repeated Ctrl+C keydown in repeated mode", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    runtime.setInterruptProtectionMode("repeated");
+
+    const first = terminal.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+    terminal.customKeyEventHandler?.(new KeyboardEvent("keyup", { key: "c", ctrlKey: true }));
+    const second = terminal.customKeyEventHandler?.(
+      new KeyboardEvent("keydown", { key: "c", ctrlKey: true }),
+    );
+
+    expect(first).toBe(true);
+    expect(second).toBe(false);
+    expect(interruptNoticeElement().textContent).toContain("Second Ctrl+C ignored");
+    expect(interruptNoticeElement().hidden).toBe(false);
+    expect(terminal.writes.join("")).not.toContain("Second Ctrl+C ignored");
+  });
+
+  it("/clear は xterm の可視画面を消さず scrollback だけ消す", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+
+    for (const ch of "/clear") {
+      mockState.dataHandlers[0]?.(ch);
+    }
+    mockState.dataHandlers[0]?.("\r");
+
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.writes).toContain("\x1b[3J");
+  });
+
+  it("/compact も xterm の可視画面を消さず scrollback だけ消す", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+
+    for (const ch of "/compact") {
+      mockState.dataHandlers[0]?.(ch);
+    }
+    mockState.dataHandlers[0]?.("\r");
+
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.writes).toContain("\x1b[3J");
+  });
+
+  it("suppresses intermediate IME data while composition is active", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    mockState.dataHandlers[0]?.("g");
+    await flushMicrotasks();
+
+    expect(received).toEqual([]);
+    expect(mockState.sessionWrite).not.toHaveBeenCalled();
+    sub.dispose();
+  });
+
+  it("replaces stale xterm IME output with compositionend committed text", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "背景の" }));
+    mockState.dataHandlers[0]?.("景a");
+    await flushMicrotasks();
+
+    expect(received).toEqual(["背景の"]);
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({ sessionId: "shell-1", data: "背景の" });
+    expect(mockState.sessionWrite).not.toHaveBeenCalledWith({ sessionId: "shell-1", data: "景a" });
+    sub.dispose();
+  });
+
+  it("leaves xterm IME output alone when compositionend has no committed data", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const received: string[] = [];
+    const sub = runtime.subscribeUserInput((data) => {
+      received.push(data);
+    });
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "" }));
+    mockState.dataHandlers[0]?.("変換");
+    await flushMicrotasks();
+
+    expect(received).toEqual(["変換"]);
+    expect(mockState.sessionWrite).toHaveBeenCalledWith({ sessionId: "shell-1", data: "変換" });
+    sub.dispose();
+  });
+
+  it("suppresses printable xterm key events during IME composition", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+
+    terminal.textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+
+    const event = new KeyboardEvent("keydown", { key: "g" });
+    expect(terminal.customKeyEventHandler?.(event)).toBe(false);
+  });
+
   // attachTo は同期的に syncAttachedRect を 1 回呼ぶ（RAF を回さなくても
   // per-frame visibility 強制経路を踏める）。singleton xtermContainer は
   // document.body 直下にいるので dataset 経由で引く。
@@ -946,7 +1194,7 @@ describe("TerminalRuntime", () => {
   it("setBackgroundTransparent しなければ透明化されず class も付かない（既定）", () => {
     getTerminalRuntime("shell-1"); // runtime/terminal を生成（呼ばずに既定を確認）
 
-    expect(themeBg()).toBe("#0f1923");
+    expect(themeBg()).toBe("#141619");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
   });
 });

@@ -127,8 +127,8 @@ export function parseLayerPath(absPath: string, charminalHome: string): ParsedLa
 
 /**
  * Watcher event を handler が消費できる action に落とす。`~/.charminal/packs/`
- * 配下の file event のみが意味を持つ action を生む。init.js は Phase 1-b では
- * reload しないが、将来のため separate action として返す。
+ * 配下の file event と `~/.charminal/init.js` が意味を持つ action を生む。
+ * init.js は separate action として返し、watcher 側で hot reload する。
  */
 export function mapEventToAction(event: CharminalLayerEvent, charminalHome: string): WatcherAction {
   const parsed = parseLayerPath(event.path, charminalHome);

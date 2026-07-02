@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionDescriptor, SessionId } from "../sessions/types";
+import type { SessionTabCwdPersistence, SessionTabCwdSnapshot } from "./session-tab-manager";
+import type { SessionTabState } from "./types";
 
 vi.mock("../../bindings/tauri-commands", () => ({
   sessionDestroy: vi.fn().mockResolvedValue(undefined),
@@ -31,8 +33,25 @@ function descriptor(overrides: Partial<SessionDescriptor> & { id: string }): Ses
     kind: overrides.id === MAIN ? "agent" : "shell",
     label: overrides.id,
     cwd: null,
+    displayCwd: null,
     startedAt: 1,
     ...overrides,
+  };
+}
+
+function makeMemoryCwdPersistence(initial: ReadonlyArray<SessionTabCwdSnapshot> = []): {
+  readonly persistence: SessionTabCwdPersistence;
+  readonly snapshots: () => ReadonlyArray<SessionTabCwdSnapshot>;
+} {
+  let snapshots = [...initial];
+  return {
+    persistence: {
+      load: () => snapshots,
+      save: (next) => {
+        snapshots = [...next];
+      },
+    },
+    snapshots: () => snapshots,
   };
 }
 
@@ -67,6 +86,7 @@ describe("SessionTabManager", () => {
       expect(state.activeSessionId).toBe(id);
       expect(state.sessions.length).toBe(2);
       expect(manager.getSessionCwd(id)).toBe("/tmp/work");
+      expect(manager.getSessionLaunchCwd(id)).toBe("/tmp/work");
     });
 
     it("連続呼び出しで id が衝突しない", () => {
@@ -98,8 +118,66 @@ describe("SessionTabManager", () => {
       expect(manager.getSessionCwd(MAIN)).toBe("/work/main");
       expect(manager.getSessionCwd("shell-1")).toBe("/work/a");
       expect(manager.getSessionCwd("shell-2")).toBeNull();
+      expect(manager.getSessionLaunchCwd("shell-1")).toBe("/work/a");
       expect(manager.shouldAttachExistingSession(MAIN)).toBe(true);
       expect(manager.shouldAttachExistingSession("shell-1")).toBe(true);
+    });
+
+    it("restores display cwd separately from launch cwd after webview reload", () => {
+      manager.restoreSessions(
+        [
+          descriptor({
+            id: "shell-1",
+            cwd: "/work/launch",
+            displayCwd: "/work/current",
+          }),
+        ],
+        "shell-1",
+      );
+
+      expect(manager.getSessionCwd("shell-1")).toBe("/work/current");
+      expect(manager.getSessionLaunchCwd("shell-1")).toBe("/work/launch");
+    });
+
+    it("falls back to persisted display cwd when restored descriptor lacks displayCwd", () => {
+      const memory = makeMemoryCwdPersistence();
+      manager = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
+      const shell = manager.openShell("/work/launch");
+      manager.updateSessionCwd(shell, "/work/current");
+
+      const reloaded = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
+      reloaded.restoreSessions(
+        [descriptor({ id: shell, cwd: "/work/launch", displayCwd: null, startedAt: 42 })],
+        shell,
+      );
+
+      expect(reloaded.getSessionCwd(shell)).toBe("/work/current");
+      expect(reloaded.getSessionLaunchCwd(shell)).toBe("/work/launch");
+      expect(memory.snapshots()).toContainEqual({
+        sessionId: shell,
+        launchCwd: "/work/launch",
+        displayCwd: "/work/current",
+        startedAt: 42,
+      });
+    });
+
+    it("does not apply persisted display cwd to a different restored session", () => {
+      const memory = makeMemoryCwdPersistence([
+        {
+          sessionId: "shell-1",
+          launchCwd: "/work/launch",
+          displayCwd: "/work/current",
+          startedAt: 7,
+        },
+      ]);
+      manager = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
+
+      manager.restoreSessions(
+        [descriptor({ id: "shell-1", cwd: "/work/launch", displayCwd: null, startedAt: 42 })],
+        "shell-1",
+      );
+
+      expect(manager.getSessionCwd("shell-1")).toBe("/work/launch");
     });
 
     it("preferred active が存在しない場合は現在 active を維持し、無理なら main に戻す", () => {
@@ -114,6 +192,34 @@ describe("SessionTabManager", () => {
     it("restore 後の openShell は既存 shell-N と衝突しない", () => {
       manager.restoreSessions([descriptor({ id: MAIN }), descriptor({ id: "shell-3" })], "shell-3");
       expect(manager.openShell(null)).toBe("shell-4");
+    });
+  });
+
+  describe("updateSessionCwd", () => {
+    it("updates cwd and emits state to refresh labels", () => {
+      const shell = manager.openShell("/work/a");
+      const states: SessionTabState[] = [];
+      manager.subscribe((state) => states.push(state));
+      const beforeSessions = manager.getState().sessions;
+
+      manager.updateSessionCwd(shell, "/work/b");
+
+      expect(manager.getSessionCwd(shell)).toBe("/work/b");
+      expect(manager.getSessionLaunchCwd(shell)).toBe("/work/a");
+      expect(states).toHaveLength(1);
+      expect(states[0].sessions).toEqual([MAIN, shell]);
+      expect(states[0].sessions).not.toBe(beforeSessions);
+    });
+
+    it("ignores unchanged and unknown cwd updates", () => {
+      const shell = manager.openShell("/work/a");
+      const states: SessionTabState[] = [];
+      manager.subscribe((state) => states.push(state));
+
+      manager.updateSessionCwd(shell, "/work/a");
+      manager.updateSessionCwd("missing", "/work/b");
+
+      expect(states).toEqual([]);
     });
   });
 

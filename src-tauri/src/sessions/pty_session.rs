@@ -19,6 +19,12 @@ use super::osc133::{Osc133Parser, OscEvent};
 use super::registry::SessionRegistry;
 use super::types::{SessionActivity, SessionId};
 
+#[derive(Clone, Serialize)]
+struct PtyCwdChanged {
+    session_id: String,
+    cwd: String,
+}
+
 // ─── SpawnSpec ──────────────────────────────────────────────────
 
 /// PTY spawn の意図を表す enum。Agent (adapter id) と Shell の 2 variant。
@@ -424,6 +430,17 @@ impl PtySession {
                                     registry_for_thread.set_activity(
                                         &session_id_for_thread,
                                         SessionActivity::Idle,
+                                    );
+                                }
+                                OscEvent::CurrentDir { cwd } => {
+                                    registry_for_thread
+                                        .set_cwd(&session_id_for_thread, cwd.clone());
+                                    let _ = app_handle.emit(
+                                        "pty-cwd-changed",
+                                        PtyCwdChanged {
+                                            session_id: session_id_for_thread.clone(),
+                                            cwd,
+                                        },
                                     );
                                 }
                                 OscEvent::PromptStart | OscEvent::PromptEnd => {

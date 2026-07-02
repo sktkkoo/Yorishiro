@@ -3,7 +3,7 @@
 > このファイルは「**TS 側のどこに何があるか**」を 1 画面で把握したい時に読む。対象：dev / AI。
 > 上位 navigation は [docs/README.md](../docs/README.md)。
 
-Charminal の **canonical runtime**。意識層 (Claude Code / Codex) との接続、反射層 (primitives)、UI、pack 管理、SDK 公開を担う。Rust 側は IO のみ、設計判断はすべてこちら。
+Charminal の **canonical runtime**。思考層 (Claude Code / Codex) との接続、反射層 (primitives)、UI、pack 管理、SDK 公開を担う。Rust 側は IO のみ、設計判断はすべてこちら。
 
 ---
 

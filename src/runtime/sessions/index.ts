@@ -7,6 +7,11 @@
  * Internal design-record: 2026-05-05-multi-pane-terminal.md.
  */
 
+export type { AgentRuntimePolicy } from "./agent-runtime-policy";
+export {
+  getAgentRuntimePolicy,
+  resolveInterruptProtectionModeForSpawnSpec,
+} from "./agent-runtime-policy";
 export {
   getBundledProfile,
   listAvailableProfiles,

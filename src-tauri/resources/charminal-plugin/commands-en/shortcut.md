@@ -11,11 +11,11 @@ You are helping the user add, edit, or list Charminal keyboard shortcuts.
 
 ## Overview
 
-`~/.charminal/init.js` is Charminal's startup script, similar to Emacs `init.el`. It runs once when Charminal starts. Its main use is registering keyboard shortcuts.
+`~/.charminal/init.js` is Charminal's startup script, similar to Emacs `init.el`. It runs when Charminal starts and runs again on hot reload after saves. Its main use is registering keyboard shortcuts.
 
 - Charminal creates a template on first launch
 - If the file is deleted, Charminal creates it again on the next launch
-- **There is no automatic hot reload.** After editing it, tell the user to reload with **Cmd/Ctrl+R** (`window.location.reload()` re-runs init.js; a full app restart is not needed)
+- **init.js is hot reloaded.** Save the file and Charminal re-runs it automatically — no Cmd/Ctrl+R and no restart. Shortcuts registered with `ctx.registerShortcut` are cleaned up and re-installed on each reload. If a save has a syntax/runtime error, Charminal keeps the previous working init.js and logs the error.
 
 ## Flow
 
@@ -23,7 +23,7 @@ You are helping the user add, edit, or list Charminal keyboard shortcuts.
 2. Check existing shortcuts to avoid duplicates
 3. Avoid terminal-standard keys such as `Ctrl+C`, `Ctrl+D`, and `Ctrl+Z`
 4. Edit or list the file as requested
-5. Tell the user the changes apply on a Cmd/Ctrl+R reload (not a full app restart)
+5. Tell the user the changes apply automatically on save (init.js is hot reloaded)
 
 ## Context API
 
@@ -36,6 +36,8 @@ The default export receives `CharminalInitContext`:
 | `dispatchEffect(request)` | Run a registered effect once. Built-in and user effects share this path |
 | `emitEvent(name, payload?)` | Emit a synthetic event into the persona trigger loop |
 | `setActiveUi(id)` | Switch active UI pack; pass `null` to clear |
+| `registerShortcut(spec, handler)` | Bind a keyboard shortcut. Captures keydown before the terminal, calls `preventDefault` + `stopImmediatePropagation` by default, and is auto-removed on reload. Returns a `Disposable`. |
+| `onDispose(cleanup)` | Run `cleanup` when this init scope is replaced (next reload) or torn down. Use it with manual `window.addEventListener`/timers. |
 
 Plain browser APIs such as `window.addEventListener`, `setTimeout`, and `fetch` are also available.
 
@@ -44,17 +46,24 @@ Plain browser APIs such as `window.addEventListener`, `setTimeout`, and `fetch` 
 ```javascript
 // ~/.charminal/init.js
 export default (ctx) => {
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      if (e.metaKey && e.shiftKey && e.key === "F") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
-        // Put the action here.
-      }
-    },
-    { capture: true },
-  );
+  // Preferred: ctx.registerShortcut. Only the modifiers you specify are
+  // constrained; preventDefault + stopImmediatePropagation are on by default;
+  // it is removed automatically when init.js is reloaded.
+  ctx.registerShortcut({ code: "KeyF", meta: true, shift: true }, () => {
+    // Put the action here.
+  });
+};
+```
+
+`InitShortcutSpec` fields: `code` (physical key like `KeyF`/`F1`), `key` (character), `meta`/`ctrl`/`alt`/`shift` (only constrained when set), `repeat` (`false` ignores key-repeat), and the defaults-true `preventDefault`/`stopPropagation`/`capture`.
+
+If you manage listeners or timers by hand, pair them with `ctx.onDispose` so reloads do not stack duplicates:
+
+```javascript
+export default (ctx) => {
+  const onKey = (e) => { /* ... */ };
+  window.addEventListener("keydown", onKey, { capture: true });
+  ctx.onDispose(() => window.removeEventListener("keydown", onKey, { capture: true }));
 };
 ```
 

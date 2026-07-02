@@ -23,6 +23,7 @@ end
 function __charminal_postexec --on-event fish_postexec
     printf '\e]133;D;%s\a' $status
     __charminal_emit_cwd
+    printf '\e]7;file://%s\a' "$PWD"
 end
 
 function __charminal_path_prepend_unique_directory --argument-names directory

@@ -1,7 +1,7 @@
 # Release checklist
 
-This checklist is the pre-release smoke test for Charminal alpha builds. Run it
-from a fresh user profile when possible, or move the existing `~/.charminal/`
+This checklist is the pre-release smoke test for Charminal release builds. Run
+it from a fresh user profile when possible, or move the existing `~/.charminal/`
 aside before testing.
 
 ## 1. Build artifacts
@@ -16,7 +16,8 @@ aside before testing.
 ## 2. Fresh macOS install
 
 - Install the `.dmg` build into `/Applications`.
-- For unsigned alpha builds, run:
+- Release builds are signed and notarized and need no extra steps. For locally
+  built unsigned bundles only, run:
 
 ```bash
 xattr -cr /Applications/charminal.app
@@ -97,7 +98,7 @@ CHARMINAL_SAFE_MODE=1 open /Applications/charminal.app
 ## 9. Release notes
 
 - Confirm README Status matches the artifact being published.
-- Confirm macOS is described as the primary alpha target.
+- Confirm macOS is described as the primary supported platform.
 - Confirm Windows remains marked experimental unless manually verified.
 - Confirm unreleased pack registry / community install / publish flow features
   are not described as available.

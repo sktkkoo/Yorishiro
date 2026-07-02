@@ -37,6 +37,7 @@ __charminal_precmd() {
     local exit_code="${1:-$?}"
     printf '\e]133;D;%s\a' "$exit_code"
     __charminal_emit_cwd
+    printf '\e]7;file://%s\a' "$PWD"
     return "$exit_code"
 }
 

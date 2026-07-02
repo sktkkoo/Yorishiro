@@ -4,7 +4,7 @@
  *
  * Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
  *
- * Runtime の LogBridge（意識層 ↔ 反射層を繋ぐ細い回路）の sibling。temporal layer が
+ * Runtime の LogBridge（思考層 ↔ 反射層を繋ぐ細い回路）の sibling。temporal layer が
  * 違うだけで構造は同型：書き手と読み手の間に時間差があり、観察は事後に起きる。
  *
  * LogBridge との差分:

@@ -44,7 +44,7 @@ export interface SessionAttention {
   readonly title: string | null;
   readonly body: string;
   readonly receivedAt: number;
-  readonly source: "hook" | "osc" | "screen";
+  readonly source: "hook" | "osc" | "screen" | "loop";
 }
 
 /**
@@ -68,6 +68,13 @@ export interface SessionStatusStoreOptions {
 }
 
 type Listener = () => void;
+
+interface ClearedAttention {
+  readonly title: string | null;
+  readonly body: string;
+  readonly source: SessionAttention["source"];
+  readonly clearedAt: number;
+}
 
 /**
  * lifecycle / activity / exitCode から単一の表示 badge を導出する純粋関数。
@@ -130,7 +137,7 @@ export class SessionStatusStore {
   private readonly lateAttentionSuppressMs: number;
   /** active session は unread を持たない。markOutput 時の判定に使う。 */
   private activeSessionId: SessionId | null = null;
-  private readonly lastAttentionClearedAt = new Map<SessionId, number>();
+  private readonly lastAttentionCleared = new Map<SessionId, ClearedAttention>();
 
   constructor(options: SessionStatusStoreOptions = {}) {
     this.now = options.now ?? (() => Date.now());
@@ -247,20 +254,22 @@ export class SessionStatusStore {
     const source = notification.source ?? "osc";
     const current = this.ensure(sessionId);
     const receivedAt = this.now();
-    const lastClearedAt = this.lastAttentionClearedAt.get(sessionId);
-    if (
-      current.attention === null &&
-      source !== "screen" &&
-      lastClearedAt !== undefined &&
-      receivedAt - lastClearedAt >= 0 &&
-      receivedAt - lastClearedAt < this.lateAttentionSuppressMs
-    ) {
-      return;
+    const lastCleared = this.lastAttentionCleared.get(sessionId);
+    if (current.attention === null && source !== "loop" && lastCleared !== undefined) {
+      const sinceCleared = receivedAt - lastCleared.clearedAt;
+      const inSuppressionWindow = sinceCleared >= 0 && sinceCleared < this.lateAttentionSuppressMs;
+      const sameScreenPrompt =
+        source === "screen" &&
+        lastCleared.source === "screen" &&
+        lastCleared.title === (title.length > 0 ? title : null) &&
+        lastCleared.body === body;
+      if (inSuppressionWindow && (source !== "screen" || sameScreenPrompt)) return;
     }
 
     if (
       current.activity === "awaiting-input" &&
       current.attention?.source === "screen" &&
+      source !== "loop" &&
       source !== "screen"
     ) {
       return;
@@ -311,6 +320,19 @@ export class SessionStatusStore {
     this.clearAttention(sessionId);
   }
 
+  /** loop lifecycle が進行/終了したとき、loop 由来の sticky attention だけを解除する。 */
+  clearLoopAttention(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.attention?.source !== "loop") return;
+    this.commit({
+      ...current,
+      activity: current.activity === "awaiting-input" ? "idle" : current.activity,
+      attention: null,
+      unread: false,
+      lastActivityAt: this.now(),
+    });
+  }
+
   /** active session を切り替える。新 active の unread は解除する。 */
   markActive(sessionId: SessionId): void {
     this.activeSessionId = sessionId;
@@ -331,8 +353,14 @@ export class SessionStatusStore {
   clearAttention(sessionId: SessionId): void {
     const current = this.statuses.get(sessionId);
     if (!current || current.attention === null) return;
+    const previousAttention = current.attention;
     const clearedAt = this.now();
-    this.lastAttentionClearedAt.set(sessionId, clearedAt);
+    this.lastAttentionCleared.set(sessionId, {
+      title: previousAttention.title,
+      body: previousAttention.body,
+      source: previousAttention.source,
+      clearedAt,
+    });
     this.commit({
       ...current,
       activity: current.activity === "awaiting-input" ? "idle" : current.activity,
@@ -340,6 +368,16 @@ export class SessionStatusStore {
       unread: false,
       lastActivityAt: clearedAt,
     });
+  }
+
+  /**
+   * hook signal が「許可待ちは解消した」と示したときの解除経路。
+   * loop lifecycle 由来の sticky attention は loop lifecycle 側でだけ解除する。
+   */
+  clearNonLoopAttention(sessionId: SessionId): void {
+    const current = this.statuses.get(sessionId);
+    if (!current || current.attention?.source === "loop") return;
+    this.clearAttention(sessionId);
   }
 
   /** process 終了を記録する（lifecycle=exited + exitCode）。 */

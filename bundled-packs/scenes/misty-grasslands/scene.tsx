@@ -76,7 +76,7 @@ const definition: ScenePackDefinition = {
       panelBackground: "rgba(202, 210, 188, 0.96)",
       border: "rgba(60, 72, 50, 0.25)",
       buttonBackground: "#bec8ae",
-      buttonForeground: "#3a4a30",
+      buttonForeground: "#27351f",
       inputBackground: "rgba(0, 0, 0, 0.04)",
       accent: "rgba(74, 122, 52, 1)",
       accentSoft: "rgba(74, 122, 52, 0.1)",

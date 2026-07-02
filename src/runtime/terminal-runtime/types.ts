@@ -68,6 +68,8 @@ export interface TerminalNotificationEvent {
   readonly receivedAt: number;
 }
 
+export type InterruptProtectionMode = "none" | "repeated" | "all";
+
 export interface TerminalRegionContext {
   readonly kind: "terminal-region-context";
   readonly sessionId: string;
@@ -331,6 +333,12 @@ export interface TerminalRuntime {
    * React placeholder の pointer event では拾えないため runtime 側で橋渡しする。
    */
   subscribeActivation(listener: () => void): Disposable;
+
+  /**
+   * Ctrl+C を PTY に送るか制御する。
+   * main agent の accidental exit 防止用で、shell session には使わない。
+   */
+  setInterruptProtectionMode(mode: InterruptProtectionMode): void;
 
   /** currentParams を無効化し updatePtyParams を再実行する。auto-respawn 用。 */
   forceRespawn(): void;

@@ -41,22 +41,6 @@ fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
-fn build_hook_command(port: u16, body: &str, windows: bool) -> String {
-    if windows {
-        format!(
-            "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 -Method Post -Uri {} -Body {} | Out-Null\"",
-            powershell_single_quote(&format!("http://127.0.0.1:{}/hook", port)),
-            powershell_single_quote(body),
-        )
-    } else {
-        format!(
-            "curl -s -m 1 -X POST -d {} {}",
-            sh_single_quote(body),
-            sh_single_quote(&format!("http://127.0.0.1:{}/hook", port)),
-        )
-    }
-}
-
 fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String {
     let url = format!("http://127.0.0.1:{}{}", port, endpoint);
     if windows {
@@ -82,10 +66,14 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
 
     serde_json::json!({
         "hooks": {
+            "SessionStart": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/session-start", windows) }]
+            }],
             "UserPromptSubmit": [{
                 "matcher": "",
                 "hooks": [
-                    { "type": "command", "command": build_hook_command(port, r#"{"event":"prompt"}"#, windows) },
+                    { "type": "command", "command": build_hook_stdin_command(port, "/hook/prompt", windows) },
                     { "type": "command", "command": reminder_cmd }
                 ]
             }],
@@ -101,9 +89,17 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-failure", windows) }]
             }],
+            "PostToolBatch": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-batch", windows) }]
+            }],
             "Stop": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_command(port, r#"{"event":"stop"}"#, windows) }]
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/stop", windows) }]
+            }],
+            "StopFailure": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/stop-failure", windows) }]
             }],
             "Notification": [{
                 "matcher": "",
@@ -112,6 +108,46 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
             "PermissionRequest": [{
                 "matcher": "",
                 "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/permission-request", windows) }]
+            }],
+            "PermissionDenied": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/permission-denied", windows) }]
+            }],
+            "SubagentStart": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/subagent-start", windows) }]
+            }],
+            "SubagentStop": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/subagent-stop", windows) }]
+            }],
+            "TaskCreated": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/task-created", windows) }]
+            }],
+            "TaskCompleted": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/task-completed", windows) }]
+            }],
+            "PreCompact": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/pre-compact", windows) }]
+            }],
+            "PostCompact": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-compact", windows) }]
+            }],
+            "Elicitation": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/elicitation", windows) }]
+            }],
+            "ElicitationResult": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/elicitation-result", windows) }]
+            }],
+            "SessionEnd": [{
+                "matcher": "",
+                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/session-end", windows) }]
             }],
         }
     })
@@ -290,12 +326,24 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
             let event_type = match path {
                 "/hook/prompt" => Some("prompt"),
                 "/hook/stop" => Some("stop"),
+                "/hook/stop-failure" => Some("stop-failure"),
                 "/hook/session-start" => Some("session-start"),
+                "/hook/session-end" => Some("session-end"),
                 "/hook/pre-tool-use" => Some("pre-tool-use"),
                 "/hook/post-tool-use" => Some("post-tool-use"),
                 "/hook/post-tool-failure" => Some("post-tool-failure"),
+                "/hook/post-tool-batch" => Some("post-tool-batch"),
                 "/hook/notification" => Some("notification"),
                 "/hook/permission-request" => Some("permission-request"),
+                "/hook/permission-denied" => Some("permission-denied"),
+                "/hook/subagent-start" => Some("subagent-start"),
+                "/hook/subagent-stop" => Some("subagent-stop"),
+                "/hook/task-created" => Some("task-created"),
+                "/hook/task-completed" => Some("task-completed"),
+                "/hook/pre-compact" => Some("pre-compact"),
+                "/hook/post-compact" => Some("post-compact"),
+                "/hook/elicitation" => Some("elicitation"),
+                "/hook/elicitation-result" => Some("elicitation-result"),
                 "/hook" => None,
                 _ => None,
             };
@@ -395,6 +443,7 @@ impl PtyState {
             kind,
             label: profile_id.to_string(),
             cwd: cwd.clone(),
+            display_cwd: None,
             started_at: now_millis(),
         });
 
@@ -492,11 +541,25 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("should be valid JSON");
         let hooks = parsed["hooks"].as_object().expect("should have hooks");
         assert!(hooks.contains_key("UserPromptSubmit"));
+        assert!(hooks.contains_key("SessionStart"));
         assert!(hooks.contains_key("PreToolUse"));
+        assert!(hooks.contains_key("PostToolUse"));
         assert!(hooks.contains_key("PostToolUseFailure"));
+        assert!(hooks.contains_key("PostToolBatch"));
         assert!(hooks.contains_key("Stop"));
+        assert!(hooks.contains_key("StopFailure"));
         assert!(hooks.contains_key("Notification"));
         assert!(hooks.contains_key("PermissionRequest"));
+        assert!(hooks.contains_key("PermissionDenied"));
+        assert!(hooks.contains_key("SubagentStart"));
+        assert!(hooks.contains_key("SubagentStop"));
+        assert!(hooks.contains_key("TaskCreated"));
+        assert!(hooks.contains_key("TaskCompleted"));
+        assert!(hooks.contains_key("PreCompact"));
+        assert!(hooks.contains_key("PostCompact"));
+        assert!(hooks.contains_key("Elicitation"));
+        assert!(hooks.contains_key("ElicitationResult"));
+        assert!(hooks.contains_key("SessionEnd"));
         let notification = hooks["Notification"][0]["hooks"].as_array().unwrap();
         assert_eq!(notification.len(), 1);
         assert!(notification[0]["command"]
@@ -511,12 +574,9 @@ mod tests {
 
     #[test]
     fn build_windows_hook_commands_use_powershell() {
-        let prompt = build_hook_command(19001, r#"{"event":"prompt"}"#, true);
-        assert!(prompt.contains("powershell.exe"));
-        assert!(prompt.contains("Invoke-WebRequest"));
-        assert!(prompt.contains("http://127.0.0.1:19001/hook"));
-
         let stdin = build_hook_stdin_command(19001, "/hook/pre-tool-use", true);
+        assert!(stdin.contains("powershell.exe"));
+        assert!(stdin.contains("Invoke-WebRequest"));
         assert!(stdin.contains("[Console]::In.ReadToEnd()"));
         assert!(stdin.contains("http://127.0.0.1:19001/hook/pre-tool-use"));
     }

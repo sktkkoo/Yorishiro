@@ -41,6 +41,7 @@ __charminal_precmd() {
     local exit_code=$?
     printf '\e]133;D;%s\a' "$exit_code"
     __charminal_emit_cwd
+    printf '\e]7;file://%s\a' "$PWD"
 }
 
 # 重複登録を避ける（再 source / HMR ケース）

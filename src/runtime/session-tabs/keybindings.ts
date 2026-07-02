@@ -4,6 +4,10 @@
 
 import type { SessionTabManager } from "./session-tab-manager";
 
+export interface TabKeybindingOptions {
+  readonly getNewSessionCwd?: () => string | null;
+}
+
 function consume(e: KeyboardEvent): void {
   e.preventDefault();
   e.stopPropagation();
@@ -13,12 +17,15 @@ function consume(e: KeyboardEvent): void {
  * document に capture phase の keydown listener を張る。
  * 戻り値は cleanup 関数（useEffect の return に渡す）。
  */
-export function installTabKeybindings(manager: SessionTabManager): () => void {
+export function installTabKeybindings(
+  manager: SessionTabManager,
+  options: TabKeybindingOptions = {},
+): () => void {
   const handler = (e: KeyboardEvent) => {
     // Cmd+T: 新しい shell タブ
     if (e.metaKey && !e.shiftKey && !e.ctrlKey && e.key === "t") {
       consume(e);
-      manager.openShell(null);
+      manager.openShell(options.getNewSessionCwd?.() ?? null);
       return;
     }
 
