@@ -199,6 +199,7 @@ import {
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
 import { getTerminalRuntime } from "./runtime/terminal-runtime";
 import { initTerminalTheme, syncCurrentTerminalTheme } from "./runtime/terminal-theme";
+import { getAttentionLightSettingsStore } from "./runtime/three-runtime/attention-light-settings";
 import {
   getRuntimeLevaStore,
   useRuntimeLevaStore,
@@ -1334,6 +1335,7 @@ function App() {
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
         ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
+        getAttentionLightSettingsStore().setEnabled(config.attentionLightNotifications);
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
         setTabMetadataBadgesEnabled(config.tabMetadataBadges);
@@ -2619,6 +2621,7 @@ function App() {
         terminalAgent: string;
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
+        attentionLightNotifications: boolean;
         motionIntensity: number;
         language: AppLanguage;
         voiceFrequency: VoiceFrequency;
@@ -2952,6 +2955,10 @@ function App() {
             await updateConfig({ ambientAudioVolume: clamped });
             ambientAudio.setVolume(clamped);
           },
+          setAttentionLightNotifications: async (enabled) => {
+            await updateConfig({ attentionLightNotifications: enabled });
+            getAttentionLightSettingsStore().setEnabled(enabled);
+          },
           setMotionIntensity: async (value) => {
             const clamped = clampMotionIntensity(value);
             await updateConfig({ motionIntensity: clamped });
@@ -3001,6 +3008,7 @@ function App() {
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
+              attentionLightNotifications: cur.attentionLightNotifications,
               motionIntensity: cur.motionIntensity,
               activeAmbientUi: cur.activeAmbientUi,
               language: cur.language,

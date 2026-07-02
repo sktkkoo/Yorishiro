@@ -10,6 +10,7 @@ import {
   deriveAttentionFlashLightState,
   readActiveSessionAttentionFlashLightState,
 } from "./attention-flash-light";
+import { AttentionLightSettingsStore } from "./attention-light-settings";
 
 vi.mock("@react-three/fiber", () => ({
   useFrame: vi.fn(),
@@ -128,5 +129,32 @@ describe("AttentionFlashLight", () => {
     });
 
     expect(container.querySelector("[name='charminal-attention-flash-light']")).toBeNull();
+  });
+
+  it("does not mount while lighting notifications are disabled", () => {
+    const { store, tick } = makeStore();
+    const settings = new AttentionLightSettingsStore();
+    settings.setEnabled(false);
+    store.register("s1");
+    store.markActive("s1");
+
+    const { container } = render(<AttentionFlashLight store={store} settings={settings} />);
+
+    act(() => {
+      tick(200);
+      store.markAttentionRequest("s1", {
+        title: "Codex",
+        body: "Approval requested",
+        source: "hook",
+      });
+    });
+
+    expect(container.querySelector("[name='charminal-attention-flash-light']")).toBeNull();
+
+    act(() => {
+      settings.setEnabled(true);
+    });
+
+    expect(container.querySelector("[name='charminal-attention-flash-light']")).not.toBeNull();
   });
 });

@@ -251,6 +251,8 @@ export interface UiAppAPI {
   setActiveAmbientUi(ids: readonly string[]): Promise<void>;
   /** 環境音のマスターボリュームを設定する（0.0-1.0）。config.json に書き戻す。 */
   setAmbientAudioVolume(volume: number): Promise<void>;
+  /** 入力/承認待ち時の照明通知を切り替える。 */
+  setAttentionLightNotifications(enabled: boolean): Promise<void>;
   /** idle motion の大きさ倍率を設定する（0.0-3.0、default 1.0）。 */
   setMotionIntensity(value: number): Promise<void>;
   /** UI / persona fallback / command prompt の言語を切り替える。 */
@@ -278,6 +280,7 @@ export interface UiAppAPI {
     readonly agentPinnedByProfile: string | null;
     readonly ambientAudioMuted: boolean;
     readonly ambientAudioVolume: number;
+    readonly attentionLightNotifications: boolean;
     readonly motionIntensity: number;
     readonly activeAmbientUi: readonly string[];
     readonly language: AppLanguage;

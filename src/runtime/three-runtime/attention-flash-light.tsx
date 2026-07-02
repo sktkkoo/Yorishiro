@@ -8,6 +8,10 @@ import {
   type SessionStatusStore,
 } from "../session-status";
 import type { SessionId } from "../sessions/types";
+import {
+  type AttentionLightSettingsStore,
+  getAttentionLightSettingsStore,
+} from "./attention-light-settings";
 
 const ATTENTION_RED = "#ff2f28";
 export const ATTENTION_FLASH_HZ = 0.6;
@@ -68,14 +72,19 @@ export function computeAttentionFlashLightIntensity(
 
 export interface AttentionFlashLightProps {
   readonly store?: SessionStatusStore;
+  readonly settings?: AttentionLightSettingsStore;
 }
 
 /**
  * Runtime-owned attention light. This deliberately adds a transient red wash
  * without mutating scene-pack lights or their controls.
  */
-export function AttentionFlashLight({ store = getSessionStatusStore() }: AttentionFlashLightProps) {
+export function AttentionFlashLight({
+  store = getSessionStatusStore(),
+  settings = getAttentionLightSettingsStore(),
+}: AttentionFlashLightProps) {
   const [state, setState] = useState(() => readActiveSessionAttentionFlashLightState(store));
+  const [enabled, setEnabled] = useState(() => settings.getEnabled());
   const pulseOriginRef = useRef<number | null>(null);
   const pulseIdentityRef = useRef<string | null>(null);
   const ambientRef = useRef<AmbientLight>(null);
@@ -97,8 +106,15 @@ export function AttentionFlashLight({ store = getSessionStatusStore() }: Attenti
     });
   }, [store]);
 
+  useEffect(() => {
+    setEnabled(settings.getEnabled());
+    return settings.subscribe(() => {
+      setEnabled(settings.getEnabled());
+    });
+  }, [settings]);
+
   useFrame(({ clock }) => {
-    if (!state.active) return;
+    if (!enabled || !state.active) return;
     if (pulseOriginRef.current === null) {
       pulseOriginRef.current = clock.elapsedTime;
     }
@@ -109,7 +125,7 @@ export function AttentionFlashLight({ store = getSessionStatusStore() }: Attenti
     if (spotRef.current) spotRef.current.intensity = intensity.spot;
   });
 
-  if (!state.active) return null;
+  if (!enabled || !state.active) return null;
 
   const initialIntensity = computeAttentionFlashLightIntensity(0);
   return (

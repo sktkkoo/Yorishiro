@@ -43,6 +43,7 @@ export interface UiStrings {
   readonly experimentalAgentSuffix: string;
   readonly labelPresence: string;
   readonly labelAura: string;
+  readonly labelAttentionLight: string;
   readonly labelTabBadges: string;
   readonly labelHealth: string;
   readonly labelPacks: string;
@@ -142,6 +143,7 @@ const EN: UiStrings = {
   experimentalAgentSuffix: "experimental",
   labelPresence: "Sidebar",
   labelAura: "Aura",
+  labelAttentionLight: "Light alert",
   labelTabBadges: "Tab badges",
   labelHealth: "Status",
   labelPacks: "Packs",
@@ -244,6 +246,7 @@ const JA: UiStrings = {
   experimentalAgentSuffix: "実験的",
   labelPresence: "Sidebar",
   labelAura: "Aura",
+  labelAttentionLight: "照明通知",
   labelTabBadges: "Tab badges",
   labelHealth: "Status",
   labelPacks: "Packs",
