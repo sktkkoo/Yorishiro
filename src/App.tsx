@@ -79,7 +79,6 @@ import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import TabIndicator from "./components/TabIndicator";
 import TerminalWorkspace from "./components/TerminalWorkspace";
-import WorkspaceSidebar from "./components/WorkspaceSidebar";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -167,11 +166,7 @@ import {
 } from "./runtime/scene-pack-registry";
 import { getSessionStatusStore, type SessionStatus } from "./runtime/session-status";
 import type { SessionTabState } from "./runtime/session-tabs";
-import {
-  installTabKeybindings,
-  resolveVisibleTerminalSessionIds,
-  SessionTabManager,
-} from "./runtime/session-tabs";
+import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
   DEFAULT_SESSION_ID,
   resolveDefaultAgentProfileId,
@@ -2207,18 +2202,9 @@ function App() {
     sessionStatusStore.list(),
   );
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
-  const visibleTerminalSessionIds = useMemo(
-    () =>
-      resolveVisibleTerminalSessionIds({
-        sessions: tabState.sessions,
-        activeSessionId: tabState.activeSessionId,
-        defaultSessionId: DEFAULT_SESSION_ID,
-      }),
-    [tabState.sessions, tabState.activeSessionId],
-  );
   const visibleTerminalSessionIdSet = useMemo(
-    () => new Set(visibleTerminalSessionIds),
-    [visibleTerminalSessionIds],
+    () => new Set<SessionId>([tabState.activeSessionId]),
+    [tabState.activeSessionId],
   );
   const visibleTerminalSessionIdSetRef = useRef(visibleTerminalSessionIdSet);
   visibleTerminalSessionIdSetRef.current = visibleTerminalSessionIdSet;
@@ -2300,22 +2286,15 @@ function App() {
     };
   }, [isUserLayerReady, tabManager]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: visible set は active が default のまま shell だけ差し替わる場合にも presentation 更新の trigger になる
   useEffect(() => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
     applyTerminalPresentationForMountedSessions();
-  }, [
-    tabState.activeSessionId,
-    visibleTerminalSessionIds,
-    applyTerminalPresentationForMountedSessions,
-  ]);
+  }, [tabState.activeSessionId, applyTerminalPresentationForMountedSessions]);
 
   const canMountTerminals =
     isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
-  // WorkspaceSidebar に渡す store の安定参照（singleton なので参照は不変）。
-  const workspaceAttentionStore = useMemo(() => getWorkspaceAttentionStore(), []);
   // session id → 表示ラベル。main session は agent 名、それ以外は id をそのまま。
-  // TabIndicator と WorkspaceSidebar で共有する。
+  // TabIndicator で使う。
   const sessionLabels = useMemo(
     () =>
       new Map<SessionId, string>([
@@ -3735,23 +3714,20 @@ function App() {
     };
   }, [tabState.activeSessionId, runtime.bus.register]);
 
-  // command-run attention producer は active session ではなく visible terminal
-  // 全体に張る。他の terminal producer（terminal / input-cursor / tool / region）は
-  // active session に限定してよいが、command-run だけは背景 pane（例：paired
-  // workspace の shell pane）で失敗した run の aura も、その pane の rect を指せる
-  // ようにする必要がある（two-pane-resize-spike-findings §5 /
-  // inhabited-workspace-design.md P0e の aura-across-panes）。
+  // command-run attention producer は tab session 全体に張る。
+  // 表示は active tab だけでも、背景 session の command metadata は workspace-attention
+  // に残し、表示できない locus は session locus に畳む。
   useEffect(() => {
     const workspaceAttention = getWorkspaceAttentionStore();
     const disposables: Disposable[] = [];
-    for (const sessionId of visibleTerminalSessionIds) {
+    for (const sessionId of tabState.sessions) {
       const terminal = getTerminalRuntime(sessionId);
       disposables.push(startCommandRunAttentionProducer({ store: workspaceAttention, terminal }));
     }
     return () => {
       for (const d of disposables) d.dispose();
     };
-  }, [visibleTerminalSessionIds]);
+  }, [tabState.sessions]);
 
   // mcp attention producer を起動する。
   // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。
@@ -3935,8 +3911,7 @@ function App() {
   }, []);
 
   // command run の keyboard 操作（active session）。
-  // Cmd+Shift+F: 直近 failed run を attach（attach 動線）。この出力 / 範囲選択は
-  //   badge menu / 既存 Option+Shift+drag が担う。
+  // Cmd+Shift+F: 直近 failed run を reference 化。
   // Cmd+] / Cmd+[: 次 / 前の command block へ jump（block navigation）。
   // Cmd+Shift+]: 次の failed block へ jump。
   useEffect(() => {
@@ -3960,15 +3935,6 @@ function App() {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
   }, [tabState.activeSessionId]);
-
-  // active terminal の command block attach menu に「他 session へ送る」先（自分以外）を渡す。
-  // Claude Code の run 出力を codex に送る、のような cross-session handoff を user gesture で行う。
-  useEffect(() => {
-    const targets = tabState.sessions
-      .filter((id) => id !== tabState.activeSessionId)
-      .map((id) => ({ sessionId: id, label: sessionLabels.get(id) ?? id }));
-    getTerminalRuntime(tabState.activeSessionId).setCommandRunMenuTargets(targets);
-  }, [tabState.sessions, tabState.activeSessionId, sessionLabels]);
 
   // screen-shake は bundled-packs/effects/screen-shake を EffectPackRunner
   // 経由で動かす（runtime singleton で register 済み）。この useEffect は不要。
@@ -4029,7 +3995,6 @@ function App() {
             <TerminalWorkspace
               sessions={tabState.sessions}
               activeSessionId={tabState.activeSessionId}
-              defaultSessionId={DEFAULT_SESSION_ID}
               cwd={cwd}
               getSessionCwd={getSessionCwd}
               getSpec={getTerminalSpec}
@@ -4038,7 +4003,6 @@ function App() {
               onActivate={handleTerminalActivate}
             />
             <TabIndicator state={tabState} labels={sessionLabels} statuses={sessionStatusById} />
-            <WorkspaceSidebar store={workspaceAttentionStore} labels={sessionLabels} />
           </>
         )}
       </div>

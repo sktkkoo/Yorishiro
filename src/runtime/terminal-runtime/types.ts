@@ -73,8 +73,8 @@ export interface TerminalRegionContext {
   readonly sessionId: string;
   readonly text: string;
   readonly capturedAt: number;
-  readonly gesture: "option-shift-drag" | "meta-click" | "command-run-click";
-  /** command run click 由来の reference だけが持つ。MCP はこの id だけを metadata として見る。 */
+  readonly gesture: "option-shift-drag" | "meta-click" | "command-run-reference";
+  /** command-run reference だけが持つ。MCP はこの id だけを metadata として見る。 */
   readonly commandRunId?: number;
   readonly viewport: {
     readonly viewportY: number;
@@ -290,15 +290,6 @@ export interface TerminalRuntime {
    * run が見つからなければ false。
    */
   attachCommandRunOutput(runId: number): boolean;
-
-  /**
-   * command block の attach menu に出す「他 session へ送る」先を設定する。
-   * App が visible な session（自分以外、例: Claude Code / Codex）を渡す。
-   * 送信は user が menu で選んだ gesture で、住人 AI による PTY write ではない。
-   */
-  setCommandRunMenuTargets(
-    targets: ReadonlyArray<{ readonly sessionId: string; readonly label: string }>,
-  ): void;
 
   /** command run の現在 viewport 上の locus。output text は含まない。 */
   getCommandRunLocus(runId: number): TerminalCommandRunLocus | null;

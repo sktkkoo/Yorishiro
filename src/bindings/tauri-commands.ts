@@ -76,8 +76,8 @@ export interface SessionSpawnArgs {
 
 /**
  * Session を新規 spawn する。session_id が省略されると default-session を
- * 作る（Phase B-1 互換）。pane split で複数 session を持つときは caller が
- * paneId 由来の session_id を渡す。
+ * 作る（Phase B-1 互換）。複数 session を持つときは caller が stable な
+ * session_id を渡す。
  */
 export const sessionSpawn = (args: SessionSpawnArgs): Promise<void> => call("session_spawn", args);
 

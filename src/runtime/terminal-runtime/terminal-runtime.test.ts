@@ -398,15 +398,13 @@ describe("TerminalRuntime", () => {
       sessionId: "shell-1",
     });
 
-    // badge は廃止し、command block の hover→クリックで attach menu を開く方式に再設計。
-    // menu の DOM 配置は xterm の rect 計測に依存し jsdom では検証しづらいので、
-    // menu が叩く public attach verb の経路を直接検証する。
+    // command-run の構造は保持し、UI を介さない reference 化 API を直接検証する。
     expect(runtime.getTerminalReferences()).toHaveLength(0);
     expect(runtime.attachCommandRunOutput(1)).toBe(true);
 
     expect(runtime.getLatestRegionContext()).toMatchObject({
       sessionId: "shell-1",
-      gesture: "command-run-click",
+      gesture: "command-run-reference",
       commandRunId: 1,
       text: "$ npm test\nfailed output",
       range: {
@@ -419,7 +417,7 @@ describe("TerminalRuntime", () => {
         id: "shell-1:Term1",
         context: {
           commandRunId: 1,
-          gesture: "command-run-click",
+          gesture: "command-run-reference",
         },
       },
     ]);
@@ -442,7 +440,7 @@ describe("TerminalRuntime", () => {
     expect(ok).toBe(true);
     expect(runtime.getLatestRegionContext()).toMatchObject({
       sessionId: "shell-1",
-      gesture: "command-run-click",
+      gesture: "command-run-reference",
       commandRunId: 1,
     });
     expect(runtime.getTerminalReferences()).toHaveLength(1);

@@ -15,14 +15,13 @@ import {
 import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
-import { resolveCommandRunMenuPosition } from "./command-run-menu-position";
 import { type TerminalCommandRun, TerminalCommandRunStore } from "./command-run-store";
-import { decodeOsc633Value } from "./osc633";
 import {
   type OscNotificationCode,
   type TerminalNotification as ParsedTerminalNotification,
   parseOscNotification,
 } from "./osc-notification";
+import { decodeOsc633Value } from "./osc633";
 import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
 import { detectTerminalProblems, type TerminalProblem } from "./terminal-problems";
 import type {
@@ -89,15 +88,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
   private readonly commandRuns: TerminalCommandRunStore;
   private readonly oscHandlerDisposables: Disposable[] = [];
-  private hoveredCommandRunId: number | null = null;
-  private hoverProbeLine: number | null = null;
   private readonly commandRunProblems = new Map<number, ReadonlyArray<TerminalProblem>>();
-  private commandRunMenuTargets: ReadonlyArray<{
-    readonly sessionId: string;
-    readonly label: string;
-  }> = [];
-  private commandRunMenu: HTMLElement | null = null;
-  private commandRunMenuDismiss: ((event: Event) => void) | null = null;
   private attachLiveBuffer: Uint8Array[] | null = null;
   private readonly ptyWriteQueue: Array<{ readonly bytes: Uint8Array; readonly replay: boolean }> =
     [];
@@ -222,8 +213,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
     this.term.onScroll(() => {
-      // scroll すると行が動くので hover ハイライトは一旦消す（pointermove で再 hover）。
-      this.setHoveredCommandRun(null);
       for (const listener of Array.from(this.scrollListeners)) {
         listener();
       }
@@ -1111,212 +1100,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private clearCommandRunDecorations(): void {
-    this.closeCommandRunMenu();
-    this.setHoveredCommandRun(null);
     this.commandRunProblems.clear();
-  }
-
-  /** buffer の絶対行 line がどの command run の範囲内かを返す（無ければ null）。 */
-  private commandRunAtLine(line: number): TerminalCommandRun | null {
-    for (const run of this.commandRuns.getRecent()) {
-      const start = run.startMarker?.line ?? -1;
-      if (start < 0) continue;
-      const end = run.endMarker?.line ?? start;
-      if (line >= start && line <= end) return run;
-    }
-    return null;
-  }
-
-  /** hover 中の command run を更新し、その行範囲を region canvas に淡くハイライトする。 */
-  private setHoveredCommandRun(run: TerminalCommandRun | null): void {
-    const id = run?.id ?? null;
-    if (id === this.hoveredCommandRunId) return;
-    this.hoveredCommandRunId = id;
-    this.drawCommandRunHighlight(run);
-  }
-
-  /** command block 全体の行範囲を viewport row に変換し region canvas に矩形を描く。 */
-  private drawCommandRunHighlight(run: TerminalCommandRun | null): void {
-    if (!run || this.regionDrag) {
-      this.clearRegionCanvasNow();
-      return;
-    }
-    const start = run.startMarker?.line ?? -1;
-    if (start < 0) {
-      this.clearRegionCanvasNow();
-      return;
-    }
-    const end = run.endMarker?.line ?? start;
-    const viewportY = this.term.buffer.active.viewportY;
-    const rows = this.term.rows;
-    const startRow = Math.max(0, start - viewportY);
-    const endRow = Math.min(rows - 1, end - viewportY);
-    if (endRow < startRow) {
-      this.clearRegionCanvasNow();
-      return;
-    }
-    const rect = this.xtermContainer.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return;
-    const cellHeight = rect.height / rows;
-    const top = startRow * cellHeight;
-    const bottom = (endRow + 1) * cellHeight;
-    const polygon: ReadonlyArray<RegionPoint> = [
-      { x: 0, y: top },
-      { x: rect.width, y: top },
-      { x: rect.width, y: bottom },
-      { x: 0, y: bottom },
-    ];
-    this.drawRegionHighlight(polygon);
-  }
-
-  /**
-   * badge click で開く attach verb menu。run 由来の 2 verb（この出力 / 直近の失敗）を出す。
-   * 範囲選択の attach は既存 Option+Shift+drag が担うので menu には含めない。
-   * PTY へは書かず、選んだ verb は既存 reference 経路に乗せる。
-   */
-  /** クリック位置の buffer 行を返す（viewport 外なら null）。 */
-  private lineFromClientY(clientY: number): number | null {
-    const rect = this.xtermContainer.getBoundingClientRect();
-    if (rect.height === 0) return null;
-    const row = Math.floor((clientY - rect.top) / (rect.height / this.term.rows));
-    if (row < 0 || row >= this.term.rows) return null;
-    return this.term.buffer.active.viewportY + row;
-  }
-
-  /** 通常クリックが command block 上なら attach menu を開く（Cmd+click は別経路）。 */
-  private handleCommandRunClick(event: MouseEvent): void {
-    if (this.disposed) return;
-    if (event.metaKey || event.altKey || event.shiftKey || event.button !== 0) return;
-    const line = this.lineFromClientY(event.clientY);
-    if (line === null) return;
-    const run = this.commandRunAtLine(line);
-    if (!run) return;
-    event.preventDefault();
-    event.stopPropagation();
-    this.openCommandRunMenu(run, {
-      top: event.clientY,
-      bottom: event.clientY,
-      left: event.clientX,
-    });
-  }
-
-  /** pointermove で command block を hover 検出しハイライトする（drag 中は無視）。 */
-  private handleCommandRunHover(event: MouseEvent): void {
-    if (this.disposed || this.regionDrag) return;
-    const line = this.lineFromClientY(event.clientY);
-    // 同じ行の move では reflow（getBoundingClientRect）と run 走査を避ける。
-    if (line === this.hoverProbeLine) return;
-    this.hoverProbeLine = line;
-    this.setHoveredCommandRun(line === null ? null : this.commandRunAtLine(line));
-  }
-
-  setCommandRunMenuTargets(
-    targets: ReadonlyArray<{ readonly sessionId: string; readonly label: string }>,
-  ): void {
-    this.commandRunMenuTargets = targets;
-  }
-
-  /**
-   * run の出力テキストを別 session の入力欄へ user gesture として書き込む。
-   * 人間が menu で送信先を選んだ操作の代行であって、住人 AI による PTY write ではない
-   * （observation-only は維持）。改行は実行を誘発しないよう空白に畳む。
-   */
-  private sendCommandRunToSession(run: TerminalCommandRun, targetSessionId: string): boolean {
-    const context = this.buildCommandRunContext(run);
-    if (!context || context.text === "") return false;
-    const oneLine = context.text.replace(/\r?\n/g, " ").trim();
-    if (oneLine === "") return false;
-    // 送信先の入力欄が巨大な 1 行で埋まらないよう上限で切る。
-    const payload = oneLine.length > 2000 ? `${oneLine.slice(0, 2000)}…` : oneLine;
-    void sessionWrite({ sessionId: targetSessionId, data: payload }).catch(() => {});
-    return true;
-  }
-
-  private openCommandRunMenu(
-    run: TerminalCommandRun,
-    anchorRect: { readonly top: number; readonly bottom: number; readonly left: number },
-  ): void {
-    this.closeCommandRunMenu();
-    const menu = document.createElement("div");
-    menu.className = "command-run-menu";
-    menu.style.position = "fixed";
-    // 位置は append 後に実寸を測ってから決める（flip 判定に menu の高さが要る）。
-    menu.style.visibility = "hidden";
-
-    const items: ReadonlyArray<{
-      readonly attach: string;
-      readonly label: string;
-      readonly run: () => boolean;
-    }> = [
-      {
-        attach: "this-output",
-        label: "この出力を添付",
-        run: () => this.attachCommandRunOutput(run.id),
-      },
-      {
-        attach: "last-failed",
-        label: "直近の失敗を添付",
-        run: () => this.attachLastFailedRun(),
-      },
-      ...this.commandRunMenuTargets.map((target) => ({
-        attach: `send:${target.sessionId}`,
-        label: `${target.label} に送る`,
-        run: () => this.sendCommandRunToSession(run, target.sessionId),
-      })),
-    ];
-    for (const item of items) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "command-run-menu__item";
-      button.dataset.attach = item.attach;
-      button.textContent = item.label;
-      button.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        item.run();
-        this.closeCommandRunMenu();
-      });
-      menu.appendChild(button);
-    }
-    document.body.appendChild(menu);
-    this.commandRunMenu = menu;
-
-    // badge の画面位置に応じて menu を上下 flip + 横を画面内に clamp する。
-    // terminal が最下部にあっても menu が viewport 外に出ないようにする。
-    const menuRect = menu.getBoundingClientRect();
-    const pos = resolveCommandRunMenuPosition(
-      anchorRect,
-      { width: menuRect.width, height: menuRect.height },
-      { width: window.innerWidth, height: window.innerHeight },
-    );
-    menu.style.top = `${pos.top}px`;
-    menu.style.left = `${pos.left}px`;
-    menu.style.visibility = "visible";
-
-    const dismiss = (event: Event) => {
-      if (event instanceof KeyboardEvent) {
-        if (event.key === "Escape") this.closeCommandRunMenu();
-        return;
-      }
-      if (this.commandRunMenu && !this.commandRunMenu.contains(event.target as Node)) {
-        this.closeCommandRunMenu();
-      }
-    };
-    document.addEventListener("mousedown", dismiss, { capture: true });
-    document.addEventListener("keydown", dismiss, { capture: true });
-    this.commandRunMenuDismiss = dismiss;
-  }
-
-  private closeCommandRunMenu(): void {
-    if (this.commandRunMenuDismiss) {
-      document.removeEventListener("mousedown", this.commandRunMenuDismiss, { capture: true });
-      document.removeEventListener("keydown", this.commandRunMenuDismiss, { capture: true });
-      this.commandRunMenuDismiss = null;
-    }
-    if (this.commandRunMenu) {
-      this.commandRunMenu.remove();
-      this.commandRunMenu = null;
-    }
   }
 
   private captureCommandRunContext(run: TerminalCommandRun): boolean {
@@ -1360,7 +1144,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       sessionId: this.sessionId,
       text,
       capturedAt: Date.now(),
-      gesture: "command-run-click",
+      gesture: "command-run-reference",
       commandRunId: run.id,
       viewport: locus.viewport,
       range: locus.range,
@@ -1478,7 +1262,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.lastFitH = h;
       this.fitAddon.fit();
     }
-    this.setHoveredCommandRun(null);
   }
 
   private createRegionCanvas(): {
@@ -1590,17 +1373,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.xtermContainer.addEventListener(
       "click",
       (event) => {
-        // 通常クリックは command block → attach menu、Cmd+click は 1 行 region context。
-        this.handleCommandRunClick(event);
+        // Cmd+click は 1 行 region context。通常クリックには terminal 側の追加 UI を出さない。
         this.handleMetaClick(event);
       },
       { capture: true },
     );
-    // command block の hover ハイライト（drag 用 pointermove とは別、capture なし）。
-    this.xtermContainer.addEventListener("pointermove", (event) =>
-      this.handleCommandRunHover(event),
-    );
-    this.xtermContainer.addEventListener("pointerleave", () => this.setHoveredCommandRun(null));
 
     this.xtermContainer.addEventListener(
       "pointerdown",
