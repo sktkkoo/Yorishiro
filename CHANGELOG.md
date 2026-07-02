@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `docs/release-checklist.md` no longer describes builds as alpha: the smoke test targets signed release builds, and the `xattr -cr` step is scoped to locally built unsigned bundles.
+
 - Contribution policy clarified: pull requests remain closed and will be revisited after the pack API and security boundary stabilize (README / CONTRIBUTING, EN/JA).
 - Added a top-of-README security note (EN/JA): user packs are local trusted code and are not sandboxed; in-app community pack distribution is not implemented yet.
 - Added `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
