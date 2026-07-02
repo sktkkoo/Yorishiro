@@ -316,8 +316,13 @@ export class SessionStatusStore {
    */
   clearScreenAttention(sessionId: SessionId): void {
     const current = this.statuses.get(sessionId);
-    if (!current || current.attention?.source !== "screen") return;
-    this.clearAttention(sessionId);
+    if (current?.attention?.source === "screen") {
+      this.clearAttention(sessionId);
+    }
+    const lastCleared = this.lastAttentionCleared.get(sessionId);
+    if (lastCleared?.source === "screen") {
+      this.lastAttentionCleared.delete(sessionId);
+    }
   }
 
   /** loop lifecycle が進行/終了したとき、loop 由来の sticky attention だけを解除する。 */
