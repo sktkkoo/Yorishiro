@@ -731,12 +731,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return this.captureCommandRunContext(run);
   }
 
-  attachCommandRunOutput(runId: number): boolean {
-    const run = this.commandRuns.getRecent().find((candidate) => candidate.id === runId);
-    if (!run) return false;
-    return this.captureCommandRunContext(run);
-  }
-
   subscribeCommandRunStarted(listener: (run: TerminalCommandRun) => void): Disposable {
     this.commandRunStartedListeners.add(listener);
     return {

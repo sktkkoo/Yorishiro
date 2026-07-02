@@ -495,33 +495,8 @@ describe("TerminalRuntime", () => {
       sessionId: "shell-1",
     });
 
-    // command-run の構造は保持し、UI を介さない reference 化 API を直接検証する。
+    // command-run の構造は保持し、UI を介さない reference は Attach last failed run で作る。
     expect(runtime.getTerminalReferences()).toHaveLength(0);
-    expect(runtime.attachCommandRunOutput(1)).toBe(true);
-
-    expect(runtime.getLatestRegionContext()).toMatchObject({
-      sessionId: "shell-1",
-      gesture: "command-run-reference",
-      commandRunId: 1,
-      text: "$ npm test\nfailed output",
-      range: {
-        startRow: 1,
-        endRow: 2,
-      },
-    });
-    expect(runtime.getTerminalReferences()).toMatchObject([
-      {
-        id: "shell-1:Term1",
-        context: {
-          commandRunId: 1,
-          gesture: "command-run-reference",
-        },
-      },
-    ]);
-    expect(mockState.sessionWrite).toHaveBeenCalledWith({
-      sessionId: "shell-1",
-      data: "[#Term1] ",
-    });
   });
 
   it("attachLastFailedRun が直近 failed run の reference を作る", async () => {
@@ -552,30 +527,6 @@ describe("TerminalRuntime", () => {
     mockState.oscHandlers.get(133)?.("D;0");
 
     expect(runtime.attachLastFailedRun()).toBe(false);
-    expect(runtime.getTerminalReferences()).toHaveLength(0);
-  });
-
-  it("attachCommandRunOutput が指定 run の reference を作る", async () => {
-    const runtime = getTerminalRuntime("shell-1");
-    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
-    await flushMicrotasks();
-    mockState.oscHandlers.get(633)?.(`E;${encodeOsc633Value("npm test")}`);
-    mockState.oscHandlers.get(133)?.("C");
-    mockState.oscHandlers.get(133)?.("D;0");
-
-    const ok = runtime.attachCommandRunOutput(1);
-
-    expect(ok).toBe(true);
-    expect(runtime.getLatestRegionContext()).toMatchObject({ commandRunId: 1 });
-    expect(runtime.getTerminalReferences()).toHaveLength(1);
-  });
-
-  it("attachCommandRunOutput は存在しない runId で false", async () => {
-    const runtime = getTerminalRuntime("shell-1");
-    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
-    await flushMicrotasks();
-
-    expect(runtime.attachCommandRunOutput(999)).toBe(false);
     expect(runtime.getTerminalReferences()).toHaveLength(0);
   });
 

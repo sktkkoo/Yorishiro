@@ -287,12 +287,6 @@ export interface TerminalRuntime {
    */
   attachLastFailedRun(): boolean;
 
-  /**
-   * 指定 run の出力範囲を terminal reference 化する（Attach this output）。
-   * run が見つからなければ false。
-   */
-  attachCommandRunOutput(runId: number): boolean;
-
   /** command run の現在 viewport 上の locus。output text は含まない。 */
   getCommandRunLocus(runId: number): TerminalCommandRunLocus | null;
 
