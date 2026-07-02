@@ -1222,7 +1222,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     if (data.includes("\r") || data.includes("\n")) {
       const line = this.recentInput.trim();
       if (line === "/clear" || line === "/compact") {
-        this.term.clear();
+        this.term.write("\x1b[3J");
       }
       this.recentInput = "";
     } else if (data === "\x7f") {
@@ -1603,7 +1603,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private clearRegionCanvasNow(): void {
     if (!this.regionCtx) return;
-    this.clearImePendingCommitTimer();
     if (this.clearRegionCanvasTimeout !== null) {
       window.clearTimeout(this.clearRegionCanvasTimeout);
       this.clearRegionCanvasTimeout = null;
@@ -1613,7 +1612,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private scheduleRegionCanvasClear(): void {
-    this.clearImePendingCommitTimer();
     if (this.clearRegionCanvasTimeout !== null) {
       window.clearTimeout(this.clearRegionCanvasTimeout);
     }

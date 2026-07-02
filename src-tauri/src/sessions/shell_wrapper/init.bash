@@ -73,6 +73,7 @@ __charminal_prompt_command() {
     __charminal_precmd "$exit_code"
     local charminal_status=$?
     if [ -n "${__CHARMINAL_ORIGINAL_PROMPT_COMMAND:-}" ]; then
+        ( exit "$exit_code" )
         eval "$__CHARMINAL_ORIGINAL_PROMPT_COMMAND"
     fi
     __charminal_preexec_ready=1

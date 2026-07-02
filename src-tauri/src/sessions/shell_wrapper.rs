@@ -528,11 +528,19 @@ mod tests {
     }
 
     fn run_bash_with_charminal_init(label: &str, input: &str) -> Option<String> {
+        run_bash_with_charminal_init_and_rc(label, input, "")
+    }
+
+    fn run_bash_with_charminal_init_and_rc(
+        label: &str,
+        input: &str,
+        rc_prefix: &str,
+    ) -> Option<String> {
         let root = fresh_temp_root(label);
         let init = root.join("init.bash");
         let rc = root.join("rc.bash");
         fs::write(&init, INIT_BASH).unwrap();
-        fs::write(&rc, format!("source '{}'\n", init.display())).unwrap();
+        fs::write(&rc, format!("{rc_prefix}source '{}'\n", init.display())).unwrap();
 
         let mut child = match Command::new("bash")
             .arg("--noprofile")
@@ -806,6 +814,22 @@ mod tests {
         assert_eq!(combined.matches("]133;C").count(), 2, "{combined:?}");
         assert!(combined.contains("]633;E;printf\\x20one\\x20\\x7C\\x20cat"));
         assert!(!combined.contains("]633;E;cat\u{7}"));
+    }
+
+    #[test]
+    fn bash_prompt_command_preserves_previous_status_for_user_prompt() {
+        let Some(combined) = run_bash_with_charminal_init_and_rc(
+            "bash-prompt-status",
+            "false\ntrue\nexit\n",
+            "PROMPT_COMMAND='printf \"PROMPT_STATUS=%s\\n\" \"$?\"'\n",
+        ) else {
+            return;
+        };
+
+        assert!(
+            combined.contains("PROMPT_STATUS=1"),
+            "user PROMPT_COMMAND did not observe failed command status: {combined:?}"
+        );
     }
 
     #[test]

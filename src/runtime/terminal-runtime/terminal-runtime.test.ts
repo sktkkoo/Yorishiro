@@ -49,6 +49,7 @@ const mockState = vi.hoisted(() => {
       disposed: boolean;
       textarea: HTMLTextAreaElement;
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
+      dataHandler?: (data: string) => void;
     }>;
     decorations: Array<{ element: HTMLElement; dispose: ReturnType<typeof vi.fn> }>;
     oscHandlers: Map<number, (data: string) => boolean | Promise<boolean>>;
@@ -128,6 +129,7 @@ vi.mock("@xterm/xterm", () => ({
     disposed = false;
     textarea = document.createElement("textarea");
     customKeyEventHandler?: (event: KeyboardEvent) => boolean;
+    dataHandler?: (data: string) => void;
     buffer: MockBuffer;
     bufferLines = new Map<number, string>([
       [1, "$ npm test"],
@@ -187,7 +189,9 @@ vi.mock("@xterm/xterm", () => ({
     dispose(): void {
       this.disposed = true;
     }
-    onData(): void {}
+    onData(handler: (data: string) => void): void {
+      this.dataHandler = handler;
+    }
     onResize(): void {}
     onScroll(): void {}
     scrollToLine(line: number): void {
@@ -300,6 +304,89 @@ describe("TerminalRuntime", () => {
   afterEach(() => {
     disposeTerminalRuntime("shell-1");
     _clearForTest();
+  });
+
+  it("/clear と /compact は visible screen を clear せず scrollback だけを消す", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const input = terminal.dataHandler;
+    expect(input).toBeDefined();
+
+    for (const command of ["/clear", "/compact"]) {
+      for (const ch of command) input?.(ch);
+      input?.("\r");
+    }
+
+    expect(terminal.clearCalls).toBe(0);
+    expect(terminal.writes.filter((write) => write === "\x1b[3J")).toHaveLength(2);
+  });
+
+  it("region highlight cleanup does not cancel a pending IME commit", async () => {
+    vi.useFakeTimers();
+    const canvasContext = {
+      clearRect: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      closePath: vi.fn(),
+      fill: vi.fn(),
+      stroke: vi.fn(),
+      setLineDash: vi.fn(),
+      fillStyle: "",
+      lineWidth: 0,
+      strokeStyle: "",
+    } as unknown as CanvasRenderingContext2D;
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockImplementation(((contextId: string) =>
+        contextId === "2d"
+          ? canvasContext
+          : null) as unknown as typeof HTMLCanvasElement.prototype.getContext);
+
+    try {
+      getTerminalRuntime("shell-1");
+      const terminal = mockState.terminals[0];
+      const container = document.querySelector<HTMLElement>(".xterm-singleton-container");
+      expect(container).not.toBeNull();
+      if (!container) return;
+
+      container.getBoundingClientRect = () =>
+        ({
+          x: 0,
+          y: 0,
+          top: 0,
+          left: 0,
+          right: 800,
+          bottom: 480,
+          width: 800,
+          height: 480,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      terminal.textarea.dispatchEvent(new CompositionEvent("compositionend", { data: "あ" }));
+      container.dispatchEvent(
+        new MouseEvent("click", {
+          bubbles: true,
+          cancelable: true,
+          metaKey: true,
+          button: 0,
+          clientX: 10,
+          clientY: 25,
+        }),
+      );
+
+      expect(mockState.sessionWrite).not.toHaveBeenCalledWith({ sessionId: "shell-1", data: "あ" });
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(mockState.sessionWrite).toHaveBeenCalledWith({ sessionId: "shell-1", data: "あ" });
+    } finally {
+      getContextSpy.mockRestore();
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
   });
 
   it("aborts attach-first spawn while attach is still pending", async () => {
