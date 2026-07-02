@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Terminology unified: the layer contrasted with the reflex layer is now consistently called the thinking layer (思考層) across philosophy (EN/JA), decision docs, code-navigation READMEs, and code comments; it was previously mixed with "conscious layer" (意識層). Identifiers (`two-layer`, `TwoLayer`, etc.) are unchanged.
+
 - Contribution policy clarified: pull requests remain closed and will be revisited after the pack API and security boundary stabilize (README / CONTRIBUTING, EN/JA).
 - Added a top-of-README security note (EN/JA): user packs are local trusted code and are not sandboxed; in-app community pack distribution is not implemented yet.
 - Added `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).

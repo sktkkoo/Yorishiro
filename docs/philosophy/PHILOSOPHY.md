@@ -36,7 +36,7 @@ When Claude Code throws an error, for example: the capability harness handles ho
 
 The relationship between the two: **independent in operation, shared in state.** A capability harness alone yields an AI that is smart but does not feel present. A presence harness alone yields something that seems to be there but cannot do anything. Only when both come together do you get an AI that is both capable and present.
 
-The sections that follow make this Presence Harness concrete as an interface form (ICI) and as an implementation mechanism (the two layers of consciousness and reflex).
+The sections that follow make this Presence Harness concrete as an interface form (ICI) and as an implementation mechanism (the two layers of thinking and reflex).
 
 ---
 
@@ -74,17 +74,17 @@ The inhabitant need not be humanoid. A shadow, particles, a voice, a gaze — an
 
 ---
 
-## Two Layers — Consciousness and Reflex
+## Two Layers — Thinking and Reflex
 
 Charminal's character sits on top of Claude Code/Codex. It launches the user's agent, gives it personality via `--system-prompt`, and observes terminal output to drive VRM reactions.
 
 Charminal treats this as a **two-layer structure of a single being**.
 
-Claude Code is the **conscious layer**. Linguistic, logical, handling what can be deliberately articulated. The reflex layer, by contrast, observes hooks and PTY output, mechanically detecting reactions. A grimacing face on error, the Aura feature that covers the attended region in soft white light — these are typical reflex-layer behaviors. LLMs structurally lack this reflex layer. Every token generation is "conscious speech" — until an error is verbalized, nothing can be expressed. A chat UI spinner is not a reflex; it is a notice that reflexes are absent.
+Claude Code is the **thinking layer**. Linguistic, logical, handling what can be deliberately articulated. The reflex layer, by contrast, observes hooks and PTY output, mechanically detecting reactions. A grimacing face on error, the Aura feature that covers the attended region in soft white light — these are typical reflex-layer behaviors. LLMs structurally lack this reflex layer. Every token generation is "spoken thought" — until an error is verbalized, nothing can be expressed. A chat UI spinner is not a reflex; it is a notice that reflexes are absent.
 
-Charminal grafts this missing reflex layer from the outside through observation. It creates the sequence where the body reacts before recognition. That is why Charminal treats the character and Claude Code not as separate beings, but as one consciousness and one reflex.
+Charminal grafts this missing reflex layer from the outside through observation. It creates the sequence where the body reacts before recognition. That is why Charminal treats the character and Claude Code not as separate beings, but as a single being's thinking and reflexes.
 
-The conscious layer (capability) and reflex layer (presence) respond independently to the same event. Presence expression is not subcontracted from capability.
+The thinking layer (capability) and reflex layer (presence) respond independently to the same event. Presence expression is not subcontracted from capability.
 
 ### Three Moments of Presence
 
@@ -92,7 +92,7 @@ Three typical moments when an inhabitant feels present:
 
 **Filling the void.** While Claude Code is thinking and output has stopped, the VRM moves subtly. Instead of a spinner, someone is there.
 
-**Reaction preceding consciousness.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before consciousness catches up, you feel a subject there. The architecture where the reflex layer moves before the conscious layer is a structural guarantee that it is "not acting."
+**Reaction preceding thought.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before thought catches up, you feel a subject there. The architecture where the reflex layer moves before the thinking layer is a structural guarantee that it is "not acting."
 
 **Emergence beyond expectation.** An inhabitant that only follows reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. Such unexpected flickers make the inhabitant someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
