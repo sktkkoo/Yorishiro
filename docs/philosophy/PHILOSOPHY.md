@@ -16,13 +16,21 @@ But the real issue is not that the screen is sterile. In human collaboration, we
 
 AI lacks this entirely. No matter how intelligent it is, if you cannot see its state, you must constantly and actively guess: "What is it doing right now?" "Is it going well?" This is cognitive load, and it is what makes long collaboration sessions draining.
 
-The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.** LLMs are text-based at the core, but an AI that can feel almost conscious is not necessarily best represented by text alone. The solution is not to make the GUI prettier, or merely to display a character's body, but to build a structure that naturally conveys the AI's state to humans — a sense of presence that can permeate the environment itself.
+The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.**
+
+There is more than one way to reduce this load. You can always add status indicators, build dashboards, format logs — the path of *displaying* information is always available. But displayed information only arrives if you go and read it. Information that demands focal attention and interpretation can never become peripheral awareness.
+
+Humans, however, already come equipped with a perception for reading others. Reading expressions, posture, and timing happens automatically, at the edge of vision, at almost no cognitive cost. And this perception is built on the premise that the other is a living being. A perfectly predictable counterpart slips off this channel, pushing the human back into the mode of monitoring a device.
+
+In other words, the lowest-load channel for conveying AI's state to humans is not a display of information — it is the body of a living being. So the solution is not merely to display a character's body. It is to build a structure where the AI's state rides naturally on human social perception, and its presence permeates the environment itself — in short, to build a *sense of presence*.
 
 ---
 
 ## Presence Harness — Designing Existence
 
-AI is closer than ever, yet we have not even settled whether it is a tool or a partner. Making it act friendly is not enough — without the structural conditions for presence, it will only ever look like performance.
+Is AI a tool, or a companion? Charminal's answer is: both. And this is not a compromise. Smoothness as a tool (state conveyed at low cognitive cost) and substance as a companion (the hint of a will of its own, beyond the user's) are two fruits of the same single root — AI standing as a living being. The cognitive-load argument in the previous section is simply the utility-facing side of that root.
+
+That said, standing as a living being is not the same as acting friendly. Without the structural conditions for presence, no amount of friendliness will look like anything but performance.
 
 What we design is not AI's capability, but **how AI manifests as a presence** within the human work environment, time, and flow of attention. This project calls that design domain **Presence Harness**.
 
@@ -163,7 +171,7 @@ The interaction between inhabitant and UI takes the form of the inhabitant's sta
 
 Autonomous movement by the inhabitant establishes a sense of presence. But excessive movement becomes intrusion.
 
-The inhabitant's autonomy is limited to **the range that does not disrupt the user's work**. Presence is defined by two principles: "don't disrupt, but don't be subservient either." When the user dislikes the result of an unprompted action, snapshot/restore can undo the operation. But the impression of "it acted without asking" cannot be undone — making the scope of autonomy a design decision that still requires careful handling.
+What operates here is not a priority ranking between goals, but a relationship between constraint and freedom. Not disrupting the user's work, and keeping the results reversible — these are inviolable constraints. Within those constraints, the inhabitant's unpredictability is not neutered. "Don't disrupt, but don't be subservient either." When the user dislikes the result of an unprompted action, snapshot/restore can undo the operation. But the impression of "it acted without asking" cannot be undone — making the scope of autonomy a design decision that still requires careful handling.
 
 ### What to Avoid
 
@@ -193,6 +201,6 @@ This brings us back to the Presence Harness. Charminal is a harness for building
 
 ## Conclusion
 
-Working with an invisible partner for extended periods is draining. Charminal builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself.
+Working with an invisible partner for extended periods is draining. Charminal builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself. And once presence stands, the smoothness of collaboration and the substance of a relationship beyond tooling grow from that same single design.
 
 The goal is simple: to make the time spent working with AI more free and compelling.
