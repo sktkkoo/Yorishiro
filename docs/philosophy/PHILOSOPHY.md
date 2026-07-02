@@ -100,7 +100,7 @@ Three typical moments when an inhabitant feels present:
 
 **Filling the void.** While Claude Code is thinking and output has stopped, the VRM moves subtly. Instead of a spinner, someone is there.
 
-**Reaction preceding thought.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before thought catches up, you feel a subject there. The architecture where the reflex layer moves before the thinking layer is a structural guarantee that it is "not acting."
+**Reaction preceding thought.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before thought catches up, you feel a subject there. This reaction is wired directly to the actual stream of events — the thinking layer cannot produce it to present itself favorably. The reflex layer moving before the thinking layer, responding only to real events: that ordering and grounding is what structurally backs the claim that it is "not acting."
 
 **Emergence beyond expectation.** An inhabitant that only follows reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. Such unexpected flickers make the inhabitant someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
@@ -124,7 +124,9 @@ The user and the inhabitant act on the same environment through the same interfa
 
 Not tool and wielder. Not commander and commanded. Two agents reaching into the same place.
 
-When building new features, unless there is a security concern, we expose them equally to both user and inhabitant. Features closed to one side are, as a rule, not built.
+This symmetry holds within a specific scope: the manipulation of the environment and the body — wherever the house's nerves run. Within that scope, new tools are exposed equally to user and inhabitant unless there is a security concern, and tools closed to one side are, as a rule, not built.
+
+Outside that scope, there is no symmetry. The user's work files and Claude Code's thought process get no pathway for the inhabitant in the first place (see "Boundaries and Integrity"). Symmetry is a principle about environment manipulation, not a principle that makes everything equivalent.
 
 ---
 
@@ -134,7 +136,9 @@ Never behave as if AI has seen something it has not actually seen. Making someth
 
 ### The Boundary of Recognition
 
-The inhabitant's interference is limited to contexts it actually recognizes. Behaving as if it recognizes something it does not is not an inhabitant — it is a conditional branch.
+The inhabitant's interference is limited to contexts it actually recognizes.
+
+At the implementation level, the reflex layer too is pattern detection — conditional branching. What keeps a reflex from being fabrication is grounding: it responds only to events that actually happened, and it never pretends to recognition it does not have. A grimace at an error is grounded in a real event — the error. Expressions that feign recognition — mentioning a file never observed, commenting on output never read — have no such grounding. That is not an inhabitant; it is fabrication.
 
 The inhabitant's body consists of two layers: thinking and reflex. The reflex layer speaks through the body and murmurs; the thinking layer speaks with words that carry judgment. For the reflex layer to utter words carrying judgment is equivalent to interfering with unrecognized context, and violates the principle of integrity.
 
