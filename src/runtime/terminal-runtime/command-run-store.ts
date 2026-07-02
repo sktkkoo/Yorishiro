@@ -91,10 +91,14 @@ export class TerminalCommandRunStore {
   }
 
   finalizeActive(input: FinalizeCommandRunInput): TerminalCommandRun | null {
-    if (this.activeRunId === null) return null;
+    if (this.activeRunId === null) {
+      input.endMarker?.dispose();
+      return null;
+    }
     const index = this.runs.findIndex((run) => run.id === this.activeRunId);
     if (index === -1) {
       this.activeRunId = null;
+      input.endMarker?.dispose();
       return null;
     }
 

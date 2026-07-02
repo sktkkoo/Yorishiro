@@ -71,6 +71,38 @@ describe("TerminalCommandRunStore", () => {
     expect(finalized?.completedBy).toBe("pty-exit");
   });
 
+  it("disposes unused end marker when finalize has no active run", () => {
+    const store = new TerminalCommandRunStore("shell-1");
+    const endMarker = marker(2);
+
+    const finalized = store.finalizeActive({
+      completedBy: "osc133",
+      exitCode: 0,
+      endMarker,
+      endedAt: 1100,
+    });
+
+    expect(finalized).toBeNull();
+    expect(endMarker.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("disposes unused end marker when active run is missing from storage", () => {
+    const store = new TerminalCommandRunStore("shell-1");
+    store.start({ startMarker: marker(1), startedAt: 1000 });
+    (store as unknown as { runs: []; activeRunId: number }).runs = [];
+    const endMarker = marker(2);
+
+    const finalized = store.finalizeActive({
+      completedBy: "osc133",
+      exitCode: 0,
+      endMarker,
+      endedAt: 1100,
+    });
+
+    expect(finalized).toBeNull();
+    expect(endMarker.dispose).toHaveBeenCalledOnce();
+  });
+
   it("ignores duplicate start while a run is active", () => {
     const store = new TerminalCommandRunStore("shell-1");
     const firstMarker = marker(1);
