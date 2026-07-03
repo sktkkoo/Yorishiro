@@ -74,6 +74,7 @@ interface ClearedAttention {
   readonly body: string;
   readonly source: SessionAttention["source"];
   readonly clearedAt: number;
+  readonly screenDisappearanceObserved: boolean;
 }
 
 /**
@@ -263,7 +264,15 @@ export class SessionStatusStore {
         lastCleared.source === "screen" &&
         lastCleared.title === (title.length > 0 ? title : null) &&
         lastCleared.body === body;
-      if (inSuppressionWindow && (source !== "screen" || sameScreenPrompt)) return;
+      const shouldAllowObservedScreenPrompt =
+        source === "screen" && lastCleared.screenDisappearanceObserved;
+      if (
+        inSuppressionWindow &&
+        !shouldAllowObservedScreenPrompt &&
+        (source !== "screen" || sameScreenPrompt)
+      ) {
+        return;
+      }
     }
 
     if (
@@ -321,7 +330,10 @@ export class SessionStatusStore {
     }
     const lastCleared = this.lastAttentionCleared.get(sessionId);
     if (lastCleared?.source === "screen") {
-      this.lastAttentionCleared.delete(sessionId);
+      this.lastAttentionCleared.set(sessionId, {
+        ...lastCleared,
+        screenDisappearanceObserved: true,
+      });
     }
   }
 
@@ -365,6 +377,7 @@ export class SessionStatusStore {
       body: previousAttention.body,
       source: previousAttention.source,
       clearedAt,
+      screenDisappearanceObserved: false,
     });
     this.commit({
       ...current,

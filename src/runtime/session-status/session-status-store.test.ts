@@ -427,6 +427,24 @@ describe("SessionStatusStore", () => {
     });
   });
 
+  it("suppresses late hook attention after prompt disappearance was observed", () => {
+    const { store, tick } = createStore();
+
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+    tick(100);
+    store.clearAttention("s1");
+    tick(100);
+    store.clearScreenAttention("s1");
+    tick(100);
+    store.markAttentionRequest("s1", {
+      title: "Claude Code",
+      body: "Allow command?",
+      source: "hook",
+    });
+
+    expect(store.get("s1")).toMatchObject({ activity: "idle", attention: null });
+  });
+
   it("allows a different screen attention after user cleared a previous prompt", () => {
     const { store, tick } = createStore();
 
