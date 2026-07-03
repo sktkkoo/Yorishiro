@@ -455,6 +455,31 @@ describe("TerminalRuntime", () => {
     expect(perception.onPtyOutput).toHaveBeenCalledWith("B");
   });
 
+  it("stale attach は新しい attach の live buffer を破壊しない", async () => {
+    const firstAttach = deferred<{ attached: boolean; replay: number[] }>();
+    const secondAttach = deferred<{ attached: boolean; replay: number[] }>();
+    mockState.sessionAttach
+      .mockReturnValueOnce(firstAttach.promise)
+      .mockReturnValueOnce(secondAttach.promise);
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const channel = mockState.channels[0];
+
+    runtime.updatePtyParams({ spec: shellSpec, cwd: "/old" }, { attachFirst: true });
+    await flushMicrotasks();
+    runtime.updatePtyParams({ spec: shellSpec, cwd: "/new" }, { attachFirst: true });
+    await flushMicrotasks();
+
+    channel.onmessage?.(new Uint8Array([66]).buffer);
+    firstAttach.resolve({ attached: true, replay: [65] });
+    await flushMicrotasks();
+    secondAttach.resolve({ attached: true, replay: [67] });
+    await flushMicrotasks();
+
+    expect(terminal.writes).toEqual([new Uint8Array([67]), new Uint8Array([66])]);
+    expect(mockState.sessionSpawn).not.toHaveBeenCalled();
+  });
+
   it("OSC 633/133 から command run を作成して finalize する", async () => {
     const runtime = getTerminalRuntime("shell-1");
     const perception = { onCommandBlock: vi.fn(), onPtyOutput: vi.fn(), onUserInput: vi.fn() };
@@ -514,6 +539,32 @@ describe("TerminalRuntime", () => {
       sessionId: "shell-1",
       gesture: "command-run-reference",
       commandRunId: 1,
+    });
+    expect(runtime.getTerminalReferences()).toHaveLength(1);
+  });
+
+  it("attachLastFailedRun は failed run が viewport 外でも text reference を作る", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0] as unknown as {
+      buffer: { active: { viewportY: number } };
+    };
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
+    await flushMicrotasks();
+    mockState.oscHandlers.get(633)?.(`E;${encodeOsc633Value("npm test")}`);
+    mockState.oscHandlers.get(133)?.("C");
+    mockState.oscHandlers.get(133)?.("D;1");
+    terminal.buffer.active.viewportY = 10;
+
+    const ok = runtime.attachLastFailedRun();
+
+    expect(ok).toBe(true);
+    expect(runtime.getCommandRunLocus(1)).toBeNull();
+    expect(runtime.getLatestRegionContext()).toMatchObject({
+      sessionId: "shell-1",
+      gesture: "command-run-reference",
+      commandRunId: 1,
+      text: "$ npm test\nfailed output",
+      polygon: [],
     });
     expect(runtime.getTerminalReferences()).toHaveLength(1);
   });

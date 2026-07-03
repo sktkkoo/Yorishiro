@@ -374,6 +374,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {
     if (this.disposed) return;
     const generation = ++this.startGeneration;
+    // 前 generation の attach replay 用 buffer を新しい起動へ持ち越さない。
+    this.attachLiveBuffer = null;
     this.clearPtyWriteQueue();
     this.clearCommandRunDecorations();
     this.commandRuns.clear();
@@ -386,20 +388,22 @@ class TerminalRuntimeImpl implements TerminalRuntime {
           this.syncAttachedRect();
         }
         if (opts.attachFirst) {
-          this.attachLiveBuffer = [];
+          const liveBuffer: Uint8Array[] = [];
+          this.attachLiveBuffer = liveBuffer;
           try {
             const result = await sessionAttach({
               sessionId: this.sessionId,
               cwd: params.cwd,
               onOutput: this.channel,
             });
-            const bufferedLive = this.attachLiveBuffer;
-            this.attachLiveBuffer = null;
             if (this.disposed && result.attached) {
+              if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
               void sessionDestroy({ sessionId: this.sessionId });
               return;
             }
             if (this.isStaleStart(generation)) return;
+            const bufferedLive = this.attachLiveBuffer === liveBuffer ? liveBuffer : [];
+            this.attachLiveBuffer = null;
             if (result.attached) {
               this.handlePtyBytes(new Uint8Array(result.replay), { replay: true });
               for (const liveBytes of bufferedLive) {
@@ -409,9 +413,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
               return;
             }
           } catch {
-            this.attachLiveBuffer = null;
+            if (this.isStaleStart(generation)) return;
+            if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
           }
-          this.attachLiveBuffer = null;
+          if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
         }
         if (this.attachedContainer) {
           this.syncAttachedRect();
@@ -1163,13 +1168,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private buildCommandRunContext(run: TerminalCommandRun): TerminalRegionContext | null {
-    const locus = this.buildCommandRunLocus(run);
-    if (!locus) return null;
-
     const startLine = run.startMarker?.line ?? -1;
     const endLine = run.endMarker?.line ?? -1;
     const buffer = this.term.buffer.active;
     if (!buffer) return null;
+    if (startLine < 0 || endLine < 0) return null;
 
     const firstLine = Math.min(startLine, endLine);
     const lastLine = Math.max(startLine, endLine);
@@ -1183,6 +1186,28 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const text = lines.join("\n").trim();
     if (text === "") return null;
 
+    const locus = this.buildCommandRunLocus(run);
+    const fallbackRect = this.xtermContainer.getBoundingClientRect();
+    // run 本文の reference は scrollback から作れる。viewport 外では視覚 highlight だけ省く。
+    const viewport = locus?.viewport ?? {
+      viewportY: buffer.viewportY,
+      rows: this.term.rows,
+      cols: this.term.cols,
+    };
+    const range = locus?.range ?? {
+      startRow: firstLine,
+      endRow: lastLine,
+      startCol: 0,
+      endCol: Math.max(0, this.term.cols - 1),
+    };
+    const rect = locus?.rect ?? {
+      x: fallbackRect.left,
+      y: fallbackRect.top,
+      width: fallbackRect.width,
+      height: 0,
+    };
+    const polygon = locus?.polygon.map((point) => ({ ...point })) ?? [];
+
     return {
       kind: "terminal-region-context",
       sessionId: this.sessionId,
@@ -1190,10 +1215,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       capturedAt: Date.now(),
       gesture: "command-run-reference",
       commandRunId: run.id,
-      viewport: locus.viewport,
-      range: locus.range,
-      rect: locus.rect,
-      polygon: locus.polygon.map((point) => ({ ...point })),
+      viewport,
+      range,
+      rect,
+      polygon,
     };
   }
 
