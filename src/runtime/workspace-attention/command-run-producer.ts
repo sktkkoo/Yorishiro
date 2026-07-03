@@ -150,6 +150,8 @@ function toWorkspaceAttentionLocus(
   run: TerminalCommandRun,
   locus: TerminalCommandRunLocus | null,
 ): WorkspaceAttentionLocus {
+  // locus は当面、MCP/lighting など metadata consumer 用に保持する。失敗 turn の枠が
+  // 可視化される Tier 2 までは、aura などの視覚 consumer には接続しない。
   if (!locus) {
     return { kind: "session", sessionId: run.sessionId };
   }

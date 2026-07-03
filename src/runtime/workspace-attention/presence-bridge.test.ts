@@ -67,7 +67,7 @@ function createTimerFake(): {
 }
 
 describe("workspace attention presence bridge", () => {
-  it("primary terminal-region を aura source に投影し、severity で表情を pulse する", () => {
+  it("failed primary item でも aura target は張らず、severity で表情だけ pulse する", () => {
     const store = createWorkspaceAttentionStore();
     const attention = createAttentionFake();
     const body = createBodyFake();
@@ -79,7 +79,6 @@ describe("workspace attention presence bridge", () => {
       getBody: () => body.body,
       setTimeout: timer.setTimeout,
       clearTimeout: timer.clearTimeout,
-      now: () => 123,
     });
 
     store.upsert({
@@ -97,15 +96,7 @@ describe("workspace attention presence bridge", () => {
       producerKey: "test:failed",
     });
 
-    expect(attention.setSourceTarget).toHaveBeenLastCalledWith("workspace-attention:primary", {
-      kind: "terminal-region",
-      source: "workspace-attention:primary",
-      rect: { x: 20, y: 30, width: 500, height: 80 },
-      confidence: 0.95,
-      priority: 9,
-      timestamp: 123,
-      reason: "workspace-attention:run-failed",
-    });
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
     expect(body.body.acquireExpressionSlot).toHaveBeenCalledWith("persona", "mood", "sad", 0.26);
     expect(timer.delays).toEqual([2400]);
 
@@ -149,7 +140,7 @@ describe("workspace attention presence bridge", () => {
     expect(body.body.acquireExpressionSlot).toHaveBeenCalledTimes(1);
   });
 
-  it("primary が無い時は aura source と表情を clear する", () => {
+  it("primary が無い時は表情だけ clear し、aura target は触らない", () => {
     const store = createWorkspaceAttentionStore();
     const attention = createAttentionFake();
     const body = createBodyFake();
@@ -178,11 +169,11 @@ describe("workspace attention presence bridge", () => {
 
     store.resolve(item.id);
 
-    expect(attention.setSourceTarget).toHaveBeenLastCalledWith("workspace-attention:primary", null);
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
     expect(body.handle.release).toHaveBeenCalledWith(600);
   });
 
-  it("invalid rect は aura に出さず、severity の表情だけ pulse する", () => {
+  it("invalid rect でも aura target は張らず、severity の表情だけ pulse する", () => {
     const store = createWorkspaceAttentionStore();
     const attention = createAttentionFake();
     const body = createBodyFake();
@@ -209,7 +200,7 @@ describe("workspace attention presence bridge", () => {
       producerKey: "test:slow",
     });
 
-    expect(attention.setSourceTarget).toHaveBeenLastCalledWith("workspace-attention:primary", null);
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
     expect(body.body.acquireExpressionSlot).toHaveBeenCalledWith("persona", "mood", "sad", 0.16);
   });
 });
