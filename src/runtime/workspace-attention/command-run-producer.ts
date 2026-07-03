@@ -42,6 +42,7 @@ export function startCommandRunAttentionProducer(
   const clearTimeoutFn =
     options.clearTimeout ?? (globalThis.clearTimeout.bind(globalThis) as (id: unknown) => void);
   const runningEntries = new Map<string, { itemId: string | null; timer: unknown | null }>();
+  const completedItemIdsBySession = new Map<string, Set<string>>();
 
   const clearRunningEntry = (producerKey: string): void => {
     const entry = runningEntries.get(producerKey);
@@ -55,7 +56,23 @@ export function startCommandRunAttentionProducer(
     runningEntries.delete(producerKey);
   };
 
+  const trackCompletedItem = (sessionId: string, itemId: string): void => {
+    const ids = completedItemIdsBySession.get(sessionId) ?? new Set<string>();
+    ids.add(itemId);
+    completedItemIdsBySession.set(sessionId, ids);
+  };
+
+  const resolveCompletedItemsForSession = (sessionId: string): void => {
+    const ids = completedItemIdsBySession.get(sessionId);
+    if (!ids) return;
+    for (const itemId of ids) {
+      options.store.resolve(itemId);
+    }
+    completedItemIdsBySession.delete(sessionId);
+  };
+
   const startedSub = options.terminal.subscribeCommandRunStarted((run) => {
+    resolveCompletedItemsForSession(run.sessionId);
     if (run.status !== "running" || run.startedAt === null) return;
     const producerKey = runningLongProducerKey(run);
     clearRunningEntry(producerKey);
@@ -102,7 +119,7 @@ export function startCommandRunAttentionProducer(
     const classification = classifyCommandRunAttention(run, slowThresholdMs);
     if (!classification) return;
     const locus = toWorkspaceAttentionLocus(run, options.terminal.getCommandRunLocus(run.id));
-    options.store.upsert({
+    const item = options.store.upsert({
       sessionId: run.sessionId,
       locus,
       type: classification.type,
@@ -116,6 +133,7 @@ export function startCommandRunAttentionProducer(
         completedBy: run.completedBy,
       },
     });
+    trackCompletedItem(run.sessionId, item.id);
   });
 
   return {

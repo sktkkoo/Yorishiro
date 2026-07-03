@@ -261,6 +261,96 @@ describe("command-run attention producer", () => {
     expect(store.getActiveItems().map((item) => item.type)).toEqual(["run-failed"]);
   });
 
+  it("new run start で同 session の failed item を resolve する", () => {
+    const store = createWorkspaceAttentionStore();
+    const fake = createTerminalFake();
+    const timer = createTimerFake();
+    startCommandRunAttentionProducer({
+      store,
+      terminal: fake.terminal,
+      setTimeout: timer.setTimeout,
+      clearTimeout: timer.clearTimeout,
+    });
+
+    fake.emitFinalized(commandRun({ id: 1, status: "failed", exitCode: 1 }));
+    expect(store.getActiveItems().map((item) => item.type)).toEqual(["run-failed"]);
+
+    fake.emitStarted(
+      commandRun({
+        id: 2,
+        status: "running",
+        completedBy: null,
+        exitCode: null,
+        endedAt: null,
+        durationMs: null,
+      }),
+    );
+
+    expect(store.getActiveItems()).toHaveLength(0);
+  });
+
+  it("new run start で同 session の slow completed item を resolve する", () => {
+    const store = createWorkspaceAttentionStore();
+    const fake = createTerminalFake();
+    const timer = createTimerFake();
+    startCommandRunAttentionProducer({
+      store,
+      terminal: fake.terminal,
+      slowCommandThresholdMs: 500,
+      setTimeout: timer.setTimeout,
+      clearTimeout: timer.clearTimeout,
+    });
+
+    fake.emitFinalized(commandRun({ id: 1, durationMs: 1200 }));
+    expect(store.getActiveItems().map((item) => item.type)).toEqual(["run-slow-completed"]);
+
+    fake.emitStarted(
+      commandRun({
+        id: 2,
+        status: "running",
+        completedBy: null,
+        exitCode: null,
+        endedAt: null,
+        durationMs: null,
+      }),
+    );
+
+    expect(store.getActiveItems()).toHaveLength(0);
+  });
+
+  it("new run start は他 session の command-block item を resolve しない", () => {
+    const store = createWorkspaceAttentionStore();
+    const fake = createTerminalFake();
+    const timer = createTimerFake();
+    startCommandRunAttentionProducer({
+      store,
+      terminal: fake.terminal,
+      setTimeout: timer.setTimeout,
+      clearTimeout: timer.clearTimeout,
+    });
+
+    fake.emitFinalized(
+      commandRun({ id: 1, sessionId: "session-1", status: "failed", exitCode: 1 }),
+    );
+    fake.emitStarted(
+      commandRun({
+        id: 2,
+        sessionId: "session-2",
+        status: "running",
+        completedBy: null,
+        exitCode: null,
+        endedAt: null,
+        durationMs: null,
+      }),
+    );
+
+    expect(store.getActiveItems()).toHaveLength(1);
+    expect(store.getActiveItems()[0]).toMatchObject({
+      sessionId: "session-1",
+      type: "run-failed",
+    });
+  });
+
   it("default running threshold は 10 秒にする", () => {
     expect(DEFAULT_RUNNING_COMMAND_THRESHOLD_MS).toBe(10_000);
   });
