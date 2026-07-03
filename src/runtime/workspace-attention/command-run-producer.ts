@@ -71,47 +71,59 @@ export function startCommandRunAttentionProducer(
     completedItemIdsBySession.delete(sessionId);
   };
 
-  const startedSub = options.terminal.subscribeCommandRunStarted((run) => {
-    resolveCompletedItemsForSession(run.sessionId);
-    if (run.status !== "running" || run.startedAt === null) return;
+  const upsertRunningLongItem = (run: TerminalCommandRun, producerKey: string): void => {
+    const currentEntry = runningEntries.get(producerKey);
+    if (!currentEntry) return;
+    currentEntry.timer = null;
+    const currentRun = options.terminal
+      .getCommandRunsRecent()
+      .find((candidate) => candidate.id === run.id && candidate.sessionId === run.sessionId);
+    if (!currentRun || currentRun.status !== "running") {
+      runningEntries.delete(producerKey);
+      return;
+    }
+
+    const locus = toWorkspaceAttentionLocus(
+      currentRun,
+      options.terminal.getCommandRunLocus(currentRun.id),
+    );
+    const item = options.store.upsert({
+      sessionId: currentRun.sessionId,
+      locus,
+      type: "run-running-long",
+      severity: "medium",
+      producer: COMMAND_RUN_ATTENTION_PRODUCER,
+      producerKey,
+      detail: {
+        command: currentRun.command,
+        elapsedMs:
+          currentRun.startedAt === null ? null : Math.max(0, Date.now() - currentRun.startedAt),
+        startedAt: currentRun.startedAt,
+      },
+    });
+    currentEntry.itemId = item.id;
+  };
+
+  const runningLongSeedDelayMs = (run: TerminalCommandRun): number => {
+    if (run.startedAt === null) return runningThresholdMs;
+    return Math.max(0, runningThresholdMs - Math.max(0, Date.now() - run.startedAt));
+  };
+
+  const startRunningLongTimer = (run: TerminalCommandRun, delayMs: number): void => {
+    if (run.status !== "running") return;
     const producerKey = runningLongProducerKey(run);
     clearRunningEntry(producerKey);
-    const entry = {
+    const entry: { itemId: string | null; timer: unknown | null } = {
       itemId: null,
-      timer: setTimeoutFn(() => {
-        const currentEntry = runningEntries.get(producerKey);
-        if (!currentEntry) return;
-        currentEntry.timer = null;
-        const currentRun = options.terminal
-          .getCommandRunsRecent()
-          .find((candidate) => candidate.id === run.id && candidate.sessionId === run.sessionId);
-        if (!currentRun || currentRun.status !== "running") {
-          runningEntries.delete(producerKey);
-          return;
-        }
-
-        const locus = toWorkspaceAttentionLocus(
-          currentRun,
-          options.terminal.getCommandRunLocus(currentRun.id),
-        );
-        const item = options.store.upsert({
-          sessionId: currentRun.sessionId,
-          locus,
-          type: "run-running-long",
-          severity: "medium",
-          producer: COMMAND_RUN_ATTENTION_PRODUCER,
-          producerKey,
-          detail: {
-            command: currentRun.command,
-            elapsedMs:
-              currentRun.startedAt === null ? null : Math.max(0, Date.now() - currentRun.startedAt),
-            startedAt: currentRun.startedAt,
-          },
-        });
-        currentEntry.itemId = item.id;
-      }, runningThresholdMs),
+      timer: null,
     };
     runningEntries.set(producerKey, entry);
+    entry.timer = setTimeoutFn(() => upsertRunningLongItem(run, producerKey), delayMs);
+  };
+
+  const startedSub = options.terminal.subscribeCommandRunStarted((run) => {
+    resolveCompletedItemsForSession(run.sessionId);
+    startRunningLongTimer(run, runningThresholdMs);
   });
 
   const finalizedSub = options.terminal.subscribeCommandRunFinalized((run) => {
@@ -135,6 +147,13 @@ export function startCommandRunAttentionProducer(
     });
     trackCompletedItem(run.sessionId, item.id);
   });
+
+  // WebView reload で復元された running run は started 通知が出ないため、producer attach 時刻を
+  // 起点に running-long timer を張る。session 集合変化で producer が作り直された場合も、
+  // attach 時刻から張り直せば十分で、duration 不明の slow-completed は作らない。
+  for (const run of options.terminal.getCommandRunsRecent()) {
+    startRunningLongTimer(run, runningLongSeedDelayMs(run));
+  }
 
   return {
     dispose: () => {

@@ -26,7 +26,7 @@ function commandRun(override: Partial<TerminalCommandRun> = {}): TerminalCommand
   };
 }
 
-function createTerminalFake(): {
+function createTerminalFake(initialRuns: TerminalCommandRun[] = []): {
   readonly terminal: Pick<
     TerminalRuntime,
     | "getCommandRunLocus"
@@ -40,7 +40,7 @@ function createTerminalFake(): {
 } {
   let finalizedListener: ((run: TerminalCommandRun) => void) | null = null;
   let startedListener: ((run: TerminalCommandRun) => void) | null = null;
-  let runs: TerminalCommandRun[] = [];
+  let runs: TerminalCommandRun[] = initialRuns;
   const getCommandRunLocus = vi.fn((runId: number) => ({
     kind: "terminal-command-run-locus" as const,
     sessionId: "session-1",
@@ -204,6 +204,105 @@ describe("command-run attention producer", () => {
         commandRunId: 1,
       },
     });
+  });
+
+  it("起動時に既存 running run へ running-long timer を seed する", () => {
+    const store = createWorkspaceAttentionStore();
+    const fake = createTerminalFake([
+      commandRun({
+        status: "running",
+        completedBy: null,
+        exitCode: null,
+        startedAt: null,
+        endedAt: null,
+        durationMs: null,
+      }),
+    ]);
+    const timer = createTimerFake();
+    startCommandRunAttentionProducer({
+      store,
+      terminal: fake.terminal,
+      runningCommandThresholdMs: 500,
+      setTimeout: timer.setTimeout,
+      clearTimeout: timer.clearTimeout,
+    });
+
+    expect(store.getActiveItems()).toHaveLength(0);
+    expect(timer.delays).toEqual([500]);
+
+    timer.fire();
+
+    expect(store.getActiveItems()[0]).toMatchObject({
+      type: "run-running-long",
+      severity: "medium",
+      detail: {
+        elapsedMs: null,
+        startedAt: null,
+      },
+    });
+  });
+
+  it("seed された running run が finalize されたら timer と item を resolve する", () => {
+    const store = createWorkspaceAttentionStore();
+    const fake = createTerminalFake([
+      commandRun({
+        status: "running",
+        completedBy: null,
+        exitCode: null,
+        startedAt: null,
+        endedAt: null,
+        durationMs: null,
+      }),
+    ]);
+    const timer = createTimerFake();
+    startCommandRunAttentionProducer({
+      store,
+      terminal: fake.terminal,
+      runningCommandThresholdMs: 500,
+      setTimeout: timer.setTimeout,
+      clearTimeout: timer.clearTimeout,
+    });
+
+    timer.fire();
+    expect(store.getActiveItems().map((item) => item.type)).toEqual(["run-running-long"]);
+
+    fake.emitFinalized(
+      commandRun({
+        status: "succeeded",
+        completedBy: "osc133",
+        exitCode: 0,
+        startedAt: null,
+        endedAt: 10_000,
+        durationMs: null,
+      }),
+    );
+
+    expect(timer.clearTimeout).not.toHaveBeenCalled();
+    expect(store.getActiveItems()).toHaveLength(0);
+  });
+
+  it("startedAt null の succeeded run は slow-completed にしない", () => {
+    const store = createWorkspaceAttentionStore();
+    const fake = createTerminalFake();
+    startCommandRunAttentionProducer({
+      store,
+      terminal: fake.terminal,
+      slowCommandThresholdMs: 500,
+    });
+
+    // reload 復元 run は startedAt が無いため duration を作らず、slow 判定もしない。
+    fake.emitFinalized(
+      commandRun({
+        status: "succeeded",
+        completedBy: "osc133",
+        exitCode: 0,
+        startedAt: null,
+        endedAt: 10_000,
+        durationMs: null,
+      }),
+    );
+
+    expect(store.getActiveItems()).toHaveLength(0);
   });
 
   it("running run が threshold 前に完了したら item にしない", () => {
