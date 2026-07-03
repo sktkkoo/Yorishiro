@@ -42,6 +42,22 @@ describe("detectTerminalProblems", () => {
     expect(problems.some((p) => p.value.includes("abc123"))).toBe(false);
   });
 
+  it("URL 内の file:line 形 token は file problem として格納しない", () => {
+    const problems = detectTerminalProblems("asset https://example.com/dl/SECRET.bin:1 failed");
+
+    expect(problems).toContainEqual({ type: "url", value: "https://example.com" });
+    expect(problems.some((p) => p.type === "file")).toBe(false);
+    expect(problems.some((p) => p.value.includes("SECRET"))).toBe(false);
+  });
+
+  it("URL 内の built asset sourcemap 位置は file problem として格納しない", () => {
+    const problems = detectTerminalProblems("stack https://cdn.example.com/app.HASH.js:1:2345");
+
+    expect(problems).toContainEqual({ type: "url", value: "https://cdn.example.com" });
+    expect(problems.some((p) => p.type === "file")).toBe(false);
+    expect(problems.some((p) => p.value.includes("HASH"))).toBe(false);
+  });
+
   it("同一 origin の複数 URL は redaction 後に 1 つへ畳む", () => {
     const problems = detectTerminalProblems(
       "a https://example.com/reset/abc123 b https://example.com/cb?token=secret",
