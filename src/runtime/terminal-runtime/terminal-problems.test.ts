@@ -12,11 +12,44 @@ describe("detectTerminalProblems", () => {
     expect(problems).toContainEqual({ type: "file", value: "foo/bar.rs:88" });
   });
 
-  it("http(s) URL を検出する", () => {
+  it("http(s) URL は origin だけを検出する", () => {
     const problems = detectTerminalProblems("Local: http://localhost:5173/ ready");
-    expect(problems.some((p) => p.type === "url" && p.value === "http://localhost:5173/")).toBe(
+    expect(problems.some((p) => p.type === "url" && p.value === "http://localhost:5173")).toBe(
       true,
     );
+  });
+
+  it("S3 signed URL は signature を捨てて origin だけを格納する", () => {
+    const problems = detectTerminalProblems(
+      "download https://bucket.s3.amazonaws.com/private.bin?X-Amz-Signature=secret-token",
+    );
+
+    expect(problems).toContainEqual({ type: "url", value: "https://bucket.s3.amazonaws.com" });
+    expect(problems.some((p) => p.value.includes("X-Amz-Signature"))).toBe(false);
+  });
+
+  it("userinfo 付き URL は credentials を捨てて origin だけを格納する", () => {
+    const problems = detectTerminalProblems("callback https://user:token@example.com/cb");
+
+    expect(problems).toContainEqual({ type: "url", value: "https://example.com" });
+    expect(problems.some((p) => p.value.includes("token"))).toBe(false);
+  });
+
+  it("path 内 token を含む URL は path ごと捨てて origin だけを格納する", () => {
+    const problems = detectTerminalProblems("reset https://example.com/reset/abc123");
+
+    expect(problems).toContainEqual({ type: "url", value: "https://example.com" });
+    expect(problems.some((p) => p.value.includes("abc123"))).toBe(false);
+  });
+
+  it("同一 origin の複数 URL は redaction 後に 1 つへ畳む", () => {
+    const problems = detectTerminalProblems(
+      "a https://example.com/reset/abc123 b https://example.com/cb?token=secret",
+    );
+
+    expect(
+      problems.filter((p) => p.type === "url" && p.value === "https://example.com"),
+    ).toHaveLength(1);
   });
 
   it("localhost:port を port problem として検出する（拡張子なしなので file には拾わない）", () => {
