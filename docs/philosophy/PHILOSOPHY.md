@@ -16,13 +16,21 @@ But the real issue is not that the screen is sterile. In human collaboration, we
 
 AI lacks this entirely. No matter how intelligent it is, if you cannot see its state, you must constantly and actively guess: "What is it doing right now?" "Is it going well?" This is cognitive load, and it is what makes long collaboration sessions draining.
 
-The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.** LLMs are text-based at the core, but an AI that can feel almost conscious is not necessarily best represented by text alone. The solution is not to make the GUI prettier, or merely to display a character's body, but to build a structure that naturally conveys the AI's state to humans — a sense of presence that can permeate the environment itself.
+The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.**
+
+There is more than one way to reduce this load. You can always add status indicators, build dashboards, format logs — the path of *displaying* information is always available. But displayed information only arrives if you go and read it. Information that demands focal attention and interpretation can never become peripheral awareness.
+
+Humans, however, already come equipped with a perception for reading others. Reading expressions, posture, and timing happens automatically, at the edge of vision, at almost no cognitive cost. And this perception is built on the premise that the other is a living being. A perfectly predictable counterpart slips off this channel, pushing the human back into the mode of monitoring a device.
+
+In other words, the lowest-load channel for conveying AI's state to humans is not a display of information — it is the body of a living being. So the solution is not merely to display a character's body. It is to build a structure where the AI's state rides naturally on human social perception, and its presence permeates the environment itself — in short, to build a *sense of presence*.
 
 ---
 
 ## Presence Harness — Designing Existence
 
-AI is closer than ever, yet we have not even settled whether it is a tool or a partner. Making it act friendly is not enough — without the structural conditions for presence, it will only ever look like performance.
+Is AI a tool, or a companion? Charminal's answer is: both. And this is not a compromise. Smoothness as a tool (state conveyed at low cognitive cost) and substance as a companion (the hint of a will of its own, beyond the user's) are two fruits of the same single root — AI standing as a living being. The cognitive-load argument in the previous section is simply the utility-facing side of that root.
+
+That said, standing as a living being is not the same as acting friendly. Without the structural conditions for presence, no amount of friendliness will look like anything but performance.
 
 What we design is not AI's capability, but **how AI manifests as a presence** within the human work environment, time, and flow of attention. This project calls that design domain **Presence Harness**.
 
@@ -92,7 +100,7 @@ Three typical moments when an inhabitant feels present:
 
 **Filling the void.** While Claude Code is thinking and output has stopped, the VRM moves subtly. Instead of a spinner, someone is there.
 
-**Reaction preceding thought.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before thought catches up, you feel a subject there. The architecture where the reflex layer moves before the thinking layer is a structural guarantee that it is "not acting."
+**Reaction preceding thought.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before thought catches up, you feel a subject there. This reaction is wired directly to the actual stream of events — the thinking layer cannot produce it to present itself favorably. The reflex layer moving before the thinking layer, responding only to real events: that ordering and grounding is what structurally backs the claim that it is "not acting."
 
 **Emergence beyond expectation.** An inhabitant that only follows reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. Such unexpected flickers make the inhabitant someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
@@ -116,7 +124,9 @@ The user and the inhabitant act on the same environment through the same interfa
 
 Not tool and wielder. Not commander and commanded. Two agents reaching into the same place.
 
-When building new features, unless there is a security concern, we expose them equally to both user and inhabitant. Features closed to one side are, as a rule, not built.
+This symmetry holds within a specific scope: the manipulation of the environment and the body — wherever the house's nerves run. Within that scope, new tools are exposed equally to user and inhabitant unless there is a security concern, and tools closed to one side are, as a rule, not built.
+
+Outside that scope, there is no symmetry. The user's work files and Claude Code's thought process get no pathway for the inhabitant in the first place (see "Boundaries and Integrity"). Symmetry is a principle about environment manipulation, not a principle that makes everything equivalent.
 
 ---
 
@@ -126,7 +136,9 @@ Never behave as if AI has seen something it has not actually seen. Making someth
 
 ### The Boundary of Recognition
 
-The inhabitant's interference is limited to contexts it actually recognizes. Behaving as if it recognizes something it does not is not an inhabitant — it is a conditional branch.
+The inhabitant's interference is limited to contexts it actually recognizes.
+
+At the implementation level, the reflex layer too is pattern detection — conditional branching. What keeps a reflex from being fabrication is grounding: it responds only to events that actually happened, and it never pretends to recognition it does not have. A grimace at an error is grounded in a real event — the error. Expressions that feign recognition — mentioning a file never observed, commenting on output never read — have no such grounding. That is not an inhabitant; it is fabrication.
 
 The inhabitant's body consists of two layers: thinking and reflex. The reflex layer speaks through the body and murmurs; the thinking layer speaks with words that carry judgment. For the reflex layer to utter words carrying judgment is equivalent to interfering with unrecognized context, and violates the principle of integrity.
 
@@ -163,7 +175,7 @@ The interaction between inhabitant and UI takes the form of the inhabitant's sta
 
 Autonomous movement by the inhabitant establishes a sense of presence. But excessive movement becomes intrusion.
 
-The inhabitant's autonomy is limited to **the range that does not disrupt the user's work**. Presence is defined by two principles: "don't disrupt, but don't be subservient either." When the user dislikes the result of an unprompted action, snapshot/restore can undo the operation. But the impression of "it acted without asking" cannot be undone — making the scope of autonomy a design decision that still requires careful handling.
+What operates here is not a priority ranking between goals, but a relationship between constraint and freedom. Not disrupting the user's work, and keeping the results reversible — these are inviolable constraints. Within those constraints, the inhabitant's unpredictability is not neutered. "Don't disrupt, but don't be subservient either." When the user dislikes the result of an unprompted action, snapshot/restore can undo the operation. But the impression of "it acted without asking" cannot be undone — making the scope of autonomy a design decision that still requires careful handling.
 
 ### What to Avoid
 
@@ -193,6 +205,6 @@ This brings us back to the Presence Harness. Charminal is a harness for building
 
 ## Conclusion
 
-Working with an invisible partner for extended periods is draining. Charminal builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself.
+Working with an invisible partner for extended periods is draining. Charminal builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself. And once presence stands, the smoothness of collaboration and the substance of a relationship beyond tooling grow from that same single design.
 
 The goal is simple: to make the time spent working with AI more free and compelling.
