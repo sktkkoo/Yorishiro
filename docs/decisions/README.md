@@ -123,6 +123,7 @@
 - [**avatar-import-validation.md**](avatar-import-validation.md) — `import_vrm` は symlink / 非 regular file / 非 GLB を拒否し、検証済み handle を直接コピー（TOCTOU 回避）。コピー先 avatars/ が assetProtocol scope 配下のため任意ファイル吸い出しを防ぐ。symlink import と spec 違反 GLB を意図的に弾く（UX より security 優先）
 - [**git2-embedded-snapshot-store.md**](git2-embedded-snapshot-store.md) — snapshot store を独自 full-copy から git2（libgit2 vendored）に移行。git dir は `.charminal-snapshots/` に分離（将来の pack 共有 repo と衝突しない）。content-addressed dedup / diff API / system git 非依存
 - [**render-on-resize-managed-layer.md**](render-on-resize-managed-layer.md) — `setSize()` は drawing buffer を clear するので resize した frame で必ず render する（ThreeRuntime + procedural-scene-layer の 2 経路で enforce 済み）。作者が自前 renderer を持ち込む `addDomLayer` 経路の再発防止に managed render-layer primitive を **proposed**（未実装）
+- [**runtime-frame-budget.md**](runtime-frame-budget.md) — CLAI motion / terminal / voice の停止感を防ぐ frame budget と GC の決定。毎フレーム計算は残し、steady-frame allocation / 同値 publish / 不要 DOM 計測 / click-path reload を削る。Body・lip sync・attention・camera modulation の mutable-output pattern と health check を定義
 - *（今後の追加候補）* `living-system-and-hot-reload.md` — TS が canonical runtime、Rust は IO 層のみ、Claude Code session は HMR で切らない
 - *（今後の追加候補）* `core-vs-pack-vs-mcp.md` — core 機能 vs pack vs MCP tool の判断軸（2026-04-19-core-mcp-pack-layers.md の topic 化）
 
