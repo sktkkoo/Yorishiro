@@ -133,7 +133,7 @@ fn format_iso8601_utc(epoch_secs: u64) -> String {
 
 /// Howard Hinnant の civil_from_days アルゴリズム。
 /// days は 1970-01-01 からの経過日数。
-fn civil_from_days(days: i64) -> (i64, u32, u32) {
+pub(crate) fn civil_from_days(days: i64) -> (i64, u32, u32) {
     let z = days + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u32;

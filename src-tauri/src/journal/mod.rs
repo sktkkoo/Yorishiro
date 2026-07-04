@@ -6,6 +6,7 @@
 //!
 //! MCP tool (`journal_write` / `journal_read`) から呼ばれる Rust 完結の実装。
 
+pub mod callback;
 pub mod cohabitation;
 
 use std::path::PathBuf;
