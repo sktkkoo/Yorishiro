@@ -1,0 +1,26 @@
+# CLI canary — Charminal が依存する claude / codex の公開サーフェスが最新版で
+# 生きているかを毎日確認する。壊れたら workflow が fail し、ユーザーより先に気づける。
+# 検証内容は scripts/canary/check-cli-surface.mjs を参照。
+name: CLI canary
+
+on:
+  schedule:
+    # 毎日 06:30 JST（21:30 UTC）。CLI の日次リリースを翌朝に検知する。
+    - cron: "30 21 * * *"
+  workflow_dispatch:
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install latest agent CLIs
+        run: npm install -g @anthropic-ai/claude-code @openai/codex
+
+      - name: Check CLI surface
+        run: node scripts/canary/check-cli-surface.mjs
