@@ -266,7 +266,8 @@ pub struct AppScreenshotRequest {}
 /// `scene_activate` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SceneActivateRequest {
-    /// Pack id（null で active を clear）。registry のみ更新、config.json は触らない。
+    /// Pack id（null で current project override を clear）。current project が解決済みなら
+    /// sceneByProject、未解決なら activeScene に永続化する。
     pub id: Option<String>,
 }
 

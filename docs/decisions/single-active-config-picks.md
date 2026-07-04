@@ -3,15 +3,15 @@
 > このファイルは「**single-active な pack 種別の active 選択 mechanism を設計する**」時に読む。対象：dev / AI / pack 作者。
 
 **Status**: active
-**Last updated**: 2026-05-03
+**Last updated**: 2026-07-04
 
 ## TL;DR
 
-scene / persona など single-active な pack 種別では、**active 選択は `~/.charminal/config.json` で user が picks**。pack 自身に `defaultActive` を持たせない。factory default は Charminal code に hard-code する。
+scene / persona など single-active な pack 種別では、**active 選択は `~/.charminal/config.json` で user が picks**。scene は current project root ごとの `sceneByProject` を優先し、未指定なら global `activeScene` に fallback する。pack 自身に `defaultActive` を持たせない。factory default は Charminal code に hard-code する。
 
 ## 何を決めたか
 
-- single-active 系の pack（scene / persona）では config の対応 field（`activeScene` / `primaryPersona`）で user が指定
+- single-active 系の pack（scene / persona）では config の対応 field（scene は `sceneByProject[projectRoot]` → `activeScene`、persona は `primaryPersona`）で user が指定
 - pack manifest / definition に `defaultActive` のような自薦 field は **持たせない**
 - config 未指定時の fallback は **Charminal code に hard-code**（bundled の特定 pack を register + 自動 fallback）
 
@@ -28,9 +28,10 @@ scene / persona など single-active な pack 種別では、**active 選択は 
 
 ## この決定の implication / 制約
 
-- 新 single-active pack 種別を追加する際は **config に field 1 つ追加** + Charminal 側で fallback 設計
+- 新 single-active pack 種別を追加する際は **config に field を追加** + Charminal 側で fallback 設計
 - 新 pack 種別を「いつ複数並行 / いつ single-active」と分類する判断軸：状態を持つ / lifecycle が長い → single-active 寄り、event-driven / 短命 → 複数並行
-- **runtime active と config の divergence は許容**。MCP `scene.activate` / `ui.activate` は registry のみ更新する runtime-only mode で、`config.activeScene` / `config.activeUi` は永続値として残る。再起動で config picks に戻る。`state.get` の `runtime.activeScene` / `runtime.activeUi` で runtime SOT を観察できる
+- `scene.activate` は config write。current project root が解決済みなら `sceneByProject[projectRoot]`、未解決なら `activeScene` を更新し、runtime scene も更新後 config から即時反映する。project override を clear した場合はその場で global `activeScene` に fallback する
+- **runtime active と config の divergence は UI では許容**。MCP `ui.activate` は registry のみ更新する runtime-only mode で、`config.activeUi` は永続値として残る。再起動で config picks に戻る。`state.get` の `runtime.activeScene` / `runtime.activeUi` で runtime SOT を観察できる
 
 ## 関連 reference
 

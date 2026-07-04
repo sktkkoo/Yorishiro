@@ -1064,8 +1064,9 @@ export interface StateGetDeps {
   readonly getEffectKinds: () => ReadonlyArray<string>;
   /**
    * 現在 active な single-active pack の id 群（registry 由来、runtime SOT）。
-   * config.activeScene / config.primaryPersona は永続値、こちらは runtime 値。
-   * runtime-only 切り替え時は両者が divergence する。
+   * scene.activate は project-aware config write。
+   * ui.activate は runtime-only。
+   * runtime-only UI 切り替え時は config.activeUi と runtime.ui が divergence する。
    */
   readonly getRuntimeActive: () => {
     readonly scene: string | null;
@@ -1711,7 +1712,7 @@ export interface UiActivateResult {
 }
 
 /**
- * Active UI pack を runtime-only で切り替える handler。scene.activate と対称。
+ * Active UI pack を runtime-only で切り替える handler。
  * registry のみ更新、~/.charminal/config.json は触らない。
  */
 export function createUiActivateHandler(deps: UiActivateDeps) {
