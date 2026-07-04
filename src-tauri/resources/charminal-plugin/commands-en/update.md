@@ -116,8 +116,8 @@ Bundled packs are read-only for user customization. If the user wants to modify 
 2. Create `~/.charminal/packs/<new-id>/` with `manifest.json` and the entry file
 3. Change `manifest.json` id to `<new-id>` and add `"executionClass": "trusted-main-thread-js"` for `.js` / `.tsx` entries, so it does not collide with the bundled pack and remains clearly local trusted code
 4. Change the entry file's exported `id` to `<new-id>`
-5. If needed, update `~/.charminal/config.json`:
-   - scene: `"activeScene": "<new-id>"`
+5. If needed, switch the active pack:
+   - scene: use `scene_activate({ "id": "<new-id>" })` so the current project's scene choice is persisted correctly
    - persona: `"primaryPersona": "<new-id>"`
    - ui: `"activeUi": "<new-id>"`
 
@@ -125,9 +125,10 @@ After forking, the pack is independent. Bundled updates will not merge into it a
 
 ## Editing config.json
 
-`~/.charminal/config.json` controls global Charminal settings:
+`~/.charminal/config.json` controls Charminal settings:
 
-- `activeScene` - active scene pack id
+- `sceneByProject` - active scene pack ids for resolved project roots
+- `activeScene` - global fallback scene pack id when a project has no `sceneByProject` entry
 - `primaryPersona` - active persona pack id
 - `activeUi` - active UI pack id
 - `activeAmbientUi` - enabled ambient-ui pack ids
@@ -138,11 +139,16 @@ Example:
 
 ```json
 {
+  "sceneByProject": {
+    "/path/to/project": "my-scene"
+  },
   "activeScene": "my-scene",
   "primaryPersona": "my-persona",
   "disabledPacks": ["broken-pack"]
 }
 ```
+
+Prefer `scene_activate` for scene switching. Edit `sceneByProject` / `activeScene` manually only when the user explicitly asks to edit config directly.
 
 If `config.json` does not exist, create `{}` and add only the needed fields. If it exists, preserve unrelated fields.
 

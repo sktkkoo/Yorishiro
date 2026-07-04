@@ -191,6 +191,15 @@ const toStringRecord = (value: unknown): Record<string, string> => {
   return result;
 };
 
+const toNonEmptyStringRecord = (value: unknown): Record<string, string> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string" && v.trim() !== "") result[k] = v;
+  }
+  return result;
+};
+
 const toSessionAgent = (value: unknown): string | null => {
   if (typeof value === "string" && KNOWN_AGENT_IDS.has(value)) {
     return value;
@@ -270,7 +279,7 @@ export function parseConfig(text: string): CharminalConfig {
     primaryPersona: toNullableString(obj.primaryPersona),
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
-    sceneByProject: toStringRecord(obj.sceneByProject),
+    sceneByProject: toNonEmptyStringRecord(obj.sceneByProject),
     activeUi: toNullableString(obj.activeUi),
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,

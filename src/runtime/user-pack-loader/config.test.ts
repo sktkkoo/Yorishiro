@@ -474,6 +474,7 @@ describe("sceneByProject", () => {
           "/repo/a": "forest",
           "/repo/b": "simple-room",
           "/repo/bad": 42,
+          "/repo/empty": "",
         },
       }),
     );
@@ -540,6 +541,16 @@ describe("resolveSceneForProject", () => {
       sceneByProject: { "/repo/a": "factory" },
     };
     expect(resolveSceneForProject(cfg, null)).toBe("fallback-room");
+  });
+
+  it("falls back to activeScene when parsed project mapping is empty", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        activeScene: "fallback-room",
+        sceneByProject: { "/repo/a": "" },
+      }),
+    );
+    expect(resolveSceneForProject(cfg, "/repo/a")).toBe("fallback-room");
   });
 
   it("returns null when neither mapping nor activeScene is set", () => {
