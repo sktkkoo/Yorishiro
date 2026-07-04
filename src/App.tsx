@@ -1659,6 +1659,8 @@ function App() {
           createLoopAnnounceHandler,
           // Bundled pack examples:
           createBundledExampleReadHandler,
+          // Attention light:
+          createAttentionLightCueHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
@@ -2003,6 +2005,10 @@ function App() {
           // ── Bundled pack examples ───────────────────────────
           "bundled-example.read": createBundledExampleReadHandler({
             readBundledPackSource: (id) => invoke("read_bundled_pack_source", { id }),
+          }),
+          // ── Attention light ──────────────────────────────
+          "attention.light.cue": createAttentionLightCueHandler({
+            trigger: () => getAttentionLightCueStore().triggerManual(),
           }),
         };
 

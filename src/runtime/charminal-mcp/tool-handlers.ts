@@ -20,6 +20,7 @@ import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
+import type { ManualCueResult } from "../attention-light-cue/cue-store";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
 import type { PresenceResolution } from "../presence-target";
 import type { TerminalCommandRun } from "../terminal-runtime/command-run-store";
@@ -2073,5 +2074,29 @@ export function createBundledExampleReadHandler(deps: BundledExampleReadDeps) {
       lines.push("");
     }
     return lines.join("\n");
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * attention.light.cue
+ * ────────────────────────────────────────────────────────── */
+
+export interface AttentionLightCueResponse {
+  readonly triggered: boolean;
+  readonly reason?: "disabled" | "cooldown";
+}
+
+export interface AttentionLightCueDeps {
+  readonly trigger: () => ManualCueResult;
+}
+
+/**
+ * attention light を一度だけ 2-pulse させる handler。AttentionLightCueStore.triggerManual に
+ * 委譲するだけで、toggle off / cooldown の判定はすべて store 側の責務。
+ * toggle off / cooldown は error にせずそのまま応答として返す（住人が状況を知れるようにする）。
+ */
+export function createAttentionLightCueHandler(deps: AttentionLightCueDeps) {
+  return async (_request: unknown): Promise<AttentionLightCueResponse> => {
+    return deps.trigger();
   };
 }
