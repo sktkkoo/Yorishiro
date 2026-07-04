@@ -1,8 +1,8 @@
 // src-tauri/src/tts.rs
 
-use base64::Engine as _;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::State;
 
 /// Windows で PowerShell ウィンドウを表示させないためのフラグ。
@@ -90,23 +90,31 @@ pub fn tts_stop(state: State<'_, TtsState>) -> Result<(), String> {
     Ok(())
 }
 
-/// テキストから WAV 音声を合成し、base64 文字列で返す。
+/// テキストから WAV 音声を合成し、raw bytes を Channel で返す。
 /// フロントエンド側で decodeAudioData → Web Audio 再生する。
 ///
 /// macOS の `say` は /dev/stdout への出力をサポートしないため、
 /// tmpfile 経由で WAV を取得する。tmpfile は読み取り後自動削除。
 #[tauri::command]
-pub fn tts_synthesize(text: String, voice: Option<String>) -> Result<String, String> {
-    if cfg!(target_os = "macos") {
+pub fn tts_synthesize(
+    text: String,
+    voice: Option<String>,
+    on_output: Channel,
+) -> Result<(), String> {
+    let wav = if cfg!(target_os = "macos") {
         synthesize_macos(&text, voice.as_deref())
     } else if cfg!(target_os = "windows") {
         synthesize_windows(&text, voice.as_deref())
     } else {
         Err("TTS synthesize: unsupported platform".to_string())
-    }
+    }?;
+
+    on_output
+        .send(InvokeResponseBody::Raw(wav))
+        .map_err(|e| format!("send synthesized audio: {}", e))
 }
 
-fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<String, String> {
+fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<Vec<u8>, String> {
     // say は出力先を新規作成するため、先に空ファイルを消しておく。
     // .wav suffix 必須 — say は拡張子なしファイルに .wav を自動付与するため、
     // suffix なしだと読み取り先とずれて ENOENT になる。
@@ -143,7 +151,7 @@ fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<String, String> {
         return Err(format!("say produced empty file at {:?}", raw_path));
     }
     let wav = strip_fllr_chunk(&raw_wav);
-    Ok(base64::engine::general_purpose::STANDARD.encode(&wav))
+    Ok(wav)
 }
 
 fn strip_fllr_chunk(wav: &[u8]) -> Vec<u8> {
@@ -188,7 +196,7 @@ fn strip_fllr_chunk(wav: &[u8]) -> Vec<u8> {
     stripped
 }
 
-fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String> {
+fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<Vec<u8>, String> {
     let mut cmd = Command::new("powershell");
     #[cfg(target_os = "windows")]
     hide_window(&mut cmd);
@@ -229,7 +237,7 @@ fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<String, String>
         return Err(format!("TTS failed: {}", stderr));
     }
 
-    Ok(base64::engine::general_purpose::STANDARD.encode(&output.stdout))
+    Ok(output.stdout)
 }
 
 #[cfg(test)]
