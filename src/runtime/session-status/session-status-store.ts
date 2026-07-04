@@ -74,6 +74,7 @@ interface ClearedAttention {
   readonly body: string;
   readonly source: SessionAttention["source"];
   readonly clearedAt: number;
+  readonly screenDisappearanceObserved: boolean;
 }
 
 /**
@@ -263,7 +264,15 @@ export class SessionStatusStore {
         lastCleared.source === "screen" &&
         lastCleared.title === (title.length > 0 ? title : null) &&
         lastCleared.body === body;
-      if (inSuppressionWindow && (source !== "screen" || sameScreenPrompt)) return;
+      const shouldAllowObservedScreenPrompt =
+        source === "screen" && lastCleared.screenDisappearanceObserved;
+      if (
+        inSuppressionWindow &&
+        !shouldAllowObservedScreenPrompt &&
+        (source !== "screen" || sameScreenPrompt)
+      ) {
+        return;
+      }
     }
 
     if (
@@ -316,8 +325,16 @@ export class SessionStatusStore {
    */
   clearScreenAttention(sessionId: SessionId): void {
     const current = this.statuses.get(sessionId);
-    if (!current || current.attention?.source !== "screen") return;
-    this.clearAttention(sessionId);
+    if (current?.attention?.source === "screen") {
+      this.clearAttention(sessionId);
+    }
+    const lastCleared = this.lastAttentionCleared.get(sessionId);
+    if (lastCleared?.source === "screen") {
+      this.lastAttentionCleared.set(sessionId, {
+        ...lastCleared,
+        screenDisappearanceObserved: true,
+      });
+    }
   }
 
   /** loop lifecycle が進行/終了したとき、loop 由来の sticky attention だけを解除する。 */
@@ -360,6 +377,7 @@ export class SessionStatusStore {
       body: previousAttention.body,
       source: previousAttention.source,
       clearedAt,
+      screenDisappearanceObserved: false,
     });
     this.commit({
       ...current,
