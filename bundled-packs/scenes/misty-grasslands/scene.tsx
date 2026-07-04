@@ -13,10 +13,20 @@
  */
 
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 
+// overcast morning の明るい拡散光（directional 1.5 + ambient 0.47）に対して
+// attention cue の既定 intensity では埋もれるため引き上げる。帰納的な調整値。
+const ATTENTION_CUE_INTENSITY_SCALE = 1.8;
+
 function MistyGrasslandsLighting(_props: ScenePackComponentProps) {
-  return <Lights />;
+  return (
+    <>
+      <Lights />
+      <AttentionCueLight intensityScale={ATTENTION_CUE_INTENSITY_SCALE} />
+    </>
+  );
 }
 
 const definition: ScenePackDefinition = {

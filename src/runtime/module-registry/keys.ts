@@ -19,6 +19,8 @@ export const KEYS = {
   ATTENTION_LIGHT_SETTINGS: "attention-light:settings",
   /** AttentionLightCueStore singleton: attention light の cue（一度きりの光の合図）を dedup / toggle / cooldown 込みで一元管理する。 */
   ATTENTION_LIGHT_CUE: "attention-light:cue",
+  /** AttentionCueClaimRegistry singleton: AttentionCueLight の yielding default 用 claim カウンタ。 */
+  ATTENTION_CUE_CLAIMS: "attention-cue:claims",
   /** AmbientUiPackRegistry singleton: ambient-ui pack の登録と active 集合（multi-active）を管理する。 */
   AMBIENT_UI_PACK_REGISTRY: "ambient-ui-pack:registry",
   /** AmenityPackRegistry singleton: amenity pack の登録と active 集合（multi-active）を管理する。 */

@@ -6,9 +6,9 @@
  *     「cue（一度きりの光の合図）」の発行要求を受け、identity dedup / toggle /
  *     cooldown をここに集約する。envelope の再生自体は component 側の責務で、
  *     このstore は `seq` の変化でしか意思を伝えない。
- *   - identity dedup の意味論（上限 128 の FIFO 追い出し）は
- *     three-runtime/attention-flash-light.tsx の rememberCompletedPulseIdentity
- *     から移植したもの。
+ *   - identity dedup の意味論（上限 128 の FIFO 追い出し）は、旧 runtime 直注入の
+ *     attention-flash-light.tsx（Task 4 で attention-cue-light.tsx に置き換え・削除済み）
+ *     の rememberCompletedPulseIdentity から移植したもの。
  */
 
 import { getOrInit } from "../hot-data";
