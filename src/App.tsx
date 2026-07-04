@@ -248,6 +248,7 @@ import {
 import {
   getWorkspaceAttentionStore,
   startCommandRunAttentionProducer,
+  startSessionAttentionProducer,
   startWorkspaceAttentionPresenceBridge,
 } from "./runtime/workspace-attention";
 import * as CharminalControls from "./sdk/controls";
@@ -3363,6 +3364,17 @@ function App() {
       disposable.dispose();
     };
   }, []);
+
+  // 全 session の許可待ち（SessionStatusStore）を workspace-attention item に橋渡しする。
+  useEffect(() => {
+    const disposable = startSessionAttentionProducer({
+      store: getWorkspaceAttentionStore(),
+      sessionStatus: sessionStatusStore,
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, [sessionStatusStore]);
 
   // ── Tool-activity → Body state wiring ─────────────────────
 

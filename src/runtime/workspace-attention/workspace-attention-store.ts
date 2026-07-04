@@ -202,7 +202,9 @@ function aggregateFromActiveItems(
 
   const severity = maxSeverity(items);
   const hasFailure = items.some((item) => item.type === "run-failed" || item.severity === "high");
-  const hasWaiting = items.some((item) => item.type === "run-slow-completed");
+  const hasWaiting = items.some(
+    (item) => item.type === "run-slow-completed" || item.type === "awaiting-approval",
+  );
   return {
     kind: "workspace-attention-aggregate",
     mood: hasFailure ? "failed" : hasWaiting ? "waiting" : "working",

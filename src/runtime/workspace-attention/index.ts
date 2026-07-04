@@ -16,6 +16,11 @@ export {
   type StartWorkspaceAttentionPresenceBridgeOptions,
   startWorkspaceAttentionPresenceBridge,
 } from "./presence-bridge";
+export {
+  SESSION_ATTENTION_PRODUCER,
+  type StartSessionAttentionProducerOptions,
+  startSessionAttentionProducer,
+} from "./session-attention-producer";
 export type {
   WorkspaceAttentionAggregate,
   WorkspaceAttentionCreateInput,
