@@ -882,6 +882,18 @@ describe("IdleMicroexpressionSystem", () => {
     }
   });
 
+  it("writeUpdate writes into the caller-provided event object", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0, ["Fcl_BRW_Joy"]);
+    const out = { morph: "", weight: 0 };
+
+    micro.writeUpdate(2.0, true, out);
+    const event = micro.writeUpdate(0.05, true, out);
+
+    expect(event).toBe(out);
+    expect(out.morph).toBe("Fcl_BRW_Joy");
+    expect(out.weight).toBeGreaterThan(0);
+  });
+
   it("weight is positive during the episode and stays within configured bounds", () => {
     // random sequence で「最大 weight、最大 duration、最後の morph」を狙う
     const values = [0.999, 0.999, 0.999, 0.999];

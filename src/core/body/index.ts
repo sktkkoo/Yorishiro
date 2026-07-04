@@ -59,6 +59,7 @@ import {
   MICRO_EYE_POOL,
   MICRO_MOUTH_POOL,
   type MicroexpressionEvent,
+  type MutableMicroexpressionEvent,
 } from "./idle-microexpression-system";
 import {
   type MotionHandle as InternalMotionHandle,
@@ -542,15 +543,13 @@ export class Body {
       const microBaseEnabled = !nonIdleMoodActive;
       for (const ch of this.microChannels) {
         const enabled = microBaseEnabled && (ch.region !== "mouth" || !lipSyncHasSignal);
-        const event = ch.system.update(delta, enabled);
-        ch.flush(event);
+        ch.update(delta, enabled);
       }
     } else {
       this.eyelids.clearIdleSquint();
       // claim 中は全 channel を clear して内部 timer を reset しておく
       for (const ch of this.microChannels) {
-        ch.system.update(delta, false);
-        ch.flush(null);
+        ch.update(delta, false);
       }
     }
 
@@ -952,12 +951,17 @@ type MicroRegion = "brow" | "eye" | "mouth";
 class MicroChannel {
   private slotId = -1;
   private slotMorph: string | null = null;
+  private readonly eventScratch: MutableMicroexpressionEvent = { morph: "", weight: 0 };
 
   constructor(
     readonly region: MicroRegion,
     readonly system: IdleMicroexpressionSystem,
     private readonly expressions: ExpressionManager,
   ) {}
+
+  update(delta: number, enabled: boolean): void {
+    this.flush(this.system.writeUpdate(delta, enabled, this.eventScratch));
+  }
 
   /**
    * 直前の system.update() の戻り値をそのまま渡す。

@@ -52,6 +52,8 @@ interface EyeDir {
   right: number;
 }
 
+const FRONT_EYE_DIR: EyeDir = { up: 0, down: 0, left: 0, right: 0 };
+
 const MAX_YAW = 30; // degrees
 const MAX_PITCH = 25;
 const OUTPUT_MAX_YAW = 56;
@@ -344,7 +346,7 @@ export class EyeSystem {
       if (this.fixationTimer <= 0) {
         const patterns = PATTERNS[this._state];
         const picked = this.forceFrontNext
-          ? { up: 0, down: 0, left: 0, right: 0 }
+          ? FRONT_EYE_DIR
           : patterns[Math.floor(this.random() * patterns.length)];
         this.forceFrontNext = false;
 

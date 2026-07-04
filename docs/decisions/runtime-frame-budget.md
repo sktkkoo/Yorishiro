@@ -38,6 +38,7 @@ frame loop 内で値 object を返す API は、可能なら caller-owned buffer
 
 - `LipSyncAnalyser.sample(out?)` / `VoicePlayer.sampleMouth(out?)`: mouth values を caller scratch に書けるようにする。
 - `CursorAttention.writeOutput(out)` / `EyeSystem.writeOutput(out)`: public `getOutput()` は外部向け copy を維持し、Body の frame path だけ mutable output を使う。
+- `IdleMicroexpressionSystem.writeUpdate(delta, enabled, out)`: public `update()` は copy-returning のまま残し、Body の frame path では micro-expression event object を再利用する。
 - `ExpressionManager.writeResolved(result)`: resolved expression map を caller-owned `Map` に書く。
 - `computeAttentionCueLightIntensityInto(elapsed, out)`: light cue の intensity result を再利用する。
 - `CameraModulationManager.evaluatePosition(elapsed, delta, out)`: scene pack の camera modulation callback も `out` に書く契約にする。
@@ -53,6 +54,7 @@ frame loop 内で値 object を返す API は、可能なら caller-owned buffer
 - expression sink tracking: previous/current の key set を swap して、削除差分を取る。
 - attention resolver: `Array.from(sources.values())` をやめ、`Iterable` をそのまま処理する。
 - attention runtime listener notify: listener `Set` を毎回 array 化しない。
+- beat scheduler: `profile.beats.filter()` や pending action の残リスト再生成を避け、候補選択と pending queue は in-place にする。
 
 copy を作る場合は、reentrancy safety や mutation isolation が必要な理由を明示する。理由がなければ iterable / swap / scratch を使う。
 
@@ -149,6 +151,7 @@ rg -n "useFrame|requestAnimationFrame|setInterval|setTimeout|new Map|new Set|Arr
 
 - `useFrame` / rAF callback 内で object literal / array literal / `new Map` / `new Set` / spread copy を作っていないか。
 - `Array.from(this.listeners)` のような listener snapshot が frame path にないか。reentrancy safety が必要なら理由を comment する。
+- `filter()` / `map()` / `slice()` が「毎フレームではなく時々だから安全」として render-loop 内に残っていないか。beat / micro-expression のような低頻度発火でも GC spike になるなら in-place にする。
 - rAF callback が「elapsed を見て return するだけ」の polling loop になっていないか。低頻度 scan は timer + one-shot rAF にして、待機中の per-frame callback を消す。
 - PTY output subscriber が output chunk ごとに `clearTimeout()` / `setTimeout()` を繰り返していないか。debounce は deadline update + single active timer にする。
 - `Perception.onPtyOutput()` が raw chunk ごとに EventBus dispatch していないか。`pty-output` は coalesced text event として扱う。
@@ -226,4 +229,5 @@ Tauri / Chrome DevTools の Performance recording で、少なくとも次の 3 
 ## 改訂履歴
 
 - 2026-07-05: folder switch の terminal restart を after-paint に分離。TTS synth result を raw channel にし、PCM WAV の JS per-sample decode を fallback に下げる判断を追記。
+- 2026-07-05: Body の beat / micro-expression / eye refocus hot path で、低頻度でも render-loop 内に残る配列・event object 生成を再利用へ寄せる判断を追記。
 - 2026-07-04: 初版。folder picker / VoiceSummary 付近の停止感を契機に、frame path allocation 削減、同値 publish no-op、reload 廃止、voice / body / attention / camera の mutable-output pattern を decision と health check として記録。
