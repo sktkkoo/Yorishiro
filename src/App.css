@@ -71,7 +71,7 @@ body,
 
 .reload-curtain[data-phase="visible"] {
   opacity: 1;
-  transition: opacity 120ms ease-in;
+  transition: opacity 240ms ease-in;
 }
 
 .reload-curtain[data-phase="leaving"] {
