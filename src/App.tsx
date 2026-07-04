@@ -883,7 +883,7 @@ const clampMotionIntensity = (value: number): number =>
 function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
-  //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
+  //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, terminalFallbackCwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
   //   useRef          : render を起こさない mutable cell（bodyRef, greetedRef, inTurnRef）
   //   useMemo         : derive が安いが ref-stable に保ちたい view-side compute（bodyDevLog, folderName）
   //   hot-data        : HMR 越しに 1 instance のみ生かしたい runtime singleton（runtime stack 全体、各 registry）
@@ -891,6 +891,11 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  // UI 表示の cwd 変更と terminal respawn を同じ paint に載せないため、
+  // TerminalWorkspace へ渡す fallback cwd は folder switch の after-paint phase で進める。
+  const [terminalFallbackCwd, setTerminalFallbackCwd] = useState<string | null>(() =>
+    localStorage.getItem(CWD_STORAGE_KEY),
+  );
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
@@ -1066,6 +1071,7 @@ function App() {
 
     const effectDispatcher = new EffectDispatcher();
     const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
+    const voiceApi = voicePlayer.createVoiceAPI();
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
@@ -1999,13 +2005,13 @@ function App() {
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
             speak: (text) => {
-              voicePlayer.createVoiceAPI().say(text);
+              voiceApi.say(text);
             },
             getFrequency: () => voiceFrequency,
           }),
           "voice.play": createVoicePlayHandler({
             play: (clipRef, options) => {
-              voicePlayer.createVoiceAPI().play(clipRef, options);
+              voiceApi.play(clipRef, options);
             },
             getFrequency: () => voiceFrequency,
           }),
@@ -3607,6 +3613,7 @@ function App() {
         pending.timeoutId = window.setTimeout(() => {
           pending.timeoutId = null;
           if (pending.seq !== seq) return;
+          setTerminalFallbackCwd(nextCwd);
           tabManager.setMainSessionLaunchCwd(nextCwd);
           if (canMountTerminals) {
             const mainSessionId = tabManager.getState().mainSessionId;
@@ -4186,7 +4193,7 @@ function App() {
           <TerminalWorkspace
             sessions={tabState.sessions}
             activeSessionId={tabState.activeSessionId}
-            cwd={cwd}
+            cwd={terminalFallbackCwd}
             getSessionCwd={getSessionCwd}
             getSpec={getTerminalSpec}
             getInterruptProtectionMode={getInterruptProtectionMode}
