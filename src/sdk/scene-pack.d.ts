@@ -97,7 +97,7 @@ export interface ScenePackCameraAPI {
   /** Position offset modulation を登録する. 毎フレーム evaluate → base に加算. */
   addPositionModulation(
     key: string,
-    evaluate: (elapsed: number, delta: number) => Vec3,
+    evaluate: (elapsed: number, delta: number, out: Vec3) => Vec3 | undefined,
   ): Disposable;
 
   /** FOV offset modulation を登録する. 毎フレーム evaluate → base FOV に加算. */

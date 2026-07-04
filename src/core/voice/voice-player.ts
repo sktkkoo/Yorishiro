@@ -9,7 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { ensureAudioContextRunning, getAudioContext } from "./audio-context";
 import { LipSyncAnalyser } from "./lip-sync-analyser";
 import type { MouthValues } from "./mouth-values";
-import { ZERO_MOUTH } from "./mouth-values";
+import { clearMouthValues, copyMouthValues, createMouthValues, ZERO_MOUTH } from "./mouth-values";
 import type { TtsEngine } from "./tts-engine";
 import { isPlayableVoiceUrl, resolveSharedVoiceRef } from "./voice-clip-resolver";
 
@@ -39,6 +39,8 @@ export class VoicePlayer {
   private fadeResetGeneration = 0;
   private animFrameId: number | null = null;
   private onMouthValues: ((values: MouthValues) => void) | null = null;
+  private readonly mouthSampleScratch = createMouthValues();
+  private readonly mouthCallbackScratch = createMouthValues();
 
   constructor(voice?: string, engine?: TtsEngine) {
     this.voice = voice ?? null;
@@ -51,8 +53,9 @@ export class VoicePlayer {
   }
 
   /** 現在の口形素を 1 回取得する（コールバック不使用時のポーリング用）。 */
-  sampleMouth(): MouthValues {
-    return this.lipSync?.sample() ?? { ...ZERO_MOUTH };
+  sampleMouth(out?: MouthValues): MouthValues {
+    if (this.lipSync) return this.lipSync.sample(out);
+    return out ? clearMouthValues(out) : { ...ZERO_MOUTH };
   }
 
   createVoiceAPI(options: { readonly resolveClip?: VoiceClipResolver } = {}): VoiceAPI {
@@ -246,7 +249,7 @@ export class VoicePlayer {
           this.currentSource = null;
           this.currentPlaybackId = null;
           this.stopLipSyncLoop();
-          this.onMouthValues?.({ ...ZERO_MOUTH });
+          this.onMouthValues?.(clearMouthValues(this.mouthCallbackScratch));
         }
         resolve();
       };
@@ -260,7 +263,7 @@ export class VoicePlayer {
     if (playbackId !== undefined && this.currentPlaybackId !== playbackId) return;
     this.fadeOutAndStop(playbackId);
     this.stopLipSyncLoop();
-    this.onMouthValues?.({ ...ZERO_MOUTH });
+    this.onMouthValues?.(clearMouthValues(this.mouthCallbackScratch));
   }
 
   private stopSource(playbackId?: number): void {
@@ -322,7 +325,9 @@ export class VoicePlayer {
   private startLipSyncLoop(): void {
     if (this.animFrameId !== null) return;
     const tick = () => {
-      this.onMouthValues?.(this.sampleMouth());
+      this.onMouthValues?.(
+        copyMouthValues(this.sampleMouth(this.mouthSampleScratch), this.mouthCallbackScratch),
+      );
       this.animFrameId = requestAnimationFrame(tick);
     };
     this.animFrameId = requestAnimationFrame(tick);

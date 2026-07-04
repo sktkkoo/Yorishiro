@@ -37,11 +37,11 @@ class AttentionRuntimeImpl implements AttentionRuntime {
 
   private publish(): void {
     const now = performance.now();
-    const target = resolveAttentionTarget(Array.from(this.sources.values()), { now });
+    const target = resolveAttentionTarget(this.sources.values(), { now });
     const next: AttentionSnapshot = { target };
     if (sameSnapshot(this.snapshot, next)) return;
     this.snapshot = next;
-    for (const listener of Array.from(this.listeners)) {
+    for (const listener of this.listeners) {
       listener(next);
     }
   }

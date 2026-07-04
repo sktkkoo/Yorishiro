@@ -74,6 +74,8 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   // viewport が空になると次の tick で両 Set が clear され、再表示時に再 emit される。
   let seenDiagnosticLines = new Set<string>();
   let seenFileLinkLines = new Set<string>();
+  let currentDiagnosticLines = new Set<string>();
+  let currentFileLinkLines = new Set<string>();
 
   // source ごとの pending pulse timer を管理する。
   // 新規行が来たら既存 timer をキャンセルして上書きする（stacking しない）。
@@ -99,9 +101,10 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
     // bottom-first で scan し、カテゴリごとに新規行の最初の 1 行だけ emit する。
     const lines = terminal.getViewportLineRects();
 
-    // 今 frame に存在する行テキスト（次 frame の seen Set になる）
-    const currentDiagnosticLines = new Set<string>();
-    const currentFileLinkLines = new Set<string>();
+    // 今 frame に存在する行テキスト（次 frame の seen Set になる）。
+    // Set は scan ごとに作らず swap して再利用する。
+    currentDiagnosticLines.clear();
+    currentFileLinkLines.clear();
 
     // emit 済みフラグ（1 frame 内の重複 emit 防止）
     let diagnosticEmitted = false;
@@ -132,8 +135,13 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
     }
 
     // seen Set を今 frame の内容で更新（viewport 空なら両 Set も空になる）
+    const previousDiagnosticLines = seenDiagnosticLines;
     seenDiagnosticLines = currentDiagnosticLines;
+    currentDiagnosticLines = previousDiagnosticLines;
+
+    const previousFileLinkLines = seenFileLinkLines;
     seenFileLinkLines = currentFileLinkLines;
+    currentFileLinkLines = previousFileLinkLines;
   };
 
   const tick = (now: DOMHighResTimeStamp): void => {

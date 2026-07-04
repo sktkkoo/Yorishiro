@@ -24,11 +24,12 @@ export function CameraBreath({
   fovAmp,
 }: CameraBreathProps) {
   useEffect(() => {
-    const handle = camera.addPositionModulation("breath", (elapsed) => ({
-      x: Math.sin(elapsed * freqX) * ampX,
-      y: Math.cos(elapsed * freqY) * ampY,
-      z: Math.sin(elapsed * freqZ + 0.7) * ampZ,
-    }));
+    const handle = camera.addPositionModulation("breath", (elapsed, _delta, out) => {
+      out.x = Math.sin(elapsed * freqX) * ampX;
+      out.y = Math.cos(elapsed * freqY) * ampY;
+      out.z = Math.sin(elapsed * freqZ + 0.7) * ampZ;
+      return out;
+    });
     return () => handle.dispose();
   }, [camera, freqX, freqY, freqZ, ampX, ampY, ampZ]);
 

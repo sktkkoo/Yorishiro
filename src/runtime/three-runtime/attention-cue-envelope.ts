@@ -26,17 +26,26 @@ const ATTENTION_CUE_PEAK_INTENSITY: AttentionCueLightIntensity = {
 export function computeAttentionCueLightIntensity(
   elapsedSeconds: number,
 ): AttentionCueLightIntensity {
+  return computeAttentionCueLightIntensityInto(elapsedSeconds, { ambient: 0, point: 0, spot: 0 });
+}
+
+export function computeAttentionCueLightIntensityInto(
+  elapsedSeconds: number,
+  out: { ambient: number; point: number; spot: number },
+): AttentionCueLightIntensity {
   if (elapsedSeconds <= 0 || elapsedSeconds >= ATTENTION_CUE_DURATION_SECONDS) {
-    return { ambient: 0, point: 0, spot: 0 };
+    out.ambient = 0;
+    out.point = 0;
+    out.spot = 0;
+    return out;
   }
   const pulseElapsed = elapsedSeconds % ATTENTION_CUE_PULSE_DURATION_SECONDS;
   const progress = pulseElapsed / ATTENTION_CUE_PULSE_DURATION_SECONDS;
   const fade = progress < 0.5 ? smootherstep(progress * 2) : smootherstep((1 - progress) * 2);
-  return {
-    ambient: ATTENTION_CUE_PEAK_INTENSITY.ambient * fade,
-    point: ATTENTION_CUE_PEAK_INTENSITY.point * fade,
-    spot: ATTENTION_CUE_PEAK_INTENSITY.spot * fade,
-  };
+  out.ambient = ATTENTION_CUE_PEAK_INTENSITY.ambient * fade;
+  out.point = ATTENTION_CUE_PEAK_INTENSITY.point * fade;
+  out.spot = ATTENTION_CUE_PEAK_INTENSITY.spot * fade;
+  return out;
 }
 
 function clamp01(value: number): number {

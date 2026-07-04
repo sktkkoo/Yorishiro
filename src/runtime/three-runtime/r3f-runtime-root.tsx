@@ -97,7 +97,7 @@ function ActiveSceneControlsBoundary({ entry }: ActiveSceneControlsBoundaryProps
     return {
       addPositionModulation(
         key: string,
-        evaluate: (elapsed: number, delta: number) => Vec3,
+        evaluate: (elapsed: number, delta: number, out: Vec3) => Vec3 | undefined,
       ): Disposable {
         return mod.addPositionModulation(key, evaluate);
       },

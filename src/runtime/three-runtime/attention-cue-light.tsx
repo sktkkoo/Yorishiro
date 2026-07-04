@@ -31,6 +31,7 @@ import { getAttentionCueClaimRegistry } from "./attention-cue-claims";
 import {
   ATTENTION_CUE_DURATION_SECONDS,
   computeAttentionCueLightIntensity,
+  computeAttentionCueLightIntensityInto,
 } from "./attention-cue-envelope";
 
 const DEFAULT_COLOR = "#ffb08a";
@@ -110,6 +111,7 @@ function AttentionCueLightCore({
   const ambientRef = useRef<AmbientLight>(null);
   const pointRef = useRef<PointLight>(null);
   const spotRef = useRef<SpotLight>(null);
+  const intensityRef = useRef({ ambient: 0, point: 0, spot: 0 });
 
   useEffect(() => {
     setCue(cueStore.getCurrent());
@@ -142,7 +144,7 @@ function AttentionCueLightCore({
       setCompletedVersion((version) => version + 1);
       return;
     }
-    const intensity = computeAttentionCueLightIntensity(elapsed);
+    const intensity = computeAttentionCueLightIntensityInto(elapsed, intensityRef.current);
     if (ambientRef.current) ambientRef.current.intensity = intensity.ambient * intensityScale;
     if (pointRef.current) pointRef.current.intensity = intensity.point * intensityScale;
     if (spotRef.current) spotRef.current.intensity = intensity.spot * intensityScale;

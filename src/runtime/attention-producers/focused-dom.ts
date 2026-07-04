@@ -48,6 +48,10 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
   let focusActive = false;
   let lastScanAt = Number.NEGATIVE_INFINITY;
   let disposed = false;
+  let lastX = Number.NaN;
+  let lastY = Number.NaN;
+  let lastWidth = Number.NaN;
+  let lastHeight = Number.NaN;
 
   const scan = (): void => {
     const activeElement = getActiveElement();
@@ -66,14 +70,31 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
       activeRect.height > 0;
 
     if (focusable && activeRect !== undefined) {
+      const x = activeRect.left - EXPAND_PX;
+      const y = activeRect.top - EXPAND_PX;
+      const width = activeRect.width + EXPAND_PX * 2;
+      const height = activeRect.height + EXPAND_PX * 2;
+      if (
+        focusActive &&
+        x === lastX &&
+        y === lastY &&
+        width === lastWidth &&
+        height === lastHeight
+      ) {
+        return;
+      }
+      lastX = x;
+      lastY = y;
+      lastWidth = width;
+      lastHeight = height;
       attention.setSourceTarget(SOURCE, {
         kind: "focused-dom",
         source: SOURCE,
         rect: {
-          x: activeRect.left - EXPAND_PX,
-          y: activeRect.top - EXPAND_PX,
-          width: activeRect.width + EXPAND_PX * 2,
-          height: activeRect.height + EXPAND_PX * 2,
+          x,
+          y,
+          width,
+          height,
         },
         confidence: CONFIDENCE,
         priority: PRIORITY,
@@ -85,6 +106,10 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
       if (focusActive) {
         attention.setSourceTarget(SOURCE, null);
         focusActive = false;
+        lastX = Number.NaN;
+        lastY = Number.NaN;
+        lastWidth = Number.NaN;
+        lastHeight = Number.NaN;
       }
     }
   };
@@ -111,6 +136,10 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
         attention.setSourceTarget(SOURCE, null);
         focusActive = false;
       }
+      lastX = Number.NaN;
+      lastY = Number.NaN;
+      lastWidth = Number.NaN;
+      lastHeight = Number.NaN;
     },
   };
 }

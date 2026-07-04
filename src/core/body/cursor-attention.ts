@@ -21,6 +21,14 @@ export interface CursorAttentionOutput {
   readonly eyePitchDeg: number;
 }
 
+export type MutableCursorAttentionOutput = {
+  mode: CursorAttentionMode | null;
+  headYawRad: number;
+  headPitchRad: number;
+  eyeYawDeg: number;
+  eyePitchDeg: number;
+};
+
 export type CursorAttentionEvent =
   | {
       readonly kind: "start";
@@ -70,6 +78,13 @@ export class CursorAttentionSystem {
 
   private readonly random: () => number;
   private readonly onEvent?: (event: CursorAttentionEvent) => void;
+  private readonly output: MutableCursorAttentionOutput = {
+    mode: null,
+    headYawRad: 0,
+    headPitchRad: 0,
+    eyeYawDeg: 0,
+    eyePitchDeg: 0,
+  };
   /**
    * ambient cycle の発火条件を外部から注入できるゲート関数。
    * undefined の場合は常に true（後方互換）。
@@ -149,17 +164,20 @@ export class CursorAttentionSystem {
   }
 
   getOutput(): CursorAttentionOutput {
+    return { ...this.writeOutput(this.output) };
+  }
+
+  writeOutput(out: MutableCursorAttentionOutput): CursorAttentionOutput {
     const strength = this.getStrength();
     const headEnabled = this.mode === "both";
     const eyeEnabled = this.mode === "eyes" || this.mode === "both";
 
-    return {
-      mode: this.mode,
-      headYawRad: headEnabled ? this.lagX * HEAD_MAX_YAW_RAD * strength : 0,
-      headPitchRad: headEnabled ? this.lagY * HEAD_MAX_PITCH_RAD * strength : 0,
-      eyeYawDeg: eyeEnabled ? this.targetX * EYE_MAX_YAW_DEG * strength : 0,
-      eyePitchDeg: eyeEnabled ? -this.targetY * EYE_MAX_PITCH_DEG * strength : 0,
-    };
+    out.mode = this.mode;
+    out.headYawRad = headEnabled ? this.lagX * HEAD_MAX_YAW_RAD * strength : 0;
+    out.headPitchRad = headEnabled ? this.lagY * HEAD_MAX_PITCH_RAD * strength : 0;
+    out.eyeYawDeg = eyeEnabled ? this.targetX * EYE_MAX_YAW_DEG * strength : 0;
+    out.eyePitchDeg = eyeEnabled ? -this.targetY * EYE_MAX_PITCH_DEG * strength : 0;
+    return out;
   }
 
   get isActive(): boolean {

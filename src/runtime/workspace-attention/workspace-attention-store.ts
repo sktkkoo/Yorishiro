@@ -62,6 +62,15 @@ export class WorkspaceAttentionStore {
     if (existingId) {
       const existing = this.items.get(existingId);
       if (existing) {
+        if (
+          existing.state === "active" &&
+          shallowEqualRecord(existing.locus, input.locus) &&
+          existing.type === input.type &&
+          existing.severity === input.severity &&
+          shallowEqualRecord(existing.detail, input.detail)
+        ) {
+          return existing;
+        }
         const updated = {
           ...existing,
           locus: input.locus,
@@ -223,4 +232,18 @@ function maxSeverity(items: ReadonlyArray<WorkspaceAttentionItem>): WorkspaceAtt
     }
   }
   return best;
+}
+
+function shallowEqualRecord(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) return false;
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  const bKeys = Object.keys(bRecord);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (aRecord[key] !== bRecord[key]) return false;
+  }
+  return true;
 }

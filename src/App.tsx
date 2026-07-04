@@ -392,6 +392,13 @@ const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
 const VRM_STORAGE_KEY = "charminal:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
 
+let dialogModulePromise: Promise<typeof import("@tauri-apps/plugin-dialog")> | null = null;
+
+function loadDialogModule(): Promise<typeof import("@tauri-apps/plugin-dialog")> {
+  dialogModulePromise ??= import("@tauri-apps/plugin-dialog");
+  return dialogModulePromise;
+}
+
 interface RestoreDialogRequest {
   readonly seq: number;
   readonly changeText: string;
@@ -866,7 +873,7 @@ function App() {
   //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
   // 詳細: src/runtime/README.md §HMR と singleton
 
-  const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
@@ -3553,9 +3560,13 @@ function App() {
 
   // ── Folder picker ─────────────────────────────────────────────
 
+  useEffect(() => {
+    void loadDialogModule().catch(() => {});
+  }, []);
+
   const handlePickFolder = useCallback(async () => {
     try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
+      const { open } = await loadDialogModule();
       const selected = await open({
         directory: true,
         title: strings.selectProjectFolder,
@@ -3564,14 +3575,13 @@ function App() {
         const nextCwd = selected as string;
         if (nextCwd === cwd) return;
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
-        // Workspace 切替は runtime singleton 群を一度作り直す。
-        // PTY / xterm / perception の寿命が絡むため、差分更新より WebView reload の方が安定する。
-        window.location.reload();
+        setCwd(nextCwd);
+        tabManager.setMainSessionLaunchCwd(nextCwd);
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd, strings.selectProjectFolder]);
+  }, [cwd, strings.selectProjectFolder, tabManager]);
 
   // ── Settings ─────────────────────────────────────────────
 

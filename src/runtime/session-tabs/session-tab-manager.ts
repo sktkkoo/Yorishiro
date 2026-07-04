@@ -161,6 +161,22 @@ export class SessionTabManager {
     return this.sessionLaunchCwds.get(sessionId);
   }
 
+  /** main session の起動 cwd を差し替え、React 側の updatePtyParams で再 spawn させる。 */
+  setMainSessionLaunchCwd(cwd: string | null): void {
+    const sessionId = this.state.mainSessionId;
+    if (this.sessionLaunchCwds.get(sessionId) === cwd && this.sessionCwds.get(sessionId) === cwd) {
+      return;
+    }
+    this.sessionLaunchCwds.set(sessionId, cwd);
+    this.sessionCwds.set(sessionId, cwd);
+    this.sessionStartedAts.set(sessionId, null);
+    this.restoredSessionIds.delete(sessionId);
+    this.spawnTime = Date.now();
+    this.setState({ ...this.state, sessions: [...this.state.sessions] });
+    this.persistSessionCwds();
+    this.emitEvent("session-cwd-changed", { sessionId, cwd });
+  }
+
   updateSessionCwd(sessionId: SessionId, cwd: string): void {
     if (!this.state.sessions.includes(sessionId)) return;
     if (this.sessionCwds.get(sessionId) === cwd) return;

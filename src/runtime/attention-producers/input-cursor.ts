@@ -33,6 +33,10 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
   let rafId: number | null = null;
   let lastScanAt = Number.NEGATIVE_INFINITY;
   let disposed = false;
+  let lastX = Number.NaN;
+  let lastY = Number.NaN;
+  let lastWidth = Number.NaN;
+  let lastHeight = Number.NaN;
 
   const updateTyping = (): void => {
     const cursor = terminal.getInputCursorClientPosition();
@@ -40,17 +44,38 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
       if (typingActive) {
         attention.setSourceTarget(SOURCE_TYPING, null);
         typingActive = false;
+        lastX = Number.NaN;
+        lastY = Number.NaN;
+        lastWidth = Number.NaN;
+        lastHeight = Number.NaN;
       }
       return;
     }
+    const x = cursor.clientX;
+    const y = cursor.clientY;
+    const width = cursor.cellWidth;
+    const height = cursor.cellHeight;
+    if (
+      typingActive &&
+      x === lastX &&
+      y === lastY &&
+      width === lastWidth &&
+      height === lastHeight
+    ) {
+      return;
+    }
+    lastX = x;
+    lastY = y;
+    lastWidth = width;
+    lastHeight = height;
     attention.setSourceTarget(SOURCE_TYPING, {
       kind: "input-cursor",
       source: SOURCE_TYPING,
       rect: {
-        x: cursor.clientX,
-        y: cursor.clientY,
-        width: cursor.cellWidth,
-        height: cursor.cellHeight,
+        x,
+        y,
+        width,
+        height,
       },
       confidence: CONFIDENCE,
       priority: PRIORITY_TYPING,
@@ -80,6 +105,10 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
         attention.setSourceTarget(SOURCE_TYPING, null);
         typingActive = false;
       }
+      lastX = Number.NaN;
+      lastY = Number.NaN;
+      lastWidth = Number.NaN;
+      lastHeight = Number.NaN;
     },
   };
 }
