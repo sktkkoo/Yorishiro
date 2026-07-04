@@ -876,13 +876,9 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
-  const [currentProjectRoot, setCurrentProjectRootState] = useState<ProjectRootResolution>({
-    kind: "none",
-  });
   const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
   const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
-    setCurrentProjectRootState(projectRoot);
   }, []);
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
@@ -907,10 +903,6 @@ function App() {
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
-
-  useEffect(() => {
-    currentProjectRootRef.current = currentProjectRoot;
-  }, [currentProjectRoot]);
 
   // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
   const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
