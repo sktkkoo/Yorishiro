@@ -254,6 +254,7 @@ export class SessionStatusStore {
     const source = notification.source ?? "osc";
     const current = this.ensure(sessionId);
     const receivedAt = this.now();
+    const normalizedTitle = title.length > 0 ? title : null;
     const lastCleared = this.lastAttentionCleared.get(sessionId);
     if (current.attention === null && source !== "loop" && lastCleared !== undefined) {
       const sinceCleared = receivedAt - lastCleared.clearedAt;
@@ -261,7 +262,7 @@ export class SessionStatusStore {
       const sameScreenPrompt =
         source === "screen" &&
         lastCleared.source === "screen" &&
-        lastCleared.title === (title.length > 0 ? title : null) &&
+        lastCleared.title === normalizedTitle &&
         lastCleared.body === body;
       if (inSuppressionWindow && (source !== "screen" || sameScreenPrompt)) return;
     }
@@ -277,7 +278,29 @@ export class SessionStatusStore {
 
     if (
       current.activity === "awaiting-input" &&
-      current.attention?.title === (title.length > 0 ? title : null) &&
+      current.attention !== null &&
+      source === "screen" &&
+      current.attention.source !== "screen" &&
+      current.attention.source !== "loop"
+    ) {
+      const unread = sessionId !== this.activeSessionId;
+      this.commit({
+        ...current,
+        attention: {
+          title: normalizedTitle,
+          body,
+          receivedAt: current.attention.receivedAt,
+          source,
+        },
+        unread: current.unread || unread,
+        lastActivityAt: receivedAt,
+      });
+      return;
+    }
+
+    if (
+      current.activity === "awaiting-input" &&
+      current.attention?.title === normalizedTitle &&
       current.attention.body === body &&
       current.attention.source === source
     ) {
@@ -289,7 +312,7 @@ export class SessionStatusStore {
       ...current,
       activity: "awaiting-input",
       attention: {
-        title: title.length > 0 ? title : null,
+        title: normalizedTitle,
         body,
         receivedAt,
         source,

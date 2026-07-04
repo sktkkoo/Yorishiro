@@ -393,6 +393,30 @@ describe("SessionStatusStore", () => {
     });
   });
 
+  it("promotes active hook attention to screen without changing its receivedAt", () => {
+    const { store, tick } = createStore();
+
+    tick(200);
+    store.markAttentionRequest("s1", {
+      title: "Claude Code",
+      body: "Waiting for approval",
+      source: "hook",
+    });
+    tick(280);
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Claude Code",
+        body: "Allow command?",
+        receivedAt: 200,
+        source: "screen",
+      },
+      lastActivityAt: 280,
+    });
+  });
+
   it("suppresses late hook attention immediately after user cleared screen attention", () => {
     const { store, tick } = createStore();
 
