@@ -17,16 +17,21 @@ interface JournalEntry {
 
 /** 常時注入する記憶の直近件数。全文注入はコンテキストを圧迫するだけなので選抜する。 */
 const RECENT_MEMORY_COUNT = 5;
-/** 直近分に加えて混ぜる古い記憶の件数。セッションごとに無作為に選び、記憶に濃淡を作る。 */
+/** 直近分に加えて混ぜる古い記憶の件数。無作為に選び、記憶に濃淡を作る。 */
 const OLDER_MEMORY_COUNT = 2;
 
 /**
  * memories.md の行から常時注入分を選抜する。
  *
  * 直近 RECENT_MEMORY_COUNT 行 + それより古い行から無作為に OLDER_MEMORY_COUNT 行。
- * 古い記憶がセッションごとに入れ替わることで、全記憶を常時貼るのではなく
- * 「浮かんでいる記憶が日によって違う」状態を作る。行内の書式は解釈しない
- * （ユーザー手編集で壊れた行があってもそのまま素通しし、落ちない）。
+ * 古い記憶が入れ替わることで、全記憶を常時貼るのではなく「浮かんでいる記憶が
+ * 違う」状態を作る。行内の書式は解釈しない（ユーザー手編集で壊れた行があっても
+ * そのまま素通しし、落ちない）。
+ *
+ * 注意: collectGlobalPrompt は boot 時に一度だけ走るため（App.tsx の
+ * userLayerReady は多重 spawn 回避のため一度しか resolve しない）、実際の
+ * 入れ替わりはアプリ起動ごと。開きっぱなし運用での spawn ごと再収集は
+ * journal callback P1（hook 基盤の再設計）と一緒に扱う。
  */
 export function selectMemoryLines(lines: string[], random: () => number = Math.random): string[] {
   const valid = lines.map((line) => line.trim()).filter((line) => line.length > 0);
