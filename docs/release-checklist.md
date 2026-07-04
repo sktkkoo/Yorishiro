@@ -40,6 +40,11 @@ Notes:
   receive updates again — keep the original backed up.
 - Releases before v0.5.3 do not contain the in-app updater, so those installs
   only update via Homebrew (`brew upgrade`) or manual download.
+- The tap needs no per-release work. It only needs manual edits if the `.dmg`
+  naming scheme or the `charminal.app` bundle name changes. Also note GitHub
+  disables cron workflows in repos with no activity for 60 days; if releases
+  pause that long, re-enable the tap's bump workflow with
+  `gh workflow enable bump-charminal.yml -R sktkkoo/homebrew-charminal`.
 
 ## 1. Build artifacts
 
