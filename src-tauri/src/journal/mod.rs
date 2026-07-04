@@ -63,6 +63,13 @@ pub fn append_memory(date: &str, summary: &str) -> Result<(), String> {
     std::fs::create_dir_all(path.parent().unwrap())
         .map_err(|e| format!("journal ディレクトリの作成に失敗: {}", e))?;
 
+    // 住人が summary の先頭に日付を含めてくると `2026-06-27: 2026-06-27: ...` と
+    // 二重になるため、先頭の `{date}:` は剥がしてから前置する。
+    let summary = summary
+        .trim_start()
+        .strip_prefix(&format!("{}:", date))
+        .map(str::trim_start)
+        .unwrap_or(summary);
     let line = format!("{}: {}\n", date, summary);
 
     let mut content = if path.exists() {
@@ -324,6 +331,26 @@ mod tests {
 
         let result = read_entry("../../../../../etc/passwd");
         assert!(result.is_err(), "traversal を含む date は拒否されるべき");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn append_memory_strips_duplicated_date_prefix() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("memory-dup-date");
+        std::env::set_var("HOME", &home);
+
+        append_memory("2026-06-27", "2026-06-27: 花火を見た日。").expect("append ok");
+        append_memory("2026-06-28", "普通の一行。").expect("append ok");
+
+        let content =
+            fs::read_to_string(home.join(".charminal/journal/memories.md")).expect("read");
+        assert!(content.contains("2026-06-27: 花火を見た日。"));
+        assert!(!content.contains("2026-06-27: 2026-06-27:"));
+        assert!(content.contains("2026-06-28: 普通の一行。"));
 
         let _ = fs::remove_dir_all(&home);
     }
