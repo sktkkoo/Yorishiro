@@ -26,8 +26,8 @@ describe("computeAttentionCueLightIntensity", () => {
     expect(secondPeak.point).toBeCloseTo(firstPeak.point);
     expect(secondPeak.spot).toBeCloseTo(firstPeak.spot);
     expect(end).toEqual({ ambient: 0, point: 0, spot: 0 });
-    expect(firstPeak.ambient).toBeCloseTo(0.06);
-    expect(firstPeak.point).toBeCloseTo(0.55);
-    expect(firstPeak.spot).toBeCloseTo(0.65);
+    expect(firstPeak.ambient).toBeCloseTo(0.02);
+    expect(firstPeak.point).toBeCloseTo(0.18);
+    expect(firstPeak.spot).toBeCloseTo(0.21);
   });
 });

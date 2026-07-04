@@ -3,8 +3,7 @@
  *
  * 旧 runtime 直注入の attention-flash-light.tsx から移植。cue（AttentionLightCue）
  * が発火してからの経過秒数を渡すと、fade-in/fade-out する 2 回の pulse の
- * 強度を返す。値そのものの帰納調整については attention-flash-light.tsx 時代の
- * 調整結果をそのまま引き継ぐ。
+ * 強度を返す。値そのものは実機確認に合わせて帰納的に調整する。
  */
 
 export const ATTENTION_CUE_PULSE_COUNT = 2;
@@ -19,9 +18,9 @@ export interface AttentionCueLightIntensity {
 }
 
 const ATTENTION_CUE_PEAK_INTENSITY: AttentionCueLightIntensity = {
-  ambient: 0.06,
-  point: 0.55,
-  spot: 0.65,
+  ambient: 0.02,
+  point: 0.18,
+  spot: 0.21,
 };
 
 export function computeAttentionCueLightIntensity(
