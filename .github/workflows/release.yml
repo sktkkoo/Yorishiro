@@ -91,8 +91,10 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # in-app updater 用のパッケージ署名（Apple codesign とは別系統の minisign）。
-          # 鍵はパスワードなしで生成しているため PASSWORD env は設定しない。
+          # 鍵は空パスワードで生成している。PASSWORD を明示しないと TTY プロンプトを
+          # 出そうとして CI では "Device not configured" で失敗する。
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
       # updater artifact（.app.tar.gz + .sig）は両アーキで同名（charminal.app.tar.gz）に
       # なるため、arch を含む名前にリネームしてから artifact 化する。この名前が
