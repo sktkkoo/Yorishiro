@@ -109,6 +109,12 @@ import {
   resolvePackRepairPrompt,
   restoreConfirmStrings,
 } from "./i18n/strings";
+import {
+  applyReloadDocumentBackground,
+  applyReloadNativeBackground,
+  applyReloadSurfaceBackground,
+  setReloadNativeBackground,
+} from "./reload-visual-guard";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -394,6 +400,8 @@ const RELOAD_CURTAIN_STORAGE_KEY = "charminal:reload-curtain";
 const RELOAD_CURTAIN_FADE_IN_MS = 120;
 const RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS = 80;
 const RELOAD_CURTAIN_FADE_OUT_MS = 180;
+const RELOAD_CURTAIN_MAX_BLOCK_MS = 5000;
+const RELOAD_NATIVE_BACKGROUND_WAIT_MS = 80;
 const HOOK_BADGE_VISIBLE_MS = 6000;
 
 type ReloadCurtainPhase = "hidden" | "entering" | "visible" | "leaving";
@@ -898,17 +906,31 @@ function App() {
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const reloadCurtainFromReloadRef = useRef(hasPendingReloadCurtain());
+  const reloadInFlightRef = useRef(false);
   const [reloadCurtainPhase, setReloadCurtainPhase] = useState<ReloadCurtainPhase>(() =>
     reloadCurtainFromReloadRef.current ? "visible" : "hidden",
   );
   const reloadWithCurtain = useCallback(() => {
+    if (reloadInFlightRef.current) return;
+    reloadInFlightRef.current = true;
+    const nativeBackgroundReady = setReloadNativeBackground();
+    applyReloadDocumentBackground();
     markReloadCurtainPending();
     setReloadCurtainPhase("entering");
     window.requestAnimationFrame(() => {
       setReloadCurtainPhase("visible");
     });
     window.setTimeout(() => {
-      window.location.reload();
+      applyReloadDocumentBackground();
+      void withTimeout(
+        nativeBackgroundReady,
+        RELOAD_NATIVE_BACKGROUND_WAIT_MS,
+        undefined,
+        () => undefined,
+      ).then(() => {
+        applyReloadSurfaceBackground();
+        window.location.reload();
+      });
     }, RELOAD_CURTAIN_FADE_IN_MS);
   }, []);
   const [currentProjectRoot, setCurrentProjectRootState] = useState<string | null>(null);
@@ -2253,6 +2275,9 @@ function App() {
   );
   const [localizedPluginDir, setLocalizedPluginDir] = useState<string | null>(null);
   useEffect(() => {
+    applyReloadNativeBackground();
+  }, []);
+  useEffect(() => {
     let cancelled = false;
     userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec, systemPrompt, pluginDir }) => {
       if (!cancelled) {
@@ -2280,6 +2305,22 @@ function App() {
     return () => {
       window.clearTimeout(hold);
       window.clearTimeout(hide);
+    };
+  }, [isUserLayerReady]);
+  useEffect(() => {
+    if (!reloadCurtainFromReloadRef.current || isUserLayerReady) return;
+    let hide: number | null = null;
+    const failsafe = window.setTimeout(() => {
+      reloadCurtainFromReloadRef.current = false;
+      clearReloadCurtainPending();
+      setReloadCurtainPhase("leaving");
+      hide = window.setTimeout(() => {
+        setReloadCurtainPhase("hidden");
+      }, RELOAD_CURTAIN_FADE_OUT_MS);
+    }, RELOAD_CURTAIN_MAX_BLOCK_MS);
+    return () => {
+      window.clearTimeout(failsafe);
+      if (hide !== null) window.clearTimeout(hide);
     };
   }, [isUserLayerReady]);
 
