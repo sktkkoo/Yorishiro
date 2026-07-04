@@ -14,7 +14,7 @@
  * - bounding rect の width または height が 0（非表示 / 未レンダリング）
  *
  * v1 では rAF loop で毎 frame poll していたが、focused DOM の矩形は
- * 高頻度に変わらないため rAF に同期した低頻度 poll にする。
+ * 高頻度に変わらないため timer + one-shot rAF の低頻度 poll にする。
  */
 
 import type { AttentionRuntime } from "../attention-runtime/types";
@@ -34,6 +34,9 @@ interface StartOptions {
   readonly cancelRaf?: (id: number) => void;
   /** テスト用 document.activeElement override。省略時は document.activeElement を直接参照。 */
   readonly getActiveElement?: () => Element | null;
+  /** scan loop 用 timer。省略時は globalThis.setTimeout。 */
+  readonly setScanTimeout?: (fn: () => void, delay: number) => unknown;
+  readonly clearScanTimeout?: (id: unknown) => void;
 }
 
 export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable {
@@ -42,11 +45,13 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
     raf = globalThis.requestAnimationFrame.bind(globalThis),
     cancelRaf = globalThis.cancelAnimationFrame.bind(globalThis),
     getActiveElement = () => document.activeElement,
+    setScanTimeout = globalThis.setTimeout.bind(globalThis),
+    clearScanTimeout = globalThis.clearTimeout.bind(globalThis) as (id: unknown) => void,
   } = opts;
 
   let rafId: number | null = null;
+  let scanTimer: unknown | null = null;
   let focusActive = false;
-  let lastScanAt = Number.NEGATIVE_INFINITY;
   let disposed = false;
   let lastX = Number.NaN;
   let lastY = Number.NaN;
@@ -114,16 +119,23 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
     }
   };
 
-  const tick = (now: DOMHighResTimeStamp): void => {
-    if (disposed) return;
-    if (now - lastScanAt >= FOCUSED_DOM_SCAN_INTERVAL_MS) {
-      lastScanAt = now;
-      scan();
-    }
-    rafId = raf(tick);
-  };
+  function scheduleScan(delay = FOCUSED_DOM_SCAN_INTERVAL_MS): void {
+    if (disposed || scanTimer !== null) return;
+    scanTimer = setScanTimeout(() => {
+      scanTimer = null;
+      if (disposed) return;
+      rafId = raf(runScanFrame);
+    }, delay);
+  }
 
-  rafId = raf(tick);
+  function runScanFrame(): void {
+    rafId = null;
+    if (disposed) return;
+    scan();
+    scheduleScan();
+  }
+
+  scheduleScan(0);
 
   return {
     dispose: () => {
@@ -131,6 +143,10 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
       if (rafId !== null) {
         cancelRaf(rafId);
         rafId = null;
+      }
+      if (scanTimer !== null) {
+        clearScanTimeout(scanTimer);
+        scanTimer = null;
       }
       if (focusActive) {
         attention.setSourceTarget(SOURCE, null);
