@@ -104,14 +104,9 @@ function AttentionCueLightCore({
 }: AttentionCueLightProps) {
   const [cue, setCue] = useState<AttentionLightCue | null>(() => cueStore.getCurrent());
   const [, setCompletedVersion] = useState(0);
-  const pulseOriginRef = useRef<number | null>(null);
   const completedSeqRef = useRef<number | null>(null);
   const baseRef = useRef<Anchor>(null);
   const lastSeqForBaseRef = useRef<number | null>(null);
-  const ambientRef = useRef<AmbientLight>(null);
-  const pointRef = useRef<PointLight>(null);
-  const spotRef = useRef<SpotLight>(null);
-  const intensityRef = useRef({ ambient: 0, point: 0, spot: 0 });
 
   useEffect(() => {
     setCue(cueStore.getCurrent());
@@ -126,22 +121,57 @@ function AttentionCueLightCore({
   // （anchor は追従しない: cue 開始時点のキャラ位置に据え置く）。
   if (lastSeqForBaseRef.current !== seq) {
     lastSeqForBaseRef.current = seq;
-    pulseOriginRef.current = null;
-    baseRef.current = position ? { x: position[0], y: position[1], z: position[2] } : getAnchor();
+    const anchor = position ? { x: position[0], y: position[1], z: position[2] } : getAnchor();
+    baseRef.current = anchor === null ? null : { x: anchor.x, y: anchor.y, z: anchor.z };
   }
 
   const base = baseRef.current;
   const seqCompleted = seq !== null && completedSeqRef.current === seq;
 
+  if (seq === null || base === null || seqCompleted) return null;
+
+  return (
+    <ActiveAttentionCueLight
+      key={seq}
+      base={base}
+      color={color}
+      intensityScale={intensityScale}
+      onComplete={() => {
+        completedSeqRef.current = seq;
+        setCompletedVersion((version) => version + 1);
+      }}
+    />
+  );
+}
+
+function ActiveAttentionCueLight({
+  base,
+  color,
+  intensityScale,
+  onComplete,
+}: {
+  readonly base: { readonly x: number; readonly y: number; readonly z: number };
+  readonly color: string;
+  readonly intensityScale: number;
+  readonly onComplete: () => void;
+}) {
+  const pulseOriginRef = useRef<number | null>(null);
+  const ambientRef = useRef<AmbientLight>(null);
+  const pointRef = useRef<PointLight>(null);
+  const spotRef = useRef<SpotLight>(null);
+  const intensityRef = useRef({ ambient: 0, point: 0, spot: 0 });
+  const completedRef = useRef(false);
+
   useFrame(({ clock }) => {
-    if (seq === null || base === null || seqCompleted) return;
     if (pulseOriginRef.current === null) {
       pulseOriginRef.current = clock.elapsedTime;
     }
     const elapsed = Math.max(0, clock.elapsedTime - pulseOriginRef.current);
     if (elapsed >= ATTENTION_CUE_DURATION_SECONDS) {
-      completedSeqRef.current = seq;
-      setCompletedVersion((version) => version + 1);
+      if (!completedRef.current) {
+        completedRef.current = true;
+        onComplete();
+      }
       return;
     }
     const intensity = computeAttentionCueLightIntensityInto(elapsed, intensityRef.current);
@@ -149,8 +179,6 @@ function AttentionCueLightCore({
     if (pointRef.current) pointRef.current.intensity = intensity.point * intensityScale;
     if (spotRef.current) spotRef.current.intensity = intensity.spot * intensityScale;
   });
-
-  if (seq === null || base === null || seqCompleted) return null;
 
   const initial = computeAttentionCueLightIntensity(0);
   const pointPosition: [number, number, number] = [

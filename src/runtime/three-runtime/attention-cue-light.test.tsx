@@ -53,6 +53,14 @@ afterEach(() => {
 });
 
 describe("AttentionCueLight", () => {
+  it("cue が無い間は useFrame callback を登録しない", () => {
+    const cueStore = makeCueStore();
+    const anchor = { x: 0, y: 1.35, z: 0 };
+    render(<AttentionCueLight cueStore={cueStore} getAnchor={() => anchor} />);
+
+    expect(useFrame).not.toHaveBeenCalled();
+  });
+
   it("cue の発火で点灯し、duration 経過後に消灯する", () => {
     const cueStore = makeCueStore();
     const anchor = { x: 0, y: 1.35, z: 0 };

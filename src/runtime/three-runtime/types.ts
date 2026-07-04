@@ -56,6 +56,7 @@ export interface ThreeRuntime {
    * （例: `src/runtime/three-runtime/attention-cue-light.tsx`）。
    *
    * head bone が取れない VRM では `vrm.scene.position` にフォールバックする。
+   * 返却 object は runtime-owned で次回呼び出し時に上書きされる。保持する側は値を copy する。
    * 専用の unit test harness は無く、消費側（AttentionCueLight の getAnchor 注入
    * 経路）の test でオフセット計算の扱いを担保する。
    */

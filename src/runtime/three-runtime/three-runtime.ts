@@ -48,6 +48,10 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   private readonly devLogRef: { current: SubsystemLog | null } = { current: null };
   private readonly headWorldPos = new THREE.Vector3();
   private readonly headScreenPos = new THREE.Vector3();
+  private readonly characterAnchorWorldPos = new THREE.Vector3();
+  private readonly characterAnchor = { x: 0, y: 0, z: 0 };
+  private readonly resizeDebugSize = new THREE.Vector2();
+  private readonly resizeDebugViewport = new THREE.Vector4();
 
   private currentUrl: string | null = null;
   private currentVrm: VRM | null = null;
@@ -215,7 +219,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
               this.trackHead = headBone ?? null;
 
-              const headPos = new THREE.Vector3();
+              const headPos = this.characterAnchorWorldPos;
               if (headBone) headBone.getWorldPosition(headPos);
               else headPos.set(0, 1.6, 0);
 
@@ -286,13 +290,19 @@ class ThreeRuntimeImpl implements ThreeRuntime {
   getCharacterAnchor(): { x: number; y: number; z: number } | null {
     const vrm = this.currentVrm;
     if (vrm === null) return null;
-    const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
+    const out = this.characterAnchor;
+    const headBone = this.trackHead ?? vrm.humanoid?.getNormalizedBoneNode("head");
     if (headBone) {
-      const pos = new THREE.Vector3();
-      headBone.getWorldPosition(pos);
-      return { x: pos.x, y: pos.y, z: pos.z };
+      headBone.getWorldPosition(this.characterAnchorWorldPos);
+      out.x = this.characterAnchorWorldPos.x;
+      out.y = this.characterAnchorWorldPos.y;
+      out.z = this.characterAnchorWorldPos.z;
+      return out;
     }
-    return { x: vrm.scene.position.x, y: vrm.scene.position.y, z: vrm.scene.position.z };
+    out.x = vrm.scene.position.x;
+    out.y = vrm.scene.position.y;
+    out.z = vrm.scene.position.z;
+    return out;
   }
 
   getTweenManager(): TweenManager {
@@ -556,8 +566,8 @@ class ThreeRuntimeImpl implements ThreeRuntime {
         this.camera.updateProjectionMatrix();
       }
       if (this.shouldLogResizeDebug()) {
-        const sz = this.renderer.getSize(new THREE.Vector2());
-        const vp = this.renderer.getViewport(new THREE.Vector4());
+        const sz = this.renderer.getSize(this.resizeDebugSize);
+        const vp = this.renderer.getViewport(this.resizeDebugViewport);
         console.warn(
           "[resize-debug2]",
           JSON.stringify({
