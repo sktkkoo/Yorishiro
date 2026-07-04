@@ -49,7 +49,13 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 ### Install (macOS)
 
-Charminal currently targets macOS. Download the latest build below.
+Charminal currently targets macOS. Install with Homebrew:
+
+```sh
+brew install --cask sktkkoo/charminal/charminal
+```
+
+Or download the latest build below.
 
 <p>
   <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
