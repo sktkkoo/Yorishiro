@@ -1499,6 +1499,7 @@ describe("createStateGetHandler", () => {
       readConfig: async () => ({
         primaryPersona: null,
         activeScene: null,
+        sceneByProject: {},
         terminalAgent: "claude" as const,
         disabledPacks: [],
         ambientAudioMuted: false,
@@ -1543,6 +1544,7 @@ describe("createStateGetHandler", () => {
       readConfig: async () => ({
         primaryPersona: null,
         activeScene: null,
+        sceneByProject: {},
         terminalAgent: "claude" as const,
         disabledPacks: [],
         ambientAudioMuted: false,

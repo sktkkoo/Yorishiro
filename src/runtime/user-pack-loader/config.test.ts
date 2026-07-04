@@ -14,6 +14,7 @@ import {
   localizedClaiPersonaId,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
+  resolveSceneForProject,
   serializeConfig,
   withActiveAmbientUiSet,
   withActiveSceneSet,
@@ -22,6 +23,7 @@ import {
   withDisabledPackRemoved,
   withLanguageSet,
   withPrimaryPersonaSet,
+  withProjectSceneSet,
 } from "./config";
 
 describe("parseConfig", () => {
@@ -40,6 +42,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -62,6 +65,7 @@ describe("parseConfig", () => {
       primaryPersona: "clai",
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -84,6 +88,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -106,6 +111,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -128,6 +134,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -150,6 +157,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: 12345,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -177,6 +185,7 @@ describe("parseConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -228,6 +237,7 @@ describe("serializeConfig", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -250,6 +260,7 @@ describe("serializeConfig", () => {
       primaryPersona: "my-persona",
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -285,6 +296,7 @@ describe("serializeConfig", () => {
       primaryPersona: "my-persona",
       mcpPort: 18743,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -366,6 +378,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -389,6 +402,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       primaryPersona: null,
       mcpPort: null,
       activeScene: null,
+      sceneByProject: {},
       activeUi: null,
       activeAmbientUi: ["attention-aura", "pomodoro-ui"],
       tabMetadataBadges: false,
@@ -437,6 +451,87 @@ describe("activeScene", () => {
     const cfg = { ...EMPTY_CONFIG, activeScene: "my-scene" };
     const parsed = JSON.parse(serializeConfig(cfg));
     expect(parsed.activeScene).toBe("my-scene");
+  });
+});
+
+describe("sceneByProject", () => {
+  it("parses string scene mappings and ignores unknown value types", () => {
+    const cfg = parseConfig(
+      JSON.stringify({
+        sceneByProject: {
+          "/repo/a": "forest",
+          "/repo/b": "simple-room",
+          "/repo/bad": 42,
+        },
+      }),
+    );
+    expect(cfg.sceneByProject).toEqual({
+      "/repo/a": "forest",
+      "/repo/b": "simple-room",
+    });
+  });
+
+  it("defaults sceneByProject to an empty object", () => {
+    expect(parseConfig("{}").sceneByProject).toEqual({});
+  });
+
+  it("omits sceneByProject when empty", () => {
+    const cfg = { ...EMPTY_CONFIG, sceneByProject: {} };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({});
+  });
+
+  it("round-trips sceneByProject through serializeConfig", () => {
+    const cfg = {
+      ...EMPTY_CONFIG,
+      activeScene: "fallback-room",
+      sceneByProject: {
+        "/repo/a": "factory",
+        "/repo/b": "grasslands",
+      },
+    };
+    expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
+  });
+
+  it("sets or clears a project-scene mapping immutably", () => {
+    const added = withProjectSceneSet(EMPTY_CONFIG, "/repo/a", "factory");
+    expect(added.sceneByProject).toEqual({ "/repo/a": "factory" });
+    expect(EMPTY_CONFIG.sceneByProject).toEqual({});
+
+    const removed = withProjectSceneSet(added, "/repo/a", null);
+    expect(removed.sceneByProject).toEqual({});
+  });
+});
+
+describe("resolveSceneForProject", () => {
+  it("returns mapped scene for a project root hit", () => {
+    const cfg = {
+      ...EMPTY_CONFIG,
+      activeScene: "fallback-room",
+      sceneByProject: { "/repo/a": "factory" },
+    };
+    expect(resolveSceneForProject(cfg, "/repo/a")).toBe("factory");
+  });
+
+  it("falls back to activeScene when project root misses", () => {
+    const cfg = {
+      ...EMPTY_CONFIG,
+      activeScene: "fallback-room",
+      sceneByProject: { "/repo/a": "factory" },
+    };
+    expect(resolveSceneForProject(cfg, "/repo/b")).toBe("fallback-room");
+  });
+
+  it("falls back to activeScene when project root is null", () => {
+    const cfg = {
+      ...EMPTY_CONFIG,
+      activeScene: "fallback-room",
+      sceneByProject: { "/repo/a": "factory" },
+    };
+    expect(resolveSceneForProject(cfg, null)).toBe("fallback-room");
+  });
+
+  it("returns null when neither mapping nor activeScene is set", () => {
+    expect(resolveSceneForProject(EMPTY_CONFIG, "/repo/a")).toBeNull();
   });
 });
 
