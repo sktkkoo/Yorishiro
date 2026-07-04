@@ -399,6 +399,23 @@ function loadDialogModule(): Promise<typeof import("@tauri-apps/plugin-dialog")>
   return dialogModulePromise;
 }
 
+interface PendingFolderSwitch {
+  rafId: number | null;
+  timeoutId: number | null;
+  seq: number;
+}
+
+function cancelPendingFolderSwitch(pending: PendingFolderSwitch): void {
+  if (pending.rafId !== null) {
+    window.cancelAnimationFrame(pending.rafId);
+    pending.rafId = null;
+  }
+  if (pending.timeoutId !== null) {
+    window.clearTimeout(pending.timeoutId);
+    pending.timeoutId = null;
+  }
+}
+
 interface RestoreDialogRequest {
   readonly seq: number;
   readonly changeText: string;
@@ -3564,6 +3581,46 @@ function App() {
     void loadDialogModule().catch(() => {});
   }, []);
 
+  const pendingFolderSwitchRef = useRef<PendingFolderSwitch>({
+    rafId: null,
+    timeoutId: null,
+    seq: 0,
+  });
+
+  useEffect(
+    () => () => {
+      cancelPendingFolderSwitch(pendingFolderSwitchRef.current);
+    },
+    [],
+  );
+
+  const scheduleMainSessionCwdSwitch = useCallback(
+    (nextCwd: string) => {
+      const pending = pendingFolderSwitchRef.current;
+      cancelPendingFolderSwitch(pending);
+      pending.seq += 1;
+      const seq = pending.seq;
+
+      // Let the folder label / React commit paint before xterm reset + agent respawn work.
+      pending.rafId = window.requestAnimationFrame(() => {
+        pending.rafId = null;
+        pending.timeoutId = window.setTimeout(() => {
+          pending.timeoutId = null;
+          if (pending.seq !== seq) return;
+          tabManager.setMainSessionLaunchCwd(nextCwd);
+          if (canMountTerminals) {
+            const mainSessionId = tabManager.getState().mainSessionId;
+            getTerminalRuntime(mainSessionId).updatePtyParams(
+              { spec: getTerminalSpec(mainSessionId), cwd: nextCwd },
+              { force: true },
+            );
+          }
+        }, 0);
+      });
+    },
+    [canMountTerminals, getTerminalSpec, tabManager],
+  );
+
   const handlePickFolder = useCallback(async () => {
     try {
       const { open } = await loadDialogModule();
@@ -3576,19 +3633,12 @@ function App() {
         if (nextCwd === cwd) return;
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
         setCwd(nextCwd);
-        tabManager.setMainSessionLaunchCwd(nextCwd);
-        if (canMountTerminals) {
-          const mainSessionId = tabManager.getState().mainSessionId;
-          getTerminalRuntime(mainSessionId).updatePtyParams(
-            { spec: getTerminalSpec(mainSessionId), cwd: nextCwd },
-            { force: true },
-          );
-        }
+        scheduleMainSessionCwdSwitch(nextCwd);
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [canMountTerminals, cwd, getTerminalSpec, strings.selectProjectFolder, tabManager]);
+  }, [cwd, scheduleMainSessionCwdSwitch, strings.selectProjectFolder]);
 
   // ── Settings ─────────────────────────────────────────────
 

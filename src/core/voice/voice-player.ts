@@ -383,10 +383,10 @@ function normalizeVolume(volume: number | undefined): number {
 
 async function decodeAudioData(ctx: AudioContext, audioData: ArrayBuffer): Promise<AudioBuffer> {
   try {
-    return decodePcm16Wav(ctx, audioData);
+    return await ctx.decodeAudioData(audioData);
   } catch {
     try {
-      return await ctx.decodeAudioData(audioData.slice(0));
+      return decodePcm16Wav(ctx, audioData);
     } catch {
       throw new Error(`Unable to decode synthesized audio (${audioData.byteLength} bytes)`);
     }

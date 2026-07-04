@@ -168,7 +168,8 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
 
     expect(handle.startedAt).toBeGreaterThan(0);
     expect(mockFetch).toHaveBeenCalledWith("/voice.wav");
-    expect(mockAudioContext.createBuffer).toHaveBeenCalledWith(1, 480, 24000);
+    expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(1);
+    expect(mockAudioContext.createBuffer).not.toHaveBeenCalled();
 
     const outputGain = mockAudioContext.createGain.mock.results[1].value;
     expect(outputGain.gain.setValueAtTime).toHaveBeenCalledWith(0.4, mockAudioContext.currentTime);
@@ -327,17 +328,32 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(outputGain.disconnect).toHaveBeenCalled();
   });
 
-  it("PCM WAV は decodeAudioData を使わず直接 AudioBuffer に変換する", async () => {
+  it("PCM WAV は native decodeAudioData を優先する", async () => {
     const engine = createMockEngine();
     const player = new VoicePlayer(undefined, engine);
     const api = player.createVoiceAPI();
 
     api.say("hello");
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushPlaybackStart();
 
+    expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(1);
+    expect(mockAudioContext.createBuffer).not.toHaveBeenCalled();
+  });
+
+  it("native decodeAudioData が失敗した場合だけ PCM WAV を直接 AudioBuffer に変換する", async () => {
+    mockAudioContext.decodeAudioData.mockRejectedValueOnce(
+      new DOMException("Decoding failed", "EncodingError"),
+    );
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+
+    api.say("hello");
+    await flushPlaybackStart();
+
+    expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(1);
     expect(mockAudioContext.createBuffer).toHaveBeenCalledWith(1, 480, 24000);
-    expect(mockAudioContext.decodeAudioData).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
   });
 
   it("say() は Web Audio 再生時に volume option を反映する", async () => {
@@ -447,13 +463,12 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     const api = player.createVoiceAPI();
 
     api.say("い");
-    await Promise.resolve();
-    await Promise.resolve();
+    await flushPlaybackStart();
 
     const mouth = player.sampleMouth();
     expect(mouth.aa).toBeGreaterThan(0);
     expect(mouth.ih).toBe(0);
-    expect(mockAudioContext.decodeAudioData).not.toHaveBeenCalled();
+    expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(1);
   });
 
   it("Web Audio analyser が無信号なら合成 buffer だけでは mouth 値を出さない", async () => {
