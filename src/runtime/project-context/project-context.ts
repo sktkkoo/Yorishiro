@@ -1,6 +1,7 @@
 import { resolveProjectRoot } from "../../bindings/tauri-commands";
 import {
   type CharminalConfig,
+  resolveSceneForProject,
   withActiveSceneSet,
   withProjectSceneSet,
 } from "../user-pack-loader/config";
@@ -32,4 +33,19 @@ export function withCurrentProjectSceneSet(
   return projectRoot !== null
     ? withProjectSceneSet(cfg, projectRoot, sceneId)
     : withActiveSceneSet(cfg, sceneId);
+}
+
+/**
+ * current project 向け scene 選択を書き込んだ後、runtime に即反映すべき実効 scene を返す。
+ *
+ * project mapping を null で消す場合は global activeScene に fallback するため、
+ * raw sceneId ではなく更新後 config から解決する必要がある。
+ */
+export function applyCurrentProjectSceneSelection(
+  cfg: CharminalConfig,
+  projectRoot: string | null,
+  sceneId: string | null,
+): { readonly config: CharminalConfig; readonly activeScene: string | null } {
+  const config = withCurrentProjectSceneSet(cfg, projectRoot, sceneId);
+  return { config, activeScene: resolveSceneForProject(config, projectRoot) };
 }

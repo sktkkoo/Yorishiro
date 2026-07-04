@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveProjectRoot } from "../../bindings/tauri-commands";
 import { EMPTY_CONFIG } from "../user-pack-loader/config";
-import { resolveCurrentProjectRoot, withCurrentProjectSceneSet } from "./project-context";
+import {
+  applyCurrentProjectSceneSelection,
+  resolveCurrentProjectRoot,
+  withCurrentProjectSceneSet,
+} from "./project-context";
 
 vi.mock("../../bindings/tauri-commands", () => ({
   resolveProjectRoot: vi.fn(),
@@ -57,5 +61,20 @@ describe("withCurrentProjectSceneSet", () => {
 
     expect(updated.activeScene).toBe("factory");
     expect(updated.sceneByProject).toEqual({});
+  });
+});
+
+describe("applyCurrentProjectSceneSelection", () => {
+  it("returns global fallback as runtime scene when a project override is cleared", () => {
+    const base = {
+      ...EMPTY_CONFIG,
+      activeScene: "fallback",
+      sceneByProject: { "/repo/main": "factory" },
+    };
+
+    const result = applyCurrentProjectSceneSelection(base, "/repo/main", null);
+
+    expect(result.config.sceneByProject).toEqual({});
+    expect(result.activeScene).toBe("fallback");
   });
 });

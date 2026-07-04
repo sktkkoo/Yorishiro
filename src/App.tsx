@@ -167,8 +167,8 @@ import {
   resolvePresence,
 } from "./runtime/presence-target";
 import {
+  applyCurrentProjectSceneSelection,
   resolveCurrentProjectRoot,
-  withCurrentProjectSceneSet,
 } from "./runtime/project-context/project-context";
 import {
   getSceneRegistry,
@@ -235,6 +235,7 @@ import {
   writeCharminalConfigText,
 } from "./runtime/user-pack-loader/charminal-io";
 import {
+  type CharminalConfig,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
   resolveSceneForProject,
@@ -902,11 +903,24 @@ function App() {
 
   // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
   const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
-  const enqueueConfigWrite = useCallback((write: () => Promise<void>): Promise<void> => {
+  const enqueueConfigWrite = useCallback(<T,>(write: () => Promise<T>): Promise<T> => {
     const next = pendingConfigWriteRef.current.then(write);
-    pendingConfigWriteRef.current = next.catch(() => undefined);
+    pendingConfigWriteRef.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
     return next;
   }, []);
+  const updateCharminalConfig = useCallback(
+    (update: (current: CharminalConfig) => CharminalConfig): Promise<CharminalConfig> =>
+      enqueueConfigWrite(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        const updated = update(cur);
+        await writeCharminalConfigText(serializeConfig(updated));
+        return updated;
+      }),
+    [enqueueConfigWrite],
+  );
   const updateConfig = useCallback(
     (
       patch: Partial<{
@@ -920,26 +934,27 @@ function App() {
         voiceFrequency: VoiceFrequency;
         tabMetadataBadges: boolean;
       }>,
-    ): Promise<void> =>
-      enqueueConfigWrite(async () => {
-        const cur = parseConfig(await readCharminalConfigText());
-        await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
-      }),
-    [enqueueConfigWrite],
+    ): Promise<void> => updateCharminalConfig((cur) => ({ ...cur, ...patch })).then(() => {}),
+    [updateCharminalConfig],
   );
   const updateActiveSceneConfig = useCallback(
-    (id: string | null): Promise<void> =>
+    (
+      id: string | null,
+      projectRoot: string | null,
+    ): Promise<{ readonly config: CharminalConfig; readonly activeScene: string | null }> =>
       enqueueConfigWrite(async () => {
         const cur = parseConfig(await readCharminalConfigText());
-        const updated = withCurrentProjectSceneSet(cur, currentProjectRootRef.current, id);
-        await writeCharminalConfigText(serializeConfig(updated));
+        const updated = applyCurrentProjectSceneSelection(cur, projectRoot, id);
+        await writeCharminalConfigText(serializeConfig(updated.config));
+        return updated;
       }),
     [enqueueConfigWrite],
   );
   const setActiveSceneFromUserSelection = useCallback(
     async (id: string | null): Promise<void> => {
-      await updateActiveSceneConfig(id);
-      getSceneRegistry().setActiveScene(id);
+      const projectRoot = currentProjectRootRef.current;
+      const updated = await updateActiveSceneConfig(id, projectRoot);
+      getSceneRegistry().setActiveScene(updated.activeScene);
     },
     [updateActiveSceneConfig],
   );
@@ -1714,15 +1729,15 @@ function App() {
           // Bundled pack examples:
           createBundledExampleReadHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
-        type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
         type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
 
         const readConfig = async (): Promise<CharminalConfig> =>
           parseConfig(await readCharminalConfigText());
-        const writeConfig = async (next: CharminalConfig): Promise<void> =>
-          writeCharminalConfigText(serializeConfig(next));
+        const updateConfigForMcp = (
+          update: (current: CharminalConfig) => CharminalConfig,
+        ): Promise<CharminalConfig> => updateCharminalConfig(update);
         const readLoadReport = async (): Promise<LoadReport | null> => {
           const text = await readLastStartupReport();
           if (text === "") return null;
@@ -1826,14 +1841,12 @@ function App() {
             readUserPackEntries: async () => invoke<UserPackEntry[]>("list_user_packs"),
           }),
           "disable-pack": createDisablePackHandler({
-            readConfig,
-            writeConfig,
+            updateConfig: updateConfigForMcp,
             registry: packRegistry,
             disableBundledAmenity,
           }),
           "enable-pack": createEnablePackHandler({
-            readConfig,
-            writeConfig,
+            updateConfig: updateConfigForMcp,
             reloadPack,
             enableBundledAmenity,
           }),
@@ -2021,8 +2034,7 @@ function App() {
             applyPresenceLevel: (level, source) => applyPresenceLevelFromApp(level, source),
           }),
           "motion.set-intensity": createSetMotionIntensityHandler({
-            readConfig,
-            writeConfig,
+            updateConfig: updateConfigForMcp,
             applyToRuntime: (intensity) => getThreeRuntime().setMotionIntensity(intensity),
           }),
           // ── Voice ─────────────────────────────────────────
@@ -2870,9 +2882,7 @@ function App() {
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
       readConfig: async () => parseConfig(await readCharminalConfigText()),
-      writeConfig: async (next: ReturnType<typeof parseConfig>) => {
-        await writeCharminalConfigText(serializeConfig(next));
-      },
+      updateConfig: updateCharminalConfig,
       readLoadReport: readLoadReportForPackTools,
       getActiveIds: () => ({
         scene: scenePackRegistry.getActiveSceneId(),
@@ -3052,7 +3062,7 @@ function App() {
             const { createPackDiagnoseHandler } = await import(
               "./runtime/charminal-mcp/tool-handlers"
             );
-            const { writeConfig: _writeConfig, ...deps } = buildPackToolDeps();
+            const deps = buildPackToolDeps();
             return createPackDiagnoseHandler({
               ...deps,
               readUserPackEntries: readUserPackEntriesForPackTools,
@@ -3064,8 +3074,7 @@ function App() {
             );
             const deps = buildPackToolDeps();
             return createDisablePackHandler({
-              readConfig: deps.readConfig,
-              writeConfig: deps.writeConfig,
+              updateConfig: deps.updateConfig,
               registry: packRegistry,
               disableBundledAmenity: disableBundledAmenityForPackTools,
             })({ id });
@@ -3076,8 +3085,7 @@ function App() {
             );
             const deps = buildPackToolDeps();
             return createEnablePackHandler({
-              readConfig: deps.readConfig,
-              writeConfig: deps.writeConfig,
+              updateConfig: deps.updateConfig,
               reloadPack: reloadPackForPackTools,
               enableBundledAmenity: enableBundledAmenityForPackTools,
             })({ id });
@@ -3328,6 +3336,7 @@ function App() {
     ambientAudio,
     applyTerminalPresentationForSession,
     enqueueConfigWrite,
+    updateCharminalConfig,
     updateConfig,
     setActiveSceneFromUserSelection,
   ]);

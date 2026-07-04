@@ -14,6 +14,9 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
   "language": "auto",
   "primaryPersona": "my-persona",
   "activeScene": "simple-room",
+  "sceneByProject": {
+    "/Users/me/work/project-a": "misty-grasslands"
+  },
   "activeUi": "minimal-badge",
   "motionIntensity": 1.85,
   "mcpPort": 18743,
@@ -30,11 +33,33 @@ Charminal は起動時に `~/.charminal/config.json` を読み、壊れている
 | `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / Charminal command/skill prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
-| `activeScene` | `string` or `null` | `null` | active scene pack の user pick。`null` なら bundled fallback |
+| `activeScene` | `string` or `null` | `null` | global active scene fallback。current project に `sceneByProject` entry がない時の user pick。`null` なら bundled fallback |
+| `sceneByProject` | `{ [projectRoot: string]: string }` | `{}` | 正規化された project root ごとの active scene override。現在の project root に entry があれば `activeScene` より優先 |
 | `activeUi` | `string` or `null` | `null` | active UI pack の user pick。`null` なら UI pack なし |
 | `motionIntensity` | `number` (`0.0`–`3.0`) | `1.0` | idle procedural motion（呼吸 / sway / head drift / posture）の振幅ノブ。`1.0` は従来どおり、`0` 付近はほぼ静止、上端は opt-in のオーバーアクション |
 | `mcpPort` | `number` | `18743` | Rust MCP server の listen port |
 | `disabledPacks` | `string[]` | `[]` | rescue 用。指定 id の user pack を load しない |
+
+### Scene selection
+
+Scene selection is resolved in this order:
+
+1. `sceneByProject[projectRoot]`
+2. `activeScene`
+3. bundled fallback
+
+`projectRoot` は起動 cwd / フォルダ picker の選択先から解決される正規化 path。Git repository 配下では repository workdir、linked worktree では main worktree の root に折りたたまれる。Git repository ではない通常ディレクトリはそのディレクトリ自身が root になる。
+
+Settings の Scene dropdown と MCP `scene.activate` は、current project root が解決できている場合は `sceneByProject` を更新する。project entry を cleared にすると、その場で `activeScene` に fallback する。project root が解決できない場合だけ `activeScene` を直接更新する。
+
+```json
+{
+  "activeScene": "simple-room",
+  "sceneByProject": {
+    "/Users/me/work/project-a": "misty-grasslands"
+  }
+}
+```
 
 ### Motion intensity
 

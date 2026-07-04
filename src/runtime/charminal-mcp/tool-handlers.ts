@@ -373,8 +373,9 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
 }
 
 export interface DisablePackDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
-  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly updateConfig: (
+    update: (current: CharminalConfig) => CharminalConfig,
+  ) => Promise<CharminalConfig>;
   readonly registry: UserPackRegistry;
   /**
    * bundled amenity を id で disable する。registry に登録済みなら active 状態に
@@ -394,9 +395,7 @@ export function createDisablePackHandler(deps: DisablePackDeps) {
     if (typeof id !== "string" || id === "") {
       return { ok: false, reason: "missing id" };
     }
-    const current = await deps.readConfig();
-    const next = withDisabledPackAdded(current, id);
-    await deps.writeConfig(next);
+    await deps.updateConfig((current) => withDisabledPackAdded(current, id));
 
     // registry から同 id の全 kind を dispose する。
     const entries = deps.registry.listEntries().filter((e) => e.id === id);
@@ -409,8 +408,9 @@ export function createDisablePackHandler(deps: DisablePackDeps) {
 }
 
 export interface EnablePackDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
-  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly updateConfig: (
+    update: (current: CharminalConfig) => CharminalConfig,
+  ) => Promise<CharminalConfig>;
   /**
    * 対象 pack を file system から再 load する。Rust の list_user_packs で
    * 該当 id の entry を探し、見つかれば runtime-wire と同じ cache-bust import
@@ -430,9 +430,7 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
     if (typeof id !== "string" || id === "") {
       return { ok: false, reason: "missing id" };
     }
-    const current = await deps.readConfig();
-    const next = withDisabledPackRemoved(current, id);
-    await deps.writeConfig(next);
+    await deps.updateConfig((current) => withDisabledPackRemoved(current, id));
 
     if (deps.enableBundledAmenity?.(id)) {
       return { ok: true };
@@ -511,8 +509,9 @@ function requestRecord(request: unknown): Record<string, unknown> {
 }
 
 export interface SetMotionIntensityDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
-  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly updateConfig: (
+    update: (current: CharminalConfig) => CharminalConfig,
+  ) => Promise<CharminalConfig>;
   readonly applyToRuntime: (intensity: number) => void;
 }
 
@@ -532,8 +531,7 @@ export function createSetMotionIntensityHandler(deps: SetMotionIntensityDeps) {
       throw new Error(`invalid motion intensity: ${String(raw)}`);
     }
     const intensity = Math.max(0, Math.min(3, raw));
-    const current = await deps.readConfig();
-    await deps.writeConfig({ ...current, motionIntensity: intensity });
+    await deps.updateConfig((current) => ({ ...current, motionIntensity: intensity }));
     deps.applyToRuntime(intensity);
     return { intensity };
   };
