@@ -1123,9 +1123,13 @@ body,
   animation: tab-state-spin 0.8s linear infinite;
 }
 
+/* 待ち=暖色（照明通知 #ffb08a と同系）、失敗=赤系の色語彙を分ける */
 .tab-indicator-state.state-input {
-  background: #ff4f6d;
-  box-shadow: 0 0 0 3px rgba(255, 79, 109, 0.14);
+  width: 6px;
+  height: 6px;
+  flex-basis: 6px;
+  background: #ffb08a;
+  box-shadow: 0 0 0 2px rgba(255, 176, 138, 0.16);
 }
 
 .tab-indicator-state.state-failed {

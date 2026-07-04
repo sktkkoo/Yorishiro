@@ -1,6 +1,10 @@
 import type { AttentionRect } from "@charminal/sdk";
 
-export type WorkspaceAttentionItemType = "run-failed" | "run-running-long" | "run-slow-completed";
+export type WorkspaceAttentionItemType =
+  | "run-failed"
+  | "run-running-long"
+  | "run-slow-completed"
+  | "awaiting-approval";
 export type WorkspaceAttentionSeverity = "low" | "medium" | "high";
 export type WorkspaceAttentionItemState = "active" | "ack" | "snoozed" | "resolved";
 export type WorkspaceAttentionMood = "calm" | "working" | "waiting" | "failed";

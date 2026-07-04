@@ -283,6 +283,18 @@ class ThreeRuntimeImpl implements ThreeRuntime {
     return this.currentBody;
   }
 
+  getCharacterAnchor(): { x: number; y: number; z: number } | null {
+    const vrm = this.currentVrm;
+    if (vrm === null) return null;
+    const headBone = vrm.humanoid?.getNormalizedBoneNode("head");
+    if (headBone) {
+      const pos = new THREE.Vector3();
+      headBone.getWorldPosition(pos);
+      return { x: pos.x, y: pos.y, z: pos.z };
+    }
+    return { x: vrm.scene.position.x, y: vrm.scene.position.y, z: vrm.scene.position.z };
+  }
+
   getTweenManager(): TweenManager {
     return this.tweenManager;
   }

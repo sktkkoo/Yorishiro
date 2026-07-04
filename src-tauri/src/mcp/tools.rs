@@ -387,6 +387,10 @@ pub struct BundledExampleReadRequest {
     pub id: String,
 }
 
+/// `attention_light_cue` の引数。空 object。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AttentionLightCueRequest {}
+
 /// `journal_read` の引数。date / days いずれも省略時は最新 7 日分を返す。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JournalReadRequest {
@@ -1090,6 +1094,17 @@ impl Charminal {
         _params: Parameters<AppScreenshotRequest>,
     ) -> Result<CallToolResult, McpError> {
         crate::mcp::screenshot::capture_webview_screenshot(&self.app_handle).await
+    }
+
+    /// attention_light_cue: 部屋の attention light を一度だけ 2-pulse させる（気づいてほしい時の合図 / 動作確認用）。
+    #[tool(
+        description = "Pulse the room's attention light once (two soft pulses). Use when the resident wants the user to notice something, or to verify the light works. Respects the user's Light alert setting; rate-limited."
+    )]
+    async fn attention_light_cue(
+        &self,
+        _params: Parameters<AttentionLightCueRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        emit_to(&self.app_handle, "attention.light.cue", json!({})).await
     }
 }
 

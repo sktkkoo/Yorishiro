@@ -113,6 +113,10 @@ import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-au
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
 import {
+  getAttentionLightCueStore,
+  startAttentionLightCueBridge,
+} from "./runtime/attention-light-cue";
+import {
   startDevAttentionProducer,
   startFocusedDomAttentionProducer,
   startInputCursorAttentionProducer,
@@ -207,6 +211,7 @@ import {
   mergeRunTimeline,
 } from "./runtime/terminal-runtime";
 import { initTerminalTheme, syncCurrentTerminalTheme } from "./runtime/terminal-theme";
+import { getAttentionLightSettingsStore } from "./runtime/three-runtime/attention-light-settings";
 import {
   getRuntimeLevaStore,
   useRuntimeLevaStore,
@@ -247,6 +252,7 @@ import {
 import {
   getWorkspaceAttentionStore,
   startCommandRunAttentionProducer,
+  startSessionAttentionProducer,
   startWorkspaceAttentionPresenceBridge,
 } from "./runtime/workspace-attention";
 import * as CharminalControls from "./sdk/controls";
@@ -1390,6 +1396,7 @@ function App() {
         ambientAudioMuted = config.ambientAudioMuted;
         ambientAudioVolume = config.ambientAudioVolume;
         ambientAudioLiveState = { muted: ambientAudioMuted, volume: ambientAudioVolume };
+        getAttentionLightSettingsStore().setEnabled(config.attentionLightNotifications);
         getThreeRuntime().setMotionIntensity(config.motionIntensity);
         voiceFrequency = config.voiceFrequency;
         setTabMetadataBadgesEnabled(config.tabMetadataBadges);
@@ -1652,6 +1659,8 @@ function App() {
           createLoopAnnounceHandler,
           // Bundled pack examples:
           createBundledExampleReadHandler,
+          // Attention light:
+          createAttentionLightCueHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
         type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
@@ -1996,6 +2005,10 @@ function App() {
           // ── Bundled pack examples ───────────────────────────
           "bundled-example.read": createBundledExampleReadHandler({
             readBundledPackSource: (id) => invoke("read_bundled_pack_source", { id }),
+          }),
+          // ── Attention light ──────────────────────────────
+          "attention.light.cue": createAttentionLightCueHandler({
+            trigger: () => getAttentionLightCueStore().triggerManual(),
           }),
         };
 
@@ -2741,6 +2754,7 @@ function App() {
         terminalAgent: string;
         ambientAudioMuted: boolean;
         ambientAudioVolume: number;
+        attentionLightNotifications: boolean;
         motionIntensity: number;
         language: AppLanguage;
         voiceFrequency: VoiceFrequency;
@@ -3074,6 +3088,10 @@ function App() {
             await updateConfig({ ambientAudioVolume: clamped });
             ambientAudio.setVolume(clamped);
           },
+          setAttentionLightNotifications: async (enabled) => {
+            await updateConfig({ attentionLightNotifications: enabled });
+            getAttentionLightSettingsStore().setEnabled(enabled);
+          },
           setMotionIntensity: async (value) => {
             const clamped = clampMotionIntensity(value);
             await updateConfig({ motionIntensity: clamped });
@@ -3123,6 +3141,7 @@ function App() {
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
               ambientAudioMuted: cur.ambientAudioMuted,
               ambientAudioVolume: cur.ambientAudioVolume,
+              attentionLightNotifications: cur.attentionLightNotifications,
               motionIntensity: cur.motionIntensity,
               activeAmbientUi: cur.activeAmbientUi,
               language: cur.language,
@@ -3350,6 +3369,28 @@ function App() {
       store,
       attention,
       getBody: () => bodyRef.current,
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, []);
+
+  // 全 session の許可待ち（SessionStatusStore）を workspace-attention item に橋渡しする。
+  useEffect(() => {
+    const disposable = startSessionAttentionProducer({
+      store: getWorkspaceAttentionStore(),
+      sessionStatus: sessionStatusStore,
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, [sessionStatusStore]);
+
+  // workspace-attention の awaiting-approval item を attention light の cue に橋渡しする。
+  useEffect(() => {
+    const disposable = startAttentionLightCueBridge({
+      cueStore: getAttentionLightCueStore(),
+      attentionStore: getWorkspaceAttentionStore(),
     });
     return () => {
       disposable.dispose();

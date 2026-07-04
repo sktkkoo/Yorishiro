@@ -2030,6 +2030,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [motionIntensity, setMotionIntensity] = useState<number | null>(null);
   // activeAmbientUi（Aura toggle 等の状態管理用）。
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
+  const [attentionLightNotifications, setAttentionLightNotifications] = useState<boolean | null>(
+    null,
+  );
   const [language, setLanguage] = useState<AppLanguage>("auto");
   const [resolvedLanguage, setResolvedLanguage] = useState<ResolvedLanguage>("en");
   // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
@@ -2057,6 +2060,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setAmbientVolume(cur.ambientAudioVolume);
       setMotionIntensity(cur.motionIntensity);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
+      setAttentionLightNotifications(cur.attentionLightNotifications);
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
       setVoiceFrequency(cur.voiceFrequency ?? "on");
@@ -2168,6 +2172,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (ids) => ctx.app.setActiveAmbientUi(ids),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "activeAmbientUi",
+    });
+  };
+
+  const onAttentionLightToggle = () => {
+    if (attentionLightNotifications === null) return;
+    void applyConfigUpdate({
+      next: !attentionLightNotifications,
+      prev: attentionLightNotifications,
+      setLocal: setAttentionLightNotifications,
+      write: (enabled) => ctx.app.setAttentionLightNotifications(enabled),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "attentionLightNotifications",
     });
   };
 
@@ -2505,6 +2521,16 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           <div style={{ opacity: 0.7 }}>{strings.labelAura}</div>
           <div>
             <Toggle checked={auraEnabled} onChange={onAuraToggle} />
+          </div>
+
+          {/* Light alert */}
+          <div style={{ opacity: 0.7 }}>{strings.labelAttentionLight}</div>
+          <div>
+            <Toggle
+              checked={attentionLightNotifications ?? true}
+              disabled={attentionLightNotifications === null}
+              onChange={onAttentionLightToggle}
+            />
           </div>
         </div>
 

@@ -12,6 +12,7 @@
 
 import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { useControlsBridge } from "../../../src/runtime/ui-state-store";
 import { DustMotes } from "./lib/atmosphere";
 import { CameraBreath } from "./lib/camera-breath";
@@ -45,6 +46,7 @@ function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackCompo
   return (
     <>
       <Lights />
+      <AttentionCueLight />
       <Floor />
       <Walls />
       <Ceiling />
