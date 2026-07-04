@@ -17,6 +17,8 @@ export const KEYS = {
   ATTENTION_RUNTIME: "attention:runtime",
   /** Attention light notification setting singleton: config-backed on/off state for runtime red flash light. */
   ATTENTION_LIGHT_SETTINGS: "attention-light:settings",
+  /** AttentionLightCueStore singleton: attention light の cue（一度きりの光の合図）を dedup / toggle / cooldown 込みで一元管理する。 */
+  ATTENTION_LIGHT_CUE: "attention-light:cue",
   /** AmbientUiPackRegistry singleton: ambient-ui pack の登録と active 集合（multi-active）を管理する。 */
   AMBIENT_UI_PACK_REGISTRY: "ambient-ui-pack:registry",
   /** AmenityPackRegistry singleton: amenity pack の登録と active 集合（multi-active）を管理する。 */

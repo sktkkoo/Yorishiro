@@ -113,6 +113,10 @@ import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-au
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
 import {
+  getAttentionLightCueStore,
+  startAttentionLightCueBridge,
+} from "./runtime/attention-light-cue";
+import {
   startDevAttentionProducer,
   startFocusedDomAttentionProducer,
   startInputCursorAttentionProducer,
@@ -3375,6 +3379,17 @@ function App() {
       disposable.dispose();
     };
   }, [sessionStatusStore]);
+
+  // workspace-attention の awaiting-approval item を attention light の cue に橋渡しする。
+  useEffect(() => {
+    const disposable = startAttentionLightCueBridge({
+      cueStore: getAttentionLightCueStore(),
+      attentionStore: getWorkspaceAttentionStore(),
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, []);
 
   // ── Tool-activity → Body state wiring ─────────────────────
 
