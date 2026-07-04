@@ -12,7 +12,7 @@ pub mod registry;
 pub mod shell_wrapper;
 pub mod types;
 
-pub use pty_session::{PtySession, SpawnSpec};
+pub use pty_session::{AttachResult, PtySession, SpawnSpec};
 pub use registry::SessionRegistry;
 pub use shell_wrapper::ensure_shell_files;
 pub use types::{SessionDescriptor, SessionKind, DEFAULT_SESSION_ID};

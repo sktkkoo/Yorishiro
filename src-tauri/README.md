@@ -17,7 +17,7 @@ src-tauri/src/
 ├── sessions/
 │   ├── pty_session.rs — Per-session PTY resource lifecycle
 │   ├── registry.rs    — SessionDescriptor / lifecycle registry
-│   ├── shell_wrapper.rs — Shell integration rc generation
+│   ├── shell_wrapper.rs — Shell integration rc generation (OSC 133 / 633)
 │   ├── osc133.rs      — OSC 133 parser
 │   └── agent_adapter/ — TerminalAgent trait + per-agent module
 │       ├── mod.rs     — trait / registry / AgentDescriptor
@@ -40,10 +40,10 @@ src-tauri/src/
 | Module | 責務 | TS 側との関係 |
 |---|---|---|
 | `pty.rs` | Legacy Tauri command facade / hook server / default-session delegation | TS 側 perception primitive が PTY output を **read のみ** で受け取る。terminal agent launch 引数差分は `sessions/agent_adapter/` で吸収 |
-| `sessions/pty_session.rs` | Per-session PTY spawn / I/O / resize / kill / replay (HMR 越し) | `SpawnSpec` を受け取り、agent は adapter lookup、shell は wrapper 経由で起動 |
+| `sessions/pty_session.rs` | Per-session PTY spawn / I/O / resize / kill / replay (HMR 越し) | `SpawnSpec` を受け取り、agent は adapter lookup、shell は wrapper 経由で起動。attach replay は invoke response、live は raw Channel |
 | `sessions/agent_adapter/` | TerminalAgent trait + Claude / Codex / OpenCode adapter registry | CLI args / env / temp config file の差を `LaunchArgs` に閉じる。capability flag は feature 有無の宣言 |
 | `mcp/server.rs` | MCP server の listen / round-trip dispatch | TS handler に request 投げて response を待つ async bridge |
-| `mcp/tools.rs` | Rust-native (`list_load_errors`) と TS-delegated tools の宣言 | TS-delegated tool は実装が TS、Rust は schema 宣言と forwarding のみ |
+| `mcp/tools.rs` | Rust-native (`list_load_errors`) と TS-delegated tools の宣言 | TS-delegated tool は実装が TS、Rust は schema 宣言と forwarding のみ。`terminal_runs_recent` は metadata-only sensitive-read |
 | User layer commands (`lib.rs`) | `~/.charminal/` の watch / atomic write / pack scan / safe mode | TS が file 操作を呼び出すための typed API |
 | SDK bundling (`lib.rs`) | `~/.charminal/sdk.d.ts` の startup 時生成 | user pack 開発時の IDE hint |
 | Init script seeding (`lib.rs`) | `~/.charminal/init.js` を初回だけ template から生成、既存は touch しない | 起動時 hook / keyboard shortcut を書く user layer を barrier なく用意 |
@@ -52,8 +52,9 @@ src-tauri/src/
 
 ## #[tauri::command] 一覧
 
-PTY:
-- `pty_spawn(agent, cols, rows, cwd?, system_prompt?, on_output)` / `pty_write(data)` / `pty_resize(cols, rows)` / `pty_kill()` / `pty_attach(cwd?, on_output) → bool` / `pty_detach()` / `poll_hook_signals() → Vec<String>`
+Session / PTY:
+- `session_spawn(session_id?, spec, cols, rows, cwd?, on_output)` / `session_write(session_id, data)` / `session_resize(session_id, cols, rows)` / `session_refresh_theme(session_id)` / `session_attach(session_id, cwd?, on_output) → AttachResult { attached, replay }` / `session_detach(session_id)` / `session_destroy(session_id)` / `session_list()`
+- Legacy default-session shim: `pty_write(data)` / `pty_resize(cols, rows)` / `pty_kill()` / `pty_attach(cwd?, on_output) → AttachResult { attached, replay }` / `pty_detach()` / `poll_hook_signals() → Vec<String>`
 
 User layer:
 - `charminal_home_dir() → String` / `ensure_charminal_dirs()` / `list_user_packs() → Vec<UserPackEntry>`

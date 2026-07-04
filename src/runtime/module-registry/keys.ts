@@ -49,6 +49,8 @@ export const KEYS = {
   SESSION_STATUS_STORE: "session-status:store",
   /** SessionTabManager singleton: session タブの状態管理 + auto-respawn。 */
   SESSION_TAB_MANAGER: "session-tabs:manager",
+  /** WorkspaceAttentionStore singleton: host-owned attention item lifecycle + aggregate。 */
+  WORKSPACE_ATTENTION_STORE: "workspace-attention:store",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];

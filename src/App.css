@@ -558,16 +558,26 @@ body,
 }
 
 /* ── Terminal ───────────────────────────────────────── */
+.terminal-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
 .terminal-container {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   overflow: hidden;
   /* 左側にだけ余白を入れる（文字が sidebar 境界に張り付かないように）。
      右側は xterm の scrollbar が自然な端になるので padding 不要。 */
   padding-left: 10px;
 }
 
-.terminal-container[data-active="false"] {
+.terminal-container[data-visible="false"],
+.terminal-container[data-presented="false"] {
   display: none !important;
 }
 

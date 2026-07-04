@@ -7,7 +7,7 @@ mod sessions;
 mod tts;
 
 use pty::{start_hook_server, PtyState};
-use sessions::{SessionRegistry, SpawnSpec};
+use sessions::{AttachResult, SessionRegistry, SpawnSpec};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
 use std::io::{Read, Seek, SeekFrom};
@@ -882,7 +882,7 @@ async fn session_attach(
     session_id: String,
     cwd: Option<String>,
     on_output: Channel,
-) -> Result<bool, String> {
+) -> Result<AttachResult, String> {
     Ok(state.attach(&session_id, cwd, on_output))
 }
 
@@ -947,13 +947,13 @@ async fn pty_kill(state: State<'_, PtyState>) -> Result<(), String> {
 }
 
 /// Reconnect a new Channel to the default-session PTY (WebView HMR reload).
-/// Returns true if the PTY was alive and attached; false means caller should spawn instead.
+/// Returns replay bytes in the invoke response so live Channel output can stay raw.
 #[tauri::command]
 async fn pty_attach(
     state: State<'_, PtyState>,
     cwd: Option<String>,
     on_output: Channel,
-) -> Result<bool, String> {
+) -> Result<AttachResult, String> {
     Ok(state.attach(sessions::DEFAULT_SESSION_ID, cwd, on_output))
 }
 
