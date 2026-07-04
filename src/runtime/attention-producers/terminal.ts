@@ -1,7 +1,7 @@
 /**
  * Terminal attention producer。
  *
- * rAF aligned throttled loop で `getViewportLineRects()` を poll し、
+ * timer + one-shot rAF で `getViewportLineRects()` を poll し、
  * bottom-most（配列先頭）から意味分類を行う。diagnostic / file-link に該当する行が
  * **新規に現れた** ときだけ emit し、`PULSE_MS` 後に null clear する一過性
  * （transient）設計。
@@ -25,8 +25,8 @@
  *
  * event-driven (subscribePtyData / subscribeViewportScroll) は廃止。
  * PTY 出力後に xterm が行を確定する frame との乖離で diagnostic 検出が
- * 取りこぼされていたため、rAF に同期する。ただし可視行の全走査は重いので
- * 低頻度に間引く。
+ * 取りこぼされていたため、scan 時だけ rAF に同期する。ただし可視行の全走査は
+ * 重いので低頻度に間引き、scan 待機中に per-frame rAF callback を持たない。
  *
  * Internal design-record: 2026-04-25-attention-aura-v2-design.md
  *   「Producer 一覧と priority」section
@@ -59,6 +59,9 @@ interface StartOptions {
    * テスト用 clearTimeout 注入。省略時は globalThis.clearTimeout。
    */
   readonly clearTimeout?: (id: unknown) => void;
+  /** scan loop 用 timer。pulse timer と分離して output burst の timer test を単純にする。 */
+  readonly setScanTimeout?: (fn: () => void, delay: number) => unknown;
+  readonly clearScanTimeout?: (id: unknown) => void;
 }
 
 export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
@@ -69,6 +72,10 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
     opts.setTimeout ?? globalThis.setTimeout.bind(globalThis);
   const clearTimeoutFn: (id: unknown) => void =
     opts.clearTimeout ?? (globalThis.clearTimeout.bind(globalThis) as (id: unknown) => void);
+  const setScanTimeoutFn: (fn: () => void, delay: number) => unknown =
+    opts.setScanTimeout ?? globalThis.setTimeout.bind(globalThis);
+  const clearScanTimeoutFn: (id: unknown) => void =
+    opts.clearScanTimeout ?? (globalThis.clearTimeout.bind(globalThis) as (id: unknown) => void);
 
   // 前 frame で検出済みの行テキストを保持する。
   // viewport が空になると次の tick で両 Set が clear され、再表示時に再 emit される。
@@ -82,7 +89,7 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
   const pulseTimers = new Map<string, unknown>();
 
   let rafId: number | null = null;
-  let lastScanAt = Number.NEGATIVE_INFINITY;
+  let scanTimer: unknown | null = null;
   let disposed = false;
 
   /** source の pulse timer を開始（または上書き）し、PULSE_MS 後に null clear する */
@@ -144,20 +151,32 @@ export function startTerminalAttentionProducer(opts: StartOptions): Disposable {
     currentFileLinkLines = previousFileLinkLines;
   };
 
-  const tick = (now: DOMHighResTimeStamp): void => {
+  function scheduleScan(delay = TERMINAL_ATTENTION_SCAN_INTERVAL_MS): void {
+    if (disposed || scanTimer !== null) return;
+    scanTimer = setScanTimeoutFn(() => {
+      scanTimer = null;
+      if (disposed) return;
+      rafId = requestAnimationFrame(runScanFrame);
+    }, delay);
+  }
+
+  function runScanFrame(): void {
+    rafId = null;
     if (disposed) return;
-    if (now - lastScanAt >= TERMINAL_ATTENTION_SCAN_INTERVAL_MS) {
-      lastScanAt = now;
-      scan();
-    }
-    rafId = requestAnimationFrame(tick);
-  };
-  rafId = requestAnimationFrame(tick);
+    scan();
+    scheduleScan();
+  }
+
+  scheduleScan(0);
 
   return {
     dispose: () => {
       disposed = true;
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (scanTimer !== null) {
+        clearScanTimeoutFn(scanTimer);
+        scanTimer = null;
+      }
       // dispose 時に全 pulse timer をキャンセルし、active source を clear する
       for (const [source, timer] of pulseTimers) {
         clearTimeoutFn(timer);
