@@ -491,6 +491,52 @@ fn resolve_command_path_impl(command: &str) -> Option<String> {
     None
 }
 
+fn canonicalize_cwd(cwd: &Path) -> Result<PathBuf, String> {
+    cwd.canonicalize()
+        .map_err(|e| format!("cwd canonicalize failed: {} — {}", cwd.display(), e))
+}
+
+fn canonical_or_self(path: &Path) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn main_workdir_from_worktree_git_dir(git_dir: &Path) -> Option<PathBuf> {
+    let worktrees_dir = git_dir.parent()?;
+    if worktrees_dir.file_name() != Some(OsStr::new("worktrees")) {
+        return None;
+    }
+    let common_git_dir = worktrees_dir.parent()?;
+    if common_git_dir.file_name() != Some(OsStr::new(".git")) {
+        return None;
+    }
+    common_git_dir.parent().map(|p| p.to_path_buf())
+}
+
+fn resolve_project_root_impl(cwd: &Path) -> Result<PathBuf, String> {
+    let canonical_cwd = canonicalize_cwd(cwd)?;
+    let Ok(repo) = git2::Repository::discover(&canonical_cwd) else {
+        return Ok(canonical_cwd);
+    };
+
+    // Bare repo / workdir 不明は「project root を確定できない」扱いで cwd に degrade。
+    if repo.is_bare() || repo.workdir().is_none() {
+        return Ok(canonical_cwd);
+    }
+
+    // linked worktree は本体 repo の working directory に畳む。
+    if repo.is_worktree() {
+        if let Some(main_workdir) = main_workdir_from_worktree_git_dir(repo.path()) {
+            return Ok(canonical_or_self(&main_workdir));
+        }
+        return Ok(canonical_cwd);
+    }
+
+    let Some(workdir) = repo.workdir() else {
+        return Ok(canonical_cwd);
+    };
+    Ok(canonical_or_self(workdir))
+}
+
 fn normalized_plugin_language(language: &str) -> &'static str {
     if language == "ja" {
         "ja"
@@ -1057,6 +1103,12 @@ async fn charminal_home_dir() -> Result<String, String> {
 #[tauri::command]
 async fn resolve_command_path(command: String) -> Result<Option<String>, String> {
     Ok(resolve_command_path_impl(&command))
+}
+
+/// cwd を canonicalize し、git repo なら project root、linked worktree なら本体 repo root に解決する。
+#[tauri::command]
+async fn resolve_project_root(cwd: String) -> Result<String, String> {
+    resolve_project_root_impl(Path::new(&cwd)).map(|p| p.to_string_lossy().to_string())
 }
 
 /// 登録済み terminal agent adapter の一覧を返す。
@@ -2140,6 +2192,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
             resolve_command_path,
+            resolve_project_root,
             list_supported_agents,
             mcp_server_status,
             session_spawn,
@@ -2446,10 +2499,11 @@ mod layer_scope_tests {
     use super::{
         collect_changed_scopes, command_candidate_names, is_history_internal_path,
         is_safe_mode_value, is_snapshot_relevant_path, layer_event_label,
-        read_last_startup_report_impl, resolve_command_path_impl, should_create_watcher_snapshot,
-        should_emit_layer_event, snapshot_scope_token, stat_mtime_in_scope,
-        write_charminal_file_atomic_impl,
+        read_last_startup_report_impl, resolve_command_path_impl, resolve_project_root_impl,
+        should_create_watcher_snapshot, should_emit_layer_event, snapshot_scope_token,
+        stat_mtime_in_scope, write_charminal_file_atomic_impl,
     };
+    use git2::{Repository, Signature};
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -2521,6 +2575,69 @@ mod layer_scope_tests {
         assert_eq!(resolve_command_path_impl("  "), None);
         assert_eq!(resolve_command_path_impl("bin/claude"), None);
         assert_eq!(resolve_command_path_impl("bin\\claude"), None);
+    }
+
+    fn canonical(path: &Path) -> PathBuf {
+        path.canonicalize().expect("canonicalize path")
+    }
+
+    fn init_repo_with_commit(root: &Path) -> Repository {
+        fs::create_dir_all(root).expect("create repo root");
+        let repo = Repository::init(root).expect("init git repo");
+        fs::write(root.join("README.md"), "hello\n").expect("write readme");
+        let mut index = repo.index().expect("open index");
+        index.add_path(Path::new("README.md")).expect("add readme");
+        index.write().expect("write index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let sig = Signature::now("charminal-test", "test@charminal.local").expect("signature");
+        repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
+            .expect("commit");
+        drop(tree);
+        repo
+    }
+
+    #[test]
+    fn resolve_project_root_returns_cwd_for_plain_directory() {
+        let root = fresh_dir("project-root-plain");
+        let nested = root.join("nested");
+        fs::create_dir_all(&nested).expect("create nested");
+
+        let resolved = resolve_project_root_impl(&nested).expect("resolve project root");
+
+        assert_eq!(resolved, canonical(&nested));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_project_root_returns_git_workdir_for_repo_child() {
+        let root = fresh_dir("project-root-git");
+        let repo_root = root.join("repo");
+        init_repo_with_commit(&repo_root);
+        let nested = repo_root.join("src").join("app");
+        fs::create_dir_all(&nested).expect("create nested");
+
+        let resolved = resolve_project_root_impl(&nested).expect("resolve project root");
+
+        assert_eq!(resolved, canonical(&repo_root));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_project_root_collapses_linked_worktree_to_main_workdir() {
+        let root = fresh_dir("project-root-worktree");
+        let main_root = root.join("main");
+        let linked_root = root.join("linked");
+        let repo = init_repo_with_commit(&main_root);
+        repo.worktree("linked", &linked_root, None)
+            .expect("create linked worktree");
+        let nested = linked_root.join("src");
+        fs::create_dir_all(&nested).expect("create nested");
+
+        let resolved = resolve_project_root_impl(&nested).expect("resolve project root");
+
+        assert_eq!(resolved, canonical(&main_root));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
