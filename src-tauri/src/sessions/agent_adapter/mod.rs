@@ -197,7 +197,8 @@ fn non_empty_trimmed(value: &str) -> Option<&str> {
 fn build_prompt_reminder_from_config_value(config: Option<&serde_json::Value>) -> Option<String> {
     let mut reminders = Vec::new();
     if !config_field_is_any(config, "journalReminder", &["off"]) {
-        reminders.push("印象があれば journal_write。[感触/記憶/物語]");
+        reminders
+            .push("印象に残った瞬間があれば journal_write。作業の要約ではなく、その日の手触りを。");
     }
     if !config_field_is_any(config, "voiceFrequency", &["off", "none"]) {
         reminders.push("応答の要点を voice_say で声に出す。声が先。");
