@@ -2,7 +2,9 @@ import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import type { SpawnSpec } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
+import type { TerminalCommandRun } from "./command-run-store";
 import type { RegionPoint } from "./region-selection";
+import type { TerminalProblem } from "./terminal-problems";
 
 /**
  * PTY 接続パラメータ。差分検出に使う。null 値は「まだ決まっていない」を表す。
@@ -51,6 +53,7 @@ export interface TerminalLineRect {
 /**
  * 参照マーカー付きの terminal text reference。
  * Command+click や Option+Shift+drag で capture → `[#Term<N>]` として入力欄に挿入される。
+ * `id` は MCP 向けの session-stamped opaque id（例: `session-1:Term1`）。
  */
 export interface TerminalReference {
   readonly id: string;
@@ -72,7 +75,33 @@ export interface TerminalRegionContext {
   readonly sessionId: string;
   readonly text: string;
   readonly capturedAt: number;
-  readonly gesture: "option-shift-drag" | "meta-click";
+  readonly gesture: "option-shift-drag" | "meta-click" | "command-run-reference";
+  /** command-run reference だけが持つ。MCP はこの id だけを metadata として見る。 */
+  readonly commandRunId?: number;
+  readonly viewport: {
+    readonly viewportY: number;
+    readonly rows: number;
+    readonly cols: number;
+  };
+  readonly range: {
+    readonly startRow: number;
+    readonly endRow: number;
+    readonly startCol: number;
+    readonly endCol: number;
+  };
+  readonly rect: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly polygon: ReadonlyArray<RegionPoint>;
+}
+
+export interface TerminalCommandRunLocus {
+  readonly kind: "terminal-command-run-locus";
+  readonly sessionId: string;
+  readonly commandRunId: number;
   readonly viewport: {
     readonly viewportY: number;
     readonly rows: number;
@@ -249,6 +278,41 @@ export interface TerminalRuntime {
    */
   getTerminalReferences(): ReadonlyArray<TerminalReference>;
 
+  /** 直近の command run metadata。output text は含まない。 */
+  getCommandRunsRecent(limit?: number): ReadonlyArray<TerminalCommandRun>;
+
+  /**
+   * 直近 failed run の出力範囲を terminal reference 化する（Attach last failed run）。
+   * failed run が無ければ false。PTY へは書かず、既存 click-gate と同じ reference 経路に乗せる。
+   */
+  attachLastFailedRun(): boolean;
+
+  /** command run の現在 viewport 上の locus。output text は含まない。 */
+  getCommandRunLocus(runId: number): TerminalCommandRunLocus | null;
+
+  /**
+   * 指定 run で検出された Terminal Problems（file:line / URL / port / test-fail）。
+   * 出力全文ではなく検出した断片の metadata のみ。無ければ空配列。
+   */
+  getCommandRunProblems(runId: number): ReadonlyArray<TerminalProblem>;
+
+  /**
+   * 長い scrollback の中を command block 単位で jump する（block navigation）。
+   * 現在の viewport 上端より下/上にある最も近い run の start 行へ scroll する。
+   * `failedOnly` のときは `status === "failed"` の run だけを対象にする。
+   * 対象 run が無ければ false（端での no-op）。scroll は読み取り操作で PTY へは書かない。
+   */
+  scrollToAdjacentCommandRun(
+    direction: "next" | "previous",
+    opts?: { readonly failedOnly?: boolean },
+  ): boolean;
+
+  /** live command run start を購読する。replay 復元中の run は通知しない。 */
+  subscribeCommandRunStarted(listener: (run: TerminalCommandRun) => void): Disposable;
+
+  /** live command run finalize を購読する。replay 復元中の run は通知しない。 */
+  subscribeCommandRunFinalized(listener: (run: TerminalCommandRun) => void): Disposable;
+
   /** 蓄積された terminal reference をすべて消去する。 */
   clearTerminalReferences(): void;
 
@@ -257,6 +321,12 @@ export interface TerminalRuntime {
 
   /** xterm にキーボードフォーカスを移す。タブ切り替え時に使う。 */
   focus(): void;
+
+  /**
+   * body 直下の xterm singleton が直接操作されたときに呼ばれる。
+   * React placeholder の pointer event では拾えないため runtime 側で橋渡しする。
+   */
+  subscribeActivation(listener: () => void): Disposable;
 
   /**
    * Ctrl+C を PTY に送るか制御する。

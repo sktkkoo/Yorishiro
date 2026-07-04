@@ -2,7 +2,7 @@
 //!
 //! `~/.charminal/shell/` 配下に Charminal 所有の init script と wrapper rc を
 //! 書き出す。spawn 時に shell binary に応じた env / args を組み立てて wrapper
-//! を経由させ、user の rc → Charminal の OSC 133 emit → user.<shell> 拡張点
+//! を経由させ、user の rc → Charminal の OSC 133 / 633 emit → user.<shell> 拡張点
 //! の順で source される構造を作る。
 //!
 //! 詳細は `docs/terminal.md` §Shell integration。
@@ -13,16 +13,16 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// `~/.charminal/shell/init.zsh` — OSC 133 emit を zsh の hook に登録する。
+/// `~/.charminal/shell/init.zsh` — OSC 133 / 633 emit を zsh の hook に登録する。
 /// PROMPT は触らず、precmd / preexec function array にのみ append する
 /// （p10k / oh-my-zsh / prezto との衝突を避ける）。
 const INIT_ZSH: &str = include_str!("shell_wrapper/init.zsh");
 
 /// `~/.charminal/shell/init.bash` — preexec 相当を DEBUG trap で代替し、
-/// PROMPT_COMMAND chain に precmd を挿入する。
+/// OSC 133 / 633 emit と precmd を PROMPT_COMMAND chain に挿入する。
 const INIT_BASH: &str = include_str!("shell_wrapper/init.bash");
 
-/// `~/.charminal/shell/init.fish` — fish の native event hook を使う。
+/// `~/.charminal/shell/init.fish` — fish の native event hook で OSC 133 / 633 を emit する。
 const INIT_FISH: &str = include_str!("shell_wrapper/init.fish");
 
 /// `~/.charminal/shell/wrapper-zsh/.zshrc` — ZDOTDIR 経由で読まれ、user の
@@ -601,6 +601,8 @@ pub fn dry_run_integration(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use std::process::{Command, Stdio};
 
     fn fresh_temp_root(label: &str) -> PathBuf {
         let nanos = std::time::SystemTime::now()
@@ -615,6 +617,55 @@ mod tests {
         ));
         fs::create_dir_all(&p).expect("create test root");
         p
+    }
+
+    fn run_bash_with_charminal_init(label: &str, input: &str) -> Option<String> {
+        run_bash_with_charminal_init_and_rc(label, input, "")
+    }
+
+    fn run_bash_with_charminal_init_and_rc(
+        label: &str,
+        input: &str,
+        rc_prefix: &str,
+    ) -> Option<String> {
+        let root = fresh_temp_root(label);
+        let init = root.join("init.bash");
+        let rc = root.join("rc.bash");
+        fs::write(&init, INIT_BASH).unwrap();
+        fs::write(&rc, format!("{rc_prefix}source '{}'\n", init.display())).unwrap();
+
+        let mut child = match Command::new("bash")
+            .arg("--noprofile")
+            .arg("--rcfile")
+            .arg(&rc)
+            .arg("-i")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                let _ = fs::remove_dir_all(&root);
+                return None;
+            }
+            Err(err) => panic!("spawn bash: {err}"),
+        };
+
+        child
+            .stdin
+            .take()
+            .expect("stdin")
+            .write_all(input.as_bytes())
+            .expect("write stdin");
+        let output = child.wait_with_output().expect("bash output");
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let _ = fs::remove_dir_all(&root);
+        Some(combined)
     }
 
     #[test]
@@ -830,5 +881,63 @@ mod tests {
         assert!(envs.is_empty());
         assert!(args.is_empty());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn init_scripts_emit_osc633_command_and_cwd_vectors() {
+        for script in [INIT_ZSH, INIT_BASH, INIT_FISH] {
+            assert!(script.contains("]633;E;%s"));
+            assert!(script.contains("]633;P;Cwd=%s"));
+            assert!(script.contains("__charminal_osc633_escape"));
+        }
+    }
+
+    #[test]
+    fn bash_integration_emits_once_for_and_list() {
+        let Some(combined) =
+            run_bash_with_charminal_init("bash-and-list", "echo one && echo two\nexit\n")
+        else {
+            return;
+        };
+
+        assert_eq!(combined.matches("]133;C").count(), 2, "{combined:?}");
+        assert!(combined.contains("]633;E;echo\\x20one\\x20\\x26\\x26\\x20echo\\x20two"));
+        assert!(!combined.contains("]633;E;echo\\x20one\u{7}"));
+    }
+
+    #[test]
+    fn bash_integration_emits_once_for_pipeline() {
+        let Some(combined) =
+            run_bash_with_charminal_init("bash-pipeline", "printf one | cat\nexit\n")
+        else {
+            return;
+        };
+
+        assert_eq!(combined.matches("]133;C").count(), 2, "{combined:?}");
+        assert!(combined.contains("]633;E;printf\\x20one\\x20\\x7C\\x20cat"));
+        assert!(!combined.contains("]633;E;cat\u{7}"));
+    }
+
+    #[test]
+    fn bash_prompt_command_preserves_previous_status_for_user_prompt() {
+        let Some(combined) = run_bash_with_charminal_init_and_rc(
+            "bash-prompt-status",
+            "false\ntrue\nexit\n",
+            "PROMPT_COMMAND='printf \"PROMPT_STATUS=%s\\n\" \"$?\"'\n",
+        ) else {
+            return;
+        };
+
+        assert!(
+            combined.contains("PROMPT_STATUS=1"),
+            "user PROMPT_COMMAND did not observe failed command status: {combined:?}"
+        );
+    }
+
+    #[test]
+    fn fish_escape_splits_od_bytes_before_prefixing_xhh() {
+        assert!(INIT_FISH.contains("string split ' '"));
+        assert!(INIT_FISH.contains("string match -r '^[0-9a-f][0-9a-f]$'"));
+        assert!(!INIT_FISH.contains("for byte in (printf '%s' \"$input\" | od -An -v -tx1)\n"));
     }
 }

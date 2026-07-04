@@ -17,7 +17,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `body-scheduler/` | 複数 persona の motion 衝突解決 | `index.ts` | **skeleton**, post-MVP |
 | `hot-data/` | HMR-aware singleton store（Vite reload を生き残る） | `hot-data.ts` | foundational |
 | `module-registry/` | Typed registry of swappable runtime modules（VRM loader / audio player ...） | `module-registry.ts` + `keys.ts` | foundational、HMR で hot-data 経由 survive |
-| `terminal-runtime/` | Webview lifetime singleton — xterm + PTY channel + terminal agent params + perception ref | `terminal-runtime.ts` | |
+| `terminal-runtime/` | Webview lifetime singleton — xterm + PTY channel + terminal agent params + command run memory + perception ref | `terminal-runtime.ts` | |
 | `three-runtime/` | Webview lifetime singleton — Three.js canvas / RAF / VRM model | `three-runtime.ts` | |
 | `vrm-cache/` | URL → ArrayBuffer LRU cache（VRM blob） | `vrm-cache.ts` | |
 | `scene-pack-registry/` | Scene pack の manifest / asset resolution | `scene-pack-registry.ts` + `asset-resolver.ts` | single-active（config picks） |
@@ -27,6 +27,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `attention-runtime/` | source ごとの AttentionTarget を集約し、resolver で 1 本に絞った AttentionSnapshot を publish する | `attention-runtime.ts` | Phase 1a で新設 |
 | `ambient-ui-pack-registry/` | ambient-ui pack の登録と active 集合（multi-active）を管理。enable / disable / getActiveSet | `ambient-ui-pack-registry.ts` | Phase 1a で新設 |
 | `attention-producers/` | runtime event を AttentionTarget に変換する 7 module（terminal / mouse / input-cursor / mcp / tool / dev / focused-dom）。各 producer は `start*Producer` 関数が Disposable を返す。Phase 1d で App.tsx 配線、debug fix（commits 5ebfd0d〜c0ecb23）で v1 UX に揃え（各 producer の rect / priority / 駆動方式が v1 reference に整合） | `index.ts` | Phase 1b で新設 |
+| `workspace-attention/` | command run など host producer 由来の attention item lifecycle と primary / aggregate projection、presence bridge | `index.ts` | [README](./workspace-attention/README.md) |
 | `bundled-attention-aura/` | bundled `attention-aura` ambient-ui pack の register helper。Phase 1d で App.tsx boot path から呼ぶ | `index.ts` | Phase 1c で新設 |
 | `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
 | `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
@@ -47,6 +48,8 @@ hot-data/  ◄─── module-registry/  ◄─── core/body/, three-runtime
 user-pack-loader/  ◄─── persona-registry/, scene-pack-registry/
 
 terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) との singleton wrapper
+
+workspace-attention/  ◄─── terminal-runtime/, attention-runtime/, core/body/
 ```
 
 `terminalAgent` は `user-pack-loader/config.ts` で parse し、`App.tsx` の user-layer bootstrap 完了後に `terminal-runtime/` へ渡す。これにより primaryPersona の prompt overlay と agent 選択が同じ gate で確定し、null prompt race / 多重 spawn を避ける。

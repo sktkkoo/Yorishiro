@@ -86,6 +86,7 @@ import {
   deriveSessionTabStatusAttention,
 } from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
+import TerminalWorkspace from "./components/TerminalWorkspace";
 import type { Body, EyeState } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -191,13 +192,20 @@ import {
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
+  type SessionId,
 } from "./runtime/sessions";
 import {
   spawnSpecFromDefaultProfile,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
-import { getTerminalRuntime } from "./runtime/terminal-runtime";
+import {
+  getAgentToolRunStore,
+  getAllTerminalRuntimes,
+  getLoopRunStore,
+  getTerminalRuntime,
+  mergeRunTimeline,
+} from "./runtime/terminal-runtime";
 import { initTerminalTheme, syncCurrentTerminalTheme } from "./runtime/terminal-theme";
 import { getAttentionLightSettingsStore } from "./runtime/three-runtime/attention-light-settings";
 import {
@@ -237,13 +245,17 @@ import {
   appendInitReloadErrorMarker,
   stripInitReloadErrorMarker,
 } from "./runtime/user-pack-loader/init-changed-title";
+import {
+  getWorkspaceAttentionStore,
+  startCommandRunAttentionProducer,
+  startWorkspaceAttentionPresenceBridge,
+} from "./runtime/workspace-attention";
 import * as CharminalControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
 import * as CharminalR3f from "./sdk/r3f";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
-import Terminal from "./terminal";
 import TitleBar from "./title-bar";
 import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
 import {
@@ -639,6 +651,50 @@ function queryMountedSessionIds(): string[] {
   );
 }
 
+interface TerminalPresentation {
+  readonly hidden: boolean;
+  readonly opacity: number;
+  readonly backgroundTransparent: boolean;
+}
+
+function terminalLayoutForcesSinglePane(layout: UiLayout | null): boolean {
+  const position = layout?.terminal?.position;
+  return position !== undefined && position !== "default";
+}
+
+function resolveTerminalPresentation(
+  layout: UiLayout | null,
+  visible: boolean,
+  active: boolean,
+): TerminalPresentation {
+  const terminalLayout = layout?.terminal;
+  const layoutForcesSinglePane = terminalLayoutForcesSinglePane(layout);
+  const receivesLayout = layoutForcesSinglePane ? active : visible;
+  const hiddenByLayout = terminalLayout?.position === "hidden";
+  const opacity =
+    receivesLayout && typeof terminalLayout?.opacity === "number"
+      ? Math.min(1, Math.max(0, terminalLayout.opacity))
+      : 1;
+
+  return {
+    hidden: !receivesLayout || hiddenByLayout,
+    opacity,
+    backgroundTransparent: receivesLayout && terminalLayout?.transparentBackground === true,
+  };
+}
+
+function applyTerminalPresentation(sessionId: string, presentation: TerminalPresentation): void {
+  const placeholder = document.querySelector<HTMLElement>(
+    `.terminal-container[data-session-id="${CSS.escape(sessionId)}"]`,
+  );
+  if (placeholder) {
+    placeholder.dataset.presented = presentation.hidden ? "false" : "true";
+  }
+  const runtime = getTerminalRuntime(sessionId);
+  runtime.setHidden(presentation.hidden);
+  runtime.setOpacity(presentation.opacity);
+  runtime.setBackgroundTransparent(presentation.backgroundTransparent);
+}
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
 // border width と presence-closed class も同じ writer で同期し、width=0 のリロード時に
@@ -1559,6 +1615,7 @@ function App() {
           createGetPackStateHandler,
           createSetPackStateHandler,
           createTerminalContextGetHandler,
+          createTerminalRunsRecentHandler,
           // Phase β cosmetic write tools：
           createStateGetHandler,
           createBodyExpressionSetHandler,
@@ -1744,7 +1801,25 @@ function App() {
             getLatestRegionContext: () =>
               getTerminalRuntime(tabManager.getState().activeSessionId).getLatestRegionContext(),
             getTerminalReferences: () =>
-              getTerminalRuntime(tabManager.getState().activeSessionId).getTerminalReferences(),
+              getAllTerminalRuntimes().flatMap((runtime) => runtime.getTerminalReferences()),
+          }),
+          "terminal.runs.recent": createTerminalRunsRecentHandler({
+            getCommandRuns: () =>
+              getAllTerminalRuntimes().flatMap((runtime) => runtime.getCommandRunsRecent()),
+            getTerminalReferences: () =>
+              getAllTerminalRuntimes().flatMap((runtime) => runtime.getTerminalReferences()),
+            getProblems: (sessionId, runId) =>
+              getTerminalRuntime(sessionId).getCommandRunProblems(runId),
+            getTimeline: () =>
+              mergeRunTimeline({
+                commandRuns: getAllTerminalRuntimes().flatMap((runtime) =>
+                  runtime.getCommandRunsRecent(),
+                ),
+                agentToolRuns: getAgentToolRunStore().getRecent(),
+                loopRuns: getLoopRunStore()
+                  .getRecent()
+                  .map((run) => ({ ...run, sessionId: run.agent ?? "loop" })),
+              }),
           }),
           "controls.get": createControlsGetHandler({
             getSceneStore: () => getActiveSceneLevaStore(),
@@ -2109,10 +2184,40 @@ function App() {
   >(() => new Map());
   const sessionHookBadgeTimersRef = useRef<Map<string, number>>(new Map());
   const [isSessionRestoreReady, setIsSessionRestoreReady] = useState(false);
+  const visibleTerminalSessionIdSet = useMemo(
+    () => new Set<SessionId>([tabState.activeSessionId]),
+    [tabState.activeSessionId],
+  );
+  const visibleTerminalSessionIdSetRef = useRef(visibleTerminalSessionIdSet);
+  visibleTerminalSessionIdSetRef.current = visibleTerminalSessionIdSet;
+  const activeUiLayoutRef = useRef<UiLayout | null>(null);
   const preferredActiveSessionIdRef = useRef<string | null | undefined>(undefined);
   if (preferredActiveSessionIdRef.current === undefined) {
     preferredActiveSessionIdRef.current = localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY);
   }
+
+  const applyTerminalPresentationForSession = useCallback(
+    (sessionId: SessionId, layout: UiLayout | null = activeUiLayoutRef.current) => {
+      applyTerminalPresentation(
+        sessionId,
+        resolveTerminalPresentation(
+          layout,
+          visibleTerminalSessionIdSetRef.current.has(sessionId),
+          tabManager.getState().activeSessionId === sessionId,
+        ),
+      );
+    },
+    [tabManager],
+  );
+
+  const applyTerminalPresentationForMountedSessions = useCallback(
+    (layout: UiLayout | null = activeUiLayoutRef.current) => {
+      for (const sessionId of queryMountedSessionIds()) {
+        applyTerminalPresentationForSession(sessionId, layout);
+      }
+    },
+    [applyTerminalPresentationForSession],
+  );
 
   useEffect(() => {
     return tabManager.subscribe(setTabState);
@@ -2216,15 +2321,44 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
-    // UI pack 解除後もタブ切替で setHidden が正しく更新されるようにする。
-    // UI pack active 時は RAF 後に applyLayoutForAllTerminals が上書きするので衝突しない。
-    for (const sessionId of queryMountedSessionIds()) {
-      getTerminalRuntime(sessionId).setHidden(sessionId !== tabState.activeSessionId);
-    }
-  }, [tabState.activeSessionId]);
+    applyTerminalPresentationForMountedSessions();
+  }, [tabState.activeSessionId, applyTerminalPresentationForMountedSessions]);
 
   const canMountTerminals =
     isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
+  const getTerminalSpec = useCallback(
+    (sessionId: SessionId): SpawnSpec => {
+      if (sessionId !== DEFAULT_SESSION_ID) {
+        return { kind: "shell", integration: true };
+      }
+      return withAgentRuntimeFields(
+        defaultSpec ?? {
+          kind: "agent",
+          agent: terminalAgent,
+        },
+        resolvedSystemPrompt ?? null,
+        localizedPluginDir,
+      );
+    },
+    [defaultSpec, terminalAgent, resolvedSystemPrompt, localizedPluginDir],
+  );
+  const getSessionCwd = useCallback(
+    (sessionId: SessionId) => tabManager.getSessionLaunchCwd(sessionId),
+    [tabManager],
+  );
+  const getInterruptProtectionMode = useCallback(
+    (sessionId: SessionId, spec: SpawnSpec) =>
+      sessionId === DEFAULT_SESSION_ID ? resolveInterruptProtectionModeForSpawnSpec(spec) : "none",
+    [],
+  );
+  const shouldAttachExistingSession = useCallback(
+    (sessionId: SessionId) => tabManager.shouldAttachExistingSession(sessionId),
+    [tabManager],
+  );
+  const handleTerminalActivate = useCallback(
+    (sessionId: SessionId) => tabManager.switchTo(sessionId),
+    [tabManager],
+  );
 
   // scene 変更時に全 session の terminal テーマを更新する。
   // initTerminalTheme は current theme と CSS vars の更新だけを担当するため、
@@ -2475,6 +2609,10 @@ function App() {
     let currentContainer: HTMLDivElement | null = null;
     let currentAbort: AbortController | null = null;
     let currentLayout: UiLayout | null = null;
+    const setCurrentLayout = (layout: UiLayout | null): void => {
+      currentLayout = layout;
+      activeUiLayoutRef.current = layout;
+    };
 
     const makeLayoutTargets = (terminal: HTMLElement): LayoutTargets | null => {
       const sidebar = getConnectedSurface("shell", ".shell-column");
@@ -2555,8 +2693,15 @@ function App() {
       }
     };
 
-    const refitActiveTerminal = () => {
-      getTerminalRuntime(tabManager.getState().activeSessionId).refit();
+    const refitPresentedTerminals = () => {
+      for (const sessionId of getMountedSessionIds()) {
+        const presentation = resolveTerminalPresentation(
+          currentLayout,
+          visibleTerminalSessionIdSetRef.current.has(sessionId),
+          tabManager.getState().activeSessionId === sessionId,
+        );
+        if (!presentation.hidden) getTerminalRuntime(sessionId).refit();
+      }
     };
 
     // mount 済み terminal の session id を placeholder の data-session-id から引く。
@@ -2569,13 +2714,9 @@ function App() {
       // singleton xterm を layout-hidden から復帰させる（placeholder の
       // display 解除だけでは per-frame visibility 強制が解けないため）。
       // opacity も既定（完全不透明）へ、背景透明化も解除する。
-      // 非アクティブタブは hidden を維持する（重なり防止）。
-      const activeSessionId = tabManager.getState().activeSessionId;
+      // 非表示 session は hidden を維持する（重なり防止）。
       for (const sessionId of getMountedSessionIds()) {
-        const runtime = getTerminalRuntime(sessionId);
-        runtime.setHidden(sessionId !== activeSessionId);
-        runtime.setOpacity(1);
-        runtime.setBackgroundTransparent(false);
+        applyTerminalPresentationForSession(sessionId, null);
       }
       return targetsList.length > 0;
     };
@@ -2586,27 +2727,8 @@ function App() {
       // placeholder の display:none だけでは body 直下の singleton xterm を
       // 隠せない（syncAttachedRect が毎フレーム visibility を上書きする）。
       // setHidden で runtime 側のフラグを立てて確実に隠す。
-      const terminalHidden = layout.terminal?.position === "hidden";
-      // opacity<1 で背後の character/scene を透かす。syncAttachedRect は
-      // opacity を触らないので runtime 側に保持させれば per-frame で戻らない。
-      const terminalOpacity =
-        typeof layout.terminal?.opacity === "number"
-          ? Math.min(1, Math.max(0, layout.terminal.opacity))
-          : 1;
-      // 背景のみ透明化（文字は不透明のまま）。setTheme をまたいでも runtime 側の
-      // フラグから再適用されるので scene 切替で戻らない。
-      const termBgTransparent = layout.terminal?.transparentBackground === true;
-      // 非アクティブタブは常に hidden を維持し、レイアウト変更で表示されないようにする。
-      const activeSessionId = tabManager.getState().activeSessionId;
       for (const sessionId of getMountedSessionIds()) {
-        const runtime = getTerminalRuntime(sessionId);
-        if (sessionId === activeSessionId) {
-          runtime.setHidden(terminalHidden);
-          runtime.setOpacity(terminalOpacity);
-          runtime.setBackgroundTransparent(termBgTransparent);
-        } else {
-          runtime.setHidden(true);
-        }
+        applyTerminalPresentationForSession(sessionId, layout);
       }
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
@@ -2852,8 +2974,8 @@ function App() {
           update: (layout: UiLayout) => {
             resetLayoutForAllTerminals();
             applyLayoutForAllTerminals(layout);
-            currentLayout = layout;
-            refitActiveTerminal();
+            setCurrentLayout(layout);
+            refitPresentedTerminals();
           },
         },
         app: {
@@ -3036,8 +3158,8 @@ function App() {
         currentContainer.remove();
         currentContainer = null;
       }
-      currentLayout = null;
-      if (resetLayoutForAllTerminals()) refitActiveTerminal();
+      setCurrentLayout(null);
+      if (resetLayoutForAllTerminals()) refitPresentedTerminals();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
 
@@ -3078,7 +3200,7 @@ function App() {
       }
 
       const targets = applyLayoutForAllTerminals(entry.pack.layout);
-      currentLayout = entry.pack.layout;
+      setCurrentLayout(entry.pack.layout);
       if (!targets) {
         devLog.write({
           subsystem: "UiPack",
@@ -3087,7 +3209,7 @@ function App() {
         });
         return;
       }
-      refitActiveTerminal();
+      refitPresentedTerminals();
 
       // stage 遷移を宣言した pack（theater 等）は、applyLayout が置いた end-state を
       // 反対端へ override して「開きアニメ」を再生する（snap でなく Tween）。
@@ -3141,7 +3263,7 @@ function App() {
         pendingRaf = null;
         if (currentLayout) {
           applyLayoutForAllTerminals(currentLayout);
-          refitActiveTerminal();
+          refitPresentedTerminals();
         }
       });
     });
@@ -3153,8 +3275,8 @@ function App() {
       if (currentAbort) currentAbort.abort();
       if (currentDisposable) currentDisposable.dispose();
       if (currentContainer) currentContainer.remove();
-      currentLayout = null;
-      if (resetLayoutForAllTerminals()) refitActiveTerminal();
+      setCurrentLayout(null);
+      if (resetLayoutForAllTerminals()) refitPresentedTerminals();
       claimState.releaseAll();
       setSceneLayerOverrides([]);
     };
@@ -3180,6 +3302,7 @@ function App() {
     applyPresenceLevelFromApp,
     createAmenityContext,
     ambientAudio,
+    applyTerminalPresentationForSession,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -3226,6 +3349,21 @@ function App() {
     [dispatcher, logBridge, effectDispatcher, voicePlayer, personaRegistry],
   );
 
+  // ── Workspace attention → Aura / Body minimal presence wiring ─────
+
+  useEffect(() => {
+    const store = getWorkspaceAttentionStore();
+    const attention = getAttentionRuntime();
+    const disposable = startWorkspaceAttentionPresenceBridge({
+      store,
+      attention,
+      getBody: () => bodyRef.current,
+    });
+    return () => {
+      disposable.dispose();
+    };
+  }, []);
+
   // ── Tool-activity → Body state wiring ─────────────────────
 
   useEffect(() => {
@@ -3252,6 +3390,12 @@ function App() {
       match: (event) => {
         if (event.kind === "tool-activity") {
           bodyRef.current?.setState(mapActivity(event.activity));
+          // agent tool 実行を AgentToolRun primitive として観察に記録（IW-P2 surfacing）。
+          getAgentToolRunStore().ingestActivity(event.activity, event.timestamp);
+        }
+        if (event.kind === "loop-lifecycle") {
+          // 自律 loop の lifecycle を LoopRun として観察に記録（IW-P2 surfacing）。
+          getLoopRunStore().ingestPhase(event.phase, event.agent, event.timestamp);
         }
         if (event.kind === "hook-signal" && event.signal.name === "user-prompt-submit") {
           inTurnRef.current = true;
@@ -3608,6 +3752,21 @@ function App() {
     };
   }, [tabState.activeSessionId, runtime.bus.register]);
 
+  // command-run attention producer は tab session 全体に張る。
+  // 表示は active tab だけでも、背景 session の command metadata は workspace-attention
+  // に残し、表示できない locus は session locus に畳む。
+  useEffect(() => {
+    const workspaceAttention = getWorkspaceAttentionStore();
+    const disposables: Disposable[] = [];
+    for (const sessionId of tabState.sessions) {
+      const terminal = getTerminalRuntime(sessionId);
+      disposables.push(startCommandRunAttentionProducer({ store: workspaceAttention, terminal }));
+    }
+    return () => {
+      for (const d of disposables) d.dispose();
+    };
+  }, [tabState.sessions]);
+
   // mcp attention producer を起動する。
   // @tauri-apps/api/event の listen を ListenFactory に adapt して inject する。
   // dynamic import は非同期のため、他 producer の起動を妨げないよう独立した useEffect に分離。
@@ -3832,6 +3991,32 @@ function App() {
     };
   }, []);
 
+  // command run の keyboard 操作（active session）。
+  // Cmd+Shift+F: 直近 failed run を reference 化。
+  // Cmd+] / Cmd+[: 次 / 前の command block へ jump（block navigation）。
+  // Cmd+Shift+]: 次の failed block へ jump。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      if (event.code === "KeyF" && event.shiftKey) {
+        event.preventDefault();
+        getTerminalRuntime(tabState.activeSessionId).attachLastFailedRun();
+      } else if (event.code === "BracketRight") {
+        event.preventDefault();
+        getTerminalRuntime(tabState.activeSessionId).scrollToAdjacentCommandRun("next", {
+          failedOnly: event.shiftKey,
+        });
+      } else if (event.code === "BracketLeft") {
+        event.preventDefault();
+        getTerminalRuntime(tabState.activeSessionId).scrollToAdjacentCommandRun("previous");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+    };
+  }, [tabState.activeSessionId]);
+
   // screen-shake は bundled-packs/effects/screen-shake を EffectPackRunner
   // 経由で動かす（runtime singleton で register 済み）。この useEffect は不要。
 
@@ -3897,37 +4082,19 @@ function App() {
             scene={renderedSceneEntry}
           />
         </div>
-        {canMountTerminals &&
-          tabState.sessions.map((sessionId) => {
-            const sessionLaunchCwd = tabManager.getSessionLaunchCwd(sessionId);
-            const spec =
-              sessionId === DEFAULT_SESSION_ID
-                ? withAgentRuntimeFields(
-                    defaultSpec ?? {
-                      kind: "agent",
-                      agent: terminalAgent,
-                    },
-                    resolvedSystemPrompt,
-                    localizedPluginDir,
-                  )
-                : { kind: "shell" as const, integration: true };
-            const interruptProtectionMode =
-              sessionId === DEFAULT_SESSION_ID
-                ? resolveInterruptProtectionModeForSpawnSpec(spec)
-                : "none";
-            return (
-              <Terminal
-                key={sessionId}
-                sessionId={sessionId}
-                visible={sessionId === tabState.activeSessionId}
-                spec={spec}
-                cwd={sessionLaunchCwd === undefined ? cwd : sessionLaunchCwd}
-                perception={sessionId === tabState.activeSessionId ? perception : null}
-                attachFirst={tabManager.shouldAttachExistingSession(sessionId)}
-                interruptProtectionMode={interruptProtectionMode}
-              />
-            );
-          })}
+        {canMountTerminals && (
+          <TerminalWorkspace
+            sessions={tabState.sessions}
+            activeSessionId={tabState.activeSessionId}
+            cwd={cwd}
+            getSessionCwd={getSessionCwd}
+            getSpec={getTerminalSpec}
+            getInterruptProtectionMode={getInterruptProtectionMode}
+            perception={perception}
+            shouldAttachExistingSession={shouldAttachExistingSession}
+            onActivate={handleTerminalActivate}
+          />
+        )}
       </div>
       {firstRunHealth && (
         <FirstRunHealthPanel

@@ -5,6 +5,8 @@ export interface ScreenAttentionDetection {
 }
 
 const MAX_BODY_LENGTH = 180;
+const CHOICE_CONTEXT_RADIUS = 4;
+const CHOICE_TAIL_MAX_TRAILING_LINES = 3;
 
 /**
  * xterm screen buffer の末尾から、agent がユーザー入力/許可を待っている prompt を
@@ -118,39 +120,48 @@ function isInteractiveChoicePrompt(lines: ReadonlyArray<string>): boolean {
     /^(?:yes|no|allow|approve|deny|reject|cancel|proceed|always|skip|abort)\b/i.test(line);
   const affirmative = /\b(?:yes|allow|approve|proceed|confirm|apply|run it)\b/i;
   const negative = /\b(?:no|deny|reject|cancel|don'?t|do not|stop|skip|abort|keep current)\b/i;
-  const ynHint =
-    /\(y\/n\)|\[y\/n\]|\by\/n\b|press\s+y\b|esc\s+to\s+(?:cancel|reject|deny|go back|interrupt)/i;
+  const ynHint = /\(y\/n\)|\[y\/n\]|\by\/n\b|press\s+y\b|esc\s+to\s+(?:reject|deny)/i;
 
-  const hasAttentionContext = hasInteractiveChoiceAttentionContext(lines);
   let aff = false;
   let neg = false;
-  let options = 0;
-  for (const line of lines) {
-    if (ynHint.test(line) && hasAttentionContext) return true;
+  const optionLineIndexes: number[] = [];
+  for (const [index, line] of lines.entries()) {
+    if (ynHint.test(line) && hasAttentionContextNear(lines, index)) return true;
     if (numbered.test(line) || bareChoice(line)) {
-      options += 1;
+      optionLineIndexes.push(index);
       if (affirmative.test(line)) aff = true;
       if (negative.test(line)) neg = true;
     }
   }
-  if (!hasAttentionContext) return false;
-  if (aff && neg) return true;
+  if (aff && neg) return isChoiceBlockAtTailBottom(lines, optionLineIndexes);
   // 「Yes」系が複数並ぶ（Yes / Yes, always …）形も入力待ちと見なす。
-  return aff && options >= 2;
+  return (
+    aff && optionLineIndexes.length >= 2 && isChoiceBlockAtTailBottom(lines, optionLineIndexes)
+  );
 }
 
-function hasInteractiveChoiceAttentionContext(lines: ReadonlyArray<string>): boolean {
-  const contextLines = lines.filter(
-    (line) =>
-      !/^\d+\s*[.)]\s+\S/.test(line) &&
-      !/^(?:yes|no|allow|approve|deny|reject|cancel|proceed|always|skip|abort)\b/i.test(line) &&
-      !/^\s*(?:enter|return)\s+to\s+select\b/i.test(line) &&
-      !/^\s*esc\s+to\s+(?:cancel|go back)\b/i.test(line),
+function hasAttentionContextNear(lines: ReadonlyArray<string>, index: number): boolean {
+  const start = Math.max(0, index - CHOICE_CONTEXT_RADIUS);
+  const end = Math.min(lines.length - 1, index + CHOICE_CONTEXT_RADIUS);
+  for (let lineIndex = start; lineIndex <= end; lineIndex++) {
+    if (hasAttentionContext(lines[lineIndex])) return true;
+  }
+  return false;
+}
+
+function hasAttentionContext(line: string): boolean {
+  return /\b(?:permission|approval|allow|deny|run|execute|command|tool|bash|edit|file|network|write|read|operation|action|proceed|continue|use|apply|requires?|needs?|requests?|requested)\b/i.test(
+    line,
   );
-  const context = contextLines.join(" ");
-  return /\b(?:permission|approval|approve|allow|deny|run|execute|command|tool|edit|write|read|network|file|bash|shell|apply|proceed|continue|confirm)\b/i.test(
-    context,
-  );
+}
+
+function isChoiceBlockAtTailBottom(
+  lines: ReadonlyArray<string>,
+  optionLineIndexes: ReadonlyArray<number>,
+): boolean {
+  const lastOptionLineIndex = optionLineIndexes[optionLineIndexes.length - 1];
+  if (lastOptionLineIndex === undefined) return false;
+  return lines.length - 1 - lastOptionLineIndex <= CHOICE_TAIL_MAX_TRAILING_LINES;
 }
 
 function extractPromptBody(lines: ReadonlyArray<string>, joined: string): string {

@@ -13,6 +13,7 @@
 
 import type {
   Cancellable,
+  CommandBlockEvent,
   HookSignal,
   HookSignalEvent,
   IdleEvent,
@@ -149,6 +150,21 @@ export class Perception {
     const event: PtyOutputEvent = {
       kind: "pty-output",
       text,
+      timestamp: this.time.now(),
+    };
+    this.bus.dispatch(event);
+  }
+
+  /** Terminal が live command run の確定時に呼ぶ。 */
+  onCommandBlock(raw: Omit<CommandBlockEvent, "kind" | "timestamp">): void {
+    if (this.disposed) return;
+    this.lastActivityAt = this.time.now();
+    const event: CommandBlockEvent = {
+      kind: "command-block",
+      command: raw.command,
+      exitCode: raw.exitCode,
+      durationMs: raw.durationMs,
+      sessionId: raw.sessionId,
       timestamp: this.time.now(),
     };
     this.bus.dispatch(event);
