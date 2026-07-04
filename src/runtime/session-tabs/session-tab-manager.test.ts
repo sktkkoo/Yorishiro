@@ -257,6 +257,18 @@ describe("SessionTabManager", () => {
 
       expect(states).toEqual([]);
     });
+
+    it("resets short-lived respawn count because project switch is a manual restart", () => {
+      manager._setSpawnTimeForTest(Date.now());
+      manager.handleSessionExit(MAIN, 1);
+      manager._setSpawnTimeForTest(Date.now());
+      manager.handleSessionExit(MAIN, 1);
+      expect(manager._getRespawnCountForTest()).toBe(2);
+
+      manager.setMainSessionLaunchCwd("/work/new");
+
+      expect(manager._getRespawnCountForTest()).toBe(0);
+    });
   });
 
   // ── close ─────────────────────────────────────────────────────

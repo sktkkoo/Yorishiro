@@ -469,6 +469,35 @@ describe("TerminalRuntime", () => {
     expect(mockState.sessionRefreshTheme).toHaveBeenCalledWith({ sessionId: "shell-1" });
   });
 
+  it("force option は current params と同一でも明示 restart する", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const params = { spec: shellSpec, cwd: "/work/repo" };
+
+    runtime.updatePtyParams(params);
+    await flushMicrotasks();
+    runtime.updatePtyParams(params);
+    await flushMicrotasks();
+    runtime.updatePtyParams(params, { force: true });
+    await flushMicrotasks();
+
+    expect(mockState.sessionSpawn).toHaveBeenCalledTimes(2);
+  });
+
+  it("spawn 失敗後は同じ params を再試行できる", async () => {
+    mockState.sessionSpawn
+      .mockRejectedValueOnce(new Error("spawn failed"))
+      .mockResolvedValueOnce(undefined);
+    const runtime = getTerminalRuntime("shell-1");
+    const params = { spec: shellSpec, cwd: "/work/repo" };
+
+    runtime.updatePtyParams(params);
+    await flushMicrotasks();
+    runtime.updatePtyParams(params);
+    await flushMicrotasks();
+
+    expect(mockState.sessionSpawn).toHaveBeenCalledTimes(2);
+  });
+
   it("attach-first の replay を live Channel より先に復元し perception には流さない", async () => {
     const attach = deferred<{ attached: boolean; replay: number[] }>();
     mockState.sessionAttach.mockReturnValueOnce(attach.promise);

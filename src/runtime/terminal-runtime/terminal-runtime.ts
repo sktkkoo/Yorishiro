@@ -371,7 +371,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   updatePtyParams(params: PtyParams, options: UpdatePtyOptions = {}): void {
     if (this.disposed) return;
-    if (this.paramsEqual(this.currentParams, params)) {
+    if (!options.force && this.paramsEqual(this.currentParams, params)) {
       return;
     }
     this.currentParams = params;
@@ -447,6 +447,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         this.resyncAttachedPtyDisplay();
       } catch (err) {
         if (this.isStaleStart(generation)) return;
+        this.currentParams = null;
         const label = describeSpec(params.spec);
         this.term.write(`\x1b[31mFailed to start ${label}: ${err}\x1b[0m\r\n`);
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);

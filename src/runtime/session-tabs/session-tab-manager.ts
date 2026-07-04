@@ -171,6 +171,7 @@ export class SessionTabManager {
     this.sessionCwds.set(sessionId, cwd);
     this.sessionStartedAts.set(sessionId, null);
     this.restoredSessionIds.delete(sessionId);
+    this.respawnCount = 0;
     this.spawnTime = Date.now();
     this.setState({ ...this.state, sessions: [...this.state.sessions] });
     this.persistSessionCwds();

@@ -3577,11 +3577,18 @@ function App() {
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
         setCwd(nextCwd);
         tabManager.setMainSessionLaunchCwd(nextCwd);
+        if (canMountTerminals) {
+          const mainSessionId = tabManager.getState().mainSessionId;
+          getTerminalRuntime(mainSessionId).updatePtyParams(
+            { spec: getTerminalSpec(mainSessionId), cwd: nextCwd },
+            { force: true },
+          );
+        }
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd, strings.selectProjectFolder, tabManager]);
+  }, [canMountTerminals, cwd, getTerminalSpec, strings.selectProjectFolder, tabManager]);
 
   // ── Settings ─────────────────────────────────────────────
 
