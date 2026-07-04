@@ -39,7 +39,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "createUpdaterArtifacts": true,
     "macOS": {
       "entitlements": "Entitlements.plist"
     },
