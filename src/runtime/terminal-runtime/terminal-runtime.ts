@@ -231,7 +231,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
     this.term.onScroll(() => {
-      for (const listener of Array.from(this.scrollListeners)) {
+      for (const listener of this.scrollListeners) {
         listener();
       }
     });
@@ -859,7 +859,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private notifyPtyDataListeners(): void {
-    for (const listener of Array.from(this.ptyDataListeners)) {
+    for (const listener of this.ptyDataListeners) {
       listener();
     }
   }
@@ -893,7 +893,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private notifyUserInputListeners(data: string): void {
-    for (const listener of Array.from(this.userInputListeners)) {
+    for (const listener of this.userInputListeners) {
       listener(data);
     }
   }
