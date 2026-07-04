@@ -403,9 +403,11 @@ const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
 const VRM_STORAGE_KEY = "charminal:vrm";
 const RELOAD_CURTAIN_STORAGE_KEY = "charminal:reload-curtain";
-const RELOAD_CURTAIN_FADE_IN_MS = 240;
-const RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS = 80;
-const RELOAD_CURTAIN_FADE_OUT_MS = 180;
+const RELOAD_CURTAIN_FADE_IN_MS = 360;
+const RELOAD_CURTAIN_PRE_RELOAD_HOLD_MS = 80;
+const RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS = 160;
+const RELOAD_CURTAIN_MIN_VISIBLE_AFTER_RELOAD_MS = 520;
+const RELOAD_CURTAIN_FADE_OUT_MS = 360;
 const RELOAD_CURTAIN_MAX_BLOCK_MS = 5000;
 const RELOAD_NATIVE_BACKGROUND_WAIT_MS = 80;
 const HOOK_BADGE_VISIBLE_MS = 6000;
@@ -913,6 +915,9 @@ function App() {
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const reloadCurtainFromReloadRef = useRef(hasPendingReloadCurtain());
   const reloadInFlightRef = useRef(false);
+  const reloadCurtainVisibleAtRef = useRef<number | null>(
+    reloadCurtainFromReloadRef.current ? performance.now() : null,
+  );
   const [reloadCurtainPhase, setReloadCurtainPhase] = useState<ReloadCurtainPhase>(() =>
     reloadCurtainFromReloadRef.current ? "visible" : "hidden",
   );
@@ -924,6 +929,7 @@ function App() {
     markReloadCurtainPending();
     setReloadCurtainPhase("entering");
     window.requestAnimationFrame(() => {
+      reloadCurtainVisibleAtRef.current = performance.now();
       setReloadCurtainPhase("visible");
     });
     window.setTimeout(() => {
@@ -937,7 +943,7 @@ function App() {
         applyReloadSurfaceBackground();
         window.location.reload();
       });
-    }, RELOAD_CURTAIN_FADE_IN_MS);
+    }, RELOAD_CURTAIN_FADE_IN_MS + RELOAD_CURTAIN_PRE_RELOAD_HOLD_MS);
   }, []);
   const [currentProjectRoot, setCurrentProjectRootState] = useState<string | null>(null);
   const currentProjectRootRef = useRef<string | null>(null);
@@ -2308,14 +2314,23 @@ function App() {
   }, [userLayerReady]);
   useEffect(() => {
     if (!reloadCurtainFromReloadRef.current || !isUserLayerReady) return;
+    const visibleForMs =
+      reloadCurtainVisibleAtRef.current === null
+        ? 0
+        : performance.now() - reloadCurtainVisibleAtRef.current;
+    const holdMs = Math.max(
+      RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS,
+      RELOAD_CURTAIN_MIN_VISIBLE_AFTER_RELOAD_MS - visibleForMs,
+    );
     const hold = window.setTimeout(() => {
       reloadCurtainFromReloadRef.current = false;
       clearReloadCurtainPending();
       setReloadCurtainPhase("leaving");
-    }, RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS);
+    }, holdMs);
     const hide = window.setTimeout(() => {
       setReloadCurtainPhase("hidden");
-    }, RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS + RELOAD_CURTAIN_FADE_OUT_MS);
+      reloadCurtainVisibleAtRef.current = null;
+    }, holdMs + RELOAD_CURTAIN_FADE_OUT_MS);
     return () => {
       window.clearTimeout(hold);
       window.clearTimeout(hide);
@@ -2330,6 +2345,7 @@ function App() {
       setReloadCurtainPhase("leaving");
       hide = window.setTimeout(() => {
         setReloadCurtainPhase("hidden");
+        reloadCurtainVisibleAtRef.current = null;
       }, RELOAD_CURTAIN_FADE_OUT_MS);
     }, RELOAD_CURTAIN_MAX_BLOCK_MS);
     return () => {

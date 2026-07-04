@@ -71,12 +71,12 @@ body,
 
 .reload-curtain[data-phase="visible"] {
   opacity: 1;
-  transition: opacity 240ms ease-in;
+  transition: opacity 360ms ease-in;
 }
 
 .reload-curtain[data-phase="leaving"] {
   opacity: 0;
-  transition: opacity 180ms ease-out;
+  transition: opacity 360ms ease-out;
 }
 
 /* ── Title bar ─────────────────────────────────────── */
