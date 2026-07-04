@@ -12,6 +12,7 @@ import { TweenManager } from "../../core/tween/tween-manager";
 import type { SceneSpec } from "../../sdk/scene";
 import type { ScenePackManifest } from "../../sdk/scene-pack";
 import { AmenityPackRegistryImpl } from "../amenity-pack-registry";
+import type { ManualCueResult } from "../attention-light-cue/cue-store";
 import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
 import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
@@ -26,6 +27,7 @@ import {
   type ControlStoreLike,
   createAmenityCallHandler,
   createAmenityListToolsHandler,
+  createAttentionLightCueHandler,
   createBodyAnimationPlayHandler,
   createBodyExpressionSetHandler,
   createBodyMotionCancelHandler,
@@ -1503,6 +1505,7 @@ describe("createStateGetHandler", () => {
         disabledPacks: [],
         ambientAudioMuted: false,
         ambientAudioVolume: 1,
+        attentionLightNotifications: true,
         motionIntensity: 1,
         mcpPort: null,
         activeUi: null,
@@ -1548,6 +1551,7 @@ describe("createStateGetHandler", () => {
         disabledPacks: [],
         ambientAudioMuted: false,
         ambientAudioVolume: 1,
+        attentionLightNotifications: true,
         motionIntensity: 1,
         mcpPort: null,
         activeUi: null,
@@ -2610,5 +2614,35 @@ describe("createBundledExampleReadHandler", () => {
     });
 
     await expect(handler({})).rejects.toThrow("id must be a non-empty string");
+  });
+});
+
+describe("createAttentionLightCueHandler", () => {
+  it("triggerManual が triggered:true を返す場合、そのまま返す", async () => {
+    const trigger = vi.fn<() => ManualCueResult>().mockReturnValue({ triggered: true });
+    const handler = createAttentionLightCueHandler({ trigger });
+    const result = await handler({});
+    expect(result).toEqual({ triggered: true });
+    expect(trigger).toHaveBeenCalledOnce();
+  });
+
+  it("triggerManual が disabled を返す場合、error にせずそのまま返す", async () => {
+    const trigger = vi.fn<() => ManualCueResult>().mockReturnValue({
+      triggered: false,
+      reason: "disabled",
+    });
+    const handler = createAttentionLightCueHandler({ trigger });
+    const result = await handler({});
+    expect(result).toEqual({ triggered: false, reason: "disabled" });
+  });
+
+  it("triggerManual が cooldown を返す場合、error にせずそのまま返す", async () => {
+    const trigger = vi.fn<() => ManualCueResult>().mockReturnValue({
+      triggered: false,
+      reason: "cooldown",
+    });
+    const handler = createAttentionLightCueHandler({ trigger });
+    const result = await handler({});
+    expect(result).toEqual({ triggered: false, reason: "cooldown" });
   });
 });

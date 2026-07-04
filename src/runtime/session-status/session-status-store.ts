@@ -255,6 +255,7 @@ export class SessionStatusStore {
     const source = notification.source ?? "osc";
     const current = this.ensure(sessionId);
     const receivedAt = this.now();
+    const normalizedTitle = title.length > 0 ? title : null;
     const lastCleared = this.lastAttentionCleared.get(sessionId);
     if (current.attention === null && source !== "loop" && lastCleared !== undefined) {
       const sinceCleared = receivedAt - lastCleared.clearedAt;
@@ -262,7 +263,7 @@ export class SessionStatusStore {
       const sameScreenPrompt =
         source === "screen" &&
         lastCleared.source === "screen" &&
-        lastCleared.title === (title.length > 0 ? title : null) &&
+        lastCleared.title === normalizedTitle &&
         lastCleared.body === body;
       const shouldAllowObservedScreenPrompt =
         source === "screen" && lastCleared.screenDisappearanceObserved;
@@ -286,7 +287,29 @@ export class SessionStatusStore {
 
     if (
       current.activity === "awaiting-input" &&
-      current.attention?.title === (title.length > 0 ? title : null) &&
+      current.attention !== null &&
+      source === "screen" &&
+      current.attention.source !== "screen" &&
+      current.attention.source !== "loop"
+    ) {
+      const unread = sessionId !== this.activeSessionId;
+      this.commit({
+        ...current,
+        attention: {
+          title: normalizedTitle,
+          body,
+          receivedAt: current.attention.receivedAt,
+          source,
+        },
+        unread: current.unread || unread,
+        lastActivityAt: receivedAt,
+      });
+      return;
+    }
+
+    if (
+      current.activity === "awaiting-input" &&
+      current.attention?.title === normalizedTitle &&
       current.attention.body === body &&
       current.attention.source === source
     ) {
@@ -298,7 +321,7 @@ export class SessionStatusStore {
       ...current,
       activity: "awaiting-input",
       attention: {
-        title: title.length > 0 ? title : null,
+        title: normalizedTitle,
         body,
         receivedAt,
         source,
@@ -352,13 +375,17 @@ export class SessionStatusStore {
 
   /** active session を切り替える。新 active の unread は解除する。 */
   markActive(sessionId: SessionId): void {
+    const previousActiveSessionId = this.activeSessionId;
     this.activeSessionId = sessionId;
     const current = this.statuses.get(sessionId);
     if (!current) {
       this.register(sessionId);
       return;
     }
-    if (!current.unread) return;
+    if (!current.unread) {
+      if (previousActiveSessionId !== sessionId) this.notify();
+      return;
+    }
     this.commit({
       ...current,
       unread: false,

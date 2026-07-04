@@ -50,6 +50,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -73,6 +74,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -96,6 +98,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -119,6 +122,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -142,6 +146,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -165,6 +170,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -193,6 +199,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -245,6 +252,7 @@ describe("serializeConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -268,6 +276,7 @@ describe("serializeConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -304,6 +313,7 @@ describe("serializeConfig", () => {
       terminalAgent: "codex",
       ambientAudioMuted: true,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -386,6 +396,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -410,6 +421,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
       defaultProfile: null,
@@ -671,6 +683,34 @@ describe("ambientAudioMuted", () => {
   it("writes ambientAudioMuted when true", () => {
     const cfg = { ...EMPTY_CONFIG, ambientAudioMuted: true };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ ambientAudioMuted: true });
+  });
+});
+
+describe("attentionLightNotifications", () => {
+  it("defaults to true", () => {
+    expect(EMPTY_CONFIG.attentionLightNotifications).toBe(true);
+    expect(parseConfig("{}").attentionLightNotifications).toBe(true);
+  });
+
+  it("parses false only when explicitly disabled", () => {
+    expect(parseConfig('{"attentionLightNotifications": false}').attentionLightNotifications).toBe(
+      false,
+    );
+    expect(parseConfig('{"attentionLightNotifications": true}').attentionLightNotifications).toBe(
+      true,
+    );
+    expect(
+      parseConfig('{"attentionLightNotifications": "false"}').attentionLightNotifications,
+    ).toBe(true);
+  });
+
+  it("omits the default true value from serialized output", () => {
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
+  });
+
+  it("writes attentionLightNotifications only when disabled", () => {
+    const cfg = { ...EMPTY_CONFIG, attentionLightNotifications: false };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ attentionLightNotifications: false });
   });
 });
 

@@ -203,4 +203,30 @@ describe("workspace attention presence bridge", () => {
     expect(attention.setSourceTarget).not.toHaveBeenCalled();
     expect(body.body.acquireExpressionSlot).toHaveBeenCalledWith("persona", "mood", "sad", 0.16);
   });
+
+  it("awaiting-approval が primary でも表情 pulse は発火しない", () => {
+    const store = createWorkspaceAttentionStore();
+    const attention = createAttentionFake();
+    const body = createBodyFake();
+
+    startWorkspaceAttentionPresenceBridge({
+      store,
+      attention: attention.attention,
+      getBody: () => body.body,
+      setTimeout: () => 1,
+      clearTimeout: vi.fn<(id: unknown) => void>(),
+    });
+
+    store.upsert({
+      sessionId: "session-1",
+      locus: { kind: "session", sessionId: "session-1" },
+      type: "awaiting-approval",
+      severity: "medium",
+      producer: { kind: "host", id: "test" },
+      producerKey: "test:awaiting",
+    });
+
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
+    expect(body.body.acquireExpressionSlot).not.toHaveBeenCalled();
+  });
 });

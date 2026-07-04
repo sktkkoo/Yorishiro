@@ -17,6 +17,7 @@
  * - `language: "auto" | "en" | "ja"`（optional）: UI / persona fallback / command prompt の言語
  * - `terminalAgent: string`（optional）: legacy。`defaultProfile` 未指定時の fallback として使われる
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
+ * - `attentionLightNotifications: boolean`（optional）: 入力/承認待ちの照明通知を有効にする。default true
  * - `motionIntensity: number`（optional）: idle procedural motion の大きさ倍率
  * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
  * - `defaultProfile: string | null`（optional）: 起動時 default-session に使う profile id。bundled (`shell` / `claude` / `codex` / `opencode`) または user `profiles[]` の id。null なら `terminalAgent` を fallback に使う
@@ -60,6 +61,8 @@ export interface CharminalConfig {
   readonly ambientAudioMuted: boolean;
   /** 環境音のマスターボリューム（0.0-1.0）。全 Howl の volume にこの値を乗算する。 */
   readonly ambientAudioVolume: number;
+  /** 入力/承認待ち時の red flash lighting notification を有効にする。 */
+  readonly attentionLightNotifications: boolean;
   /** idle procedural motion（呼吸・揺れ・頭）の大きさ倍率。0.0-3.0、default 1.0。 */
   readonly motionIntensity: number;
   /** User 定義の session profile。bundled (`shell` / `claude` / `codex` / `opencode`) と同 id なら override。 */
@@ -96,6 +99,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   terminalAgent: "claude",
   ambientAudioMuted: false,
   ambientAudioVolume: 1.0,
+  attentionLightNotifications: true,
   motionIntensity: 1.0,
   profiles: [],
   defaultProfile: null,
@@ -155,6 +159,10 @@ const toTerminalAgent = (value: unknown): TerminalAgent => {
 
 const toBoolean = (value: unknown): boolean => {
   return value === true;
+};
+
+const toDefaultTrueBoolean = (value: unknown): boolean => {
+  return value !== false;
 };
 
 const toVoiceFrequency = (value: unknown): VoiceFrequency => {
@@ -271,6 +279,7 @@ export function parseConfig(text: string): CharminalConfig {
     terminalAgent: toTerminalAgent(obj.terminalAgent),
     ambientAudioMuted: toBoolean(obj.ambientAudioMuted),
     ambientAudioVolume: toUnitFloat(obj.ambientAudioVolume),
+    attentionLightNotifications: toDefaultTrueBoolean(obj.attentionLightNotifications),
     motionIntensity: toMotionIntensity(obj.motionIntensity),
     profiles: toSessionProfiles(obj.profiles),
     defaultProfile: toNullableString(obj.defaultProfile),
@@ -302,6 +311,7 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.terminalAgent !== "claude") out.terminalAgent = cfg.terminalAgent;
   if (cfg.ambientAudioMuted) out.ambientAudioMuted = true;
   if (cfg.ambientAudioVolume !== 1.0) out.ambientAudioVolume = cfg.ambientAudioVolume;
+  if (!cfg.attentionLightNotifications) out.attentionLightNotifications = false;
   if (cfg.motionIntensity !== 1.0) out.motionIntensity = cfg.motionIntensity;
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
   if (cfg.defaultProfile !== null) out.defaultProfile = cfg.defaultProfile;

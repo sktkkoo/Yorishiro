@@ -51,6 +51,15 @@ export interface ThreeRuntime {
   getVrm(): VRM | null;
   /** Body 未生成なら null。VRM load 完了後に非 null。 */
   getBody(): Body | null;
+  /**
+   * VRM head bone の world 座標。VRM 未ロード時は null。照明の自動配置アンカー用
+   * （例: `src/runtime/three-runtime/attention-cue-light.tsx`）。
+   *
+   * head bone が取れない VRM では `vrm.scene.position` にフォールバックする。
+   * 専用の unit test harness は無く、消費側（AttentionCueLight の getAnchor 注入
+   * 経路）の test でオフセット計算の扱いを担保する。
+   */
+  getCharacterAnchor(): { x: number; y: number; z: number } | null;
   /** TweenManager instance。per-frame 補間の backing store。 */
   getTweenManager(): TweenManager;
   /** カメラ自動追従（head tracking）の有効/無効。app-level の設定で、claim とは独立。 */

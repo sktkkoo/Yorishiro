@@ -163,6 +163,21 @@ describe("SessionStatusStore", () => {
     expect(store.getActiveSessionId()).toBe("s2");
   });
 
+  it("notifies when active session changes even if unread does not change", () => {
+    const { store } = createStore();
+    store.register("s1");
+    store.register("s2");
+    let notifyCount = 0;
+    store.subscribe(() => notifyCount++);
+
+    store.markActive("s1");
+    store.markActive("s1");
+    store.markActive("s2");
+
+    expect(notifyCount).toBe(2);
+    expect(store.getActiveSessionId()).toBe("s2");
+  });
+
   it("does not notify when PTY output only advances lastActivityAt", () => {
     const { store, tick } = createStore();
     let notifyCount = 0;
@@ -375,6 +390,30 @@ describe("SessionStatusStore", () => {
         receivedAt: 100,
         source: "screen",
       },
+    });
+  });
+
+  it("promotes active hook attention to screen without changing its receivedAt", () => {
+    const { store, tick } = createStore();
+
+    tick(200);
+    store.markAttentionRequest("s1", {
+      title: "Claude Code",
+      body: "Waiting for approval",
+      source: "hook",
+    });
+    tick(280);
+    store.markScreenAttentionRequest("s1", { title: "Claude Code", body: "Allow command?" });
+
+    expect(store.get("s1")).toMatchObject({
+      activity: "awaiting-input",
+      attention: {
+        title: "Claude Code",
+        body: "Allow command?",
+        receivedAt: 200,
+        source: "screen",
+      },
+      lastActivityAt: 280,
     });
   });
 

@@ -11,12 +11,14 @@
  */
 
 import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 
 function SimpleRoomScene({ vrmSlot }: ScenePackComponentProps) {
   return (
     <>
       <Lights />
+      <AttentionCueLight />
       {vrmSlot}
     </>
   );

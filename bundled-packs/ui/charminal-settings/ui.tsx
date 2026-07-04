@@ -47,6 +47,7 @@ import {
 } from "../../../src/i18n/strings";
 import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import { getBrowserLocales, resolveLanguage } from "../../../src/runtime/language/language";
+import { type AvailableUpdate, checkForUpdate } from "../../../src/runtime/updater/app-updater";
 import {
   isBundledClaiPersonaId,
   localizedClaiPersonaId,
@@ -2030,12 +2031,23 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [motionIntensity, setMotionIntensity] = useState<number | null>(null);
   // activeAmbientUi（Aura toggle 等の状態管理用）。
   const [activeAmbientUi, setActiveAmbientUiLocal] = useState<readonly string[]>([]);
+  const [attentionLightNotifications, setAttentionLightNotifications] = useState<boolean | null>(
+    null,
+  );
   const [language, setLanguage] = useState<AppLanguage>("auto");
   const [resolvedLanguage, setResolvedLanguage] = useState<ResolvedLanguage>("en");
   // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
   const languageChangeSeq = useRef(0);
   const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
   const [configLoaded, setConfigLoaded] = useState(false);
+  // in-app update。設定を開いたときに一度だけ確認し、更新があればバナーを出す。
+  // idle = 更新なし（確認前・確認失敗を含む）。downloading の ratio は 0-1 / null（不定）。
+  const [updateState, setUpdateState] = useState<
+    | { phase: "idle" }
+    | { phase: "available"; update: AvailableUpdate }
+    | { phase: "downloading"; ratio: number | null }
+    | { phase: "error" }
+  >({ phase: "idle" });
   const personas = ctx.app.listPersonas();
   const visiblePersonas = filterPersonaOptionsForLanguage(personas, resolvedLanguage);
   const personaSelectValue = configLoaded
@@ -2057,6 +2069,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setAmbientVolume(cur.ambientAudioVolume);
       setMotionIntensity(cur.motionIntensity);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
+      setAttentionLightNotifications(cur.attentionLightNotifications);
       setLanguage(cur.language);
       setResolvedLanguage(cur.resolvedLanguage);
       setVoiceFrequency(cur.voiceFrequency ?? "on");
@@ -2066,6 +2079,28 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       aborted = true;
     };
   }, [ctx]);
+
+  useEffect(() => {
+    let aborted = false;
+    void checkForUpdate().then((update) => {
+      if (!aborted && update) setUpdateState({ phase: "available", update });
+    });
+    return () => {
+      aborted = true;
+    };
+  }, []);
+
+  /** 更新バナーの1ボタン。ダウンロード・適用して relaunch する（成功時は戻ってこない）。 */
+  const onInstallUpdate = useCallback((update: AvailableUpdate) => {
+    setUpdateState({ phase: "downloading", ratio: null });
+    update
+      .installAndRelaunch((ratio) => {
+        setUpdateState({ phase: "downloading", ratio });
+      })
+      .catch(() => {
+        setUpdateState({ phase: "error" });
+      });
+  }, []);
 
   const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = configPrimaryPersonaForSelection(e.target.value);
@@ -2168,6 +2203,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (ids) => ctx.app.setActiveAmbientUi(ids),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "activeAmbientUi",
+    });
+  };
+
+  const onAttentionLightToggle = () => {
+    if (attentionLightNotifications === null) return;
+    void applyConfigUpdate({
+      next: !attentionLightNotifications,
+      prev: attentionLightNotifications,
+      setLocal: setAttentionLightNotifications,
+      write: (enabled) => ctx.app.setAttentionLightNotifications(enabled),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "attentionLightNotifications",
     });
   };
 
@@ -2301,6 +2348,58 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           overflowY: "auto",
         }}
       >
+        {/* 更新バナー: 更新があるときだけ現れる控えめな1行。1ボタンで適用して再起動する */}
+        {updateState.phase !== "idle" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SPACING.md,
+              marginBottom: SPACING.lg,
+              padding: `${SPACING.sm} ${SPACING.md}`,
+              borderRadius: RADIUS.sm,
+              background: COLORS.accentSoft,
+              border: `1px solid ${COLORS.accentBorder}`,
+              fontSize: FONT.sizeXs,
+            }}
+          >
+            {updateState.phase === "available" && (
+              <>
+                <span style={{ opacity: 0.85 }}>
+                  {strings.updateAvailable.replace("{version}", updateState.update.version)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onInstallUpdate(updateState.update)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: COLORS.accent,
+                    font: "inherit",
+                    fontSize: "inherit",
+                    cursor: "pointer",
+                    padding: 0,
+                    textDecoration: "underline",
+                    textDecorationColor: "currentColor",
+                    textUnderlineOffset: "2px",
+                  }}
+                >
+                  {strings.updateAndRestart}
+                </button>
+              </>
+            )}
+            {updateState.phase === "downloading" && (
+              <span style={{ opacity: 0.85 }}>
+                {strings.updateDownloading}
+                {updateState.ratio !== null && ` ${Math.round(updateState.ratio * 100)}%`}
+              </span>
+            )}
+            {updateState.phase === "error" && (
+              <span style={{ opacity: 0.7 }}>{strings.updateFailed}</span>
+            )}
+          </div>
+        )}
+
         {/* Quick Actions */}
         <div
           style={{
@@ -2505,6 +2604,16 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           <div style={{ opacity: 0.7 }}>{strings.labelAura}</div>
           <div>
             <Toggle checked={auraEnabled} onChange={onAuraToggle} />
+          </div>
+
+          {/* Light alert */}
+          <div style={{ opacity: 0.7 }}>{strings.labelAttentionLight}</div>
+          <div>
+            <Toggle
+              checked={attentionLightNotifications ?? true}
+              disabled={attentionLightNotifications === null}
+              onChange={onAttentionLightToggle}
+            />
           </div>
         </div>
 
