@@ -102,6 +102,11 @@ export interface UiStrings {
   readonly quickPomodoro: string;
   /** 設定画面 Quick Actions の CREDITS ボタン。overlay の中身は英語固定（ui.tsx）。 */
   readonly labelCredits: string;
+  /** 設定画面の更新バナー。{version} を新 version で置換する。 */
+  readonly updateAvailable: string;
+  readonly updateAndRestart: string;
+  readonly updateDownloading: string;
+  readonly updateFailed: string;
 }
 
 const EN: UiStrings = {
@@ -205,6 +210,10 @@ const EN: UiStrings = {
   quickCreatePack: "Create Pack",
   quickPomodoro: "Pomodoro",
   labelCredits: "CREDITS",
+  updateAvailable: "v{version} available",
+  updateAndRestart: "Update and restart",
+  updateDownloading: "Updating…",
+  updateFailed: "Update failed. Please try again later.",
 };
 
 const JA: UiStrings = {
@@ -308,6 +317,10 @@ const JA: UiStrings = {
   quickCreatePack: "パック作成",
   quickPomodoro: "ポモドーロ",
   labelCredits: "CREDITS",
+  updateAvailable: "v{version} が利用可能です",
+  updateAndRestart: "更新して再起動",
+  updateDownloading: "更新中…",
+  updateFailed: "更新に失敗しました。時間をおいて再試行してください。",
 };
 
 export function getStrings(language: ResolvedLanguage): UiStrings {

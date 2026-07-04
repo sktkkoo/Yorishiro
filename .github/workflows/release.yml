@@ -77,8 +77,11 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
 
+      # tauri.updater.conf.json overlay で createUpdaterArtifacts を CI だけ有効化する。
+      # base conf に置くと署名鍵を持たない contributor のローカル `tauri build` が
+      # 失敗するため（TAURI_SIGNING_PRIVATE_KEY 必須になる）、意図的に分離している。
       - name: Build and sign
-        run: npm run tauri build -- --target ${{ matrix.target }}
+        run: npm run tauri build -- --target ${{ matrix.target }} --config src-tauri/tauri.updater.conf.json
         env:
           CI: "true"
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -87,12 +90,34 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # in-app updater 用のパッケージ署名（Apple codesign とは別系統の minisign）。
+          # 鍵は空パスワードで生成している。PASSWORD を明示しないと TTY プロンプトを
+          # 出そうとして CI では "Device not configured" で失敗する。
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+
+      # updater artifact（.app.tar.gz + .sig）は両アーキで同名（charminal.app.tar.gz）に
+      # なるため、arch を含む名前にリネームしてから artifact 化する。この名前が
+      # そのまま Release asset 名になり、latest.json の url が指す。
+      - name: Stage updater artifacts
+        run: |
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          mkdir -p updater-assets
+          cp "$BUNDLE_DIR"/*.app.tar.gz "updater-assets/charminal_${{ matrix.arch }}.app.tar.gz"
+          cp "$BUNDLE_DIR"/*.app.tar.gz.sig "updater-assets/charminal_${{ matrix.arch }}.app.tar.gz.sig"
+          ls -la updater-assets
 
       - name: Upload .dmg
         uses: actions/upload-artifact@v6
         with:
           name: charminal-macos-${{ matrix.arch }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - name: Upload updater artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: charminal-updater-${{ matrix.arch }}
+          path: updater-assets/*
 
   publish-release:
     needs: [build-macos]
@@ -118,6 +143,32 @@ jobs:
           for f in *x64*.dmg; do [ -e "$f" ] && cp "$f" Charminal-Intel.dmg; done
           ls -la
 
+      # in-app updater（tauri-plugin-updater）が参照する更新 manifest。
+      # アプリは releases/latest/download/latest.json を見るため、リリースを
+      # publish した瞬間から既存インストールに更新が配信される。
+      # 片アーキ失敗時（fail-fast: false）は成功した分だけを manifest に載せる。
+      - name: Stage updater artifacts and generate latest.json
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          find artifacts -name '*.app.tar.gz' -exec cp {} release-assets/ \;
+          find artifacts -name '*.app.tar.gz.sig' -exec cp {} release-assets/ \;
+          SIG_ARM=$(cat release-assets/charminal_aarch64.app.tar.gz.sig 2>/dev/null || true)
+          SIG_X64=$(cat release-assets/charminal_x86_64.app.tar.gz.sig 2>/dev/null || true)
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg sig_arm "$SIG_ARM" \
+            --arg url_arm "$BASE/charminal_aarch64.app.tar.gz" \
+            --arg sig_x64 "$SIG_X64" \
+            --arg url_x64 "$BASE/charminal_x86_64.app.tar.gz" \
+            '{version: $version, pub_date: $pub_date, platforms: ({}
+              + (if $sig_arm != "" then {"darwin-aarch64": {signature: $sig_arm, url: $url_arm}} else {} end)
+              + (if $sig_x64 != "" then {"darwin-x86_64": {signature: $sig_x64, url: $url_x64}} else {} end))}' \
+            > release-assets/latest.json
+          cat release-assets/latest.json
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -126,3 +177,5 @@ jobs:
           generate_release_notes: true
           files: |
             release-assets/*.dmg
+            release-assets/*.app.tar.gz
+            release-assets/latest.json
