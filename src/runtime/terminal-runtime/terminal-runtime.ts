@@ -441,7 +441,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         });
         if (this.disposed) {
           void sessionDestroy({ sessionId: this.sessionId });
+          return;
         }
+        if (this.isStaleStart(generation)) return;
+        this.resyncAttachedPtyDisplay();
       } catch (err) {
         if (this.isStaleStart(generation)) return;
         const label = describeSpec(params.spec);
