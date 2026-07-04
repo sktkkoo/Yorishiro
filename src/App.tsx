@@ -390,7 +390,37 @@ const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
 const VRM_STORAGE_KEY = "charminal:vrm";
+const RELOAD_CURTAIN_STORAGE_KEY = "charminal:reload-curtain";
+const RELOAD_CURTAIN_FADE_IN_MS = 120;
+const RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS = 80;
+const RELOAD_CURTAIN_FADE_OUT_MS = 180;
 const HOOK_BADGE_VISIBLE_MS = 6000;
+
+type ReloadCurtainPhase = "hidden" | "entering" | "visible" | "leaving";
+
+function hasPendingReloadCurtain(): boolean {
+  try {
+    return sessionStorage.getItem(RELOAD_CURTAIN_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markReloadCurtainPending(): void {
+  try {
+    sessionStorage.setItem(RELOAD_CURTAIN_STORAGE_KEY, "1");
+  } catch {
+    // sessionStorage can be unavailable in restricted WebViews; reload should still proceed.
+  }
+}
+
+function clearReloadCurtainPending(): void {
+  try {
+    sessionStorage.removeItem(RELOAD_CURTAIN_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures; the visual transition is best-effort.
+  }
+}
 
 interface RestoreDialogRequest {
   readonly seq: number;
@@ -867,6 +897,20 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const reloadCurtainFromReloadRef = useRef(hasPendingReloadCurtain());
+  const [reloadCurtainPhase, setReloadCurtainPhase] = useState<ReloadCurtainPhase>(() =>
+    reloadCurtainFromReloadRef.current ? "visible" : "hidden",
+  );
+  const reloadWithCurtain = useCallback(() => {
+    markReloadCurtainPending();
+    setReloadCurtainPhase("entering");
+    window.requestAnimationFrame(() => {
+      setReloadCurtainPhase("visible");
+    });
+    window.setTimeout(() => {
+      window.location.reload();
+    }, RELOAD_CURTAIN_FADE_IN_MS);
+  }, []);
   const [currentProjectRoot, setCurrentProjectRootState] = useState<string | null>(null);
   const currentProjectRootRef = useRef<string | null>(null);
   const rememberCurrentProjectRoot = useCallback((projectRoot: string | null) => {
@@ -2223,6 +2267,21 @@ function App() {
       cancelled = true;
     };
   }, [userLayerReady]);
+  useEffect(() => {
+    if (!reloadCurtainFromReloadRef.current || !isUserLayerReady) return;
+    const hold = window.setTimeout(() => {
+      reloadCurtainFromReloadRef.current = false;
+      clearReloadCurtainPending();
+      setReloadCurtainPhase("leaving");
+    }, RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS);
+    const hide = window.setTimeout(() => {
+      setReloadCurtainPhase("hidden");
+    }, RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS + RELOAD_CURTAIN_FADE_OUT_MS);
+    return () => {
+      window.clearTimeout(hold);
+      window.clearTimeout(hide);
+    };
+  }, [isUserLayerReady]);
 
   // ── Session tab manager（HMR-surviving singleton）───────────────────────
   // biome-ignore lint/correctness/useExhaustiveDependencies: runtime は HMR-surviving singleton、bus は stable reference
@@ -3569,12 +3628,12 @@ function App() {
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
         // Workspace 切替は runtime singleton 群を一度作り直す。
         // PTY / xterm / perception の寿命が絡むため、差分更新より WebView reload の方が安定する。
-        window.location.reload();
+        reloadWithCurtain();
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd, strings.selectProjectFolder]);
+  }, [cwd, reloadWithCurtain, strings.selectProjectFolder]);
 
   // ── Settings ─────────────────────────────────────────────
 
@@ -4014,7 +4073,7 @@ function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
-        window.location.reload();
+        reloadWithCurtain();
       }
       if (event.code === "F2") {
         event.preventDefault();
@@ -4025,7 +4084,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, []);
+  }, [reloadWithCurtain]);
 
   // command run の keyboard 操作（active session）。
   // Cmd+Shift+F: 直近 failed run を reference 化。
@@ -4149,6 +4208,9 @@ function App() {
           onClose={handleRestoreDialogClose}
           onConfirm={handleRestoreDialogConfirm}
         />
+      ) : null}
+      {reloadCurtainPhase !== "hidden" ? (
+        <div className="reload-curtain" data-phase={reloadCurtainPhase} aria-hidden="true" />
       ) : null}
     </div>
   );

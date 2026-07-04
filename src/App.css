@@ -59,6 +59,26 @@ body,
   overflow: hidden;
 }
 
+.reload-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: #020304;
+  pointer-events: auto;
+  opacity: 0;
+  will-change: opacity;
+}
+
+.reload-curtain[data-phase="visible"] {
+  opacity: 1;
+  transition: opacity 120ms ease-in;
+}
+
+.reload-curtain[data-phase="leaving"] {
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
 /* ── Title bar ─────────────────────────────────────── */
 .title-bar {
   flex: 0 0 var(--title-bar-height);
