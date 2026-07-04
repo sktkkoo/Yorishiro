@@ -19,6 +19,7 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "backgroundColor": "#020304",
         "backgroundThrottling": "disabled"
       }
     ],
