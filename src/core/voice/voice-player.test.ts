@@ -298,6 +298,41 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
+  it("mouth callback 未設定なら Web Audio 再生中も lip-sync rAF loop を開始しない", async () => {
+    const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame");
+    try {
+      const engine = createMockEngine();
+      const player = new VoicePlayer(undefined, engine);
+      const api = player.createVoiceAPI();
+
+      api.say("hello");
+      await flushPlaybackStart();
+
+      expect(rafSpy).not.toHaveBeenCalled();
+      player.dispose();
+    } finally {
+      rafSpy.mockRestore();
+    }
+  });
+
+  it("mouth callback 設定時は Web Audio 再生中に lip-sync rAF loop を開始する", async () => {
+    const rafSpy = vi.spyOn(globalThis, "requestAnimationFrame");
+    try {
+      const engine = createMockEngine();
+      const player = new VoicePlayer(undefined, engine);
+      const api = player.createVoiceAPI();
+
+      player.setMouthCallback(vi.fn());
+      api.say("hello");
+      await flushPlaybackStart();
+
+      expect(rafSpy).toHaveBeenCalled();
+      player.dispose();
+    } finally {
+      rafSpy.mockRestore();
+    }
+  });
+
   it("sampleMouth() は engine なしでもゼロ値を返す", () => {
     const player = new VoicePlayer();
     const result = player.sampleMouth();

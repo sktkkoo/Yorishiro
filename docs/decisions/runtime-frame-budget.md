@@ -107,6 +107,7 @@ VoiceSummary / CLAI speaking で固まりやすい経路は、TTS synth / fetch 
 - TTS synth result は base64 文字列で返さない。Rust から `Channel<ArrayBuffer>` の raw bytes で渡し、JS の `atob` / byte copy を発話開始 frame に乗せない。
 - PCM WAV は通常経路で JS の per-sample loop に通さない。まず native `AudioContext.decodeAudioData()` に渡し、失敗時だけ `decodePcm16Wav()` fallback を使う。
 - lip sync rAF loop と Body の `sampleMouth()` は playback 中だけ動かす。
+- App の Body 接続は `VoicePlayer.sampleMouth(out)` の pull 型なので、`setMouthCallback()` が未設定なら VoicePlayer 側の push rAF loop を起動しない。Body pull と VoicePlayer push を二重に動かさない。
 - mouth values は scratch object へ書く。`{ ...ZERO_MOUTH }` や raw mouth object を毎 sample 作らない。
 - Body は lip sync を 1 frame に 1 回だけ sample する。二重 sample は smoothing を二重に進めるので禁止。
 

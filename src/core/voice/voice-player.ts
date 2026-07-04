@@ -50,6 +50,7 @@ export class VoicePlayer {
   /** 口形素コールバックを設定する。rAF ループで毎フレーム呼ばれる。 */
   setMouthCallback(cb: (values: MouthValues) => void): void {
     this.onMouthValues = cb;
+    if (this.currentSource !== null) this.startLipSyncLoop();
   }
 
   /** 現在の口形素を 1 回取得する（コールバック不使用時のポーリング用）。 */
@@ -242,7 +243,7 @@ export class VoicePlayer {
       this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
 
       this.lipSync?.reset();
-      this.startLipSyncLoop();
+      if (this.onMouthValues !== null) this.startLipSyncLoop();
 
       source.onended = () => {
         if (this.currentSource === source && this.currentPlaybackId === playbackId) {
@@ -324,8 +325,14 @@ export class VoicePlayer {
 
   private startLipSyncLoop(): void {
     if (this.animFrameId !== null) return;
+    if (this.onMouthValues === null) return;
     const tick = () => {
-      this.onMouthValues?.(
+      const onMouthValues = this.onMouthValues;
+      if (onMouthValues === null || this.currentSource === null) {
+        this.animFrameId = null;
+        return;
+      }
+      onMouthValues(
         copyMouthValues(this.sampleMouth(this.mouthSampleScratch), this.mouthCallbackScratch),
       );
       this.animFrameId = requestAnimationFrame(tick);
