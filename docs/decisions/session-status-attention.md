@@ -53,7 +53,7 @@ screen fast path が出した attention は hook / OSC より権威を持つ。p
 
 #### 照明通知は 2-pulse cue。継続点滅はアンチパターン
 
-`AttentionFlashLight` は scene pack の照明を書き換えず、runtime 所有の additive light を active session の attention に一度だけ控えめに重ねる。identity は `sessionId` / `receivedAt` で見分け、同じ attention が sticky のまま残っている間は source が後から screen に昇格しても再点灯しない。cue は淡い暖色の 2 pulse で、各 pulse は 0 intensity から smooth fade-in / fade-out し、突然の点灯・途切れを避ける。
+照明通知は信号層と表現層に分かれる（rev.11）。信号層は `session-attention-producer`（**全 session** の awaiting-input+attention を workspace-attention の `awaiting-approval` item に反映——別タブの許可待ちでも cue が出る）→ `AttentionLightCueStore`（identity `sessionId:receivedAt` につき一度・toggle gate・MCP 用 manual trigger + cooldown）。表現層は scene 所有：scene が `AttentionCueLight` を mount（または `useClaimAttentionCue()`）すれば scene が色・強さ・位置を所有し、**scene が沈黙していれば runtime の default cue light がキャラ（VRM head）位置から自動配置で生きる**（yielding default——設定トグルの約束を scene 差で破らない）。cue は淡い暖色の 2 pulse で、各 pulse は 0 intensity から smooth fade-in / fade-out し、突然の点灯・途切れを避ける。住人は MCP `attention_light_cue` で自発的にも鳴らせる（toggle off なら `disabled` が返る）。
 
 承認待ちが解消されるまで照明を点滅し続けるのは **アンチパターン**。初回は「気づく」ための cue になるが、継続すると作業面の視覚ノイズになり、[presence-over-spectacle](presence-over-spectacle.md) と [autonomy-without-disruption](autonomy-without-disruption.md) の両方に反する。attention の持続表示は TabIndicator / settings UI など静的な面で担い、照明は短い変化としてだけ使う。
 
@@ -115,7 +115,7 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - **手動 shell agent は per-session shim 経由で対応**：Charminal shell で手動起動した `claude` / `codex` は PATH 先頭の shim を通れば sessionId 付き hook signal を返す。user が絶対 path で binary を呼ぶ / alias が PATH より優先する / `CHARMINAL_AGENT_SHIMS_DISABLED=1` の場合は screen fast path のみ。
 - **screen 文面 heuristic**：agent UI 文面変更に弱い。`screen-attention-detector` は純粋関数 + test で保護し、Claude / Codex の実 UI に合わせて調整する。
 - **deferred**：Rust `SessionRegistry` の OSC133 activity（shell の running-command / idle）を TS `SessionStatusStore` に bridge する配線（§2 の heuristic を精密化）。Codex hook / notification 実機検証。persistent hook install（PATH shim bypass 対応）。attention の persona reflex / aura 連動（cmux の pane glow 相当）。
-- 主な source：`src/runtime/session-status/`（store / `screen-attention-detector` / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`readScreenTailText` / `osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/runtime/three-runtime/attention-flash-light.tsx`、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（`hook-signal` event / fallback poll → markAttentionRequest / clearAttention）、`src-tauri/src/sessions/shell_wrapper.rs`（per-session `claude` / `codex` shim + hook scripts）、`src-tauri/src/pty.rs`（hook server + sessionId query stamp + `Notification` hook + immediate Tauri emit）。
+- 主な source：`src/runtime/session-status/`（store / `screen-attention-detector` / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`readScreenTailText` / `osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/runtime/workspace-attention/session-attention-producer.ts`、`src/runtime/attention-light-cue/`、`src/runtime/three-runtime/attention-cue-light.tsx`、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（`hook-signal` event / fallback poll → markAttentionRequest / clearAttention）、`src-tauri/src/sessions/shell_wrapper.rs`（per-session `claude` / `codex` shim + hook scripts）、`src-tauri/src/pty.rs`（hook server + sessionId query stamp + `Notification` hook + immediate Tauri emit）。
 
 ## 関連 reference
 
@@ -135,3 +135,4 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - 2026-06-28 rev.8: user `.zshrc` 等が shim dir より前に `~/.local/bin` を再 prepend する問題に対応。init script（user rc 後）で PATH を戻し、`claude()` / `codex()` shell function を定義して shim を後勝ちさせる。
 - 2026-06-28 rev.9: 観察源を 4 層（screen fast path / agent hook / OSC 受信 / 解除）として整理。screen fast path + HTTP hook attribution が安定したため、Charminal 自身が hook を OSC 777 へ echo する `hook-notify-osc.py` 経路を削除（OSC は受信のみ残す）。
 - 2026-07-04 rev.10: 照明通知は attention 1 件につき一度だけの cue に変更。awaiting-input 中ずっと点滅させる案は視覚ノイズを増やすアンチパターンとして記録。実使用で 1 pulse では気づきづらいため、淡い暖色の 2-pulse cue に調整。
+- 2026-07-04 rev.11: 照明通知を scene 所有へ移行。信号層（session-attention-producer で全 session 対応 + AttentionLightCueStore）と表現層（scene mount の AttentionCueLight、沈黙時は runtime default がキャラ位置自動配置で生きる yielding default）に分離し、runtime 直注入の AttentionFlashLight を退役。MCP `attention_light_cue` で住人からも発火可能に。
