@@ -52,7 +52,7 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 Charminal currently targets macOS. Install with Homebrew:
 
 ```sh
-brew install --cask sktkkoo/tap/charminal
+brew install --cask sktkkoo/charminal/charminal
 ```
 
 Or download the latest build below.

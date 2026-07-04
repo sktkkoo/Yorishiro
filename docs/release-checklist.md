@@ -4,6 +4,43 @@ This checklist is the pre-release smoke test for Charminal release builds. Run
 it from a fresh user profile when possible, or move the existing `~/.charminal/`
 aside before testing.
 
+## 0. Publish procedure
+
+The mechanical steps for cutting a release. Everything after the tag push is
+automated; the only required manual actions are the version bump, the tag, and
+publishing the draft release.
+
+1. **Bump the version** in `package.json`, `src-tauri/tauri.conf.json`, and
+   `src-tauri/Cargo.toml`, then run `npm install` and `cargo build` (updates
+   `package-lock.json` / `Cargo.lock`). Update README status/badges if needed.
+   Commit as `Release vX.Y.Z`.
+2. **Tag and push**: `git tag vX.Y.Z && git push origin main vX.Y.Z`. The tag
+   push triggers `.github/workflows/release.yml`, which builds both macOS
+   architectures and creates a **draft** GitHub Release with:
+   - versioned and stable-named `.dmg` files
+   - in-app updater artifacts (`charminal_<arch>.app.tar.gz` + signatures)
+   - `latest.json` (the update manifest the in-app updater polls)
+3. **Publish the draft release.** This is the switch that delivers the update:
+   the moment the release is published, `releases/latest/download/latest.json`
+   resolves and existing installs (v0.5.3+) will offer the update in Settings.
+4. **Homebrew: no action required.** The
+   [homebrew-charminal](https://github.com/sktkkoo/homebrew-charminal) tap
+   checks for new releases every 6 hours and updates the cask automatically.
+   To sync it immediately:
+
+   ```bash
+   gh workflow run bump-charminal.yml -R sktkkoo/homebrew-charminal
+   ```
+
+Notes:
+
+- The updater signing key lives in the `TAURI_SIGNING_PRIVATE_KEY` repo secret
+  (empty passphrase; CI sets `TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""`
+  explicitly). Losing the private key means existing installs can never
+  receive updates again — keep the original backed up.
+- Releases before v0.5.3 do not contain the in-app updater, so those installs
+  only update via Homebrew (`brew upgrade`) or manual download.
+
 ## 1. Build artifacts
 
 - Run `npm run build`.
