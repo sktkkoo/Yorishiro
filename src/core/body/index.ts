@@ -71,6 +71,7 @@ import { ProceduralBones } from "./procedural-bones";
 
 /** Body が lip sync 値を pull するためのインターフェース。 */
 export interface LipSyncSource {
+  isMouthActive?(): boolean;
   sampleMouth(out?: MouthValues): MouthValues;
 }
 
@@ -195,7 +196,7 @@ export class Body {
   /** 直前の attention snapshot の source。source 変化検知に使用。 */
   private lastAttentionSource: string | null = null;
 
-  /** LipSync 音声解析ソース。再生中に毎フレーム sampleMouth() を pull する。 */
+  /** LipSync 音声解析ソース。再生中だけ毎フレーム sampleMouth() を pull する。 */
   private lipSyncSource: LipSyncSource | null = null;
   private readonly lipSyncMouthScratch = createMouthValues();
   private readonly cursorAttentionOutput: MutableCursorAttentionOutput = {
@@ -518,9 +519,11 @@ export class Body {
 
     // 5 で 5b と 6 の両方で lip sync 値が要るので、ここで 1 度だけ pull してキャッシュ。
     // LipSyncAnalyser.sample() の smoothing が二重に進まないようにする目的もある。
-    const lipSyncMouth = this.lipSyncSource
-      ? this.lipSyncSource.sampleMouth(this.lipSyncMouthScratch)
-      : null;
+    const lipSyncSource = this.lipSyncSource;
+    const lipSyncMouth =
+      lipSyncSource && (lipSyncSource.isMouthActive?.() ?? true)
+        ? lipSyncSource.sampleMouth(this.lipSyncMouthScratch)
+        : null;
     const lipSyncHasSignal = lipSyncMouth ? hasMouthSignal(lipSyncMouth) : false;
 
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)

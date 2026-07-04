@@ -55,8 +55,13 @@ export class VoicePlayer {
 
   /** 現在の口形素を 1 回取得する（コールバック不使用時のポーリング用）。 */
   sampleMouth(out?: MouthValues): MouthValues {
-    if (this.lipSync) return this.lipSync.sample(out);
+    if (this.currentSource !== null && this.lipSync) return this.lipSync.sample(out);
     return out ? clearMouthValues(out) : { ...ZERO_MOUTH };
+  }
+
+  /** Body 側が idle frame で analyser を pull しないための cheap active 判定。 */
+  isMouthActive(): boolean {
+    return this.currentSource !== null && this.lipSync !== null;
   }
 
   createVoiceAPI(options: { readonly resolveClip?: VoiceClipResolver } = {}): VoiceAPI {

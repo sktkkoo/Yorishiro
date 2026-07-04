@@ -520,6 +520,42 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(player.sampleMouth()).toEqual({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
   });
 
+  it("再生中でない sampleMouth() は analyser を pull しない", async () => {
+    const getByteFrequencyData = vi.fn((out: Uint8Array) => out.fill(0));
+    const getByteTimeDomainData = vi.fn((out: Uint8Array) => {
+      for (let i = 0; i < out.length; i++) out[i] = i % 2 === 0 ? 96 : 160;
+      return out;
+    });
+    mockAudioContext.createAnalyser.mockReturnValueOnce({
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      fftSize: 256,
+      frequencyBinCount: 128,
+      getByteFrequencyData,
+      getByteTimeDomainData,
+    });
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+
+    api.say("あ");
+    await flushPlaybackStart();
+    expect(player.isMouthActive()).toBe(true);
+    expect(player.sampleMouth().aa).toBeGreaterThan(0);
+    expect(getByteFrequencyData).toHaveBeenCalledTimes(1);
+    expect(getByteTimeDomainData).toHaveBeenCalledTimes(1);
+
+    const source = mockAudioContext.createBufferSource.mock.results[0].value;
+    source.onended?.();
+    getByteFrequencyData.mockClear();
+    getByteTimeDomainData.mockClear();
+
+    expect(player.isMouthActive()).toBe(false);
+    expect(player.sampleMouth()).toEqual({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+    expect(getByteFrequencyData).not.toHaveBeenCalled();
+    expect(getByteTimeDomainData).not.toHaveBeenCalled();
+  });
+
   it("未開始の play handle を stop しても既存の say 再生は止めない", async () => {
     const engine = createMockEngine();
     const player = new VoicePlayer(undefined, engine);
