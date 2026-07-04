@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use super::{AgentCapabilities, CommandSyntax, LaunchArgs, LaunchContext, TerminalAgent};
 
 pub struct CodexAgent;
@@ -37,12 +35,12 @@ impl TerminalAgent for CodexAgent {
     }
 
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String> {
-        let mut args = Vec::new();
-
-        if self.has_existing_session(ctx.cwd) {
-            args.push("resume".to_string());
-            args.push("--last".to_string());
-        }
+        // 常に `resume --last` を渡す。--last は cwd スコープで、この cwd に継続対象が
+        // 無ければ新規セッションとして graceful に起動する（codex 0.142.5 で、他 cwd の
+        // セッションが多数ある環境でも他を拾わず新規になることを実測済み）。
+        // ~/.codex/sessions の jsonl を走査する判定は undocumented 依存なので持たない。
+        // 設計: design-record 2026-07-04-main-agent-autolaunch-rethink.md §1.3
+        let mut args = vec!["resume".to_string(), "--last".to_string()];
 
         args.push("-c".to_string());
         args.push(codex_charminal_mcp_config_arg(ctx.mcp_port));
@@ -66,82 +64,6 @@ impl TerminalAgent for CodexAgent {
             temp_files: Vec::new(),
         })
     }
-
-    fn has_existing_session(&self, cwd: Option<&Path>) -> bool {
-        has_existing_codex_session(cwd.and_then(|p| p.to_str()))
-    }
-}
-
-fn codex_session_file_matches_cwd(path: &Path, resolved_cwd: &Path) -> bool {
-    let Ok(file) = std::fs::File::open(path) else {
-        return false;
-    };
-    let mut reader = std::io::BufReader::new(file);
-    let mut first_line = String::new();
-    if std::io::BufRead::read_line(&mut reader, &mut first_line).is_err() {
-        return false;
-    }
-
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&first_line) else {
-        return false;
-    };
-    let Some(cwd) = value
-        .get("payload")
-        .and_then(|payload| payload.get("cwd"))
-        .and_then(|cwd| cwd.as_str())
-    else {
-        return false;
-    };
-
-    std::fs::canonicalize(cwd)
-        .map(|session_cwd| session_cwd == resolved_cwd)
-        .unwrap_or(false)
-}
-
-fn has_existing_codex_session_in(sessions_dir: &Path, resolved_cwd: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(sessions_dir) else {
-        return false;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if has_existing_codex_session_in(&path, resolved_cwd) {
-                return true;
-            }
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl")
-            && codex_session_file_matches_cwd(&path, resolved_cwd)
-        {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// `cwd` に対応する Codex 既存 session があり、`resume --last` で使えるなら true。
-///
-/// Codex は JSONL rollout を `~/.codex/sessions/YYYY/MM/DD/` に保存する。
-/// 先頭行の `session_meta.payload.cwd` を canonicalize 後の cwd と照合し、
-/// 別 workspace の `resume --last` 誤爆を避ける。
-fn has_existing_codex_session(cwd: Option<&str>) -> bool {
-    let raw = match cwd {
-        Some(c) => std::path::PathBuf::from(c),
-        None => match std::env::current_dir() {
-            Ok(p) => p,
-            Err(_) => return false,
-        },
-    };
-
-    let Ok(resolved) = std::fs::canonicalize(&raw) else {
-        return false;
-    };
-
-    let Some(home) = dirs::home_dir() else {
-        return false;
-    };
-
-    has_existing_codex_session_in(&home.join(".codex").join("sessions"), &resolved)
 }
 
 fn toml_basic_string(value: &str) -> String {
@@ -178,84 +100,16 @@ mod tests {
     use super::*;
 
     fn make_ctx<'a>(
-        cwd: Option<&'a Path>,
         system_prompt: Option<&'a str>,
         prompt_reminder: Option<&'a str>,
     ) -> LaunchContext<'a> {
         LaunchContext {
-            cwd,
             system_prompt,
             prompt_reminder,
             plugin_dir: None,
             mcp_port: 18743,
             hook_port: 19001,
         }
-    }
-
-    #[test]
-    fn codex_session_file_matches_cwd_from_session_meta() {
-        let tmp = std::env::temp_dir().join(format!(
-            "charminal-codex-session-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        let workspace = tmp.join("workspace");
-        let session = tmp.join("session.jsonl");
-        std::fs::create_dir_all(&workspace).expect("create workspace");
-        std::fs::write(
-            &session,
-            format!(
-                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n",
-                workspace.to_str().expect("workspace path utf8")
-            ),
-        )
-        .expect("write session");
-
-        let resolved = std::fs::canonicalize(&workspace).expect("canonicalize workspace");
-        assert!(codex_session_file_matches_cwd(&session, &resolved));
-
-        let _ = std::fs::remove_file(&session);
-        let _ = std::fs::remove_dir(&workspace);
-        let _ = std::fs::remove_dir(&tmp);
-    }
-
-    #[test]
-    fn has_existing_codex_session_in_finds_nested_jsonl_for_cwd() {
-        let tmp = std::env::temp_dir().join(format!(
-            "charminal-codex-session-tree-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        let sessions_dir = tmp.join("sessions");
-        let nested = sessions_dir.join("2026").join("04").join("23");
-        let workspace = tmp.join("workspace");
-        std::fs::create_dir_all(&nested).expect("create nested sessions dir");
-        std::fs::create_dir_all(&workspace).expect("create workspace");
-        std::fs::write(
-            nested.join("rollout.jsonl"),
-            format!(
-                "{{\"type\":\"session_meta\",\"payload\":{{\"cwd\":\"{}\"}}}}\n",
-                workspace.to_str().expect("workspace path utf8")
-            ),
-        )
-        .expect("write session");
-
-        let resolved = std::fs::canonicalize(&workspace).expect("canonicalize workspace");
-        assert!(has_existing_codex_session_in(&sessions_dir, &resolved));
-
-        let _ = std::fs::remove_file(nested.join("rollout.jsonl"));
-        let _ = std::fs::remove_dir(&nested);
-        let _ = std::fs::remove_dir(sessions_dir.join("2026").join("04"));
-        let _ = std::fs::remove_dir(sessions_dir.join("2026"));
-        let _ = std::fs::remove_dir(&sessions_dir);
-        let _ = std::fs::remove_dir(&workspace);
-        let _ = std::fs::remove_dir(&tmp);
     }
 
     #[test]
@@ -284,7 +138,7 @@ mod tests {
 
     #[test]
     fn codex_injects_prompt_reminder_as_developer_instructions() {
-        let ctx = make_ctx(None, None, Some("## Charminal reminders\n\n- voice_say"));
+        let ctx = make_ctx(None, Some("## Charminal reminders\n\n- voice_say"));
         let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
 
         assert!(result.args.iter().any(|arg| arg
@@ -293,7 +147,7 @@ mod tests {
 
     #[test]
     fn codex_appends_prompt_reminder_after_system_prompt() {
-        let ctx = make_ctx(None, Some("persona prompt"), Some("runtime reminder"));
+        let ctx = make_ctx(Some("persona prompt"), Some("runtime reminder"));
         let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
 
         assert!(result

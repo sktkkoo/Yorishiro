@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use super::{AgentCapabilities, LaunchArgs, LaunchContext, TerminalAgent};
 
 pub struct ClaudeAgent;
@@ -32,9 +30,12 @@ impl TerminalAgent for ClaudeAgent {
         let mut args = Vec::new();
         let mut temp_files = Vec::new();
 
-        if self.has_existing_session(ctx.cwd) {
-            args.push("-c".to_string());
-        }
+        // 常に -c を渡す。「この cwd に継続対象があるか」は Claude Code 自身が判定し、
+        // 無ければ新規セッションとして graceful に起動する（claude 2.1.201 で
+        // print / interactive 両モード実測済み）。Charminal 側で ~/.claude/projects/ を
+        // 走査して判定すると undocumented 依存 + 二重管理になるため、判定は持たない。
+        // 設計: design-record 2026-07-04-main-agent-autolaunch-rethink.md §1.3
+        args.push("-c".to_string());
 
         let hooks_json = crate::pty::build_hooks_json(ctx.hook_port);
         let hooks_path = super::temp_config_path("hooks", "json");
@@ -79,10 +80,6 @@ impl TerminalAgent for ClaudeAgent {
             temp_files,
         })
     }
-
-    fn has_existing_session(&self, cwd: Option<&Path>) -> bool {
-        has_existing_claude_session(cwd.and_then(|p| p.to_str()))
-    }
 }
 
 fn claude_charminal_mcp_config_json(port: u16) -> String {
@@ -97,119 +94,9 @@ fn claude_charminal_mcp_config_json(port: u16) -> String {
     .to_string()
 }
 
-/// Claude Code が project dir 名に使う形式へ、canonicalize 済み cwd を encode する。
-///
-/// 実測では Claude Code は per-project session state を
-/// `~/.claude/projects/<encoded>/` に置く。`<encoded>` は canonicalize 済み
-/// cwd の path separator を `-` に置換したもの。Windows drive separator も
-/// 置換し、`Path::join` に absolute path と解釈されないようにする。
-fn encode_project_dir_name(resolved: &Path) -> Option<String> {
-    let mut path = resolved.to_str()?.to_string();
-    if let Some(stripped) = path.strip_prefix(r"\\?\UNC\") {
-        path = format!(r"\\{}", stripped);
-    } else if let Some(stripped) = path.strip_prefix(r"\\?\") {
-        path = stripped.to_string();
-    }
-    Some(path.replace(['/', '\\', ':'], "-"))
-}
-
-/// `cwd` に対応する Claude Code 既存 session があり、`-c` で resume できるなら true。
-///
-/// HOME 不在、canonicalize 失敗、非 UTF-8 path などの error はすべて false。
-/// 呼び出し側は false の場合 fresh session を起動するので、degraded だが安全。
-fn has_existing_claude_session(cwd: Option<&str>) -> bool {
-    let raw = match cwd {
-        Some(c) => std::path::PathBuf::from(c),
-        None => match std::env::current_dir() {
-            Ok(p) => p,
-            Err(_) => return false,
-        },
-    };
-
-    let Ok(resolved) = std::fs::canonicalize(&raw) else {
-        return false;
-    };
-
-    let Some(encoded) = encode_project_dir_name(&resolved) else {
-        return false;
-    };
-
-    let Some(home) = dirs::home_dir() else {
-        return false;
-    };
-
-    home.join(".claude").join("projects").join(encoded).is_dir()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn encode_project_dir_name_basic() {
-        assert_eq!(
-            encode_project_dir_name(Path::new("/Users/foo/Charminal")),
-            Some("-Users-foo-Charminal".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_preserves_dots() {
-        // Claude Code は `.` を escape しない。実際の entries に合わせる。
-        assert_eq!(
-            encode_project_dir_name(Path::new("/Users/foo/.config/app")),
-            Some("-Users-foo-.config-app".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_root() {
-        assert_eq!(
-            encode_project_dir_name(Path::new("/")),
-            Some("-".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_windows_path_is_relative_safe() {
-        assert_eq!(
-            encode_project_dir_name(Path::new(r"C:\Users\foo\Charminal")),
-            Some("C--Users-foo-Charminal".to_string())
-        );
-    }
-
-    #[test]
-    fn encode_project_dir_name_strips_windows_verbatim_prefix() {
-        assert_eq!(
-            encode_project_dir_name(Path::new(r"\\?\C:\Users\foo\Charminal")),
-            Some("C--Users-foo-Charminal".to_string())
-        );
-    }
-
-    #[test]
-    fn has_existing_claude_session_false_for_nonexistent_cwd() {
-        // 存在しない path は canonicalize に失敗するため safe default。
-        assert!(!has_existing_claude_session(Some(
-            "/charminal/definitely/not/a/real/path/xyz"
-        )));
-    }
-
-    #[test]
-    fn has_existing_claude_session_false_for_unrelated_tmp_dir() {
-        let tmp = std::env::temp_dir().join(format!(
-            "charminal-session-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&tmp).expect("create tempdir");
-        let path_str = tmp.to_str().expect("tmp path utf8").to_string();
-        let result = has_existing_claude_session(Some(&path_str));
-        let _ = std::fs::remove_dir(&tmp);
-        assert!(!result, "fresh tempdir should not have a Claude session");
-    }
 
     #[test]
     fn claude_charminal_mcp_config_json_points_to_streamable_http_server() {

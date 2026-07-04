@@ -60,7 +60,6 @@ pub struct CommandSyntax {
 
 /// Spawn 時に各 adapter に渡される context。
 pub struct LaunchContext<'a> {
-    pub cwd: Option<&'a Path>,
     pub system_prompt: Option<&'a str>,
     pub prompt_reminder: Option<&'a str>,
     pub plugin_dir: Option<&'a Path>,
@@ -94,9 +93,6 @@ pub trait TerminalAgent: Send + Sync + 'static {
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String>;
     fn theme_refresh(&self) -> Option<AgentThemeRefresh> {
         None
-    }
-    fn has_existing_session(&self, _cwd: Option<&Path>) -> bool {
-        false
     }
     /// この agent 固有の install dir。PATH 検索の base に前置される。
     /// generic 層（`build_path_env` / `resolve_agent_binary`）は agent 固有の

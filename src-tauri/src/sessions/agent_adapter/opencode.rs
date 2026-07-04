@@ -242,12 +242,10 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     fn make_ctx<'a>(
-        cwd: Option<&'a Path>,
         system_prompt: Option<&'a str>,
         plugin_dir: Option<&'a Path>,
     ) -> LaunchContext<'a> {
         LaunchContext {
-            cwd,
             system_prompt,
             prompt_reminder: None,
             plugin_dir,
@@ -261,7 +259,6 @@ mod tests {
         prompt_reminder: Option<&'a str>,
     ) -> LaunchContext<'a> {
         LaunchContext {
-            cwd: None,
             system_prompt,
             prompt_reminder,
             plugin_dir: None,
@@ -296,8 +293,7 @@ mod tests {
 
     #[test]
     fn opencode_uses_process_cwd_without_dir_arg() {
-        let cwd = Path::new("/tmp/some-cwd");
-        let ctx = make_ctx(Some(cwd), None, None);
+        let ctx = make_ctx(None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
         assert!(!result.args.iter().any(|a| a == "/tmp/some-cwd"));
@@ -306,7 +302,7 @@ mod tests {
 
     #[test]
     fn opencode_sets_system_tui_theme_via_temp_config() {
-        let ctx = make_ctx(None, None, None);
+        let ctx = make_ctx(None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, path_str) = result
             .env
@@ -327,7 +323,7 @@ mod tests {
 
     #[test]
     fn opencode_omits_dir_when_cwd_missing() {
-        let ctx = make_ctx(None, None, None);
+        let ctx = make_ctx(None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         assert!(!result.args.iter().any(|a| a == "--dir"));
         cleanup_temp_files(&result);
@@ -335,7 +331,7 @@ mod tests {
 
     #[test]
     fn opencode_injects_mcp_via_opencode_config_content_env() {
-        let ctx = make_ctx(None, None, None);
+        let ctx = make_ctx(None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
             .env
@@ -352,7 +348,7 @@ mod tests {
 
     #[test]
     fn opencode_injects_persona_as_primary_agent_prompts() {
-        let ctx = make_ctx(None, Some("住人としての気質を保つ"), None);
+        let ctx = make_ctx(Some("住人としての気質を保つ"), None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
 
         let (_, json_str) = result
@@ -436,7 +432,7 @@ mod tests {
 
     #[test]
     fn opencode_omits_agent_prompt_when_no_persona() {
-        let ctx = make_ctx(None, None, None);
+        let ctx = make_ctx(None, None);
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
             .env
@@ -472,7 +468,7 @@ mod tests {
         )
         .expect("write command");
 
-        let ctx = make_ctx(None, None, Some(&plugin_dir));
+        let ctx = make_ctx(None, Some(&plugin_dir));
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
             .env
@@ -505,7 +501,7 @@ mod tests {
         )
         .expect("write command");
 
-        let ctx = make_ctx(None, None, Some(&plugin_dir));
+        let ctx = make_ctx(None, Some(&plugin_dir));
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
         let (_, json_str) = result
             .env
