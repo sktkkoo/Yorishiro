@@ -166,6 +166,7 @@ import {
   type PresenceResolution,
   resolvePresence,
 } from "./runtime/presence-target";
+import { resolveCurrentProjectRoot } from "./runtime/project-context/project-context";
 import {
   getSceneRegistry,
   resolveSceneAssets,
@@ -233,6 +234,7 @@ import {
 import {
   parseConfig,
   resolvePrimaryPersonaForLanguage,
+  resolveSceneForProject,
   serializeConfig,
   type TerminalAgent,
   type VoiceFrequency,
@@ -861,6 +863,12 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [currentProjectRoot, setCurrentProjectRootState] = useState<string | null>(null);
+  const currentProjectRootRef = useRef<string | null>(null);
+  const rememberCurrentProjectRoot = useCallback((projectRoot: string | null) => {
+    currentProjectRootRef.current = projectRoot;
+    setCurrentProjectRootState(projectRoot);
+  }, []);
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
@@ -884,6 +892,10 @@ function App() {
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+
+  useEffect(() => {
+    currentProjectRootRef.current = currentProjectRoot;
+  }, [currentProjectRoot]);
 
   const resolveRestoreDialogTarget = useCallback(async (seq: number) => {
     const locale = appLanguageRef.current.resolved;
@@ -1420,7 +1432,9 @@ function App() {
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
-        scenePackRegistry.setActiveScene(config.activeScene);
+        const projectRoot = await resolveCurrentProjectRoot(cwd);
+        rememberCurrentProjectRoot(projectRoot);
+        scenePackRegistry.setActiveScene(resolveSceneForProject(config, projectRoot));
         uiPackRegistry.setActiveUi(config.activeUi);
         syncAmbientUiActiveSet(config.activeAmbientUi);
       } catch (err) {
@@ -1454,7 +1468,7 @@ function App() {
       });
 
       // ─ Step 2.5: subscribeActive 系 wire ─
-      // 順序契約：subscribe wire は Step 2 の setActiveScene(config.activeScene)
+      // 順序契約：subscribe wire は Step 2 の setActiveScene(resolvedScene)
       // より後。逆順だと bundled fallback の default scene で listener が一度
       // fire し、その直後の config 反映でもう一度 fire する double-dispatch が
       // 起きる（現状 default の simple-room は ambient:[] なので可聴ではないが、

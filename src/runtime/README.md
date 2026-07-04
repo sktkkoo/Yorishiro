@@ -20,6 +20,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `terminal-runtime/` | Webview lifetime singleton — xterm + PTY channel + terminal agent params + command run memory + perception ref | `terminal-runtime.ts` | |
 | `three-runtime/` | Webview lifetime singleton — Three.js canvas / RAF / VRM model | `three-runtime.ts` | |
 | `vrm-cache/` | URL → ArrayBuffer LRU cache（VRM blob） | `vrm-cache.ts` | |
+| `project-context/` | 起動時 cwd から current project root を解決する accessor。scene per project の差し替え点 | `project-context.ts` | design-record `2026-07-04-main-agent-autolaunch-rethink.md` §4.3 |
 | `scene-pack-registry/` | Scene pack の manifest / asset resolution | `scene-pack-registry.ts` + `asset-resolver.ts` | single-active（config picks） |
 | `ui-claim-state/` | UI pack が本体自動処理を一時 suspend するための token ベース state holder | `ui-claim-state.ts` | claim/release、three-runtime と body が毎フレーム参照 |
 | `ui-pack-registry/` | UI pack の single-active 管理 + config.activeUi 反映 | `ui-pack-registry.ts` | SingleActiveRegistry extend |
@@ -46,6 +47,8 @@ hot-data/  ◄─── module-registry/  ◄─── core/body/, three-runtime
 (foundational)   (foundational)
 
 user-pack-loader/  ◄─── persona-registry/, scene-pack-registry/
+
+project-context/  ◄─── bindings/tauri-commands（cwd → 正規化 project root）
 
 terminal-runtime/, three-runtime/, vrm-cache/  — 外部 lib (xterm, three) との singleton wrapper
 
