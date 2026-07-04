@@ -56,11 +56,17 @@ describe("Perception", () => {
   // ── PTY output ──────────────────────────────────────────────
 
   describe("onPtyOutput", () => {
-    it("dispatches PtyOutputEvent with text and timestamp", () => {
+    it("coalesces PtyOutputEvent text within one frame budget", () => {
       const { perception, dispatched } = createStack();
       clockMs = 2000;
 
-      perception.onPtyOutput("hello world");
+      perception.onPtyOutput("hello ");
+      clockMs = 2004;
+      perception.onPtyOutput("world");
+
+      expect(dispatched).toHaveLength(0);
+
+      vi.advanceTimersByTime(16);
 
       expect(dispatched).toHaveLength(1);
       const event = dispatched[0];
@@ -76,6 +82,17 @@ describe("Perception", () => {
       perception.dispose();
 
       perception.onPtyOutput("should be ignored");
+      vi.advanceTimersByTime(16);
+
+      expect(dispatched).toHaveLength(0);
+    });
+
+    it("drops pending PTY output on dispose", () => {
+      const { perception, dispatched } = createStack();
+
+      perception.onPtyOutput("pending");
+      perception.dispose();
+      vi.advanceTimersByTime(16);
 
       expect(dispatched).toHaveLength(0);
     });
