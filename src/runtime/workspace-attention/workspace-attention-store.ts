@@ -160,14 +160,18 @@ export class WorkspaceAttentionStore {
   }
 
   private publish(): void {
-    const activeItems = Array.from(this.items.values()).filter((item) => item.state === "active");
-    const primaryItem = selectPrimaryItem(activeItems, this.now());
+    const activeItems: WorkspaceAttentionItem[] = [];
+    for (const item of this.items.values()) {
+      if (item.state === "active") activeItems.push(item);
+    }
+    const now = this.now();
+    const primaryItem = selectPrimaryItem(activeItems, now);
     this.snapshot = {
       activeItems,
       primaryItem,
-      aggregate: aggregateFromActiveItems(activeItems, this.now()),
+      aggregate: aggregateFromActiveItems(activeItems, now),
     };
-    for (const listener of Array.from(this.listeners)) {
+    for (const listener of this.listeners) {
       listener(this.snapshot);
     }
   }

@@ -887,7 +887,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       body: notification.body,
       receivedAt: Date.now(),
     };
-    for (const listener of Array.from(this.notificationListeners)) {
+    for (const listener of this.notificationListeners) {
       listener(event);
     }
   }
@@ -1114,7 +1114,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       startedAt: this.currentWriteReplay ? null : Date.now(),
     });
     if (hadActiveRun || this.currentWriteReplay) return;
-    for (const listener of Array.from(this.commandRunStartedListeners)) {
+    for (const listener of this.commandRunStartedListeners) {
       listener(started);
     }
   }
@@ -1151,7 +1151,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private notifyCommandRunFinalized(finalized: TerminalCommandRun): void {
-    for (const listener of Array.from(this.commandRunFinalizedListeners)) {
+    for (const listener of this.commandRunFinalizedListeners) {
       listener(finalized);
     }
   }
@@ -1186,7 +1186,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.drawRegionHighlight(context.polygon);
       this.scheduleRegionCanvasClear();
     }
-    for (const listener of Array.from(this.regionContextListeners)) {
+    for (const listener of this.regionContextListeners) {
       listener(context);
     }
     return true;
@@ -1363,7 +1363,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private readonly handleActivationEvent = (): void => {
     if (this.disposed) return;
-    for (const listener of Array.from(this.activationListeners)) {
+    for (const listener of this.activationListeners) {
       listener();
     }
   };
@@ -1514,7 +1514,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.drawRegionHighlight(polygon);
     this.scheduleRegionCanvasClear();
 
-    for (const listener of Array.from(this.regionContextListeners)) {
+    for (const listener of this.regionContextListeners) {
       listener(context);
     }
   }
@@ -1637,7 +1637,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }
     this.latestRegionContext = context;
     this.addTerminalReference(context);
-    for (const listener of Array.from(this.regionContextListeners)) {
+    for (const listener of this.regionContextListeners) {
       listener(context);
     }
     this.scheduleRegionCanvasClear();
