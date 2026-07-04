@@ -177,7 +177,10 @@ import {
   resolvePresence,
 } from "./runtime/presence-target";
 import {
-  applyCurrentProjectSceneSelection,
+  applyCurrentProjectSceneSelectionWithResolution,
+  type ProjectRootResolution,
+  type ProjectSceneSelectionResult,
+  projectRootValue,
   resolveCurrentProjectRoot,
 } from "./runtime/project-context/project-context";
 import {
@@ -945,9 +948,11 @@ function App() {
       });
     }, RELOAD_CURTAIN_FADE_IN_MS + RELOAD_CURTAIN_PRE_RELOAD_HOLD_MS);
   }, []);
-  const [currentProjectRoot, setCurrentProjectRootState] = useState<string | null>(null);
-  const currentProjectRootRef = useRef<string | null>(null);
-  const rememberCurrentProjectRoot = useCallback((projectRoot: string | null) => {
+  const [currentProjectRoot, setCurrentProjectRootState] = useState<ProjectRootResolution>({
+    kind: "none",
+  });
+  const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
+  const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
     setCurrentProjectRootState(projectRoot);
   }, []);
@@ -1017,14 +1022,13 @@ function App() {
     [updateCharminalConfig],
   );
   const updateActiveSceneConfig = useCallback(
-    (
-      id: string | null,
-      projectRoot: string | null,
-    ): Promise<{ readonly config: CharminalConfig; readonly activeScene: string | null }> =>
+    (id: string | null, projectRoot: ProjectRootResolution): Promise<ProjectSceneSelectionResult> =>
       enqueueConfigWrite(async () => {
         const cur = parseConfig(await readCharminalConfigText());
-        const updated = applyCurrentProjectSceneSelection(cur, projectRoot, id);
-        await writeCharminalConfigText(serializeConfig(updated.config));
+        const updated = await applyCurrentProjectSceneSelectionWithResolution(cur, projectRoot, id);
+        if (updated.kind === "persisted") {
+          await writeCharminalConfigText(serializeConfig(updated.config));
+        }
         return updated;
       }),
     [enqueueConfigWrite],
@@ -1033,9 +1037,17 @@ function App() {
     async (id: string | null): Promise<void> => {
       const projectRoot = currentProjectRootRef.current;
       const updated = await updateActiveSceneConfig(id, projectRoot);
+      rememberCurrentProjectRoot(updated.projectRoot);
+      if (updated.kind === "runtime-only") {
+        console.warn("[charminal] scene selection was not persisted", {
+          warning: updated.warning,
+          sceneId: id,
+          projectRoot: updated.projectRoot,
+        });
+      }
       getSceneRegistry().setActiveScene(updated.activeScene);
     },
-    [updateActiveSceneConfig],
+    [rememberCurrentProjectRoot, updateActiveSceneConfig],
   );
 
   const resolveRestoreDialogTarget = useCallback(async (seq: number) => {
@@ -1576,7 +1588,9 @@ function App() {
         );
         const projectRoot = await resolveCurrentProjectRoot(cwd);
         rememberCurrentProjectRoot(projectRoot);
-        scenePackRegistry.setActiveScene(resolveSceneForProject(config, projectRoot));
+        scenePackRegistry.setActiveScene(
+          resolveSceneForProject(config, projectRootValue(projectRoot)),
+        );
         uiPackRegistry.setActiveUi(config.activeUi);
         syncAmbientUiActiveSet(config.activeAmbientUi);
       } catch (err) {
@@ -3291,7 +3305,10 @@ function App() {
             const resolvedLanguage = resolveLanguage(cur.language, getBrowserLocales());
             return {
               primaryPersona: cur.primaryPersona,
-              activeScene: resolveSceneForProject(cur, currentProjectRootRef.current),
+              activeScene: resolveSceneForProject(
+                cur,
+                projectRootValue(currentProjectRootRef.current),
+              ),
               terminalAgent: cur.terminalAgent,
               effectiveAgent: resolveEffectiveAgent(cur),
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
