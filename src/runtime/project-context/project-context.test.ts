@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveProjectRoot } from "../../bindings/tauri-commands";
-import { resolveCurrentProjectRoot } from "./project-context";
+import { EMPTY_CONFIG } from "../user-pack-loader/config";
+import { resolveCurrentProjectRoot, withCurrentProjectSceneSet } from "./project-context";
 
 vi.mock("../../bindings/tauri-commands", () => ({
   resolveProjectRoot: vi.fn(),
@@ -27,5 +28,34 @@ describe("resolveCurrentProjectRoot", () => {
     vi.mocked(resolveProjectRoot).mockRejectedValue(new Error("missing cwd"));
 
     await expect(resolveCurrentProjectRoot("/missing")).resolves.toBeNull();
+  });
+});
+
+describe("withCurrentProjectSceneSet", () => {
+  it("writes sceneByProject when projectRoot is resolved", () => {
+    const updated = withCurrentProjectSceneSet(EMPTY_CONFIG, "/repo/main", "factory");
+
+    expect(updated.activeScene).toBeNull();
+    expect(updated.sceneByProject).toEqual({ "/repo/main": "factory" });
+  });
+
+  it("removes sceneByProject entry when projectRoot is resolved and scene is null", () => {
+    const base = {
+      ...EMPTY_CONFIG,
+      activeScene: "fallback",
+      sceneByProject: { "/repo/main": "factory" },
+    };
+
+    const updated = withCurrentProjectSceneSet(base, "/repo/main", null);
+
+    expect(updated.activeScene).toBe("fallback");
+    expect(updated.sceneByProject).toEqual({});
+  });
+
+  it("writes activeScene when projectRoot is unresolved", () => {
+    const updated = withCurrentProjectSceneSet(EMPTY_CONFIG, null, "factory");
+
+    expect(updated.activeScene).toBe("factory");
+    expect(updated.sceneByProject).toEqual({});
   });
 });

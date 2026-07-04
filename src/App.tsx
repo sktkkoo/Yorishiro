@@ -166,7 +166,10 @@ import {
   type PresenceResolution,
   resolvePresence,
 } from "./runtime/presence-target";
-import { resolveCurrentProjectRoot } from "./runtime/project-context/project-context";
+import {
+  resolveCurrentProjectRoot,
+  withCurrentProjectSceneSet,
+} from "./runtime/project-context/project-context";
 import {
   getSceneRegistry,
   resolveSceneAssets,
@@ -896,6 +899,50 @@ function App() {
   useEffect(() => {
     currentProjectRootRef.current = currentProjectRoot;
   }, [currentProjectRoot]);
+
+  // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
+  const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueConfigWrite = useCallback((write: () => Promise<void>): Promise<void> => {
+    const next = pendingConfigWriteRef.current.then(write);
+    pendingConfigWriteRef.current = next.catch(() => undefined);
+    return next;
+  }, []);
+  const updateConfig = useCallback(
+    (
+      patch: Partial<{
+        primaryPersona: string | null;
+        activeScene: string | null;
+        terminalAgent: string;
+        ambientAudioMuted: boolean;
+        ambientAudioVolume: number;
+        motionIntensity: number;
+        language: AppLanguage;
+        voiceFrequency: VoiceFrequency;
+        tabMetadataBadges: boolean;
+      }>,
+    ): Promise<void> =>
+      enqueueConfigWrite(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
+      }),
+    [enqueueConfigWrite],
+  );
+  const updateActiveSceneConfig = useCallback(
+    (id: string | null): Promise<void> =>
+      enqueueConfigWrite(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        const updated = withCurrentProjectSceneSet(cur, currentProjectRootRef.current, id);
+        await writeCharminalConfigText(serializeConfig(updated));
+      }),
+    [enqueueConfigWrite],
+  );
+  const setActiveSceneFromUserSelection = useCallback(
+    async (id: string | null): Promise<void> => {
+      await updateActiveSceneConfig(id);
+      getSceneRegistry().setActiveScene(id);
+    },
+    [updateActiveSceneConfig],
+  );
 
   const resolveRestoreDialogTarget = useCallback(async (seq: number) => {
     const locale = appLanguageRef.current.resolved;
@@ -1953,7 +2000,8 @@ function App() {
           }),
           // ── Active pack switching ──────────────────────────
           "scene.activate": createSceneActivateHandler({
-            registry: scenePackRegistry,
+            setActiveScene: setActiveSceneFromUserSelection,
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
@@ -2745,37 +2793,13 @@ function App() {
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
 
-    // 設定 write は read-modify-write なので並行 click で race する。
-    // Promise chain で逐次化する（同 useEffect 寿命内で 1 本）。
-    let pendingConfigWrite: Promise<void> = Promise.resolve();
-    const updateConfig = (
-      patch: Partial<{
-        primaryPersona: string | null;
-        activeScene: string | null;
-        terminalAgent: string;
-        ambientAudioMuted: boolean;
-        ambientAudioVolume: number;
-        motionIntensity: number;
-        language: AppLanguage;
-        voiceFrequency: VoiceFrequency;
-        tabMetadataBadges: boolean;
-      }>,
-    ): Promise<void> => {
-      const next = pendingConfigWrite.then(async () => {
-        const cur = parseConfig(await readCharminalConfigText());
-        await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
-      });
-      pendingConfigWrite = next.catch(() => undefined);
-      return next;
-    };
-
     /**
      * activeAmbientUi を read-modify-write で更新する config helper。
      * withActiveAmbientUiSet を使って config を immutable に更新し、
      * registry 側の enable/disable も同期する。
      */
-    const updateActiveAmbientUi = (ids: readonly string[]): Promise<void> => {
-      const next = pendingConfigWrite.then(async () => {
+    const updateActiveAmbientUi = (ids: readonly string[]): Promise<void> =>
+      enqueueConfigWrite(async () => {
         const cur = parseConfig(await readCharminalConfigText());
         const updated = withActiveAmbientUiSet(cur, ids);
         await writeCharminalConfigText(serializeConfig(updated));
@@ -2791,9 +2815,6 @@ function App() {
           if (!currentActive.has(id)) ambientUiRegistry.enable(id);
         }
       });
-      pendingConfigWrite = next.catch(() => undefined);
-      return next;
-    };
 
     const readLoadReportForPackTools = async () => {
       const text = await readLastStartupReport();
@@ -3069,8 +3090,7 @@ function App() {
             );
           },
           setActiveScene: async (id) => {
-            await updateConfig({ activeScene: id });
-            scenePackRegistry.setActiveScene(id);
+            await setActiveSceneFromUserSelection(id);
           },
           setTerminalAgent: async (agent) => {
             await updateConfig({ terminalAgent: agent });
@@ -3094,7 +3114,7 @@ function App() {
             getThreeRuntime().setMotionIntensity(clamped);
           },
           setLanguage: async (language) => {
-            const next = pendingConfigWrite.then(async () => {
+            return enqueueConfigWrite(async () => {
               const cur = parseConfig(await readCharminalConfigText());
               const resolved = resolveLanguage(language, getBrowserLocales());
               const nextPrimaryPersona = resolvePrimaryPersonaForLanguage(
@@ -3112,8 +3132,6 @@ function App() {
                 resolvePrimaryPersonaForLanguage(updated.primaryPersona, resolved),
               );
             });
-            pendingConfigWrite = next.catch(() => undefined);
-            return next;
           },
           setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
           setTabMetadataBadges: async (enabled) => {
@@ -3131,7 +3149,7 @@ function App() {
             const resolvedLanguage = resolveLanguage(cur.language, getBrowserLocales());
             return {
               primaryPersona: cur.primaryPersona,
-              activeScene: cur.activeScene,
+              activeScene: resolveSceneForProject(cur, currentProjectRootRef.current),
               terminalAgent: cur.terminalAgent,
               effectiveAgent: resolveEffectiveAgent(cur),
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
@@ -3309,6 +3327,9 @@ function App() {
     createAmenityContext,
     ambientAudio,
     applyTerminalPresentationForSession,
+    enqueueConfigWrite,
+    updateConfig,
+    setActiveSceneFromUserSelection,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

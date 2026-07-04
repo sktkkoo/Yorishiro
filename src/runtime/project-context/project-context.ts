@@ -1,4 +1,9 @@
 import { resolveProjectRoot } from "../../bindings/tauri-commands";
+import {
+  type CharminalConfig,
+  withActiveSceneSet,
+  withProjectSceneSet,
+} from "../user-pack-loader/config";
 
 /**
  * current project の唯一の入口。
@@ -14,4 +19,17 @@ export async function resolveCurrentProjectRoot(cwd: string | null): Promise<str
     // project root 解決に失敗しても scene は global fallback に落ちるだけなので起動は続ける。
     return null;
   }
+}
+
+/**
+ * current project が解決済みなら per-project mapping、未解決なら global activeScene を更新する。
+ */
+export function withCurrentProjectSceneSet(
+  cfg: CharminalConfig,
+  projectRoot: string | null,
+  sceneId: string | null,
+): CharminalConfig {
+  return projectRoot !== null
+    ? withProjectSceneSet(cfg, projectRoot, sceneId)
+    : withActiveSceneSet(cfg, sceneId);
 }

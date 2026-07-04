@@ -2178,10 +2178,15 @@ describe("createSceneActivateHandler", () => {
     r.register({ id: "s2", manifest: manifest("s2"), scene: sceneSpec("s2"), origin: "bundled" });
     return r;
   };
+  const makeHandler = (registry: ScenePackRegistryImpl) =>
+    createSceneActivateHandler({
+      setActiveScene: (id) => registry.setActiveScene(id),
+      getActiveSceneId: () => registry.getActiveSceneId(),
+    });
 
   it("switches active scene by id", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     const result = await handler({ id: "s2" });
     expect(result).toEqual({ active: "s2" });
     expect(registry.getActiveSceneId()).toBe("s2");
@@ -2189,7 +2194,7 @@ describe("createSceneActivateHandler", () => {
 
   it("clears active when id is null", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     // initial active is "s1" (alphabetical fallback)
     expect(registry.getActiveSceneId()).toBe("s1");
     const result = await handler({ id: null });
@@ -2199,28 +2204,43 @@ describe("createSceneActivateHandler", () => {
 
   it("rejects empty string id", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     await expect(handler({ id: "" })).rejects.toThrow("id must be non-empty string or null");
   });
 
   it("rejects non-string non-null id", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     await expect(handler({ id: 42 })).rejects.toThrow("id must be non-empty string or null");
   });
 
   it("rejects when id field is omitted", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
   });
 
   it("setting unknown id falls through to bundled fallback (no throw)", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     // SingleActiveRegistry.setActive で unknown id は fall-through、bundled alphabetical 先頭が active
     const result = await handler({ id: "ghost" });
     expect(result.active).toBe("s1");
+  });
+
+  it("awaits the configured scene write path before reading active id", async () => {
+    let active: string | null = "s1";
+    const handler = createSceneActivateHandler({
+      setActiveScene: async (id) => {
+        await Promise.resolve();
+        active = id;
+      },
+      getActiveSceneId: () => active,
+    });
+
+    const result = await handler({ id: "s2" });
+
+    expect(result.active).toBe("s2");
   });
 });
 

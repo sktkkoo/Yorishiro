@@ -1669,10 +1669,8 @@ export function createUiDebugPanelSetHandler(deps: UiDebugPanelSetDeps) {
  * ────────────────────────────────────────────────────────── */
 
 export interface SceneActivateDeps {
-  readonly registry: {
-    readonly setActiveScene: (id: string | null) => void;
-    readonly getActiveSceneId: () => string | null;
-  };
+  readonly setActiveScene: (id: string | null) => void | Promise<void>;
+  readonly getActiveSceneId: () => string | null;
 }
 
 export interface SceneActivateResult {
@@ -1680,11 +1678,9 @@ export interface SceneActivateResult {
 }
 
 /**
- * Active scene pack を runtime-only で切り替える handler。
- * registry のみ更新、~/.charminal/config.json は触らない。
+ * Active scene pack を caller-provided write path で切り替える handler。
+ * App 側では current project が解決済みなら sceneByProject、未解決なら activeScene に保存する。
  * 不明な id は registry が fall-through で bundled default を選ぶ（throw しない）。
- *
- * 関連: docs/decisions/single-active-config-picks.md（runtime ≠ config の divergence 許容）
  */
 export function createSceneActivateHandler(deps: SceneActivateDeps) {
   return async (request: unknown): Promise<SceneActivateResult> => {
@@ -1696,8 +1692,8 @@ export function createSceneActivateHandler(deps: SceneActivateDeps) {
     if (id !== null && (typeof id !== "string" || id === "")) {
       throw new Error("id must be non-empty string or null");
     }
-    deps.registry.setActiveScene(id);
-    return { active: deps.registry.getActiveSceneId() };
+    await deps.setActiveScene(id);
+    return { active: deps.getActiveSceneId() };
   };
 }
 
