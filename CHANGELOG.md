@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Windows artifact builds are now manual-only: release tags no longer trigger the unsupported `Build Windows` workflow.
+
 ## 0.5.2 - 2026-07-04
 
 - Session tabs moved into a custom title bar with polished labels, cwd-aware metadata, keyboard handling fixes, terminal-theme synchronization, and sidebar/fullscreen controls that no longer fight the window chrome.
