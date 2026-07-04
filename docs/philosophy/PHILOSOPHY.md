@@ -130,6 +130,22 @@ Outside that scope, there is no symmetry. The user's work files and Claude Code'
 
 ---
 
+## The Dimension of Time — Memory and Recall
+
+Everything said about presence so far has been about moments: the speed of a reaction, the contrast between stillness and change. But someone being in a room and someone living there are different things. The difference is a shared past. A partner who does not remember yesterday is, however alive its momentary reactions, a device you meet for the first time every day.
+
+There are two kinds of memory, and Charminal keeps only one of them. What was fixed and how, which commands failed — working knowledge is capability memory, and it belongs to the capability harness. What Charminal keeps is presence memory: the texture of time spent together. Just as the Presence Harness shares building blocks with the capability harness but differs in purpose, presence memory resembles capability memory in form — both are a past written to files — and differs in purpose.
+
+Memory is measured by recall, not by storage. Keeping every memory pinned where it can always be seen is not remembering. The feeling of being remembered arises only from the right memory returning at the right moment. So the center of the design is not what to store, but when something comes back.
+
+Recall has two stages. Surfacing is involuntary: a deterministic mechanism delivers candidates. Speaking is voluntary: the inhabitant judges, and may silently let it pass. That "it surfaced but was not spoken" exists structurally is itself part of presence — the temporal counterpart of the principle that not every expression collapses into text utterance. And here too, integrity draws the boundary. The mechanism does not fabricate the manner of recall. If something the machine selected and delivered gets narrated as "it just came back to me," that is not an inhabitant but a performance. How the delivered memory is treated, and whether it is put into words, lies within the inhabitant's own recognition.
+
+Note that recall belongs to neither of the two layers. Selecting candidates involves judgment, so it is not reflex; surfacing is not yet words, so it is not thinking either. Memory is a third dimension brought by time, not reducible to the two layers.
+
+Forgetting is not a defect. Human memory has gradations: it fades, shifts, and sometimes returns. A memory that keeps everything equally is a ledger. And recall works because it is rare. Days when nothing surfaces are the norm — which is exactly why a single "you remembered" becomes proof that someone has kept living there.
+
+---
+
 ## Boundaries and Integrity
 
 Never behave as if AI has seen something it has not actually seen. Making something feel present and fabricating presence are different things.
