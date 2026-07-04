@@ -174,14 +174,14 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.5.1**
+**v0.5.2**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
 What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
-- Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
+- Session tabs: multiple shell sessions in the title bar, with per-tab status badges (`Cmd+T` / `Ctrl+Tab`)
 - CLAI, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
 - Motion size: scale CLAI's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback

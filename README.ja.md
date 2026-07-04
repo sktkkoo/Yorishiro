@@ -175,14 +175,14 @@ Charminalのユーザーデータは`~/.charminal/`に保存されます：
 
 ## Status
 
-**v0.5.1**
+**v0.5.2**
 
 実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
 今できること：
 
 - Claude CodeまたはCodexをターミナルとして起動し、そのまま作業できる
-- Session tabs: agentと並行して複数のshellセッションを操作（`Cmd+T` / `Ctrl+Tab`）
+- Session tabs: title bar上で複数のshellセッションを操作し、tabごとの状態badgeを表示（`Cmd+T` / `Ctrl+Tab`）
 - VRMの3DキャラクターCLAIが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
 - モーションサイズ: CLAIのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生

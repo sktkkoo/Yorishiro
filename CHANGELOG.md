@@ -2,10 +2,19 @@
 
 ## Unreleased
 
+## 0.5.2 - 2026-07-04
+
+- Session tabs moved into a custom title bar with polished labels, cwd-aware metadata, keyboard handling fixes, terminal-theme synchronization, and sidebar/fullscreen controls that no longer fight the window chrome.
+- Agent/session status is now surfaced through the terminal itself: Claude hook notifications, shell-agent shims, OSC notification fallback, screen prompt detection, awaiting-input/exit/activity badges, and safer main-agent interrupt protection all target the correct session.
+- Terminal command tracking was rebuilt around command-run, loop-run, agent-tool-run, unified-timeline, and terminal-problem stores. File tokens inside URLs are ignored, problem URLs are redacted to origins, command attention survives reload/attach paths, and stale command/aura state is cleared more reliably.
+- `init.js` now hot reloads with transactional reload behavior, safe-mode awareness, serialized reloads, file-removal handling, and opt-in startup scope helpers such as `registerShortcut`.
+- Scene and UI polish: scene-layer media can be transformed and sized as real off-screen cover panels, the fullscreen terminal can exit through the sidebar button, and `simple-room` was retuned to a neutral charcoal/sage look.
+- Fireworks effects now use a WebGL2 GPU particle renderer with a softer bloom while preserving the CPU-era feel.
+- Terminal input and agent prompt detection fixes: IME composition input is preserved, terminal clear keeps input lines, and Codex/choice/Claude permission prompts are detected more robustly.
+- README and philosophy docs were rewritten around the Presence Harness / inhabited workspace framing, with reflex-vs-thinking terminology unified across docs and code comments.
 - `docs/release-checklist.md` no longer describes builds as alpha: the smoke test targets signed release builds, and the `xattr -cr` step is scoped to locally built unsigned bundles.
 - Internal release procedure notes were moved out of the repository (`.github/RELEASE.md` removed); `.github/` contents are published when the repository is public.
 - Terminology unified: the layer contrasted with the reflex layer is now consistently called the thinking layer (思考層) across philosophy (EN/JA), decision docs, code-navigation READMEs, and code comments; it was previously mixed with "conscious layer" (意識層). Identifiers (`two-layer`, `TwoLayer`, etc.) are unchanged.
-
 - Contribution policy clarified: pull requests remain closed and will be revisited after the pack API and security boundary stabilize (README / CONTRIBUTING, EN/JA).
 - Added a top-of-README security note (EN/JA): user packs are local trusted code and are not sandboxed; in-app community pack distribution is not implemented yet.
 - Added `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1).
