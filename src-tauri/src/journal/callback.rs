@@ -1,9 +1,10 @@
 //! Journal callback — セッション開始時の記憶想起（P1）。
 //!
-//! app 起動時に決定論的ルール（日付の節目・久しぶりの起動）で記憶を最大 1 件
-//! 選び、`~/.charminal/journal/callback-pending.txt` に書く。Claude の
-//! UserPromptSubmit hook script がワンショットで消費して削除する。
+//! agent session の spawn ごとに決定論的ルール（日付の節目・久しぶりの起動）で
+//! 記憶を最大 1 件選び、`~/.charminal/journal/callback-pending.txt` に書く。
+//! Claude の UserPromptSubmit hook script がワンショットで消費して削除する。
 //! 口にするかどうかは住人（LLM）の判断で、黙って流してよい。
+//! app 開きっぱなし運用でも、翌日の respawn / 新セッションで節目が評価される。
 //!
 //! 設計判断（design-record: 2026-07-03-journal-callback-redesign.md）:
 //! - 発火は決定論・選別は LLM。注入文言に想起の様態（「ふと思い出した」等）を
@@ -31,6 +32,9 @@ const GLOBAL_MIN_GAP_DAYS_RARE: i64 = 7;
 const MEMORY_COOLDOWN_DAYS_NORMAL: i64 = 21;
 /// 同・rare。
 const MEMORY_COOLDOWN_DAYS_RARE: i64 = 42;
+/// fired 履歴の保持期間（日）。最長 cooldown を超えた記録は意味を持たないので
+/// 書き込み時に掃除し、memories.md から消えた記憶の dead entry を残さない。
+const FIRED_RETENTION_DAYS: i64 = 63;
 
 /// config.json `journalCallback` の頻度ノブ。off スイッチ + 一ノブ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +92,10 @@ struct CallbackState {
     /// 記憶の日付 → その記憶を最後に発火させた日。
     #[serde(default)]
     fired: BTreeMap<String, String>,
+    /// 現在 pending file に載っている記憶の日付。次の評価時に pending が
+    /// まだ残っていれば（= 未消費なら）その記憶の cooldown を返金する。
+    #[serde(default)]
+    pending_memory: Option<String>,
 }
 
 /// 発火判定の結果。
@@ -146,6 +154,31 @@ fn date_to_days(text: &str) -> Option<i64> {
     parse_date(text).map(|(y, m, d)| days_from_civil(y, m, d))
 }
 
+fn is_leap_year(y: i64) -> bool {
+    (y % 4 == 0 && y % 100 != 0) || y % 400 == 0
+}
+
+fn days_in_month(y: i64, m: u32) -> u32 {
+    match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        _ => {
+            if is_leap_year(y) {
+                29
+            } else {
+                28
+            }
+        }
+    }
+}
+
+/// 日番号を月の実在日数にクランプして `YYYY-MM-DD` を組み立てる。
+/// 3/31 のひと月前は 2/28（うるう年は 2/29）、2/29 の一年前は 2/28 になる。
+/// 文字列一致で "2026-02-31" のような非実在日付を作って静かに取りこぼさないため。
+fn clamped_date_string(y: i64, m: u32, d: u32) -> String {
+    format!("{:04}-{:02}-{:02}", y, m, d.min(days_in_month(y, m)))
+}
+
 /// memories.md の本文から日付付きの行を抽出する。壊れた行は黙って skip。
 fn parse_memories(content: &str) -> Vec<MemoryLine> {
     content
@@ -202,9 +235,9 @@ fn decide(
     // 候補を優先順位順に集める。
     let mut candidates: Vec<(&MemoryLine, String)> = Vec::new();
 
-    let year_ago = format!("{:04}-{:02}-{:02}", ty - 1, tm, td);
+    let year_ago = clamped_date_string(ty - 1, tm, td);
     let (my, mm) = if tm == 1 { (ty - 1, 12) } else { (ty, tm - 1) };
-    let month_ago = format!("{:04}-{:02}-{:02}", my, mm, td);
+    let month_ago = clamped_date_string(my, mm, td);
 
     for memory in memories {
         if memory.date == year_ago {
@@ -278,22 +311,58 @@ fn last_shutdown_days() -> Option<i64> {
     date_to_days(iso)
 }
 
-/// app 起動時に呼ぶ。発火すれば pending file を書き、しなければ古い pending を消す。
-pub fn evaluate_on_boot() -> Result<(), String> {
+/// 今日の日付を local time で返す。
+///
+/// 記憶の日付は住人（LLM）が体感の「今日」で書くため、突き合わせる側も local に
+/// 揃える。UTC のままだと JST では毎朝 9 時間の窓で節目判定が 1 日ずれる。
+/// chrono 非依存の方針のため unix では `date` コマンドに問い合わせ、
+/// 失敗時と非 unix は UTC 日へフォールバックする。
+fn local_today() -> Result<(i64, u32, u32), String> {
+    #[cfg(unix)]
+    {
+        if let Ok(output) = std::process::Command::new("date").arg("+%Y-%m-%d").output() {
+            if output.status.success() {
+                if let Some(parsed) = std::str::from_utf8(&output.stdout)
+                    .ok()
+                    .and_then(|s| parse_date(s.trim()))
+                {
+                    return Ok(parsed);
+                }
+            }
+        }
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("SystemTime エラー: {}", e))?;
-    let today = super::cohabitation::civil_from_days((now.as_secs() / 86400) as i64);
-    evaluate_on_boot_at((today.0, today.1, today.2))
+    Ok(super::cohabitation::civil_from_days(
+        (now.as_secs() / 86400) as i64,
+    ))
 }
 
-fn evaluate_on_boot_at(today: (i64, u32, u32)) -> Result<(), String> {
+/// agent session の spawn 時に呼ぶ。発火すれば pending file を書き、
+/// しなければ古い pending を消す。
+pub fn evaluate_on_session_spawn() -> Result<(), String> {
+    evaluate_at(local_today()?)
+}
+
+fn evaluate_at(today: (i64, u32, u32)) -> Result<(), String> {
     let pending = pending_path()?;
     let knob = read_knob();
     let memories_text = super::read_memories().unwrap_or_default();
     let memories = parse_memories(&memories_text);
     let state_file = state_path()?;
     let mut state = read_state(&state_file);
+    let today_days = days_from_civil(today.0, today.1, today.2);
+
+    // 前回の pending が未消費のまま残っていたら、その記憶の cooldown を返金する。
+    // 選抜されただけで一度も届いていない記憶が 21 日焼かれるのを防ぐ
+    // （fail-safe は「多めに出る」側に倒す方針）。全体 gate（last_fired_on）は
+    // 発火ペースの上限なので返金しない。
+    if pending.exists() {
+        if let Some(unconsumed) = state.pending_memory.take() {
+            state.fired.remove(&unconsumed);
+        }
+    }
 
     match decide(&memories, &state, today, last_shutdown_days(), knob) {
         Some(decision) => {
@@ -306,14 +375,21 @@ fn evaluate_on_boot_at(today: (i64, u32, u32)) -> Result<(), String> {
                 .fired
                 .insert(decision.memory_date.clone(), today_str.clone());
             state.last_fired_on = Some(today_str);
-            write_state_atomic(&state_file, &state)?;
+            state.pending_memory = Some(decision.memory_date.clone());
             eprintln!("[journal-callback] fired: {}", decision.memory_date);
         }
         None => {
             // 前回消費されなかった pending は文脈が古いので捨てる（保留キューは作らない）。
             let _ = std::fs::remove_file(&pending);
+            state.pending_memory = None;
         }
     }
+
+    // 最長 cooldown を超えた fired 記録は判定に影響しないので掃除する。
+    state.fired.retain(|_, fired_on| {
+        date_to_days(fired_on).is_some_and(|fired| today_days - fired <= FIRED_RETENTION_DAYS)
+    });
+    write_state_atomic(&state_file, &state)?;
     Ok(())
 }
 
@@ -399,7 +475,7 @@ mod tests {
         let memories = vec![memory("2026-06-04", "ひと月前の記憶。")];
         let state = CallbackState {
             last_fired_on: Some("2026-07-04".to_string()),
-            fired: BTreeMap::new(),
+            ..CallbackState::default()
         };
         assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal).is_none());
     }
@@ -415,12 +491,48 @@ mod tests {
         let state = CallbackState {
             last_fired_on: Some("2026-06-25".to_string()),
             fired,
+            ..CallbackState::default()
         };
         // 節目候補は cooldown 中 → 久しぶり候補（直近の記憶）へ譲る。
         let shutdown = date_to_days("2026-06-30");
         let result =
             decide(&memories, &state, (2026, 7, 4), shutdown, Knob::Normal).expect("fires");
         assert_eq!(result.memory_date, "2026-06-28");
+    }
+
+    #[test]
+    fn decide_month_anniversary_clamps_to_short_month_end() {
+        // 3/31 のひと月前 → 非実在の 2/31 ではなく 2/28 にクランプして一致させる。
+        let memories = vec![memory("2026-02-28", "二月末の記憶。")];
+        let state = CallbackState::default();
+        let result = decide(&memories, &state, (2026, 3, 31), None, Knob::Normal).expect("fires");
+        assert_eq!(result.memory_date, "2026-02-28");
+    }
+
+    #[test]
+    fn decide_january_rolls_over_to_previous_december() {
+        let memories = vec![memory("2025-12-31", "大晦日の記憶。")];
+        let state = CallbackState::default();
+        let result = decide(&memories, &state, (2026, 1, 31), None, Knob::Normal).expect("fires");
+        assert_eq!(result.memory_date, "2025-12-31");
+        assert!(result.message.contains("ちょうどひと月前"));
+    }
+
+    #[test]
+    fn decide_leap_day_year_anniversary_clamps() {
+        // うるう日 2028-02-29 の一年前 → 2027-02-28 にクランプ。
+        let memories = vec![memory("2027-02-28", "二月末の記憶。")];
+        let state = CallbackState::default();
+        let result = decide(&memories, &state, (2028, 2, 29), None, Knob::Normal).expect("fires");
+        assert_eq!(result.memory_date, "2027-02-28");
+        assert!(result.message.contains("ちょうど一年前"));
+    }
+
+    #[test]
+    fn decide_no_shutdown_and_no_anniversary_is_silent() {
+        let memories = vec![memory("2026-06-20", "節目でない記憶。")];
+        let state = CallbackState::default();
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal).is_none());
     }
 
     #[test]
@@ -455,13 +567,10 @@ mod tests {
         }
     }
 
-    #[test]
-    fn evaluate_on_boot_writes_and_cleans_pending() {
-        let _guard = crate::TEST_HOME_ENV_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+    fn tmp_home(label: &str) -> std::path::PathBuf {
         let home = std::env::temp_dir().join(format!(
-            "charminal-callback-boot-{}-{}",
+            "charminal-callback-{}-{}-{}",
+            label,
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -469,18 +578,23 @@ mod tests {
                 .unwrap_or(0)
         ));
         std::fs::create_dir_all(&home).expect("mkdir");
+        home
+    }
+
+    #[test]
+    fn evaluate_writes_and_cleans_pending() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("spawn");
         std::env::set_var("HOME", &home);
 
         // ひと月前の記憶を仕込む → 発火して pending が書かれる。
         super::super::append_memory("2026-06-04", "ひと月前の記憶。").expect("memory");
-        evaluate_on_boot_at((2026, 7, 4)).expect("boot eval");
+        evaluate_at((2026, 7, 4)).expect("spawn eval");
         let pending = home.join(".charminal/journal/callback-pending.txt");
         let content = std::fs::read_to_string(&pending).expect("pending exists");
         assert!(content.contains("2026-06-04"));
-
-        // 同日にもう一度起動 → 全体 gate で沈黙し、古い pending は消える。
-        evaluate_on_boot_at((2026, 7, 4)).expect("boot eval 2");
-        assert!(!pending.exists());
 
         // 状態ファイルには日付のみで本文が残らない。
         let state_text =
@@ -489,6 +603,75 @@ mod tests {
         assert!(state_text.contains("2026-06-04"));
         assert!(!state_text.contains("ひと月前の記憶"));
 
+        // 同日にもう一度 spawn → 全体 gate で沈黙し、未消費の pending は消える。
+        evaluate_at((2026, 7, 4)).expect("spawn eval 2");
+        assert!(!pending.exists());
+
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn evaluate_refunds_unconsumed_pending_cooldown() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("refund");
+        std::env::set_var("HOME", &home);
+
+        super::super::append_memory("2026-06-04", "ひと月前の記憶。").expect("memory");
+        evaluate_at((2026, 7, 4)).expect("eval 1");
+        let pending = home.join(".charminal/journal/callback-pending.txt");
+        assert!(pending.exists());
+
+        // pending が消費されないまま翌日 spawn → cooldown が返金され、
+        // 同じ記憶が「久しぶり」等の候補にまた入れる状態に戻る。
+        // （翌日は節目でないので発火はしないが、fired から消えていることを確認）
+        evaluate_at((2026, 7, 5)).expect("eval 2");
+        let state_text =
+            std::fs::read_to_string(home.join(".charminal/journal/callback-state.json"))
+                .expect("state");
+        let state: serde_json::Value = serde_json::from_str(&state_text).expect("json");
+        assert!(
+            state["fired"].get("2026-06-04").is_none(),
+            "未消費 pending の記憶は fired から返金されるべき: {}",
+            state_text
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn evaluate_keeps_cooldown_when_pending_was_consumed() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("consumed");
+        std::env::set_var("HOME", &home);
+
+        super::super::append_memory("2026-06-04", "ひと月前の記憶。").expect("memory");
+        evaluate_at((2026, 7, 4)).expect("eval 1");
+        let pending = home.join(".charminal/journal/callback-pending.txt");
+        // hook script による消費をシミュレート。
+        std::fs::remove_file(&pending).expect("consume");
+
+        evaluate_at((2026, 7, 5)).expect("eval 2");
+        let state_text =
+            std::fs::read_to_string(home.join(".charminal/journal/callback-state.json"))
+                .expect("state");
+        let state: serde_json::Value = serde_json::from_str(&state_text).expect("json");
+        assert_eq!(
+            state["fired"]["2026-06-04"], "2026-07-04",
+            "消費済みなら cooldown は維持されるべき"
+        );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn local_today_returns_valid_date() {
+        let (y, m, d) = local_today().expect("local date");
+        assert!((2020..2200).contains(&y));
+        assert!((1..=12).contains(&m));
+        assert!((1..=31).contains(&d));
     }
 }

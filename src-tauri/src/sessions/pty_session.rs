@@ -315,6 +315,13 @@ impl PtySession {
                 let mut cmd = CommandBuilder::new(&binary);
                 apply_base_env(&mut cmd);
 
+                // journal callback の発火判定。agent session の spawn ごとに評価する
+                // ことで、app 開きっぱなし運用でも翌日の respawn で節目が拾われる。
+                // shell タブでは走らない。失敗しても spawn は止めない。
+                if let Err(e) = crate::journal::callback::evaluate_on_session_spawn() {
+                    eprintln!("[journal-callback] 発火判定失敗: {e}");
+                }
+
                 let prompt_reminder =
                     crate::sessions::agent_adapter::build_prompt_reminder_from_config();
                 let ctx = crate::sessions::agent_adapter::LaunchContext {
