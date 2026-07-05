@@ -519,39 +519,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "charminal"
-version = "0.5.2"
-dependencies = [
- "axum",
- "base64 0.22.1",
- "block2",
- "dirs",
- "git2",
- "libc",
- "notify",
- "objc2",
- "objc2-app-kit",
- "objc2-foundation",
- "portable-pty",
- "pretty_assertions",
- "rmcp",
- "schemars 1.2.1",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tempfile",
- "tokio",
- "tokio-util",
- "uuid",
- "windows-sys 0.61.2",
-]
-
-[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6316,6 +6283,39 @@ dependencies = [
  "quote",
  "syn 2.0.117",
  "synstructure",
+]
+
+[[package]]
+name = "yorishiro"
+version = "0.5.2"
+dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "block2",
+ "dirs",
+ "git2",
+ "libc",
+ "notify",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
+ "portable-pty",
+ "pretty_assertions",
+ "rmcp",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

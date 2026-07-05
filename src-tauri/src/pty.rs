@@ -156,24 +156,23 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
 
 /// Reminder script のパスを返す。script は ensure_reminder_script() で配置。
 fn build_reminder_script_path() -> String {
-    let home = dirs::home_dir().unwrap_or_default();
-    home.join(".charminal")
+    crate::yorishiro_home_path()
+        .unwrap_or_default()
         .join("shell")
         .join("hook-reminder.py")
         .to_string_lossy()
         .to_string()
 }
 
-/// Reminder script を ~/.charminal/shell/ に配置する。起動時に呼ぶ。
+/// Reminder script を ~/.yorishiro/shell/ に配置する。起動時に呼ぶ。
 pub fn ensure_reminder_script() -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("home directory not found")?;
-    let dir = home.join(".charminal").join("shell");
+    let dir = crate::yorishiro_home_path()?.join("shell");
     std::fs::create_dir_all(&dir).map_err(|e| format!("shell ディレクトリの作成に失敗: {e}"))?;
 
     let script_path = dir.join("hook-reminder.py");
     let script = r#"import json, os, sys
 
-config_path = os.path.join(os.path.expanduser("~"), ".charminal", "config.json")
+config_path = os.path.join(os.path.expanduser("~"), ".yorishiro", "config.json")
 reminders = []
 
 try:
@@ -393,7 +392,7 @@ pub struct PtyExit {
     pub code: i32,
 }
 
-/// PtyState — `~/.charminal/` 1 つの window 全体の PTY ops を束ねる thin facade。
+/// PtyState — `~/.yorishiro/` 1 つの window 全体の PTY ops を束ねる thin facade。
 /// 内部状態は SessionRegistry に持たせ、ここでは default-session への delegation
 /// だけを行う。Phase C で session 単位の操作が必要になった時点で legacy command
 /// は削除し、`session_*` Tauri command に集約する。

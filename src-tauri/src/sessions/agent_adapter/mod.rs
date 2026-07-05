@@ -165,8 +165,9 @@ pub(crate) fn all_extra_path_dirs() -> Vec<PathBuf> {
 /// Claude の UserPromptSubmit reminder と同じ active 設定を、hook を持たない
 /// adapter 用の prompt overlay として組み立てる。
 pub(crate) fn build_prompt_reminder_from_config() -> Option<String> {
-    let config = dirs::home_dir()
-        .and_then(|home| std::fs::read_to_string(home.join(".charminal").join("config.json")).ok())
+    let config = crate::yorishiro_home_path()
+        .ok()
+        .and_then(|home| std::fs::read_to_string(home.join("config.json")).ok())
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
     build_prompt_reminder_from_config_value(config.as_ref())
 }

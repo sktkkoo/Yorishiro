@@ -88,7 +88,7 @@ impl TerminalAgent for ClaudeAgent {
 fn claude_charminal_mcp_config_json(port: u16) -> String {
     serde_json::json!({
         "mcpServers": {
-            "charminal": {
+            "yorishiro": {
                 "type": "http",
                 "url": format!("http://127.0.0.1:{}/mcp", port),
             }
@@ -216,9 +216,9 @@ mod tests {
         let parsed: serde_json::Value =
             serde_json::from_str(&claude_charminal_mcp_config_json(18744)).expect("valid json");
         assert_eq!(
-            parsed["mcpServers"]["charminal"]["url"],
+            parsed["mcpServers"]["yorishiro"]["url"],
             "http://127.0.0.1:18744/mcp"
         );
-        assert_eq!(parsed["mcpServers"]["charminal"]["type"], "http");
+        assert_eq!(parsed["mcpServers"]["yorishiro"]["type"], "http");
     }
 }

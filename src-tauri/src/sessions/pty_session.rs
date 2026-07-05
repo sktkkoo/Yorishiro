@@ -344,7 +344,7 @@ impl PtySession {
                 let mut cmd = CommandBuilder::new(&binary);
                 apply_base_env(&mut cmd);
                 if *integration {
-                    let charminal_home = dirs::home_dir().map(|h| h.join(".charminal"));
+                    let charminal_home = crate::yorishiro_home_path().ok();
                     if let Some(home) = charminal_home {
                         super::shell_wrapper::apply_agent_shim_env(
                             &mut cmd,

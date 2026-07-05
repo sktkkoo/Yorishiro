@@ -60,12 +60,12 @@ fn is_too_broad_media_scope(folder: &Path, home: &Path) -> bool {
     (folder.has_root() && folder.parent().is_none()) || folder == home
 }
 
-/// `~/.charminal/config.json` の `mediaFolders` を読み、asset protocol scope に追加する。
+/// `~/.yorishiro/config.json` の `mediaFolders` を読み、asset protocol scope に追加する。
 /// field 未指定時は `["~/Music"]` を default として扱う。
 fn register_media_folder_scopes(app: &tauri::App) {
     let home = dirs::home_dir().unwrap_or_default();
     let canonical_home = home.canonicalize().unwrap_or_else(|_| home.clone());
-    let config_path = home.join(".charminal").join("config.json");
+    let config_path = yorishiro_home_path_under(&home).join("config.json");
 
     let folders: Vec<PathBuf> = if config_path.is_file() {
         match std::fs::read_to_string(&config_path) {
@@ -789,7 +789,7 @@ fn write_codex_plugin_cache(
 }
 
 /// Codex プラグインキャッシュに charm プラグインをインストール。
-/// `~/.codex/plugins/cache/charminal-local/charm/current/` に配置する。
+/// `~/.codex/plugins/cache/yorishiro-local/charm/current/` に配置する。
 #[cfg(not(test))]
 fn install_codex_plugin_to_cache(
     codex_plugin_json: &Path,
@@ -806,7 +806,7 @@ fn install_codex_plugin_to_cache(
     let cache_root = codex_dir
         .join("plugins")
         .join("cache")
-        .join("charminal-local")
+        .join("yorishiro-local")
         .join("charm")
         .join("current");
     write_codex_plugin_cache(&cache_root, codex_plugin_json, source_commands, language)
@@ -873,7 +873,7 @@ fn prepare_localized_plugin_dir_at(
 }
 
 /// resolved language に対応する agent plugin runtime dir を生成する。
-/// `~/.charminal/runtime-plugin/` は Charminal 管理領域で、起動ごとに上書きしてよい。
+/// `~/.yorishiro/runtime-plugin/` は Charminal 管理領域で、起動ごとに上書きしてよい。
 #[tauri::command]
 fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<String, String> {
     let _guard = LOCALIZED_PLUGIN_DIR_LOCK
@@ -885,7 +885,7 @@ fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<Stri
         .map_err(|e| format!("resource_dir failed: {}", e))?
         .join("resources")
         .join("charminal-plugin");
-    let target_root = home_dir_or_err()?.join(".charminal").join("runtime-plugin");
+    let target_root = home_dir_or_err()?.join(".yorishiro").join("runtime-plugin");
     prepare_localized_plugin_dir_at(&resource_root, &target_root, &language)?;
     Ok(target_root.to_string_lossy().to_string())
 }
@@ -989,7 +989,7 @@ async fn session_list(
     Ok(registry.list())
 }
 
-/// `~/.charminal/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
+/// `~/.yorishiro/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
 #[tauri::command]
 fn read_journal_memories() -> Result<String, String> {
     journal::read_memories()
@@ -1003,7 +1003,7 @@ fn read_journal_recent(days: usize) -> Result<Vec<journal::JournalEntry>, String
 
 #[tauri::command]
 fn check_tutorial_done() -> bool {
-    match charminal_home_path() {
+    match yorishiro_home_path() {
         Ok(dir) => check_tutorial_done_impl(&dir),
         Err(_) => false,
     }
@@ -1011,7 +1011,7 @@ fn check_tutorial_done() -> bool {
 
 #[tauri::command]
 fn mark_tutorial_done() -> Result<(), String> {
-    let dir = charminal_home_path()?;
+    let dir = yorishiro_home_path()?;
     mark_tutorial_done_impl(&dir)
 }
 
@@ -1060,11 +1060,11 @@ async fn poll_hook_signals() -> Vec<String> {
     pty::drain_hook_signals()
 }
 
-// ─── Charminal home dir (~/.charminal/) ─────────────────────────────
+// ─── Charminal home dir (~/.yorishiro/) ─────────────────────────────
 //
 // User が自分で pack を置く場所。Phase 1-a では以下の convention：
 //
-//   ~/.charminal/
+//   ~/.yorishiro/
 //   ├── init.js                         # 起動時 entry (~= init.el)
 //   ├── packs/
 //   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui}
@@ -1087,8 +1087,12 @@ const PACK_KINDS: &[&str] = &[
     "amenity",
 ];
 
-fn charminal_home_path() -> Result<std::path::PathBuf, String> {
-    Ok(home_dir_or_err()?.join(".charminal"))
+pub(crate) fn yorishiro_home_path() -> Result<std::path::PathBuf, String> {
+    Ok(yorishiro_home_path_under(&home_dir_or_err()?))
+}
+
+fn yorishiro_home_path_under(home_root: &Path) -> PathBuf {
+    home_root.join(".yorishiro")
 }
 
 /// `.tutorial-done` フラグの有無を返す。テスト用に charminal_dir を引数化。
@@ -1102,7 +1106,7 @@ fn mark_tutorial_done_impl(charminal_dir: &Path) -> Result<(), String> {
     if path.exists() {
         return Ok(());
     }
-    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.charminal/ 作成失敗: {}", e))?;
+    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.yorishiro/ 作成失敗: {}", e))?;
     std::fs::write(&path, "").map_err(|e| format!(".tutorial-done 作成失敗: {}", e))?;
     Ok(())
 }
@@ -1136,10 +1140,10 @@ struct UserPackManifestSummary {
     sandbox: Option<serde_json::Value>,
 }
 
-/// Absolute path to ~/.charminal/. Does not create it.
+/// Absolute path to ~/.yorishiro/. Does not create it.
 #[tauri::command]
 async fn charminal_home_dir() -> Result<String, String> {
-    Ok(charminal_home_path()?.to_string_lossy().to_string())
+    Ok(yorishiro_home_path()?.to_string_lossy().to_string())
 }
 
 /// Resolve a command through Charminal's launch PATH. Used by first-run health
@@ -1175,7 +1179,7 @@ async fn mcp_server_status(
 
 /// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
 ///
-/// Phase 1-a では ensure_charminal_dirs() のたびに ~/.charminal/sdk.d.ts を
+/// Phase 1-a では ensure_charminal_dirs() のたびに ~/.yorishiro/sdk.d.ts を
 /// 上書きする（user は編集しない前提）。ファイル間の `import type { ... }
 /// from "./..."` と `export * from "./..."` は single-file bundle では解決
 /// できないので emit 時に drop する。
@@ -1231,15 +1235,15 @@ fn build_bundled_sdk_dts() -> String {
 }
 
 /// Pack 作者向け narrative ガイド（`src/sdk/README.md`）を compile 時に bundle へ含め、
-/// 起動時に `~/.charminal/sdk-guide.md` として書き出す。
+/// 起動時に `~/.yorishiro/sdk-guide.md` として書き出す。
 ///
 /// production の packaged app には source tree（`src/sdk/`）が無いため、住人 AI が
 /// `read_bundled_pack_source` でも届かないこの narrative を読めるよう、`sdk.d.ts`
-/// （型のみ）と同じ要領で `~/.charminal/` に並べる。型の shape は `sdk.d.ts`、
+/// （型のみ）と同じ要領で `~/.yorishiro/` に並べる。型の shape は `sdk.d.ts`、
 /// idiom や設計意図の散文はこちらが担う。
 ///
 /// 先頭に do-not-edit の markdown コメントを付ける（`sdk.d.ts` の header と対称。
-/// 毎起動で overwrite される）。README 内の相対リンクは `~/.charminal/` からは
+/// 毎起動で overwrite される）。README 内の相対リンクは `~/.yorishiro/` からは
 /// 解決しないが、目的は narrative 本文なので許容する。
 fn build_bundled_sdk_guide() -> String {
     let mut out = String::from(
@@ -1247,21 +1251,21 @@ fn build_bundled_sdk_guide() -> String {
          Charminal SDK guide — auto-bundled from src/sdk/README.md at build time.\n\
          Charminal overwrites this file on every startup; do not edit it directly.\n\
          Relative links in this document point at the Charminal source tree and may\n\
-         not resolve from ~/.charminal/.\n\
+         not resolve from ~/.yorishiro/.\n\
          -->\n\n",
     );
     out.push_str(include_str!("../../src/sdk/README.md"));
     out
 }
 
-/// ~/.charminal/init.js が無いときに seed する雛形。
+/// ~/.yorishiro/init.js が無いときに seed する雛形。
 ///
 /// sdk.d.ts とは違い、init.js は user の編集対象なので「**存在しないとき
 /// だけ** 書く」。user が編集した内容を Charminal が上書きすることは無い。
 /// 詳細: docs/decisions/user-init-script-seed.md
 const USER_INIT_TEMPLATE: &str = include_str!("../resources/user-init-template.js");
 
-/// `~/.charminal/init.js` が無ければ template を write する。既存 file には
+/// `~/.yorishiro/init.js` が無ければ template を write する。既存 file には
 /// 絶対触れない（user が消したものを復活させず、編集も保護する）。test が
 /// env var を触らずに済むよう home を引数化している。
 fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
@@ -1270,10 +1274,10 @@ fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
         return Ok(());
     }
     std::fs::write(&path, USER_INIT_TEMPLATE)
-        .map_err(|e| format!("Failed to seed ~/.charminal/init.js: {}", e))
+        .map_err(|e| format!("Failed to seed ~/.yorishiro/init.js: {}", e))
 }
 
-/// Create ~/.charminal/ + ~/.charminal/packs/ and refresh sdk.d.ts / sdk-guide.md.
+/// Create ~/.yorishiro/ + ~/.yorishiro/packs/ and refresh sdk.d.ts / sdk-guide.md.
 /// Idempotent.
 ///
 /// sdk.d.ts（型の shape）と sdk-guide.md（pack 作者向け narrative）は user の IDE /
@@ -1282,13 +1286,13 @@ fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
 /// 触らない。
 #[tauri::command]
 async fn ensure_charminal_dirs() -> Result<(), String> {
-    let home = charminal_home_path()?;
+    let home = yorishiro_home_path()?;
     std::fs::create_dir_all(home.join("packs"))
-        .map_err(|e| format!("Failed to create ~/.charminal/packs: {}", e))?;
+        .map_err(|e| format!("Failed to create ~/.yorishiro/packs: {}", e))?;
     std::fs::write(home.join("sdk.d.ts"), build_bundled_sdk_dts())
-        .map_err(|e| format!("Failed to write ~/.charminal/sdk.d.ts: {}", e))?;
+        .map_err(|e| format!("Failed to write ~/.yorishiro/sdk.d.ts: {}", e))?;
     std::fs::write(home.join("sdk-guide.md"), build_bundled_sdk_guide())
-        .map_err(|e| format!("Failed to write ~/.charminal/sdk-guide.md: {}", e))?;
+        .map_err(|e| format!("Failed to write ~/.yorishiro/sdk-guide.md: {}", e))?;
     seed_user_init_script_impl(&home)?;
     // shell integration files (init.zsh / wrapper rc / etc) — idempotent。
     // 失敗しても他の dir 作成は完了しているので fatal にはせず log のみ。
@@ -1326,15 +1330,15 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     Ok(())
 }
 
-/// Scan ~/.charminal/packs/ and return discovered packs.
+/// Scan ~/.yorishiro/packs/ and return discovered packs.
 ///
-/// Convention: ~/.charminal/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
+/// Convention: ~/.yorishiro/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
 /// UI / scene packs also support runtime-transpiled .tsx entries.
 /// Multiple kind files in one pack directory produce multiple entries.
 /// Missing directory returns empty vec (not an error).
 #[tauri::command]
 async fn list_user_packs() -> Result<Vec<UserPackEntry>, String> {
-    let packs_dir = charminal_home_path()?.join("packs");
+    let packs_dir = yorishiro_home_path()?.join("packs");
     discover_user_pack_entries(&packs_dir)
 }
 
@@ -1398,10 +1402,10 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
     Ok(entries)
 }
 
-/// Read a text file from inside ~/.charminal/. Rejects paths outside the scope.
+/// Read a text file from inside ~/.yorishiro/. Rejects paths outside the scope.
 #[tauri::command]
 async fn read_charminal_file(relative_path: String) -> Result<String, String> {
-    let home = charminal_home_path()?;
+    let home = yorishiro_home_path()?;
     let full = home.join(&relative_path);
     let canonical_home = home
         .canonicalize()
@@ -1410,7 +1414,7 @@ async fn read_charminal_file(relative_path: String) -> Result<String, String> {
         .canonicalize()
         .map_err(|e| format!("File not found: {}", e))?;
     if !canonical_full.starts_with(&canonical_home) {
-        return Err("Path escapes ~/.charminal/".into());
+        return Err("Path escapes ~/.yorishiro/".into());
     }
     std::fs::read_to_string(&canonical_full).map_err(|e| format!("Read failed: {}", e))
 }
@@ -1426,24 +1430,24 @@ fn is_safe_mode_value(value: Option<&str>) -> bool {
     value == Some("1")
 }
 
-/// CHARMINAL_SAFE_MODE env var を読み、`'1'` のときのみ true を返す。
+/// YORISHIRO_SAFE_MODE env var を読み、`'1'` のときのみ true を返す。
 /// TS 側 runtime-wire が起動時に invoke する。
 #[tauri::command]
 async fn is_safe_mode() -> Result<bool, String> {
-    let raw = std::env::var("CHARMINAL_SAFE_MODE").ok();
+    let raw = std::env::var("YORISHIRO_SAFE_MODE").ok();
     Ok(is_safe_mode_value(raw.as_deref()))
 }
 
-/// `~/.charminal/<relative>` に atomic に text を書き出す実装本体。
+/// `~/.yorishiro/<relative>` に atomic に text を書き出す実装本体。
 /// テスト用に home を引数化する。
 fn write_charminal_file_atomic_impl(
     relative_path: &str,
     content: &str,
     home_root: &Path,
 ) -> Result<(), String> {
-    let charminal = home_root.join(".charminal");
+    let charminal = yorishiro_home_path_under(home_root);
     std::fs::create_dir_all(&charminal)
-        .map_err(|e| format!("Failed to ensure ~/.charminal: {}", e))?;
+        .map_err(|e| format!("Failed to ensure ~/.yorishiro: {}", e))?;
 
     let target = charminal.join(relative_path);
 
@@ -1460,7 +1464,7 @@ fn write_charminal_file_atomic_impl(
         .canonicalize()
         .map_err(|e| format!("Failed to canonicalize home: {}", e))?;
     if !canonical_parent.starts_with(&canonical_charminal) {
-        return Err("Path escapes ~/.charminal/".into());
+        return Err("Path escapes ~/.yorishiro/".into());
     }
 
     // .tmp に書いて rename で atomic に差し替える。同一 filesystem 内なので
@@ -1474,7 +1478,7 @@ fn write_charminal_file_atomic_impl(
     Ok(())
 }
 
-/// ~/.charminal/<relative> に atomic に text を書く。
+/// ~/.yorishiro/<relative> に atomic に text を書く。
 /// TS 側から config.json / last-startup.json の write に使う。
 #[tauri::command]
 async fn write_charminal_file_atomic(relative_path: String, content: String) -> Result<(), String> {
@@ -1482,17 +1486,17 @@ async fn write_charminal_file_atomic(relative_path: String, content: String) -> 
     write_charminal_file_atomic_impl(&relative_path, &content, &home)
 }
 
-/// `~/.charminal/last-startup.json` を読む実装本体。テスト用に home 引数化。
+/// `~/.yorishiro/last-startup.json` を読む実装本体。テスト用に home 引数化。
 /// MCP `list_load_errors` tool から crate 内参照するため pub(crate)。
 pub(crate) fn read_last_startup_report_impl(home_root: &Path) -> Result<String, String> {
-    let path = home_root.join(".charminal").join("last-startup.json");
+    let path = yorishiro_home_path_under(home_root).join("last-startup.json");
     if !path.exists() {
         return Ok(String::new());
     }
     std::fs::read_to_string(&path).map_err(|e| format!("Read failed: {}", e))
 }
 
-/// `~/.charminal/last-startup.json` を読む。不在 → 空文字列。
+/// `~/.yorishiro/last-startup.json` を読む。不在 → 空文字列。
 /// MCP `list_load_errors` と TS 側 debug から使う。
 #[tauri::command]
 async fn read_last_startup_report() -> Result<String, String> {
@@ -1566,11 +1570,11 @@ async fn list_bundled_pack_sources() -> Vec<BundledExamplePackResponse> {
         .collect()
 }
 
-/// `~/.charminal/init.js` があればパスを返す、なければ None。
+/// `~/.yorishiro/init.js` があればパスを返す、なければ None。
 /// 起動時に user's init.el 相当として load する対象。
 #[tauri::command]
 async fn user_init_script_path() -> Result<Option<String>, String> {
-    let init_path = charminal_home_path()?.join("init.js");
+    let init_path = yorishiro_home_path()?.join("init.js");
     if init_path.is_file() {
         Ok(Some(init_path.to_string_lossy().to_string()))
     } else {
@@ -1590,7 +1594,7 @@ async fn mcp_tool_response(request_id: String, response: serde_json::Value) -> R
 
 // ─── User layer file watcher (Phase 1-b) ────────────────────────────
 //
-// `~/.charminal/**` を recursive に監視し、debounced event を TS 層の Channel
+// `~/.yorishiro/**` を recursive に監視し、debounced event を TS 層の Channel
 // に流す。TS 側は event を受けて対応 pack を cache-bust + re-import + registry
 // 経由で replace する。hot reload の主動脈。
 //
@@ -1675,7 +1679,7 @@ fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
     }
 }
 
-/// path が ~/.charminal/{.history,.charminal-snapshots,.staging,tmp} 配下なら true（watcher で drop 対象）。
+/// path が ~/.yorishiro/{.history,.yorishiro-snapshots,.staging,tmp} 配下なら true（watcher で drop 対象）。
 pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bool {
     let Ok(rel) = path.strip_prefix(charminal_home) else {
         return false;
@@ -1683,7 +1687,7 @@ pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bo
     matches!(
         rel.components().next(),
         Some(std::path::Component::Normal(seg))
-            if seg == ".history" || seg == ".charminal-snapshots" || seg == ".staging" || seg == "tmp"
+            if seg == ".history" || seg == ".yorishiro-snapshots" || seg == ".staging" || seg == "tmp"
     )
 }
 
@@ -1846,17 +1850,17 @@ fn stat_mtime_in_scope(path: &Path, scope: &Path) -> Result<u64, String> {
     Ok(since_epoch.as_millis() as u64)
 }
 
-/// 指定 path の mtime を ms 単位で返す。`~/.charminal/` 外の path は拒否。
+/// 指定 path の mtime を ms 単位で返す。`~/.yorishiro/` 外の path は拒否。
 ///
 /// TS 層は watcher event で受け取った path を改めて stat することで、watcher の
 /// 届ける mtime が古い場合の fallback とする（import URL の cache-bust 用途）。
 #[tauri::command]
 async fn stat_file_mtime(path: String) -> Result<u64, String> {
-    let home = charminal_home_path()?;
+    let home = yorishiro_home_path()?;
     stat_mtime_in_scope(&PathBuf::from(path), &home)
 }
 
-/// `~/.charminal/` 配下を watch し、debounced file event を Channel で TS 層に流す。
+/// `~/.yorishiro/` 配下を watch し、debounced file event を Channel で TS 層に流す。
 ///
 /// 二重呼び出し時は旧 watcher を drop で畳む。`debounce` は 150ms——macOS の
 /// fsevent は save 1 回で複数 event を吐くため、path ごとに last-wins で coalesce
@@ -1869,9 +1873,9 @@ async fn watch_charminal_layer(
 ) -> Result<(), String> {
     use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 
-    let home = charminal_home_path()?;
+    let home = yorishiro_home_path()?;
     std::fs::create_dir_all(home.join("packs"))
-        .map_err(|e| format!("Failed to ensure ~/.charminal/packs: {}", e))?;
+        .map_err(|e| format!("Failed to ensure ~/.yorishiro/packs: {}", e))?;
 
     let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
     let pending_cb = pending.clone();
@@ -1901,7 +1905,7 @@ async fn watch_charminal_layer(
 
     let canonical_home = home
         .canonicalize()
-        .map_err(|e| format!("Failed to canonicalize ~/.charminal/: {}", e))?;
+        .map_err(|e| format!("Failed to canonicalize ~/.yorishiro/: {}", e))?;
 
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
     let pending_bg = pending.clone();
@@ -1966,9 +1970,9 @@ async fn watch_charminal_layer(
                 }
             }
             // 確定バーストに snapshot 対象変更があれば、settle 後の状態を 1 枚撮る。
-            // snapshot は .charminal-snapshots/ へ書くので is_history_internal_path
+            // snapshot は .yorishiro-snapshots/ へ書くので is_history_internal_path
             // filter により watcher へ戻らない（無限ループ無し）。
-            // home（=~/.charminal）の parent が HOME（snapshot_*_impl の home_root）。
+            // home（=~/.yorishiro）の parent が HOME（snapshot_*_impl の home_root）。
             if snapshot_relevant {
                 if let Some(home_root) = home.parent() {
                     if history::restore_quiet_period_active(
@@ -2296,7 +2300,7 @@ pub fn run() {
                             error: None,
                         };
                     }
-                    eprintln!("[charminal-mcp] listening on localhost:{}", port);
+                    eprintln!("[yorishiro-mcp] listening on localhost:{}", port);
                 }
                 Err(err) => {
                     if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
@@ -2305,7 +2309,7 @@ pub fn run() {
                             error: Some(err.clone()),
                         };
                     }
-                    eprintln!("[charminal-mcp] startup skipped: {}", err);
+                    eprintln!("[yorishiro-mcp] startup skipped: {}", err);
                 }
             }
 
@@ -2844,7 +2848,7 @@ mod layer_scope_tests {
     #[test]
     fn watcher_event_fingerprint_drops_same_path_label_and_mtime_only() {
         let mut last = HashMap::new();
-        let path = std::path::Path::new("/Users/x/.charminal/packs/foo/amenity.js");
+        let path = std::path::Path::new("/Users/x/.yorishiro/packs/foo/amenity.js");
 
         assert!(should_emit_layer_event(&mut last, path, "modified", 100));
         assert!(!should_emit_layer_event(&mut last, path, "modified", 100));
@@ -2854,98 +2858,98 @@ mod layer_scope_tests {
 
     #[test]
     fn history_paths_are_excluded_from_watch() {
-        let home = std::path::Path::new("/Users/x/.charminal");
+        let home = std::path::Path::new("/Users/x/.yorishiro");
         // 旧 full-copy store が残っていても内部書き込みとして除外する。
         assert!(is_history_internal_path(
             home,
             std::path::Path::new(
-                "/Users/x/.charminal/.history/generations/000001/packs/foo/effect.js"
+                "/Users/x/.yorishiro/.history/generations/000001/packs/foo/effect.js"
             )
         ));
         assert!(is_history_internal_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/.charminal-snapshots/objects/ab/cdef")
+            std::path::Path::new("/Users/x/.yorishiro/.yorishiro-snapshots/objects/ab/cdef")
         ));
         assert!(is_history_internal_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/.staging/foo/effect.js")
+            std::path::Path::new("/Users/x/.yorishiro/.staging/foo/effect.js")
         ));
         assert!(is_history_internal_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/tmp/scratch")
+            std::path::Path::new("/Users/x/.yorishiro/tmp/scratch")
         ));
         // 通常の pack は除外しない。
         assert!(!is_history_internal_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/packs/foo/effect.js")
+            std::path::Path::new("/Users/x/.yorishiro/packs/foo/effect.js")
         ));
         assert!(!is_history_internal_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/config.json")
+            std::path::Path::new("/Users/x/.yorishiro/config.json")
         ));
     }
 
     #[test]
     fn snapshot_relevant_path_matches_packs_config_initjs_only() {
-        let home = std::path::Path::new("/Users/x/.charminal");
+        let home = std::path::Path::new("/Users/x/.yorishiro");
         // packs 配下は対象。
         assert!(is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/packs/foo/effect.js")
+            std::path::Path::new("/Users/x/.yorishiro/packs/foo/effect.js")
         ));
         // packs ディレクトリ自体の mtime だけでは何が変わったかを説明できないため対象外。
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/packs")
+            std::path::Path::new("/Users/x/.yorishiro/packs")
         ));
         // packs root の Finder dotfile は user-facing 変更ではない。
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/packs/.DS_Store")
+            std::path::Path::new("/Users/x/.yorishiro/packs/.DS_Store")
         ));
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/packs/..DS_Store.resttmp")
+            std::path::Path::new("/Users/x/.yorishiro/packs/..DS_Store.resttmp")
         ));
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/packs/foo/.effect.js.resttmp")
+            std::path::Path::new("/Users/x/.yorishiro/packs/foo/.effect.js.resttmp")
         ));
         // config.json は git-tracked だが watcher trigger target ではない。
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/config.json")
+            std::path::Path::new("/Users/x/.yorishiro/config.json")
         ));
         // init.js は対象。
         assert!(is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/init.js")
+            std::path::Path::new("/Users/x/.yorishiro/init.js")
         ));
         // 対象外：journal / sdk.d.ts / last-startup.json / snapshot store。
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/journal/daily/2026-06-02.md")
+            std::path::Path::new("/Users/x/.yorishiro/journal/daily/2026-06-02.md")
         ));
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/sdk.d.ts")
+            std::path::Path::new("/Users/x/.yorishiro/sdk.d.ts")
         ));
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/last-startup.json")
+            std::path::Path::new("/Users/x/.yorishiro/last-startup.json")
         ));
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/.history/generations/000001/config.json")
+            std::path::Path::new("/Users/x/.yorishiro/.history/generations/000001/config.json")
         ));
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/.charminal-snapshots/HEAD")
+            std::path::Path::new("/Users/x/.yorishiro/.yorishiro-snapshots/HEAD")
         ));
         // config.json と同名でも sub-path は対象外（config.json/something のような異常系）。
         assert!(!is_snapshot_relevant_path(
             home,
-            std::path::Path::new("/Users/x/.charminal/config.json/inner")
+            std::path::Path::new("/Users/x/.yorishiro/config.json/inner")
         ));
         // home 外は対象外。
         assert!(!is_snapshot_relevant_path(
@@ -2956,46 +2960,46 @@ mod layer_scope_tests {
 
     #[test]
     fn snapshot_scope_token_extracts_pack_id_and_files() {
-        let home = Path::new("/Users/x/.charminal");
+        let home = Path::new("/Users/x/.yorishiro");
         assert_eq!(
             snapshot_scope_token(
                 home,
-                Path::new("/Users/x/.charminal/packs/my-theme/scene.js")
+                Path::new("/Users/x/.yorishiro/packs/my-theme/scene.js")
             ),
             Some("my-theme".to_string())
         );
         assert_eq!(
-            snapshot_scope_token(home, Path::new("/Users/x/.charminal/config.json")),
+            snapshot_scope_token(home, Path::new("/Users/x/.yorishiro/config.json")),
             None
         );
         assert_eq!(
-            snapshot_scope_token(home, Path::new("/Users/x/.charminal/init.js")),
+            snapshot_scope_token(home, Path::new("/Users/x/.yorishiro/init.js")),
             Some("init.js".to_string())
         );
         // 対象外・packs 直下のみは None。
         assert_eq!(
-            snapshot_scope_token(home, Path::new("/Users/x/.charminal/journal/x.md")),
+            snapshot_scope_token(home, Path::new("/Users/x/.yorishiro/journal/x.md")),
             None
         );
         assert_eq!(
-            snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs")),
+            snapshot_scope_token(home, Path::new("/Users/x/.yorishiro/packs")),
             None
         );
         assert_eq!(
-            snapshot_scope_token(home, Path::new("/Users/x/.charminal/packs/.DS_Store")),
+            snapshot_scope_token(home, Path::new("/Users/x/.yorishiro/packs/.DS_Store")),
             None
         );
         assert_eq!(
             snapshot_scope_token(
                 home,
-                Path::new("/Users/x/.charminal/packs/..DS_Store.resttmp")
+                Path::new("/Users/x/.yorishiro/packs/..DS_Store.resttmp")
             ),
             None
         );
         assert_eq!(
             snapshot_scope_token(
                 home,
-                Path::new("/Users/x/.charminal/packs/foo/.scene.js.resttmp")
+                Path::new("/Users/x/.yorishiro/packs/foo/.scene.js.resttmp")
             ),
             None
         );
@@ -3003,11 +3007,11 @@ mod layer_scope_tests {
 
     #[test]
     fn collect_changed_scopes_dedups_and_sorts_pack_ids() {
-        let home = Path::new("/Users/x/.charminal");
+        let home = Path::new("/Users/x/.yorishiro");
         let paths = [
-            Path::new("/Users/x/.charminal/packs/b/effect.js"),
-            Path::new("/Users/x/.charminal/packs/a/effect.js"),
-            Path::new("/Users/x/.charminal/packs/a/assets/icon.png"),
+            Path::new("/Users/x/.yorishiro/packs/b/effect.js"),
+            Path::new("/Users/x/.yorishiro/packs/a/effect.js"),
+            Path::new("/Users/x/.yorishiro/packs/a/assets/icon.png"),
         ];
 
         assert_eq!(
@@ -3018,11 +3022,11 @@ mod layer_scope_tests {
 
     #[test]
     fn collect_changed_scopes_records_init_and_returns_none_when_empty() {
-        let home = Path::new("/Users/x/.charminal");
+        let home = Path::new("/Users/x/.yorishiro");
         let paths = [
-            Path::new("/Users/x/.charminal/packs/theme/scene.js"),
-            Path::new("/Users/x/.charminal/config.json"),
-            Path::new("/Users/x/.charminal/init.js"),
+            Path::new("/Users/x/.yorishiro/packs/theme/scene.js"),
+            Path::new("/Users/x/.yorishiro/config.json"),
+            Path::new("/Users/x/.yorishiro/init.js"),
         ];
 
         assert_eq!(
@@ -3033,9 +3037,9 @@ mod layer_scope_tests {
             collect_changed_scopes(
                 home,
                 [
-                    Path::new("/Users/x/.charminal/packs"),
-                    Path::new("/Users/x/.charminal/journal/x.md"),
-                    Path::new("/Users/x/.charminal/packs/foo/.scene.js.resttmp"),
+                    Path::new("/Users/x/.yorishiro/packs"),
+                    Path::new("/Users/x/.yorishiro/journal/x.md"),
+                    Path::new("/Users/x/.yorishiro/packs/foo/.scene.js.resttmp"),
                 ],
             ),
             None
@@ -3088,13 +3092,13 @@ mod layer_scope_tests {
         let tmp_home = fresh_dir("atomic-write");
         std::env::set_var("HOME", &tmp_home);
 
-        // valid path inside ~/.charminal/ should succeed
+        // valid path inside ~/.yorishiro/ should succeed
         let result =
             write_charminal_file_atomic_impl("last-startup.json", "{\"ok\":true}", &tmp_home);
         assert!(result.is_ok(), "expected ok, got {:?}", result);
 
         let written =
-            std::fs::read_to_string(tmp_home.join(".charminal").join("last-startup.json"))
+            std::fs::read_to_string(tmp_home.join(".yorishiro").join("last-startup.json"))
                 .expect("read written file");
         assert_eq!(written, "{\"ok\":true}");
 
@@ -3116,7 +3120,7 @@ mod layer_scope_tests {
     #[test]
     fn read_last_startup_report_returns_file_contents_when_present() {
         let tmp_home = fresh_dir("present-report");
-        let charminal = tmp_home.join(".charminal");
+        let charminal = tmp_home.join(".yorishiro");
         std::fs::create_dir_all(&charminal).expect("mkdir");
         std::fs::write(charminal.join("last-startup.json"), "{\"saved\":true}")
             .expect("write fixture");
@@ -3186,7 +3190,7 @@ mod localized_plugin_dir_tests {
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-localized-plugin-{}-{}-{}",
+            "yorishiro-localized-plugin-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()

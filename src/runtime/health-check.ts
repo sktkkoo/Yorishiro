@@ -89,10 +89,10 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
   items.push(
     healthItem(
       "home",
-      "Charminal home",
+      " Yorishiro home",
       homeDir === "" ? "error" : "ok",
-      homeDir === "" ? "Could not resolve ~/.charminal." : homeDir,
-      homeDir === "" ? "Restart Charminal and check filesystem permissions." : undefined,
+      homeDir === "" ? "Could not resolve ~/.yorishiro." : homeDir,
+      homeDir === "" ? "Restart  Yorishiro and check filesystem permissions." : undefined,
     ),
   );
 
@@ -102,7 +102,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Terminal agent",
       selectedAgentPath === null ? "error" : "ok",
       selectedAgentPath === null
-        ? `${effectiveAgent} is selected but was not found on Charminal's PATH.`
+        ? `${effectiveAgent} is selected but was not found on  Yorishiro's PATH.`
         : `${effectiveAgent}: ${selectedAgentPath} (${supportedAgentSummary})`,
       selectedAgentPath === null
         ? "Install the selected agent or switch Agent in Settings."
@@ -169,11 +169,11 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "MCP port",
       mcpStatus.error === null ? "ok" : "warning",
       mcpStatus.error === null
-        ? `Charminal MCP is listening on localhost:${mcpStatus.port ?? expectedMcpPort}.`
-        : `Charminal MCP did not start on localhost:${expectedMcpPort}: ${mcpStatus.error}`,
+        ? ` Yorishiro MCP is listening on localhost:${mcpStatus.port ?? expectedMcpPort}.`
+        : ` Yorishiro MCP did not start on localhost:${expectedMcpPort}: ${mcpStatus.error}`,
       mcpStatus.error === null
         ? undefined
-        : "Check whether another process is using the configured MCP port, then restart Charminal.",
+        : "Check whether another process is using the configured MCP port, then restart  Yorishiro.",
     ),
   );
 
@@ -183,7 +183,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Safe mode",
       safeMode ? "warning" : "ok",
       safeMode ? "User packs and init.js are skipped for recovery." : "Off",
-      safeMode ? "Unset CHARMINAL_SAFE_MODE and restart after disabling broken packs." : undefined,
+      safeMode ? "Unset YORISHIRO_SAFE_MODE and restart after disabling broken packs." : undefined,
     ),
   );
 
@@ -210,7 +210,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
         ? "No readable last-startup.json yet."
         : `${startup.total} user pack load result(s), ${startup.failed} failed`,
       startup === null
-        ? "Start Charminal once outside safe mode to generate the report."
+        ? "Start  Yorishiro once outside safe mode to generate the report."
         : undefined,
     ),
   );

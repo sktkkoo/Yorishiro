@@ -41,7 +41,7 @@ impl TerminalAgent for OpencodeAgent {
         let mut config_obj = serde_json::json!({
             "$schema": "https://opencode.ai/config.json",
             "mcp": {
-                "charminal": {
+                "yorishiro": {
                     "type": "remote",
                     "url": format!("http://127.0.0.1:{}/mcp", ctx.mcp_port),
                     "enabled": true,
@@ -343,7 +343,7 @@ mod tests {
             .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
             .expect("OPENCODE_CONFIG_CONTENT env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
-        let charminal_mcp = &parsed["mcp"]["charminal"];
+        let charminal_mcp = &parsed["mcp"]["yorishiro"];
         assert_eq!(charminal_mcp["type"], "remote");
         assert_eq!(charminal_mcp["url"], "http://127.0.0.1:18743/mcp");
         assert_eq!(charminal_mcp["enabled"], true);

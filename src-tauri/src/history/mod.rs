@@ -1,4 +1,4 @@
-//! ~/.charminal/.charminal-snapshots/ の git2 snapshot store。
+//! ~/.yorishiro/.yorishiro-snapshots/ の git2 snapshot store。
 //! git dir は work tree から分離し、ユーザーの system git には依存しない。
 
 use git2::build::CheckoutBuilder;
@@ -12,12 +12,12 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-const SNAPSHOT_GIT_DIR: &str = ".charminal-snapshots";
+const SNAPSHOT_GIT_DIR: &str = ".yorishiro-snapshots";
 const STARTUP_CLEAN_NOTES_REF: &str = "refs/notes/startup-clean";
 const GITIGNORE_CONTENT: &str = "\
 journal/
 .history/
-.charminal-snapshots/
+.yorishiro-snapshots/
 sdk.d.ts
 sdk-guide.md
 last-startup.json
@@ -27,7 +27,7 @@ tmp/
 .DS_Store
 ";
 
-/// snapshot に含める ~/.charminal 相対パス。
+/// snapshot に含める ~/.yorishiro 相対パス。
 const SNAPSHOT_INCLUDES: &[&str] = &["packs", "config.json", "init.js"];
 
 /// 一覧に返す snapshot の既定件数。git commit 自体は prune しない。
@@ -59,12 +59,12 @@ struct ParsedCommit {
     changed: Option<Vec<String>>,
 }
 
-fn charminal_dir(home_root: &Path) -> PathBuf {
-    home_root.join(".charminal")
+fn yorishiro_dir(home_root: &Path) -> PathBuf {
+    home_root.join(".yorishiro")
 }
 
 fn snapshot_git_dir(home_root: &Path) -> PathBuf {
-    charminal_dir(home_root).join(SNAPSHOT_GIT_DIR)
+    yorishiro_dir(home_root).join(SNAPSHOT_GIT_DIR)
 }
 
 fn now_ms() -> u64 {
@@ -87,7 +87,7 @@ fn is_unborn_or_not_found(err: &git2::Error) -> bool {
 }
 
 fn signature() -> Result<Signature<'static>, String> {
-    Signature::now("charminal", "noreply@charminal.app").map_err(|e| git_err("signature", e))
+    Signature::now("yorishiro", "noreply@yorishiro.dev").map_err(|e| git_err("signature", e))
 }
 
 fn ensure_gitignore(charminal_home: &Path) -> Result<(), String> {
@@ -104,11 +104,11 @@ fn remove_snapshot_gitlink(charminal_home: &Path, git_dir: &Path) -> Result<(), 
         return Ok(());
     };
     if meta.file_type().is_dir() && !meta.file_type().is_symlink() {
-        return Err("~/.charminal/.git is a directory; refusing to modify it".to_string());
+        return Err("~/.yorishiro/.git is a directory; refusing to modify it".to_string());
     }
     let content = std::fs::read_to_string(&gitlink).map_err(|e| io_err("read .git gitlink", e))?;
     let Some(target) = content.trim().strip_prefix("gitdir:") else {
-        return Err("~/.charminal/.git exists but is not a snapshot gitlink".to_string());
+        return Err("~/.yorishiro/.git exists but is not a snapshot gitlink".to_string());
     };
     let target = Path::new(target.trim());
     let target = if target.is_absolute() {
@@ -120,15 +120,15 @@ fn remove_snapshot_gitlink(charminal_home: &Path, git_dir: &Path) -> Result<(), 
     let canonical_git_dir =
         std::fs::canonicalize(git_dir).unwrap_or_else(|_| git_dir.to_path_buf());
     if canonical_target != canonical_git_dir {
-        return Err("~/.charminal/.git points outside snapshot storage".to_string());
+        return Err("~/.yorishiro/.git points outside snapshot storage".to_string());
     }
     std::fs::remove_file(&gitlink).map_err(|e| io_err("remove .git gitlink", e))
 }
 
 fn open_or_init_repo(home_root: &Path) -> Result<Repository, String> {
-    let charminal_home = charminal_dir(home_root);
+    let charminal_home = yorishiro_dir(home_root);
     std::fs::create_dir_all(charminal_home.join("packs"))
-        .map_err(|e| io_err("mkdir ~/.charminal/packs", e))?;
+        .map_err(|e| io_err("mkdir ~/.yorishiro/packs", e))?;
     ensure_gitignore(&charminal_home)?;
 
     let git_dir = snapshot_git_dir(home_root);
@@ -908,12 +908,12 @@ mod tests {
                 .unwrap_or(0)
         ));
         let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(tmp.join(".charminal")).expect("mkdir charminal");
+        fs::create_dir_all(tmp.join(".yorishiro")).expect("mkdir charminal");
         tmp
     }
 
     fn charminal(home: &Path) -> PathBuf {
-        home.join(".charminal")
+        home.join(".yorishiro")
     }
 
     fn repo(home: &Path) -> Repository {
@@ -940,7 +940,7 @@ mod tests {
         assert!(snapshot_git_dir(&home).join("HEAD").exists());
         assert!(!charminal(&home).join(".git").exists());
         let ignore = fs::read_to_string(charminal(&home).join(".gitignore")).unwrap();
-        assert!(ignore.contains(".charminal-snapshots/"));
+        assert!(ignore.contains(".yorishiro-snapshots/"));
         assert!(ignore.contains("cohabitation.json"));
         // Charminal が毎起動で再生成する bundle ファイルは snapshot 対象外。
         assert!(ignore.contains("sdk.d.ts"));

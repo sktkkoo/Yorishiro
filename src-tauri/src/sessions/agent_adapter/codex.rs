@@ -163,14 +163,14 @@ fn toml_basic_string(value: &str) -> String {
 
 fn codex_charminal_mcp_config_arg(port: u16) -> String {
     let url = format!("http://127.0.0.1:{}/mcp", port);
-    format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
+    format!("mcp_servers.yorishiro.url={}", toml_basic_string(&url))
 }
 
 /// Codex の charm プラグイン有効化に必要な -c config override を返す。
 /// プラグイン自体は prepare_localized_plugin_dir で Codex のキャッシュに
 /// 直接インストール済み。ここでは有効化フラグだけ渡す。
 fn codex_charminal_plugin_enable_arg() -> String {
-    "plugins.\"charm@charminal-local\".enabled=true".to_string()
+    "plugins.\"charm@yorishiro-local\".enabled=true".to_string()
 }
 
 #[cfg(test)]
@@ -270,7 +270,7 @@ mod tests {
     fn codex_charminal_mcp_config_arg_points_to_streamable_http_server() {
         assert_eq!(
             codex_charminal_mcp_config_arg(18743),
-            "mcp_servers.charminal.url=\"http://127.0.0.1:18743/mcp\""
+            "mcp_servers.yorishiro.url=\"http://127.0.0.1:18743/mcp\""
         );
     }
 
@@ -278,7 +278,7 @@ mod tests {
     fn codex_charminal_plugin_enable_arg_returns_enable_flag() {
         assert_eq!(
             codex_charminal_plugin_enable_arg(),
-            "plugins.\"charm@charminal-local\".enabled=true"
+            "plugins.\"charm@yorishiro-local\".enabled=true"
         );
     }
 

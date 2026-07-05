@@ -420,7 +420,7 @@ impl Charminal {
 
 #[tool_router]
 impl Charminal {
-    /// list_load_errors: Rust 側完結。~/.charminal/last-startup.json を読んで
+    /// list_load_errors: Rust 側完結。~/.yorishiro/last-startup.json を読んで
     /// `status == "failed"` の entries を JSON で返す。
     #[tool(description = "List user packs that failed to load on last startup")]
     async fn list_load_errors(
@@ -436,9 +436,9 @@ impl Charminal {
         }
     }
 
-    /// history_list: ~/.charminal の snapshot 一覧（新しい順）を返す。Rust 完結。
+    /// history_list: ~/.yorishiro の snapshot 一覧（新しい順）を返す。Rust 完結。
     #[tool(
-        description = "List ~/.charminal state snapshots, newest first. Each entry has seq, ts_ms, trigger, optional label. Pick a seq, then call history_restore to roll back."
+        description = "List ~/.yorishiro state snapshots, newest first. Each entry has seq, ts_ms, trigger, optional label. Pick a seq, then call history_restore to roll back."
     )]
     async fn history_list(
         &self,
@@ -453,9 +453,9 @@ impl Charminal {
         }
     }
 
-    /// history_snapshot: 現在の ~/.charminal を 1 枚 snapshot して seq を返す。Rust 完結。
+    /// history_snapshot: 現在の ~/.yorishiro を 1 枚 snapshot して seq を返す。Rust 完結。
     #[tool(
-        description = "Snapshot the current ~/.charminal state (packs, config.json, init.js) and return its seq. Use this to mark a point you may want to return to before risky pack edits. (This does not validate the state; it is a plain timeline point, not a verified known-good.)"
+        description = "Snapshot the current ~/.yorishiro state (packs, config.json, init.js) and return its seq. Use this to mark a point you may want to return to before risky pack edits. (This does not validate the state; it is a plain timeline point, not a verified known-good.)"
     )]
     async fn history_snapshot(
         &self,
@@ -472,7 +472,7 @@ impl Charminal {
 
     /// history_restore: TS 委譲。restore 提案を UI に surface して即返す。
     #[tool(
-        description = "Propose restoring ~/.charminal to a snapshot by seq. This does NOT restore directly — it surfaces a confirmation to the user, who approves it in the app (the app then full-replaces packs/config.json/init.js and reloads). Returns ok:true once the proposal is surfaced (not when the restore completes). journal/memories are never touched."
+        description = "Propose restoring ~/.yorishiro to a snapshot by seq. This does NOT restore directly — it surfaces a confirmation to the user, who approves it in the app (the app then full-replaces packs/config.json/init.js and reloads). Returns ok:true once the proposal is surfaced (not when the restore completes). journal/memories are never touched."
     )]
     async fn history_restore(
         &self,
@@ -520,7 +520,7 @@ impl Charminal {
 
     /// list_packs: TS runtime に委譲。`{ packs: PackStatus[] }` を返す。
     #[tool(
-        description = "List user packs (~/.charminal/packs/) with their current status. User packs use flat layout: <id>/<kind>.js. Bundled packs are listed separately and are immutable."
+        description = "List user packs (~/.yorishiro/packs/) with their current status. User packs use flat layout: <id>/<kind>.js. Bundled packs are listed separately and are immutable."
     )]
     async fn list_packs(
         &self,
@@ -554,7 +554,7 @@ impl Charminal {
     /// disable_pack: TS runtime に委譲。config.json に id を書いて registry
     /// から該当 kind を dispose する。
     #[tool(
-        description = "Disable a user pack by id. Only works on user packs (~/.charminal/packs/); bundled packs are immutable and cannot be disabled via MCP. Modifies config.json."
+        description = "Disable a user pack by id. Only works on user packs (~/.yorishiro/packs/); bundled packs are immutable and cannot be disabled via MCP. Modifies config.json."
     )]
     async fn disable_pack(
         &self,
@@ -569,7 +569,7 @@ impl Charminal {
     /// enable_pack: TS runtime に委譲。config.json から id を外して reload を
     /// 依頼する。
     #[tool(
-        description = "Enable a previously disabled user pack by id. Only works on user packs (~/.charminal/packs/); bundled packs are immutable and cannot be modified via MCP. Modifies config.json."
+        description = "Enable a previously disabled user pack by id. Only works on user packs (~/.yorishiro/packs/); bundled packs are immutable and cannot be modified via MCP. Modifies config.json."
     )]
     async fn enable_pack(
         &self,
@@ -1248,13 +1248,13 @@ pub(crate) fn list_load_errors_sync() -> Result<ListLoadErrorsResponse, String> 
     Ok(ListLoadErrorsResponse { errors })
 }
 
-/// history_list: Rust 側完結。~/.charminal/.charminal-snapshots/ の snapshot 一覧を新しい順で返す。
+/// history_list: Rust 側完結。~/.yorishiro/.yorishiro-snapshots/ の snapshot 一覧を新しい順で返す。
 pub(crate) fn history_list_sync() -> Result<Vec<crate::history::SnapshotEntry>, String> {
     let home = crate::home_dir_or_err()?;
     crate::history::snapshot_list_impl(&home)
 }
 
-/// history_snapshot: Rust 側完結。現在の ~/.charminal を 1 枚撮り seq を返す。
+/// history_snapshot: Rust 側完結。現在の ~/.yorishiro を 1 枚撮り seq を返す。
 pub(crate) fn history_snapshot_sync(label: Option<&str>) -> Result<u64, String> {
     let home = crate::home_dir_or_err()?;
     crate::history::snapshot_create_impl(&home, "mcp:snapshot", label)
@@ -1276,7 +1276,7 @@ mod tests {
                 .unwrap_or(0)
         ));
         let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(tmp.join(".charminal")).expect("mkdir");
+        fs::create_dir_all(tmp.join(".yorishiro")).expect("mkdir");
         tmp
     }
 
@@ -1300,7 +1300,7 @@ mod tests {
         let home = tmp_home();
         std::env::set_var("HOME", &home);
         fs::write(
-            home.join(".charminal/last-startup.json"),
+            home.join(".yorishiro/last-startup.json"),
             r#"{
                 "timestamp": "2026-04-18T00:00:00Z",
                 "safeMode": false,
@@ -1331,7 +1331,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home();
         std::env::set_var("HOME", &home);
-        fs::write(home.join(".charminal/config.json"), "{}").unwrap();
+        fs::write(home.join(".yorishiro/config.json"), "{}").unwrap();
         crate::history::snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
         crate::history::snapshot_create_impl(&home, "mcp:snapshot", Some("good")).unwrap();
 
@@ -1349,7 +1349,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let home = tmp_home();
         std::env::set_var("HOME", &home);
-        fs::write(home.join(".charminal/config.json"), "{}").unwrap();
+        fs::write(home.join(".yorishiro/config.json"), "{}").unwrap();
 
         let seq = history_snapshot_sync(Some("manual")).expect("ok");
         assert_eq!(seq, 1);

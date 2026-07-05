@@ -1,9 +1,9 @@
 {
-  "name": "charminal",
+  "name": "yorishiro",
   "private": true,
   "version": "0.5.2",
   "type": "module",
-  "description": "Charminal — someone who lives in your terminal. A Tauri desktop app pairing Claude Code with a 3D VRM character that shares your workspace.",
+  "description": "Yorishiro — a terminal your AI dwells in. A Tauri desktop app pairing Claude Code with a 3D VRM character that shares your workspace.",
   "keywords": [
     "tauri",
     "react",
@@ -35,7 +35,7 @@
     "doc": "typedoc",
     "doc:rust": "cargo doc --manifest-path src-tauri/Cargo.toml --no-deps --document-private-items",
     "doc:open": "open docs/api/typescript/index.html",
-    "doc:rust:open": "open src-tauri/target/doc/charminal_lib/index.html",
+    "doc:rust:open": "open src-tauri/target/doc/yorishiro_lib/index.html",
     "prepare": "lefthook install"
   },
   "dependencies": {

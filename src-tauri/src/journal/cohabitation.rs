@@ -62,7 +62,7 @@ fn write_cohabitation_atomic(path: &Path, state: &CohabitationState) -> Result<(
 /// - `per_persona[active_persona_id]` に経過時間を加算
 /// - `last_shutdown` に現在の ISO 8601 タイムスタンプを記録
 pub fn save_hours(start: Instant, active_persona_id: &str) -> Result<(), String> {
-    let charminal_dir = crate::home_dir_or_err()?.join(".charminal");
+    let charminal_dir = crate::yorishiro_home_path()?;
     save_hours_impl(start, active_persona_id, &charminal_dir)
 }
 
@@ -73,7 +73,7 @@ fn save_hours_impl(
     charminal_dir: &Path,
 ) -> Result<(), String> {
     let elapsed_hours = start.elapsed().as_secs_f64() / 3600.0;
-    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.charminal/ 作成失敗: {}", e))?;
+    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.yorishiro/ 作成失敗: {}", e))?;
 
     let cohabitation_path = charminal_dir.join(COHABITATION_FILE);
     let mut state = read_cohabitation(&cohabitation_path)?;

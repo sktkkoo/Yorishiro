@@ -1,7 +1,7 @@
 //! Charminal MCP server の起動と lifecycle、および Rust → TS event channel の
 //! round-trip 管理。
 //!
-//! port は `~/.charminal/config.json` の mcpPort か default 18743。bind fail
+//! port は `~/.yorishiro/config.json` の mcpPort か default 18743。bind fail
 //! は log に書いて server 起動を skip、Charminal 本体は継続させる。
 //!
 //! rmcp 1.7.0 の `transport-streamable-http-server` feature を `axum` の
@@ -40,8 +40,7 @@ static PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<Value>>>> =
 
 /// config.json の mcpPort を読む（不在 / 不正 → None）。
 fn read_configured_port() -> Option<u16> {
-    let home = dirs::home_dir()?;
-    let path = home.join(".charminal").join("config.json");
+    let path = crate::yorishiro_home_path().ok()?.join("config.json");
     let text = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&text).ok()?;
     parsed
@@ -153,12 +152,12 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("[charminal-mcp] bind failed after probe: {}", e);
+                eprintln!("[yorishiro-mcp] bind failed after probe: {}", e);
                 return;
             }
         };
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("[charminal-mcp] axum::serve exited: {}", e);
+            eprintln!("[yorishiro-mcp] axum::serve exited: {}", e);
         }
     });
 
