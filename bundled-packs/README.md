@@ -190,7 +190,7 @@ bundled-packs は Yorishiro 本体の一部として扱う：
 
 ## Asset の供給経路
 
-開発時の VRMA / voice asset は **外部 store**（`../__YORISHIRO_ASSETS__/`、parent dir 想定）から `npm run fetch-assets` で copy される。`predev` / `prebuild` hook で自動実行。
+開発時の VRMA / voice asset は **外部 store**（`../Yorishiro-assets/`、parent dir 想定）から `npm run fetch-assets` で copy される。`predev` / `prebuild` hook で自動実行。
 
 外部 store の path は環境変数 `YORISHIRO_ASSETS_DIR` で override 可能。
 

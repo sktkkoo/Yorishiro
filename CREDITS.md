@@ -88,7 +88,7 @@ We are deeply grateful for the exceptional design and craftsmanship that brings 
 
 ### VRMA animations
 
-Third-party assets stored outside the repo (`../Charminal-assets/animations/`) and copied to `public/animations/` at build time for inclusion in the application bundle. Raw files are not placed in the git repository.
+Third-party assets stored outside the repo (`../Yorishiro-assets/animations/`) and copied to `public/animations/` at build time for inclusion in the application bundle. Raw files are not placed in the git repository.
 
 #### `VRMA_01.vrma` – `VRMA_07.vrma`
 

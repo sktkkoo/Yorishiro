@@ -59,14 +59,14 @@ jobs:
           rm -rf .r2-assets
           unzip -oq assets.zip -d .r2-assets
           rm assets.zip
-          # The archive wraps everything in a top-level Charminal-assets/ folder.
+          # The archive wraps everything in a top-level Yorishiro-assets/ folder.
           # Route it through the same fetch-assets.mjs mapping local dev uses, so
           # animations/ models/ voices/ land where the runtime loads them
           # (public/animations, public/models, bundled-packs/shared/voices).
-          # A raw `unzip -d public/` left files under public/Charminal-assets/, so
+          # A raw `unzip -d public/` left files under public/Yorishiro-assets/, so
           # /animations/*.vrma and /models/CLAI.vrm 404'd in the packaged app.
-          if [ -d .r2-assets/Charminal-assets ]; then
-            ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets/Charminal-assets"
+          if [ -d .r2-assets/Yorishiro-assets ]; then
+            ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets/Yorishiro-assets"
           else
             ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets"
           fi
