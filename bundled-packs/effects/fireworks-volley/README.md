@@ -6,7 +6,7 @@
 
 ## 使い方
 
-**`~/.charminal/init.js` から**：
+**`~/.yorishiro/init.js` から**：
 
 ```javascript
 ctx.dispatchEffect({ kind: "fireworks-volley" });

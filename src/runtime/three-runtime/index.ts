@@ -1,5 +1,5 @@
 /**
- * @charminal/runtime/three-runtime
+ * @yorishiro/runtime/three-runtime
  *
  * Webview-lifetime singleton holding canvas + WebGLRenderer + Scene + Camera
  * + RAF loop + current VRM + current Body. Internal design-record:

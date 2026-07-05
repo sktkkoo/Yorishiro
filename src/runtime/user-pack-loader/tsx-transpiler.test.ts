@@ -9,15 +9,15 @@ import {
 
 describe("isTsxEntryPath", () => {
   it("detects TSX entry paths", () => {
-    expect(isTsxEntryPath("/Users/me/.charminal/packs/my-ui/ui.tsx")).toBe(true);
-    expect(isTsxEntryPath("/Users/me/.charminal/packs/my-ui/ui.js")).toBe(false);
+    expect(isTsxEntryPath("/Users/me/.yorishiro/packs/my-ui/ui.tsx")).toBe(true);
+    expect(isTsxEntryPath("/Users/me/.yorishiro/packs/my-ui/ui.js")).toBe(false);
   });
 });
 
 describe("buildTsxEntryUrl", () => {
   it("adds cache key as query when provided", () => {
     const url = buildTsxEntryUrl(
-      "/Users/me/.charminal/packs/my-ui/ui.tsx",
+      "/Users/me/.yorishiro/packs/my-ui/ui.tsx",
       { convertFileSrc: (path) => `asset://localhost/${encodeURIComponent(path)}` },
       { cacheKey: 123 },
     );
@@ -27,7 +27,7 @@ describe("buildTsxEntryUrl", () => {
 
   it("preserves existing query parameters", () => {
     const url = buildTsxEntryUrl(
-      "/Users/me/.charminal/packs/my-ui/ui.tsx",
+      "/Users/me/.yorishiro/packs/my-ui/ui.tsx",
       { convertFileSrc: () => "asset://localhost/ui.tsx?token=a" },
       { cacheKey: "mtime 1" },
     );
@@ -38,11 +38,11 @@ describe("buildTsxEntryUrl", () => {
 
 describe("isSupportedTsxHostImport", () => {
   it("allows host modules needed by scene.tsx R3F components", () => {
-    expect(isSupportedTsxHostImport("@charminal/sdk/r3f")).toBe(true);
+    expect(isSupportedTsxHostImport("@yorishiro/sdk/r3f")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/fiber")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/drei")).toBe(true);
     expect(isSupportedTsxHostImport("three")).toBe(true);
-    expect(isSupportedTsxHostImport("@charminal/sdk/controls")).toBe(true);
+    expect(isSupportedTsxHostImport("@yorishiro/sdk/controls")).toBe(true);
   });
 
   it("keeps unrelated imports unsupported", () => {
@@ -57,26 +57,26 @@ describe("resolveRelativeTsxImport", () => {
     expect(
       resolveRelativeTsxImport(
         "./lib/lights",
-        "/Users/me/.charminal/packs/my-room/scene.tsx",
-        "/Users/me/.charminal/packs/my-room",
+        "/Users/me/.yorishiro/packs/my-room/scene.tsx",
+        "/Users/me/.yorishiro/packs/my-room",
       ),
-    ).toBe("/Users/me/.charminal/packs/my-room/lib/lights");
+    ).toBe("/Users/me/.yorishiro/packs/my-room/lib/lights");
 
     expect(
       resolveRelativeTsxImport(
         "../shared/palette",
-        "/Users/me/.charminal/packs/my-room/lib/lights.tsx",
-        "/Users/me/.charminal/packs/my-room",
+        "/Users/me/.yorishiro/packs/my-room/lib/lights.tsx",
+        "/Users/me/.yorishiro/packs/my-room",
       ),
-    ).toBe("/Users/me/.charminal/packs/my-room/shared/palette");
+    ).toBe("/Users/me/.yorishiro/packs/my-room/shared/palette");
   });
 
   it("rejects imports that leave the pack directory", () => {
     expect(
       resolveRelativeTsxImport(
         "../other-pack/scene",
-        "/Users/me/.charminal/packs/my-room/scene.tsx",
-        "/Users/me/.charminal/packs/my-room",
+        "/Users/me/.yorishiro/packs/my-room/scene.tsx",
+        "/Users/me/.yorishiro/packs/my-room",
       ),
     ).toBeNull();
   });

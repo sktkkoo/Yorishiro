@@ -2,7 +2,7 @@
  * LoadReport の build logic — pure fn。
  *
  * loadUserPacks の結果 + メタ情報（timestamp / safeMode）から、Rust 側が
- * `~/.charminal/last-startup.json` に atomic write する shape を組む。
+ * `~/.yorishiro/last-startup.json` に atomic write する shape を組む。
  * Safe mode 時は loadUserPacks 自体を呼ばないため、この report の書き出しも
  * skip される（既存の last-startup.json が保持される）。
  *

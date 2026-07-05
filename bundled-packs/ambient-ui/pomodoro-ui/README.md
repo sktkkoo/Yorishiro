@@ -1,6 +1,6 @@
 # pomodoro-ui — ポモドーロの残り時間と操作を画面右下に表示（bundled ambient-ui pack）
 
-Charminal 本体同梱の reference ambient-ui pack。`amenities/pomodoro` が持つタイマー state を
+Yorishiro 本体同梱の reference ambient-ui pack。`amenities/pomodoro` が持つタイマー state を
 画面右下に表示し、user が直接停止できる操作 UI を提供する overlay。
 
 ## ambient-ui pack の制度
@@ -33,11 +33,11 @@ amenity → persona の正規 pattern」）。
 
 ## 編集について
 
-この pack は **Charminal 本体の一部** として扱われる。Charminal 内（AI / `/charm` /
+この pack は **Yorishiro 本体の一部** として扱われる。Yorishiro 内（AI / `/yori` /
 file writer）からは編集不可、本体の version up でのみ更新される
 （memory: `feedback_bundled_pack_immutability.md`）。
 
-挙動を変えたい場合は、同 id で `~/.charminal/packs/pomodoro-ui/` に fork を置く
+挙動を変えたい場合は、同 id で `~/.yorishiro/packs/pomodoro-ui/` に fork を置く
 （bundled は dispose され、user 版が active になる。fork の保守は user の責任）。
 
 ## 関連

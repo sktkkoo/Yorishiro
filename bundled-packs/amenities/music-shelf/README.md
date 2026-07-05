@@ -46,8 +46,8 @@ trigger match 経由で persona reflex を発火させるための synthetic eve
 
 ## 編集について
 
-この pack は **Charminal 本体の一部**。Charminal 内（AI / `/charm` / file writer）からは編集不可、
+この pack は **Yorishiro 本体の一部**。Yorishiro 内（AI / `/yori` / file writer）からは編集不可、
 本体の version up でのみ更新される（memory: `feedback_bundled_pack_immutability.md`）。
 
-自分用に挙動を変えたい場合は、同 id で `~/.charminal/packs/music-shelf/` に fork を置く
+自分用に挙動を変えたい場合は、同 id で `~/.yorishiro/packs/music-shelf/` に fork を置く
 （bundled は dispose され、user 版が active になる。fork の保守は user の責任）。

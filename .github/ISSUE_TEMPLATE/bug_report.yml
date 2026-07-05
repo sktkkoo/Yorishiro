@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible Charminal bug
+description: Report a reproducible Yorishiro bug
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -10,7 +10,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Charminal version or commit
+      label: Yorishiro version or commit
       placeholder: v0.4.0 or commit SHA
     validations:
       required: true
@@ -48,7 +48,7 @@ body:
     attributes:
       label: Reproduction steps
       placeholder: |
-        1. Launch Charminal
+        1. Launch Yorishiro
         2. Open Settings
         3. ...
     validations:
@@ -75,11 +75,11 @@ body:
     id: safe-mode
     attributes:
       label: Safe mode result
-      description: Say whether `CHARMINAL_SAFE_MODE=1` changes the behavior.
+      description: Say whether `YORISHIRO_SAFE_MODE=1` changes the behavior.
   - type: checkboxes
     id: pack
     attributes:
       label: User pack involvement
       options:
         - label: This reproduces with user packs disabled or in safe mode.
-        - label: This may involve a user pack under `~/.charminal/packs/`.
+        - label: This may involve a user pack under `~/.yorishiro/packs/`.

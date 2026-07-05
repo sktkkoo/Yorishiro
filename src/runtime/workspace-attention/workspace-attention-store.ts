@@ -1,4 +1,4 @@
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import type {

@@ -1,5 +1,5 @@
 /**
- * 現行 Charminal が register 先を持つ pack kind。Phase 1-a では effect と persona
+ * 現行 Yorishiro が register 先を持つ pack kind。Phase 1-a では effect と persona
  * のみ、Phase 2 で scene、UI Pack Plan 4 で ui が追加された。attention-aura-v2 で
  * ambient-ui を追加（ambientUiPackRegistry に分岐し、uiPackRegistry とは別空間に閉じる）。
  * 他 (voice / body) は watcher / loader どちらからも skip される。

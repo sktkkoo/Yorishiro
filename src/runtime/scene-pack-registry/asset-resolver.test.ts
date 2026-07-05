@@ -125,7 +125,7 @@ const bundledOptions = (overrides: Partial<ResolveOptions> = {}): ResolveOptions
 const userOptions = (overrides: Partial<ResolveOptions> = {}): ResolveOptions => ({
   origin: "user",
   packId: "test-pack",
-  packDir: "/home/user/.charminal/packs/test-pack",
+  packDir: "/home/user/.yorishiro/packs/test-pack",
   ...overrides,
 });
 
@@ -199,7 +199,7 @@ describe("resolveLayerAssetWith", () => {
     };
     const result = await resolveLayerAssetWith(layer, userOptions({ onMissing }), fakeResolvers);
     expect(result.backgroundImage).toBeUndefined();
-    expect(result.src).toBe("asset:///home/user/.charminal/packs/test-pack/bg.mp4");
+    expect(result.src).toBe("asset:///home/user/.yorishiro/packs/test-pack/bg.mp4");
     expect(onMissing).toHaveBeenCalledWith("layer-a", "url(https://example.com/bg.png)");
   });
 
@@ -220,7 +220,7 @@ describe("resolveLayerAssetWith", () => {
   it("user + packDir あり + resolver が URL を返すとき layer.src が更新される", async () => {
     const layer = makeLayer("bg.mp4");
     const result = await resolveLayerAssetWith(layer, userOptions(), fakeResolvers);
-    expect(result.src).toBe("asset:///home/user/.charminal/packs/test-pack/bg.mp4");
+    expect(result.src).toBe("asset:///home/user/.yorishiro/packs/test-pack/bg.mp4");
   });
 
   it("user + packDir undefined のとき onMissing が呼ばれ layer.src が undefined になる", async () => {
@@ -333,7 +333,7 @@ describe("resolveSceneAssets", () => {
     const result = await resolveSceneAssets(scene, {
       origin: "user",
       packId: "any",
-      packDir: "/home/user/.charminal/packs/test-pack",
+      packDir: "/home/user/.yorishiro/packs/test-pack",
       onMissing,
     });
     expect(result.ambient).toEqual([]);

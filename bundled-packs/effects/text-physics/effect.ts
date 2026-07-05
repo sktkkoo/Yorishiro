@@ -22,7 +22,7 @@
  * 観察 → 微調整の loop で固める（CLAUDE.md「感触 parameter は帰納的に」）。
  */
 
-import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, Vec2 } from "@yorishiro/sdk";
 
 interface TextPhysicsOptions {
   readonly origin: Vec2;
@@ -126,7 +126,7 @@ export default {
       maskDiv.style.top = `${cellData.terminalRect.top + cutoffRow * cellData.cellHeight}px`;
       maskDiv.style.width = `${cellData.terminalRect.width}px`;
       maskDiv.style.height = `${(maxAffectedRow - cutoffRow + 1) * cellData.cellHeight}px`;
-      maskDiv.style.backgroundColor = "var(--charminal-bg, #141619)";
+      maskDiv.style.backgroundColor = "var(--yorishiro-bg, #141619)";
       maskDiv.style.zIndex = "1";
       container.appendChild(maskDiv);
 

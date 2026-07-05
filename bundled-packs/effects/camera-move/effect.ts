@@ -6,7 +6,7 @@
  * passive に発火するだけにする。
  */
 
-import type { EffectContext, EffectDefinition, Vec3 } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, Vec3 } from "@yorishiro/sdk";
 
 interface CameraMoveOptions {
   readonly offset?: Partial<Vec3>;

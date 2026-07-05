@@ -41,16 +41,15 @@ export { default as mistyGrasslandsManifest } from "../bundled-packs/scenes/mist
 export { default as mistyGrasslandsPack } from "../bundled-packs/scenes/misty-grasslands/scene";
 export { default as simpleRoomManifest } from "../bundled-packs/scenes/simple-room/manifest.json";
 export { default as simpleRoomPack } from "../bundled-packs/scenes/simple-room/scene";
-
-// UI
-export { default as charminalSettingsManifest } from "../bundled-packs/ui/charminal-settings/manifest.json";
-export {
-  default as charminalSettingsPack,
-  PREVIOUS_ACTIVE_UI_KEY,
-  resolveCloseTarget,
-  SETTINGS_PACK_ID,
-} from "../bundled-packs/ui/charminal-settings/ui";
 export { default as immersiveManifest } from "../bundled-packs/ui/immersive/manifest.json";
 export { default as immersivePack } from "../bundled-packs/ui/immersive/ui";
 export { default as theaterManifest } from "../bundled-packs/ui/theater/manifest.json";
 export { default as theaterPack } from "../bundled-packs/ui/theater/ui";
+// UI
+export { default as yorishiroSettingsManifest } from "../bundled-packs/ui/yorishiro-settings/manifest.json";
+export {
+  default as yorishiroSettingsPack,
+  PREVIOUS_ACTIVE_UI_KEY,
+  resolveCloseTarget,
+  SETTINGS_PACK_ID,
+} from "../bundled-packs/ui/yorishiro-settings/ui";

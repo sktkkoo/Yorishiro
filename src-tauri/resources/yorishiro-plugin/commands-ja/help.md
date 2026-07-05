@@ -1,5 +1,5 @@
 ---
-description: charm コマンドの使い方・pack の種類・MCP tool 一覧
+description: yori コマンドの使い方・pack の種類・MCP tool 一覧
 argument-hint: "[知りたいこと]"
 ---
 
@@ -7,44 +7,44 @@ $ARGUMENTS
 
 ---
 
-Charminal charm コマンドのリファレンスガイド。user の質問（`$ARGUMENTS`）があれば該当セクションを中心に回答し、なければ全体を簡潔に案内する。
+Yorishiro yori コマンドのリファレンスガイド。user の質問（`$ARGUMENTS`）があれば該当セクションを中心に回答し、なければ全体を簡潔に案内する。
 
 ---
 
 ## 初回 setup（permission prompt を抑制する）
 
-Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で pack を書く際の permission prompt を減らすには、`~/.claude/settings.json` の `permissions.allow` に以下を追加する：
+Claude Code 使用時に、AI が `/yori:create` や `/yori:update` 経由で pack を書く際の permission prompt を減らすには、`~/.claude/settings.json` の `permissions.allow` に以下を追加する：
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Write(~/.charminal/packs/**)",
-      "Read(~/.charminal/packs/**)",
-      "Write(~/.charminal/init.js)",
-      "Read(~/.charminal/init.js)"
+      "Write(~/.yorishiro/packs/**)",
+      "Read(~/.yorishiro/packs/**)",
+      "Write(~/.yorishiro/init.js)",
+      "Read(~/.yorishiro/init.js)"
     ]
   }
 }
 ```
 
-既存の `allow` 配列に 4 行を追記するだけ（他の設定は変えない）。`init.js` は keyboard shortcut などを仕掛ける startup script（`/charm:shortcut` 参照）。
+既存の `allow` 配列に 4 行を追記するだけ（他の設定は変えない）。`init.js` は keyboard shortcut などを仕掛ける startup script（`/yori:shortcut` 参照）。
 
 **この設定がなくても動作する**（毎回 prompt が出るだけ）。この設定は Claude Code 専用で、Codex は独自の approval policy を使い、`~/.claude/settings.json` は読まない。
 
 ---
 
-## charm コマンド一覧
+## yori コマンド一覧
 
 | コマンド | 説明 |
 |---|---|
-| `/charm:create` | 新しい pack を対話で作る |
-| `/charm:update` | 既存の pack を編集・調整する |
-| `/charm:help` | このリファレンスを表示する |
-| `/charm:shortcut` | キーボードショートカットの追加・編集（init.js） |
-| `/charm:tutorial` | 初回チュートリアルを開始する |
+| `/yori:create` | 新しい pack を対話で作る |
+| `/yori:update` | 既存の pack を編集・調整する |
+| `/yori:help` | このリファレンスを表示する |
+| `/yori:shortcut` | キーボードショートカットの追加・編集（init.js） |
+| `/yori:tutorial` | 初回チュートリアルを開始する |
 
-各コマンドは引数付きで呼べる。例：`/charm:create 猫耳のペルソナ`、`/charm:update my-scene の背景色を暗くして`。
+各コマンドは引数付きで呼べる。例：`/yori:create 猫耳のペルソナ`、`/yori:update my-scene の背景色を暗くして`。
 
 ---
 
@@ -58,14 +58,14 @@ Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で 
 | **ui** | サイドバーの主要 UI パネル | single | `activeUi` |
 | **ambient-ui** | 常時表示のオーバーレイ UI | multi | — |
 
-- persona / scene / ui は **single-active**。scene は `scene_activate` で選ぶ（current project が解決できれば `sceneByProject`、未解決なら global fallback の `activeScene` に永続化）。persona / ui は `~/.charminal/config.json` の config key で user が明示的に選ぶ
+- persona / scene / ui は **single-active**。scene は `scene_activate` で選ぶ（current project が解決できれば `sceneByProject`、未解決なら global fallback の `activeScene` に永続化）。persona / ui は `~/.yorishiro/config.json` の config key で user が明示的に選ぶ
 - effect / ambient-ui は **multi-active**：persona handler から呼ばれる（effect）、常時表示される（ambient-ui）
 
 ---
 
 ## Pack のファイル構成
 
-配置先: `~/.charminal/packs/<id>/`
+配置先: `~/.yorishiro/packs/<id>/`
 
 必須ファイル:
 
@@ -82,19 +82,19 @@ Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で 
   "id": "<pack-id>",
   "type": "<persona | effect | scene | ui | ambient-ui>",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "entry": "<kind>.js"
 }
 ```
 
 - user pack は `.js` のみ（TS から transpile する）
-- bundled pack とは layout が異なる（bundled は `bundled-packs/<kind_plural>/<id>/`、user は flat `~/.charminal/packs/<id>/`）
+- bundled pack とは layout が異なる（bundled は `bundled-packs/<kind_plural>/<id>/`、user は flat `~/.yorishiro/packs/<id>/`）
 
 ---
 
 ## MCP tool 早見表
 
-Charminal が起動中であれば以下の MCP tool が使える。
+Yorishiro が起動中であれば以下の MCP tool が使える。
 
 ### Pack 管理
 
@@ -115,9 +115,9 @@ Charminal が起動中であれば以下の MCP tool が使える。
 | `controls_set_many({scope, values})` | scope, values | F2 panel の複数パラメータをまとめて書く |
 | `controls_transition({scope, values, durationMs})` | scope, values, durationMs | 数値パラメータを滑らかに補間する |
 
-F2 で開く debug panel は 2 枚に分かれている：**Common panel**（runtime-wide。base camera など）と **Scene panel**（active scene pack 固有。lighting / post effect / scene layer の background・foreground / camera modulation など）。`useCharminalControls` + `useControlsBridge` で登録された scene pack の値は Scene panel に出る。
+F2 で開く debug panel は 2 枚に分かれている：**Common panel**（runtime-wide。base camera など）と **Scene panel**（active scene pack 固有。lighting / post effect / scene layer の background・foreground / camera modulation など）。`useYorishiroControls` + `useControlsBridge` で登録された scene pack の値は Scene panel に出る。
 
-scene pack は照明・エフェクト・ポストプロセスなどのパラメータを SDK controls 経由で Scene panel に公開している（`useCharminalControls` + `useControlsBridge` で登録されたもの）。`controls_set({ scope: "scene", path, value })` で値を変えると画面に即反映される。user と相談しながらリアルタイムで調整し、「焼き込んで」と言われたら現在の値をソースの default に書き込む（= 次回起動からその値になる）。
+scene pack は照明・エフェクト・ポストプロセスなどのパラメータを SDK controls 経由で Scene panel に公開している（`useYorishiroControls` + `useControlsBridge` で登録されたもの）。`controls_set({ scope: "scene", path, value })` で値を変えると画面に即反映される。user と相談しながらリアルタイムで調整し、「焼き込んで」と言われたら現在の値をソースの default に書き込む（= 次回起動からその値になる）。
 
 Common camera の `camera.x` / `camera.y` / `camera.z` / `camera.rotationX` / `camera.rotationY` を controls 経由で書くと、tracking は自動で Off になり実カメラへ即反映される。滑らかにカメラを動かすデモは `controls_transition({ scope: "common", ... })` を使う。
 
@@ -157,7 +157,7 @@ ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set
 
 ## SDK 型の概要
 
-SDK の型はすべて `~/.charminal/sdk.d.ts` に bundle される（Charminal が毎起動で書き出すので、packaged build でも常に読める）。中身の内訳：
+SDK の型はすべて `~/.yorishiro/sdk.d.ts` に bundle される（Yorishiro が毎起動で書き出すので、packaged build でも常に読める）。中身の内訳：
 
 | 型 | グループ |
 |---|---|
@@ -165,7 +165,7 @@ SDK の型はすべて `~/.charminal/sdk.d.ts` に bundle される（Charminal 
 | DispatchEvent / TriggerMatch / ReactionType | reactions |
 | PersonaDefinition / EffectDefinition / ScenePackDefinition / UiPackDefinition / AmbientUiPackDefinition | pack definitions |
 
-標準 hook / DispatchEvent カタログは `docs/catalogs/standard-hooks.md`（cwd が Charminal repo のとき読める）。
+標準 hook / DispatchEvent カタログは `docs/catalogs/standard-hooks.md`（cwd が Yorishiro repo のとき読める）。
 
 full API doc は `npm run doc`（typedoc）で生成できる。
 
@@ -198,7 +198,7 @@ pack 種類ごとに使えない API が型レベルで強制されている。
 | **Ctrl+Tab / Ctrl+Shift+Tab** | 次／前のタブに切り替え |
 | **Cmd+1〜9** | N 番目のタブにジャンプ |
 
-`init.js` でカスタムショートカットを追加できる（`/charm:shortcut` 参照）。
+`init.js` でカスタムショートカットを追加できる（`/yori:shortcut` 参照）。
 
 ---
 
@@ -209,7 +209,7 @@ pack 種類ごとに使えない API が型レベルで強制されている。
 | pack を新しく作りたい | `/create` |
 | 既存 pack を直したい | `/update` |
 | ショートカットを追加したい | `/shortcut` |
-| pack が壊れて起動しない | safe mode: `CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app` |
+| pack が壊れて起動しない | safe mode: `YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app` |
 
 safe mode では user pack が一切 load されず、MCP tool（`list_load_errors()` / `disable_pack()`）で原因特定と切り離しができる。env var を外して再起動すれば disabledPacks 以外は復帰する。
 
@@ -219,6 +219,6 @@ safe mode では user pack が一切 load されず、MCP tool（`list_load_erro
 
 | ファイル | 内容 |
 |---|---|
-| `~/.charminal/sdk-guide.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等。Charminal が毎起動で書き出す） |
+| `~/.yorishiro/sdk-guide.md` | SDK ドキュメント（Twin-trigger co-emission idiom 等。Yorishiro が毎起動で書き出す） |
 | `bundled_example_read`（MCP tool） | bundled pack のソースを参考にする — id は `list_packs` で確認。source tree がディスクに無い packaged build でも読める。 |
-| `bundled-packs/`・`docs/catalogs/standard-hooks.md`・`docs/philosophy/PHILOSOPHY.md` | ファイルと同内容 — cwd が Charminal repo のとき読める |
+| `bundled-packs/`・`docs/catalogs/standard-hooks.md`・`docs/philosophy/PHILOSOPHY.md` | ファイルと同内容 — cwd が Yorishiro repo のとき読める |

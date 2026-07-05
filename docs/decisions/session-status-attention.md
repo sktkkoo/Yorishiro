@@ -11,7 +11,7 @@
 
 「許可待ち（`input`）」は、release 前の体感 latency 対策として **xterm screen buffer 末尾の permission prompt を低遅延 fast path として読む**。さらに cmux 型の **per-session PATH shim** を shell session に注入し、手動起動された `claude` / `codex` から sessionId 付き hook signal を返せるようにする。agent hook 由来の attention signal と terminal-native な notification OSC（9/99/777）は fallback / 汎用 attention 経路として残す。許可待ちは sticky（出力 / focus では消えない）で、**確定入力、screen 上からの prompt 消失、agent の resume hook（stop / prompt / post-tool）で解除**する。照明通知は sticky attention と同期し続けず、attention 1 件につき一度だけの 2-pulse cue に留める。PTY observation-only（[critical-constraints §1](critical-constraints.md)）は一切緩めない。
 
-現状の Charminal で最も低遅延に検出できるのは、その terminal screen に実際に permission prompt が描かれるケース。hook / OSC による安定検出は、Charminal が起動時に hooks / OSC を注入した main agent に加え、shell session に注入した `~/.charminal/shell/session-shims/<session>/claude|codex` 経由で手動起動された agent も対象にする（§8）。
+現状の Yorishiro で最も低遅延に検出できるのは、その terminal screen に実際に permission prompt が描かれるケース。hook / OSC による安定検出は、Yorishiro が起動時に hooks / OSC を注入した main agent に加え、shell session に注入した `~/.yorishiro/shell/session-shims/<session>/claude|codex` 経由で手動起動された agent も対象にする（§8）。
 
 ## 何を決めたか
 
@@ -32,9 +32,9 @@ TabIndicator が `run` を出せるよう、PTY 出力が来たら `running-comm
 3. **OSC notification（受信のみ）**: `registerOscHandler(9/99/777)` で agent / shell が同一 terminal に自発的に出した notification OSC を拾う。host が sessionId を stamp できるが、「その session の PTY に実際に書かれた場合」しか見えない。
 4. **post-tool / resume / 確定入力（解除）**: §5。
 
-Claude Code の `Notification` hook は permission prompt 表示から数秒（環境によって 10 秒級）遅れて発火することがあり、Charminal 内部の HTTP hook server → Tauri event → App を即時化しても upstream の発火遅延は残る。そのため screen fast path を主経路に据えた。
+Claude Code の `Notification` hook は permission prompt 表示から数秒（環境によって 10 秒級）遅れて発火することがあり、Yorishiro 内部の HTTP hook server → Tauri event → App を即時化しても upstream の発火遅延は残る。そのため screen fast path を主経路に据えた。
 
-Charminal 側から hook notification を OSC 777 へ echo して自分で拾い直す経路（旧 `hook-notify-osc.py`）は、screen fast path + HTTP hook attribution が安定したため削除した。OSC は「受信」だけ残す。
+Yorishiro 側から hook notification を OSC 777 へ echo して自分で拾い直す経路（旧 `hook-notify-osc.py`）は、screen fast path + HTTP hook attribution が安定したため削除した。OSC は「受信」だけ残す。
 
 ### 4. 「attention request」であって「awaiting-input」専用ではない（概念分離）
 
@@ -59,7 +59,7 @@ screen fast path が出した attention は hook / OSC より権威を持つ。p
 
 ### 6. attribution と exit の扱い
 
-- OSC 経路は `sessionId` を host-stamp（詐称不可）。HTTP hook 経路は、payload/query に `sessionId` があればその session に attribute し、無ければ **agent = main session**を fallback 宛先にする。shell shims は `CHARMINAL_SESSION_ID` を query に載せるため、非 main shell agent も該当 tab に `input` を出せる。
+- OSC 経路は `sessionId` を host-stamp（詐称不可）。HTTP hook 経路は、payload/query に `sessionId` があればその session に attribute し、無ければ **agent = main session**を fallback 宛先にする。shell shims は `YORISHIRO_SESSION_ID` を query に載せるため、非 main shell agent も該当 tab に `input` を出せる。
 - `pty-exit` の `recordExit` は **非 main session のみ**。main は auto-respawn するので exit badge を出さない。
 - 非 main session は exit しても **即 close しない**（`done` / `failed` を見せ、ユーザーが Cmd+W で閉じる）。
 
@@ -80,12 +80,12 @@ cmux（`manaflow-ai/cmux`、調査 snapshot `05c03cf5ac3640485f53623731ea416d642
 - persistent hook install も持つ。Codex では `cmux hooks setup --agent codex` が `~/.codex/hooks.json` を触る経路で、custom launcher / subrouter が PATH wrapper を bypass する場合の保険。source: [CMUXCLI+AgentHookDefinitions.swift](https://github.com/manaflow-ai/cmux/blob/05c03cf5ac3640485f53623731ea416d642e8007/CLI/CMUXCLI%2BAgentHookDefinitions.swift#L156-L177), [AutomationSection.swift](https://github.com/manaflow-ai/cmux/blob/05c03cf5ac3640485f53623731ea416d642e8007/Packages/macOS/CmuxSettingsUI/Sources/CmuxSettingsUI/Sections/AutomationSection.swift#L229-L265)
 - Feed classifier は event semantics を分ける。Claude `PermissionRequest` は actionable approval、Codex `PermissionRequest` は Codex 自身の reviewer 前に走るため telemetry 扱いにしている。source: [FeedEventClassifier.swift](https://github.com/manaflow-ai/cmux/blob/05c03cf5ac3640485f53623731ea416d642e8007/CLI/FeedEventClassifier.swift#L163-L190)
 
-Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` / `CHARMINAL_AGENT_SHIM_ROOT` を環境へ入れ、`~/.charminal/shell/session-shims/<session>/` を `PATH` 先頭へ prepend する。この directory に `claude` / `codex` shim を生成する。
+Yorishiro 初期実装では、shell session spawn 時に `YORISHIRO_SESSION_ID` / `YORISHIRO_HOOK_PORT` / `YORISHIRO_AGENT_SHIM_ROOT` を環境へ入れ、`~/.yorishiro/shell/session-shims/<session>/` を `PATH` 先頭へ prepend する。この directory に `claude` / `codex` shim を生成する。
 
-- `claude` shim は real `claude` を PATH から探し、自分自身 / shim dir を skip して、session-local `claude-hooks.json` を `--settings` で差し込む。hook command は `~/.charminal/shell/hooks/hook-*.sh` に集約し、`CHARMINAL_SESSION_ID` を query に載せて `127.0.0.1:<port>/hook/...` へ POST する。`PermissionRequest` も含める。
+- `claude` shim は real `claude` を PATH から探し、自分自身 / shim dir を skip して、session-local `claude-hooks.json` を `--settings` で差し込む。hook command は `~/.yorishiro/shell/hooks/hook-*.sh` に集約し、`YORISHIRO_SESSION_ID` を query に載せて `127.0.0.1:<port>/hook/...` へ POST する。`PermissionRequest` も含める。
 - `codex` shim は cmux と同じ per-invocation 方式で `--enable hooks` / `--dangerously-bypass-hook-trust` / `-c hooks.Event=...` を差し込む。対象は session entrypoint（bare / prompt / `exec` / `resume`）に限定し、`login` / `doctor` / `--help` 等は real binary passthrough。`SessionStart` / `UserPromptSubmit` / `Stop` / `PreToolUse` / `PostToolUse` / `PermissionRequest` を送る。
-- user rc が `~/.local/bin` などを PATH 先頭へ再 prepend するため、spawn env の PATH だけでは負ける。Charminal の `init.zsh` / `init.bash` / `init.fish` は user rc の後に走るので、そこで shim dir を PATH 先頭へ戻し、`claude()` / `codex()` shell function を定義する（cmux zsh integration と同じ「後勝ち」方式）。したがって確認には `which claude` より `type claude` / `functions claude` を使う。
-- wrapper は `CHARMINAL_AGENT_SHIMS_DISABLED=1` または `CHARMINAL_SESSION_ID` 不在では real binary passthrough。global な `~/.claude` / `~/.codex` を触る persistent hook install はまだ入れない（custom launcher / subrouter 対応用の明示 opt-in として deferred）。
+- user rc が `~/.local/bin` などを PATH 先頭へ再 prepend するため、spawn env の PATH だけでは負ける。Yorishiro の `init.zsh` / `init.bash` / `init.fish` は user rc の後に走るので、そこで shim dir を PATH 先頭へ戻し、`claude()` / `codex()` shell function を定義する（cmux zsh integration と同じ「後勝ち」方式）。したがって確認には `which claude` より `type claude` / `functions claude` を使う。
+- wrapper は `YORISHIRO_AGENT_SHIMS_DISABLED=1` または `YORISHIRO_SESSION_ID` 不在では real binary passthrough。global な `~/.claude` / `~/.codex` を触る persistent hook install はまだ入れない（custom launcher / subrouter 対応用の明示 opt-in として deferred）。
 
 ## なぜそう決めたか
 
@@ -102,7 +102,7 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 - **あらゆる `onData` で解除**：却下。mouse tracking / focus reporting の ESC sequence で早期解除される。
 - **attention を `activity` に畳む**：却下。OSC133 由来 activity と概念が違い、上書き合戦になる。独立 field にする。
 - **HTTP-only / OSC-only**：却下。OSC は emit 失敗が silent、HTTP は session 属性を持たない限り main agent に寄ってしまう。両建てにしつつ、非 main は wrapper で sessionId を注入する。
-- **`Notification` hook を low-latency 入口にする**：却下。Charminal 内部配信を immediate にしても hook 自体が数秒遅れて発火するため、`input` badge の体感 latency を解決しない。
+- **`Notification` hook を low-latency 入口にする**：却下。Yorishiro 内部配信を immediate にしても hook 自体が数秒遅れて発火するため、`input` badge の体感 latency を解決しない。
 - **Codex `PermissionRequest` だけを low-latency 入口にする**：却下。Codex は auto-allowed / reviewer 前にも発火しうるため、screen fast path と post-tool clear を組み合わせる。Claude `PermissionRequest` は actionable approval として採用。
 - **`PreToolUse` で解除**：却下。permission gate と発火タイミングが近く、解除が早すぎるリスク。
 - **照明通知を awaiting-input 中ずっと点滅させる**：却下。sticky な許可待ちと同期すると、長い承認待ちほど視覚ノイズが増える。attention 1 件につき一度だけ点滅し、その後は静的な表示に任せる。
@@ -112,7 +112,7 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 
 - **PTY observation-only 不変**：notification は出力 stream を読むだけ。`loop_announce` 等と同じ observation channel。
 - **要 rebuild / 新 session**：`Notification` hook は session spawn 時に `hooks.json` へ書かれるため、Rust 変更後は再ビルド + agent 再起動が必要。
-- **手動 shell agent は per-session shim 経由で対応**：Charminal shell で手動起動した `claude` / `codex` は PATH 先頭の shim を通れば sessionId 付き hook signal を返す。user が絶対 path で binary を呼ぶ / alias が PATH より優先する / `CHARMINAL_AGENT_SHIMS_DISABLED=1` の場合は screen fast path のみ。
+- **手動 shell agent は per-session shim 経由で対応**：Yorishiro shell で手動起動した `claude` / `codex` は PATH 先頭の shim を通れば sessionId 付き hook signal を返す。user が絶対 path で binary を呼ぶ / alias が PATH より優先する / `YORISHIRO_AGENT_SHIMS_DISABLED=1` の場合は screen fast path のみ。
 - **screen 文面 heuristic**：agent UI 文面変更に弱い。`screen-attention-detector` は純粋関数 + test で保護し、Claude / Codex の実 UI に合わせて調整する。
 - **deferred**：Rust `SessionRegistry` の OSC133 activity（shell の running-command / idle）を TS `SessionStatusStore` に bridge する配線（§2 の heuristic を精密化）。Codex hook / notification 実機検証。persistent hook install（PATH shim bypass 対応）。attention の persona reflex / aura 連動（cmux の pane glow 相当）。
 - 主な source：`src/runtime/session-status/`（store / `screen-attention-detector` / `deriveSessionStatusBadge` / `isAttentionClearingInput`）、`src/runtime/terminal-runtime/`（`readScreenTailText` / `osc-notification.ts` / `subscribeNotification` / `subscribeUserInput`）、`src/runtime/workspace-attention/session-attention-producer.ts`、`src/runtime/attention-light-cue/`、`src/runtime/three-runtime/attention-cue-light.tsx`、`src/terminal.tsx`、`src/components/TabIndicator.tsx`、`src/App.tsx`（`hook-signal` event / fallback poll → markAttentionRequest / clearAttention）、`src-tauri/src/sessions/shell_wrapper.rs`（per-session `claude` / `codex` shim + hook scripts）、`src-tauri/src/pty.rs`（hook server + sessionId query stamp + `Notification` hook + immediate Tauri emit）。
@@ -127,12 +127,12 @@ Charminal 初期実装では、shell session spawn 時に `CHARMINAL_SESSION_ID`
 
 - 2026-06-28: 初版。SessionStatusStore（観察 read model）+ TabIndicator badge、awaiting-input の OSC/HTTP 二系統入口、sticky + 限定解除（確定入力 / stop・prompt hook、focus・mouse/focus report では消さない）、attribution（OSC=host-stamp / HTTP=agent main）、非 main exit 保持を確定。Rust OSC133 activity の TS bridge は deferred。
 - 2026-06-28 rev.2: `input` 表示の数秒〜10 秒級ラグを受け、HTTP hook server → App を polling only から **Tauri event `hook-signal` immediate + polling fallback** に変更。hook server は connection ごとに処理し、read timeout を持つ。decision 本文に反映。
-- 2026-06-28 rev.3: polling fallback が古い notification を再処理して `input` を復活させうる問題を受け、Rust hook server が `_charminal_seq` を stamp、App が seq で immediate/polling の重複を dedup する仕様を追加。
-- 2026-06-28 rev.4: cmux 公開実装を再調査し、「agent approval 検出 = OSC 受動観察中心」という前提を修正。cmux は surface env + per-surface PATH shim + wrapper-injected hooks + socket/feed で手動起動 `claude` / `codex` を attribute する。Charminal の非 main shell agent 検出は wrapper / hook 注入が必要、と明記。
+- 2026-06-28 rev.3: polling fallback が古い notification を再処理して `input` を復活させうる問題を受け、Rust hook server が `_yorishiro_seq` を stamp、App が seq で immediate/polling の重複を dedup する仕様を追加。
+- 2026-06-28 rev.4: cmux 公開実装を再調査し、「agent approval 検出 = OSC 受動観察中心」という前提を修正。cmux は surface env + per-surface PATH shim + wrapper-injected hooks + socket/feed で手動起動 `claude` / `codex` を attribute する。Yorishiro の非 main shell agent 検出は wrapper / hook 注入が必要、と明記。
 - 2026-06-28 rev.5: Claude `Notification` hook 自体の発火遅延に対し、xterm screen buffer 末尾を読む `readScreenTailText` + `screen-attention-detector` を `input` badge の low-latency primary path に変更。screen 由来 attention を hook / OSC より権威化し、解除直後の late hook / OSC resurrection を抑止する仕様を追加。
-- 2026-06-28 rev.6: shell session spawn 時に `CHARMINAL_SESSION_ID` / `CHARMINAL_HOOK_PORT` と per-session PATH shim（`claude` / `codex`）を注入する実装に更新。hook server は `?sessionId=` を payload に stamp し、App は main fallback ではなく該当 session に attention / clear を適用する。
+- 2026-06-28 rev.6: shell session spawn 時に `YORISHIRO_SESSION_ID` / `YORISHIRO_HOOK_PORT` と per-session PATH shim（`claude` / `codex`）を注入する実装に更新。hook server は `?sessionId=` を payload に stamp し、App は main fallback ではなく該当 session に attention / clear を適用する。
 - 2026-06-28 rev.7: shell 手動起動 Claude で `input` が出ない実機報告を受け、Claude shim / main Claude hooks に `PermissionRequest` を追加。Claude は actionable approval、Codex は screen fast path authoritative という cmux の分類に合わせる。
 - 2026-06-28 rev.8: user `.zshrc` 等が shim dir より前に `~/.local/bin` を再 prepend する問題に対応。init script（user rc 後）で PATH を戻し、`claude()` / `codex()` shell function を定義して shim を後勝ちさせる。
-- 2026-06-28 rev.9: 観察源を 4 層（screen fast path / agent hook / OSC 受信 / 解除）として整理。screen fast path + HTTP hook attribution が安定したため、Charminal 自身が hook を OSC 777 へ echo する `hook-notify-osc.py` 経路を削除（OSC は受信のみ残す）。
+- 2026-06-28 rev.9: 観察源を 4 層（screen fast path / agent hook / OSC 受信 / 解除）として整理。screen fast path + HTTP hook attribution が安定したため、Yorishiro 自身が hook を OSC 777 へ echo する `hook-notify-osc.py` 経路を削除（OSC は受信のみ残す）。
 - 2026-07-04 rev.10: 照明通知は attention 1 件につき一度だけの cue に変更。awaiting-input 中ずっと点滅させる案は視覚ノイズを増やすアンチパターンとして記録。実使用で 1 pulse では気づきづらいため、淡い暖色の 2-pulse cue に調整。
 - 2026-07-04 rev.11: 照明通知を scene 所有へ移行。信号層（session-attention-producer で全 session 対応 + AttentionLightCueStore）と表現層（scene mount の AttentionCueLight、沈黙時は runtime default がキャラ位置自動配置で生きる yielding default）に分離し、runtime 直注入の AttentionFlashLight を退役。MCP `attention_light_cue` で住人からも発火可能に。

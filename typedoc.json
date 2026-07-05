@@ -4,7 +4,7 @@
   "out": "docs/api/typescript",
   "tsconfig": "tsconfig.json",
   "readme": "src/sdk/README.md",
-  "name": "@charminal/sdk",
+  "name": "@yorishiro/sdk",
   "includeVersion": true,
   "excludePrivate": false,
   "excludeProtected": false,

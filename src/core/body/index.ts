@@ -13,6 +13,7 @@
  * SDK surface: src/sdk/context.d.ts CharacterAPI (262-292)
  */
 
+import type { VRM } from "@pixiv/three-vrm";
 import type {
   AnimationHandle,
   AnimationRef,
@@ -28,8 +29,7 @@ import type {
   MotionHandle as SdkMotionHandle,
   MotionRequest as SdkMotionRequest,
   MotionSnapshot as SdkMotionSnapshot,
-} from "@charminal/sdk";
-import type { VRM } from "@pixiv/three-vrm";
+} from "@yorishiro/sdk";
 import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
@@ -442,7 +442,7 @@ export class Body {
     //    オフセットとして渡す（spine sway / arm sway と同 bone への加算合成）。
     //    Complementary weight with VRMA: procedural fades as clips take over,
     //    so procedural's direct rotation assignment doesn't fight clip motion.
-    //    (Ported from old Charminal AnimationSourceManager.update.)
+    //    (Ported from old Yorishiro AnimationSourceManager.update.)
     const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
     const proceduralWeight = Math.max(0, 1 - vrmaWeight);
     this.breathing.setMode(

@@ -13,7 +13,7 @@ import type {
   AmenityHandle,
   AmenityPackDefinition,
   Cancellable,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 
 // ─── Types ───────────────────────────────────────────────
 

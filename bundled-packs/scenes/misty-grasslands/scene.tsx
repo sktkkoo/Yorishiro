@@ -12,7 +12,7 @@
  * Internal design-record: 2026-04-29-misty-grasslands-mirror-redesign.md
  */
 
-import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
 import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 

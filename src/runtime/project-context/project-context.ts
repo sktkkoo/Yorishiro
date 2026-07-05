@@ -1,9 +1,9 @@
 import { resolveProjectRoot } from "../../bindings/tauri-commands";
 import {
-  type CharminalConfig,
   resolveSceneForProject,
   withActiveSceneSet,
   withProjectSceneSet,
+  type YorishiroConfig,
 } from "../user-pack-loader/config";
 
 export type ProjectRootResolution =
@@ -18,7 +18,7 @@ export function projectRootValue(resolution: ProjectRootResolution): string | nu
 export type ProjectSceneSelectionResult =
   | {
       readonly kind: "persisted";
-      readonly config: CharminalConfig;
+      readonly config: YorishiroConfig;
       readonly activeScene: string | null;
       readonly projectRoot: ProjectRootResolution;
     }
@@ -61,10 +61,10 @@ export async function resolveProjectRootIfUnresolved(
  * current project root があれば per-project mapping、無ければ global activeScene を更新する。
  */
 export function withCurrentProjectSceneSet(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   projectRoot: string | null,
   sceneId: string | null,
-): CharminalConfig {
+): YorishiroConfig {
   return projectRoot !== null
     ? withProjectSceneSet(cfg, projectRoot, sceneId)
     : withActiveSceneSet(cfg, sceneId);
@@ -77,10 +77,10 @@ export function withCurrentProjectSceneSet(
  * raw sceneId ではなく更新後 config から解決する必要がある。
  */
 export function applyCurrentProjectSceneSelection(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   projectRoot: string | null,
   sceneId: string | null,
-): { readonly config: CharminalConfig; readonly activeScene: string | null } {
+): { readonly config: YorishiroConfig; readonly activeScene: string | null } {
   const config = withCurrentProjectSceneSet(cfg, projectRoot, sceneId);
   return { config, activeScene: resolveSceneForProject(config, projectRoot) };
 }
@@ -90,7 +90,7 @@ export function applyCurrentProjectSceneSelection(
  * それでも不明なら global activeScene を汚さず、runtime 反映だけに劣化する。
  */
 export async function applyCurrentProjectSceneSelectionWithResolution(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   projectRoot: ProjectRootResolution,
   sceneId: string | null,
 ): Promise<ProjectSceneSelectionResult> {

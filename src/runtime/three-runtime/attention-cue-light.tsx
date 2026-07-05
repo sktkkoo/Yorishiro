@@ -163,7 +163,7 @@ function AttentionCueLightCore({
   ];
 
   return (
-    <group name="charminal-attention-cue-light">
+    <group name="yorishiro-attention-cue-light">
       <ambientLight ref={ambientRef} color={color} intensity={initial.ambient * intensityScale} />
       <pointLight
         ref={pointRef}

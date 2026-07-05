@@ -22,7 +22,7 @@
                         │ Tool activity│
                         │ Window event │
                         │ Scene change │
-                        │ /charm cmd   │
+                        │ /yori cmd   │
                         │ Loop announce│
                         └──────┬───────┘
                                │
@@ -87,7 +87,7 @@
 | `tool-activity` | 推定ツール活動（`reading` / `writing` / `running` / `none`） | Body state 遷移 |
 | `window` | ウィンドウ状態（`resize` / `focus` / `blur`） | focus/blur 反応 |
 | `scene-change` | シーン切替（`fromId` → `toId`） | シーン遷移時の反応 |
-| `charm-command` | `/charm` コマンド | ユーザーコマンド処理 |
+| `yori-command` | `/yori` コマンド | ユーザーコマンド処理 |
 | `loop-lifecycle` | 自律 agent loop の自己申告（MCP `loop_announce` / pack `ctx.loop.announce`、host が `agent` を stamp） | ループの進行・停滞・完了の観察（CC/Codex 両対応、observation-only） |
 
 ### Synthetic event（handler が生成）

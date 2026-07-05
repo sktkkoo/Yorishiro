@@ -29,7 +29,7 @@ import type {
   ReactionEvent,
   ReactionType,
   WeightedPersonaHandler,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { Time } from "../../core/time";
 import type {
   EventBus,

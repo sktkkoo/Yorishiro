@@ -21,7 +21,7 @@
 ## なぜそう決めたか
 
 - 過剰共通化は abstraction leak の温床。後で「実は違った」が必ず来る
-- Charminal の SDK は AI が読んで pack を書く前提 → **概念ごとに type / API が分かれている方が AI の判断が安定**（PersonaContext と AmenityContext を別型にすることで「amenity で character を呼ぶ」という mistake が型 error になる）
+- Yorishiro の SDK は AI が読んで pack を書く前提 → **概念ごとに type / API が分かれている方が AI の判断が安定**（PersonaContext と AmenityContext を別型にすることで「amenity で character を呼ぶ」という mistake が型 error になる）
 - 統合してから分離するコストは、最初から分けるコストよりはるかに高い
 
 ## 適用例

@@ -1,4 +1,4 @@
-import type { Disposable, EffectContext } from "@charminal/sdk";
+import type { Disposable, EffectContext } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import screenShake from "./effect";
 

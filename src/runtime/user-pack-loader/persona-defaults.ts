@@ -1,11 +1,11 @@
-import type { PersonaDefinition } from "@charminal/sdk";
+import type { PersonaDefinition } from "@yorishiro/sdk";
 
 /**
  * Fill optional persona axes from the bundled default persona.
  *
  * A user persona can be intentionally small: id/name + persona.md. In that case
  * the user's thinking layer should stay theirs, while missing reflex/world/log
- * behavior falls back to Charminal's baseline body reactions.
+ * behavior falls back to Yorishiro's baseline body reactions.
  */
 export function applyPersonaDefaults(
   persona: PersonaDefinition,

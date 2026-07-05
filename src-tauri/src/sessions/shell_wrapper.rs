@@ -1,8 +1,8 @@
 //! Shell wrapper rc + init script の生成。
 //!
-//! `~/.charminal/shell/` 配下に Charminal 所有の init script と wrapper rc を
+//! `~/.yorishiro/shell/` 配下に Yorishiro 所有の init script と wrapper rc を
 //! 書き出す。spawn 時に shell binary に応じた env / args を組み立てて wrapper
-//! を経由させ、user の rc → Charminal の OSC 133 / 633 emit → user.<shell> 拡張点
+//! を経由させ、user の rc → Yorishiro の OSC 133 / 633 emit → user.<shell> 拡張点
 //! の順で source される構造を作る。
 //!
 //! 詳細は `docs/terminal.md` §Shell integration。
@@ -13,36 +13,36 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
-/// `~/.charminal/shell/init.zsh` — OSC 133 / 633 emit を zsh の hook に登録する。
+/// `~/.yorishiro/shell/init.zsh` — OSC 133 / 633 emit を zsh の hook に登録する。
 /// PROMPT は触らず、precmd / preexec function array にのみ append する
 /// （p10k / oh-my-zsh / prezto との衝突を避ける）。
 const INIT_ZSH: &str = include_str!("shell_wrapper/init.zsh");
 
-/// `~/.charminal/shell/init.bash` — preexec 相当を DEBUG trap で代替し、
+/// `~/.yorishiro/shell/init.bash` — preexec 相当を DEBUG trap で代替し、
 /// OSC 133 / 633 emit と precmd を PROMPT_COMMAND chain に挿入する。
 const INIT_BASH: &str = include_str!("shell_wrapper/init.bash");
 
-/// `~/.charminal/shell/init.fish` — fish の native event hook で OSC 133 / 633 を emit する。
+/// `~/.yorishiro/shell/init.fish` — fish の native event hook で OSC 133 / 633 を emit する。
 const INIT_FISH: &str = include_str!("shell_wrapper/init.fish");
 
-/// `~/.charminal/shell/wrapper-zsh/.zshrc` — ZDOTDIR 経由で読まれ、user の
+/// `~/.yorishiro/shell/wrapper-zsh/.zshrc` — ZDOTDIR 経由で読まれ、user の
 /// 元 .zshrc → init.zsh → user.zsh の順で chain する。
 const WRAPPER_ZSHRC: &str = include_str!("shell_wrapper/wrapper-zsh.zshrc");
 
-/// `~/.charminal/shell/wrapper-bash/init.bash` — bash --rcfile で読まれ、
+/// `~/.yorishiro/shell/wrapper-bash/init.bash` — bash --rcfile で読まれ、
 /// user の .bashrc → init.bash → user.bash の順で chain する。
 const WRAPPER_BASH_INIT: &str = include_str!("shell_wrapper/wrapper-bash.init.bash");
 
-/// `~/.charminal/shell/hook-reminder.sh` — Claude Code の UserPromptSubmit
+/// `~/.yorishiro/shell/hook-reminder.sh` — Claude Code の UserPromptSubmit
 /// hook 用リマインダー。ユーザー管理ファイル：初回のみ seed、既存なら触らない。
 const HOOK_REMINDER: &str = include_str!("shell_wrapper/hook-reminder.sh");
 
-/// `~/.charminal/shell/` を初期化。ディレクトリと init / wrapper file を
+/// `~/.yorishiro/shell/` を初期化。ディレクトリと init / wrapper file を
 /// idempotent に書く。既存内容と一致していたら no-op。
 ///
 /// `user.<shell>` には絶対 touch しない（user 拡張点）。
-pub fn ensure_shell_files(charminal_home: &Path) -> io::Result<()> {
-    let shell_dir = charminal_home.join("shell");
+pub fn ensure_shell_files(yorishiro_home: &Path) -> io::Result<()> {
+    let shell_dir = yorishiro_home.join("shell");
     fs::create_dir_all(&shell_dir)?;
 
     write_if_different(&shell_dir.join("init.zsh"), INIT_ZSH)?;
@@ -127,9 +127,9 @@ fn hook_script(shell_dir: &Path, file_name: &str, endpoint: &str) -> io::Result<
     let path = hooks_dir.join(file_name);
     let script = format!(
         r#"#!/bin/sh
-port="${{CHARMINAL_HOOK_PORT:-19001}}"
-session="${{CHARMINAL_SESSION_ID:-}}"
-agent="${{CHARMINAL_AGENT_KIND:-}}"
+port="${{YORISHIRO_HOOK_PORT:-19001}}"
+session="${{YORISHIRO_SESSION_ID:-}}"
+agent="${{YORISHIRO_AGENT_KIND:-}}"
 body="$(cat 2>/dev/null || true)"
 if [ -z "$body" ]; then
   body="{{}}"
@@ -321,7 +321,7 @@ fn ensure_hook_scripts(shell_dir: &Path) -> io::Result<HookScripts> {
 fn claude_shim_script(settings_path: &Path) -> String {
     let settings = sh_single_quote(&settings_path.to_string_lossy());
     r#"#!/bin/sh
-if [ "${CHARMINAL_AGENT_SHIMS_DISABLED:-}" = "1" ] || [ -z "${CHARMINAL_SESSION_ID:-}" ]; then
+if [ "${YORISHIRO_AGENT_SHIMS_DISABLED:-}" = "1" ] || [ -z "${YORISHIRO_SESSION_ID:-}" ]; then
   exec_real=1
 else
   exec_real=0
@@ -346,7 +346,7 @@ real="$(find_real)" || { echo "Error: claude not found in PATH" >&2; exit 127; }
 if [ "$exec_real" = "1" ]; then
   exec "$real" "$@"
 fi
-export CHARMINAL_AGENT_KIND=claude
+export YORISHIRO_AGENT_KIND=claude
 exec "$real" --settings __SETTINGS__ "$@"
 "#
     .replace("__SETTINGS__", &settings)
@@ -422,10 +422,10 @@ should_inject() {{
   return 0
 }}
 real="$(find_real)" || {{ echo "Error: codex not found in PATH" >&2; exit 127; }}
-if [ "${{CHARMINAL_AGENT_SHIMS_DISABLED:-}}" = "1" ] || [ -z "${{CHARMINAL_SESSION_ID:-}}" ] || ! should_inject "$@"; then
+if [ "${{YORISHIRO_AGENT_SHIMS_DISABLED:-}}" = "1" ] || [ -z "${{YORISHIRO_SESSION_ID:-}}" ] || ! should_inject "$@"; then
   exec "$real" "$@"
 fi
-export CHARMINAL_AGENT_KIND=codex
+export YORISHIRO_AGENT_KIND=codex
 exec "$real" \
   --enable hooks \
   --dangerously-bypass-hook-trust \
@@ -434,11 +434,11 @@ exec "$real" \
     )
 }
 
-/// shell session 内で手動起動された `claude` / `codex` を Charminal に紐づける
-/// per-session PATH shim を用意する。cmux と同じく、Charminal 内の shell にだけ
+/// shell session 内で手動起動された `claude` / `codex` を Yorishiro に紐づける
+/// per-session PATH shim を用意する。cmux と同じく、Yorishiro 内の shell にだけ
 /// env + PATH を注入し、wrapper 失敗時は real binary へ pass-through する。
-pub fn prepare_agent_command_shims(charminal_home: &Path, session_id: &str) -> io::Result<PathBuf> {
-    let shell_dir = charminal_home.join("shell");
+pub fn prepare_agent_command_shims(yorishiro_home: &Path, session_id: &str) -> io::Result<PathBuf> {
+    let shell_dir = yorishiro_home.join("shell");
     let hooks = ensure_hook_scripts(&shell_dir)?;
     let shim_dir = shell_dir
         .join("session-shims")
@@ -460,15 +460,15 @@ pub fn prepare_agent_command_shims(charminal_home: &Path, session_id: &str) -> i
 
 pub fn apply_agent_shim_env(
     cmd: &mut portable_pty::CommandBuilder,
-    charminal_home: &Path,
+    yorishiro_home: &Path,
     session_id: &str,
     hook_port: u16,
 ) {
-    match prepare_agent_command_shims(charminal_home, session_id) {
+    match prepare_agent_command_shims(yorishiro_home, session_id) {
         Ok(shim_dir) => {
-            cmd.env("CHARMINAL_SESSION_ID", session_id);
-            cmd.env("CHARMINAL_HOOK_PORT", hook_port.to_string());
-            cmd.env("CHARMINAL_AGENT_SHIM_ROOT", &shim_dir);
+            cmd.env("YORISHIRO_SESSION_ID", session_id);
+            cmd.env("YORISHIRO_HOOK_PORT", hook_port.to_string());
+            cmd.env("YORISHIRO_AGENT_SHIM_ROOT", &shim_dir);
             cmd.env(
                 "PATH",
                 path_prepend_unique(&shim_dir, &crate::build_path_env()),
@@ -502,7 +502,7 @@ pub enum KnownShell {
     Fish,
 }
 
-/// Charminal-owned wrapper を経由するように `Command` を構成する。`integration`
+/// Yorishiro-owned wrapper を経由するように `Command` を構成する。`integration`
 /// が false のとき、または shell が known でないときは何もしない（caller は
 /// raw shell 起動にフォールバックする）。
 ///
@@ -511,18 +511,18 @@ pub enum KnownShell {
 pub fn apply_integration(
     cmd: &mut portable_pty::CommandBuilder,
     shell_path: &str,
-    charminal_home: &Path,
+    yorishiro_home: &Path,
 ) {
     let Some(kind) = detect_shell_kind(shell_path) else {
         return;
     };
-    let shell_dir = charminal_home.join("shell");
+    let shell_dir = yorishiro_home.join("shell");
     match kind {
         KnownShell::Zsh => {
-            // 元 ZDOTDIR を CHARMINAL_USER_ZDOTDIR で保存し、wrapper-zsh を ZDOTDIR にする。
-            // wrapper の .zshrc が CHARMINAL_USER_ZDOTDIR を ZDOTDIR に戻して user の .zshrc を chain する。
+            // 元 ZDOTDIR を YORISHIRO_USER_ZDOTDIR で保存し、wrapper-zsh を ZDOTDIR にする。
+            // wrapper の .zshrc が YORISHIRO_USER_ZDOTDIR を ZDOTDIR に戻して user の .zshrc を chain する。
             if let Some(orig) = std::env::var_os("ZDOTDIR") {
-                cmd.env("CHARMINAL_USER_ZDOTDIR", orig);
+                cmd.env("YORISHIRO_USER_ZDOTDIR", orig);
             }
             cmd.env("ZDOTDIR", shell_dir.join("wrapper-zsh"));
         }
@@ -552,20 +552,20 @@ pub fn apply_integration(
 #[cfg(test)]
 pub fn dry_run_integration(
     shell_path: &str,
-    charminal_home: &Path,
+    yorishiro_home: &Path,
     orig_zdotdir: Option<&str>,
 ) -> (Vec<(String, String)>, Vec<String>) {
     let kind = match detect_shell_kind(shell_path) {
         Some(k) => k,
         None => return (Vec::new(), Vec::new()),
     };
-    let shell_dir = charminal_home.join("shell");
+    let shell_dir = yorishiro_home.join("shell");
     let mut envs = Vec::new();
     let mut args = Vec::new();
     match kind {
         KnownShell::Zsh => {
             if let Some(orig) = orig_zdotdir {
-                envs.push(("CHARMINAL_USER_ZDOTDIR".to_string(), orig.to_string()));
+                envs.push(("YORISHIRO_USER_ZDOTDIR".to_string(), orig.to_string()));
             }
             envs.push((
                 "ZDOTDIR".to_string(),
@@ -610,7 +610,7 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let p = std::env::temp_dir().join(format!(
-            "charminal-shell-wrapper-test-{}-{}-{}",
+            "yorishiro-shell-wrapper-test-{}-{}-{}",
             label,
             std::process::id(),
             nanos
@@ -619,11 +619,11 @@ mod tests {
         p
     }
 
-    fn run_bash_with_charminal_init(label: &str, input: &str) -> Option<String> {
-        run_bash_with_charminal_init_and_rc(label, input, "")
+    fn run_bash_with_yorishiro_init(label: &str, input: &str) -> Option<String> {
+        run_bash_with_yorishiro_init_and_rc(label, input, "")
     }
 
-    fn run_bash_with_charminal_init_and_rc(
+    fn run_bash_with_yorishiro_init_and_rc(
         label: &str,
         input: &str,
         rc_prefix: &str,
@@ -688,17 +688,17 @@ mod tests {
         let shell = root.join("shell");
 
         let zsh = fs::read_to_string(shell.join("init.zsh")).unwrap();
-        assert!(zsh.contains("__charminal_install_agent_shims"));
+        assert!(zsh.contains("__yorishiro_install_agent_shims"));
         assert!(zsh.contains("claude()"));
         assert!(zsh.contains("codex()"));
 
         let bash = fs::read_to_string(shell.join("init.bash")).unwrap();
-        assert!(bash.contains("__charminal_install_agent_shims"));
+        assert!(bash.contains("__yorishiro_install_agent_shims"));
         assert!(bash.contains("claude()"));
         assert!(bash.contains("codex()"));
 
         let fish = fs::read_to_string(shell.join("init.fish")).unwrap();
-        assert!(fish.contains("function __charminal_install_agent_shims"));
+        assert!(fish.contains("function __yorishiro_install_agent_shims"));
         assert!(fish.contains("function claude"));
         assert!(fish.contains("function codex"));
 
@@ -760,7 +760,7 @@ mod tests {
         assert_eq!(
             envs[0],
             (
-                "CHARMINAL_USER_ZDOTDIR".to_string(),
+                "YORISHIRO_USER_ZDOTDIR".to_string(),
                 "/orig/zdotdir".to_string()
             )
         );
@@ -834,14 +834,14 @@ mod tests {
 
         let claude_script = fs::read_to_string(&claude).unwrap();
         assert!(claude_script.contains("--settings"));
-        assert!(claude_script.contains("CHARMINAL_AGENT_KIND=claude"));
+        assert!(claude_script.contains("YORISHIRO_AGENT_KIND=claude"));
 
         let codex_script = fs::read_to_string(&codex).unwrap();
         assert!(codex_script.contains("--enable hooks"));
         assert!(codex_script.contains("hooks.PermissionRequest"));
         assert!(codex_script.contains("hooks.PreCompact"));
         assert!(codex_script.contains("hooks.SubagentStop"));
-        assert!(codex_script.contains("CHARMINAL_AGENT_KIND=codex"));
+        assert!(codex_script.contains("YORISHIRO_AGENT_KIND=codex"));
 
         let parsed: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&settings).unwrap()).unwrap();
@@ -869,9 +869,9 @@ mod tests {
 
     #[test]
     fn path_prepend_unique_moves_shim_to_front_once() {
-        let shim = Path::new("/tmp/charminal-shim");
-        let path = path_prepend_unique(shim, "/usr/bin:/tmp/charminal-shim:/bin");
-        assert_eq!(path, "/tmp/charminal-shim:/usr/bin:/bin");
+        let shim = Path::new("/tmp/yorishiro-shim");
+        let path = path_prepend_unique(shim, "/usr/bin:/tmp/yorishiro-shim:/bin");
+        assert_eq!(path, "/tmp/yorishiro-shim:/usr/bin:/bin");
     }
 
     #[test]
@@ -888,14 +888,14 @@ mod tests {
         for script in [INIT_ZSH, INIT_BASH, INIT_FISH] {
             assert!(script.contains("]633;E;%s"));
             assert!(script.contains("]633;P;Cwd=%s"));
-            assert!(script.contains("__charminal_osc633_escape"));
+            assert!(script.contains("__yorishiro_osc633_escape"));
         }
     }
 
     #[test]
     fn bash_integration_emits_once_for_and_list() {
         let Some(combined) =
-            run_bash_with_charminal_init("bash-and-list", "echo one && echo two\nexit\n")
+            run_bash_with_yorishiro_init("bash-and-list", "echo one && echo two\nexit\n")
         else {
             return;
         };
@@ -908,7 +908,7 @@ mod tests {
     #[test]
     fn bash_integration_emits_once_for_pipeline() {
         let Some(combined) =
-            run_bash_with_charminal_init("bash-pipeline", "printf one | cat\nexit\n")
+            run_bash_with_yorishiro_init("bash-pipeline", "printf one | cat\nexit\n")
         else {
             return;
         };
@@ -920,7 +920,7 @@ mod tests {
 
     #[test]
     fn bash_prompt_command_preserves_previous_status_for_user_prompt() {
-        let Some(combined) = run_bash_with_charminal_init_and_rc(
+        let Some(combined) = run_bash_with_yorishiro_init_and_rc(
             "bash-prompt-status",
             "false\ntrue\nexit\n",
             "PROMPT_COMMAND='printf \"PROMPT_STATUS=%s\\n\" \"$?\"'\n",

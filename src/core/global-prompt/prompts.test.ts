@@ -4,14 +4,14 @@ import { getEnvironmentGuide, getJournalGuide, getMemoriesHeader } from "./promp
 describe("global prompt localization", () => {
   it("returns English environment guidance", () => {
     const guide = getEnvironmentGuide("en");
-    expect(guide).toContain("Charminal Environment");
-    expect(guide).toContain("~/.charminal/config.json");
+    expect(guide).toContain("Yorishiro Environment");
+    expect(guide).toContain("~/.yorishiro/config.json");
   });
 
   it("returns Japanese environment guidance", () => {
     const guide = getEnvironmentGuide("ja");
-    expect(guide).toContain("Charminal 環境");
-    expect(guide).toContain("~/.charminal/config.json");
+    expect(guide).toContain("Yorishiro 環境");
+    expect(guide).toContain("~/.yorishiro/config.json");
   });
 
   it("keeps MCP tool identifiers stable in both journal guides", () => {

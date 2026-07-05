@@ -1,4 +1,4 @@
-import type { EffectContext } from "@charminal/sdk";
+import type { EffectContext } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import desaturate from "./effect";
 

@@ -14,7 +14,7 @@ import type { UserPackEntry } from "./user-pack-loader";
 const entry = (id: string, kind: string): UserPackEntry => ({
   id,
   kind,
-  entryPath: `/home/.charminal/packs/${id}/${kind}.js`,
+  entryPath: `/home/.yorishiro/packs/${id}/${kind}.js`,
 });
 
 describe("filterDisabledPacks", () => {

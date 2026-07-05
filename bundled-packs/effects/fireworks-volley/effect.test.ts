@@ -1,4 +1,4 @@
-import type { EffectContext, RendererAPI } from "@charminal/sdk";
+import type { EffectContext, RendererAPI } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import fireworks from "../fireworks/effect";
 import volley from "./effect";

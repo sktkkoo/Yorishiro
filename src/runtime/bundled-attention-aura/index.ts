@@ -9,7 +9,7 @@
  *   「Factory default の決め方」
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import attentionAuraPack from "../../../bundled-packs/ambient-ui/attention-aura/ui";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 
@@ -26,7 +26,7 @@ export function registerBundledAttentionAura(opts: RegisterOptions): Disposable 
       id: attentionAuraPack.id,
       type: "ambient-ui",
       version: "0.1.0",
-      charminalVersion: "^0.1.0",
+      yorishiroVersion: "^0.1.0",
       entry: "ui.tsx",
     },
     pack: { mount: attentionAuraPack.mount },

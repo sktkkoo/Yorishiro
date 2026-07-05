@@ -40,5 +40,5 @@ is covered by `bundled-packs/scenes/abandoned-factory/assets/LICENSE`.
 
 ## 関連
 
-- 仕様: `Charminal-design-record/specs/2026-04-25-scene-ambient-audio-design.md`
+- 仕様: `Yorishiro-design-record/specs/2026-04-25-scene-ambient-audio-design.md`
 - 使い方 (Pack 作者向け): `src/sdk/README.md` の Scene Pack section

@@ -1,11 +1,11 @@
+import { invoke } from "@tauri-apps/api/core";
 import type {
   SayOptions,
   VoiceAPI,
   VoiceClipRef,
   VoiceHandle,
   VoicePlayOptions,
-} from "@charminal/sdk";
-import { invoke } from "@tauri-apps/api/core";
+} from "@yorishiro/sdk";
 import { ensureAudioContextRunning, getAudioContext } from "./audio-context";
 import { LipSyncAnalyser } from "./lip-sync-analyser";
 import type { MouthValues } from "./mouth-values";

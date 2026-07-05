@@ -1,4 +1,4 @@
-import type { DispatchEvent } from "@charminal/sdk";
+import type { DispatchEvent } from "@yorishiro/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventBus } from "../../runtime/event-bus";
 import { Time } from "../time";

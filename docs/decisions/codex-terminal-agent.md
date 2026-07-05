@@ -5,9 +5,9 @@
 
 ## TL;DR
 
-Charminal の Terminal は `~/.charminal/config.json` の `terminalAgent` で `claude` / `codex` を選べる。未指定は従来通り `claude`。
+Yorishiro の Terminal は `~/.yorishiro/config.json` の `terminalAgent` で `claude` / `codex` を選べる。未指定は従来通り `claude`。
 
-Persona の prompt overlay は Claude Code では `--append-system-prompt`、Codex では `-c developer_instructions=...` で渡す。Codex の base instructions は置換しない。Codex には Charminal MCP server と `$charm-*` skill plugin も session-scoped な config override で渡す。
+Persona の prompt overlay は Claude Code では `--append-system-prompt`、Codex では `-c developer_instructions=...` で渡す。Codex の base instructions は置換しない。Codex には Yorishiro MCP server と `$yori-*` skill plugin も session-scoped な config override で渡す。
 
 ## 何を決めたか
 
@@ -22,19 +22,19 @@ Persona の prompt overlay は Claude Code では `--append-system-prompt`、Cod
 Rust の PTY 層は `AgentKind` を受け取り、agent ごとに起動引数を分岐する。
 
 - Claude Code: 既存 session があれば `-c`、hook settings、bundled plugin、MCP config、`--append-system-prompt`
-- Codex: process cwd、Charminal MCP config、Charminal local marketplace plugin、persona prompt があれば `-c developer_instructions="<prompt>"`
+- Codex: process cwd、Yorishiro MCP config、Yorishiro local marketplace plugin、persona prompt があれば `-c developer_instructions="<prompt>"`
 
-Hook server は現時点では Claude Code 専用。Codex でも Charminal MCP tools、`$charm-*` skills、PTY output / user input / idle の observation は動くが、Claude hook 由来の tool lifecycle event は入らない。
+Hook server は現時点では Claude Code 専用。Codex でも Yorishiro MCP tools、`$yori-*` skills、PTY output / user input / idle の observation は動くが、Claude hook 由来の tool lifecycle event は入らない。
 
-Codex の Charminal entrypoint は `/charm:*` slash command ではなく `$charm-*` skill。起動時に `~/.codex/plugins/cache/charminal-local/charm/current/` へプラグインを直接インストールし、session-scoped config `-c plugins."charm@charminal-local".enabled=true` で有効化する。コマンドファイルは Claude Code の YAML frontmatter 形式から Codex の `skills/charm-*/SKILL.md` 形式に自動変換される。
+Codex の Yorishiro entrypoint は `/yori:*` slash command ではなく `$yori-*` skill。起動時に `~/.codex/plugins/cache/yorishiro-local/yori/current/` へプラグインを直接インストールし、session-scoped config `-c plugins."yori@yorishiro-local".enabled=true` で有効化する。コマンドファイルは Claude Code の YAML frontmatter 形式から Codex の `skills/yori-*/SKILL.md` 形式に自動変換される。
 
-初版の marketplace config override 方式（`-c marketplaces.charminal-local.source=...`）は Codex がキャッシュへのインストールを行わず、プラグインが発見されなかったため廃止。
+初版の marketplace config override 方式（`-c marketplaces.yorishiro-local.source=...`）は Codex がキャッシュへのインストールを行わず、プラグインが発見されなかったため廃止。
 
 ## なぜそう決めたか
 
-Codex CLI は system prompt 置換ではなく、既存の Codex agent loop と config を尊重するのが安全。OpenAI の Codex agent loop 解説では、`developer_instructions` は optional な developer message として model input に入る。一方 `model_instructions_file` は base instructions の置換なので、Charminal の persona overlay には強すぎる。
+Codex CLI は system prompt 置換ではなく、既存の Codex agent loop と config を尊重するのが安全。OpenAI の Codex agent loop 解説では、`developer_instructions` は optional な developer message として model input に入る。一方 `model_instructions_file` は base instructions の置換なので、Yorishiro の persona overlay には強すぎる。
 
-OpenClaw は OpenClaw-owned system prompt を組み立て、provider contribution を差し込む設計を持つ。Charminal は Claude Code / Codex という外部 agent をそのまま住まわせる方針なので、外部 agent の基底 prompt を所有しない。必要なのは prompt 全体の再構築ではなく、persona の additive overlay。
+OpenClaw は OpenClaw-owned system prompt を組み立て、provider contribution を差し込む設計を持つ。Yorishiro は Claude Code / Codex という外部 agent をそのまま住まわせる方針なので、外部 agent の基底 prompt を所有しない。必要なのは prompt 全体の再構築ではなく、persona の additive overlay。
 
 ## 検討したが却下した代替案
 
@@ -44,7 +44,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 
 ### project `AGENTS.md` を書き換える
 
-却下。Charminal が user repo に instruction file を自動生成・変更すると、worktree に不要な diff を作り、project owner の coding-agent policy と衝突する。
+却下。Yorishiro が user repo に instruction file を自動生成・変更すると、worktree に不要な diff を作り、project owner の coding-agent policy と衝突する。
 
 ### Claude / Codex を同一の「hook 対応 agent」として抽象化する
 
@@ -53,8 +53,8 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 ## この決定の implication / 制約
 
 - `terminalAgent` の切り替えは次の Terminal session 起動時に反映する。既存 PTY session へ注入し直さない。
-- Codex support の範囲は「自動起動 + persona prompt overlay + Charminal MCP + `$charm-*` skills + PTY observation」。Claude Code hook 由来の tool lifecycle event は対象外。
-- Codex の Charminal MCP と skill plugin は `~/.codex/config.toml` を変更せず、起動時の `-c` config override で注入する。
+- Codex support の範囲は「自動起動 + persona prompt overlay + Yorishiro MCP + `$yori-*` skills + PTY observation」。Claude Code hook 由来の tool lifecycle event は対象外。
+- Codex の Yorishiro MCP と skill plugin は `~/.codex/config.toml` を変更せず、起動時の `-c` config override で注入する。
 - PTY observation-only 制約は変わらない。agent が Claude でも Codex でも、persona / amenity から PTY に書き込む API は追加しない。
 
 ## 関連 reference
@@ -70,8 +70,8 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 ## 改訂履歴
 
 - 2026-05-26: TerminalAgent trait + capability flag への refactor を [agent-adapter.md](agent-adapter.md) で実施。本 doc は 2-agent 時代の決定として保持し、capability flag (`lifecycle_hooks: false`) の宣言根拠として参照される。
-- 2026-05-28: Codex CLI は Charminal custom slash command を認識しないため、Codex entrypoint を `$charm-*` skills としてインストールする方針に修正。
-- 2026-05-19: marketplace config override 方式を廃止し、Codex プラグインキャッシュ直接インストール + skill 形式変換（YAML frontmatter → `skills/charm-*/SKILL.md`）に切替。
-- 2026-05-19: Codex 起動時に Charminal local marketplace plugin を session-scoped config として渡し、`$charm-*` skills を Codex でも使えるようにした。Claude Code hooks は引き続き Claude Code 専用。
-- 2026-05-14: Codex 起動時に Charminal MCP server を session-scoped config として渡す方針を追記。
+- 2026-05-28: Codex CLI は Yorishiro custom slash command を認識しないため、Codex entrypoint を `$yori-*` skills としてインストールする方針に修正。
+- 2026-05-19: marketplace config override 方式を廃止し、Codex プラグインキャッシュ直接インストール + skill 形式変換（YAML frontmatter → `skills/yori-*/SKILL.md`）に切替。
+- 2026-05-19: Codex 起動時に Yorishiro local marketplace plugin を session-scoped config として渡し、`$yori-*` skills を Codex でも使えるようにした。Claude Code hooks は引き続き Claude Code 専用。
+- 2026-05-14: Codex 起動時に Yorishiro MCP server を session-scoped config として渡す方針を追記。
 - 2026-04-22: 初版。Codex CLI 0.122.0 の `--cd` / `-c developer_instructions=...` に合わせた初期対応。

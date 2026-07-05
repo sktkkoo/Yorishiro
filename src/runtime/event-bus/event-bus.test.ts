@@ -1,4 +1,4 @@
-import type { ReactionType, SyntheticEvent, Trigger, UserInputEvent } from "@charminal/sdk";
+import type { ReactionType, SyntheticEvent, Trigger, UserInputEvent } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { Time } from "../../core/time";
 import {

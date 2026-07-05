@@ -7,8 +7,8 @@
  * Spec §7.1–§7.4.
  */
 
-import { useCharminalControls } from "@charminal/sdk/controls";
 import { useFrame } from "@react-three/fiber";
+import { useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useRef } from "react";
 import type * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -25,7 +25,7 @@ export function Lights() {
   const lanternRef = useRef<THREE.PointLight>(null);
   const crtRef = useRef<THREE.PointLight>(null);
 
-  const [controls, setControls] = useCharminalControls("lights", () => ({
+  const [controls, setControls] = useYorishiroControls("lights", () => ({
     directionalIntensity: { value: 0.8, min: 0, max: 3, step: 0.05, label: "skylight int." },
     directionalColor: { value: `#${PALETTE.skylight.getHexString()}`, label: "skylight color" },
     lanternScale: { value: 0.6, min: 0, max: 3, step: 0.05, label: "lantern scale" },

@@ -1,4 +1,4 @@
-import type { DispatchEvent, HookSignalEvent, LoopLifecycleEvent } from "@charminal/sdk";
+import type { DispatchEvent, HookSignalEvent, LoopLifecycleEvent } from "@yorishiro/sdk";
 import type { SessionAttention } from "../runtime/session-status/session-status-store";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
@@ -6,7 +6,7 @@ import type { TabIndicatorBadge } from "./TabIndicator";
 
 const SYSTEM_SYNTHETIC_METADATA_BADGE_NAMES = new Set([
   // Practical allowlist: completion/failure events that are not already visible in tab chrome.
-  "charminal-settings:write-failed",
+  "yorishiro-settings:write-failed",
   "pomodoro:session-completed",
   "session-respawn-failed",
 ]);
@@ -78,7 +78,7 @@ function badgeForEvent(event: DispatchEvent): TabIndicatorBadge | null {
     return {
       label: `trigger:${event.name}`,
       tone: systemSyntheticBadgeTone(event.name),
-      title: `Charminal trigger: ${event.source.packId}/${event.name}`,
+      title: `Yorishiro trigger: ${event.source.packId}/${event.name}`,
     };
   }
 
@@ -115,13 +115,13 @@ function loopBadge(label: string, event: LoopLifecycleEvent): TabIndicatorBadge 
   const agent = event.agent ? ` (${event.agent})` : "";
   return {
     label,
-    tone: event.phase === "failed" ? "danger" : "charminal",
+    tone: event.phase === "failed" ? "danger" : "yorishiro",
     title: `Loop lifecycle: ${event.phase}${agent}`,
   };
 }
 
 function systemSyntheticBadgeTone(name: string): TabIndicatorBadge["tone"] {
-  return name.endsWith("-failed") ? "danger" : "charminal";
+  return name.endsWith("-failed") ? "danger" : "yorishiro";
 }
 
 function targetSessionIdForEvent(event: DispatchEvent, state: SessionTabState): SessionId {

@@ -220,11 +220,11 @@ mod tests {
     #[test]
     fn parses_osc7_current_directory() {
         let mut p = Osc133Parser::new();
-        let events = feed_str(&mut p, b"\x1b]7;file:///Users/alice/Charminal\x07");
+        let events = feed_str(&mut p, b"\x1b]7;file:///Users/alice/Yorishiro\x07");
         assert_eq!(
             events,
             vec![OscEvent::CurrentDir {
-                cwd: "/Users/alice/Charminal".to_string()
+                cwd: "/Users/alice/Yorishiro".to_string()
             }]
         );
     }

@@ -1,6 +1,6 @@
 # attention-aura — 注目領域を淡い光の帯で照らす（bundled ambient-ui pack）
 
-Charminal 本体同梱の reference ambient-ui pack。Attention runtime の snapshot を
+Yorishiro 本体同梱の reference ambient-ui pack。Attention runtime の snapshot を
 subscribe し、いま注目されている矩形（`AttentionTarget.rect`）の上に柔らかい glow band を
 overlay 描画する。
 
@@ -35,11 +35,11 @@ gradient / boxShadow を決める。
 
 ## 編集について
 
-この pack は **Charminal 本体の一部** として扱われる。Charminal 内（AI / `/charm` /
+この pack は **Yorishiro 本体の一部** として扱われる。Yorishiro 内（AI / `/yori` /
 file writer）からは編集不可、本体の version up でのみ更新される
 （memory: `feedback_bundled_pack_immutability.md`）。
 
-挙動を変えたい場合は、同 id で `~/.charminal/packs/attention-aura/` に fork を置く
+挙動を変えたい場合は、同 id で `~/.yorishiro/packs/attention-aura/` に fork を置く
 （bundled は dispose され、user 版が active になる。fork の保守は user の責任）。
 
 ## 関連

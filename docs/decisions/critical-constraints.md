@@ -5,7 +5,7 @@
 **Status**: active
 **Last updated**: 2026-05-28
 
-これらは Charminal の architecture と思想の核を成す **不可侵な制約**。それぞれの「なぜ」を理解しないまま破ると、既存 code の前提が崩れて雪崩が起きる。実装で迷ったら **まずこのページを引いて該当条項を確認する**。
+これらは Yorishiro の architecture と思想の核を成す **不可侵な制約**。それぞれの「なぜ」を理解しないまま破ると、既存 code の前提が崩れて雪崩が起きる。実装で迷ったら **まずこのページを引いて該当条項を確認する**。
 
 > CLAUDE.md「Critical constraints to honor」section の expansion。CLAUDE.md は箇条書き、こちらは各制約の **理由** と **判定ガイド**。
 
@@ -137,7 +137,7 @@ depth 制限は MVP では 4。これを超える chain は loop 検出で停止
 
 ### How to apply
 
-「ファイル保存時に backup を取りつつ Charminal を pleased にしたい」場合：
+「ファイル保存時に backup を取りつつ Yorishiro を pleased にしたい」場合：
 
 - amenity pack：`onFileSave` trigger → `system.exec("cp ...")` で backup
 - persona pack：`onFileSave` trigger → `pleased` reaction

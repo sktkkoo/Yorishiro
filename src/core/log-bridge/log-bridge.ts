@@ -22,7 +22,7 @@
  *     log 越しに観察できる (LogReadingPolicy.framing で語り口だけが変わる)。
  */
 
-import type { LogAPI, LogEntry, LogEntryWrite, LogFilter } from "@charminal/sdk";
+import type { LogAPI, LogEntry, LogEntryWrite, LogFilter } from "@yorishiro/sdk";
 import type { Time } from "../time";
 
 const DEFAULT_CAPACITY = 1000;

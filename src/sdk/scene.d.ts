@@ -1,11 +1,11 @@
 /**
- * @charminal/sdk/scene
+ * @yorishiro/sdk/scene
  *
  * Scene の data model。SceneCompositor / ScenePackRegistry / pack author が
  * 共有する canonical な型。
  *
  * Phase 1 で `src/core/scene/types.ts` に置いていたものを Phase 2 で SDK に
- * 移す（pack author が `import type { SceneSpec } from '@charminal/sdk'` で
+ * 移す（pack author が `import type { SceneSpec } from '@yorishiro/sdk'` で
  * 参照する public API になるため）。
  *
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §4
@@ -21,7 +21,7 @@ export type LayerRole = "background" | "character" | "foreground";
  * Runtime が内蔵 renderer で描く procedural layer。
  *
  * Scene Pack 自体は declarative のまま保ち、Three.js などの実行コードは
- * Charminal runtime 側に閉じる。
+ * Yorishiro runtime 側に閉じる。
  */
 export type ProceduralLayerKind = "misty-grasslands";
 
@@ -179,7 +179,7 @@ export interface SceneSpec {
    */
   readonly ambient?: ReadonlyArray<AmbientSound>;
   /**
-   * scene が指定するターミナルの色テーマ。省略時は Charminal default が使われる。
+   * scene が指定するターミナルの色テーマ。省略時は Yorishiro default が使われる。
    * ambient audio と同じく scene 切替時に自動適用。
    */
   readonly terminal?: TerminalTheme;

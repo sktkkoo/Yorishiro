@@ -11,7 +11,7 @@
 import type { SessionProfile } from "./types";
 
 /**
- * Bundled profile の正本。Charminal 本体が保証する profile 群。
+ * Bundled profile の正本。Yorishiro 本体が保証する profile 群。
  *
  * `command` を null にしておくのは「spawn 側で profile.kind と profile.agent
  * から既定 binary を決めて」という意思表示。`shell` profile は `$SHELL`、

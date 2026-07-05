@@ -9,15 +9,15 @@
 
 pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露出しない（[`critical-constraints.md`](critical-constraints.md) §1 維持）。代わりに 2 経路のみ：
 
-- **(A) 固定文字列 verb**：Charminal/bundled 所有の固定文字列テーブルを引く enumerated verb を SDK + MCP に対称公開。pack/AI は文字列を選べず verb 名を呼ぶだけ。
+- **(A) 固定文字列 verb**：Yorishiro/bundled 所有の固定文字列テーブルを引く enumerated verb を SDK + MCP に対称公開。pack/AI は文字列を選べず verb 名を呼ぶだけ。
 - **(B) Terminal Reference Marker（既存機構）**：write 経路は固定形 token `[#TermN]`（host 採番、user の Cmd+click gesture でのみ mapping 生成）、可変内容は MCP read tool で AI が要求時に解決（observation channel）。
 
 これにより [`mcp-trust-tiers.md`](mcp-trust-tiers.md)「PTY 系 tool は L1+L2+L3+L4 が揃うまで全 tier 禁止」を精緻化：安全 subset（(A) 固定 verb / (B) 固定 token）は今出せる。任意 `terminal_prefill` / `write_terminal_input` は依然禁止。
 
 ## 何を決めたか
 
-- 設定画面は **pack のまま**。「基盤以外はなんでも触れる」は Charminal の主張。問題は pack であることではなく、pack 層が **Tauri IPC（`pty_write`）を直叩き**していること（`bundled-packs/ui/charminal-settings/ui.tsx` が `src/bindings/tauri-commands` から `ptyWrite` を相対 import）。
-- **(A) 固定文字列 verb**：pack に露出する SDK は `write(text: string)` ではなく「Charminal 定義の固定アクションを呼ぶ verb」。型に任意文字列が通る口が無い＝注入が起こりようがない。charminal-settings の "ショートカット変更" button はこれに乗る（payload は元々 localized 固定 `/charm:...` 文字列なので**機能ロスゼロ**）。
+- 設定画面は **pack のまま**。「基盤以外はなんでも触れる」は Yorishiro の主張。問題は pack であることではなく、pack 層が **Tauri IPC（`pty_write`）を直叩き**していること（`bundled-packs/ui/yorishiro-settings/ui.tsx` が `src/bindings/tauri-commands` から `ptyWrite` を相対 import）。
+- **(A) 固定文字列 verb**：pack に露出する SDK は `write(text: string)` ではなく「Yorishiro 定義の固定アクションを呼ぶ verb」。型に任意文字列が通る口が無い＝注入が起こりようがない。yorishiro-settings の "ショートカット変更" button はこれに乗る（payload は元々 localized 固定 `/yori:...` 文字列なので**機能ロスゼロ**）。
 - **固定文字列テーブルは host/bundled (Tier 1) 所有**。user pack は**既存エントリの参照のみ**、テーブルへの登録は不可。登録を許すと*登録時に pack がバイトを選ぶ*ので「呼び出し時は固定」でも実質任意注入になり leak が裏口から復活する。
 - (A) verb は**改行を付けず人間が Enter**（テーブルが reviewed でも cheap な多層防御、現状挙動と一致）。
 - **Symmetry**：(A) verb は SDK (`ctx.*`) と MCP tool に同じものを公開（CLAUDE.md「Symmetry principle」）。MCP 側も任意注入できず固定 verb だけ。
@@ -28,7 +28,7 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 - `critical-constraints.md` §1：pack/persona が PTY に書けると Claude の judgment を構造的に hack できる。固定 verb は pack がバイトを選べないので注入面が**構造的に存在しない**。「守る」のではなく「面を作らない」。
 - `mcp-trust-tiers.md` の 4 層防御がこの設計で縮退する：
   - **L1（character class validation）**：実行時 untrusted 入力が無い → 固定文字列テーブルを build 時に 1 回 review するだけ。backspace 偽装 / ANSI / bidi は攻撃者がバイトを選べない以上発生しない。
-  - **L4（social engineering）**：挿入されうる文字列は有限で Charminal が著者。テーブルに footgun が無いか見るだけ。攻撃者制御の無限集合 → host 制御の有限集合。
+  - **L4（social engineering）**：挿入されうる文字列は有限で Yorishiro が著者。テーブルに footgun が無いか見るだけ。攻撃者制御の無限集合 → host 制御の有限集合。
   - **L2**：verb 呼び出しに rate limit を素直に適用。
   - **L3**：「どの tier/pack がどの verb を呼べるか」は残るが、最悪ケース（任意注入）が消えて軽量。
 - **(B) が leak を作らない理由**：可変内容は **read/observation 経路**を通り、write 経路には**固定形 token のみ**乗る。任意内容は PTY write 経路を一切通らない（先の ReferenceMarker 監査結論を継承）。
@@ -46,13 +46,13 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 - (A) テーブルは bundled に閉じる。user pack 拡張は任意注入の再来なので別途厳密設計が前提。
 - (B) の resolve 内容は秘密を含みうる（画面に出ていた物）。**Tier 3（外部 client）では sensitive-read 扱い**で blanket default-open にしない。→ 2026-05-18 実施済み：`mcp-trust-tiers.md` に Sensitive-read 行を分離 + 不変条件（実装検証済み）+ 前向きガード（user-pointed selection 限定、AI 任意 region/scrollback を生やさない）を記録。
 - (B) の不変条件（mapping は host-private + user gesture のみ生成 / token は固定形 host 採番 / resolve は read-only）は 2026-05-18 にコードで検証済み。コード変更不要。詳細は `mcp-trust-tiers.md`「Terminal reference の不変条件」。
-- **interim**：(A) verb 実装前でも、charminal-settings の leak は「`ptyWrite` 直 import を外し host backed の固定文字列 helper に差し替え」で閉じられる（OSS ブロッカー回避）。interim を恒久化しない。
-- `mcp-trust-tiers.md` の leak 元記述（`TerminalPromptButton` が `pty_write` を呼ぶ）は **誤同定**。実体は `charminal-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではなかった。任意テキスト + raw `ptyWrite` 配線を勧める docstring を持つ footgun だったため、2026-06-10 に当該ファイル（と test）を削除した。
+- **interim**：(A) verb 実装前でも、yorishiro-settings の leak は「`ptyWrite` 直 import を外し host backed の固定文字列 helper に差し替え」で閉じられる（OSS ブロッカー回避）。interim を恒久化しない。
+- `mcp-trust-tiers.md` の leak 元記述（`TerminalPromptButton` が `pty_write` を呼ぶ）は **誤同定**。実体は `yorishiro-settings/ui.tsx` の `ptyWrite` 直 import。`src/sdk/components/terminal-prompt-button.tsx` は SDK barrel 未 export・未使用のデッドコードで leak 経路ではなかった。任意テキスト + raw `ptyWrite` 配線を勧める docstring を持つ footgun だったため、2026-06-10 に当該ファイル（と test）を削除した。
 
 ## 関連 reference
 
-- leak 実体: `bundled-packs/ui/charminal-settings/ui.tsx:22`（`import { ptyWrite }`）, `:535`（呼び出し）
-- (B) 実体: `src-tauri/src/mcp/tools.rs:494`（reference resolve tool）, `src/runtime/charminal-mcp/tool-handlers.ts:244`（`getTerminalReferences()`）
+- leak 実体: `bundled-packs/ui/yorishiro-settings/ui.tsx:22`（`import { ptyWrite }`）, `:535`（呼び出し）
+- (B) 実体: `src-tauri/src/mcp/tools.rs:494`（reference resolve tool）, `src/runtime/yorishiro-mcp/tool-handlers.ts:244`（`getTerminalReferences()`）
 - host Tier 1 の正しい側: `src/App.tsx:1250`（初回 tutorial prefill、host 自身）
 - IPC: `src-tauri/src/lib.rs:243`（`pty_write` command）, `src/bindings/tauri-commands.ts:145`（`ptyWrite` binding）
 - 旧 footgun（2026-06-10 削除済み）: `src/sdk/components/terminal-prompt-button.tsx` は任意テキストを raw `ptyWrite` に流す未使用デッドコードだった

@@ -42,7 +42,7 @@ const makeManifestJson = (id: string) =>
     id,
     type: "scene",
     version: "0.1.0",
-    charminalVersion: "^0.1.0",
+    yorishiroVersion: "^0.1.0",
     entry: "scene.js",
   });
 

@@ -1,4 +1,4 @@
-import type { Disposable, ExpressionHandle } from "@charminal/sdk";
+import type { Disposable, ExpressionHandle } from "@yorishiro/sdk";
 import type { Body } from "../../core/body";
 import type { AttentionRuntime } from "../attention-runtime/types";
 import type { WorkspaceAttentionItem, WorkspaceAttentionSeverity } from "./types";

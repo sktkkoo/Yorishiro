@@ -56,7 +56,7 @@ pub enum SpawnSpec {
         /// それも無ければ `/bin/sh` に fall back。
         #[serde(default)]
         command: Option<String>,
-        /// Charminal 側 instrumentation（OSC 133 wrapper rc）の有無。
+        /// Yorishiro 側 instrumentation（OSC 133 wrapper rc）の有無。
         /// true で zsh: ZDOTDIR / bash: --rcfile / fish: -C 経由で wrapper を被せる。
         /// false なら raw spawn（住人は cell 観察のみ、command 単位の status は読めない）。
         #[serde(default = "default_true")]
@@ -123,7 +123,7 @@ fn apply_base_env(cmd: &mut CommandBuilder) {
     cmd.env("PATH", crate::build_path_env());
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
-    cmd.env("TERM_PROGRAM", "Charminal");
+    cmd.env("TERM_PROGRAM", "Yorishiro");
     let lang = std::env::var("LANG").unwrap_or_else(|_| "ja_JP.UTF-8".to_string());
     cmd.env("LANG", lang);
 }
@@ -344,8 +344,8 @@ impl PtySession {
                 let mut cmd = CommandBuilder::new(&binary);
                 apply_base_env(&mut cmd);
                 if *integration {
-                    let charminal_home = dirs::home_dir().map(|h| h.join(".charminal"));
-                    if let Some(home) = charminal_home {
+                    let yorishiro_home = crate::yorishiro_home_path().ok();
+                    if let Some(home) = yorishiro_home {
                         super::shell_wrapper::apply_agent_shim_env(
                             &mut cmd,
                             &home,

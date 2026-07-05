@@ -305,7 +305,7 @@ function scanJsonFile(path, text, diagnostics) {
 
 function fileRecord(rawFile) {
   if (rawFile === undefined) return undefined;
-  if (rawFile === "__CHARMINAL_CHECK_PACK_SYMLINK__") {
+  if (rawFile === "__YORISHIRO_CHECK_PACK_SYMLINK__") {
     return createPackSymlinkFile();
   }
   if (typeof rawFile === "string") {

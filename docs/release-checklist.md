@@ -1,7 +1,7 @@
 # Release checklist
 
-This checklist is the pre-release smoke test for Charminal release builds. Run
-it from a fresh user profile when possible, or move the existing `~/.charminal/`
+This checklist is the pre-release smoke test for Yorishiro release builds. Run
+it from a fresh user profile when possible, or move the existing `~/.yorishiro/`
 aside before testing.
 
 ## 0. Publish procedure
@@ -18,18 +18,18 @@ publishing the draft release.
    push triggers `.github/workflows/release.yml`, which builds both macOS
    architectures and creates a **draft** GitHub Release with:
    - versioned and stable-named `.dmg` files
-   - in-app updater artifacts (`charminal_<arch>.app.tar.gz` + signatures)
+   - in-app updater artifacts (`yorishiro_<arch>.app.tar.gz` + signatures)
    - `latest.json` (the update manifest the in-app updater polls)
 3. **Publish the draft release.** This is the switch that delivers the update:
    the moment the release is published, `releases/latest/download/latest.json`
    resolves and existing installs (v0.5.3+) will offer the update in Settings.
 4. **Homebrew: no action required.** The
-   [homebrew-charminal](https://github.com/sktkkoo/homebrew-charminal) tap
+   [homebrew-yorishiro](https://github.com/sktkkoo/homebrew-yorishiro) tap
    checks for new releases every 6 hours and updates the cask automatically.
    To sync it immediately:
 
    ```bash
-   gh workflow run bump-charminal.yml -R sktkkoo/homebrew-charminal
+   gh workflow run bump-yorishiro.yml -R sktkkoo/homebrew-yorishiro
    ```
 
 Notes:
@@ -41,10 +41,10 @@ Notes:
 - Releases before v0.5.3 do not contain the in-app updater, so those installs
   only update via Homebrew (`brew upgrade`) or manual download.
 - The tap needs no per-release work. It only needs manual edits if the `.dmg`
-  naming scheme or the `charminal.app` bundle name changes. Also note GitHub
+  naming scheme or the `yorishiro.app` bundle name changes. Also note GitHub
   disables cron workflows in repos with no activity for 60 days; if releases
   pause that long, re-enable the tap's bump workflow with
-  `gh workflow enable bump-charminal.yml -R sktkkoo/homebrew-charminal`.
+  `gh workflow enable bump-yorishiro.yml -R sktkkoo/homebrew-yorishiro`.
 
 ## 1. Build artifacts
 
@@ -62,10 +62,10 @@ Notes:
   built unsigned bundles only, run:
 
 ```bash
-xattr -cr /Applications/charminal.app
+xattr -cr /Applications/yorishiro.app
 ```
 
-- Launch Charminal from Finder.
+- Launch Yorishiro from Finder.
 - Confirm the first-run health check appears once in the installed production
   build. Do not rely on the dev build's localStorage state for this check.
 - Confirm the first-run check reports the selected terminal agent clearly.
@@ -76,15 +76,15 @@ xattr -cr /Applications/charminal.app
 - Test with `terminalAgent: "claude"`.
 - Test with `terminalAgent: "codex"`.
 - Confirm the selected agent session starts exactly once.
-- Confirm `/charm:help` works.
-- Confirm `/charm:tutorial` can be prefilled on a fresh profile.
+- Confirm `/yori:help` works.
+- Confirm `/yori:tutorial` can be prefilled on a fresh profile.
 - Confirm switching the Agent setting says it applies on next launch.
 
 ## 4. Settings and diagnostics
 
 - Open Settings with the sidebar button.
 - Confirm Health shows:
-  - Charminal home path
+  - Yorishiro home path
   - selected terminal agent status
   - safe mode state
   - pack status summary
@@ -94,7 +94,7 @@ xattr -cr /Applications/charminal.app
 
 ## 5. User pack recovery
 
-- Create or copy a test user pack under `~/.charminal/packs/`.
+- Create or copy a test user pack under `~/.yorishiro/packs/`.
 - Confirm hot reload loads the pack.
 - Break the pack entry file intentionally.
 - Confirm Settings > Health and Packs show a failed pack.
@@ -106,14 +106,14 @@ xattr -cr /Applications/charminal.app
 - Launch with:
 
 ```bash
-CHARMINAL_SAFE_MODE=1 open /Applications/charminal.app
+YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app
 ```
 
 - Confirm the window title includes `(Safe Mode)`.
 - Confirm user packs and `init.js` are skipped.
 - Confirm Settings > Health reports safe mode.
 - Confirm the Packs section can still diagnose and disable user packs.
-- Relaunch without `CHARMINAL_SAFE_MODE` and confirm normal mode returns.
+- Relaunch without `YORISHIRO_SAFE_MODE` and confirm normal mode returns.
 
 ## 7. Core interaction smoke test
 

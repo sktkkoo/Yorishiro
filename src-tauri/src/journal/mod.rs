@@ -1,6 +1,6 @@
 //! Journal ファイルシステム I/O。
 //!
-//! `~/.charminal/journal/` 配下の構造:
+//! `~/.yorishiro/journal/` 配下の構造:
 //! - `daily/` — 住人の日誌（MCP tool で書き込む）
 //! - `memories.md` — 印象に残ったことのインデックス（system prompt に注入）
 //!
@@ -19,12 +19,12 @@ pub struct JournalEntry {
     pub content: String,
 }
 
-/// `~/.charminal/journal/` のパスを返す。
+/// `~/.yorishiro/journal/` のパスを返す。
 fn journal_root() -> Result<PathBuf, String> {
-    Ok(crate::home_dir_or_err()?.join(".charminal").join("journal"))
+    Ok(crate::yorishiro_home_path()?.join("journal"))
 }
 
-/// 住人の書き込み先 `~/.charminal/journal/daily/` を返す。
+/// 住人の書き込み先 `~/.yorishiro/journal/daily/` を返す。
 fn daily_dir() -> Result<PathBuf, String> {
     Ok(journal_root()?.join("daily"))
 }
@@ -38,7 +38,7 @@ fn memories_path() -> Result<PathBuf, String> {
 ///
 /// journal の `date` は MCP tool 引数（住人 AI が制御）としてファイル名・
 /// `memories.md` の本文に組み込まれるため、`..` や `/` `\` を構造的に排除して
-/// `~/.charminal/journal/` 外への path traversal を防ぐ。`read_recent` の
+/// `~/.yorishiro/journal/` 外への path traversal を防ぐ。`read_recent` の
 /// 走査側 filter（`len() == 10`）と同じ形式に揃える。
 fn validate_journal_date(date: &str) -> Result<(), String> {
     let ok = date.len() == 10
@@ -178,7 +178,7 @@ mod tests {
 
     fn tmp_home(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-journal-{}-{}-{}",
+            "yorishiro-journal-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -201,7 +201,7 @@ mod tests {
 
         write_entry("2026-05-04", "今日は静かな一日だった。").expect("write ok");
 
-        let path = home.join(".charminal/journal/daily/2026-05-04.md");
+        let path = home.join(".yorishiro/journal/daily/2026-05-04.md");
         assert!(path.exists());
         let content = fs::read_to_string(&path).expect("read");
         assert!(content.contains("今日は静かな一日だった。"));
@@ -221,7 +221,7 @@ mod tests {
         write_entry("2026-05-04", "朝の記録。").expect("write 1");
         write_entry("2026-05-04", "夜の記録。").expect("write 2");
 
-        let path = home.join(".charminal/journal/daily/2026-05-04.md");
+        let path = home.join(".yorishiro/journal/daily/2026-05-04.md");
         let content = fs::read_to_string(&path).expect("read");
         assert!(content.contains("朝の記録。"));
         assert!(content.contains("夜の記録。"));
@@ -307,7 +307,7 @@ mod tests {
         assert!(result.is_err(), "traversal を含む date は拒否されるべき");
 
         // daily ディレクトリにファイルが 1 つも作られていないこと。
-        let daily = home.join(".charminal/journal/daily");
+        let daily = home.join(".yorishiro/journal/daily");
         let count = fs::read_dir(&daily).map(|d| d.count()).unwrap_or(0);
         assert_eq!(count, 0, "traversal 時にファイルが作られてはならない");
 
@@ -340,7 +340,7 @@ mod tests {
         let result = append_memory("../../evil", "勝手な行");
         assert!(result.is_err(), "不正な date は拒否されるべき");
 
-        let memories = home.join(".charminal/journal/memories.md");
+        let memories = home.join(".yorishiro/journal/memories.md");
         assert!(
             !memories.exists(),
             "拒否された append で memories.md が作られてはならない"
@@ -359,7 +359,7 @@ mod tests {
 
         // 正規の YYYY-MM-DD は通ること（validation が正常系を壊さない回帰防止）。
         write_entry("2026-06-10", "正常な記録。").expect("valid date は通るべき");
-        assert!(home.join(".charminal/journal/daily/2026-06-10.md").exists());
+        assert!(home.join(".yorishiro/journal/daily/2026-06-10.md").exists());
 
         let _ = fs::remove_dir_all(&home);
     }

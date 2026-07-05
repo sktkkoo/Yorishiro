@@ -7,7 +7,7 @@
 
 ## TL;DR
 
-Charminal の UGC は AI が書く前提（Agentic UGC）。よって「user 設定編集は barrier」という従来 GUI app の前提は当てはまらない。**implicit な便利さより explicit な予測可能性を優先**。
+Yorishiro の UGC は AI が書く前提（Agentic UGC）。よって「user 設定編集は barrier」という従来 GUI app の前提は当てはまらない。**implicit な便利さより explicit な予測可能性を優先**。
 
 ## 何を決めたか
 

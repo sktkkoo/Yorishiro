@@ -8,8 +8,8 @@
  * SDK controls で振幅を runtime 調整可能.
  */
 
-import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
 import { useFrame } from "@react-three/fiber";
+import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useRef } from "react";
 import * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -17,7 +17,7 @@ import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 export function CameraRig(): null {
   const baseFovRef = useRef<number | null>(null);
 
-  const [controls, setControls] = useCharminalControls("camera", () => ({
+  const [controls, setControls] = useYorishiroControls("camera", () => ({
     camera: controlFolder(
       {
         fovBreathAmp: { value: 0.15, min: 0, max: 1.0, step: 0.01, label: "FOV breath (°)" },

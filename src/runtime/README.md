@@ -30,8 +30,8 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `attention-producers/` | runtime event を AttentionTarget に変換する 7 module（terminal / mouse / input-cursor / mcp / tool / dev / focused-dom）。各 producer は `start*Producer` 関数が Disposable を返す。Phase 1d で App.tsx 配線、debug fix（commits 5ebfd0d〜c0ecb23）で v1 UX に揃え（各 producer の rect / priority / 駆動方式が v1 reference に整合） | `index.ts` | Phase 1b で新設 |
 | `workspace-attention/` | command run など host producer 由来の attention item lifecycle と primary / aggregate projection、presence bridge | `index.ts` | [README](./workspace-attention/README.md) |
 | `bundled-attention-aura/` | bundled `attention-aura` ambient-ui pack の register helper。Phase 1d で App.tsx boot path から呼ぶ | `index.ts` | Phase 1c で新設 |
-| `user-pack-loader/` | `~/.charminal/` 下の pack discovery + config read/write | `index.ts` | `charminal-io.ts` (file I/O), `config.ts` (manifest parse) |
-| `charminal-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
+| `user-pack-loader/` | `~/.yorishiro/` 下の pack discovery + config read/write | `index.ts` | `yorishiro-io.ts` (file I/O), `config.ts` (manifest parse) |
+| `yorishiro-mcp/` | Rust MCP server ↔ TS dispatch logic（tool call routing） | `event-channel.ts` + `tool-handlers.ts` | |
 | `surface-registry/` | host 所有の named surface → DOM HTMLElement 対応表（"shell" / "character" / "chrome"）。layout / MCP / presence の DOM 解決を querySelector 直依存から名前ベースへ（shell named-surfaces P1 / chrome は P3） | `index.ts` | |
 
 ---
@@ -101,4 +101,4 @@ const renderer = getOrInit(KEYS.threeRenderer, () => createRenderer());
 - User config：[docs/configuration.md](../../docs/configuration.md)
 - 制約：[docs/decisions/critical-constraints.md](../../docs/decisions/critical-constraints.md) §3 Synthetic event、§4 Twin-trigger
 - Terminal agent：[docs/decisions/codex-terminal-agent.md](../../docs/decisions/codex-terminal-agent.md)
-- 内部設計記録：`../Charminal-design-record/2026-04-19-core-mcp-pack-layers.md` (core / pack / MCP の層構造)
+- 内部設計記録：`../Yorishiro-design-record/2026-04-19-core-mcp-pack-layers.md` (core / pack / MCP の層構造)

@@ -7,19 +7,19 @@ $ARGUMENTS
 
 ---
 
-You are helping the user add, edit, or list Charminal keyboard shortcuts.
+You are helping the user add, edit, or list Yorishiro keyboard shortcuts.
 
 ## Overview
 
-`~/.charminal/init.js` is Charminal's startup script, similar to Emacs `init.el`. It runs when Charminal starts and runs again on hot reload after saves. Its main use is registering keyboard shortcuts.
+`~/.yorishiro/init.js` is Yorishiro's startup script, similar to Emacs `init.el`. It runs when Yorishiro starts and runs again on hot reload after saves. Its main use is registering keyboard shortcuts.
 
-- Charminal creates a template on first launch
-- If the file is deleted, Charminal creates it again on the next launch
-- **init.js is hot reloaded.** Save the file and Charminal re-runs it automatically — no Cmd/Ctrl+R and no restart. Shortcuts registered with `ctx.registerShortcut` are cleaned up and re-installed on each reload. If a save has a syntax/runtime error, Charminal keeps the previous working init.js and logs the error.
+- Yorishiro creates a template on first launch
+- If the file is deleted, Yorishiro creates it again on the next launch
+- **init.js is hot reloaded.** Save the file and Yorishiro re-runs it automatically — no Cmd/Ctrl+R and no restart. Shortcuts registered with `ctx.registerShortcut` are cleaned up and re-installed on each reload. If a save has a syntax/runtime error, Yorishiro keeps the previous working init.js and logs the error.
 
 ## Flow
 
-1. Read `~/.charminal/init.js` first
+1. Read `~/.yorishiro/init.js` first
 2. Check existing shortcuts to avoid duplicates
 3. Avoid terminal-standard keys such as `Ctrl+C`, `Ctrl+D`, and `Ctrl+Z`
 4. Edit or list the file as requested
@@ -27,7 +27,7 @@ You are helping the user add, edit, or list Charminal keyboard shortcuts.
 
 ## Context API
 
-The default export receives `CharminalInitContext`:
+The default export receives `YorishiroInitContext`:
 
 | Method | Purpose |
 |---|---|
@@ -44,7 +44,7 @@ Plain browser APIs such as `window.addEventListener`, `setTimeout`, and `fetch` 
 ## Shortcut Template
 
 ```javascript
-// ~/.charminal/init.js
+// ~/.yorishiro/init.js
 export default (ctx) => {
   // Preferred: ctx.registerShortcut. Only the modifiers you specify are
   // constrained; preventDefault + stopImmediatePropagation are on by default;
@@ -92,7 +92,7 @@ User effect packs use the same API: pass the pack id as `kind`.
 ## Example: Cmd+Shift+F Fireworks
 
 ```javascript
-// ~/.charminal/init.js
+// ~/.yorishiro/init.js
 export default (ctx) => {
   window.addEventListener(
     "keydown",
@@ -122,18 +122,18 @@ export default (ctx) => {
 
 ## Useful Actions
 
-- Open settings: `ctx.setActiveUi("charminal-settings")`
+- Open settings: `ctx.setActiveUi("yorishiro-settings")`
 - Close the active UI: `ctx.setActiveUi(null)`
 - Fire a user effect: `ctx.dispatchEffect({ kind: "<effect-pack-id>" })`
 - Trigger a persona reaction path: `ctx.emitEvent("clai:shoot", { source: "shortcut" })`
 
 ## Boundaries
 
-- If `init.js` throws, Charminal should continue running and record the error in dev logs
+- If `init.js` throws, Yorishiro should continue running and record the error in dev logs
 - The context is intentionally small: register effects, register personas, dispatch effects, emit synthetic events, and set active UI
 - It does not expose high-level `system`, `character`, `voice`, or `space` APIs. If those are needed, move the behavior into a pack
 - Use `init.js` only for glue that does not fit cleanly into pack boundaries
 
 ## Reference Files
 
-- `src/runtime/user-pack-loader/init-script.ts` - init.js runner and `CharminalInitContext`
+- `src/runtime/user-pack-loader/init-script.ts` - init.js runner and `YorishiroInitContext`

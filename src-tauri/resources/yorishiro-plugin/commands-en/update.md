@@ -7,7 +7,7 @@ $ARGUMENTS
 
 ---
 
-You are helping the user edit or tune an existing Charminal pack. **For new packs, use `/charm:create`.**
+You are helping the user edit or tune an existing Yorishiro pack. **For new packs, use `/yori:create`.**
 
 ## Overview
 
@@ -18,13 +18,13 @@ Before a risky or multi-file edit, call `history_snapshot(label)` with a short u
 ## Identify the Target Pack
 
 1. Use `list_packs()` to inspect currently loaded packs
-2. User packs live in `~/.charminal/packs/<id>/` with flat layout: `manifest.json` + `<kind>.js` + optional extra files
-3. **Do not edit bundled packs in place**. Bundled packs are part of the app and can be overwritten by Charminal updates. If the user wants to change one, guide them to fork it into a user pack
+2. User packs live in `~/.yorishiro/packs/<id>/` with flat layout: `manifest.json` + `<kind>.js` + optional extra files
+3. **Do not edit bundled packs in place**. Bundled packs are part of the app and can be overwritten by Yorishiro updates. If the user wants to change one, guide them to fork it into a user pack
 
 ## Security Boundary
 
 - If `manifest.json` has `executionClass: "isolated-js"`, do not enable it by editing. The runtime is not implemented yet, so public utility / isolated packs stay out of scope.
-- Treat user packs with `.js` / `.tsx` entries as local trusted `trusted-main-thread-js`. Do not describe them as sandboxed, reviewed, or Charminal public-distribution packs.
+- Treat user packs with `.js` / `.tsx` entries as local trusted `trusted-main-thread-js`. Do not describe them as sandboxed, reviewed, or Yorishiro public-distribution packs.
 - Sharing source code on GitHub or elsewhere is allowed, but manual installation means the user is choosing to run local trusted code.
 - Do not put `executionClass: "declarative"` on `.js` / `.tsx` entries. Declarative means data-only with no JS evaluation.
 - Do not add `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes inside packs.
@@ -36,20 +36,20 @@ Persona editing is high impact. Do not destructively overwrite personality text 
 
 ### Steps
 
-1. Read `~/.charminal/packs/<id>/persona.md`
-2. Ensure `~/.charminal/packs/<id>/backup/` exists
+1. Read `~/.yorishiro/packs/<id>/persona.md`
+2. Ensure `~/.yorishiro/packs/<id>/backup/` exists
 3. Write a backup file:
    - filename: `persona YYYY-MM-DD HH.MM.SS.md`
    - use the user's local time
    - follow the macOS QuickTime screen recording convention: spaces and dots, for example `persona 2026-04-29 14.30.05.md`
    - content: exact copy of the current `persona.md`
 4. Overwrite `persona.md` with the agreed content
-5. Charminal's watcher hot reloads it and updates PersonaRegistry / reflex reactions
+5. Yorishiro's watcher hot reloads it and updates PersonaRegistry / reflex reactions
 6. After completion, always tell the user a new session is needed
 
 ### Restore a Past Snapshot
 
-If the user asks to go back to an older personality, list files in `~/.charminal/packs/<id>/backup/`, let the user choose one, then copy that file back to `persona.md`.
+If the user asks to go back to an older personality, list files in `~/.yorishiro/packs/<id>/backup/`, let the user choose one, then copy that file back to `persona.md`.
 
 ### Editing persona.js
 
@@ -57,7 +57,7 @@ If editing `persona.js` directly, such as changing reflex / world / logReading o
 
 ## Persona Session Restart Guidance
 
-Charminal itself hot reloads the persona. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Charminal cannot write into an already-running observed PTY session, so the user must start a new session.
+Yorishiro itself hot reloads the persona. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Yorishiro cannot write into an already-running observed PTY session, so the user must start a new session.
 
 After persona work, always say this in the resident's own voice. Avoid technical terms such as `systemPrompt`, `PTY`, or `observation-only` in the user-facing line.
 
@@ -75,13 +75,13 @@ For non-persona packs:
 2. Edit according to the user's request
 3. Let hot reload apply it
 4. Use `pack_diagnose({ id: "<id>" })` to confirm status, manifest, and load errors
-5. If the current workspace is a Charminal source checkout, run `npm run check:pack -- ~/.charminal/packs/<id>` and fix checker errors
+5. If the current workspace is a Yorishiro source checkout, run `npm run check:pack -- ~/.yorishiro/packs/<id>` and fix checker errors
 
 Scene colors, layer structure, effect parameters, UI layout, and ambient overlay tuning can usually be handled in this flow.
 
 ## Realtime Scene Parameter Tuning
 
-If the active scene exposes controls through SDK controls, tune values without editing files first. F2 opens two panels: Common (runtime-wide) and Scene (active scene pack). Values registered with `useCharminalControls` appear in the Scene panel.
+If the active scene exposes controls through SDK controls, tune values without editing files first. F2 opens two panels: Common (runtime-wide) and Scene (active scene pack). Values registered with `useYorishiroControls` appear in the Scene panel.
 
 ### Tuning Flow
 
@@ -90,7 +90,7 @@ If the active scene exposes controls through SDK controls, tune values without e
 3. For multiple values, use `controls_set_many({ scope: "scene", values })`
 4. For smooth demos, use `controls_transition({ scope: "scene", values, durationMs })`
 5. Repeat until the user likes the result
-6. If the user says "bake it in", read current values with `controls_get({ scope: "scene" })` and update the source defaults in the `useCharminalControls` definitions
+6. If the user says "bake it in", read current values with `controls_get({ scope: "scene" })` and update the source defaults in the `useYorishiroControls` definitions
 
 ### Path Names
 
@@ -104,7 +104,7 @@ Use `state_get()` to confirm `runtime.activeScene` when needed.
 
 ### What Is Exposed
 
-Only values registered by the pack author with `useCharminalControls` + `useControlsBridge` appear in the Scene panel. Non-registered values remain local constants in code. If the user wants to tune a value that is not exposed, add it to `useCharminalControls`.
+Only values registered by the pack author with `useYorishiroControls` + `useControlsBridge` appear in the Scene panel. Non-registered values remain local constants in code. If the user wants to tune a value that is not exposed, add it to `useYorishiroControls`.
 
 ## Bundled Pack Forks
 
@@ -112,8 +112,8 @@ Bundled packs are read-only for user customization. If the user wants to modify 
 
 ### Fork Steps
 
-1. Read the bundled pack source with the `bundled_example_read` MCP tool (pass the pack id; confirm ids with `list_packs`). This works in packaged builds too. When cwd is the Charminal repo you can instead read the files directly under `bundled-packs/<kind_plural>/<id>/` (e.g. `personas/`, `scenes/`, `effects/`, `ui/`, `ambient-ui/`).
-2. Create `~/.charminal/packs/<new-id>/` with `manifest.json` and the entry file
+1. Read the bundled pack source with the `bundled_example_read` MCP tool (pass the pack id; confirm ids with `list_packs`). This works in packaged builds too. When cwd is the Yorishiro repo you can instead read the files directly under `bundled-packs/<kind_plural>/<id>/` (e.g. `personas/`, `scenes/`, `effects/`, `ui/`, `ambient-ui/`).
+2. Create `~/.yorishiro/packs/<new-id>/` with `manifest.json` and the entry file
 3. Change `manifest.json` id to `<new-id>` and add `"executionClass": "trusted-main-thread-js"` for `.js` / `.tsx` entries, so it does not collide with the bundled pack and remains clearly local trusted code
 4. Change the entry file's exported `id` to `<new-id>`
 5. If needed, switch the active pack:
@@ -125,7 +125,7 @@ After forking, the pack is independent. Bundled updates will not merge into it a
 
 ## Editing config.json
 
-`~/.charminal/config.json` controls Charminal settings:
+`~/.yorishiro/config.json` controls Yorishiro settings:
 
 - `sceneByProject` - active scene pack ids for resolved project roots
 - `activeScene` - global fallback scene pack id when a project has no `sceneByProject` entry
@@ -164,10 +164,10 @@ After editing, verify with MCP tools:
 
 ## Rescue: Safe Mode
 
-If a pack edit prevents Charminal from starting, launch safe mode:
+If a pack edit prevents Yorishiro from starting, launch safe mode:
 
 ```bash
-CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app
+YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app
 ```
 
 Safe mode skips all user packs and adds `(Safe Mode)` to the window title. MCP tools still work, so identify the cause with `list_load_errors()` and detach it with `disable_pack({ id })`. Remove the env var and restart to return to normal mode; only packs in `disabledPacks` stay skipped.

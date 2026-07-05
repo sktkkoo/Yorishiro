@@ -45,7 +45,7 @@ export type SpawnSpec =
       /** shell binary 上書き。null で `$SHELL` を使う。 */
       readonly command?: string | null;
       /**
-       * Charminal 側 instrumentation（OSC 133 / 633 wrapper rc）の有無。default true。
+       * Yorishiro 側 instrumentation（OSC 133 / 633 wrapper rc）の有無。default true。
        * false なら raw shell 起動で、住人は cell 観察のみ（command 単位の status
        * は読めない）。known でない shell（sh / dash 等）には integration が無視される。
        */
@@ -157,7 +157,7 @@ export interface ResolveCommandPathArgs {
   readonly command: string;
 }
 
-/** Charminal の launch PATH 上で command が解決できるかを返す。 */
+/** Yorishiro の launch PATH 上で command が解決できるかを返す。 */
 export const resolveCommandPath = (args: ResolveCommandPathArgs): Promise<string | null> =>
   call("resolve_command_path", args);
 
@@ -177,7 +177,7 @@ export interface AgentCapabilities {
   readonly sessionResume: boolean;
 }
 
-/** charm コマンドの記法（`<prefix>charm<separator><name>`）。Rust adapter が正本。 */
+/** yori コマンドの記法（`<prefix>yori<separator><name>`）。Rust adapter が正本。 */
 export interface CommandSyntax {
   readonly prefix: string;
   readonly separator: string;
@@ -220,10 +220,10 @@ export const ptyResize = (args: PtyResizeArgs): Promise<void> => call("pty_resiz
 
 // --- Tutorial -------------------------------------------------------
 
-/** `~/.charminal/.tutorial-done` の存在を確認する。 */
+/** `~/.yorishiro/.tutorial-done` の存在を確認する。 */
 export const checkTutorialDone = (): Promise<boolean> => invoke("check_tutorial_done");
 
-/** `~/.charminal/.tutorial-done` を作成する。 */
+/** `~/.yorishiro/.tutorial-done` を作成する。 */
 export const markTutorialDone = (): Promise<void> => invoke("mark_tutorial_done");
 
 // ─── History (pack rollback) ────────────────────────────────────

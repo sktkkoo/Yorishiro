@@ -1,4 +1,4 @@
-import type { ScenePackCameraAPI } from "@charminal/sdk/scene-pack";
+import type { ScenePackCameraAPI } from "@yorishiro/sdk/scene-pack";
 import { useEffect } from "react";
 
 interface CameraBreathProps {

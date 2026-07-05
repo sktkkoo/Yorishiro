@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/context
+ * @yorishiro/sdk/context
  *
  * 2 つの context 型：PersonaContext / EffectContext
  * （機能設備は AmenityContext が担う）
@@ -118,7 +118,7 @@ export interface PersonaContext {
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
   readonly terminal: TerminalAPI; // observation only
-  readonly charm: CharmAPI;
+  readonly yori: YoriAPI;
   readonly signal: AbortSignal; // 中断通知
 }
 
@@ -166,7 +166,7 @@ export interface AmenityContext {
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
   readonly terminal: TerminalAPI;
-  readonly charm: CharmAPI;
+  readonly yori: YoriAPI;
   readonly signal: AbortSignal;
 
   /**
@@ -177,7 +177,7 @@ export interface AmenityContext {
    * - 絶対パス（`/Users/.../Music/song.mp3`）→ そのまま asset URL に変換
    *
    * asset protocol scope 外のパスは URL 自体は返るがブラウザ側で読み込みに失敗する。
-   * scope は `~/.charminal/config.json` の `mediaFolders` で拡張できる。
+   * scope は `~/.yorishiro/config.json` の `mediaFolders` で拡張できる。
    *
    * @throws 相対パスで traversal（`..`）や絶対 URL を含む場合
    */
@@ -622,7 +622,7 @@ export interface SpaceEffectHandle {
  * 自律 agent loop の lifecycle を観察 stream に announce する API。
  *
  * pack（amenity）が外部の loop runner（ralph 系 / 自前 harness 等）を観察し、
- * その phase 遷移を Charminal に報告するための primitive。announce された phase は
+ * その phase 遷移を Yorishiro に報告するための primitive。announce された phase は
  * `LoopLifecycleEvent` として通常の trigger loop を流れ、custom trigger が
  * `kind === "loop-lifecycle"` で match して reaction を emit する（PTY / hook と
  * 同じ「観察 → trigger → reaction」の flow）。
@@ -756,7 +756,7 @@ export interface LogFilter {
 export interface MemoryAPI {
   /** persona 固有の memory（active な persona だけが参照可能） */
   readonly persona: MemoryScope;
-  /** Charminal 本体の core memory（persona 非依存） */
+  /** Yorishiro 本体の core memory（persona 非依存） */
   readonly core: MemoryScope;
 }
 
@@ -772,7 +772,7 @@ export interface MemoryScope {
  * PTY 観察用 API。
  *
  * ⚠️ 書き込み API は意図的に存在しない（revelation 3.13）。
- * Charminal は Claude Code の judgment loop に一切介入しない。
+ * Yorishiro は Claude Code の judgment loop に一切介入しない。
  */
 export interface TerminalAPI {
   /** 直近の PTY 出力 text を読む（観察のみ） */
@@ -785,10 +785,10 @@ export interface TerminalAPI {
   };
 }
 
-// ─── CharmAPI (shared) ─────────────────────────────────────
+// ─── YoriAPI (shared) ─────────────────────────────────────
 
-/** charm コマンド（/charm:create 等）を発火するための API */
-export type CharmAPI = (command: string) => Promise<void>;
+/** yori コマンド（/yori:create 等）を発火するための API */
+export type YoriAPI = (command: string) => Promise<void>;
 
 // ─── RendererAPI (effect only) ─────────────────────────────
 

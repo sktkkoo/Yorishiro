@@ -156,24 +156,23 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
 
 /// Reminder script のパスを返す。script は ensure_reminder_script() で配置。
 fn build_reminder_script_path() -> String {
-    let home = dirs::home_dir().unwrap_or_default();
-    home.join(".charminal")
+    crate::yorishiro_home_path()
+        .unwrap_or_default()
         .join("shell")
         .join("hook-reminder.py")
         .to_string_lossy()
         .to_string()
 }
 
-/// Reminder script を ~/.charminal/shell/ に配置する。起動時に呼ぶ。
+/// Reminder script を ~/.yorishiro/shell/ に配置する。起動時に呼ぶ。
 pub fn ensure_reminder_script() -> Result<(), String> {
-    let home = dirs::home_dir().ok_or("home directory not found")?;
-    let dir = home.join(".charminal").join("shell");
+    let dir = crate::yorishiro_home_path()?.join("shell");
     std::fs::create_dir_all(&dir).map_err(|e| format!("shell ディレクトリの作成に失敗: {e}"))?;
 
     let script_path = dir.join("hook-reminder.py");
     let script = r#"import json, os, sys
 
-config_path = os.path.join(os.path.expanduser("~"), ".charminal", "config.json")
+config_path = os.path.join(os.path.expanduser("~"), ".yorishiro", "config.json")
 reminders = []
 
 try:
@@ -349,7 +348,7 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
             };
 
             // 同一 signal を immediate event と polling fallback の両方で配るので、
-            // monotonic な _charminal_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
+            // monotonic な _yorishiro_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
             let seq = HOOK_SEQ.fetch_add(1, Ordering::Relaxed);
             let final_body = match serde_json::from_str::<serde_json::Value>(body) {
                 Ok(mut obj) if obj.is_object() => {
@@ -363,7 +362,7 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
                     if let Some(agent) = &agent {
                         map.insert("agent".to_string(), serde_json::json!(agent));
                     }
-                    map.insert("_charminal_seq".to_string(), serde_json::json!(seq));
+                    map.insert("_yorishiro_seq".to_string(), serde_json::json!(seq));
                     obj.to_string()
                 }
                 _ => {
@@ -393,7 +392,7 @@ pub struct PtyExit {
     pub code: i32,
 }
 
-/// PtyState — `~/.charminal/` 1 つの window 全体の PTY ops を束ねる thin facade。
+/// PtyState — `~/.yorishiro/` 1 つの window 全体の PTY ops を束ねる thin facade。
 /// 内部状態は SessionRegistry に持たせ、ここでは default-session への delegation
 /// だけを行う。Phase C で session 単位の操作が必要になった時点で legacy command
 /// は削除し、`session_*` Tauri command に集約する。

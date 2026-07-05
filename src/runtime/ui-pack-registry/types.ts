@@ -7,7 +7,7 @@
  * あるので entry 全体が必要。
  */
 
-import type { Disposable, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
+import type { Disposable, UiContext, UiLayout, UiPackManifest } from "@yorishiro/sdk";
 import type { PackOrigin } from "../single-active-registry/types";
 
 export interface UiPackEntry {

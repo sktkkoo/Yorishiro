@@ -1,8 +1,8 @@
 /**
  * User init.js runner — Emacs の `init.el` 相当。
  *
- * 起動時に ~/.charminal/init.js があれば dynamic import して default 関数を
- * 実行する。default は CharminalInitContext を受け取って、その上で register*
+ * 起動時に ~/.yorishiro/init.js があれば dynamic import して default 関数を
+ * 実行する。default は YorishiroInitContext を受け取って、その上で register*
  * を呼ぶ形。loader は validator を内部で通してから registrar に渡すので、
  * user 側は型違反だと PackValidationError を受け取る（init 内で catch しなければ
  * 上まで伝播し、init は failed として記録される）。
@@ -16,7 +16,7 @@ import type {
   PersonaDefinition,
   SpaceEffectRequest,
   TweenAPI,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";
@@ -37,7 +37,7 @@ export interface EffectRequester {
 /**
  * init.js の default 関数に渡される context。
  *
- * - registerEffect / registerPersona: pack を Charminal に提出する。validator を
+ * - registerEffect / registerPersona: pack を Yorishiro に提出する。validator を
  *   内部で通す契約なので、型を外れた値を渡すと synchronously throw する。
  * - dispatchEffect: 既に register 済みの effect を 1 回走らせる。keyboard
  *   shortcut や startup animation など、persona の reflex 外の発火経路で使う。
@@ -56,7 +56,7 @@ export interface EffectRequester {
  *   register は default() が成功した後の commit phase でまとめて行う。失敗時は
  *   commit を走らせないので、前の persona がそのまま生き残る（transactional）。
  */
-export interface CharminalInitContext {
+export interface YorishiroInitContext {
   registerEffect(pack: EffectDefinition): void;
   registerPersona(pack: PersonaDefinition): void;
   dispatchEffect(request: SpaceEffectRequest): void;
@@ -181,7 +181,7 @@ const makeInitContext = (
   deps: LoadInitScriptDeps,
   initScriptPath: string,
   run: InitRun,
-): CharminalInitContext => ({
+): YorishiroInitContext => ({
   registerEffect(pack) {
     const validated = validateEffectDefinition(pack);
     // 即時 register し、Disposable を scope に積む。reload 時に旧 listener を
@@ -197,7 +197,7 @@ const makeInitContext = (
         id: withDefaults.id,
         type: "persona",
         version: "0.0.0",
-        charminalVersion: "*",
+        yorishiroVersion: "*",
         entry: "persona.js",
       },
       persona: withDefaults,
@@ -256,7 +256,7 @@ const makeInitContext = (
  * pack を追加 register できるようにするため。
  *
  * init.js が無い / import に失敗 / default が function でない / default が
- * throw する、いずれのケースも Charminal 本体を落とさず dev-log に痕跡を残して
+ * throw する、いずれのケースも Yorishiro 本体を落とさず dev-log に痕跡を残して
  * 続行する（philosophy「壊さないこと」）。
  */
 export async function loadInitScript(deps: LoadInitScriptDeps): Promise<LoadInitScriptResult> {
@@ -302,7 +302,7 @@ export async function loadInitScript(deps: LoadInitScriptDeps): Promise<LoadInit
   try {
     // user's default may be sync or async. Await always — Promise.resolve wraps
     // plain returns and keeps synchronous throws catchable in the same block.
-    await (def as (ctx: CharminalInitContext) => unknown)(ctx);
+    await (def as (ctx: YorishiroInitContext) => unknown)(ctx);
   } catch (err) {
     const error = errorMessage(err);
     devLog.write({ phase: "run", note: "init.js default threw", data: { error } });

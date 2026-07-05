@@ -5,7 +5,7 @@
  * system.exec は Tauri command 経由で実体化する。
  */
 
-import type { AmenityContext, ExecOptions, HistoryAPI, LoopPhase } from "@charminal/sdk";
+import type { AmenityContext, ExecOptions, HistoryAPI, LoopPhase } from "@yorishiro/sdk";
 import musicShelfPack from "../../../bundled-packs/amenities/music-shelf/amenity";
 import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
@@ -114,7 +114,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
       core: { get: () => undefined, set: () => {}, delete: () => {} },
     },
     terminal: { output: () => "", session: { pid: 0, cwd: "", startedAt: 0 } },
-    charm: async () => {},
+    yori: async () => {},
     signal: abortController.signal,
     resolveAsset: () => "",
   };
@@ -129,7 +129,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
         id: musicShelfPack.id,
         type: "amenity",
         version: "0.1.0",
-        charminalVersion: "^0.5.0",
+        yorishiroVersion: "^0.5.0",
         entry: "amenity.ts",
       },
       handle,

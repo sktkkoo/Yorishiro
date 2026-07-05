@@ -21,9 +21,9 @@ export function useSidebarOpen(): boolean {
       if (!isPresenceLevel(detail?.level)) return;
       setSidebarOpen(sidebarOpenFromPresenceLevel(detail.level));
     };
-    window.addEventListener("charminal:presence-level-changed", onPresenceChanged);
+    window.addEventListener("yorishiro:presence-level-changed", onPresenceChanged);
     return () => {
-      window.removeEventListener("charminal:presence-level-changed", onPresenceChanged);
+      window.removeEventListener("yorishiro:presence-level-changed", onPresenceChanged);
     };
   }, []);
 

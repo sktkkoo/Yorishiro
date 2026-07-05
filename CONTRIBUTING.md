@@ -1,4 +1,4 @@
-# Contributing to Charminal
+# Contributing to Yorishiro
 
 > [日本語版 CONTRIBUTING はこちら](CONTRIBUTING.ja.md)
 
@@ -15,11 +15,11 @@ What we welcome:
 
 ### Extension via Packs
 
-Many "I want this feature" or "I want to change the look" requests can be realized without touching the core, through **Packs**. See [`src/sdk/README.md`](src/sdk/README.md) for how to write one. You can also create a pack conversationally with the `/charm:create` command.
+Many "I want this feature" or "I want to change the look" requests can be realized without touching the core, through **Packs**. See [`src/sdk/README.md`](src/sdk/README.md) for how to write one. You can also create a pack conversationally with the `/yori:create` command.
 
 ## License
 
-Charminal is released under the [MIT License](LICENSE).
+Yorishiro is released under the [MIT License](LICENSE).
 
 If Pull Requests are accepted in the future, submitted code will be treated as offered under the same MIT License.
 

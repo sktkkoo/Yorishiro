@@ -13,7 +13,7 @@ removed on 2026-05-16. The name is freed for a later local resident-tools concep
 ## Lineage
 
 - pre-2026-04-29: `harness`
-- 2026-04-29: renamed `harness` → `utility`, frozen type-only, removed from charm commands
+- 2026-04-29: renamed `harness` → `utility`, frozen type-only, removed from yori commands
 - 2026-05-14 (commit `01e8c41`): `amenity` framework introduced as the live successor — same motion-free + system-capability + synthetic-event/twin-trigger boundary, execution model reshaped to `activate()` lifecycle + MCP tools
 - 2026-05-16 (branch `retire-utility-pack`): `utility` pack type deleted; provenance source `"utility"` renamed `"system"`; constraints reframed to `amenity`
 
@@ -35,13 +35,13 @@ migrated and no capability was lost. The utility-pack-deferred bundled candidate
 
 ## Status
 
-**公開延期中**。SDK 型定義（`UtilityDefinition` / `UtilityContext`）はコードベースに存在するが、user pack loader は utility をサポートしていない。charm コマンド（create / help / update / shortcut）からも utility の記述を削除済み。
+**公開延期中**。SDK 型定義（`UtilityDefinition` / `UtilityContext`）はコードベースに存在するが、user pack loader は utility をサポートしていない。yori コマンド（create / help / update / shortcut）からも utility の記述を削除済み。
 
 復活時は本ドキュメントを参照してコマンド doc を再構成する。
 
 ## 改訂履歴
 
-- 2026-04-29: harness → utility にリネーム、同日 charm コマンドから utility の記述を削除
+- 2026-04-29: harness → utility にリネーム、同日 yori コマンドから utility の記述を削除
 
 ## 概要
 
@@ -52,7 +52,7 @@ utility pack は環境への自動作用（通知、clipboard 操作、タイマ
 ### ファイル構成
 
 ```
-~/.charminal/packs/<id>/
+~/.yorishiro/packs/<id>/
 ├── manifest.json
 └── utility.js
 ```
@@ -64,7 +64,7 @@ utility pack は環境への自動作用（通知、clipboard 操作、タイマ
   "id": "my-utility",
   "type": "utility",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "entry": "utility.js",
   "permissions": {
     "system.exec": true,
@@ -78,7 +78,7 @@ utility pack は環境への自動作用（通知、clipboard 操作、タイマ
 ### utility.js
 
 ```typescript
-import type { UtilityDefinition, UtilityContext } from "@charminal/sdk";
+import type { UtilityDefinition, UtilityContext } from "@yorishiro/sdk";
 
 export default {
   id: "my-utility",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { shouldResumeHostPresenceForUiActivation } from "./ui-pack-activation";
 
-const SETTINGS_PACK_ID = "charminal-settings";
+const SETTINGS_PACK_ID = "yorishiro-settings";
 
 describe("shouldResumeHostPresenceForUiActivation", () => {
   it("does not reopen host presence when opening settings", () => {

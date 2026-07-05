@@ -81,7 +81,7 @@ factory のような R3F-component で全描画する scene（`layers: []`）に
 
 - bg image / fg image / blur control を runtime で受けたい scene は、最初から該当 role の layer を `SceneSpec.layers` に宣言する
 - 「layer は無いが override で動的に生やす」設計はサポートしない
-- factory のような R3F-component で全描画する scene は layer を持たないのが正しい（DOM layer 不要）。代わりに R3F の `useFrame` / `useCharminalControls` 経由で per-frame controls を組む
+- factory のような R3F-component で全描画する scene は layer を持たないのが正しい（DOM layer 不要）。代わりに R3F の `useFrame` / `useYorishiroControls` 経由で per-frame controls を組む
 
 ### UI pack 作者向け
 

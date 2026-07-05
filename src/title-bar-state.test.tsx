@@ -8,7 +8,7 @@ import type { UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiRegistry } from "./runtime/ui-pack-registry";
 import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
 
-const SETTINGS_PACK_ID = "charminal-settings";
+const SETTINGS_PACK_ID = "yorishiro-settings";
 
 function SidebarOpenProbe() {
   const sidebarOpen = useSidebarOpen();
@@ -50,7 +50,7 @@ describe("title bar state hooks", () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent("charminal:presence-level-changed", { detail: { level: "closed" } }),
+        new CustomEvent("yorishiro:presence-level-changed", { detail: { level: "closed" } }),
       );
     });
 
@@ -58,7 +58,7 @@ describe("title bar state hooks", () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent("charminal:presence-level-changed", { detail: { level: "default" } }),
+        new CustomEvent("yorishiro:presence-level-changed", { detail: { level: "default" } }),
       );
     });
 

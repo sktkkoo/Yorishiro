@@ -10,8 +10,8 @@
  * - specs/2026-05-03-scene-pack-r3f-component.md
  */
 
-import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
-import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
 import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { useControlsBridge } from "../../../src/runtime/ui-state-store";
 import { DustMotes } from "./lib/atmosphere";
@@ -27,7 +27,7 @@ import { AbandonedFactoryProps } from "./lib/props";
 import { Walls } from "./lib/walls";
 
 function AbandonedFactoryScene({ vrmSlot, resolveAsset, camera }: ScenePackComponentProps) {
-  const [breathControls, setBreath] = useCharminalControls("camera", () => ({
+  const [breathControls, setBreath] = useYorishiroControls("camera", () => ({
     breath: controlFolder(
       {
         freqX: { value: 1.7, min: 0.1, max: 5, step: 0.1 },

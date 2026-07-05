@@ -5,7 +5,7 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
-import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
+import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@yorishiro/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TweenManager } from "../../core/tween/tween-manager";
@@ -17,7 +17,7 @@ import { applyCurrentProjectSceneSelection } from "../project-context/project-co
 import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
 import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
-import { type CharminalConfig, EMPTY_CONFIG } from "../user-pack-loader/config";
+import { EMPTY_CONFIG, type YorishiroConfig } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 import {
@@ -468,7 +468,7 @@ describe("pack_diagnose handler", () => {
         {
           id: "user-scene",
           kind: "scene",
-          entryPath: "/Users/me/.charminal/packs/user-scene/scene.js",
+          entryPath: "/Users/me/.yorishiro/packs/user-scene/scene.js",
           source: "local",
           manifest: {
             id: "user-scene",
@@ -490,7 +490,7 @@ describe("pack_diagnose handler", () => {
         origin: "user",
         status: "loaded",
         isActive: true,
-        entryPath: "/Users/me/.charminal/packs/user-scene/scene.js",
+        entryPath: "/Users/me/.yorishiro/packs/user-scene/scene.js",
         manifest: {
           id: "user-scene",
           type: "scene",
@@ -534,7 +534,7 @@ describe("pack_diagnose handler", () => {
         {
           id: "work-context-lite",
           kind: "ambient-ui",
-          entryPath: "/Users/me/.charminal/packs/work-context-lite/ambient-ui.js",
+          entryPath: "/Users/me/.yorishiro/packs/work-context-lite/ambient-ui.js",
           source: "local",
           manifest: {
             id: "work-context-lite",
@@ -819,7 +819,7 @@ describe("amenity_call / amenity_list_tools", () => {
         id: "noted",
         type: "amenity",
         version: "0.0.0",
-        charminalVersion: "*",
+        yorishiroVersion: "*",
         entry: "amenity.js",
       },
       handle: { tools: { noted_add: async (p) => ({ saved: p }) }, dispose: () => {} },
@@ -2188,12 +2188,12 @@ describe("createSceneActivateHandler", () => {
       getActiveSceneId: () => registry.getActiveSceneId(),
     });
   const makeProjectAwareHandler = (
-    initialConfig: CharminalConfig,
+    initialConfig: YorishiroConfig,
     projectRoot: string | null,
   ): {
     readonly handler: ReturnType<typeof createSceneActivateHandler>;
     readonly registry: ScenePackRegistryImpl;
-    readonly getConfig: () => CharminalConfig;
+    readonly getConfig: () => YorishiroConfig;
   } => {
     const registry = makeRegistry();
     let config = initialConfig;
@@ -2521,7 +2521,7 @@ describe("createPresenceSetIntensityHandler", () => {
 
 describe("createSetMotionIntensityHandler", () => {
   it("writes clamped intensity to config and applies to runtime", async () => {
-    const updateConfig = vi.fn(async (update: (current: CharminalConfig) => CharminalConfig) =>
+    const updateConfig = vi.fn(async (update: (current: YorishiroConfig) => YorishiroConfig) =>
       update({ ...EMPTY_CONFIG }),
     );
     const applyToRuntime = vi.fn();
@@ -2548,9 +2548,9 @@ describe("createSetMotionIntensityHandler", () => {
   });
 
   it("composes concurrent config updates through the injected atomic updater", async () => {
-    let config: CharminalConfig = { ...EMPTY_CONFIG };
+    let config: YorishiroConfig = { ...EMPTY_CONFIG };
     let chain = Promise.resolve();
-    const updateConfig = (update: (current: CharminalConfig) => CharminalConfig) => {
+    const updateConfig = (update: (current: YorishiroConfig) => YorishiroConfig) => {
       const next = chain.then(async () => {
         config = update(config);
         return config;

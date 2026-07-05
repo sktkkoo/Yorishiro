@@ -1,7 +1,7 @@
 /**
  * Provenance — registry に登録される全 entry に必須で付く「誰が登録したか」の tag。
  *
- * - builtin : Charminal 本体由来（const array、組込み handler 等）
+ * - builtin : Yorishiro 本体由来（const array、組込み handler 等）
  * - persona : persona pack 由来（packId で識別）
  * - system : システム由来（packId で識別）
  *

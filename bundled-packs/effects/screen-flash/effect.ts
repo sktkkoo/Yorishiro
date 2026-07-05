@@ -11,7 +11,7 @@
  * 結果返却 → micro-task で flash dispatch の順序になっている）。
  */
 
-import type { EffectContext, EffectDefinition } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition } from "@yorishiro/sdk";
 
 interface ScreenFlashOptions {
   /** flash の色。default: #ffffff */

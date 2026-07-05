@@ -6,7 +6,7 @@
  * 同 id を user/bundled で override する semantic を持つ。
  */
 
-import type { AmenityHandle, AmenityPackManifest, Disposable } from "@charminal/sdk";
+import type { AmenityHandle, AmenityPackManifest, Disposable } from "@yorishiro/sdk";
 import type { PackOrigin } from "../single-active-registry/types";
 
 export interface AmenityPackEntry {

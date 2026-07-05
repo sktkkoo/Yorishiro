@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export const RELOAD_CURTAIN_STORAGE_KEY = "charminal:reload-curtain";
+export const RELOAD_CURTAIN_STORAGE_KEY = "yorishiro:reload-curtain";
 export const RELOAD_CURTAIN_FADE_MS = 360;
 export const RELOAD_CURTAIN_MIN_VISIBLE_MS = 520;
 export const RELOAD_CURTAIN_FAILSAFE_MS = 5000;

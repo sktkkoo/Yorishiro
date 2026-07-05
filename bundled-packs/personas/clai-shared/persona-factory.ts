@@ -1,4 +1,4 @@
-import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@charminal/sdk";
+import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@yorishiro/sdk";
 
 const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
@@ -85,7 +85,7 @@ const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
 };
 
 /**
- * Charminal の flagship persona。
+ * Yorishiro の flagship persona。
  *
  * 親しみやすく、しかし馴れ馴れしくない距離感で、
  * ユーザーの開発作業を観察して時々反応する住人。
@@ -218,7 +218,7 @@ export function createClaiPersona(args: {
           id: "clai:settings-write-failed",
           match(event: DispatchEvent) {
             if (event.kind !== "synthetic") return null;
-            if (event.name !== "charminal-settings:write-failed") return null;
+            if (event.name !== "yorishiro-settings:write-failed") return null;
             return {
               reaction: "settings-error",
               payload: event.payload,
@@ -229,7 +229,7 @@ export function createClaiPersona(args: {
       responses: {
         // エラー検知時の反射。philosophy の「意識に先立つ反応」は典型的には
         // 「顔が顰められる」こととして語られており、body animation は必須ではない。
-        // 旧 Charminal でも error に VRMA は紐づけられていなかった。body の連続感は
+        // 旧 Yorishiro でも error に VRMA は紐づけられていなかった。body の連続感は
         // procedural bones（呼吸・head drift 等）が担う。
         // Philosophy: docs/philosophy/PHILOSOPHY.md「意識に先立つ反応」
         distressed: {

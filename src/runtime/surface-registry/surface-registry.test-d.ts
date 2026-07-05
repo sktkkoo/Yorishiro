@@ -1,4 +1,4 @@
-import type { UiLayout } from "@charminal/sdk";
+import type { UiLayout } from "@yorishiro/sdk";
 import { assertType, type Equals } from "../../test-utils/type-assert";
 import type { SurfaceName } from "./types";
 

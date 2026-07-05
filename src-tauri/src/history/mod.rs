@@ -1,4 +1,4 @@
-//! ~/.charminal/.charminal-snapshots/ の git2 snapshot store。
+//! ~/.yorishiro/.yorishiro-snapshots/ の git2 snapshot store。
 //! git dir は work tree から分離し、ユーザーの system git には依存しない。
 
 use git2::build::CheckoutBuilder;
@@ -12,12 +12,12 @@ use std::path::Component;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-const SNAPSHOT_GIT_DIR: &str = ".charminal-snapshots";
+const SNAPSHOT_GIT_DIR: &str = ".yorishiro-snapshots";
 const STARTUP_CLEAN_NOTES_REF: &str = "refs/notes/startup-clean";
 const GITIGNORE_CONTENT: &str = "\
 journal/
 .history/
-.charminal-snapshots/
+.yorishiro-snapshots/
 sdk.d.ts
 sdk-guide.md
 last-startup.json
@@ -27,7 +27,7 @@ tmp/
 .DS_Store
 ";
 
-/// snapshot に含める ~/.charminal 相対パス。
+/// snapshot に含める ~/.yorishiro 相対パス。
 const SNAPSHOT_INCLUDES: &[&str] = &["packs", "config.json", "init.js"];
 
 /// 一覧に返す snapshot の既定件数。git commit 自体は prune しない。
@@ -59,12 +59,12 @@ struct ParsedCommit {
     changed: Option<Vec<String>>,
 }
 
-fn charminal_dir(home_root: &Path) -> PathBuf {
-    home_root.join(".charminal")
+fn yorishiro_dir(home_root: &Path) -> PathBuf {
+    home_root.join(".yorishiro")
 }
 
 fn snapshot_git_dir(home_root: &Path) -> PathBuf {
-    charminal_dir(home_root).join(SNAPSHOT_GIT_DIR)
+    yorishiro_dir(home_root).join(SNAPSHOT_GIT_DIR)
 }
 
 fn now_ms() -> u64 {
@@ -87,49 +87,49 @@ fn is_unborn_or_not_found(err: &git2::Error) -> bool {
 }
 
 fn signature() -> Result<Signature<'static>, String> {
-    Signature::now("charminal", "noreply@charminal.app").map_err(|e| git_err("signature", e))
+    Signature::now("yorishiro", "noreply@yorishiro.dev").map_err(|e| git_err("signature", e))
 }
 
-fn ensure_gitignore(charminal_home: &Path) -> Result<(), String> {
-    let path = charminal_home.join(".gitignore");
+fn ensure_gitignore(yorishiro_home: &Path) -> Result<(), String> {
+    let path = yorishiro_home.join(".gitignore");
     if path.exists() {
         return Ok(());
     }
     std::fs::write(&path, GITIGNORE_CONTENT).map_err(|e| io_err("write .gitignore", e))
 }
 
-fn remove_snapshot_gitlink(charminal_home: &Path, git_dir: &Path) -> Result<(), String> {
-    let gitlink = charminal_home.join(".git");
+fn remove_snapshot_gitlink(yorishiro_home: &Path, git_dir: &Path) -> Result<(), String> {
+    let gitlink = yorishiro_home.join(".git");
     let Ok(meta) = std::fs::symlink_metadata(&gitlink) else {
         return Ok(());
     };
     if meta.file_type().is_dir() && !meta.file_type().is_symlink() {
-        return Err("~/.charminal/.git is a directory; refusing to modify it".to_string());
+        return Err("~/.yorishiro/.git is a directory; refusing to modify it".to_string());
     }
     let content = std::fs::read_to_string(&gitlink).map_err(|e| io_err("read .git gitlink", e))?;
     let Some(target) = content.trim().strip_prefix("gitdir:") else {
-        return Err("~/.charminal/.git exists but is not a snapshot gitlink".to_string());
+        return Err("~/.yorishiro/.git exists but is not a snapshot gitlink".to_string());
     };
     let target = Path::new(target.trim());
     let target = if target.is_absolute() {
         target.to_path_buf()
     } else {
-        charminal_home.join(target)
+        yorishiro_home.join(target)
     };
     let canonical_target = std::fs::canonicalize(&target).unwrap_or(target);
     let canonical_git_dir =
         std::fs::canonicalize(git_dir).unwrap_or_else(|_| git_dir.to_path_buf());
     if canonical_target != canonical_git_dir {
-        return Err("~/.charminal/.git points outside snapshot storage".to_string());
+        return Err("~/.yorishiro/.git points outside snapshot storage".to_string());
     }
     std::fs::remove_file(&gitlink).map_err(|e| io_err("remove .git gitlink", e))
 }
 
 fn open_or_init_repo(home_root: &Path) -> Result<Repository, String> {
-    let charminal_home = charminal_dir(home_root);
-    std::fs::create_dir_all(charminal_home.join("packs"))
-        .map_err(|e| io_err("mkdir ~/.charminal/packs", e))?;
-    ensure_gitignore(&charminal_home)?;
+    let yorishiro_home = yorishiro_dir(home_root);
+    std::fs::create_dir_all(yorishiro_home.join("packs"))
+        .map_err(|e| io_err("mkdir ~/.yorishiro/packs", e))?;
+    ensure_gitignore(&yorishiro_home)?;
 
     let git_dir = snapshot_git_dir(home_root);
     let repo = if git_dir.exists() {
@@ -138,17 +138,17 @@ fn open_or_init_repo(home_root: &Path) -> Result<Repository, String> {
         let mut opts = RepositoryInitOptions::new();
         opts.no_dotgit_dir(true)
             .external_template(false)
-            .workdir_path(&charminal_home)
+            .workdir_path(&yorishiro_home)
             .initial_head("main");
         Repository::init_opts(&git_dir, &opts).map_err(|e| git_err("init snapshot repo", e))?
     };
-    remove_snapshot_gitlink(&charminal_home, &git_dir)?;
-    repo.set_workdir(&charminal_home, false)
+    remove_snapshot_gitlink(&yorishiro_home, &git_dir)?;
+    repo.set_workdir(&yorishiro_home, false)
         .map_err(|e| git_err("set snapshot workdir", e))?;
     Ok(repo)
 }
 
-/// `ensure_charminal_dirs` から呼ぶ repo 初期化。baseline commit は既存の起動時
+/// `ensure_yorishiro_dirs` から呼ぶ repo 初期化。baseline commit は既存の起動時
 /// snapshot 経路が作るため、ここでは git dir と .gitignore だけ保証する。
 pub(crate) fn ensure_snapshot_repo_impl(home_root: &Path) -> Result<(), String> {
     let _guard = SNAPSHOT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -899,7 +899,7 @@ mod tests {
 
     fn tmp_home(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-history-{}-{}-{}",
+            "yorishiro-history-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -908,12 +908,12 @@ mod tests {
                 .unwrap_or(0)
         ));
         let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(tmp.join(".charminal")).expect("mkdir charminal");
+        fs::create_dir_all(tmp.join(".yorishiro")).expect("mkdir yorishiro");
         tmp
     }
 
-    fn charminal(home: &Path) -> PathBuf {
-        home.join(".charminal")
+    fn yorishiro(home: &Path) -> PathBuf {
+        home.join(".yorishiro")
     }
 
     fn repo(home: &Path) -> Repository {
@@ -927,7 +927,7 @@ mod tests {
     }
 
     fn seed_pack(home: &Path, id: &str, file: &str, content: &str) {
-        let path = charminal(home).join("packs").join(id).join(file);
+        let path = yorishiro(home).join("packs").join(id).join(file);
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, content).unwrap();
     }
@@ -938,11 +938,11 @@ mod tests {
         ensure_snapshot_repo_impl(&home).unwrap();
 
         assert!(snapshot_git_dir(&home).join("HEAD").exists());
-        assert!(!charminal(&home).join(".git").exists());
-        let ignore = fs::read_to_string(charminal(&home).join(".gitignore")).unwrap();
-        assert!(ignore.contains(".charminal-snapshots/"));
+        assert!(!yorishiro(&home).join(".git").exists());
+        let ignore = fs::read_to_string(yorishiro(&home).join(".gitignore")).unwrap();
+        assert!(ignore.contains(".yorishiro-snapshots/"));
         assert!(ignore.contains("cohabitation.json"));
-        // Charminal が毎起動で再生成する bundle ファイルは snapshot 対象外。
+        // Yorishiro が毎起動で再生成する bundle ファイルは snapshot 対象外。
         assert!(ignore.contains("sdk.d.ts"));
         assert!(ignore.contains("sdk-guide.md"));
         assert!(head_commit(&repo(&home)).unwrap().is_none());
@@ -954,19 +954,19 @@ mod tests {
     fn snapshot_create_tracks_scope_and_excludes_internal_files() {
         let home = tmp_home("snap-create");
         seed_pack(&home, "foo", "effect.js", "export default {}");
-        fs::create_dir_all(charminal(&home).join("packs/foo/.git/objects")).unwrap();
-        fs::write(charminal(&home).join("packs/foo/.git/config"), "keep").unwrap();
-        fs::write(charminal(&home).join("packs/foo/.DS_Store"), "noise").unwrap();
-        fs::write(charminal(&home).join("packs/foo/.effect.js.resttmp"), "tmp").unwrap();
+        fs::create_dir_all(yorishiro(&home).join("packs/foo/.git/objects")).unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/.git/config"), "keep").unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/.DS_Store"), "noise").unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/.effect.js.resttmp"), "tmp").unwrap();
         fs::write(
-            charminal(&home).join("config.json"),
+            yorishiro(&home).join("config.json"),
             "{\"activeScene\":null}",
         )
         .unwrap();
-        fs::write(charminal(&home).join("init.js"), "// init").unwrap();
-        fs::create_dir_all(charminal(&home).join("journal/daily")).unwrap();
+        fs::write(yorishiro(&home).join("init.js"), "// init").unwrap();
+        fs::create_dir_all(yorishiro(&home).join("journal/daily")).unwrap();
         fs::write(
-            charminal(&home).join("journal/daily/2026-06-02.md"),
+            yorishiro(&home).join("journal/daily/2026-06-02.md"),
             "secret",
         )
         .unwrap();
@@ -986,7 +986,7 @@ mod tests {
     #[test]
     fn snapshot_list_returns_desc_with_label_and_changed() {
         let home = tmp_home("snap-list");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
 
         snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
         snapshot_create_with_changed_impl(
@@ -1014,7 +1014,7 @@ mod tests {
     #[test]
     fn snapshot_list_limits_to_default_keep() {
         let home = tmp_home("list-limit");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
         for _ in 0..(DEFAULT_KEEP + 3) {
             snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
         }
@@ -1030,13 +1030,13 @@ mod tests {
     #[test]
     fn restore_quiet_period_is_active_only_after_recent_pre_restore() {
         let home = tmp_home("restore-quiet");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
         assert!(!restore_quiet_period_active(&home, 5_000));
 
         snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
         assert!(!restore_quiet_period_active(&home, 5_000));
 
-        fs::write(charminal(&home).join("config.json"), "{\"v\":2}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"v\":2}").unwrap();
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
         snapshot_restore_impl(&home, seq, None).unwrap();
         assert!(restore_quiet_period_active(&home, 5_000));
@@ -1048,14 +1048,14 @@ mod tests {
     fn should_skip_baseline_compares_live_tree_to_head() {
         let home = tmp_home("skip-baseline");
         seed_pack(&home, "foo", "effect.js", "v1");
-        fs::write(charminal(&home).join("config.json"), "{\"v\":1}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"v\":1}").unwrap();
         snapshot_create_impl(&home, "startup-baseline", None).unwrap();
 
         assert!(should_skip_baseline(&home, 60_000));
-        fs::write(charminal(&home).join("config.json"), "{\"v\":2}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"v\":2}").unwrap();
         assert!(!should_skip_baseline(&home, 60_000));
-        fs::create_dir_all(charminal(&home).join("journal")).unwrap();
-        fs::write(charminal(&home).join("journal/memo.md"), "ignored").unwrap();
+        fs::create_dir_all(yorishiro(&home).join("journal")).unwrap();
+        fs::write(yorishiro(&home).join("journal/memo.md"), "ignored").unwrap();
         assert!(!should_skip_baseline(&home, 60_000));
 
         let _ = fs::remove_dir_all(&home);
@@ -1064,7 +1064,7 @@ mod tests {
     #[test]
     fn snapshot_create_with_changed_records_scope() {
         let home = tmp_home("snap-changed");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
 
         let seq = snapshot_create_with_changed_impl(
             &home,
@@ -1084,10 +1084,10 @@ mod tests {
     #[test]
     fn restore_takes_pre_restore_snapshot_first_and_can_undo() {
         let home = tmp_home("pre-restore");
-        fs::write(charminal(&home).join("config.json"), "{\"v\":1}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"v\":1}").unwrap();
         let seq1 = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
-        fs::write(charminal(&home).join("config.json"), "{\"v\":2}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"v\":2}").unwrap();
         snapshot_restore_impl(&home, seq1, None).unwrap();
 
         let snaps = snapshot_list_impl(&home).unwrap();
@@ -1104,13 +1104,13 @@ mod tests {
             label
         );
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("config.json")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("config.json")).unwrap(),
             "{\"v\":1}"
         );
 
         snapshot_restore_impl(&home, pre_restore_seq, None).unwrap();
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("config.json")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("config.json")).unwrap(),
             "{\"v\":2}"
         );
 
@@ -1121,23 +1121,23 @@ mod tests {
     fn restore_full_mirror_removes_extra_pack_and_files() {
         let home = tmp_home("restore-extra");
         seed_pack(&home, "foo", "effect.js", "v1");
-        fs::write(charminal(&home).join("config.json"), "{\"a\":1}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"a\":1}").unwrap();
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
         seed_pack(&home, "foo", "old.js", "old");
         seed_pack(&home, "bad", "effect.js", "boom");
-        fs::write(charminal(&home).join("packs/foo/effect.js"), "v2-broken").unwrap();
-        fs::write(charminal(&home).join("config.json"), "{\"a\":2}").unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/effect.js"), "v2-broken").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{\"a\":2}").unwrap();
         snapshot_restore_impl(&home, seq, None).unwrap();
 
-        assert!(!charminal(&home).join("packs/bad").exists());
-        assert!(!charminal(&home).join("packs/foo/old.js").exists());
+        assert!(!yorishiro(&home).join("packs/bad").exists());
+        assert!(!yorishiro(&home).join("packs/foo/old.js").exists());
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("packs/foo/effect.js")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("packs/foo/effect.js")).unwrap(),
             "v1"
         );
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("config.json")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("config.json")).unwrap(),
             "{\"a\":1}"
         );
 
@@ -1150,13 +1150,13 @@ mod tests {
         seed_pack(&home, "foo", "effect.js", "v1");
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
-        fs::create_dir_all(charminal(&home).join("packs/foo/.git/objects")).unwrap();
-        fs::write(charminal(&home).join("packs/foo/.git/config"), "repo").unwrap();
+        fs::create_dir_all(yorishiro(&home).join("packs/foo/.git/objects")).unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/.git/config"), "repo").unwrap();
         seed_pack(&home, "foo", "extra.js", "extra");
         snapshot_restore_impl(&home, seq, Some(vec!["packs/foo".to_string()])).unwrap();
 
-        assert!(charminal(&home).join("packs/foo/.git/config").exists());
-        assert!(!charminal(&home).join("packs/foo/extra.js").exists());
+        assert!(yorishiro(&home).join("packs/foo/.git/config").exists());
+        assert!(!yorishiro(&home).join("packs/foo/extra.js").exists());
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -1167,12 +1167,12 @@ mod tests {
         seed_pack(&home, "foo", "effect.js", "real");
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
-        fs::remove_file(charminal(&home).join("packs/foo/effect.js")).unwrap();
-        fs::create_dir_all(charminal(&home).join("packs/foo/effect.js")).unwrap();
-        fs::write(charminal(&home).join("packs/foo/effect.js/inner"), "x").unwrap();
+        fs::remove_file(yorishiro(&home).join("packs/foo/effect.js")).unwrap();
+        fs::create_dir_all(yorishiro(&home).join("packs/foo/effect.js")).unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/effect.js/inner"), "x").unwrap();
         snapshot_restore_impl(&home, seq, None).unwrap();
 
-        let p = charminal(&home).join("packs/foo/effect.js");
+        let p = yorishiro(&home).join("packs/foo/effect.js");
         assert!(p.is_file());
         assert_eq!(fs::read_to_string(&p).unwrap(), "real");
 
@@ -1185,13 +1185,13 @@ mod tests {
         seed_pack(&home, "foo", "assets/a.png", "img");
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
-        fs::remove_dir_all(charminal(&home).join("packs/foo")).unwrap();
-        fs::write(charminal(&home).join("packs/foo"), "oops-file").unwrap();
+        fs::remove_dir_all(yorishiro(&home).join("packs/foo")).unwrap();
+        fs::write(yorishiro(&home).join("packs/foo"), "oops-file").unwrap();
         snapshot_restore_impl(&home, seq, None).unwrap();
 
-        assert!(charminal(&home).join("packs/foo").is_dir());
+        assert!(yorishiro(&home).join("packs/foo").is_dir());
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("packs/foo/assets/a.png")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("packs/foo/assets/a.png")).unwrap(),
             "img"
         );
 
@@ -1202,19 +1202,19 @@ mod tests {
     fn restore_partial_scope_only_touches_given_path() {
         let home = tmp_home("restore-partial");
         seed_pack(&home, "foo", "effect.js", "v1");
-        fs::write(charminal(&home).join("config.json"), "orig").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "orig").unwrap();
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
-        fs::write(charminal(&home).join("packs/foo/effect.js"), "v2").unwrap();
-        fs::write(charminal(&home).join("config.json"), "changed").unwrap();
+        fs::write(yorishiro(&home).join("packs/foo/effect.js"), "v2").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "changed").unwrap();
         snapshot_restore_impl(&home, seq, Some(vec!["packs".to_string()])).unwrap();
 
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("packs/foo/effect.js")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("packs/foo/effect.js")).unwrap(),
             "v1"
         );
         assert_eq!(
-            fs::read_to_string(charminal(&home).join("config.json")).unwrap(),
+            fs::read_to_string(yorishiro(&home).join("config.json")).unwrap(),
             "changed"
         );
 
@@ -1226,12 +1226,12 @@ mod tests {
         let home = tmp_home("restore-top-level-delete");
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
-        fs::write(charminal(&home).join("init.js"), "// init").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("init.js"), "// init").unwrap();
         snapshot_restore_impl(&home, seq, None).unwrap();
 
-        assert!(!charminal(&home).join("config.json").exists());
-        assert!(!charminal(&home).join("init.js").exists());
+        assert!(!yorishiro(&home).join("config.json").exists());
+        assert!(!yorishiro(&home).join("init.js").exists());
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -1239,9 +1239,9 @@ mod tests {
     #[test]
     fn restore_rejects_disallowed_paths() {
         let home = tmp_home("restore-guard");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
-        fs::create_dir_all(charminal(&home).join("journal")).unwrap();
-        fs::write(charminal(&home).join("journal/memo.md"), "keep").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
+        fs::create_dir_all(yorishiro(&home).join("journal")).unwrap();
+        fs::write(yorishiro(&home).join("journal/memo.md"), "keep").unwrap();
         let seq = snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
 
         for bad in [
@@ -1259,7 +1259,7 @@ mod tests {
             let r = snapshot_restore_impl(&home, seq, Some(vec![bad.to_string()]));
             assert!(r.is_err(), "should reject {}", bad);
         }
-        assert!(charminal(&home).join("journal/memo.md").exists());
+        assert!(yorishiro(&home).join("journal/memo.md").exists());
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -1267,7 +1267,7 @@ mod tests {
     #[test]
     fn prune_is_noop_but_list_limits_results() {
         let home = tmp_home("prune");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
         for _ in 0..5 {
             snapshot_create_impl(&home, "sdk:snapshot", None).unwrap();
         }
@@ -1286,13 +1286,13 @@ mod tests {
         let home = tmp_home("startup-clean");
         assert_eq!(is_last_startup_clean(&home), None);
         fs::write(
-            charminal(&home).join("last-startup.json"),
+            yorishiro(&home).join("last-startup.json"),
             r#"{"loadResults":[{"id":"a","kind":"effect","status":"loaded"},{"id":"b","kind":"persona","status":"failed"}]}"#,
         )
         .unwrap();
         assert_eq!(is_last_startup_clean(&home), Some(false));
         fs::write(
-            charminal(&home).join("last-startup.json"),
+            yorishiro(&home).join("last-startup.json"),
             r#"{"loadResults":[{"id":"a","kind":"effect","status":"loaded"}]}"#,
         )
         .unwrap();
@@ -1304,7 +1304,7 @@ mod tests {
     #[test]
     fn tag_startup_clean_sets_note_on_matching_seq() {
         let home = tmp_home("tag-clean");
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
         let seq = snapshot_create_impl(&home, "startup-baseline", None).unwrap();
         assert_eq!(snapshot_list_impl(&home).unwrap()[0].startup_clean, None);
 
@@ -1321,7 +1321,7 @@ mod tests {
     #[test]
     fn concurrent_snapshot_creates_get_unique_seqs() {
         let home = std::sync::Arc::new(tmp_home("concurrent"));
-        fs::write(charminal(&home).join("config.json"), "{}").unwrap();
+        fs::write(yorishiro(&home).join("config.json"), "{}").unwrap();
 
         let mut handles = Vec::new();
         for _ in 0..8 {

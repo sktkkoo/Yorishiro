@@ -23,8 +23,8 @@
     /* Path aliases */
     "baseUrl": ".",
     "paths": {
-      "@charminal/sdk": ["./src/sdk/index.d.ts"],
-      "@charminal/sdk/*": ["./src/sdk/*"]
+      "@yorishiro/sdk": ["./src/sdk/index.d.ts"],
+      "@yorishiro/sdk/*": ["./src/sdk/*"]
     }
   },
   "include": ["src", "bundled-packs"],

@@ -28,7 +28,7 @@ impl TerminalAgent for CodexAgent {
         }
     }
 
-    /// Codex は charm command を skill として `$charm-<name>` で呼ぶ。
+    /// Codex は yori command を skill として `$yori-<name>` で呼ぶ。
     fn command_syntax(&self) -> CommandSyntax {
         CommandSyntax {
             prefix: "$",
@@ -45,10 +45,10 @@ impl TerminalAgent for CodexAgent {
         }
 
         args.push("-c".to_string());
-        args.push(codex_charminal_mcp_config_arg(ctx.mcp_port));
+        args.push(codex_yorishiro_mcp_config_arg(ctx.mcp_port));
 
         args.push("-c".to_string());
-        args.push(codex_charminal_plugin_enable_arg());
+        args.push(codex_yorishiro_plugin_enable_arg());
 
         if let Some(prompt) =
             super::merge_system_prompt_and_reminder(ctx.system_prompt, ctx.prompt_reminder)
@@ -161,16 +161,16 @@ fn toml_basic_string(value: &str) -> String {
     out
 }
 
-fn codex_charminal_mcp_config_arg(port: u16) -> String {
+fn codex_yorishiro_mcp_config_arg(port: u16) -> String {
     let url = format!("http://127.0.0.1:{}/mcp", port);
-    format!("mcp_servers.charminal.url={}", toml_basic_string(&url))
+    format!("mcp_servers.yorishiro.url={}", toml_basic_string(&url))
 }
 
-/// Codex の charm プラグイン有効化に必要な -c config override を返す。
+/// Codex の yori プラグイン有効化に必要な -c config override を返す。
 /// プラグイン自体は prepare_localized_plugin_dir で Codex のキャッシュに
 /// 直接インストール済み。ここでは有効化フラグだけ渡す。
-fn codex_charminal_plugin_enable_arg() -> String {
-    "plugins.\"charm@charminal-local\".enabled=true".to_string()
+fn codex_yorishiro_plugin_enable_arg() -> String {
+    "plugins.\"yori@yorishiro-local\".enabled=true".to_string()
 }
 
 #[cfg(test)]
@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn codex_session_file_matches_cwd_from_session_meta() {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-codex-session-test-{}-{}",
+            "yorishiro-codex-session-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -225,7 +225,7 @@ mod tests {
     #[test]
     fn has_existing_codex_session_in_finds_nested_jsonl_for_cwd() {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-codex-session-tree-test-{}-{}",
+            "yorishiro-codex-session-tree-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -267,28 +267,28 @@ mod tests {
     }
 
     #[test]
-    fn codex_charminal_mcp_config_arg_points_to_streamable_http_server() {
+    fn codex_yorishiro_mcp_config_arg_points_to_streamable_http_server() {
         assert_eq!(
-            codex_charminal_mcp_config_arg(18743),
-            "mcp_servers.charminal.url=\"http://127.0.0.1:18743/mcp\""
+            codex_yorishiro_mcp_config_arg(18743),
+            "mcp_servers.yorishiro.url=\"http://127.0.0.1:18743/mcp\""
         );
     }
 
     #[test]
-    fn codex_charminal_plugin_enable_arg_returns_enable_flag() {
+    fn codex_yorishiro_plugin_enable_arg_returns_enable_flag() {
         assert_eq!(
-            codex_charminal_plugin_enable_arg(),
-            "plugins.\"charm@charminal-local\".enabled=true"
+            codex_yorishiro_plugin_enable_arg(),
+            "plugins.\"yori@yorishiro-local\".enabled=true"
         );
     }
 
     #[test]
     fn codex_injects_prompt_reminder_as_developer_instructions() {
-        let ctx = make_ctx(None, None, Some("## Charminal reminders\n\n- voice_say"));
+        let ctx = make_ctx(None, None, Some("## Yorishiro reminders\n\n- voice_say"));
         let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
 
         assert!(result.args.iter().any(|arg| arg
-            .contains("developer_instructions=\"## Charminal reminders\\n\\n- voice_say\"")));
+            .contains("developer_instructions=\"## Yorishiro reminders\\n\\n- voice_say\"")));
     }
 
     #[test]

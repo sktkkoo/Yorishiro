@@ -1,5 +1,5 @@
-import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@charminal/sdk";
 import { invoke } from "@tauri-apps/api/core";
+import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@yorishiro/sdk";
 import {
   listSupportedAgents,
   mcpServerStatus,
@@ -7,12 +7,12 @@ import {
 } from "../bindings/tauri-commands";
 import { AGENT_COMMAND_SYNTAX } from "../i18n/strings";
 import { resolveEffectiveAgent } from "./sessions";
+import { KNOWN_AGENT_IDS, parseConfig } from "./user-pack-loader/config";
 import {
   fetchSafeModeFlag,
-  readCharminalConfigText,
   readLastStartupReport,
-} from "./user-pack-loader/charminal-io";
-import { KNOWN_AGENT_IDS, parseConfig } from "./user-pack-loader/config";
+  readYorishiroConfigText,
+} from "./user-pack-loader/yorishiro-io";
 
 export interface CollectHealthReportDeps {
   readonly listPacks: () => Promise<{ readonly packs: readonly UiAppPackStatusEntry[] }>;
@@ -53,9 +53,9 @@ function parseLoadReport(text: string): { failed: number; total: number } | null
 export async function collectHealthReport(deps: CollectHealthReportDeps): Promise<UiHealthReport> {
   const [homeDir, safeMode, configText, startupText, agents, mcpStatus, packResult] =
     await Promise.all([
-      invoke<string>("charminal_home_dir").catch(() => ""),
+      invoke<string>("yorishiro_home_dir").catch(() => ""),
       fetchSafeModeFlag().catch(() => false),
-      readCharminalConfigText(),
+      readYorishiroConfigText(),
       readLastStartupReport().catch(() => ""),
       listSupportedAgents().catch(() => []),
       mcpServerStatus().catch(() => ({ port: null, error: "Could not read MCP status." })),
@@ -89,10 +89,10 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
   items.push(
     healthItem(
       "home",
-      "Charminal home",
+      " Yorishiro home",
       homeDir === "" ? "error" : "ok",
-      homeDir === "" ? "Could not resolve ~/.charminal." : homeDir,
-      homeDir === "" ? "Restart Charminal and check filesystem permissions." : undefined,
+      homeDir === "" ? "Could not resolve ~/.yorishiro." : homeDir,
+      homeDir === "" ? "Restart  Yorishiro and check filesystem permissions." : undefined,
     ),
   );
 
@@ -102,7 +102,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Terminal agent",
       selectedAgentPath === null ? "error" : "ok",
       selectedAgentPath === null
-        ? `${effectiveAgent} is selected but was not found on Charminal's PATH.`
+        ? `${effectiveAgent} is selected but was not found on  Yorishiro's PATH.`
         : `${effectiveAgent}: ${selectedAgentPath} (${supportedAgentSummary})`,
       selectedAgentPath === null
         ? "Install the selected agent or switch Agent in Settings."
@@ -129,7 +129,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
     const rustAgentIds = new Set(agents.map((agent) => agent.id));
     const missingInConfig = [...rustAgentIds].filter((id) => !KNOWN_AGENT_IDS.has(id));
     const missingInRust = [...KNOWN_AGENT_IDS].filter((id) => !rustAgentIds.has(id));
-    // charm コマンド記法の正本は Rust adapter。strings.ts の mirror がズレていないか照合。
+    // yori コマンド記法の正本は Rust adapter。strings.ts の mirror がズレていないか照合。
     const syntaxDrift = agents
       .filter((agent) => {
         const mirror = AGENT_COMMAND_SYNTAX[agent.id];
@@ -169,11 +169,11 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "MCP port",
       mcpStatus.error === null ? "ok" : "warning",
       mcpStatus.error === null
-        ? `Charminal MCP is listening on localhost:${mcpStatus.port ?? expectedMcpPort}.`
-        : `Charminal MCP did not start on localhost:${expectedMcpPort}: ${mcpStatus.error}`,
+        ? ` Yorishiro MCP is listening on localhost:${mcpStatus.port ?? expectedMcpPort}.`
+        : ` Yorishiro MCP did not start on localhost:${expectedMcpPort}: ${mcpStatus.error}`,
       mcpStatus.error === null
         ? undefined
-        : "Check whether another process is using the configured MCP port, then restart Charminal.",
+        : "Check whether another process is using the configured MCP port, then restart  Yorishiro.",
     ),
   );
 
@@ -183,7 +183,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       "Safe mode",
       safeMode ? "warning" : "ok",
       safeMode ? "User packs and init.js are skipped for recovery." : "Off",
-      safeMode ? "Unset CHARMINAL_SAFE_MODE and restart after disabling broken packs." : undefined,
+      safeMode ? "Unset YORISHIRO_SAFE_MODE and restart after disabling broken packs." : undefined,
     ),
   );
 
@@ -210,7 +210,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
         ? "No readable last-startup.json yet."
         : `${startup.total} user pack load result(s), ${startup.failed} failed`,
       startup === null
-        ? "Start Charminal once outside safe mode to generate the report."
+        ? "Start  Yorishiro once outside safe mode to generate the report."
         : undefined,
     ),
   );

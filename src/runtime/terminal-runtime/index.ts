@@ -1,5 +1,5 @@
 /**
- * @charminal/runtime/terminal-runtime
+ * @yorishiro/runtime/terminal-runtime
  *
  * Session id でキーされる TerminalRuntime instance Map（webview lifetime）。
  * 各 session が自分の xterm + PTY Channel + perception ref を持つ。

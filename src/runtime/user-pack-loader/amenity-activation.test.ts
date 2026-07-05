@@ -1,4 +1,4 @@
-import type { AmenityHandle, AmenityPackDefinition, HistoryAPI } from "@charminal/sdk";
+import type { AmenityHandle, AmenityPackDefinition, HistoryAPI } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import { AmenityPackRegistryImpl } from "../amenity-pack-registry";
@@ -89,7 +89,7 @@ describe("activateAndRegisterAmenity", () => {
     await activateAndRegisterAmenity({
       registryId: "dir-noted",
       def: makeDef(),
-      entryPath: "/x/.charminal/packs/dir-noted/amenity.js",
+      entryPath: "/x/.yorishiro/packs/dir-noted/amenity.js",
       amenityPackRegistry,
       packRegistry: packReg,
       createAmenityContext: createUserAmenityContextFactory({

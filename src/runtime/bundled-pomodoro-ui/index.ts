@@ -4,7 +4,7 @@
  * App.tsx の起動 path から呼び、ambientUiPackRegistry に登録する。
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import pomodoroUiPack from "../../../bundled-packs/ambient-ui/pomodoro-ui/ui";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 
@@ -21,7 +21,7 @@ export function registerBundledPomodoroUi(opts: RegisterOptions): Disposable {
       id: pomodoroUiPack.id,
       type: "ambient-ui",
       version: "0.1.0",
-      charminalVersion: "^0.1.0",
+      yorishiroVersion: "^0.1.0",
       entry: "ui.tsx",
     },
     pack: { mount: pomodoroUiPack.mount },

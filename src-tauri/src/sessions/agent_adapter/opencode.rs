@@ -34,14 +34,14 @@ impl TerminalAgent for OpencodeAgent {
         let args = Vec::new();
         let mut env = Vec::new();
         let mut temp_files = Vec::new();
-        let commands = opencode_charminal_commands(ctx.plugin_dir)?;
+        let commands = opencode_yorishiro_commands(ctx.plugin_dir)?;
 
         // OpenCode の runtime config は session-scoped 注入経路として env var に渡す。
         // project-local opencode.json との deep-merge は v2 scope。
         let mut config_obj = serde_json::json!({
             "$schema": "https://opencode.ai/config.json",
             "mcp": {
-                "charminal": {
+                "yorishiro": {
                     "type": "remote",
                     "url": format!("http://127.0.0.1:{}/mcp", ctx.mcp_port),
                     "enabled": true,
@@ -109,7 +109,7 @@ impl TerminalAgent for OpencodeAgent {
         Some(AgentThemeRefresh::Sigusr2)
     }
 
-    /// OpenCode は charm command を `/charm-<name>` で呼ぶ。
+    /// OpenCode は yori command を `/yori-<name>` で呼ぶ。
     fn command_syntax(&self) -> CommandSyntax {
         CommandSyntax {
             prefix: "/",
@@ -171,13 +171,13 @@ fn parse_command_markdown(content: &str) -> (String, String) {
     (description, lines_vec[body_start..].join("\n"))
 }
 
-/// Claude 記法 `/charm:<name>` を OpenCode 自身の宣言した記法へ書き換える。
+/// Claude 記法 `/yori:<name>` を OpenCode 自身の宣言した記法へ書き換える。
 /// 記法は OpencodeAgent::command_syntax() を正本にし、ここで直書きしない。
 fn rewrite_charm_slash_commands(input: &str) -> String {
     let syntax = OPENCODE.command_syntax();
     input.replace(
-        "/charm:",
-        &format!("{}charm{}", syntax.prefix, syntax.separator),
+        "/yori:",
+        &format!("{}yori{}", syntax.prefix, syntax.separator),
     )
 }
 
@@ -189,14 +189,14 @@ fn opencode_command_config(content: &str, command_name: &str) -> Value {
     serde_json::json!({
         "template": template,
         "description": if description.is_empty() {
-            format!("Charminal {}", command_name)
+            format!("Yorishiro {}", command_name)
         } else {
             description
         },
     })
 }
 
-fn opencode_charminal_commands(
+fn opencode_yorishiro_commands(
     plugin_dir: Option<&std::path::Path>,
 ) -> Result<Option<Map<String, Value>>, String> {
     let Some(plugin_dir) = plugin_dir else {
@@ -223,7 +223,7 @@ fn opencode_charminal_commands(
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("read OpenCode command {} failed: {}", path.display(), e))?;
         commands.insert(
-            format!("charm-{}", command_name),
+            format!("yori-{}", command_name),
             opencode_command_config(&content, command_name),
         );
     }
@@ -343,10 +343,10 @@ mod tests {
             .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
             .expect("OPENCODE_CONFIG_CONTENT env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
-        let charminal_mcp = &parsed["mcp"]["charminal"];
-        assert_eq!(charminal_mcp["type"], "remote");
-        assert_eq!(charminal_mcp["url"], "http://127.0.0.1:18743/mcp");
-        assert_eq!(charminal_mcp["enabled"], true);
+        let yorishiro_mcp = &parsed["mcp"]["yorishiro"];
+        assert_eq!(yorishiro_mcp["type"], "remote");
+        assert_eq!(yorishiro_mcp["url"], "http://127.0.0.1:18743/mcp");
+        assert_eq!(yorishiro_mcp["enabled"], true);
         cleanup_temp_files(&result);
     }
 
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn opencode_injects_prompt_reminder_as_primary_agent_prompts() {
-        let ctx = make_ctx_with_reminder(None, Some("## Charminal reminders\n\n- voice_say"));
+        let ctx = make_ctx_with_reminder(None, Some("## Yorishiro reminders\n\n- voice_say"));
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
 
         let (_, json_str) = result
@@ -406,7 +406,7 @@ mod tests {
             .expect("prompt uses opencode file reference");
         let contents = std::fs::read_to_string(persona_path_str).expect("read prompt");
 
-        assert_eq!(contents, "## Charminal reminders\n\n- voice_say");
+        assert_eq!(contents, "## Yorishiro reminders\n\n- voice_say");
         cleanup_temp_files(&result);
     }
 
@@ -450,7 +450,7 @@ mod tests {
 
     fn fresh_plugin_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-opencode-commands-{}-{}-{}",
+            "yorishiro-opencode-commands-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn opencode_injects_charminal_commands_via_config_content() {
+    fn opencode_injects_yorishiro_commands_via_config_content() {
         let plugin_dir = fresh_plugin_dir("basic");
         std::fs::write(
             plugin_dir.join("commands").join("create.md"),
@@ -480,7 +480,7 @@ mod tests {
             .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
             .expect("env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
-        let command = &parsed["command"]["charm-create"];
+        let command = &parsed["command"]["yori-create"];
 
         assert_eq!(command["description"], "Create a new pack");
         assert!(command["template"]
@@ -501,7 +501,7 @@ mod tests {
         let plugin_dir = fresh_plugin_dir("rewrite");
         std::fs::write(
             plugin_dir.join("commands").join("help.md"),
-            "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /charm:create, /charm:update, or /charm:*.",
+            "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /yori:create, /yori:update, or /yori:*.",
         )
         .expect("write command");
 
@@ -513,14 +513,14 @@ mod tests {
             .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
             .expect("env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
-        let template = parsed["command"]["charm-help"]["template"]
+        let template = parsed["command"]["yori-help"]["template"]
             .as_str()
             .expect("template string");
 
-        assert!(template.contains("/charm-create"));
-        assert!(template.contains("/charm-update"));
-        assert!(template.contains("/charm-*"));
-        assert!(!template.contains("/charm:create"));
+        assert!(template.contains("/yori-create"));
+        assert!(template.contains("/yori-update"));
+        assert!(template.contains("/yori-*"));
+        assert!(!template.contains("/yori:create"));
 
         cleanup_temp_files(&result);
         let _ = std::fs::remove_dir_all(&plugin_dir);

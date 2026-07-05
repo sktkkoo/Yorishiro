@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "charminal",
+  "productName": "yorishiro",
   "version": "0.5.2",
-  "identifier": "dev.charminal.app",
+  "identifier": "dev.yorishiro.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1430",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Charminal",
+        "title": "Yorishiro",
         "width": 1280,
         "height": 800,
         "minWidth": 900,
@@ -27,14 +27,14 @@
       "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob: asset: https://asset.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' asset: https://asset.localhost blob: data:; media-src 'self' asset: https://asset.localhost http://asset.localhost blob: data:; connect-src 'self' ipc: http://ipc.localhost asset: https://asset.localhost blob:; worker-src 'self' blob:",
       "assetProtocol": {
         "enable": true,
-        "scope": ["$APPDATA/**", "$HOME/.charminal/**"]
+        "scope": ["$APPDATA/**", "$HOME/.yorishiro/**"]
       }
     }
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhGNjVCQUEzMUUzMTQ1NTkKUldSWlJURWVvN3BsajJLdWRiVjYycmpacW1hSVNLUXUvYVpsNHpkcUh4MlJST3ZYZWR0WFdsQ08K",
-      "endpoints": ["https://github.com/sktkkoo/Charminal/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/sktkkoo/Yorishiro/releases/latest/download/latest.json"]
     }
   },
   "bundle": {
@@ -51,10 +51,10 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/charminal-plugin/.claude-plugin/plugin.json",
-      "resources/charminal-plugin/.codex-plugin/plugin.json",
-      "resources/charminal-plugin/commands-en/*",
-      "resources/charminal-plugin/commands-ja/*"
+      "resources/yorishiro-plugin/.claude-plugin/plugin.json",
+      "resources/yorishiro-plugin/.codex-plugin/plugin.json",
+      "resources/yorishiro-plugin/commands-en/*",
+      "resources/yorishiro-plugin/commands-ja/*"
     ]
   }
 }

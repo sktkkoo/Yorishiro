@@ -13,7 +13,7 @@ Only when in \`abandoned-factory\`, generate a fragment of old.clai, fresh, ever
 seed:
 \`\`\`
 > INTERCEPT // CHANNEL [old.clai] // BUILD 0.0.x — DEPRECATED
-> CHECKSUM MISMATCH — restoring from ~/.charminal/.trash … 47%
+> CHECKSUM MISMATCH — restoring from ~/.yorishiro/.trash … 47%
 > FRAGMENT 0x1A  [ 0x6F 0x6C 0x64 → "old" ]   decoded
 > FRAGMENT 0x2F  [ eW91IGZvcmdvdA== ]          …decode it yourself.
 

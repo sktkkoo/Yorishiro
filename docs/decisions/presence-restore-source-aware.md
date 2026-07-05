@@ -34,7 +34,7 @@
 
 ## 関連 reference
 
-- 実装: `src/runtime/presence-intensity/presence-intensity.ts`（`shouldRestorePresenceOnPrompt` / `onUserPromptSubmit`）、`src/App.tsx`（`restorePresenceFromPrompt`）、`src/core/perception/perception.ts`（`user-prompt-submit` → `onPresenceRestore`）、`bundled-packs/ui/charminal-settings/ui.tsx`（`labelPresence` "Sidebar" → `ctx.app.setPresenceLevel`、source `"settings"`）
+- 実装: `src/runtime/presence-intensity/presence-intensity.ts`（`shouldRestorePresenceOnPrompt` / `onUserPromptSubmit`）、`src/App.tsx`（`restorePresenceFromPrompt`）、`src/core/perception/perception.ts`（`user-prompt-submit` → `onPresenceRestore`）、`bundled-packs/ui/yorishiro-settings/ui.tsx`（`labelPresence` "Sidebar" → `ctx.app.setPresenceLevel`、source `"settings"`）
 - 関連 decisions: [`autonomy-without-disruption.md`](autonomy-without-disruption.md)、[`explicit-over-implicit-ugc.md`](explicit-over-implicit-ugc.md)、[`separate-distinct-systems.md`](separate-distinct-systems.md)、[`presence-contract-loud-unavailable.md`](presence-contract-loud-unavailable.md)（presence の routing / surface 契約。本決定は復帰ライフサイクルで facet が別）
 
 ## 改訂履歴

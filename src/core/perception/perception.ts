@@ -22,7 +22,7 @@ import type {
   PtyOutputEvent,
   ToolActivityEvent,
   UserInputEvent,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { EventBus } from "../../runtime/event-bus";
 import type { SubsystemLog } from "../dev-log";
 import type { Time } from "../time";

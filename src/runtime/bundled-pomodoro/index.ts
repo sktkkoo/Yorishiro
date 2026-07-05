@@ -5,7 +5,7 @@
  * terminal opacity 制御用の deps は App.tsx 側から注入される。
  */
 
-import type { AmenityContext, HistoryAPI, LoopPhase } from "@charminal/sdk";
+import type { AmenityContext, HistoryAPI, LoopPhase } from "@yorishiro/sdk";
 import pomodoroPack, {
   createPomodoroAmenity,
   type PomodoroActivateContext,
@@ -73,7 +73,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
       core: { get: () => undefined, set: () => {}, delete: () => {} },
     },
     terminal: { output: () => "", session: { pid: 0, cwd: "", startedAt: 0 } },
-    charm: async () => {},
+    yori: async () => {},
     signal: abortController.signal,
     resolveAsset: () => "",
     setTerminalOpacity: deps.setTerminalOpacity,
@@ -89,7 +89,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
       id: pomodoroPack.id,
       type: "amenity",
       version: "0.1.0",
-      charminalVersion: "^0.3.0",
+      yorishiroVersion: "^0.3.0",
       entry: "amenity.ts",
     },
     handle,

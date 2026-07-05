@@ -7,14 +7,14 @@
  * SDK 側で field 単位重複）の解消。
  */
 
-import type { AttentionRect } from "@charminal/sdk";
+import type { AttentionRect } from "@yorishiro/sdk";
 
 export type {
   AttentionRect,
   AttentionSnapshot,
   AttentionTarget,
   AttentionTargetKind,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 
 export function isValidAttentionRect(rect: AttentionRect): boolean {
   return (

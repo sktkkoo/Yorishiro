@@ -25,7 +25,7 @@ script 実行型 pack は以下の能力ラダーで扱う。
 
 ```json
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "workspace-tool",
   "type": "amenity",
   "executionClass": "trusted-main-thread-js",
@@ -48,9 +48,9 @@ script 実行型 pack は以下の能力ラダーで扱う。
 - 未知 backend、未知 field、未知 nested field は fail-closed で reject する。
 - Phase 0 では schema を先行定義するだけで、全 backend は未実装として reject する。
 
-JSON Schema の正本はストア側 `packages/schema`（`https://charminal.dev/schemas/pack-manifest.schema.json`）である。本体側の `pack-sandbox-spec.ts` は client 実装であり、正本 schema の代替ではない。
+JSON Schema の正本はストア側 `packages/schema`（`https://yorishiro.dev/schemas/pack-manifest.schema.json`）である。本体側の `pack-sandbox-spec.ts` は client 実装であり、正本 schema の代替ではない。
 
-Mac App Store 配布は前提から除外する。Charminal は direct distribution + notarization を前提にし、MAS sandbox には依存しない。MAS sandbox は任意 process spawn / local tool execution と根本的に衝突し、native backend の能力ラダーと整合しない。
+Mac App Store 配布は前提から除外する。Yorishiro は direct distribution + notarization を前提にし、MAS sandbox には依存しない。MAS sandbox は任意 process spawn / local tool execution と根本的に衝突し、native backend の能力ラダーと整合しない。
 
 ## なぜそう決めたか
 

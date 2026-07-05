@@ -1,8 +1,8 @@
-//! Charminal MCP server の起動と lifecycle、および Rust → TS event channel の
+//! Yorishiro MCP server の起動と lifecycle、および Rust → TS event channel の
 //! round-trip 管理。
 //!
-//! port は `~/.charminal/config.json` の mcpPort か default 18743。bind fail
-//! は log に書いて server 起動を skip、Charminal 本体は継続させる。
+//! port は `~/.yorishiro/config.json` の mcpPort か default 18743。bind fail
+//! は log に書いて server 起動を skip、Yorishiro 本体は継続させる。
 //!
 //! rmcp 1.7.0 の `transport-streamable-http-server` feature を `axum` の
 //! Router に nest してもらい、`tokio::spawn` で background に流す。
@@ -26,7 +26,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::oneshot;
 
-use crate::mcp::tools::Charminal;
+use crate::mcp::tools::Yorishiro;
 
 const DEFAULT_PORT: u16 = 18743;
 
@@ -40,8 +40,7 @@ static PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<Value>>>> =
 
 /// config.json の mcpPort を読む（不在 / 不正 → None）。
 fn read_configured_port() -> Option<u16> {
-    let home = dirs::home_dir()?;
-    let path = home.join(".charminal").join("config.json");
+    let path = crate::yorishiro_home_path().ok()?.join("config.json");
     let text = std::fs::read_to_string(&path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&text).ok()?;
     parsed
@@ -122,18 +121,18 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
     let port = resolve_port();
 
     // bind pre-check — rmcp 側の async bind 前に占有確認。ここで fail したら
-    // early return して Charminal 本体は継続させる。
+    // early return して Yorishiro 本体は継続させる。
     let probe = std::net::TcpListener::bind(("127.0.0.1", port))
         .map_err(|e| format!("port {} bind failed: {}", port, e))?;
     drop(probe); // すぐ解放、rmcp 側で再 bind。
 
     // rmcp StreamableHttpService を axum Router に mount して tokio::spawn で
-    // background に流す。factory closure は session ごとに Charminal 新規 instance
+    // background に流す。factory closure は session ごとに Yorishiro 新規 instance
     // を返す必要がある（LocalSessionManager の session lifecycle 都合）。
     let service = StreamableHttpService::new(
         {
             let app = app_handle.clone();
-            move || Ok(Charminal::new(app.clone()))
+            move || Ok(Yorishiro::new(app.clone()))
         },
         {
             let mut mgr = LocalSessionManager::default();
@@ -153,12 +152,12 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
         let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("[charminal-mcp] bind failed after probe: {}", e);
+                eprintln!("[yorishiro-mcp] bind failed after probe: {}", e);
                 return;
             }
         };
         if let Err(e) = axum::serve(listener, router).await {
-            eprintln!("[charminal-mcp] axum::serve exited: {}", e);
+            eprintln!("[yorishiro-mcp] axum::serve exited: {}", e);
         }
     });
 
@@ -179,7 +178,7 @@ mod tests {
         std::env::set_var(
             "HOME",
             std::env::temp_dir().join(format!(
-                "charminal-mcp-server-missing-{}",
+                "yorishiro-mcp-server-missing-{}",
                 std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_nanos())

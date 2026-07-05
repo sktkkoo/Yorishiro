@@ -34,7 +34,7 @@ function entry(id: string, sceneSpec: SceneSpec): ScenePackEntry {
       id,
       type: "scene",
       version: "0.0.0",
-      charminalVersion: "^0.1.0",
+      yorishiroVersion: "^0.1.0",
       entry: "scene.ts",
     },
     scene: sceneSpec,
@@ -122,8 +122,8 @@ describe("terminal theme wire", () => {
       background: "#1a1a19",
       foreground: DEFAULT_THEME.foreground,
     });
-    expect(document.documentElement.style.getPropertyValue("--charminal-bg")).toBe("#181818");
-    expect(document.documentElement.style.getPropertyValue("--charminal-button-fg")).toBe(
+    expect(document.documentElement.style.getPropertyValue("--yorishiro-bg")).toBe("#181818");
+    expect(document.documentElement.style.getPropertyValue("--yorishiro-button-fg")).toBe(
       "#8a8a84",
     );
 
@@ -132,8 +132,8 @@ describe("terminal theme wire", () => {
       background: "#d6dcc8",
       foreground: "#5c6a72",
     });
-    expect(document.documentElement.style.getPropertyValue("--charminal-bg")).toBe("#d6dcc8");
-    expect(document.documentElement.style.getPropertyValue("--charminal-button-fg")).toBe(
+    expect(document.documentElement.style.getPropertyValue("--yorishiro-bg")).toBe("#d6dcc8");
+    expect(document.documentElement.style.getPropertyValue("--yorishiro-button-fg")).toBe(
       "#27351f",
     );
 

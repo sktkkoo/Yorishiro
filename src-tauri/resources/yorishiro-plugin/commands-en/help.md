@@ -1,5 +1,5 @@
 ---
-description: Charminal command reference, pack types, and MCP tools
+description: Yorishiro command reference, pack types, and MCP tools
 argument-hint: "[topic]"
 ---
 
@@ -7,28 +7,28 @@ $ARGUMENTS
 
 ---
 
-Charminal `/charm:*` command reference. If the user asks about a specific topic (`$ARGUMENTS`), focus on that section. Otherwise give a concise overview.
+Yorishiro `/yori:*` command reference. If the user asks about a specific topic (`$ARGUMENTS`), focus on that section. Otherwise give a concise overview.
 
 ---
 
 ## First-time setup
 
-When using Claude Code, you can reduce repeated permission prompts for `/charm:create` and `/charm:update` by adding these entries to `~/.claude/settings.json` under `permissions.allow`:
+When using Claude Code, you can reduce repeated permission prompts for `/yori:create` and `/yori:update` by adding these entries to `~/.claude/settings.json` under `permissions.allow`:
 
 ```json
 {
   "permissions": {
     "allow": [
-      "Write(~/.charminal/packs/**)",
-      "Read(~/.charminal/packs/**)",
-      "Write(~/.charminal/init.js)",
-      "Read(~/.charminal/init.js)"
+      "Write(~/.yorishiro/packs/**)",
+      "Read(~/.yorishiro/packs/**)",
+      "Write(~/.yorishiro/init.js)",
+      "Read(~/.yorishiro/init.js)"
     ]
   }
 }
 ```
 
-Only add the four lines to the existing `allow` array. Do not change unrelated settings. `init.js` is the startup script used for keyboard shortcuts and similar hooks; see `/charm:shortcut`.
+Only add the four lines to the existing `allow` array. Do not change unrelated settings. `init.js` is the startup script used for keyboard shortcuts and similar hooks; see `/yori:shortcut`.
 
 This setup is optional and Claude Code-specific. Codex uses its own approval policy and does not read `~/.claude/settings.json`.
 
@@ -38,13 +38,13 @@ This setup is optional and Claude Code-specific. Codex uses its own approval pol
 
 | Command | Purpose |
 |---|---|
-| `/charm:create` | Create a new pack through conversation |
-| `/charm:update` | Edit or tune an existing pack |
-| `/charm:help` | Show this reference |
-| `/charm:shortcut` | Add or edit keyboard shortcuts in `init.js` |
-| `/charm:tutorial` | Start the first-run Charminal tutorial |
+| `/yori:create` | Create a new pack through conversation |
+| `/yori:update` | Edit or tune an existing pack |
+| `/yori:help` | Show this reference |
+| `/yori:shortcut` | Add or edit keyboard shortcuts in `init.js` |
+| `/yori:tutorial` | Start the first-run Yorishiro tutorial |
 
-Commands can take arguments. Examples: `/charm:create a cat-ear persona`, `/charm:update make my-scene darker`.
+Commands can take arguments. Examples: `/yori:create a cat-ear persona`, `/yori:update make my-scene darker`.
 
 ---
 
@@ -58,14 +58,14 @@ Commands can take arguments. Examples: `/charm:create a cat-ear persona`, `/char
 | **ui** | Primary sidebar UI panels | single | `activeUi` |
 | **ambient-ui** | Always-on overlay UI | multi | `activeAmbientUi` |
 
-- `persona`, `scene`, and `ui` are **single-active**. The user picks scenes with `scene_activate`, which persists `sceneByProject` for the current project when possible and falls back to global `activeScene`; persona and UI picks live in `~/.charminal/config.json`.
+- `persona`, `scene`, and `ui` are **single-active**. The user picks scenes with `scene_activate`, which persists `sceneByProject` for the current project when possible and falls back to global `activeScene`; persona and UI picks live in `~/.yorishiro/config.json`.
 - `effect` and `ambient-ui` are **multi-active**. Effects are invoked from persona handlers; ambient UI stays mounted while enabled.
 
 ---
 
 ## Pack Files
 
-User packs live in `~/.charminal/packs/<id>/`.
+User packs live in `~/.yorishiro/packs/<id>/`.
 
 Required files:
 
@@ -82,19 +82,19 @@ Common `manifest.json` fields:
   "id": "<pack-id>",
   "type": "<persona | effect | scene | ui | ambient-ui>",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "entry": "<kind>.js"
 }
 ```
 
 - User packs use `.js` entry files.
-- Bundled packs and user packs have different layouts. Bundled packs live under `bundled-packs/<kind_plural>/<id>/`; user packs are flat directories under `~/.charminal/packs/<id>/`.
+- Bundled packs and user packs have different layouts. Bundled packs live under `bundled-packs/<kind_plural>/<id>/`; user packs are flat directories under `~/.yorishiro/packs/<id>/`.
 
 ---
 
 ## MCP Tools
 
-When Charminal is running, these MCP tools are available.
+When Yorishiro is running, these MCP tools are available.
 
 ### Pack Management
 
@@ -117,7 +117,7 @@ When Charminal is running, these MCP tools are available.
 
 The F2 debug UI has two panels: **Common** for runtime-wide controls such as the base camera, and **Scene** for the active scene pack's lighting, post effects, layer opacity / blur, and camera modulation.
 
-Scene packs expose tunable values through SDK controls (`useCharminalControls` + `useControlsBridge`). Use `controls_get({ scope: "scene" })` to inspect paths, then use `controls_set` or `controls_transition` while tuning with the user. When the user asks to bake the result in, write the current values back to the source defaults so they persist on the next launch.
+Scene packs expose tunable values through SDK controls (`useYorishiroControls` + `useControlsBridge`). Use `controls_get({ scope: "scene" })` to inspect paths, then use `controls_set` or `controls_transition` while tuning with the user. When the user asks to bake the result in, write the current values back to the source defaults so they persist on the next launch.
 
 Writing common camera values such as `camera.x`, `camera.y`, `camera.z`, `camera.rotationX`, and `camera.rotationY` turns tracking off automatically and applies to the real camera. Use `controls_transition({ scope: "common", ... })` for smooth camera demos.
 
@@ -157,7 +157,7 @@ Use `controls_transition({ scope: "common", values, durationMs })` for camera mo
 
 ## SDK Type Overview
 
-All SDK types are bundled into `~/.charminal/sdk.d.ts` (Charminal rewrites it on every startup, so it is always available — including in packaged builds). What you'll find there:
+All SDK types are bundled into `~/.yorishiro/sdk.d.ts` (Yorishiro rewrites it on every startup, so it is always available — including in packaged builds). What you'll find there:
 
 | Types | Group |
 |---|---|
@@ -165,7 +165,7 @@ All SDK types are bundled into `~/.charminal/sdk.d.ts` (Charminal rewrites it on
 | `DispatchEvent` / `TriggerMatch` / `ReactionType` | reactions |
 | `PersonaDefinition` / `EffectDefinition` / `ScenePackDefinition` / `UiPackDefinition` / `AmbientUiPackDefinition` | pack definitions |
 
-The standard hook / DispatchEvent catalog lives at `docs/catalogs/standard-hooks.md` (available when cwd is the Charminal repo). Generate the full API docs with `npm run doc`.
+The standard hook / DispatchEvent catalog lives at `docs/catalogs/standard-hooks.md` (available when cwd is the Yorishiro repo). Generate the full API docs with `npm run doc`.
 
 ---
 
@@ -196,7 +196,7 @@ If a handler needs to trigger another reaction, announce a **synthetic event** w
 | **Ctrl+Tab / Ctrl+Shift+Tab** | Switch to next / previous tab |
 | **Cmd+1–9** | Jump to the Nth tab |
 
-Custom shortcuts can be added through `init.js` (see `/charm:shortcut`).
+Custom shortcuts can be added through `init.js` (see `/yori:shortcut`).
 
 ---
 
@@ -204,10 +204,10 @@ Custom shortcuts can be added through `init.js` (see `/charm:shortcut`).
 
 | Goal | Send the user to |
 |---|---|
-| Create a new pack | `/charm:create` |
-| Edit an existing pack | `/charm:update` |
-| Add a keyboard shortcut | `/charm:shortcut` |
-| Recover from a broken pack | safe mode: `CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app` |
+| Create a new pack | `/yori:create` |
+| Edit an existing pack | `/yori:update` |
+| Add a keyboard shortcut | `/yori:shortcut` |
+| Recover from a broken pack | safe mode: `YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app` |
 
 Safe mode skips all user packs and lets the user inspect / disable the failing pack through MCP tools (`list_load_errors()` / `disable_pack()`). Remove the environment variable and restart to return to normal mode; disabled packs remain disabled until re-enabled.
 
@@ -217,6 +217,6 @@ Safe mode skips all user packs and lets the user inspect / disable the failing p
 
 | File | Contents |
 |---|---|
-| `~/.charminal/sdk-guide.md` | SDK documentation, including the twin-trigger co-emission idiom (Charminal writes this on every startup) |
+| `~/.yorishiro/sdk-guide.md` | SDK documentation, including the twin-trigger co-emission idiom (Yorishiro writes this on every startup) |
 | `bundled_example_read` (MCP tool) | Bundled pack source as a reference — pass a pack id from `list_packs`. Works in packaged builds where the source tree isn't on disk. |
-| `bundled-packs/`, `docs/catalogs/standard-hooks.md`, `docs/philosophy/PHILOSOPHY.md` | Same material as files — available when cwd is the Charminal repo |
+| `bundled-packs/`, `docs/catalogs/standard-hooks.md`, `docs/philosophy/PHILOSOPHY.md` | Same material as files — available when cwd is the Yorishiro repo |

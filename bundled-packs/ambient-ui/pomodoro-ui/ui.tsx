@@ -5,7 +5,7 @@
  * AmenityPackRegistry singleton から pomodoro handle の tools を呼ぶ。
  */
 
-import type { AmbientUiContext, AmbientUiPackDefinition, Disposable } from "@charminal/sdk";
+import type { AmbientUiContext, AmbientUiPackDefinition, Disposable } from "@yorishiro/sdk";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";

@@ -6,7 +6,7 @@
  * active UI pack id に bind した view として pack へ渡す。
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 
 export interface UiStateStore {
   get(packId: string, key: string): unknown;

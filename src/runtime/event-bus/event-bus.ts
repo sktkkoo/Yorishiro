@@ -15,7 +15,7 @@
  * SDK surface: src/sdk/reaction.d.ts の DispatchEvent / Trigger / TriggerMatch / ReactionEvent
  */
 
-import type { DispatchEvent, ReactionEvent, SyntheticEvent, Trigger } from "@charminal/sdk";
+import type { DispatchEvent, ReactionEvent, SyntheticEvent, Trigger } from "@yorishiro/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { Time } from "../../core/time";
 

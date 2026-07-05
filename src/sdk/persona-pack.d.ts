@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/persona-pack
+ * @yorishiro/sdk/persona-pack
  *
  * Persona Pack の manifest 型。
  * packs/personas/<id>/manifest.json が持つ field を定義する。
@@ -15,18 +15,18 @@
  * 例：
  * ```json
  * {
- *   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+ *   "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
  *   "id": "my-persona",
  *   "name": "My Persona",
  *   "type": "persona",
  *   "version": "0.1.0",
- *   "charminalVersion": "^0.1.0",
+ *   "yorishiroVersion": "^0.1.0",
  *   "description": "...",
  *   "entry": "persona.js"
  * }
  * ```
  *
- * active 選択は pack 自己申告ではなく `~/.charminal/config.json` の
+ * active 選択は pack 自己申告ではなく `~/.yorishiro/config.json` の
  * `primaryPersona` で user が explicit に picks する（memory:
  * feedback_single_active_config_picks、feedback_explicit_over_implicit_ugc）。
  */
@@ -36,7 +36,7 @@ export interface PersonaPackManifest {
   readonly name?: string;
   readonly type: "persona";
   readonly version: string;
-  readonly charminalVersion: string;
+  readonly yorishiroVersion: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";
   readonly artifact?: {

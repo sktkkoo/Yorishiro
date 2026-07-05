@@ -1,5 +1,5 @@
 /**
- * `~/.charminal/` 以下への Tauri invoke wrapper。
+ * `~/.yorishiro/` 以下への Tauri invoke wrapper。
  *
  * runtime-wire と同様、Tauri invoke の runtime 依存を test から切り離すため
  * の薄い層。この file 単体の unit test は書かず、production の dev-log で
@@ -11,9 +11,9 @@
 import { invoke } from "@tauri-apps/api/core";
 
 /** config.json を text として読む。不在 / 破損は呼び出し側で parse 時に吸収。 */
-export async function readCharminalConfigText(): Promise<string> {
+export async function readYorishiroConfigText(): Promise<string> {
   try {
-    return await invoke<string>("read_charminal_file", { relativePath: "config.json" });
+    return await invoke<string>("read_yorishiro_file", { relativePath: "config.json" });
   } catch {
     // 不在は「File not found」を throw するので、empty string で返す。
     return "";
@@ -21,8 +21,8 @@ export async function readCharminalConfigText(): Promise<string> {
 }
 
 /** config.json を atomic に書く。 */
-export async function writeCharminalConfigText(text: string): Promise<void> {
-  await invoke("write_charminal_file_atomic", {
+export async function writeYorishiroConfigText(text: string): Promise<void> {
+  await invoke("write_yorishiro_file_atomic", {
     relativePath: "config.json",
     content: text,
   });
@@ -30,7 +30,7 @@ export async function writeCharminalConfigText(text: string): Promise<void> {
 
 /** last-startup.json を atomic に書く。 */
 export async function writeLastStartupReport(text: string): Promise<void> {
-  await invoke("write_charminal_file_atomic", {
+  await invoke("write_yorishiro_file_atomic", {
     relativePath: "last-startup.json",
     content: text,
   });

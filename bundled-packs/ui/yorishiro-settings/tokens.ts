@@ -6,29 +6,29 @@
  * の COLORS / SPACING など 1 set を別 set に差し替えるだけで全 component に伝播する。
  *
  * 設計：semantic 1 層のみ（primitive 層は palette が増えてから検討）。
- * Charminal scale ではこの層だけで十分。
+ * Yorishiro scale ではこの層だけで十分。
  */
 
 /**
  * scene テーマの CSS 変数を参照する。scene 切替で自動的に色が変わる。
  */
 const THEME = {
-  bgPanel: "var(--charminal-panel-bg)",
-  bgInput: "var(--charminal-input-bg)",
-  bgInputHover: "var(--charminal-input-bg)",
-  bgButton: "var(--charminal-button-bg)",
-  bgButtonHover: "var(--charminal-button-bg)",
-  accent: "var(--charminal-accent)",
-  accentSoft: "var(--charminal-accent-soft)",
-  accentSoftHover: "var(--charminal-accent-soft)",
-  accentBorder: "var(--charminal-accent-border)",
-  accentBorderHover: "var(--charminal-accent-border)",
-  fg: "var(--charminal-fg)",
-  fgDim: "var(--charminal-fg-dim)",
-  fgDimmer: "var(--charminal-muted)",
-  fgDimmest: "var(--charminal-muted)",
-  borderSubtle: "var(--charminal-border)",
-  borderMid: "var(--charminal-border)",
+  bgPanel: "var(--yorishiro-panel-bg)",
+  bgInput: "var(--yorishiro-input-bg)",
+  bgInputHover: "var(--yorishiro-input-bg)",
+  bgButton: "var(--yorishiro-button-bg)",
+  bgButtonHover: "var(--yorishiro-button-bg)",
+  accent: "var(--yorishiro-accent)",
+  accentSoft: "var(--yorishiro-accent-soft)",
+  accentSoftHover: "var(--yorishiro-accent-soft)",
+  accentBorder: "var(--yorishiro-accent-border)",
+  accentBorderHover: "var(--yorishiro-accent-border)",
+  fg: "var(--yorishiro-fg)",
+  fgDim: "var(--yorishiro-fg-dim)",
+  fgDimmer: "var(--yorishiro-muted)",
+  fgDimmest: "var(--yorishiro-muted)",
+  borderSubtle: "var(--yorishiro-border)",
+  borderMid: "var(--yorishiro-border)",
 } as const;
 
 export const COLORS = {

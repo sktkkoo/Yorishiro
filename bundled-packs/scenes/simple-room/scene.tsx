@@ -1,7 +1,7 @@
 /**
  * Bundled reference scene pack「静かな部屋」.
  *
- * Charminal の reference scene：整った polish を控えめな方向で示す手本.
+ * Yorishiro の reference scene：整った polish を控えめな方向で示す手本.
  * 背景・vignette は DOM layer (CSS gradient) で描画し、lighting のみ R3F component
  * が担当する hybrid 構成。DOM layer が SceneCompositor を通るため debug controls
  * の "load bg" / "load fg" でメディア差し替えが効く。
@@ -10,7 +10,7 @@
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
  */
 
-import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
 import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 

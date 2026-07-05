@@ -12,7 +12,7 @@
  * 「Surface / SDK 設計」section
  */
 
-import type { AttentionAPI, AttentionTarget, Disposable } from "@charminal/sdk";
+import type { AttentionAPI, AttentionTarget, Disposable } from "@yorishiro/sdk";
 
 export interface AttentionRuntime extends AttentionAPI {
   setSourceTarget(source: string, target: AttentionTarget | null): void;

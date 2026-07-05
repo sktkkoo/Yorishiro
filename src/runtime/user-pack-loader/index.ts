@@ -7,19 +7,12 @@
  */
 
 export {
-  fetchSafeModeFlag,
-  readCharminalConfigText,
-  readLastStartupReport,
-  writeCharminalConfigText,
-  writeLastStartupReport,
-} from "./charminal-io";
-export {
-  type CharminalConfig,
   EMPTY_CONFIG,
   parseConfig,
   serializeConfig,
   withDisabledPackAdded,
   withDisabledPackRemoved,
+  type YorishiroConfig,
 } from "./config";
 export { filterDisabledPacks } from "./disabled-list";
 export {
@@ -30,13 +23,13 @@ export {
   type ShortcutKeyEvent,
 } from "./init-scope";
 export {
-  type CharminalInitContext,
   type EffectRequester,
   type LoadInitScriptDeps,
   type LoadInitScriptResult,
   loadInitScript,
   reloadInitScript,
   type ShortcutInstaller,
+  type YorishiroInitContext,
 } from "./init-script";
 export { buildLoadReport, type LoadReport, type LoadResultEntry } from "./load-report";
 export {
@@ -63,9 +56,16 @@ export {
 export { type Disposable, UserPackRegistry } from "./user-pack-registry";
 export { type PackWatcherHandle, startPackWatcher } from "./watcher";
 export {
-  type CharminalLayerEvent,
   mapEventToAction,
   type ParsedLayerPath,
   parseLayerPath,
   type WatcherAction,
+  type YorishiroLayerEvent,
 } from "./watcher-logic";
+export {
+  fetchSafeModeFlag,
+  readLastStartupReport,
+  readYorishiroConfigText,
+  writeLastStartupReport,
+  writeYorishiroConfigText,
+} from "./yorishiro-io";

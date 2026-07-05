@@ -1,4 +1,4 @@
-import type { DispatchEvent, SyntheticEvent } from "@charminal/sdk";
+import type { DispatchEvent, SyntheticEvent } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import {
@@ -14,7 +14,7 @@ const state: SessionTabState = {
 
 const systemSynthetic = (name: string, payload: unknown = undefined): SyntheticEvent => ({
   kind: "synthetic",
-  source: { type: "system", packId: "charminal:session-tabs" },
+  source: { type: "system", packId: "yorishiro:session-tabs" },
   name,
   payload,
   timestamp: 100,
@@ -32,7 +32,7 @@ describe("deriveSessionTabMetadataBadge", () => {
       badge: {
         label: "trigger:session-respawn-failed",
         tone: "danger",
-        title: "Charminal trigger: charminal:session-tabs/session-respawn-failed",
+        title: "Yorishiro trigger: yorishiro:session-tabs/session-respawn-failed",
       },
     });
 
@@ -138,7 +138,7 @@ describe("deriveSessionTabMetadataBadge", () => {
         { kind: "loop-lifecycle", phase: "completed", agent: "claude", timestamp: 100 },
         state,
       )?.badge,
-    ).toMatchObject({ label: "loop:done", tone: "charminal" });
+    ).toMatchObject({ label: "loop:done", tone: "yorishiro" });
     expect(
       deriveSessionTabMetadataBadge(
         { kind: "loop-lifecycle", phase: "completed", agent: "claude", timestamp: 100 },
@@ -155,7 +155,7 @@ describe("deriveSessionTabMetadataBadge", () => {
       { kind: "tool-activity", activity: "running", timestamp: 100 },
       { kind: "window", change: "resize", timestamp: 100 },
       { kind: "scene-change", fromId: null, toId: "simple-room", timestamp: 100 },
-      { kind: "charm-command", command: "help", timestamp: 100 },
+      { kind: "yori-command", command: "help", timestamp: 100 },
       { kind: "loop-lifecycle", phase: "started", agent: "codex", timestamp: 100 },
       { kind: "loop-lifecycle", phase: "iterating", agent: "codex", timestamp: 100 },
     ];

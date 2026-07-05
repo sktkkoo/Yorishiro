@@ -1,5 +1,5 @@
 /**
- * Known hotData keys used by Charminal's runtime singletons.
+ * Known hotData keys used by Yorishiro's runtime singletons.
  *
  * Convention: "<phase-or-domain>:<module>" — the prefix is for human grep,
  * not parsed at runtime. Each addition here is a one-line entry; do NOT

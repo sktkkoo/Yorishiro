@@ -1,7 +1,7 @@
 /**
- * @charminal/sdk/history
+ * @yorishiro/sdk/history
  *
- * Pack rollback の history API。~/.charminal/.charminal-snapshots/ の git2 snapshot を
+ * Pack rollback の history API。~/.yorishiro/.yorishiro-snapshots/ の git2 snapshot を
  * 列挙・作成・復元する。AmenityContext 経由で amenity pack 作者に、MCP
  * `history_*` 経由で住人 AI に等しく公開する（対称性原則・SELF_REFERENTIAL_MCP）。
  *
@@ -32,7 +32,7 @@ export interface SnapshotEntry {
 export interface HistoryAPI {
   /** snapshot 一覧（新しい順）。 */
   list(): Promise<ReadonlyArray<SnapshotEntry>>;
-  /** 現在の ~/.charminal を 1 枚 snapshot し、seq を返す。 */
+  /** 現在の ~/.yorishiro を 1 枚 snapshot し、seq を返す。 */
   snapshot(label?: string): Promise<number>;
   /**
    * seq の snapshot に full-replace で戻す。確認 UX を経て、戻したら true、

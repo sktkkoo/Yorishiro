@@ -5,7 +5,7 @@
 **Status**: active
 **Last updated**: 2026-06-13
 
-**Implementation note**: The public registry / community distribution feature for packs and `/charm:prepare-publish` are not yet available. The publish flow / registry review / machine checker described here are design requirements that must be met before community distribution is enabled.
+**Implementation note**: The public registry / community distribution feature for packs and `/yori:prepare-publish` are not yet available. The publish flow / registry review / machine checker described here are design requirements that must be met before community distribution is enabled.
 
 ## TL;DR
 
@@ -23,9 +23,9 @@ Amenity packs will eventually be user-distributable. However, publicly distribut
 
 | source | Definition | `trusted-main-thread-js` |
 |---|---|---|
-| `bundled` | Shipped with Charminal, reviewed and released together with the app | Allowed |
-| `local` | Placed directly in `~/.charminal/packs/` by the user. Includes packs created by `/charm:create` | Allowed. Not labeled as publicly distributed |
-| `curated` | Distributed pack with publisher / hash / review metadata allowlisted by Charminal | Conditionally allowed. Not labeled as sandboxed |
+| `bundled` | Shipped with Yorishiro, reviewed and released together with the app | Allowed |
+| `local` | Placed directly in `~/.yorishiro/packs/` by the user. Includes packs created by `/yori:create` | Allowed. Not labeled as publicly distributed |
+| `curated` | Distributed pack with publisher / hash / review metadata allowlisted by Yorishiro | Conditionally allowed. Not labeled as sandboxed |
 | `community` | From public registry / third-party / unknown publisher | Blocked |
 
 `source` is a different axis from MCP trust tiers. MCP tiers address the trust level of host tool callers; pack source addresses the provenance of pack artifacts.
@@ -34,7 +34,7 @@ Amenity packs will eventually be user-distributable. However, publicly distribut
 
 ### 1. Separate pack type from execution class
 
-`scene` / `effect` / `persona` / `amenity` / `ui` describe what the pack means in Charminal. They do not restrict JavaScript execution permissions.
+`scene` / `effect` / `persona` / `amenity` / `ui` describe what the pack means in Yorishiro. They do not restrict JavaScript execution permissions.
 
 Any JS loaded via `dynamic import()` on the main thread can execute network access, timers, DOM access, global mutation, prototype pollution, and interference with the loader or runtime objects at module top-level.
 
@@ -58,7 +58,7 @@ Not allowed:
 - `persona.js` that exports a static definition
 - `effect.js` that returns a declarative-looking config
 
-Evaluating a JS module is arbitrary code execution. To call something data-only for public distribution, the host must parse JSON / data, validate against a schema, and have the Charminal runtime handle rendering, registration, and reaction execution.
+Evaluating a JS module is arbitrary code execution. To call something data-only for public distribution, the host must parse JSON / data, validate against a schema, and have the Yorishiro runtime handle rendering, registration, and reaction execution.
 
 Even data-only values are not trusted unconditionally. Remote URLs are default-deny, `url(...)` goes through the asset resolver, `javascript:` / `data:` / absolute filesystem paths are rejected, and numeric / enum values are clamped to bounded ranges. Asset resolver and rendering primitive granularity follow [`effect-rendering-primitives.md`](effect-rendering-primitives.md).
 
@@ -76,13 +76,13 @@ This checklist is enforced in both the `declarative` pack public registry review
 
 ### 3. `isolated-js` is killable boundary + SES + capability RPC
 
-`isolated-js` runs pack JS in isolation from the Charminal main thread / app realm.
+`isolated-js` runs pack JS in isolation from the Yorishiro main thread / app realm.
 
 Basic form:
 
 - Run inside a killable boundary: Web Worker / sandboxed iframe / Tauri sidecar process
 - Inside the boundary, use SES / Hardened JavaScript `lockdown()` + `Compartment` or equivalent
-- `lockdown()` runs only inside the isolated runtime, not in the Charminal app realm
+- `lockdown()` runs only inside the isolated runtime, not in the Yorishiro app realm
 - `fetch`, `fs`, `notify`, `system.exec`, DOM, Tauri IPC are not passed as ambient globals
 - Guest bundles are not executed directly via Worker module / `importScripts()` / dynamic import
 - A host-controlled loader fetches the bundle source and evaluates it inside the Compartment
@@ -187,12 +187,12 @@ If these are not in place, public amenity distribution is excluded from MVP.
 
 ```json
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "workspace-backup",
   "type": "amenity",
   "executionClass": "isolated-js",
   "version": "1.0.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "entry": "bundle.js",
   "artifact": {
     "sha256": "sha256-...",
@@ -216,24 +216,24 @@ Implemented:
 - `isolated-js` halted as reserved / unsupported
 - `community` source `trusted-main-thread-js` blocked by default
 - User scene assets allow pack-relative paths only; remote URLs / `data:` / `file:` / absolute paths / traversal / CSS `url(...)` are rejected
-- `/charm:create` / `/charm:update` generate/edit `.js` / `.tsx` packs as local-only `trusted-main-thread-js`, with prompts explicitly preventing public amenity / `isolated-js` / unsafe asset / PTY write creation
+- `/yori:create` / `/yori:update` generate/edit `.js` / `.tsx` packs as local-only `trusted-main-thread-js`, with prompts explicitly preventing public amenity / `isolated-js` / unsafe asset / PTY write creation
 
 Not yet implemented:
 
 - `declarative` artifact data loader / schema registry
 - `permissions` manifest schema and enforcement
-- `/charm:prepare-publish` equivalent: local trusted pack → public artifact conversion flow
+- `/yori:prepare-publish` equivalent: local trusted pack → public artifact conversion flow
 - Web Worker / iframe / sidecar + SES runtime
 - Capability RPC / audit log / rate limiting
 - Install UX with permission diff / local responsibility notice
 
-## `/charm:create` and public distribution
+## `/yori:create` and public distribution
 
-`/charm:create` is an authoring flow for users to quickly experiment locally. Its output is treated by default as `source: "local"` + `executionClass: "trusted-main-thread-js"`. This is the pathway where "a user trusts and runs their own code in `~/.charminal/packs/`" — it does not imply meeting community distribution safety standards.
+`/yori:create` is an authoring flow for users to quickly experiment locally. Its output is treated by default as `source: "local"` + `executionClass: "trusted-main-thread-js"`. This is the pathway where "a user trusts and runs their own code in `~/.yorishiro/packs/`" — it does not imply meeting community distribution safety standards.
 
-Therefore, to publish a pack created with `/charm:create`, it must go through a separate flow that converts it into a publish-ready artifact. The working name is `/charm:prepare-publish`.
+Therefore, to publish a pack created with `/yori:create`, it must go through a separate flow that converts it into a publish-ready artifact. The working name is `/yori:prepare-publish`.
 
-However, `/charm:prepare-publish` and the pack publication UI / registry submission are not yet available. The responsibilities defined here serve as acceptance criteria for when public distribution is implemented.
+However, `/yori:prepare-publish` and the pack publication UI / registry submission are not yet available. The responsibilities defined here serve as acceptance criteria for when public distribution is implemented.
 
 `prepare-publish` responsibilities:
 
@@ -247,13 +247,13 @@ However, `/charm:prepare-publish` and the pack publication UI / registry submiss
 8. Display artifact hash / size / permission diff / executionClass diff
 9. Output a checklist before submitting to registry review
 
-`prepare-publish` is machine-check first. Human review is limited to "decisions machines cannot make definitively." The same checker is reused across CLI / `/charm:prepare-publish` / registry CI. The checker is implemented as a pure module so that candidates passing locally never get a different verdict from the registry.
+`prepare-publish` is machine-check first. Human review is limited to "decisions machines cannot make definitively." The same checker is reused across CLI / `/yori:prepare-publish` / registry CI. The checker is implemented as a pure module so that candidates passing locally never get a different verdict from the registry.
 
 Automated checker categories:
 
 | Category | Hard reject | Warning / info |
 |---|---|---|
-| Manifest / policy | Schema invalid, `declarative` + JS entry, community `trusted-main-thread-js`, unimplemented `isolated-js`, executionClass downgrade / unsafe change | Missing description, stale `charminalVersion` range |
+| Manifest / policy | Schema invalid, `declarative` + JS entry, community `trusted-main-thread-js`, unimplemented `isolated-js`, executionClass downgrade / unsafe change | Missing description, stale `yorishiroVersion` range |
 | Declarative data | Unknown field, prototype pollution key, depth / array length / string length / file size cap exceeded, CSS free-form / `url(...)` / unsafe URL | Unused field candidate, value identical to default |
 | Assets | Reference outside pack dir, symlink escape, extension / MIME mismatch, size cap exceeded, image dimension cap exceeded, SVG not allowed, video rejected in MVP | Unused asset, duplicate asset, compression opportunity |
 | JS / TS static scan | JS entry remaining in publish candidate, forbidden global / import / dynamic import / eval / DOM / Tauri / Node builtin / `fetch` / timer / AudioContext / React / Three.js usage | Explanation of why conversion is impossible, manual rewrite suggestion |
@@ -271,7 +271,7 @@ Machine check limitations:
 - Obfuscation to evade review
 - Values that are schema-valid but semantically dangerous
 
-These remain targets for registry review. Packs with any hard reject cannot be submitted to registry review. Warnings are explained to the user, and `/charm:prepare-publish` offers fix suggestions where possible.
+These remain targets for registry review. Packs with any hard reject cannot be submitted to registry review. Warnings are explained to the user, and `/yori:prepare-publish` offers fix suggestions where possible.
 
 Conversion examples:
 
@@ -332,8 +332,8 @@ Future hardening candidates:
 The following is the implementation order before enabling the currently unavailable public distribution feature.
 
 1. Implement `declarative` first
-2. Enable `/charm:prepare-publish` to convert local trusted packs to publishable `declarative` artifacts
-3. Share `scripts/check-pack`–equivalent machine checker across CLI / `/charm:prepare-publish` / registry CI
+2. Enable `/yori:prepare-publish` to convert local trusted packs to publishable `declarative` artifacts
+3. Share `scripts/check-pack`–equivalent machine checker across CLI / `/yori:prepare-publish` / registry CI
 4. Limit public registry to `declarative`. Add curated trusted visuals if operational capacity allows
 5. Start `isolated-js` with Web Worker + SES + capability RPC
 6. Enable amenity public distribution after `isolated-js` runtime and permission UX are complete
@@ -351,7 +351,7 @@ The registry rejects / blocks:
 - `isolated-js` capability RPC payload exceeding schema / size / depth / rate limit
 - Mismatch between declared permissions and code's capability requests
 - Hash not matching reviewed metadata
-- Attempting to publish a `/charm:create`-origin local `trusted-main-thread-js` pack to community without conversion
+- Attempting to publish a `/yori:create`-origin local `trusted-main-thread-js` pack to community without conversion
 - `prepare-publish` machine checker hard rejects remaining
 - `system.exec` requiring shell strings
 - Requesting PTY write APIs
@@ -359,12 +359,12 @@ The registry rejects / blocks:
 
 ## Relationship with self-referential MCP
 
-Charminal plans to implement its own MCP server, exposing all internal capabilities as tools to the inhabitant (AI via Claude Code) and external clients (see [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)).
+Yorishiro plans to implement its own MCP server, exposing all internal capabilities as tools to the inhabitant (AI via Claude Code) and external clients (see [docs/philosophy/PHILOSOPHY.ja.md](../philosophy/PHILOSOPHY.ja.md)).
 
 Pack-execution-classes and this are **different layers**:
 
-- Pack-execution-classes govern **JS execution of distributed packs**. The boundary between host (Charminal) and guest (pack).
-- Self-referential MCP governs **the tool surface the Charminal host exposes**. The host runtime's capability surface.
+- Pack-execution-classes govern **JS execution of distributed packs**. The boundary between host (Yorishiro) and guest (pack).
+- Self-referential MCP governs **the tool surface the Yorishiro host exposes**. The host runtime's capability surface.
 
 Alignment between the two is defined in [`mcp-trust-tiers.md`](mcp-trust-tiers.md). Trust tiers 1 (host runtime / bundled) / 2 (inhabitant = user's Claude Code) / 3 (external MCP client / community pack) each have per–tool-category access policies.
 
@@ -391,7 +391,7 @@ PTY tools (`terminal_prefill` / `write_terminal_input` etc.) are **prohibited ac
 
 - 2026-06-14: Reflected local user pack support for R3F component scenes. `bundled-only` was an implementation gap; user packs may now provide `scene.tsx` under `trusted-main-thread-js`.
 - 2026-06-13: Added the sandbox declaration capability ladder and Phase 0 fail-closed client contract. Added `pack-sandbox-strategy.md` as the detailed decision.
-- 2026-05-16: Added source classification, declarative hostile data checklist, isolated-js initiation gate, capability RPC validation, registry trust limitation, SES bypass defense model, `/charm:create` and publish conversion flow, machine checker relationship, and note that public distribution is not yet available.
+- 2026-05-16: Added source classification, declarative hostile data checklist, isolated-js initiation gate, capability RPC validation, registry trust limitation, SES bypass defense model, `/yori:create` and publish conversion flow, machine checker relationship, and note that public distribution is not yet available.
 - 2026-05-03: Added R3F scene pack class. Initial scope is bundled-only, execution class is `trusted-main-thread-js`.
 - 2026-04-24: Initial version. Defined execution classes along three axes (speed / freedom / security), positioned amenity public distribution as future scope after `isolated-js` completion.
 - 2026-04-27: Added alignment with self-referential MCP plan. Extended PTY write clause to MCP tools, referenced `mcp-trust-tiers.md` as a new decision. Added terminal_prefill tool request as a registry reject condition.

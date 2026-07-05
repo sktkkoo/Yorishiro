@@ -5,7 +5,7 @@
  * release する。これにより、後勝ち claim を古い Disposable が解除しない。
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import type { ClaimKind, ClaimState } from "./types";

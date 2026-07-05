@@ -20,7 +20,7 @@ import type {
   EffectContext,
   EffectDefinition,
   RendererAPI,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { Time } from "../time";
 import type { EffectDispatcher } from "./effect-dispatcher";
 

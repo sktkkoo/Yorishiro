@@ -57,7 +57,7 @@
  * この pack は 1 origin からの 1 発に集中する。
  */
 
-import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, Vec2 } from "@yorishiro/sdk";
 
 interface FireworksOptions {
   readonly origin: Vec2;

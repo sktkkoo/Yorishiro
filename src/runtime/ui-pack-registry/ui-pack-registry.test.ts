@@ -1,4 +1,4 @@
-import type { Disposable, UiContext } from "@charminal/sdk";
+import type { Disposable, UiContext } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { UiPackEntry } from "./types";
 import { createUiPackRegistry } from "./ui-pack-registry";
@@ -10,7 +10,7 @@ const entry = (id: string, origin: "bundled" | "user" = "bundled"): UiPackEntry 
     id,
     type: "ui",
     version: "0.1.0",
-    charminalVersion: "^0.1.0",
+    yorishiroVersion: "^0.1.0",
     entry: "ui.tsx",
   },
   pack: {

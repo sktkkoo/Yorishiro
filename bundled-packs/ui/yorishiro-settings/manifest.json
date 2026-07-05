@@ -1,0 +1,11 @@
+{
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
+  "id": "yorishiro-settings",
+  "name": "Yorishiro Settings",
+  "type": "ui",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "author": "Yorishiro team",
+  "description": "Settings panel for avatar, persona, scene, terminal agent, and shortcuts.",
+  "entry": "ui.tsx"
+}

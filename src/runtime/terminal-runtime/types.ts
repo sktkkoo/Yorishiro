@@ -1,5 +1,5 @@
-import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
+import type { Disposable, TerminalCellData } from "@yorishiro/sdk";
 import type { SpawnSpec } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import type { TerminalCommandRun } from "./command-run-store";

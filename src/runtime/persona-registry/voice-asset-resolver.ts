@@ -6,8 +6,8 @@
  * pack so user packs can ship pre-rendered singing WAV files.
  */
 
-import type { VoiceClipRef } from "@charminal/sdk";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import type { VoiceClipRef } from "@yorishiro/sdk";
 import type { PersonaEntry } from "./types";
 
 const BUNDLED_PERSONA_VOICE_ASSETS = import.meta.glob(

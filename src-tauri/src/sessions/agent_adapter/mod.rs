@@ -18,7 +18,7 @@ fn temp_config_path(prefix: &str, extension: &str) -> PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     std::env::temp_dir().join(format!(
-        "charminal-{}-{}-{}.{}",
+        "yorishiro-{}-{}-{}.{}",
         prefix,
         std::process::id(),
         stamp,
@@ -48,8 +48,8 @@ pub enum AgentThemeRefresh {
     Sigusr2,
 }
 
-/// charm コマンドの記法。`<prefix>charm<separator><name>` で 1 命令になる。
-/// Claude: `/charm:create`、Codex: `$charm-create`、OpenCode: `/charm-create`。
+/// yori コマンドの記法。`<prefix>yori<separator><name>` で 1 命令になる。
+/// Claude: `/yori:create`、Codex: `$yori-create`、OpenCode: `/yori-create`。
 /// prefill (TS strings.ts) / template 生成 (opencode.rs) はこの宣言を正本にする。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,7 +84,7 @@ pub trait TerminalAgent: Send + Sync + 'static {
     /// Default binary 名 (PATH 検索の base)。
     fn binary_name(&self) -> &'static str;
     fn capabilities(&self) -> AgentCapabilities;
-    /// charm コマンドの記法。default は Claude (`/charm:<name>`)。
+    /// yori コマンドの記法。default は Claude (`/yori:<name>`)。
     fn command_syntax(&self) -> CommandSyntax {
         CommandSyntax {
             prefix: "/",
@@ -165,8 +165,9 @@ pub(crate) fn all_extra_path_dirs() -> Vec<PathBuf> {
 /// Claude の UserPromptSubmit reminder と同じ active 設定を、hook を持たない
 /// adapter 用の prompt overlay として組み立てる。
 pub(crate) fn build_prompt_reminder_from_config() -> Option<String> {
-    let config = dirs::home_dir()
-        .and_then(|home| std::fs::read_to_string(home.join(".charminal").join("config.json")).ok())
+    let config = crate::yorishiro_home_path()
+        .ok()
+        .and_then(|home| std::fs::read_to_string(home.join("config.json")).ok())
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
     build_prompt_reminder_from_config_value(config.as_ref())
 }
@@ -212,7 +213,7 @@ fn build_prompt_reminder_from_config_value(config: Option<&serde_json::Value>) -
         .collect::<Vec<_>>()
         .join("\n");
     Some(format!(
-        "## Charminal reminders\n\nBefore each response, check these active reminders:\n\n{}",
+        "## Yorishiro reminders\n\nBefore each response, check these active reminders:\n\n{}",
         bullets
     ))
 }

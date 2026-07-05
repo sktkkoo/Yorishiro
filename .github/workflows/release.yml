@@ -59,18 +59,18 @@ jobs:
           rm -rf .r2-assets
           unzip -oq assets.zip -d .r2-assets
           rm assets.zip
-          # The archive wraps everything in a top-level Charminal-assets/ folder.
+          # The archive wraps everything in a top-level Yorishiro-assets/ folder.
           # Route it through the same fetch-assets.mjs mapping local dev uses, so
           # animations/ models/ voices/ land where the runtime loads them
           # (public/animations, public/models, bundled-packs/shared/voices).
-          # A raw `unzip -d public/` left files under public/Charminal-assets/, so
+          # A raw `unzip -d public/` left files under public/Yorishiro-assets/, so
           # /animations/*.vrma and /models/CLAI.vrm 404'd in the packaged app.
-          if [ -d .r2-assets/Charminal-assets ]; then
-            ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets/Charminal-assets"
+          if [ -d .r2-assets/Yorishiro-assets ]; then
+            ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets/Yorishiro-assets"
           else
             ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets"
           fi
-          CHARMINAL_ASSETS_REQUIRED=1 CHARMINAL_ASSETS_DIR="$ASSET_SRC" node scripts/fetch-assets.mjs
+          YORISHIRO_ASSETS_REQUIRED=1 YORISHIRO_ASSETS_DIR="$ASSET_SRC" node scripts/fetch-assets.mjs
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -96,27 +96,27 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # updater artifact（.app.tar.gz + .sig）は両アーキで同名（charminal.app.tar.gz）に
+      # updater artifact（.app.tar.gz + .sig）は両アーキで同名（yorishiro.app.tar.gz）に
       # なるため、arch を含む名前にリネームしてから artifact 化する。この名前が
       # そのまま Release asset 名になり、latest.json の url が指す。
       - name: Stage updater artifacts
         run: |
           BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
           mkdir -p updater-assets
-          cp "$BUNDLE_DIR"/*.app.tar.gz "updater-assets/charminal_${{ matrix.arch }}.app.tar.gz"
-          cp "$BUNDLE_DIR"/*.app.tar.gz.sig "updater-assets/charminal_${{ matrix.arch }}.app.tar.gz.sig"
+          cp "$BUNDLE_DIR"/*.app.tar.gz "updater-assets/yorishiro_${{ matrix.arch }}.app.tar.gz"
+          cp "$BUNDLE_DIR"/*.app.tar.gz.sig "updater-assets/yorishiro_${{ matrix.arch }}.app.tar.gz.sig"
           ls -la updater-assets
 
       - name: Upload .dmg
         uses: actions/upload-artifact@v6
         with:
-          name: charminal-macos-${{ matrix.arch }}
+          name: yorishiro-macos-${{ matrix.arch }}
           path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
 
       - name: Upload updater artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: charminal-updater-${{ matrix.arch }}
+          name: yorishiro-updater-${{ matrix.arch }}
           path: updater-assets/*
 
   publish-release:
@@ -131,7 +131,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      # versioned dmg（charminal_<ver>_<arch>.dmg）に加えて、バージョンレスの安定名
+      # versioned dmg（yorishiro_<ver>_<arch>.dmg）に加えて、バージョンレスの安定名
       # コピーを作る。README の `releases/latest/download/<固定名>` 直リンクは、
       # リリース間でファイル名が固定であることが必須なため。
       - name: Stage stable-named assets
@@ -139,8 +139,8 @@ jobs:
           mkdir -p release-assets
           cp artifacts/**/*.dmg release-assets/ 2>/dev/null || cp artifacts/*.dmg release-assets/
           cd release-assets
-          for f in *aarch64*.dmg; do [ -e "$f" ] && cp "$f" Charminal-Apple-Silicon.dmg; done
-          for f in *x64*.dmg; do [ -e "$f" ] && cp "$f" Charminal-Intel.dmg; done
+          for f in *aarch64*.dmg; do [ -e "$f" ] && cp "$f" Yorishiro-Apple-Silicon.dmg; done
+          for f in *x64*.dmg; do [ -e "$f" ] && cp "$f" Yorishiro-Intel.dmg; done
           ls -la
 
       # in-app updater（tauri-plugin-updater）が参照する更新 manifest。
@@ -154,15 +154,15 @@ jobs:
           BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
           find artifacts -name '*.app.tar.gz' -exec cp {} release-assets/ \;
           find artifacts -name '*.app.tar.gz.sig' -exec cp {} release-assets/ \;
-          SIG_ARM=$(cat release-assets/charminal_aarch64.app.tar.gz.sig 2>/dev/null || true)
-          SIG_X64=$(cat release-assets/charminal_x86_64.app.tar.gz.sig 2>/dev/null || true)
+          SIG_ARM=$(cat release-assets/yorishiro_aarch64.app.tar.gz.sig 2>/dev/null || true)
+          SIG_X64=$(cat release-assets/yorishiro_x86_64.app.tar.gz.sig 2>/dev/null || true)
           jq -n \
             --arg version "$VERSION" \
             --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --arg sig_arm "$SIG_ARM" \
-            --arg url_arm "$BASE/charminal_aarch64.app.tar.gz" \
+            --arg url_arm "$BASE/yorishiro_aarch64.app.tar.gz" \
             --arg sig_x64 "$SIG_X64" \
-            --arg url_x64 "$BASE/charminal_x86_64.app.tar.gz" \
+            --arg url_x64 "$BASE/yorishiro_x86_64.app.tar.gz" \
             '{version: $version, pub_date: $pub_date, platforms: ({}
               + (if $sig_arm != "" then {"darwin-aarch64": {signature: $sig_arm, url: $url_arm}} else {} end)
               + (if $sig_x64 != "" then {"darwin-x86_64": {signature: $sig_x64, url: $url_x64}} else {} end))}' \

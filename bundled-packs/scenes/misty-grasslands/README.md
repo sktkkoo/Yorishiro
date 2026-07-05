@@ -13,7 +13,7 @@ runtime 内蔵の `radiant-meadow` renderer が空、雲、山並み、草、光
 ## 使い方
 
 設定 UI から scene を `radiant-meadow` に切り替える。直接 config を触る場合は
-`~/.charminal/config.json` の `activeScene` を `"radiant-meadow"` にする。
+`~/.yorishiro/config.json` の `activeScene` を `"radiant-meadow"` にする。
 
 ## 関連
 

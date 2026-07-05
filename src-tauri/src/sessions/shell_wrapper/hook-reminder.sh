@@ -1,8 +1,8 @@
 #!/bin/bash
-# Charminal hook reminder — UserPromptSubmit で additionalContext を注入。
+# Yorishiro hook reminder — UserPromptSubmit で additionalContext を注入。
 # config.json の設定に基づいて active な reminder を組み立てる。
 # このファイルはユーザー管理。自由に編集してよい。
-CONFIG="$HOME/.charminal/config.json"
+CONFIG="$HOME/.yorishiro/config.json"
 
 if [ ! -f "$CONFIG" ]; then
   python3 -c "

@@ -1,4 +1,4 @@
-import type { EffectContext, Vec2 } from "@charminal/sdk";
+import type { EffectContext, Vec2 } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import fireworks from "./effect";
 

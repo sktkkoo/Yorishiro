@@ -1,4 +1,4 @@
-import type { AmbientUiPackDefinition } from "@charminal/sdk";
+import type { AmbientUiPackDefinition } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { createAmbientUiPackRegistry } from "./ambient-ui-pack-registry";
 import type { AmbientUiPackEntry } from "./types";
@@ -13,7 +13,7 @@ function entry(
       id: partial.id,
       type: "ambient-ui",
       version: "0.0.0",
-      charminalVersion: "*",
+      yorishiroVersion: "*",
       entry: "ui.tsx",
     },
     pack: { mount: noopMount },

@@ -1,7 +1,7 @@
 /**
  * Safe-mode の判定 logic。
  *
- * user が `CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app` のように
+ * user が `YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app` のように
  * 起動して、user pack layer が破損したときの rescue 経路として機能する。
  *
  * strict に `'1'` のみを true とする（曖昧な truthy 判定は避ける）。

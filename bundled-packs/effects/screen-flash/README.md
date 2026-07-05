@@ -20,7 +20,7 @@ ctx.space.injectEffect({
 });
 ```
 
-**`~/.charminal/init.js` から**：`ctx.dispatchEffect` 経由（`CharminalInitContext` は `space` API を持たないため）。
+**`~/.yorishiro/init.js` から**：`ctx.dispatchEffect` 経由（`YorishiroInitContext` は `space` API を持たないため）。
 
 ```javascript
 ctx.dispatchEffect({

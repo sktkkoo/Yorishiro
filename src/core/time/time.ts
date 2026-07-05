@@ -10,7 +10,7 @@
  *   - timer (setTimeout / setInterval) は Vitest fake timers を使う前提で非 DI
  */
 
-import type { Cancellable, Time as SdkTime } from "@charminal/sdk";
+import type { Cancellable, Time as SdkTime } from "@yorishiro/sdk";
 
 export interface TimeDeps {
   clock?: () => number;

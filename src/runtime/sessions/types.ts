@@ -68,7 +68,7 @@ export type SessionEvent =
 export const DEFAULT_SESSION_ID: SessionId = "default-session";
 
 /**
- * Session profile — session を起動するための宣言的 spec。`~/.charminal/config.json`
+ * Session profile — session を起動するための宣言的 spec。`~/.yorishiro/config.json`
  * の `profiles[]` に書け、bundled profile (`shell` / `claude` / `codex` / `opencode`) と並ぶ。
  *
  * `kind` で観察 / wrapper 注入 / hook 配線が分岐する。
@@ -86,6 +86,6 @@ export interface SessionProfile {
   readonly cwd: string | null;
   /** `kind: "agent"` のとき adapter id、`kind: "shell"` のとき null。 */
   readonly agent: string | null;
-  /** Charminal 側 instrumentation（OSC 133 / hook 注入）の有無。default true。 */
+  /** Yorishiro 側 instrumentation（OSC 133 / hook 注入）の有無。default true。 */
   readonly integration: boolean;
 }

@@ -1,11 +1,11 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type {
   AmenityContext,
   AmenityPackDefinition,
   ExecOptions,
   HistoryAPI,
   LoopPhase,
-} from "@charminal/sdk";
-import { convertFileSrc } from "@tauri-apps/api/core";
+} from "@yorishiro/sdk";
 import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
@@ -50,7 +50,7 @@ export interface UserAmenityContextDeps {
 
 /**
  * user amenity 用の AmenityContext factory。bundled amenity と同じ stub レベル
- * （system/log/memory/terminal/charm は stub、time/tween/emitEvent/history/signal
+ * （system/log/memory/terminal/yori は stub、time/tween/emitEvent/history/signal
  * は実体）。tween key は packId で namespace する。
  */
 export function createUserAmenityContextFactory(
@@ -140,7 +140,7 @@ export function createUserAmenityContextFactory(
       core: { get: () => undefined, set: () => {}, delete: () => {} },
     },
     terminal: { output: () => "", session: { pid: 0, cwd: "", startedAt: 0 } },
-    charm: async () => {},
+    yori: async () => {},
     signal,
     history: deps.history,
     loop: {
@@ -211,7 +211,7 @@ export async function activateAndRegisterAmenity(
       name: def.name,
       type: "amenity",
       version: "0.0.0",
-      charminalVersion: "*",
+      yorishiroVersion: "*",
       entry: entryPath.endsWith(".tsx") ? "amenity.tsx" : "amenity.js",
     },
     handle,

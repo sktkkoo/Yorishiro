@@ -25,7 +25,6 @@ import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import type { AmenityContextFactory } from "./amenity-activation";
-import { fetchSafeModeFlag, readCharminalConfigText, writeLastStartupReport } from "./charminal-io";
 import { parseConfig } from "./config";
 import { InitScope } from "./init-scope";
 import {
@@ -44,6 +43,7 @@ import {
 } from "./user-pack-loader";
 import type { UserPackRegistry } from "./user-pack-registry";
 import { type PackWatcherHandle, startPackWatcher } from "./watcher";
+import { fetchSafeModeFlag, readYorishiroConfigText, writeLastStartupReport } from "./yorishiro-io";
 
 export interface LoadUserLayerDeps {
   readonly effectPackRunner: EffectRegistrar;
@@ -77,7 +77,7 @@ export interface LoadUserLayerResult {
 }
 
 /**
- * ~/.charminal/ の pack と init.js を一度に読み込み、file watcher を起動する。
+ * ~/.yorishiro/ の pack と init.js を一度に読み込み、file watcher を起動する。
  * 起動時に 1 回だけ呼ぶ。
  *
  * 順序は「safe-mode 判定 → config 読み込み → pack → init → watcher」。
@@ -89,11 +89,11 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
   if (safeMode) {
     deps.userPackLog.write({
       phase: "list",
-      note: "CHARMINAL_SAFE_MODE=1 detected — skipping user pack discovery and init.js",
+      note: "YORISHIRO_SAFE_MODE=1 detected — skipping user pack discovery and init.js",
     });
   }
 
-  const configText = await readCharminalConfigText();
+  const configText = await readYorishiroConfigText();
   const config = parseConfig(configText);
 
   // ?v=<mtime> を URL に混ぜて engine の module registry cache を毎回 bust する
@@ -161,7 +161,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       devLog: deps.userPackLog,
       disabledPacks: config.disabledPacks,
       fetchPackEntries: async () => {
-        await invoke("ensure_charminal_dirs");
+        await invoke("ensure_yorishiro_dirs");
         return invoke<UserPackEntry[]>("list_user_packs");
       },
       importModule: importUserPackModule,

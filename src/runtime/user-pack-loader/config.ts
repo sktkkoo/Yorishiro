@@ -1,5 +1,5 @@
 /**
- * `~/.charminal/config.json` の shape と pure 変換 helper。
+ * `~/.yorishiro/config.json` の shape と pure 変換 helper。
  *
  * File I/O は runtime-wire.ts が Tauri command 経由で組む。この module は
  * parse / serialize / field mutation を pure fn として閉じ込め、test 可能
@@ -38,7 +38,7 @@ import {
 } from "../language/language";
 import type { SessionProfile } from "../sessions/types";
 
-export interface CharminalConfig {
+export interface YorishiroConfig {
   readonly disabledPacks: ReadonlyArray<string>;
   /** User が explicit に picks した persona pack の id。null なら bundled alphabetical default に fall through。 */
   readonly primaryPersona: string | null;
@@ -86,7 +86,7 @@ export type VoiceFrequency = "on" | "off";
 
 const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai-en", "clai-ja"]);
 
-export const EMPTY_CONFIG: CharminalConfig = {
+export const EMPTY_CONFIG: YorishiroConfig = {
   disabledPacks: [],
   primaryPersona: null,
   mcpPort: null,
@@ -256,11 +256,11 @@ const serializeProfile = (p: SessionProfile): Record<string, unknown> => {
 
 /**
  * text が空 / 不正 JSON / 未知 field を含む場合も EMPTY_CONFIG に近い形に
- * 吸収する（tolerant parsing）。Charminal 本体は config の破損で落ちない。
+ * 吸収する（tolerant parsing）。Yorishiro 本体は config の破損で落ちない。
  *
  * 旧 `activePersonas` field は silently ignored（YAGNI migration）。
  */
-export function parseConfig(text: string): CharminalConfig {
+export function parseConfig(text: string): YorishiroConfig {
   if (text.trim() === "") return EMPTY_CONFIG;
   let raw: unknown;
   try {
@@ -298,7 +298,7 @@ export function parseConfig(text: string): CharminalConfig {
  * Empty array / null field は JSON output から omit する。書き戻したときに
  * ファイルが必要以上に肥らない。
  */
-export function serializeConfig(cfg: CharminalConfig): string {
+export function serializeConfig(cfg: YorishiroConfig): string {
   const out: Record<string, unknown> = {};
   if (cfg.disabledPacks.length > 0) out.disabledPacks = cfg.disabledPacks;
   if (cfg.primaryPersona !== null) out.primaryPersona = cfg.primaryPersona;
@@ -327,12 +327,12 @@ export function serializeConfig(cfg: CharminalConfig): string {
   return `${JSON.stringify(out, null, 2)}\n`;
 }
 
-export function withDisabledPackAdded(cfg: CharminalConfig, id: string): CharminalConfig {
+export function withDisabledPackAdded(cfg: YorishiroConfig, id: string): YorishiroConfig {
   if (cfg.disabledPacks.includes(id)) return cfg;
   return { ...cfg, disabledPacks: [...cfg.disabledPacks, id] };
 }
 
-export function withDisabledPackRemoved(cfg: CharminalConfig, id: string): CharminalConfig {
+export function withDisabledPackRemoved(cfg: YorishiroConfig, id: string): YorishiroConfig {
   if (!cfg.disabledPacks.includes(id)) return cfg;
   return {
     ...cfg,
@@ -343,7 +343,7 @@ export function withDisabledPackRemoved(cfg: CharminalConfig, id: string): Charm
 /**
  * activeScene を id にセットした新しい config を返す。id が null ならクリア。
  */
-export function withActiveSceneSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
+export function withActiveSceneSet(cfg: YorishiroConfig, id: string | null): YorishiroConfig {
   return { ...cfg, activeScene: id };
 }
 
@@ -352,10 +352,10 @@ export function withActiveSceneSet(cfg: CharminalConfig, id: string | null): Cha
  * id が null なら該当 project の mapping を削除する。
  */
 export function withProjectSceneSet(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   projectRoot: string,
   id: string | null,
-): CharminalConfig {
+): YorishiroConfig {
   const next = { ...cfg.sceneByProject };
   if (id === null) {
     delete next[projectRoot];
@@ -370,7 +370,7 @@ export function withProjectSceneSet(
  * mapping が無い / projectRoot が未解決なら global activeScene に fall back する。
  */
 export function resolveSceneForProject(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   projectRoot: string | null,
 ): string | null {
   if (projectRoot !== null) {
@@ -384,7 +384,7 @@ export function resolveSceneForProject(
  * activeUi を id にセットした新しい config を返す。id が null ならクリア。
  * withActiveSceneSet と対称。
  */
-export function withActiveUiSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
+export function withActiveUiSet(cfg: YorishiroConfig, id: string | null): YorishiroConfig {
   return { ...cfg, activeUi: id };
 }
 
@@ -392,7 +392,7 @@ export function withActiveUiSet(cfg: CharminalConfig, id: string | null): Charmi
  * primaryPersona を id にセットした新しい config を返す。id が null ならクリア。
  * withActiveSceneSet と対称。
  */
-export function withPrimaryPersonaSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
+export function withPrimaryPersonaSet(cfg: YorishiroConfig, id: string | null): YorishiroConfig {
   return { ...cfg, primaryPersona: id };
 }
 
@@ -400,19 +400,19 @@ export function withPrimaryPersonaSet(cfg: CharminalConfig, id: string | null): 
  * activeAmbientUi の配列を置き換えた新しい config を返す。
  */
 export function withActiveAmbientUiSet(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   ids: ReadonlyArray<string>,
-): CharminalConfig {
+): YorishiroConfig {
   return { ...cfg, activeAmbientUi: [...ids] };
 }
 
-export function withLanguageSet(cfg: CharminalConfig, language: AppLanguage): CharminalConfig {
+export function withLanguageSet(cfg: YorishiroConfig, language: AppLanguage): YorishiroConfig {
   return { ...cfg, language };
 }
 
 export function withVoiceFrequencySet(
-  cfg: CharminalConfig,
+  cfg: YorishiroConfig,
   voiceFrequency: VoiceFrequency,
-): CharminalConfig {
+): YorishiroConfig {
   return { ...cfg, voiceFrequency };
 }

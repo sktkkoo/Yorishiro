@@ -1,5 +1,5 @@
 /**
- * @charminal/runtime/session-tabs
+ * @yorishiro/runtime/session-tabs
  *
  * Session タブの状態管理 + keybindings + auto-respawn。
  */

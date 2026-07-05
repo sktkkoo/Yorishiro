@@ -1,4 +1,4 @@
-import type { LoopPhase } from "@charminal/sdk";
+import type { LoopPhase } from "@yorishiro/sdk";
 
 export interface LoopRun {
   readonly id: number;
@@ -17,7 +17,7 @@ const DEFAULT_MAX_RUNS = 100;
  * （LoopTimeline の loop primitive, inhabited-workspace-design.md §8 P2）。
  * LoopLifecycleEvent の phase 遷移から構築：started で開始、completed/failed で終了、
  * 中間 phase（iterating 等）は active run の phase を更新する。agent ごとに並行 run を持つ。
- * Charminal は loop を駆動せず観察のみ（loop-presence-layer / observation-only）。
+ * Yorishiro は loop を駆動せず観察のみ（loop-presence-layer / observation-only）。
  */
 export class LoopRunStore {
   private readonly maxRuns: number;

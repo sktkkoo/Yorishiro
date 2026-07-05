@@ -195,8 +195,8 @@ export function validateScenePackManifest(raw: unknown, expectedId?: string): Sc
   if (typeof m.version !== "string") {
     throw new PackValidationError("manifest must have string version");
   }
-  if (typeof m.charminalVersion !== "string") {
-    throw new PackValidationError("manifest must have string charminalVersion");
+  if (typeof m.yorishiroVersion !== "string") {
+    throw new PackValidationError("manifest must have string yorishiroVersion");
   }
   if (typeof m.entry !== "string") {
     throw new PackValidationError("manifest must have string entry");

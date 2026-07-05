@@ -1,10 +1,10 @@
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "text-physics",
   "type": "effect",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
-  "author": "Charminal team",
+  "yorishiroVersion": "^0.1.0",
+  "author": "Yorishiro team",
   "description": "Applies physics simulation to text, making it collapse.",
   "entry": "effect.ts"
 }

@@ -5,7 +5,7 @@
 //! （`ListLoadErrorsResponse` + `LoadError`）は実際に参照される。残りの
 //! DTO（`PackStatus` / `ListPacksResponse` / `PackIdArg` / `SimpleOkResponse`）
 //! は「MCP 層が TS runtime に委譲する shape の宣言」として置いてあり、
-//! 実体は TS 側 `charminal-mcp/tool-handlers.ts` が持つ。Rust 内では
+//! 実体は TS 側 `yorishiro-mcp/tool-handlers.ts` が持つ。Rust 内では
 //! 参照先を持たないので dead_code 警告が出る——共有 shape の document として
 //! 残すため module 単位で allow する。
 

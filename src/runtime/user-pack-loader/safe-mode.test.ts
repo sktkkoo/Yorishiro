@@ -9,11 +9,11 @@ import { describe, expect, it } from "vitest";
 import { isSafeMode } from "./safe-mode";
 
 describe("isSafeMode", () => {
-  it("returns true when CHARMINAL_SAFE_MODE is exactly '1'", () => {
+  it("returns true when YORISHIRO_SAFE_MODE is exactly '1'", () => {
     expect(isSafeMode("1")).toBe(true);
   });
 
-  it("returns false when CHARMINAL_SAFE_MODE is unset (null / undefined / empty)", () => {
+  it("returns false when YORISHIRO_SAFE_MODE is unset (null / undefined / empty)", () => {
     expect(isSafeMode(null)).toBe(false);
     expect(isSafeMode(undefined)).toBe(false);
     expect(isSafeMode("")).toBe(false);

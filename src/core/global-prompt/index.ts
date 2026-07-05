@@ -1,7 +1,7 @@
 /**
  * グローバル system prompt フラグメントの収集・結合。
  *
- * persona の systemPromptAddition とは独立に、Charminal 本体が
+ * persona の systemPromptAddition とは独立に、Yorishiro 本体が
  * 常に注入したい指示（journal 行動指針など）を管理する。
  * 複数のフラグメントを登録でき、結合した文字列を返す。
  */

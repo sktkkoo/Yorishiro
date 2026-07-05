@@ -9,7 +9,7 @@
  * 前回 apply した値が残ると予測不能になるため（specs/2026-04-21-ui-pack-design.md）。
  */
 
-import type { UiLayout } from "@charminal/sdk";
+import type { UiLayout } from "@yorishiro/sdk";
 
 export interface LayoutTargets {
   readonly root: HTMLElement;
