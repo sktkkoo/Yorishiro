@@ -1,6 +1,6 @@
 import type { AttentionTarget } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
-import { auraVisualForTarget, targetOpacity } from "./visual";
+import { auraBorderRadiusForTarget, auraVisualForTarget, targetOpacity } from "./visual";
 
 const sampleTarget: AttentionTarget = {
   kind: "mouse",
@@ -81,6 +81,23 @@ describe("targetOpacity", () => {
 });
 
 describe("auraVisualForTarget", () => {
+  it("borderRadius helper は auraVisualForTarget と同じ値を返す", () => {
+    const cases = [
+      { kind: "mouse", reason: undefined, width: 60, height: 60 },
+      { kind: "input-cursor", reason: "typing", width: 8, height: 16 },
+      { kind: "focused-dom", reason: undefined, width: 100, height: 40 },
+      { kind: "mcp-ui", reason: undefined, width: 100, height: 30 },
+      { kind: "terminal-region", reason: "tool-running", width: 200, height: 16 },
+      { kind: "terminal-region", reason: "approval-required", width: 200, height: 16 },
+      { kind: "terminal-region", reason: "error", width: 200, height: 16 },
+      { kind: "terminal-region", reason: "file-link", width: 200, height: 16 },
+    ];
+
+    for (const input of cases) {
+      expect(auraBorderRadiusForTarget(input)).toBe(auraVisualForTarget(input).borderRadius);
+    }
+  });
+
   it("mouse の visual を返す (デフォルト fallback)", () => {
     const v = auraVisualForTarget({ kind: "mouse", reason: undefined, width: 60, height: 60 });
     expect(v.blur).toBeGreaterThan(0);

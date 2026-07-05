@@ -87,6 +87,26 @@ describe("Aura component", () => {
     expect(overlay).toBeNull();
   });
 
+  it("target が null の初期状態では rAF を開始しない", () => {
+    const rafSpy = vi.spyOn(window, "requestAnimationFrame");
+    try {
+      const fake = makeFakeAttention();
+      const ctx = { attention: fake.api } satisfies AmbientUiContext;
+
+      container = document.createElement("div");
+      document.body.appendChild(container);
+      const r = ReactDOM.createRoot(container);
+      root = r;
+      act(() => {
+        r.render(React.createElement(Aura, { ctx }));
+      });
+
+      expect(rafSpy).not.toHaveBeenCalled();
+    } finally {
+      rafSpy.mockRestore();
+    }
+  });
+
   it("renders overlay div when target snapshot is published", async () => {
     const fake = makeFakeAttention();
     const ctx = { attention: fake.api } satisfies AmbientUiContext;

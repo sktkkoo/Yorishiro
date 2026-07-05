@@ -68,6 +68,44 @@ export interface AuraVisualStyle {
   readonly boxShadow: string;
 }
 
+export function auraBorderRadiusForTarget(input: AuraVisualInput): number {
+  const baseRadius = Math.min(12, Math.max(4, Math.min(input.width, input.height) / 2));
+
+  if (input.kind === "focused-dom") {
+    return Math.min(10, Math.max(5, baseRadius));
+  }
+
+  if (input.kind === "mcp-ui") {
+    return Math.min(12, Math.max(6, baseRadius));
+  }
+
+  if (
+    input.reason === "tool-reading" ||
+    input.reason === "tool-writing" ||
+    input.reason === "tool-running"
+  ) {
+    return Math.min(12, Math.max(5, baseRadius));
+  }
+
+  if (input.reason === "approval-required") {
+    return Math.min(12, Math.max(6, baseRadius));
+  }
+
+  if (input.reason === "error" || input.reason === "diagnostic") {
+    return Math.min(10, Math.max(4, baseRadius));
+  }
+
+  if (
+    input.reason === "search-match" ||
+    input.reason === "selection" ||
+    input.reason === "file-link"
+  ) {
+    return Math.min(8, Math.max(3, baseRadius));
+  }
+
+  return baseRadius;
+}
+
 /**
  * kind / reason の組み合わせに応じた aura visual style を返す。
  *
@@ -77,7 +115,7 @@ export interface AuraVisualStyle {
  *   2. kind ベースのスタイル (input-cursor, focused-dom, mcp-ui, terminal-region default, mouse)
  */
 export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
-  const baseRadius = Math.min(12, Math.max(4, Math.min(input.width, input.height) / 2));
+  const borderRadius = auraBorderRadiusForTarget(input);
 
   // ── input-cursor ────────────────────────────────────────────────────────────
 
@@ -86,7 +124,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 10,
       spread: 26,
-      borderRadius: baseRadius,
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.48) 24%, rgba(242, 247, 255, 0.22) 54%, rgba(242, 247, 255, 0) 100%)",
       boxShadow:
@@ -100,7 +138,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 8,
       spread: 18,
-      borderRadius: Math.min(10, Math.max(5, baseRadius)),
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.34) 0%, rgba(225, 246, 255, 0.24) 42%, rgba(225, 246, 255, 0.08) 74%, rgba(225, 246, 255, 0) 100%)",
       boxShadow: "0 0 12px rgba(255, 255, 255, 0.26), 0 0 24px rgba(225, 246, 255, 0.2)",
@@ -113,7 +151,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 12,
       spread: 28,
-      borderRadius: Math.min(12, Math.max(6, baseRadius)),
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.56) 0%, rgba(218, 244, 255, 0.36) 34%, rgba(154, 223, 255, 0.12) 72%, rgba(154, 223, 255, 0) 100%)",
       boxShadow:
@@ -133,7 +171,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: running ? 14 : 10,
       spread: running ? 34 : 24,
-      borderRadius: Math.min(12, Math.max(5, baseRadius)),
+      borderRadius,
       background: writing
         ? "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.54) 0%, rgba(232, 255, 218, 0.34) 36%, rgba(164, 240, 148, 0.1) 72%, rgba(164, 240, 148, 0) 100%)"
         : "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.52) 0%, rgba(218, 244, 255, 0.34) 36%, rgba(148, 216, 240, 0.1) 72%, rgba(148, 216, 240, 0) 100%)",
@@ -147,7 +185,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 14,
       spread: 30,
-      borderRadius: Math.min(12, Math.max(6, baseRadius)),
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.68) 0%, rgba(255, 244, 216, 0.42) 34%, rgba(255, 214, 150, 0.16) 68%, rgba(255, 214, 150, 0) 100%)",
       boxShadow:
@@ -159,7 +197,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 12,
       spread: 20,
-      borderRadius: Math.min(10, Math.max(4, baseRadius)),
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.58) 0%, rgba(255, 225, 218, 0.34) 36%, rgba(255, 142, 120, 0.14) 72%, rgba(255, 142, 120, 0) 100%)",
       boxShadow: "0 0 16px rgba(255, 255, 255, 0.3), 0 0 38px rgba(255, 150, 128, 0.26)",
@@ -174,7 +212,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 6,
       spread: 12,
-      borderRadius: Math.min(8, Math.max(3, baseRadius)),
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.44) 0%, rgba(210, 248, 239, 0.3) 38%, rgba(210, 248, 239, 0.08) 78%, rgba(210, 248, 239, 0) 100%)",
       boxShadow: "0 0 10px rgba(255, 255, 255, 0.26), 0 0 22px rgba(210, 248, 239, 0.22)",
@@ -187,7 +225,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
     return {
       blur: 10,
       spread: 20,
-      borderRadius: baseRadius,
+      borderRadius,
       background:
         "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.46) 0%, rgba(242, 247, 255, 0.28) 36%, rgba(242, 247, 255, 0.08) 72%, rgba(242, 247, 255, 0) 100%)",
       boxShadow: "0 0 12px rgba(255, 255, 255, 0.28), 0 0 24px rgba(242, 247, 255, 0.2)",
@@ -199,7 +237,7 @@ export function auraVisualForTarget(input: AuraVisualInput): AuraVisualStyle {
   return {
     blur: 16,
     spread: 38,
-    borderRadius: baseRadius,
+    borderRadius,
     background:
       "radial-gradient(ellipse at 50% 45%, rgba(255, 255, 255, 0.66) 0%, rgba(255, 255, 255, 0.48) 22%, rgba(242, 247, 255, 0.26) 50%, rgba(242, 247, 255, 0.06) 78%, rgba(242, 247, 255, 0) 100%)",
     boxShadow:

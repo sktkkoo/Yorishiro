@@ -1,12 +1,12 @@
 /**
  * Input cursor attention producer。
  *
- * rAF aligned throttled loop で caret 位置を poll し、stateful に管理:
+ * timer + one-shot rAF で caret 位置を poll し、stateful に管理:
  * - rect が取れた: input-cursor:typing として emit (priority=5)
  * - rect 不在 (null) かつ前回 active: null clear
  * - rect 不在 かつ前回 inactive: 何もしない
  *
- * v1 と同様に rAF に同期して getInputCursorClientPosition を呼ぶことで、
+ * scan 時だけ rAF に同期して getInputCursorClientPosition を呼ぶことで、
  * user 入力時に lastUserInputAt が更新されたことを自然に拾う
  * （subscribePtyData は agent 出力でしか発火しないため使わない）。
  *
@@ -21,18 +21,36 @@ const SOURCE_TYPING = "input-cursor:typing";
 const PRIORITY_TYPING = 5;
 const CONFIDENCE = 1;
 export const INPUT_CURSOR_SCAN_INTERVAL_MS = 1000 / 15;
+/**
+ * rect 不変でも timestamp を進めるための再 emit 間隔。
+ * attention-resolver の maxAge（input-cursor は 2000ms）で stale 落ちしないよう、
+ * caret が同一セルに留まる連続入力（backspace / 再入力等）でも freshness を維持する。
+ */
+export const INPUT_CURSOR_KEEPALIVE_MS = 1000;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
   readonly terminal: Pick<TerminalRuntime, "getInputCursorClientPosition">;
+  /** scan loop 用 timer。省略時は globalThis.setTimeout。 */
+  readonly setScanTimeout?: (fn: () => void, delay: number) => unknown;
+  readonly clearScanTimeout?: (id: unknown) => void;
 }
 
 export function startInputCursorAttentionProducer(opts: StartOptions): Disposable {
   const { attention, terminal } = opts;
+  const setScanTimeoutFn: (fn: () => void, delay: number) => unknown =
+    opts.setScanTimeout ?? globalThis.setTimeout.bind(globalThis);
+  const clearScanTimeoutFn: (id: unknown) => void =
+    opts.clearScanTimeout ?? (globalThis.clearTimeout.bind(globalThis) as (id: unknown) => void);
   let typingActive = false;
   let rafId: number | null = null;
-  let lastScanAt = Number.NEGATIVE_INFINITY;
+  let scanTimer: unknown | null = null;
   let disposed = false;
+  let lastX = Number.NaN;
+  let lastY = Number.NaN;
+  let lastWidth = Number.NaN;
+  let lastHeight = Number.NaN;
+  let lastEmitAt = Number.NEGATIVE_INFINITY;
 
   const updateTyping = (): void => {
     const cursor = terminal.getInputCursorClientPosition();
@@ -40,46 +58,86 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
       if (typingActive) {
         attention.setSourceTarget(SOURCE_TYPING, null);
         typingActive = false;
+        lastX = Number.NaN;
+        lastY = Number.NaN;
+        lastWidth = Number.NaN;
+        lastHeight = Number.NaN;
       }
       return;
     }
+    const x = cursor.clientX;
+    const y = cursor.clientY;
+    const width = cursor.cellWidth;
+    const height = cursor.cellHeight;
+    const now = performance.now();
+    if (
+      typingActive &&
+      now - lastEmitAt < INPUT_CURSOR_KEEPALIVE_MS &&
+      x === lastX &&
+      y === lastY &&
+      width === lastWidth &&
+      height === lastHeight
+    ) {
+      return;
+    }
+    lastX = x;
+    lastY = y;
+    lastWidth = width;
+    lastHeight = height;
+    lastEmitAt = now;
     attention.setSourceTarget(SOURCE_TYPING, {
       kind: "input-cursor",
       source: SOURCE_TYPING,
       rect: {
-        x: cursor.clientX,
-        y: cursor.clientY,
-        width: cursor.cellWidth,
-        height: cursor.cellHeight,
+        x,
+        y,
+        width,
+        height,
       },
       confidence: CONFIDENCE,
       priority: PRIORITY_TYPING,
-      timestamp: performance.now(),
+      timestamp: now,
       reason: "typing",
     });
     typingActive = true;
   };
 
-  // rAF に同期して caret 位置を poll する（v1 同様）。
+  // scan 時だけ rAF に同期して caret 位置を poll する（v1 同様）。
   // subscribePtyData は agent 出力でのみ発火するため user 入力を拾えない。
-  const tick = (now: DOMHighResTimeStamp): void => {
+  function scheduleScan(delay = INPUT_CURSOR_SCAN_INTERVAL_MS): void {
+    if (disposed || scanTimer !== null) return;
+    scanTimer = setScanTimeoutFn(() => {
+      scanTimer = null;
+      if (disposed) return;
+      rafId = requestAnimationFrame(runScanFrame);
+    }, delay);
+  }
+
+  function runScanFrame(): void {
+    rafId = null;
     if (disposed) return;
-    if (now - lastScanAt >= INPUT_CURSOR_SCAN_INTERVAL_MS) {
-      lastScanAt = now;
-      updateTyping();
-    }
-    rafId = requestAnimationFrame(tick);
-  };
-  rafId = requestAnimationFrame(tick);
+    updateTyping();
+    scheduleScan();
+  }
+
+  scheduleScan(0);
 
   return {
     dispose: () => {
       disposed = true;
       if (rafId !== null) cancelAnimationFrame(rafId);
+      if (scanTimer !== null) {
+        clearScanTimeoutFn(scanTimer);
+        scanTimer = null;
+      }
       if (typingActive) {
         attention.setSourceTarget(SOURCE_TYPING, null);
         typingActive = false;
       }
+      lastX = Number.NaN;
+      lastY = Number.NaN;
+      lastWidth = Number.NaN;
+      lastHeight = Number.NaN;
     },
   };
 }

@@ -46,7 +46,7 @@ export class AttentionCueClaimRegistry {
   }
 
   private notify(): void {
-    for (const listener of Array.from(this.listeners)) {
+    for (const listener of this.listeners) {
       listener();
     }
   }

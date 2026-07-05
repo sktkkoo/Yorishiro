@@ -9,7 +9,7 @@ import type {
 import { ensureAudioContextRunning, getAudioContext } from "./audio-context";
 import { LipSyncAnalyser } from "./lip-sync-analyser";
 import type { MouthValues } from "./mouth-values";
-import { ZERO_MOUTH } from "./mouth-values";
+import { clearMouthValues, copyMouthValues, createMouthValues, ZERO_MOUTH } from "./mouth-values";
 import type { TtsEngine } from "./tts-engine";
 import { isPlayableVoiceUrl, resolveSharedVoiceRef } from "./voice-clip-resolver";
 
@@ -39,6 +39,8 @@ export class VoicePlayer {
   private fadeResetGeneration = 0;
   private animFrameId: number | null = null;
   private onMouthValues: ((values: MouthValues) => void) | null = null;
+  private readonly mouthSampleScratch = createMouthValues();
+  private readonly mouthCallbackScratch = createMouthValues();
 
   constructor(voice?: string, engine?: TtsEngine) {
     this.voice = voice ?? null;
@@ -48,11 +50,18 @@ export class VoicePlayer {
   /** 口形素コールバックを設定する。rAF ループで毎フレーム呼ばれる。 */
   setMouthCallback(cb: (values: MouthValues) => void): void {
     this.onMouthValues = cb;
+    if (this.currentSource !== null) this.startLipSyncLoop();
   }
 
   /** 現在の口形素を 1 回取得する（コールバック不使用時のポーリング用）。 */
-  sampleMouth(): MouthValues {
-    return this.lipSync?.sample() ?? { ...ZERO_MOUTH };
+  sampleMouth(out?: MouthValues): MouthValues {
+    if (this.currentSource !== null && this.lipSync) return this.lipSync.sample(out);
+    return out ? clearMouthValues(out) : { ...ZERO_MOUTH };
+  }
+
+  /** Body 側が idle frame で analyser を pull しないための cheap active 判定。 */
+  isMouthActive(): boolean {
+    return this.currentSource !== null && this.lipSync !== null;
   }
 
   createVoiceAPI(options: { readonly resolveClip?: VoiceClipResolver } = {}): VoiceAPI {
@@ -239,14 +248,14 @@ export class VoicePlayer {
       this.gainNode?.gain.setValueAtTime(volume, ctx.currentTime);
 
       this.lipSync?.reset();
-      this.startLipSyncLoop();
+      if (this.onMouthValues !== null) this.startLipSyncLoop();
 
       source.onended = () => {
         if (this.currentSource === source && this.currentPlaybackId === playbackId) {
           this.currentSource = null;
           this.currentPlaybackId = null;
           this.stopLipSyncLoop();
-          this.onMouthValues?.({ ...ZERO_MOUTH });
+          this.onMouthValues?.(clearMouthValues(this.mouthCallbackScratch));
         }
         resolve();
       };
@@ -260,7 +269,7 @@ export class VoicePlayer {
     if (playbackId !== undefined && this.currentPlaybackId !== playbackId) return;
     this.fadeOutAndStop(playbackId);
     this.stopLipSyncLoop();
-    this.onMouthValues?.({ ...ZERO_MOUTH });
+    this.onMouthValues?.(clearMouthValues(this.mouthCallbackScratch));
   }
 
   private stopSource(playbackId?: number): void {
@@ -321,8 +330,16 @@ export class VoicePlayer {
 
   private startLipSyncLoop(): void {
     if (this.animFrameId !== null) return;
+    if (this.onMouthValues === null) return;
     const tick = () => {
-      this.onMouthValues?.(this.sampleMouth());
+      const onMouthValues = this.onMouthValues;
+      if (onMouthValues === null || this.currentSource === null) {
+        this.animFrameId = null;
+        return;
+      }
+      onMouthValues(
+        copyMouthValues(this.sampleMouth(this.mouthSampleScratch), this.mouthCallbackScratch),
+      );
       this.animFrameId = requestAnimationFrame(tick);
     };
     this.animFrameId = requestAnimationFrame(tick);
@@ -378,10 +395,12 @@ function normalizeVolume(volume: number | undefined): number {
 
 async function decodeAudioData(ctx: AudioContext, audioData: ArrayBuffer): Promise<AudioBuffer> {
   try {
-    return decodePcm16Wav(ctx, audioData);
+    // decodeAudioData は渡した ArrayBuffer を detach するため、失敗時に
+    // decodePcm16Wav へ元 bytes を渡せるよう copy を渡す。
+    return await ctx.decodeAudioData(audioData.slice(0));
   } catch {
     try {
-      return await ctx.decodeAudioData(audioData.slice(0));
+      return decodePcm16Wav(ctx, audioData);
     } catch {
       throw new Error(`Unable to decode synthesized audio (${audioData.byteLength} bytes)`);
     }

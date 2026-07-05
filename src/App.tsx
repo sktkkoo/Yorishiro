@@ -1122,6 +1122,7 @@ function App() {
 
     const effectDispatcher = new EffectDispatcher();
     const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
+    const voiceApi = voicePlayer.createVoiceAPI();
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
@@ -2057,13 +2058,13 @@ function App() {
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
             speak: (text) => {
-              voicePlayer.createVoiceAPI().say(text);
+              voiceApi.say(text);
             },
             getFrequency: () => voiceFrequency,
           }),
           "voice.play": createVoicePlayHandler({
             play: (clipRef, options) => {
-              voicePlayer.createVoiceAPI().play(clipRef, options);
+              voiceApi.play(clipRef, options);
             },
             getFrequency: () => voiceFrequency,
           }),

@@ -87,6 +87,8 @@ let nextSlotId = 1;
 
 export class ExpressionManager {
   private readonly slots = new Map<number, ExpressionSlot>();
+  private readonly recomputeKindTopPriority = new Map<ExpressionKind, number>();
+  private readonly recomputeSuppressed = new Set<number>();
 
   /**
    * Add an expression slot. Returns a slot ID for later weight adjustment
@@ -129,6 +131,7 @@ export class ExpressionManager {
   setWeight(id: number, weight: number): void {
     const slot = this.slots.get(id);
     if (!slot) return;
+    if (slot.requestedWeight === weight) return;
     slot.requestedWeight = weight;
     this.recompute();
   }
@@ -155,6 +158,16 @@ export class ExpressionManager {
    */
   getResolved(): Map<string, number> {
     const result = new Map<string, number>();
+    this.writeResolved(result);
+    return result;
+  }
+
+  /**
+   * Resolve into a caller-owned map. Hot render paths use this to avoid
+   * allocating a new Map every frame.
+   */
+  writeResolved(result: Map<string, number>): void {
+    result.clear();
     for (const slot of this.slots.values()) {
       if (slot.effectiveWeight > 0) {
         result.set(
@@ -163,7 +176,6 @@ export class ExpressionManager {
         );
       }
     }
-    return result;
   }
 
   /**
@@ -212,7 +224,8 @@ export class ExpressionManager {
    */
   private recompute(): void {
     // kind ごとに最高 priority の source を求める
-    const kindTopPriority = new Map<ExpressionKind, number>();
+    const kindTopPriority = this.recomputeKindTopPriority;
+    kindTopPriority.clear();
     for (const slot of this.slots.values()) {
       const p = SOURCE_PRIORITY[slot.source];
       const current = kindTopPriority.get(slot.kind) ?? -1;
@@ -220,7 +233,8 @@ export class ExpressionManager {
     }
 
     // suppressed slot を判定しつつ active total を計算
-    const suppressed = new Set<number>();
+    const suppressed = this.recomputeSuppressed;
+    suppressed.clear();
     let total = 0;
     for (const slot of this.slots.values()) {
       const top = kindTopPriority.get(slot.kind) ?? -1;
@@ -261,19 +275,24 @@ export class ExpressionManager {
  */
 export class ExpressionSinkTracker {
   private lastWritten = new Set<string>();
+  private nextWritten = new Set<string>();
 
   /**
    * Apply `batch` to `sink`, after zeroing any names that were written in
    * the previous apply() call but are not present in this batch.
    */
   apply(batch: ReadonlyMap<string, number>, sink: (name: string, weight: number) => void): void {
+    this.nextWritten.clear();
     for (const name of this.lastWritten) {
       if (!batch.has(name)) sink(name, 0);
     }
     for (const [name, weight] of batch) {
       sink(name, weight);
+      this.nextWritten.add(name);
     }
-    this.lastWritten = new Set(batch.keys());
+    const previous = this.lastWritten;
+    this.lastWritten = this.nextWritten;
+    this.nextWritten = previous;
   }
 }
 

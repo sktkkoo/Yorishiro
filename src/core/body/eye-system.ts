@@ -17,6 +17,11 @@ export interface EyeOutput {
   pitch: number; // degrees
 }
 
+export type MutableEyeOutput = {
+  yaw: number;
+  pitch: number;
+};
+
 /**
  * Saccade 開始の通知（pull 型）。Body が毎フレーム consume して
  * eye-head coordination（大きい視線移動に頭が遅れて追従）と
@@ -46,6 +51,8 @@ interface EyeDir {
   left: number;
   right: number;
 }
+
+const FRONT_EYE_DIR: EyeDir = { up: 0, down: 0, left: 0, right: 0 };
 
 const MAX_YAW = 30; // degrees
 const MAX_PITCH = 25;
@@ -159,6 +166,7 @@ export class EyeSystem {
 
   // ── Saccade event（pull 型、consume で消える）──
   private pendingSaccade: SaccadeEvent | null = null;
+  private readonly output: MutableEyeOutput = { yaw: 0, pitch: 0 };
 
   // 次の saccade を正面に強制する flag（注意の切り替え用）
   private forceFrontNext = false;
@@ -220,25 +228,27 @@ export class EyeSystem {
   }
 
   getOutput(): EyeOutput {
+    return { ...this.writeOutput(this.output) };
+  }
+
+  writeOutput(out: MutableEyeOutput): EyeOutput {
     if (this.override) {
-      return {
-        yaw: clamp(
-          this.override.yaw + this.microYaw * MAX_YAW + this.ambientYaw,
-          -OUTPUT_MAX_YAW,
-          OUTPUT_MAX_YAW,
-        ),
-        pitch: clamp(
-          this.override.pitch + this.microPitch * MAX_PITCH + this.ambientPitch,
-          -OUTPUT_MAX_PITCH,
-          OUTPUT_MAX_PITCH,
-        ),
-      };
+      out.yaw = clamp(
+        this.override.yaw + this.microYaw * MAX_YAW + this.ambientYaw,
+        -OUTPUT_MAX_YAW,
+        OUTPUT_MAX_YAW,
+      );
+      out.pitch = clamp(
+        this.override.pitch + this.microPitch * MAX_PITCH + this.ambientPitch,
+        -OUTPUT_MAX_PITCH,
+        OUTPUT_MAX_PITCH,
+      );
+      return out;
     }
     const idle = this.getIdleOutput();
-    return {
-      yaw: clamp(idle.yaw + this.ambientYaw, -OUTPUT_MAX_YAW, OUTPUT_MAX_YAW),
-      pitch: clamp(idle.pitch + this.ambientPitch, -OUTPUT_MAX_PITCH, OUTPUT_MAX_PITCH),
-    };
+    out.yaw = clamp(idle.yaw + this.ambientYaw, -OUTPUT_MAX_YAW, OUTPUT_MAX_YAW);
+    out.pitch = clamp(idle.pitch + this.ambientPitch, -OUTPUT_MAX_PITCH, OUTPUT_MAX_PITCH);
+    return out;
   }
 
   setOverride(yaw: number, pitch: number): number {
@@ -336,7 +346,7 @@ export class EyeSystem {
       if (this.fixationTimer <= 0) {
         const patterns = PATTERNS[this._state];
         const picked = this.forceFrontNext
-          ? { up: 0, down: 0, left: 0, right: 0 }
+          ? FRONT_EYE_DIR
           : patterns[Math.floor(this.random() * patterns.length)];
         this.forceFrontNext = false;
 

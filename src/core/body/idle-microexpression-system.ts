@@ -90,6 +90,11 @@ export interface MicroexpressionEvent {
   readonly weight: number;
 }
 
+export type MutableMicroexpressionEvent = {
+  morph: string;
+  weight: number;
+};
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -100,7 +105,8 @@ export class IdleMicroexpressionSystem {
   private activeDuration = 0;
   private activeWeight = 0;
   private activeMorph: string | null = null;
-  private currentEvent: MicroexpressionEvent | null = null;
+  private currentEvent: MutableMicroexpressionEvent | null = null;
+  private readonly eventScratch: MutableMicroexpressionEvent = { morph: "", weight: 0 };
   private enabled = true;
 
   private readonly random: () => number;
@@ -117,6 +123,19 @@ export class IdleMicroexpressionSystem {
    * enabled=false なら state を即座に clear して null を返す。
    */
   update(delta: number, enabled: boolean): MicroexpressionEvent | null {
+    const event = this.writeUpdate(delta, enabled, this.eventScratch);
+    return event === null ? null : { morph: event.morph, weight: event.weight };
+  }
+
+  /**
+   * Runtime hot path 用。caller-owned event object に現在値を書き、active 中の
+   * per-frame object allocation を避ける。返り値は `out` と同一 object。
+   */
+  writeUpdate(
+    delta: number,
+    enabled: boolean,
+    out: MutableMicroexpressionEvent,
+  ): MicroexpressionEvent | null {
     if (!enabled) {
       if (this.enabled) {
         // ちょうど disable された frame で次回 delay を再 sample しておく
@@ -127,7 +146,7 @@ export class IdleMicroexpressionSystem {
       this.currentEvent = null;
       return null;
     }
-    if (delta <= 0) return this.currentEvent;
+    if (delta <= 0) return this.writeCurrentEvent(out);
     this.enabled = true;
 
     if (this.activeDuration <= 0) {
@@ -145,15 +164,7 @@ export class IdleMicroexpressionSystem {
       }
     }
 
-    if (this.activeMorph) {
-      this.currentEvent = {
-        morph: this.activeMorph,
-        weight: this.getStrength() * this.activeWeight,
-      };
-    } else {
-      this.currentEvent = null;
-    }
-    return this.currentEvent;
+    return this.writeCurrentEvent(out);
   }
 
   /** Body の updateRelaxed と同様に、外部から最新値を query できる。 */
@@ -196,6 +207,17 @@ export class IdleMicroexpressionSystem {
     this.activeDuration = 0;
     this.activeWeight = 0;
     this.activeMorph = null;
+  }
+
+  private writeCurrentEvent(out: MutableMicroexpressionEvent): MicroexpressionEvent | null {
+    if (!this.activeMorph) {
+      this.currentEvent = null;
+      return null;
+    }
+    out.morph = this.activeMorph;
+    out.weight = this.getStrength() * this.activeWeight;
+    this.currentEvent = out;
+    return out;
   }
 
   private pickNextDelay(): number {

@@ -14,7 +14,7 @@ const DEFAULT_MAX_AGE_MS: Record<AttentionTarget["kind"], number> = {
 };
 
 export function resolveAttentionTarget(
-  candidates: ReadonlyArray<AttentionTarget | null | undefined>,
+  candidates: Iterable<AttentionTarget | null | undefined>,
   options: AttentionResolverOptions,
 ): AttentionTarget | null {
   let best: AttentionTarget | null = null;
