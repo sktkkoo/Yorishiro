@@ -3,7 +3,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
 import type { TerminalRuntime } from "../terminal-runtime/types";
-import { INPUT_CURSOR_SCAN_INTERVAL_MS, startInputCursorAttentionProducer } from "./input-cursor";
+import {
+  INPUT_CURSOR_KEEPALIVE_MS,
+  INPUT_CURSOR_SCAN_INTERVAL_MS,
+  startInputCursorAttentionProducer,
+} from "./input-cursor";
 
 function makeFakeAttention() {
   const setSourceTarget = vi.fn();
@@ -163,6 +167,49 @@ describe("startInputCursorAttentionProducer", () => {
       expect(call?.[1].rect).toMatchObject({ x: 50, y: 100, width: 8, height: 16 });
       dispose.dispose();
     } finally {
+      restore();
+    }
+  });
+
+  it("caret 不変でも keep-alive 間隔で timestamp を進めて再 emit する", () => {
+    const { runScan, restore, scanOptions } = makeScanScheduler();
+    const nowSpy = vi.spyOn(performance, "now");
+    let fakeNow = 10_000;
+    nowSpy.mockImplementation(() => fakeNow);
+    try {
+      const attention = makeFakeAttention();
+      const { fake: terminal } = makeFakeTerminal({
+        clientX: 100,
+        clientY: 200,
+        cellWidth: 8,
+        cellHeight: 16,
+      });
+
+      const dispose = startInputCursorAttentionProducer({
+        attention,
+        terminal,
+        ...scanOptions,
+      });
+
+      runScan();
+      expect(attention.setSourceTarget).toHaveBeenCalledTimes(1);
+      expect(attention.setSourceTarget.mock.calls[0][1].timestamp).toBe(10_000);
+
+      // keep-alive 未満: caret 不変なら dedup で emit しない
+      fakeNow += INPUT_CURSOR_KEEPALIVE_MS - 1;
+      runScan();
+      expect(attention.setSourceTarget).toHaveBeenCalledTimes(1);
+
+      // keep-alive 到達: caret 不変でも fresh timestamp で再 emit する
+      // （attention-resolver の maxAge による stale 落ちを防ぐ freshness 契約）
+      fakeNow += 1;
+      runScan();
+      expect(attention.setSourceTarget).toHaveBeenCalledTimes(2);
+      expect(attention.setSourceTarget.mock.calls[1][1].timestamp).toBe(fakeNow);
+
+      dispose.dispose();
+    } finally {
+      nowSpy.mockRestore();
       restore();
     }
   });

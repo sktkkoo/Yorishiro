@@ -21,6 +21,12 @@ const SOURCE_TYPING = "input-cursor:typing";
 const PRIORITY_TYPING = 5;
 const CONFIDENCE = 1;
 export const INPUT_CURSOR_SCAN_INTERVAL_MS = 1000 / 15;
+/**
+ * rect 不変でも timestamp を進めるための再 emit 間隔。
+ * attention-resolver の maxAge（input-cursor は 2000ms）で stale 落ちしないよう、
+ * caret が同一セルに留まる連続入力（backspace / 再入力等）でも freshness を維持する。
+ */
+export const INPUT_CURSOR_KEEPALIVE_MS = 1000;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
@@ -44,6 +50,7 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
   let lastY = Number.NaN;
   let lastWidth = Number.NaN;
   let lastHeight = Number.NaN;
+  let lastEmitAt = Number.NEGATIVE_INFINITY;
 
   const updateTyping = (): void => {
     const cursor = terminal.getInputCursorClientPosition();
@@ -62,8 +69,10 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
     const y = cursor.clientY;
     const width = cursor.cellWidth;
     const height = cursor.cellHeight;
+    const now = performance.now();
     if (
       typingActive &&
+      now - lastEmitAt < INPUT_CURSOR_KEEPALIVE_MS &&
       x === lastX &&
       y === lastY &&
       width === lastWidth &&
@@ -75,6 +84,7 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
     lastY = y;
     lastWidth = width;
     lastHeight = height;
+    lastEmitAt = now;
     attention.setSourceTarget(SOURCE_TYPING, {
       kind: "input-cursor",
       source: SOURCE_TYPING,
@@ -86,7 +96,7 @@ export function startInputCursorAttentionProducer(opts: StartOptions): Disposabl
       },
       confidence: CONFIDENCE,
       priority: PRIORITY_TYPING,
-      timestamp: performance.now(),
+      timestamp: now,
       reason: "typing",
     });
     typingActive = true;

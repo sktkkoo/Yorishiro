@@ -25,6 +25,13 @@ const PRIORITY = 5;
 const CONFIDENCE = 0.7;
 const EXPAND_PX = 10;
 export const FOCUSED_DOM_SCAN_INTERVAL_MS = 250;
+/**
+ * rect 不変でも timestamp を進めるための再 emit 間隔。
+ * attention-resolver は kind 別 maxAge（focused-dom は 2000ms）で stale target を
+ * 除外するため、dedup で emit を止めたままにすると focus 継続中に target が
+ * stale 落ちして aura が消え、rect が変わるまで復帰しない。
+ */
+export const FOCUSED_DOM_KEEPALIVE_MS = 1000;
 
 interface StartOptions {
   readonly attention: AttentionRuntime;
@@ -57,6 +64,7 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
   let lastY = Number.NaN;
   let lastWidth = Number.NaN;
   let lastHeight = Number.NaN;
+  let lastEmitAt = Number.NEGATIVE_INFINITY;
 
   const scan = (): void => {
     const activeElement = getActiveElement();
@@ -79,8 +87,10 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
       const y = activeRect.top - EXPAND_PX;
       const width = activeRect.width + EXPAND_PX * 2;
       const height = activeRect.height + EXPAND_PX * 2;
+      const now = performance.now();
       if (
         focusActive &&
+        now - lastEmitAt < FOCUSED_DOM_KEEPALIVE_MS &&
         x === lastX &&
         y === lastY &&
         width === lastWidth &&
@@ -92,6 +102,7 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
       lastY = y;
       lastWidth = width;
       lastHeight = height;
+      lastEmitAt = now;
       attention.setSourceTarget(SOURCE, {
         kind: "focused-dom",
         source: SOURCE,
@@ -103,7 +114,7 @@ export function startFocusedDomAttentionProducer(opts: StartOptions): Disposable
         },
         confidence: CONFIDENCE,
         priority: PRIORITY,
-        timestamp: performance.now(),
+        timestamp: now,
         reason: "focus",
       });
       focusActive = true;

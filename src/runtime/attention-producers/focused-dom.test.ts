@@ -2,7 +2,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import type { AttentionRuntime } from "../attention-runtime/types";
-import { FOCUSED_DOM_SCAN_INTERVAL_MS, startFocusedDomAttentionProducer } from "./focused-dom";
+import {
+  FOCUSED_DOM_KEEPALIVE_MS,
+  FOCUSED_DOM_SCAN_INTERVAL_MS,
+  startFocusedDomAttentionProducer,
+} from "./focused-dom";
 
 function makeFakeAttention() {
   const setSourceTarget = vi.fn();
@@ -243,6 +247,58 @@ describe("startFocusedDomAttentionProducer", () => {
       button.remove();
       dispose.dispose();
     } finally {
+      restore();
+    }
+  });
+
+  it("rect 不変でも keep-alive 間隔で timestamp を進めて再 emit する", () => {
+    const { runScan, restore, scanOptions } = makeScanScheduler();
+    const nowSpy = vi.spyOn(performance, "now");
+    let fakeNow = 10_000;
+    nowSpy.mockImplementation(() => fakeNow);
+    try {
+      const attention = makeFakeAttention();
+      const button = document.createElement("button");
+      document.body.appendChild(button);
+      button.getBoundingClientRect = () =>
+        ({
+          left: 50,
+          top: 100,
+          width: 120,
+          height: 40,
+          right: 170,
+          bottom: 140,
+          x: 50,
+          y: 100,
+          toJSON: () => ({}),
+        }) as DOMRect;
+
+      const dispose = startFocusedDomAttentionProducer({
+        attention,
+        getActiveElement: () => button,
+        ...scanOptions,
+      });
+
+      runScan();
+      expect(attention.setSourceTarget).toHaveBeenCalledTimes(1);
+      expect(attention.setSourceTarget.mock.calls[0][1].timestamp).toBe(10_000);
+
+      // keep-alive 未満: rect 不変なら dedup で emit しない
+      fakeNow += FOCUSED_DOM_KEEPALIVE_MS - 1;
+      runScan();
+      expect(attention.setSourceTarget).toHaveBeenCalledTimes(1);
+
+      // keep-alive 到達: rect 不変でも fresh timestamp で再 emit する
+      // （attention-resolver の maxAge による stale 落ちを防ぐ freshness 契約）
+      fakeNow += 1;
+      runScan();
+      expect(attention.setSourceTarget).toHaveBeenCalledTimes(2);
+      expect(attention.setSourceTarget.mock.calls[1][1].timestamp).toBe(fakeNow);
+
+      button.remove();
+      dispose.dispose();
+    } finally {
+      nowSpy.mockRestore();
       restore();
     }
   });
