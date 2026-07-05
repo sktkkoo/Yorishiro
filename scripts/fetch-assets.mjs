@@ -5,7 +5,7 @@
 // （詳細は CREDITS.md / README.md）。ローカル開発と build の前にこのスクリプトが
 // 外部ストアから内部の所定パスへ copy する。
 //
-// 外部ストアの既定位置: `../__YORISHIRO_ASSETS__/`（worktree と同じ親に置く運用）
+// 外部ストアの既定位置: `../Charminal-assets/`（worktree と同じ親に置く運用）
 // 上書きしたい場合は env var `YORISHIRO_ASSETS_DIR` を設定する。
 
 import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
@@ -17,7 +17,7 @@ const REPO_ROOT = resolve(__dirname, "..");
 
 const externalRoot = process.env.YORISHIRO_ASSETS_DIR
   ? resolve(process.env.YORISHIRO_ASSETS_DIR)
-  : resolve(REPO_ROOT, "..", "__YORISHIRO_ASSETS__");
+  : resolve(REPO_ROOT, "..", "Charminal-assets");
 
 const TARGETS = [
   {
