@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type { SpawnSpec } from "../bindings/tauri-commands";
 import type { Perception } from "../core/perception";
 import type { SessionId } from "../runtime/sessions";
@@ -31,18 +30,10 @@ export default function TerminalWorkspace({
   shouldAttachExistingSession,
   onActivate,
 }: TerminalWorkspaceProps) {
-  const specsBySession = useMemo(() => {
-    const specs = new Map<SessionId, SpawnSpec>();
-    for (const sessionId of sessions) {
-      specs.set(sessionId, getSpec(sessionId));
-    }
-    return specs;
-  }, [sessions, getSpec]);
-
   const renderTerminal = (sessionId: SessionId, visible: boolean) => {
     const sessionCwd = getSessionCwd(sessionId);
     const active = sessionId === activeSessionId;
-    const spec = specsBySession.get(sessionId) ?? getSpec(sessionId);
+    const spec = getSpec(sessionId);
     return (
       <Terminal
         key={sessionId}

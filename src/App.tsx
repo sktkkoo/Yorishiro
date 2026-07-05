@@ -402,30 +402,6 @@ const SESSION_TAB_CWD_STORAGE_KEY = "yorishiro:session-tab-cwds";
 const VRM_STORAGE_KEY = "yorishiro:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
 
-let dialogModulePromise: Promise<typeof import("@tauri-apps/plugin-dialog")> | null = null;
-
-function loadDialogModule(): Promise<typeof import("@tauri-apps/plugin-dialog")> {
-  dialogModulePromise ??= import("@tauri-apps/plugin-dialog");
-  return dialogModulePromise;
-}
-
-interface PendingFolderSwitch {
-  rafId: number | null;
-  timeoutId: number | null;
-  seq: number;
-}
-
-function cancelPendingFolderSwitch(pending: PendingFolderSwitch): void {
-  if (pending.rafId !== null) {
-    window.cancelAnimationFrame(pending.rafId);
-    pending.rafId = null;
-  }
-  if (pending.timeoutId !== null) {
-    window.clearTimeout(pending.timeoutId);
-    pending.timeoutId = null;
-  }
-}
-
 interface RestoreDialogRequest {
   readonly seq: number;
   readonly changeText: string;
@@ -893,19 +869,14 @@ const clampMotionIntensity = (value: number): number =>
 function App() {
   // ── State placement rule ────────────────────────────────────
   // 5 種類の置き場が混在する。**何を入れるかで決める**：
-  //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, terminalFallbackCwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
+  //   useState        : UI が直接読む / mount/unmount に追従させたい React state（cwd, vrmPath, isUserLayerReady, activeScene, primaryPersona, vrmUrl）
   //   useRef          : render を起こさない mutable cell（bodyRef, greetedRef, inTurnRef）
   //   useMemo         : derive が安いが ref-stable に保ちたい view-side compute（bodyDevLog, folderName）
   //   hot-data        : HMR 越しに 1 instance のみ生かしたい runtime singleton（runtime stack 全体、各 registry）
   //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
   // 詳細: src/runtime/README.md §HMR と singleton
 
-  const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
-  // UI 表示の cwd 変更と terminal respawn を同じ paint に載せないため、
-  // TerminalWorkspace へ渡す fallback cwd は folder switch の after-paint phase で進める。
-  const [terminalFallbackCwd, setTerminalFallbackCwd] = useState<string | null>(() =>
-    localStorage.getItem(CWD_STORAGE_KEY),
-  );
+  const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
   const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
@@ -3639,54 +3610,9 @@ function App() {
 
   // ── Folder picker ─────────────────────────────────────────────
 
-  useEffect(() => {
-    void loadDialogModule().catch(() => {});
-  }, []);
-
-  const pendingFolderSwitchRef = useRef<PendingFolderSwitch>({
-    rafId: null,
-    timeoutId: null,
-    seq: 0,
-  });
-
-  useEffect(
-    () => () => {
-      cancelPendingFolderSwitch(pendingFolderSwitchRef.current);
-    },
-    [],
-  );
-
-  const scheduleMainSessionCwdSwitch = useCallback(
-    (nextCwd: string) => {
-      const pending = pendingFolderSwitchRef.current;
-      cancelPendingFolderSwitch(pending);
-      pending.seq += 1;
-      const seq = pending.seq;
-
-      // Let the folder label / React commit paint before xterm reset + agent respawn work.
-      pending.rafId = window.requestAnimationFrame(() => {
-        pending.rafId = null;
-        pending.timeoutId = window.setTimeout(() => {
-          pending.timeoutId = null;
-          if (pending.seq !== seq) return;
-          setTerminalFallbackCwd(nextCwd);
-          tabManager.setMainSessionLaunchCwd(nextCwd);
-          if (canMountTerminals) {
-            const mainSessionId = tabManager.getState().mainSessionId;
-            getTerminalRuntime(mainSessionId).updatePtyParams(
-              { spec: getTerminalSpec(mainSessionId), cwd: nextCwd },
-              { force: true },
-            );
-          }
-        }, 0);
-      });
-    },
-    [canMountTerminals, getTerminalSpec, tabManager],
-  );
-
   const handlePickFolder = useCallback(async () => {
     try {
-      const { open } = await loadDialogModule();
+      const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         directory: true,
         title: strings.selectProjectFolder,
@@ -4250,7 +4176,7 @@ function App() {
           <TerminalWorkspace
             sessions={tabState.sessions}
             activeSessionId={tabState.activeSessionId}
-            cwd={terminalFallbackCwd}
+            cwd={cwd}
             getSessionCwd={getSessionCwd}
             getSpec={getTerminalSpec}
             getInterruptProtectionMode={getInterruptProtectionMode}

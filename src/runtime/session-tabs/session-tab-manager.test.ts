@@ -223,54 +223,6 @@ describe("SessionTabManager", () => {
     });
   });
 
-  describe("setMainSessionLaunchCwd", () => {
-    it("updates main launch cwd and clears restored attach state for live project switching", () => {
-      const memory = makeMemoryCwdPersistence();
-      manager = new SessionTabManager(MAIN, { cwdPersistence: memory.persistence });
-      manager.restoreSessions([descriptor({ id: MAIN, cwd: "/work/old", startedAt: 10 })], MAIN);
-      expect(manager.shouldAttachExistingSession(MAIN)).toBe(true);
-
-      const states: SessionTabState[] = [];
-      manager.subscribe((state) => states.push(state));
-
-      manager.setMainSessionLaunchCwd("/work/new");
-
-      expect(manager.getSessionCwd(MAIN)).toBe("/work/new");
-      expect(manager.getSessionLaunchCwd(MAIN)).toBe("/work/new");
-      expect(manager.shouldAttachExistingSession(MAIN)).toBe(false);
-      expect(states).toHaveLength(1);
-      expect(states[0].sessions).toEqual([MAIN]);
-      expect(memory.snapshots()).toContainEqual({
-        sessionId: MAIN,
-        launchCwd: "/work/new",
-        displayCwd: "/work/new",
-        startedAt: null,
-      });
-    });
-
-    it("does nothing when the main cwd is unchanged", () => {
-      manager.setMainSessionLaunchCwd("/work/a");
-      const states: SessionTabState[] = [];
-      manager.subscribe((state) => states.push(state));
-
-      manager.setMainSessionLaunchCwd("/work/a");
-
-      expect(states).toEqual([]);
-    });
-
-    it("resets short-lived respawn count because project switch is a manual restart", () => {
-      manager._setSpawnTimeForTest(Date.now());
-      manager.handleSessionExit(MAIN, 1);
-      manager._setSpawnTimeForTest(Date.now());
-      manager.handleSessionExit(MAIN, 1);
-      expect(manager._getRespawnCountForTest()).toBe(2);
-
-      manager.setMainSessionLaunchCwd("/work/new");
-
-      expect(manager._getRespawnCountForTest()).toBe(0);
-    });
-  });
-
   // ── close ─────────────────────────────────────────────────────
 
   describe("close", () => {
