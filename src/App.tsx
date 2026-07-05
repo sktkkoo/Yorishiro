@@ -109,6 +109,7 @@ import {
   resolvePackRepairPrompt,
   restoreConfirmStrings,
 } from "./i18n/strings";
+import { useReloadCurtain } from "./reload-curtain";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -2221,6 +2222,8 @@ function App() {
   // Terminal を mount する。これで coding agent の PTY spawn は確定した primaryPersona の
   // prompt overlay で 1 回だけ走る（多重 spawn / null prompt race を回避）。
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
+  // project 切替 reload 専用の暗転フェード。Cmd+R や error boundary の reload は対象外。
+  const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(isUserLayerReady);
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
   // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
@@ -3619,12 +3622,12 @@ function App() {
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
         // Workspace 切替は runtime singleton 群を一度作り直す。
         // PTY / xterm / perception の寿命が絡むため、差分更新より WebView reload の方が安定する。
-        window.location.reload();
+        beginCurtainReload();
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd, strings.selectProjectFolder]);
+  }, [cwd, beginCurtainReload, strings.selectProjectFolder]);
 
   // ── Settings ─────────────────────────────────────────────
 
@@ -4199,6 +4202,9 @@ function App() {
           onClose={handleRestoreDialogClose}
           onConfirm={handleRestoreDialogConfirm}
         />
+      ) : null}
+      {reloadCurtainPhase !== "hidden" ? (
+        <div className="reload-curtain" data-phase={reloadCurtainPhase} aria-hidden="true" />
       ) : null}
     </div>
   );
