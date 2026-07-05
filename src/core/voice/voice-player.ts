@@ -395,7 +395,9 @@ function normalizeVolume(volume: number | undefined): number {
 
 async function decodeAudioData(ctx: AudioContext, audioData: ArrayBuffer): Promise<AudioBuffer> {
   try {
-    return await ctx.decodeAudioData(audioData);
+    // decodeAudioData は渡した ArrayBuffer を detach するため、失敗時に
+    // decodePcm16Wav へ元 bytes を渡せるよう copy を渡す。
+    return await ctx.decodeAudioData(audioData.slice(0));
   } catch {
     try {
       return decodePcm16Wav(ctx, audioData);
