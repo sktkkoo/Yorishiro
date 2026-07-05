@@ -109,12 +109,6 @@ import {
   resolvePackRepairPrompt,
   restoreConfirmStrings,
 } from "./i18n/strings";
-import {
-  applyReloadDocumentBackground,
-  applyReloadNativeBackground,
-  applyReloadSurfaceBackground,
-  setReloadNativeBackground,
-} from "./reload-visual-guard";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -177,7 +171,10 @@ import {
   resolvePresence,
 } from "./runtime/presence-target";
 import {
-  applyCurrentProjectSceneSelection,
+  applyCurrentProjectSceneSelectionWithResolution,
+  type ProjectRootResolution,
+  type ProjectSceneSelectionResult,
+  projectRootValue,
   resolveCurrentProjectRoot,
 } from "./runtime/project-context/project-context";
 import {
@@ -402,41 +399,7 @@ const CWD_STORAGE_KEY = "charminal:cwd";
 const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
 const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
 const VRM_STORAGE_KEY = "charminal:vrm";
-const RELOAD_CURTAIN_STORAGE_KEY = "charminal:reload-curtain";
-const RELOAD_CURTAIN_FADE_IN_MS = 360;
-const RELOAD_CURTAIN_PRE_RELOAD_HOLD_MS = 80;
-const RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS = 160;
-const RELOAD_CURTAIN_MIN_VISIBLE_AFTER_RELOAD_MS = 520;
-const RELOAD_CURTAIN_FADE_OUT_MS = 360;
-const RELOAD_CURTAIN_MAX_BLOCK_MS = 5000;
-const RELOAD_NATIVE_BACKGROUND_WAIT_MS = 80;
 const HOOK_BADGE_VISIBLE_MS = 6000;
-
-type ReloadCurtainPhase = "hidden" | "entering" | "visible" | "leaving";
-
-function hasPendingReloadCurtain(): boolean {
-  try {
-    return sessionStorage.getItem(RELOAD_CURTAIN_STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function markReloadCurtainPending(): void {
-  try {
-    sessionStorage.setItem(RELOAD_CURTAIN_STORAGE_KEY, "1");
-  } catch {
-    // sessionStorage can be unavailable in restricted WebViews; reload should still proceed.
-  }
-}
-
-function clearReloadCurtainPending(): void {
-  try {
-    sessionStorage.removeItem(RELOAD_CURTAIN_STORAGE_KEY);
-  } catch {
-    // Ignore storage failures; the visual transition is best-effort.
-  }
-}
 
 interface RestoreDialogRequest {
   readonly seq: number;
@@ -913,43 +876,9 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
-  const reloadCurtainFromReloadRef = useRef(hasPendingReloadCurtain());
-  const reloadInFlightRef = useRef(false);
-  const reloadCurtainVisibleAtRef = useRef<number | null>(
-    reloadCurtainFromReloadRef.current ? performance.now() : null,
-  );
-  const [reloadCurtainPhase, setReloadCurtainPhase] = useState<ReloadCurtainPhase>(() =>
-    reloadCurtainFromReloadRef.current ? "visible" : "hidden",
-  );
-  const reloadWithCurtain = useCallback(() => {
-    if (reloadInFlightRef.current) return;
-    reloadInFlightRef.current = true;
-    const nativeBackgroundReady = setReloadNativeBackground();
-    applyReloadDocumentBackground();
-    markReloadCurtainPending();
-    setReloadCurtainPhase("entering");
-    window.requestAnimationFrame(() => {
-      reloadCurtainVisibleAtRef.current = performance.now();
-      setReloadCurtainPhase("visible");
-    });
-    window.setTimeout(() => {
-      applyReloadDocumentBackground();
-      void withTimeout(
-        nativeBackgroundReady,
-        RELOAD_NATIVE_BACKGROUND_WAIT_MS,
-        undefined,
-        () => undefined,
-      ).then(() => {
-        applyReloadSurfaceBackground();
-        window.location.reload();
-      });
-    }, RELOAD_CURTAIN_FADE_IN_MS + RELOAD_CURTAIN_PRE_RELOAD_HOLD_MS);
-  }, []);
-  const [currentProjectRoot, setCurrentProjectRootState] = useState<string | null>(null);
-  const currentProjectRootRef = useRef<string | null>(null);
-  const rememberCurrentProjectRoot = useCallback((projectRoot: string | null) => {
+  const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
+  const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
-    setCurrentProjectRootState(projectRoot);
   }, []);
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
@@ -974,10 +903,6 @@ function App() {
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
-
-  useEffect(() => {
-    currentProjectRootRef.current = currentProjectRoot;
-  }, [currentProjectRoot]);
 
   // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
   const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
@@ -1017,14 +942,13 @@ function App() {
     [updateCharminalConfig],
   );
   const updateActiveSceneConfig = useCallback(
-    (
-      id: string | null,
-      projectRoot: string | null,
-    ): Promise<{ readonly config: CharminalConfig; readonly activeScene: string | null }> =>
+    (id: string | null, projectRoot: ProjectRootResolution): Promise<ProjectSceneSelectionResult> =>
       enqueueConfigWrite(async () => {
         const cur = parseConfig(await readCharminalConfigText());
-        const updated = applyCurrentProjectSceneSelection(cur, projectRoot, id);
-        await writeCharminalConfigText(serializeConfig(updated.config));
+        const updated = await applyCurrentProjectSceneSelectionWithResolution(cur, projectRoot, id);
+        if (updated.kind === "persisted") {
+          await writeCharminalConfigText(serializeConfig(updated.config));
+        }
         return updated;
       }),
     [enqueueConfigWrite],
@@ -1033,9 +957,17 @@ function App() {
     async (id: string | null): Promise<void> => {
       const projectRoot = currentProjectRootRef.current;
       const updated = await updateActiveSceneConfig(id, projectRoot);
+      rememberCurrentProjectRoot(updated.projectRoot);
+      if (updated.kind === "runtime-only") {
+        console.warn("[charminal] scene selection was not persisted", {
+          warning: updated.warning,
+          sceneId: id,
+          projectRoot: updated.projectRoot,
+        });
+      }
       getSceneRegistry().setActiveScene(updated.activeScene);
     },
-    [updateActiveSceneConfig],
+    [rememberCurrentProjectRoot, updateActiveSceneConfig],
   );
 
   const resolveRestoreDialogTarget = useCallback(async (seq: number) => {
@@ -1576,7 +1508,9 @@ function App() {
         );
         const projectRoot = await resolveCurrentProjectRoot(cwd);
         rememberCurrentProjectRoot(projectRoot);
-        scenePackRegistry.setActiveScene(resolveSceneForProject(config, projectRoot));
+        scenePackRegistry.setActiveScene(
+          resolveSceneForProject(config, projectRootValue(projectRoot)),
+        );
         uiPackRegistry.setActiveUi(config.activeUi);
         syncAmbientUiActiveSet(config.activeAmbientUi);
       } catch (err) {
@@ -2295,9 +2229,6 @@ function App() {
   );
   const [localizedPluginDir, setLocalizedPluginDir] = useState<string | null>(null);
   useEffect(() => {
-    applyReloadNativeBackground();
-  }, []);
-  useEffect(() => {
     let cancelled = false;
     userLayerReady.then(({ terminalAgent: agent, defaultSpec: spec, systemPrompt, pluginDir }) => {
       if (!cancelled) {
@@ -2312,47 +2243,6 @@ function App() {
       cancelled = true;
     };
   }, [userLayerReady]);
-  useEffect(() => {
-    if (!reloadCurtainFromReloadRef.current || !isUserLayerReady) return;
-    const visibleForMs =
-      reloadCurtainVisibleAtRef.current === null
-        ? 0
-        : performance.now() - reloadCurtainVisibleAtRef.current;
-    const holdMs = Math.max(
-      RELOAD_CURTAIN_HOLD_AFTER_RELOAD_MS,
-      RELOAD_CURTAIN_MIN_VISIBLE_AFTER_RELOAD_MS - visibleForMs,
-    );
-    const hold = window.setTimeout(() => {
-      reloadCurtainFromReloadRef.current = false;
-      clearReloadCurtainPending();
-      setReloadCurtainPhase("leaving");
-    }, holdMs);
-    const hide = window.setTimeout(() => {
-      setReloadCurtainPhase("hidden");
-      reloadCurtainVisibleAtRef.current = null;
-    }, holdMs + RELOAD_CURTAIN_FADE_OUT_MS);
-    return () => {
-      window.clearTimeout(hold);
-      window.clearTimeout(hide);
-    };
-  }, [isUserLayerReady]);
-  useEffect(() => {
-    if (!reloadCurtainFromReloadRef.current || isUserLayerReady) return;
-    let hide: number | null = null;
-    const failsafe = window.setTimeout(() => {
-      reloadCurtainFromReloadRef.current = false;
-      clearReloadCurtainPending();
-      setReloadCurtainPhase("leaving");
-      hide = window.setTimeout(() => {
-        setReloadCurtainPhase("hidden");
-        reloadCurtainVisibleAtRef.current = null;
-      }, RELOAD_CURTAIN_FADE_OUT_MS);
-    }, RELOAD_CURTAIN_MAX_BLOCK_MS);
-    return () => {
-      window.clearTimeout(failsafe);
-      if (hide !== null) window.clearTimeout(hide);
-    };
-  }, [isUserLayerReady]);
 
   // ── Session tab manager（HMR-surviving singleton）───────────────────────
   // biome-ignore lint/correctness/useExhaustiveDependencies: runtime は HMR-surviving singleton、bus は stable reference
@@ -3291,7 +3181,10 @@ function App() {
             const resolvedLanguage = resolveLanguage(cur.language, getBrowserLocales());
             return {
               primaryPersona: cur.primaryPersona,
-              activeScene: resolveSceneForProject(cur, currentProjectRootRef.current),
+              activeScene: resolveSceneForProject(
+                cur,
+                projectRootValue(currentProjectRootRef.current),
+              ),
               terminalAgent: cur.terminalAgent,
               effectiveAgent: resolveEffectiveAgent(cur),
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
@@ -3726,12 +3619,12 @@ function App() {
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
         // Workspace 切替は runtime singleton 群を一度作り直す。
         // PTY / xterm / perception の寿命が絡むため、差分更新より WebView reload の方が安定する。
-        reloadWithCurtain();
+        window.location.reload();
       }
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd, reloadWithCurtain, strings.selectProjectFolder]);
+  }, [cwd, strings.selectProjectFolder]);
 
   // ── Settings ─────────────────────────────────────────────
 
@@ -4171,7 +4064,7 @@ function App() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.code === "KeyR" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
-        reloadWithCurtain();
+        window.location.reload();
       }
       if (event.code === "F2") {
         event.preventDefault();
@@ -4182,7 +4075,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, [reloadWithCurtain]);
+  }, []);
 
   // command run の keyboard 操作（active session）。
   // Cmd+Shift+F: 直近 failed run を reference 化。
@@ -4306,9 +4199,6 @@ function App() {
           onClose={handleRestoreDialogClose}
           onConfirm={handleRestoreDialogConfirm}
         />
-      ) : null}
-      {reloadCurtainPhase !== "hidden" ? (
-        <div className="reload-curtain" data-phase={reloadCurtainPhase} aria-hidden="true" />
       ) : null}
     </div>
   );

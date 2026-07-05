@@ -1680,6 +1680,8 @@ export interface SceneActivateResult {
 /**
  * Active scene pack を caller-provided write path で切り替える handler。
  * App 側では current project が解決済みなら sceneByProject、未解決なら activeScene に保存する。
+ * id=null は current project override を削除し、global activeScene があればそこへ、
+ * なければ bundled default へ fallback する。
  * 不明な id は registry が fall-through で bundled default を選ぶ（throw しない）。
  */
 export function createSceneActivateHandler(deps: SceneActivateDeps) {
