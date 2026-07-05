@@ -1,4 +1,4 @@
-import { MOUTH_KEYS, type MouthValues, ZERO_MOUTH } from "./mouth-values";
+import { clearMouthValues, copyMouthValues, MOUTH_KEYS, type MouthValues } from "./mouth-values";
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -67,7 +67,8 @@ export class LipSyncAnalyser {
   private readonly analyser: AnalyserNode;
   private readonly frequencyBins: Uint8Array;
   private readonly timeDomainBins: Uint8Array;
-  private smoothed: MouthValues = { ...ZERO_MOUTH };
+  private readonly smoothed: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+  private readonly raw: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
 
   constructor(analyser: AnalyserNode) {
     this.analyser = analyser;
@@ -89,22 +90,26 @@ export class LipSyncAnalyser {
    * 現在の周波数データから MouthValues を算出する。
    * 毎フレーム呼ぶ想定。EMA smoothing 込み。
    */
-  sample(): MouthValues {
+  sample(out?: MouthValues): MouthValues {
     this.analyser.getByteFrequencyData(this.frequencyBins);
     this.analyser.getByteTimeDomainData(this.timeDomainBins);
-    return this.computeFromBins(this.frequencyBins, this.timeDomainBins);
+    return this.computeFromBins(this.frequencyBins, this.timeDomainBins, out);
   }
 
   /** smoothing state をリセットする（音源切り替え時などに） */
   reset(): void {
-    this.smoothed = { ...ZERO_MOUTH };
+    clearMouthValues(this.smoothed);
   }
 
   // ---------------------------------------------------------------------------
   // 内部
   // ---------------------------------------------------------------------------
 
-  private computeFromBins(bins: Uint8Array, timeDomainBins: Uint8Array): MouthValues {
+  private computeFromBins(
+    bins: Uint8Array,
+    timeDomainBins: Uint8Array,
+    out?: MouthValues,
+  ): MouthValues {
     let bandTotal = 0;
     for (let i = VOICE_BIN_START; i <= VOICE_BIN_END; i++) bandTotal += bins[i];
 
@@ -123,13 +128,19 @@ export class LipSyncAnalyser {
     const waveformVolume = Math.min(timeRms / TIME_DOMAIN_VOLUME_SCALE, 1.0);
     const volume = Math.max(spectrumVolume, waveformVolume);
     if (volume < SILENCE_THRESHOLD) {
-      this.smoothed = { ...ZERO_MOUTH };
-      return { ...ZERO_MOUTH };
+      clearMouthValues(this.smoothed);
+      return out ? clearMouthValues(out) : { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
     }
 
     // spectrum が弱い場合はフォルマント推定せず volume のみ
     if (bandTotal < SPECTRUM_FORMANT_THRESHOLD) {
-      return this.smooth({ aa: volume, ih: 0, ou: 0, ee: 0, oh: 0 });
+      const raw = this.raw;
+      raw.aa = volume;
+      raw.ih = 0;
+      raw.ou = 0;
+      raw.ee = 0;
+      raw.oh = 0;
+      return this.smooth(raw, out);
     }
 
     // F1 energy centroid (190–1125 Hz)
@@ -151,7 +162,8 @@ export class LipSyncAnalyser {
     const f2 = f2e > 0 ? (f2w / f2e - F2_START) / (F2_END - F2_START) : 0.5;
 
     // 距離ベース softmax で母音重み算出
-    const raw: MouthValues = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
+    const raw = this.raw;
+    clearMouthValues(raw);
     let wTotal = 0;
     for (const [key, tf1, tf2] of VOWELS) {
       const dist = Math.sqrt((f1 - tf1) ** 2 + (f2 - tf2) ** 2);
@@ -165,14 +177,14 @@ export class LipSyncAnalyser {
       raw[k] = (raw[k] / wTotal) * volume;
     }
 
-    return this.smooth(raw);
+    return this.smooth(raw, out);
   }
 
-  private smooth(raw: MouthValues): MouthValues {
+  private smooth(raw: MouthValues, out?: MouthValues): MouthValues {
     const s = this.smoothed;
     for (const k of MOUTH_KEYS) {
       s[k] = s[k] * (1 - SMOOTHING_ALPHA) + raw[k] * SMOOTHING_ALPHA;
     }
-    return { ...s };
+    return out ? copyMouthValues(s, out) : { ...s };
   }
 }

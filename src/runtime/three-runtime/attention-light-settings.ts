@@ -14,7 +14,7 @@ export class AttentionLightSettingsStore {
   setEnabled(enabled: boolean): void {
     if (this.enabled === enabled) return;
     this.enabled = enabled;
-    for (const listener of Array.from(this.listeners)) {
+    for (const listener of this.listeners) {
       listener();
     }
   }

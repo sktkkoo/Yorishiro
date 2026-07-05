@@ -22,8 +22,8 @@ const QUIET_WINDOW_AFTER_HEAVY_S = 3;
 
 interface PendingAction {
   remainingDelay: number;
-  readonly keyframe?: BeatKeyframe;
-  readonly secondary?: BeatSecondaryAction;
+  keyframe?: BeatKeyframe;
+  secondary?: BeatSecondaryAction;
 }
 
 export class IdleBeatScheduler {
@@ -36,6 +36,7 @@ export class IdleBeatScheduler {
   private lastGlanceYawSign = 0;
   private readonly beatCooldowns = new Map<string, number>();
   private pendingActions: PendingAction[] = [];
+  private readonly pendingActionPool: PendingAction[] = [];
   private sequenceActive = false;
   private readonly profiles: BeatProfileMap;
   private readonly random: () => number;
@@ -54,7 +55,7 @@ export class IdleBeatScheduler {
     const changed = state !== this.state;
     this.prevState = this.state;
     this.state = state;
-    this.pendingActions = [];
+    this.releasePendingActions();
     this.sequenceActive = false;
     this.beatTimer = this.nextInterval(this.profiles[this.state]);
     if (changed) this.fireTransitionBeat(target);
@@ -103,13 +104,22 @@ export class IdleBeatScheduler {
   }
 
   private pickBeat(profile: BeatProfile): BeatDef | null {
-    const candidates = profile.beats.filter((beat) => {
-      if (this.beatCooldowns.has(beat.name)) return false;
-      if (beat.weight === "heavy" && this.heavyBudgetTimer > 0) return false;
-      return true;
-    });
-    if (candidates.length === 0) return null;
-    return candidates[Math.floor(this.random() * candidates.length)] ?? null;
+    let count = 0;
+    for (const beat of profile.beats) {
+      if (this.beatCooldowns.has(beat.name)) continue;
+      if (beat.weight === "heavy" && this.heavyBudgetTimer > 0) continue;
+      count += 1;
+    }
+    if (count === 0) return null;
+
+    let pickIndex = Math.floor(this.random() * count);
+    for (const beat of profile.beats) {
+      if (this.beatCooldowns.has(beat.name)) continue;
+      if (beat.weight === "heavy" && this.heavyBudgetTimer > 0) continue;
+      if (pickIndex === 0) return beat;
+      pickIndex -= 1;
+    }
+    return null;
   }
 
   private fireBeat(beat: BeatDef): void {
@@ -120,14 +130,26 @@ export class IdleBeatScheduler {
       this.globalCooldown = Math.max(this.globalCooldown, QUIET_WINDOW_AFTER_HEAVY_S);
     }
     for (const keyframe of beat.keyframes) {
-      this.pendingActions.push({ remainingDelay: keyframe.at, keyframe });
+      this.addPendingAction(keyframe.at, keyframe, undefined);
     }
     if (beat.secondaryActions) {
       for (const secondary of beat.secondaryActions) {
-        this.pendingActions.push({ remainingDelay: secondary.at, secondary });
+        this.addPendingAction(secondary.at, undefined, secondary);
       }
     }
     this.sequenceActive = true;
+  }
+
+  private addPendingAction(
+    remainingDelay: number,
+    keyframe: BeatKeyframe | undefined,
+    secondary: BeatSecondaryAction | undefined,
+  ): void {
+    const action = this.pendingActionPool.pop() ?? { remainingDelay: 0 };
+    action.remainingDelay = remainingDelay;
+    action.keyframe = keyframe;
+    action.secondary = secondary;
+    this.pendingActions.push(action);
   }
 
   private processPendingActions(
@@ -140,19 +162,35 @@ export class IdleBeatScheduler {
       this.sequenceActive = false;
       return;
     }
-    const remaining: PendingAction[] = [];
+    let writeIndex = 0;
     for (const action of this.pendingActions) {
       const next = action.remainingDelay - delta;
       if (next > 0) {
         action.remainingDelay = next;
-        remaining.push(action);
+        this.pendingActions[writeIndex] = action;
+        writeIndex += 1;
         continue;
       }
       if (action.keyframe) this.applyKeyframe(action.keyframe, target, animationClaimed);
       if (action.secondary && !expressionClaimed) action.secondary.fire(target);
+      this.releasePendingAction(action);
     }
-    this.pendingActions = remaining;
-    if (remaining.length === 0) this.sequenceActive = false;
+    this.pendingActions.length = writeIndex;
+    if (writeIndex === 0) this.sequenceActive = false;
+  }
+
+  private releasePendingActions(): void {
+    for (const action of this.pendingActions) {
+      this.releasePendingAction(action);
+    }
+    this.pendingActions.length = 0;
+  }
+
+  private releasePendingAction(action: PendingAction): void {
+    action.remainingDelay = 0;
+    action.keyframe = undefined;
+    action.secondary = undefined;
+    this.pendingActionPool.push(action);
   }
 
   private applyKeyframe(

@@ -20,21 +20,73 @@ function makeRafStub() {
     state.cb = cb;
     return 1;
   });
-  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
+  const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
   const tick = (t?: DOMHighResTimeStamp): void => {
     now = t ?? now + FOCUSED_DOM_SCAN_INTERVAL_MS;
-    state.cb?.(now);
+    const cb = state.cb;
+    state.cb = null;
+    cb?.(now);
   };
   const restore = (): void => {
     rafSpy.mockRestore();
-    vi.mocked(globalThis.cancelAnimationFrame).mockRestore?.();
+    cancelSpy.mockRestore();
   };
-  return { rafSpy, tick, restore };
+  return { cancelSpy, rafSpy, tick, restore };
+}
+
+function makeTimerStub() {
+  const pending = new Map<number, { fn: () => void; fireAt: number }>();
+  let nextId = 1;
+  let now = 0;
+
+  const setTimeoutFn = (fn: () => void, delay: number): unknown => {
+    const id = nextId++;
+    pending.set(id, { fn, fireAt: now + delay });
+    return id;
+  };
+
+  const clearTimeoutFn = (id: unknown): void => {
+    pending.delete(id as number);
+  };
+
+  const advance = (ms: number): void => {
+    now += ms;
+    for (const [id, entry] of [...pending]) {
+      if (entry.fireAt <= now) {
+        pending.delete(id);
+        entry.fn();
+      }
+    }
+  };
+
+  return { setTimeoutFn, clearTimeoutFn, advance, pending };
+}
+
+function makeScanScheduler() {
+  const raf = makeRafStub();
+  const scanTimers = makeTimerStub();
+  let firstScan = true;
+
+  const runScan = (): void => {
+    scanTimers.advance(firstScan ? 0 : FOCUSED_DOM_SCAN_INTERVAL_MS);
+    firstScan = false;
+    raf.tick();
+  };
+
+  return {
+    ...raf,
+    runScan,
+    scanOptions: {
+      setScanTimeout: scanTimers.setTimeoutFn,
+      clearScanTimeout: scanTimers.clearTimeoutFn,
+    },
+    scanTimers,
+  };
 }
 
 describe("startFocusedDomAttentionProducer", () => {
-  it("rAF tick で interesting な focus があれば focused-dom target を emit する", () => {
-    const { tick, restore } = makeRafStub();
+  it("scan rAF で interesting な focus があれば focused-dom target を emit する", () => {
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const button = document.createElement("button");
@@ -57,9 +109,10 @@ describe("startFocusedDomAttentionProducer", () => {
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => button,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "focused-dom");
       expect(call).toBeDefined();
@@ -81,15 +134,16 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("activeElement が null のとき emit しない", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => null,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       expect(attention.setSourceTarget).not.toHaveBeenCalled();
       dispose.dispose();
@@ -99,15 +153,16 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("activeElement が <body> のとき emit しない", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => document.body,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       expect(attention.setSourceTarget).not.toHaveBeenCalled();
       dispose.dispose();
@@ -117,7 +172,7 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("activeElement が .xterm 配下のとき emit しない", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
 
@@ -142,9 +197,10 @@ describe("startFocusedDomAttentionProducer", () => {
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => canvas,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       expect(attention.setSourceTarget).not.toHaveBeenCalled();
 
@@ -156,7 +212,7 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("activeElement の rect.width が 0 のとき emit しない", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const button = document.createElement("button");
@@ -177,9 +233,10 @@ describe("startFocusedDomAttentionProducer", () => {
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => button,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       expect(attention.setSourceTarget).not.toHaveBeenCalled();
 
@@ -191,7 +248,7 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("focus が消えたとき（前回 active → 今回 null）null clear を emit する", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const button = document.createElement("button");
@@ -213,14 +270,15 @@ describe("startFocusedDomAttentionProducer", () => {
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => active,
+        ...scanOptions,
       });
 
       // 1 frame 目: button に focus → emit
-      tick();
+      runScan();
 
       // 2 frame 目: focus なし → null clear
       active = null;
-      tick();
+      runScan();
 
       const clearCall = attention.setSourceTarget.mock.calls.find(
         (c) => c[0] === "focused-dom" && c[1] === null,
@@ -234,38 +292,45 @@ describe("startFocusedDomAttentionProducer", () => {
     }
   });
 
-  it("dispose で rAF がキャンセルされる", () => {
-    const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 42);
+  it("dispose で pending rAF がキャンセルされる", () => {
+    const { cancelSpy, scanTimers, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const handle = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => null,
+        ...scanOptions,
       });
 
+      scanTimers.advance(0);
       handle.dispose();
-      expect(cancelSpy).toHaveBeenCalledWith(42);
+      expect(cancelSpy).toHaveBeenCalledWith(1);
     } finally {
-      cancelSpy.mockRestore();
-      vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
+      restore();
     }
   });
 
-  it("rAF が毎 frame 再登録される", () => {
-    const { rafSpy, tick, restore } = makeRafStub();
+  it("scan interval 待機中は rAF を再登録しない", () => {
+    const { rafSpy, runScan, restore, scanOptions, scanTimers } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => null,
+        ...scanOptions,
       });
 
-      // 起動時に 1 回
+      // 起動直後は scan timer だけが登録され、rAF はまだ走らない。
+      expect(rafSpy).not.toHaveBeenCalled();
+      expect(scanTimers.pending.size).toBe(1);
+
+      runScan();
       expect(rafSpy).toHaveBeenCalledTimes(1);
 
-      tick();
-      // tick 後にまた 1 回 raf 登録 = 合計 2 回
+      scanTimers.advance(FOCUSED_DOM_SCAN_INTERVAL_MS - 1);
+      expect(rafSpy).toHaveBeenCalledTimes(1);
+
+      runScan();
       expect(rafSpy).toHaveBeenCalledTimes(2);
 
       dispose.dispose();
@@ -275,22 +340,23 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("scan interval 未満の frame では activeElement を読み直さない", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions, scanTimers } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const getActiveElement = vi.fn(() => null);
       const dispose = startFocusedDomAttentionProducer({
         attention,
         getActiveElement,
+        ...scanOptions,
       });
 
-      tick(0);
+      runScan();
       expect(getActiveElement).toHaveBeenCalledTimes(1);
 
-      tick(FOCUSED_DOM_SCAN_INTERVAL_MS - 1);
+      scanTimers.advance(FOCUSED_DOM_SCAN_INTERVAL_MS - 1);
       expect(getActiveElement).toHaveBeenCalledTimes(1);
 
-      tick(FOCUSED_DOM_SCAN_INTERVAL_MS);
+      runScan();
       expect(getActiveElement).toHaveBeenCalledTimes(2);
 
       dispose.dispose();
@@ -300,7 +366,7 @@ describe("startFocusedDomAttentionProducer", () => {
   });
 
   it("dispose 時に active な focused-dom source を clear する", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const button = document.createElement("button");
@@ -321,9 +387,10 @@ describe("startFocusedDomAttentionProducer", () => {
       const handle = startFocusedDomAttentionProducer({
         attention,
         getActiveElement: () => button,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
       handle.dispose();
 
       const clearCall = attention.setSourceTarget.mock.calls.find(

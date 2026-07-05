@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { type MutableRefObject, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { type SpawnSpec, sessionRefreshTheme } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
@@ -39,14 +39,35 @@ export default function Terminal({
 }: TerminalProps) {
   const placeholderRef = useRef<HTMLDivElement>(null);
   const outputSettleTimerRef = useRef<number | null>(null);
+  const outputSettleDueAtRef = useRef(0);
   const screenAttentionScanTimerRef = useRef<number | null>(null);
+  const screenAttentionScanDueAtRef = useRef(0);
 
   useEffect(() => {
     const status = getSessionStatusStore();
     status.register(sessionId);
     const runtime = getTerminalRuntime(sessionId);
+    const scheduleDebounced = (
+      timerRef: MutableRefObject<number | null>,
+      dueAtRef: MutableRefObject<number>,
+      delayMs: number,
+      callback: () => void,
+    ) => {
+      dueAtRef.current = performance.now() + delayMs;
+      if (timerRef.current !== null) return;
+
+      const tick = () => {
+        const remainingMs = dueAtRef.current - performance.now();
+        if (remainingMs > 0) {
+          timerRef.current = window.setTimeout(tick, remainingMs);
+          return;
+        }
+        timerRef.current = null;
+        callback();
+      };
+      timerRef.current = window.setTimeout(tick, delayMs);
+    };
     const scanScreenAttention = () => {
-      screenAttentionScanTimerRef.current = null;
       const detection = detectScreenAttentionRequest(runtime.readScreenTailText(28));
       if (detection) {
         status.markScreenAttentionRequest(sessionId, {
@@ -59,20 +80,15 @@ export default function Terminal({
     };
     const sub = runtime.subscribePtyData(() => {
       status.markOutput(sessionId);
-      if (screenAttentionScanTimerRef.current !== null) {
-        window.clearTimeout(screenAttentionScanTimerRef.current);
-      }
-      screenAttentionScanTimerRef.current = window.setTimeout(
-        scanScreenAttention,
+      scheduleDebounced(
+        screenAttentionScanTimerRef,
+        screenAttentionScanDueAtRef,
         SCREEN_ATTENTION_SCAN_MS,
+        scanScreenAttention,
       );
-      if (outputSettleTimerRef.current !== null) {
-        window.clearTimeout(outputSettleTimerRef.current);
-      }
-      outputSettleTimerRef.current = window.setTimeout(() => {
-        outputSettleTimerRef.current = null;
+      scheduleDebounced(outputSettleTimerRef, outputSettleDueAtRef, OUTPUT_SETTLE_MS, () => {
         status.settleOutput(sessionId);
-      }, OUTPUT_SETTLE_MS);
+      });
     });
     const notificationSub = runtime.subscribeNotification((event) => {
       if (!isOscAttentionNotificationMessage(event.body)) return;

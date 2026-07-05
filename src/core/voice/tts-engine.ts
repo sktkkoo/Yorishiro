@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 /**
  * TTS エンジンの抽象。音声データ (WAV ArrayBuffer) を返す。
@@ -14,19 +14,16 @@ export class SayTtsEngine implements TtsEngine {
   readonly name = "say";
 
   async synthesize(text: string, voice?: string): Promise<ArrayBuffer> {
-    const base64: string = await invoke("tts_synthesize", {
+    const channel = new Channel<ArrayBuffer>();
+    const audioData = new Promise<ArrayBuffer>((resolve) => {
+      channel.onmessage = resolve;
+    });
+
+    await invoke("tts_synthesize", {
       text,
       voice: voice ?? null,
+      onOutput: channel,
     });
-    return base64ToArrayBuffer(base64);
+    return audioData;
   }
-}
-
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes.buffer;
 }

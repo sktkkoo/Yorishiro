@@ -25,6 +25,8 @@ export interface UpdatePtyOptions {
    * WebView reload 後に session_list で復元済みと分かった session にだけ使う。
    */
   readonly attachFirst?: boolean;
+  /** true のとき current params と同一でも明示 restart として spawn し直す。 */
+  readonly force?: boolean;
 }
 
 export interface TerminalCursorClientPosition {

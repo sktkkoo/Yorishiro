@@ -62,6 +62,15 @@ export class WorkspaceAttentionStore {
     if (existingId) {
       const existing = this.items.get(existingId);
       if (existing) {
+        if (
+          existing.state === "active" &&
+          shallowEqualRecord(existing.locus, input.locus) &&
+          existing.type === input.type &&
+          existing.severity === input.severity &&
+          shallowEqualRecord(existing.detail, input.detail)
+        ) {
+          return existing;
+        }
         const updated = {
           ...existing,
           locus: input.locus,
@@ -151,14 +160,18 @@ export class WorkspaceAttentionStore {
   }
 
   private publish(): void {
-    const activeItems = Array.from(this.items.values()).filter((item) => item.state === "active");
-    const primaryItem = selectPrimaryItem(activeItems, this.now());
+    const activeItems: WorkspaceAttentionItem[] = [];
+    for (const item of this.items.values()) {
+      if (item.state === "active") activeItems.push(item);
+    }
+    const now = this.now();
+    const primaryItem = selectPrimaryItem(activeItems, now);
     this.snapshot = {
       activeItems,
       primaryItem,
-      aggregate: aggregateFromActiveItems(activeItems, this.now()),
+      aggregate: aggregateFromActiveItems(activeItems, now),
     };
-    for (const listener of Array.from(this.listeners)) {
+    for (const listener of this.listeners) {
       listener(this.snapshot);
     }
   }
@@ -223,4 +236,18 @@ function maxSeverity(items: ReadonlyArray<WorkspaceAttentionItem>): WorkspaceAtt
     }
   }
   return best;
+}
+
+function shallowEqualRecord(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || a === null || typeof b !== "object" || b === null) return false;
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  const bKeys = Object.keys(bRecord);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (aRecord[key] !== bRecord[key]) return false;
+  }
+  return true;
 }

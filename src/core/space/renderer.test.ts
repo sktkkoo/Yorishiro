@@ -52,6 +52,31 @@ describe("Renderer.addShakeFilter", () => {
     // Sanity check: the first tick had set a non-empty transform
     expect(afterFirstTick).not.toBe("");
   });
+
+  it("decay 完了後は dispose 前でも rAF を再スケジュールしない", () => {
+    const target = makeTarget();
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback): number => {
+      frames.push(cb);
+      return frames.length;
+    });
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValue(0);
+    try {
+      const renderer = new Renderer({ shakeTarget: target as unknown as HTMLElement });
+      renderer.addShakeFilter(0.5);
+
+      expect(frames).toHaveLength(1);
+      frames.shift()?.(0);
+      expect(frames).toHaveLength(1);
+
+      frames.shift()?.(501);
+
+      expect(target.style.transform).toBe("");
+      expect(frames).toHaveLength(0);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
 });
 
 // ─── addCssFilter ────────────────────────────────────────────

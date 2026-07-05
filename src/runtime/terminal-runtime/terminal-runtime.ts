@@ -138,6 +138,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private terminalReferenceCounter = 0;
   private readonly terminalReferences = new Map<string, TerminalReference>();
   private inputWriteQueue: Promise<void> = Promise.resolve();
+  private readonly inputCursorPosition: TerminalCursorClientPosition = {
+    clientX: 0,
+    clientY: 0,
+    cellWidth: 0,
+    cellHeight: 0,
+  };
+  private readonly viewportLineRectCache: TerminalLineRect[] = [];
   private imeComposing = false;
   private imePendingCommitText: string | null = null;
   private imePendingCommitTimer: number | null = null;
@@ -224,7 +231,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
     // viewport scroll を listener に通知（attention producer の rect 再計算 trigger 用途）
     this.term.onScroll(() => {
-      for (const listener of Array.from(this.scrollListeners)) {
+      for (const listener of this.scrollListeners) {
         listener();
       }
     });
@@ -364,7 +371,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   updatePtyParams(params: PtyParams, options: UpdatePtyOptions = {}): void {
     if (this.disposed) return;
-    if (this.paramsEqual(this.currentParams, params)) {
+    if (!options.force && this.paramsEqual(this.currentParams, params)) {
       return;
     }
     this.currentParams = params;
@@ -434,9 +441,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         });
         if (this.disposed) {
           void sessionDestroy({ sessionId: this.sessionId });
+          return;
         }
+        if (this.isStaleStart(generation)) return;
+        this.resyncAttachedPtyDisplay();
       } catch (err) {
         if (this.isStaleStart(generation)) return;
+        this.currentParams = null;
         const label = describeSpec(params.spec);
         this.term.write(`\x1b[31mFailed to start ${label}: ${err}\x1b[0m\r\n`);
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
@@ -523,12 +534,17 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const col = Math.max(0, Math.min(this.term.cols - 1, buffer.cursorX));
     const row = Math.max(0, Math.min(this.term.rows - 1, buffer.cursorY));
 
-    return {
-      clientX: rect.left + (col + 0.5) * cellWidth,
-      clientY: rect.top + (row + 0.5) * cellHeight,
-      cellWidth,
-      cellHeight,
+    const cursor = this.inputCursorPosition as {
+      clientX: number;
+      clientY: number;
+      cellWidth: number;
+      cellHeight: number;
     };
+    cursor.clientX = rect.left + (col + 0.5) * cellWidth;
+    cursor.clientY = rect.top + (row + 0.5) * cellHeight;
+    cursor.cellWidth = cellWidth;
+    cursor.cellHeight = cellHeight;
+    return this.inputCursorPosition;
   }
 
   extractVisibleCells(): TerminalCellData | null {
@@ -621,7 +637,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const cellWidth = containerRect.width / this.term.cols;
     const cellHeight = containerRect.height / this.term.rows;
 
-    const result: TerminalLineRect[] = [];
+    const result = this.viewportLineRectCache;
+    let resultLength = 0;
 
     for (let row = this.term.rows - 1; row >= 0; row--) {
       const line = buffer.getLine(buffer.viewportY + row);
@@ -640,17 +657,25 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
       if (startCol === -1 || endCol === -1) continue;
 
-      result.push({
-        text: line.translateToString(true),
-        rect: {
-          x: containerRect.left + startCol * cellWidth,
-          y: containerRect.top + row * cellHeight,
-          width: Math.max(cellWidth, (endCol - startCol + 1) * cellWidth),
-          height: cellHeight,
-        },
-      });
+      let entry = result[resultLength] as
+        | {
+            text: string;
+            rect: { x: number; y: number; width: number; height: number };
+          }
+        | undefined;
+      if (entry === undefined) {
+        entry = { text: "", rect: { x: 0, y: 0, width: 0, height: 0 } };
+        result[resultLength] = entry;
+      }
+      entry.text = line.translateToString(true);
+      entry.rect.x = containerRect.left + startCol * cellWidth;
+      entry.rect.y = containerRect.top + row * cellHeight;
+      entry.rect.width = Math.max(cellWidth, (endCol - startCol + 1) * cellWidth);
+      entry.rect.height = cellHeight;
+      resultLength++;
     }
 
+    result.length = resultLength;
     return result;
   }
 
@@ -834,7 +859,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private notifyPtyDataListeners(): void {
-    for (const listener of Array.from(this.ptyDataListeners)) {
+    for (const listener of this.ptyDataListeners) {
       listener();
     }
   }
@@ -862,13 +887,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       body: notification.body,
       receivedAt: Date.now(),
     };
-    for (const listener of Array.from(this.notificationListeners)) {
+    for (const listener of this.notificationListeners) {
       listener(event);
     }
   }
 
   private notifyUserInputListeners(data: string): void {
-    for (const listener of Array.from(this.userInputListeners)) {
+    for (const listener of this.userInputListeners) {
       listener(data);
     }
   }
@@ -1089,7 +1114,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       startedAt: this.currentWriteReplay ? null : Date.now(),
     });
     if (hadActiveRun || this.currentWriteReplay) return;
-    for (const listener of Array.from(this.commandRunStartedListeners)) {
+    for (const listener of this.commandRunStartedListeners) {
       listener(started);
     }
   }
@@ -1126,7 +1151,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   private notifyCommandRunFinalized(finalized: TerminalCommandRun): void {
-    for (const listener of Array.from(this.commandRunFinalizedListeners)) {
+    for (const listener of this.commandRunFinalizedListeners) {
       listener(finalized);
     }
   }
@@ -1161,7 +1186,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.drawRegionHighlight(context.polygon);
       this.scheduleRegionCanvasClear();
     }
-    for (const listener of Array.from(this.regionContextListeners)) {
+    for (const listener of this.regionContextListeners) {
       listener(context);
     }
     return true;
@@ -1338,7 +1363,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
 
   private readonly handleActivationEvent = (): void => {
     if (this.disposed) return;
-    for (const listener of Array.from(this.activationListeners)) {
+    for (const listener of this.activationListeners) {
       listener();
     }
   };
@@ -1489,7 +1514,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.drawRegionHighlight(polygon);
     this.scheduleRegionCanvasClear();
 
-    for (const listener of Array.from(this.regionContextListeners)) {
+    for (const listener of this.regionContextListeners) {
       listener(context);
     }
   }
@@ -1612,7 +1637,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }
     this.latestRegionContext = context;
     this.addTerminalReference(context);
-    for (const listener of Array.from(this.regionContextListeners)) {
+    for (const listener of this.regionContextListeners) {
       listener(context);
     }
     this.scheduleRegionCanvasClear();

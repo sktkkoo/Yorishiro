@@ -8,7 +8,7 @@
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
 import type { Disposable } from "@yorishiro/sdk";
 import * as THREE from "three";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ClaimKind, ClaimState } from "../../runtime/ui-claim-state";
 import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
@@ -104,6 +104,22 @@ describe("Body beat target wiring", () => {
     for (let t = 0; t < 1; t += 1 / 60) body.update(1 / 60, t);
 
     expect(Math.abs(getBone("head").rotation.y)).toBeLessThan(0.001);
+  });
+});
+
+describe("Body lip sync sampling", () => {
+  it("inactive source では per-frame sampleMouth を呼ばない", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const sampleMouth = vi.fn(() => ({ aa: 1, ih: 0, ou: 0, ee: 0, oh: 0 }));
+
+    body.setLipSyncSource({
+      isMouthActive: () => false,
+      sampleMouth,
+    });
+    body.update(1 / 60, 0);
+
+    expect(sampleMouth).not.toHaveBeenCalled();
   });
 });
 
@@ -864,6 +880,18 @@ describe("IdleMicroexpressionSystem", () => {
     if (event) {
       expect(MICRO_MORPH_POOL).toContain(event.morph);
     }
+  });
+
+  it("writeUpdate writes into the caller-provided event object", () => {
+    const micro = new IdleMicroexpressionSystem(() => 0, ["Fcl_BRW_Joy"]);
+    const out = { morph: "", weight: 0 };
+
+    micro.writeUpdate(2.0, true, out);
+    const event = micro.writeUpdate(0.05, true, out);
+
+    expect(event).toBe(out);
+    expect(out.morph).toBe("Fcl_BRW_Joy");
+    expect(out.weight).toBeGreaterThan(0);
   });
 
   it("weight is positive during the episode and stays within configured bounds", () => {

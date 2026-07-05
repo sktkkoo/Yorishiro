@@ -31,6 +31,12 @@ export interface BreathingOutput {
   readonly shoulderLift: number;
 }
 
+type MutableBreathingOutput = {
+  offsetY: number;
+  chestPitch: number;
+  shoulderLift: number;
+};
+
 // 各モードの角周波数（rad/s）と深さ係数。idle の 0.8 rad/s は旧実装の
 // BREATHING_FREQUENCY をそのまま引き継ぐ（約 7.6 呼吸/分の安静呼吸）。
 const MODE_PARAMS: Record<BreathingMode, { rate: number; depth: number }> = {
@@ -67,7 +73,11 @@ export class BreathingSystem {
   private sighTimer: number;
   private holdTimer = 0;
   private intensity = 1.0;
-  private lastOutput: BreathingOutput = { offsetY: 0, chestPitch: 0, shoulderLift: 0 };
+  private readonly lastOutput: MutableBreathingOutput = {
+    offsetY: 0,
+    chestPitch: 0,
+    shoulderLift: 0,
+  };
 
   private readonly ampNoise: OrganicNoise;
   private readonly rateNoise: OrganicNoise;
@@ -137,11 +147,9 @@ export class BreathingSystem {
 
     const gain = motionGain(this.intensity, "breathing");
     const value = breathValue * this.depth * ampMul * gain;
-    this.lastOutput = {
-      offsetY: value * OFFSET_Y_AMP,
-      chestPitch: value * CHEST_AMP,
-      shoulderLift: value * SHOULDER_AMP,
-    };
+    this.lastOutput.offsetY = value * OFFSET_Y_AMP;
+    this.lastOutput.chestPitch = value * CHEST_AMP;
+    this.lastOutput.shoulderLift = value * SHOULDER_AMP;
     return this.lastOutput;
   }
 }

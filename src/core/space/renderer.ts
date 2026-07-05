@@ -159,9 +159,10 @@ export class Renderer implements RendererAPI {
   addShakeFilter(intensity: number): Disposable {
     let disposed = false;
     const start = performance.now();
-    const tick = (): void => {
+    let rafId: number | null = null;
+    const tick = (now: number): void => {
       if (disposed) return;
-      const elapsed = performance.now() - start;
+      const elapsed = now - start;
       const { dx, dy } = computeShakeOffset(
         elapsed,
         DEFAULT_SHAKE_DECAY_MS,
@@ -169,13 +170,21 @@ export class Renderer implements RendererAPI {
         this.random,
       );
       this.shakeTarget.style.transform = dx === 0 && dy === 0 ? "" : `translate(${dx}px, ${dy}px)`;
-      requestAnimationFrame(tick);
+      if (elapsed >= DEFAULT_SHAKE_DECAY_MS || intensity <= 0) {
+        rafId = null;
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(tick);
     return {
       dispose: () => {
         if (disposed) return;
         disposed = true;
+        if (rafId !== null && typeof globalThis.cancelAnimationFrame === "function") {
+          globalThis.cancelAnimationFrame(rafId);
+          rafId = null;
+        }
         this.shakeTarget.style.transform = "";
       },
     };

@@ -30,22 +30,73 @@ function makeRafStub() {
     state.cb = cb;
     return 1;
   });
-  vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
+  const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
   const tick = (t?: DOMHighResTimeStamp): void => {
     now = t ?? now + INPUT_CURSOR_SCAN_INTERVAL_MS;
-    state.cb?.(now);
+    const cb = state.cb;
+    state.cb = null;
+    cb?.(now);
   };
   const restore = (): void => {
     rafSpy.mockRestore();
-    vi.mocked(globalThis.cancelAnimationFrame).mockRestore?.();
+    cancelSpy.mockRestore();
   };
-  return { rafSpy, tick, restore };
+  return { cancelSpy, rafSpy, tick, restore };
+}
+
+function makeTimerStub() {
+  const pending = new Map<number, { fn: () => void; fireAt: number }>();
+  let nextId = 1;
+  let now = 0;
+
+  const setTimeoutFn = (fn: () => void, delay: number): unknown => {
+    const id = nextId++;
+    pending.set(id, { fn, fireAt: now + delay });
+    return id;
+  };
+
+  const clearTimeoutFn = (id: unknown): void => {
+    pending.delete(id as number);
+  };
+
+  const advance = (ms: number): void => {
+    now += ms;
+    for (const [id, entry] of [...pending]) {
+      if (entry.fireAt <= now) {
+        pending.delete(id);
+        entry.fn();
+      }
+    }
+  };
+
+  return { setTimeoutFn, clearTimeoutFn, advance, pending };
+}
+
+function makeScanScheduler() {
+  const raf = makeRafStub();
+  const scanTimers = makeTimerStub();
+  let firstScan = true;
+
+  const runScan = (): void => {
+    scanTimers.advance(firstScan ? 0 : INPUT_CURSOR_SCAN_INTERVAL_MS);
+    firstScan = false;
+    raf.tick();
+  };
+
+  return {
+    ...raf,
+    runScan,
+    scanOptions: {
+      setScanTimeout: scanTimers.setTimeoutFn,
+      clearScanTimeout: scanTimers.clearTimeoutFn,
+    },
+    scanTimers,
+  };
 }
 
 describe("startInputCursorAttentionProducer", () => {
   it("getInputCursorClientPosition は scan interval ごとに呼ばれる", () => {
-    // requestAnimationFrame をスタブし、手動で tick を制御する
-    const { rafSpy, tick, restore } = makeRafStub();
+    const { rafSpy, runScan, restore, scanOptions, scanTimers } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const { fake: terminal } = makeFakeTerminal({
@@ -57,22 +108,24 @@ describe("startInputCursorAttentionProducer", () => {
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        ...scanOptions,
       });
 
-      // 起動直後に 1 回 rAF が登録されている
-      expect(rafSpy).toHaveBeenCalledTimes(1);
+      // 起動直後は scan timer だけが登録され、rAF はまだ走らない。
+      expect(rafSpy).not.toHaveBeenCalled();
+      expect(scanTimers.pending.size).toBe(1);
       expect(terminal.getInputCursorClientPosition).not.toHaveBeenCalled();
 
-      // 1 frame 進める
-      tick(0);
+      // 初回 scan: timer 発火後の rAF でだけ走査する。
+      runScan();
       expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(1);
 
-      // interval 未満の frame は skip
-      tick(INPUT_CURSOR_SCAN_INTERVAL_MS - 1);
+      // interval 未満は次の rAF 自体を要求しない。
+      scanTimers.advance(INPUT_CURSOR_SCAN_INTERVAL_MS - 1);
       expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(1);
 
       // interval 到達で次の scan
-      tick(INPUT_CURSOR_SCAN_INTERVAL_MS);
+      runScan();
       expect(terminal.getInputCursorClientPosition).toHaveBeenCalledTimes(2);
 
       dispose.dispose();
@@ -81,8 +134,8 @@ describe("startInputCursorAttentionProducer", () => {
     }
   });
 
-  it("rAF tick で caret が visible なら input-cursor:typing を emit する", () => {
-    const { tick, restore } = makeRafStub();
+  it("scan rAF で caret が visible なら input-cursor:typing を emit する", () => {
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const { fake: terminal } = makeFakeTerminal({
@@ -94,9 +147,10 @@ describe("startInputCursorAttentionProducer", () => {
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       const call = attention.setSourceTarget.mock.calls.find((c) => c[0] === "input-cursor:typing");
       expect(call).toBeDefined();
@@ -114,16 +168,17 @@ describe("startInputCursorAttentionProducer", () => {
   });
 
   it("caret が null のとき最初の scan では emit しない (virgin state)", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const { fake: terminal } = makeFakeTerminal(null);
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
 
       expect(attention.setSourceTarget).not.toHaveBeenCalled();
       dispose.dispose();
@@ -133,7 +188,7 @@ describe("startInputCursorAttentionProducer", () => {
   });
 
   it("caret が visible → null に変化したとき null clear を emit する", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       let cursor: {
@@ -148,14 +203,15 @@ describe("startInputCursorAttentionProducer", () => {
       const dispose = startInputCursorAttentionProducer({
         attention,
         terminal,
+        ...scanOptions,
       });
 
       // 1 frame 目: caret visible → typing emit
-      tick();
+      runScan();
 
       cursor = null;
       // 2 frame 目: caret absent → null clear
-      tick();
+      runScan();
 
       const nullCall = attention.setSourceTarget.mock.calls.find(
         (c) => c[0] === "input-cursor:typing" && c[1] === null,
@@ -167,27 +223,27 @@ describe("startInputCursorAttentionProducer", () => {
     }
   });
 
-  it("dispose で rAF がキャンセルされる", () => {
-    const cancelSpy = vi.spyOn(globalThis, "cancelAnimationFrame").mockImplementation(() => {});
-    vi.spyOn(globalThis, "requestAnimationFrame").mockImplementation(() => 42);
+  it("dispose で pending rAF がキャンセルされる", () => {
+    const { cancelSpy, scanTimers, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const { fake: terminal } = makeFakeTerminal(null);
       const handle = startInputCursorAttentionProducer({
         attention,
         terminal,
+        ...scanOptions,
       });
 
+      scanTimers.advance(0);
       handle.dispose();
-      expect(cancelSpy).toHaveBeenCalledWith(42);
+      expect(cancelSpy).toHaveBeenCalledWith(1);
     } finally {
-      cancelSpy.mockRestore();
-      vi.mocked(globalThis.requestAnimationFrame).mockRestore?.();
+      restore();
     }
   });
 
   it("dispose 時に active な typing source を clear する", () => {
-    const { tick, restore } = makeRafStub();
+    const { runScan, restore, scanOptions } = makeScanScheduler();
     try {
       const attention = makeFakeAttention();
       const { fake: terminal } = makeFakeTerminal({
@@ -199,9 +255,10 @@ describe("startInputCursorAttentionProducer", () => {
       const handle = startInputCursorAttentionProducer({
         attention,
         terminal,
+        ...scanOptions,
       });
 
-      tick();
+      runScan();
       handle.dispose();
 
       const nullCall = attention.setSourceTarget.mock.calls.find(

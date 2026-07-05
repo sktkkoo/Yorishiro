@@ -29,6 +29,7 @@ import type { Time } from "../time";
 
 const DEFAULT_IDLE_THRESHOLD_MS = 30_000;
 const DEFAULT_IDLE_CHECK_INTERVAL_MS = 5_000;
+const PTY_OUTPUT_COALESCE_MS = 16;
 
 export interface PerceptionDeps {
   readonly bus: EventBus;
@@ -127,6 +128,9 @@ export class Perception {
   private readonly onPresenceRestore?: () => void;
   private lastActivityAt: number;
   private idleTimer: Cancellable | null = null;
+  private pendingPtyOutputText = "";
+  private pendingPtyOutputTimestamp = 0;
+  private pendingPtyOutputTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
 
   constructor(deps: PerceptionDeps) {
@@ -146,11 +150,31 @@ export class Perception {
   /** Called by Terminal when decoded PTY text arrives. */
   onPtyOutput(text: string): void {
     if (this.disposed) return;
-    this.lastActivityAt = this.time.now();
+    const now = this.time.now();
+    this.lastActivityAt = now;
+    if (text.length === 0) return;
+    if (this.pendingPtyOutputText.length === 0) {
+      this.pendingPtyOutputTimestamp = now;
+    }
+    this.pendingPtyOutputText += text;
+    if (this.pendingPtyOutputTimer !== null) return;
+    this.pendingPtyOutputTimer = setTimeout(() => {
+      this.pendingPtyOutputTimer = null;
+      this.flushPtyOutput();
+    }, PTY_OUTPUT_COALESCE_MS);
+  }
+
+  private flushPtyOutput(): void {
+    if (this.disposed) return;
+    const text = this.pendingPtyOutputText;
+    if (text.length === 0) return;
+    const timestamp = this.pendingPtyOutputTimestamp || this.time.now();
+    this.pendingPtyOutputText = "";
+    this.pendingPtyOutputTimestamp = 0;
     const event: PtyOutputEvent = {
       kind: "pty-output",
       text,
-      timestamp: this.time.now(),
+      timestamp,
     };
     this.bus.dispatch(event);
   }
@@ -275,6 +299,12 @@ export class Perception {
 
   dispose(): void {
     this.disposed = true;
+    if (this.pendingPtyOutputTimer !== null) {
+      clearTimeout(this.pendingPtyOutputTimer);
+      this.pendingPtyOutputTimer = null;
+    }
+    this.pendingPtyOutputText = "";
+    this.pendingPtyOutputTimestamp = 0;
     this.idleTimer?.cancel();
     this.idleTimer = null;
   }

@@ -102,7 +102,7 @@ export class AttentionLightCueStore {
   private fire(reason: AttentionLightCue["reason"]): void {
     this.seq += 1;
     this.current = { seq: this.seq, startedAt: this.now(), reason };
-    for (const listener of Array.from(this.listeners)) {
+    for (const listener of this.listeners) {
       listener();
     }
   }

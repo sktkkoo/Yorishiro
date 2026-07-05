@@ -34,14 +34,14 @@ import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
 import type { MouthValues } from "../voice/mouth-values";
-import { MOUTH_KEYS } from "../voice/mouth-values";
+import { createMouthValues, MOUTH_KEYS } from "../voice/mouth-values";
 import { AnimationPlayer } from "./animation-player";
 import { defaultProfiles } from "./beat-library";
 import { IdleBeatScheduler } from "./beat-scheduler";
 import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
 import { BreathingSystem } from "./breathing-system";
-import { CursorAttentionSystem } from "./cursor-attention";
+import { CursorAttentionSystem, type MutableCursorAttentionOutput } from "./cursor-attention";
 import {
   type ExpressionKind,
   ExpressionManager,
@@ -51,7 +51,7 @@ import {
   expressionTargetToName,
   type SlotSnapshot,
 } from "./expression-manager";
-import { type EyeState, EyeSystem, gazeTargetToAngles } from "./eye-system";
+import { type EyeState, EyeSystem, gazeTargetToAngles, type MutableEyeOutput } from "./eye-system";
 import { EyelidExpressionController } from "./eyelid-expression-controller";
 import {
   IdleMicroexpressionSystem,
@@ -59,6 +59,7 @@ import {
   MICRO_EYE_POOL,
   MICRO_MOUTH_POOL,
   type MicroexpressionEvent,
+  type MutableMicroexpressionEvent,
 } from "./idle-microexpression-system";
 import {
   type MotionHandle as InternalMotionHandle,
@@ -71,7 +72,8 @@ import { ProceduralBones } from "./procedural-bones";
 
 /** Body が lip sync 値を pull するためのインターフェース。 */
 export interface LipSyncSource {
-  sampleMouth(): MouthValues;
+  isMouthActive?(): boolean;
+  sampleMouth(out?: MouthValues): MouthValues;
 }
 
 const BLINK_EXPRESSION_NAME = "blink";
@@ -104,6 +106,13 @@ const RELAXED_THRESHOLD_S = 30;
 const RELAXED_RAMP_S = 10;
 const RELAXED_MAX = 0.4; // cap to avoid sleepy-looking eyes
 
+function hasMouthSignal(values: MouthValues): boolean {
+  for (const key of MOUTH_KEYS) {
+    if (values[key] > 0) return true;
+  }
+  return false;
+}
+
 // ─── Body ────────────────────────────────────────────────
 
 export class Body {
@@ -115,6 +124,7 @@ export class Body {
    * slot release 時に確実に 0 へ戻す。
    */
   private readonly expressionSink = new ExpressionSinkTracker();
+  private readonly expressionBatch = new Map<string, number>();
   private readonly blinkSystem: BlinkSystem;
   /**
    * 呼吸の生理。state 連動（focused は速く浅く、長 idle は深くゆっくり）、
@@ -137,6 +147,7 @@ export class Body {
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
   private readonly beatScheduler: IdleBeatScheduler;
+  private readonly beatTarget: BeatTarget;
   private readonly claimState: ClaimState;
   private readonly devLog?: SubsystemLog;
   /**
@@ -186,8 +197,17 @@ export class Body {
   /** 直前の attention snapshot の source。source 変化検知に使用。 */
   private lastAttentionSource: string | null = null;
 
-  /** LipSync 音声解析ソース。再生中に毎フレーム sampleMouth() を pull する。 */
+  /** LipSync 音声解析ソース。再生中だけ毎フレーム sampleMouth() を pull する。 */
   private lipSyncSource: LipSyncSource | null = null;
+  private readonly lipSyncMouthScratch = createMouthValues();
+  private readonly cursorAttentionOutput: MutableCursorAttentionOutput = {
+    mode: null,
+    headYawRad: 0,
+    headPitchRad: 0,
+    eyeYawDeg: 0,
+    eyePitchDeg: 0,
+  };
+  private readonly eyeOutputScratch: MutableEyeOutput = { yaw: 0, pitch: 0 };
 
   /** Startle 反射の cooldown 計時。update の delta で進める。 */
   private timeSinceStartle = STARTLE_COOLDOWN_S;
@@ -249,6 +269,7 @@ export class Body {
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
+    this.beatTarget = this.createBeatTarget();
     this.beatScheduler = new IdleBeatScheduler(defaultProfiles);
 
     this.motionScheduler = new MotionScheduler({
@@ -394,6 +415,10 @@ export class Body {
   }
 
   private buildBeatTarget(): BeatTarget {
+    return this.beatTarget;
+  }
+
+  private createBeatTarget(): BeatTarget {
     return {
       glance: (yawRad, pitchRad, durationS) => {
         // EyeSystem が override + pendingSaccade を発行し、自動 release も行う(eye-lead)。
@@ -424,7 +449,7 @@ export class Body {
     const expressionClaimed = this.claimState.isClaimed("expression");
     this.timeSinceStartle += delta;
     this.cursorAttention.update(delta);
-    const cursorAttention = this.cursorAttention.getOutput();
+    const cursorAttention = this.cursorAttention.writeOutput(this.cursorAttentionOutput);
     this.proceduralBones.setHeadLookAtOffset(
       cursorAttention.headYawRad,
       cursorAttention.headPitchRad,
@@ -450,7 +475,7 @@ export class Body {
     );
     const breath = this.breathing.update(delta);
     // 2b. Beat scheduler(proceduralBones の前。beat の envelope を先に反映)
-    this.beatScheduler.update(delta, this.buildBeatTarget(), animationClaimed, expressionClaimed);
+    this.beatScheduler.update(delta, this.beatTarget, animationClaimed, expressionClaimed);
     if (!animationClaimed) {
       this.vrm.scene.position.y = breath.offsetY;
       this.proceduralBones.setBreathingOffsets(breath.chestPitch, breath.shoulderLift);
@@ -495,8 +520,12 @@ export class Body {
 
     // 5 で 5b と 6 の両方で lip sync 値が要るので、ここで 1 度だけ pull してキャッシュ。
     // LipSyncAnalyser.sample() の smoothing が二重に進まないようにする目的もある。
-    const lipSyncMouth = this.lipSyncSource ? this.lipSyncSource.sampleMouth() : null;
-    const lipSyncHasSignal = lipSyncMouth ? MOUTH_KEYS.some((k) => lipSyncMouth[k] > 0) : false;
+    const lipSyncSource = this.lipSyncSource;
+    const lipSyncMouth =
+      lipSyncSource && (lipSyncSource.isMouthActive?.() ?? true)
+        ? lipSyncSource.sampleMouth(this.lipSyncMouthScratch)
+        : null;
+    const lipSyncHasSignal = lipSyncMouth ? hasMouthSignal(lipSyncMouth) : false;
 
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
@@ -514,15 +543,13 @@ export class Body {
       const microBaseEnabled = !nonIdleMoodActive;
       for (const ch of this.microChannels) {
         const enabled = microBaseEnabled && (ch.region !== "mouth" || !lipSyncHasSignal);
-        const event = ch.system.update(delta, enabled);
-        ch.flush(event);
+        ch.update(delta, enabled);
       }
     } else {
       this.eyelids.clearIdleSquint();
       // claim 中は全 channel を clear して内部 timer を reset しておく
       for (const ch of this.microChannels) {
-        ch.system.update(delta, false);
-        ch.flush(null);
+        ch.update(delta, false);
       }
     }
 
@@ -777,17 +804,17 @@ export class Body {
   // ─── Internal apply methods ───────────────────────────
 
   private applyExpressions(lipSyncMouth: MouthValues | null): void {
-    const resolved = this.expressions.getResolved();
     const exprMgr = this.vrm.expressionManager;
     if (!exprMgr) return;
 
     // 今 frame に書く名前と値を batch にまとめる。LipSync は同名 viseme を
     // 上書きする（音声解析値が slot 由来の lip 値より優先）。
     // ExpressionSinkTracker が前 frame との差分を取って drop された名前を 0 へ戻す。
-    const batch = new Map(resolved);
+    const batch = this.expressionBatch;
+    this.expressions.writeResolved(batch);
 
     if (lipSyncMouth) {
-      const hasSignal = MOUTH_KEYS.some((k) => lipSyncMouth[k] > 0);
+      const hasSignal = hasMouthSignal(lipSyncMouth);
       if (hasSignal) {
         for (const k of MOUTH_KEYS) {
           batch.set(k, lipSyncMouth[k]);
@@ -802,7 +829,7 @@ export class Body {
 
   private applyGaze(): void {
     if (!this.vrm.lookAt) return;
-    const output = this.eyeSystem.getOutput();
+    const output = this.eyeSystem.writeOutput(this.eyeOutputScratch);
     this.vrm.lookAt.yaw = output.yaw;
     this.vrm.lookAt.pitch = output.pitch;
     this.vrm.lookAt.applier.applyYawPitch(output.yaw, output.pitch);
@@ -924,12 +951,17 @@ type MicroRegion = "brow" | "eye" | "mouth";
 class MicroChannel {
   private slotId = -1;
   private slotMorph: string | null = null;
+  private readonly eventScratch: MutableMicroexpressionEvent = { morph: "", weight: 0 };
 
   constructor(
     readonly region: MicroRegion,
     readonly system: IdleMicroexpressionSystem,
     private readonly expressions: ExpressionManager,
   ) {}
+
+  update(delta: number, enabled: boolean): void {
+    this.flush(this.system.writeUpdate(delta, enabled, this.eventScratch));
+  }
 
   /**
    * 直前の system.update() の戻り値をそのまま渡す。
