@@ -54,11 +54,11 @@ Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で 
 |---|---|---|---|
 | **persona** | キャラクターの性格・反応・身体・声を定義 | single | `primaryPersona` |
 | **effect** | 視覚演出（パーティクル、shake 等） | multi（event-driven） | — |
-| **scene** | 背景 / 前景の layer stack | single | `activeScene` |
+| **scene** | 背景 / 前景の layer stack | single | `sceneByProject` -> `activeScene` |
 | **ui** | サイドバーの主要 UI パネル | single | `activeUi` |
 | **ambient-ui** | 常時表示のオーバーレイ UI | multi | — |
 
-- persona / scene / ui は **single-active**：`~/.charminal/config.json` の config key で user が明示的に選ぶ
+- persona / scene / ui は **single-active**。scene は `scene_activate` で選ぶ（current project が解決できれば `sceneByProject`、未解決なら global fallback の `activeScene` に永続化）。persona / ui は `~/.charminal/config.json` の config key で user が明示的に選ぶ
 - effect / ambient-ui は **multi-active**：persona handler から呼ばれる（effect）、常時表示される（ambient-ui）
 
 ---

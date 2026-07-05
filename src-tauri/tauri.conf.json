@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "charminal",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "identifier": "dev.charminal.app",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -19,6 +19,7 @@
         "minHeight": 600,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
+        "backgroundColor": "#020304",
         "backgroundThrottling": "disabled"
       }
     ],
@@ -28,6 +29,12 @@
         "enable": true,
         "scope": ["$APPDATA/**", "$HOME/.charminal/**"]
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhGNjVCQUEzMUUzMTQ1NTkKUldSWlJURWVvN3BsajJLdWRiVjYycmpacW1hSVNLUXUvYVpsNHpkcUh4MlJST3ZYZWR0WFdsQ08K",
+      "endpoints": ["https://github.com/sktkkoo/Charminal/releases/latest/download/latest.json"]
     }
   },
   "bundle": {

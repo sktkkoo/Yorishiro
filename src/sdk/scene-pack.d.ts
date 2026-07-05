@@ -35,9 +35,10 @@ import type { SceneSpec } from "./scene";
  *
  * 注: `defaultActive` field は採用しない。Design B（memory:
  * feedback_single_active_config_picks）により、active 選択は pack 自己申告では
- * なく `~/.charminal/config.json` の `activeScene` で user が global に picks する。
- * factory default は App.tsx の bundled scene 登録。config が空なら Registry が
- * bundled の alphabetical 先頭（現状 `simple-room`）を fallback として選ぶ。
+ * なく `~/.charminal/config.json` の `sceneByProject[projectRoot]`、なければ
+ * global fallback の `activeScene` で user が picks する。factory default は
+ * App.tsx の bundled scene 登録。config が空なら Registry が bundled の
+ * alphabetical 先頭（現状 `simple-room`）を fallback として選ぶ。
  */
 export interface ScenePackManifest {
   readonly $schema?: string;

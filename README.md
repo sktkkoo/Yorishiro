@@ -38,8 +38,6 @@ Much of Charminal itself has been developed in collaboration with the inhabitant
 
 ## Getting Started
 
-> **Security note:** User packs are local trusted code, like shell scripts or editor extensions — they are not sandboxed and run with your own authority. Only install packs from sources you trust. In-app community pack distribution is not implemented yet. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
-
 ### Prerequisites
 
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
@@ -49,7 +47,13 @@ Charminal automatically launches Claude Code or Codex installed on your local ma
 
 ### Install (macOS)
 
-Charminal currently targets macOS. Download the latest build below.
+Charminal currently targets macOS. Install with Homebrew:
+
+```sh
+brew install --cask sktkkoo/charminal/charminal
+```
+
+Or download the latest build below.
 
 <p>
   <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
@@ -96,6 +100,8 @@ Everything in Charminal is composed of **packs**. There are six types:
 [Bundled packs](bundled-packs/README.en.md) work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands (`$charm-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
+
+> **Security note:** User packs are local trusted code, like shell scripts or editor extensions — they are not sandboxed and run with your own authority. Only install packs from sources you trust. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
 
 To install a pack shared through GitHub or another source, place it under the user pack directory:
 
@@ -174,14 +180,14 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.5.1**
+**v0.5.2**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
 What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
-- Session tabs: multiple shell sessions alongside the agent (`Cmd+T` / `Ctrl+Tab`)
+- Session tabs: multiple shell sessions in the title bar, with per-tab status badges (`Cmd+T` / `Ctrl+Tab`)
 - CLAI, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
 - Motion size: scale CLAI's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
