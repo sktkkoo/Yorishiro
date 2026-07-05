@@ -181,7 +181,7 @@ An asset library referenceable from multiple packs. VRM / VRMA / voice files.
 
 bundled-packs are treated as part of the Charminal core:
 
-- **Not writable** from Charminal (via AI / via `/charm` / via the file writer — all of them)
+- **Not writable** from Charminal (via AI / via `/yori` / via the file writer — all of them)
 - Overwritten on version upgrade
 - If a user wants to modify one, they **fork** it into `~/.charminal/packs/<id>/` and modify there (the ELPA stance)
 - A user fork is the user's responsibility (if it breaks, Charminal takes no responsibility)

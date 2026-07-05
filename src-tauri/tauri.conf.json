@@ -51,10 +51,10 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "resources/charminal-plugin/.claude-plugin/plugin.json",
-      "resources/charminal-plugin/.codex-plugin/plugin.json",
-      "resources/charminal-plugin/commands-en/*",
-      "resources/charminal-plugin/commands-ja/*"
+      "resources/yorishiro-plugin/.claude-plugin/plugin.json",
+      "resources/yorishiro-plugin/.codex-plugin/plugin.json",
+      "resources/yorishiro-plugin/commands-en/*",
+      "resources/yorishiro-plugin/commands-ja/*"
     ]
   }
 }

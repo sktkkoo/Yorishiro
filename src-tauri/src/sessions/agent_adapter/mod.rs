@@ -48,8 +48,8 @@ pub enum AgentThemeRefresh {
     Sigusr2,
 }
 
-/// charm コマンドの記法。`<prefix>charm<separator><name>` で 1 命令になる。
-/// Claude: `/charm:create`、Codex: `$charm-create`、OpenCode: `/charm-create`。
+/// yori コマンドの記法。`<prefix>yori<separator><name>` で 1 命令になる。
+/// Claude: `/yori:create`、Codex: `$yori-create`、OpenCode: `/yori-create`。
 /// prefill (TS strings.ts) / template 生成 (opencode.rs) はこの宣言を正本にする。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,7 +84,7 @@ pub trait TerminalAgent: Send + Sync + 'static {
     /// Default binary 名 (PATH 検索の base)。
     fn binary_name(&self) -> &'static str;
     fn capabilities(&self) -> AgentCapabilities;
-    /// charm コマンドの記法。default は Claude (`/charm:<name>`)。
+    /// yori コマンドの記法。default は Claude (`/yori:<name>`)。
     fn command_syntax(&self) -> CommandSyntax {
         CommandSyntax {
             prefix: "/",

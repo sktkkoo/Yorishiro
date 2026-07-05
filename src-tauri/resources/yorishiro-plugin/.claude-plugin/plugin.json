@@ -1,0 +1,5 @@
+{
+  "name": "yori",
+  "version": "0.1.0",
+  "description": "Yorishiro built-in commands, loaded per-session via --plugin-dir."
+}

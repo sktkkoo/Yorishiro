@@ -50,7 +50,7 @@ export interface UserAmenityContextDeps {
 
 /**
  * user amenity 用の AmenityContext factory。bundled amenity と同じ stub レベル
- * （system/log/memory/terminal/charm は stub、time/tween/emitEvent/history/signal
+ * （system/log/memory/terminal/yori は stub、time/tween/emitEvent/history/signal
  * は実体）。tween key は packId で namespace する。
  */
 export function createUserAmenityContextFactory(
@@ -140,7 +140,7 @@ export function createUserAmenityContextFactory(
       core: { get: () => undefined, set: () => {}, delete: () => {} },
     },
     terminal: { output: () => "", session: { pid: 0, cwd: "", startedAt: 0 } },
-    charm: async () => {},
+    yori: async () => {},
     signal,
     history: deps.history,
     loop: {

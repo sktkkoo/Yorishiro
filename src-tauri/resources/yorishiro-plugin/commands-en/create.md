@@ -26,7 +26,7 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 
 ## Security Boundary
 
-- `.js` / `.tsx` packs created by `/charm:create` are **local trusted `trusted-main-thread-js`**. They are not Charminal public-registry artifacts and must not be presented as sandboxed, reviewed, or public-distribution packs.
+- `.js` / `.tsx` packs created by `/yori:create` are **local trusted `trusted-main-thread-js`**. They are not Charminal public-registry artifacts and must not be presented as sandboxed, reviewed, or public-distribution packs.
 - Sharing the source on GitHub or elsewhere is allowed. Make clear that anyone installing it manually is choosing to run local trusted code.
 - Every generated manifest must include `"executionClass": "trusted-main-thread-js"`. Never label a `.js` / `.tsx` entry as `"declarative"`.
 - Do not create `utility` packs. They stay out of distribution until the `isolated-js` runtime and permission UX exist.
@@ -68,7 +68,7 @@ npm run check:pack -- ~/.charminal/packs/<id>
 
 Treat checker errors as fixes to make before presenting the pack as done. Warnings must be explained to the user.
 
-Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Charminal does not yet provide a public registry or `/charm:prepare-publish`.
+Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Charminal does not yet provide a public registry or `/yori:prepare-publish`.
 
 ## Rescue Path
 
@@ -101,10 +101,10 @@ The panel renderer currently uses a Leva adapter, but pack authors should not im
 
 Workflow:
 
-1. Ask the user which values they want to tune from the F2 Scene panel or `/charm:update`
+1. Ask the user which values they want to tune from the F2 Scene panel or `/yori:update`
 2. In the `scene.tsx` component, register them with `useCharminalControls` and `useControlsBridge` from `@charminal/sdk/controls`
 3. Confirm the registered values appear in the F2 **Scene panel**
-4. Confirm they can be read / written through `/charm:update` or MCP `controls_get` / `controls_set` with `scope: "scene"`
+4. Confirm they can be read / written through `/yori:update` or MCP `controls_get` / `controls_set` with `scope: "scene"`
 
 F2 opens two panels:
 
@@ -382,7 +382,7 @@ Amenity authoring is **local-trusted only**. Locally, `ctx.system.exec` is equiv
 - `ctx.loop.announce(phase, detail?)` - report an autonomous loop lifecycle phase into the observation stream. It does not control the loop
 - `ctx.log` / `ctx.memory` - shared utilities
 - `ctx.terminal` - observation only. PTY writes are not available
-- `ctx.charm` / `ctx.signal` / `ctx.resolveAsset(path)` - `/charm` bridge, abort on disable, and pack-local asset resolution
+- `ctx.yori` / `ctx.signal` / `ctx.resolveAsset(path)` - `/yori` bridge, abort on disable, and pack-local asset resolution
 
 If the amenity should create character expression, do not call motion APIs directly. Use `ctx.emitEvent()` and let persona reflexes decide the expression. References: `bundled-packs/amenities/music-shelf/amenity.ts` and `bundled-packs/amenities/pomodoro/amenity.ts`.
 

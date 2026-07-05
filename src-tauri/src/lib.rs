@@ -657,12 +657,12 @@ fn parse_command_markdown(content: &str) -> (String, String) {
 fn rewrite_charm_slash_commands_for_codex(input: &str) -> String {
     let mut out = input.to_string();
     for (slash, skill) in [
-        ("/charm:create", "$charm-create"),
-        ("/charm:update", "$charm-update"),
-        ("/charm:help", "$charm-help"),
-        ("/charm:shortcut", "$charm-shortcut"),
-        ("/charm:tutorial", "$charm-tutorial"),
-        ("/charm:*", "$charm-*"),
+        ("/yori:create", "$yori-create"),
+        ("/yori:update", "$yori-update"),
+        ("/yori:help", "$yori-help"),
+        ("/yori:shortcut", "$yori-shortcut"),
+        ("/yori:tutorial", "$yori-tutorial"),
+        ("/yori:*", "$yori-*"),
     ] {
         out = out.replace(slash, skill);
     }
@@ -670,10 +670,10 @@ fn rewrite_charm_slash_commands_for_codex(input: &str) -> String {
 }
 
 /// Claude Code 形式（YAML frontmatter）のコマンド .md を Codex skill に変換。
-/// Codex では Charminal custom slash command は使わず、`$charm-*` skill を入口にする。
+/// Codex では Charminal custom slash command は使わず、`$yori-*` skill を入口にする。
 fn convert_command_to_codex_skill(content: &str, command_name: &str) -> String {
     let (description, body) = parse_command_markdown(content);
-    let skill_name = format!("charm-{}", command_name);
+    let skill_name = format!("yori-{}", command_name);
     let body = rewrite_charm_slash_commands_for_codex(&body);
 
     if description.is_empty() {
@@ -692,35 +692,35 @@ fn convert_command_to_codex_skill(content: &str, command_name: &str) -> String {
 fn codex_entrypoint_skill(language: &str) -> &'static str {
     if language == "ja" {
         r#"---
-name: charm
+name: yori
 description: Charminal の pack 作成・編集・ショートカット・チュートリアル入口
 ---
 
 # Charminal
 
-Codex CLI では Charminal の custom slash command は使えないため、Codex では `$charm` と専用 skill を入口にする。
+Codex CLI では Charminal の custom slash command は使えないため、Codex では `$yori` と専用 skill を入口にする。
 
-- `$charm-create ...`: 新しい pack を作る。
-- `$charm-update ...`: 既存 pack を編集・調整する。
-- `$charm-shortcut ...`: ショートカットを追加・編集する。
-- `$charm-tutorial`: 初回チュートリアルを開始する。
-- `$charm-help`: Charminal commands / skills と pack の基本を説明する。
+- `$yori-create ...`: 新しい pack を作る。
+- `$yori-update ...`: 既存 pack を編集・調整する。
+- `$yori-shortcut ...`: ショートカットを追加・編集する。
+- `$yori-tutorial`: 初回チュートリアルを開始する。
+- `$yori-help`: Yorishiro commands / skills と pack の基本を説明する。
 "#
     } else {
         r#"---
-name: charm
+name: yori
 description: Charminal entry point for pack creation, editing, shortcuts, and tutorials
 ---
 
 # Charminal
 
-Codex CLI does not recognize Charminal custom slash commands as built-in commands, so Charminal uses `$charm` and dedicated skills as the Codex entry point.
+Codex CLI does not recognize Charminal custom slash commands as built-in commands, so Charminal uses `$yori` and dedicated skills as the Codex entry point.
 
-- `$charm-create ...`: Create a new pack.
-- `$charm-update ...`: Edit or tune an existing pack.
-- `$charm-shortcut ...`: Add or edit shortcuts.
-- `$charm-tutorial`: Run the first-use tutorial.
-- `$charm-help`: Explain Charminal commands / skills and pack basics.
+- `$yori-create ...`: Create a new pack.
+- `$yori-update ...`: Edit or tune an existing pack.
+- `$yori-shortcut ...`: Add or edit shortcuts.
+- `$yori-tutorial`: Run the first-use tutorial.
+- `$yori-help`: Explain Yorishiro commands / skills and pack basics.
 "#
     }
 }
@@ -740,7 +740,7 @@ fn write_codex_skill_files(src_dir: &Path, skills_dir: &Path) -> Result<(), Stri
             .file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        let skill_name = format!("charm-{}", command_name);
+        let skill_name = format!("yori-{}", command_name);
         let skill_dir = skills_dir.join(&skill_name);
         std::fs::create_dir_all(&skill_dir)
             .map_err(|e| format!("codex skill dir create failed: {}", e))?;
@@ -775,7 +775,7 @@ fn write_codex_plugin_cache(
         .map_err(|e| format!("codex cache skills dir create failed: {}", e))?;
 
     copy_file_to_dir(codex_plugin_json, &cache_meta)?;
-    let entry_skill_dir = cache_skills.join("charm");
+    let entry_skill_dir = cache_skills.join("yori");
     std::fs::create_dir_all(&entry_skill_dir)
         .map_err(|e| format!("codex entry skill dir create failed: {}", e))?;
     std::fs::write(
@@ -788,8 +788,8 @@ fn write_codex_plugin_cache(
     Ok(())
 }
 
-/// Codex プラグインキャッシュに charm プラグインをインストール。
-/// `~/.codex/plugins/cache/yorishiro-local/charm/current/` に配置する。
+/// Codex プラグインキャッシュに yori プラグインをインストール。
+/// `~/.codex/plugins/cache/yorishiro-local/yori/current/` に配置する。
 #[cfg(not(test))]
 fn install_codex_plugin_to_cache(
     codex_plugin_json: &Path,
@@ -807,7 +807,7 @@ fn install_codex_plugin_to_cache(
         .join("plugins")
         .join("cache")
         .join("yorishiro-local")
-        .join("charm")
+        .join("yori")
         .join("current");
     write_codex_plugin_cache(&cache_root, codex_plugin_json, source_commands, language)
 }
@@ -884,7 +884,7 @@ fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<Stri
         .resource_dir()
         .map_err(|e| format!("resource_dir failed: {}", e))?
         .join("resources")
-        .join("charminal-plugin");
+        .join("yorishiro-plugin");
     let target_root = home_dir_or_err()?.join(".yorishiro").join("runtime-plugin");
     prepare_localized_plugin_dir_at(&resource_root, &target_root, &language)?;
     Ok(target_root.to_string_lossy().to_string())
@@ -919,7 +919,7 @@ async fn session_spawn(
                 app.path()
                     .resource_dir()
                     .ok()
-                    .map(|p| p.join("resources").join("charminal-plugin"))
+                    .map(|p| p.join("resources").join("yorishiro-plugin"))
             });
             SpawnSpec::Agent {
                 agent,
@@ -3210,12 +3210,12 @@ mod localized_plugin_dir_tests {
         fs::create_dir_all(root.join("commands-ja")).expect("create commands-ja");
         fs::write(
             root.join(".claude-plugin").join("plugin.json"),
-            "{\"name\":\"charm\"}",
+            "{\"name\":\"yori\"}",
         )
         .expect("write plugin json");
         fs::write(
             root.join(".codex-plugin").join("plugin.json"),
-            "{\"name\":\"charm\",\"skills\":\"./skills/\"}",
+            "{\"name\":\"yori\",\"skills\":\"./skills/\"}",
         )
         .expect("write codex plugin json");
         fs::write(
@@ -3262,7 +3262,7 @@ mod localized_plugin_dir_tests {
         assert_eq!(
             fs::read_to_string(target.join(".claude-plugin").join("plugin.json"))
                 .expect("read plugin json"),
-            "{\"name\":\"charm\"}"
+            "{\"name\":\"yori\"}"
         );
         assert!(!target.join(".mcp.json").exists());
         assert_eq!(command_files(&target), vec!["help.md"]);
@@ -3311,9 +3311,9 @@ mod localized_plugin_dir_tests {
     fn convert_command_strips_frontmatter_and_adds_codex_skill_metadata() {
         let input = "---\ndescription: Create a new pack\nargument-hint: \"[what]\"\n---\n\n$ARGUMENTS\n\n---\n\nYou are helping create a pack.\n\nMore instructions here.";
         let result = convert_command_to_codex_skill(input, "create");
-        assert!(result.starts_with("---\nname: charm-create\n"));
+        assert!(result.starts_with("---\nname: yori-create\n"));
         assert!(result.contains("Create a new pack"));
-        assert!(result.contains("# charm-create"));
+        assert!(result.contains("# yori-create"));
         assert!(result.contains("$ARGUMENTS"));
         assert!(result.contains("You are helping create a pack."));
         assert!(result.contains("More instructions here."));
@@ -3323,12 +3323,12 @@ mod localized_plugin_dir_tests {
 
     #[test]
     fn convert_command_rewrites_slash_charm_refs_for_codex_skill() {
-        let input = "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /charm:create, /charm:update, or /charm:*.";
+        let input = "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /yori:create, /yori:update, or /yori:*.";
         let result = convert_command_to_codex_skill(input, "help");
-        assert!(result.contains("$charm-create"));
-        assert!(result.contains("$charm-update"));
-        assert!(result.contains("$charm-*"));
-        assert!(!result.contains("/charm:create"));
+        assert!(result.contains("$yori-create"));
+        assert!(result.contains("$yori-update"));
+        assert!(result.contains("$yori-*"));
+        assert!(!result.contains("/yori:create"));
     }
 
     #[test]
@@ -3355,14 +3355,14 @@ mod localized_plugin_dir_tests {
         assert_eq!(
             fs::read_to_string(cache.join(".codex-plugin").join("plugin.json"))
                 .expect("read codex plugin json"),
-            "{\"name\":\"charm\",\"skills\":\"./skills/\"}"
+            "{\"name\":\"yori\",\"skills\":\"./skills/\"}"
         );
-        let entry = fs::read_to_string(cache.join("skills").join("charm").join("SKILL.md"))
+        let entry = fs::read_to_string(cache.join("skills").join("yori").join("SKILL.md"))
             .expect("read entry skill");
-        assert!(entry.contains("$charm-create"));
-        let create = fs::read_to_string(cache.join("skills").join("charm-create").join("SKILL.md"))
+        assert!(entry.contains("$yori-create"));
+        let create = fs::read_to_string(cache.join("skills").join("yori-create").join("SKILL.md"))
             .expect("read create skill");
-        assert!(create.contains("name: charm-create"));
+        assert!(create.contains("name: yori-create"));
         assert!(create.contains("$ARGUMENTS"));
         assert!(create.contains("English create content."));
         assert!(!create.contains("# /create"));

@@ -14,7 +14,6 @@ import type {
   AnimationHandle,
   AnimationRef,
   CharacterAPI,
-  CharmAPI,
   ExpressionHandle,
   ExpressionTarget,
   GazeHandle,
@@ -36,6 +35,7 @@ import type {
   VoiceClipRef,
   VoiceHandle,
   VoicePlayOptions,
+  YoriAPI,
 } from "@yorishiro/sdk";
 import type { Time } from "../../core/time";
 
@@ -143,7 +143,7 @@ const createStubTerminalAPI = (): TerminalAPI => ({
   session: { pid: 0, cwd: "", startedAt: 0 },
 });
 
-const stubCharm: CharmAPI = async (_command: string): Promise<void> => {};
+const stubYori: YoriAPI = async (_command: string): Promise<void> => {};
 
 /**
  * Returns a factory that builds a PersonaContext with every sub-API stubbed
@@ -163,7 +163,7 @@ export const createStubPersonaContextFactory = (): PersonaContextFactory => {
     log: createStubLogAPI(),
     memory: createStubMemoryAPI(),
     terminal: createStubTerminalAPI(),
-    charm: stubCharm,
+    yori: stubYori,
     signal: inputs.signal,
   });
 };

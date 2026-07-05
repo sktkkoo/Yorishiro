@@ -129,7 +129,7 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
     const rustAgentIds = new Set(agents.map((agent) => agent.id));
     const missingInConfig = [...rustAgentIds].filter((id) => !KNOWN_AGENT_IDS.has(id));
     const missingInRust = [...KNOWN_AGENT_IDS].filter((id) => !rustAgentIds.has(id));
-    // charm コマンド記法の正本は Rust adapter。strings.ts の mirror がズレていないか照合。
+    // yori コマンド記法の正本は Rust adapter。strings.ts の mirror がズレていないか照合。
     const syntaxDrift = agents
       .filter((agent) => {
         const mirror = AGENT_COMMAND_SYNTAX[agent.id];

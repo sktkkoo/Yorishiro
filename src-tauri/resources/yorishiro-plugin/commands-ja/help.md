@@ -1,5 +1,5 @@
 ---
-description: charm コマンドの使い方・pack の種類・MCP tool 一覧
+description: yori コマンドの使い方・pack の種類・MCP tool 一覧
 argument-hint: "[知りたいこと]"
 ---
 
@@ -7,13 +7,13 @@ $ARGUMENTS
 
 ---
 
-Charminal charm コマンドのリファレンスガイド。user の質問（`$ARGUMENTS`）があれば該当セクションを中心に回答し、なければ全体を簡潔に案内する。
+Charminal yori コマンドのリファレンスガイド。user の質問（`$ARGUMENTS`）があれば該当セクションを中心に回答し、なければ全体を簡潔に案内する。
 
 ---
 
 ## 初回 setup（permission prompt を抑制する）
 
-Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で pack を書く際の permission prompt を減らすには、`~/.claude/settings.json` の `permissions.allow` に以下を追加する：
+Claude Code 使用時に、AI が `/yori:create` や `/yori:update` 経由で pack を書く際の permission prompt を減らすには、`~/.claude/settings.json` の `permissions.allow` に以下を追加する：
 
 ```json
 {
@@ -28,23 +28,23 @@ Claude Code 使用時に、AI が `/charm:create` や `/charm:update` 経由で 
 }
 ```
 
-既存の `allow` 配列に 4 行を追記するだけ（他の設定は変えない）。`init.js` は keyboard shortcut などを仕掛ける startup script（`/charm:shortcut` 参照）。
+既存の `allow` 配列に 4 行を追記するだけ（他の設定は変えない）。`init.js` は keyboard shortcut などを仕掛ける startup script（`/yori:shortcut` 参照）。
 
 **この設定がなくても動作する**（毎回 prompt が出るだけ）。この設定は Claude Code 専用で、Codex は独自の approval policy を使い、`~/.claude/settings.json` は読まない。
 
 ---
 
-## charm コマンド一覧
+## yori コマンド一覧
 
 | コマンド | 説明 |
 |---|---|
-| `/charm:create` | 新しい pack を対話で作る |
-| `/charm:update` | 既存の pack を編集・調整する |
-| `/charm:help` | このリファレンスを表示する |
-| `/charm:shortcut` | キーボードショートカットの追加・編集（init.js） |
-| `/charm:tutorial` | 初回チュートリアルを開始する |
+| `/yori:create` | 新しい pack を対話で作る |
+| `/yori:update` | 既存の pack を編集・調整する |
+| `/yori:help` | このリファレンスを表示する |
+| `/yori:shortcut` | キーボードショートカットの追加・編集（init.js） |
+| `/yori:tutorial` | 初回チュートリアルを開始する |
 
-各コマンドは引数付きで呼べる。例：`/charm:create 猫耳のペルソナ`、`/charm:update my-scene の背景色を暗くして`。
+各コマンドは引数付きで呼べる。例：`/yori:create 猫耳のペルソナ`、`/yori:update my-scene の背景色を暗くして`。
 
 ---
 
@@ -198,7 +198,7 @@ pack 種類ごとに使えない API が型レベルで強制されている。
 | **Ctrl+Tab / Ctrl+Shift+Tab** | 次／前のタブに切り替え |
 | **Cmd+1〜9** | N 番目のタブにジャンプ |
 
-`init.js` でカスタムショートカットを追加できる（`/charm:shortcut` 参照）。
+`init.js` でカスタムショートカットを追加できる（`/yori:shortcut` 参照）。
 
 ---
 

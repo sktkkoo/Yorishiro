@@ -1,5 +1,5 @@
 ---
-description: Charminal command reference, pack types, and MCP tools
+description: Yorishiro command reference, pack types, and MCP tools
 argument-hint: "[topic]"
 ---
 
@@ -7,13 +7,13 @@ $ARGUMENTS
 
 ---
 
-Charminal `/charm:*` command reference. If the user asks about a specific topic (`$ARGUMENTS`), focus on that section. Otherwise give a concise overview.
+Charminal `/yori:*` command reference. If the user asks about a specific topic (`$ARGUMENTS`), focus on that section. Otherwise give a concise overview.
 
 ---
 
 ## First-time setup
 
-When using Claude Code, you can reduce repeated permission prompts for `/charm:create` and `/charm:update` by adding these entries to `~/.claude/settings.json` under `permissions.allow`:
+When using Claude Code, you can reduce repeated permission prompts for `/yori:create` and `/yori:update` by adding these entries to `~/.claude/settings.json` under `permissions.allow`:
 
 ```json
 {
@@ -28,7 +28,7 @@ When using Claude Code, you can reduce repeated permission prompts for `/charm:c
 }
 ```
 
-Only add the four lines to the existing `allow` array. Do not change unrelated settings. `init.js` is the startup script used for keyboard shortcuts and similar hooks; see `/charm:shortcut`.
+Only add the four lines to the existing `allow` array. Do not change unrelated settings. `init.js` is the startup script used for keyboard shortcuts and similar hooks; see `/yori:shortcut`.
 
 This setup is optional and Claude Code-specific. Codex uses its own approval policy and does not read `~/.claude/settings.json`.
 
@@ -38,13 +38,13 @@ This setup is optional and Claude Code-specific. Codex uses its own approval pol
 
 | Command | Purpose |
 |---|---|
-| `/charm:create` | Create a new pack through conversation |
-| `/charm:update` | Edit or tune an existing pack |
-| `/charm:help` | Show this reference |
-| `/charm:shortcut` | Add or edit keyboard shortcuts in `init.js` |
-| `/charm:tutorial` | Start the first-run Charminal tutorial |
+| `/yori:create` | Create a new pack through conversation |
+| `/yori:update` | Edit or tune an existing pack |
+| `/yori:help` | Show this reference |
+| `/yori:shortcut` | Add or edit keyboard shortcuts in `init.js` |
+| `/yori:tutorial` | Start the first-run Charminal tutorial |
 
-Commands can take arguments. Examples: `/charm:create a cat-ear persona`, `/charm:update make my-scene darker`.
+Commands can take arguments. Examples: `/yori:create a cat-ear persona`, `/yori:update make my-scene darker`.
 
 ---
 
@@ -196,7 +196,7 @@ If a handler needs to trigger another reaction, announce a **synthetic event** w
 | **Ctrl+Tab / Ctrl+Shift+Tab** | Switch to next / previous tab |
 | **Cmd+1–9** | Jump to the Nth tab |
 
-Custom shortcuts can be added through `init.js` (see `/charm:shortcut`).
+Custom shortcuts can be added through `init.js` (see `/yori:shortcut`).
 
 ---
 
@@ -204,9 +204,9 @@ Custom shortcuts can be added through `init.js` (see `/charm:shortcut`).
 
 | Goal | Send the user to |
 |---|---|
-| Create a new pack | `/charm:create` |
-| Edit an existing pack | `/charm:update` |
-| Add a keyboard shortcut | `/charm:shortcut` |
+| Create a new pack | `/yori:create` |
+| Edit an existing pack | `/yori:update` |
+| Add a keyboard shortcut | `/yori:shortcut` |
 | Recover from a broken pack | safe mode: `CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app` |
 
 Safe mode skips all user packs and lets the user inspect / disable the failing pack through MCP tools (`list_load_errors()` / `disable_pack()`). Remove the environment variable and restart to return to normal mode; disabled packs remain disabled until re-enabled.

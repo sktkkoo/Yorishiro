@@ -1,0 +1,32 @@
+{
+  "name": "yori",
+  "version": "0.1.0",
+  "description": "Yorishiro built-in commands, loaded per-session via Codex local marketplace config.",
+  "author": {
+    "name": "Yorishiro",
+    "url": "https://github.com/sktkkoo/Yorishiro"
+  },
+  "homepage": "https://github.com/sktkkoo/Yorishiro",
+  "repository": "https://github.com/sktkkoo/Yorishiro",
+  "license": "MIT",
+  "keywords": ["yorishiro", "pack", "desktop", "codex"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Yorishiro",
+    "shortDescription": "Create and edit Yorishiro packs from Codex.",
+    "longDescription": "Yorishiro commands for creating packs, editing packs, adding shortcuts, and running the first-use tutorial from Codex.",
+    "developerName": "Yorishiro",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "websiteURL": "https://github.com/sktkkoo/Yorishiro",
+    "privacyPolicyURL": "https://github.com/sktkkoo/Yorishiro",
+    "termsOfServiceURL": "https://github.com/sktkkoo/Yorishiro",
+    "defaultPrompt": [
+      "Create a Yorishiro pack",
+      "Edit my active scene",
+      "Add a Yorishiro shortcut"
+    ],
+    "brandColor": "#4DD9CF",
+    "screenshots": []
+  }
+}

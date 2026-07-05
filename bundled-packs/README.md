@@ -181,7 +181,7 @@ Ambient UI pack（6 つ目の pack kind）。primary UI を占有せず、複数
 
 bundled-packs は Charminal 本体の一部として扱う：
 
-- Charminal から **write 不可**（AI 経由 / `/charm` 経由 / file writer 経由のすべて）
+- Charminal から **write 不可**（AI 経由 / `/yori` 経由 / file writer 経由のすべて）
 - バージョンアップで上書きされる
 - user が改変したい場合は `~/.charminal/packs/<id>/` に **fork して** 改変する（ELPA stance）
 - user fork は user 責任（壊れても Charminal は責任を負わない）

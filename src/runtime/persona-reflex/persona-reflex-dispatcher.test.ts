@@ -199,7 +199,7 @@ const makeStubContext = (inputs: PersonaContextInputs): PersonaContext => {
       output: () => "",
       session: { pid: 0, cwd: "", startedAt: 0 },
     },
-    charm: async () => {},
+    yori: async () => {},
     signal: inputs.signal,
   };
 };

@@ -7,7 +7,7 @@ $ARGUMENTS
 
 ---
 
-You are helping the user edit or tune an existing Charminal pack. **For new packs, use `/charm:create`.**
+You are helping the user edit or tune an existing Charminal pack. **For new packs, use `/yori:create`.**
 
 ## Overview
 

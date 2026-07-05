@@ -177,7 +177,7 @@ export interface AgentCapabilities {
   readonly sessionResume: boolean;
 }
 
-/** charm コマンドの記法（`<prefix>charm<separator><name>`）。Rust adapter が正本。 */
+/** yori コマンドの記法（`<prefix>yori<separator><name>`）。Rust adapter が正本。 */
 export interface CommandSyntax {
   readonly prefix: string;
   readonly separator: string;

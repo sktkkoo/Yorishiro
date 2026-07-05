@@ -128,7 +128,7 @@ export default {
 | `ctx.log` | `tail` / `read` / `write` |
 | `ctx.memory` | `persona` / `core` の 2 scope |
 | `ctx.terminal` | `output(lastN)` （観察のみ、書き込み不可） |
-| `ctx.charm` | `/charm` コマンドを発火 |
+| `ctx.yori` | `/yori` コマンドを発火 |
 | `ctx.signal` | 中断通知の AbortSignal |
 
 **⚠️ 使えない API**（型レベルで存在しない）：

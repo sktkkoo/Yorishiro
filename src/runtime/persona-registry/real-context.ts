@@ -10,11 +10,10 @@
  *   - ctx.voice     → VoicePlayer                  (TTS + pre-recorded clips)
  *   - ctx.space     → EffectDispatcher             (space effects)
  *   - ctx.terminal  → stub                         (PTY observation is post-MVP)
- *   - ctx.charm     → stub                         (CharmCommand is post-MVP)
+ *   - ctx.yori     → stub                         (YoriCommand is post-MVP)
  */
 
 import type {
-  CharmAPI,
   MemoryAPI,
   MemoryScope,
   PersonaContext,
@@ -27,6 +26,7 @@ import type {
   VoiceClipRef,
   VoiceHandle,
   VoicePlayOptions,
+  YoriAPI,
 } from "@yorishiro/sdk";
 import type { Body } from "../../core/body";
 import type { LogBridge } from "../../core/log-bridge";
@@ -83,7 +83,7 @@ export function createRealPersonaContextFactory(deps: RealContextDeps): PersonaC
         }) ?? createStubVoiceAPI(),
       memory: createStubMemoryAPI(),
       terminal: createStubTerminalAPI(),
-      charm: stubCharm,
+      yori: stubYori,
       signal: inputs.signal,
     };
   };
@@ -126,7 +126,7 @@ const createStubTerminalAPI = (): TerminalAPI => ({
   session: { pid: 0, cwd: "", startedAt: 0 },
 });
 
-const stubCharm: CharmAPI = async (_command: string): Promise<void> => {};
+const stubYori: YoriAPI = async (_command: string): Promise<void> => {};
 
 /**
  * Stub factory — fallback when no Body is available yet.

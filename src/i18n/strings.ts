@@ -130,11 +130,11 @@ const EN: UiStrings = {
   selectVrmFile: "Select VRM file",
   agentAppliesNextLaunch: "Applies from the next agent launch",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
-  helpPrompt: "/charm:help",
-  tutorialPrompt: "/charm:tutorial",
-  shortcutPrompt: "/charm:shortcut I want to change keyboard shortcuts",
-  createPackPrompt: "/charm:create I want to create a pack",
-  pomodoroPrompt: "/charm:help I want to use Pomodoro",
+  helpPrompt: "/yori:help",
+  tutorialPrompt: "/yori:tutorial",
+  shortcutPrompt: "/yori:shortcut I want to change keyboard shortcuts",
+  createPackPrompt: "/yori:create I want to create a pack",
+  pomodoroPrompt: "/yori:help I want to use Pomodoro",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "Default",
   voiceFrequency: "Voice Summary",
@@ -237,11 +237,11 @@ const JA: UiStrings = {
   selectVrmFile: "VRM ファイルを選択",
   agentAppliesNextLaunch: "※ 次回起動時に反映",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
-  helpPrompt: "/charm:help",
-  tutorialPrompt: "/charm:tutorial",
-  shortcutPrompt: "/charm:shortcut ショートカットを変更したい",
-  createPackPrompt: "/charm:create pack を作りたい",
-  pomodoroPrompt: "/charm:help Pomodoro を使いたい",
+  helpPrompt: "/yori:help",
+  tutorialPrompt: "/yori:tutorial",
+  shortcutPrompt: "/yori:shortcut ショートカットを変更したい",
+  createPackPrompt: "/yori:create pack を作りたい",
+  pomodoroPrompt: "/yori:help Pomodoro を使いたい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "デフォルト",
   voiceFrequency: "Voice Summary",
@@ -382,8 +382,8 @@ const FIXED_PROMPT_STRING: Record<FixedTerminalPromptKey, keyof UiStrings> = {
 };
 
 /**
- * agent ごとの charm コマンド記法。`<prefix>charm<separator><name>` で 1 命令になる。
- * Claude は `/charm:create`、Codex は `$charm-create`、OpenCode は `/charm-create`。
+ * agent ごとの yori コマンド記法。`<prefix>yori<separator><name>` で 1 命令になる。
+ * Claude は `/yori:create`、Codex は `$yori-create`、OpenCode は `/yori-create`。
  *
  * 正本は Rust 各 adapter の `command_syntax()`（`list_supported_agents` で公開）。
  * strings.ts は sync / pure 境界なので Tauri call を呼ばず、この表で mirror する。
@@ -399,25 +399,25 @@ export const AGENT_COMMAND_SYNTAX: Record<
   opencode: { prefix: "/", separator: "-" },
 };
 
-/** Charminal が prefill する固定プロンプト中に現れる charm コマンド名。 */
-const CHARM_COMMAND_NAMES = ["create", "update", "help", "shortcut", "tutorial"] as const;
+/** Yorishiro が prefill する固定プロンプト中に現れる yori コマンド名。 */
+const YORI_COMMAND_NAMES = ["create", "update", "help", "shortcut", "tutorial"] as const;
 
 /** 未知 agent は Claude 記法に fall back する。 */
-function charmCommand(name: string, terminalAgent: string): string {
+function yoriCommand(name: string, terminalAgent: string): string {
   const syntax = AGENT_COMMAND_SYNTAX[terminalAgent] ?? AGENT_COMMAND_SYNTAX.claude;
-  return `${syntax.prefix}charm${syntax.separator}${name}`;
+  return `${syntax.prefix}yori${syntax.separator}${name}`;
 }
 
 function commandPromptForAgent(prompt: string, terminalAgent: string): string {
-  // Claude 記法（/charm:<name>）を terminalAgent の記法へ書き換える。claude は no-op。
-  return CHARM_COMMAND_NAMES.reduce(
-    (acc, name) => acc.split(`/charm:${name}`).join(charmCommand(name, terminalAgent)),
+  // Claude 記法（/yori:<name>）を terminalAgent の記法へ書き換える。claude は no-op。
+  return YORI_COMMAND_NAMES.reduce(
+    (acc, name) => acc.split(`/yori:${name}`).join(yoriCommand(name, terminalAgent)),
     prompt,
   );
 }
 
 function updateCommandForAgent(terminalAgent = "claude"): string {
-  return charmCommand("update", terminalAgent);
+  return yoriCommand("update", terminalAgent);
 }
 
 /**

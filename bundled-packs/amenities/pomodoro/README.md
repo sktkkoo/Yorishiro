@@ -45,7 +45,7 @@ terminal の dimming は activate 時に注入される `setTerminalOpacity` / `
 
 ## 編集について
 
-この pack は **Charminal 本体の一部**。Charminal 内（AI / `/charm` / file writer）からは編集不可、
+この pack は **Charminal 本体の一部**。Charminal 内（AI / `/yori` / file writer）からは編集不可、
 本体の version up でのみ更新される（memory: `feedback_bundled_pack_immutability.md`）。
 
 挙動を変えたい場合は、同 id で `~/.charminal/packs/pomodoro/` に fork を置く

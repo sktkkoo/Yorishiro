@@ -35,7 +35,7 @@ gradient / boxShadow を決める。
 
 ## 編集について
 
-この pack は **Charminal 本体の一部** として扱われる。Charminal 内（AI / `/charm` /
+この pack は **Charminal 本体の一部** として扱われる。Charminal 内（AI / `/yori` /
 file writer）からは編集不可、本体の version up でのみ更新される
 （memory: `feedback_bundled_pack_immutability.md`）。
 

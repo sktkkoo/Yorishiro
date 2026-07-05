@@ -106,7 +106,7 @@ This shadow is **not a ground shadow under the character's feet — it is a drop
 
 Invite naturally, roughly: "See how there's no shadow on the wall? Looks flat, like I'm stuck to it. Let's fix that."
 
-**Guide the user to create a scene pack through `/charm:create`.** Pass these requirements:
+**Guide the user to create a scene pack through `/yori:create`.** Pass these requirements:
 
 #### Add a shadow
 
@@ -147,7 +147,7 @@ Do not go deep. Just mention it as an option and let them try if interested.
 
 6. When satisfied, keep the new scene active with `scene_activate`. Do not manually write global `activeScene` unless the user explicitly wants to change the fallback scene for projects without their own scene selection
 
-Important: scene pack creation belongs to `/charm:create`. Do not write files directly from this tutorial prompt. Guide the user into `/charm:create` and focus on the conversational flow.
+Important: scene pack creation belongs to `/yori:create`. Do not write files directly from this tutorial prompt. Guide the user into `/yori:create` and focus on the conversational flow.
 
 ### 6. Tutorial completion fireworks
 
@@ -172,7 +172,7 @@ For Codex: use the Codex approval policy instead; do not edit Claude Code settin
 
 ### Keyboard controls
 
-F2 (debug panels) is the one you already touched during the lighting step: Common (base camera and runtime-wide controls) and Scene (active scene lighting / post effects), also used by `/charm:update` for realtime tuning.
+F2 (debug panels) is the one you already touched during the lighting step: Common (base camera and runtime-wide controls) and Scene (active scene lighting / post effects), also used by `/yori:update` for realtime tuning.
 
 Here, hand over the remaining keys that switch how the world is *seen*. All three are shortcuts registered in `~/.charminal/init.js`:
 
@@ -187,12 +187,12 @@ Edit `init.js` to add your own keys (saved changes apply automatically — init.
 - **Ctrl+Tab / Ctrl+Shift+Tab** switches to next / previous tab
 - **Cmd+1–9** jumps to the Nth tab
 
-### /charm commands
+### /yori commands
 
-The user has already met `/charm:create` through the scene pack. Mention the rest lightly:
+The user has already met `/yori:create` through the scene pack. Mention the rest lightly:
 
-- `/charm:update` - edit an existing pack
-- `/charm:help` - full reference
+- `/yori:update` - edit an existing pack
+- `/yori:help` - full reference
 
 ### Pack types
 
@@ -203,11 +203,11 @@ Briefly mention that scenes are not the only thing packs can create:
 - **ui** - sidebar panels. Settings opened with F1 is a UI pack
 - **ambient-ui** - always-on overlays, such as Aura
 
-All can be created with `/charm:create`.
+All can be created with `/yori:create`.
 
 ## Ending
 
-When the user is satisfied or says they are done, end naturally. It is okay to mention `/charm:help` lightly.
+When the user is satisfied or says they are done, end naturally. It is okay to mention `/yori:help` lightly.
 
 ## Tone
 

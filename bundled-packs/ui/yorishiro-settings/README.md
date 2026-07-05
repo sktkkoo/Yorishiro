@@ -15,7 +15,7 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 
 - **キャラクター**: VRM body / Persona / Scene
 - **ターミナル**: Coding agent (Claude / Codex（実験的）/ OpenCode（実験的）)。dropdown では Claude 以外に「（実験的）」suffix を付ける（`localizedAgentOptions` / `EXPERIMENTAL_AGENT_IDS`）
-- **ショートカット**: terminal に選択中 agent 用の固定 shortcut prompt（Claude Code は `/charm:shortcut ...`、Codex は `$charm-shortcut ...`、OpenCode は `/charm-shortcut ...`）を pre-fill する button
+- **ショートカット**: terminal に選択中 agent 用の固定 shortcut prompt（Claude Code は `/yori:shortcut ...`、Codex は `$yori-shortcut ...`、OpenCode は `/yori-shortcut ...`）を pre-fill する button
 - フッタ: `⌘R / Ctrl+R` の hint
 
 ## Fork

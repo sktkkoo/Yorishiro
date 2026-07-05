@@ -71,7 +71,7 @@ export interface EffectDefinition<TOptions = unknown> {
    *
    * このフィールドはそれとは別レイヤーの「runtime validation 用の保険」として position する：
    * - persona が `ctx.space.injectEffect({ kind, ...options })` で渡す options
-   * - /charm UI など TypeScript の外側から injected される options
+   * - /yori UI など TypeScript の外側から injected される options
    * - 将来的な dynamic 呼び出し経路（RPC / IPC / config 由来）
    *
    * つまり「型では守れないエッジから入ってくる options を、

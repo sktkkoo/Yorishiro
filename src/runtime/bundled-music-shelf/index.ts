@@ -114,7 +114,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
       core: { get: () => undefined, set: () => {}, delete: () => {} },
     },
     terminal: { output: () => "", session: { pid: 0, cwd: "", startedAt: 0 } },
-    charm: async () => {},
+    yori: async () => {},
     signal: abortController.signal,
     resolveAsset: () => "",
   };

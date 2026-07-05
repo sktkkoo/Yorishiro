@@ -14,50 +14,50 @@ const FIXED_PROMPT_KEYS = ["help", "tutorial", "shortcut", "create-pack", "pomod
 describe("resolveFixedTerminalPrompt", () => {
   it("resolves fixed prompts per language", () => {
     expect(FIXED_PROMPT_KEYS.map((key) => [key, resolveFixedTerminalPrompt(key, "en")])).toEqual([
-      ["help", "/charm:help"],
-      ["tutorial", "/charm:tutorial"],
-      ["shortcut", "/charm:shortcut I want to change keyboard shortcuts"],
-      ["create-pack", "/charm:create I want to create a pack"],
-      ["pomodoro", "/charm:help I want to use Pomodoro"],
+      ["help", "/yori:help"],
+      ["tutorial", "/yori:tutorial"],
+      ["shortcut", "/yori:shortcut I want to change keyboard shortcuts"],
+      ["create-pack", "/yori:create I want to create a pack"],
+      ["pomodoro", "/yori:help I want to use Pomodoro"],
     ]);
     expect(FIXED_PROMPT_KEYS.map((key) => [key, resolveFixedTerminalPrompt(key, "ja")])).toEqual([
-      ["help", "/charm:help"],
-      ["tutorial", "/charm:tutorial"],
-      ["shortcut", "/charm:shortcut ショートカットを変更したい"],
-      ["create-pack", "/charm:create pack を作りたい"],
-      ["pomodoro", "/charm:help Pomodoro を使いたい"],
+      ["help", "/yori:help"],
+      ["tutorial", "/yori:tutorial"],
+      ["shortcut", "/yori:shortcut ショートカットを変更したい"],
+      ["create-pack", "/yori:create pack を作りたい"],
+      ["pomodoro", "/yori:help Pomodoro を使いたい"],
     ]);
   });
 
-  it("resolves Codex fixed prompts as $charm skills", () => {
+  it("resolves Codex fixed prompts as $yori skills", () => {
     expect(
       FIXED_PROMPT_KEYS.map((key) => [key, resolveFixedTerminalPrompt(key, "en", "codex")]),
     ).toEqual([
-      ["help", "$charm-help"],
-      ["tutorial", "$charm-tutorial"],
-      ["shortcut", "$charm-shortcut I want to change keyboard shortcuts"],
-      ["create-pack", "$charm-create I want to create a pack"],
-      ["pomodoro", "$charm-help I want to use Pomodoro"],
+      ["help", "$yori-help"],
+      ["tutorial", "$yori-tutorial"],
+      ["shortcut", "$yori-shortcut I want to change keyboard shortcuts"],
+      ["create-pack", "$yori-create I want to create a pack"],
+      ["pomodoro", "$yori-help I want to use Pomodoro"],
     ]);
   });
 
-  it("resolves OpenCode fixed prompts as /charm-* commands", () => {
+  it("resolves OpenCode fixed prompts as /yori-* commands", () => {
     expect(
       FIXED_PROMPT_KEYS.map((key) => [key, resolveFixedTerminalPrompt(key, "en", "opencode")]),
     ).toEqual([
-      ["help", "/charm-help"],
-      ["tutorial", "/charm-tutorial"],
-      ["shortcut", "/charm-shortcut I want to change keyboard shortcuts"],
-      ["create-pack", "/charm-create I want to create a pack"],
-      ["pomodoro", "/charm-help I want to use Pomodoro"],
+      ["help", "/yori-help"],
+      ["tutorial", "/yori-tutorial"],
+      ["shortcut", "/yori-shortcut I want to change keyboard shortcuts"],
+      ["create-pack", "/yori-create I want to create a pack"],
+      ["pomodoro", "/yori-help I want to use Pomodoro"],
     ]);
   });
 
   it("falls back to Claude command syntax for an unknown agent", () => {
-    // 記法 table に無い agent は Claude 形式（/charm:<name>）に fall back する。
-    expect(resolveFixedTerminalPrompt("help", "en", "future-agent")).toBe("/charm:help");
+    // 記法 table に無い agent は Claude 形式（/yori:<name>）に fall back する。
+    expect(resolveFixedTerminalPrompt("help", "en", "future-agent")).toBe("/yori:help");
     expect(resolveFixedTerminalPrompt("create-pack", "en", "future-agent")).toBe(
-      "/charm:create I want to create a pack",
+      "/yori:create I want to create a pack",
     );
   });
 
@@ -138,7 +138,7 @@ describe("restoreConfirmStrings", () => {
 });
 
 describe("resolvePackRepairPrompt", () => {
-  it("uses $charm-update for Codex", () => {
+  it("uses $yori-update for Codex", () => {
     expect(
       resolvePackRepairPrompt({
         id: "broken-effect",
@@ -148,11 +148,11 @@ describe("resolvePackRepairPrompt", () => {
         terminalAgent: "codex",
       }),
     ).toBe(
-      '$charm-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
+      '$yori-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
     );
   });
 
-  it("uses /charm-update for OpenCode", () => {
+  it("uses /yori-update for OpenCode", () => {
     expect(
       resolvePackRepairPrompt({
         id: "broken-effect",
@@ -162,7 +162,7 @@ describe("resolvePackRepairPrompt", () => {
         terminalAgent: "opencode",
       }),
     ).toBe(
-      '/charm-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
+      '/yori-update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
     );
   });
 });

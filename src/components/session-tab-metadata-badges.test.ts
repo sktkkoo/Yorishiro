@@ -155,7 +155,7 @@ describe("deriveSessionTabMetadataBadge", () => {
       { kind: "tool-activity", activity: "running", timestamp: 100 },
       { kind: "window", change: "resize", timestamp: 100 },
       { kind: "scene-change", fromId: null, toId: "simple-room", timestamp: 100 },
-      { kind: "charm-command", command: "help", timestamp: 100 },
+      { kind: "yori-command", command: "help", timestamp: 100 },
       { kind: "loop-lifecycle", phase: "started", agent: "codex", timestamp: 100 },
       { kind: "loop-lifecycle", phase: "iterating", agent: "codex", timestamp: 100 },
     ];

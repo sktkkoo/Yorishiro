@@ -292,7 +292,7 @@ describe("Pack Workbench helpers", () => {
         language: "en",
       }),
     ).toBe(
-      '/charm:update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
+      '/yori:update Diagnose and repair broken-effect (effect). Start with pack_diagnose({ id: "broken-effect" }).',
     );
     expect(
       resolvePackRepairPrompt({
@@ -302,7 +302,7 @@ describe("Pack Workbench helpers", () => {
         language: "en",
       }),
     ).toBe(
-      '/charm:update Diagnose and improve my-scene (scene). Start with pack_diagnose({ id: "my-scene" }).',
+      '/yori:update Diagnose and improve my-scene (scene). Start with pack_diagnose({ id: "my-scene" }).',
     );
     expect(
       resolvePackRepairPrompt({
@@ -312,7 +312,7 @@ describe("Pack Workbench helpers", () => {
         language: "ja",
       }),
     ).toBe(
-      '/charm:update broken-persona (persona) を診断して、修正してください。まず pack_diagnose({ id: "broken-persona" }) で状態を確認してください。',
+      '/yori:update broken-persona (persona) を診断して、修正してください。まず pack_diagnose({ id: "broken-persona" }) で状態を確認してください。',
     );
     expect(
       resolvePackRepairPrompt({
@@ -322,7 +322,7 @@ describe("Pack Workbench helpers", () => {
         language: "ja",
       }),
     ).toBe(
-      '/charm:update ok-scene (scene) を診断して、改善してください。まず pack_diagnose({ id: "ok-scene" }) で状態を確認してください。',
+      '/yori:update ok-scene (scene) を診断して、改善してください。まず pack_diagnose({ id: "ok-scene" }) で状態を確認してください。',
     );
   });
 

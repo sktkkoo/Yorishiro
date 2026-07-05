@@ -44,7 +44,7 @@ export type ReactionType = StandardReactionType | (string & {});
  * 派生させた event、handler が announce する synthetic event に分かれる：
  *
  * - **ObservedEvent**: PTY 出力、hook signal、user 入力、window、scene 変化、
- *   `/charm` command など、runtime が外部から観測したもの
+ *   `/yori` command など、runtime が外部から観測したもの
  * - **DerivedEvent**: idle 検知、tool activity など、runtime が観測結果から
  *   pack 作者向けに生成する便利 event
  * - **`SyntheticEvent`**: runtime ではなく persona / amenity の handler が
@@ -235,7 +235,7 @@ export interface SceneChangeEvent {
 }
 
 export interface CharmCommandEvent {
-  readonly kind: "charm-command";
+  readonly kind: "yori-command";
   readonly command: string;
   readonly timestamp: number;
 }

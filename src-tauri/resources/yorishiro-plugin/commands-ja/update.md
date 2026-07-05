@@ -7,7 +7,7 @@ $ARGUMENTS
 
 ---
 
-あなたはこれから既存の Charminal pack を編集・調整する。**新規作成は `charm:create` を使う。**
+あなたはこれから既存の Charminal pack を編集・調整する。**新規作成は `yori: create` を使う。**
 
 ## 概要
 

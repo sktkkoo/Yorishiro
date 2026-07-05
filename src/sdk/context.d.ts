@@ -118,7 +118,7 @@ export interface PersonaContext {
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
   readonly terminal: TerminalAPI; // observation only
-  readonly charm: CharmAPI;
+  readonly yori: YoriAPI;
   readonly signal: AbortSignal; // 中断通知
 }
 
@@ -166,7 +166,7 @@ export interface AmenityContext {
   readonly log: LogAPI;
   readonly memory: MemoryAPI;
   readonly terminal: TerminalAPI;
-  readonly charm: CharmAPI;
+  readonly yori: YoriAPI;
   readonly signal: AbortSignal;
 
   /**
@@ -785,10 +785,10 @@ export interface TerminalAPI {
   };
 }
 
-// ─── CharmAPI (shared) ─────────────────────────────────────
+// ─── YoriAPI (shared) ─────────────────────────────────────
 
-/** charm コマンド（/charm:create 等）を発火するための API */
-export type CharmAPI = (command: string) => Promise<void>;
+/** yori コマンド（/yori:create 等）を発火するための API */
+export type YoriAPI = (command: string) => Promise<void>;
 
 // ─── RendererAPI (effect only) ─────────────────────────────
 
