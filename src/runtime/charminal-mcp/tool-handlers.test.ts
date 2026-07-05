@@ -13,10 +13,11 @@ import type { SceneSpec } from "../../sdk/scene";
 import type { ScenePackManifest } from "../../sdk/scene-pack";
 import { AmenityPackRegistryImpl } from "../amenity-pack-registry";
 import type { ManualCueResult } from "../attention-light-cue/cue-store";
+import { applyCurrentProjectSceneSelection } from "../project-context/project-context";
 import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
 import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
-import { EMPTY_CONFIG } from "../user-pack-loader/config";
+import { type CharminalConfig, EMPTY_CONFIG } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
 import {
@@ -688,9 +689,10 @@ describe("disable_pack handler", () => {
     let writtenConfig: string | null = null;
 
     const handler = createDisablePackHandler({
-      readConfig: async () => EMPTY_CONFIG,
-      writeConfig: async (next) => {
+      updateConfig: async (update) => {
+        const next = update(EMPTY_CONFIG);
         writtenConfig = JSON.stringify(next);
+        return next;
       },
       registry,
     });
@@ -706,8 +708,7 @@ describe("disable_pack handler", () => {
   it("disables bundled amenity entries through the injected hook", async () => {
     let disabledBundled: string | null = null;
     const handler = createDisablePackHandler({
-      readConfig: async () => EMPTY_CONFIG,
-      writeConfig: async () => {},
+      updateConfig: async (update) => update(EMPTY_CONFIG),
       registry: new UserPackRegistry(),
       disableBundledAmenity: (id) => {
         disabledBundled = id;
@@ -722,11 +723,11 @@ describe("disable_pack handler", () => {
 
   it("is idempotent when id is already disabled", async () => {
     const handler = createDisablePackHandler({
-      readConfig: async () => ({
-        ...EMPTY_CONFIG,
-        disabledPacks: ["already"],
-      }),
-      writeConfig: async () => {},
+      updateConfig: async (update) =>
+        update({
+          ...EMPTY_CONFIG,
+          disabledPacks: ["already"],
+        }),
       registry: new UserPackRegistry(),
     });
     const result = await handler({ id: "already" });
@@ -740,12 +741,13 @@ describe("enable_pack handler", () => {
     let writtenConfig: { disabledPacks: string[] } | null = null;
 
     const handler = createEnablePackHandler({
-      readConfig: async () => ({
-        ...EMPTY_CONFIG,
-        disabledPacks: ["a", "target", "b"],
-      }),
-      writeConfig: async (next) => {
+      updateConfig: async (update) => {
+        const next = update({
+          ...EMPTY_CONFIG,
+          disabledPacks: ["a", "target", "b"],
+        });
         writtenConfig = { disabledPacks: Array.from(next.disabledPacks) };
+        return next;
       },
       reloadPack: async (id) => {
         reloadCalled = id;
@@ -761,8 +763,7 @@ describe("enable_pack handler", () => {
 
   it("returns ok:false when reloadPack reports file not found", async () => {
     const handler = createEnablePackHandler({
-      readConfig: async () => EMPTY_CONFIG,
-      writeConfig: async () => {},
+      updateConfig: async (update) => update(EMPTY_CONFIG),
       reloadPack: async () => ({ ok: false, reason: "pack file not found" }),
     });
     const result = await handler({ id: "ghost" });
@@ -772,8 +773,7 @@ describe("enable_pack handler", () => {
   it("enables bundled amenities without falling through to user pack reload", async () => {
     let reloadCalled = false;
     const handler = createEnablePackHandler({
-      readConfig: async () => EMPTY_CONFIG,
-      writeConfig: async () => {},
+      updateConfig: async (update) => update(EMPTY_CONFIG),
       reloadPack: async () => {
         reloadCalled = true;
         return { ok: false, reason: "pack file not found" };
@@ -1501,6 +1501,7 @@ describe("createStateGetHandler", () => {
       readConfig: async () => ({
         primaryPersona: null,
         activeScene: null,
+        sceneByProject: {},
         terminalAgent: "claude" as const,
         disabledPacks: [],
         ambientAudioMuted: false,
@@ -1546,6 +1547,7 @@ describe("createStateGetHandler", () => {
       readConfig: async () => ({
         primaryPersona: null,
         activeScene: null,
+        sceneByProject: {},
         terminalAgent: "claude" as const,
         disabledPacks: [],
         ambientAudioMuted: false,
@@ -2180,49 +2182,121 @@ describe("createSceneActivateHandler", () => {
     r.register({ id: "s2", manifest: manifest("s2"), scene: sceneSpec("s2"), origin: "bundled" });
     return r;
   };
+  const makeHandler = (registry: ScenePackRegistryImpl) =>
+    createSceneActivateHandler({
+      setActiveScene: (id) => registry.setActiveScene(id),
+      getActiveSceneId: () => registry.getActiveSceneId(),
+    });
+  const makeProjectAwareHandler = (
+    initialConfig: CharminalConfig,
+    projectRoot: string | null,
+  ): {
+    readonly handler: ReturnType<typeof createSceneActivateHandler>;
+    readonly registry: ScenePackRegistryImpl;
+    readonly getConfig: () => CharminalConfig;
+  } => {
+    const registry = makeRegistry();
+    let config = initialConfig;
+    const handler = createSceneActivateHandler({
+      setActiveScene: async (id) => {
+        const updated = applyCurrentProjectSceneSelection(config, projectRoot, id);
+        config = updated.config;
+        registry.setActiveScene(updated.activeScene);
+      },
+      getActiveSceneId: () => registry.getActiveSceneId(),
+    });
+    return { handler, registry, getConfig: () => config };
+  };
 
   it("switches active scene by id", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     const result = await handler({ id: "s2" });
     expect(result).toEqual({ active: "s2" });
     expect(registry.getActiveSceneId()).toBe("s2");
   });
 
-  it("clears active when id is null", async () => {
-    const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
-    // initial active is "s1" (alphabetical fallback)
-    expect(registry.getActiveSceneId()).toBe("s1");
+  it("clears project override and falls back to global activeScene when id is null", async () => {
+    const { handler, registry, getConfig } = makeProjectAwareHandler(
+      {
+        ...EMPTY_CONFIG,
+        activeScene: "s2",
+        sceneByProject: { "/repo/a": "s1" },
+      },
+      "/repo/a",
+    );
+    registry.setActiveScene("s1");
+
     const result = await handler({ id: null });
-    // setActive(null) → fallback re-applies → alphabetical "s1"
+
+    expect(result.active).toBe("s2");
+    expect(registry.getActiveSceneId()).toBe("s2");
+    expect(getConfig()).toMatchObject({
+      activeScene: "s2",
+      sceneByProject: {},
+    });
+  });
+
+  it("clears project override and falls back to bundled default when id is null and no global scene is set", async () => {
+    const { handler, registry, getConfig } = makeProjectAwareHandler(
+      {
+        ...EMPTY_CONFIG,
+        activeScene: null,
+        sceneByProject: { "/repo/a": "s2" },
+      },
+      "/repo/a",
+    );
+    registry.setActiveScene("s2");
+
+    const result = await handler({ id: null });
+
     expect(result.active).toBe("s1");
+    expect(registry.getActiveSceneId()).toBe("s1");
+    expect(getConfig()).toMatchObject({
+      activeScene: null,
+      sceneByProject: {},
+    });
   });
 
   it("rejects empty string id", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     await expect(handler({ id: "" })).rejects.toThrow("id must be non-empty string or null");
   });
 
   it("rejects non-string non-null id", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     await expect(handler({ id: 42 })).rejects.toThrow("id must be non-empty string or null");
   });
 
   it("rejects when id field is omitted", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
   });
 
   it("setting unknown id falls through to bundled fallback (no throw)", async () => {
     const registry = makeRegistry();
-    const handler = createSceneActivateHandler({ registry });
+    const handler = makeHandler(registry);
     // SingleActiveRegistry.setActive で unknown id は fall-through、bundled alphabetical 先頭が active
     const result = await handler({ id: "ghost" });
     expect(result.active).toBe("s1");
+  });
+
+  it("awaits the configured scene write path before reading active id", async () => {
+    let active: string | null = "s1";
+    const handler = createSceneActivateHandler({
+      setActiveScene: async (id) => {
+        await Promise.resolve();
+        active = id;
+      },
+      getActiveSceneId: () => active,
+    });
+
+    const result = await handler({ id: "s2" });
+
+    expect(result.active).toBe("s2");
   });
 });
 
@@ -2447,26 +2521,54 @@ describe("createPresenceSetIntensityHandler", () => {
 
 describe("createSetMotionIntensityHandler", () => {
   it("writes clamped intensity to config and applies to runtime", async () => {
-    const writeConfig = vi.fn(async () => {});
+    const updateConfig = vi.fn(async (update: (current: CharminalConfig) => CharminalConfig) =>
+      update({ ...EMPTY_CONFIG }),
+    );
     const applyToRuntime = vi.fn();
     const handler = createSetMotionIntensityHandler({
-      readConfig: async () => ({ ...EMPTY_CONFIG }),
-      writeConfig,
+      updateConfig,
       applyToRuntime,
     });
     const result = await handler({ intensity: 9 });
     expect(result).toEqual({ intensity: 3 });
-    expect(writeConfig).toHaveBeenCalledWith({ ...EMPTY_CONFIG, motionIntensity: 3 });
+    expect(updateConfig).toHaveBeenCalledOnce();
+    expect(updateConfig.mock.calls[0][0]({ ...EMPTY_CONFIG })).toEqual({
+      ...EMPTY_CONFIG,
+      motionIntensity: 3,
+    });
     expect(applyToRuntime).toHaveBeenCalledWith(3);
   });
 
   it("rejects non-numeric intensity", async () => {
     const handler = createSetMotionIntensityHandler({
-      readConfig: async () => ({ ...EMPTY_CONFIG }),
-      writeConfig: async () => {},
+      updateConfig: async (update) => update({ ...EMPTY_CONFIG }),
       applyToRuntime: () => {},
     });
     await expect(handler({ intensity: "big" })).rejects.toThrow();
+  });
+
+  it("composes concurrent config updates through the injected atomic updater", async () => {
+    let config: CharminalConfig = { ...EMPTY_CONFIG };
+    let chain = Promise.resolve();
+    const updateConfig = (update: (current: CharminalConfig) => CharminalConfig) => {
+      const next = chain.then(async () => {
+        config = update(config);
+        return config;
+      });
+      chain = next.then(() => undefined);
+      return next;
+    };
+    const registry = new UserPackRegistry();
+    const disable = createDisablePackHandler({ updateConfig, registry });
+    const motion = createSetMotionIntensityHandler({
+      updateConfig,
+      applyToRuntime: () => {},
+    });
+
+    await Promise.all([disable({ id: "target" }), motion({ intensity: 2 })]);
+
+    expect(config.disabledPacks).toEqual(["target"]);
+    expect(config.motionIntensity).toBe(2);
   });
 });
 

@@ -172,6 +172,13 @@ import {
   resolvePresence,
 } from "./runtime/presence-target";
 import {
+  applyCurrentProjectSceneSelectionWithResolution,
+  type ProjectRootResolution,
+  type ProjectSceneSelectionResult,
+  projectRootValue,
+  resolveCurrentProjectRoot,
+} from "./runtime/project-context/project-context";
+import {
   getSceneRegistry,
   resolveSceneAssets,
   type ScenePackEntry,
@@ -237,8 +244,10 @@ import {
   writeCharminalConfigText,
 } from "./runtime/user-pack-loader/charminal-io";
 import {
+  type CharminalConfig,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
+  resolveSceneForProject,
   serializeConfig,
   type TerminalAgent,
   type VoiceFrequency,
@@ -868,6 +877,10 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
+  const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
+    currentProjectRootRef.current = projectRoot;
+  }, []);
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
@@ -891,6 +904,72 @@ function App() {
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+
+  // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
+  const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueConfigWrite = useCallback(<T,>(write: () => Promise<T>): Promise<T> => {
+    const next = pendingConfigWriteRef.current.then(write);
+    pendingConfigWriteRef.current = next.then(
+      () => undefined,
+      () => undefined,
+    );
+    return next;
+  }, []);
+  const updateCharminalConfig = useCallback(
+    (update: (current: CharminalConfig) => CharminalConfig): Promise<CharminalConfig> =>
+      enqueueConfigWrite(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        const updated = update(cur);
+        await writeCharminalConfigText(serializeConfig(updated));
+        return updated;
+      }),
+    [enqueueConfigWrite],
+  );
+  const updateConfig = useCallback(
+    (
+      patch: Partial<{
+        primaryPersona: string | null;
+        activeScene: string | null;
+        terminalAgent: string;
+        ambientAudioMuted: boolean;
+        ambientAudioVolume: number;
+        attentionLightNotifications: boolean;
+        motionIntensity: number;
+        language: AppLanguage;
+        voiceFrequency: VoiceFrequency;
+        tabMetadataBadges: boolean;
+      }>,
+    ): Promise<void> => updateCharminalConfig((cur) => ({ ...cur, ...patch })).then(() => {}),
+    [updateCharminalConfig],
+  );
+  const updateActiveSceneConfig = useCallback(
+    (id: string | null, projectRoot: ProjectRootResolution): Promise<ProjectSceneSelectionResult> =>
+      enqueueConfigWrite(async () => {
+        const cur = parseConfig(await readCharminalConfigText());
+        const updated = await applyCurrentProjectSceneSelectionWithResolution(cur, projectRoot, id);
+        if (updated.kind === "persisted") {
+          await writeCharminalConfigText(serializeConfig(updated.config));
+        }
+        return updated;
+      }),
+    [enqueueConfigWrite],
+  );
+  const setActiveSceneFromUserSelection = useCallback(
+    async (id: string | null): Promise<void> => {
+      const projectRoot = currentProjectRootRef.current;
+      const updated = await updateActiveSceneConfig(id, projectRoot);
+      rememberCurrentProjectRoot(updated.projectRoot);
+      if (updated.kind === "runtime-only") {
+        console.warn("[charminal] scene selection was not persisted", {
+          warning: updated.warning,
+          sceneId: id,
+          projectRoot: updated.projectRoot,
+        });
+      }
+      getSceneRegistry().setActiveScene(updated.activeScene);
+    },
+    [rememberCurrentProjectRoot, updateActiveSceneConfig],
+  );
 
   const resolveRestoreDialogTarget = useCallback(async (seq: number) => {
     const locale = appLanguageRef.current.resolved;
@@ -1428,7 +1507,11 @@ function App() {
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
-        scenePackRegistry.setActiveScene(config.activeScene);
+        const projectRoot = await resolveCurrentProjectRoot(cwd);
+        rememberCurrentProjectRoot(projectRoot);
+        scenePackRegistry.setActiveScene(
+          resolveSceneForProject(config, projectRootValue(projectRoot)),
+        );
         uiPackRegistry.setActiveUi(config.activeUi);
         syncAmbientUiActiveSet(config.activeAmbientUi);
       } catch (err) {
@@ -1462,7 +1545,7 @@ function App() {
       });
 
       // ─ Step 2.5: subscribeActive 系 wire ─
-      // 順序契約：subscribe wire は Step 2 の setActiveScene(config.activeScene)
+      // 順序契約：subscribe wire は Step 2 の setActiveScene(resolvedScene)
       // より後。逆順だと bundled fallback の default scene で listener が一度
       // fire し、その直後の config 反映でもう一度 fire する double-dispatch が
       // 起きる（現状 default の simple-room は ambient:[] なので可聴ではないが、
@@ -1663,15 +1746,15 @@ function App() {
           // Attention light:
           createAttentionLightCueHandler,
         } = await import("./runtime/charminal-mcp/tool-handlers");
-        type CharminalConfig = import("./runtime/user-pack-loader/config").CharminalConfig;
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
         type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
 
         const readConfig = async (): Promise<CharminalConfig> =>
           parseConfig(await readCharminalConfigText());
-        const writeConfig = async (next: CharminalConfig): Promise<void> =>
-          writeCharminalConfigText(serializeConfig(next));
+        const updateConfigForMcp = (
+          update: (current: CharminalConfig) => CharminalConfig,
+        ): Promise<CharminalConfig> => updateCharminalConfig(update);
         const readLoadReport = async (): Promise<LoadReport | null> => {
           const text = await readLastStartupReport();
           if (text === "") return null;
@@ -1775,14 +1858,12 @@ function App() {
             readUserPackEntries: async () => invoke<UserPackEntry[]>("list_user_packs"),
           }),
           "disable-pack": createDisablePackHandler({
-            readConfig,
-            writeConfig,
+            updateConfig: updateConfigForMcp,
             registry: packRegistry,
             disableBundledAmenity,
           }),
           "enable-pack": createEnablePackHandler({
-            readConfig,
-            writeConfig,
+            updateConfig: updateConfigForMcp,
             reloadPack,
             enableBundledAmenity,
           }),
@@ -1949,7 +2030,8 @@ function App() {
           }),
           // ── Active pack switching ──────────────────────────
           "scene.activate": createSceneActivateHandler({
-            registry: scenePackRegistry,
+            setActiveScene: setActiveSceneFromUserSelection,
+            getActiveSceneId: () => scenePackRegistry.getActiveSceneId(),
           }),
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
@@ -1969,8 +2051,7 @@ function App() {
             applyPresenceLevel: (level, source) => applyPresenceLevelFromApp(level, source),
           }),
           "motion.set-intensity": createSetMotionIntensityHandler({
-            readConfig,
-            writeConfig,
+            updateConfig: updateConfigForMcp,
             applyToRuntime: (intensity) => getThreeRuntime().setMotionIntensity(intensity),
           }),
           // ── Voice ─────────────────────────────────────────
@@ -2747,38 +2828,13 @@ function App() {
       return getLayoutTargets() ?? targetsList[0] ?? null;
     };
 
-    // 設定 write は read-modify-write なので並行 click で race する。
-    // Promise chain で逐次化する（同 useEffect 寿命内で 1 本）。
-    let pendingConfigWrite: Promise<void> = Promise.resolve();
-    const updateConfig = (
-      patch: Partial<{
-        primaryPersona: string | null;
-        activeScene: string | null;
-        terminalAgent: string;
-        ambientAudioMuted: boolean;
-        ambientAudioVolume: number;
-        attentionLightNotifications: boolean;
-        motionIntensity: number;
-        language: AppLanguage;
-        voiceFrequency: VoiceFrequency;
-        tabMetadataBadges: boolean;
-      }>,
-    ): Promise<void> => {
-      const next = pendingConfigWrite.then(async () => {
-        const cur = parseConfig(await readCharminalConfigText());
-        await writeCharminalConfigText(serializeConfig({ ...cur, ...patch }));
-      });
-      pendingConfigWrite = next.catch(() => undefined);
-      return next;
-    };
-
     /**
      * activeAmbientUi を read-modify-write で更新する config helper。
      * withActiveAmbientUiSet を使って config を immutable に更新し、
      * registry 側の enable/disable も同期する。
      */
-    const updateActiveAmbientUi = (ids: readonly string[]): Promise<void> => {
-      const next = pendingConfigWrite.then(async () => {
+    const updateActiveAmbientUi = (ids: readonly string[]): Promise<void> =>
+      enqueueConfigWrite(async () => {
         const cur = parseConfig(await readCharminalConfigText());
         const updated = withActiveAmbientUiSet(cur, ids);
         await writeCharminalConfigText(serializeConfig(updated));
@@ -2794,9 +2850,6 @@ function App() {
           if (!currentActive.has(id)) ambientUiRegistry.enable(id);
         }
       });
-      pendingConfigWrite = next.catch(() => undefined);
-      return next;
-    };
 
     const readLoadReportForPackTools = async () => {
       const text = await readLastStartupReport();
@@ -2852,9 +2905,7 @@ function App() {
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
       readConfig: async () => parseConfig(await readCharminalConfigText()),
-      writeConfig: async (next: ReturnType<typeof parseConfig>) => {
-        await writeCharminalConfigText(serializeConfig(next));
-      },
+      updateConfig: updateCharminalConfig,
       readLoadReport: readLoadReportForPackTools,
       getActiveIds: () => ({
         scene: scenePackRegistry.getActiveSceneId(),
@@ -3034,7 +3085,7 @@ function App() {
             const { createPackDiagnoseHandler } = await import(
               "./runtime/charminal-mcp/tool-handlers"
             );
-            const { writeConfig: _writeConfig, ...deps } = buildPackToolDeps();
+            const deps = buildPackToolDeps();
             return createPackDiagnoseHandler({
               ...deps,
               readUserPackEntries: readUserPackEntriesForPackTools,
@@ -3046,8 +3097,7 @@ function App() {
             );
             const deps = buildPackToolDeps();
             return createDisablePackHandler({
-              readConfig: deps.readConfig,
-              writeConfig: deps.writeConfig,
+              updateConfig: deps.updateConfig,
               registry: packRegistry,
               disableBundledAmenity: disableBundledAmenityForPackTools,
             })({ id });
@@ -3058,8 +3108,7 @@ function App() {
             );
             const deps = buildPackToolDeps();
             return createEnablePackHandler({
-              readConfig: deps.readConfig,
-              writeConfig: deps.writeConfig,
+              updateConfig: deps.updateConfig,
               reloadPack: reloadPackForPackTools,
               enableBundledAmenity: enableBundledAmenityForPackTools,
             })({ id });
@@ -3072,8 +3121,7 @@ function App() {
             );
           },
           setActiveScene: async (id) => {
-            await updateConfig({ activeScene: id });
-            scenePackRegistry.setActiveScene(id);
+            await setActiveSceneFromUserSelection(id);
           },
           setTerminalAgent: async (agent) => {
             await updateConfig({ terminalAgent: agent });
@@ -3101,7 +3149,7 @@ function App() {
             getThreeRuntime().setMotionIntensity(clamped);
           },
           setLanguage: async (language) => {
-            const next = pendingConfigWrite.then(async () => {
+            return enqueueConfigWrite(async () => {
               const cur = parseConfig(await readCharminalConfigText());
               const resolved = resolveLanguage(language, getBrowserLocales());
               const nextPrimaryPersona = resolvePrimaryPersonaForLanguage(
@@ -3119,8 +3167,6 @@ function App() {
                 resolvePrimaryPersonaForLanguage(updated.primaryPersona, resolved),
               );
             });
-            pendingConfigWrite = next.catch(() => undefined);
-            return next;
           },
           setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
           setTabMetadataBadges: async (enabled) => {
@@ -3138,7 +3184,10 @@ function App() {
             const resolvedLanguage = resolveLanguage(cur.language, getBrowserLocales());
             return {
               primaryPersona: cur.primaryPersona,
-              activeScene: cur.activeScene,
+              activeScene: resolveSceneForProject(
+                cur,
+                projectRootValue(currentProjectRootRef.current),
+              ),
               terminalAgent: cur.terminalAgent,
               effectiveAgent: resolveEffectiveAgent(cur),
               agentPinnedByProfile: resolveDefaultAgentProfileId(cur),
@@ -3317,6 +3366,10 @@ function App() {
     createAmenityContext,
     ambientAudio,
     applyTerminalPresentationForSession,
+    enqueueConfigWrite,
+    updateCharminalConfig,
+    updateConfig,
+    setActiveSceneFromUserSelection,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

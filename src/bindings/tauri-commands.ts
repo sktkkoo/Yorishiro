@@ -161,6 +161,14 @@ export interface ResolveCommandPathArgs {
 export const resolveCommandPath = (args: ResolveCommandPathArgs): Promise<string | null> =>
   call("resolve_command_path", args);
 
+export interface ResolveProjectRootArgs {
+  readonly cwd: string;
+}
+
+/** cwd を canonicalize し、git root / linked worktree の本体 root に解決する。 */
+export const resolveProjectRoot = (args: ResolveProjectRootArgs): Promise<string> =>
+  call("resolve_project_root", args);
+
 export interface AgentCapabilities {
   readonly personaOverlay: boolean;
   readonly mcpInjection: boolean;

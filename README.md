@@ -38,8 +38,6 @@ Much of Charminal itself has been developed in collaboration with the inhabitant
 
 ## Getting Started
 
-> **Security note:** User packs are local trusted code, like shell scripts or editor extensions — they are not sandboxed and run with your own authority. Only install packs from sources you trust. In-app community pack distribution is not implemented yet. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
-
 ### Prerequisites
 
 Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
@@ -102,6 +100,8 @@ Everything in Charminal is composed of **packs**. There are six types:
 [Bundled packs](bundled-packs/README.en.md) work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands (`$charm-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
 User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
+
+> **Security note:** User packs are local trusted code, like shell scripts or editor extensions — they are not sandboxed and run with your own authority. Only install packs from sources you trust. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
 
 To install a pack shared through GitHub or another source, place it under the user pack directory:
 

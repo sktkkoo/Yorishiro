@@ -266,7 +266,8 @@ pub struct AppScreenshotRequest {}
 /// `scene_activate` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SceneActivateRequest {
-    /// Pack id（null で active を clear）。registry のみ更新、config.json は触らない。
+    /// Pack id。null は current project override を削除し、global activeScene があれば
+    /// そこへ、なければ bundled default へ fallback する。
     pub id: Option<String>,
 }
 
@@ -910,9 +911,9 @@ impl Charminal {
         .await
     }
 
-    /// scene pack の active を runtime-only で切り替える。config.json は触らない。
+    /// scene pack の active を切り替え、current project が解決済みなら sceneByProject に永続化する。
     #[tool(
-        description = "Switch the active scene pack at runtime (registry only; does not persist to config.json). Persistent activation is via config.json activeScene field, not this tool. Pass null id to clear. Use list_packs to discover available scene pack ids."
+        description = "Switch the active scene pack and persist the choice. If the current project root is resolved, writes config.json sceneByProject for that project; otherwise writes global activeScene. Pass null id to clear the current project override: Charminal then falls back to global activeScene, or to the bundled default when no global activeScene is set. Use list_packs to discover available scene pack ids."
     )]
     async fn scene_activate(
         &self,
@@ -1133,7 +1134,7 @@ impl ServerHandler for Charminal {
                 "## 重要ルール\n",
                 "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
                 "- bundled pack は不可変。disable_pack / enable_pack は user pack のみ\n",
-                "- scene_activate / ui_activate は runtime 限定。永続切替は config.json の activeScene / activeUI\n",
+                "- scene_activate は current project ごとの永続 scene 切替。ui_activate は runtime 限定で、永続 UI 切替は config.json の activeUI\n",
                 "- history_restore は復元前 snapshot を残す可逆操作だが、packs/config.json/init.js を full-replace する。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
                 "- journal は機械的ログではなく情緒的な思い出を書く\n",
             ))
