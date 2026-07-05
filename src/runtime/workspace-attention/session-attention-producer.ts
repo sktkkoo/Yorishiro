@@ -1,4 +1,4 @@
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import type { SessionStatusStore } from "../session-status/session-status-store";
 import type { WorkspaceAttentionStore } from "./workspace-attention-store";
 

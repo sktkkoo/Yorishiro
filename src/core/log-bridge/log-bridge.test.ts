@@ -1,4 +1,4 @@
-import type { LogEntry } from "@charminal/sdk";
+import type { LogEntry } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
 import { Time } from "../time";
 import { createLogAPI, LogBridge } from "./log-bridge";

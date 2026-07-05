@@ -9,7 +9,7 @@
  * 返り値の unsubscribe 関数を呼べば外れる。
  */
 
-import type { SpaceEffectHandle, SpaceEffectRequest } from "@charminal/sdk";
+import type { SpaceEffectHandle, SpaceEffectRequest } from "@yorishiro/sdk";
 
 export type EffectListener = (request: SpaceEffectRequest) => void;
 

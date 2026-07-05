@@ -1,4 +1,4 @@
-import type { FixedTerminalPromptKey } from "@charminal/sdk";
+import type { FixedTerminalPromptKey } from "@yorishiro/sdk";
 import type { RestoreConfirmStrings } from "../components/RestoreConfirmDialog";
 import type { ChangeStrings } from "../runtime/history/describe-snapshot";
 import type { ResolvedLanguage } from "../runtime/language/language";

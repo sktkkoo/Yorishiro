@@ -36,7 +36,7 @@ bundled-packs/
 │   ├── text-physics/        — collapse / restore of terminal glyphs
 │   └── abandoned-monitor/   — abandoned-surveillance-terminal-style ARG overlay
 ├── ui/
-│   ├── charminal-settings/  — settings screen (opens with F1)
+│   ├── yorishiro-settings/  — settings screen (opens with F1)
 │   ├── immersive/           — transparent terminal UI
 │   └── theater/             — fullscreen character view
 ├── ambient-ui/              — overlay packs (multi-active)
@@ -142,7 +142,7 @@ bundled-packs/
 
 UI packs (the 5th pack kind). Single-active; they define the whole of Charminal's UI. Details in the internal design-record: `2026-04-21-ui-pack-single-active.md` (unstable until Plan 3 is complete, so not yet promoted to the public docs/decisions/).
 
-- **charminal-settings** — Charminal's settings screen (the entry point for avatar / persona / scene / agent / shortcut). Opens via F1 (an init.js seed binding) or the sidebar
+- **yorishiro-settings** — Yorishiro's settings screen (the entry point for avatar / persona / scene / agent / shortcut). Opens via F1 (an init.js seed binding) or the sidebar
 - **immersive** — UI that makes the terminal background transparent and lets the character and scene show through in front
 - **theater** — fullscreen character view. Hides the terminal / chrome and leaves only the character and scene
 

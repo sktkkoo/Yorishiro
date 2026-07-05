@@ -4,7 +4,7 @@
  * Scene の data model re-export。
  *
  * canonical な型定義は `src/sdk/scene.d.ts`（Phase 2 で移管）。core/scene の
- * 利用者はここから import する；pack author は `@charminal/sdk` から import する。
+ * 利用者はここから import する；pack author は `@yorishiro/sdk` から import する。
  *
  * Philosophy: docs/philosophy/PHILOSOPHY.md「UI は環境である」
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §4

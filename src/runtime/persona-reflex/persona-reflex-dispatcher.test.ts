@@ -5,7 +5,7 @@ import type {
   ReactionType,
   Trigger,
   UserInputEvent,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { Time } from "../../core/time";
 import { EventBus, type EventBusLogger, type PackSource } from "../event-bus";

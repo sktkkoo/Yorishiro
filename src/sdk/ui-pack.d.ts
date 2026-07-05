@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/ui-pack
+ * @yorishiro/sdk/ui-pack
  *
  * UI Pack の定義型（5 つ目の pack kind）。
  * packs/ui/<id>/ui.tsx では `satisfies UiPackDefinition` を使って export default する。

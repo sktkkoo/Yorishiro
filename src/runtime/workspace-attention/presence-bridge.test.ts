@@ -1,4 +1,4 @@
-import type { ExpressionHandle } from "@charminal/sdk";
+import type { ExpressionHandle } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { Body } from "../../core/body";
 import type { AttentionRuntime } from "../attention-runtime/types";

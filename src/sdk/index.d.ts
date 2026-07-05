@@ -1,12 +1,12 @@
 /**
- * @charminal/sdk
+ * @yorishiro/sdk
  *
  * Charminal Pack を書くための型定義と API の entry point。
  *
  * 使い方：
  * ```typescript
- * import type { PersonaDefinition } from '@charminal/sdk';
- * import type { EffectDefinition, EffectContext } from '@charminal/sdk';
+ * import type { PersonaDefinition } from '@yorishiro/sdk';
+ * import type { EffectDefinition, EffectContext } from '@yorishiro/sdk';
  * ```
  *
  * 詳しくは README.md（同じディレクトリ）を参照。

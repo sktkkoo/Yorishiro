@@ -22,7 +22,7 @@
  * 観察 → 微調整の loop で固める（CLAUDE.md「感触 parameter は帰納的に」）。
  */
 
-import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, Vec2 } from "@yorishiro/sdk";
 
 interface TextPhysicsOptions {
   readonly origin: Vec2;

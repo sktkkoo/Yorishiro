@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/reaction
+ * @yorishiro/sdk/reaction
  *
  * 反応の語彙と trigger system の型定義。
  *

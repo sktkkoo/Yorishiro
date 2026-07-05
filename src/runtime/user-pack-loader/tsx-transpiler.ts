@@ -15,16 +15,16 @@ import type * as React from "react";
 import type * as ReactJsxRuntime from "react/jsx-runtime";
 import type * as ReactDomClient from "react-dom/client";
 import type * as THREE from "three";
-import type * as CharminalControls from "../../sdk/controls";
-import type * as CharminalR3f from "../../sdk/r3f";
+import type * as YorishiroControls from "../../sdk/controls";
+import type * as YorishiroR3f from "../../sdk/r3f";
 
 const HOST_NAMESPACE = "charminal-host";
 const USER_SOURCE_NAMESPACE = "charminal-user-source";
 const UNSUPPORTED_NAMESPACE = "charminal-unsupported";
 const SUPPORTED_HOST_IMPORTS = new Set([
-  "@charminal/sdk",
-  "@charminal/sdk/controls",
-  "@charminal/sdk/r3f",
+  "@yorishiro/sdk",
+  "@yorishiro/sdk/controls",
+  "@yorishiro/sdk/r3f",
   "@react-three/drei",
   "@react-three/fiber",
   "react",
@@ -34,14 +34,14 @@ const SUPPORTED_HOST_IMPORTS = new Set([
 ]);
 
 declare global {
-  var __CHARMINAL_REACT__: typeof React | undefined;
-  var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
-  var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
-  var __CHARMINAL_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
-  var __CHARMINAL_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
-  var __CHARMINAL_THREE__: typeof THREE | undefined;
-  var __CHARMINAL_SDK_CONTROLS__: typeof CharminalControls | undefined;
-  var __CHARMINAL_SDK_R3F__: typeof CharminalR3f | undefined;
+  var __YORISHIRO_REACT__: typeof React | undefined;
+  var __YORISHIRO_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
+  var __YORISHIRO_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+  var __YORISHIRO_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
+  var __YORISHIRO_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __YORISHIRO_THREE__: typeof THREE | undefined;
+  var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
+  var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
 }
 
 export interface TsxTranspilerDeps {
@@ -166,8 +166,8 @@ async function readEntrySource(
 }
 
 const reactShim = `
-const React = globalThis.__CHARMINAL_REACT__;
-if (!React) throw new Error("Charminal React host bridge is not initialized");
+const React = globalThis.__YORISHIRO_REACT__;
+if (!React) throw new Error("Yorishiro React host bridge is not initialized");
 export default React;
 export const Children = React.Children;
 export const Component = React.Component;
@@ -203,15 +203,15 @@ export const useTransition = React.useTransition;
 `;
 
 const reactDomClientShim = `
-const ReactDomClient = globalThis.__CHARMINAL_REACT_DOM_CLIENT__;
-if (!ReactDomClient) throw new Error("Charminal React DOM client host bridge is not initialized");
+const ReactDomClient = globalThis.__YORISHIRO_REACT_DOM_CLIENT__;
+if (!ReactDomClient) throw new Error("Yorishiro React DOM client host bridge is not initialized");
 export const createRoot = ReactDomClient.createRoot;
 export const hydrateRoot = ReactDomClient.hydrateRoot;
 `;
 
 const jsxRuntimeShim = `
-const Runtime = globalThis.__CHARMINAL_REACT_JSX_RUNTIME__;
-if (!Runtime) throw new Error("Charminal React JSX runtime bridge is not initialized");
+const Runtime = globalThis.__YORISHIRO_REACT_JSX_RUNTIME__;
+if (!Runtime) throw new Error("Yorishiro React JSX runtime bridge is not initialized");
 export const Fragment = Runtime.Fragment;
 export const jsx = Runtime.jsx;
 export const jsxs = Runtime.jsxs;
@@ -222,9 +222,9 @@ export {};
 `;
 
 const r3fShim = `
-const Fiber = globalThis.__CHARMINAL_REACT_THREE_FIBER__;
-const SdkR3F = globalThis.__CHARMINAL_SDK_R3F__;
-if (!Fiber && !SdkR3F) throw new Error("Charminal R3F host bridge is not initialized");
+const Fiber = globalThis.__YORISHIRO_REACT_THREE_FIBER__;
+const SdkR3F = globalThis.__YORISHIRO_SDK_R3F__;
+if (!Fiber && !SdkR3F) throw new Error("Yorishiro R3F host bridge is not initialized");
 const R3F = { ...(Fiber ?? {}), ...(SdkR3F ?? {}) };
 export const {
   Canvas,
@@ -261,26 +261,26 @@ export default R3F;
 `;
 
 const dreiShim = `
-const Drei = globalThis.__CHARMINAL_REACT_THREE_DREI__;
+const Drei = globalThis.__YORISHIRO_REACT_THREE_DREI__;
 if (!Drei) throw new Error("Charminal drei host bridge is not initialized");
 export const { AccumulativeShadows, AdaptiveDpr, AdaptiveEvents, ArcballControls, AsciiRenderer, BBAnchor, Backdrop, BakeShadows, Billboard, Bounds, Box, Bvh, CameraControls, CameraShake, Capsule, CatmullRomLine, Caustics, Center, Circle, Clone, Cloud, CloudInstance, Clouds, ComputedAttribute, Cone, ContactShadows, CubeCamera, CubeTexture, CubicBezierLine, CurveModifier, CycleRaycast, Cylinder, Decal, Detailed, DetectGPU, DeviceOrientationControls, Dodecahedron, DragControls, Edges, Effects, Environment, EnvironmentCube, EnvironmentMap, EnvironmentPortal, Example, Extrude, FaceControls, FaceLandmarker, FaceLandmarkerDefaults, Facemesh, FacemeshDatas, FacemeshEye, FacemeshEyeDefaults, Fbo, Fbx, FirstPersonControls, Fisheye, Float, FlyControls, GizmoHelper, GizmoViewcube, GizmoViewport, Gltf, GradientTexture, GradientType, Grid, Helper, Html, Hud, Icosahedron, Image, Instance, InstancedAttribute, Instances, IsObject, KeyboardControls, Ktx2, Lathe, Lightformer, Line, Loader, MapControls, MarchingCube, MarchingCubes, MarchingPlane, Mask, MatcapTexture, Merged, MeshDiscardMaterial, MeshDistortMaterial, MeshPortalMaterial, MeshReflectorMaterial, MeshRefractionMaterial, MeshTransmissionMaterial, MeshWobbleMaterial, MotionPathControls, MultiMaterial, NormalTexture, Octahedron, OrbitControls, OrthographicCamera, Outlines, PerformanceMonitor, PerspectiveCamera, PivotControls, Plane, Point, PointMaterial, PointMaterialImpl, PointerLockControls, Points, PointsBuffer, Polyhedron, PositionMesh, PositionPoint, PositionalAudio, Preload, PresentationControls, Progress, QuadraticBezierLine, RandomizedLight, RenderCubeTexture, RenderTexture, Resize, Ring, RoundedBox, RoundedBoxGeometry, Sampler, ScreenQuad, ScreenSizer, ScreenSpace, ScreenVideoTexture, Scroll, ScrollControls, Segment, SegmentObject, Segments, Select, Shadow, ShadowAlpha, Shape, Sky, SoftShadows, Sparkles, Sphere, Splat, SpotLight, SpotLightShadow, SpriteAnimator, Stage, Stars, Stats, StatsGl, Svg, Tetrahedron, Text, Text3D, Texture, Torus, TorusKnot, TrackballControls, Trail, TrailTexture, TransformControls, Tube, VideoTexture, View, WebcamVideoTexture, Wireframe, accumulativeContext, calcPosFromAngles, calculateScaleFactor, checkIfFrameIsEmpty, createInstances, getFirstFrame, isWebGL2Available, meshBounds, shaderMaterial, useAnimations, useAspect, useBVH, useBounds, useBoxProjectedEnv, useCamera, useContextBridge, useCubeCamera, useCubeTexture, useCursor, useDepthBuffer, useDetectGPU, useEnvironment, useFBO, useFBX, useFaceControls, useFaceLandmarker, useFont, useGLTF, useGizmoContext, useHelper, useIntersect, useKTX2, useKeyboardControls, useMask, useMatcapTexture, useMotion, useNormalTexture, usePerformanceMonitor, useProgress, useScroll, useSelect, useSpriteAnimator, useSpriteLoader, useSurfaceSampler, useTexture, useTrail, useTrailTexture, useVideoTexture } = Drei;
 export default Drei;
 `;
 
 const controlsShim = `
-const Controls = globalThis.__CHARMINAL_SDK_CONTROLS__;
-if (!Controls) throw new Error("Charminal controls host bridge is not initialized");
+const Controls = globalThis.__YORISHIRO_SDK_CONTROLS__;
+if (!Controls) throw new Error("Yorishiro controls host bridge is not initialized");
 export const {
   ControlStoreProvider,
   controlFolder,
-  useCharminalControls,
+  useYorishiroControls,
   useControlsBridge,
 } = Controls;
 `;
 
 const threeShim = `
-const THREE = globalThis.__CHARMINAL_THREE__;
-if (!THREE) throw new Error("Charminal Three.js host bridge is not initialized");
+const THREE = globalThis.__YORISHIRO_THREE__;
+if (!THREE) throw new Error("Yorishiro Three.js host bridge is not initialized");
 export const { ACESFilmicToneMapping, AddEquation, AddOperation, AdditiveAnimationBlendMode, AdditiveBlending, AgXToneMapping, AlphaFormat, AlwaysCompare, AlwaysDepth, AlwaysStencilFunc, AmbientLight, AnimationAction, AnimationClip, AnimationLoader, AnimationMixer, AnimationObjectGroup, AnimationUtils, ArcCurve, ArrayCamera, ArrowHelper, AttachedBindMode, Audio, AudioAnalyser, AudioContext, AudioListener, AudioLoader, AxesHelper, BackSide, BasicDepthPacking, BasicShadowMap, BatchedMesh, BezierInterpolant, Bone, BooleanKeyframeTrack, Box2, Box3, Box3Helper, BoxGeometry, BoxHelper, BufferAttribute, BufferGeometry, BufferGeometryLoader, ByteType, Cache, Camera, CameraHelper, CanvasTexture, CapsuleGeometry, CatmullRomCurve3, CineonToneMapping, CircleGeometry, ClampToEdgeWrapping, Clock, Color, ColorKeyframeTrack, ColorManagement, Compatibility, CompressedArrayTexture, CompressedCubeTexture, CompressedTexture, CompressedTextureLoader, ConeGeometry, ConstantAlphaFactor, ConstantColorFactor, Controls, CubeCamera, CubeDepthTexture, CubeReflectionMapping, CubeRefractionMapping, CubeTexture, CubeTextureLoader, CubeUVReflectionMapping, CubicBezierCurve, CubicBezierCurve3, CubicInterpolant, CullFaceBack, CullFaceFront, CullFaceFrontBack, CullFaceNone, Curve, CurvePath, CustomBlending, CustomToneMapping, CylinderGeometry, Cylindrical, Data3DTexture, DataArrayTexture, DataTexture, DataTextureLoader, DataUtils, DecrementStencilOp, DecrementWrapStencilOp, DefaultLoadingManager, DepthFormat, DepthStencilFormat, DepthTexture, DetachedBindMode, DirectionalLight, DirectionalLightHelper, DiscreteInterpolant, DodecahedronGeometry, DoubleSide, DstAlphaFactor, DstColorFactor, DynamicCopyUsage, DynamicDrawUsage, DynamicReadUsage, EdgesGeometry, EllipseCurve, EqualCompare, EqualDepth, EqualStencilFunc, EquirectangularReflectionMapping, EquirectangularRefractionMapping, Euler, EventDispatcher, ExternalTexture, ExtrudeGeometry, FileLoader, Float16BufferAttribute, Float32BufferAttribute, FloatType, Fog, FogExp2, FramebufferTexture, FrontSide, Frustum, FrustumArray, GLBufferAttribute, GLSL1, GLSL3, GreaterCompare, GreaterDepth, GreaterEqualCompare, GreaterEqualDepth, GreaterEqualStencilFunc, GreaterStencilFunc, GridHelper, Group, HalfFloatType, HemisphereLight, HemisphereLightHelper, IcosahedronGeometry, ImageBitmapLoader, ImageLoader, ImageUtils, IncrementStencilOp, IncrementWrapStencilOp, InstancedBufferAttribute, InstancedBufferGeometry, InstancedInterleavedBuffer, InstancedMesh, Int16BufferAttribute, Int32BufferAttribute, Int8BufferAttribute, IntType, InterleavedBuffer, InterleavedBufferAttribute, Interpolant, InterpolateBezier, InterpolateDiscrete, InterpolateLinear, InterpolateSmooth, InterpolationSamplingMode, InterpolationSamplingType, InvertStencilOp, KeepStencilOp, KeyframeTrack, LOD, LatheGeometry, Layers, LessCompare, LessDepth, LessEqualCompare, LessEqualDepth, LessEqualStencilFunc, LessStencilFunc, Light, LightProbe, Line, Line3, LineBasicMaterial, LineCurve, LineCurve3, LineDashedMaterial, LineLoop, LineSegments, LinearFilter, LinearInterpolant, LinearMipMapLinearFilter, LinearMipMapNearestFilter, LinearMipmapLinearFilter, LinearMipmapNearestFilter, LinearSRGBColorSpace, LinearToneMapping, LinearTransfer, Loader, LoaderUtils, LoadingManager, LoopOnce, LoopPingPong, LoopRepeat, MOUSE, Material, MaterialBlending, MaterialLoader, MathUtils, Matrix2, Matrix3, Matrix4, MaxEquation, Mesh, MeshBasicMaterial, MeshDepthMaterial, MeshDistanceMaterial, MeshLambertMaterial, MeshMatcapMaterial, MeshNormalMaterial, MeshPhongMaterial, MeshPhysicalMaterial, MeshStandardMaterial, MeshToonMaterial, MinEquation, MirroredRepeatWrapping, MixOperation, MultiplyBlending, MultiplyOperation, NearestFilter, NearestMipMapLinearFilter, NearestMipMapNearestFilter, NearestMipmapLinearFilter, NearestMipmapNearestFilter, NeutralToneMapping, NeverCompare, NeverDepth, NeverStencilFunc, NoBlending, NoColorSpace, NoNormalPacking, NoToneMapping, NormalAnimationBlendMode, NormalBlending, NormalGAPacking, NormalRGPacking, NotEqualCompare, NotEqualDepth, NotEqualStencilFunc, NumberKeyframeTrack, Object3D, ObjectLoader, ObjectSpaceNormalMap, OctahedronGeometry, OneFactor, OneMinusConstantAlphaFactor, OneMinusConstantColorFactor, OneMinusDstAlphaFactor, OneMinusDstColorFactor, OneMinusSrcAlphaFactor, OneMinusSrcColorFactor, OrthographicCamera, PCFShadowMap, PCFSoftShadowMap, PMREMGenerator, Path, PerspectiveCamera, Plane, PlaneGeometry, PlaneHelper, PointLight, PointLightHelper, Points, PointsMaterial, PolarGridHelper, PolyhedronGeometry, PositionalAudio, PropertyBinding, PropertyMixer, QuadraticBezierCurve, QuadraticBezierCurve3, Quaternion, QuaternionKeyframeTrack, QuaternionLinearInterpolant, R11_EAC_Format, RED_GREEN_RGTC2_Format, RED_RGTC1_Format, REVISION, RG11_EAC_Format, RGBADepthPacking, RGBAFormat, RGBAIntegerFormat, RGBA_ASTC_10x10_Format, RGBA_ASTC_10x5_Format, RGBA_ASTC_10x6_Format, RGBA_ASTC_10x8_Format, RGBA_ASTC_12x10_Format, RGBA_ASTC_12x12_Format, RGBA_ASTC_4x4_Format, RGBA_ASTC_5x4_Format, RGBA_ASTC_5x5_Format, RGBA_ASTC_6x5_Format, RGBA_ASTC_6x6_Format, RGBA_ASTC_8x5_Format, RGBA_ASTC_8x6_Format, RGBA_ASTC_8x8_Format, RGBA_BPTC_Format, RGBA_ETC2_EAC_Format, RGBA_PVRTC_2BPPV1_Format, RGBA_PVRTC_4BPPV1_Format, RGBA_S3TC_DXT1_Format, RGBA_S3TC_DXT3_Format, RGBA_S3TC_DXT5_Format, RGBDepthPacking, RGBFormat, RGBIntegerFormat, RGB_BPTC_SIGNED_Format, RGB_BPTC_UNSIGNED_Format, RGB_ETC1_Format, RGB_ETC2_Format, RGB_PVRTC_2BPPV1_Format, RGB_PVRTC_4BPPV1_Format, RGB_S3TC_DXT1_Format, RGDepthPacking, RGFormat, RGIntegerFormat, RawShaderMaterial, Ray, Raycaster, RectAreaLight, RedFormat, RedIntegerFormat, ReinhardToneMapping, RenderTarget, RenderTarget3D, RepeatWrapping, ReplaceStencilOp, ReverseSubtractEquation, RingGeometry, SIGNED_R11_EAC_Format, SIGNED_RED_GREEN_RGTC2_Format, SIGNED_RED_RGTC1_Format, SIGNED_RG11_EAC_Format, SRGBColorSpace, SRGBTransfer, Scene, ShaderChunk, ShaderLib, ShaderMaterial, ShadowMaterial, Shape, ShapeGeometry, ShapePath, ShapeUtils, ShortType, Skeleton, SkeletonHelper, SkinnedMesh, Source, Sphere, SphereGeometry, Spherical, SphericalHarmonics3, SplineCurve, SpotLight, SpotLightHelper, Sprite, SpriteMaterial, SrcAlphaFactor, SrcAlphaSaturateFactor, SrcColorFactor, StaticCopyUsage, StaticDrawUsage, StaticReadUsage, StereoCamera, StreamCopyUsage, StreamDrawUsage, StreamReadUsage, StringKeyframeTrack, SubtractEquation, SubtractiveBlending, TOUCH, TangentSpaceNormalMap, TetrahedronGeometry, Texture, TextureLoader, TextureUtils, Timer, TimestampQuery, TorusGeometry, TorusKnotGeometry, Triangle, TriangleFanDrawMode, TriangleStripDrawMode, TrianglesDrawMode, TubeGeometry, UVMapping, Uint16BufferAttribute, Uint32BufferAttribute, Uint8BufferAttribute, Uint8ClampedBufferAttribute, Uniform, UniformsGroup, UniformsLib, UniformsUtils, UnsignedByteType, UnsignedInt101111Type, UnsignedInt248Type, UnsignedInt5999Type, UnsignedIntType, UnsignedShort4444Type, UnsignedShort5551Type, UnsignedShortType, VSMShadowMap, Vector2, Vector3, Vector4, VectorKeyframeTrack, VideoFrameTexture, VideoTexture, WebGL3DRenderTarget, WebGLArrayRenderTarget, WebGLCoordinateSystem, WebGLCubeRenderTarget, WebGLRenderTarget, WebGLRenderer, WebGLUtils, WebGPUCoordinateSystem, WebXRController, WireframeGeometry, WrapAroundEnding, ZeroCurvatureEnding, ZeroFactor, ZeroSlopeEnding, ZeroStencilOp, createCanvasElement, error, getConsoleFunction, log, setConsoleFunction, warn, warnOnce } = THREE;
 export default THREE;
 `;
@@ -301,10 +301,10 @@ function extractNamedExports(shim: string): string[] {
 
 export function tsxHostShimNamedExports(path: string): readonly string[] {
   if (path === "@react-three/drei") return extractNamedExports(dreiShim);
-  if (path === "@charminal/sdk/r3f" || path === "@react-three/fiber") {
+  if (path === "@yorishiro/sdk/r3f" || path === "@react-three/fiber") {
     return extractNamedExports(r3fShim);
   }
-  if (path === "@charminal/sdk/controls") return extractNamedExports(controlsShim);
+  if (path === "@yorishiro/sdk/controls") return extractNamedExports(controlsShim);
   if (path === "three") return extractNamedExports(threeShim);
   return [];
 }
@@ -362,10 +362,10 @@ function createPlan4MvpPlugin(
         if (args.path === "@react-three/drei") {
           return { contents: dreiShim, loader: "js" };
         }
-        if (args.path === "@charminal/sdk/r3f" || args.path === "@react-three/fiber") {
+        if (args.path === "@yorishiro/sdk/r3f" || args.path === "@react-three/fiber") {
           return { contents: r3fShim, loader: "js" };
         }
-        if (args.path === "@charminal/sdk/controls") {
+        if (args.path === "@yorishiro/sdk/controls") {
           return { contents: controlsShim, loader: "js" };
         }
         if (args.path === "three") {

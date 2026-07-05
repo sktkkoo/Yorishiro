@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/amenity
+ * @yorishiro/sdk/amenity
  *
  * Amenity Pack の定義型。
  * 住人の空間に備え付けられた機能設備（ポモドーロタイマー、天気確認、音楽再生など）を
@@ -45,7 +45,7 @@ export interface AmenityToolMeta {
  *
  * 例：
  * ```typescript
- * import type { AmenityPackDefinition, AmenityContext } from '@charminal/sdk';
+ * import type { AmenityPackDefinition, AmenityContext } from '@yorishiro/sdk';
  *
  * export default {
  *   id: 'pomodoro',

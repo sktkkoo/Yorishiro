@@ -36,7 +36,7 @@ import type {
   VoiceClipRef,
   VoiceHandle,
   VoicePlayOptions,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { Time } from "../../core/time";
 
 /**

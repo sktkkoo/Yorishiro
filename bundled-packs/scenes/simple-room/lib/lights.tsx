@@ -6,15 +6,15 @@
  * 値は simple-room (Night) に合わせた。SDK controls で intensity / color / 位置等を調整可能。
  */
 
-import { useCharminalControls } from "@charminal/sdk/controls";
 import { useFrame } from "@react-three/fiber";
+import { useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useRef } from "react";
 import type { SpotLight as ThreeSpotLight } from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function Lights() {
   const lightRef = useRef<ThreeSpotLight>(null);
-  const [controls, setControls] = useCharminalControls("lights", () => ({
+  const [controls, setControls] = useYorishiroControls("lights", () => ({
     intensity: { value: 1.2, min: 0, max: 3, step: 0.01, label: "intensity" },
     color: { value: "#ffe8ea", label: "color" },
     x: { value: -0.2, min: -5, max: 5, step: 0.1, label: "X" },

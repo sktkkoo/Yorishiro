@@ -66,7 +66,7 @@ describe("applyConfigUpdate", () => {
       expect(emitEvent).not.toHaveBeenCalled();
       expect(dispatched).toHaveLength(1);
       expect(dispatched[0]).toBeInstanceOf(CustomEvent);
-      expect((dispatched[0] as CustomEvent).type).toBe("charminal-settings:config-changed");
+      expect((dispatched[0] as CustomEvent).type).toBe("yorishiro-settings:config-changed");
       expect((dispatched[0] as CustomEvent).detail).toEqual({ field: "activeScene" });
     } finally {
       vi.unstubAllGlobals();
@@ -87,7 +87,7 @@ describe("applyConfigUpdate", () => {
     });
     expect(setLocal).toHaveBeenNthCalledWith(1, "scene-a");
     expect(setLocal).toHaveBeenNthCalledWith(2, "scene-quiet");
-    expect(emitEvent).toHaveBeenCalledWith("charminal-settings:write-failed", {
+    expect(emitEvent).toHaveBeenCalledWith("yorishiro-settings:write-failed", {
       field: "activeScene",
       reason: "disk full",
     });

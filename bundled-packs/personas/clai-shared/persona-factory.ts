@@ -1,4 +1,4 @@
-import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@charminal/sdk";
+import type { DispatchEvent, PersonaContext, PersonaDefinition, Trigger } from "@yorishiro/sdk";
 
 const SHOOT_TEXT_PHYSICS_DELAY_MS = 1500;
 const SHOOT_TEXT_PHYSICS_FORCE = 100;
@@ -218,7 +218,7 @@ export function createClaiPersona(args: {
           id: "clai:settings-write-failed",
           match(event: DispatchEvent) {
             if (event.kind !== "synthetic") return null;
-            if (event.name !== "charminal-settings:write-failed") return null;
+            if (event.name !== "yorishiro-settings:write-failed") return null;
             return {
               reaction: "settings-error",
               payload: event.payload,

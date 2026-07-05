@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/persona-pack
+ * @yorishiro/sdk/persona-pack
  *
  * Persona Pack の manifest 型。
  * packs/personas/<id>/manifest.json が持つ field を定義する。

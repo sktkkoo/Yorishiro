@@ -1,4 +1,4 @@
-import type { AmenityHandle, AmenityPackDefinition, HistoryAPI } from "@charminal/sdk";
+import type { AmenityHandle, AmenityPackDefinition, HistoryAPI } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import { AmenityPackRegistryImpl } from "../amenity-pack-registry";

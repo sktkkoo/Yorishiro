@@ -5,8 +5,8 @@
  * BlinkSystem (blink timing), and utility functions.
  */
 
-import type { Disposable } from "@charminal/sdk";
 import type { VRM, VRMHumanBoneName } from "@pixiv/three-vrm";
+import type { Disposable } from "@yorishiro/sdk";
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
 import type { ClaimKind, ClaimState } from "../../runtime/ui-claim-state";

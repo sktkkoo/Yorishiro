@@ -4,8 +4,8 @@
  * SDK controls で sizeMult / alpha / dust speed / godRays alpha をリアルタイム調整可能.
  */
 
-import { controlFolder, useCharminalControls } from "@charminal/sdk/controls";
 import { useFrame } from "@react-three/fiber";
+import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -68,7 +68,7 @@ void main() {
 export function DustMotes() {
   const pointsRef = useRef<THREE.Points>(null);
 
-  const [controls, setControls] = useCharminalControls("effects", () => ({
+  const [controls, setControls] = useYorishiroControls("effects", () => ({
     dust: controlFolder({
       sizeMult: { value: 5, min: 0, max: 30, step: 0.5, label: "size multiplier" },
       alphaBase: { value: 0.28, min: 0, max: 0.5, step: 0.01, label: "alpha base" },
@@ -162,7 +162,7 @@ void main() {
 export function GodRays() {
   const matRef = useRef<THREE.ShaderMaterial>(null);
 
-  const [controls, setControls] = useCharminalControls("effects", () => ({
+  const [controls, setControls] = useYorishiroControls("effects", () => ({
     godRays: controlFolder({
       alphaMult: { value: 0.08, min: 0, max: 0.5, step: 0.01, label: "alpha multiplier" },
     }),

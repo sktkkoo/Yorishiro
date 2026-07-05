@@ -1,11 +1,11 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type {
   AmenityContext,
   AmenityPackDefinition,
   ExecOptions,
   HistoryAPI,
   LoopPhase,
-} from "@charminal/sdk";
-import { convertFileSrc } from "@tauri-apps/api/core";
+} from "@yorishiro/sdk";
 import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";

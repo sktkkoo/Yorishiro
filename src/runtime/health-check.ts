@@ -1,5 +1,5 @@
-import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@charminal/sdk";
 import { invoke } from "@tauri-apps/api/core";
+import type { UiAppPackStatusEntry, UiHealthItem, UiHealthReport } from "@yorishiro/sdk";
 import {
   listSupportedAgents,
   mcpServerStatus,

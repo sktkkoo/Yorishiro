@@ -16,7 +16,7 @@ import type {
   PersonaDefinition,
   SpaceEffectRequest,
   TweenAPI,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { TweenManager } from "../../core/tween/tween-manager";
 import { validateEffectDefinition, validatePersonaDefinition } from "../../sdk/validators";

@@ -1,4 +1,4 @@
-import type { DispatchEvent, PersonaContext, PersonaDefinition } from "@charminal/sdk";
+import type { DispatchEvent, PersonaContext, PersonaDefinition } from "@yorishiro/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClaiPersona } from "./persona-factory";
 

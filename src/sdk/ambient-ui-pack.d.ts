@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/ambient-ui-pack
+ * @yorishiro/sdk/ambient-ui-pack
  *
  * Ambient UI Pack の定義型（5 つ目の pack kind、v2 で追加）。
  * packs/ambient-ui/<id>/ui.tsx では `satisfies AmbientUiPackDefinition` を

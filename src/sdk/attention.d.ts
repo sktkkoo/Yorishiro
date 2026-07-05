@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/attention
+ * @yorishiro/sdk/attention
  *
  * Attention API の canonical 型。
  *

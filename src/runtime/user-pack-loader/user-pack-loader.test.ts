@@ -5,7 +5,7 @@
  * ここでは real instance を組まずに stub で直接検証する。
  */
 
-import type { EffectDefinition, HistoryAPI, PersonaDefinition } from "@charminal/sdk";
+import type { EffectDefinition, HistoryAPI, PersonaDefinition } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";

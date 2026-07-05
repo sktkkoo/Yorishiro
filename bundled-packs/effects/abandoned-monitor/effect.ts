@@ -8,7 +8,7 @@
  * タイプライター + グリッチ演出で表示する。
  */
 
-import type { EffectContext, EffectDefinition } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition } from "@yorishiro/sdk";
 
 export interface AbandonedMonitorOptions {
   readonly lines?: readonly string[];

@@ -10,7 +10,7 @@
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
  */
 
-import type { ScenePackComponentProps, ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
 import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 

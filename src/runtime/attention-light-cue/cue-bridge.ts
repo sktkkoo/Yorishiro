@@ -5,7 +5,7 @@
  * snapshot が更新されるたびに active な awaiting-approval item すべてを
  * `cueForAttention` に渡すだけでよい（既に見た identity は store 側で無視される）。
  */
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import type { WorkspaceAttentionStore } from "../workspace-attention/workspace-attention-store";
 import type { AttentionLightCueStore } from "./cue-store";
 

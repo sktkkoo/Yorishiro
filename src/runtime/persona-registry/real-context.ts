@@ -27,7 +27,7 @@ import type {
   VoiceClipRef,
   VoiceHandle,
   VoicePlayOptions,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type { Body } from "../../core/body";
 import type { LogBridge } from "../../core/log-bridge";
 import { createLogAPI } from "../../core/log-bridge";

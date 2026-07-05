@@ -36,7 +36,7 @@ bundled-packs/
 │   ├── text-physics/        — ターミナル文字の崩落 / 復元
 │   └── abandoned-monitor/   — 放置監視端末風 ARG overlay
 ├── ui/
-│   ├── charminal-settings/  — 設定画面（F1 で開く）
+│   ├── yorishiro-settings/  — 設定画面（F1 で開く）
 │   ├── immersive/           — 透過ターミナル UI
 │   └── theater/             — フルスクリーン character view
 ├── ambient-ui/              — overlay 系 pack（multi-active）
@@ -142,7 +142,7 @@ bundled-packs/
 
 UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
-- **charminal-settings** — Charminal の設定画面（avatar / persona / scene / agent / shortcut の入口）。F1（init.js seed の binding）またはサイドバーから開く
+- **yorishiro-settings** — Yorishiro の設定画面（avatar / persona / scene / agent / shortcut の入口）。F1（init.js seed の binding）またはサイドバーから開く
 - **immersive** — ターミナル背景を透過させ、character と scene を前面に通す UI
 - **theater** — フルスクリーン character view。ターミナル / chrome を隠し character と scene だけ残す
 

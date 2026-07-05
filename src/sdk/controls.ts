@@ -110,7 +110,7 @@ function injectStore(args: unknown[], store: ControlStore | null): unknown[] {
  * Group controls under a collapsible folder.
  *
  * This is the SDK-facing wrapper for the current Leva adapter. Pack code should
- * import this from `@charminal/sdk/controls`, not from `leva`.
+ * import this from `@yorishiro/sdk/controls`, not from `leva`.
  */
 export const controlFolder: typeof levaFolder = levaFolder;
 
@@ -118,10 +118,10 @@ export const controlFolder: typeof levaFolder = levaFolder;
  * Register controls for the active scene pack.
  *
  * The current implementation renders through Leva, but the API is owned by
- * Charminal so the runtime can replace the panel renderer without changing
+ * Yorishiro so the runtime can replace the panel renderer without changing
  * pack code.
  */
-export const useCharminalControls: typeof useLevaControls = ((
+export const useYorishiroControls: typeof useLevaControls = ((
   ...args: Parameters<typeof useLevaControls>
 ) => {
   const contextStore = useContext(ControlStoreContext);

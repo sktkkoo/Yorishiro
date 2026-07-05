@@ -14,7 +14,7 @@ export default defineConfig(async () => ({
   resolve: {
     alias: [
       {
-        find: /^@charminal\/sdk\/controls$/,
+        find: /^@yorishiro\/sdk\/controls$/,
         replacement: new URL("./src/sdk/controls.ts", import.meta.url).pathname,
       },
       {

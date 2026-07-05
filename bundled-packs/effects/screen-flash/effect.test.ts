@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Disposable, EffectContext } from "@charminal/sdk";
+import type { Disposable, EffectContext } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import screenFlash from "./effect";
 

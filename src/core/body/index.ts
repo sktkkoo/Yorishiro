@@ -13,6 +13,7 @@
  * SDK surface: src/sdk/context.d.ts CharacterAPI (262-292)
  */
 
+import type { VRM } from "@pixiv/three-vrm";
 import type {
   AnimationHandle,
   AnimationRef,
@@ -28,8 +29,7 @@ import type {
   MotionHandle as SdkMotionHandle,
   MotionRequest as SdkMotionRequest,
   MotionSnapshot as SdkMotionSnapshot,
-} from "@charminal/sdk";
-import type { VRM } from "@pixiv/three-vrm";
+} from "@yorishiro/sdk";
 import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";

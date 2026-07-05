@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/context
+ * @yorishiro/sdk/context
  *
  * 2 つの context 型：PersonaContext / EffectContext
  * （機能設備は AmenityContext が担う）

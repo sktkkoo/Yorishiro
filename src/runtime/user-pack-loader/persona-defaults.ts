@@ -1,4 +1,4 @@
-import type { PersonaDefinition } from "@charminal/sdk";
+import type { PersonaDefinition } from "@yorishiro/sdk";
 
 /**
  * Fill optional persona axes from the bundled default persona.

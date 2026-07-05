@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/scene-pack
+ * @yorishiro/sdk/scene-pack
  *
  * Scene Pack の定義型。
  * packs/scenes/<id>/scene.ts では `satisfies ScenePackDefinition` を使って
@@ -116,7 +116,7 @@ export interface ScenePackCameraAPI {
  *
  * Example:
  * ```typescript
- * import type { ScenePackDefinition } from '@charminal/sdk';
+ * import type { ScenePackDefinition } from '@yorishiro/sdk';
  *
  * export default {
  *   id: 'simple-room',

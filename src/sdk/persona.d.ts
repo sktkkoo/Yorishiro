@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/persona
+ * @yorishiro/sdk/persona
  *
  * Persona Pack の定義型。
  * scene/persona.ts では `satisfies PersonaDefinition` を使って export default する。
@@ -63,7 +63,7 @@ export interface LogReadingPolicy {
  *
  * 例：
  * ```typescript
- * import type { PersonaDefinition } from '@charminal/sdk';
+ * import type { PersonaDefinition } from '@yorishiro/sdk';
  *
  * export default {
  *   id: 'my-persona',

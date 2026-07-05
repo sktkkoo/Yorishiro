@@ -9,7 +9,7 @@
  * 「Surface / SDK 設計」section
  */
 
-import type { AmbientUiContext, AmbientUiPackManifest, Disposable } from "@charminal/sdk";
+import type { AmbientUiContext, AmbientUiPackManifest, Disposable } from "@yorishiro/sdk";
 import type { PackOrigin } from "../single-active-registry/types";
 
 export interface AmbientUiPackEntry {

@@ -1,4 +1,4 @@
-import type { Trigger } from "@charminal/sdk";
+import type { Trigger } from "@yorishiro/sdk";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "./keys";
 import { type AllowedKindFor, isAllowed, type ModuleKind, type Provenance } from "./provenance";

@@ -1,4 +1,4 @@
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import type { TerminalCommandRun } from "../terminal-runtime/command-run-store";
 import type { TerminalCommandRunLocus, TerminalRuntime } from "../terminal-runtime/types";
 import type {

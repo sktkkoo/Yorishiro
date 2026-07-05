@@ -1,12 +1,12 @@
 /**
- * @charminal/sdk/r3f
+ * @yorishiro/sdk/r3f
  *
  * R3F primitive の re-export entry.
  *
  * Pack 作者は本 entry から R3F primitive を import することで, Charminal 本体と
  * 同じ @react-three/fiber version を共有する.
  *
- * user scene.tsx の runtime transpile 経路では, `@charminal/sdk/r3f` と
+ * user scene.tsx の runtime transpile 経路では, `@yorishiro/sdk/r3f` と
  * `@react-three/fiber` のどちらを import しても host bridge に解決される.
  * これにより pack 側に別 instance が混入することを防ぐ.
  *

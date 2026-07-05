@@ -6,7 +6,7 @@
  * 内部で通してから registrar に渡す。
  */
 
-import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@charminal/sdk";
+import type { EffectDefinition, PersonaDefinition, SpaceEffectRequest } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
 import { createSubsystemLog, DevLog, type SubsystemLog } from "../../core/dev-log";
 import { Time } from "../../core/time";

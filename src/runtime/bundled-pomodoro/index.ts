@@ -5,7 +5,7 @@
  * terminal opacity 制御用の deps は App.tsx 側から注入される。
  */
 
-import type { AmenityContext, HistoryAPI, LoopPhase } from "@charminal/sdk";
+import type { AmenityContext, HistoryAPI, LoopPhase } from "@yorishiro/sdk";
 import pomodoroPack, {
   createPomodoroAmenity,
   type PomodoroActivateContext,

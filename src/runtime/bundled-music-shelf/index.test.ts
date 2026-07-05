@@ -1,4 +1,4 @@
-import type { AmenityContext, HistoryAPI } from "@charminal/sdk";
+import type { AmenityContext, HistoryAPI } from "@yorishiro/sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";

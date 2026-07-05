@@ -16,8 +16,8 @@
  * isolation だけ検証する。
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import type { EffectDefinition, PersonaDefinition } from "@yorishiro/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   PackValidationError,

@@ -8,7 +8,7 @@ import type { UiPackEntry } from "./runtime/ui-pack-registry";
 import { getUiRegistry } from "./runtime/ui-pack-registry";
 import { useSettingsActive, useSidebarOpen } from "./title-bar-state";
 
-const SETTINGS_PACK_ID = "charminal-settings";
+const SETTINGS_PACK_ID = "yorishiro-settings";
 
 function SidebarOpenProbe() {
   const sidebarOpen = useSidebarOpen();

@@ -20,7 +20,7 @@ import type {
   AmbientUiPackDefinition,
   AttentionTarget,
   Disposable,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";

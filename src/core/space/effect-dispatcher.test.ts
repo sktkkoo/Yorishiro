@@ -1,4 +1,4 @@
-import type { SpaceEffectRequest } from "@charminal/sdk";
+import type { SpaceEffectRequest } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
 import { EffectDispatcher } from "./effect-dispatcher";
 

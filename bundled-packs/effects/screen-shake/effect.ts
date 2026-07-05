@@ -6,7 +6,7 @@
  * は Renderer 実装が持ち、pack は lifetime を time.after で管理する。
  */
 
-import type { EffectContext, EffectDefinition } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition } from "@yorishiro/sdk";
 
 interface ScreenShakeOptions {
   readonly intensity: number;

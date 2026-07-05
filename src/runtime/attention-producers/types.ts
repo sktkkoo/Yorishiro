@@ -9,6 +9,6 @@
  * 「Producer の集約場所 (B 案)」section
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 
 export type { Disposable };

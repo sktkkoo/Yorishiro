@@ -96,7 +96,7 @@ vi.mock("../three-runtime", () => ({
 }));
 
 import simpleRoomDefinition from "../../../bundled-packs/scenes/simple-room/scene";
-import { controlFolder, useCharminalControls } from "../../sdk/controls";
+import { controlFolder, useYorishiroControls } from "../../sdk/controls";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
 import { getActiveSceneLevaStore } from "./scene-pack-leva-store";
@@ -223,7 +223,7 @@ describe("R3fRuntimeRoot", () => {
   it("mounts scene pack leva controls into the active scene store", () => {
     const registry = getMockRegistry();
     const SceneWithLights = () => {
-      useCharminalControls("lights", () => ({
+      useYorishiroControls("lights", () => ({
         directionalColor: { value: "#ff8800", label: "light color" },
       }));
       return null;
@@ -248,13 +248,13 @@ describe("R3fRuntimeRoot", () => {
   it("does not reuse shared leva paths across scene packs", () => {
     const registry = getMockRegistry();
     const FirstScene = () => {
-      useCharminalControls("lights", () => ({
+      useYorishiroControls("lights", () => ({
         ambientIntensity: { value: 0.05, label: "ambient" },
       }));
       return null;
     };
     const SecondScene = () => {
-      useCharminalControls("lights", () => ({
+      useYorishiroControls("lights", () => ({
         ambientIntensity: { value: 0.4, label: "ambient" },
       }));
       return null;
@@ -276,15 +276,15 @@ describe("R3fRuntimeRoot", () => {
   it("registers multiple sdk controls folders into the active scene store", () => {
     const registry = getMockRegistry();
     const SceneWithSdkControls = () => {
-      useCharminalControls("lights", () => ({
+      useYorishiroControls("lights", () => ({
         directionalIntensity: { value: 0.8, min: 0, max: 3 },
       }));
-      useCharminalControls("post effects", () => ({
+      useYorishiroControls("post effects", () => ({
         bloom: controlFolder({
           bloomIntensity: { value: 1, min: 0, max: 3 },
         }),
       }));
-      useCharminalControls("post effects", () => ({
+      useYorishiroControls("post effects", () => ({
         vignette: controlFolder({
           vignetteDarkness: { value: 0.8, min: 0, max: 2 },
         }),

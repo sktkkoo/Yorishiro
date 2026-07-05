@@ -1,4 +1,4 @@
-import type { PersonaDefinition } from "@charminal/sdk";
+import type { PersonaDefinition } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { PersonaEntry } from "./types";
 import {

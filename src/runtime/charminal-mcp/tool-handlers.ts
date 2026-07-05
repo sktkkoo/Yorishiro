@@ -14,7 +14,7 @@ import type {
   MotionHandle,
   MotionSnapshot,
   SpaceEffectRequest,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";

@@ -10,8 +10,8 @@
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
  */
 
-import type { EffectDefinition, PersonaDefinition } from "@charminal/sdk";
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import type { EffectDefinition, PersonaDefinition } from "@yorishiro/sdk";
 import type { SubsystemLog } from "../../core/dev-log";
 import {
   validateAmbientUiPackDefinition,

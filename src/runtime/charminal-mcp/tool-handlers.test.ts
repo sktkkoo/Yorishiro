@@ -5,7 +5,7 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
-import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@charminal/sdk";
+import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@yorishiro/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TweenManager } from "../../core/tween/tween-manager";

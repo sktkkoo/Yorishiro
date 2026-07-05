@@ -5,7 +5,7 @@ import type {
   AttentionSnapshot,
   AttentionTarget,
   Disposable,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import React, { act } from "react";
 import ReactDOM from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";

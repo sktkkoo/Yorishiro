@@ -1,5 +1,5 @@
-import type { Disposable } from "@charminal/sdk";
 import type { IMarker } from "@xterm/xterm";
+import type { Disposable } from "@yorishiro/sdk";
 
 export type TerminalCommandRunStatus = "running" | "succeeded" | "failed" | "unknown";
 export type TerminalCommandRunCompletedBy = "osc133" | "pty-exit" | "session-dispose";

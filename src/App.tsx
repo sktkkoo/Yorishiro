@@ -1,3 +1,6 @@
+import * as ReactThreeDrei from "@react-three/drei";
+import * as ReactThreeFiber from "@react-three/fiber";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   AmbientAudioAPI,
   AmbientAudioState,
@@ -13,10 +16,7 @@ import type {
   UiSceneLayerPatch,
   UiSceneLayerTarget,
   UiThreeAPI,
-} from "@charminal/sdk";
-import * as ReactThreeDrei from "@react-three/drei";
-import * as ReactThreeFiber from "@react-three/fiber";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+} from "@yorishiro/sdk";
 import { LevaPanel } from "leva";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -43,8 +43,6 @@ import {
   attentionAuraManifest,
   cameraMoveManifest,
   cameraMovePack,
-  charminalSettingsManifest,
-  charminalSettingsPack,
   claiEnManifest,
   claiEnPack,
   claiJaManifest,
@@ -74,6 +72,8 @@ import {
   textPhysicsPack,
   theaterManifest,
   theaterPack,
+  yorishiroSettingsManifest,
+  yorishiroSettingsPack,
 } from "./bundled-packs";
 import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
@@ -265,10 +265,10 @@ import {
   startSessionAttentionProducer,
   startWorkspaceAttentionPresenceBridge,
 } from "./runtime/workspace-attention";
-import * as CharminalControls from "./sdk/controls";
+import * as YorishiroControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
-import * as CharminalR3f from "./sdk/r3f";
+import * as YorishiroR3f from "./sdk/r3f";
 import type { ScenePackDefinition, ScenePackManifest } from "./sdk/scene-pack";
 import Sidebar from "./sidebar";
 import TitleBar from "./title-bar";
@@ -608,24 +608,24 @@ function removeSceneLayerOverride(
 }
 
 declare global {
-  var __CHARMINAL_REACT__: typeof React | undefined;
-  var __CHARMINAL_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
-  var __CHARMINAL_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
-  var __CHARMINAL_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
-  var __CHARMINAL_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
-  var __CHARMINAL_THREE__: typeof THREE | undefined;
-  var __CHARMINAL_SDK_CONTROLS__: typeof CharminalControls | undefined;
-  var __CHARMINAL_SDK_R3F__: typeof CharminalR3f | undefined;
+  var __YORISHIRO_REACT__: typeof React | undefined;
+  var __YORISHIRO_REACT_DOM_CLIENT__: typeof ReactDomClient | undefined;
+  var __YORISHIRO_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
+  var __YORISHIRO_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
+  var __YORISHIRO_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __YORISHIRO_THREE__: typeof THREE | undefined;
+  var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
+  var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
 }
 
-globalThis.__CHARMINAL_REACT__ = React;
-globalThis.__CHARMINAL_REACT_DOM_CLIENT__ = ReactDomClient;
-globalThis.__CHARMINAL_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
-globalThis.__CHARMINAL_REACT_THREE_DREI__ = ReactThreeDrei;
-globalThis.__CHARMINAL_REACT_THREE_FIBER__ = ReactThreeFiber;
-globalThis.__CHARMINAL_THREE__ = THREE;
-globalThis.__CHARMINAL_SDK_CONTROLS__ = CharminalControls;
-globalThis.__CHARMINAL_SDK_R3F__ = CharminalR3f;
+globalThis.__YORISHIRO_REACT__ = React;
+globalThis.__YORISHIRO_REACT_DOM_CLIENT__ = ReactDomClient;
+globalThis.__YORISHIRO_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
+globalThis.__YORISHIRO_REACT_THREE_DREI__ = ReactThreeDrei;
+globalThis.__YORISHIRO_REACT_THREE_FIBER__ = ReactThreeFiber;
+globalThis.__YORISHIRO_THREE__ = THREE;
+globalThis.__YORISHIRO_SDK_CONTROLS__ = YorishiroControls;
+globalThis.__YORISHIRO_SDK_R3F__ = YorishiroR3f;
 
 function fallbackSelectorForSurface(name: SurfaceName): string {
   switch (name) {
@@ -1212,19 +1212,19 @@ function App() {
       });
     }
 
-    // bundled charminal-settings UI pack。
+    // bundled yorishiro-settings UI pack。
     uiPackRegistry.register({
-      id: charminalSettingsPack.id,
+      id: yorishiroSettingsPack.id,
       origin: "bundled",
-      manifest: charminalSettingsManifest as UiPackManifest,
+      manifest: yorishiroSettingsManifest as UiPackManifest,
       pack: {
-        layout: charminalSettingsPack.layout,
-        mount: charminalSettingsPack.mount,
+        layout: yorishiroSettingsPack.layout,
+        mount: yorishiroSettingsPack.mount,
       },
     });
     appLog.write({
       phase: "register",
-      note: `registered bundled UI pack '${charminalSettingsPack.id}'`,
+      note: `registered bundled UI pack '${yorishiroSettingsPack.id}'`,
     });
 
     // bundled immersive UI pack（chrome 隠し + キャラ全画面、terminal は背後に残る）。
@@ -2565,7 +2565,7 @@ function App() {
           abandonedFactoryManifest,
           mistyGrasslandsManifest,
           simpleRoomManifest,
-          charminalSettingsManifest,
+          yorishiroSettingsManifest,
           immersiveManifest,
           theaterManifest,
           abandonedMonitorManifest,
@@ -3774,9 +3774,9 @@ function App() {
     const subscribeHookSignal = (handler: (event: { name: string }) => void): Disposable => {
       const trigger = {
         id: "builtin:hook-signal-to-tool-attention",
-        match: (event: import("@charminal/sdk").DispatchEvent) => {
+        match: (event: import("@yorishiro/sdk").DispatchEvent) => {
           if (event.kind === "hook-signal") {
-            return { reaction: "__noop__" as import("@charminal/sdk").ReactionType };
+            return { reaction: "__noop__" as import("@yorishiro/sdk").ReactionType };
           }
           return null;
         },
@@ -3799,9 +3799,9 @@ function App() {
     ): Disposable => {
       const trigger = {
         id: "builtin:tool-activity-to-attention",
-        match: (event: import("@charminal/sdk").DispatchEvent) => {
+        match: (event: import("@yorishiro/sdk").DispatchEvent) => {
           if (event.kind === "tool-activity") {
-            return { reaction: "__noop__" as import("@charminal/sdk").ReactionType };
+            return { reaction: "__noop__" as import("@yorishiro/sdk").ReactionType };
           }
           return null;
         },
@@ -3953,9 +3953,9 @@ function App() {
       const target = resolveCloseTarget({ saved: detail?.target ?? null, availableIds });
       uiPackRegistry.setActiveUi(target);
     };
-    window.addEventListener("charminal-settings:close-requested", onCloseRequested);
+    window.addEventListener("yorishiro-settings:close-requested", onCloseRequested);
     return () => {
-      window.removeEventListener("charminal-settings:close-requested", onCloseRequested);
+      window.removeEventListener("yorishiro-settings:close-requested", onCloseRequested);
     };
   }, []);
 

@@ -1,4 +1,4 @@
-import type { AttentionRect } from "@charminal/sdk";
+import type { AttentionRect } from "@yorishiro/sdk";
 
 export type WorkspaceAttentionItemType =
   | "run-failed"

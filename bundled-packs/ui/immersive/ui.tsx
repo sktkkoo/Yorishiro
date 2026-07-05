@@ -22,7 +22,7 @@
  * Internal design-record: specs/2026-05-18-shell-named-surfaces-design.md §5-P3
  */
 
-import type { Disposable, UiContext, UiPackDefinition } from "@charminal/sdk";
+import type { Disposable, UiContext, UiPackDefinition } from "@yorishiro/sdk";
 
 const immersive: UiPackDefinition = {
   id: "immersive",

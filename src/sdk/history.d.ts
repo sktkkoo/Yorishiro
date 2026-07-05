@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/history
+ * @yorishiro/sdk/history
  *
  * Pack rollback の history API。~/.charminal/.charminal-snapshots/ の git2 snapshot を
  * 列挙・作成・復元する。AmenityContext 経由で amenity pack 作者に、MCP

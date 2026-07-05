@@ -9,7 +9,7 @@
  *   「Factory default の決め方」
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 import attentionAuraPack from "../../../bundled-packs/ambient-ui/attention-aura/ui";
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 

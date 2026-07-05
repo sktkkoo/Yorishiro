@@ -1,5 +1,5 @@
 /**
- * @charminal/sdk/effect
+ * @yorishiro/sdk/effect
  *
  * Effect Pack の定義型。
  * effects/effect.ts では `satisfies EffectDefinition` を使って export default する。
@@ -29,7 +29,7 @@ export type EffectRunner<TOptions = unknown> = (
  *
  * 例（generic な骨格 — pack ごとに id / options / 数値は置き換えること）：
  * ```typescript
- * import type { EffectDefinition, EffectContext } from '@charminal/sdk';
+ * import type { EffectDefinition, EffectContext } from '@yorishiro/sdk';
  *
  * interface ExampleParticleOptions {
  *   origin: { x: number; y: number };

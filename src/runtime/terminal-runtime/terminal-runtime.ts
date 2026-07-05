@@ -1,8 +1,8 @@
-import type { Disposable, TerminalCellData } from "@charminal/sdk";
 import { Channel } from "@tauri-apps/api/core";
 import { FitAddon } from "@xterm/addon-fit";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
+import type { Disposable, TerminalCellData } from "@yorishiro/sdk";
 import {
   type SpawnSpec,
   sessionAttach,

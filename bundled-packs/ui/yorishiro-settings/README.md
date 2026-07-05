@@ -1,11 +1,11 @@
-# charminal-settings UI Pack
+# yorishiro-settings UI Pack
 
-Charminal の設定画面。`activeUi` を `"charminal-settings"` に一時 swap することで開き、閉じる時に直前の `activeUi` を復元する。
+Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap することで開き、閉じる時に直前の `activeUi` を復元する。
 
 ## 開く動線
 
 - chrome（`src/sidebar.tsx`）の歯車 icon button
-- user が init.js で `setActiveUi("charminal-settings")` を呼ぶ自由経路
+- user が init.js で `setActiveUi("yorishiro-settings")` を呼ぶ自由経路
 
 ## 閉じる動線
 
@@ -20,11 +20,11 @@ Charminal の設定画面。`activeUi` を `"charminal-settings"` に一時 swap
 
 ## Fork
 
-`~/.charminal/packs/charminal-settings/` 配下に同 id の pack を置けば、bundled を override する形で改変可能。`feedback_pack_override_pattern` 参照。
+`~/.yorishiro/packs/yorishiro-settings/` 配下に同 id の pack を置けば、bundled を override する形で改変可能。`feedback_pack_override_pattern` 参照。
 
 ## Known limitations (user fork)
 
-このバージョンは bundled として動くことを前提に書かれており、`~/.charminal/packs/` に置く user fork で完全再現するには SDK 拡張が必要です。具体的には：
+このバージョンは bundled として動くことを前提に書かれており、`~/.yorishiro/packs/` に置く user fork で完全再現するには SDK 拡張が必要です。具体的には：
 
 - ショートカット pre-fill は `ctx.app.insertFixedPrompt("shortcut")`（host 所有の固定プロンプトを key で指す SDK verb）経由。pack は文字列を渡さず、`src/bindings/tauri-commands` の直 import は持たない。任意テキストを terminal に書く API は意図的に存在しない（設計境界: `docs/decisions/input-prefill-boundary.md`）
 - VRM file picker (`@tauri-apps/plugin-dialog` + `import_vrm`) を bundled で直接呼んでいる

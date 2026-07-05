@@ -1,4 +1,4 @@
-import type { Trigger } from "@charminal/sdk";
+import type { Trigger } from "@yorishiro/sdk";
 import { afterEach, describe, expect, it } from "vitest";
 import { _clearForTest as _clearHotData } from "../hot-data/hot-data";
 import { type Disposable, getModuleRegistry, ModuleRegistry } from "./module-registry";

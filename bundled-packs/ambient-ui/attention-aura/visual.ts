@@ -16,7 +16,7 @@
  * - focused-dom: SDK AttentionTargetKind に追加済み、producer も復元済み（B6）。
  */
 
-import type { AttentionTarget, AttentionTargetKind } from "@charminal/sdk";
+import type { AttentionTarget, AttentionTargetKind } from "@yorishiro/sdk";
 
 /** kind ごとの base opacity。v1 から復元。 */
 const TARGET_BASE_OPACITY: Record<AttentionTargetKind, number> = {

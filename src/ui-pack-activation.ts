@@ -1,4 +1,4 @@
-import type { UiLayout } from "@charminal/sdk";
+import type { UiLayout } from "@yorishiro/sdk";
 import type { PresenceLevel } from "./runtime/presence-intensity";
 
 export interface HostPresenceResumeInput {

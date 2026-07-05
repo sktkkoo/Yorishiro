@@ -1,4 +1,4 @@
-import type { LoopPhase } from "@charminal/sdk";
+import type { LoopPhase } from "@yorishiro/sdk";
 
 export interface LoopRun {
   readonly id: number;

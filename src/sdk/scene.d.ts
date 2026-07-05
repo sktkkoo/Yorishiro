@@ -1,11 +1,11 @@
 /**
- * @charminal/sdk/scene
+ * @yorishiro/sdk/scene
  *
  * Scene の data model。SceneCompositor / ScenePackRegistry / pack author が
  * 共有する canonical な型。
  *
  * Phase 1 で `src/core/scene/types.ts` に置いていたものを Phase 2 で SDK に
- * 移す（pack author が `import type { SceneSpec } from '@charminal/sdk'` で
+ * 移す（pack author が `import type { SceneSpec } from '@yorishiro/sdk'` で
  * 参照する public API になるため）。
  *
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §4

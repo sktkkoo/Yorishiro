@@ -9,7 +9,7 @@
  * 新しい dispatch だけが残る。abort 時は即座に filter を解除する。
  */
 
-import type { EffectContext, EffectDefinition } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition } from "@yorishiro/sdk";
 
 interface DesaturateOptions {
   readonly durationMs: number;

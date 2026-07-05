@@ -19,7 +19,7 @@ import type {
   RendererAPI,
   TerminalCellData,
   Vec3,
-} from "@charminal/sdk";
+} from "@yorishiro/sdk";
 import { computeShakeOffset } from "./shake";
 
 /**

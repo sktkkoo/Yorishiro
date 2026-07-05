@@ -1,13 +1,16 @@
 /**
- * charminal-settings — Charminal の設定画面 bundled UI pack。
+ * yorishiro-settings — Yorishiro の設定画面 bundled UI pack。
  *
  * activeUi を一時 swap して開閉する。閉じる時は直前の activeUi を ui-state-store
  * から取って setActiveUi で復元する（実際の setActiveUi 呼び出しは App.tsx 側で
- * `charminal-settings:close-requested` CustomEvent を listen して実行する）。
+ * `yorishiro-settings:close-requested` CustomEvent を listen して実行する）。
  *
  * Internal design-record: specs/2026-04-25-settings-screen-design.md
  */
 
+import { getVersion } from "@tauri-apps/api/app";
+import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AppLanguage,
   Disposable,
@@ -18,10 +21,7 @@ import type {
   UiContext,
   UiHealthReport,
   UiPackDefinition,
-} from "@charminal/sdk";
-import { getVersion } from "@tauri-apps/api/app";
-import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
+} from "@yorishiro/sdk";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -55,7 +55,7 @@ import {
 import type { SnapshotEntry } from "../../../src/sdk/history";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
-export const SETTINGS_PACK_ID = "charminal-settings";
+export const SETTINGS_PACK_ID = "yorishiro-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
 
 /** 公開リポジトリ。Credits 画面の「View on GitHub」リンク先。 */
@@ -117,15 +117,15 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
     await args.write(args.next);
     if (typeof window !== "undefined") {
       window.dispatchEvent(
-        new CustomEvent("charminal-settings:config-changed", {
+        new CustomEvent("yorishiro-settings:config-changed", {
           detail: { field: args.field },
         }),
       );
     }
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    console.error(`[charminal-settings] ${args.field} write failed:`, reason);
-    args.emitEvent("charminal-settings:write-failed", { field: args.field, reason });
+    console.error(`[yorishiro-settings] ${args.field} write failed:`, reason);
+    args.emitEvent("yorishiro-settings:write-failed", { field: args.field, reason });
     args.setLocal(args.prev);
   }
 }
@@ -838,7 +838,7 @@ function HealthDiagnostics({
       const reason = err instanceof Error ? err.message : String(err);
       setError(reason);
       setOpen(true);
-      ctx.emitEvent("charminal-settings:write-failed", { field: "health-report", reason });
+      ctx.emitEvent("yorishiro-settings:write-failed", { field: "health-report", reason });
     } finally {
       setLoading(false);
     }
@@ -1277,7 +1277,7 @@ function PackWorkbench({
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       setError(reason);
-      ctx.emitEvent("charminal-settings:write-failed", { field: "pack-workbench", reason });
+      ctx.emitEvent("yorishiro-settings:write-failed", { field: "pack-workbench", reason });
     } finally {
       setLoading(false);
     }
@@ -1322,8 +1322,8 @@ function PackWorkbench({
         void refreshPacks();
       }
     };
-    window.addEventListener("charminal-settings:config-changed", onConfigChanged);
-    return () => window.removeEventListener("charminal-settings:config-changed", onConfigChanged);
+    window.addEventListener("yorishiro-settings:config-changed", onConfigChanged);
+    return () => window.removeEventListener("yorishiro-settings:config-changed", onConfigChanged);
   }, [refreshPacks]);
 
   useEffect(() => {
@@ -1343,7 +1343,7 @@ function PackWorkbench({
         if (aborted) return;
         const reason = err instanceof Error ? err.message : String(err);
         setError(reason);
-        ctx.emitEvent("charminal-settings:write-failed", { field: "pack-diagnose", reason });
+        ctx.emitEvent("yorishiro-settings:write-failed", { field: "pack-diagnose", reason });
       });
     return () => {
       aborted = true;
@@ -1367,7 +1367,7 @@ function PackWorkbench({
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       setError(reason);
-      ctx.emitEvent("charminal-settings:write-failed", { field: `pack-${action}`, reason });
+      ctx.emitEvent("yorishiro-settings:write-failed", { field: `pack-${action}`, reason });
     } finally {
       setBusy(null);
     }
@@ -1396,7 +1396,7 @@ function PackWorkbench({
       setRepairPromptInserted(false);
       const reason = err instanceof Error ? err.message : String(err);
       setError(reason);
-      ctx.emitEvent("charminal-settings:write-failed", { field: "pack-repair-prompt", reason });
+      ctx.emitEvent("yorishiro-settings:write-failed", { field: "pack-repair-prompt", reason });
     }
   };
 
@@ -2257,8 +2257,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setVrmName(dest.split("/").pop() ?? dest);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      console.error("[charminal-settings] vrm load failed:", reason);
-      ctx.emitEvent("charminal-settings:write-failed", { field: "vrm", reason });
+      console.error("[yorishiro-settings] vrm load failed:", reason);
+      ctx.emitEvent("yorishiro-settings:write-failed", { field: "vrm", reason });
     }
   };
 
@@ -2268,7 +2268,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     const savedStr = typeof saved === "string" ? saved : null;
     const target = savedStr === SETTINGS_PACK_ID ? null : savedStr;
     window.dispatchEvent(
-      new CustomEvent("charminal-settings:close-requested", {
+      new CustomEvent("yorishiro-settings:close-requested", {
         detail: { target },
       }),
     );
@@ -2287,7 +2287,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       await ctx.app.insertFixedPrompt(key);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
-      ctx.emitEvent("charminal-settings:write-failed", {
+      ctx.emitEvent("yorishiro-settings:write-failed", {
         field: `fixed-prompt-${key}`,
         reason,
       });

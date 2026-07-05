@@ -1,4 +1,4 @@
-import type { DispatchEvent, SyntheticEvent } from "@charminal/sdk";
+import type { DispatchEvent, SyntheticEvent } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import {

@@ -22,7 +22,7 @@
  * - `burstDurationMs`   : 各発の durationMs（default 2400）
  */
 
-import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, Vec2 } from "@yorishiro/sdk";
 import fireworks from "../fireworks/effect";
 
 interface FireworksVolleyOptions {

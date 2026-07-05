@@ -5,7 +5,7 @@
  * system.exec は Tauri command 経由で実体化する。
  */
 
-import type { AmenityContext, ExecOptions, HistoryAPI, LoopPhase } from "@charminal/sdk";
+import type { AmenityContext, ExecOptions, HistoryAPI, LoopPhase } from "@yorishiro/sdk";
 import musicShelfPack from "../../../bundled-packs/amenities/music-shelf/amenity";
 import { systemExec } from "../../bindings/tauri-commands";
 import type { TweenManager } from "../../core/tween/tween-manager";

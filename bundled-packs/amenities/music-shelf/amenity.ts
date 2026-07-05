@@ -13,7 +13,7 @@
  *   4. dispose での cleanup
  */
 
-import type { AmenityContext, AmenityHandle, AmenityPackDefinition } from "@charminal/sdk";
+import type { AmenityContext, AmenityHandle, AmenityPackDefinition } from "@yorishiro/sdk";
 
 // ─── osascript helper ───────────────────────────────────
 

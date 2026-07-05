@@ -1,4 +1,4 @@
-import type { AttentionTarget } from "@charminal/sdk";
+import type { AttentionTarget } from "@yorishiro/sdk";
 import { describe, expect, it } from "vitest";
 import { auraVisualForTarget, targetOpacity } from "./visual";
 

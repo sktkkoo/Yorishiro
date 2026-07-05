@@ -6,7 +6,7 @@
  * ガードにより dead code elimination される。
  */
 
-import type { ScenePackDefinition } from "@charminal/sdk/scene-pack";
+import type { ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
 
 export async function reregisterBundledScene(newDef: ScenePackDefinition): Promise<void> {
   const { getSceneRegistry } = await import("../../src/runtime/scene-pack-registry");

@@ -38,11 +38,11 @@ describe("buildTsxEntryUrl", () => {
 
 describe("isSupportedTsxHostImport", () => {
   it("allows host modules needed by scene.tsx R3F components", () => {
-    expect(isSupportedTsxHostImport("@charminal/sdk/r3f")).toBe(true);
+    expect(isSupportedTsxHostImport("@yorishiro/sdk/r3f")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/fiber")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/drei")).toBe(true);
     expect(isSupportedTsxHostImport("three")).toBe(true);
-    expect(isSupportedTsxHostImport("@charminal/sdk/controls")).toBe(true);
+    expect(isSupportedTsxHostImport("@yorishiro/sdk/controls")).toBe(true);
   });
 
   it("keeps unrelated imports unsupported", () => {

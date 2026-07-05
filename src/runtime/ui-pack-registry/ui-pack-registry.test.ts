@@ -1,4 +1,4 @@
-import type { Disposable, UiContext } from "@charminal/sdk";
+import type { Disposable, UiContext } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import type { UiPackEntry } from "./types";
 import { createUiPackRegistry } from "./ui-pack-registry";

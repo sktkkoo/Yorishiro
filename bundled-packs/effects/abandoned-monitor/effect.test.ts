@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { Disposable, EffectContext } from "@charminal/sdk";
+import type { Disposable, EffectContext } from "@yorishiro/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import abandonedMonitor, { DEFAULT_LINES, DEFAULTS, GLITCH_CHARS } from "./effect";
 

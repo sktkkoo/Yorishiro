@@ -12,7 +12,7 @@
  * Internal design-record: 2026-04-21-ui-pack-single-active.md（Plan 2 拡張）
  */
 
-import type { Disposable } from "@charminal/sdk";
+import type { Disposable } from "@yorishiro/sdk";
 
 export type ClaimKind = "camera" | "expression" | "animation";
 

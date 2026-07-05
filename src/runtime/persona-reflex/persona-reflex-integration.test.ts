@@ -11,7 +11,7 @@
  * Internal design-record: 2026-04-19-persona-registry-unification.md Unit 5
  */
 
-import type { PersonaDefinition, ReactionType, Trigger, UserInputEvent } from "@charminal/sdk";
+import type { PersonaDefinition, ReactionType, Trigger, UserInputEvent } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { Time } from "../../core/time";
 import type { PersonaPackManifest } from "../../sdk/persona-pack";

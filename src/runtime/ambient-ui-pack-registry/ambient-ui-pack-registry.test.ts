@@ -1,4 +1,4 @@
-import type { AmbientUiPackDefinition } from "@charminal/sdk";
+import type { AmbientUiPackDefinition } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { createAmbientUiPackRegistry } from "./ambient-ui-pack-registry";
 import type { AmbientUiPackEntry } from "./types";

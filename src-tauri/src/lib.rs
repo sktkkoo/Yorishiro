@@ -1213,9 +1213,9 @@ fn is_cross_file_module_line(line: &str) -> bool {
 fn build_bundled_sdk_dts() -> String {
     let mut out = String::from(
         "/**\n\
-         * Charminal SDK type hints — auto-bundled from src/sdk/*.d.ts at build time.\n\
+         * Yorishiro SDK type hints — auto-bundled from src/sdk/*.d.ts at build time.\n\
          *\n\
-         * Charminal overwrites this file on every startup; do not edit it directly.\n\
+         * Yorishiro overwrites this file on every startup; do not edit it directly.\n\
          * Pack sources can reference these types for IDE hints even when written in\n\
          * plain JavaScript (via JSDoc `@typedef` / `@type` annotations).\n\
          */\n\n",
@@ -1248,9 +1248,9 @@ fn build_bundled_sdk_dts() -> String {
 fn build_bundled_sdk_guide() -> String {
     let mut out = String::from(
         "<!--\n\
-         Charminal SDK guide — auto-bundled from src/sdk/README.md at build time.\n\
-         Charminal overwrites this file on every startup; do not edit it directly.\n\
-         Relative links in this document point at the Charminal source tree and may\n\
+         Yorishiro SDK guide — auto-bundled from src/sdk/README.md at build time.\n\
+         Yorishiro overwrites this file on every startup; do not edit it directly.\n\
+         Relative links in this document point at the Yorishiro source tree and may\n\
          not resolve from ~/.yorishiro/.\n\
          -->\n\n",
     );
@@ -1281,7 +1281,7 @@ fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
 /// Idempotent.
 ///
 /// sdk.d.ts（型の shape）と sdk-guide.md（pack 作者向け narrative）は user の IDE /
-/// 住人 AI が Charminal SDK を知るためのヒントファイル。毎起動で overwrite する
+/// 住人 AI が Yorishiro SDK を知るためのヒントファイル。毎起動で overwrite する
 /// （user は編集対象ではない）。init.js は逆に、無ければ雛形を seed するが存在すれば
 /// 触らない。
 #[tauri::command]
@@ -2377,7 +2377,7 @@ mod sdk_bundle_tests {
     fn guide_contains_narrative_and_do_not_edit_header() {
         let guide = super::build_bundled_sdk_guide();
         // src/sdk/README.md の narrative がそのまま載っている
-        assert!(guide.contains("@charminal/sdk"));
+        assert!(guide.contains("@yorishiro/sdk"));
         assert!(guide.contains("twin-trigger co-emission"));
         // 自動生成・編集禁止の注記が markdown コメントとして先頭に付く
         assert!(guide.starts_with("<!--"));

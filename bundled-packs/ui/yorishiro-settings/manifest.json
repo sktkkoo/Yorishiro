@@ -1,11 +1,11 @@
 {
   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
-  "id": "charminal-settings",
-  "name": "Charminal Settings",
+  "id": "yorishiro-settings",
+  "name": "Yorishiro Settings",
   "type": "ui",
   "version": "0.1.0",
   "charminalVersion": "^0.1.0",
-  "author": "Charminal team",
+  "author": "Yorishiro team",
   "description": "Settings panel for avatar, persona, scene, terminal agent, and shortcuts.",
   "entry": "ui.tsx"
 }

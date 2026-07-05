@@ -1,4 +1,4 @@
-import type { EffectContext, EffectDefinition, RendererAPI } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, RendererAPI } from "@yorishiro/sdk";
 import { describe, expect, it, vi } from "vitest";
 import { Time } from "../time";
 import { EffectDispatcher } from "./effect-dispatcher";
