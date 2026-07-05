@@ -220,6 +220,39 @@ describe("startTerminalAttentionProducer", () => {
     }
   });
 
+  it("emit する rect は runtime の再利用バッファを参照せず複製する", () => {
+    const { runScan, restore, scanOptions } = makeScanScheduler();
+    const timers = makeTimerStub();
+    try {
+      const attention = makeFakeAttention();
+      const pooledRect = { x: 10, y: 100, width: 200, height: 16 };
+      const terminal = makeFakeTerminal([{ text: "Error: build failed", rect: pooledRect }]);
+      const dispose = startTerminalAttentionProducer({
+        attention,
+        terminal,
+        setTimeout: timers.setTimeoutFn,
+        clearTimeout: timers.clearTimeoutFn,
+        ...scanOptions,
+      });
+
+      runScan();
+      const call = attention.setSourceTarget.mock.calls.find(
+        (c) => c[0] === "terminal:diagnostic" && c[1] !== null,
+      );
+      expect(call?.[1].rect).not.toBe(pooledRect);
+      expect(call?.[1].rect).toEqual(pooledRect);
+
+      // getViewportLineRects() の pool が次 scan で in-place 上書きされても
+      // 発行済み target の rect は変わらない
+      pooledRect.y = 999;
+      expect(call?.[1].rect.y).toBe(100);
+
+      dispose.dispose();
+    } finally {
+      restore();
+    }
+  });
+
   it("recent-output 行（意味マーカーなし）は emit しない", () => {
     const { runScan, restore, scanOptions } = makeScanScheduler();
     try {

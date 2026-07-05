@@ -197,7 +197,9 @@ function emitLine(
   attention.setSourceTarget(source, {
     kind: "terminal-region",
     source,
-    rect: line.rect,
+    // getViewportLineRects() の rect は次回 scan で in-place 上書きされる
+    // 再利用バッファなので、target に保持する分は複製する。
+    rect: { x: line.rect.x, y: line.rect.y, width: line.rect.width, height: line.rect.height },
     confidence: CONFIDENCE,
     priority,
     timestamp: performance.now(),

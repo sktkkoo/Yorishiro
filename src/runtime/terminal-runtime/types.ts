@@ -196,6 +196,9 @@ export interface TerminalRuntime {
   /**
    * User が最近キー入力している間だけ、xterm の入力カーソル中心を
    * viewport client 座標で返す。入力中でない / terminal が hidden なら null。
+   *
+   * 返り値は runtime 所有の再利用バッファで、次回呼び出しで in-place
+   * 上書きされる。呼び出しをまたいで保持するなら複製すること。
    */
   getInputCursorClientPosition(): TerminalCursorClientPosition | null;
 
@@ -248,6 +251,10 @@ export interface TerminalRuntime {
    * 行は除外。viewport scroll や PTY 出力後に producer が呼ぶ。
    *
    * 意味分類はここではしない（producer 側の責務）。
+   *
+   * 返り値の array と各 entry / rect は runtime 所有の再利用バッファで、
+   * 次回呼び出しで in-place 上書きされる。呼び出しをまたいで保持するなら
+   * 複製すること。
    */
   getViewportLineRects(): ReadonlyArray<TerminalLineRect>;
 
