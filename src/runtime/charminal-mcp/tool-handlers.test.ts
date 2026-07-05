@@ -13,6 +13,7 @@ import type { SceneSpec } from "../../sdk/scene";
 import type { ScenePackManifest } from "../../sdk/scene-pack";
 import { AmenityPackRegistryImpl } from "../amenity-pack-registry";
 import type { ManualCueResult } from "../attention-light-cue/cue-store";
+import { applyCurrentProjectSceneSelection } from "../project-context/project-context";
 import { ScenePackRegistryImpl } from "../scene-pack-registry/scene-pack-registry";
 import { createUiPackRegistry } from "../ui-pack-registry";
 import { createUiStateStore } from "../ui-state-store";
@@ -2186,6 +2187,26 @@ describe("createSceneActivateHandler", () => {
       setActiveScene: (id) => registry.setActiveScene(id),
       getActiveSceneId: () => registry.getActiveSceneId(),
     });
+  const makeProjectAwareHandler = (
+    initialConfig: CharminalConfig,
+    projectRoot: string | null,
+  ): {
+    readonly handler: ReturnType<typeof createSceneActivateHandler>;
+    readonly registry: ScenePackRegistryImpl;
+    readonly getConfig: () => CharminalConfig;
+  } => {
+    const registry = makeRegistry();
+    let config = initialConfig;
+    const handler = createSceneActivateHandler({
+      setActiveScene: async (id) => {
+        const updated = applyCurrentProjectSceneSelection(config, projectRoot, id);
+        config = updated.config;
+        registry.setActiveScene(updated.activeScene);
+      },
+      getActiveSceneId: () => registry.getActiveSceneId(),
+    });
+    return { handler, registry, getConfig: () => config };
+  };
 
   it("switches active scene by id", async () => {
     const registry = makeRegistry();
@@ -2195,14 +2216,46 @@ describe("createSceneActivateHandler", () => {
     expect(registry.getActiveSceneId()).toBe("s2");
   });
 
-  it("clears active when id is null", async () => {
-    const registry = makeRegistry();
-    const handler = makeHandler(registry);
-    // initial active is "s1" (alphabetical fallback)
-    expect(registry.getActiveSceneId()).toBe("s1");
+  it("clears project override and falls back to global activeScene when id is null", async () => {
+    const { handler, registry, getConfig } = makeProjectAwareHandler(
+      {
+        ...EMPTY_CONFIG,
+        activeScene: "s2",
+        sceneByProject: { "/repo/a": "s1" },
+      },
+      "/repo/a",
+    );
+    registry.setActiveScene("s1");
+
     const result = await handler({ id: null });
-    // setActive(null) → fallback re-applies → alphabetical "s1"
+
+    expect(result.active).toBe("s2");
+    expect(registry.getActiveSceneId()).toBe("s2");
+    expect(getConfig()).toMatchObject({
+      activeScene: "s2",
+      sceneByProject: {},
+    });
+  });
+
+  it("clears project override and falls back to bundled default when id is null and no global scene is set", async () => {
+    const { handler, registry, getConfig } = makeProjectAwareHandler(
+      {
+        ...EMPTY_CONFIG,
+        activeScene: null,
+        sceneByProject: { "/repo/a": "s2" },
+      },
+      "/repo/a",
+    );
+    registry.setActiveScene("s2");
+
+    const result = await handler({ id: null });
+
     expect(result.active).toBe("s1");
+    expect(registry.getActiveSceneId()).toBe("s1");
+    expect(getConfig()).toMatchObject({
+      activeScene: null,
+      sceneByProject: {},
+    });
   });
 
   it("rejects empty string id", async () => {

@@ -266,8 +266,8 @@ pub struct AppScreenshotRequest {}
 /// `scene_activate` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SceneActivateRequest {
-    /// Pack id（null で current project override を clear）。current project が解決済みなら
-    /// sceneByProject、未解決なら activeScene に永続化する。
+    /// Pack id。null は current project override を削除し、global activeScene があれば
+    /// そこへ、なければ bundled default へ fallback する。
     pub id: Option<String>,
 }
 
@@ -913,7 +913,7 @@ impl Charminal {
 
     /// scene pack の active を切り替え、current project が解決済みなら sceneByProject に永続化する。
     #[tool(
-        description = "Switch the active scene pack and persist the choice. If the current project root is resolved, writes config.json sceneByProject for that project; otherwise writes global activeScene. Pass null id to clear. Use list_packs to discover available scene pack ids."
+        description = "Switch the active scene pack and persist the choice. If the current project root is resolved, writes config.json sceneByProject for that project; otherwise writes global activeScene. Pass null id to clear the current project override: Charminal then falls back to global activeScene, or to the bundled default when no global activeScene is set. Use list_packs to discover available scene pack ids."
     )]
     async fn scene_activate(
         &self,

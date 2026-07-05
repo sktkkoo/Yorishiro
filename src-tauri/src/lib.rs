@@ -500,16 +500,60 @@ fn canonical_or_self(path: &Path) -> PathBuf {
     path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
 }
 
-fn main_workdir_from_worktree_git_dir(git_dir: &Path) -> Option<PathBuf> {
-    let worktrees_dir = git_dir.parent()?;
-    if worktrees_dir.file_name() != Some(OsStr::new("worktrees")) {
+fn gitdir_from_file(git_file: &Path) -> Option<PathBuf> {
+    let raw = std::fs::read_to_string(git_file).ok()?;
+    let path = raw.trim().strip_prefix("gitdir:")?.trim();
+    if path.is_empty() {
         return None;
     }
-    let common_git_dir = worktrees_dir.parent()?;
-    if common_git_dir.file_name() != Some(OsStr::new(".git")) {
+    let path = Path::new(path);
+    let git_dir = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        git_file.parent()?.join(path)
+    };
+    Some(canonical_or_self(&git_dir))
+}
+
+fn sibling_workdir_pointing_to_git_dir(git_dir: &Path) -> Option<PathBuf> {
+    let parent = git_dir.parent()?;
+    let canonical_git_dir = canonical_or_self(git_dir);
+    for entry in std::fs::read_dir(parent).ok()? {
+        let path = entry.ok()?.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let git_file = path.join(".git");
+        if !git_file.is_file() {
+            continue;
+        }
+        if gitdir_from_file(&git_file).as_ref() == Some(&canonical_git_dir) {
+            return Some(canonical_or_self(&path));
+        }
+    }
+    None
+}
+
+fn main_workdir_from_worktree_repo(repo: &git2::Repository) -> Option<PathBuf> {
+    let raw = std::fs::read_to_string(repo.path().join("commondir")).ok()?;
+    let path = Path::new(raw.trim());
+    if path.as_os_str().is_empty() {
         return None;
     }
-    common_git_dir.parent().map(|p| p.to_path_buf())
+    // git2 0.19 には Repository::commondir wrapper が無いため、linked worktree の
+    // commondir file を使って common git dir を解決する。これは `.git` という directory
+    // 名には依存しない。
+    let common_git_dir = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        repo.path().join(path)
+    };
+    let common_git_dir = canonical_or_self(&common_git_dir);
+    if let Some(workdir) = sibling_workdir_pointing_to_git_dir(&common_git_dir) {
+        return Some(workdir);
+    }
+    let main_repo = git2::Repository::open(common_git_dir).ok()?;
+    main_repo.workdir().map(canonical_or_self)
 }
 
 fn resolve_project_root_impl(cwd: &Path) -> Result<PathBuf, String> {
@@ -525,8 +569,8 @@ fn resolve_project_root_impl(cwd: &Path) -> Result<PathBuf, String> {
 
     // linked worktree は本体 repo の working directory に畳む。
     if repo.is_worktree() {
-        if let Some(main_workdir) = main_workdir_from_worktree_git_dir(repo.path()) {
-            return Ok(canonical_or_self(&main_workdir));
+        if let Some(main_workdir) = main_workdir_from_worktree_repo(&repo) {
+            return Ok(main_workdir);
         }
         return Ok(canonical_cwd);
     }
@@ -2509,6 +2553,7 @@ mod layer_scope_tests {
     use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::process::Command;
     use std::time::{Duration, Instant};
 
     fn fresh_dir(label: &str) -> PathBuf {
@@ -2583,6 +2628,48 @@ mod layer_scope_tests {
         path.canonicalize().expect("canonicalize path")
     }
 
+    fn run_git(cwd: &Path, args: &[&str]) {
+        let output = Command::new("git")
+            .current_dir(cwd)
+            .args(args)
+            .output()
+            .expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed\nstdout:\n{}\nstderr:\n{}",
+            args,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn run_git_at(args: &[&str]) {
+        let output = Command::new("git").args(args).output().expect("run git");
+        assert!(
+            output.status.success(),
+            "git {:?} failed\nstdout:\n{}\nstderr:\n{}",
+            args,
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn git_commit_all(cwd: &Path) {
+        run_git(cwd, &["add", "."]);
+        run_git(
+            cwd,
+            &[
+                "-c",
+                "user.name=charminal-test",
+                "-c",
+                "user.email=test@charminal.local",
+                "commit",
+                "-m",
+                "initial",
+            ],
+        );
+    }
+
     fn init_repo_with_commit(root: &Path) -> Repository {
         fs::create_dir_all(root).expect("create repo root");
         let repo = Repository::init(root).expect("init git repo");
@@ -2639,6 +2726,69 @@ mod layer_scope_tests {
         let resolved = resolve_project_root_impl(&nested).expect("resolve project root");
 
         assert_eq!(resolved, canonical(&main_root));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_project_root_collapses_separate_git_dir_worktree_to_main_workdir() {
+        let root = fresh_dir("project-root-separate-git-worktree");
+        let main_root = root.join("main");
+        let git_store = root.join("store.git");
+        let linked_root = root.join("linked");
+        fs::create_dir_all(&main_root).expect("create main root");
+        run_git(
+            &main_root,
+            &[
+                "init",
+                "--separate-git-dir",
+                git_store.to_str().expect("git store path"),
+            ],
+        );
+        fs::write(main_root.join("README.md"), "hello\n").expect("write readme");
+        git_commit_all(&main_root);
+        run_git(
+            &main_root,
+            &[
+                "worktree",
+                "add",
+                linked_root.to_str().expect("linked path"),
+            ],
+        );
+        let nested = linked_root.join("src");
+        fs::create_dir_all(&nested).expect("create nested");
+
+        let resolved = resolve_project_root_impl(&nested).expect("resolve project root");
+
+        assert_eq!(resolved, canonical(&main_root));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn resolve_project_root_degrades_bare_repo_worktree_to_worktree_cwd() {
+        let root = fresh_dir("project-root-bare-worktree");
+        let source_root = root.join("source");
+        let bare_root = root.join("bare.git");
+        let linked_root = root.join("linked");
+        init_repo_with_commit(&source_root);
+        run_git_at(&[
+            "clone",
+            "--bare",
+            source_root.to_str().expect("source path"),
+            bare_root.to_str().expect("bare path"),
+        ]);
+        run_git_at(&[
+            "--git-dir",
+            bare_root.to_str().expect("bare path"),
+            "worktree",
+            "add",
+            linked_root.to_str().expect("linked path"),
+        ]);
+        let nested = linked_root.join("src");
+        fs::create_dir_all(&nested).expect("create nested");
+
+        let resolved = resolve_project_root_impl(&nested).expect("resolve project root");
+
+        assert_eq!(resolved, canonical(&nested));
         let _ = fs::remove_dir_all(&root);
     }
 

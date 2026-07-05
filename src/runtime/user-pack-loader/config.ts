@@ -182,20 +182,16 @@ const toMotionIntensity = (value: unknown): number => {
   return Math.max(0, Math.min(3, value));
 };
 
-const toStringRecord = (value: unknown): Record<string, string> => {
+const toStringRecord = (
+  value: unknown,
+  options: { readonly omitEmpty?: boolean } = {},
+): Record<string, string> => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
   const result: Record<string, string> = {};
   for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === "string") result[k] = v;
-  }
-  return result;
-};
-
-const toNonEmptyStringRecord = (value: unknown): Record<string, string> => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
-  const result: Record<string, string> = {};
-  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof v === "string" && v.trim() !== "") result[k] = v;
+    if (typeof v !== "string") continue;
+    if (options.omitEmpty === true && v.trim() === "") continue;
+    result[k] = v;
   }
   return result;
 };
@@ -279,7 +275,7 @@ export function parseConfig(text: string): CharminalConfig {
     primaryPersona: toNullableString(obj.primaryPersona),
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
-    sceneByProject: toNonEmptyStringRecord(obj.sceneByProject),
+    sceneByProject: toStringRecord(obj.sceneByProject, { omitEmpty: true }),
     activeUi: toNullableString(obj.activeUi),
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
