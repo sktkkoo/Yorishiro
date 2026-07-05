@@ -2,7 +2,7 @@
   <img src="src-tauri/icons/icon.png" alt="Yorishiro" width="160" />
 </p>
 
-<h1 align="center">YORISHIRO</h1>
+<h1 align="center">Yorishiro</h1>
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Yorishiro?style=flat-square"></a>
