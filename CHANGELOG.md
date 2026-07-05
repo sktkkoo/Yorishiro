@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- Renamed the product from Charminal to Yorishiro, including app metadata, user data paths, command namespace, SDK package naming, and bundled docs.
+- Renamed the product from Charminal to Yorishiro, including app metadata, command namespace, SDK package naming, bundled docs, and automatic `~/.charminal/` → `~/.yorishiro/` data directory migration.
+- Release asset fetching now fails packaging builds when `YORISHIRO_ASSETS_REQUIRED=1` is set and any required asset target is missing.
 - Windows artifact builds are now manual-only: release tags no longer trigger the unsupported `Build Windows` workflow.
 
 ## 0.5.2 - 2026-07-04

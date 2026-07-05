@@ -53,11 +53,12 @@ async function exists(path) {
 async function syncFile({ label, from, to }) {
   if (!(await exists(from))) {
     console.warn(`  [skip] ${label}: source not found at ${from}`);
-    return;
+    return { label, copied: 0, skipped: true };
   }
   await mkdir(dirname(to), { recursive: true });
   await cp(from, to);
   console.log(`  [ok]   ${label}: → ${to}`);
+  return { label, copied: 1, skipped: false };
 }
 
 async function syncDir({ label, from, to }) {
@@ -85,11 +86,12 @@ async function syncDir({ label, from, to }) {
 
 async function main() {
   console.log(`fetch-assets: external store = ${externalRoot}`);
+  const required = Boolean(process.env.YORISHIRO_ASSETS_REQUIRED);
 
   if (!(await exists(externalRoot))) {
     // Release builds must ship the full asset set: fail closed so a missing /
     // mis-downloaded store never produces an incomplete bundle.
-    if (process.env.YORISHIRO_ASSETS_REQUIRED) {
+    if (required) {
       console.error(`
 fetch-assets: external asset store not found, but YORISHIRO_ASSETS_REQUIRED is set.
 
@@ -119,12 +121,28 @@ under the store and re-run:
     return;
   }
 
+  const results = [];
   for (const target of TARGETS) {
-    await syncDir(target);
+    results.push(await syncDir(target));
   }
 
   for (const ft of FILE_TARGETS) {
-    await syncFile(ft);
+    results.push(await syncFile(ft));
+  }
+
+  if (required) {
+    const missing = results.filter((result) => result.skipped || result.copied === 0);
+    if (missing.length > 0) {
+      console.error(`
+fetch-assets: required asset targets are missing:
+${missing.map((result) => `  - ${result.label}`).join("\n")}
+
+YORISHIRO_ASSETS_REQUIRED is set, so this packaging build must not continue
+with an incomplete asset bundle. Repack or point YORISHIRO_ASSETS_DIR at a
+complete Yorishiro-assets store and retry.
+`);
+      process.exit(1);
+    }
   }
 }
 

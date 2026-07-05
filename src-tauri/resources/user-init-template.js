@@ -58,26 +58,15 @@ let desaturated = false;
 // Toggle a UI pack from its *actual* active state rather than a local flag.
 // Keeps F1/F3/F4 in sync even when the pack is dismissed another way (e.g.
 // closing the fullscreen view with the title-bar sidebar button), so a single
-// keypress always re-opens it. ctx.getActiveUi may be absent on older Yorishiro
-// builds — fall back to null (always open).
+// keypress always re-opens it.
 // 実際の active UI からトグルする（ローカル真偽値ではなく）。タイトルバーの
 // サイドバーボタンなど別経路で閉じられても状態がズレないので、キー 1 回で必ず開き直せる。
-// 旧ビルドには ctx.getActiveUi が無いことがある——その場合は null（常に開く側）。
 const toggleUi = (ctx, id) => {
-  const active = ctx.getActiveUi ? ctx.getActiveUi() : null;
+  const active = ctx.getActiveUi();
   ctx.setActiveUi(active === id ? null : id);
 };
 
 export default (ctx) => {
-  // Older Yorishiro builds may not have ctx.registerShortcut. Fall back to a
-  // single capturing keydown listener so this template still works there.
-  // 旧ビルドには ctx.registerShortcut が無いことがあるため、その場合は従来の
-  // capturing keydown listener にフォールバックする。
-  if (typeof ctx.registerShortcut !== "function") {
-    legacyShortcuts(ctx);
-    return;
-  }
-
   ctx.registerShortcut({ code: "F1", repeat: false }, () =>
     toggleUi(ctx, "yorishiro-settings"),
   );
@@ -99,49 +88,4 @@ export default (ctx) => {
   ctx.registerShortcut({ code: "KeyP", meta: true, shift: true }, () =>
     ctx.emitEvent("clai:shoot", { source: "shortcut", key: "Cmd+Shift+P" }),
   );
-};
-
-// Fallback for older builds without ctx.registerShortcut. Pairs the listener
-// with ctx.onDispose when available so hot reload does not stack duplicates.
-const legacyShortcuts = (ctx) => {
-  const onKeydown = (e) => {
-    if (!e.repeat && e.code === "F1") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      toggleUi(ctx, "yorishiro-settings");
-    }
-    if (!e.repeat && e.code === "F3") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      toggleUi(ctx, "theater");
-    }
-    if (!e.repeat && e.code === "F4") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      toggleUi(ctx, "immersive");
-    }
-    if (e.metaKey && e.shiftKey && e.code === "KeyF") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      ctx.dispatchEffect({ kind: "fireworks-volley" });
-    }
-    if (e.metaKey && e.shiftKey && e.code === "KeyG") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      desaturated = !desaturated;
-      ctx.dispatchEffect({
-        kind: "desaturate",
-        durationMs: desaturated ? 86400000 : 1,
-      });
-    }
-    if (e.metaKey && e.shiftKey && e.code === "KeyP") {
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      ctx.emitEvent("clai:shoot", { source: "shortcut", key: "Cmd+Shift+P" });
-    }
-  };
-  window.addEventListener("keydown", onKeydown, { capture: true });
-  if (typeof ctx.onDispose === "function") {
-    ctx.onDispose(() => window.removeEventListener("keydown", onKeydown, { capture: true }));
-  }
 };

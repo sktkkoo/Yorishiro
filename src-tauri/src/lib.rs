@@ -788,6 +788,25 @@ fn write_codex_plugin_cache(
     Ok(())
 }
 
+fn remove_legacy_codex_plugin_caches(codex_dir: &Path) -> Result<(), String> {
+    let cache_dir = codex_dir.join("plugins").join("cache");
+    for stale in [
+        cache_dir.join("charminal-local"),
+        cache_dir.join("yorishiro-local").join("charm"),
+    ] {
+        if stale.exists() {
+            std::fs::remove_dir_all(&stale).map_err(|e| {
+                format!(
+                    "legacy codex plugin cache cleanup failed at {}: {}",
+                    stale.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
 /// Codex プラグインキャッシュに yori プラグインをインストール。
 /// `~/.codex/plugins/cache/yorishiro-local/yori/current/` に配置する。
 #[cfg(not(test))]
@@ -803,6 +822,7 @@ fn install_codex_plugin_to_cache(
     if !codex_dir.exists() {
         return Ok(());
     }
+    remove_legacy_codex_plugin_caches(&codex_dir)?;
     let cache_root = codex_dir
         .join("plugins")
         .join("cache")
@@ -1095,6 +1115,21 @@ fn yorishiro_home_path_under(home_root: &Path) -> PathBuf {
     home_root.join(".yorishiro")
 }
 
+fn legacy_charminal_home_path_under(home_root: &Path) -> PathBuf {
+    home_root.join(".charminal")
+}
+
+fn migrate_legacy_charminal_home_impl(home_root: &Path) -> Result<bool, String> {
+    let legacy = legacy_charminal_home_path_under(home_root);
+    let yorishiro = yorishiro_home_path_under(home_root);
+    if yorishiro.exists() || !legacy.is_dir() {
+        return Ok(false);
+    }
+    std::fs::rename(&legacy, &yorishiro)
+        .map_err(|e| format!("Failed to migrate ~/.charminal to ~/.yorishiro: {}", e))?;
+    Ok(true)
+}
+
 /// `.tutorial-done` フラグの有無を返す。テスト用に yorishiro_dir を引数化。
 fn check_tutorial_done_impl(yorishiro_dir: &Path) -> bool {
     yorishiro_dir.join(".tutorial-done").exists()
@@ -1286,7 +1321,11 @@ fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
 /// 触らない。
 #[tauri::command]
 async fn ensure_yorishiro_dirs() -> Result<(), String> {
-    let home = yorishiro_home_path()?;
+    let home_root = home_dir_or_err()?;
+    if migrate_legacy_charminal_home_impl(&home_root)? {
+        eprintln!("[ensure_yorishiro_dirs] migrated ~/.charminal to ~/.yorishiro");
+    }
+    let home = yorishiro_home_path_under(&home_root);
     std::fs::create_dir_all(home.join("packs"))
         .map_err(|e| format!("Failed to create ~/.yorishiro/packs: {}", e))?;
     std::fs::write(home.join("sdk.d.ts"), build_bundled_sdk_dts())
@@ -1299,32 +1338,27 @@ async fn ensure_yorishiro_dirs() -> Result<(), String> {
     if let Err(e) = sessions::ensure_shell_files(&home) {
         eprintln!("[ensure_yorishiro_dirs] shell integration files: {}", e);
     }
-    let home_root = home_dir_or_err().ok();
-    if let Some(home_root) = home_root.as_ref() {
-        if let Err(e) = history::ensure_snapshot_repo_impl(home_root) {
-            eprintln!("[history] ensure snapshot repo failed: {}", e);
-        }
+    if let Err(e) = history::ensure_snapshot_repo_impl(&home_root) {
+        eprintln!("[history] ensure snapshot repo failed: {}", e);
     }
 
     // 起動時 baseline snapshot（once-per-process）。spec §0。失敗しても起動は止めない。
     // 直前 baseline から実変更が無い短時間の reload ではスキップしてノイズを減らす。
     static BASELINE_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if !BASELINE_DONE.swap(true, std::sync::atomic::Ordering::SeqCst) {
-        if let Some(home_root) = home_root.as_ref() {
-            if !history::should_skip_baseline(home_root, 60_000) {
-                match history::snapshot_create_impl(home_root, "startup-baseline", None) {
-                    Ok(seq) => {
-                        // 直前 startup の clean 判定を advisory ラベルとして付ける（spec §0）。
-                        // 自動 restore の根拠にはしない（あくまで表示用）。
-                        if let Some(clean) = history::is_last_startup_clean(home_root) {
-                            if let Err(e) = history::tag_startup_clean(home_root, seq, clean) {
-                                eprintln!("[history] tag startup_clean failed: {}", e);
-                            }
-                        }
+    if !BASELINE_DONE.swap(true, std::sync::atomic::Ordering::SeqCst)
+        && !history::should_skip_baseline(&home_root, 60_000)
+    {
+        match history::snapshot_create_impl(&home_root, "startup-baseline", None) {
+            Ok(seq) => {
+                // 直前 startup の clean 判定を advisory ラベルとして付ける（spec §0）。
+                // 自動 restore の根拠にはしない（あくまで表示用）。
+                if let Some(clean) = history::is_last_startup_clean(&home_root) {
+                    if let Err(e) = history::tag_startup_clean(&home_root, seq, clean) {
+                        eprintln!("[history] tag startup_clean failed: {}", e);
                     }
-                    Err(e) => eprintln!("[history] baseline snapshot failed: {}", e),
                 }
             }
+            Err(e) => eprintln!("[history] baseline snapshot failed: {}", e),
         }
     }
     Ok(())
@@ -2549,9 +2583,10 @@ mod layer_scope_tests {
     use super::{
         collect_changed_scopes, command_candidate_names, is_history_internal_path,
         is_safe_mode_value, is_snapshot_relevant_path, layer_event_label,
-        read_last_startup_report_impl, resolve_command_path_impl, resolve_project_root_impl,
-        should_create_watcher_snapshot, should_emit_layer_event, snapshot_scope_token,
-        stat_mtime_in_scope, write_yorishiro_file_atomic_impl,
+        migrate_legacy_charminal_home_impl, read_last_startup_report_impl,
+        resolve_command_path_impl, resolve_project_root_impl, should_create_watcher_snapshot,
+        should_emit_layer_event, snapshot_scope_token, stat_mtime_in_scope,
+        write_yorishiro_file_atomic_impl,
     };
     use git2::{Repository, Signature};
     use std::collections::HashMap;
@@ -2573,6 +2608,53 @@ mod layer_scope_tests {
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(&tmp).expect("create tmp dir");
         tmp
+    }
+
+    #[test]
+    fn migrates_legacy_charminal_home_when_yorishiro_is_absent() {
+        let home = fresh_dir("migrate-home");
+        fs::create_dir_all(home.join(".charminal").join("packs").join("clai"))
+            .expect("create legacy home");
+        fs::write(
+            home.join(".charminal").join("config.json"),
+            "{\"language\":\"ja\"}",
+        )
+        .expect("write legacy config");
+
+        let migrated = migrate_legacy_charminal_home_impl(&home).expect("migrate ok");
+
+        assert!(migrated);
+        assert!(!home.join(".charminal").exists());
+        assert_eq!(
+            fs::read_to_string(home.join(".yorishiro").join("config.json")).expect("read config"),
+            "{\"language\":\"ja\"}"
+        );
+        assert!(home.join(".yorishiro").join("packs").join("clai").exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn skips_legacy_migration_when_yorishiro_already_exists() {
+        let home = fresh_dir("skip-migrate-home");
+        fs::create_dir_all(home.join(".charminal")).expect("create legacy home");
+        fs::create_dir_all(home.join(".yorishiro")).expect("create new home");
+        fs::write(home.join(".charminal").join("config.json"), "legacy").expect("write legacy");
+        fs::write(home.join(".yorishiro").join("config.json"), "new").expect("write new");
+
+        let migrated = migrate_legacy_charminal_home_impl(&home).expect("migrate ok");
+
+        assert!(!migrated);
+        assert_eq!(
+            fs::read_to_string(home.join(".charminal").join("config.json")).expect("read legacy"),
+            "legacy"
+        );
+        assert_eq!(
+            fs::read_to_string(home.join(".yorishiro").join("config.json")).expect("read new"),
+            "new"
+        );
+
+        let _ = fs::remove_dir_all(&home);
     }
 
     #[test]
@@ -3183,7 +3265,8 @@ mod user_init_seed_tests {
 #[cfg(test)]
 mod localized_plugin_dir_tests {
     use super::{
-        convert_command_to_codex_skill, prepare_localized_plugin_dir_at, write_codex_plugin_cache,
+        convert_command_to_codex_skill, prepare_localized_plugin_dir_at,
+        remove_legacy_codex_plugin_caches, write_codex_plugin_cache,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -3366,6 +3449,27 @@ mod localized_plugin_dir_tests {
         assert!(create.contains("$ARGUMENTS"));
         assert!(create.contains("English create content."));
         assert!(!create.contains("# /create"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn removes_legacy_codex_plugin_caches() {
+        let tmp = fresh_dir("legacy-codex-cache");
+        let codex = tmp.join(".codex");
+        let cache = codex.join("plugins").join("cache");
+        fs::create_dir_all(cache.join("charminal-local").join("charm").join("current"))
+            .expect("create old marketplace cache");
+        fs::create_dir_all(cache.join("yorishiro-local").join("charm").join("current"))
+            .expect("create old plugin cache");
+        fs::create_dir_all(cache.join("yorishiro-local").join("yori").join("current"))
+            .expect("create current cache");
+
+        remove_legacy_codex_plugin_caches(&codex).expect("cleanup ok");
+
+        assert!(!cache.join("charminal-local").exists());
+        assert!(!cache.join("yorishiro-local").join("charm").exists());
+        assert!(cache.join("yorishiro-local").join("yori").exists());
 
         let _ = fs::remove_dir_all(&tmp);
     }
