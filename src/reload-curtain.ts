@@ -12,7 +12,7 @@ export const RELOAD_CURTAIN_STORAGE_KEY = "charminal:reload-curtain";
 export const RELOAD_CURTAIN_FADE_MS = 360;
 export const RELOAD_CURTAIN_MIN_VISIBLE_MS = 520;
 export const RELOAD_CURTAIN_FAILSAFE_MS = 5000;
-// fade-in の transition 完了から reload 発火までの猶予
+// visible class が実際に描画された後、fade-in の transition 完了から reload 発火までの猶予。
 const PRE_RELOAD_HOLD_MS = 80;
 
 export type ReloadCurtainPhase = "hidden" | "entering" | "visible" | "leaving";
@@ -45,6 +45,12 @@ function defaultReload(): void {
   window.location.reload();
 }
 
+function afterNextPaint(callback: () => void): void {
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(callback);
+  });
+}
+
 export function useReloadCurtain(
   isReady: boolean,
   reload: () => void = defaultReload,
@@ -61,12 +67,14 @@ export function useReloadCurtain(
     reloadInFlightRef.current = true;
     markCurtainPending();
     setPhase("entering");
-    window.requestAnimationFrame(() => {
+    // entering(opacity: 0) を一度 paint させてから visible にしないと、
+    // WebView が class 変更をまとめて fade-in を飛ばすことがある。
+    afterNextPaint(() => {
       setPhase("visible");
+      window.setTimeout(() => {
+        reload();
+      }, RELOAD_CURTAIN_FADE_MS + PRE_RELOAD_HOLD_MS);
     });
-    window.setTimeout(() => {
-      reload();
-    }, RELOAD_CURTAIN_FADE_MS + PRE_RELOAD_HOLD_MS);
   }, [reload]);
 
   // fade-out: reload 後、user layer ready を待って開ける。

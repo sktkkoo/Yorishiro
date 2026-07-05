@@ -50,6 +50,24 @@ describe("useReloadCurtain", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it("fade-in の paint を待ってから reload タイマーを始める", () => {
+    const reload = vi.fn();
+    const { result } = renderHook(() => useReloadCurtain(false, reload));
+
+    act(() => {
+      result.current.beginCurtainReload();
+    });
+    act(() => {
+      vi.advanceTimersByTime(RELOAD_CURTAIN_FADE_MS + 80);
+    });
+    expect(reload).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
   it("beginCurtainReload の二重呼び出しでは reload は 1 回", () => {
     const reload = vi.fn();
     const { result } = renderHook(() => useReloadCurtain(false, reload));
