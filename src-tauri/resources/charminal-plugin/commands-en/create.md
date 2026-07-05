@@ -206,7 +206,7 @@ Scene packs can declare terminal colors and UI colors together. When the scene c
 1. Pick the background from the scene mood. Offer a few candidates and let the user choose
 2. Tune ANSI colors to the same saturation and temperature. Confirm the base palette (Nord, Gruvbox, Catppuccin, Everforest, etc.) with the user
 3. Keep UI in the same tone; matching accent to cursor often feels natural
-4. Once decided, write it into `terminal` / `ui` in scene.js, apply it live with `scene_activate`, and fine-tune together while looking at the result
+4. Once decided, write it into `terminal` / `ui` in scene.js, make it active for the current project with `scene_activate`, and fine-tune together while looking at the result
 
 References:
 
@@ -214,15 +214,18 @@ References:
 - `bundled-packs/scenes/misty-grasslands/scene.ts` - Everforest-based light theme
 - `bundled-packs/scenes/simple-room/scene.ts` - Nord-like blue dark theme
 
-The active scene is selected by `~/.charminal/config.json`:
+The active scene is selected through `scene_activate`. The tool persists the choice in `~/.charminal/config.json`: it writes `sceneByProject` for the current project when the project root is resolved, otherwise it writes the global `activeScene` fallback.
 
 ```json
 {
+  "sceneByProject": {
+    "/path/to/project": "my-scene"
+  },
   "activeScene": "my-scene"
 }
 ```
 
-If omitted or null, Charminal falls back to the bundled default.
+If the current project has no `sceneByProject` entry, Charminal falls back to `activeScene`; if that is omitted or null, it falls back to the bundled default.
 
 ## Persona Packs
 

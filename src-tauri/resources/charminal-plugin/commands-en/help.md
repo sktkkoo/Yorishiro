@@ -54,11 +54,11 @@ Commands can take arguments. Examples: `/charm:create a cat-ear persona`, `/char
 |---|---|---|---|
 | **persona** | Character personality, reactions, body, voice | single | `primaryPersona` |
 | **effect** | Visual effects such as particles, shake, fireworks | multi, event-driven | - |
-| **scene** | Background / foreground layer stack or R3F scene | single | `activeScene` |
+| **scene** | Background / foreground layer stack or R3F scene | single | `sceneByProject` -> `activeScene` |
 | **ui** | Primary sidebar UI panels | single | `activeUi` |
 | **ambient-ui** | Always-on overlay UI | multi | `activeAmbientUi` |
 
-- `persona`, `scene`, and `ui` are **single-active**. The user picks them through `~/.charminal/config.json`.
+- `persona`, `scene`, and `ui` are **single-active**. The user picks scenes with `scene_activate`, which persists `sceneByProject` for the current project when possible and falls back to global `activeScene`; persona and UI picks live in `~/.charminal/config.json`.
 - `effect` and `ambient-ui` are **multi-active**. Effects are invoked from persona handlers; ambient UI stays mounted while enabled.
 
 ---

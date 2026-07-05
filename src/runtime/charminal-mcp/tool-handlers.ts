@@ -374,8 +374,9 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
 }
 
 export interface DisablePackDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
-  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly updateConfig: (
+    update: (current: CharminalConfig) => CharminalConfig,
+  ) => Promise<CharminalConfig>;
   readonly registry: UserPackRegistry;
   /**
    * bundled amenity を id で disable する。registry に登録済みなら active 状態に
@@ -395,9 +396,7 @@ export function createDisablePackHandler(deps: DisablePackDeps) {
     if (typeof id !== "string" || id === "") {
       return { ok: false, reason: "missing id" };
     }
-    const current = await deps.readConfig();
-    const next = withDisabledPackAdded(current, id);
-    await deps.writeConfig(next);
+    await deps.updateConfig((current) => withDisabledPackAdded(current, id));
 
     // registry から同 id の全 kind を dispose する。
     const entries = deps.registry.listEntries().filter((e) => e.id === id);
@@ -410,8 +409,9 @@ export function createDisablePackHandler(deps: DisablePackDeps) {
 }
 
 export interface EnablePackDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
-  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly updateConfig: (
+    update: (current: CharminalConfig) => CharminalConfig,
+  ) => Promise<CharminalConfig>;
   /**
    * 対象 pack を file system から再 load する。Rust の list_user_packs で
    * 該当 id の entry を探し、見つかれば runtime-wire と同じ cache-bust import
@@ -431,9 +431,7 @@ export function createEnablePackHandler(deps: EnablePackDeps) {
     if (typeof id !== "string" || id === "") {
       return { ok: false, reason: "missing id" };
     }
-    const current = await deps.readConfig();
-    const next = withDisabledPackRemoved(current, id);
-    await deps.writeConfig(next);
+    await deps.updateConfig((current) => withDisabledPackRemoved(current, id));
 
     if (deps.enableBundledAmenity?.(id)) {
       return { ok: true };
@@ -512,8 +510,9 @@ function requestRecord(request: unknown): Record<string, unknown> {
 }
 
 export interface SetMotionIntensityDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
-  readonly writeConfig: (next: CharminalConfig) => Promise<void>;
+  readonly updateConfig: (
+    update: (current: CharminalConfig) => CharminalConfig,
+  ) => Promise<CharminalConfig>;
   readonly applyToRuntime: (intensity: number) => void;
 }
 
@@ -533,8 +532,7 @@ export function createSetMotionIntensityHandler(deps: SetMotionIntensityDeps) {
       throw new Error(`invalid motion intensity: ${String(raw)}`);
     }
     const intensity = Math.max(0, Math.min(3, raw));
-    const current = await deps.readConfig();
-    await deps.writeConfig({ ...current, motionIntensity: intensity });
+    await deps.updateConfig((current) => ({ ...current, motionIntensity: intensity }));
     deps.applyToRuntime(intensity);
     return { intensity };
   };
@@ -1067,8 +1065,9 @@ export interface StateGetDeps {
   readonly getEffectKinds: () => ReadonlyArray<string>;
   /**
    * 現在 active な single-active pack の id 群（registry 由来、runtime SOT）。
-   * config.activeScene / config.primaryPersona は永続値、こちらは runtime 値。
-   * runtime-only 切り替え時は両者が divergence する。
+   * scene.activate は project-aware config write。
+   * ui.activate は runtime-only。
+   * runtime-only UI 切り替え時は config.activeUi と runtime.ui が divergence する。
    */
   readonly getRuntimeActive: () => {
     readonly scene: string | null;
@@ -1670,10 +1669,8 @@ export function createUiDebugPanelSetHandler(deps: UiDebugPanelSetDeps) {
  * ────────────────────────────────────────────────────────── */
 
 export interface SceneActivateDeps {
-  readonly registry: {
-    readonly setActiveScene: (id: string | null) => void;
-    readonly getActiveSceneId: () => string | null;
-  };
+  readonly setActiveScene: (id: string | null) => void | Promise<void>;
+  readonly getActiveSceneId: () => string | null;
 }
 
 export interface SceneActivateResult {
@@ -1681,11 +1678,9 @@ export interface SceneActivateResult {
 }
 
 /**
- * Active scene pack を runtime-only で切り替える handler。
- * registry のみ更新、~/.charminal/config.json は触らない。
+ * Active scene pack を caller-provided write path で切り替える handler。
+ * App 側では current project が解決済みなら sceneByProject、未解決なら activeScene に保存する。
  * 不明な id は registry が fall-through で bundled default を選ぶ（throw しない）。
- *
- * 関連: docs/decisions/single-active-config-picks.md（runtime ≠ config の divergence 許容）
  */
 export function createSceneActivateHandler(deps: SceneActivateDeps) {
   return async (request: unknown): Promise<SceneActivateResult> => {
@@ -1697,8 +1692,8 @@ export function createSceneActivateHandler(deps: SceneActivateDeps) {
     if (id !== null && (typeof id !== "string" || id === "")) {
       throw new Error("id must be non-empty string or null");
     }
-    deps.registry.setActiveScene(id);
-    return { active: deps.registry.getActiveSceneId() };
+    await deps.setActiveScene(id);
+    return { active: deps.getActiveSceneId() };
   };
 }
 
@@ -1718,7 +1713,7 @@ export interface UiActivateResult {
 }
 
 /**
- * Active UI pack を runtime-only で切り替える handler。scene.activate と対称。
+ * Active UI pack を runtime-only で切り替える handler。
  * registry のみ更新、~/.charminal/config.json は触らない。
  */
 export function createUiActivateHandler(deps: UiActivateDeps) {

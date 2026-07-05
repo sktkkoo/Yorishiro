@@ -10,6 +10,7 @@
  * - `primaryPersona: string | null`（optional）: user が explicit に picks した persona pack の id
  * - `mcpPort: number`（optional）: MCP server の port override
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
+ * - `sceneByProject: Record<string, string>`（optional）: 正規化済み project root ごとの scene pack id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
  * - `activeAmbientUi: string[]`（optional）: 同時有効化される ambient-ui pack の id 一覧
  * - `tabMetadataBadges: boolean`（optional）: legacy debug tab metadata badge flag
@@ -44,6 +45,8 @@ export interface CharminalConfig {
   readonly mcpPort: number | null;
   /** User が explicit に picks した scene pack の id。null / undefined なら bundled alphabetical default に fall through。 */
   readonly activeScene: string | null;
+  /** 正規化済み project root の絶対 path を key にした per-project scene mapping。 */
+  readonly sceneByProject: Readonly<Record<string, string>>;
   /** User が explicit に picks した UI pack の id。null なら UI pack なし。 */
   readonly activeUi: string | null;
   /** 同時有効化される ambient-ui pack の id 一覧。複数 active 可。 */
@@ -88,6 +91,7 @@ export const EMPTY_CONFIG: CharminalConfig = {
   primaryPersona: null,
   mcpPort: null,
   activeScene: null,
+  sceneByProject: {},
   activeUi: null,
   activeAmbientUi: ["attention-aura", "pomodoro-ui"],
   tabMetadataBadges: false,
@@ -187,6 +191,15 @@ const toStringRecord = (value: unknown): Record<string, string> => {
   return result;
 };
 
+const toNonEmptyStringRecord = (value: unknown): Record<string, string> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "string" && v.trim() !== "") result[k] = v;
+  }
+  return result;
+};
+
 const toSessionAgent = (value: unknown): string | null => {
   if (typeof value === "string" && KNOWN_AGENT_IDS.has(value)) {
     return value;
@@ -266,6 +279,7 @@ export function parseConfig(text: string): CharminalConfig {
     primaryPersona: toNullableString(obj.primaryPersona),
     mcpPort: toPort(obj.mcpPort),
     activeScene: toNullableString(obj.activeScene),
+    sceneByProject: toNonEmptyStringRecord(obj.sceneByProject),
     activeUi: toNullableString(obj.activeUi),
     activeAmbientUi:
       "activeAmbientUi" in obj ? toStringArray(obj.activeAmbientUi) : EMPTY_CONFIG.activeAmbientUi,
@@ -294,6 +308,9 @@ export function serializeConfig(cfg: CharminalConfig): string {
   if (cfg.primaryPersona !== null) out.primaryPersona = cfg.primaryPersona;
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
+  if (Object.keys(cfg.sceneByProject).length > 0) {
+    out.sceneByProject = { ...cfg.sceneByProject };
+  }
   if (cfg.activeUi !== null) out.activeUi = cfg.activeUi;
   if (!stringArraysEqual(cfg.activeAmbientUi, EMPTY_CONFIG.activeAmbientUi)) {
     out.activeAmbientUi = [...cfg.activeAmbientUi];
@@ -332,6 +349,39 @@ export function withDisabledPackRemoved(cfg: CharminalConfig, id: string): Charm
  */
 export function withActiveSceneSet(cfg: CharminalConfig, id: string | null): CharminalConfig {
   return { ...cfg, activeScene: id };
+}
+
+/**
+ * 正規化済み project root に紐づく scene を immutable に更新する。
+ * id が null なら該当 project の mapping を削除する。
+ */
+export function withProjectSceneSet(
+  cfg: CharminalConfig,
+  projectRoot: string,
+  id: string | null,
+): CharminalConfig {
+  const next = { ...cfg.sceneByProject };
+  if (id === null) {
+    delete next[projectRoot];
+  } else {
+    next[projectRoot] = id;
+  }
+  return { ...cfg, sceneByProject: next };
+}
+
+/**
+ * current project に対応する scene id を返す。
+ * mapping が無い / projectRoot が未解決なら global activeScene に fall back する。
+ */
+export function resolveSceneForProject(
+  cfg: CharminalConfig,
+  projectRoot: string | null,
+): string | null {
+  if (projectRoot !== null) {
+    const sceneId = cfg.sceneByProject[projectRoot];
+    if (sceneId !== undefined) return sceneId;
+  }
+  return cfg.activeScene;
 }
 
 /**

@@ -81,8 +81,8 @@ This naturally shows that the resident can move the camera too.
 
 **This is also a demo. Do not freeze things with `sleep`.**
 
-1. Use `scene_activate` to switch scenes. Keep the line light, like "a little rearrangement". **Once switched, end the response. Do not `sleep`.** The change applies instantly, so the user sees it before moving on to the next exchange
-2. In the next exchange, use `scene_activate` to return to **Simple Room**. Again do not wait — touch on the fact that you put it back and move on
+1. Use `scene_activate` to switch scenes. This persists the current project's scene choice, so treat it as a real room change, not a temporary preview. Keep the line light, like "a little rearrangement". **Once switched, end the response. Do not `sleep`.** The change applies instantly, so the user sees it before moving on to the next exchange
+2. In the next exchange, use `scene_activate` to return to **Simple Room** for this project. Again do not wait — touch on the fact that you put it back and move on
 
 ### 5. Build your own world: scene pack with shadow and color theme
 
@@ -117,7 +117,7 @@ Invite naturally, roughly: "See how there's no shadow on the wall? Looks flat, l
    - `offsetY`: positive (downward). Around `12`
    - `blur`: **`2`** (crisp. This is the baseline)
    - `color`: `"rgba(0, 0, 0, 1)"` (solid black)
-4. Use `scene_activate` for instant preview. Confirm the shadow appears
+4. Use `scene_activate` to make the new scene active for the current project. Confirm the shadow appears
 5. Tune parameters together: "shift it more", "blur it a bit". Editing scene.tsx hot-reloads instantly
 
 #### Change the color theme
@@ -145,7 +145,7 @@ After the colors are settled, mention that **a wallpaper can be set as backgroun
 
 Do not go deep. Just mention it as an option and let them try if interested.
 
-6. When satisfied, write the new scene id into `config.json`'s `activeScene` to persist it
+6. When satisfied, keep the new scene active with `scene_activate`. Do not manually write global `activeScene` unless the user explicitly wants to change the fallback scene for projects without their own scene selection
 
 Important: scene pack creation belongs to `/charm:create`. Do not write files directly from this tutorial prompt. Guide the user into `/charm:create` and focus on the conversational flow.
 
