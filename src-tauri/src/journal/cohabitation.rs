@@ -62,20 +62,20 @@ fn write_cohabitation_atomic(path: &Path, state: &CohabitationState) -> Result<(
 /// - `per_persona[active_persona_id]` に経過時間を加算
 /// - `last_shutdown` に現在の ISO 8601 タイムスタンプを記録
 pub fn save_hours(start: Instant, active_persona_id: &str) -> Result<(), String> {
-    let charminal_dir = crate::yorishiro_home_path()?;
-    save_hours_impl(start, active_persona_id, &charminal_dir)
+    let yorishiro_dir = crate::yorishiro_home_path()?;
+    save_hours_impl(start, active_persona_id, &yorishiro_dir)
 }
 
-/// テスト用に charminal_dir を引数化した実装本体。
+/// テスト用に yorishiro_dir を引数化した実装本体。
 fn save_hours_impl(
     start: Instant,
     active_persona_id: &str,
-    charminal_dir: &Path,
+    yorishiro_dir: &Path,
 ) -> Result<(), String> {
     let elapsed_hours = start.elapsed().as_secs_f64() / 3600.0;
-    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.yorishiro/ 作成失敗: {}", e))?;
+    std::fs::create_dir_all(yorishiro_dir).map_err(|e| format!("~/.yorishiro/ 作成失敗: {}", e))?;
 
-    let cohabitation_path = charminal_dir.join(COHABITATION_FILE);
+    let cohabitation_path = yorishiro_dir.join(COHABITATION_FILE);
     let mut state = read_cohabitation(&cohabitation_path)?;
 
     let current_total = state.total_hours;
@@ -155,7 +155,7 @@ mod tests {
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-cohabitation-{}-{}-{}",
+            "yorishiro-cohabitation-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()

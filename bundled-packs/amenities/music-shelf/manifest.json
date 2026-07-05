@@ -1,11 +1,11 @@
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "music-shelf",
   "name": "Music Shelf",
   "type": "amenity",
   "version": "0.1.0",
-  "charminalVersion": "^0.5.0",
-  "author": "Charminal team",
+  "yorishiroVersion": "^0.5.0",
+  "author": "Yorishiro team",
   "description": "Apple Music remote control via osascript — play, pause, skip, search, queue, volume fade, and sleep timer as MCP tools",
   "entry": "amenity.ts"
 }

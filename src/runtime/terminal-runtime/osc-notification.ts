@@ -3,7 +3,7 @@
  *
  * cmux の "notification ring"（住人が入力待ちになると pane が光る）の正体は、
  * 特別な IPC ではなく terminal 出力に流れる notification 系 OSC を受動的に拾う
- * だけ。Charminal も同じ infra（xterm の registerOscHandler）で読み取れる。
+ * だけ。Yorishiro も同じ infra（xterm の registerOscHandler）で読み取れる。
  *
  *   - OSC 9  ; <body>                      iTerm2 / Codex(osc9) generic 単文字列
  *   - OSC 99 ; [metadata] ; <body>         kitty 系（metadata は任意）

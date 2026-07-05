@@ -1,6 +1,6 @@
-# Charminal — Documentation
+# Yorishiro — Documentation
 
-> このファイルは「**Charminal の doc 全体の navigation 入口**」。dev / AI / pack 作者 / repo を訪れた人すべての最初の 1 ページ。「どこに何があるか」を 5 分で把握するための map。
+> このファイルは「**Yorishiro の doc 全体の navigation 入口**」。dev / AI / pack 作者 / repo を訪れた人すべての最初の 1 ページ。「どこに何があるか」を 5 分で把握するための map。
 >
 > 公開向けの読み物（narrative）は [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) から始める。本 README は navigation 専用で、自身は narrative を持たない。
 
@@ -10,7 +10,7 @@
 
 | やりたいこと | まず読むファイル |
 |---|---|
-| Charminal が何を目指しているか知りたい | [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) |
+| Yorishiro が何を目指しているか知りたい | [`philosophy/PHILOSOPHY.ja.md`](philosophy/PHILOSOPHY.ja.md) |
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
@@ -18,7 +18,7 @@
 | 標準 hook / DispatchEvent の語彙を確認したい | [`catalogs/standard-hooks.md`](catalogs/standard-hooks.md) |
 | 過去に「なぜそう決めたか」を引きたい | [`decisions/README.md`](decisions/README.md) |
 | 設計上踏んではいけない line を確認したい | [`decisions/critical-constraints.md`](decisions/critical-constraints.md) |
-| `~/.charminal/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
+| `~/.yorishiro/config.json` の field を確認したい | [`configuration.md`](configuration.md) |
 | Terminal の session profile / shell integration / カスタマイズを確認したい | [`terminal.md`](terminal.md) |
 | 起動失敗・壊れた pack・safe mode の復旧手順を確認したい | [`troubleshooting.md`](troubleshooting.md) |
 | Release 前の smoke test 手順を確認したい | [`release-checklist.md`](release-checklist.md) |
@@ -37,7 +37,7 @@
   └─ docs/decisions/    ← 「なぜそう決めたか」を topic 軸で。
 
 内部設計記録 (date-indexed, 非公開別 repo)
-  └─ ../Charminal-design-record/  ← revelations / dry-run / specs / plans。非公開。
+  └─ ../Yorishiro-design-record/  ← revelations / dry-run / specs / plans。非公開。
 
 Code 内 navigation (各 directory に短い README)
   └─ ../src/README.md, ../src-tauri/README.md, ../bundled-packs/README.md, ../src/<cluster>/README.md
@@ -96,7 +96,7 @@ Source code 内で参照するときは：
 | `pty.rs` | Legacy PTY facade / hook server (port 19001) | 同上 |
 | `sessions/` | Per-session PTY lifecycle / registry / shell wrapper / terminal agent adapter | 同上 |
 | `mcp/` | MCP 1.5 server (port 18743 default) / pack diagnostics + self-referential tools | 同上 |
-| User layer commands | `~/.charminal/` の watch / atomic write / pack scan | 同上 |
+| User layer commands | `~/.yorishiro/` の watch / atomic write / pack scan | 同上 |
 
 ### 3.4 Bundled packs
 
@@ -106,7 +106,7 @@ Source code 内で参照するときは：
 | `bundled-packs/scenes/simple-room/` | scene | Phase 1 default scene（3 layer composition） |
 | `bundled-packs/effects/screen-shake/` | effect | DOM shake on error |
 | `bundled-packs/effects/abandoned-monitor/` | effect | 放置された監視端末風の全画面 ARG overlay |
-| `bundled-packs/ui/charminal-settings/` | ui | 設定画面（F1 で開く default UI pack） |
+| `bundled-packs/ui/yorishiro-settings/` | ui | 設定画面（F1 で開く default UI pack） |
 | `bundled-packs/ui/camera-lighting-panel/` | ui | UI pack SDK の reference implementation。常用は非推奨（F2 panel で代替） |
 | `bundled-packs/ambient-ui/attention-aura/`（Phase 1c 予定） | ambient-ui | 視線追跡 overlay 可視化（multi-active） |
 | `bundled-packs/shared/` | shared assets | animations / voices / bodies |
@@ -133,7 +133,7 @@ Source code 内で参照するときは：
 
 **特に重要な「破ってはいけない line」** → [`decisions/critical-constraints.md`](decisions/critical-constraints.md)。
 
-**過去の試行錯誤や revelation の date 順を辿りたい場合** → 非公開別 repo `../Charminal-design-record/` の date-prefixed file を直接読む（開発者ローカルにのみ存在）。INDEX として `2026-04-11-design-exploration.md` の revelation 番号体系（3.1〜3.21）が起点。
+**過去の試行錯誤や revelation の date 順を辿りたい場合** → 非公開別 repo `../Yorishiro-design-record/` の date-prefixed file を直接読む（開発者ローカルにのみ存在）。INDEX として `2026-04-11-design-exploration.md` の revelation 番号体系（3.1〜3.21）が起点。
 
 > **重要**：design-record は非公開 repo で date-indexed、決定の **過程** を時系列で記録する。一方 decisions/ は **結果** を topic で引けるようにする。同じ事実が両方に出ることがあるが、役割が違うので両方に書いてよい。外部の読者は decisions/ だけで設計意図を追えるように維持する。
 

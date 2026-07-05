@@ -35,7 +35,7 @@ const stubManifest = (id: string): PersonaPackManifest => ({
   name: id,
   type: "persona",
   version: "0.0.0-test",
-  charminalVersion: "^0.0.0",
+  yorishiroVersion: "^0.0.0",
   entry: "persona.js",
 });
 

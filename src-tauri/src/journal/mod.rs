@@ -178,7 +178,7 @@ mod tests {
 
     fn tmp_home(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-journal-{}-{}-{}",
+            "yorishiro-journal-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()

@@ -2,7 +2,7 @@
 
 ## Our pledge
 
-We pledge to make participation in the Charminal community a welcoming and
+We pledge to make participation in the Yorishiro community a welcoming and
 respectful experience for everyone, regardless of age, body size, disability,
 ethnicity, gender identity and expression, level of experience, nationality,
 personal appearance, race, religion, sexual identity and orientation, or other
@@ -13,7 +13,7 @@ personal characteristics.
 - Be respectful and considerate.
 - Assume good intent, but take responsibility for the impact of your words.
 - Give and receive constructive feedback gracefully.
-- Keep discussions focused on improving Charminal and the surrounding ecosystem.
+- Keep discussions focused on improving Yorishiro and the surrounding ecosystem.
 
 ## Unacceptable behavior
 
@@ -24,7 +24,7 @@ someone feel unsafe or unwelcome.
 
 ## Scope
 
-This Code of Conduct applies to all Charminal project spaces, including GitHub
+This Code of Conduct applies to all Yorishiro project spaces, including GitHub
 Issues, Discussions, pull requests if they are accepted in the future, and other
 official community channels.
 

@@ -79,8 +79,8 @@ describe("hook attention parsing", () => {
   });
 
   it("parses hook metadata defensively", () => {
-    expect(hookSignalSeq(JSON.stringify({ _charminal_seq: 42 }))).toBe(42);
-    expect(hookSignalSeq(JSON.stringify({ _charminal_seq: "42" }))).toBeNull();
+    expect(hookSignalSeq(JSON.stringify({ _yorishiro_seq: 42 }))).toBe(42);
+    expect(hookSignalSeq(JSON.stringify({ _yorishiro_seq: "42" }))).toBeNull();
     expect(parseHookTargetSessionId(JSON.stringify({ sessionId: " shell-1 " }))).toBe("shell-1");
     expect(parseHookTargetSessionId("not json")).toBeNull();
   });

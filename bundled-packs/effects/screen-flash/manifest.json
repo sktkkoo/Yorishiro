@@ -1,10 +1,10 @@
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "screen-flash",
   "type": "effect",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
-  "author": "Charminal team",
+  "yorishiroVersion": "^0.1.0",
+  "author": "Yorishiro team",
   "description": "Briefly flashes the screen white.",
   "entry": "effect.ts"
 }

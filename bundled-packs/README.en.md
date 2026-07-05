@@ -5,7 +5,7 @@
 >
 > 日本語版はこちら: [README.md](README.md)
 
-The **standard packs** and **shared assets** bundled with Charminal. They also serve as reference implementations for pack authors.
+The **standard packs** and **shared assets** bundled with Yorishiro. They also serve as reference implementations for pack authors.
 
 ---
 
@@ -96,7 +96,7 @@ bundled-packs/
 - **Files**: `manifest.json`, `README.md`, `lib/` (a full set of procedural shaders / lights / props / post-process / camera rig), `assets/` (user-provided GLTF)
 - **Role**: an abandoned-factory R3F-component scene. The place where CLAI once passed by someone — someone like another version of itself
 - Details: `bundled-packs/scenes/abandoned-factory/README.md`
-- Internal design: `../Charminal-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
+- Internal design: `../Yorishiro-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 
 ### effects/screen-shake
 - **Entry**: `effect.ts`
@@ -140,7 +140,7 @@ bundled-packs/
 
 ## ui/
 
-UI packs (the 5th pack kind). Single-active; they define the whole of Charminal's UI. Details in the internal design-record: `2026-04-21-ui-pack-single-active.md` (unstable until Plan 3 is complete, so not yet promoted to the public docs/decisions/).
+UI packs (the 5th pack kind). Single-active; they define the whole of Yorishiro's UI. Details in the internal design-record: `2026-04-21-ui-pack-single-active.md` (unstable until Plan 3 is complete, so not yet promoted to the public docs/decisions/).
 
 - **yorishiro-settings** — Yorishiro's settings screen (the entry point for avatar / persona / scene / agent / shortcut). Opens via F1 (an init.js seed binding) or the sidebar
 - **immersive** — UI that makes the terminal background transparent and lets the character and scene show through in front
@@ -179,18 +179,18 @@ An asset library referenceable from multiple packs. VRM / VRMA / voice files.
 
 ## The "bundled is part of the core, not editable" principle
 
-bundled-packs are treated as part of the Charminal core:
+bundled-packs are treated as part of the Yorishiro core:
 
-- **Not writable** from Charminal (via AI / via `/yori` / via the file writer — all of them)
+- **Not writable** from Yorishiro (via AI / via `/yori` / via the file writer — all of them)
 - Overwritten on version upgrade
 - If a user wants to modify one, they **fork** it into `~/.yorishiro/packs/<id>/` and modify there (the ELPA stance)
-- A user fork is the user's responsibility (if it breaks, Charminal takes no responsibility)
+- A user fork is the user's responsibility (if it breaks, Yorishiro takes no responsibility)
 
 ---
 
 ## Asset supply path
 
-During development, the VRMA / voice assets are copied from an **external store** (`../Charminal-assets/`, assumed to be in the parent dir) via `npm run fetch-assets`. Run automatically by the `predev` / `prebuild` hooks.
+During development, the VRMA / voice assets are copied from an **external store** (`../__YORISHIRO_ASSETS__/`, assumed to be in the parent dir) via `npm run fetch-assets`. Run automatically by the `predev` / `prebuild` hooks.
 
 The external store's path can be overridden with the `YORISHIRO_ASSETS_DIR` environment variable.
 
@@ -200,5 +200,5 @@ The external store's path can be overridden with the `YORISHIRO_ASSETS_DIR` envi
 
 - For pack authors: [../src/sdk/README.md](../src/sdk/README.md)
 - Constraints (PTY / amenity / synthetic event): [../docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
-- design-record (the three pack axes = persona / amenity / effect are fixed; utility is superseded by amenity): `../Charminal-design-record/2026-04-11-design-exploration.md` revelations 3.12, 3.15
-- design-record (addition of the scene pack = declarative, single-active): `../Charminal-design-record/specs/2026-04-18-scene-pack-registry.md`
+- design-record (the three pack axes = persona / amenity / effect are fixed; utility is superseded by amenity): `../Yorishiro-design-record/2026-04-11-design-exploration.md` revelations 3.12, 3.15
+- design-record (addition of the scene pack = declarative, single-active): `../Yorishiro-design-record/specs/2026-04-18-scene-pack-registry.md`

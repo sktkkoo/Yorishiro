@@ -1,12 +1,12 @@
 # @yorishiro/sdk — Pack 作者向け API ガイド
 
-このドキュメントは Charminal Pack を書く creator（あるいはその依頼を受けた AI）が読むための API リファレンス。**Pack を書く前に必ず読む**。
+このドキュメントは Yorishiro Pack を書く creator（あるいはその依頼を受けた AI）が読むための API リファレンス。**Pack を書く前に必ず読む**。
 
 ---
 
 ## UGC の Pack 種別（6 種類）
 
-Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / amenity / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
+Yorishiro の UGC は 6 種類の Pack に分かれる。**どれを書きたいかで import する型と書き方が変わる**。前 3 つ（persona / amenity / effect）は **runtime-active**（event を受けて handler が動く）、scene は **declarative**（宣言が画面を規定し続ける）、ui は **primary UI**、ambient-ui は **overlay 系**（primary UI を奪わず複数 pack が重なる前提）。
 
 | Pack type | 性格 | 責務 | 主な context API | 主な制約 |
 |---|---|---|---|---|
@@ -14,7 +14,7 @@ Charminal の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 | **Amenity Pack** | runtime-active | 機能設備（タイマー等）+ MCP tool | system (exec/fs/notify) | character / voice / space は持たない（motion-free） |
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
-| **UI Pack** | primary UI | Charminal の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
+| **UI Pack** | primary UI | Yorishiro の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
 | **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | renderer / attention | multi-active（複数同時 enable）。`ambient-ui-pack-registry` で管理 |
 
 - `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、`#ambient-layer` 内の自身の container に描画する。bundled 例: `attention-aura` (v2 attention のデフォルト visual)。
@@ -46,12 +46,12 @@ personas/<pack-id>/
 
 ```json
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "my-persona",
   "name": "わたし",
   "type": "persona",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "description": "...",
   "entry": "persona.ts",
   "tags": []
@@ -148,7 +148,7 @@ persona の reflex trigger に拾わせる（twin-trigger co-emission）。
 ### ファイル構成
 
 ```
-~/.charminal/packs/<id>/
+~/.yorishiro/packs/<id>/
   manifest.json
   amenity.js     ← entry（manifest.entry が指す）
 ```
@@ -161,7 +161,7 @@ persona の reflex trigger に拾わせる（twin-trigger co-emission）。
   "name": "My Amenity",
   "type": "amenity",
   "version": "1.0.0",
-  "charminalVersion": "^0.4.0",
+  "yorishiroVersion": "^0.4.0",
   "entry": "amenity.js"
 }
 ```
@@ -256,7 +256,7 @@ effects/<pack-id>/
   "name": "Example Glow",
   "type": "effect",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "description": "...",
   "entry": "effect.ts"
 }
@@ -322,7 +322,7 @@ export default {
 
 ### Built-in effects
 
-Charminal 本体に同梱されている effect（persona から `ctx.space.injectEffect({ kind: ... })` で呼べる）：
+Yorishiro 本体に同梱されている effect（persona から `ctx.space.injectEffect({ kind: ... })` で呼べる）：
 
 | kind | 用途 | 主な options |
 |---|---|---|
@@ -354,7 +354,7 @@ bundled-packs/scenes/<pack-id>/
 **user**（flat layout、`.js` 強制）：
 
 ```
-~/.charminal/packs/<pack-id>/
+~/.yorishiro/packs/<pack-id>/
 ├── manifest.json
 └── scene.js               # user が TS から transpile した JS
 ```
@@ -365,12 +365,12 @@ bundled-packs/scenes/<pack-id>/
 
 ```json
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "my-scene",
   "name": "わたしの場所",
   "type": "scene",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "description": "...",
   "entry": "scene.ts"
 }
@@ -378,7 +378,7 @@ bundled-packs/scenes/<pack-id>/
 
 `type` は必ず `"scene"`。`id` は directory 名と一致させる。
 
-> **`defaultActive` field は採用しない**。Scene の active 選択は pack 自己申告ではなく、`~/.charminal/config.json` の `activeScene` で **user が global に picks** する（memory: `feedback_single_active_config_picks`、`feedback_explicit_over_implicit_ugc`）。
+> **`defaultActive` field は採用しない**。Scene の active 選択は pack 自己申告ではなく、`~/.yorishiro/config.json` の `activeScene` で **user が global に picks** する（memory: `feedback_single_active_config_picks`、`feedback_explicit_over_implicit_ugc`）。
 
 ### scene.ts（or scene.js）
 
@@ -460,12 +460,12 @@ export default {
 ### Active 選択の流れ
 
 1. user が複数の scene pack を install / write
-2. `~/.charminal/config.json` の `activeScene` field に id を書く（user が picks）
-3. Charminal が起動・hot reload 時に config を読み、ScenePackRegistry が active 1 つを選ぶ
+2. `~/.yorishiro/config.json` の `activeScene` field に id を書く（user が picks）
+3. Yorishiro が起動・hot reload 時に config を読み、ScenePackRegistry が active 1 つを選ぶ
 4. config が空 / null なら bundled `simple-room` に fallback
 
 ```json
-// ~/.charminal/config.json
+// ~/.yorishiro/config.json
 {
   "activeScene": "my-scene"
 }
@@ -480,7 +480,7 @@ export default {
 ### `@yorishiro/sdk/r3f`
 
 R3F primitive の re-export entry。Scene pack が R3F component を export する時に使う。
-本 entry から import することで、Charminal 本体と同じ `@react-three/fiber` version を共有する。
+本 entry から import することで、Yorishiro 本体と同じ `@react-three/fiber` version を共有する。
 
 詳細: specs/2026-05-03-scene-pack-r3f-component.md §3.2
 
@@ -642,7 +642,7 @@ async (ctx, options) => {
 ctx.terminal.input('...');  // ERROR: input method は存在しない
 ```
 
-**正しい**：PTY 観察のみ。書き込む API は意図的に存在しない（Charminal は Claude Code の reasoning loop に介入しない）。
+**正しい**：PTY 観察のみ。書き込む API は意図的に存在しない（Yorishiro は Claude Code の reasoning loop に介入しない）。
 
 ### ❌ UI pack で host DOM の layout を直接書き換える
 
@@ -699,7 +699,7 @@ async (ctx) => {
 4. `.ts` entry file を書く（`satisfies <Type>Definition` で型チェック）
 5. `tsconfig.json` を書く（root を extends）
 6. `tsc --noEmit` で型エラーが無いことを確認
-7. `cat $DATA/.charminal/sdk/README.md` を参照して API 確認
-8. Charminal は file watcher で変更を pick up し、hot reload する
+7. `cat $DATA/.yorishiro/sdk/README.md` を参照して API 確認
+8. Yorishiro は file watcher で変更を pick up し、hot reload する
 
 型エラーが出たら、**fix して reload する**（これは creator loop の自然な iteration）。

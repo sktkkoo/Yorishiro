@@ -25,7 +25,7 @@
 
 ## なぜそう決めたか
 
-`clai:idle-shoot` は旧 Charminal の「住人が退屈すると勝手に撃ち始める」演出の移植だった。これは [autonomy-without-disruption.md](autonomy-without-disruption.md) の「住人の自発性は user の作業を邪魔しない範囲で」に照らすと境界線上にある：TextPhysics はターミナルの文字を物理落下させる視覚的に強い演出で、user が作業していない確証なしに（idle 90s は離席とは限らない）画面を占有する。自発性の表現としては侵襲が強すぎ、[presence-over-spectacle.md](presence-over-spectacle.md) の「実在感の増幅が第一、過剰演出は従」とも整合しない。
+`clai:idle-shoot` は旧 Yorishiro の「住人が退屈すると勝手に撃ち始める」演出の移植だった。これは [autonomy-without-disruption.md](autonomy-without-disruption.md) の「住人の自発性は user の作業を邪魔しない範囲で」に照らすと境界線上にある：TextPhysics はターミナルの文字を物理落下させる視覚的に強い演出で、user が作業していない確証なしに（idle 90s は離席とは限らない）画面を占有する。自発性の表現としては侵襲が強すぎ、[presence-over-spectacle.md](presence-over-spectacle.md) の「実在感の増幅が第一、過剰演出は従」とも整合しない。
 
 明示ショートカット発火に一本化することで、TextPhysics は「user が意図的に呼んだ時の演出」になり、自発性は別の侵襲の低い層（idle-fidget 等の反射層）に委ねる。
 

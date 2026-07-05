@@ -348,7 +348,7 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
             };
 
             // 同一 signal を immediate event と polling fallback の両方で配るので、
-            // monotonic な _charminal_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
+            // monotonic な _yorishiro_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
             let seq = HOOK_SEQ.fetch_add(1, Ordering::Relaxed);
             let final_body = match serde_json::from_str::<serde_json::Value>(body) {
                 Ok(mut obj) if obj.is_object() => {
@@ -362,7 +362,7 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
                     if let Some(agent) = &agent {
                         map.insert("agent".to_string(), serde_json::json!(agent));
                     }
-                    map.insert("_charminal_seq".to_string(), serde_json::json!(seq));
+                    map.insert("_yorishiro_seq".to_string(), serde_json::json!(seq));
                     obj.to_string()
                 }
                 _ => {

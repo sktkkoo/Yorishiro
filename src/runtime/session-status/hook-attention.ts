@@ -73,7 +73,7 @@ export function isAttentionResolvingSignal(sig: string): boolean {
 export function hookSignalSeq(sig: string): number | null {
   const obj = parseSignalObject(sig);
   if (obj === null) return null;
-  const seq = obj._charminal_seq;
+  const seq = obj._yorishiro_seq;
   return typeof seq === "number" && Number.isFinite(seq) ? seq : null;
 }
 

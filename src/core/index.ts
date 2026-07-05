@@ -1,5 +1,5 @@
 /**
- * @charminal/core
+ * @yorishiro/core
  *
  * 思想 primitives: Presence Harness の六要素（Space / Body / Time / Perception /
  * Expression / Interaction）+ 思考層と反射層を繋ぐ LogBridge / TwoLayer。

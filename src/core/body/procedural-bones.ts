@@ -1,7 +1,7 @@
 /**
  * ProceduralBones — spine sway, head drift, arm micro-sway.
  *
- * Ported from old Charminal's ProceduralSource.ts.
+ * Ported from old Yorishiro's ProceduralSource.ts.
  * These bone-level procedural animations add "life" to the idle/thinking pose
  * on top of the static rest pose set by setupRestPose.
  *

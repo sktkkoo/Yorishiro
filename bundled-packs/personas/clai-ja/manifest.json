@@ -1,12 +1,12 @@
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "clai-ja",
   "name": "CLAI",
   "type": "persona",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
-  "author": "Charminal team",
-  "description": "Charminal's Japanese default persona — a calm, approachable resident who stays beside the user.",
+  "yorishiroVersion": "^0.1.0",
+  "author": "Yorishiro team",
+  "description": "Yorishiro's Japanese default persona — a calm, approachable resident who stays beside the user.",
   "entry": "persona.ts",
   "tags": ["default", "flagship", "ja"]
 }

@@ -1,7 +1,7 @@
 /**
  * EyeSystem — state-dependent saccade/fixation + gaze override.
  *
- * Ported from old Charminal's EyeSystem with NLP eye-access cue patterns:
+ * Ported from old Yorishiro's EyeSystem with NLP eye-access cue patterns:
  * - idle: random周囲注視 (2-5s interval)
  * - thinking: upper gaze bias (0.8-1.8s interval, upper fixation 3-6s)
  * - reading: downward gaze

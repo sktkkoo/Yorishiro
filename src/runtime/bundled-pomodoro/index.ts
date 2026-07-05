@@ -89,7 +89,7 @@ export function registerBundledPomodoro(deps: RegisterBundledPomodoroDeps) {
       id: pomodoroPack.id,
       type: "amenity",
       version: "0.1.0",
-      charminalVersion: "^0.3.0",
+      yorishiroVersion: "^0.3.0",
       entry: "amenity.ts",
     },
     handle,

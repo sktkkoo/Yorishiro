@@ -30,7 +30,7 @@ vi.mock("../three-runtime", () => ({
   }),
 }));
 
-const GROUP_SELECTOR = "[name='charminal-attention-cue-light']";
+const GROUP_SELECTOR = "[name='yorishiro-attention-cue-light']";
 
 function makeCueStore(): AttentionLightCueStore {
   return new AttentionLightCueStore({ settings: new AttentionLightSettingsStore() });

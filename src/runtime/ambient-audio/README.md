@@ -17,6 +17,6 @@ Scene Pack の declarative な `ambient` 宣言を Howler.js で再生する eng
 
 ## 関連
 
-- 仕様: `Charminal-design-record/specs/2026-04-25-scene-ambient-audio-design.md`
+- 仕様: `Yorishiro-design-record/specs/2026-04-25-scene-ambient-audio-design.md`
 - 上位 system: `src/runtime/scene-pack-registry/`
 - Shared library: `bundled-packs/shared/sounds/`

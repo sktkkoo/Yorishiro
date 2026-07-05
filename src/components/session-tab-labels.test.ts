@@ -17,14 +17,14 @@ describe("session tab labels", () => {
 
   it("compacts home paths for shell sessions", () => {
     expect(formatShellSessionTabLabel("/Users/alice")).toBe("~");
-    expect(formatShellSessionTabLabel("/Users/alice/Charminal")).toBe("~/Charminal");
-    expect(formatShellSessionTabLabel("/home/alice/projects/Charminal")).toBe(
-      "~/projects/Charminal",
+    expect(formatShellSessionTabLabel("/Users/alice/Yorishiro")).toBe("~/Yorishiro");
+    expect(formatShellSessionTabLabel("/home/alice/projects/Yorishiro")).toBe(
+      "~/projects/Yorishiro",
     );
   });
 
   it("keeps already compact paths compact", () => {
-    expect(compactHomePath("~/Charminal")).toBe("~/Charminal");
+    expect(compactHomePath("~/Yorishiro")).toBe("~/Yorishiro");
   });
 
   it("truncates long labels from the middle", () => {

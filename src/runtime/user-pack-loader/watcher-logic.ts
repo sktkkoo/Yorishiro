@@ -2,8 +2,8 @@
  * Watcher event の pure 解釈層。
  *
  * Tauri invoke / dynamic import の impure 部分を持たないので、そのまま vitest
- * で検証できる。`~/.charminal/packs/<id>/<kind>.js` convention の parse と、
- * runtime-transpiled `~/.charminal/packs/<id>/{ui,scene}.tsx` の parse、
+ * で検証できる。`~/.yorishiro/packs/<id>/<kind>.js` convention の parse と、
+ * runtime-transpiled `~/.yorishiro/packs/<id>/{ui,scene}.tsx` の parse、
  * scene.tsx が relative import する nested source file の owner entry mapping、
  * file event → 何をすべきかの mapping に責任を限定する。
  *
@@ -12,13 +12,13 @@
 
 import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
 
-export interface CharminalLayerEvent {
+export interface YorishiroLayerEvent {
   readonly path: string;
   readonly kind: "created" | "modified" | "removed";
   readonly mtimeMs: number;
 }
 
-/** ~/.charminal/ 配下の path を意味ある unit にマップした結果。 */
+/** ~/.yorishiro/ 配下の path を意味ある unit にマップした結果。 */
 export type ParsedLayerPath =
   | { readonly type: "pack"; readonly id: string; readonly kind: string }
   | { readonly type: "init" }
@@ -48,38 +48,38 @@ const isPackSourceFile = (path: string): boolean =>
   PACK_SOURCE_EXTENSIONS.some((ext) => path.endsWith(ext));
 
 function topLevelEntryPath(
-  charminalHome: string,
+  yorishiroHome: string,
   id: string,
   kind: string,
   extension: "js" | "tsx",
 ) {
-  return `${stripTrailingSlash(charminalHome)}/packs/${id}/${kind}.${extension}`;
+  return `${stripTrailingSlash(yorishiroHome)}/packs/${id}/${kind}.${extension}`;
 }
 
 function isTopLevelEntryPath(
   path: string,
-  charminalHome: string,
+  yorishiroHome: string,
   id: string,
   kind: string,
 ): boolean {
   return (
-    path === topLevelEntryPath(charminalHome, id, kind, "js") ||
-    path === topLevelEntryPath(charminalHome, id, kind, "tsx")
+    path === topLevelEntryPath(yorishiroHome, id, kind, "js") ||
+    path === topLevelEntryPath(yorishiroHome, id, kind, "tsx")
   );
 }
 
 /**
- * `/Users/x/.charminal/packs/my-id/effect.js` → { type: "pack", id, kind }
- * `/Users/x/.charminal/packs/my-ui/ui.tsx` → { type: "pack", id, kind: "ui" }
- * `/Users/x/.charminal/packs/my-room/scene.tsx` → { type: "pack", id, kind: "scene" }
- * `/Users/x/.charminal/init.js` → { type: "init" }
+ * `/Users/x/.yorishiro/packs/my-id/effect.js` → { type: "pack", id, kind }
+ * `/Users/x/.yorishiro/packs/my-ui/ui.tsx` → { type: "pack", id, kind: "ui" }
+ * `/Users/x/.yorishiro/packs/my-room/scene.tsx` → { type: "pack", id, kind: "scene" }
+ * `/Users/x/.yorishiro/init.js` → { type: "init" }
  * nested source file → owner scene.tsx の reload action（mapEventToAction で処理）
  * その他 → { type: "ignore" }
  *
- * charminalHome は trailing slash の有無を問わない。
+ * yorishiroHome は trailing slash の有無を問わない。
  */
-export function parseLayerPath(absPath: string, charminalHome: string): ParsedLayerPath {
-  const home = stripTrailingSlash(charminalHome);
+export function parseLayerPath(absPath: string, yorishiroHome: string): ParsedLayerPath {
+  const home = stripTrailingSlash(yorishiroHome);
   if (!absPath.startsWith(`${home}/`)) {
     return { type: "ignore" };
   }
@@ -126,12 +126,12 @@ export function parseLayerPath(absPath: string, charminalHome: string): ParsedLa
 }
 
 /**
- * Watcher event を handler が消費できる action に落とす。`~/.charminal/packs/`
- * 配下の file event と `~/.charminal/init.js` が意味を持つ action を生む。
+ * Watcher event を handler が消費できる action に落とす。`~/.yorishiro/packs/`
+ * 配下の file event と `~/.yorishiro/init.js` が意味を持つ action を生む。
  * init.js は separate action として返し、watcher 側で hot reload する。
  */
-export function mapEventToAction(event: CharminalLayerEvent, charminalHome: string): WatcherAction {
-  const parsed = parseLayerPath(event.path, charminalHome);
+export function mapEventToAction(event: YorishiroLayerEvent, yorishiroHome: string): WatcherAction {
+  const parsed = parseLayerPath(event.path, yorishiroHome);
   if (parsed.type === "ignore") {
     return { type: "ignore", reason: "path not a known pack or init entry" };
   }
@@ -139,23 +139,23 @@ export function mapEventToAction(event: CharminalLayerEvent, charminalHome: stri
     return { type: "init-changed", path: event.path };
   }
   if (event.kind === "removed") {
-    if (!isTopLevelEntryPath(event.path, charminalHome, parsed.id, parsed.kind)) {
+    if (!isTopLevelEntryPath(event.path, yorishiroHome, parsed.id, parsed.kind)) {
       return {
         type: "reload-pack",
         id: parsed.id,
         kind: parsed.kind,
-        entryPath: topLevelEntryPath(charminalHome, parsed.id, parsed.kind, "tsx"),
+        entryPath: topLevelEntryPath(yorishiroHome, parsed.id, parsed.kind, "tsx"),
         mtimeMs: event.mtimeMs,
       };
     }
     return { type: "remove-pack", id: parsed.id, kind: parsed.kind };
   }
-  if (!isTopLevelEntryPath(event.path, charminalHome, parsed.id, parsed.kind)) {
+  if (!isTopLevelEntryPath(event.path, yorishiroHome, parsed.id, parsed.kind)) {
     return {
       type: "reload-pack",
       id: parsed.id,
       kind: parsed.kind,
-      entryPath: topLevelEntryPath(charminalHome, parsed.id, parsed.kind, "tsx"),
+      entryPath: topLevelEntryPath(yorishiroHome, parsed.id, parsed.kind, "tsx"),
       mtimeMs: event.mtimeMs,
     };
   }

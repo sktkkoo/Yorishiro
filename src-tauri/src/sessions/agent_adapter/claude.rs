@@ -47,7 +47,7 @@ impl TerminalAgent for ClaudeAgent {
 
         // Claude Code plugin 配下の .mcp.json は auto-discover されないため、
         // 起動ごとに実 port を反映した config を session-scoped に生成する。
-        let mcp_config_json = claude_charminal_mcp_config_json(ctx.mcp_port);
+        let mcp_config_json = claude_yorishiro_mcp_config_json(ctx.mcp_port);
         let mcp_config_path = super::temp_config_path("mcp", "json");
         let mcp_config_path_arg = super::utf8_path_for_cli(&mcp_config_path, "Claude MCP config")?;
         std::fs::write(&mcp_config_path, &mcp_config_json)
@@ -85,7 +85,7 @@ impl TerminalAgent for ClaudeAgent {
     }
 }
 
-fn claude_charminal_mcp_config_json(port: u16) -> String {
+fn claude_yorishiro_mcp_config_json(port: u16) -> String {
     serde_json::json!({
         "mcpServers": {
             "yorishiro": {
@@ -148,8 +148,8 @@ mod tests {
     #[test]
     fn encode_project_dir_name_basic() {
         assert_eq!(
-            encode_project_dir_name(Path::new("/Users/foo/Charminal")),
-            Some("-Users-foo-Charminal".to_string())
+            encode_project_dir_name(Path::new("/Users/foo/Yorishiro")),
+            Some("-Users-foo-Yorishiro".to_string())
         );
     }
 
@@ -173,16 +173,16 @@ mod tests {
     #[test]
     fn encode_project_dir_name_windows_path_is_relative_safe() {
         assert_eq!(
-            encode_project_dir_name(Path::new(r"C:\Users\foo\Charminal")),
-            Some("C--Users-foo-Charminal".to_string())
+            encode_project_dir_name(Path::new(r"C:\Users\foo\Yorishiro")),
+            Some("C--Users-foo-Yorishiro".to_string())
         );
     }
 
     #[test]
     fn encode_project_dir_name_strips_windows_verbatim_prefix() {
         assert_eq!(
-            encode_project_dir_name(Path::new(r"\\?\C:\Users\foo\Charminal")),
-            Some("C--Users-foo-Charminal".to_string())
+            encode_project_dir_name(Path::new(r"\\?\C:\Users\foo\Yorishiro")),
+            Some("C--Users-foo-Yorishiro".to_string())
         );
     }
 
@@ -190,14 +190,14 @@ mod tests {
     fn has_existing_claude_session_false_for_nonexistent_cwd() {
         // 存在しない path は canonicalize に失敗するため safe default。
         assert!(!has_existing_claude_session(Some(
-            "/charminal/definitely/not/a/real/path/xyz"
+            "/yorishiro/definitely/not/a/real/path/xyz"
         )));
     }
 
     #[test]
     fn has_existing_claude_session_false_for_unrelated_tmp_dir() {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-session-test-{}-{}",
+            "yorishiro-session-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -212,9 +212,9 @@ mod tests {
     }
 
     #[test]
-    fn claude_charminal_mcp_config_json_points_to_streamable_http_server() {
+    fn claude_yorishiro_mcp_config_json_points_to_streamable_http_server() {
         let parsed: serde_json::Value =
-            serde_json::from_str(&claude_charminal_mcp_config_json(18744)).expect("valid json");
+            serde_json::from_str(&claude_yorishiro_mcp_config_json(18744)).expect("valid json");
         assert_eq!(
             parsed["mcpServers"]["yorishiro"]["url"],
             "http://127.0.0.1:18744/mcp"

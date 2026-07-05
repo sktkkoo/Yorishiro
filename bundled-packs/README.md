@@ -5,7 +5,7 @@
 >
 > English version: [README.en.md](README.en.md)
 
-Charminal に同梱される **standard pack** と **shared assets**。pack 作者向けの reference implementation でもある。
+Yorishiro に同梱される **standard pack** と **shared assets**。pack 作者向けの reference implementation でもある。
 
 ---
 
@@ -96,7 +96,7 @@ bundled-packs/
 - **Files**: `manifest.json`, `README.md`, `lib/`（procedural shader / lights / props / post-process / camera rig 一式）, `assets/`（user 提供 GLTF）
 - **役割**: 廃工場 R3F-component scene. CLAI がかつて、もう一人の自分のような誰かとすれ違った場所
 - 詳細：`bundled-packs/scenes/abandoned-factory/README.md`
-- 内部設計：`../Charminal-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
+- 内部設計：`../Yorishiro-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 
 ### effects/screen-shake
 - **Entry**: `effect.ts`
@@ -140,7 +140,7 @@ bundled-packs/
 
 ## ui/
 
-UI pack（5 つ目の pack kind）。single-active で Charminal の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
+UI pack（5 つ目の pack kind）。single-active で Yorishiro の UI を丸ごと定義する。詳細は内部 design-record: `2026-04-21-ui-pack-single-active.md`（Plan 3 完了まで unstable のため公開 docs/decisions/ には未 promote）。
 
 - **yorishiro-settings** — Yorishiro の設定画面（avatar / persona / scene / agent / shortcut の入口）。F1（init.js seed の binding）またはサイドバーから開く
 - **immersive** — ターミナル背景を透過させ、character と scene を前面に通す UI
@@ -179,18 +179,18 @@ Ambient UI pack（6 つ目の pack kind）。primary UI を占有せず、複数
 
 ## 「bundled は本体の一部、編集不可」原則
 
-bundled-packs は Charminal 本体の一部として扱う：
+bundled-packs は Yorishiro 本体の一部として扱う：
 
-- Charminal から **write 不可**（AI 経由 / `/yori` 経由 / file writer 経由のすべて）
+- Yorishiro から **write 不可**（AI 経由 / `/yori` 経由 / file writer 経由のすべて）
 - バージョンアップで上書きされる
 - user が改変したい場合は `~/.yorishiro/packs/<id>/` に **fork して** 改変する（ELPA stance）
-- user fork は user 責任（壊れても Charminal は責任を負わない）
+- user fork は user 責任（壊れても Yorishiro は責任を負わない）
 
 ---
 
 ## Asset の供給経路
 
-開発時の VRMA / voice asset は **外部 store**（`../Charminal-assets/`、parent dir 想定）から `npm run fetch-assets` で copy される。`predev` / `prebuild` hook で自動実行。
+開発時の VRMA / voice asset は **外部 store**（`../__YORISHIRO_ASSETS__/`、parent dir 想定）から `npm run fetch-assets` で copy される。`predev` / `prebuild` hook で自動実行。
 
 外部 store の path は環境変数 `YORISHIRO_ASSETS_DIR` で override 可能。
 
@@ -200,5 +200,5 @@ bundled-packs は Charminal 本体の一部として扱う：
 
 - pack 作者向け：[../src/sdk/README.md](../src/sdk/README.md)
 - 制約（PTY / amenity / synthetic event）：[../docs/decisions/critical-constraints.md](../docs/decisions/critical-constraints.md)
-- design-record（pack 三軸 = persona / amenity / effect の確定。utility は amenity に supersede）：`../Charminal-design-record/2026-04-11-design-exploration.md` revelation 3.12, 3.15
-- design-record（scene pack の追加 = declarative・single-active）：`../Charminal-design-record/specs/2026-04-18-scene-pack-registry.md`
+- design-record（pack 三軸 = persona / amenity / effect の確定。utility は amenity に supersede）：`../Yorishiro-design-record/2026-04-11-design-exploration.md` revelation 3.12, 3.15
+- design-record（scene pack の追加 = declarative・single-active）：`../Yorishiro-design-record/specs/2026-04-18-scene-pack-registry.md`

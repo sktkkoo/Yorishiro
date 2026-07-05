@@ -13,7 +13,7 @@ function entry(
       id: partial.id,
       type: "ambient-ui",
       version: "0.0.0",
-      charminalVersion: "*",
+      yorishiroVersion: "*",
       entry: "ui.tsx",
     },
     pack: { mount: noopMount },

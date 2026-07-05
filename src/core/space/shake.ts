@@ -3,7 +3,7 @@
  * EffectDispatcher の subscriber 側で requestAnimationFrame 毎にこの関数を呼び、
  * 返った dx / dy を DOM element の transform translate に適用する。
  *
- * 旧 Charminal の shake（500ms / 8px decay）の型を踏襲。intensity 1.0 で最大
+ * 旧 Yorishiro の shake（500ms / 8px decay）の型を踏襲。intensity 1.0 で最大
  * 変位 20px 程度を狙う（SHAKE_MAX_PX）。
  */
 

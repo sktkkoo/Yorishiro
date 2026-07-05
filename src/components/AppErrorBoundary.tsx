@@ -56,7 +56,7 @@ export class AppErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     this.setState({ error, errorInfo });
-    void invoke<string>("charminal_home_dir")
+    void invoke<string>("yorishiro_home_dir")
       .then((homeDir) => this.setState({ homeDir }))
       .catch(() => this.setState({ homeDir: "" }));
     // 復旧候補として snapshot 一覧を取得（失敗しても空配列で続行）。
@@ -154,23 +154,23 @@ export class AppErrorBoundary extends React.Component<
 
     const startupReport = homeDir
       ? `${homeDir}/last-startup.json`
-      : "~/.charminal/last-startup.json";
-    const packsDir = homeDir ? `${homeDir}/packs/` : "~/.charminal/packs/";
+      : "~/.yorishiro/last-startup.json";
+    const packsDir = homeDir ? `${homeDir}/packs/` : "~/.yorishiro/packs/";
     const safeModeCommand =
       navigator.platform.toLowerCase().includes("mac") || navigator.userAgent.includes("Mac")
-        ? "CHARMINAL_SAFE_MODE=1 open /Applications/charminal.app"
-        : "CHARMINAL_SAFE_MODE=1 charminal";
-    const issueUrl = "https://github.com/sktkkoo/Charminal/issues/new?template=crash_report.yml";
+        ? "YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app"
+        : "YORISHIRO_SAFE_MODE=1 yorishiro";
+    const issueUrl = "https://github.com/sktkkoo/Yorishiro/issues/new?template=crash_report.yml";
 
     return (
       <main className="app-error-boundary">
         <section className="app-error-boundary-panel">
-          <div className="app-error-boundary-kicker">Charminal crashed</div>
+          <div className="app-error-boundary-kicker">Yorishiro crashed</div>
           <h1>Recovery information</h1>
           <p>
-            The React runtime stopped while rendering Charminal. A broken user pack can cause this;
+            The React runtime stopped while rendering Yorishiro. A broken user pack can cause this;
             safe mode starts without user packs or init.js. If the crash only happens with user
-            packs enabled, try fixing the pack with the Charminal update command or skill instead of
+            packs enabled, try fixing the pack with the Yorishiro update command or skill instead of
             filing an issue.
           </p>
           <div className="app-error-boundary-grid">

@@ -239,12 +239,6 @@ import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
 import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amenity-activation";
 import {
-  readCharminalConfigText,
-  readLastStartupReport,
-  writeCharminalConfigText,
-} from "./runtime/user-pack-loader/charminal-io";
-import {
-  type CharminalConfig,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
   resolveSceneForProject,
@@ -254,11 +248,17 @@ import {
   withActiveAmbientUiSet,
   withLanguageSet,
   withPrimaryPersonaSet,
+  type YorishiroConfig,
 } from "./runtime/user-pack-loader/config";
 import {
   appendInitReloadErrorMarker,
   stripInitReloadErrorMarker,
 } from "./runtime/user-pack-loader/init-changed-title";
+import {
+  readLastStartupReport,
+  readYorishiroConfigText,
+  writeYorishiroConfigText,
+} from "./runtime/user-pack-loader/yorishiro-io";
 import {
   getWorkspaceAttentionStore,
   startCommandRunAttentionProducer,
@@ -396,10 +396,10 @@ function applyCommonCameraControlSet(path: string, value: unknown): void {
   }
 }
 
-const CWD_STORAGE_KEY = "charminal:cwd";
-const ACTIVE_SESSION_STORAGE_KEY = "charminal:active-session";
-const SESSION_TAB_CWD_STORAGE_KEY = "charminal:session-tab-cwds";
-const VRM_STORAGE_KEY = "charminal:vrm";
+const CWD_STORAGE_KEY = "yorishiro:cwd";
+const ACTIVE_SESSION_STORAGE_KEY = "yorishiro:active-session";
+const SESSION_TAB_CWD_STORAGE_KEY = "yorishiro:session-tab-cwds";
+const VRM_STORAGE_KEY = "yorishiro:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
 
 interface RestoreDialogRequest {
@@ -779,13 +779,13 @@ function syncPresenceLevelStyles(level: PresenceLevel): void {
 
 function emitPresenceLevelChanged(level: PresenceLevel): void {
   window.dispatchEvent(
-    new CustomEvent("charminal:presence-level-changed", {
+    new CustomEvent("yorishiro:presence-level-changed", {
       detail: { level },
     }),
   );
 }
 
-const FIRST_RUN_HEALTH_SEEN_KEY = "charminal:first-run-health-seen";
+const FIRST_RUN_HEALTH_SEEN_KEY = "yorishiro:first-run-health-seen";
 
 function FirstRunHealthPanel({
   report,
@@ -915,12 +915,12 @@ function App() {
     );
     return next;
   }, []);
-  const updateCharminalConfig = useCallback(
-    (update: (current: CharminalConfig) => CharminalConfig): Promise<CharminalConfig> =>
+  const updateYorishiroConfig = useCallback(
+    (update: (current: YorishiroConfig) => YorishiroConfig): Promise<YorishiroConfig> =>
       enqueueConfigWrite(async () => {
-        const cur = parseConfig(await readCharminalConfigText());
+        const cur = parseConfig(await readYorishiroConfigText());
         const updated = update(cur);
-        await writeCharminalConfigText(serializeConfig(updated));
+        await writeYorishiroConfigText(serializeConfig(updated));
         return updated;
       }),
     [enqueueConfigWrite],
@@ -939,16 +939,16 @@ function App() {
         voiceFrequency: VoiceFrequency;
         tabMetadataBadges: boolean;
       }>,
-    ): Promise<void> => updateCharminalConfig((cur) => ({ ...cur, ...patch })).then(() => {}),
-    [updateCharminalConfig],
+    ): Promise<void> => updateYorishiroConfig((cur) => ({ ...cur, ...patch })).then(() => {}),
+    [updateYorishiroConfig],
   );
   const updateActiveSceneConfig = useCallback(
     (id: string | null, projectRoot: ProjectRootResolution): Promise<ProjectSceneSelectionResult> =>
       enqueueConfigWrite(async () => {
-        const cur = parseConfig(await readCharminalConfigText());
+        const cur = parseConfig(await readYorishiroConfigText());
         const updated = await applyCurrentProjectSceneSelectionWithResolution(cur, projectRoot, id);
         if (updated.kind === "persisted") {
-          await writeCharminalConfigText(serializeConfig(updated.config));
+          await writeYorishiroConfigText(serializeConfig(updated.config));
         }
         return updated;
       }),
@@ -960,7 +960,7 @@ function App() {
       const updated = await updateActiveSceneConfig(id, projectRoot);
       rememberCurrentProjectRoot(updated.projectRoot);
       if (updated.kind === "runtime-only") {
-        console.warn("[charminal] scene selection was not persisted", {
+        console.warn("[yorishiro] scene selection was not persisted", {
           warning: updated.warning,
           sceneId: id,
           projectRoot: updated.projectRoot,
@@ -1085,8 +1085,8 @@ function App() {
   const runtime = getOrInit("app:runtime", () => {
     const time = new Time();
     const logger: EventBusLogger = {
-      warn: (msg, meta) => console.warn(`[charminal] ${msg}`, meta),
-      error: (msg, meta) => console.error(`[charminal] ${msg}`, meta),
+      warn: (msg, meta) => console.warn(`[yorishiro] ${msg}`, meta),
+      error: (msg, meta) => console.error(`[yorishiro] ${msg}`, meta),
     };
     // Generation-time 細い回路 — dev でのみ active。console mirror は長時間起動で
     // WebView 側のログ蓄積を増やすため opt-in にする。
@@ -1094,7 +1094,7 @@ function App() {
       import.meta.env.DEV &&
       (() => {
         try {
-          return localStorage.getItem("charminal:dev-log-console") === "1";
+          return localStorage.getItem("yorishiro:dev-log-console") === "1";
         } catch {
           return false;
         }
@@ -1392,7 +1392,7 @@ function App() {
 
       const resyncAmbientUiActiveSetFromConfig = async (phase: string): Promise<void> => {
         try {
-          const config = parseConfig(await readCharminalConfigText());
+          const config = parseConfig(await readYorishiroConfigText());
           syncAmbientUiActiveSet(config.activeAmbientUi);
           appLog.write({
             phase,
@@ -1469,7 +1469,7 @@ function App() {
       let pluginDir: string | null = null;
       let disabledPacks: ReadonlyArray<string> = [];
       try {
-        const configText = await readCharminalConfigText();
+        const configText = await readYorishiroConfigText();
         const config = parseConfig(configText);
         disabledPacks = config.disabledPacks;
         terminalAgent = config.terminalAgent;
@@ -1695,7 +1695,7 @@ function App() {
       // Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
       try {
         const { listen } = await import("@tauri-apps/api/event");
-        const { dispatchToolEvent } = await import("./runtime/charminal-mcp/event-channel");
+        const { dispatchToolEvent } = await import("./runtime/yorishiro-mcp/event-channel");
         const {
           createListPacksHandler,
           createPackDiagnoseHandler,
@@ -1745,16 +1745,16 @@ function App() {
           createBundledExampleReadHandler,
           // Attention light:
           createAttentionLightCueHandler,
-        } = await import("./runtime/charminal-mcp/tool-handlers");
+        } = await import("./runtime/yorishiro-mcp/tool-handlers");
         type LoadReport = import("./runtime/user-pack-loader/load-report").LoadReport;
         type UserPackEntry = import("./runtime/user-pack-loader/user-pack-loader").UserPackEntry;
-        type ToolHandlerMap = import("./runtime/charminal-mcp/event-channel").ToolHandlerMap;
+        type ToolHandlerMap = import("./runtime/yorishiro-mcp/event-channel").ToolHandlerMap;
 
-        const readConfig = async (): Promise<CharminalConfig> =>
-          parseConfig(await readCharminalConfigText());
+        const readConfig = async (): Promise<YorishiroConfig> =>
+          parseConfig(await readYorishiroConfigText());
         const updateConfigForMcp = (
-          update: (current: CharminalConfig) => CharminalConfig,
-        ): Promise<CharminalConfig> => updateCharminalConfig(update);
+          update: (current: YorishiroConfig) => YorishiroConfig,
+        ): Promise<YorishiroConfig> => updateYorishiroConfig(update);
         const readLoadReport = async (): Promise<LoadReport | null> => {
           const text = await readLastStartupReport();
           if (text === "") return null;
@@ -2133,7 +2133,7 @@ function App() {
         if (!done) {
           setTimeout(async () => {
             try {
-              const config = parseConfig(await readCharminalConfigText());
+              const config = parseConfig(await readYorishiroConfigText());
               await ptyWrite({
                 data: resolveFixedTerminalPrompt(
                   "tutorial",
@@ -2258,7 +2258,7 @@ function App() {
             cwdPersistence: createSessionTabCwdPersistence(window.localStorage),
             onEvent: (name, payload) => {
               runtime.bus.emitSynthetic(
-                { type: "system", packId: "charminal:session-tabs" },
+                { type: "system", packId: "yorishiro:session-tabs" },
                 name,
                 payload,
                 0,
@@ -2628,11 +2628,11 @@ function App() {
   }, [bundledManifestMap, personaRegistry, scenePackRegistry, uiPackRegistry]);
 
   const listPacksForHealth = useCallback(async () => {
-    const { createListPacksHandler } = await import("./runtime/charminal-mcp/tool-handlers");
+    const { createListPacksHandler } = await import("./runtime/yorishiro-mcp/tool-handlers");
     const result = await createListPacksHandler({
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
-      readConfig: async () => parseConfig(await readCharminalConfigText()),
+      readConfig: async () => parseConfig(await readYorishiroConfigText()),
       readLoadReport: async () => {
         const text = await readLastStartupReport();
         if (text === "") return null;
@@ -2693,7 +2693,7 @@ function App() {
   // subscribe 自体を遅延させる（querySelector が null を返す事故の回避）。
   //
   // container は React tree 外（document.body 直下）：pack が描画する overlay を
-  // Charminal 本体の layout と独立にするため。pointer-events: none で default 透過し、
+  // Yorishiro 本体の layout と独立にするため。pointer-events: none で default 透過し、
   // pack 側で auto を明示した要素だけがクリックを受ける。
   useEffect(() => {
     // Terminal が mount されるまでは subscribe しない（空振り事故防止）。
@@ -2835,9 +2835,9 @@ function App() {
      */
     const updateActiveAmbientUi = (ids: readonly string[]): Promise<void> =>
       enqueueConfigWrite(async () => {
-        const cur = parseConfig(await readCharminalConfigText());
+        const cur = parseConfig(await readYorishiroConfigText());
         const updated = withActiveAmbientUiSet(cur, ids);
-        await writeCharminalConfigText(serializeConfig(updated));
+        await writeYorishiroConfigText(serializeConfig(updated));
 
         // registry 側の active set を同期する
         const ambientUiRegistry = getAmbientUiPackRegistry();
@@ -2904,8 +2904,8 @@ function App() {
     const buildPackToolDeps = () => ({
       readRegistry: () => packRegistry.listEntries(),
       readBundledPacks,
-      readConfig: async () => parseConfig(await readCharminalConfigText()),
-      updateConfig: updateCharminalConfig,
+      readConfig: async () => parseConfig(await readYorishiroConfigText()),
+      updateConfig: updateYorishiroConfig,
       readLoadReport: readLoadReportForPackTools,
       getActiveIds: () => ({
         scene: scenePackRegistry.getActiveSceneId(),
@@ -3049,7 +3049,7 @@ function App() {
           // 選べない）。改行なし＝user が Enter するまで実行されない。
           // 設計境界: docs/decisions/input-prefill-boundary.md
           insertFixedPrompt: async (key) => {
-            const config = parseConfig(await readCharminalConfigText());
+            const config = parseConfig(await readYorishiroConfigText());
             const data = resolveFixedTerminalPrompt(
               key,
               appLanguageRef.current.resolved,
@@ -3058,7 +3058,7 @@ function App() {
             await ptyWrite({ data });
           },
           insertPackRepairPrompt: async (id, kind, action) => {
-            const config = parseConfig(await readCharminalConfigText());
+            const config = parseConfig(await readYorishiroConfigText());
             const data = resolvePackRepairPrompt({
               id,
               kind,
@@ -3083,7 +3083,7 @@ function App() {
           listPacks: listPacksForHealth,
           diagnosePack: async (id, kind) => {
             const { createPackDiagnoseHandler } = await import(
-              "./runtime/charminal-mcp/tool-handlers"
+              "./runtime/yorishiro-mcp/tool-handlers"
             );
             const deps = buildPackToolDeps();
             return createPackDiagnoseHandler({
@@ -3093,7 +3093,7 @@ function App() {
           },
           disablePack: async (id) => {
             const { createDisablePackHandler } = await import(
-              "./runtime/charminal-mcp/tool-handlers"
+              "./runtime/yorishiro-mcp/tool-handlers"
             );
             const deps = buildPackToolDeps();
             return createDisablePackHandler({
@@ -3104,7 +3104,7 @@ function App() {
           },
           enablePack: async (id) => {
             const { createEnablePackHandler } = await import(
-              "./runtime/charminal-mcp/tool-handlers"
+              "./runtime/yorishiro-mcp/tool-handlers"
             );
             const deps = buildPackToolDeps();
             return createEnablePackHandler({
@@ -3150,7 +3150,7 @@ function App() {
           },
           setLanguage: async (language) => {
             return enqueueConfigWrite(async () => {
-              const cur = parseConfig(await readCharminalConfigText());
+              const cur = parseConfig(await readYorishiroConfigText());
               const resolved = resolveLanguage(language, getBrowserLocales());
               const nextPrimaryPersona = resolvePrimaryPersonaForLanguage(
                 cur.primaryPersona,
@@ -3160,7 +3160,7 @@ function App() {
                 cur.primaryPersona === nextPrimaryPersona
                   ? withLanguageSet(cur, language)
                   : withLanguageSet(withPrimaryPersonaSet(cur, null), language);
-              await writeCharminalConfigText(serializeConfig(updated));
+              await writeYorishiroConfigText(serializeConfig(updated));
               appLanguageRef.current = { configured: language, resolved };
               setAppLanguage({ configured: language, resolved });
               personaRegistry.setPrimaryPersona(
@@ -3179,7 +3179,7 @@ function App() {
             if ("unavailable" in result) throw new Error(result.reason);
           },
           getConfig: async () => {
-            const text = await readCharminalConfigText();
+            const text = await readYorishiroConfigText();
             const cur = parseConfig(text);
             const resolvedLanguage = resolveLanguage(cur.language, getBrowserLocales());
             return {
@@ -3367,7 +3367,7 @@ function App() {
     ambientAudio,
     applyTerminalPresentationForSession,
     enqueueConfigWrite,
-    updateCharminalConfig,
+    updateYorishiroConfig,
     updateConfig,
     setActiveSceneFromUserSelection,
   ]);
@@ -4021,7 +4021,7 @@ function App() {
     };
   }, [isUserLayerReady, tabManager]);
 
-  // Rust 側の app_screenshot は撮影完了後に "charminal:screen-flash" を emit する。
+  // Rust 側の app_screenshot は撮影完了後に "yorishiro:screen-flash" を emit する。
   // ここで listen して screen-flash effect を dispatch することで、
   // OS-level screenshot 撮影直後の視覚フィードバックを提供する。
   useEffect(() => {
@@ -4031,7 +4031,7 @@ function App() {
 
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      const unlisten = await listen("charminal:screen-flash", () => {
+      const unlisten = await listen("yorishiro:screen-flash", () => {
         if (disposed) return;
         effectDispatcher.dispatch({ kind: "screen-flash" });
       });

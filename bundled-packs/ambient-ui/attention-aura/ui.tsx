@@ -1,5 +1,5 @@
 /**
- * @charminal/bundled-packs/ambient-ui/attention-aura
+ * @yorishiro/bundled-packs/ambient-ui/attention-aura
  *
  * Attention runtime の snapshot を subscribe し、target rect を淡い光の帯で
  * overlay する bundled ambient-ui pack。

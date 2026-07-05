@@ -18,7 +18,7 @@ export async function reregisterBundledScene(newDef: ScenePackDefinition): Promi
       name: newDef.id,
       type: "scene",
       version: "0.0.0",
-      charminalVersion: "^0.1.0",
+      yorishiroVersion: "^0.1.0",
       entry: "scene.ts",
     },
     scene: newDef.scene,

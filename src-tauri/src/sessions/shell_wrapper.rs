@@ -1,8 +1,8 @@
 //! Shell wrapper rc + init script の生成。
 //!
-//! `~/.yorishiro/shell/` 配下に Charminal 所有の init script と wrapper rc を
+//! `~/.yorishiro/shell/` 配下に Yorishiro 所有の init script と wrapper rc を
 //! 書き出す。spawn 時に shell binary に応じた env / args を組み立てて wrapper
-//! を経由させ、user の rc → Charminal の OSC 133 / 633 emit → user.<shell> 拡張点
+//! を経由させ、user の rc → Yorishiro の OSC 133 / 633 emit → user.<shell> 拡張点
 //! の順で source される構造を作る。
 //!
 //! 詳細は `docs/terminal.md` §Shell integration。
@@ -41,8 +41,8 @@ const HOOK_REMINDER: &str = include_str!("shell_wrapper/hook-reminder.sh");
 /// idempotent に書く。既存内容と一致していたら no-op。
 ///
 /// `user.<shell>` には絶対 touch しない（user 拡張点）。
-pub fn ensure_shell_files(charminal_home: &Path) -> io::Result<()> {
-    let shell_dir = charminal_home.join("shell");
+pub fn ensure_shell_files(yorishiro_home: &Path) -> io::Result<()> {
+    let shell_dir = yorishiro_home.join("shell");
     fs::create_dir_all(&shell_dir)?;
 
     write_if_different(&shell_dir.join("init.zsh"), INIT_ZSH)?;
@@ -434,11 +434,11 @@ exec "$real" \
     )
 }
 
-/// shell session 内で手動起動された `claude` / `codex` を Charminal に紐づける
-/// per-session PATH shim を用意する。cmux と同じく、Charminal 内の shell にだけ
+/// shell session 内で手動起動された `claude` / `codex` を Yorishiro に紐づける
+/// per-session PATH shim を用意する。cmux と同じく、Yorishiro 内の shell にだけ
 /// env + PATH を注入し、wrapper 失敗時は real binary へ pass-through する。
-pub fn prepare_agent_command_shims(charminal_home: &Path, session_id: &str) -> io::Result<PathBuf> {
-    let shell_dir = charminal_home.join("shell");
+pub fn prepare_agent_command_shims(yorishiro_home: &Path, session_id: &str) -> io::Result<PathBuf> {
+    let shell_dir = yorishiro_home.join("shell");
     let hooks = ensure_hook_scripts(&shell_dir)?;
     let shim_dir = shell_dir
         .join("session-shims")
@@ -460,11 +460,11 @@ pub fn prepare_agent_command_shims(charminal_home: &Path, session_id: &str) -> i
 
 pub fn apply_agent_shim_env(
     cmd: &mut portable_pty::CommandBuilder,
-    charminal_home: &Path,
+    yorishiro_home: &Path,
     session_id: &str,
     hook_port: u16,
 ) {
-    match prepare_agent_command_shims(charminal_home, session_id) {
+    match prepare_agent_command_shims(yorishiro_home, session_id) {
         Ok(shim_dir) => {
             cmd.env("YORISHIRO_SESSION_ID", session_id);
             cmd.env("YORISHIRO_HOOK_PORT", hook_port.to_string());
@@ -502,7 +502,7 @@ pub enum KnownShell {
     Fish,
 }
 
-/// Charminal-owned wrapper を経由するように `Command` を構成する。`integration`
+/// Yorishiro-owned wrapper を経由するように `Command` を構成する。`integration`
 /// が false のとき、または shell が known でないときは何もしない（caller は
 /// raw shell 起動にフォールバックする）。
 ///
@@ -511,12 +511,12 @@ pub enum KnownShell {
 pub fn apply_integration(
     cmd: &mut portable_pty::CommandBuilder,
     shell_path: &str,
-    charminal_home: &Path,
+    yorishiro_home: &Path,
 ) {
     let Some(kind) = detect_shell_kind(shell_path) else {
         return;
     };
-    let shell_dir = charminal_home.join("shell");
+    let shell_dir = yorishiro_home.join("shell");
     match kind {
         KnownShell::Zsh => {
             // 元 ZDOTDIR を YORISHIRO_USER_ZDOTDIR で保存し、wrapper-zsh を ZDOTDIR にする。
@@ -552,14 +552,14 @@ pub fn apply_integration(
 #[cfg(test)]
 pub fn dry_run_integration(
     shell_path: &str,
-    charminal_home: &Path,
+    yorishiro_home: &Path,
     orig_zdotdir: Option<&str>,
 ) -> (Vec<(String, String)>, Vec<String>) {
     let kind = match detect_shell_kind(shell_path) {
         Some(k) => k,
         None => return (Vec::new(), Vec::new()),
     };
-    let shell_dir = charminal_home.join("shell");
+    let shell_dir = yorishiro_home.join("shell");
     let mut envs = Vec::new();
     let mut args = Vec::new();
     match kind {
@@ -610,7 +610,7 @@ mod tests {
             .map(|d| d.as_nanos())
             .unwrap_or(0);
         let p = std::env::temp_dir().join(format!(
-            "charminal-shell-wrapper-test-{}-{}-{}",
+            "yorishiro-shell-wrapper-test-{}-{}-{}",
             label,
             std::process::id(),
             nanos
@@ -619,11 +619,11 @@ mod tests {
         p
     }
 
-    fn run_bash_with_charminal_init(label: &str, input: &str) -> Option<String> {
-        run_bash_with_charminal_init_and_rc(label, input, "")
+    fn run_bash_with_yorishiro_init(label: &str, input: &str) -> Option<String> {
+        run_bash_with_yorishiro_init_and_rc(label, input, "")
     }
 
-    fn run_bash_with_charminal_init_and_rc(
+    fn run_bash_with_yorishiro_init_and_rc(
         label: &str,
         input: &str,
         rc_prefix: &str,
@@ -869,9 +869,9 @@ mod tests {
 
     #[test]
     fn path_prepend_unique_moves_shim_to_front_once() {
-        let shim = Path::new("/tmp/charminal-shim");
-        let path = path_prepend_unique(shim, "/usr/bin:/tmp/charminal-shim:/bin");
-        assert_eq!(path, "/tmp/charminal-shim:/usr/bin:/bin");
+        let shim = Path::new("/tmp/yorishiro-shim");
+        let path = path_prepend_unique(shim, "/usr/bin:/tmp/yorishiro-shim:/bin");
+        assert_eq!(path, "/tmp/yorishiro-shim:/usr/bin:/bin");
     }
 
     #[test]
@@ -895,7 +895,7 @@ mod tests {
     #[test]
     fn bash_integration_emits_once_for_and_list() {
         let Some(combined) =
-            run_bash_with_charminal_init("bash-and-list", "echo one && echo two\nexit\n")
+            run_bash_with_yorishiro_init("bash-and-list", "echo one && echo two\nexit\n")
         else {
             return;
         };
@@ -908,7 +908,7 @@ mod tests {
     #[test]
     fn bash_integration_emits_once_for_pipeline() {
         let Some(combined) =
-            run_bash_with_charminal_init("bash-pipeline", "printf one | cat\nexit\n")
+            run_bash_with_yorishiro_init("bash-pipeline", "printf one | cat\nexit\n")
         else {
             return;
         };
@@ -920,7 +920,7 @@ mod tests {
 
     #[test]
     fn bash_prompt_command_preserves_previous_status_for_user_prompt() {
-        let Some(combined) = run_bash_with_charminal_init_and_rc(
+        let Some(combined) = run_bash_with_yorishiro_init_and_rc(
             "bash-prompt-status",
             "false\ntrue\nexit\n",
             "PROMPT_COMMAND='printf \"PROMPT_STATUS=%s\\n\" \"$?\"'\n",

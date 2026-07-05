@@ -311,7 +311,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     } else {
       const restored = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
       this.term.options.theme = { ...this.term.options.theme, background: restored };
-      // 空文字で inline 背景を外し CSS（--charminal-bg）へ戻す。
+      // 空文字で inline 背景を外し CSS（--yorishiro-bg）へ戻す。
       this.xtermContainer.style.background = "";
     }
     this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgTransparent);

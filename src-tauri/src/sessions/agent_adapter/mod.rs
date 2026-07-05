@@ -18,7 +18,7 @@ fn temp_config_path(prefix: &str, extension: &str) -> PathBuf {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     std::env::temp_dir().join(format!(
-        "charminal-{}-{}-{}.{}",
+        "yorishiro-{}-{}-{}.{}",
         prefix,
         std::process::id(),
         stamp,
@@ -213,7 +213,7 @@ fn build_prompt_reminder_from_config_value(config: Option<&serde_json::Value>) -
         .collect::<Vec<_>>()
         .join("\n");
     Some(format!(
-        "## Charminal reminders\n\nBefore each response, check these active reminders:\n\n{}",
+        "## Yorishiro reminders\n\nBefore each response, check these active reminders:\n\n{}",
         bullets
     ))
 }

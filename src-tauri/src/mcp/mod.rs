@@ -1,4 +1,4 @@
-//! Charminal MCP server。
+//! Yorishiro MCP server。
 //!
 //! Rust backend に localhost HTTP(streamable) server を立て、Claude Code
 //! / Codex の起動時 config から接続される。tool ハンドラは tools.rs、

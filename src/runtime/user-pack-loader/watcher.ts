@@ -1,5 +1,5 @@
 /**
- * User pack watcher — Rust 側の `watch_charminal_layer` から file event を受けて
+ * User pack watcher — Rust 側の `watch_yorishiro_layer` から file event を受けて
  * `packRegistry` と各 registrar を同期する hot-reload の主動脈。
  *
  * 純粋 logic（path parse / action mapping）は `watcher-logic.ts` に切り出して
@@ -34,7 +34,7 @@ import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 import type { UserPackRegistry } from "./user-pack-registry";
-import { type CharminalLayerEvent, mapEventToAction, type WatcherAction } from "./watcher-logic";
+import { mapEventToAction, type WatcherAction, type YorishiroLayerEvent } from "./watcher-logic";
 
 export interface StartPackWatcherDeps {
   readonly effectPackRunner: EffectRegistrar;
@@ -95,31 +95,31 @@ const extractDefault = (mod: unknown): unknown => {
  * 側 watcher は起動済みで、以降の event は Channel 経由で受け取る。
  *
  * 起動失敗時は dev-log に痕跡を残して reject せず、noop handle を返す。watcher
- * が止まっていても Charminal 本体は動く——philosophy「壊さないこと」の典型適用。
+ * が止まっていても Yorishiro 本体は動く——philosophy「壊さないこと」の典型適用。
  */
 export async function startPackWatcher(deps: StartPackWatcherDeps): Promise<PackWatcherHandle> {
-  let charminalHome: string;
+  let yorishiroHome: string;
   try {
-    charminalHome = await invoke<string>("charminal_home_dir");
+    yorishiroHome = await invoke<string>("yorishiro_home_dir");
   } catch (err) {
     deps.userPackLog.write({
       phase: "watch",
-      note: "failed to resolve ~/.charminal/ path; watcher disabled",
+      note: "failed to resolve ~/.yorishiro/ path; watcher disabled",
       data: { error: errorMessage(err) },
     });
     return { dispose: () => {} };
   }
 
-  const channel = new Channel<CharminalLayerEvent>();
+  const channel = new Channel<YorishiroLayerEvent>();
   channel.onmessage = (event) => {
-    void handleLayerEvent(event, charminalHome, deps, { invoke, convertFileSrc });
+    void handleLayerEvent(event, yorishiroHome, deps, { invoke, convertFileSrc });
   };
 
   try {
-    await invoke("watch_charminal_layer", { onEvent: channel });
+    await invoke("watch_yorishiro_layer", { onEvent: channel });
     deps.userPackLog.write({
       phase: "watch",
-      note: `watching ${charminalHome}`,
+      note: `watching ${yorishiroHome}`,
     });
   } catch (err) {
     deps.userPackLog.write({
@@ -138,12 +138,12 @@ interface TauriBindings {
 }
 
 async function handleLayerEvent(
-  event: CharminalLayerEvent,
-  charminalHome: string,
+  event: YorishiroLayerEvent,
+  yorishiroHome: string,
   deps: StartPackWatcherDeps,
   tauri: TauriBindings,
 ): Promise<void> {
-  const action = mapEventToAction(event, charminalHome);
+  const action = mapEventToAction(event, yorishiroHome);
 
   switch (action.type) {
     case "ignore":
@@ -328,7 +328,7 @@ async function reloadPack(
           id: injected.id,
           type: "persona",
           version: "0.0.0",
-          charminalVersion: "*",
+          yorishiroVersion: "*",
           entry: "persona.js",
         },
         persona: injected,
@@ -366,7 +366,7 @@ async function reloadPack(
           id: pack.id,
           type: "ui",
           version: "0.0.0",
-          charminalVersion: "*",
+          yorishiroVersion: "*",
           entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
         },
         origin: "user",
@@ -390,7 +390,7 @@ async function reloadPack(
           id: pack.id,
           type: "ambient-ui",
           version: "0.0.0",
-          charminalVersion: "*",
+          yorishiroVersion: "*",
           entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
         },
         pack: { mount: pack.mount },

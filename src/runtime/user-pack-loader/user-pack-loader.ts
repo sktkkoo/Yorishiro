@@ -1,7 +1,7 @@
 /**
  * User pack loader — Phase 1-a の static load。
  *
- * 起動時に一度だけ ~/.charminal/packs/ を scan し、見つかった entry を dynamic
+ * 起動時に一度だけ ~/.yorishiro/packs/ を scan し、見つかった entry を dynamic
  * import → validator で shape を確認 → 対応する registrar に register する。
  *
  * effect / persona / scene は Path A + BYOC 方針の `.js` entry。UI pack は
@@ -90,7 +90,7 @@ export interface LoadUserPacksDeps {
    */
   readonly packRegistry: UserPackRegistry;
   readonly personaDefaults?: PersonaDefinition;
-  /** ~/.charminal/ を ensure してから list_user_packs を呼ぶ関数。production は Tauri invoke で実装。 */
+  /** ~/.yorishiro/ を ensure してから list_user_packs を呼ぶ関数。production は Tauri invoke で実装。 */
   readonly fetchPackEntries: () => Promise<ReadonlyArray<UserPackEntry>>;
   /** entryPath を asset URL に変換しつつ dynamic import する関数。 */
   readonly importModule: (entryPath: string) => Promise<unknown>;
@@ -292,7 +292,7 @@ export async function loadSingleUserPack(
             id: injected.id,
             type: "persona",
             version: "0.0.0",
-            charminalVersion: "*",
+            yorishiroVersion: "*",
             entry: "persona.js",
           },
           persona: injected,
@@ -340,7 +340,7 @@ export async function loadSingleUserPack(
           id: pack.id,
           type: "ui",
           version: "0.0.0",
-          charminalVersion: "*",
+          yorishiroVersion: "*",
           entry: entry.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
         },
         origin: "user",
@@ -362,7 +362,7 @@ export async function loadSingleUserPack(
           id: pack.id,
           type: "ambient-ui",
           version: "0.0.0",
-          charminalVersion: "*",
+          yorishiroVersion: "*",
           entry: entry.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
         },
         pack: { mount: pack.mount },
@@ -414,7 +414,7 @@ export async function loadSingleUserPack(
  * Phase 1-a 段階の static loader。起動時に 1 回呼ぶ。
  *
  * 1 個の pack が落ちても loop は止めず、dev-log に痕跡を残して続行する。
- * 「姿の見えない pack が Charminal 本体を道連れにしない」は設計上の要請と直結。
+ * 「姿の見えない pack が Yorishiro 本体を道連れにしない」は設計上の要請と直結。
  *
  * 起動後の再 load（watcher からの reload 経由）でも同じ path を通る。register
  * 結果の Disposable は `packRegistry` に格納されるので、同 id+kind の前 entry

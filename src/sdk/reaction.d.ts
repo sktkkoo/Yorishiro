@@ -36,7 +36,7 @@ export type ReactionType = StandardReactionType | (string & {});
 // ─── Dispatch events ────────────────────────────────────
 
 /**
- * Charminal runtime の trigger loop を流れる event の総称。
+ * Yorishiro runtime の trigger loop を流れる event の総称。
  * custom trigger の match 関数の入力として渡される。
  *
  * 「Dispatch」は runtime が dispatcher 経由で trigger match に流すという
@@ -77,7 +77,7 @@ export type ObservedEvent =
 /**
  * Runtime が観測結果から生成する便利 event。
  * 元 event より pack 作者が扱いやすい粒度に寄せているため、厳密な upstream event
- * ではなく Charminal runtime の解釈を含む。
+ * ではなく Yorishiro runtime の解釈を含む。
  */
 export type DerivedEvent = IdleEvent | ToolActivityEvent;
 
@@ -248,7 +248,7 @@ export interface CharmCommandEvent {
  * ここでの「loop」とは Claude Code / Codex 等が goal に向けて
  * plan → execute → evaluate → adjust を繰り返す long-horizon の自動実行を指す。
  * turn 単位の hook signal（pre-tool-use 等）より上位の構造で、複数 turn に
- * またがる。Charminal はこの loop を **駆動しない**——agent 自身が MCP
+ * またがる。Yorishiro はこの loop を **駆動しない**——agent 自身が MCP
  * `loop_announce`（または pack が `ctx.loop.announce`）で自己申告した phase を
  * 観察するだけ。
  *
@@ -278,7 +278,7 @@ export type LoopPhase =
  *
  * ## 観察境界
  *
- * これは observation であって命令ではない。Charminal は loop を起動・停止・
+ * これは observation であって命令ではない。Yorishiro は loop を起動・停止・
  * 制御しない。`blocked-on-approval` を観察しても承認を **代行しない**——人間が
  * 端末で操作する（PTY observation-only、docs/decisions/critical-constraints.md §1）。
  *
@@ -305,7 +305,7 @@ export interface LoopLifecycleEvent {
    *
    * NOTE: 将来 repo-scoped recovery のため repo 変更の手がかり（changed
    * files / commit SHA 等）を載せられるが、loop event 自体は restore を
-   * 起こさない。Charminal 自身の復元（history_*）とは別軸。
+   * 起こさない。Yorishiro 自身の復元（history_*）とは別軸。
    * 詳細: docs/decisions/loop-presence-layer.md
    */
   readonly detail?: unknown;
@@ -319,7 +319,7 @@ export interface LoopLifecycleEvent {
  *
  * ## なぜ存在するのか
  *
- * Charminal の反応 flow は declarative である：
+ * Yorishiro の反応 flow は declarative である：
  * **event → trigger.match → reaction → handler**。
  * handler 内から直接 reaction を emit する API（`ctx.emit(reaction)` 的な
  * もの）は意図的に提供していない。そうすると imperative になり、

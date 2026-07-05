@@ -371,7 +371,7 @@ describe("loadUserPacks", () => {
           id: "my-scene",
           type: "scene",
           version: "0.1.0",
-          charminalVersion: "^0.1.0",
+          yorishiroVersion: "^0.1.0",
           entry: "scene.js",
         }),
         { status: 200, headers: { "Content-Type": "application/json" } },
@@ -1239,7 +1239,7 @@ describe("loadSingleUserPack", () => {
     const devLog = makeDevLog().subsystem;
     const defaults = {
       id: "clai",
-      name: "Charminal",
+      name: "Yorishiro",
       reflex: {
         customTriggers: [
           {

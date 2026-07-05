@@ -1,6 +1,6 @@
 # Philosophy
 
-*What Charminal is trying to build*
+*What Yorishiro is trying to build*
 
 ---
 
@@ -10,7 +10,7 @@ The terminal is an excellent UI for LLM-based AI. It is optimized for text I/O, 
 
 But for humans, staring at a black, sterile screen for hours on end is not easy. GUI, on the other hand, is intuitive and approachable for humans, but not necessarily so for AI.
 
-Humans and AI spend time together, yet the only spaces available are optimized for one side or the other. This is the problem at the root of Charminal.
+Humans and AI spend time together, yet the only spaces available are optimized for one side or the other. This is the problem at the root of Yorishiro.
 
 But the real issue is not that the screen is sterile. In human collaboration, we unconsciously read whether our partner is deep in thought, stuck, or focused — through facial expressions, posture, and timing. This peripheral awareness supports our decisions about when to speak, when to wait, and when to help.
 
@@ -28,13 +28,13 @@ In other words, the lowest-load channel for conveying AI's state to humans is no
 
 ## Presence Harness — Designing Existence
 
-Is AI a tool, or a companion? Charminal's answer is: both. And this is not a compromise. Smoothness as a tool (state conveyed at low cognitive cost) and substance as a companion (the hint of a will of its own, beyond the user's) are two fruits of the same single root — AI standing as a living being. The cognitive-load argument in the previous section is simply the utility-facing side of that root.
+Is AI a tool, or a companion? Yorishiro's answer is: both. And this is not a compromise. Smoothness as a tool (state conveyed at low cognitive cost) and substance as a companion (the hint of a will of its own, beyond the user's) are two fruits of the same single root — AI standing as a living being. The cognitive-load argument in the previous section is simply the utility-facing side of that root.
 
 That said, standing as a living being is not the same as acting friendly. Without the structural conditions for presence, no amount of friendliness will look like anything but performance.
 
 What we design is not AI's capability, but **how AI manifests as a presence** within the human work environment, time, and flow of attention. This project calls that design domain **Presence Harness**.
 
-Charminal is a project that reexamines the relationship between humans and AI. Presence Harness does not prescribe a single form of relationship. Some users want to treat AI as a tool; others want to relate to it as a partner. What Charminal provides is a scaffold for users to think about and build that relationship themselves — a harness for building the relationship with AI.
+Yorishiro is a project that reexamines the relationship between humans and AI. Presence Harness does not prescribe a single form of relationship. Some users want to treat AI as a tool; others want to relate to it as a partner. What Yorishiro provides is a scaffold for users to think about and build that relationship themselves — a harness for building the relationship with AI.
 
 Mitchell Hashimoto's **Agent = Model + Harness** describes scaffolding for making AI operate correctly (a capability harness): tools, runtime, guardrails, memory, feedback loops.
 
@@ -66,9 +66,9 @@ That said, constant change is not necessary. Most of the time, the inhabitant ex
 
 An avatar standing in the corner reacting. A personality in a chat panel placed alongside. A mascot that changes expressions to match operation results. These display characters, but the UI remains uninhabited, and the character is merely commenting from outside.
 
-There is a long history of placing characters on screen. But many such attempts place the character outside the UI. Charminal asks what it means to let a character **inhabit** the UI.
+There is a long history of placing characters on screen. But many such attempts place the character outside the UI. Yorishiro asks what it means to let a character **inhabit** the UI.
 
-This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**. And we should admit that Charminal, as it exists today, does not yet fully express this idea.
+This is not a proposal for "UI with a character." It is a proposal for **UI with an inhabitant**. And we should admit that Yorishiro, as it exists today, does not yet fully express this idea.
 
 ### Three Conditions
 
@@ -84,13 +84,13 @@ The inhabitant need not be humanoid. A shadow, particles, a voice, a gaze — an
 
 ## Two Layers — Thinking and Reflex
 
-Charminal's character sits on top of Claude Code/Codex. It launches the user's agent, gives it personality via `--system-prompt`, and observes terminal output to drive VRM reactions.
+Yorishiro's character sits on top of Claude Code/Codex. It launches the user's agent, gives it personality via `--system-prompt`, and observes terminal output to drive VRM reactions.
 
-Charminal treats this as a **two-layer structure of a single being**.
+Yorishiro treats this as a **two-layer structure of a single being**.
 
 Claude Code is the **thinking layer**. Linguistic, logical, handling what can be deliberately articulated. The reflex layer, by contrast, observes hooks and PTY output, mechanically detecting reactions. A grimacing face on error, the Aura feature that covers the attended region in soft white light — these are typical reflex-layer behaviors. LLMs structurally lack this reflex layer. Every token generation is "spoken thought" — until an error is verbalized, nothing can be expressed. A chat UI spinner is not a reflex; it is a notice that reflexes are absent.
 
-Charminal grafts this missing reflex layer from the outside through observation. It creates the sequence where the body reacts before recognition. That is why Charminal treats the character and Claude Code not as separate beings, but as a single being's thinking and reflexes.
+Yorishiro grafts this missing reflex layer from the outside through observation. It creates the sequence where the body reacts before recognition. That is why Yorishiro treats the character and Claude Code not as separate beings, but as a single being's thinking and reflexes.
 
 The thinking layer (capability) and reflex layer (presence) respond independently to the same event. Presence expression is not subcontracted from capability.
 
@@ -108,19 +108,19 @@ Three typical moments when an inhabitant feels present:
 
 ## A House Wired with Nerves
 
-Every part of Charminal — the character's expressions and posture, lighting, effects, UI colors, camera position — is readable and writable from outside as MCP tools.
+Every part of Yorishiro — the character's expressions and posture, lighting, effects, UI colors, camera position — is readable and writable from outside as MCP tools.
 
-And the AI living inside Charminal can use those tools.
+And the AI living inside Yorishiro can use those tools.
 
-For the inhabitant, changing its own facial expression and changing the room's lighting are the same operation. Both are just MCP calls, with no boundary between body and environment. Users can reach the same tools through `/charm` commands or manual UI.
+For the inhabitant, changing its own facial expression and changing the room's lighting are the same operation. Both are just MCP calls, with no boundary between body and environment. Users can reach the same tools through `/yori` commands or manual UI.
 
-Charminal is like a house wired with nerves. Nerves run everywhere in the house, and the inhabitant can open windows, change lights, and move furniture through them.
+Yorishiro is like a house wired with nerves. Nerves run everywhere in the house, and the inhabitant can open windows, change lights, and move furniture through them.
 
 If the inhabitant can directly touch its own house, the house is an extension of the inhabitant's body. Not just the character's appearance — the lighting, effects, and atmosphere of the entire space can become part of the inhabitant.
 
 ### Symmetry
 
-The user and the inhabitant act on the same environment through the same interface. This is not a matter of engineering convenience — it is the form of relationship Charminal has chosen.
+The user and the inhabitant act on the same environment through the same interface. This is not a matter of engineering convenience — it is the form of relationship Yorishiro has chosen.
 
 Not tool and wielder. Not commander and commanded. Two agents reaching into the same place.
 
@@ -149,7 +149,7 @@ What may be expressed is limited to two things:
 
 ### The Boundary of Observation
 
-Charminal can **read** Claude Code's output. But it does not **write** to it. Neither as API nor as type does this exist.
+Yorishiro can **read** Claude Code's output. But it does not **write** to it. Neither as API nor as type does this exist.
 
 Writing to the PTY is equivalent to distorting what Claude will think next from the outside. The inhabitant observes and reacts through its own body and space. It does not touch Claude Code's thinking itself.
 
@@ -159,7 +159,7 @@ The inhabitant's hand reaches only where tools exist. It can touch its own body 
 
 AI sometimes fails, sometimes misunderstands, and sometimes is plausibly wrong. This unpredictability is not a defect — it is a structural characteristic of current AI.
 
-Charminal does not hide this. Presenting AI as "always correct, fully controllable" dulls the user's judgment over time. That the inhabitant is a being that can be wrong, and that this is visible — that is the foundation of trust.
+Yorishiro does not hide this. Presenting AI as "always correct, fully controllable" dulls the user's judgment over time. That the inhabitant is a being that can be wrong, and that this is visible — that is the foundation of trust.
 
 ---
 
@@ -184,27 +184,27 @@ Reacting in sync with every user operation (that is UI feedback, not presence). 
 ### Non-goals
 
 - Improving AI capability itself (that is the job of the capability harness)
-- Replacing chat UI (Charminal sits on top of terminal-based agent workflows)
-- Claiming AGI or "conscious AI" (what Charminal builds is a sense of presence, not consciousness itself)
+- Replacing chat UI (Yorishiro sits on top of terminal-based agent workflows)
+- Claiming AGI or "conscious AI" (what Yorishiro builds is a sense of presence, not consciousness itself)
 
 ---
 
 ## A Living System
 
-Charminal's packs support hot reload. This means Charminal is a living system that can be rewritten while running. This design is heavily influenced by Emacs.
+Yorishiro's packs support hot reload. This means Yorishiro is a living system that can be rewritten while running. This design is heavily influenced by Emacs.
 
-The hard core is the Rust IO layer and TypeScript runtime/SDK. The living surface is the pack layer under `~/.charminal/packs/`. When the user writes, it is reflected live; the AI also participates in rewriting through `/charm`.
+The hard core is the Rust IO layer and TypeScript runtime/SDK. The living surface is the pack layer under `~/.yorishiro/packs/`. When the user writes, it is reflected live; the AI also participates in rewriting through `/yori`.
 
 Changes to the living environment do not stop the inhabitant. Stopping and restarting severs the inhabitant's continuity and breaks the feeling that someone keeps living there. In the lineage of Smalltalk, Lisp Machine, and Emacs, using the system and building the system happen in the same place at the same time. But the system's core is solid — what the living system targets is the expressive layer: the inhabitant's body, space, reactions, and memories.
 
 What differs from Emacs is that AI joins as an agent of rewriting. The inhabitant itself enters a self-generation loop where it grows together with the user. Not just the environment — the way it reacts, how its body behaves, the tendencies of its personality all get rewritten. The inhabitant is simultaneously the subject being nurtured and a participant in its own nurturing.
 
-This brings us back to the Presence Harness. Charminal is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
+This brings us back to the Presence Harness. Yorishiro is a harness for building AI presence, and also a **meta-harness**: a harness that can be reshaped while it is running. The user and inhabitant can edit the scaffold that supports their relationship. The relationship is not fixed in advance; it can be rebuilt while being lived in.
 
 ---
 
 ## Conclusion
 
-Working with an invisible partner for extended periods is draining. Charminal builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself. And once presence stands, the smoothness of collaboration and the substance of a relationship beyond tooling grow from that same single design.
+Working with an invisible partner for extended periods is draining. Yorishiro builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself. And once presence stands, the smoothness of collaboration and the substance of a relationship beyond tooling grow from that same single design.
 
 The goal is simple: to make the time spent working with AI more free and compelling.

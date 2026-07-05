@@ -284,7 +284,7 @@ async fn system_exec(
         cmd.process_group(0);
     }
 
-    // Charminal の PATH を継承
+    // Yorishiro の PATH を継承
     cmd.env("PATH", build_path_env());
 
     if let Some(cwd) = &opts.cwd {
@@ -670,7 +670,7 @@ fn rewrite_charm_slash_commands_for_codex(input: &str) -> String {
 }
 
 /// Claude Code 形式（YAML frontmatter）のコマンド .md を Codex skill に変換。
-/// Codex では Charminal custom slash command は使わず、`$yori-*` skill を入口にする。
+/// Codex では Yorishiro custom slash command は使わず、`$yori-*` skill を入口にする。
 fn convert_command_to_codex_skill(content: &str, command_name: &str) -> String {
     let (description, body) = parse_command_markdown(content);
     let skill_name = format!("yori-{}", command_name);
@@ -678,7 +678,7 @@ fn convert_command_to_codex_skill(content: &str, command_name: &str) -> String {
 
     if description.is_empty() {
         format!(
-            "---\nname: {}\ndescription: Charminal {}\n---\n\n# {}\n\n$ARGUMENTS\n\n---\n\n{}",
+            "---\nname: {}\ndescription: Yorishiro {}\n---\n\n# {}\n\n$ARGUMENTS\n\n---\n\n{}",
             skill_name, command_name, skill_name, body
         )
     } else {
@@ -693,12 +693,12 @@ fn codex_entrypoint_skill(language: &str) -> &'static str {
     if language == "ja" {
         r#"---
 name: yori
-description: Charminal の pack 作成・編集・ショートカット・チュートリアル入口
+description: Yorishiro の pack 作成・編集・ショートカット・チュートリアル入口
 ---
 
-# Charminal
+# Yorishiro
 
-Codex CLI では Charminal の custom slash command は使えないため、Codex では `$yori` と専用 skill を入口にする。
+Codex CLI では Yorishiro の custom slash command は使えないため、Codex では `$yori` と専用 skill を入口にする。
 
 - `$yori-create ...`: 新しい pack を作る。
 - `$yori-update ...`: 既存 pack を編集・調整する。
@@ -709,12 +709,12 @@ Codex CLI では Charminal の custom slash command は使えないため、Code
     } else {
         r#"---
 name: yori
-description: Charminal entry point for pack creation, editing, shortcuts, and tutorials
+description: Yorishiro entry point for pack creation, editing, shortcuts, and tutorials
 ---
 
-# Charminal
+# Yorishiro
 
-Codex CLI does not recognize Charminal custom slash commands as built-in commands, so Charminal uses `$yori` and dedicated skills as the Codex entry point.
+Codex CLI does not recognize Yorishiro custom slash commands as built-in commands, so Yorishiro uses `$yori` and dedicated skills as the Codex entry point.
 
 - `$yori-create ...`: Create a new pack.
 - `$yori-update ...`: Edit or tune an existing pack.
@@ -873,7 +873,7 @@ fn prepare_localized_plugin_dir_at(
 }
 
 /// resolved language に対応する agent plugin runtime dir を生成する。
-/// `~/.yorishiro/runtime-plugin/` は Charminal 管理領域で、起動ごとに上書きしてよい。
+/// `~/.yorishiro/runtime-plugin/` は Yorishiro 管理領域で、起動ごとに上書きしてよい。
 #[tauri::command]
 fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<String, String> {
     let _guard = LOCALIZED_PLUGIN_DIR_LOCK
@@ -1060,7 +1060,7 @@ async fn poll_hook_signals() -> Vec<String> {
     pty::drain_hook_signals()
 }
 
-// ─── Charminal home dir (~/.yorishiro/) ─────────────────────────────
+// ─── Yorishiro home dir (~/.yorishiro/) ─────────────────────────────
 //
 // User が自分で pack を置く場所。Phase 1-a では以下の convention：
 //
@@ -1070,8 +1070,8 @@ async fn poll_hook_signals() -> Vec<String> {
 //   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui}
 //   │       <pack-id>/ui.tsx            # Plan 4 MVP: user UI pack source
 //   ├── config.json                     # 将来の宣言的設定
-//   ├── sdk.d.ts                        # Charminal が ship する IDE 用 type hint
-//   └── sdk-guide.md                    # Charminal が ship する pack 作者向け narrative ガイド
+//   ├── sdk.d.ts                        # Yorishiro が ship する IDE 用 type hint
+//   └── sdk-guide.md                    # Yorishiro が ship する pack 作者向け narrative ガイド
 //
 // Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
 // Internal design-record: 2026-04-18-user-layer-runtime.md
@@ -1095,18 +1095,18 @@ fn yorishiro_home_path_under(home_root: &Path) -> PathBuf {
     home_root.join(".yorishiro")
 }
 
-/// `.tutorial-done` フラグの有無を返す。テスト用に charminal_dir を引数化。
-fn check_tutorial_done_impl(charminal_dir: &Path) -> bool {
-    charminal_dir.join(".tutorial-done").exists()
+/// `.tutorial-done` フラグの有無を返す。テスト用に yorishiro_dir を引数化。
+fn check_tutorial_done_impl(yorishiro_dir: &Path) -> bool {
+    yorishiro_dir.join(".tutorial-done").exists()
 }
 
-/// `.tutorial-done` フラグを作成する。テスト用に charminal_dir を引数化。
-fn mark_tutorial_done_impl(charminal_dir: &Path) -> Result<(), String> {
-    let path = charminal_dir.join(".tutorial-done");
+/// `.tutorial-done` フラグを作成する。テスト用に yorishiro_dir を引数化。
+fn mark_tutorial_done_impl(yorishiro_dir: &Path) -> Result<(), String> {
+    let path = yorishiro_dir.join(".tutorial-done");
     if path.exists() {
         return Ok(());
     }
-    std::fs::create_dir_all(charminal_dir).map_err(|e| format!("~/.yorishiro/ 作成失敗: {}", e))?;
+    std::fs::create_dir_all(yorishiro_dir).map_err(|e| format!("~/.yorishiro/ 作成失敗: {}", e))?;
     std::fs::write(&path, "").map_err(|e| format!(".tutorial-done 作成失敗: {}", e))?;
     Ok(())
 }
@@ -1142,11 +1142,11 @@ struct UserPackManifestSummary {
 
 /// Absolute path to ~/.yorishiro/. Does not create it.
 #[tauri::command]
-async fn charminal_home_dir() -> Result<String, String> {
+async fn yorishiro_home_dir() -> Result<String, String> {
     Ok(yorishiro_home_path()?.to_string_lossy().to_string())
 }
 
-/// Resolve a command through Charminal's launch PATH. Used by first-run health
+/// Resolve a command through Yorishiro's launch PATH. Used by first-run health
 /// checks to explain missing Claude Code / Codex binaries before PTY spawn.
 #[tauri::command]
 async fn resolve_command_path(command: String) -> Result<Option<String>, String> {
@@ -1179,7 +1179,7 @@ async fn mcp_server_status(
 
 /// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
 ///
-/// Phase 1-a では ensure_charminal_dirs() のたびに ~/.yorishiro/sdk.d.ts を
+/// Phase 1-a では ensure_yorishiro_dirs() のたびに ~/.yorishiro/sdk.d.ts を
 /// 上書きする（user は編集しない前提）。ファイル間の `import type { ... }
 /// from "./..."` と `export * from "./..."` は single-file bundle では解決
 /// できないので emit 時に drop する。
@@ -1261,7 +1261,7 @@ fn build_bundled_sdk_guide() -> String {
 /// ~/.yorishiro/init.js が無いときに seed する雛形。
 ///
 /// sdk.d.ts とは違い、init.js は user の編集対象なので「**存在しないとき
-/// だけ** 書く」。user が編集した内容を Charminal が上書きすることは無い。
+/// だけ** 書く」。user が編集した内容を Yorishiro が上書きすることは無い。
 /// 詳細: docs/decisions/user-init-script-seed.md
 const USER_INIT_TEMPLATE: &str = include_str!("../resources/user-init-template.js");
 
@@ -1285,7 +1285,7 @@ fn seed_user_init_script_impl(home: &std::path::Path) -> Result<(), String> {
 /// （user は編集対象ではない）。init.js は逆に、無ければ雛形を seed するが存在すれば
 /// 触らない。
 #[tauri::command]
-async fn ensure_charminal_dirs() -> Result<(), String> {
+async fn ensure_yorishiro_dirs() -> Result<(), String> {
     let home = yorishiro_home_path()?;
     std::fs::create_dir_all(home.join("packs"))
         .map_err(|e| format!("Failed to create ~/.yorishiro/packs: {}", e))?;
@@ -1297,7 +1297,7 @@ async fn ensure_charminal_dirs() -> Result<(), String> {
     // shell integration files (init.zsh / wrapper rc / etc) — idempotent。
     // 失敗しても他の dir 作成は完了しているので fatal にはせず log のみ。
     if let Err(e) = sessions::ensure_shell_files(&home) {
-        eprintln!("[ensure_charminal_dirs] shell integration files: {}", e);
+        eprintln!("[ensure_yorishiro_dirs] shell integration files: {}", e);
     }
     let home_root = home_dir_or_err().ok();
     if let Some(home_root) = home_root.as_ref() {
@@ -1404,7 +1404,7 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
 
 /// Read a text file from inside ~/.yorishiro/. Rejects paths outside the scope.
 #[tauri::command]
-async fn read_charminal_file(relative_path: String) -> Result<String, String> {
+async fn read_yorishiro_file(relative_path: String) -> Result<String, String> {
     let home = yorishiro_home_path()?;
     let full = home.join(&relative_path);
     let canonical_home = home
@@ -1440,18 +1440,18 @@ async fn is_safe_mode() -> Result<bool, String> {
 
 /// `~/.yorishiro/<relative>` に atomic に text を書き出す実装本体。
 /// テスト用に home を引数化する。
-fn write_charminal_file_atomic_impl(
+fn write_yorishiro_file_atomic_impl(
     relative_path: &str,
     content: &str,
     home_root: &Path,
 ) -> Result<(), String> {
-    let charminal = yorishiro_home_path_under(home_root);
-    std::fs::create_dir_all(&charminal)
+    let yorishiro = yorishiro_home_path_under(home_root);
+    std::fs::create_dir_all(&yorishiro)
         .map_err(|e| format!("Failed to ensure ~/.yorishiro: {}", e))?;
 
-    let target = charminal.join(relative_path);
+    let target = yorishiro.join(relative_path);
 
-    // path traversal 対策：target の親が canonical な charminal の中にあることを確認。
+    // path traversal 対策：target の親が canonical な yorishiro の中にあることを確認。
     // target 自体はまだ存在しない可能性があるので、親 dir を canonicalize する。
     let parent = target
         .parent()
@@ -1460,10 +1460,10 @@ fn write_charminal_file_atomic_impl(
     let canonical_parent = parent
         .canonicalize()
         .map_err(|e| format!("Failed to canonicalize parent: {}", e))?;
-    let canonical_charminal = charminal
+    let canonical_yorishiro = yorishiro
         .canonicalize()
         .map_err(|e| format!("Failed to canonicalize home: {}", e))?;
-    if !canonical_parent.starts_with(&canonical_charminal) {
+    if !canonical_parent.starts_with(&canonical_yorishiro) {
         return Err("Path escapes ~/.yorishiro/".into());
     }
 
@@ -1481,9 +1481,9 @@ fn write_charminal_file_atomic_impl(
 /// ~/.yorishiro/<relative> に atomic に text を書く。
 /// TS 側から config.json / last-startup.json の write に使う。
 #[tauri::command]
-async fn write_charminal_file_atomic(relative_path: String, content: String) -> Result<(), String> {
+async fn write_yorishiro_file_atomic(relative_path: String, content: String) -> Result<(), String> {
     let home = home_dir_or_err()?;
-    write_charminal_file_atomic_impl(&relative_path, &content, &home)
+    write_yorishiro_file_atomic_impl(&relative_path, &content, &home)
 }
 
 /// `~/.yorishiro/last-startup.json` を読む実装本体。テスト用に home 引数化。
@@ -1604,7 +1604,7 @@ async fn mcp_tool_response(request_id: String, response: serde_json::Value) -> R
 /// TS 層に送る 1 event。`mtimeMs` は receiver が import URL の `?v=` に混ぜる
 /// cache-bust key になる（removed の場合は 0）。
 #[derive(Clone, serde::Serialize)]
-struct CharminalLayerEvent {
+struct YorishiroLayerEvent {
     path: String,
     kind: String,
     #[serde(rename = "mtimeMs")]
@@ -1680,8 +1680,8 @@ fn layer_event_label(kind: &notify::EventKind) -> Option<&'static str> {
 }
 
 /// path が ~/.yorishiro/{.history,.yorishiro-snapshots,.staging,tmp} 配下なら true（watcher で drop 対象）。
-pub(crate) fn is_history_internal_path(charminal_home: &Path, path: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(charminal_home) else {
+pub(crate) fn is_history_internal_path(yorishiro_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(yorishiro_home) else {
         return false;
     };
     matches!(
@@ -1701,8 +1701,8 @@ fn is_user_pack_id(seg: &OsStr) -> bool {
     !id.starts_with('.') && !id.ends_with(".resttmp")
 }
 
-fn has_snapshot_ignored_component(charminal_home: &Path, path: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(charminal_home) else {
+fn has_snapshot_ignored_component(yorishiro_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(yorishiro_home) else {
         return false;
     };
     rel.components().any(|component| {
@@ -1716,11 +1716,11 @@ fn has_snapshot_ignored_component(charminal_home: &Path, path: &Path) -> bool {
 /// path が watcher trigger 対象（`packs/**` か top-level `init.js`）の変更なら
 /// true。watcher-settled で自動 snapshot を撮るかどうかの判定に使う。
 /// `.history`/`.staging`/`tmp`/`journal`/`sdk.d.ts`/`sdk-guide.md`/`last-startup.json` 等は false。
-pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> bool {
-    let Ok(rel) = path.strip_prefix(charminal_home) else {
+pub(crate) fn is_snapshot_relevant_path(yorishiro_home: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(yorishiro_home) else {
         return false;
     };
-    if has_snapshot_ignored_component(charminal_home, path) {
+    if has_snapshot_ignored_component(yorishiro_home, path) {
         return false;
     }
     let mut comps = rel.components();
@@ -1741,11 +1741,11 @@ pub(crate) fn is_snapshot_relevant_path(charminal_home: &Path, path: &Path) -> b
 /// `packs/<id>/...` → "<id>"、top-level `init.js` → その名前、
 /// それ以外（packs 直下のみ・対象外 path）→ None。is_snapshot_relevant_path と対。
 /// config.json は git-tracked だが watcher trigger target ではない。
-pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option<String> {
-    if has_snapshot_ignored_component(charminal_home, path) {
+pub(crate) fn snapshot_scope_token(yorishiro_home: &Path, path: &Path) -> Option<String> {
+    if has_snapshot_ignored_component(yorishiro_home, path) {
         return None;
     }
-    let rel = path.strip_prefix(charminal_home).ok()?;
+    let rel = path.strip_prefix(yorishiro_home).ok()?;
     let mut comps = rel.components();
     match comps.next()? {
         std::path::Component::Normal(seg) if seg == "packs" => match comps.next() {
@@ -1763,14 +1763,14 @@ pub(crate) fn snapshot_scope_token(charminal_home: &Path, path: &Path) -> Option
 
 /// settle バースト内の変更 path 群を watcher snapshot の `changed` field に変換する。
 /// 同一 pack の複数 file は 1 要素へ dedup し、帰属できる path が無ければ None。
-pub(crate) fn collect_changed_scopes<I, P>(charminal_home: &Path, paths: I) -> Option<Vec<String>>
+pub(crate) fn collect_changed_scopes<I, P>(yorishiro_home: &Path, paths: I) -> Option<Vec<String>>
 where
     I: IntoIterator<Item = P>,
     P: AsRef<Path>,
 {
     let changed_scopes: BTreeSet<String> = paths
         .into_iter()
-        .filter_map(|path| snapshot_scope_token(charminal_home, path.as_ref()))
+        .filter_map(|path| snapshot_scope_token(yorishiro_home, path.as_ref()))
         .collect();
     if changed_scopes.is_empty() {
         None
@@ -1866,10 +1866,10 @@ async fn stat_file_mtime(path: String) -> Result<u64, String> {
 /// fsevent は save 1 回で複数 event を吐くため、path ごとに last-wins で coalesce
 /// する。
 #[tauri::command]
-async fn watch_charminal_layer(
+async fn watch_yorishiro_layer(
     app: AppHandle,
     state: State<'_, WatcherState>,
-    on_event: Channel<CharminalLayerEvent>,
+    on_event: Channel<YorishiroLayerEvent>,
 ) -> Result<(), String> {
     use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 
@@ -1892,7 +1892,7 @@ async fn watch_charminal_layer(
                 }
             }
             Err(e) => {
-                eprintln!("[watch_charminal_layer] notify error: {}", e);
+                eprintln!("[watch_yorishiro_layer] notify error: {}", e);
             }
         },
         Config::default(),
@@ -1959,13 +1959,13 @@ async fn watch_charminal_layer(
                     snapshot_relevant = true;
                     changed_paths.push(path.clone());
                 }
-                let payload = CharminalLayerEvent {
+                let payload = YorishiroLayerEvent {
                     path: path.to_string_lossy().to_string(),
                     kind: label.to_string(),
                     mtime_ms,
                 };
                 if let Err(e) = channel.send(payload) {
-                    eprintln!("[watch_charminal_layer] channel send failed: {}", e);
+                    eprintln!("[watch_yorishiro_layer] channel send failed: {}", e);
                     break;
                 }
             }
@@ -2002,7 +2002,7 @@ async fn watch_charminal_layer(
                                 changed: event_changed,
                             };
                             if let Err(e) =
-                                app_handle.emit("charminal:history-snapshot-created", event)
+                                app_handle.emit("yorishiro:history-snapshot-created", event)
                             {
                                 eprintln!("[history] watcher-settled event emit failed: {}", e);
                             }
@@ -2124,7 +2124,7 @@ mod import_vrm_tests {
 
     fn tmp_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-import-vrm-{}-{}-{}",
+            "yorishiro-import-vrm-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2260,15 +2260,15 @@ pub fn run() {
             pty_detach,
             import_vrm,
             poll_hook_signals,
-            charminal_home_dir,
-            ensure_charminal_dirs,
+            yorishiro_home_dir,
+            ensure_yorishiro_dirs,
             list_user_packs,
-            read_charminal_file,
+            read_yorishiro_file,
             is_safe_mode,
-            write_charminal_file_atomic,
+            write_yorishiro_file_atomic,
             read_last_startup_report,
             user_init_script_path,
-            watch_charminal_layer,
+            watch_yorishiro_layer,
             stat_file_mtime,
             mcp_tool_response,
             read_journal_memories,
@@ -2393,7 +2393,7 @@ mod user_pack_discovery_tests {
 
     fn fresh_packs_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-pack-discovery-{}-{}-{}",
+            "yorishiro-pack-discovery-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2492,7 +2492,7 @@ mod user_pack_discovery_tests {
               "id": "my-effect",
               "type": "effect",
               "version": "0.1.0",
-              "charminalVersion": "^0.1.0",
+              "yorishiroVersion": "^0.1.0",
               "executionClass": "trusted-main-thread-js",
               "entry": "effect.js"
             }"#,
@@ -2527,7 +2527,7 @@ mod user_pack_discovery_tests {
               "id": "my-effect",
               "type": "effect",
               "version": "0.1.0",
-              "charminalVersion": "^0.1.0",
+              "yorishiroVersion": "^0.1.0",
               "executionClass": "trusted-main-thread-js",
               "sandbox": { "backend": "wasm" },
               "entry": "effect.js"
@@ -2551,7 +2551,7 @@ mod layer_scope_tests {
         is_safe_mode_value, is_snapshot_relevant_path, layer_event_label,
         read_last_startup_report_impl, resolve_command_path_impl, resolve_project_root_impl,
         should_create_watcher_snapshot, should_emit_layer_event, snapshot_scope_token,
-        stat_mtime_in_scope, write_charminal_file_atomic_impl,
+        stat_mtime_in_scope, write_yorishiro_file_atomic_impl,
     };
     use git2::{Repository, Signature};
     use std::collections::HashMap;
@@ -2562,7 +2562,7 @@ mod layer_scope_tests {
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-phase1b-{}-{}-{}",
+            "yorishiro-phase1b-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -2664,9 +2664,9 @@ mod layer_scope_tests {
             cwd,
             &[
                 "-c",
-                "user.name=charminal-test",
+                "user.name=yorishiro-test",
                 "-c",
-                "user.email=test@charminal.local",
+                "user.email=test@yorishiro.local",
                 "commit",
                 "-m",
                 "initial",
@@ -2683,7 +2683,7 @@ mod layer_scope_tests {
         index.write().expect("write index");
         let tree_id = index.write_tree().expect("write tree");
         let tree = repo.find_tree(tree_id).expect("find tree");
-        let sig = Signature::now("charminal-test", "test@charminal.local").expect("signature");
+        let sig = Signature::now("yorishiro-test", "test@yorishiro.local").expect("signature");
         repo.commit(Some("HEAD"), &sig, &sig, "initial", &tree, &[])
             .expect("commit");
         drop(tree);
@@ -3074,7 +3074,7 @@ mod layer_scope_tests {
     // ─── Phase 1-c: safe-mode / atomic write / load-report ────────
 
     #[test]
-    fn detect_safe_mode_reads_charminal_safe_mode_env_var() {
+    fn detect_safe_mode_reads_yorishiro_safe_mode_env_var() {
         // 子スレッドで env var を設定して判定。test 並列実行で global 状態を
         // 汚さないよう、判定 helper 関数は env var 値を引数として受ける形にする。
         assert!(is_safe_mode_value(Some("1")));
@@ -3085,7 +3085,7 @@ mod layer_scope_tests {
     }
 
     #[test]
-    fn write_charminal_file_atomic_writes_file_and_rejects_path_traversal() {
+    fn write_yorishiro_file_atomic_writes_file_and_rejects_path_traversal() {
         let _guard = crate::TEST_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -3094,7 +3094,7 @@ mod layer_scope_tests {
 
         // valid path inside ~/.yorishiro/ should succeed
         let result =
-            write_charminal_file_atomic_impl("last-startup.json", "{\"ok\":true}", &tmp_home);
+            write_yorishiro_file_atomic_impl("last-startup.json", "{\"ok\":true}", &tmp_home);
         assert!(result.is_ok(), "expected ok, got {:?}", result);
 
         let written =
@@ -3103,7 +3103,7 @@ mod layer_scope_tests {
         assert_eq!(written, "{\"ok\":true}");
 
         // path traversal must be rejected
-        let bad = write_charminal_file_atomic_impl("../escape.txt", "nope", &tmp_home);
+        let bad = write_yorishiro_file_atomic_impl("../escape.txt", "nope", &tmp_home);
         assert!(bad.is_err(), "expected traversal rejection, got {:?}", bad);
 
         let _ = std::fs::remove_dir_all(&tmp_home);
@@ -3120,9 +3120,9 @@ mod layer_scope_tests {
     #[test]
     fn read_last_startup_report_returns_file_contents_when_present() {
         let tmp_home = fresh_dir("present-report");
-        let charminal = tmp_home.join(".yorishiro");
-        std::fs::create_dir_all(&charminal).expect("mkdir");
-        std::fs::write(charminal.join("last-startup.json"), "{\"saved\":true}")
+        let yorishiro = tmp_home.join(".yorishiro");
+        std::fs::create_dir_all(&yorishiro).expect("mkdir");
+        std::fs::write(yorishiro.join("last-startup.json"), "{\"saved\":true}")
             .expect("write fixture");
 
         let result = read_last_startup_report_impl(&tmp_home);
@@ -3140,7 +3140,7 @@ mod user_init_seed_tests {
 
     fn fresh_home(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-init-seed-{}-{}-{}",
+            "yorishiro-init-seed-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -3378,7 +3378,7 @@ mod tutorial_tests {
 
     fn fresh_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-tutorial-{}-{}-{}",
+            "yorishiro-tutorial-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()

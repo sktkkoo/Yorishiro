@@ -211,7 +211,7 @@ export async function activateAndRegisterAmenity(
       name: def.name,
       type: "amenity",
       version: "0.0.0",
-      charminalVersion: "*",
+      yorishiroVersion: "*",
       entry: entryPath.endsWith(".tsx") ? "amenity.tsx" : "amenity.js",
     },
     handle,

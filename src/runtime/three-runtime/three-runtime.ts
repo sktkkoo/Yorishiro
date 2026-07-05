@@ -581,7 +581,7 @@ class ThreeRuntimeImpl implements ThreeRuntime {
 
   private shouldLogResizeDebug(): boolean {
     try {
-      return localStorage.getItem("charminal:resize-debug") === "1";
+      return localStorage.getItem("yorishiro:resize-debug") === "1";
     } catch {
       return false;
     }

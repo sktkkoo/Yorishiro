@@ -1,5 +1,5 @@
 /**
- * Tests for loadInitScript — ~/.charminal/init.js の実行。
+ * Tests for loadInitScript — ~/.yorishiro/init.js の実行。
  *
  * user が書く init.js は `export default (ctx) => { ... }` の形で、ctx の
  * registerEffect / registerPersona で pack を登録する。loader は validator を
@@ -13,11 +13,11 @@ import { Time } from "../../core/time";
 import type { PersonaEntry } from "../persona-registry";
 import type { InitDisposable, InitShortcutSpec } from "./init-scope";
 import {
-  type CharminalInitContext,
   type EffectRequester,
   loadInitScript,
   reloadInitScript,
   type ShortcutInstaller,
+  type YorishiroInitContext,
 } from "./init-script";
 import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
 
@@ -159,7 +159,7 @@ describe("loadInitScript", () => {
     const personaReg = makePersonaRegistrar();
     const { subsystem } = makeDevLog();
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.registerEffect(validEffectPack);
       ctx.registerPersona(validPersonaPack);
     };
@@ -169,7 +169,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -179,7 +179,7 @@ describe("loadInitScript", () => {
     expect(personaReg.registered).toHaveLength(1);
     expect(personaReg.registered[0].persona).toMatchObject(validPersonaPack);
     expect(personaReg.registered[0].origin).toBe("user");
-    expect(personaReg.registered[0].entryPath).toBe("/home/user/.charminal/init.js");
+    expect(personaReg.registered[0].entryPath).toBe("/home/user/.yorishiro/init.js");
   });
 
   it("awaits async default() before returning", async () => {
@@ -187,7 +187,7 @@ describe("loadInitScript", () => {
     const personaReg = makePersonaRegistrar();
     const { subsystem } = makeDevLog();
 
-    const userDefault = async (ctx: CharminalInitContext): Promise<void> => {
+    const userDefault = async (ctx: YorishiroInitContext): Promise<void> => {
       await Promise.resolve();
       ctx.registerEffect(validEffectPack);
     };
@@ -197,7 +197,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -210,7 +210,7 @@ describe("loadInitScript", () => {
     const personaReg = makePersonaRegistrar();
     const { subsystem } = makeDevLog();
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.registerEffect({ id: "bad" } as unknown as EffectDefinition);
     };
 
@@ -219,7 +219,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -242,7 +242,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -261,7 +261,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: { not: "a function" } }),
     });
 
@@ -279,7 +279,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => {
         throw new Error("import boom");
       },
@@ -294,7 +294,7 @@ describe("loadInitScript", () => {
     const personaReg = makePersonaRegistrar();
     const { subsystem } = makeDevLog();
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.registerEffect(validEffectPack);
       ctx.registerPersona({ id: "x" } as unknown as PersonaDefinition); // invalid: throws
     };
@@ -304,7 +304,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -319,7 +319,7 @@ describe("loadInitScript", () => {
     const dispatcher = makeEffectDispatcher();
     const { subsystem } = makeDevLog();
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.dispatchEffect({
         kind: "fireworks",
         origin: { x: 0.5, y: 0.5 },
@@ -333,7 +333,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: dispatcher,
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -349,7 +349,7 @@ describe("loadInitScript", () => {
     const emitted: Array<{ name: string; payload?: unknown }> = [];
     const { subsystem } = makeDevLog();
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.emitEvent("clai:shoot", { source: "shortcut" });
     };
 
@@ -361,7 +361,7 @@ describe("loadInitScript", () => {
       emitEvent: (name, payload) => {
         emitted.push({ name, payload });
       },
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -375,7 +375,7 @@ describe("loadInitScript", () => {
     const selected: Array<string | null> = [];
     const { subsystem } = makeDevLog();
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.setActiveUi("camera-lighting-panel");
       ctx.setActiveUi(null);
     };
@@ -388,7 +388,7 @@ describe("loadInitScript", () => {
       setActiveUi: (id) => {
         selected.push(id);
       },
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -402,7 +402,7 @@ describe("loadInitScript", () => {
     const { subsystem } = makeDevLog();
     let observed: string | null = "unset";
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       observed = ctx.getActiveUi();
     };
 
@@ -412,7 +412,7 @@ describe("loadInitScript", () => {
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
       getActiveUi: () => "theater",
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -426,7 +426,7 @@ describe("loadInitScript", () => {
     const { subsystem } = makeDevLog();
     let observed: string | null = "unset";
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       observed = ctx.getActiveUi();
     };
 
@@ -435,7 +435,7 @@ describe("loadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -488,7 +488,7 @@ describe("init lifecycle: onDispose + registerShortcut", () => {
     const { subsystem } = makeDevLog();
     let cleaned = false;
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.onDispose(() => {
         cleaned = true;
       });
@@ -499,7 +499,7 @@ describe("init lifecycle: onDispose + registerShortcut", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -516,7 +516,7 @@ describe("init lifecycle: onDispose + registerShortcut", () => {
     const shortcuts = makeShortcutInstaller();
     let fired = 0;
 
-    const userDefault = (ctx: CharminalInitContext): void => {
+    const userDefault = (ctx: YorishiroInitContext): void => {
       ctx.registerShortcut({ code: "KeyF", meta: true }, () => {
         fired += 1;
       });
@@ -528,7 +528,7 @@ describe("init lifecycle: onDispose + registerShortcut", () => {
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
       installShortcutListener: shortcuts.installer,
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({ default: userDefault }),
     });
 
@@ -554,9 +554,9 @@ describe("reloadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.onDispose(() => cleaned.push(tag));
         },
       }),
@@ -586,9 +586,9 @@ describe("reloadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.onDispose(() => cleaned.push("good"));
         },
       }),
@@ -602,9 +602,9 @@ describe("reloadInitScript", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           // stage a cleanup, then throw — the staged scope must be disposed.
           ctx.onDispose(() => stagedDisposed.push("staged"));
           throw new Error("bad edit");
@@ -634,8 +634,8 @@ describe("reloadInitScript", () => {
         personaRegistry: personaReg,
         devLog: subsystem,
         effectDispatcher: makeEffectDispatcher(),
-        fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
-        importModule: async () => ({ default: (_ctx: CharminalInitContext) => {} }),
+        fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
+        importModule: async () => ({ default: (_ctx: YorishiroInitContext) => {} }),
       },
       null,
     );
@@ -658,9 +658,9 @@ describe("register* hot-reload semantics", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.registerEffect(validEffectPack);
         },
       }),
@@ -686,9 +686,9 @@ describe("register* hot-reload semantics", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.registerEffect(validEffectPack);
         },
       }),
@@ -712,9 +712,9 @@ describe("register* hot-reload semantics", () => {
       personaRegistry: persona,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.registerPersona(validPersonaPack);
         },
       }),
@@ -736,9 +736,9 @@ describe("register* hot-reload semantics", () => {
       personaRegistry: persona,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.registerPersona(validPersonaPack);
         },
       }),
@@ -753,9 +753,9 @@ describe("register* hot-reload semantics", () => {
         personaRegistry: persona,
         devLog: subsystem,
         effectDispatcher: makeEffectDispatcher(),
-        fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+        fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
         importModule: async () => ({
-          default: (ctx: CharminalInitContext) => {
+          default: (ctx: YorishiroInitContext) => {
             ctx.registerPersona(validPersonaPack);
             throw new Error("late failure after registerPersona");
           },
@@ -786,9 +786,9 @@ describe("reloadInitScript: file removal", () => {
       personaRegistry: personaReg,
       devLog: subsystem,
       effectDispatcher: makeEffectDispatcher(),
-      fetchInitScriptPath: async () => "/home/user/.charminal/init.js",
+      fetchInitScriptPath: async () => "/home/user/.yorishiro/init.js",
       importModule: async () => ({
-        default: (ctx: CharminalInitContext) => {
+        default: (ctx: YorishiroInitContext) => {
           ctx.onDispose(() => cleaned.push("first"));
         },
       }),

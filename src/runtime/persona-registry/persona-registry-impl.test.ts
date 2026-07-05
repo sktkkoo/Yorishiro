@@ -9,7 +9,7 @@ const makeEntry = (id: string, origin: "bundled" | "user"): PersonaEntry => ({
     id,
     type: "persona",
     version: "0.1.0",
-    charminalVersion: "^0.1.0",
+    yorishiroVersion: "^0.1.0",
     entry: "persona.js",
   },
   persona: {
@@ -190,7 +190,7 @@ describe("PersonaRegistryImpl", () => {
         id: "same-id",
         type: "persona",
         version: "0.2.0",
-        charminalVersion: "^0.1.0",
+        yorishiroVersion: "^0.1.0",
         entry: "persona.js",
       },
       persona: {

@@ -38,20 +38,20 @@ const DEFAULT_UI_THEME: Required<UiTheme> = {
 
 /** UiTheme の各 field を CSS カスタムプロパティ名にマッピング */
 const UI_THEME_CSS_MAP: Record<keyof UiTheme, string> = {
-  background: "--charminal-bg",
-  foreground: "--charminal-fg",
-  foregroundDim: "--charminal-fg-dim",
-  sidebarBackground: "--charminal-sidebar-bg",
-  panelBackground: "--charminal-panel-bg",
-  border: "--charminal-border",
-  buttonBackground: "--charminal-button-bg",
-  buttonForeground: "--charminal-button-fg",
-  inputBackground: "--charminal-input-bg",
-  accent: "--charminal-accent",
-  accentSoft: "--charminal-accent-soft",
-  accentBorder: "--charminal-accent-border",
-  muted: "--charminal-muted",
-  glow: "--charminal-glow",
+  background: "--yorishiro-bg",
+  foreground: "--yorishiro-fg",
+  foregroundDim: "--yorishiro-fg-dim",
+  sidebarBackground: "--yorishiro-sidebar-bg",
+  panelBackground: "--yorishiro-panel-bg",
+  border: "--yorishiro-border",
+  buttonBackground: "--yorishiro-button-bg",
+  buttonForeground: "--yorishiro-button-fg",
+  inputBackground: "--yorishiro-input-bg",
+  accent: "--yorishiro-accent",
+  accentSoft: "--yorishiro-accent-soft",
+  accentBorder: "--yorishiro-accent-border",
+  muted: "--yorishiro-muted",
+  glow: "--yorishiro-glow",
 };
 
 /**

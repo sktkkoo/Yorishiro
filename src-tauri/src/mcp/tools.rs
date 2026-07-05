@@ -3,7 +3,7 @@
 //! event channel round-trip を経由する。
 //!
 //! rmcp 1.5.0 の `#[tool_router]` + `#[tool_handler]` macro pattern に乗せる。
-//! session ごとに `Charminal::new(app_handle)` が呼ばれる（LocalSessionManager
+//! session ごとに `Yorishiro::new(app_handle)` が呼ばれる（LocalSessionManager
 //! が session lifecycle を管理する都合）。
 
 use std::collections::BTreeMap;
@@ -404,12 +404,12 @@ pub struct JournalReadRequest {
 }
 
 #[derive(Clone)]
-pub struct Charminal {
+pub struct Yorishiro {
     app_handle: AppHandle,
     tool_router: ToolRouter<Self>,
 }
 
-impl Charminal {
+impl Yorishiro {
     pub fn new(app_handle: AppHandle) -> Self {
         Self {
             app_handle,
@@ -419,7 +419,7 @@ impl Charminal {
 }
 
 #[tool_router]
-impl Charminal {
+impl Yorishiro {
     /// list_load_errors: Rust 側完結。~/.yorishiro/last-startup.json を読んで
     /// `status == "failed"` の entries を JSON で返す。
     #[tool(description = "List user packs that failed to load on last startup")]
@@ -682,7 +682,7 @@ impl Charminal {
 
     /// state_get: config / camera / lighting / vrm load を集約した snapshot を返す。
     #[tool(
-        description = "Snapshot Charminal current state (config / camera / lighting / vrm load)."
+        description = "Snapshot Yorishiro current state (config / camera / lighting / vrm load)."
     )]
     async fn state_get(
         &self,
@@ -913,7 +913,7 @@ impl Charminal {
 
     /// scene pack の active を切り替え、current project が解決済みなら sceneByProject に永続化する。
     #[tool(
-        description = "Switch the active scene pack and persist the choice. If the current project root is resolved, writes config.json sceneByProject for that project; otherwise writes global activeScene. Pass null id to clear the current project override: Charminal then falls back to global activeScene, or to the bundled default when no global activeScene is set. Use list_packs to discover available scene pack ids."
+        description = "Switch the active scene pack and persist the choice. If the current project root is resolved, writes config.json sceneByProject for that project; otherwise writes global activeScene. Pass null id to clear the current project override: Yorishiro then falls back to global activeScene, or to the bundled default when no global activeScene is set. Use list_packs to discover available scene pack ids."
     )]
     async fn scene_activate(
         &self,
@@ -980,11 +980,11 @@ impl Charminal {
     }
 
     /// loop_announce: 自律ループ（goal に向けた長時間の自動実行）の lifecycle phase を
-    /// Charminal に伝える。Charminal は観察して住人の存在として表現するだけで、ループの
+    /// Yorishiro に伝える。Yorishiro は観察して住人の存在として表現するだけで、ループの
     /// 実行は制御しない（観察境界）。CC / Codex 共通の経路。
     /// 詳細: docs/decisions/loop-presence-layer.md
     #[tool(
-        description = "Report a lifecycle phase of your autonomous loop (long-horizon, goal-directed self-execution) so Charminal can reflect it as the resident's presence. Charminal only observes — it does not drive, gate, or control your loop. phase must be one of: started, iterating, blocked-on-approval, progress-milestone, failed, completed. Optionally attach a detail object (e.g. goal, iteration, runId, reason). Call this at loop boundaries (start / each iteration / when blocked on human approval / on a milestone / on failure / on completion); do not call it for ordinary single-turn work."
+        description = "Report a lifecycle phase of your autonomous loop (long-horizon, goal-directed self-execution) so Yorishiro can reflect it as the resident's presence. Yorishiro only observes — it does not drive, gate, or control your loop. phase must be one of: started, iterating, blocked-on-approval, progress-milestone, failed, completed. Optionally attach a detail object (e.g. goal, iteration, runId, reason). Call this at loop boundaries (start / each iteration / when blocked on human approval / on a milestone / on failure / on completion); do not call it for ordinary single-turn work."
     )]
     async fn loop_announce(
         &self,
@@ -1088,7 +1088,7 @@ impl Charminal {
 
     /// ウィンドウ全体（DOM + WebGL canvas）のスクリーンショットを撮影する。macOS のみ。
     #[tool(
-        description = "Capture a screenshot of the entire Charminal window (DOM + WebGL canvas). macOS only."
+        description = "Capture a screenshot of the entire Yorishiro window (DOM + WebGL canvas). macOS only."
     )]
     async fn app_screenshot(
         &self,
@@ -1110,11 +1110,11 @@ impl Charminal {
 }
 
 #[tool_handler(router = self.tool_router)]
-impl ServerHandler for Charminal {
+impl ServerHandler for Yorishiro {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_instructions(concat!(
-                "Charminal — 住人の身体・声・環境を操作する MCP ツール群。\n",
+                "Yorishiro — 住人の身体・声・環境を操作する MCP ツール群。\n",
                 "\n",
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
@@ -1128,7 +1128,7 @@ impl ServerHandler for Charminal {
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
                 "- bundled pack のソースコードを参考にする → bundled_example_read（id は list_packs で確認）\n",
                 "- pack を壊した／戻したい → history_list で seq を確認 → history_restore（確認 UX を経て full-replace）。リスクのある編集前に history_snapshot で戻したい時点を残せる（known-good 判定はしない・素朴な timeline 点）\n",
-                "- まとまった /charm 編集や壊れそうな変更の前には history_snapshot(label) を呼び、何をなぜ試すのかがユーザーに見ても通じる短い label（例: 「夜に使いやすい暗い見た目を試す」）を付ける。restore UI はこの label を復元地点と直後の変更の見出しに使う\n",
+                "- まとまった /yori 編集や壊れそうな変更の前には history_snapshot(label) を呼び、何をなぜ試すのかがユーザーに見ても通じる短い label（例: 「夜に使いやすい暗い見た目を試す」）を付ける。restore UI はこの label を復元地点と直後の変更の見出しに使う\n",
                 "- user amenity 設備の機能を使う → amenity_list_tools で確認 → amenity_call で呼ぶ（bundled pomodoro は専用 pomodoro_* を使う）\n",
                 "\n",
                 "## 重要ルール\n",
@@ -1269,7 +1269,7 @@ mod tests {
     fn tmp_home() -> PathBuf {
         let base = std::env::temp_dir();
         let tmp = base.join(format!(
-            "charminal-mcp-tools-{}",
+            "yorishiro-mcp-tools-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())

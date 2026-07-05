@@ -5,7 +5,7 @@ import type { UserPackEntry } from "./user-pack-loader";
 const entry = (overrides: Partial<UserPackEntry> = {}): UserPackEntry => ({
   id: "pack-a",
   kind: "effect",
-  entryPath: "/home/user/.charminal/packs/pack-a/effect.js",
+  entryPath: "/home/user/.yorishiro/packs/pack-a/effect.js",
   source: "local",
   ...overrides,
 });

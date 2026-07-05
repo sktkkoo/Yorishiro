@@ -124,7 +124,7 @@ describe("restoreConfirmStrings", () => {
       const ui = getStrings(language);
       const s = restoreConfirmStrings(ui);
       expect(s.title).toBe(ui.restoreConfirmTitle);
-      expect(s.title).not.toContain("Charminal");
+      expect(s.title).not.toContain("Yorishiro");
       expect(s.title).not.toMatch(/snapshot/i);
       expect(s.body).not.toMatch(/journal/i);
       expect(s.body).not.toMatch(/config\.json|init\.js|snapshot/i);

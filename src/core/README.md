@@ -11,7 +11,7 @@
 
 | Module | 責務 | 状態 | Entry |
 |---|---|---|---|
-| `time/` | Charminal 独立の時間軸（async sleep / scheduling / probability sampling） | impl | `time.ts` |
+| `time/` | Yorishiro 独立の時間軸（async sleep / scheduling / probability sampling） | impl | `time.ts` |
 | `body/` | VRM character の actuator 層（expression / animation / gaze / blink / breathing / 生理反射） | impl | `index.ts` |
 | `perception/` | 環境 event（PTY output / hook signal / idle / window event）の観察 → DispatchEvent | impl | `perception.ts` |
 | `space/` | 画面 rendering 効果（particle / shake / color filter / canvas draw） | impl | `index.ts` |

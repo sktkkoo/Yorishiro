@@ -22,12 +22,12 @@ import type { SceneSpec } from "./scene";
  * Example:
  * ```json
  * {
- *   "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+ *   "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
  *   "id": "simple-room",
  *   "name": "静かな部屋",
  *   "type": "scene",
  *   "version": "0.1.0",
- *   "charminalVersion": "^0.1.0",
+ *   "yorishiroVersion": "^0.1.0",
  *   "description": "...",
  *   "entry": "scene.ts"
  * }
@@ -35,7 +35,7 @@ import type { SceneSpec } from "./scene";
  *
  * 注: `defaultActive` field は採用しない。Design B（memory:
  * feedback_single_active_config_picks）により、active 選択は pack 自己申告では
- * なく `~/.charminal/config.json` の `sceneByProject[projectRoot]`、なければ
+ * なく `~/.yorishiro/config.json` の `sceneByProject[projectRoot]`、なければ
  * global fallback の `activeScene` で user が picks する。factory default は
  * App.tsx の bundled scene 登録。config が空なら Registry が bundled の
  * alphabetical 先頭（現状 `simple-room`）を fallback として選ぶ。
@@ -46,7 +46,7 @@ export interface ScenePackManifest {
   readonly name?: string;
   readonly type: "scene";
   readonly version: string;
-  readonly charminalVersion: string;
+  readonly yorishiroVersion: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";
   readonly artifact?: {

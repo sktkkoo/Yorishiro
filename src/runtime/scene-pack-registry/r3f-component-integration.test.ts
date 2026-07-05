@@ -20,7 +20,7 @@ function makeEntry(): ScenePackEntry {
       id: r3fValidationPack.id,
       type: "scene",
       version: "0.1.0",
-      charminalVersion: "^0.1.0",
+      yorishiroVersion: "^0.1.0",
       entry: "scene.ts",
     },
     scene: r3fValidationPack.scene,

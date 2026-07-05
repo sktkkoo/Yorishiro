@@ -89,7 +89,7 @@ describe("activateAndRegisterAmenity", () => {
     await activateAndRegisterAmenity({
       registryId: "dir-noted",
       def: makeDef(),
-      entryPath: "/x/.charminal/packs/dir-noted/amenity.js",
+      entryPath: "/x/.yorishiro/packs/dir-noted/amenity.js",
       amenityPackRegistry,
       packRegistry: packReg,
       createAmenityContext: createUserAmenityContextFactory({

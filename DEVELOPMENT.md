@@ -1,6 +1,6 @@
 # Development Guide
 
-Local development guide for Charminal.
+Local development guide for Yorishiro.
 
 ---
 
@@ -71,14 +71,14 @@ Feature work uses **git worktree**. Keep the primary directory as a shared basel
 
 ```bash
 # Create a worktree
-git worktree add ../Charminal-<feature> -b feat/<feature>
-cd ../Charminal-<feature>
+git worktree add ../Yorishiro-<feature> -b feat/<feature>
+cd ../Yorishiro-<feature>
 npm install  # each worktree has its own node_modules
 
 # When done
-cd <repo-root>/Charminal
+cd <repo-root>/Yorishiro
 git merge feat/<feature>
-git worktree remove ../Charminal-<feature>
+git worktree remove ../Yorishiro-<feature>
 git branch -d feat/<feature>
 ```
 
@@ -120,13 +120,13 @@ For detailed design decisions, see [`docs/decisions/`](docs/decisions/). Critica
 
 For how to write packs, see [`src/sdk/README.md`](src/sdk/README.md). Bundled packs ([`bundled-packs/`](bundled-packs/)) serve as reference implementations.
 
-User-created packs are treated as local trusted code. There is no public registry, no in-app community install, and no `/charm:prepare-publish`, so do not describe `/charm:create` output as sandboxed, reviewed, or publicly distributable artifacts.
+User-created packs are treated as local trusted code. There is no public registry, no in-app community install, and no `/yori:prepare-publish`, so do not describe `/yori:create` output as sandboxed, reviewed, or publicly distributable artifacts.
 
 To inspect a user pack from a source checkout:
 
 ```bash
-npm run check:pack -- ~/.charminal/packs/<pack-id>
-npm run check:pack -- --mode publish-candidate ~/.charminal/packs/<pack-id>
+npm run check:pack -- ~/.yorishiro/packs/<pack-id>
+npm run check:pack -- --mode publish-candidate ~/.yorishiro/packs/<pack-id>
 ```
 
-`local-authoring` mode is for `/charm:create` output. `publish-candidate` mode is a preview of pre-registry-review checks for the future and is not an official publication gate at this time. The public submission flow does not yet exist, and JS / TS scanning relies on heuristics pending AST implementation.
+`local-authoring` mode is for `/yori:create` output. `publish-candidate` mode is a preview of pre-registry-review checks for the future and is not an official publication gate at this time. The public submission flow does not yet exist, and JS / TS scanning relies on heuristics pending AST implementation.

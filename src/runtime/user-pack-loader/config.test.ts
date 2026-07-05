@@ -9,7 +9,6 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  type CharminalConfig,
   EMPTY_CONFIG,
   localizedClaiPersonaId,
   parseConfig,
@@ -24,6 +23,7 @@ import {
   withLanguageSet,
   withPrimaryPersonaSet,
   withProjectSceneSet,
+  type YorishiroConfig,
 } from "./config";
 
 describe("parseConfig", () => {
@@ -233,13 +233,13 @@ describe("parseConfig", () => {
 
 describe("serializeConfig", () => {
   it("omits default arrays and null fields for minimal JSON", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG };
+    const cfg: YorishiroConfig = { ...EMPTY_CONFIG };
     const text = serializeConfig(cfg);
     expect(JSON.parse(text)).toEqual({});
   });
 
   it("writes disabledPacks when non-empty", () => {
-    const cfg: CharminalConfig = {
+    const cfg: YorishiroConfig = {
       disabledPacks: ["a"],
       primaryPersona: null,
       mcpPort: null,
@@ -263,7 +263,7 @@ describe("serializeConfig", () => {
   });
 
   it("writes primaryPersona when set", () => {
-    const cfg: CharminalConfig = {
+    const cfg: YorishiroConfig = {
       disabledPacks: [],
       primaryPersona: "my-persona",
       mcpPort: null,
@@ -287,12 +287,12 @@ describe("serializeConfig", () => {
   });
 
   it("omits primaryPersona when null", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG, primaryPersona: null };
+    const cfg: YorishiroConfig = { ...EMPTY_CONFIG, primaryPersona: null };
     expect(serializeConfig(cfg)).toBe("{}\n");
   });
 
   it("writes mcpPort when set", () => {
-    const cfg: CharminalConfig = {
+    const cfg: YorishiroConfig = {
       ...EMPTY_CONFIG,
       mcpPort: 18743,
     };
@@ -300,7 +300,7 @@ describe("serializeConfig", () => {
   });
 
   it("round-trips a populated config", () => {
-    const cfg: CharminalConfig = {
+    const cfg: YorishiroConfig = {
       disabledPacks: ["a", "b"],
       primaryPersona: "my-persona",
       mcpPort: 18743,
@@ -324,12 +324,12 @@ describe("serializeConfig", () => {
   });
 
   it("writes terminalAgent when codex is selected", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
+    const cfg: YorishiroConfig = { ...EMPTY_CONFIG, terminalAgent: "codex" };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ terminalAgent: "codex" });
   });
 
   it("writes terminalAgent when opencode is selected", () => {
-    const cfg: CharminalConfig = { ...EMPTY_CONFIG, terminalAgent: "opencode" };
+    const cfg: YorishiroConfig = { ...EMPTY_CONFIG, terminalAgent: "opencode" };
     const text = serializeConfig(cfg);
     expect(parseConfig(text).terminalAgent).toBe("opencode");
   });
@@ -383,7 +383,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
   });
 
   it("removes an id from disabledPacks", () => {
-    const base: CharminalConfig = {
+    const base: YorishiroConfig = {
       disabledPacks: ["a", "b"],
       primaryPersona: null,
       mcpPort: null,
@@ -408,7 +408,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
   });
 
   it("is idempotent — removing an absent id is a no-op", () => {
-    const base: CharminalConfig = {
+    const base: YorishiroConfig = {
       disabledPacks: ["a"],
       primaryPersona: null,
       mcpPort: null,
@@ -860,7 +860,7 @@ describe("profiles[]", () => {
   });
 
   it("round-trips a profile with all fields populated", () => {
-    const cfg: CharminalConfig = {
+    const cfg: YorishiroConfig = {
       ...EMPTY_CONFIG,
       profiles: [
         {

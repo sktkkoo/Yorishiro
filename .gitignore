@@ -25,8 +25,8 @@ dist-ssr
 # Worktrees (local dev only)
 .worktrees/
 
-# Charminal-specific
-.charminal/cache/
+# Yorishiro-specific
+.yorishiro/cache/
 $DATA/
 
 # Binary assets (rights unconfirmed / user-supplied)
@@ -37,7 +37,7 @@ public/models/
 public/voice/
 public/bg-test.*
 
-# Internal design record (lives in separate repo: ../Charminal-design-record/)
+# Internal design record (lives in separate repo: ../Yorishiro-design-record/)
 docs/design-record/
 
 # AI development instructions (private — public conventions are in CONTRIBUTING.md)

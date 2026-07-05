@@ -1,5 +1,5 @@
 /**
- * @charminal/runtime/sessions
+ * @yorishiro/runtime/sessions
  *
  * Session lifecycle 管理。1 session = 1 PTY + descriptor。Phase A は
  * type 定義のみ、Registry は subsequent task で landing する。

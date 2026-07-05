@@ -14,7 +14,7 @@ ctx.space.injectEffect({
 });
 ```
 
-**`~/.charminal/init.js` から**：`ctx.dispatchEffect` 経由。
+**`~/.yorishiro/init.js` から**：`ctx.dispatchEffect` 経由。
 
 ```javascript
 ctx.dispatchEffect({

@@ -4,7 +4,7 @@
  * UI Pack の定義型（5 つ目の pack kind）。
  * packs/ui/<id>/ui.tsx では `satisfies UiPackDefinition` を使って export default する。
  *
- * UI Pack は Charminal の UI を丸ごと定義する single-active pack。
+ * UI Pack は Yorishiro の UI を丸ごと定義する single-active pack。
  * `config.json` の `activeUi` で user が picks する（feedback_single_active_config_picks）。
  * layout spec で固定要素（terminal / sidebar / character）の配置を宣言し、
  * mount で container 内に自由に React component を描画する。
@@ -26,7 +26,7 @@ export type ResolvedLanguage = "en" | "ja";
 export type UiPresenceLevel = "default" | "closed";
 
 /**
- * Charminal の layout を UI pack がどう変えるかの宣言。
+ * Yorishiro の layout を UI pack がどう変えるかの宣言。
  * 未指定フィールドは default のまま（非破壊的）。
  *
  * UiLayoutAPI.update は **full-replace semantics**：
@@ -102,7 +102,7 @@ export interface UiPackManifest {
   readonly name?: string;
   readonly type: "ui";
   readonly version: string;
-  readonly charminalVersion: string;
+  readonly yorishiroVersion: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";
   readonly artifact?: {
@@ -267,7 +267,7 @@ export interface UiAppAPI {
   setPresenceLevel(level: UiPresenceLevel): Promise<void>;
   /**
    * 現 config の snapshot（読み取り専用、初期値表示用）。
-   * `~/.charminal/config.json` を fresh に読んで返す async。
+   * `~/.yorishiro/config.json` を fresh に読んで返す async。
    */
   getConfig(): Promise<{
     readonly primaryPersona: string | null;
@@ -321,7 +321,7 @@ export interface UiContext {
   readonly tween: TweenAPI;
   /**
    * persona / amenity の trigger に synthetic event を流す。
-   * `CharminalInitContext.emitEvent` と同 shape。
+   * `YorishiroInitContext.emitEvent` と同 shape。
    */
   emitEvent(name: string, payload?: unknown): void;
 }

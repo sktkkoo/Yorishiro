@@ -3,7 +3,7 @@ import { deriveSessionStatusBadge, type SessionStatus } from "../runtime/session
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
 
-export type TabIndicatorBadgeTone = "agent-hook" | "charminal" | "danger";
+export type TabIndicatorBadgeTone = "agent-hook" | "yorishiro" | "danger";
 
 export interface TabIndicatorBadge {
   readonly label: string;

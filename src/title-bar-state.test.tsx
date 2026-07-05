@@ -50,7 +50,7 @@ describe("title bar state hooks", () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent("charminal:presence-level-changed", { detail: { level: "closed" } }),
+        new CustomEvent("yorishiro:presence-level-changed", { detail: { level: "closed" } }),
       );
     });
 
@@ -58,7 +58,7 @@ describe("title bar state hooks", () => {
 
     act(() => {
       window.dispatchEvent(
-        new CustomEvent("charminal:presence-level-changed", { detail: { level: "default" } }),
+        new CustomEvent("yorishiro:presence-level-changed", { detail: { level: "default" } }),
       );
     });
 

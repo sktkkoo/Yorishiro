@@ -442,7 +442,7 @@ export class Body {
     //    オフセットとして渡す（spine sway / arm sway と同 bone への加算合成）。
     //    Complementary weight with VRMA: procedural fades as clips take over,
     //    so procedural's direct rotation assignment doesn't fight clip motion.
-    //    (Ported from old Charminal AnimationSourceManager.update.)
+    //    (Ported from old Yorishiro AnimationSourceManager.update.)
     const vrmaWeight = this.animationPlayer.getTotalEffectiveWeight();
     const proceduralWeight = Math.max(0, 1 - vrmaWeight);
     this.breathing.setMode(

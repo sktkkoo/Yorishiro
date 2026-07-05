@@ -103,7 +103,7 @@ export interface AmenityPackManifest {
   readonly name?: string;
   readonly type: "amenity";
   readonly version: string;
-  readonly charminalVersion: string;
+  readonly yorishiroVersion: string;
   readonly entry: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";

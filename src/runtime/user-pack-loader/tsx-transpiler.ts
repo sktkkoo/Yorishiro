@@ -18,9 +18,9 @@ import type * as THREE from "three";
 import type * as YorishiroControls from "../../sdk/controls";
 import type * as YorishiroR3f from "../../sdk/r3f";
 
-const HOST_NAMESPACE = "charminal-host";
-const USER_SOURCE_NAMESPACE = "charminal-user-source";
-const UNSUPPORTED_NAMESPACE = "charminal-unsupported";
+const HOST_NAMESPACE = "yorishiro-host";
+const USER_SOURCE_NAMESPACE = "yorishiro-user-source";
+const UNSUPPORTED_NAMESPACE = "yorishiro-unsupported";
 const SUPPORTED_HOST_IMPORTS = new Set([
   "@yorishiro/sdk",
   "@yorishiro/sdk/controls",
@@ -262,7 +262,7 @@ export default R3F;
 
 const dreiShim = `
 const Drei = globalThis.__YORISHIRO_REACT_THREE_DREI__;
-if (!Drei) throw new Error("Charminal drei host bridge is not initialized");
+if (!Drei) throw new Error("Yorishiro drei host bridge is not initialized");
 export const { AccumulativeShadows, AdaptiveDpr, AdaptiveEvents, ArcballControls, AsciiRenderer, BBAnchor, Backdrop, BakeShadows, Billboard, Bounds, Box, Bvh, CameraControls, CameraShake, Capsule, CatmullRomLine, Caustics, Center, Circle, Clone, Cloud, CloudInstance, Clouds, ComputedAttribute, Cone, ContactShadows, CubeCamera, CubeTexture, CubicBezierLine, CurveModifier, CycleRaycast, Cylinder, Decal, Detailed, DetectGPU, DeviceOrientationControls, Dodecahedron, DragControls, Edges, Effects, Environment, EnvironmentCube, EnvironmentMap, EnvironmentPortal, Example, Extrude, FaceControls, FaceLandmarker, FaceLandmarkerDefaults, Facemesh, FacemeshDatas, FacemeshEye, FacemeshEyeDefaults, Fbo, Fbx, FirstPersonControls, Fisheye, Float, FlyControls, GizmoHelper, GizmoViewcube, GizmoViewport, Gltf, GradientTexture, GradientType, Grid, Helper, Html, Hud, Icosahedron, Image, Instance, InstancedAttribute, Instances, IsObject, KeyboardControls, Ktx2, Lathe, Lightformer, Line, Loader, MapControls, MarchingCube, MarchingCubes, MarchingPlane, Mask, MatcapTexture, Merged, MeshDiscardMaterial, MeshDistortMaterial, MeshPortalMaterial, MeshReflectorMaterial, MeshRefractionMaterial, MeshTransmissionMaterial, MeshWobbleMaterial, MotionPathControls, MultiMaterial, NormalTexture, Octahedron, OrbitControls, OrthographicCamera, Outlines, PerformanceMonitor, PerspectiveCamera, PivotControls, Plane, Point, PointMaterial, PointMaterialImpl, PointerLockControls, Points, PointsBuffer, Polyhedron, PositionMesh, PositionPoint, PositionalAudio, Preload, PresentationControls, Progress, QuadraticBezierLine, RandomizedLight, RenderCubeTexture, RenderTexture, Resize, Ring, RoundedBox, RoundedBoxGeometry, Sampler, ScreenQuad, ScreenSizer, ScreenSpace, ScreenVideoTexture, Scroll, ScrollControls, Segment, SegmentObject, Segments, Select, Shadow, ShadowAlpha, Shape, Sky, SoftShadows, Sparkles, Sphere, Splat, SpotLight, SpotLightShadow, SpriteAnimator, Stage, Stars, Stats, StatsGl, Svg, Tetrahedron, Text, Text3D, Texture, Torus, TorusKnot, TrackballControls, Trail, TrailTexture, TransformControls, Tube, VideoTexture, View, WebcamVideoTexture, Wireframe, accumulativeContext, calcPosFromAngles, calculateScaleFactor, checkIfFrameIsEmpty, createInstances, getFirstFrame, isWebGL2Available, meshBounds, shaderMaterial, useAnimations, useAspect, useBVH, useBounds, useBoxProjectedEnv, useCamera, useContextBridge, useCubeCamera, useCubeTexture, useCursor, useDepthBuffer, useDetectGPU, useEnvironment, useFBO, useFBX, useFaceControls, useFaceLandmarker, useFont, useGLTF, useGizmoContext, useHelper, useIntersect, useKTX2, useKeyboardControls, useMask, useMatcapTexture, useMotion, useNormalTexture, usePerformanceMonitor, useProgress, useScroll, useSelect, useSpriteAnimator, useSpriteLoader, useSurfaceSampler, useTexture, useTrail, useTrailTexture, useVideoTexture } = Drei;
 export default Drei;
 `;
@@ -315,7 +315,7 @@ function createPlan4MvpPlugin(
   options: TsxTranspilerOptions,
 ): esbuild.Plugin {
   return {
-    name: "charminal-ui-pack-plan4-mvp",
+    name: "yorishiro-ui-pack-plan4-mvp",
     setup(build) {
       build.onResolve(
         {

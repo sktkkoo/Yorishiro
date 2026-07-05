@@ -1,4 +1,4 @@
-# Charminal Rust formatting config.
+# Yorishiro Rust formatting config.
 #
 # rustfmt's default settings implement the official Rust Style Guide
 # (https://doc.rust-lang.org/style-guide/). We intentionally keep overrides

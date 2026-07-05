@@ -1,7 +1,7 @@
 /**
  * @yorishiro/sdk
  *
- * Charminal Pack を書くための型定義と API の entry point。
+ * Yorishiro Pack を書くための型定義と API の entry point。
  *
  * 使い方：
  * ```typescript

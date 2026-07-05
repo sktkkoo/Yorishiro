@@ -29,7 +29,7 @@
 ## なぜそうしたか
 
 1. **分離の困難**: LLM の出力にはセリフ・コード説明・ツール使用結果などが混在する。テキストレベルでセリフを切り出す信頼性の高い方法がない
-2. **明示性**: Charminal は "explicit over implicit" の原則を持つ。音声出力も住人の意思による明示的な行為であるべき
+2. **明示性**: Yorishiro は "explicit over implicit" の原則を持つ。音声出力も住人の意思による明示的な行為であるべき
 3. **邪魔しない**: 全文読み上げは user の作業を妨害する。必要なセリフだけ声にすることで autonomy-without-disruption 原則と合致する
 4. **制御可能性**: tool call なので voice / volume / speed を発声ごとに制御できる
 
@@ -39,4 +39,4 @@
 - TS VoicePlayer: `src/core/voice/voice-player.ts`
 - SDK surface: `src/sdk/context.d.ts` の `VoiceAPI`
 - MCP tool: `src-tauri/src/mcp/tools.rs` の `voice_say`
-- TS handler: `src/runtime/charminal-mcp/tool-handlers.ts` の `createVoiceSayHandler`
+- TS handler: `src/runtime/yorishiro-mcp/tool-handlers.ts` の `createVoiceSayHandler`

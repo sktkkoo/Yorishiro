@@ -7,12 +7,12 @@ import {
 } from "../bindings/tauri-commands";
 import { AGENT_COMMAND_SYNTAX } from "../i18n/strings";
 import { resolveEffectiveAgent } from "./sessions";
+import { KNOWN_AGENT_IDS, parseConfig } from "./user-pack-loader/config";
 import {
   fetchSafeModeFlag,
-  readCharminalConfigText,
   readLastStartupReport,
-} from "./user-pack-loader/charminal-io";
-import { KNOWN_AGENT_IDS, parseConfig } from "./user-pack-loader/config";
+  readYorishiroConfigText,
+} from "./user-pack-loader/yorishiro-io";
 
 export interface CollectHealthReportDeps {
   readonly listPacks: () => Promise<{ readonly packs: readonly UiAppPackStatusEntry[] }>;
@@ -53,9 +53,9 @@ function parseLoadReport(text: string): { failed: number; total: number } | null
 export async function collectHealthReport(deps: CollectHealthReportDeps): Promise<UiHealthReport> {
   const [homeDir, safeMode, configText, startupText, agents, mcpStatus, packResult] =
     await Promise.all([
-      invoke<string>("charminal_home_dir").catch(() => ""),
+      invoke<string>("yorishiro_home_dir").catch(() => ""),
       fetchSafeModeFlag().catch(() => false),
-      readCharminalConfigText(),
+      readYorishiroConfigText(),
       readLastStartupReport().catch(() => ""),
       listSupportedAgents().catch(() => []),
       mcpServerStatus().catch(() => ({ port: null, error: "Could not read MCP status." })),

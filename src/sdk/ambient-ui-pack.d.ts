@@ -46,7 +46,7 @@ export interface AmbientUiPackManifest {
   readonly name?: string;
   readonly type: "ambient-ui";
   readonly version: string;
-  readonly charminalVersion: string;
+  readonly yorishiroVersion: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";
   readonly artifact?: {
@@ -60,7 +60,7 @@ export interface AmbientUiPackManifest {
  * Ambient UI pack の定義。
  *
  * mount は container 内に自由に React component / 任意 DOM を描画する。
- * container は Charminal が `#ambient-layer` 内に作る pack ごとの独立 div。
+ * container は Yorishiro が `#ambient-layer` 内に作る pack ごとの独立 div。
  * z-index は pack 自身が style で決める（SDK doc 推奨: 100-999、toast 1000+）。
  *
  * mount は **同期的に** Disposable を返さなければならない。dispose で

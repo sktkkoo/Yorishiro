@@ -3,7 +3,7 @@
  *
  * R3F primitive の re-export entry.
  *
- * Pack 作者は本 entry から R3F primitive を import することで, Charminal 本体と
+ * Pack 作者は本 entry から R3F primitive を import することで, Yorishiro 本体と
  * 同じ @react-three/fiber version を共有する.
  *
  * user scene.tsx の runtime transpile 経路では, `@yorishiro/sdk/r3f` と

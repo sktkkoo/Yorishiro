@@ -6,10 +6,10 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CharminalLayerEvent } from "./watcher-logic";
+import type { YorishiroLayerEvent } from "./watcher-logic";
 import { mapEventToAction, parseLayerPath } from "./watcher-logic";
 
-const HOME = "/Users/sample/.charminal";
+const HOME = "/Users/sample/.yorishiro";
 
 describe("parseLayerPath", () => {
   it("recognizes a supported pack kind inside packs/<id>/", () => {
@@ -44,7 +44,7 @@ describe("parseLayerPath", () => {
     expect(parseLayerPath(`${HOME}/init.js`, HOME)).toEqual({ type: "init" });
   });
 
-  it("ignores paths outside ~/.charminal/", () => {
+  it("ignores paths outside ~/.yorishiro/", () => {
     expect(parseLayerPath("/tmp/elsewhere.js", HOME)).toEqual({ type: "ignore" });
   });
 
@@ -88,7 +88,7 @@ describe("parseLayerPath", () => {
     expect(parseLayerPath(`${HOME}/packs/.stash/effect.js`, HOME)).toEqual({ type: "ignore" });
   });
 
-  it("tolerates a charminalHome that ends with a trailing slash", () => {
+  it("tolerates a yorishiroHome that ends with a trailing slash", () => {
     expect(parseLayerPath(`${HOME}/packs/my-effect/effect.js`, `${HOME}/`)).toEqual({
       type: "pack",
       id: "my-effect",
@@ -98,7 +98,7 @@ describe("parseLayerPath", () => {
 });
 
 describe("mapEventToAction", () => {
-  const effectEvent = (kind: CharminalLayerEvent["kind"]): CharminalLayerEvent => ({
+  const effectEvent = (kind: YorishiroLayerEvent["kind"]): YorishiroLayerEvent => ({
     path: `${HOME}/packs/my-effect/effect.js`,
     kind,
     mtimeMs: 1700000000000,

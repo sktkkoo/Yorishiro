@@ -1,18 +1,18 @@
 <p align="center">
-  <img src="src-tauri/icons/icon.png" alt="Charminal" width="160" />
+  <img src="src-tauri/icons/icon.png" alt="Yorishiro" width="160" />
 </p>
 
-<h1 align="center">CHARMINAL</h1>
+<h1 align="center">YORISHIRO</h1>
 
 <p align="center">
-  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Charminal?style=flat-square"></a>
-  <a href="https://github.com/sktkkoo/Charminal/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/sktkkoo/Charminal?style=flat-square"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Yorishiro?style=flat-square"></a>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/sktkkoo/Yorishiro?style=flat-square"></a>
   <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
 </p>
 
 <p align="center"><strong>A terminal your AI lives in.</strong></p>
 
-Charminal is a terminal that gives your AI a place to live — and a sense of presence.
+Yorishiro is a terminal that gives your AI a place to live — and a sense of presence.
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
 
@@ -22,15 +22,15 @@ The inhabitant and the user share one environment. The inhabitant can reshape th
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Charminal is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
+Yorishiro is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
 **Make the hours you spend working with AI more comfortable, open-ended, and compelling.**
 
-The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Charminal builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Charminal, the environment the inhabitant lives in and reshapes also becomes part of that body.
+The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Yorishiro builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Yorishiro, the environment the inhabitant lives in and reshapes also becomes part of that body.
 
-There is something we once saw in fiction — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Charminal is a project that starts building that experience from the terminal.
+There is something we once saw in fiction — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Yorishiro is a project that starts building that experience from the terminal.
 
-Much of Charminal itself has been developed in collaboration with the inhabitant running inside it.
+Much of Yorishiro itself has been developed in collaboration with the inhabitant running inside it.
 
 > [日本語版 README はこちら](README.ja.md)
 
@@ -40,28 +40,28 @@ Much of Charminal itself has been developed in collaboration with the inhabitant
 
 ### Prerequisites
 
-Charminal automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
+Yorishiro automatically launches Claude Code or Codex installed on your local machine inside its terminal. This means:
 
 - **You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) already set up on your system**
-- Charminal never asks for, stores, or directly uses API keys. It launches the terminal agent already authenticated in your environment; if Claude Code or Codex is logged in or configured with API credentials, that agent may use its normal external APIs after launch
+- Yorishiro never asks for, stores, or directly uses API keys. It launches the terminal agent already authenticated in your environment; if Claude Code or Codex is logged in or configured with API credentials, that agent may use its normal external APIs after launch
 
 ### Install (macOS)
 
-Charminal currently targets macOS. Install with Homebrew:
+Yorishiro currently targets macOS. Install with Homebrew:
 
 ```sh
-brew install --cask sktkkoo/charminal/charminal
+brew install --cask sktkkoo/yorishiro/yorishiro
 ```
 
 Or download the latest build below.
 
 <p>
-  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
   &nbsp;
-  <a href="https://github.com/sktkkoo/Charminal/releases/latest/download/Charminal-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Intel" /></a>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Intel" /></a>
 </p>
 
-Open the `.dmg` and drag `charminal.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
+Open the `.dmg` and drag `yorishiro.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
 ### Launch (from source)
 
@@ -74,19 +74,19 @@ On launch, the configured terminal agent starts inside the terminal and **CLAI**
 
 The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from Settings → Health.
 
-### `/charm:*` commands
+### `/yori:*` commands
 
-Type `/charm:help`, `/charm:create`, or another `/charm:*` command inside Claude Code to activate the Charminal commands. They let you create and edit packs, run tutorials, and more — all through conversation.
+Type `/yori:help`, `/yori:create`, or another `/yori:*` command inside Claude Code to activate the Yorishiro commands. They let you create and edit packs, run tutorials, and more — all through conversation.
 
-In Codex, use `$charm-help`, `$charm-create`, etc. (Codex does not support custom `/` commands, so Charminal registers them as `$charm-*` skills instead.)
+In Codex, use `$yori-help`, `$yori-create`, etc. (Codex does not support custom `/` commands, so Yorishiro registers them as `$yori-*` skills instead.)
 
 ### Language
 
-Charminal starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/charm:*` (`$charm-*` in Codex) command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.charminal/config.json`.
+Yorishiro starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/yori:*` (`$yori-*` in Codex) command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.yorishiro/config.json`.
 
 ### Packs
 
-Everything in Charminal is composed of **packs**. There are six types:
+Everything in Yorishiro is composed of **packs**. There are six types:
 
 | Type | Role |
 |---|---|
@@ -97,16 +97,16 @@ Everything in Charminal is composed of **packs**. There are six types:
 | **ambient-ui** | Always-visible overlay UI (gaze visualization, etc.) |
 | **amenity** | Runtime-active functional fixtures (timers, etc.) with MCP tools, no visual output |
 
-[Bundled packs](bundled-packs/README.en.md) work out of the box. Users can place custom packs in `~/.charminal/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/charm:*` commands (`$charm-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
+[Bundled packs](bundled-packs/README.en.md) work out of the box. Users can place custom packs in `~/.yorishiro/packs/` to reshape nearly everything beyond the core: personality, space, reactions, UI, and more. Using the `/yori:*` commands (`$yori-*` in Codex), pack creation and modification is as simple as talking to the inhabitant. Packs support [hot reload](docs/configuration.md#pack-の-hot-reload), but if changes don't take effect, Ctrl+R will always apply them reliably.
 
-User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Charminal does not currently provide a public pack registry, in-app community pack installation, or `/charm:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
+User-created packs are **local trusted code**. They are not sandboxed, reviewed, or public-registry artifacts. Yorishiro does not currently provide a public pack registry, in-app community pack installation, or `/yori:prepare-publish`. You may share pack source code on GitHub, but anyone installing it manually is choosing to run it as local trusted code.
 
 > **Security note:** User packs are local trusted code, like shell scripts or editor extensions — they are not sandboxed and run with your own authority. Only install packs from sources you trust. See [`docs/security.md`](docs/security.md) and [`SECURITY.md`](SECURITY.md).
 
 To install a pack shared through GitHub or another source, place it under the user pack directory:
 
 ```text
-~/.charminal/packs/<pack-id>/
+~/.yorishiro/packs/<pack-id>/
 ├── manifest.json
 ├── scene.js       # example: scene pack entry
 ├── persona.js     # example: persona pack entry
@@ -119,25 +119,25 @@ Only one entry file is needed, and `manifest.json` decides which one is used. Th
 When working from a source checkout, run the local pack checker before sharing or debugging a user pack:
 
 ```bash
-npm run check:pack -- ~/.charminal/packs/<pack-id>
+npm run check:pack -- ~/.yorishiro/packs/<pack-id>
 ```
 
 The checker helps catch packaging mistakes; it is not a sandbox or a security review.
 
 ### Data directory
 
-Charminal stores all user data in `~/.charminal/`:
+Yorishiro stores all user data in `~/.yorishiro/`:
 
 ```
-~/.charminal/
+~/.yorishiro/
 ├── config.json      # Persona, scene, terminal agent, and other settings
 ├── init.js          # User startup script, runs on launch and hot reloads on save
 ├── packs/           # User-created packs
 ├── last-startup.json # Latest user pack load report
 ├── journal/         # Inhabitant's daily entries and memories
 ├── shell/           # Shell integration scripts (auto-generated)
-├── sdk.d.ts         # Charminal SDK type definitions (auto-generated, do not edit)
-└── sdk-guide.md     # Charminal SDK author guide (auto-generated, do not edit)
+├── sdk.d.ts         # Yorishiro SDK type definitions (auto-generated, do not edit)
+└── sdk-guide.md     # Yorishiro SDK author guide (auto-generated, do not edit)
 ```
 
 Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
@@ -154,11 +154,11 @@ The inhabitant constantly observes terminal output. Hooks and text flowing throu
 
 ### Journal
 
-The inhabitant can write daily entries in `~/.charminal/journal/daily/`. Summaries of notable moments accumulate in `memories.md` and are recalled in future sessions. This is a long-term memory mechanism that persists across sessions.
+The inhabitant can write daily entries in `~/.yorishiro/journal/daily/`. Summaries of notable moments accumulate in `memories.md` and are recalled in future sessions. This is a long-term memory mechanism that persists across sessions.
 
 ### Session tabs
 
-Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current tab. The main agent session is protected and cannot be closed — if it exits unexpectedly, Charminal automatically restarts it.
+Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current tab. The main agent session is protected and cannot be closed — if it exits unexpectedly, Yorishiro automatically restarts it.
 
 ### Context sharing
 
@@ -166,7 +166,7 @@ A few small features help bridge the gap between what you see on screen and what
 
 ### Self-referential MCP
 
-The inhabitant (Claude Code or Codex running in the terminal) can control Charminal itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI.
+The inhabitant (Claude Code or Codex running in the terminal) can control Yorishiro itself via MCP — changing expressions, switching scenes, triggering effects, manipulating UI.
 
 Three characteristics define this mechanism.
 
@@ -198,11 +198,11 @@ What works today:
 - Reflex layer: PTY observation and instant reactions
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
 - Journal: long-term memory across sessions
-- `/charm:*` commands for interactive pack creation and editing
+- `/yori:*` commands for interactive pack creation and editing
 - Localization: Japanese / English auto-detection with per-language persona and prompts
 - UI packs: immersive and theater fullscreen layouts
 - Pack diagnostics: health checks, repair handoff, and local pack validation
-- [Safe mode](docs/troubleshooting.md) (`CHARMINAL_SAFE_MODE=1`) to recover from broken packs
+- [Safe mode](docs/troubleshooting.md) (`YORISHIRO_SAFE_MODE=1`) to recover from broken packs
 - Signed macOS builds via GitHub Actions (code signing + notarization)
 
 > **Platform:** macOS only. Windows is not supported at this time — the build compiles but runtime behavior is unstable. Linux support is not yet available.
@@ -215,7 +215,7 @@ Claude Code is the primary, fully-supported agent. Codex is available as an **ex
 
 ### Codex support (experimental)
 
-[Codex](https://github.com/openai/codex) can be used as the terminal agent. Switch via `~/.charminal/config.json`:
+[Codex](https://github.com/openai/codex) can be used as the terminal agent. Switch via `~/.yorishiro/config.json`:
 
 ```json
 {
@@ -223,7 +223,7 @@ Claude Code is the primary, fully-supported agent. Codex is available as an **ex
 }
 ```
 
-Auto-launch, persona prompt overlay, PTY observation, and Charminal MCP access work. `/charm:*` commands are registered as `$charm-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Charminal reminders are prompt-based on Codex instead of Claude `UserPromptSubmit` hook output.
+Auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access work. `/yori:*` commands are registered as `$yori-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Yorishiro reminders are prompt-based on Codex instead of Claude `UserPromptSubmit` hook output.
 
 ---
 
@@ -289,7 +289,7 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 ### Configuration & customization
 
-- [`docs/configuration.md`](docs/configuration.md) — Fields of `~/.charminal/config.json`
+- [`docs/configuration.md`](docs/configuration.md) — Fields of `~/.yorishiro/config.json`
 - [`docs/decisions/scene-execution-sandbox.md`](docs/decisions/scene-execution-sandbox.md) — Local trusted pack sharing and scene execution boundaries
 - [`docs/terminal.md`](docs/terminal.md) — Terminal session profiles, shell customization, OSC 133 shell integration
 
@@ -314,6 +314,6 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 [MIT](LICENSE)
 
-The MIT license covers the source code only. The name "Charminal" and its icon/logo are trademarks of the author and are not licensed under MIT. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Charminal" name or icon for your fork in a way that could cause confusion about its origin.
+The MIT license covers the source code only. The name "Yorishiro" and its icon/logo are trademarks of the author and are not licensed under MIT. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Yorishiro" name or icon for your fork in a way that could cause confusion about its origin.
 
 ---

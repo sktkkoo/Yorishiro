@@ -10,7 +10,7 @@ const entry = (id: string, origin: "bundled" | "user" = "bundled"): UiPackEntry 
     id,
     type: "ui",
     version: "0.1.0",
-    charminalVersion: "^0.1.0",
+    yorishiroVersion: "^0.1.0",
     entry: "ui.tsx",
   },
   pack: {

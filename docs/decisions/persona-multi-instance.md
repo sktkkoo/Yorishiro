@@ -7,14 +7,14 @@
 
 ## TL;DR
 
-**複数 persona を同時に active にする運用は、Charminal の architecture では実現不可能**。Claude Code の additive system prompt 注入は **起動時 1 回のみ** で、session 内で persona を差し替えられない。**single-active persona registry**（user pack が bundled を override）が現行の正解。
+**複数 persona を同時に active にする運用は、Yorishiro の architecture では実現不可能**。Claude Code の additive system prompt 注入は **起動時 1 回のみ** で、session 内で persona を差し替えられない。**single-active persona registry**（user pack が bundled を override）が現行の正解。
 
 ---
 
 ## 何を決めたか
 
 - **PersonaRegistry は single-active**。同時に複数 persona を active にしない
-- active 選択は `~/.charminal/config.json` の設定 + user-over-bundled override の自動 promotion で決まる
+- active 選択は `~/.yorishiro/config.json` の設定 + user-over-bundled override の自動 promotion で決まる
 - persona switch は **新しい Claude Code session を起動する** ことで行う（session 内動的 switch は不可）
 - 内部実装：`src/runtime/persona-registry/persona-registry-impl.ts:PersonaRegistryImpl`（reference 比較で listener fire、user dispose 時の auto-select 抑止フラグあり）
 - 関連 commit：`39289df feat(persona-registry): single-active registry with user-over-bundled override`
@@ -25,7 +25,7 @@
 
 ### 一次的な制約（technical）
 
-Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--system-prompt-addition` で **additive** に渡される。**session が走っている間に追加 / 差し替える API は存在しない**。Charminal は Claude Code の thinking layer に persona を注入するため、persona = system prompt 注入。よって：
+Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--system-prompt-addition` で **additive** に渡される。**session が走っている間に追加 / 差し替える API は存在しない**。Yorishiro は Claude Code の thinking layer に persona を注入するため、persona = system prompt 注入。よって：
 
 - **session 起動時に persona = 1 個確定**
 - **session 寿命中の動的 persona switch ≒ Claude Code の再起動が必要**
@@ -35,7 +35,7 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 ここから follow する制約：
 
 - 「user が会話の途中で persona を切り替える」体験は physically 不可能
-- Charminal が「内部に複数 persona instance を保持して dispatch する」runtime model を持つ意味はほぼない（active な 1 個以外は dead weight）
+- Yorishiro が「内部に複数 persona instance を保持して dispatch する」runtime model を持つ意味はほぼない（active な 1 個以外は dead weight）
 - 複数 persona の motion 衝突を解決する `BodyScheduler` という primitive の存在意義は **MVP では薄い**（衝突する相手がいない）
 
 ### Resolution（current architecture）
@@ -51,7 +51,7 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 ### A. 複数 persona 並行 active
 
-**初期 design intent**（「Charminal は複数 persona を持つ単一個体」という構想、および初期実装での「複数 persona 並行前提の internal model」）。
+**初期 design intent**（「Yorishiro は複数 persona を持つ単一個体」という構想、および初期実装での「複数 persona 並行前提の internal model」）。
 
 **却下理由**：
 - system prompt 注入が起動時 1 回のみ → 複数 persona の "thinking layer" を同時に持てない
@@ -85,7 +85,7 @@ Claude Code（Anthropic 公式 CLI）の system prompt は、起動時に `--sys
 
 ### 思想層への影響（注意）
 
-- **「Charminal は多人格の meta-identity」というナラティブ自体は維持できる**：「複数の persona を持つが、ある瞬間に外に出ているのは 1 人」と解釈すれば philosophy/PHILOSOPHY.ja.md と整合する
+- **「Yorishiro は多人格の meta-identity」というナラティブ自体は維持できる**：「複数の persona を持つが、ある瞬間に外に出ているのは 1 人」と解釈すれば philosophy/PHILOSOPHY.ja.md と整合する
 - **「session 越しに persona memory が異なる」という持続性**：これは可能。session A は kurai persona、session B は別 persona、それぞれが core memory を共有する model
 - ただし「**同時に複数の人格が並行して喋る**」という interpretation は技術的にも哲学的にも採らない
 

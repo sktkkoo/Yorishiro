@@ -28,11 +28,11 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 
 - ショートカット pre-fill は `ctx.app.insertFixedPrompt("shortcut")`（host 所有の固定プロンプトを key で指す SDK verb）経由。pack は文字列を渡さず、`src/bindings/tauri-commands` の直 import は持たない。任意テキストを terminal に書く API は意図的に存在しない（設計境界: `docs/decisions/input-prefill-boundary.md`）
 - VRM file picker (`@tauri-apps/plugin-dialog` + `import_vrm`) を bundled で直接呼んでいる
-- `localStorage["charminal:vrm"]` の magic string を直接読んでいる
+- `localStorage["yorishiro:vrm"]` の magic string を直接読んでいる
 
 VRM picker / localStorage 系は将来 SDK 側で `UiAppAPI.pickVrm()`, `getVrm()` を追加することで user fork でも完全再現可能になります（spec § 8 の将来課題参照）。terminal 入力については `insertFixedPrompt` の固定 key 集合が SDK 公開面であり、任意書き込み口は追加しない方針（`input-prefill-boundary.md`）。
 
 ## 関連 doc
 
-- 設計仕様: `../Charminal-design-record/specs/2026-04-25-settings-screen-design.md`
+- 設計仕様: `../Yorishiro-design-record/specs/2026-04-25-settings-screen-design.md`
 - UI pack 制度: `docs/decisions/`、`src/sdk/ui-pack.d.ts`

@@ -59,10 +59,10 @@ export const SETTINGS_PACK_ID = "yorishiro-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
 
 /** 公開リポジトリ。Credits 画面の「View on GitHub」リンク先。 */
-const CHARMINAL_REPO_URL = "https://github.com/sktkkoo/Charminal";
+const YORISHIRO_REPO_URL = "https://github.com/sktkkoo/Yorishiro";
 
 /** CREDITS.md（正本の全クレジット）。Credits 画面下部の「Full credits」リンク先。 */
-const CHARMINAL_CREDITS_URL = "https://github.com/sktkkoo/Charminal/blob/main/CREDITS.md";
+const YORISHIRO_CREDITS_URL = "https://github.com/sktkkoo/Yorishiro/blob/main/CREDITS.md";
 
 const QUICK_ACTION_KEYS: ReadonlyArray<{
   readonly key: FixedTerminalPromptKey;
@@ -187,7 +187,7 @@ export function creditsSections(): readonly CreditSection[] {
       label: "Character",
       lines: [{ text: "CLAI — character model by LUCAS" }],
       footnote:
-        "Use within Charminal is permitted for everyone. Standalone redistribution or reuse of the model is prohibited. Violent expression is permitted; sexual expression is not.",
+        "Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model is prohibited. Violent expression is permitted; sexual expression is not.",
     },
     {
       // 用途（idle / additional 等）は変わるので書かない。提供元を並列に挙げるだけ。
@@ -673,7 +673,7 @@ function PackRecommendationRow({ text }: { text: string }) {
 }
 
 function trustLabel(origin: string, executionClass?: string): string {
-  if (origin === "bundled") return "Bundled with Charminal";
+  if (origin === "bundled") return "Bundled with Yorishiro";
   if (executionClass === "trusted-main-thread-js") return "Local trusted code";
   if (executionClass === "isolated-js") return "Isolated sandbox";
   if (executionClass === "declarative") return "Declarative (no code)";
@@ -1018,7 +1018,7 @@ function HealthDiagnostics({
 
 /**
  * 設定画面の restore section。crash していなくても、snapshot 一覧から手動で
- * ~/.charminal を以前の状態に戻す。最新は「今の状態」なのでボタンを出さない。
+ * ~/.yorishiro を以前の状態に戻す。最新は「今の状態」なのでボタンを出さない。
  * 推奨タグは crash 画面にだけ残し、設定画面では行の内容を淡々と読めるようにする。
  * 確認 → restore → reload で config/init.js も再適用する。
  */
@@ -1752,7 +1752,7 @@ function motionLevelLabelStyle(index: number): React.CSSProperties {
 }
 
 const CREDITS_RISE_KEYFRAMES = `
-@keyframes charminal-credits-rise {
+@keyframes yorishiro-credits-rise {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }`;
@@ -1764,7 +1764,7 @@ const CREDITS_RISE_KEYFRAMES = `
  *
  * 中身は app language に関わらず常に英語（[[creditsSections]] 参照）。
  *
- * 美学：Charminal は terminal の app なので monospace を活かした抑制的・編集的な
+ * 美学：Yorishiro は terminal の app なので monospace を活かした抑制的・編集的な
  * 版面で「ちゃんと手入れされている」ことを伝える（presence over spectacle）。
  * 読み込み時に section を控えめに rise させる以上の演出はしない。
  */
@@ -1848,7 +1848,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
             paddingBottom: SPACING.lg,
             marginBottom: SPACING.lg,
             borderBottom: `1px solid ${COLORS.borderSubtle}`,
-            animation: "charminal-credits-rise 360ms ease both",
+            animation: "yorishiro-credits-rise 360ms ease both",
           }}
         >
           <div style={{ display: "flex", alignItems: "baseline", gap: SPACING.sm }}>
@@ -1859,7 +1859,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
                 letterSpacing: "0.01em",
               }}
             >
-              Charminal
+              Yorishiro
             </span>
             {version && (
               <span
@@ -1893,7 +1893,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
             <button
               type="button"
               onClick={() => {
-                void openUrl(CHARMINAL_REPO_URL);
+                void openUrl(YORISHIRO_REPO_URL);
               }}
               style={{
                 background: "none",
@@ -1919,7 +1919,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
             key={section.label}
             style={{
               marginBottom: SPACING.xl,
-              animation: `charminal-credits-rise 360ms ease both`,
+              animation: `yorishiro-credits-rise 360ms ease both`,
               animationDelay: `${(i + 1) * 45}ms`,
             }}
           >
@@ -1989,7 +1989,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
           <button
             type="button"
             onClick={() => {
-              void openUrl(CHARMINAL_CREDITS_URL);
+              void openUrl(YORISHIRO_CREDITS_URL);
             }}
             style={{
               background: "none",
@@ -2015,7 +2015,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
 function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [vrmName, setVrmName] = useState<string>(() => {
-    const stored = localStorage.getItem("charminal:vrm");
+    const stored = localStorage.getItem("yorishiro:vrm");
     return stored ? (stored.split("/").pop() ?? stored) : "";
   });
   const [persona, setPersona] = useState<string | null>(null);

@@ -49,14 +49,14 @@ describe("withAgentRuntimeFields", () => {
       withAgentRuntimeFields(
         { kind: "agent", agent: "opencode", command: null },
         "resident prompt",
-        "/tmp/charminal-plugin",
+        "/tmp/yorishiro-plugin",
       ),
     ).toEqual({
       kind: "agent",
       agent: "opencode",
       command: null,
       systemPrompt: "resident prompt",
-      pluginDir: "/tmp/charminal-plugin",
+      pluginDir: "/tmp/yorishiro-plugin",
     });
   });
 
@@ -65,7 +65,7 @@ describe("withAgentRuntimeFields", () => {
       withAgentRuntimeFields(
         { kind: "shell", command: null, integration: true },
         "resident prompt",
-        "/tmp/charminal-plugin",
+        "/tmp/yorishiro-plugin",
       ),
     ).toEqual({ kind: "shell", command: null, integration: true });
   });

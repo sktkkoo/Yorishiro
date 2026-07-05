@@ -1,5 +1,5 @@
 /**
- * @charminal/runtime
+ * @yorishiro/runtime
  *
  * Runtime services: Trigger dispatch（EventBus）、persona 管理
  * （PersonaRegistryImpl + PersonaReflexDispatcher の 2 primitive）、

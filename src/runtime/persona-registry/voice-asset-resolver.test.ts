@@ -22,12 +22,12 @@ const entry = (overrides: Partial<PersonaEntry> = {}): PersonaEntry => ({
     id: "singer",
     type: "persona",
     version: "0.0.0",
-    charminalVersion: "*",
+    yorishiroVersion: "*",
     entry: "persona.js",
   },
   persona,
   origin: "user",
-  entryPath: "/Users/me/.charminal/packs/singer/persona.js",
+  entryPath: "/Users/me/.yorishiro/packs/singer/persona.js",
   ...overrides,
 });
 
@@ -75,7 +75,7 @@ describe("voice-asset-resolver", () => {
       }),
     ).resolves.toBe("asset://vocal.wav");
     expect(resolveUser).toHaveBeenCalledWith(
-      "/Users/me/.charminal/packs/singer/persona.js",
+      "/Users/me/.yorishiro/packs/singer/persona.js",
       "./assets/vocal.wav",
     );
   });

@@ -7,11 +7,11 @@ $ARGUMENTS
 
 ---
 
-You are helping the user create a new Charminal **pack** through conversation.
+You are helping the user create a new Yorishiro **pack** through conversation.
 
-## Charminal
+## Yorishiro
 
-Charminal is an app where an AI "lives" in a terminal. The sidebar character observes the user's work through PTY output, hook events, and idle time, then reacts through body, expression, effects, scene, and UI. It does not intervene in functional terminal operations. It observes state and expresses presence.
+Yorishiro is an app where an AI "lives" in a terminal. The sidebar character observes the user's work through PTY output, hook events, and idle time, then reacts through body, expression, effects, scene, and UI. It does not intervene in functional terminal operations. It observes state and expresses presence.
 
 ## Pack Types
 
@@ -21,12 +21,12 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 | **effect** | Temporary visual effects on screen | `screen-shake`, `text-physics`, `fireworks-volley` |
 | **amenity** | Functional amenities such as timers or music playback, plus MCP tools. Local-trusted and has `system.exec` | `pomodoro`, `music-shelf` |
 | **scene** | The resident's place: background / foreground layers, R3F lighting / 3D, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
-| **ui** | Primary sidebar UI panels. Single-active | `charminal-settings` |
+| **ui** | Primary sidebar UI panels. Single-active | `yorishiro-settings` |
 | **ambient-ui** | Always-on overlay UI. Multi-active | `attention-aura` |
 
 ## Security Boundary
 
-- `.js` / `.tsx` packs created by `/yori:create` are **local trusted `trusted-main-thread-js`**. They are not Charminal public-registry artifacts and must not be presented as sandboxed, reviewed, or public-distribution packs.
+- `.js` / `.tsx` packs created by `/yori:create` are **local trusted `trusted-main-thread-js`**. They are not Yorishiro public-registry artifacts and must not be presented as sandboxed, reviewed, or public-distribution packs.
 - Sharing the source on GitHub or elsewhere is allowed. Make clear that anyone installing it manually is choosing to run local trusted code.
 - Every generated manifest must include `"executionClass": "trusted-main-thread-js"`. Never label a `.js` / `.tsx` entry as `"declarative"`.
 - Do not create `utility` packs. They stay out of distribution until the `isolated-js` runtime and permission UX exist.
@@ -38,19 +38,19 @@ Charminal is an app where an AI "lives" in a terminal. The sidebar character obs
 ## Flow
 
 1. **Ask for one concrete example first.** Pull out one tactile example: "In what situation, what happens, and how should the resident react?"
-2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Charminal repo, read `bundled-packs/` directly; otherwise read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`).
+2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Yorishiro repo, read `bundled-packs/` directly; otherwise read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`).
 3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
 4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences in English explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
 5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative or React+three.js rendering only; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
-6. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--charminal-fg)`, `var(--charminal-accent)`, and related variables so UI follows scene themes.
+6. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--yorishiro-fg)`, `var(--yorishiro-accent)`, and related variables so UI follows scene themes.
 
 ## Hot Reload and Self-Check
 
-User packs live in `~/.charminal/packs/<id>/`. When you write a file such as `~/.charminal/packs/my-effect/effect.js`, Charminal's watcher reloads it automatically. The user does not need to reload by hand.
+User packs live in `~/.yorishiro/packs/<id>/`. When you write a file such as `~/.yorishiro/packs/my-effect/effect.js`, Yorishiro's watcher reloads it automatically. The user does not need to reload by hand.
 
 Shape validation failures do not crash the whole runtime. They are recorded in dev logs and exposed through MCP tools.
 
-When Charminal is live, use these MCP tools:
+When Yorishiro is live, use these MCP tools:
 
 - `list_packs()` - list loaded / disabled / failed packs
 - `pack_diagnose({ id })` - inspect one pack's status, manifest, load error, and repair hints
@@ -60,34 +60,34 @@ When Charminal is live, use these MCP tools:
 
 After writing a pack, run `pack_diagnose({ id: "<id>" })` to confirm it registered and catch validation or manifest issues. This makes self-repair much faster.
 
-If the current workspace is a Charminal source checkout, also run:
+If the current workspace is a Yorishiro source checkout, also run:
 
 ```bash
-npm run check:pack -- ~/.charminal/packs/<id>
+npm run check:pack -- ~/.yorishiro/packs/<id>
 ```
 
 Treat checker errors as fixes to make before presenting the pack as done. Warnings must be explained to the user.
 
-Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Charminal does not yet provide a public registry or `/yori:prepare-publish`.
+Also tell the user that the created pack is local trusted code. If they want to share it, they can publish the source themselves, but Yorishiro does not yet provide a public registry or `/yori:prepare-publish`.
 
 ## Rescue Path
 
-If user packs prevent Charminal from starting, the user can launch safe mode:
+If user packs prevent Yorishiro from starting, the user can launch safe mode:
 
 ```bash
-CHARMINAL_SAFE_MODE=1 open /Applications/Charminal.app
+YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app
 ```
 
 Safe mode skips all user packs and adds `(Safe Mode)` to the window title. MCP tools still work, so use `list_load_errors()` to identify the cause and `disable_pack({ id })` to detach it. After removing the env var and restarting, only packs listed in `disabledPacks` stay skipped.
 
 ## Scene Packs
 
-A user scene pack lives in `~/.charminal/packs/<id>/` with **manifest.json plus `scene.js` or `scene.tsx`**. `manifest.json` is required because agent-created UGC should declare its type explicitly. Bundled scenes use a different layout under `bundled-packs/scenes/<id>/`; user packs are flat directories.
+A user scene pack lives in `~/.yorishiro/packs/<id>/` with **manifest.json plus `scene.js` or `scene.tsx`**. `manifest.json` is required because agent-created UGC should declare its type explicitly. Bundled scenes use a different layout under `bundled-packs/scenes/<id>/`; user packs are flat directories.
 
 Scene packs have two formats:
 
 - **Declarative (`scene.js`)**: declare layers + terminal + ui only. No controls are exposed. Choose this for simple backgrounds, images, and terminal / UI themes.
-- **R3F component (`scene.tsx`)**: render lighting / 3D objects with a React component. Controls exposed through `useCharminalControls` / `useControlsBridge` are available only in this format.
+- **R3F component (`scene.tsx`)**: render lighting / 3D objects with a React component. Controls exposed through `useYorishiroControls` / `useControlsBridge` are available only in this format.
 
 You may split `scene.tsx` with pack-relative imports such as `./lib/lights.tsx`. Edits to source files inside the pack reload the owning `scene.tsx`.
 
@@ -97,12 +97,12 @@ Keep components to React + three.js rendering; do not use `fetch`, `fs`, `system
 
 When choosing the R3F component format, decide with the user **which parameters should be externally tunable** before implementation. Expose only values whose feel should be adjusted live, such as lighting intensity / color, fog, post effects, or camera modulation.
 
-The panel renderer currently uses a Leva adapter, but pack authors should not import Leva directly. Use only the public `@charminal/sdk/controls` API.
+The panel renderer currently uses a Leva adapter, but pack authors should not import Leva directly. Use only the public `@yorishiro/sdk/controls` API.
 
 Workflow:
 
 1. Ask the user which values they want to tune from the F2 Scene panel or `/yori:update`
-2. In the `scene.tsx` component, register them with `useCharminalControls` and `useControlsBridge` from `@charminal/sdk/controls`
+2. In the `scene.tsx` component, register them with `useYorishiroControls` and `useControlsBridge` from `@yorishiro/sdk/controls`
 3. Confirm the registered values appear in the F2 **Scene panel**
 4. Confirm they can be read / written through `/yori:update` or MCP `controls_get` / `controls_set` with `scope: "scene"`
 
@@ -113,16 +113,16 @@ F2 opens two panels:
 
 Scene pack authors register **only on the Scene side**. The base camera lives in Common and should not be touched from a scene pack. Parameters not exposed through controls stay fixed as local values in the code.
 
-`bundled-packs/scenes/abandoned-factory/lib/` is the main reference for `useCharminalControls` + `useControlsBridge`.
+`bundled-packs/scenes/abandoned-factory/lib/` is the main reference for `useYorishiroControls` + `useControlsBridge`.
 
-`~/.charminal/packs/my-scene/manifest.json`:
+`~/.yorishiro/packs/my-scene/manifest.json`:
 
 ```json
 {
   "id": "my-scene",
   "type": "scene",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this scene",
   "author": "Your name",
@@ -130,10 +130,10 @@ Scene pack authors register **only on the Scene side**. The base camera lives in
 }
 ```
 
-`~/.charminal/packs/my-scene/scene.js`:
+`~/.yorishiro/packs/my-scene/scene.js`:
 
 ```typescript
-import type { ScenePackDefinition } from "@charminal/sdk";
+import type { ScenePackDefinition } from "@yorishiro/sdk";
 
 export default {
   id: "my-scene",
@@ -157,14 +157,14 @@ export default {
 } satisfies ScenePackDefinition;
 ```
 
-`~/.charminal/packs/my-scene/scene.tsx` (R3F component + exposed controls):
+`~/.yorishiro/packs/my-scene/scene.tsx` (R3F component + exposed controls):
 
 ```typescript
-import type { ScenePackDefinition } from "@charminal/sdk";
-import { useCharminalControls, useControlsBridge } from "@charminal/sdk/controls";
+import type { ScenePackDefinition } from "@yorishiro/sdk";
+import { useYorishiroControls, useControlsBridge } from "@yorishiro/sdk/controls";
 
 function MySceneComponent() {
-  const [controls, setControls] = useCharminalControls("lights", () => ({
+  const [controls, setControls] = useYorishiroControls("lights", () => ({
     intensity: { value: 1.2, min: 0, max: 4, step: 0.1 },
   }));
   useControlsBridge("my-scene", controls, setControls);
@@ -195,9 +195,9 @@ export default {
 
 ### Color Theme Design
 
-Scene packs can declare terminal colors and UI colors together. When the scene changes, Charminal applies them globally.
+Scene packs can declare terminal colors and UI colors together. When the scene changes, Yorishiro applies them globally.
 
-**terminal**: xterm.js background / foreground / cursor / selection and ANSI 16 colors. Missing fields fall back to Charminal defaults. Starting from an existing palette such as Nord, Gruvbox, Catppuccin, or Everforest and adjusting saturation / temperature to the scene is usually fastest.
+**terminal**: xterm.js background / foreground / cursor / selection and ANSI 16 colors. Missing fields fall back to Yorishiro defaults. Starting from an existing palette such as Nord, Gruvbox, Catppuccin, or Everforest and adjusting saturation / temperature to the scene is usually fastest.
 
 **ui**: overall sidebar / panel / button colors. You can define background, foreground, foregroundDim, sidebarBackground, panelBackground, border, buttonBackground, buttonForeground, inputBackground, accent, accentSoft, accentBorder, muted, and glow. Missing fields fall back to defaults.
 
@@ -214,7 +214,7 @@ References:
 - `bundled-packs/scenes/misty-grasslands/scene.ts` - Everforest-based light theme
 - `bundled-packs/scenes/simple-room/scene.ts` - Nord-like blue dark theme
 
-The active scene is selected through `scene_activate`. The tool persists the choice in `~/.charminal/config.json`: it writes `sceneByProject` for the current project when the project root is resolved, otherwise it writes the global `activeScene` fallback.
+The active scene is selected through `scene_activate`. The tool persists the choice in `~/.yorishiro/config.json`: it writes `sceneByProject` for the current project when the project root is resolved, otherwise it writes the global `activeScene` fallback.
 
 ```json
 {
@@ -225,13 +225,13 @@ The active scene is selected through `scene_activate`. The tool persists the cho
 }
 ```
 
-If the current project has no `sceneByProject` entry, Charminal falls back to `activeScene`; if that is omitted or null, it falls back to the bundled default.
+If the current project has no `sceneByProject` entry, Yorishiro falls back to `activeScene`; if that is omitted or null, it falls back to the bundled default.
 
 ## Persona Packs
 
-A user persona pack lives in `~/.charminal/packs/<id>/` with **three files**: `manifest.json`, `persona.md`, and minimal `persona.js`. The loader reads `persona.md` and injects it into `thinking.systemPromptAddition`.
+A user persona pack lives in `~/.yorishiro/packs/<id>/` with **three files**: `manifest.json`, `persona.md`, and minimal `persona.js`. The loader reads `persona.md` and injects it into `thinking.systemPromptAddition`.
 
-Persona is **single-active**. The active persona is selected by `primaryPersona` in `~/.charminal/config.json`.
+Persona is **single-active**. The active persona is selected by `primaryPersona` in `~/.yorishiro/config.json`.
 
 ### persona.js and persona.md
 
@@ -247,14 +247,14 @@ Persona is **single-active**. The active persona is selected by `primaryPersona`
 3. Read a bundled template such as `bundled-packs/personas/clai-en/persona.md` (or `clai-ja` for a Japanese-default persona)
 4. Write these files:
 
-`~/.charminal/packs/<id>/manifest.json`:
+`~/.yorishiro/packs/<id>/manifest.json`:
 
 ```json
 {
   "id": "<id>",
   "type": "persona",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this persona",
   "author": "Your name",
@@ -262,9 +262,9 @@ Persona is **single-active**. The active persona is selected by `primaryPersona`
 }
 ```
 
-`~/.charminal/packs/<id>/persona.md`: initialize from the bundled template and edit for the user's request.
+`~/.yorishiro/packs/<id>/persona.md`: initialize from the bundled template and edit for the user's request.
 
-`~/.charminal/packs/<id>/persona.js`:
+`~/.yorishiro/packs/<id>/persona.js`:
 
 ```javascript
 export default {
@@ -275,12 +275,12 @@ export default {
 };
 ```
 
-5. If switching now, update `~/.charminal/config.json` with `"primaryPersona": "<id>"`
+5. If switching now, update `~/.yorishiro/config.json` with `"primaryPersona": "<id>"`
 6. After completion, tell the user a new session is needed
 
 ### Session Restart Required
 
-Charminal itself hot reloads the persona and reflex layer. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Charminal does not write into an already-running observed PTY session, so the user must start a new session.
+Yorishiro itself hot reloads the persona and reflex layer. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Yorishiro does not write into an already-running observed PTY session, so the user must start a new session.
 
 After persona work, always explain this in the resident's own voice. Avoid technical terms like `systemPrompt`, `PTY`, or `observation-only`.
 
@@ -292,16 +292,16 @@ Adapt first person and tone to the persona.
 
 ## Effect Packs
 
-A user effect pack lives in `~/.charminal/packs/<id>/` with `manifest.json` and `effect.js` (plus `assets/` if needed). Effects are declarative and invoked by persona handlers with `ctx.space.injectEffect({ kind: <pack-id> })`. Effects do not have their own triggers.
+A user effect pack lives in `~/.yorishiro/packs/<id>/` with `manifest.json` and `effect.js` (plus `assets/` if needed). Effects are declarative and invoked by persona handlers with `ctx.space.injectEffect({ kind: <pack-id> })`. Effects do not have their own triggers.
 
-`~/.charminal/packs/my-glow/manifest.json`:
+`~/.yorishiro/packs/my-glow/manifest.json`:
 
 ```json
 {
   "id": "my-glow",
   "type": "effect",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this effect",
   "author": "Your name",
@@ -309,10 +309,10 @@ A user effect pack lives in `~/.charminal/packs/<id>/` with `manifest.json` and 
 }
 ```
 
-`~/.charminal/packs/my-glow/effect.js`:
+`~/.yorishiro/packs/my-glow/effect.js`:
 
 ```typescript
-import type { EffectContext, EffectDefinition, Vec2 } from "@charminal/sdk";
+import type { EffectContext, EffectDefinition, Vec2 } from "@yorishiro/sdk";
 
 interface MyGlowOptions {
   origin: Vec2;
@@ -354,14 +354,14 @@ Amenity packs are functional amenities placed in the resident's environment: tim
 
 Amenity authoring is **local-trusted only**. Locally, `ctx.system.exec` is equivalent to the shell authority the resident AI already has in the terminal, so it does not add a new local authority boundary. It is still not a public-distribution artifact: installing someone else's amenity can run exec. Public distribution stays deferred until the `isolated-js` runtime and permission UX exist.
 
-`~/.charminal/packs/my-amenity/manifest.json`:
+`~/.yorishiro/packs/my-amenity/manifest.json`:
 
 ```json
 {
   "id": "my-amenity",
   "type": "amenity",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this amenity",
   "author": "Your name",
@@ -388,16 +388,16 @@ If the amenity should create character expression, do not call motion APIs direc
 
 ## UI Packs
 
-UI packs are primary sidebar panels. They are **single-active**. The active UI pack is selected through `activeUi` in `~/.charminal/config.json`.
+UI packs are primary sidebar panels. They are **single-active**. The active UI pack is selected through `activeUi` in `~/.yorishiro/config.json`.
 
-`~/.charminal/packs/my-panel/manifest.json`:
+`~/.yorishiro/packs/my-panel/manifest.json`:
 
 ```json
 {
   "id": "my-panel",
   "type": "ui",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this UI panel",
   "author": "Your name",
@@ -407,7 +407,7 @@ UI packs are primary sidebar panels. They are **single-active**. The active UI p
 
 UI packs export a React component or mountable definition. They receive `UiContext`, can use `ctx.state` for pack-scoped key-value state, and can emit synthetic events with `ctx.emitEvent()`.
 
-Reference: `bundled-packs/ui/charminal-settings/`.
+Reference: `bundled-packs/ui/yorishiro-settings/`.
 
 ### UI Boundaries
 
@@ -417,33 +417,33 @@ Use CSS variables for colors:
 
 | Variable | Use |
 |---|---|
-| `var(--charminal-bg)` | background |
-| `var(--charminal-fg)` | text |
-| `var(--charminal-fg-dim)` | dim text |
-| `var(--charminal-panel-bg)` | panel background |
-| `var(--charminal-sidebar-bg)` | sidebar background |
-| `var(--charminal-border)` | border |
-| `var(--charminal-button-bg)` | button background |
-| `var(--charminal-button-fg)` | button text |
-| `var(--charminal-input-bg)` | input / toggle background |
-| `var(--charminal-accent)` | accent |
-| `var(--charminal-accent-soft)` | soft accent |
-| `var(--charminal-accent-border)` | accent border |
-| `var(--charminal-muted)` | muted text |
-| `var(--charminal-glow)` | glow |
+| `var(--yorishiro-bg)` | background |
+| `var(--yorishiro-fg)` | text |
+| `var(--yorishiro-fg-dim)` | dim text |
+| `var(--yorishiro-panel-bg)` | panel background |
+| `var(--yorishiro-sidebar-bg)` | sidebar background |
+| `var(--yorishiro-border)` | border |
+| `var(--yorishiro-button-bg)` | button background |
+| `var(--yorishiro-button-fg)` | button text |
+| `var(--yorishiro-input-bg)` | input / toggle background |
+| `var(--yorishiro-accent)` | accent |
+| `var(--yorishiro-accent-soft)` | soft accent |
+| `var(--yorishiro-accent-border)` | accent border |
+| `var(--yorishiro-muted)` | muted text |
+| `var(--yorishiro-glow)` | glow |
 
 ## Ambient-UI Packs
 
 Ambient-UI packs are always-on overlays. They are **multi-active**. They can draw into the Three.js scene or create HTML overlays.
 
-`~/.charminal/packs/my-overlay/manifest.json`:
+`~/.yorishiro/packs/my-overlay/manifest.json`:
 
 ```json
 {
   "id": "my-overlay",
   "type": "ambient-ui",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
+  "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this overlay",
   "author": "Your name",
@@ -459,10 +459,10 @@ Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only
 
 ## Reference Files
 
-> In a packaged build the source tree (`src/`, `bundled-packs/`, `docs/`) is not on disk. Read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`); `~/.charminal/sdk.d.ts` (types) and `~/.charminal/sdk-guide.md` (guide) are always available. The `bundled-packs/` / `docs/` paths below apply when cwd is the Charminal repo.
+> In a packaged build the source tree (`src/`, `bundled-packs/`, `docs/`) is not on disk. Read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`); `~/.yorishiro/sdk.d.ts` (types) and `~/.yorishiro/sdk-guide.md` (guide) are always available. The `bundled-packs/` / `docs/` paths below apply when cwd is the Yorishiro repo.
 
-- `~/.charminal/sdk.d.ts` - all SDK type definitions (pack definitions and contexts), rewritten every startup
-- `~/.charminal/sdk-guide.md` - SDK author guide (idioms, twin-trigger co-emission), rewritten every startup
+- `~/.yorishiro/sdk.d.ts` - all SDK type definitions (pack definitions and contexts), rewritten every startup
+- `~/.yorishiro/sdk-guide.md` - SDK author guide (idioms, twin-trigger co-emission), rewritten every startup
 - `bundled-packs/personas/clai-en/`, `bundled-packs/personas/clai-ja/` - flagship persona pattern source (shared factory in `clai-shared/`)
 - `bundled-packs/amenities/` - amenity pack examples
 - `bundled-packs/ui/` - UI pack examples

@@ -1,11 +1,11 @@
 {
-  "$schema": "https://charminal.dev/schemas/pack-manifest.schema.json",
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
   "id": "simple-room",
   "name": "Simple Room",
   "type": "scene",
   "version": "0.1.0",
-  "charminalVersion": "^0.1.0",
-  "author": "Charminal team",
+  "yorishiroVersion": "^0.1.0",
+  "author": "Yorishiro team",
   "description": "A quiet abstract space. Background and foreground layers with blur create a baseline for presence.",
   "entry": "scene.tsx"
 }

@@ -1,4 +1,4 @@
-# Charminal git hooks — see https://lefthook.dev/configuration/
+# Yorishiro git hooks — see https://lefthook.dev/configuration/
 #
 # Split strategy:
 #   - pre-commit: fast, staged-file-scoped fixes (biome + rustfmt).

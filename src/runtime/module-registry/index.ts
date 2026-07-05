@@ -1,5 +1,5 @@
 /**
- * @charminal/runtime/module-registry
+ * @yorishiro/runtime/module-registry
  *
  * Typed registry of swappable runtime modules. Used by EventBus, body subsystems,
  * and (post-MVP) UGC pack loaders. HMR-surviving via hot-data.

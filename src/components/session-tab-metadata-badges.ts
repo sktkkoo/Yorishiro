@@ -78,7 +78,7 @@ function badgeForEvent(event: DispatchEvent): TabIndicatorBadge | null {
     return {
       label: `trigger:${event.name}`,
       tone: systemSyntheticBadgeTone(event.name),
-      title: `Charminal trigger: ${event.source.packId}/${event.name}`,
+      title: `Yorishiro trigger: ${event.source.packId}/${event.name}`,
     };
   }
 
@@ -115,13 +115,13 @@ function loopBadge(label: string, event: LoopLifecycleEvent): TabIndicatorBadge 
   const agent = event.agent ? ` (${event.agent})` : "";
   return {
     label,
-    tone: event.phase === "failed" ? "danger" : "charminal",
+    tone: event.phase === "failed" ? "danger" : "yorishiro",
     title: `Loop lifecycle: ${event.phase}${agent}`,
   };
 }
 
 function systemSyntheticBadgeTone(name: string): TabIndicatorBadge["tone"] {
-  return name.endsWith("-failed") ? "danger" : "charminal";
+  return name.endsWith("-failed") ? "danger" : "yorishiro";
 }
 
 function targetSessionIdForEvent(event: DispatchEvent, state: SessionTabState): SessionId {

@@ -24,7 +24,7 @@ import { computeShakeOffset } from "./shake";
 
 /**
  * addShakeFilter の default 減衰時間。Effect pack 側で dispose 前に
- * time.after(≈500ms) を挟むと旧 Charminal 相当の感触になる。
+ * time.after(≈500ms) を挟むと旧 Yorishiro 相当の感触になる。
  */
 const DEFAULT_SHAKE_DECAY_MS = 500;
 

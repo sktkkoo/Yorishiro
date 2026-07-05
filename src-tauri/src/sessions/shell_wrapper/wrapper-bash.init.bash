@@ -1,4 +1,4 @@
-# Charminal wrapper rc (bash)
+# Yorishiro wrapper rc (bash)
 #
 # bash --rcfile で読まれる init script。auto-generated; do not edit.
 # ~/.yorishiro/shell/user.bash が user 拡張点。
@@ -9,7 +9,7 @@ if [ -f "$HOME/.bashrc" ]; then
     source "$HOME/.bashrc"
 fi
 
-# Charminal integration (OSC 133)
+# Yorishiro integration (OSC 133)
 if [ -f "$HOME/.yorishiro/shell/init.bash" ]; then
     # shellcheck disable=SC1091
     source "$HOME/.yorishiro/shell/init.bash"

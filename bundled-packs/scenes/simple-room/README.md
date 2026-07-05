@@ -1,6 +1,6 @@
 # simple-room — シンプルな部屋（bundled reference scene）
 
-Charminal 本体同梱の reference scene pack。`~/.charminal/config.json` の
+Yorishiro 本体同梱の reference scene pack。`~/.yorishiro/config.json` の
 `activeScene` が未設定なら、この pack が fallback default として選ばれる
 （Design B: Registry の bundled alphabetical fallback で `simple-room` が
 `radiant-meadow` より先に来るため）。
@@ -14,15 +14,15 @@ Charminal 本体同梱の reference scene pack。`~/.charminal/config.json` の
 
 動画素材や画像は同梱していない（rights の問題と、「gradient だけの落ち着き」が
 reference の主張のため）。user が自分の素材で差し替えたい場合は、同 id で
-`~/.charminal/packs/simple-room/` に pack を置けば override される。
+`~/.yorishiro/packs/simple-room/` に pack を置けば override される。
 
 ## 編集について
 
-この pack は **Charminal 本体の一部** として扱われる。Charminal 内（AI / `/yori` /
-file writer）からは編集不可、Charminal 本体の version up でのみ更新される
+この pack は **Yorishiro 本体の一部** として扱われる。Yorishiro 内（AI / `/yori` /
+file writer）からは編集不可、Yorishiro 本体の version up でのみ更新される
 （memory: `feedback_bundled_pack_immutability.md`）。
 
-user が override したい場合は `~/.charminal/packs/simple-room/` に独自の
+user が override したい場合は `~/.yorishiro/packs/simple-room/` に独自の
 pack を置く（bundled は dispose され、user 版が active になる）。
 
 ## 関連

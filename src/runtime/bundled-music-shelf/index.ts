@@ -129,7 +129,7 @@ export function registerBundledMusicShelf(deps: RegisterBundledMusicShelfDeps) {
         id: musicShelfPack.id,
         type: "amenity",
         version: "0.1.0",
-        charminalVersion: "^0.5.0",
+        yorishiroVersion: "^0.5.0",
         entry: "amenity.ts",
       },
       handle,

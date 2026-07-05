@@ -99,7 +99,7 @@ describe("TabIndicator", () => {
         labels={
           new Map([
             ["default-session", "claude"],
-            ["shell-1", "~/Charminal"],
+            ["shell-1", "~/Yorishiro"],
           ])
         }
         statuses={statuses}
@@ -108,7 +108,7 @@ describe("TabIndicator", () => {
     );
 
     const personaTab = screen.getByRole("tab", { name: /claude/ });
-    const pathTab = screen.getByRole("tab", { name: /~\/Charminal/ });
+    const pathTab = screen.getByRole("tab", { name: /~\/Yorishiro/ });
 
     expect(personaTab.firstElementChild?.classList.contains("tab-indicator-label")).toBe(true);
     expect(pathTab.firstElementChild?.classList.contains("tab-indicator-label")).toBe(true);
@@ -178,7 +178,7 @@ describe("TabIndicator", () => {
     expect(badgeSlots[0].classList.contains("tone-agent-hook")).toBe(true);
   });
 
-  it("renders Charminal trigger badges with a distinct tone", () => {
+  it("renders Yorishiro trigger badges with a distinct tone", () => {
     render(
       <TabIndicator
         state={state()}
@@ -194,8 +194,8 @@ describe("TabIndicator", () => {
               "default-session",
               {
                 label: "trigger:session-opened",
-                tone: "charminal",
-                title: "Charminal trigger: session-opened",
+                tone: "yorishiro",
+                title: "Yorishiro trigger: session-opened",
               },
             ],
           ])
@@ -204,8 +204,8 @@ describe("TabIndicator", () => {
     );
 
     const badge = screen.getByText("trigger:session-opened");
-    expect(badge.classList.contains("tone-charminal")).toBe(true);
-    expect(badge.getAttribute("title")).toBe("Charminal trigger: session-opened");
+    expect(badge.classList.contains("tone-yorishiro")).toBe(true);
+    expect(badge.getAttribute("title")).toBe("Yorishiro trigger: session-opened");
   });
 
   it("renders failure badges with a danger tone", () => {

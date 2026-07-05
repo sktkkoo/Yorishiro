@@ -1,6 +1,6 @@
 # Credits
 
-Charminal exists because of the work that came before it — built, published, and shared. This document records the OSS, specifications, and assets that Charminal depends on.
+Yorishiro exists because of the work that came before it — built, published, and shared. This document records the OSS, specifications, and assets that Yorishiro depends on.
 
 *This document is a living record. If you find anything missing or incorrect, please open an issue.*
 
@@ -10,7 +10,7 @@ Charminal exists because of the work that came before it — built, published, a
 
 ### Claude Code
 
-Charminal launches [**Claude Code**](https://claude.com/claude-code) (Anthropic) via PTY and observes its behavior. Claude Code is not bundled with Charminal — the user's own installed instance is used.
+Yorishiro launches [**Claude Code**](https://claude.com/claude-code) (Anthropic) via PTY and observes its behavior. Claude Code is not bundled with Yorishiro — the user's own installed instance is used.
 
 ---
 
@@ -77,18 +77,18 @@ For developer asset setup, see `scripts/fetch-assets.mjs`.
 
 Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTuber)).
 
-Copyright in this model has been transferred to the Charminal project. Moral rights remain with LUCAS.
+Copyright in this model has been transferred to the Yorishiro project. Moral rights remain with LUCAS.
 
-**License (as embedded in the CLAI.vrm metadata):** Use within Charminal is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
+**License (as embedded in the CLAI.vrm metadata):** Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
 
 We are deeply grateful for the exceptional design and craftsmanship that brings CLAI to life.
 
-> LUCAS is not affiliated with the Charminal project in any way.
+> LUCAS is not affiliated with the Yorishiro project in any way.
 > Please do not contact them regarding this application or any issues related to it.
 
 ### VRMA animations
 
-Third-party assets stored outside the repo (`../Charminal-assets/animations/`) and copied to `public/animations/` at build time for inclusion in the application bundle. Raw files are not placed in the git repository.
+Third-party assets stored outside the repo (`../__YORISHIRO_ASSETS__/animations/`) and copied to `public/animations/` at build time for inclusion in the application bundle. Raw files are not placed in the git repository.
 
 #### `VRMA_01.vrma` – `VRMA_07.vrma`
 
@@ -103,7 +103,7 @@ Third-party assets stored outside the repo (`../Charminal-assets/animations/`) a
 `Idle Arguing.vrma` / `Idle Chatting.vrma` / `Idle Chatting 2.vrma` / `Idle Conversation.vrma` / `Idle Leaning On Wall.vrma` / `Idle Listening To Music.vrma` / `Idle Looking Around.vrma` / `Idle Looking Around 2.vrma` / `Idle Pointing.vrma` / `Idle Watching Something.vrma`
 
 - Source: [Rokoko — 10 Free Everyday Idle Animations](https://www.rokoko.com/resources/rokoko-mocap-10-free-everyday-idle-animations) (motion capture by Sam Lazarus / Marco Mori / Jon Noorlander)
-- Terms: Governed by Rokoko's **Rokoko Asset** license terms (as stated in [Rokoko's Terms of Use](https://support.rokoko.com/hc/en-us/articles/29449288418065-Rokoko-Vision-Terms-of-Use)) — **not** the [Rokoko Studio software EULA](https://cdn.rokoko.com/legal/rokoko-studio/rokoko_studio_eula_v2.pdf), which only covers use of the Studio application and says nothing about asset redistribution. Commercial use within your own projects is permitted. You may **not reproduce, distribute, sublicense, rent, lease or lend the asset** on a standalone basis, but copies are expressly permitted **when the asset is integrated as part of digital media productions**; the asset license is **limited to the period in which you hold a Rokoko account**. No attribution requirement, but we credit the source and capture artists here out of courtesy. Charminal does not ship the VRMA as loose files: they are compiled into the application binary via Tauri's `frontendDist` embedding (played back only through the `asset://` protocol, not extractable as standalone files), which qualifies as **integration into a digital media production** rather than standalone redistribution. Keep a Rokoko account active for as long as the app is distributed.
+- Terms: Governed by Rokoko's **Rokoko Asset** license terms (as stated in [Rokoko's Terms of Use](https://support.rokoko.com/hc/en-us/articles/29449288418065-Rokoko-Vision-Terms-of-Use)) — **not** the [Rokoko Studio software EULA](https://cdn.rokoko.com/legal/rokoko-studio/rokoko_studio_eula_v2.pdf), which only covers use of the Studio application and says nothing about asset redistribution. Commercial use within your own projects is permitted. You may **not reproduce, distribute, sublicense, rent, lease or lend the asset** on a standalone basis, but copies are expressly permitted **when the asset is integrated as part of digital media productions**; the asset license is **limited to the period in which you hold a Rokoko account**. No attribution requirement, but we credit the source and capture artists here out of courtesy. Yorishiro does not ship the VRMA as loose files: they are compiled into the application binary via Tauri's `frontendDist` embedding (played back only through the `asset://` protocol, not extractable as standalone files), which qualifies as **integration into a digital media production** rather than standalone redistribution. Keep a Rokoko account active for as long as the app is distributed.
 - Note: Original FBX files converted to VRMA format via VRMAConverter.
 
 #### Mixamo-derived VRMA clips
@@ -124,17 +124,17 @@ CLAI's pre-recorded voice clips are not bundled in this release.
 
 ### Fonts / icons
 
-- Tauri default icon: `src-tauri/icons/` — from the [Tauri template](https://github.com/tauri-apps/create-tauri-app) (MIT / Apache-2.0). To be replaced with a Charminal-specific icon in the future.
+- Tauri default icon: `src-tauri/icons/` — from the [Tauri template](https://github.com/tauri-apps/create-tauri-app) (MIT / Apache-2.0). To be replaced with a Yorishiro-specific icon in the future.
 
 ---
 
 ## Inspiration / prior art
 
-These works showed us what was possible and gave Charminal its direction.
+These works showed us what was possible and gave Yorishiro its direction.
 
-- Claude Code (Anthropic) — the system Charminal gives a body to
+- Claude Code (Anthropic) — the system Yorishiro gives a body to
 - VRoid / VRM ecosystem (pixiv / VRM Consortium) — the foundation for character expression
-- Emacs — for the user-extensible runtime model and the `init.el` pattern (`~/.charminal/init.js` is its direct lineage)
+- Emacs — for the user-extensible runtime model and the `init.el` pattern (`~/.yorishiro/init.js` is its direct lineage)
 - VRChat — UGC platform built around 3D avatar-mediated presence; "inhabiting a virtual space"
 - [@kensyouen_Y](https://x.com/kensyouen_Y/status/1820748563338637581) — A character inside Blender grabs the UI, rearranges panels, changes their own hair color. A remarkable work that showed, in a single video, that a character can operate the very environment that contains them.
 - [Caramel Pain / Hoshimachi Suisei (official)](https://www.youtube.com/watch?v=UpEPkPg8YP4) — Suisei, drawn inside an illustration tool, tears through the UI and breaks out of the application. A breathtaking music video that made us realize a character doesn't have to stay inside their frame — and that life emerges precisely at the moment they cross that boundary.
@@ -143,4 +143,4 @@ These works showed us what was possible and gave Charminal its direction.
 
 ## Acknowledgements
 
-*Charminal depends on countless OSS projects and assets beyond those listed here. We are grateful to all of them.*
+*Yorishiro depends on countless OSS projects and assets beyond those listed here. We are grateful to all of them.*

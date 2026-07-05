@@ -29,9 +29,9 @@ import type { TerminalReference, TerminalRegionContext } from "../terminal-runti
 import type { RunTimelineEntry } from "../terminal-runtime/unified-timeline";
 import type { UiStateStore } from "../ui-state-store";
 import {
-  type CharminalConfig,
   withDisabledPackAdded,
   withDisabledPackRemoved,
+  type YorishiroConfig,
 } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
 import type { UserPackEntry } from "../user-pack-loader/user-pack-loader";
@@ -59,7 +59,7 @@ export interface BundledPackEntry {
 export interface ListPacksDeps {
   readonly readRegistry: () => Array<{ id: string; kind: string }>;
   readonly readBundledPacks: () => Array<BundledPackEntry>;
-  readonly readConfig: () => Promise<CharminalConfig>;
+  readonly readConfig: () => Promise<YorishiroConfig>;
   readonly readLoadReport: () => Promise<LoadReport | null>;
   /**
    * 現 active id 群を返す。
@@ -89,7 +89,7 @@ export function createListPacksHandler(deps: ListPacksDeps) {
 interface BuildListPacksInput {
   readonly registryEntries: Array<{ id: string; kind: string }>;
   readonly bundledPacks: Array<{ id: string; kind: string }>;
-  readonly config: CharminalConfig;
+  readonly config: YorishiroConfig;
   readonly loadReport: LoadReport | null;
   readonly activeIds: {
     readonly scene: string | null;
@@ -300,7 +300,7 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
             : `pack '${id}' (${requestedKind}) was not found`,
       });
       recommendations.push(
-        "Create the pack under ~/.charminal/packs/<id>/ or check the id spelling.",
+        "Create the pack under ~/.yorishiro/packs/<id>/ or check the id spelling.",
       );
     }
 
@@ -375,8 +375,8 @@ export function createPackDiagnoseHandler(deps: PackDiagnoseDeps) {
 
 export interface DisablePackDeps {
   readonly updateConfig: (
-    update: (current: CharminalConfig) => CharminalConfig,
-  ) => Promise<CharminalConfig>;
+    update: (current: YorishiroConfig) => YorishiroConfig,
+  ) => Promise<YorishiroConfig>;
   readonly registry: UserPackRegistry;
   /**
    * bundled amenity を id で disable する。registry に登録済みなら active 状態に
@@ -410,8 +410,8 @@ export function createDisablePackHandler(deps: DisablePackDeps) {
 
 export interface EnablePackDeps {
   readonly updateConfig: (
-    update: (current: CharminalConfig) => CharminalConfig,
-  ) => Promise<CharminalConfig>;
+    update: (current: YorishiroConfig) => YorishiroConfig,
+  ) => Promise<YorishiroConfig>;
   /**
    * 対象 pack を file system から再 load する。Rust の list_user_packs で
    * 該当 id の entry を探し、見つかれば runtime-wire と同じ cache-bust import
@@ -511,8 +511,8 @@ function requestRecord(request: unknown): Record<string, unknown> {
 
 export interface SetMotionIntensityDeps {
   readonly updateConfig: (
-    update: (current: CharminalConfig) => CharminalConfig,
-  ) => Promise<CharminalConfig>;
+    update: (current: YorishiroConfig) => YorishiroConfig,
+  ) => Promise<YorishiroConfig>;
   readonly applyToRuntime: (intensity: number) => void;
 }
 
@@ -1048,7 +1048,7 @@ export interface BodyLike {
 }
 
 export interface StateGetDeps {
-  readonly readConfig: () => Promise<CharminalConfig>;
+  readonly readConfig: () => Promise<YorishiroConfig>;
   readonly getCamera: () => THREE.PerspectiveCamera | null;
   readonly getVrm: () => unknown;
   readonly getBody: () => BodyLike | null;
@@ -1716,7 +1716,7 @@ export interface UiActivateResult {
 
 /**
  * Active UI pack を runtime-only で切り替える handler。
- * registry のみ更新、~/.charminal/config.json は触らない。
+ * registry のみ更新、~/.yorishiro/config.json は触らない。
  */
 export function createUiActivateHandler(deps: UiActivateDeps) {
   return async (request: unknown): Promise<UiActivateResult> => {
@@ -1974,7 +1974,7 @@ export interface LoopAnnounceDeps {
    * agent 帰属は caller ではなく host が stamp するため、getAgentKind() の値をここで渡す。
    */
   readonly ingest: (phase: LoopPhase, agent: string | null, detail?: unknown) => void;
-  /** 現在 Charminal に住んでいる terminal agent の id（"claude" / "codex" 等）。 */
+  /** 現在 Yorishiro に住んでいる terminal agent の id（"claude" / "codex" 等）。 */
   readonly getAgentKind: () => string | null;
 }
 
@@ -1983,7 +1983,7 @@ export interface LoopAnnounceResult {
 }
 
 /**
- * 住人 AI（MCP）が自律ループの lifecycle phase を Charminal に自己申告する handler。
+ * 住人 AI（MCP）が自律ループの lifecycle phase を Yorishiro に自己申告する handler。
  * 観察 stream に LoopLifecycleEvent を流すだけで、ループの制御はしない（観察境界）。
  * 未知の phase は無視する（closed enum で validation）。
  * 詳細: docs/decisions/loop-presence-layer.md

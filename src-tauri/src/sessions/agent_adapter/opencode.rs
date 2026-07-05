@@ -34,7 +34,7 @@ impl TerminalAgent for OpencodeAgent {
         let args = Vec::new();
         let mut env = Vec::new();
         let mut temp_files = Vec::new();
-        let commands = opencode_charminal_commands(ctx.plugin_dir)?;
+        let commands = opencode_yorishiro_commands(ctx.plugin_dir)?;
 
         // OpenCode の runtime config は session-scoped 注入経路として env var に渡す。
         // project-local opencode.json との deep-merge は v2 scope。
@@ -189,14 +189,14 @@ fn opencode_command_config(content: &str, command_name: &str) -> Value {
     serde_json::json!({
         "template": template,
         "description": if description.is_empty() {
-            format!("Charminal {}", command_name)
+            format!("Yorishiro {}", command_name)
         } else {
             description
         },
     })
 }
 
-fn opencode_charminal_commands(
+fn opencode_yorishiro_commands(
     plugin_dir: Option<&std::path::Path>,
 ) -> Result<Option<Map<String, Value>>, String> {
     let Some(plugin_dir) = plugin_dir else {
@@ -343,10 +343,10 @@ mod tests {
             .find(|(k, _)| k == "OPENCODE_CONFIG_CONTENT")
             .expect("OPENCODE_CONFIG_CONTENT env present");
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
-        let charminal_mcp = &parsed["mcp"]["yorishiro"];
-        assert_eq!(charminal_mcp["type"], "remote");
-        assert_eq!(charminal_mcp["url"], "http://127.0.0.1:18743/mcp");
-        assert_eq!(charminal_mcp["enabled"], true);
+        let yorishiro_mcp = &parsed["mcp"]["yorishiro"];
+        assert_eq!(yorishiro_mcp["type"], "remote");
+        assert_eq!(yorishiro_mcp["url"], "http://127.0.0.1:18743/mcp");
+        assert_eq!(yorishiro_mcp["enabled"], true);
         cleanup_temp_files(&result);
     }
 
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn opencode_injects_prompt_reminder_as_primary_agent_prompts() {
-        let ctx = make_ctx_with_reminder(None, Some("## Charminal reminders\n\n- voice_say"));
+        let ctx = make_ctx_with_reminder(None, Some("## Yorishiro reminders\n\n- voice_say"));
         let result = OPENCODE.build_launch_args(&ctx).expect("build_launch_args");
 
         let (_, json_str) = result
@@ -406,7 +406,7 @@ mod tests {
             .expect("prompt uses opencode file reference");
         let contents = std::fs::read_to_string(persona_path_str).expect("read prompt");
 
-        assert_eq!(contents, "## Charminal reminders\n\n- voice_say");
+        assert_eq!(contents, "## Yorishiro reminders\n\n- voice_say");
         cleanup_temp_files(&result);
     }
 
@@ -450,7 +450,7 @@ mod tests {
 
     fn fresh_plugin_dir(label: &str) -> PathBuf {
         let tmp = std::env::temp_dir().join(format!(
-            "charminal-opencode-commands-{}-{}-{}",
+            "yorishiro-opencode-commands-{}-{}-{}",
             label,
             std::process::id(),
             std::time::SystemTime::now()
@@ -464,7 +464,7 @@ mod tests {
     }
 
     #[test]
-    fn opencode_injects_charminal_commands_via_config_content() {
+    fn opencode_injects_yorishiro_commands_via_config_content() {
         let plugin_dir = fresh_plugin_dir("basic");
         std::fs::write(
             plugin_dir.join("commands").join("create.md"),

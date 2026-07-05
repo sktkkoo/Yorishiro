@@ -1,44 +1,44 @@
 # Troubleshooting
 
-Charminal alpha builds are local-first. Most recovery information lives in
-`~/.charminal/` and can be checked without network access.
+Yorishiro alpha builds are local-first. Most recovery information lives in
+`~/.yorishiro/` and can be checked without network access.
 
 ## First-run and health checks
 
-On first launch, Charminal shows a health check with the selected terminal
+On first launch, Yorishiro shows a health check with the selected terminal
 agent, user data path, safe mode state, pack status, and startup report path.
 The same information is available later from Settings → Health.
 
 If the selected agent is missing, install Claude Code or Codex first, or switch
-the Agent setting and restart Charminal.
+the Agent setting and restart Yorishiro.
 
 ## Important paths
 
 | Path | Purpose |
 |---|---|
-| `~/.charminal/config.json` | User settings, including selected persona, scene, terminal agent, and disabled packs |
-| `~/.charminal/cohabitation.json` | Runtime cohabitation-hours state. Not a user setting and not included in rollback snapshots |
-| `~/.charminal/init.js` | User startup script. Skipped in safe mode |
-| `~/.charminal/packs/` | User-created packs |
-| `~/.charminal/.charminal-snapshots/` | Internal rollback snapshot store. Do not edit manually |
-| `~/.charminal/last-startup.json` | Latest user pack load report |
-| `~/.charminal/journal/` | Journal and memory files |
-| `~/.charminal/shell/` | Generated shell integration files |
-| `~/.charminal/runtime-plugin/` | Generated Charminal command plugin used by Claude Code and OpenCode launches |
-| `~/.codex/plugins/cache/charminal-local/` | Charminal's local Codex plugin cache for `$charm-*` skills |
+| `~/.yorishiro/config.json` | User settings, including selected persona, scene, terminal agent, and disabled packs |
+| `~/.yorishiro/cohabitation.json` | Runtime cohabitation-hours state. Not a user setting and not included in rollback snapshots |
+| `~/.yorishiro/init.js` | User startup script. Skipped in safe mode |
+| `~/.yorishiro/packs/` | User-created packs |
+| `~/.yorishiro/.yorishiro-snapshots/` | Internal rollback snapshot store. Do not edit manually |
+| `~/.yorishiro/last-startup.json` | Latest user pack load report |
+| `~/.yorishiro/journal/` | Journal and memory files |
+| `~/.yorishiro/shell/` | Generated shell integration files |
+| `~/.yorishiro/runtime-plugin/` | Generated Yorishiro command plugin used by Claude Code and OpenCode launches |
+| `~/.codex/plugins/cache/yorishiro-local/` | Yorishiro's local Codex plugin cache for `$yori-*` skills |
 
 ## Broken user pack
 
-If a pack fails but Charminal still opens:
+If a pack fails but Yorishiro still opens:
 
 1. Open Settings.
 2. Check Health for failed pack count.
 3. Open Packs.
 4. Select the failed pack and review the diagnosis.
 5. Click the repair button to insert an agent-appropriate repair prompt into the terminal, then press Enter to let the AI fix it.
-6. To fix manually instead, edit the file under `~/.charminal/packs/` and reload with `Cmd+R` / `Ctrl+R`.
+6. To fix manually instead, edit the file under `~/.yorishiro/packs/` and reload with `Cmd+R` / `Ctrl+R`.
 
-If a pack prevents Charminal from opening, use safe mode.
+If a pack prevents Yorishiro from opening, use safe mode.
 
 ## Safe mode
 
@@ -47,43 +47,43 @@ Safe mode skips user packs and `init.js`. It does not delete user data.
 macOS:
 
 ```bash
-CHARMINAL_SAFE_MODE=1 open /Applications/charminal.app
+YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app
 ```
 
 From source:
 
 ```bash
-CHARMINAL_SAFE_MODE=1 npm run tauri dev
+YORISHIRO_SAFE_MODE=1 npm run tauri dev
 ```
 
 After disabling or fixing the broken pack, launch again without
-`CHARMINAL_SAFE_MODE`.
+`YORISHIRO_SAFE_MODE`.
 
 ## Clean uninstall
 
-Removing the Charminal app does not automatically delete user data or generated
+Removing the Yorishiro app does not automatically delete user data or generated
 agent integration cache. This matches the common desktop-app pattern where a
 normal uninstall preserves settings and extensions for reinstall.
 
-Charminal commands are only injected when Charminal launches the selected
-agent. If Charminal is not running, the generated Claude/OpenCode command
+Yorishiro commands are only injected when Yorishiro launches the selected
+agent. If Yorishiro is not running, the generated Claude/OpenCode command
 plugin is not passed to those agents, and the Codex plugin cache is not enabled
-because Charminal supplies the enabling `-c` flag only at launch time.
+because Yorishiro supplies the enabling `-c` flag only at launch time.
 
 To remove generated command integration cache without deleting packs, run:
 
 ```bash
-rm -rf ~/.charminal/runtime-plugin
-rm -rf ~/.codex/plugins/cache/charminal-local
+rm -rf ~/.yorishiro/runtime-plugin
+rm -rf ~/.codex/plugins/cache/yorishiro-local
 ```
 
-To remove all Charminal user data, including packs, config, cohabitation state,
-journal, memory, rollback snapshots, and generated files, remove `~/.charminal`. This is destructive and should be
+To remove all Yorishiro user data, including packs, config, cohabitation state,
+journal, memory, rollback snapshots, and generated files, remove `~/.yorishiro`. This is destructive and should be
 treated separately from uninstalling the app binary.
 
 ## Crash recovery screen
 
-If the React runtime crashes, Charminal shows a recovery screen with:
+If the React runtime crashes, Yorishiro shows a recovery screen with:
 
 - safe mode command
 - user pack directory
@@ -92,21 +92,21 @@ If the React runtime crashes, Charminal shows a recovery screen with:
 - Reload button
 
 When reporting the crash, include the error details shown there and the contents
-of `~/.charminal/last-startup.json` when relevant.
+of `~/.yorishiro/last-startup.json` when relevant.
 
 ## Issue report checklist
 
-User pack issues are outside the scope of Charminal issues. If a user pack is
-causing the problem, try the repair button or Charminal update command first. File an
+User pack issues are outside the scope of Yorishiro issues. If a user pack is
+causing the problem, try the repair button or Yorishiro update command first. File an
 issue only if the problem persists with all user packs disabled (safe mode).
 
 Include:
 
-- Charminal version or commit
+- Yorishiro version or commit
 - operating system and CPU architecture
 - install method: `.dmg`, source checkout, or other
 - selected terminal agent: Claude Code, Codex, or OpenCode
 - whether safe mode changes the behavior
 - relevant user pack id, if any
-- `~/.charminal/last-startup.json`, if it exists
+- `~/.yorishiro/last-startup.json`, if it exists
 - crash recovery error details, if shown

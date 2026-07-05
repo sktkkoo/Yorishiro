@@ -9,7 +9,7 @@ const makeEntry = (id: string, origin: "bundled" | "user"): ScenePackEntry => ({
     id,
     type: "scene",
     version: "0.1.0",
-    charminalVersion: "^0.1.0",
+    yorishiroVersion: "^0.1.0",
     entry: "scene.ts",
   },
   scene: { id, layers: [{ id: "bg", role: "background" }] },
@@ -202,7 +202,7 @@ describe("ScenePackRegistryImpl", () => {
         id: "same-id",
         type: "scene",
         version: "0.1.0",
-        charminalVersion: "^0.1.0",
+        yorishiroVersion: "^0.1.0",
         entry: "scene.js",
       },
       scene: {

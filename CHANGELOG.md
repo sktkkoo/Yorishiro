@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Renamed the product from Charminal to Yorishiro, including app metadata, user data paths, command namespace, SDK package naming, and bundled docs.
 - Windows artifact builds are now manual-only: release tags no longer trigger the unsupported `Build Windows` workflow.
 
 ## 0.5.2 - 2026-07-04
