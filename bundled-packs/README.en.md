@@ -49,7 +49,7 @@ bundled-packs/
     └── sounds/              — ambient sound library (referenced from a Scene Pack's ambient declaration)
 ```
 
-> User packs use a symmetrically **flat layout** (`~/.charminal/packs/<id>/<kind>.js`). Don't confuse the two.
+> User packs use a symmetrically **flat layout** (`~/.yorishiro/packs/<id>/<kind>.js`). Don't confuse the two.
 
 ---
 
@@ -183,7 +183,7 @@ bundled-packs are treated as part of the Charminal core:
 
 - **Not writable** from Charminal (via AI / via `/yori` / via the file writer — all of them)
 - Overwritten on version upgrade
-- If a user wants to modify one, they **fork** it into `~/.charminal/packs/<id>/` and modify there (the ELPA stance)
+- If a user wants to modify one, they **fork** it into `~/.yorishiro/packs/<id>/` and modify there (the ELPA stance)
 - A user fork is the user's responsibility (if it breaks, Charminal takes no responsibility)
 
 ---
@@ -192,7 +192,7 @@ bundled-packs are treated as part of the Charminal core:
 
 During development, the VRMA / voice assets are copied from an **external store** (`../Charminal-assets/`, assumed to be in the parent dir) via `npm run fetch-assets`. Run automatically by the `predev` / `prebuild` hooks.
 
-The external store's path can be overridden with the `CHARMINAL_ASSETS_DIR` environment variable.
+The external store's path can be overridden with the `YORISHIRO_ASSETS_DIR` environment variable.
 
 ---
 

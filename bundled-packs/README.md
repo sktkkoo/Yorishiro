@@ -49,7 +49,7 @@ bundled-packs/
     └── sounds/              — ambient sound library（Scene Pack の ambient 宣言で参照）
 ```
 
-> User pack は対称的に **flat layout**（`~/.charminal/packs/<id>/<kind>.js`）。混同しない。
+> User pack は対称的に **flat layout**（`~/.yorishiro/packs/<id>/<kind>.js`）。混同しない。
 
 ---
 
@@ -183,7 +183,7 @@ bundled-packs は Charminal 本体の一部として扱う：
 
 - Charminal から **write 不可**（AI 経由 / `/yori` 経由 / file writer 経由のすべて）
 - バージョンアップで上書きされる
-- user が改変したい場合は `~/.charminal/packs/<id>/` に **fork して** 改変する（ELPA stance）
+- user が改変したい場合は `~/.yorishiro/packs/<id>/` に **fork して** 改変する（ELPA stance）
 - user fork は user 責任（壊れても Charminal は責任を負わない）
 
 ---
@@ -192,7 +192,7 @@ bundled-packs は Charminal 本体の一部として扱う：
 
 開発時の VRMA / voice asset は **外部 store**（`../Charminal-assets/`、parent dir 想定）から `npm run fetch-assets` で copy される。`predev` / `prebuild` hook で自動実行。
 
-外部 store の path は環境変数 `CHARMINAL_ASSETS_DIR` で override 可能。
+外部 store の path は環境変数 `YORISHIRO_ASSETS_DIR` で override 可能。
 
 ---
 

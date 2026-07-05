@@ -798,10 +798,10 @@ function FirstRunHealthPanel({
 }): React.JSX.Element {
   const title =
     report.summary === "error"
-      ? "Charminal needs setup"
+      ? "Yorishiro needs setup"
       : report.summary === "warning"
-        ? "Charminal is almost ready"
-        : "Charminal is ready";
+        ? "Yorishiro is almost ready"
+        : "Yorishiro is ready";
   const visibleItems = report.items.filter(
     (item) => item.status !== "ok" || item.id === "agent" || item.id === "home",
   );

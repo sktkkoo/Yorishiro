@@ -160,9 +160,9 @@ const EN: UiStrings = {
   restoreRecommendedTag: "★recommended",
   restoreButton: "Restore this",
   restoreConfirmTitle: "Restore to this point?",
-  restoreConfirmIntro: "Restore Charminal to the selected point?",
+  restoreConfirmIntro: "Restore Yorishiro to the selected point?",
   restoreConfirmDetail:
-    "This restores Charminal to that point in time. Packs, settings, and startup behavior return to that point, and the app reloads.",
+    "This restores Yorishiro to that point in time. Packs, settings, and startup behavior return to that point, and the app reloads.",
   restoreConfirmBody:
     "Restore to {change} ({time}). Packs, settings, and startup behavior return to that point, and the app reloads.",
   restoreConfirmButton: "Restore",
@@ -177,7 +177,7 @@ const EN: UiStrings = {
   restoreCrashIntroPrefix: "If the last change caused the crash, restoring to ",
   restoreCrashRecommendedText: "the state before the latest change ({tag})",
   restoreCrashIntroSuffix:
-    " can recover Charminal. The latest point is the current state, so restoring it may not change the crash. Restoring reloads the app.",
+    " can recover Yorishiro. The latest point is the current state, so restoring it may not change the crash. Restoring reloads the app.",
   changedOnePack: 'Changed "{id}"',
   changedManyPacks: "{n} changes",
   changedManyPacksNamed: 'Changed "{names}"',

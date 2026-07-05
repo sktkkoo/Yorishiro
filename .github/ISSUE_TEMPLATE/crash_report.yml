@@ -1,16 +1,16 @@
 name: Crash report
-description: Report a Charminal crash or startup failure
+description: Report a Yorishiro crash or startup failure
 title: "[Crash]: "
 labels: ["crash"]
 body:
   - type: markdown
     attributes:
       value: |
-        Use this when Charminal shows the crash recovery screen, fails during startup, or only opens in safe mode.
+        Use this when Yorishiro shows the crash recovery screen, fails during startup, or only opens in safe mode.
   - type: input
     id: version
     attributes:
-      label: Charminal version or commit
+      label: Yorishiro version or commit
       placeholder: v0.4.0 or commit SHA
     validations:
       required: true
@@ -30,21 +30,21 @@ body:
   - type: textarea
     id: startup-report
     attributes:
-      label: ~/.charminal/last-startup.json
+      label: ~/.yorishiro/last-startup.json
       description: Paste this file if it exists and may be related.
       render: json
   - type: textarea
     id: safe-mode
     attributes:
       label: Safe mode behavior
-      description: What happens when launching with `CHARMINAL_SAFE_MODE=1`?
+      description: What happens when launching with `YORISHIRO_SAFE_MODE=1`?
     validations:
       required: true
   - type: textarea
     id: packs
     attributes:
       label: User packs
-      description: List recent changes under `~/.charminal/packs/`, or say "none".
+      description: List recent changes under `~/.yorishiro/packs/`, or say "none".
     validations:
       required: true
   - type: textarea

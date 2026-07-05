@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 // Build-time asset bundling.
 //
-// Charminal の VRMA / voice asset は third-party 由来でリポジトリ同梱できない
+// Yorishiro の VRMA / voice asset は third-party 由来でリポジトリ同梱できない
 // （詳細は CREDITS.md / README.md）。ローカル開発と build の前にこのスクリプトが
 // 外部ストアから内部の所定パスへ copy する。
 //
 // 外部ストアの既定位置: `../Charminal-assets/`（worktree と同じ親に置く運用）
-// 上書きしたい場合は env var `CHARMINAL_ASSETS_DIR` を設定する。
+// 上書きしたい場合は env var `YORISHIRO_ASSETS_DIR` を設定する。
 
 import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "..");
 
-const externalRoot = process.env.CHARMINAL_ASSETS_DIR
-  ? resolve(process.env.CHARMINAL_ASSETS_DIR)
+const externalRoot = process.env.YORISHIRO_ASSETS_DIR
+  ? resolve(process.env.YORISHIRO_ASSETS_DIR)
   : resolve(REPO_ROOT, "..", "Charminal-assets");
 
 const TARGETS = [
@@ -89,15 +89,15 @@ async function main() {
   if (!(await exists(externalRoot))) {
     // Release builds must ship the full asset set: fail closed so a missing /
     // mis-downloaded store never produces an incomplete bundle.
-    if (process.env.CHARMINAL_ASSETS_REQUIRED) {
+    if (process.env.YORISHIRO_ASSETS_REQUIRED) {
       console.error(`
-fetch-assets: external asset store not found, but CHARMINAL_ASSETS_REQUIRED is set.
+fetch-assets: external asset store not found, but YORISHIRO_ASSETS_REQUIRED is set.
 
 Expected at: ${externalRoot}
 
 This is a release/packaging build that must include third-party assets
 (VRMA animations, voices, bundled VRM). Provide the store and retry:
-  CHARMINAL_ASSETS_DIR=/path/to/assets npm run fetch-assets
+  YORISHIRO_ASSETS_DIR=/path/to/assets npm run fetch-assets
 `);
       process.exit(1);
     }
@@ -114,7 +114,7 @@ The app will build and run, but character animation, voice, and the bundled VRM
 will be limited. To enable them, place the third-party assets (see CREDITS.md)
 under the store and re-run:
   mkdir -p ${externalRoot}/{animations,voices,models}
-  CHARMINAL_ASSETS_DIR=/path/to/assets npm run fetch-assets
+  YORISHIRO_ASSETS_DIR=/path/to/assets npm run fetch-assets
 `);
     return;
   }
