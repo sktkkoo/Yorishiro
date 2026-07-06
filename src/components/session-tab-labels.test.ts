@@ -31,6 +31,12 @@ describe("session tab labels", () => {
     expect(formatPathLabel("/Users/alice/Yorishiro")).toBe("~/Yorishiro");
   });
 
+  it("does not treat the macOS Shared directory as home", () => {
+    expect(formatPathLabel("/Users/Shared")).toBe("/Users/Shared");
+    expect(formatPathLabel("/Users/shared/project")).toBe("/Users/shared/project");
+    expect(formatShellSessionTabLabel("/Users/Shared/project")).toBe("/Users/Shared/project");
+  });
+
   it("keeps already compact paths compact", () => {
     expect(compactHomePath("~/Yorishiro")).toBe("~/Yorishiro");
   });

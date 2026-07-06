@@ -1,6 +1,7 @@
 const DEFAULT_SHELL_LABEL = "~";
 const MAX_PERSONA_LABEL_LENGTH = 18;
 const MAX_SHELL_LABEL_LENGTH = 24;
+const RESERVED_MACOS_USER_DIR_NAMES = new Set(["shared"]);
 
 export function formatMainSessionTabLabel(personaName: string | null | undefined): string {
   const label = personaName?.trim() || "Agent";
@@ -38,8 +39,12 @@ export function truncateMiddle(value: string, maxLength: number): string {
 }
 
 function inferHomeDir(path: string): string | null {
-  const userMatch = /^\/Users\/[^/]+(?:\/|$)/.exec(path);
-  if (userMatch) return userMatch[0].replace(/\/$/, "");
+  const userMatch = /^\/Users\/([^/]+)(?:\/|$)/.exec(path);
+  if (userMatch) {
+    const userName = userMatch[1] ?? "";
+    if (RESERVED_MACOS_USER_DIR_NAMES.has(userName.toLowerCase())) return null;
+    return userMatch[0].replace(/\/$/, "");
+  }
 
   const homeMatch = /^\/home\/[^/]+(?:\/|$)/.exec(path);
   if (homeMatch) return homeMatch[0].replace(/\/$/, "");
