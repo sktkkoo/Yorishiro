@@ -1,30 +1,40 @@
 const DEFAULT_SHELL_LABEL = "~";
 const MAX_PERSONA_LABEL_LENGTH = 18;
 const MAX_SHELL_LABEL_LENGTH = 24;
-const RESERVED_MACOS_USER_DIR_NAMES = new Set(["shared"]);
+
+export interface PathLabelOptions {
+  readonly homeDir?: string | null;
+}
 
 export function formatMainSessionTabLabel(personaName: string | null | undefined): string {
   const label = personaName?.trim() || "Agent";
   return truncateMiddle(label, MAX_PERSONA_LABEL_LENGTH);
 }
 
-export function formatShellSessionTabLabel(cwd: string | null | undefined): string {
-  return truncateMiddle(formatPathLabel(cwd), MAX_SHELL_LABEL_LENGTH);
+export function formatShellSessionTabLabel(
+  cwd: string | null | undefined,
+  options: PathLabelOptions = {},
+): string {
+  return truncateMiddle(formatPathLabel(cwd, options), MAX_SHELL_LABEL_LENGTH);
 }
 
-export function formatPathLabel(path: string | null | undefined): string {
-  return compactHomePath(path?.trim() || DEFAULT_SHELL_LABEL);
+export function formatPathLabel(
+  path: string | null | undefined,
+  options: PathLabelOptions = {},
+): string {
+  return compactHomePath(path?.trim() || DEFAULT_SHELL_LABEL, options.homeDir);
 }
 
-export function compactHomePath(path: string): string {
+export function compactHomePath(path: string, homeDir?: string | null): string {
   if (path === "" || path === "~") return DEFAULT_SHELL_LABEL;
   if (path.startsWith("~/")) return path;
 
-  const home = inferHomeDir(path);
+  const home = normalizeHomeDir(homeDir);
   if (home === null) return path;
-  if (path === home) return DEFAULT_SHELL_LABEL;
-  if (path.startsWith(`${home}/`)) return `~/${path.slice(home.length + 1)}`;
-  return path;
+  const normalizedPath = trimTrailingSlashes(path);
+  if (normalizedPath === home) return DEFAULT_SHELL_LABEL;
+  if (normalizedPath.startsWith(`${home}/`)) return `~/${normalizedPath.slice(home.length + 1)}`;
+  return normalizedPath;
 }
 
 export function truncateMiddle(value: string, maxLength: number): string {
@@ -38,16 +48,12 @@ export function truncateMiddle(value: string, maxLength: number): string {
   return `${value.slice(0, headLength)}${ellipsis}${value.slice(value.length - tailLength)}`;
 }
 
-function inferHomeDir(path: string): string | null {
-  const userMatch = /^\/Users\/([^/]+)(?:\/|$)/.exec(path);
-  if (userMatch) {
-    const userName = userMatch[1] ?? "";
-    if (RESERVED_MACOS_USER_DIR_NAMES.has(userName.toLowerCase())) return null;
-    return userMatch[0].replace(/\/$/, "");
-  }
+function normalizeHomeDir(homeDir: string | null | undefined): string | null {
+  if (homeDir === null || homeDir === undefined) return null;
+  const normalized = trimTrailingSlashes(homeDir.trim());
+  return normalized === "" || normalized === "/" ? null : normalized;
+}
 
-  const homeMatch = /^\/home\/[^/]+(?:\/|$)/.exec(path);
-  if (homeMatch) return homeMatch[0].replace(/\/$/, "");
-
-  return null;
+function trimTrailingSlashes(value: string): string {
+  return value === "/" ? value : value.replace(/\/+$/, "");
 }

@@ -169,6 +169,9 @@ export interface ResolveProjectRootArgs {
 export const resolveProjectRoot = (args: ResolveProjectRootArgs): Promise<string> =>
   call("resolve_project_root", args);
 
+/** Current OS user home directory. */
+export const userHomeDir = (): Promise<string> => invoke("user_home_dir");
+
 export interface AgentCapabilities {
   readonly personaOverlay: boolean;
   readonly mcpInjection: boolean;

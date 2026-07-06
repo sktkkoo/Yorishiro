@@ -34,6 +34,7 @@ import {
   snapshotCreate,
   snapshotList,
   snapshotRestore,
+  userHomeDir,
 } from "./bindings/tauri-commands";
 import {
   abandonedFactoryManifest,
@@ -878,6 +879,7 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [homeDir, setHomeDir] = useState<string | null>(null);
   const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
   const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
@@ -905,6 +907,20 @@ function App() {
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+
+  useEffect(() => {
+    let cancelled = false;
+    userHomeDir()
+      .then((value) => {
+        if (!cancelled) setHomeDir(value.trim() || null);
+      })
+      .catch(() => {
+        if (!cancelled) setHomeDir(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
   const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
@@ -3924,7 +3940,7 @@ function App() {
     };
   }, []);
 
-  const folderName = useMemo(() => formatPathLabel(cwd), [cwd]);
+  const folderName = useMemo(() => formatPathLabel(cwd, { homeDir }), [cwd, homeDir]);
 
   const sessionTabLabels = useMemo(() => {
     const labels = new Map<string, string>();
@@ -3936,11 +3952,18 @@ function App() {
       const sessionCwd = tabManager.getSessionCwd(sessionId);
       labels.set(
         sessionId,
-        formatShellSessionTabLabel(sessionCwd === undefined ? cwd : sessionCwd),
+        formatShellSessionTabLabel(sessionCwd === undefined ? cwd : sessionCwd, { homeDir }),
       );
     }
     return labels;
-  }, [cwd, primaryPersonaState?.name, tabManager, tabState.mainSessionId, tabState.sessions]);
+  }, [
+    cwd,
+    homeDir,
+    primaryPersonaState?.name,
+    tabManager,
+    tabState.mainSessionId,
+    tabState.sessions,
+  ]);
 
   // ── Settings: close-requested listener ─────────────────────
 
