@@ -42,7 +42,12 @@ const mockState = vi.hoisted(() => {
   };
   const cueListeners = new Set<() => void>();
   const cueStore = {
-    current: null as { seq: number; startedAt: number; reason: "session-attention" | "mcp" } | null,
+    current: null as {
+      seq: number;
+      startedAt: number;
+      reason: "session-attention" | "mcp" | "run-failed" | "run-slow-completed";
+      sessionId?: string;
+    } | null,
     getCurrent: vi.fn(() => cueStore.current),
     subscribe: vi.fn((listener: () => void) => {
       cueListeners.add(listener);
@@ -167,6 +172,62 @@ describe("Terminal", () => {
     );
 
     vi.advanceTimersByTime(500);
+
+    const intensities = mockState.runtime.setAttentionCueIntensity.mock.calls.map(
+      ([value]) => value,
+    );
+    expect(intensities.every((value) => value === 0)).toBe(true);
+  });
+
+  it("sessionId 付き run success cue は該当 terminal だけを光らせる", () => {
+    vi.setSystemTime(10_000);
+    render(
+      <Terminal
+        sessionId="main"
+        visible={true}
+        active={true}
+        spec={spec}
+        cwd="/work/old"
+        perception={null}
+      />,
+    );
+    mockState.runtime.setAttentionCueIntensity.mockClear();
+
+    mockState.cueStore.current = {
+      seq: 2,
+      startedAt: 9_100,
+      reason: "run-slow-completed",
+      sessionId: "main",
+    };
+    for (const listener of mockState.cueListeners) listener();
+
+    const intensities = mockState.runtime.setAttentionCueIntensity.mock.calls.map(
+      ([value]) => value,
+    );
+    expect(intensities.some((value) => value > 0)).toBe(true);
+  });
+
+  it("sessionId が異なる run cue では terminal glow を出さない", () => {
+    vi.setSystemTime(10_000);
+    render(
+      <Terminal
+        sessionId="main"
+        visible={true}
+        active={true}
+        spec={spec}
+        cwd="/work/old"
+        perception={null}
+      />,
+    );
+    mockState.runtime.setAttentionCueIntensity.mockClear();
+
+    mockState.cueStore.current = {
+      seq: 3,
+      startedAt: 9_100,
+      reason: "run-slow-completed",
+      sessionId: "other",
+    };
+    for (const listener of mockState.cueListeners) listener();
 
     const intensities = mockState.runtime.setAttentionCueIntensity.mock.calls.map(
       ([value]) => value,

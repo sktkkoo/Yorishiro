@@ -35,6 +35,7 @@ import {
 } from "./attention-cue-envelope";
 
 const DEFAULT_COLOR = "#ffb08a";
+const DEFAULT_FAILURE_COLOR = "#ff5f58";
 const DEFAULT_INTENSITY_SCALE = 1.0;
 
 // 自動配置オフセット。現行固定値（head≈1.35 想定の絶対座標）からの逆算値。
@@ -48,6 +49,7 @@ export interface AttentionCueLightProps {
   /** 未指定ならキャラ head 位置から自動計算（offset は const、帰納調整前提） */
   readonly position?: readonly [number, number, number];
   readonly color?: string;
+  readonly failureColor?: string;
   readonly intensityScale?: number;
   /** test 注入用。省略時は real singleton。 */
   readonly cueStore?: AttentionLightCueStore;
@@ -98,6 +100,7 @@ export function useClaimAttentionCue(): void {
 function AttentionCueLightCore({
   position,
   color = DEFAULT_COLOR,
+  failureColor = DEFAULT_FAILURE_COLOR,
   intensityScale = DEFAULT_INTENSITY_SCALE,
   cueStore = getAttentionLightCueStore(),
   getAnchor = () => getThreeRuntime().getCharacterAnchor(),
@@ -129,12 +132,13 @@ function AttentionCueLightCore({
   const seqCompleted = seq !== null && completedSeqRef.current === seq;
 
   if (seq === null || base === null || seqCompleted) return null;
+  if (cue?.reason === "run-slow-completed") return null;
 
   return (
     <ActiveAttentionCueLight
       key={seq}
       base={base}
-      color={color}
+      color={cue?.reason === "run-failed" ? failureColor : color}
       intensityScale={intensityScale}
       onComplete={() => {
         completedSeqRef.current = seq;

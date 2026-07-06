@@ -19,6 +19,8 @@ import {
 const OUTPUT_SETTLE_MS = 800;
 const SCREEN_ATTENTION_SCAN_MS = 80;
 const TERMINAL_ATTENTION_CUE_SCALE = 3.6;
+const TERMINAL_RUN_COMPLETED_CUE_DURATION_SECONDS = 1.8;
+const TERMINAL_RUN_COMPLETED_CUE_SCALE = 0.5;
 
 interface TerminalProps {
   readonly sessionId: string;
@@ -30,6 +32,29 @@ interface TerminalProps {
   readonly attachFirst?: boolean;
   readonly onActivate?: (sessionId: string) => void;
   readonly interruptProtectionMode?: InterruptProtectionMode;
+}
+
+function terminalCueDurationSeconds(cue: AttentionLightCue): number {
+  return cue.reason === "run-slow-completed"
+    ? TERMINAL_RUN_COMPLETED_CUE_DURATION_SECONDS
+    : ATTENTION_CUE_DURATION_SECONDS;
+}
+
+function terminalCueAppliesToSession(cue: AttentionLightCue, sessionId: string): boolean {
+  if (cue.reason === "run-failed") return false;
+  return cue.sessionId === undefined || cue.sessionId === sessionId;
+}
+
+function computeTerminalAttentionCueIntensity(
+  cue: AttentionLightCue,
+  elapsedSeconds: number,
+): number {
+  if (cue.reason === "run-slow-completed") {
+    const progress = Math.min(1, elapsedSeconds / TERMINAL_RUN_COMPLETED_CUE_DURATION_SECONDS);
+    return Math.sin(progress * Math.PI) ** 2 * TERMINAL_RUN_COMPLETED_CUE_SCALE;
+  }
+  const intensity = computeAttentionCueLightIntensity(elapsedSeconds);
+  return Math.min(1, (intensity.point + intensity.spot) * TERMINAL_ATTENTION_CUE_SCALE);
 }
 
 export default function Terminal({
@@ -181,18 +206,17 @@ export default function Terminal({
     };
     const tick = () => {
       rafId = 0;
-      if (!activeCue || !visible) {
+      if (!activeCue || !visible || !terminalCueAppliesToSession(activeCue, sessionId)) {
         runtime.setAttentionCueIntensity(0);
         return;
       }
       const elapsedSeconds = Math.max(0, (Date.now() - activeCue.startedAt) / 1000);
-      if (elapsedSeconds >= ATTENTION_CUE_DURATION_SECONDS) {
+      if (elapsedSeconds >= terminalCueDurationSeconds(activeCue)) {
         activeCue = null;
         runtime.setAttentionCueIntensity(0);
         return;
       }
-      const intensity = computeAttentionCueLightIntensity(elapsedSeconds);
-      setIntensity(Math.min(1, (intensity.point + intensity.spot) * TERMINAL_ATTENTION_CUE_SCALE));
+      setIntensity(computeTerminalAttentionCueIntensity(activeCue, elapsedSeconds));
       rafId = window.requestAnimationFrame(tick);
     };
     const restart = () => {

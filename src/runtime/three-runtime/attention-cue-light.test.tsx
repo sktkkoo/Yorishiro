@@ -126,6 +126,21 @@ describe("AttentionCueLight", () => {
 
     expect(container.querySelector(GROUP_SELECTOR)).toBeNull();
   });
+
+  it("run-slow-completed cue では scene 照明を描画しない", () => {
+    const cueStore = makeCueStore();
+    const anchor = { x: 0, y: 1.35, z: 0 };
+    const { container } = render(
+      <AttentionCueLight cueStore={cueStore} getAnchor={() => anchor} />,
+    );
+
+    act(() => {
+      cueStore.cueForRun("run-slow-completed", "run:s1:1", "s1");
+    });
+
+    expect(container.querySelector(GROUP_SELECTOR)).toBeNull();
+    expect(useFrame).not.toHaveBeenCalled();
+  });
 });
 
 describe("AttentionCueLight claim（yielding default）", () => {

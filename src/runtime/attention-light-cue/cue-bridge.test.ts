@@ -8,7 +8,10 @@ describe("attention light cue bridge", () => {
   it("awaiting-approval item の identity を組み立てて cueForAttention を呼ぶ", () => {
     const attentionStore = createWorkspaceAttentionStore();
     const cueForAttention = vi.fn(() => true);
-    const cueStore = { cueForAttention } as unknown as AttentionLightCueStore;
+    const cueStore = {
+      cueForAttention,
+      cueForRun: vi.fn(() => true),
+    } as unknown as AttentionLightCueStore;
 
     startAttentionLightCueBridge({ cueStore, attentionStore });
 
@@ -28,7 +31,8 @@ describe("attention light cue bridge", () => {
   it("awaiting-approval 以外の item や detail 欠損では cue しない", () => {
     const attentionStore = createWorkspaceAttentionStore();
     const cueForAttention = vi.fn(() => true);
-    const cueStore = { cueForAttention } as unknown as AttentionLightCueStore;
+    const cueForRun = vi.fn(() => true);
+    const cueStore = { cueForAttention, cueForRun } as unknown as AttentionLightCueStore;
 
     startAttentionLightCueBridge({ cueStore, attentionStore });
 
@@ -55,6 +59,72 @@ describe("attention light cue bridge", () => {
     });
 
     expect(cueForAttention).not.toHaveBeenCalled();
+    expect(cueForRun).not.toHaveBeenCalled();
+  });
+
+  it("短い run-failed は cue せず、長い run-failed だけ run cue する", () => {
+    const attentionStore = createWorkspaceAttentionStore();
+    const cueForRun = vi.fn(() => true);
+    const cueStore = {
+      cueForAttention: vi.fn(() => true),
+      cueForRun,
+    } as unknown as AttentionLightCueStore;
+
+    startAttentionLightCueBridge({ cueStore, attentionStore });
+
+    attentionStore.upsert({
+      sessionId: "session-1",
+      locus: { kind: "session", sessionId: "session-1" },
+      type: "run-failed",
+      severity: "high",
+      producer: { kind: "host", id: "test" },
+      producerKey: "command-block:session-1:1",
+      detail: { command: "false", exitCode: 1, durationMs: 29_999, completedBy: "osc" },
+    });
+    expect(cueForRun).not.toHaveBeenCalled();
+
+    attentionStore.upsert({
+      sessionId: "session-1",
+      locus: { kind: "session", sessionId: "session-1" },
+      type: "run-failed",
+      severity: "high",
+      producer: { kind: "host", id: "test" },
+      producerKey: "command-block:session-1:2",
+      detail: { command: "sleep 31 && false", exitCode: 1, durationMs: 30_000, completedBy: "osc" },
+    });
+
+    expect(cueForRun).toHaveBeenCalledWith(
+      "run-failed",
+      "run:session-1:command-block:session-1:2",
+      "session-1",
+    );
+  });
+
+  it("run-slow-completed は該当 session の run cue を出す", () => {
+    const attentionStore = createWorkspaceAttentionStore();
+    const cueForRun = vi.fn(() => true);
+    const cueStore = {
+      cueForAttention: vi.fn(() => true),
+      cueForRun,
+    } as unknown as AttentionLightCueStore;
+
+    startAttentionLightCueBridge({ cueStore, attentionStore });
+
+    attentionStore.upsert({
+      sessionId: "session-2",
+      locus: { kind: "session", sessionId: "session-2" },
+      type: "run-slow-completed",
+      severity: "medium",
+      producer: { kind: "host", id: "test" },
+      producerKey: "command-block:session-2:4",
+      detail: { command: "sleep 31", exitCode: 0, durationMs: 31_000, completedBy: "osc" },
+    });
+
+    expect(cueForRun).toHaveBeenCalledWith(
+      "run-slow-completed",
+      "run:session-2:command-block:session-2:4",
+      "session-2",
+    );
   });
 
   it("同じ identity で再度 upsert されても cue store の dedup で一度しか cue されない", () => {
@@ -84,7 +154,10 @@ describe("attention light cue bridge", () => {
   it("dispose 後は snapshot を購読しない", () => {
     const attentionStore = createWorkspaceAttentionStore();
     const cueForAttention = vi.fn(() => true);
-    const cueStore = { cueForAttention } as unknown as AttentionLightCueStore;
+    const cueStore = {
+      cueForAttention,
+      cueForRun: vi.fn(() => true),
+    } as unknown as AttentionLightCueStore;
 
     const disposable = startAttentionLightCueBridge({ cueStore, attentionStore });
     disposable.dispose();

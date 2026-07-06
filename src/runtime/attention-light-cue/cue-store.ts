@@ -13,6 +13,7 @@
 
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
+import type { SessionId } from "../sessions/types";
 import {
   type AttentionLightSettingsStore,
   getAttentionLightSettingsStore,
@@ -27,7 +28,8 @@ export interface AttentionLightCue {
   /** 単調増加。component は seq 変化で envelope を最初から再生する。 */
   readonly seq: number;
   readonly startedAt: number;
-  readonly reason: "session-attention" | "mcp";
+  readonly reason: "session-attention" | "mcp" | "run-failed" | "run-slow-completed";
+  readonly sessionId?: SessionId;
 }
 
 export type ManualCueResult =
@@ -76,6 +78,19 @@ export class AttentionLightCueStore {
     return true;
   }
 
+  /** command run 由来の cue。sessionId は terminal glow の局所化に使う。 */
+  cueForRun(
+    reason: Extract<AttentionLightCue["reason"], "run-failed" | "run-slow-completed">,
+    identity: string,
+    sessionId: SessionId,
+  ): boolean {
+    if (!this.settings.getEnabled()) return false;
+    if (this.seenIdentities.has(identity)) return false;
+    this.rememberIdentity(identity);
+    this.fire(reason, sessionId);
+    return true;
+  }
+
   /** MCP / 手動確認用の cue。settings off → disabled、cooldown 内 → cooldown。 */
   triggerManual(): ManualCueResult {
     if (!this.settings.getEnabled()) {
@@ -99,9 +114,9 @@ export class AttentionLightCueStore {
 
   // 再生中に新 identity が来た場合も同じ経路で seq++ し、envelope を再スタートさせる。
   // 複数 identity が短時間に重なった場合の coalesce（間引き）は将来の調整項目。
-  private fire(reason: AttentionLightCue["reason"]): void {
+  private fire(reason: AttentionLightCue["reason"], sessionId?: SessionId): void {
     this.seq += 1;
-    this.current = { seq: this.seq, startedAt: this.now(), reason };
+    this.current = { seq: this.seq, startedAt: this.now(), reason, sessionId };
     for (const listener of this.listeners) {
       listener();
     }

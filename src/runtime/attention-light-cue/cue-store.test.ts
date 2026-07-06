@@ -28,6 +28,23 @@ describe("AttentionLightCueStore", () => {
     expect(store.getCurrent()?.reason).toBe("session-attention");
   });
 
+  it("run cue は dedup しつつ sessionId を保持する", () => {
+    const { store } = createStore();
+
+    expect(
+      store.cueForRun("run-failed", "run:session-1:command-block:session-1:1", "session-1"),
+    ).toBe(true);
+    expect(
+      store.cueForRun("run-failed", "run:session-1:command-block:session-1:1", "session-1"),
+    ).toBe(false);
+
+    expect(store.getCurrent()).toMatchObject({
+      seq: 1,
+      reason: "run-failed",
+      sessionId: "session-1",
+    });
+  });
+
   it("toggle off の間は cue も dedup 記録もしない", () => {
     const { settings, store } = createStore();
     settings.setEnabled(false);

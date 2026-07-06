@@ -88,6 +88,7 @@ import {
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import TerminalWorkspace from "./components/TerminalWorkspace";
 import type { Body, EyeState } from "./core/body";
+import { shouldNotifyAttentionShiftForCommandRun } from "./core/body/command-run-reflex";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
@@ -260,6 +261,7 @@ import {
   writeYorishiroConfigText,
 } from "./runtime/user-pack-loader/yorishiro-io";
 import {
+  DEFAULT_SLOW_COMMAND_THRESHOLD_MS,
   getWorkspaceAttentionStore,
   startCommandRunAttentionProducer,
   startSessionAttentionProducer,
@@ -3486,6 +3488,12 @@ function App() {
         if (event.kind === "loop-lifecycle") {
           // 自律 loop の lifecycle を LoopRun として観察に記録（IW-P2 surfacing）。
           getLoopRunStore().ingestPhase(event.phase, event.agent, event.timestamp);
+        }
+        if (
+          event.kind === "command-block" &&
+          shouldNotifyAttentionShiftForCommandRun(event, DEFAULT_SLOW_COMMAND_THRESHOLD_MS)
+        ) {
+          bodyRef.current?.notifyAttentionShift();
         }
         if (event.kind === "hook-signal" && event.signal.name === "user-prompt-submit") {
           inTurnRef.current = true;
