@@ -27,6 +27,7 @@ const mockState = vi.hoisted(() => {
     detachContainer: vi.fn(),
     focus: vi.fn(),
     readScreenTailText: vi.fn(() => ""),
+    setAttentionCueIntensity: vi.fn(),
     setInterruptProtectionMode: vi.fn(),
     setPerception: vi.fn(),
     setTheme: vi.fn(),
@@ -39,7 +40,20 @@ const mockState = vi.hoisted(() => {
     subscribeUserInput: vi.fn(() => disposables.userInput),
     updatePtyParams: vi.fn(),
   };
+  const cueListeners = new Set<() => void>();
+  const cueStore = {
+    current: null as { seq: number; startedAt: number; reason: "session-attention" | "mcp" } | null,
+    getCurrent: vi.fn(() => cueStore.current),
+    subscribe: vi.fn((listener: () => void) => {
+      cueListeners.add(listener);
+      return () => {
+        cueListeners.delete(listener);
+      };
+    }),
+  };
   const state = {
+    cueListeners,
+    cueStore,
     disposables,
     ptyListener: null as (() => void) | null,
     runtime,
@@ -50,6 +64,10 @@ const mockState = vi.hoisted(() => {
 
 vi.mock("./runtime/terminal-runtime", () => ({
   getTerminalRuntime: vi.fn(() => mockState.runtime),
+}));
+
+vi.mock("./runtime/attention-light-cue", () => ({
+  getAttentionLightCueStore: vi.fn(() => mockState.cueStore),
 }));
 
 vi.mock("./runtime/session-status", () => ({
@@ -77,6 +95,8 @@ describe("Terminal", () => {
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+    mockState.cueListeners.clear();
+    mockState.cueStore.current = null;
     mockState.ptyListener = null;
     vi.clearAllMocks();
   });
@@ -115,5 +135,42 @@ describe("Terminal", () => {
 
     vi.advanceTimersByTime(720);
     expect(mockState.status.settleOutput).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not replay an elapsed attention light cue when a tab becomes visible again", () => {
+    vi.setSystemTime(10_000);
+    mockState.cueStore.current = {
+      seq: 1,
+      startedAt: 1_000,
+      reason: "session-attention",
+    };
+
+    const { rerender } = render(
+      <Terminal
+        sessionId="main"
+        visible={false}
+        active={false}
+        spec={spec}
+        cwd="/work/old"
+        perception={null}
+      />,
+    );
+    rerender(
+      <Terminal
+        sessionId="main"
+        visible={true}
+        active={true}
+        spec={spec}
+        cwd="/work/old"
+        perception={null}
+      />,
+    );
+
+    vi.advanceTimersByTime(500);
+
+    const intensities = mockState.runtime.setAttentionCueIntensity.mock.calls.map(
+      ([value]) => value,
+    );
+    expect(intensities.every((value) => value === 0)).toBe(true);
   });
 });

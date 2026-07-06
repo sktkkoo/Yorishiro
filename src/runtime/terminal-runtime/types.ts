@@ -174,6 +174,12 @@ export interface TerminalRuntime {
   setBackgroundTransparent(transparent: boolean): void;
 
   /**
+   * attention light cue と同期する terminal 側の発光強度（0-1）。
+   * scene light と同じ cue envelope から呼ばれ、文字描画や PTY には触れない。
+   */
+  setAttentionCueIntensity(intensity: number): void;
+
+  /**
    * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
    * document から外し、ResizeObserver / RAF を停止する。dispose 後の
    * runtime instance は再利用しない（再 attach / 再 spawn 不可）。

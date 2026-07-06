@@ -42,6 +42,12 @@ const IME_POST_COMMIT_SUPPRESS_MS = 80;
 const INTERRUPT_NOTICE_THROTTLE_MS = 1000;
 const INTERRUPT_NOTICE_VISIBLE_MS = 1800;
 
+function clamp01(value: number): number {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  if (value >= 1) return 1;
+  return value;
+}
+
 /** xterm.js の初期カラーテーマ。scene が未設定の時のフォールバック。 */
 export const DEFAULT_TERMINAL_THEME: XTermTheme = {
   background: "#141619",
@@ -124,6 +130,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private hidden = false;
   private opacity = 1;
   private bgTransparent = false;
+  private attentionCueIntensity = 0;
   /** 直近 setTheme でマージされた背景色。bgTransparent 解除時の復帰先。 */
   private currentThemeBackground: string | undefined;
   private startGeneration = 0;
@@ -322,6 +329,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       this.xtermContainer.style.background = "";
     }
     this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgTransparent);
+  }
+
+  setAttentionCueIntensity(intensity: number): void {
+    if (this.disposed) return;
+    const clamped = clamp01(intensity);
+    if (Math.abs(clamped - this.attentionCueIntensity) < 0.001) return;
+    this.attentionCueIntensity = clamped;
+    this.xtermContainer.style.setProperty("--terminal-attention-cue-intensity", String(clamped));
+    this.xtermContainer.classList.toggle("xterm-attention-cue-active", clamped > 0.001);
   }
 
   /**
