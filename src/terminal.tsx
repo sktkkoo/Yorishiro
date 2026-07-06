@@ -2,6 +2,7 @@ import { type MutableRefObject, useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { type SpawnSpec, sessionRefreshTheme } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
+import { type AttentionLightCue, getAttentionLightCueStore } from "./runtime/attention-light-cue";
 import {
   detectScreenAttentionRequest,
   getSessionStatusStore,
@@ -10,9 +11,14 @@ import {
 } from "./runtime/session-status";
 import { getTerminalRuntime, type InterruptProtectionMode } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
+import {
+  ATTENTION_CUE_DURATION_SECONDS,
+  computeAttentionCueLightIntensity,
+} from "./runtime/three-runtime/attention-cue-envelope";
 
 const OUTPUT_SETTLE_MS = 800;
 const SCREEN_ATTENTION_SCAN_MS = 80;
+const TERMINAL_ATTENTION_CUE_SCALE = 3.6;
 
 interface TerminalProps {
   readonly sessionId: string;
@@ -158,6 +164,51 @@ export default function Terminal({
   useEffect(() => {
     getTerminalRuntime(sessionId).setInterruptProtectionMode(interruptProtectionMode);
   }, [sessionId, interruptProtectionMode]);
+
+  useEffect(() => {
+    const runtime = getTerminalRuntime(sessionId);
+    const cueStore = getAttentionLightCueStore();
+    let rafId = 0;
+    let activeCue: AttentionLightCue | null = null;
+
+    const clearFrame = () => {
+      if (rafId === 0) return;
+      window.cancelAnimationFrame(rafId);
+      rafId = 0;
+    };
+    const setIntensity = (intensity: number) => {
+      runtime.setAttentionCueIntensity(visible ? intensity : 0);
+    };
+    const tick = () => {
+      rafId = 0;
+      if (!activeCue || !visible) {
+        runtime.setAttentionCueIntensity(0);
+        return;
+      }
+      const elapsedSeconds = Math.max(0, (Date.now() - activeCue.startedAt) / 1000);
+      if (elapsedSeconds >= ATTENTION_CUE_DURATION_SECONDS) {
+        activeCue = null;
+        runtime.setAttentionCueIntensity(0);
+        return;
+      }
+      const intensity = computeAttentionCueLightIntensity(elapsedSeconds);
+      setIntensity(Math.min(1, (intensity.point + intensity.spot) * TERMINAL_ATTENTION_CUE_SCALE));
+      rafId = window.requestAnimationFrame(tick);
+    };
+    const restart = () => {
+      activeCue = cueStore.getCurrent();
+      clearFrame();
+      tick();
+    };
+
+    restart();
+    const unsubscribe = cueStore.subscribe(restart);
+    return () => {
+      unsubscribe();
+      clearFrame();
+      runtime.setAttentionCueIntensity(0);
+    };
+  }, [sessionId, visible]);
 
   return (
     <div

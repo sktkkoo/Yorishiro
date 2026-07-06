@@ -1199,4 +1199,27 @@ describe("TerminalRuntime", () => {
     expect(themeBg()).toBe("#141619");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
   });
+
+  it("setAttentionCueIntensity は発光 CSS 変数と class を更新する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setAttentionCueIntensity(0.42);
+
+    expect(xtermSingleton().style.getPropertyValue("--terminal-attention-cue-intensity")).toBe(
+      "0.42",
+    );
+    expect(xtermSingleton().classList.contains("xterm-attention-cue-active")).toBe(true);
+
+    runtime.setAttentionCueIntensity(0);
+    expect(xtermSingleton().style.getPropertyValue("--terminal-attention-cue-intensity")).toBe("0");
+    expect(xtermSingleton().classList.contains("xterm-attention-cue-active")).toBe(false);
+  });
+
+  it("setAttentionCueIntensity は 0-1 に clamp する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setAttentionCueIntensity(2);
+    expect(xtermSingleton().style.getPropertyValue("--terminal-attention-cue-intensity")).toBe("1");
+
+    runtime.setAttentionCueIntensity(-1);
+    expect(xtermSingleton().style.getPropertyValue("--terminal-attention-cue-intensity")).toBe("0");
+  });
 });
