@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   compactHomePath,
   formatMainSessionTabLabel,
+  formatPathLabel,
   formatShellSessionTabLabel,
   truncateMiddle,
 } from "./session-tab-labels";
@@ -16,11 +17,18 @@ describe("session tab labels", () => {
   });
 
   it("compacts home paths for shell sessions", () => {
+    expect(formatShellSessionTabLabel(null)).toBe("~");
     expect(formatShellSessionTabLabel("/Users/alice")).toBe("~");
     expect(formatShellSessionTabLabel("/Users/alice/Yorishiro")).toBe("~/Yorishiro");
     expect(formatShellSessionTabLabel("/home/alice/projects/Yorishiro")).toBe(
       "~/projects/Yorishiro",
     );
+  });
+
+  it("uses the same path label for project folders", () => {
+    expect(formatPathLabel(null)).toBe("~");
+    expect(formatPathLabel("/Users/alice")).toBe("~");
+    expect(formatPathLabel("/Users/alice/Yorishiro")).toBe("~/Yorishiro");
   });
 
   it("keeps already compact paths compact", () => {

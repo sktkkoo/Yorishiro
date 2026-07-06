@@ -8,8 +8,11 @@ export function formatMainSessionTabLabel(personaName: string | null | undefined
 }
 
 export function formatShellSessionTabLabel(cwd: string | null | undefined): string {
-  const compact = compactHomePath(cwd?.trim() || DEFAULT_SHELL_LABEL);
-  return truncateMiddle(compact, MAX_SHELL_LABEL_LENGTH);
+  return truncateMiddle(formatPathLabel(cwd), MAX_SHELL_LABEL_LENGTH);
+}
+
+export function formatPathLabel(path: string | null | undefined): string {
+  return compactHomePath(path?.trim() || DEFAULT_SHELL_LABEL);
 }
 
 export function compactHomePath(path: string): string {

@@ -79,6 +79,7 @@ import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
   formatMainSessionTabLabel,
+  formatPathLabel,
   formatShellSessionTabLabel,
 } from "./components/session-tab-labels";
 import {
@@ -3923,10 +3924,7 @@ function App() {
     };
   }, []);
 
-  const folderName = useMemo(
-    () => (cwd ? cwd.split("/").pop() || cwd : strings.defaultFolderName),
-    [cwd, strings.defaultFolderName],
-  );
+  const folderName = useMemo(() => formatPathLabel(cwd), [cwd]);
 
   const sessionTabLabels = useMemo(() => {
     const labels = new Map<string, string>();

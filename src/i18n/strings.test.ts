@@ -124,6 +124,8 @@ describe("changeStrings", () => {
     expect(getStrings("ja").labelAttentionLight).toBe("Light Alert");
     expect(getStrings("en").labelRestore).toBe("Restore (Pack / init.js)");
     expect(getStrings("ja").labelRestore).toBe("復元（Pack / init.js）");
+    expect(getStrings("en").defaultFolderName).toBe("~");
+    expect(getStrings("ja").defaultFolderName).toBe("~");
   });
 });
 
