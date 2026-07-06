@@ -273,6 +273,7 @@ if (!Controls) throw new Error("Yorishiro controls host bridge is not initialize
 export const {
   ControlStoreProvider,
   controlFolder,
+  useSceneMainLight,
   useYorishiroControls,
   useControlsBridge,
 } = Controls;

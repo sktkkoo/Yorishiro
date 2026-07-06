@@ -7,7 +7,7 @@
  */
 
 import { useFrame } from "@react-three/fiber";
-import { useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useSceneMainLight, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useRef } from "react";
 import type { SpotLight as ThreeSpotLight } from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -29,6 +29,7 @@ export function Lights() {
     decay: { value: 1.1, min: 0, max: 5, step: 0.1, label: "decay" },
   }));
   useControlsBridge("simple-room", controls, setControls);
+  useSceneMainLight(lightRef, { intensity: controls.intensity, color: controls.color });
 
   useFrame(() => {
     if (lightRef.current) {

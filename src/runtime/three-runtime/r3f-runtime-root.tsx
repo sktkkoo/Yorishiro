@@ -26,6 +26,7 @@ import { makeResolveAsset } from "../scene-pack-registry/asset-resolver-pack";
 import type { ScenePackEntry } from "../scene-pack-registry/types";
 import { getThreeRuntime } from "../three-runtime";
 import { DefaultAttentionCueLight } from "./attention-cue-light";
+import { LightingMoodDriver } from "./lighting-mood-driver";
 import { setRuntimeLevaStore } from "./runtime-leva-store";
 import { clearActiveSceneLevaStore, setActiveSceneLevaStore } from "./scene-pack-leva-store";
 
@@ -70,6 +71,7 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
         <ActiveSceneControlsBoundary key={activeEntry.id} entry={activeEntry} />
       ) : null}
       <DefaultAttentionCueLight />
+      <LightingMoodDriver store={runtimeLevaStore} />
       <CameraControls store={runtimeLevaStore} />
       {children}
     </>

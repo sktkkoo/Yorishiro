@@ -21,6 +21,8 @@ export const KEYS = {
   ATTENTION_LIGHT_CUE: "attention-light:cue",
   /** AttentionCueClaimRegistry singleton: AttentionCueLight の yielding default 用 claim カウンタ。 */
   ATTENTION_CUE_CLAIMS: "attention-cue:claims",
+  /** MainLightRegistry singleton: scene が登録した key light を weather lighting driver が相対変調する。 */
+  MAIN_LIGHT_REGISTRY: "main-light:registry",
   /** AmbientUiPackRegistry singleton: ambient-ui pack の登録と active 集合（multi-active）を管理する。 */
   AMBIENT_UI_PACK_REGISTRY: "ambient-ui-pack:registry",
   /** AmenityPackRegistry singleton: amenity pack の登録と active 集合（multi-active）を管理する。 */

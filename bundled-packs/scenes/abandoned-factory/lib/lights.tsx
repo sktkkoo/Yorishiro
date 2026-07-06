@@ -8,7 +8,7 @@
  */
 
 import { useFrame } from "@react-three/fiber";
-import { useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useSceneMainLight, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useRef } from "react";
 import type * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
@@ -22,6 +22,7 @@ export const LANTERN_POSITION: readonly [number, number, number] = [0.5, 0.2, 1.
 export const CRT_POSITION: readonly [number, number, number] = [-0.8, 0.6, -1.5];
 
 export function Lights() {
+  const directionalRef = useRef<THREE.DirectionalLight>(null);
   const lanternRef = useRef<THREE.PointLight>(null);
   const crtRef = useRef<THREE.PointLight>(null);
 
@@ -34,6 +35,10 @@ export function Lights() {
     ambientIntensity: { value: 0.055, min: 0, max: 0.3, step: 0.005, label: "ambient" },
   }));
   useControlsBridge("abandoned-factory", controls, setControls);
+  useSceneMainLight(directionalRef, {
+    intensity: controls.directionalIntensity,
+    color: controls.directionalColor,
+  });
 
   const flickerParams: FlickerParams = { flickerAmount: controls.flickerAmount };
 
@@ -51,6 +56,7 @@ export function Lights() {
   return (
     <>
       <directionalLight
+        ref={directionalRef}
         position={[-2, 8, 1]}
         intensity={controls.directionalIntensity}
         color={controls.directionalColor}

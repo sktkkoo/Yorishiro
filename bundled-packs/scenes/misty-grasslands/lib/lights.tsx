@@ -5,10 +5,13 @@
  * SDK controls で intensity / color を調整可能.
  */
 
-import { useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useSceneMainLight, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useRef } from "react";
+import type { DirectionalLight } from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function Lights() {
+  const directionalRef = useRef<DirectionalLight>(null);
   const [controls, setControls] = useYorishiroControls("lights", () => ({
     directionalIntensity: { value: 1.5, min: 0, max: 3, step: 0.05, label: "sun int." },
     directionalColor: { value: "#ebe9e1", label: "sun color" },
@@ -16,10 +19,15 @@ export function Lights() {
     ambientColor: { value: "#bfdebe", label: "ambient color" },
   }));
   useControlsBridge("misty-grasslands", controls, setControls);
+  useSceneMainLight(directionalRef, {
+    intensity: controls.directionalIntensity,
+    color: controls.directionalColor,
+  });
 
   return (
     <>
       <directionalLight
+        ref={directionalRef}
         position={[-3, 6, 2]}
         intensity={controls.directionalIntensity}
         color={controls.directionalColor}

@@ -3,13 +3,22 @@ import {
   createElement,
   type DependencyList,
   type ReactNode,
+  type RefObject,
   useContext,
+  useEffect,
+  useRef,
 } from "react";
+import type { Light } from "three";
 import {
   folder as levaFolder,
   type useCreateStore,
   useControls as useLevaControls,
 } from "../runtime/leva";
+import {
+  getMainLightRegistry,
+  type MainLightBaseline,
+  type MainLightRegistration,
+} from "../runtime/three-runtime/main-light-registry";
 
 export { useControlsBridge } from "../runtime/ui-state-store";
 
@@ -129,3 +138,38 @@ export const useYorishiroControls: typeof useLevaControls = ((
     ...(injectStore(args, contextStore) as Parameters<typeof useLevaControls>),
   );
 }) as typeof useLevaControls;
+
+/**
+ * Scene の main light を weather lighting に登録する。
+ *
+ * baseline は scene が所有する絶対値で、runtime は workspace mood を相対変調として
+ * 合成する。登録しない scene では weather lighting は何もしない。
+ */
+export function useSceneMainLight<TLight extends Light>(
+  lightRef: RefObject<TLight | null>,
+  baseline: MainLightBaseline,
+): void {
+  const registrationRef = useRef<MainLightRegistration | null>(null);
+  const baselineIntensity = baseline.intensity;
+  const baselineColor = baseline.color;
+  const latestBaselineRef = useRef<MainLightBaseline>({
+    intensity: baselineIntensity,
+    color: baselineColor,
+  });
+  latestBaselineRef.current = { intensity: baselineIntensity, color: baselineColor };
+
+  useEffect(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    const registration = getMainLightRegistry().register(light, latestBaselineRef.current);
+    registrationRef.current = registration;
+    return () => {
+      registration.dispose();
+      if (registrationRef.current === registration) registrationRef.current = null;
+    };
+  }, [lightRef]);
+
+  useEffect(() => {
+    registrationRef.current?.update({ intensity: baselineIntensity, color: baselineColor });
+  }, [baselineIntensity, baselineColor]);
+}
