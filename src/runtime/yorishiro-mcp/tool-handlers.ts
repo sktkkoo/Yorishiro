@@ -31,6 +31,7 @@ import type { UiStateStore } from "../ui-state-store";
 import {
   withDisabledPackAdded,
   withDisabledPackRemoved,
+  withPrimaryPersonaSet,
   type YorishiroConfig,
 } from "../user-pack-loader/config";
 import type { LoadReport } from "../user-pack-loader/load-report";
@@ -1730,6 +1731,52 @@ export function createUiActivateHandler(deps: UiActivateDeps) {
     }
     deps.registry.setActiveUi(id);
     return { active: deps.registry.getActiveUiId() };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * persona.farewell-switch
+ * ────────────────────────────────────────────────────────── */
+
+export interface PersonaFarewellSwitchDeps {
+  readonly updateConfig: (
+    update: (current: YorishiroConfig) => YorishiroConfig,
+  ) => Promise<unknown>;
+  readonly beginCurtainReload: (prepareReload?: () => void | Promise<void>) => Promise<void>;
+  readonly listPersonaIds: () => ReadonlyArray<string>;
+  readonly reloadPack: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+}
+
+export interface PersonaFarewellSwitchResult {
+  readonly active: string;
+  readonly reloading: true;
+}
+
+export function createPersonaFarewellSwitchHandler(deps: PersonaFarewellSwitchDeps) {
+  return async (request: unknown): Promise<PersonaFarewellSwitchResult> => {
+    const r = requestRecord(request);
+    const id = r.id;
+    if (typeof id !== "string" || id === "") {
+      throw new Error("id must be a non-empty string");
+    }
+
+    let knownPersona = deps.listPersonaIds().includes(id);
+    if (!knownPersona) {
+      const loaded = await deps.reloadPack(id);
+      if (!loaded.ok) {
+        throw new Error(`persona '${id}' is not loadable: ${loaded.reason ?? "unknown error"}`);
+      }
+      knownPersona = deps.listPersonaIds().includes(id);
+    }
+    if (!knownPersona) {
+      throw new Error(`persona '${id}' is not registered`);
+    }
+
+    await deps.beginCurtainReload(async () => {
+      await deps.updateConfig((cur) => withPrimaryPersonaSet(cur, id));
+    });
+
+    return { active: id, reloading: true };
   };
 }
 

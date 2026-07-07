@@ -82,6 +82,34 @@ describe("useReloadCurtain", () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
+  it("reload 前に async prepareReload を待つ", async () => {
+    const reload = vi.fn();
+    const prepareReload = vi.fn(async () => {
+      await Promise.resolve();
+    });
+    const { result } = renderHook(() => useReloadCurtain(false, reload));
+
+    let promise!: Promise<void>;
+    act(() => {
+      promise = result.current.beginCurtainReload(prepareReload);
+    });
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    await act(async () => {
+      await promise;
+    });
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(prepareReload).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(prepareReload.mock.invocationCallOrder[0]).toBeLessThan(
+      reload.mock.invocationCallOrder[0],
+    );
+  });
+
   it("pending ありで mount すると visible で開始し、ready 後に最低表示時間を満たして開ける", () => {
     sessionStorage.setItem(RELOAD_CURTAIN_STORAGE_KEY, "1");
     const { result, rerender } = renderHook(({ ready }) => useReloadCurtain(ready, vi.fn()), {

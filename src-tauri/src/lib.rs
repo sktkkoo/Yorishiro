@@ -1009,13 +1009,13 @@ async fn session_list(
     Ok(registry.list())
 }
 
-/// `~/.yorishiro/journal/memories.md` の全文を返す。ファイルがなければ空文字列。
+/// active persona の `memories.md` の全文を返す。ファイルがなければ空文字列。
 #[tauri::command]
 fn read_journal_memories() -> Result<String, String> {
     journal::read_memories()
 }
 
-/// 直近 N 日分の journal エントリを返す。
+/// active persona の直近 N 日分の journal エントリを返す。
 #[tauri::command]
 fn read_journal_recent(days: usize) -> Result<Vec<journal::JournalEntry>, String> {
     journal::read_recent(days)

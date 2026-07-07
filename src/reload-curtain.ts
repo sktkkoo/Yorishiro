@@ -51,10 +51,12 @@ function afterNextPaint(callback: () => void): void {
   });
 }
 
+export type BeginCurtainReload = (prepareReload?: () => void | Promise<void>) => Promise<void>;
+
 export function useReloadCurtain(
   isReady: boolean,
   reload: () => void = defaultReload,
-): { phase: ReloadCurtainPhase; beginCurtainReload: () => void } {
+): { phase: ReloadCurtainPhase; beginCurtainReload: BeginCurtainReload } {
   const fromReloadRef = useRef(hasPendingCurtain());
   const visibleAtRef = useRef<number | null>(fromReloadRef.current ? performance.now() : null);
   const reloadInFlightRef = useRef(false);
@@ -62,20 +64,42 @@ export function useReloadCurtain(
     fromReloadRef.current ? "visible" : "hidden",
   );
 
-  const beginCurtainReload = useCallback(() => {
-    if (reloadInFlightRef.current) return;
-    reloadInFlightRef.current = true;
-    markCurtainPending();
-    setPhase("entering");
-    // entering(opacity: 0) を一度 paint させてから visible にしないと、
-    // WebView が class 変更をまとめて fade-in を飛ばすことがある。
-    afterNextPaint(() => {
-      setPhase("visible");
-      window.setTimeout(() => {
-        reload();
-      }, RELOAD_CURTAIN_FADE_MS + PRE_RELOAD_HOLD_MS);
-    });
-  }, [reload]);
+  const beginCurtainReload = useCallback<BeginCurtainReload>(
+    (prepareReload) => {
+      if (reloadInFlightRef.current) return Promise.resolve();
+      reloadInFlightRef.current = true;
+      markCurtainPending();
+      setPhase("entering");
+      return new Promise<void>((resolve, reject) => {
+        // entering(opacity: 0) を一度 paint させてから visible にしないと、
+        // WebView が class 変更をまとめて fade-in を飛ばすことがある。
+        afterNextPaint(() => {
+          setPhase("visible");
+          window.setTimeout(() => {
+            if (prepareReload === undefined) {
+              resolve();
+              reload();
+              return;
+            }
+            void Promise.resolve()
+              .then(() => prepareReload())
+              .then(() => {
+                resolve();
+                window.setTimeout(reload, 0);
+              })
+              .catch((err) => {
+                reloadInFlightRef.current = false;
+                clearCurtainPending();
+                setPhase("leaving");
+                window.setTimeout(() => setPhase("hidden"), RELOAD_CURTAIN_FADE_MS);
+                reject(err);
+              });
+          }, RELOAD_CURTAIN_FADE_MS + PRE_RELOAD_HOLD_MS);
+        });
+      });
+    },
+    [reload],
+  );
 
   // fade-out: reload 後、user layer ready を待って開ける。
   // 最低表示時間を満たしてから leaving に入れる（一瞬で開くとちらつく）。

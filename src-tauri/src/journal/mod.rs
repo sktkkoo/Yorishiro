@@ -1,8 +1,8 @@
 //! Journal ファイルシステム I/O。
 //!
 //! `~/.yorishiro/journal/` 配下の構造:
-//! - `daily/` — 住人の日誌（MCP tool で書き込む）
-//! - `memories.md` — 印象に残ったことのインデックス（system prompt に注入）
+//! - `personas/<persona-id>/daily/` — persona ごとの日誌（MCP tool で書き込む）
+//! - `personas/<persona-id>/memories.md` — persona ごとの記憶インデックス（system prompt に注入）
 //!
 //! MCP tool (`journal_write` / `journal_read`) から呼ばれる Rust 完結の実装。
 
@@ -11,6 +11,9 @@ pub mod cohabitation;
 use std::path::PathBuf;
 
 use serde::Serialize;
+
+const FALLBACK_PERSONA_ID_JA: &str = "clai-ja";
+const FALLBACK_PERSONA_ID_EN: &str = "clai-en";
 
 /// journal エントリ 1 日分。
 #[derive(Debug, Clone, Serialize)]
@@ -24,14 +27,68 @@ fn journal_root() -> Result<PathBuf, String> {
     Ok(crate::yorishiro_home_path()?.join("journal"))
 }
 
-/// 住人の書き込み先 `~/.yorishiro/journal/daily/` を返す。
+fn active_persona_id() -> String {
+    let Ok(home) = crate::yorishiro_home_path() else {
+        return FALLBACK_PERSONA_ID_JA.to_string();
+    };
+    let path = home.join("config.json");
+    let Ok(text) = std::fs::read_to_string(path) else {
+        return FALLBACK_PERSONA_ID_JA.to_string();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return FALLBACK_PERSONA_ID_JA.to_string();
+    };
+    if let Some(id) = value
+        .get("primaryPersona")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        return id.to_string();
+    }
+    match value.get("language").and_then(|v| v.as_str()) {
+        Some("en") => FALLBACK_PERSONA_ID_EN.to_string(),
+        _ => FALLBACK_PERSONA_ID_JA.to_string(),
+    }
+}
+
+fn encode_persona_path_component(id: &str) -> String {
+    let mut encoded = String::new();
+    for b in id.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' {
+            encoded.push(char::from(b));
+        } else {
+            encoded.push_str(&format!("%{:02X}", b));
+        }
+    }
+    if encoded.is_empty() {
+        "_".to_string()
+    } else {
+        encoded
+    }
+}
+
+fn persona_root(persona_id: &str) -> Result<PathBuf, String> {
+    Ok(journal_root()?
+        .join("personas")
+        .join(encode_persona_path_component(persona_id)))
+}
+
+/// 住人の書き込み先 `~/.yorishiro/journal/personas/<persona>/daily/` を返す。
 fn daily_dir() -> Result<PathBuf, String> {
-    Ok(journal_root()?.join("daily"))
+    daily_dir_for_persona(&active_persona_id())
+}
+
+fn daily_dir_for_persona(persona_id: &str) -> Result<PathBuf, String> {
+    Ok(persona_root(persona_id)?.join("daily"))
 }
 
 /// `memories.md` のパスを返す。
 fn memories_path() -> Result<PathBuf, String> {
-    Ok(journal_root()?.join("memories.md"))
+    memories_path_for_persona(&active_persona_id())
+}
+
+fn memories_path_for_persona(persona_id: &str) -> Result<PathBuf, String> {
+    Ok(persona_root(persona_id)?.join("memories.md"))
 }
 
 /// `date` が `YYYY-MM-DD` 形式であることを検証する。
@@ -191,6 +248,13 @@ mod tests {
         tmp
     }
 
+    fn persona_daily_path(home: &std::path::Path, persona_id: &str, date: &str) -> PathBuf {
+        home.join(".yorishiro/journal/personas")
+            .join(encode_persona_path_component(persona_id))
+            .join("daily")
+            .join(format!("{}.md", date))
+    }
+
     #[test]
     fn write_creates_new_entry() {
         let _guard = crate::TEST_HOME_ENV_LOCK
@@ -201,7 +265,7 @@ mod tests {
 
         write_entry("2026-05-04", "今日は静かな一日だった。").expect("write ok");
 
-        let path = home.join(".yorishiro/journal/daily/2026-05-04.md");
+        let path = persona_daily_path(&home, FALLBACK_PERSONA_ID_JA, "2026-05-04");
         assert!(path.exists());
         let content = fs::read_to_string(&path).expect("read");
         assert!(content.contains("今日は静かな一日だった。"));
@@ -221,7 +285,7 @@ mod tests {
         write_entry("2026-05-04", "朝の記録。").expect("write 1");
         write_entry("2026-05-04", "夜の記録。").expect("write 2");
 
-        let path = home.join(".yorishiro/journal/daily/2026-05-04.md");
+        let path = persona_daily_path(&home, FALLBACK_PERSONA_ID_JA, "2026-05-04");
         let content = fs::read_to_string(&path).expect("read");
         assert!(content.contains("朝の記録。"));
         assert!(content.contains("夜の記録。"));
@@ -307,7 +371,10 @@ mod tests {
         assert!(result.is_err(), "traversal を含む date は拒否されるべき");
 
         // daily ディレクトリにファイルが 1 つも作られていないこと。
-        let daily = home.join(".yorishiro/journal/daily");
+        let daily = home
+            .join(".yorishiro/journal/personas")
+            .join(FALLBACK_PERSONA_ID_JA)
+            .join("daily");
         let count = fs::read_dir(&daily).map(|d| d.count()).unwrap_or(0);
         assert_eq!(count, 0, "traversal 時にファイルが作られてはならない");
 
@@ -340,7 +407,10 @@ mod tests {
         let result = append_memory("../../evil", "勝手な行");
         assert!(result.is_err(), "不正な date は拒否されるべき");
 
-        let memories = home.join(".yorishiro/journal/memories.md");
+        let memories = home
+            .join(".yorishiro/journal/personas")
+            .join(FALLBACK_PERSONA_ID_JA)
+            .join("memories.md");
         assert!(
             !memories.exists(),
             "拒否された append で memories.md が作られてはならない"
@@ -359,7 +429,47 @@ mod tests {
 
         // 正規の YYYY-MM-DD は通ること（validation が正常系を壊さない回帰防止）。
         write_entry("2026-06-10", "正常な記録。").expect("valid date は通るべき");
-        assert!(home.join(".yorishiro/journal/daily/2026-06-10.md").exists());
+        assert!(persona_daily_path(&home, FALLBACK_PERSONA_ID_JA, "2026-06-10").exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn write_entry_uses_configured_primary_persona() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("write-primary-persona");
+        std::env::set_var("HOME", &home);
+        let config_dir = home.join(".yorishiro");
+        fs::create_dir_all(&config_dir).expect("mkdir config dir");
+        fs::write(
+            config_dir.join("config.json"),
+            r#"{"primaryPersona":"my.persona/unsafe"}"#,
+        )
+        .expect("write config");
+
+        write_entry("2026-06-10", "persona 固有の記録。").expect("write");
+        assert!(home
+            .join(".yorishiro/journal/personas/my%2Epersona%2Funsafe/daily/2026-06-10.md")
+            .exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn write_entry_uses_english_fallback_persona_when_language_is_en() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("write-language-en");
+        std::env::set_var("HOME", &home);
+        let config_dir = home.join(".yorishiro");
+        fs::create_dir_all(&config_dir).expect("mkdir config dir");
+        fs::write(config_dir.join("config.json"), r#"{"language":"en"}"#).expect("write config");
+
+        write_entry("2026-06-10", "English fallback record.").expect("write");
+        assert!(persona_daily_path(&home, FALLBACK_PERSONA_ID_EN, "2026-06-10").exists());
 
         let _ = fs::remove_dir_all(&home);
     }

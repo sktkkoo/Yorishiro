@@ -105,6 +105,7 @@ When Yorishiro is running, these MCP tools are available.
 | `list_load_errors()` | - | Show details from the latest pack load failure |
 | `enable_pack({ id })` | pack id | Re-enable a disabled pack |
 | `disable_pack({ id })` | pack id | Disable a broken pack immediately |
+| `persona_farewell_switch({ id })` | persona pack id | After creating a persona, switch and reload after the farewell ceremony |
 
 ### UI State / Parameter Tuning
 
