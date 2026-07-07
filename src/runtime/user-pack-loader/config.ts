@@ -9,6 +9,7 @@
  * - `disabledPacks: string[]`（optional）: rescue 用の flag 群
  * - `primaryPersona: string | null`（optional）: user が explicit に picks した persona pack の id
  * - `mcpPort: number`（optional）: MCP server の port override
+ * - `projectFolder: string | null`（optional）: app 全体の current project cwd。`~` は OS home に展開される
  * - `activeScene: string | null`（optional）: user が explicit に picks した scene pack の id
  * - `sceneByProject: Record<string, string>`（optional）: 正規化済み project root ごとの scene pack id
  * - `activeUi: string | null`（optional）: user が explicit に picks した UI pack の id
@@ -43,6 +44,8 @@ export interface YorishiroConfig {
   /** User が explicit に picks した persona pack の id。null なら bundled alphabetical default に fall through。 */
   readonly primaryPersona: string | null;
   readonly mcpPort: number | null;
+  /** App 全体の current project cwd。null なら host 側 fallback（旧 localStorage 等）を使う。 */
+  readonly projectFolder: string | null;
   /** User が explicit に picks した scene pack の id。null / undefined なら bundled alphabetical default に fall through。 */
   readonly activeScene: string | null;
   /** 正規化済み project root の絶対 path を key にした per-project scene mapping。 */
@@ -90,6 +93,7 @@ export const EMPTY_CONFIG: YorishiroConfig = {
   disabledPacks: [],
   primaryPersona: null,
   mcpPort: null,
+  projectFolder: null,
   activeScene: null,
   sceneByProject: {},
   activeUi: null,
@@ -274,6 +278,7 @@ export function parseConfig(text: string): YorishiroConfig {
     disabledPacks: toStringArray(obj.disabledPacks),
     primaryPersona: toNullableString(obj.primaryPersona),
     mcpPort: toPort(obj.mcpPort),
+    projectFolder: toNullableString(obj.projectFolder),
     activeScene: toNullableString(obj.activeScene),
     sceneByProject: toStringRecord(obj.sceneByProject, { omitEmpty: true }),
     activeUi: toNullableString(obj.activeUi),
@@ -303,6 +308,7 @@ export function serializeConfig(cfg: YorishiroConfig): string {
   if (cfg.disabledPacks.length > 0) out.disabledPacks = cfg.disabledPacks;
   if (cfg.primaryPersona !== null) out.primaryPersona = cfg.primaryPersona;
   if (cfg.mcpPort !== null) out.mcpPort = cfg.mcpPort;
+  if (cfg.projectFolder !== null) out.projectFolder = cfg.projectFolder;
   if (cfg.activeScene !== null) out.activeScene = cfg.activeScene;
   if (Object.keys(cfg.sceneByProject).length > 0) {
     out.sceneByProject = { ...cfg.sceneByProject };
@@ -325,6 +331,33 @@ export function serializeConfig(cfg: YorishiroConfig): string {
     out.mediaFolders = [...cfg.mediaFolders];
   }
   return `${JSON.stringify(out, null, 2)}\n`;
+}
+
+export function resolveProjectFolder(
+  projectFolder: string | null,
+  fallbackProjectFolder: string | null,
+  homeDir: string | null,
+): string | null {
+  return expandLeadingHomePath(projectFolder ?? fallbackProjectFolder, homeDir);
+}
+
+function expandLeadingHomePath(path: string | null, homeDir: string | null): string | null {
+  if (path === null) return null;
+  const trimmed = path.trim();
+  if (trimmed === "") return null;
+  if (trimmed === "~") return normalizeHomeDir(homeDir);
+  if (trimmed.startsWith("~/")) {
+    const home = normalizeHomeDir(homeDir);
+    return home === null ? null : `${home}/${trimmed.slice(2)}`;
+  }
+  return trimmed;
+}
+
+function normalizeHomeDir(homeDir: string | null): string | null {
+  if (homeDir === null) return null;
+  const trimmed = homeDir.trim();
+  if (trimmed === "" || trimmed === "/") return null;
+  return trimmed.replace(/\/+$/, "");
 }
 
 export function withDisabledPackAdded(cfg: YorishiroConfig, id: string): YorishiroConfig {
