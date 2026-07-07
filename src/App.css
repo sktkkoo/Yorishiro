@@ -612,10 +612,10 @@ body,
 
 .xterm-singleton-container.xterm-attention-cue-active {
   box-shadow:
-    0 0 calc(28px * var(--terminal-attention-cue-intensity))
-    rgba(255, 176, 138, calc(0.28 * var(--terminal-attention-cue-intensity))),
-    inset 0 0 calc(42px * var(--terminal-attention-cue-intensity))
-    rgba(255, 176, 138, calc(0.24 * var(--terminal-attention-cue-intensity)));
+    0 0 calc(24px * var(--terminal-attention-cue-intensity))
+    rgba(255, 176, 138, calc(0.2 * var(--terminal-attention-cue-intensity))),
+    inset 0 0 calc(34px * var(--terminal-attention-cue-intensity))
+    rgba(255, 176, 138, calc(0.17 * var(--terminal-attention-cue-intensity)));
 }
 
 .xterm-singleton-container.xterm-attention-cue-active::before {
@@ -628,14 +628,14 @@ body,
   background:
     linear-gradient(
       90deg,
-      rgba(255, 176, 138, calc(0.18 * var(--terminal-attention-cue-intensity))),
+      rgba(255, 176, 138, calc(0.13 * var(--terminal-attention-cue-intensity))),
       transparent 18%,
       transparent 82%,
-      rgba(255, 176, 138, calc(0.14 * var(--terminal-attention-cue-intensity)))
+      rgba(255, 176, 138, calc(0.1 * var(--terminal-attention-cue-intensity)))
     ),
     radial-gradient(
       circle at 28% 18%,
-      rgba(255, 176, 138, calc(0.22 * var(--terminal-attention-cue-intensity))),
+      rgba(255, 176, 138, calc(0.16 * var(--terminal-attention-cue-intensity))),
       transparent 34%
     );
   mix-blend-mode: screen;
