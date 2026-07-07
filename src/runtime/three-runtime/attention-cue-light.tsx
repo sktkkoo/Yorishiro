@@ -35,9 +35,9 @@ import {
 } from "./attention-cue-envelope";
 
 const DEFAULT_COLOR = "#ffb08a";
-const DEFAULT_FAILURE_COLOR = "#ff3f37";
+const DEFAULT_FAILURE_COLOR = "#ff5a52";
 const DEFAULT_INTENSITY_SCALE = 1.0;
-const DEFAULT_FAILURE_INTENSITY_SCALE = 1.6;
+const DEFAULT_FAILURE_INTENSITY_SCALE = 1.25;
 
 // 自動配置オフセット。現行固定値（head≈1.35 想定の絶対座標）からの逆算値。
 // 見え方は帰納的に調整する前提の暫定値。
