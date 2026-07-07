@@ -1800,7 +1800,8 @@ function specEqual(a: SpawnSpec, b: SpawnSpec): boolean {
       a.agent === b.agent &&
       (a.command ?? null) === (b.command ?? null) &&
       (a.systemPrompt ?? null) === (b.systemPrompt ?? null) &&
-      (a.pluginDir ?? null) === (b.pluginDir ?? null)
+      (a.pluginDir ?? null) === (b.pluginDir ?? null) &&
+      (a.resume ?? true) === (b.resume ?? true)
     );
   }
   if (a.kind === "shell" && b.kind === "shell") {

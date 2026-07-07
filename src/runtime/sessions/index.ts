@@ -13,8 +13,10 @@ export {
   resolveInterruptProtectionModeForSpawnSpec,
 } from "./agent-runtime-policy";
 export {
-  consumeMainSessionRespawnPending,
+  consumeMainSessionRespawnMode,
   filterRestoredSessionsForMainRespawn,
+  type MainSessionRespawnMode,
+  markMainSessionFreshSpawnPending,
   markMainSessionRespawnPending,
 } from "./main-session-respawn-on-reload";
 export {

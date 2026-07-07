@@ -66,6 +66,7 @@ pub struct LaunchContext<'a> {
     pub plugin_dir: Option<&'a Path>,
     pub mcp_port: u16,
     pub hook_port: u16,
+    pub resume: bool,
 }
 
 /// Adapter が返す起動 spec。pty_session.rs が CommandBuilder に apply する。

@@ -933,6 +933,7 @@ async fn session_spawn(
             command,
             system_prompt,
             plugin_dir,
+            resume,
             ..
         } => {
             let plugin_dir = plugin_dir.or_else(|| {
@@ -946,6 +947,7 @@ async fn session_spawn(
                 command,
                 system_prompt,
                 plugin_dir,
+                resume,
             }
         }
         shell @ SpawnSpec::Shell { .. } => shell,

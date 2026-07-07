@@ -50,6 +50,9 @@ pub enum SpawnSpec {
         /// Claude Code では `--plugin-dir`、Codex では local marketplace root として渡す。
         #[serde(default)]
         plugin_dir: Option<std::path::PathBuf>,
+        /// false のとき agent adapter の既存会話 resume を禁止して完全新規 session を起動する。
+        #[serde(default = "default_true")]
+        resume: bool,
     },
     Shell {
         /// Shell binary path を override したい場合のみ Some。None なら `$SHELL`、
@@ -308,6 +311,7 @@ impl PtySession {
                 command,
                 system_prompt,
                 plugin_dir,
+                resume,
             } => {
                 let adapter = crate::sessions::agent_adapter::lookup(agent_id.as_str())
                     .ok_or_else(|| format!("Unknown agent id: {}", agent_id))?;
@@ -324,6 +328,7 @@ impl PtySession {
                     plugin_dir: plugin_dir.as_deref(),
                     mcp_port: crate::mcp::server::resolve_port(),
                     hook_port: crate::pty::HOOK_SERVER_PORT,
+                    resume: *resume,
                 };
                 let launch = adapter.build_launch_args(&ctx)?;
                 for (k, v) in &launch.env {

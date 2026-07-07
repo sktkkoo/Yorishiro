@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  consumeMainSessionRespawnPending,
+  consumeMainSessionRespawnMode,
   filterRestoredSessionsForMainRespawn,
+  markMainSessionFreshSpawnPending,
   markMainSessionRespawnPending,
 } from "./main-session-respawn-on-reload";
 import type { SessionDescriptor, SessionId } from "./types";
@@ -37,11 +38,20 @@ describe("main session respawn reload flag", () => {
   it("marks and consumes the pending main respawn once", () => {
     const storage = memoryStorage();
 
-    expect(consumeMainSessionRespawnPending(storage)).toBe(false);
+    expect(consumeMainSessionRespawnMode(storage)).toBe("none");
     markMainSessionRespawnPending(storage);
 
-    expect(consumeMainSessionRespawnPending(storage)).toBe(true);
-    expect(consumeMainSessionRespawnPending(storage)).toBe(false);
+    expect(consumeMainSessionRespawnMode(storage)).toBe("resume");
+    expect(consumeMainSessionRespawnMode(storage)).toBe("none");
+  });
+
+  it("marks a fresh spawn when persona changes must not resume old agent context", () => {
+    const storage = memoryStorage();
+
+    markMainSessionFreshSpawnPending(storage);
+
+    expect(consumeMainSessionRespawnMode(storage)).toBe("fresh");
+    expect(consumeMainSessionRespawnMode(storage)).toBe("none");
   });
 
   it("filters only the main session descriptor when respawn is pending", () => {

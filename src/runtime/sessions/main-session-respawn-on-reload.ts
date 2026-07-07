@@ -1,6 +1,10 @@
 import type { SessionDescriptor, SessionId } from "./types";
 
 const MAIN_SESSION_RESPAWN_KEY = "yorishiro:main-session-respawn";
+const MAIN_SESSION_RESPAWN_RESUME = "resume";
+const MAIN_SESSION_RESPAWN_FRESH = "fresh";
+
+export type MainSessionRespawnMode = "none" | "resume" | "fresh";
 
 interface ReloadFlagStorage {
   getItem(key: string): string | null;
@@ -17,22 +21,35 @@ export function markMainSessionRespawnPending(
   storage: ReloadFlagStorage | null = getSessionStorage(),
 ): void {
   try {
-    storage?.setItem(MAIN_SESSION_RESPAWN_KEY, "1");
+    storage?.setItem(MAIN_SESSION_RESPAWN_KEY, MAIN_SESSION_RESPAWN_RESUME);
   } catch {
     // Storage may be unavailable in restricted WebView modes. In that case
     // the next reload falls back to normal session restore.
   }
 }
 
-export function consumeMainSessionRespawnPending(
+export function markMainSessionFreshSpawnPending(
   storage: ReloadFlagStorage | null = getSessionStorage(),
-): boolean {
+): void {
   try {
-    const pending = storage?.getItem(MAIN_SESSION_RESPAWN_KEY) === "1";
-    if (pending) storage?.removeItem(MAIN_SESSION_RESPAWN_KEY);
-    return pending;
+    storage?.setItem(MAIN_SESSION_RESPAWN_KEY, MAIN_SESSION_RESPAWN_FRESH);
   } catch {
-    return false;
+    // Storage may be unavailable in restricted WebView modes. In that case
+    // the next reload falls back to normal session restore.
+  }
+}
+
+export function consumeMainSessionRespawnMode(
+  storage: ReloadFlagStorage | null = getSessionStorage(),
+): MainSessionRespawnMode {
+  try {
+    const value = storage?.getItem(MAIN_SESSION_RESPAWN_KEY);
+    if (value !== null) storage?.removeItem(MAIN_SESSION_RESPAWN_KEY);
+    if (value === MAIN_SESSION_RESPAWN_FRESH) return "fresh";
+    if (value === MAIN_SESSION_RESPAWN_RESUME || value === "1") return "resume";
+    return "none";
+  } catch {
+    return "none";
   }
 }
 

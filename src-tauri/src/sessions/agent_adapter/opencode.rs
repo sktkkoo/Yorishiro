@@ -253,6 +253,7 @@ mod tests {
             plugin_dir,
             mcp_port: 18743,
             hook_port: 19001,
+            resume: true,
         }
     }
 
@@ -267,6 +268,7 @@ mod tests {
             plugin_dir: None,
             mcp_port: 18743,
             hook_port: 19001,
+            resume: true,
         }
     }
 

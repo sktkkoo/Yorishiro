@@ -39,7 +39,7 @@ impl TerminalAgent for CodexAgent {
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String> {
         let mut args = Vec::new();
 
-        if self.has_existing_session(ctx.cwd) {
+        if ctx.resume && self.has_existing_session(ctx.cwd) {
             args.push("resume".to_string());
             args.push("--last".to_string());
         }
@@ -189,6 +189,24 @@ mod tests {
             plugin_dir: None,
             mcp_port: 18743,
             hook_port: 19001,
+            resume: true,
+        }
+    }
+
+    fn make_ctx_with_resume<'a>(
+        cwd: Option<&'a Path>,
+        system_prompt: Option<&'a str>,
+        prompt_reminder: Option<&'a str>,
+        resume: bool,
+    ) -> LaunchContext<'a> {
+        LaunchContext {
+            cwd,
+            system_prompt,
+            prompt_reminder,
+            plugin_dir: None,
+            mcp_port: 18743,
+            hook_port: 19001,
+            resume,
         }
     }
 
@@ -289,6 +307,19 @@ mod tests {
 
         assert!(result.args.iter().any(|arg| arg
             .contains("developer_instructions=\"## Yorishiro reminders\\n\\n- voice_say\"")));
+    }
+
+    #[test]
+    fn codex_resume_false_does_not_emit_resume_command() {
+        let ctx = make_ctx_with_resume(None, None, None, false);
+        let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
+
+        assert!(!result.args.iter().any(|arg| arg == "resume"));
+        assert!(!result.args.iter().any(|arg| arg == "--last"));
+        assert!(result
+            .args
+            .iter()
+            .any(|arg| arg == &codex_yorishiro_mcp_config_arg(18743)));
     }
 
     #[test]

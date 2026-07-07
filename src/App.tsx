@@ -200,9 +200,10 @@ import type {
 } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
-  consumeMainSessionRespawnPending,
+  consumeMainSessionRespawnMode,
   DEFAULT_SESSION_ID,
   filterRestoredSessionsForMainRespawn,
+  markMainSessionFreshSpawnPending,
   markMainSessionRespawnPending,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
@@ -212,6 +213,7 @@ import {
 } from "./runtime/sessions";
 import {
   spawnSpecFromDefaultProfile,
+  withAgentResumePolicy,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
@@ -2045,7 +2047,7 @@ function App() {
           "persona.goodbye-switch": createPersonaGoodbyeSwitchHandler({
             updateConfig: updateConfigForMcp,
             beginCurtainReload,
-            markMainSessionRespawnPending,
+            markMainSessionRespawnPending: markMainSessionFreshSpawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
           }),
@@ -2239,6 +2241,7 @@ function App() {
   const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(isUserLayerReady);
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
+  const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
   // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
   const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
     undefined,
@@ -2414,7 +2417,9 @@ function App() {
       try {
         const descriptors = await sessionList();
         if (cancelled) return;
-        const shouldRespawnMain = consumeMainSessionRespawnPending();
+        const respawnMode = consumeMainSessionRespawnMode();
+        const shouldRespawnMain = respawnMode !== "none";
+        setMainSessionResumeEnabled(respawnMode !== "fresh");
         if (shouldRespawnMain) {
           try {
             await sessionDestroy({ sessionId: DEFAULT_SESSION_ID });
@@ -2455,7 +2460,7 @@ function App() {
       if (sessionId !== DEFAULT_SESSION_ID) {
         return { kind: "shell", integration: true };
       }
-      return withAgentRuntimeFields(
+      const spec = withAgentRuntimeFields(
         defaultSpec ?? {
           kind: "agent",
           agent: terminalAgent,
@@ -2463,8 +2468,15 @@ function App() {
         resolvedSystemPrompt ?? null,
         localizedPluginDir,
       );
+      return withAgentResumePolicy(spec, mainSessionResumeEnabled);
     },
-    [defaultSpec, terminalAgent, resolvedSystemPrompt, localizedPluginDir],
+    [
+      defaultSpec,
+      terminalAgent,
+      resolvedSystemPrompt,
+      localizedPluginDir,
+      mainSessionResumeEnabled,
+    ],
   );
   const getSessionCwd = useCallback(
     (sessionId: SessionId) => tabManager.getSessionLaunchCwd(sessionId),
@@ -3146,7 +3158,7 @@ function App() {
           setPrimaryPersona: async (id) => {
             await beginCurtainReload(async () => {
               await updateConfig({ primaryPersona: id });
-              markMainSessionRespawnPending();
+              markMainSessionFreshSpawnPending();
             });
           },
           setActiveScene: async (id) => {

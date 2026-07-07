@@ -30,3 +30,8 @@ export function withAgentRuntimeFields(
     pluginDir,
   };
 }
+
+export function withAgentResumePolicy(spec: SpawnSpec, resume: boolean): SpawnSpec {
+  if (spec.kind !== "agent") return spec;
+  return { ...spec, resume };
+}
