@@ -116,6 +116,17 @@ describe("changeStrings", () => {
     expect(getStrings("en").motionLevelOver).toBe("Over-the-top");
     expect(getStrings("ja").motionLevelOver).toBe("オーバー");
   });
+
+  it("uses explicit settings section labels", () => {
+    expect(getStrings("en").labelAgent).toBe("Main Agent");
+    expect(getStrings("ja").labelAgent).toBe("Main Agent");
+    expect(getStrings("en").labelAttentionLight).toBe("Light Alert");
+    expect(getStrings("ja").labelAttentionLight).toBe("Light Alert");
+    expect(getStrings("en").labelRestore).toBe("Restore (Pack / init.js)");
+    expect(getStrings("ja").labelRestore).toBe("復元（Pack / init.js）");
+    expect(getStrings("en").defaultFolderName).toBe("~");
+    expect(getStrings("ja").defaultFolderName).toBe("~");
+  });
 });
 
 describe("restoreConfirmStrings", () => {

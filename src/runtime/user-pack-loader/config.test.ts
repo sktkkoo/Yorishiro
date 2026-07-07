@@ -13,6 +13,7 @@ import {
   localizedClaiPersonaId,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
+  resolveProjectFolder,
   resolveSceneForProject,
   serializeConfig,
   withActiveAmbientUiSet,
@@ -41,6 +42,7 @@ describe("parseConfig", () => {
       disabledPacks: ["a", "b"],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -65,6 +67,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       primaryPersona: "clai",
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -89,6 +92,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -113,6 +117,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -137,6 +142,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -161,6 +167,7 @@ describe("parseConfig", () => {
       disabledPacks: [],
       primaryPersona: null,
       mcpPort: 12345,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -190,6 +197,7 @@ describe("parseConfig", () => {
       disabledPacks: ["ok"],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -243,6 +251,7 @@ describe("serializeConfig", () => {
       disabledPacks: ["a"],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -267,6 +276,7 @@ describe("serializeConfig", () => {
       disabledPacks: [],
       primaryPersona: "my-persona",
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -304,6 +314,7 @@ describe("serializeConfig", () => {
       disabledPacks: ["a", "b"],
       primaryPersona: "my-persona",
       mcpPort: 18743,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -339,6 +350,43 @@ describe("serializeConfig", () => {
     expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, tabMetadataBadges: true }))).toEqual({
       tabMetadataBadges: true,
     });
+  });
+});
+
+describe("projectFolder", () => {
+  it("defaults to null", () => {
+    expect(EMPTY_CONFIG.projectFolder).toBeNull();
+    expect(parseConfig("{}").projectFolder).toBeNull();
+  });
+
+  it("parses string projectFolder", () => {
+    expect(parseConfig('{"projectFolder": "/Users/alice/Charminal"}').projectFolder).toBe(
+      "/Users/alice/Charminal",
+    );
+  });
+
+  it("treats empty projectFolder as null", () => {
+    expect(parseConfig('{"projectFolder": ""}').projectFolder).toBeNull();
+  });
+
+  it("serializes projectFolder when set", () => {
+    const cfg = { ...EMPTY_CONFIG, projectFolder: "~/Charminal" };
+    expect(JSON.parse(serializeConfig(cfg))).toEqual({ projectFolder: "~/Charminal" });
+  });
+
+  it("resolves projectFolder before fallback", () => {
+    expect(resolveProjectFolder("~/Charminal", "/tmp/fallback", "/Users/alice")).toBe(
+      "/Users/alice/Charminal",
+    );
+  });
+
+  it("falls back when projectFolder is not set", () => {
+    expect(resolveProjectFolder(null, "/tmp/fallback", "/Users/alice")).toBe("/tmp/fallback");
+  });
+
+  it("does not return unresolved tilde paths without home", () => {
+    expect(resolveProjectFolder("~/Charminal", "/tmp/fallback", null)).toBeNull();
+    expect(resolveProjectFolder("~", "/tmp/fallback", null)).toBeNull();
   });
 });
 
@@ -387,6 +435,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       disabledPacks: ["a", "b"],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
@@ -412,6 +461,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       disabledPacks: ["a"],
       primaryPersona: null,
       mcpPort: null,
+      projectFolder: null,
       activeScene: null,
       sceneByProject: {},
       activeUi: null,
