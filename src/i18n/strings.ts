@@ -36,6 +36,7 @@ export interface UiStrings {
   readonly voiceOff: string;
   readonly voiceAppliesNextSession: string;
   readonly newSessionConfirm: string;
+  readonly newSessionConfirmButton: string;
   readonly labelPersona: string;
   readonly labelScene: string;
   readonly labelSound: string;
@@ -143,6 +144,7 @@ const EN: UiStrings = {
   voiceOff: "Off",
   voiceAppliesNextSession: "Applies from the next session",
   newSessionConfirm: "This will start a new agent session. Continue?",
+  newSessionConfirmButton: "Continue",
   labelPersona: "Persona",
   labelScene: "Scene",
   labelSound: "Sound",
@@ -251,6 +253,7 @@ const JA: UiStrings = {
   voiceOff: "Off",
   voiceAppliesNextSession: "※ 次回セッションから反映",
   newSessionConfirm: "新しい agent セッションを開始します。続けますか？",
+  newSessionConfirmButton: "続ける",
   labelPersona: "Persona",
   labelScene: "Scene",
   labelSound: "Sound",

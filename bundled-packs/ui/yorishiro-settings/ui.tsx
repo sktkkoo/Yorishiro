@@ -130,15 +130,6 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
   }
 }
 
-export function confirmNewSessionSettingChange(
-  message: string,
-  confirm: ((message: string) => boolean) | undefined = typeof window === "undefined"
-    ? undefined
-    : window.confirm.bind(window),
-): boolean {
-  return confirm === undefined ? true : confirm(message);
-}
-
 interface SelectOption {
   readonly value: string;
   readonly label: string;
@@ -491,6 +482,93 @@ function Toggle({
         }}
       />
     </button>
+  );
+}
+
+function NewSessionConfirmDialog({
+  message,
+  cancelLabel,
+  confirmLabel,
+  onCancel,
+  onConfirm,
+}: {
+  readonly message: string;
+  readonly cancelLabel: string;
+  readonly confirmLabel: string;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      role="presentation"
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10_000,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(8, 10, 12, 0.58)",
+        padding: SPACING.lg,
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={message}
+        style={{
+          width: "min(360px, 100%)",
+          borderRadius: RADIUS.md,
+          border: `1px solid ${COLORS.borderSubtle}`,
+          background: COLORS.bgPanel,
+          boxShadow: "0 18px 48px rgba(0, 0, 0, 0.42)",
+          padding: SPACING.lg,
+          color: COLORS.fg,
+        }}
+      >
+        <div style={{ fontSize: FONT.sizeS, lineHeight: 1.55, color: COLORS.fg }}>{message}</div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: SPACING.sm,
+            marginTop: SPACING.lg,
+          }}
+        >
+          <button
+            type="button"
+            onClick={onCancel}
+            style={{
+              border: `1px solid ${COLORS.borderSubtle}`,
+              borderRadius: RADIUS.sm,
+              background: COLORS.bgInput,
+              color: COLORS.fgDim,
+              font: "inherit",
+              fontSize: FONT.sizeXs,
+              padding: `${SPACING.xs} ${SPACING.md}`,
+              cursor: "pointer",
+            }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            style={{
+              border: `1px solid ${COLORS.accentBorder}`,
+              borderRadius: RADIUS.sm,
+              background: COLORS.accentSoft,
+              color: COLORS.accent,
+              font: "inherit",
+              fontSize: FONT.sizeXs,
+              padding: `${SPACING.xs} ${SPACING.md}`,
+              cursor: "pointer",
+            }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2048,6 +2126,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
   const languageChangeSeq = useRef(0);
   const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
+  const [pendingNewSessionChange, setPendingNewSessionChange] = useState<{
+    readonly run: () => void;
+  } | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   // in-app update。設定を開いたときに一度だけ確認し、更新があればバナーを出す。
   // idle = 更新なし（確認前・確認失敗を含む）。downloading の ratio は 0-1 / null（不定）。
@@ -2064,8 +2145,14 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     : "";
   const scenes = ctx.app.listScenes();
   const strings = getStrings(resolvedLanguage);
-
-  const confirmNewSessionChange = () => confirmNewSessionSettingChange(strings.newSessionConfirm);
+  const requestNewSessionChange = (run: () => void) => {
+    setPendingNewSessionChange({ run });
+  };
+  const confirmPendingNewSessionChange = () => {
+    const pending = pendingNewSessionChange;
+    setPendingNewSessionChange(null);
+    pending?.run();
+  };
 
   useEffect(() => {
     let aborted = false;
@@ -2116,14 +2203,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = configPrimaryPersonaForSelection(e.target.value);
     if (next === persona) return;
-    if (!confirmNewSessionChange()) return;
-    void applyConfigUpdate({
-      next,
-      prev: persona,
-      setLocal: setPersona,
-      write: (v) => ctx.app.setPrimaryPersona(v),
-      emitEvent: (n, p) => ctx.emitEvent(n, p),
-      field: "primaryPersona",
+    requestNewSessionChange(() => {
+      void applyConfigUpdate({
+        next,
+        prev: persona,
+        setLocal: setPersona,
+        write: (v) => ctx.app.setPrimaryPersona(v),
+        emitEvent: (n, p) => ctx.emitEvent(n, p),
+        field: "primaryPersona",
+      });
     });
   };
 
@@ -2141,14 +2229,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const onAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = e.target.value;
     if (next === agent) return;
-    if (!confirmNewSessionChange()) return;
-    void applyConfigUpdate({
-      next,
-      prev: agent,
-      setLocal: setAgent,
-      write: (v) => ctx.app.setTerminalAgent(v),
-      emitEvent: (n, p) => ctx.emitEvent(n, p),
-      field: "terminalAgent",
+    requestNewSessionChange(() => {
+      void applyConfigUpdate({
+        next,
+        prev: agent,
+        setLocal: setAgent,
+        write: (v) => ctx.app.setTerminalAgent(v),
+        emitEvent: (n, p) => ctx.emitEvent(n, p),
+        field: "terminalAgent",
+      });
     });
   };
 
@@ -2183,14 +2272,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const onVoiceToggle = () => {
     const next: "on" | "off" = voiceFrequency === "on" ? "off" : "on";
-    if (!confirmNewSessionChange()) return;
-    void applyConfigUpdate({
-      next,
-      prev: voiceFrequency,
-      setLocal: setVoiceFrequency,
-      write: (v) => ctx.app.setVoiceFrequency(v),
-      emitEvent: (n, p) => ctx.emitEvent(n, p),
-      field: "voiceFrequency",
+    requestNewSessionChange(() => {
+      void applyConfigUpdate({
+        next,
+        prev: voiceFrequency,
+        setLocal: setVoiceFrequency,
+        write: (v) => ctx.app.setVoiceFrequency(v),
+        emitEvent: (n, p) => ctx.emitEvent(n, p),
+        field: "voiceFrequency",
+      });
     });
   };
 
@@ -2742,6 +2832,15 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       </main>
 
       {creditsOpen && <CreditsOverlay onBack={() => setCreditsOpen(false)} />}
+      {pendingNewSessionChange ? (
+        <NewSessionConfirmDialog
+          message={strings.newSessionConfirm}
+          cancelLabel={strings.restoreConfirmCancel}
+          confirmLabel={strings.newSessionConfirmButton}
+          onCancel={() => setPendingNewSessionChange(null)}
+          onConfirm={confirmPendingNewSessionChange}
+        />
+      ) : null}
     </div>
   );
 }
