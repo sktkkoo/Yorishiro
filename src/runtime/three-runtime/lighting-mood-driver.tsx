@@ -14,11 +14,11 @@ import {
 import { getMainLightRegistry, type MainLightRegistry } from "./main-light-registry";
 import type { RuntimeLevaStore } from "./runtime-leva-store";
 
-const DEFAULT_BRIGHTNESS_GAIN = 0.35;
-const DEFAULT_WARMTH_GAIN = 0.22;
-const DEFAULT_LERP_SPEED = 1.15;
-const MIN_INTENSITY_FACTOR = 0.65;
-const MAX_INTENSITY_FACTOR = 1.25;
+const DEFAULT_BRIGHTNESS_GAIN = 1.2;
+const DEFAULT_WARMTH_GAIN = 0.6;
+const DEFAULT_LERP_SPEED = 2.0;
+const MIN_INTENSITY_FACTOR = 0.5;
+const MAX_INTENSITY_FACTOR = 1.55;
 const WARM_TINT = new Color("#ffd1a8");
 const COOL_TINT = new Color("#b9d5ff");
 
@@ -79,14 +79,14 @@ export function LightingMoodDriver({
           brightnessGain: {
             value: DEFAULT_BRIGHTNESS_GAIN,
             min: 0,
-            max: 1,
+            max: 2,
             step: 0.01,
             label: "brightness gain",
           },
           warmthGain: {
             value: DEFAULT_WARMTH_GAIN,
             min: 0,
-            max: 1,
+            max: 2,
             step: 0.01,
             label: "warmth gain",
           },

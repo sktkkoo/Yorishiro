@@ -35,8 +35,9 @@ import {
 } from "./attention-cue-envelope";
 
 const DEFAULT_COLOR = "#ffb08a";
-const DEFAULT_FAILURE_COLOR = "#ff5f58";
+const DEFAULT_FAILURE_COLOR = "#ff3f37";
 const DEFAULT_INTENSITY_SCALE = 1.0;
+const DEFAULT_FAILURE_INTENSITY_SCALE = 1.6;
 
 // 自動配置オフセット。現行固定値（head≈1.35 想定の絶対座標）からの逆算値。
 // 見え方は帰納的に調整する前提の暫定値。
@@ -51,6 +52,7 @@ export interface AttentionCueLightProps {
   readonly color?: string;
   readonly failureColor?: string;
   readonly intensityScale?: number;
+  readonly failureIntensityScale?: number;
   /** test 注入用。省略時は real singleton。 */
   readonly cueStore?: AttentionLightCueStore;
   /** test 注入用。省略時は ThreeRuntime の VRM head bone。 */
@@ -102,6 +104,7 @@ function AttentionCueLightCore({
   color = DEFAULT_COLOR,
   failureColor = DEFAULT_FAILURE_COLOR,
   intensityScale = DEFAULT_INTENSITY_SCALE,
+  failureIntensityScale = DEFAULT_FAILURE_INTENSITY_SCALE,
   cueStore = getAttentionLightCueStore(),
   getAnchor = () => getThreeRuntime().getCharacterAnchor(),
 }: AttentionCueLightProps) {
@@ -139,7 +142,9 @@ function AttentionCueLightCore({
       key={seq}
       base={base}
       color={cue?.reason === "run-failed" ? failureColor : color}
-      intensityScale={intensityScale}
+      intensityScale={
+        cue?.reason === "run-failed" ? intensityScale * failureIntensityScale : intensityScale
+      }
       onComplete={() => {
         completedSeqRef.current = seq;
         setCompletedVersion((version) => version + 1);
