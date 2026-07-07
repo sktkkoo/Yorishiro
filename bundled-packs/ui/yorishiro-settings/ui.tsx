@@ -130,6 +130,15 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
   }
 }
 
+export function confirmNewSessionSettingChange(
+  message: string,
+  confirm: ((message: string) => boolean) | undefined = typeof window === "undefined"
+    ? undefined
+    : window.confirm.bind(window),
+): boolean {
+  return confirm === undefined ? true : confirm(message);
+}
+
 interface SelectOption {
   readonly value: string;
   readonly label: string;
@@ -2056,6 +2065,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const scenes = ctx.app.listScenes();
   const strings = getStrings(resolvedLanguage);
 
+  const confirmNewSessionChange = () => confirmNewSessionSettingChange(strings.newSessionConfirm);
+
   useEffect(() => {
     let aborted = false;
     void ctx.app.getConfig().then((cur) => {
@@ -2104,6 +2115,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = configPrimaryPersonaForSelection(e.target.value);
+    if (next === persona) return;
+    if (!confirmNewSessionChange()) return;
     void applyConfigUpdate({
       next,
       prev: persona,
@@ -2127,6 +2140,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const onAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = e.target.value;
+    if (next === agent) return;
+    if (!confirmNewSessionChange()) return;
     void applyConfigUpdate({
       next,
       prev: agent,
@@ -2168,6 +2183,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const onVoiceToggle = () => {
     const next: "on" | "off" = voiceFrequency === "on" ? "off" : "on";
+    if (!confirmNewSessionChange()) return;
     void applyConfigUpdate({
       next,
       prev: voiceFrequency,

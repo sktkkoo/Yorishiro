@@ -173,7 +173,7 @@ fn parse_command_markdown(content: &str) -> (String, String) {
 
 /// Claude 記法 `/yori:<name>` を OpenCode 自身の宣言した記法へ書き換える。
 /// 記法は OpencodeAgent::command_syntax() を正本にし、ここで直書きしない。
-fn rewrite_charm_slash_commands(input: &str) -> String {
+fn rewrite_yori_slash_commands(input: &str) -> String {
     let syntax = OPENCODE.command_syntax();
     input.replace(
         "/yori:",
@@ -183,7 +183,7 @@ fn rewrite_charm_slash_commands(input: &str) -> String {
 
 fn opencode_command_config(content: &str, command_name: &str) -> Value {
     let (description, body) = parse_command_markdown(content);
-    let body = rewrite_charm_slash_commands(&body);
+    let body = rewrite_yori_slash_commands(&body);
     let template = format!("$ARGUMENTS\n\n---\n\n{}", body);
 
     serde_json::json!({
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[test]
-    fn opencode_command_templates_rewrite_charm_refs() {
+    fn opencode_command_templates_rewrite_yori_refs() {
         let plugin_dir = fresh_plugin_dir("rewrite");
         std::fs::write(
             plugin_dir.join("commands").join("help.md"),

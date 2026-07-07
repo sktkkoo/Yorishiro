@@ -13,9 +13,9 @@ export {
   resolveInterruptProtectionModeForSpawnSpec,
 } from "./agent-runtime-policy";
 export {
-  consumePersonaGoodbyeMainRespawnPending,
+  consumeMainSessionRespawnPending,
   filterRestoredSessionsForMainRespawn,
-  markPersonaGoodbyeMainRespawnPending,
+  markMainSessionRespawnPending,
 } from "./main-session-respawn-on-reload";
 export {
   getBundledProfile,

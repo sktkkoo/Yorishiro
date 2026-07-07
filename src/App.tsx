@@ -29,6 +29,7 @@ import {
   prepareLocalizedPluginDir,
   ptyWrite,
   type SpawnSpec,
+  sessionDestroy,
   sessionList,
   sessionRefreshTheme,
   snapshotCreate,
@@ -199,10 +200,10 @@ import type {
 } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
-  consumePersonaGoodbyeMainRespawnPending,
+  consumeMainSessionRespawnPending,
   DEFAULT_SESSION_ID,
   filterRestoredSessionsForMainRespawn,
-  markPersonaGoodbyeMainRespawnPending,
+  markMainSessionRespawnPending,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
@@ -2044,7 +2045,7 @@ function App() {
           "persona.goodbye-switch": createPersonaGoodbyeSwitchHandler({
             updateConfig: updateConfigForMcp,
             beginCurtainReload,
-            markMainSessionRespawnPending: markPersonaGoodbyeMainRespawnPending,
+            markMainSessionRespawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
           }),
@@ -2409,10 +2410,18 @@ function App() {
     if (!isUserLayerReady) return;
     let cancelled = false;
 
-    sessionList()
-      .then((descriptors) => {
+    void (async () => {
+      try {
+        const descriptors = await sessionList();
         if (cancelled) return;
-        const shouldRespawnMain = consumePersonaGoodbyeMainRespawnPending();
+        const shouldRespawnMain = consumeMainSessionRespawnPending();
+        if (shouldRespawnMain) {
+          try {
+            await sessionDestroy({ sessionId: DEFAULT_SESSION_ID });
+          } catch (err) {
+            console.warn("[session-tabs] failed to destroy main session before respawn:", err);
+          }
+        }
         const restoredDescriptors = filterRestoredSessionsForMainRespawn(
           descriptors,
           DEFAULT_SESSION_ID,
@@ -2422,13 +2431,12 @@ function App() {
           restoredDescriptors,
           preferredActiveSessionIdRef.current ?? null,
         );
-      })
-      .catch((err) => {
+      } catch (err) {
         console.warn("[session-tabs] failed to restore sessions after reload:", err);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsSessionRestoreReady(true);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -3136,17 +3144,19 @@ function App() {
           },
           getHealthReport: collectAppHealthReport,
           setPrimaryPersona: async (id) => {
-            await updateConfig({ primaryPersona: id });
-            personaRegistry.setPrimaryPersona(
-              resolvePrimaryPersonaForLanguage(id, appLanguageRef.current.resolved),
-            );
+            await beginCurtainReload(async () => {
+              await updateConfig({ primaryPersona: id });
+              markMainSessionRespawnPending();
+            });
           },
           setActiveScene: async (id) => {
             await setActiveSceneFromUserSelection(id);
           },
           setTerminalAgent: async (agent) => {
-            await updateConfig({ terminalAgent: agent });
-            // terminalAgent は既存セッションに反映しない仕様（仕様書通り）
+            await beginCurtainReload(async () => {
+              await updateConfig({ terminalAgent: agent });
+              markMainSessionRespawnPending();
+            });
           },
           setAmbientAudioMuted: async (muted) => {
             await updateConfig({ ambientAudioMuted: muted });
@@ -3189,7 +3199,12 @@ function App() {
               );
             });
           },
-          setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
+          setVoiceFrequency: async (voiceFrequency) => {
+            await beginCurtainReload(async () => {
+              await updateConfig({ voiceFrequency });
+              markMainSessionRespawnPending();
+            });
+          },
           setTabMetadataBadges: async (enabled) => {
             await updateConfig({ tabMetadataBadges: enabled });
             setTabMetadataBadgesEnabled(enabled);
@@ -3390,6 +3405,7 @@ function App() {
     enqueueConfigWrite,
     updateYorishiroConfig,
     updateConfig,
+    beginCurtainReload,
     setActiveSceneFromUserSelection,
   ]);
 

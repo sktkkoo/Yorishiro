@@ -1,6 +1,6 @@
 import type { SessionDescriptor, SessionId } from "./types";
 
-const PERSONA_GOODBYE_MAIN_RESPAWN_KEY = "yorishiro:persona-goodbye-main-respawn";
+const MAIN_SESSION_RESPAWN_KEY = "yorishiro:main-session-respawn";
 
 interface ReloadFlagStorage {
   getItem(key: string): string | null;
@@ -13,23 +13,23 @@ function getSessionStorage(): ReloadFlagStorage | null {
   return window.sessionStorage;
 }
 
-export function markPersonaGoodbyeMainRespawnPending(
+export function markMainSessionRespawnPending(
   storage: ReloadFlagStorage | null = getSessionStorage(),
 ): void {
   try {
-    storage?.setItem(PERSONA_GOODBYE_MAIN_RESPAWN_KEY, "1");
+    storage?.setItem(MAIN_SESSION_RESPAWN_KEY, "1");
   } catch {
     // Storage may be unavailable in restricted WebView modes. In that case
     // the next reload falls back to normal session restore.
   }
 }
 
-export function consumePersonaGoodbyeMainRespawnPending(
+export function consumeMainSessionRespawnPending(
   storage: ReloadFlagStorage | null = getSessionStorage(),
 ): boolean {
   try {
-    const pending = storage?.getItem(PERSONA_GOODBYE_MAIN_RESPAWN_KEY) === "1";
-    if (pending) storage?.removeItem(PERSONA_GOODBYE_MAIN_RESPAWN_KEY);
+    const pending = storage?.getItem(MAIN_SESSION_RESPAWN_KEY) === "1";
+    if (pending) storage?.removeItem(MAIN_SESSION_RESPAWN_KEY);
     return pending;
   } catch {
     return false;

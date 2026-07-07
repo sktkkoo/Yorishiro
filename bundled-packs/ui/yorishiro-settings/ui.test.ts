@@ -4,6 +4,7 @@ import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
   configPrimaryPersonaForSelection,
+  confirmNewSessionSettingChange,
   creditsSections,
   EXPERIMENTAL_AGENT_IDS,
   filterPersonaOptionsForLanguage,
@@ -91,6 +92,19 @@ describe("applyConfigUpdate", () => {
       field: "activeScene",
       reason: "disk full",
     });
+  });
+});
+
+describe("confirmNewSessionSettingChange", () => {
+  it("uses the provided confirmation message", () => {
+    const confirm = vi.fn(() => true);
+
+    expect(confirmNewSessionSettingChange("Start a new session?", confirm)).toBe(true);
+    expect(confirm).toHaveBeenCalledWith("Start a new session?");
+  });
+
+  it("returns false when the user cancels", () => {
+    expect(confirmNewSessionSettingChange("Start a new session?", () => false)).toBe(false);
   });
 });
 

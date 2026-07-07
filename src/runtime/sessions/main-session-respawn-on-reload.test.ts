@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  consumePersonaGoodbyeMainRespawnPending,
+  consumeMainSessionRespawnPending,
   filterRestoredSessionsForMainRespawn,
-  markPersonaGoodbyeMainRespawnPending,
+  markMainSessionRespawnPending,
 } from "./main-session-respawn-on-reload";
 import type { SessionDescriptor, SessionId } from "./types";
 
@@ -33,15 +33,15 @@ function memoryStorage() {
   };
 }
 
-describe("persona goodbye main respawn reload flag", () => {
+describe("main session respawn reload flag", () => {
   it("marks and consumes the pending main respawn once", () => {
     const storage = memoryStorage();
 
-    expect(consumePersonaGoodbyeMainRespawnPending(storage)).toBe(false);
-    markPersonaGoodbyeMainRespawnPending(storage);
+    expect(consumeMainSessionRespawnPending(storage)).toBe(false);
+    markMainSessionRespawnPending(storage);
 
-    expect(consumePersonaGoodbyeMainRespawnPending(storage)).toBe(true);
-    expect(consumePersonaGoodbyeMainRespawnPending(storage)).toBe(false);
+    expect(consumeMainSessionRespawnPending(storage)).toBe(true);
+    expect(consumeMainSessionRespawnPending(storage)).toBe(false);
   });
 
   it("filters only the main session descriptor when respawn is pending", () => {

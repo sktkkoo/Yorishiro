@@ -654,7 +654,7 @@ fn parse_command_markdown(content: &str) -> (String, String) {
     (description, body)
 }
 
-fn rewrite_charm_slash_commands_for_codex(input: &str) -> String {
+fn rewrite_yori_slash_commands_for_codex(input: &str) -> String {
     let mut out = input.to_string();
     for (slash, skill) in [
         ("/yori:create", "$yori-create"),
@@ -674,7 +674,7 @@ fn rewrite_charm_slash_commands_for_codex(input: &str) -> String {
 fn convert_command_to_codex_skill(content: &str, command_name: &str) -> String {
     let (description, body) = parse_command_markdown(content);
     let skill_name = format!("yori-{}", command_name);
-    let body = rewrite_charm_slash_commands_for_codex(&body);
+    let body = rewrite_yori_slash_commands_for_codex(&body);
 
     if description.is_empty() {
         format!(
@@ -3405,7 +3405,7 @@ mod localized_plugin_dir_tests {
     }
 
     #[test]
-    fn convert_command_rewrites_slash_charm_refs_for_codex_skill() {
+    fn convert_command_rewrites_slash_yori_refs_for_codex_skill() {
         let input = "---\ndescription: Help\n---\n\n$ARGUMENTS\n\n---\n\nUse /yori:create, /yori:update, or /yori:*.";
         let result = convert_command_to_codex_skill(input, "help");
         assert!(result.contains("$yori-create"));
