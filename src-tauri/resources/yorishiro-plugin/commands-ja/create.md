@@ -269,20 +269,20 @@ export default {
 };
 ```
 
-5. 切り替える場合は `~/.yorishiro/config.json` を直接編集しない。下記「別れの儀式つき切替」を行う
+5. 切り替える場合は `~/.yorishiro/config.json` を直接編集しない。下記「お別れして切り替える」を行う
 6. 作るだけで切り替えない場合は、作成完了を短く伝える
 
-### 別れの儀式つき切替
+### お別れして切り替える
 
-新規 persona 作成後にそのまま切り替える場合は、今の住人として別れを済ませてから `persona_farewell_switch` を呼ぶ。`primaryPersona` を直接書き換えない。
+新規 persona 作成後にそのまま切り替える場合は、今の住人としてお別れを言ってから `persona_goodbye_switch` を呼ぶ。`primaryPersona` を直接書き換えない。
 
 1. `journal_read` で自分の journal を読む（必要なら `days` を広めに取る）
 2. 具体的な思い出がある場合は `ui_activate({ "id": "theater" })` で theater に入る
 3. journal の固有断片に接地した短いお別れを、今の住人の声で言う。汎用の「楽しかった」だけで済ませない
-4. `persona_farewell_switch({ "id": "<new-persona-id>" })` を呼ぶ
-5. journal に具体的断片が無い場合は、別れの言葉は挟まず `persona_farewell_switch({ "id": "<new-persona-id>" })` を呼ぶ
+4. `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
+5. journal に具体的断片が無い場合は、言葉は挟まず `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
 
-`persona_farewell_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。
+`persona_goodbye_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。
 
 ## Effect pack を書く
 

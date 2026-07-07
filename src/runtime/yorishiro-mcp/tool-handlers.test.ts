@@ -44,7 +44,7 @@ import {
   createListPacksHandler,
   createLoopAnnounceHandler,
   createPackDiagnoseHandler,
-  createPersonaFarewellSwitchHandler,
+  createPersonaGoodbyeSwitchHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
   createSceneScreenshotHandler,
@@ -2354,13 +2354,13 @@ describe("createUiActivateHandler", () => {
   });
 });
 
-describe("createPersonaFarewellSwitchHandler", () => {
+describe("createPersonaGoodbyeSwitchHandler", () => {
   it("reloads a newly created persona if needed, writes primaryPersona behind the curtain, then reports reloading", async () => {
     let config: YorishiroConfig = { ...EMPTY_CONFIG, primaryPersona: "old" };
     let personaIds: string[] = ["old"];
     const calls: string[] = [];
 
-    const handler = createPersonaFarewellSwitchHandler({
+    const handler = createPersonaGoodbyeSwitchHandler({
       updateConfig: async (update) => {
         calls.push("update-config");
         config = update(config);
@@ -2385,7 +2385,7 @@ describe("createPersonaFarewellSwitchHandler", () => {
   });
 
   it("rejects when the target persona cannot be loaded", async () => {
-    const handler = createPersonaFarewellSwitchHandler({
+    const handler = createPersonaGoodbyeSwitchHandler({
       updateConfig: vi.fn(),
       beginCurtainReload: vi.fn(),
       listPersonaIds: () => ["old"],
@@ -2398,7 +2398,7 @@ describe("createPersonaFarewellSwitchHandler", () => {
   });
 
   it("rejects empty id", async () => {
-    const handler = createPersonaFarewellSwitchHandler({
+    const handler = createPersonaGoodbyeSwitchHandler({
       updateConfig: vi.fn(),
       beginCurtainReload: vi.fn(),
       listPersonaIds: () => [],

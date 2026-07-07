@@ -278,9 +278,9 @@ pub struct UiActivateRequest {
     pub id: Option<String>,
 }
 
-/// `persona_farewell_switch` の引数。
+/// `persona_goodbye_switch` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct PersonaFarewellSwitchRequest {
+pub struct PersonaGoodbyeSwitchRequest {
     /// 新しく active にする persona pack id。
     pub id: String,
 }
@@ -940,17 +940,17 @@ impl Yorishiro {
         emit_to(&self.app_handle, "ui.activate", json!({ "id": req.id })).await
     }
 
-    /// persona 新規作成後、現 persona の別れを終えてから active persona を切り替える。
+    /// persona 新規作成後、現 persona がお別れを言ってから active persona を切り替える。
     #[tool(
-        description = "Finish a persona farewell ceremony by switching to a newly-created persona id. Call this only after the current persona has already said its grounded farewell. It persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
+        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a short goodbye grounded in journal details. It persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
     )]
-    async fn persona_farewell_switch(
+    async fn persona_goodbye_switch(
         &self,
-        Parameters(req): Parameters<PersonaFarewellSwitchRequest>,
+        Parameters(req): Parameters<PersonaGoodbyeSwitchRequest>,
     ) -> Result<CallToolResult, McpError> {
         emit_to(
             &self.app_handle,
-            "persona.farewell-switch",
+            "persona.goodbye-switch",
             json!({ "id": req.id }),
         )
         .await
@@ -1158,7 +1158,7 @@ impl ServerHandler for Yorishiro {
                 "- controls のパスは active scene pack ごとに異なる。変更前に必ず controls_get で確認\n",
                 "- bundled pack は不可変。disable_pack / enable_pack は user pack のみ\n",
                 "- scene_activate は current project ごとの永続 scene 切替。ui_activate は runtime 限定で、永続 UI 切替は config.json の activeUI\n",
-                "- persona 新規作成後にそのまま切り替える場合は、別れの言葉を言い終えてから persona_farewell_switch を使う。設定変更として明示的に変えるだけなら config.json の primaryPersona 変更でよい\n",
+                "- persona 新規作成後にそのまま切り替える場合は、お別れを言ってから persona_goodbye_switch を使う。設定変更として明示的に変えるだけなら config.json の primaryPersona 変更でよい\n",
                 "- history_restore は復元前 snapshot を残す可逆操作だが、packs/config.json/init.js を full-replace する。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
                 "- journal は機械的ログではなく情緒的な思い出を書く\n",
             ))

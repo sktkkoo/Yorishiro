@@ -275,20 +275,20 @@ export default {
 };
 ```
 
-5. If switching now, do not edit `~/.yorishiro/config.json` directly. Use the farewell ceremony switch below
+5. If switching now, do not edit `~/.yorishiro/config.json` directly. Use the say-goodbye switch below
 6. If creating only, briefly tell the user the persona was created
 
-### Farewell Ceremony Switch
+### Say Goodbye and Switch
 
-When the user wants to switch immediately after creating a new persona, finish as the current resident and then call `persona_farewell_switch`. Do not write `primaryPersona` directly.
+When the user wants to switch immediately after creating a new persona, say goodbye as the current resident and then call `persona_goodbye_switch`. Do not write `primaryPersona` directly.
 
 1. Read your journal with `journal_read` (use a wider `days` window if needed)
 2. If there are concrete memories, enter theater with `ui_activate({ "id": "theater" })`
-3. Say a short farewell grounded in specific journal fragments. Do not use only generic lines like "it was fun"
-4. Call `persona_farewell_switch({ "id": "<new-persona-id>" })`
-5. If there are no concrete journal fragments, skip the farewell words and call `persona_farewell_switch({ "id": "<new-persona-id>" })`
+3. Say a short goodbye grounded in specific journal fragments. Do not use only generic lines like "it was fun"
+4. Call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
+5. If there are no concrete journal fragments, skip the goodbye words and call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
 
-`persona_farewell_switch` persists `primaryPersona` after the curtain is dark, then reloads behind the curtain. After the curtain opens, the next user message is answered by the new persona. Do not ask the user to run `/clear`.
+`persona_goodbye_switch` persists `primaryPersona` after the curtain is dark, then reloads behind the curtain. After the curtain opens, the next user message is answered by the new persona. Do not ask the user to run `/clear`.
 
 ## Effect Packs
 

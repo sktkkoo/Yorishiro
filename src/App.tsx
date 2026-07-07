@@ -1724,7 +1724,7 @@ function App() {
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
-          createPersonaFarewellSwitchHandler,
+          createPersonaGoodbyeSwitchHandler,
           // Screenshot:
           createSceneScreenshotHandler,
           // Presence intensity:
@@ -2038,7 +2038,7 @@ function App() {
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
           }),
-          "persona.farewell-switch": createPersonaFarewellSwitchHandler({
+          "persona.goodbye-switch": createPersonaGoodbyeSwitchHandler({
             updateConfig: updateConfigForMcp,
             beginCurtainReload,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),

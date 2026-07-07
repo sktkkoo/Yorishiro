@@ -1735,10 +1735,10 @@ export function createUiActivateHandler(deps: UiActivateDeps) {
 }
 
 /* ──────────────────────────────────────────────────────────
- * persona.farewell-switch
+ * persona.goodbye-switch
  * ────────────────────────────────────────────────────────── */
 
-export interface PersonaFarewellSwitchDeps {
+export interface PersonaGoodbyeSwitchDeps {
   readonly updateConfig: (
     update: (current: YorishiroConfig) => YorishiroConfig,
   ) => Promise<unknown>;
@@ -1747,13 +1747,13 @@ export interface PersonaFarewellSwitchDeps {
   readonly reloadPack: (id: string) => Promise<{ ok: boolean; reason?: string }>;
 }
 
-export interface PersonaFarewellSwitchResult {
+export interface PersonaGoodbyeSwitchResult {
   readonly active: string;
   readonly reloading: true;
 }
 
-export function createPersonaFarewellSwitchHandler(deps: PersonaFarewellSwitchDeps) {
-  return async (request: unknown): Promise<PersonaFarewellSwitchResult> => {
+export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps) {
+  return async (request: unknown): Promise<PersonaGoodbyeSwitchResult> => {
     const r = requestRecord(request);
     const id = r.id;
     if (typeof id !== "string" || id === "") {
