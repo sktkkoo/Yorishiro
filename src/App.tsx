@@ -199,7 +199,10 @@ import type {
 } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
+  consumePersonaGoodbyeMainRespawnPending,
   DEFAULT_SESSION_ID,
+  filterRestoredSessionsForMainRespawn,
+  markPersonaGoodbyeMainRespawnPending,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
@@ -2041,6 +2044,7 @@ function App() {
           "persona.goodbye-switch": createPersonaGoodbyeSwitchHandler({
             updateConfig: updateConfigForMcp,
             beginCurtainReload,
+            markMainSessionRespawnPending: markPersonaGoodbyeMainRespawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
           }),
@@ -2408,7 +2412,16 @@ function App() {
     sessionList()
       .then((descriptors) => {
         if (cancelled) return;
-        tabManager.restoreSessions(descriptors, preferredActiveSessionIdRef.current ?? null);
+        const shouldRespawnMain = consumePersonaGoodbyeMainRespawnPending();
+        const restoredDescriptors = filterRestoredSessionsForMainRespawn(
+          descriptors,
+          DEFAULT_SESSION_ID,
+          shouldRespawnMain,
+        );
+        tabManager.restoreSessions(
+          restoredDescriptors,
+          preferredActiveSessionIdRef.current ?? null,
+        );
       })
       .catch((err) => {
         console.warn("[session-tabs] failed to restore sessions after reload:", err);

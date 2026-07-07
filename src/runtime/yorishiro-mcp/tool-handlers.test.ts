@@ -2369,6 +2369,9 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
         calls.push("curtain");
         await prepareReload?.();
       },
+      markMainSessionRespawnPending: () => {
+        calls.push("mark-main-respawn");
+      },
       listPersonaIds: () => personaIds,
       reloadPack: async (id) => {
         calls.push(`reload:${id}`);
@@ -2381,13 +2384,14 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
 
     expect(result).toEqual({ active: "new-persona", reloading: true });
     expect(config.primaryPersona).toBe("new-persona");
-    expect(calls).toEqual(["reload:new-persona", "curtain", "update-config"]);
+    expect(calls).toEqual(["reload:new-persona", "curtain", "update-config", "mark-main-respawn"]);
   });
 
   it("rejects when the target persona cannot be loaded", async () => {
     const handler = createPersonaGoodbyeSwitchHandler({
       updateConfig: vi.fn(),
       beginCurtainReload: vi.fn(),
+      markMainSessionRespawnPending: vi.fn(),
       listPersonaIds: () => ["old"],
       reloadPack: async () => ({ ok: false, reason: "pack file not found" }),
     });
@@ -2401,6 +2405,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
     const handler = createPersonaGoodbyeSwitchHandler({
       updateConfig: vi.fn(),
       beginCurtainReload: vi.fn(),
+      markMainSessionRespawnPending: vi.fn(),
       listPersonaIds: () => [],
       reloadPack: vi.fn(),
     });

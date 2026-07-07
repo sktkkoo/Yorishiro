@@ -1743,6 +1743,7 @@ export interface PersonaGoodbyeSwitchDeps {
     update: (current: YorishiroConfig) => YorishiroConfig,
   ) => Promise<unknown>;
   readonly beginCurtainReload: (prepareReload?: () => void | Promise<void>) => Promise<void>;
+  readonly markMainSessionRespawnPending: () => void;
   readonly listPersonaIds: () => ReadonlyArray<string>;
   readonly reloadPack: (id: string) => Promise<{ ok: boolean; reason?: string }>;
 }
@@ -1774,6 +1775,7 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
 
     await deps.beginCurtainReload(async () => {
       await deps.updateConfig((cur) => withPrimaryPersonaSet(cur, id));
+      deps.markMainSessionRespawnPending();
     });
 
     return { active: id, reloading: true };

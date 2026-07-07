@@ -13,6 +13,11 @@ export {
   resolveInterruptProtectionModeForSpawnSpec,
 } from "./agent-runtime-policy";
 export {
+  consumePersonaGoodbyeMainRespawnPending,
+  filterRestoredSessionsForMainRespawn,
+  markPersonaGoodbyeMainRespawnPending,
+} from "./main-session-respawn-on-reload";
+export {
   getBundledProfile,
   listAvailableProfiles,
   listBundledProfiles,
