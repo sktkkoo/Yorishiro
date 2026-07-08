@@ -169,8 +169,9 @@ export interface PendingNewSessionChange {
 
 /**
  * 確認ダイアログの文言を操作種別ごとに解決する。伝えるのは「新しいセッション」という
- * システム語ではなく会話の行き先：persona はお別れ（引き継がない）、agent は区切り
- * （戻れば続きから）、voice は継続。文言の使い分けは strings.ts 側の doc も参照。
+ * システム語ではなく会話の行き先：persona は新しく始まる（引き継がない）、agent は
+ * 区切り（戻れば続きから）、voice は継続。お別れの儀式は新規ペルソナ作成時の
+ * goodbye switch（MCP 経路）だけで、ここは軽い確認に留める。strings.ts の doc も参照。
  */
 export function resolveNewSessionConfirm(
   strings: UiStrings,
@@ -2263,7 +2264,6 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     if (next === persona) return;
     requestNewSessionChange({
       kind: "persona",
-      currentLabel: personaLabelById(personaSelectValue),
       nextLabel: personaLabelById(selectedId),
       run: () => {
         void applyConfigUpdate({

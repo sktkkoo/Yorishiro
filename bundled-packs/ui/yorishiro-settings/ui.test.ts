@@ -171,24 +171,17 @@ describe("resolveNewSessionConfirm", () => {
   const en = getStrings("en");
   const kinds: readonly NewSessionChangeKind[] = ["persona", "agent", "voice"];
 
-  it("persona: goodbye wording with both display names, no carry-over", () => {
-    const r = resolveNewSessionConfirm(ja, {
-      kind: "persona",
-      currentLabel: "CLAI",
-      nextLabel: "Mint",
-    });
-    expect(r.message).toBe("CLAI とお別れして、Mint を迎えます。いまの会話は引き継がれません。");
-    expect(r.confirmLabel).toBe("お別れして切り替える");
+  it("persona: light switch wording — the conversation starts fresh, no goodbye ceremony", () => {
+    // お別れの儀式は新規ペルソナ作成時の goodbye switch（MCP 経路）だけ。
+    // 既存ペルソナ間の切替は軽い確認に留める。
+    const r = resolveNewSessionConfirm(ja, { kind: "persona", nextLabel: "Mint" });
+    expect(r.message).toBe("Mint に切り替えます。会話は新しく始まります。");
+    expect(r.confirmLabel).toBe("切り替える");
+    expect(r.message).not.toContain("お別れ");
 
-    const rEn = resolveNewSessionConfirm(en, {
-      kind: "persona",
-      currentLabel: "CLAI",
-      nextLabel: "Mint",
-    });
-    expect(rEn.message).toBe(
-      "Say goodbye to CLAI and welcome Mint. The current conversation will not carry over.",
-    );
-    expect(rEn.confirmLabel).toBe("Say Goodbye and Switch");
+    const rEn = resolveNewSessionConfirm(en, { kind: "persona", nextLabel: "Mint" });
+    expect(rEn.message).toBe("Switch to Mint. The conversation starts fresh.");
+    expect(rEn.confirmLabel).toBe("Switch");
   });
 
   it("agent: pause wording with both agent names and a resume hint", () => {
@@ -210,7 +203,7 @@ describe("resolveNewSessionConfirm", () => {
     expect(resolveNewSessionConfirm(en, { kind: "voice" }).confirmLabel).toBe("Restart");
   });
 
-  it("leaves no unreplaced placeholders and uses a distinct verb per kind", () => {
+  it("leaves no unreplaced placeholders and avoids the generic continue button", () => {
     for (const strings of [ja, en]) {
       const resolved = kinds.map((kind) =>
         resolveNewSessionConfirm(strings, { kind, currentLabel: "A", nextLabel: "B" }),
@@ -218,9 +211,9 @@ describe("resolveNewSessionConfirm", () => {
       for (const r of resolved) {
         expect(r.message).not.toMatch(/[{}]/);
         expect(r.confirmLabel.length).toBeGreaterThan(0);
+        // ボタンは操作の動詞。generic な「続ける / Continue」には縮退しない。
+        expect(["続ける", "Continue"]).not.toContain(r.confirmLabel);
       }
-      // 操作ごとにボタンの動詞が違う（generic な「続ける」に縮退していない）。
-      expect(new Set(resolved.map((r) => r.confirmLabel)).size).toBe(kinds.length);
     }
   });
 });

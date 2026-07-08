@@ -40,9 +40,10 @@ export interface UiStrings {
   readonly voiceOff: string;
   /**
    * セッション再起動を伴う設定変更の確認ダイアログ。「セッション」というシステム語
-   * ではなく会話の行き先を伝える：persona はお別れ（引き継がない）、agent は区切り
-   * （戻れば続きから）、voice は継続。ボタンは generic な「続ける」でなく操作の動詞。
-   * {current} / {next} は表示名で置換する。
+   * ではなく会話の行き先を伝える：persona は新しく始まる（引き継がない）、agent は
+   * 区切り（戻れば続きから）、voice は継続。ボタンは generic な「続ける」でなく操作の
+   * 動詞。お別れの儀式は新規ペルソナ作成時の goodbye switch（MCP 経路）だけで、
+   * 既存ペルソナ間の切替は軽い確認に留める。{current} / {next} は表示名で置換する。
    */
   readonly personaSwitchConfirm: string;
   readonly personaSwitchConfirmButton: string;
@@ -155,9 +156,8 @@ const EN: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  personaSwitchConfirm:
-    "Say goodbye to {current} and welcome {next}. The current conversation will not carry over.",
-  personaSwitchConfirmButton: "Say Goodbye and Switch",
+  personaSwitchConfirm: "Switch to {next}. The conversation starts fresh.",
+  personaSwitchConfirmButton: "Switch",
   agentSwitchConfirm:
     "Switch the agent to {next} and restart the session. The conversation with {current} pauses here — switching back resumes it.",
   agentSwitchConfirmButton: "Switch",
@@ -270,8 +270,8 @@ const JA: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  personaSwitchConfirm: "{current} とお別れして、{next} を迎えます。いまの会話は引き継がれません。",
-  personaSwitchConfirmButton: "お別れして切り替える",
+  personaSwitchConfirm: "{next} に切り替えます。会話は新しく始まります。",
+  personaSwitchConfirmButton: "切り替える",
   agentSwitchConfirm:
     "agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）。",
   agentSwitchConfirmButton: "切り替える",
