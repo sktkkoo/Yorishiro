@@ -335,4 +335,6 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 The MIT license covers the source code only. The name "Yorishiro" and its icon/logo are trademarks of the author and are not licensed under MIT. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Yorishiro" name or icon for your fork in a way that could cause confusion about its origin.
 
+The bundled character **CLAI** (character design and VRM model) is also not covered by MIT. Fan art, clips, and streams are welcome — see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md) for what you can do with the character, and [`CREDITS.md`](CREDITS.md) for rights details.
+
 ---
