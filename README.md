@@ -144,7 +144,7 @@ Yorishiro stores all user data in `~/.yorishiro/`:
 
 Switch persona, scene, terminal agent, and more from the settings screen or `config.json`. See [`docs/configuration.md`](docs/configuration.md) for details.
 
-`init.js` is Yorishiro's equivalent of Emacs's `init.el` — a startup script for customizations too small to be a pack: registering keyboard shortcuts, firing effects, or defining a small persona or effect inline. It re-runs automatically on save.
+`init.js` is Yorishiro's equivalent of Emacs's `init.el` — a startup script for customizations too small to be a pack: registering keyboard shortcuts, writing and firing small effects inline, switching UI, and wiring little macros. It re-runs automatically on save.
 
 For recovery paths, safe mode, and issue report details, see [`docs/troubleshooting.md`](docs/troubleshooting.md).
 

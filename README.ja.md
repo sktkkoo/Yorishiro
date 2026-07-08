@@ -145,7 +145,7 @@ Yorishiroのユーザーデータは`~/.yorishiro/`に保存されます：
 
 persona・scene・terminal agentなどは、設定画面からも`config.json`からも切り替えられます。詳細は[`docs/configuration.md`](docs/configuration.md)。
 
-`init.js`はEmacsの`init.el`にあたる起動スクリプトです。packにするまでもない小さなカスタマイズ——キーボードショートカットの登録、エフェクトの発火、小さなpersonaやeffectのインライン定義など——を書く場所で、保存すると自動で再実行されます。
+`init.js`はEmacsの`init.el`にあたる起動スクリプトです。キーボードショートカットの登録、小さなエフェクトの直書きと発火、UIの切り替えなど、packを作るまでもないカスタマイズやちょっとしたマクロを書く場所で、保存すると自動で再実行されます。
 
 復旧手順、safe mode、issue報告時に必要な情報は[`docs/troubleshooting.ja.md`](docs/troubleshooting.ja.md)を参照してください。
 
