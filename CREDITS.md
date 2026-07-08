@@ -81,6 +81,8 @@ Copyright in this model has been transferred to the Yorishiro project. Moral rig
 
 **License (as embedded in the CLAI.vrm metadata):** Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
 
+For what you can do with the CLAI character (fan art, clips, streams, and more), see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md).
+
 We are deeply grateful for the exceptional design and craftsmanship that brings CLAI to life.
 
 > LUCAS is not affiliated with the Yorishiro project in any way.

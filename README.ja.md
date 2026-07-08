@@ -323,4 +323,6 @@ buildを公開する前のsmoke testには[`docs/release-checklist.md`](docs/rel
 
 MITライセンスが許諾するのはソースコード（著作権）のみで、商標権は含みません。「Yorishiro」の名称およびアイコン/ロゴは作者の商標であり、MITライセンスの対象には含まれません。コードはMITの条件で自由にfork・再配布できますが、forkに「Yorishiro」の名称やアイコンを用いて出自を誤認させるような使い方はお控えください。
 
+同梱キャラクター **CLAI**（キャラクターデザイン・VRMモデル）もMITライセンスの対象外です。ファンアート・クリップ・配信は歓迎です——キャラクターの利用については [`CHARACTER_GUIDELINES.ja.md`](CHARACTER_GUIDELINES.ja.md) を、権利の詳細は [`CREDITS.ja.md`](CREDITS.ja.md) を参照してください。
+
 ---
