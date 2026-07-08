@@ -44,6 +44,7 @@ import {
   createListPacksHandler,
   createLoopAnnounceHandler,
   createPackDiagnoseHandler,
+  createPersonaGoodbyeSwitchHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
   createSceneScreenshotHandler,
@@ -2352,6 +2353,66 @@ describe("createUiActivateHandler", () => {
   it("rejects when id field is omitted", async () => {
     const handler = createUiActivateHandler({ registry: makeRegistry() });
     await expect(handler({})).rejects.toThrow("id must be non-empty string or null");
+  });
+});
+
+describe("createPersonaGoodbyeSwitchHandler", () => {
+  it("reloads a newly created persona if needed, writes primaryPersona behind the curtain, then reports reloading", async () => {
+    let config: YorishiroConfig = { ...EMPTY_CONFIG, primaryPersona: "old" };
+    let personaIds: string[] = ["old"];
+    const calls: string[] = [];
+
+    const handler = createPersonaGoodbyeSwitchHandler({
+      updateConfig: async (update) => {
+        calls.push("update-config");
+        config = update(config);
+      },
+      beginCurtainReload: async (prepareReload) => {
+        calls.push("curtain");
+        await prepareReload?.();
+      },
+      markMainSessionRespawnPending: () => {
+        calls.push("mark-main-respawn");
+      },
+      listPersonaIds: () => personaIds,
+      reloadPack: async (id) => {
+        calls.push(`reload:${id}`);
+        personaIds = [...personaIds, id];
+        return { ok: true };
+      },
+    });
+
+    const result = await handler({ id: "new-persona" });
+
+    expect(result).toEqual({ active: "new-persona", reloading: true });
+    expect(config.primaryPersona).toBe("new-persona");
+    expect(calls).toEqual(["reload:new-persona", "curtain", "update-config", "mark-main-respawn"]);
+  });
+
+  it("rejects when the target persona cannot be loaded", async () => {
+    const handler = createPersonaGoodbyeSwitchHandler({
+      updateConfig: vi.fn(),
+      beginCurtainReload: vi.fn(),
+      markMainSessionRespawnPending: vi.fn(),
+      listPersonaIds: () => ["old"],
+      reloadPack: async () => ({ ok: false, reason: "pack file not found" }),
+    });
+
+    await expect(handler({ id: "missing" })).rejects.toThrow(
+      "persona 'missing' is not loadable: pack file not found",
+    );
+  });
+
+  it("rejects empty id", async () => {
+    const handler = createPersonaGoodbyeSwitchHandler({
+      updateConfig: vi.fn(),
+      beginCurtainReload: vi.fn(),
+      markMainSessionRespawnPending: vi.fn(),
+      listPersonaIds: () => [],
+      reloadPack: vi.fn(),
+    });
+
+    await expect(handler({ id: "" })).rejects.toThrow("id must be a non-empty string");
   });
 });
 

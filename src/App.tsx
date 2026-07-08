@@ -29,6 +29,7 @@ import {
   prepareLocalizedPluginDir,
   ptyWrite,
   type SpawnSpec,
+  sessionDestroy,
   sessionList,
   sessionRefreshTheme,
   snapshotCreate,
@@ -201,15 +202,25 @@ import type {
 } from "./runtime/session-tabs";
 import { installTabKeybindings, SessionTabManager } from "./runtime/session-tabs";
 import {
+  consumeMainSessionRespawnMode,
   DEFAULT_SESSION_ID,
+  filterRestoredSessionsForMainRespawn,
+  markMainSessionFreshSpawnPending,
+  markMainSessionRespawnPending,
+  normalizePersonaForGate,
+  parseSessionPersonaRecords,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
   type SessionId,
+  serializeSessionPersonaRecords,
+  shouldAllowPersonaResume,
+  withSessionPersonaRecord,
 } from "./runtime/sessions";
 import {
   spawnSpecFromDefaultProfile,
+  withAgentResumePolicy,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
@@ -259,7 +270,9 @@ import {
 } from "./runtime/user-pack-loader/init-changed-title";
 import {
   readLastStartupReport,
+  readSessionPersonasText,
   readYorishiroConfigText,
+  writeSessionPersonasText,
   writeYorishiroConfigText,
 } from "./runtime/user-pack-loader/yorishiro-io";
 import {
@@ -881,6 +894,10 @@ function App() {
 
   const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
   const [homeDir, setHomeDir] = useState<string | null>(null);
+  // Persona resume gate（session-persona-gate.ts）の判定結果。boot Step 2 が
+  // isUserLayerReady より先に書き、session restore effect が respawn mode と
+  // AND で消費する。false 側（resume 抑止）にしか倒さない。
+  const personaResumeBlockedRef = useRef(false);
   const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
   const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
@@ -1544,6 +1561,44 @@ function App() {
         );
         uiPackRegistry.setActiveUi(config.activeUi);
         syncAmbientUiActiveSet(config.activeAmbientUi);
+        // ─ Persona resume gate ─
+        // per (agent, place) で最後に spawn した persona を記録し、変わっていたら
+        // main session の resume を止める（他 agent / 他 folder に残った旧 persona
+        // のスレッドを蘇らせない）。失敗は resume 許可側に倒し boot を止めない。
+        try {
+          const gatePersona = normalizePersonaForGate(config.primaryPersona);
+          const gatePlace = projectRootValue(projectRoot) ?? resolvedProjectFolder ?? "default";
+          const records = parseSessionPersonaRecords(await readSessionPersonasText());
+          const resumeAllowed = shouldAllowPersonaResume(records, {
+            agent: terminalAgent,
+            place: gatePlace,
+            persona: gatePersona,
+          });
+          personaResumeBlockedRef.current = !resumeAllowed;
+          await writeSessionPersonasText(
+            serializeSessionPersonaRecords(
+              withSessionPersonaRecord(records, {
+                agent: terminalAgent,
+                place: gatePlace,
+                persona: gatePersona,
+                resumeAllowed,
+                at: new Date().toISOString(),
+              }),
+            ),
+          );
+          if (!resumeAllowed) {
+            appLog.write({
+              phase: "register",
+              note: `persona changed since last spawn for (${terminalAgent}); disabling agent resume`,
+            });
+          }
+        } catch (err) {
+          appLog.write({
+            phase: "register",
+            note: "persona resume gate check failed; falling back to resume",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -1753,6 +1808,7 @@ function App() {
           // Phase: active pack switching
           createSceneActivateHandler,
           createUiActivateHandler,
+          createPersonaGoodbyeSwitchHandler,
           // Screenshot:
           createSceneScreenshotHandler,
           // Presence intensity:
@@ -2066,6 +2122,13 @@ function App() {
           "ui.activate": createUiActivateHandler({
             registry: uiPackRegistry,
           }),
+          "persona.goodbye-switch": createPersonaGoodbyeSwitchHandler({
+            updateConfig: updateConfigForMcp,
+            beginCurtainReload,
+            markMainSessionRespawnPending: markMainSessionFreshSpawnPending,
+            listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
+            reloadPack,
+          }),
           // ── Screenshot ────────────────────────────────────
           "scene.screenshot": createSceneScreenshotHandler({
             getCamera: () => getThreeRuntime().getCamera(),
@@ -2256,6 +2319,7 @@ function App() {
   const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(isUserLayerReady);
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
+  const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
   // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
   const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
     undefined,
@@ -2427,17 +2491,36 @@ function App() {
     if (!isUserLayerReady) return;
     let cancelled = false;
 
-    sessionList()
-      .then((descriptors) => {
+    void (async () => {
+      try {
+        const descriptors = await sessionList();
         if (cancelled) return;
-        tabManager.restoreSessions(descriptors, preferredActiveSessionIdRef.current ?? null);
-      })
-      .catch((err) => {
+        const respawnMode = consumeMainSessionRespawnMode();
+        const shouldRespawnMain = respawnMode !== "none";
+        // persona gate（boot Step 2 で確定済み）は resume 抑止側にのみ効かせる。
+        setMainSessionResumeEnabled(respawnMode !== "fresh" && !personaResumeBlockedRef.current);
+        if (shouldRespawnMain) {
+          try {
+            await sessionDestroy({ sessionId: DEFAULT_SESSION_ID });
+          } catch (err) {
+            console.warn("[session-tabs] failed to destroy main session before respawn:", err);
+          }
+        }
+        const restoredDescriptors = filterRestoredSessionsForMainRespawn(
+          descriptors,
+          DEFAULT_SESSION_ID,
+          shouldRespawnMain,
+        );
+        tabManager.restoreSessions(
+          restoredDescriptors,
+          preferredActiveSessionIdRef.current ?? null,
+        );
+      } catch (err) {
         console.warn("[session-tabs] failed to restore sessions after reload:", err);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setIsSessionRestoreReady(true);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
@@ -2456,7 +2539,7 @@ function App() {
       if (sessionId !== DEFAULT_SESSION_ID) {
         return { kind: "shell", integration: true };
       }
-      return withAgentRuntimeFields(
+      const spec = withAgentRuntimeFields(
         defaultSpec ?? {
           kind: "agent",
           agent: terminalAgent,
@@ -2464,8 +2547,15 @@ function App() {
         resolvedSystemPrompt ?? null,
         localizedPluginDir,
       );
+      return withAgentResumePolicy(spec, mainSessionResumeEnabled);
     },
-    [defaultSpec, terminalAgent, resolvedSystemPrompt, localizedPluginDir],
+    [
+      defaultSpec,
+      terminalAgent,
+      resolvedSystemPrompt,
+      localizedPluginDir,
+      mainSessionResumeEnabled,
+    ],
   );
   const getSessionCwd = useCallback(
     (sessionId: SessionId) => tabManager.getSessionLaunchCwd(sessionId),
@@ -3145,17 +3235,19 @@ function App() {
           },
           getHealthReport: collectAppHealthReport,
           setPrimaryPersona: async (id) => {
-            await updateConfig({ primaryPersona: id });
-            personaRegistry.setPrimaryPersona(
-              resolvePrimaryPersonaForLanguage(id, appLanguageRef.current.resolved),
-            );
+            await beginCurtainReload(async () => {
+              await updateConfig({ primaryPersona: id });
+              markMainSessionFreshSpawnPending();
+            });
           },
           setActiveScene: async (id) => {
             await setActiveSceneFromUserSelection(id);
           },
           setTerminalAgent: async (agent) => {
-            await updateConfig({ terminalAgent: agent });
-            // terminalAgent は既存セッションに反映しない仕様（仕様書通り）
+            await beginCurtainReload(async () => {
+              await updateConfig({ terminalAgent: agent });
+              markMainSessionRespawnPending();
+            });
           },
           setAmbientAudioMuted: async (muted) => {
             await updateConfig({ ambientAudioMuted: muted });
@@ -3198,7 +3290,12 @@ function App() {
               );
             });
           },
-          setVoiceFrequency: (voiceFrequency) => updateConfig({ voiceFrequency }),
+          setVoiceFrequency: async (voiceFrequency) => {
+            await beginCurtainReload(async () => {
+              await updateConfig({ voiceFrequency });
+              markMainSessionRespawnPending();
+            });
+          },
           setTabMetadataBadges: async (enabled) => {
             await updateConfig({ tabMetadataBadges: enabled });
             setTabMetadataBadgesEnabled(enabled);
@@ -3399,6 +3496,7 @@ function App() {
     enqueueConfigWrite,
     updateYorishiroConfig,
     updateConfig,
+    beginCurtainReload,
     setActiveSceneFromUserSelection,
   ]);
 

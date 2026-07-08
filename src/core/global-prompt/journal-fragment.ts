@@ -1,8 +1,7 @@
 /**
  * Journal フラグメント。
  *
- * journal の行動指針と memories.md の内容をグローバル system prompt に注入する。
- * どの persona であっても journal を書く。
+ * active persona の journal 行動指針と memories.md の内容を system prompt に注入する。
  */
 
 import { invoke } from "@tauri-apps/api/core";

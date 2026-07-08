@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolvePackRepairPrompt } from "../../../src/i18n/strings";
+import { getStrings, resolvePackRepairPrompt } from "../../../src/i18n/strings";
 import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
@@ -9,14 +9,17 @@ import {
   EXPERIMENTAL_AGENT_IDS,
   filterPersonaOptionsForLanguage,
   localizedAgentOptions,
+  type NewSessionChangeKind,
   packWorkbenchKey,
   resolveCloseTarget,
+  resolveNewSessionConfirm,
   resolvePersonaSelectValue,
   resolveSceneSelectValue,
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
   summarizePackDiagnosis,
   TERMINAL_AGENT_OPTIONS,
+  terminalAgentLabel,
 } from "./ui";
 
 describe("resolveCloseTarget", () => {
@@ -175,6 +178,66 @@ describe("terminal agent options", () => {
     expect(byId.get("claude")).toBe("Claude Code");
     expect(byId.get("codex")).toBe("Codex（experimental）");
     expect(byId.has("opencode")).toBe(false);
+  });
+
+  it("resolves dialog labels from the options table and falls back to raw ids", () => {
+    // 確認ダイアログの agent 名は TERMINAL_AGENT_OPTIONS から引く。agent が増えても
+    // 表に足すだけで文言に流れ、未知 id でも壊れず raw id を表示する。
+    expect(terminalAgentLabel("claude")).toBe("Claude Code");
+    expect(terminalAgentLabel("codex")).toBe("Codex");
+    expect(terminalAgentLabel("some-future-agent")).toBe("some-future-agent");
+  });
+});
+
+describe("resolveNewSessionConfirm", () => {
+  const ja = getStrings("ja");
+  const en = getStrings("en");
+  const kinds: readonly NewSessionChangeKind[] = ["persona", "agent", "voice"];
+
+  it("persona: light switch wording — the conversation starts fresh, no goodbye ceremony", () => {
+    // お別れの儀式は新規ペルソナ作成時の goodbye switch（MCP 経路）だけ。
+    // 既存ペルソナ間の切替は軽い確認に留める。
+    const r = resolveNewSessionConfirm(ja, { kind: "persona", nextLabel: "Mint" });
+    expect(r.message).toBe("Mint に切り替えます。会話は新しく始まります。");
+    expect(r.confirmLabel).toBe("切り替える");
+    expect(r.message).not.toContain("お別れ");
+
+    const rEn = resolveNewSessionConfirm(en, { kind: "persona", nextLabel: "Mint" });
+    expect(rEn.message).toBe("Switch to Mint. The conversation starts fresh.");
+    expect(rEn.confirmLabel).toBe("Switch");
+  });
+
+  it("agent: pause wording with both agent names and a resume hint", () => {
+    const r = resolveNewSessionConfirm(ja, {
+      kind: "agent",
+      currentLabel: "Claude Code",
+      nextLabel: "Codex",
+    });
+    expect(r.message).toContain("Main Agent を Codex に切り替えて再起動");
+    expect(r.message).toContain("Claude Code との会話はいったん区切り");
+    expect(r.message).toContain("続きから再開");
+    expect(r.confirmLabel).toBe("切り替える");
+  });
+
+  it("voice: restart wording that promises the conversation continues", () => {
+    const r = resolveNewSessionConfirm(ja, { kind: "voice" });
+    expect(r.message).toBe("反映のためにセッションを再起動します。会話は続きから再開します。");
+    expect(r.confirmLabel).toBe("再起動する");
+    expect(resolveNewSessionConfirm(en, { kind: "voice" }).confirmLabel).toBe("Restart");
+  });
+
+  it("leaves no unreplaced placeholders and avoids the generic continue button", () => {
+    for (const strings of [ja, en]) {
+      const resolved = kinds.map((kind) =>
+        resolveNewSessionConfirm(strings, { kind, currentLabel: "A", nextLabel: "B" }),
+      );
+      for (const r of resolved) {
+        expect(r.message).not.toMatch(/[{}]/);
+        expect(r.confirmLabel.length).toBeGreaterThan(0);
+        // ボタンは操作の動詞。generic な「続ける / Continue」には縮退しない。
+        expect(["続ける", "Continue"]).not.toContain(r.confirmLabel);
+      }
+    }
   });
 });
 

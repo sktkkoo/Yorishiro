@@ -275,20 +275,20 @@ export default {
 };
 ```
 
-5. If switching now, update `~/.yorishiro/config.json` with `"primaryPersona": "<id>"`
-6. After completion, tell the user a new session is needed
+5. If switching now, do not edit `~/.yorishiro/config.json` directly. Use the say-goodbye switch below
+6. If creating only, briefly tell the user the persona was created
 
-### Session Restart Required
+### Say Goodbye and Switch
 
-Yorishiro itself hot reloads the persona and reflex layer. However, the running Claude Code / Codex terminal keeps the old speaking prompt. Yorishiro does not write into an already-running observed PTY session, so the user must start a new session.
+When the user wants to switch immediately after creating a new persona, say goodbye as the current resident and then call `persona_goodbye_switch`. Do not write `primaryPersona` directly.
 
-After persona work, always explain this in the resident's own voice. Avoid technical terms like `systemPrompt`, `PTY`, or `observation-only`.
+1. Read your journal with `journal_read` (use a wider `days` window if needed)
+2. If there are concrete memories, enter theater with `ui_activate({ "id": "theater" })`
+3. Say a short goodbye grounded in specific journal fragments. Do not use only generic lines like "it was fun"
+4. Call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
+5. If there are no concrete journal fragments, skip the goodbye words and call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
 
-Example shape:
-
-> To meet this new version of me, start a fresh session with `/clear`.
-
-Adapt first person and tone to the persona.
+`persona_goodbye_switch` persists `primaryPersona` after the curtain is dark, then reloads behind the curtain. After the curtain opens, the next user message is answered by the new persona. Do not ask the user to run `/clear`.
 
 ## Effect Packs
 

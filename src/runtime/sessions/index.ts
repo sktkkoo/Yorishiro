@@ -13,6 +13,13 @@ export {
   resolveInterruptProtectionModeForSpawnSpec,
 } from "./agent-runtime-policy";
 export {
+  consumeMainSessionRespawnMode,
+  filterRestoredSessionsForMainRespawn,
+  type MainSessionRespawnMode,
+  markMainSessionFreshSpawnPending,
+  markMainSessionRespawnPending,
+} from "./main-session-respawn-on-reload";
+export {
   getBundledProfile,
   listAvailableProfiles,
   listBundledProfiles,
@@ -20,6 +27,14 @@ export {
   resolveEffectiveAgent,
   resolveProfile,
 } from "./profiles";
+export {
+  normalizePersonaForGate,
+  parseSessionPersonaRecords,
+  type SessionPersonaRecords,
+  serializeSessionPersonaRecords,
+  shouldAllowPersonaResume,
+  withSessionPersonaRecord,
+} from "./session-persona-gate";
 export { getSessionRegistry, SessionRegistry } from "./session-registry";
 export type {
   SessionActivity,

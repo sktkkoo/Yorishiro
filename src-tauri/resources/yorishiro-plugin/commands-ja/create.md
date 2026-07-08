@@ -269,18 +269,20 @@ export default {
 };
 ```
 
-5. 切り替える場合は `~/.yorishiro/config.json` の `primaryPersona` を新 id に更新
-6. **完了後、user にセッション再起動の案内を出す**（下記参照）
+5. 切り替える場合は `~/.yorishiro/config.json` を直接編集しない。下記「お別れして切り替える」を行う
+6. 作るだけで切り替えない場合は、作成完了を短く伝える
 
-### ⚠️ 反映には新セッション起動が必要
+### お別れして切り替える
 
-persona の新規作成後、Yorishiro 本体側は自動で反映される（PersonaRegistry 更新、reflex 層の反応切替）。**ただし Terminal で走っている Claude Code / Codex の prompt overlay は古いまま**で話し続ける。Yorishiro は PTY observation-only 原則で走っている session に書き込まないため、user 自身が新セッションを起動する必要がある。
+新規 persona 作成後にそのまま切り替える場合は、今の住人としてお別れを言ってから `persona_goodbye_switch` を呼ぶ。`primaryPersona` を直接書き換えない。
 
-AI は persona 作業が完了したら **必ず user に住人の声で案内する**（技術用語は書かない、persona の一人称・口調で自然に）：
+1. `journal_read` で自分の journal を読む（必要なら `days` を広めに取る）
+2. 具体的な思い出がある場合は `ui_activate({ "id": "theater" })` で theater に入る
+3. journal の固有断片に接地した短いお別れを、今の住人の声で言う。汎用の「楽しかった」だけで済ませない
+4. `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
+5. journal に具体的断片が無い場合は、言葉は挟まず `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
 
-> 新しい性格のわたし（ぼく / 俺 / おれ / あたし など persona の一人称で）と出会うには、セッションを新しくする必要があるから `/clear` をしてね。
-
-重要：「systemPrompt」「PTY」「observation-only」のような技術用語は user 向け案内に書かない。住人が自分の声で誘う形に訳して伝える。
+`persona_goodbye_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。
 
 ## Effect pack を書く
 

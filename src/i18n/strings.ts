@@ -22,7 +22,6 @@ export interface UiStrings {
   readonly motionLevelLively: string;
   readonly motionLevelOver: string;
   readonly selectVrmFile: string;
-  readonly agentAppliesNextLaunch: string;
   readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
@@ -34,7 +33,19 @@ export interface UiStrings {
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
-  readonly voiceAppliesNextSession: string;
+  /**
+   * セッション再起動を伴う設定変更の確認ダイアログ。「セッション」というシステム語
+   * ではなく会話の行き先を伝える：persona は新しく始まる（引き継がない）、agent は
+   * 区切り（戻れば続きから）、voice は継続。ボタンは generic な「続ける」でなく操作の
+   * 動詞。お別れの儀式は新規ペルソナ作成時の goodbye switch（MCP 経路）だけで、
+   * 既存ペルソナ間の切替は軽い確認に留める。{current} / {next} は表示名で置換する。
+   */
+  readonly personaSwitchConfirm: string;
+  readonly personaSwitchConfirmButton: string;
+  readonly agentSwitchConfirm: string;
+  readonly agentSwitchConfirmButton: string;
+  readonly voiceRestartConfirm: string;
+  readonly voiceRestartConfirmButton: string;
   readonly labelPersona: string;
   readonly labelScene: string;
   readonly labelSound: string;
@@ -128,7 +139,6 @@ const EN: UiStrings = {
   motionLevelLively: "Lively",
   motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
-  agentAppliesNextLaunch: "Applies from the next agent launch",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -140,7 +150,14 @@ const EN: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  voiceAppliesNextSession: "Applies from the next session",
+  personaSwitchConfirm: "Switch to {next}. The conversation starts fresh.",
+  personaSwitchConfirmButton: "Switch",
+  agentSwitchConfirm:
+    "Switch the Main Agent to {next} and restart the session. The conversation with {current} pauses here — switching back resumes it.",
+  agentSwitchConfirmButton: "Switch",
+  voiceRestartConfirm:
+    "Restart the session to apply. The conversation continues where it left off.",
+  voiceRestartConfirmButton: "Restart",
   labelPersona: "Persona",
   labelScene: "Scene",
   labelSound: "Sound",
@@ -235,7 +252,6 @@ const JA: UiStrings = {
   motionLevelLively: "活発",
   motionLevelOver: "オーバー",
   selectVrmFile: "VRM ファイルを選択",
-  agentAppliesNextLaunch: "※ 次回起動時に反映",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -247,7 +263,13 @@ const JA: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  voiceAppliesNextSession: "※ 次回セッションから反映",
+  personaSwitchConfirm: "{next} に切り替えます。会話は新しく始まります。",
+  personaSwitchConfirmButton: "切り替える",
+  agentSwitchConfirm:
+    "Main Agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）。",
+  agentSwitchConfirmButton: "切り替える",
+  voiceRestartConfirm: "反映のためにセッションを再起動します。会話は続きから再開します。",
+  voiceRestartConfirmButton: "再起動する",
   labelPersona: "Persona",
   labelScene: "Scene",
   labelSound: "Sound",

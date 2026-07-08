@@ -32,7 +32,7 @@ impl TerminalAgent for ClaudeAgent {
         let mut args = Vec::new();
         let mut temp_files = Vec::new();
 
-        if self.has_existing_session(ctx.cwd) {
+        if ctx.resume && self.has_existing_session(ctx.cwd) {
             args.push("-c".to_string());
         }
 

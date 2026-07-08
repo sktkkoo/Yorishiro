@@ -39,6 +39,8 @@ export type SpawnSpec =
       readonly systemPrompt?: string | null;
       /** Claude Code plugin dir / Codex local marketplace root。未指定なら Rust 側 fallback。 */
       readonly pluginDir?: string | null;
+      /** false のとき agent 側の既存会話 resume を禁止して完全新規 session を起動する。 */
+      readonly resume?: boolean;
     }
   | {
       readonly kind: "shell";

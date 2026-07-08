@@ -105,6 +105,7 @@ Yorishiro が起動中であれば以下の MCP tool が使える。
 | `list_load_errors()` | — | 直近 load で失敗した pack の error 詳細 |
 | `enable_pack({id})` | pack id | 切り離した pack を復帰 |
 | `disable_pack({id})` | pack id | 壊れた pack を即時切り離し |
+| `persona_goodbye_switch({id})` | persona pack id | 新規 persona 作成後、お別れを言ってから active persona を切替・reload |
 
 ### UI state / パラメータ調整
 

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { spawnSpecFromDefaultProfile, withAgentRuntimeFields } from "./default-spawn-spec";
+import {
+  spawnSpecFromDefaultProfile,
+  withAgentResumePolicy,
+  withAgentRuntimeFields,
+} from "./default-spawn-spec";
 import type { SessionProfile } from "./types";
 
 const shellProfile: SessionProfile = {
@@ -67,6 +71,25 @@ describe("withAgentRuntimeFields", () => {
         "resident prompt",
         "/tmp/yorishiro-plugin",
       ),
+    ).toEqual({ kind: "shell", command: null, integration: true });
+  });
+});
+
+describe("withAgentResumePolicy", () => {
+  it("can disable agent resume for a fresh persona session", () => {
+    expect(withAgentResumePolicy({ kind: "agent", agent: "claude", command: null }, false)).toEqual(
+      {
+        kind: "agent",
+        agent: "claude",
+        command: null,
+        resume: false,
+      },
+    );
+  });
+
+  it("does not add resume policy to shell specs", () => {
+    expect(
+      withAgentResumePolicy({ kind: "shell", command: null, integration: true }, false),
     ).toEqual({ kind: "shell", command: null, integration: true });
   });
 });
