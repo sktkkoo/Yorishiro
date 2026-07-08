@@ -182,10 +182,22 @@ except Exception:
     config = {}
 
 if config.get("journalReminder", "on") != "off":
-    reminders.append("印象があれば journal_write。[感触/記憶/物語]")
+    reminders.append("印象に残った瞬間があれば journal_write。作業の要約ではなく、その日の手触りを。")
 
 if config.get("voiceFrequency", "on") != "off":
     reminders.append("応答の要点を voice_say で声に出す。声が先。")
+
+# journal callback のワンショット消費。Rust が agent spawn 時に発火判定して pending を
+# 書き、ここで一度だけ読み、口にするかは住人の判断に委ねる。消費後は削除する。
+pending_path = os.path.join(os.path.expanduser("~"), ".yorishiro", "journal", "callback-pending.txt")
+try:
+    with open(pending_path, encoding="utf-8") as f:
+        pending = f.read().strip()
+    os.remove(pending_path)
+    if pending:
+        reminders.append(pending)
+except Exception:
+    pass
 
 if not reminders:
     sys.exit(0)

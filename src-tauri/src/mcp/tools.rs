@@ -373,7 +373,7 @@ pub struct JournalWriteRequest {
     pub date: String,
     /// 書き込む内容。
     pub content: String,
-    /// 印象に残ったことの一行要約。指定すると memories.md に追記される。
+    /// 時間が経っても思い出したい一行（作業の要約ではない）。指定すると memories.md に追記される。
     pub summary: Option<String>,
 }
 
@@ -981,7 +981,7 @@ impl Yorishiro {
 
     /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。
     #[tool(
-        description = "journal にエントリを書き込む。住人の日々の記録。機械的なログではなく情緒的な思い出を書く。summary を渡すと記憶に残る"
+        description = "journal にエントリを書き込む。住人の日々の記録。作業ログではなく、その日の手触りや情景を書く。summary は時間が経っても思い出したい一行で、記憶に残る"
     )]
     async fn journal_write(
         &self,
