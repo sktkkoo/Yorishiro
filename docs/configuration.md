@@ -39,6 +39,11 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 | `motionIntensity` | `number` (`0.0`–`3.0`) | `1.0` | idle procedural motion（呼吸 / sway / head drift / posture）の振幅ノブ。`1.0` は従来どおり、`0` 付近はほぼ静止、上端は opt-in のオーバーアクション |
 | `mcpPort` | `number` | `18743` | Rust MCP server の listen port |
 | `disabledPacks` | `string[]` | `[]` | rescue 用。指定 id の user pack を load しない |
+| `journalCallback` | `"normal"`, `"rare"`, or `"off"` | `"normal"` | journal callback（セッション開始時の記憶想起）の頻度ノブ。`rare` は発火条件と cooldown を広げ、`off` で無効化。Rust 側が config.json を直接読む |
+
+### Journal callback
+
+`journalCallback` は、agent session の開始時に住人の過去の journal（`~/.yorishiro/journal/`）から記憶を最大 1 件、会話の背景情報として届ける機能の頻度ノブ。発火は決定論的ルール（ちょうど一年前 / ちょうどひと月前の記憶、数日ぶりの起動）で、届いた記憶に触れるかどうかは住人が判断する。`normal` でも発火はセッションあたり最大 1 回・1 日 1 回・同じ記憶は約 3 週間空く。
 
 ### Scene selection
 
