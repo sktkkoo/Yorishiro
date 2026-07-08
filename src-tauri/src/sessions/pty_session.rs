@@ -321,8 +321,12 @@ impl PtySession {
 
                 // journal callback の発火判定。agent session の spawn ごとに評価する
                 // ことで、app 開きっぱなし運用でも翌日の respawn で節目が拾われる。
-                // shell タブでは走らない。失敗しても spawn は止めない。
-                if let Err(e) = crate::journal::callback::evaluate_on_session_spawn() {
+                // shell タブでは走らない。pending の消費経路は Claude の
+                // UserPromptSubmit hook だけなので、hook を持たない agent
+                // （Codex 等）では評価しない。失敗しても spawn は止めない。
+                if let Err(e) = crate::journal::callback::evaluate_on_session_spawn(
+                    adapter.capabilities().lifecycle_hooks,
+                ) {
                     eprintln!("[journal-callback] 発火判定失敗: {e}");
                 }
 
