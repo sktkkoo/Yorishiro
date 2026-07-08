@@ -83,19 +83,27 @@ struct MemoryLine {
     text: String,
 }
 
-/// 発火履歴。記憶の日付と発火日のみを持つ（本文は残さない）。
+/// 発火履歴。記憶のキーと発火日のみを持つ（本文は残さない）。
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct CallbackState {
-    /// 最後に callback を発火させた日（YYYY-MM-DD）。
+    /// 最後に callback を発火させた日（YYYY-MM-DD）。発火ペースの上限は
+    /// user を callback の頻発から守る gate なので、persona を跨いで共有する。
     #[serde(default)]
     last_fired_on: Option<String>,
-    /// 記憶の日付 → その記憶を最後に発火させた日。
+    /// `<persona>|<記憶の日付>` → その記憶を最後に発火させた日。
+    /// 記憶は persona ごとの memories.md 由来なので、persona で namespace
+    /// しないと別 persona の同日付の記憶と cooldown が干渉する。
     #[serde(default)]
     fired: BTreeMap<String, String>,
-    /// 現在 pending file に載っている記憶の日付。次の評価時に pending が
-    /// まだ残っていれば（= 未消費なら）その記憶の cooldown を返金する。
+    /// 現在 pending file に載っている記憶のキー（`<persona>|<日付>`）。次の
+    /// 評価時に pending がまだ残っていれば（= 未消費なら）cooldown を返金する。
     #[serde(default)]
     pending_memory: Option<String>,
+}
+
+/// fired / pending_memory のキー。persona ごとの記憶空間を分ける。
+fn fired_key(persona: &str, memory_date: &str) -> String {
+    format!("{persona}|{memory_date}")
 }
 
 /// 発火判定の結果。
@@ -210,6 +218,7 @@ fn decide(
     today: (i64, u32, u32),
     last_shutdown_days: Option<i64>,
     knob: Knob,
+    persona: &str,
 ) -> Option<Decision> {
     if knob == Knob::Off || memories.is_empty() {
         return None;
@@ -227,7 +236,7 @@ fn decide(
     let cooled = |memory: &MemoryLine| -> bool {
         state
             .fired
-            .get(&memory.date)
+            .get(&fired_key(persona, &memory.date))
             .and_then(|fired_on| date_to_days(fired_on))
             .is_some_and(|fired| today_days - fired < knob.memory_cooldown_days())
     };
@@ -348,6 +357,9 @@ pub fn evaluate_on_session_spawn() -> Result<(), String> {
 fn evaluate_at(today: (i64, u32, u32)) -> Result<(), String> {
     let pending = pending_path()?;
     let knob = read_knob();
+    // 記憶は active persona の memories.md 由来。fired キーも同じ persona で
+    // namespace し、別 persona の同日付の記憶と cooldown が干渉しないようにする。
+    let persona = super::active_persona_id();
     let memories_text = super::read_memories().unwrap_or_default();
     let memories = parse_memories(&memories_text);
     let state_file = state_path()?;
@@ -364,18 +376,24 @@ fn evaluate_at(today: (i64, u32, u32)) -> Result<(), String> {
         }
     }
 
-    match decide(&memories, &state, today, last_shutdown_days(), knob) {
+    match decide(
+        &memories,
+        &state,
+        today,
+        last_shutdown_days(),
+        knob,
+        &persona,
+    ) {
         Some(decision) => {
             let today_str = format!("{:04}-{:02}-{:02}", today.0, today.1, today.2);
             std::fs::create_dir_all(pending.parent().unwrap())
                 .map_err(|e| format!("journal ディレクトリの作成に失敗: {}", e))?;
             std::fs::write(&pending, &decision.message)
                 .map_err(|e| format!("callback-pending.txt 書き込み失敗: {}", e))?;
-            state
-                .fired
-                .insert(decision.memory_date.clone(), today_str.clone());
+            let key = fired_key(&persona, &decision.memory_date);
+            state.fired.insert(key.clone(), today_str.clone());
             state.last_fired_on = Some(today_str);
-            state.pending_memory = Some(decision.memory_date.clone());
+            state.pending_memory = Some(key);
             eprintln!("[journal-callback] fired: {}", decision.memory_date);
         }
         None => {
@@ -420,7 +438,7 @@ mod tests {
     fn decide_off_never_fires() {
         let memories = vec![memory("2026-06-04", "節目の記憶。")];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2026, 7, 4), Some(0), Knob::Off);
+        let result = decide(&memories, &state, (2026, 7, 4), Some(0), Knob::Off, "clai");
         assert!(result.is_none());
     }
 
@@ -428,7 +446,8 @@ mod tests {
     fn decide_fires_on_month_anniversary() {
         let memories = vec![memory("2026-06-04", "ひと月前の記憶。")];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2026, 7, 4), None, Knob::Normal).expect("fires");
+        let result =
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
         assert_eq!(result.memory_date, "2026-06-04");
         assert!(result.message.contains("ちょうどひと月前"));
         assert!(result.message.contains("journal_read"));
@@ -443,7 +462,8 @@ mod tests {
             memory("2025-07-04", "一年前。"),
         ];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2026, 7, 4), None, Knob::Normal).expect("fires");
+        let result =
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
         assert_eq!(result.memory_date, "2025-07-04");
         assert!(result.message.contains("ちょうど一年前"));
     }
@@ -456,8 +476,15 @@ mod tests {
         ];
         let state = CallbackState::default();
         let shutdown = date_to_days("2026-06-30");
-        let result =
-            decide(&memories, &state, (2026, 7, 4), shutdown, Knob::Normal).expect("fires");
+        let result = decide(
+            &memories,
+            &state,
+            (2026, 7, 4),
+            shutdown,
+            Knob::Normal,
+            "clai",
+        )
+        .expect("fires");
         assert_eq!(result.memory_date, "2026-06-28");
         assert!(result.message.contains("4日ぶりの起動"));
     }
@@ -467,7 +494,15 @@ mod tests {
         let memories = vec![memory("2026-06-28", "新しい記憶。")];
         let state = CallbackState::default();
         let shutdown = date_to_days("2026-07-03");
-        assert!(decide(&memories, &state, (2026, 7, 4), shutdown, Knob::Normal).is_none());
+        assert!(decide(
+            &memories,
+            &state,
+            (2026, 7, 4),
+            shutdown,
+            Knob::Normal,
+            "clai"
+        )
+        .is_none());
     }
 
     #[test]
@@ -477,13 +512,13 @@ mod tests {
             last_fired_on: Some("2026-07-04".to_string()),
             ..CallbackState::default()
         };
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal).is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
     }
 
     #[test]
     fn decide_skips_cooled_memory_and_falls_back() {
         let mut fired = BTreeMap::new();
-        fired.insert("2026-06-04".to_string(), "2026-06-25".to_string());
+        fired.insert(fired_key("clai", "2026-06-04"), "2026-06-25".to_string());
         let memories = vec![
             memory("2026-06-04", "ひと月前だが最近発火済み。"),
             memory("2026-06-28", "新しい記憶。"),
@@ -495,8 +530,15 @@ mod tests {
         };
         // 節目候補は cooldown 中 → 久しぶり候補（直近の記憶）へ譲る。
         let shutdown = date_to_days("2026-06-30");
-        let result =
-            decide(&memories, &state, (2026, 7, 4), shutdown, Knob::Normal).expect("fires");
+        let result = decide(
+            &memories,
+            &state,
+            (2026, 7, 4),
+            shutdown,
+            Knob::Normal,
+            "clai",
+        )
+        .expect("fires");
         assert_eq!(result.memory_date, "2026-06-28");
     }
 
@@ -505,7 +547,8 @@ mod tests {
         // 3/31 のひと月前 → 非実在の 2/31 ではなく 2/28 にクランプして一致させる。
         let memories = vec![memory("2026-02-28", "二月末の記憶。")];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2026, 3, 31), None, Knob::Normal).expect("fires");
+        let result =
+            decide(&memories, &state, (2026, 3, 31), None, Knob::Normal, "clai").expect("fires");
         assert_eq!(result.memory_date, "2026-02-28");
     }
 
@@ -513,7 +556,8 @@ mod tests {
     fn decide_january_rolls_over_to_previous_december() {
         let memories = vec![memory("2025-12-31", "大晦日の記憶。")];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2026, 1, 31), None, Knob::Normal).expect("fires");
+        let result =
+            decide(&memories, &state, (2026, 1, 31), None, Knob::Normal, "clai").expect("fires");
         assert_eq!(result.memory_date, "2025-12-31");
         assert!(result.message.contains("ちょうどひと月前"));
     }
@@ -523,7 +567,8 @@ mod tests {
         // うるう日 2028-02-29 の一年前 → 2027-02-28 にクランプ。
         let memories = vec![memory("2027-02-28", "二月末の記憶。")];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2028, 2, 29), None, Knob::Normal).expect("fires");
+        let result =
+            decide(&memories, &state, (2028, 2, 29), None, Knob::Normal, "clai").expect("fires");
         assert_eq!(result.memory_date, "2027-02-28");
         assert!(result.message.contains("ちょうど一年前"));
     }
@@ -532,7 +577,7 @@ mod tests {
     fn decide_no_shutdown_and_no_anniversary_is_silent() {
         let memories = vec![memory("2026-06-20", "節目でない記憶。")];
         let state = CallbackState::default();
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal).is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
     }
 
     #[test]
@@ -541,8 +586,24 @@ mod tests {
         let state = CallbackState::default();
         // gap 4 日は normal なら発火、rare（7 日）なら沈黙。
         let shutdown = date_to_days("2026-06-30");
-        assert!(decide(&memories, &state, (2026, 7, 4), shutdown, Knob::Normal).is_some());
-        assert!(decide(&memories, &state, (2026, 7, 4), shutdown, Knob::Rare).is_none());
+        assert!(decide(
+            &memories,
+            &state,
+            (2026, 7, 4),
+            shutdown,
+            Knob::Normal,
+            "clai"
+        )
+        .is_some());
+        assert!(decide(
+            &memories,
+            &state,
+            (2026, 7, 4),
+            shutdown,
+            Knob::Rare,
+            "clai"
+        )
+        .is_none());
     }
 
     #[test]
@@ -631,8 +692,9 @@ mod tests {
             std::fs::read_to_string(home.join(".yorishiro/journal/callback-state.json"))
                 .expect("state");
         let state: serde_json::Value = serde_json::from_str(&state_text).expect("json");
+        let key = fired_key(super::super::FALLBACK_PERSONA_ID_JA, "2026-06-04");
         assert!(
-            state["fired"].get("2026-06-04").is_none(),
+            state["fired"].get(key.as_str()).is_none(),
             "未消費 pending の記憶は fired から返金されるべき: {}",
             state_text
         );
@@ -659,8 +721,10 @@ mod tests {
             std::fs::read_to_string(home.join(".yorishiro/journal/callback-state.json"))
                 .expect("state");
         let state: serde_json::Value = serde_json::from_str(&state_text).expect("json");
+        let key = fired_key(super::super::FALLBACK_PERSONA_ID_JA, "2026-06-04");
         assert_eq!(
-            state["fired"]["2026-06-04"], "2026-07-04",
+            state["fired"][key.as_str()],
+            "2026-07-04",
             "消費済みなら cooldown は維持されるべき"
         );
 
