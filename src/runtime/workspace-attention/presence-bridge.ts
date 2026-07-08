@@ -67,9 +67,9 @@ export function startWorkspaceAttentionPresenceBridge(
 
     if (item.id === currentPrimaryId) return;
     currentPrimaryId = item.id;
-    // awaiting-approval は「まだ何も起きていない待機」で、sad の語彙が合わないため
-    // 表情 pulse を発火しない（既存の失敗系 pulse 挙動は不変）。
-    if (item.type === "awaiting-approval") {
+    // awaiting-approval は「まだ何も起きていない待機」、run-slow-completed は「成功の報告」で、
+    // どちらも sad の語彙が合わないため表情 pulse を発火しない（失敗系 pulse 挙動は不変）。
+    if (item.type === "awaiting-approval" || item.type === "run-slow-completed") {
       releaseExpression();
       return;
     }
