@@ -24,7 +24,7 @@ AIが考え込めば視線がさまよい、エラーが出れば言葉より先
 
 Yorishiroは自己改変可能なターミナルでもあります。基盤機能を除くほぼすべてをpackという単位で拡張・改変できます。住人との対話を通じて、それらのpackを書き換え、保存できます。住人の見た目や性格だけでなく、シーンやUIを含めた空間全体が対象です。変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
 
-**AIと働く時間を、より心地よく、自由で、魅力的なものにする。**
+**AIと働く時間を、誰かと働く時間にする。**
 
 AIと働く時間は、これからもっと長くなります。しかし今のAIは、作業環境の中でどこにいて、何に注意を向け、どこで詰まっているのかが見えません。見えない相手と働き続けるのは消耗します。Yorishiroが作るのは、AIの能力のためのハーネスではありません。AIがそばに**実在する**と感じられるための構造——**Presence Harness（実在感のハーネス）**です。最初に目に入る身体はキャラクターですが、Yorishiroでは、住人が住み、作り替えていく環境全体もまた身体の一部になります。
 
@@ -64,6 +64,8 @@ brew install --cask sktkkoo/yorishiro/yorishiro
 
 ダウンロードした`.dmg`を開き、`yorishiro.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
+インストール後の更新はアプリ内で完結します。設定画面を開くと新しいバージョンを自動で確認し、「更新して再起動」を押すだけで署名検証つきの更新が適用されます。
+
 ### 起動（ソースから）
 
 ```bash
@@ -73,7 +75,7 @@ npm run tauri dev
 
 起動すると設定済みのterminal agentがターミナル内で立ち上がり、同梱のVRMキャラクター **CLAI**（クライ）が隣に表示されます。普段通りにClaude CodeまたはCodexを使えます。
 
-初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後からSettings → Healthでも確認できます。
+初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
 ### `/yori:*`コマンド
 
@@ -135,13 +137,15 @@ Yorishiroのユーザーデータは`~/.yorishiro/`に保存されます：
 ├── init.js          # 起動時と保存時の hot reload で実行されるユーザースクリプト
 ├── packs/           # ユーザー作成の pack
 ├── last-startup.json # 最新の user pack load report
-├── journal/         # 住人の日々の記録と記憶
+├── journal/         # 住人の日々の記録と記憶（personaごと）
 ├── shell/           # Shell integration スクリプト（自動生成）
 ├── sdk.d.ts         # Yorishiro SDK の型定義（自動生成、編集不要）
 └── sdk-guide.md     # Yorishiro SDK の pack 作者向けガイド（自動生成、編集不要）
 ```
 
-`config.json`でpersona・scene・terminal agentなどを切り替えられます。詳細は[`docs/configuration.md`](docs/configuration.md)。
+persona・scene・terminal agentなどは、設定画面からも`config.json`からも切り替えられます。詳細は[`docs/configuration.md`](docs/configuration.md)。
+
+`init.js`はEmacsの`init.el`にあたる起動スクリプトです。キーボードショートカットの登録、小さなエフェクトの直書きと発火、UIの切り替えなど、packを作るまでもないカスタマイズやちょっとしたマクロを書く場所で、保存すると自動で再実行されます。
 
 復旧手順、safe mode、issue報告時に必要な情報は[`docs/troubleshooting.ja.md`](docs/troubleshooting.ja.md)を参照してください。
 
@@ -153,9 +157,15 @@ Yorishiroのユーザーデータは`~/.yorishiro/`に保存されます：
 
 住人はターミナルの出力を常に観察しています。hooksやPTYに流れるテキストをpersona packのtriggerが拾い、表情やモーションとして即座に反応します。この反応はLLMを経由しない反射的なもので、熱いやかんに触って手を引っ込めるように、言葉より先に身体が動きます。住人の注意が向いている場所はAttention Auraとして画面上に淡く光ります。
 
+### Light Alert
+
+agentが入力や許可を求めて手を止めると、キャラクターのそばに明かりがつきます。通知音の代わりに、部屋の明かりが「あなたの番」を知らせます。設定の「Light Alert」でオフにできます。住人がMCP経由で同じ合図を送ることもできます。
+
 ### Journal
 
-住人は`~/.yorishiro/journal/daily/`に日々の記録を書き残せます。印象に残った出来事の要約は`memories.md`に蓄積され、次回以降のセッションで思い出として参照されます。セッションをまたいだ長期記憶の仕組みです。
+住人は`~/.yorishiro/journal/`に日々の記録を書き残せます。記録はpersonaごとに分かれていて、印象に残った出来事の要約は`memories.md`に蓄積されます。セッションをまたいだ長期記憶の仕組みです。
+
+記憶は参照されるだけでなく、想起されます。セッションを始めたとき、昨日や数日前の出来事を、ときにはちょうど一年前やひと月前の記録を、住人が思い出すことがあります。しばらくぶりに開けば、最後の記録を。頻度は`config.json`の`journalCallback`（`normal` / `rare` / `off`）で調整できます。
 
 ### Session tabs
 
@@ -164,6 +174,10 @@ Yorishiroのユーザーデータは`~/.yorishiro/`に保存されます：
 ### コンテキスト共有
 
 画面に見えているものとAIが知っていることのギャップを埋める小さな機能群です。**Voice Summary**は住人がレスポンスの要約を声で報告する機能で、長い出力を読み通さなくても概要を把握でき、認知負荷を下げます。音声はmacOSの`say`を使用。他の音声エンジンへの対応も検討中です。**Terminal Reference Marker**は、ターミナル上の行をCmd+click（またはOption+Shift+dragで矩形選択）すると`[#Term1]`のようなマーカーが入力に挿入され、AIが参照テキストを解決できる仕組みです。
+
+### 復元
+
+packやinit.jsが変わるたびに、チェックポイントが自動で作られます。住人に空間を大胆に作り替えさせて、気に入らなければ、設定の「復元（Pack / init.js）」から好きな時点に戻せます。プロジェクトのファイルには影響しません。復元そのものも履歴に残るため、戻した先からさらに戻ることもできます。失敗を恐れずに実験するための安全網です。
 
 ### 自己言及的MCP
 
@@ -188,8 +202,10 @@ Yorishiroのユーザーデータは`~/.yorishiro/`に保存されます：
 今できること：
 
 - Claude CodeまたはCodexをターミナルとして起動し、そのまま作業できる
-- Session tabs: title bar上で複数のshellセッションを操作し、tabごとの状態badgeを表示（`Cmd+T` / `Ctrl+Tab`）
+- Session tabs: title bar上で複数のshellセッションを操作し、tabごとの状態badge（実行中/入力待ち/失敗/未読）を表示（`Cmd+T` / `Ctrl+Tab`）
+- サイドバーからの作業フォルダ切替——暗転を挟んでそのフォルダで開き直す
 - VRMの3DキャラクターCLAIが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
+- カスタムVRM: 設定画面から自分のVRMモデルに差し替えられる
 - モーションサイズ: CLAIのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生
@@ -197,14 +213,17 @@ Yorishiroのユーザーデータは`~/.yorishiro/`に保存されます：
 - 6種類のpackによるカスタマイズ（persona/scene/effect/ui/amenity/ambient-ui）
 - 自己言及的MCP（20以上のツール）— カメラ・ライティング制御を含む
 - 反射層によるPTY観察と即時反応
+- Light Alert: agentが入力・許可待ちになると明かりがついて知らせる
 - コンテキスト共有: Voice SummaryとTerminal Reference Marker（Cmd+click / Option+Shift+drag）
-- Journalによる長期記憶
+- Journalによる長期記憶と、セッション開始時の想起
+- 復元: pack / init.js / 設定の自動チェックポイントと、可逆な巻き戻し
 - `/yori:*`コマンドによるpackの対話的な作成・編集
 - ローカライズ: 日本語/英語の自動検出、言語別persona・プロンプト
 - UI pack: immersive/theaterのフルスクリーンレイアウト
 - Pack診断: ヘルスチェック、修復ハンドオフ、ローカルpackの検証
 - [Safe mode](docs/troubleshooting.ja.md)（`YORISHIRO_SAFE_MODE=1`）で壊れたpackから復旧
 - GitHub Actionsによる署名済みmacOSビルド（コード署名 + 公証）
+- アプリ内アップデート: GitHub Releasesから署名検証つきで更新
 
 > **対応プラットフォーム:** 現状macOSのみ。Windowsはビルドは通りますが動作が安定しないため、現時点ではサポート対象外です。Linuxは未対応です。
 

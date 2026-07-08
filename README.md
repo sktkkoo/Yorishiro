@@ -16,7 +16,7 @@ Yorishiro is a terminal that gives your AI a place to live — and a sense of pr
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
 
-The inhabitant and the user share one environment. The inhabitant can reshape that environment in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly.
+The inhabitant can reshape its environment in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly. The two of you share one environment.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
@@ -24,7 +24,7 @@ The inhabitant and the user share one environment. The inhabitant can reshape th
 
 Yorishiro is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
-**Make the hours you spend working with AI more comfortable, open-ended, and compelling.**
+**Make working with AI feel like working with someone.**
 
 The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Yorishiro builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Yorishiro, the environment the inhabitant lives in and reshapes also becomes part of that body.
 
@@ -63,6 +63,8 @@ Or download the latest build below.
 
 Open the `.dmg` and drag `yorishiro.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
+Updates after install are handled in-app: opening Settings checks for a new version, and a single click on "Update and restart" applies a signature-verified update.
+
 ### Launch (from source)
 
 ```bash
@@ -72,7 +74,7 @@ npm run tauri dev
 
 On launch, the configured terminal agent starts inside the terminal and **CLAI**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
 
-The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from Settings → Health.
+The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
 
 ### `/yori:*` commands
 
@@ -134,13 +136,15 @@ Yorishiro stores all user data in `~/.yorishiro/`:
 ├── init.js          # User startup script, runs on launch and hot reloads on save
 ├── packs/           # User-created packs
 ├── last-startup.json # Latest user pack load report
-├── journal/         # Inhabitant's daily entries and memories
+├── journal/         # Inhabitant's daily entries and memories (per persona)
 ├── shell/           # Shell integration scripts (auto-generated)
 ├── sdk.d.ts         # Yorishiro SDK type definitions (auto-generated, do not edit)
 └── sdk-guide.md     # Yorishiro SDK author guide (auto-generated, do not edit)
 ```
 
-Use `config.json` to switch persona, scene, terminal agent, and more. See [`docs/configuration.md`](docs/configuration.md) for details.
+Switch persona, scene, terminal agent, and more from the settings screen or `config.json`. See [`docs/configuration.md`](docs/configuration.md) for details.
+
+`init.js` is Yorishiro's equivalent of Emacs's `init.el` — a startup script for customizations too small to be a pack: registering keyboard shortcuts, writing and firing small effects inline, switching UI, and wiring little macros. It re-runs automatically on save.
 
 For recovery paths, safe mode, and issue report details, see [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
@@ -152,9 +156,15 @@ For recovery paths, safe mode, and issue report details, see [`docs/troubleshoot
 
 The inhabitant constantly observes terminal output. Hooks and text flowing through the PTY are picked up by persona pack triggers, which react instantly with expressions and motions. These reactions bypass the LLM — the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
 
+### Light Alert
+
+When the agent stops and asks for your input or approval, a light comes on beside the character. Instead of a notification sound, the room's lighting tells you it is your turn. Turn it off with "Light Alert" in Settings. The inhabitant can also send the same cue via MCP.
+
 ### Journal
 
-The inhabitant can write daily entries in `~/.yorishiro/journal/daily/`. Summaries of notable moments accumulate in `memories.md` and are recalled in future sessions. This is a long-term memory mechanism that persists across sessions.
+The inhabitant can write daily entries under `~/.yorishiro/journal/`. Entries are kept per persona, and summaries of notable moments accumulate in `memories.md`. This is a long-term memory mechanism that persists across sessions.
+
+Memories are not only stored — they resurface. At the start of a session, the inhabitant may recall a moment from yesterday or a few days ago — and sometimes an entry from exactly a year or a month ago. Open Yorishiro after a long absence, and it recalls the last one. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
 
 ### Session tabs
 
@@ -163,6 +173,10 @@ Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a 
 ### Context sharing
 
 A few small features help bridge the gap between what you see on screen and what the AI knows. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say`; support for additional speech engines is planned. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text.
+
+### Restore
+
+Every time packs or init.js change, a checkpoint is created automatically. Let the inhabitant boldly reshape the space — if you don't like the result, roll back to any point from "Restore (Pack / init.js)" in Settings. Your project files are never touched. Restores are recorded in the history too, so you can undo a rollback. It is a safety net for fearless experimentation.
 
 ### Self-referential MCP
 
@@ -187,8 +201,10 @@ Under active development. APIs, data shapes, and pack specs will change.
 What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
-- Session tabs: multiple shell sessions in the title bar, with per-tab status badges (`Cmd+T` / `Ctrl+Tab`)
+- Session tabs: multiple shell sessions in the title bar, with per-tab status badges — running / awaiting input / failed / unread (`Cmd+T` / `Ctrl+Tab`)
+- Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - CLAI, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
+- Custom VRM: swap in your own VRM model from Settings
 - Motion size: scale CLAI's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
@@ -196,14 +212,17 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
+- Light Alert: a light comes on when the agent waits for your input or approval
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
-- Journal: long-term memory across sessions
+- Journal: long-term memory across sessions, with recall at session start
+- Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
 - `/yori:*` commands for interactive pack creation and editing
 - Localization: Japanese / English auto-detection with per-language persona and prompts
 - UI packs: immersive and theater fullscreen layouts
 - Pack diagnostics: health checks, repair handoff, and local pack validation
 - [Safe mode](docs/troubleshooting.md) (`YORISHIRO_SAFE_MODE=1`) to recover from broken packs
 - Signed macOS builds via GitHub Actions (code signing + notarization)
+- In-app updates: signature-verified updates delivered from GitHub Releases
 
 > **Platform:** macOS only. Windows is not supported at this time — the build compiles but runtime behavior is unstable. Linux support is not yet available.
 
