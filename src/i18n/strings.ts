@@ -22,7 +22,11 @@ export interface UiStrings {
   readonly motionLevelLively: string;
   readonly motionLevelOver: string;
   readonly selectVrmFile: string;
-  readonly agentAppliesNextLaunch: string;
+  /**
+   * agent / Voice Summary の行下に出す注記。変更は確認ダイアログを経て即セッション
+   * 再起動するので、「次回から反映」系の遅延適用の文言にしない。
+   */
+  readonly restartsSessionNote: string;
   readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
@@ -34,7 +38,6 @@ export interface UiStrings {
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
-  readonly voiceAppliesNextSession: string;
   /**
    * セッション再起動を伴う設定変更の確認ダイアログ。「セッション」というシステム語
    * ではなく会話の行き先を伝える：persona はお別れ（引き継がない）、agent は区切り
@@ -140,7 +143,7 @@ const EN: UiStrings = {
   motionLevelLively: "Lively",
   motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
-  agentAppliesNextLaunch: "Applies from the next agent launch",
+  restartsSessionNote: "Changing this restarts the agent session",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -152,7 +155,6 @@ const EN: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  voiceAppliesNextSession: "Applies from the next session",
   personaSwitchConfirm:
     "Say goodbye to {current} and welcome {next}. The current conversation will not carry over.",
   personaSwitchConfirmButton: "Say Goodbye and Switch",
@@ -256,7 +258,7 @@ const JA: UiStrings = {
   motionLevelLively: "活発",
   motionLevelOver: "オーバー",
   selectVrmFile: "VRM ファイルを選択",
-  agentAppliesNextLaunch: "※ 次回起動時に反映",
+  restartsSessionNote: "※ 切り替えるとセッションを再起動します",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -268,7 +270,6 @@ const JA: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  voiceAppliesNextSession: "※ 次回セッションから反映",
   personaSwitchConfirm: "{current} とお別れして、{next} を迎えます。いまの会話は引き継がれません。",
   personaSwitchConfirmButton: "お別れして切り替える",
   agentSwitchConfirm:

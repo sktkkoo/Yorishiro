@@ -2855,7 +2855,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             opacity: 0.5,
           }}
         >
-          {strings.voiceAppliesNextSession}
+          {strings.restartsSessionNote}
         </div>
 
         {/* 24px gap */}
@@ -2883,7 +2883,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         >
           {agentPinnedBy !== null
             ? `${strings.agentControlledByProfile}（${agentPinnedBy}）`
-            : strings.agentAppliesNextLaunch}
+            : strings.restartsSessionNote}
         </div>
 
         {/* 32px gap */}
