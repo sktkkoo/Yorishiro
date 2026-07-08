@@ -161,10 +161,10 @@ describe("workspace attention presence bridge", () => {
         rect: { x: 20, y: 30, width: 500, height: 80 },
         range: { startRow: 2, endRow: 6, startCol: 0, endCol: 79 },
       },
-      type: "run-slow-completed",
+      type: "run-running-long",
       severity: "medium",
       producer: { kind: "host", id: "test" },
-      producerKey: "test:slow",
+      producerKey: "test:running",
     });
 
     store.resolve(item.id);
@@ -194,14 +194,44 @@ describe("workspace attention presence bridge", () => {
         rect: { x: 20, y: 30, width: 0, height: 80 },
         range: { startRow: 2, endRow: 6, startCol: 0, endCol: 79 },
       },
+      type: "run-running-long",
+      severity: "medium",
+      producer: { kind: "host", id: "test" },
+      producerKey: "test:running",
+    });
+
+    expect(attention.setSourceTarget).not.toHaveBeenCalled();
+    expect(body.body.acquireExpressionSlot).toHaveBeenCalledWith("persona", "mood", "sad", 0.16);
+  });
+
+  it("run-slow-completed（成功）が primary でも表情 pulse は発火しない", () => {
+    const store = createWorkspaceAttentionStore();
+    const attention = createAttentionFake();
+    const body = createBodyFake();
+
+    startWorkspaceAttentionPresenceBridge({
+      store,
+      attention: attention.attention,
+      getBody: () => body.body,
+      setTimeout: () => 1,
+      clearTimeout: vi.fn<(id: unknown) => void>(),
+    });
+
+    store.upsert({
+      sessionId: "session-1",
+      locus: {
+        kind: "terminal-region",
+        sessionId: "session-1",
+        rect: { x: 20, y: 30, width: 500, height: 80 },
+        range: { startRow: 2, endRow: 6, startCol: 0, endCol: 79 },
+      },
       type: "run-slow-completed",
       severity: "medium",
       producer: { kind: "host", id: "test" },
       producerKey: "test:slow",
     });
 
-    expect(attention.setSourceTarget).not.toHaveBeenCalled();
-    expect(body.body.acquireExpressionSlot).toHaveBeenCalledWith("persona", "mood", "sad", 0.16);
+    expect(body.body.acquireExpressionSlot).not.toHaveBeenCalled();
   });
 
   it("awaiting-approval が primary でも表情 pulse は発火しない", () => {
