@@ -153,7 +153,7 @@ const EN: UiStrings = {
   personaSwitchConfirm: "Switch to {next}. The conversation starts fresh.",
   personaSwitchConfirmButton: "Switch",
   agentSwitchConfirm:
-    "Switch the agent to {next} and restart the session. The conversation with {current} pauses here — switching back resumes it.",
+    "Switch the Main Agent to {next} and restart the session. The conversation with {current} pauses here — switching back resumes it.",
   agentSwitchConfirmButton: "Switch",
   voiceRestartConfirm:
     "Restart the session to apply. The conversation continues where it left off.",
@@ -266,7 +266,7 @@ const JA: UiStrings = {
   personaSwitchConfirm: "{next} に切り替えます。会話は新しく始まります。",
   personaSwitchConfirmButton: "切り替える",
   agentSwitchConfirm:
-    "agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）。",
+    "Main Agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）。",
   agentSwitchConfirmButton: "切り替える",
   voiceRestartConfirm: "反映のためにセッションを再起動します。会話は続きから再開します。",
   voiceRestartConfirmButton: "再起動する",

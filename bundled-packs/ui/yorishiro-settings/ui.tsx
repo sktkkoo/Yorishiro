@@ -200,8 +200,13 @@ export function resolveNewSessionConfirm(
   }
 }
 
-/** ダイアログ本文用の agent 表示名。dropdown と違い experimental suffix は付けない。 */
-function terminalAgentLabel(id: string): string {
+/**
+ * ダイアログ本文用の agent 表示名。dropdown と違い experimental suffix は付けない。
+ * agent を増やすときは TERMINAL_AGENT_OPTIONS に 1 行足せばここにも自動で流れる。
+ * 未知の id は raw id に fallback する（文言側は {current}/{next} placeholder のみで
+ * agent 名を hard-code しない）。
+ */
+export function terminalAgentLabel(id: string): string {
   return TERMINAL_AGENT_OPTIONS.find((opt) => opt.value === id)?.label ?? id;
 }
 

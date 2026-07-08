@@ -17,6 +17,7 @@ import {
   selectWorkbenchPack,
   summarizePackDiagnosis,
   TERMINAL_AGENT_OPTIONS,
+  terminalAgentLabel,
 } from "./ui";
 
 describe("resolveCloseTarget", () => {
@@ -164,6 +165,14 @@ describe("terminal agent options", () => {
     expect(byId.get("codex")).toBe("Codex（experimental）");
     expect(byId.has("opencode")).toBe(false);
   });
+
+  it("resolves dialog labels from the options table and falls back to raw ids", () => {
+    // 確認ダイアログの agent 名は TERMINAL_AGENT_OPTIONS から引く。agent が増えても
+    // 表に足すだけで文言に流れ、未知 id でも壊れず raw id を表示する。
+    expect(terminalAgentLabel("claude")).toBe("Claude Code");
+    expect(terminalAgentLabel("codex")).toBe("Codex");
+    expect(terminalAgentLabel("some-future-agent")).toBe("some-future-agent");
+  });
 });
 
 describe("resolveNewSessionConfirm", () => {
@@ -190,7 +199,7 @@ describe("resolveNewSessionConfirm", () => {
       currentLabel: "Claude Code",
       nextLabel: "Codex",
     });
-    expect(r.message).toContain("Codex に切り替えて再起動");
+    expect(r.message).toContain("Main Agent を Codex に切り替えて再起動");
     expect(r.message).toContain("Claude Code との会話はいったん区切り");
     expect(r.message).toContain("続きから再開");
     expect(r.confirmLabel).toBe("切り替える");
