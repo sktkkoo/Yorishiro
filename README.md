@@ -164,7 +164,7 @@ When the agent stops and asks for your input or approval, a light comes on besid
 
 The inhabitant can write daily entries under `~/.yorishiro/journal/`. Entries are kept per persona, and summaries of notable moments accumulate in `memories.md`. This is a long-term memory mechanism that persists across sessions.
 
-Memories are not only stored — they resurface. At the start of a session, the inhabitant may recall an entry from exactly a year or a month ago, or the most recent one after a long absence. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
+Memories are not only stored — they resurface. At the start of a session, the inhabitant may recall a moment from yesterday or a few days ago — and sometimes an entry from exactly a year or a month ago. Open Yorishiro after a long absence, and it recalls the last one. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
 
 ### Session tabs
 
