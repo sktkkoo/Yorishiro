@@ -384,7 +384,16 @@ fn local_today() -> Result<(i64, u32, u32), String> {
 
 /// agent session の spawn 時に呼ぶ。発火すれば pending file を書き、
 /// しなければ古い pending を消す。
-pub fn evaluate_on_session_spawn() -> Result<(), String> {
+///
+/// `can_deliver_callback` は「この agent に pending を届ける経路があるか」。
+/// 現状の消費経路は Claude の UserPromptSubmit hook だけなので、呼び出し側は
+/// adapter の lifecycle_hooks を渡す。経路のない agent（Codex 等）では評価
+/// 自体を skip する——届かない発火で last_fired_on を焼くと、同日にあとから
+/// 起動した hook 持ち agent の分まで global gate で潰してしまうため。
+pub fn evaluate_on_session_spawn(can_deliver_callback: bool) -> Result<(), String> {
+    if !can_deliver_callback {
+        return Ok(());
+    }
     evaluate_at(local_today()?)
 }
 
@@ -866,6 +875,34 @@ mod tests {
             "2026-07-04",
             "消費済みなら cooldown は維持されるべき"
         );
+
+        let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn evaluate_skips_agents_without_delivery_path() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("nodelivery");
+        std::env::set_var("HOME", &home);
+
+        // 届ける経路（UserPromptSubmit hook）を持たない agent の spawn では
+        // 評価自体を skip する——pending も state も一切書かない。届かない発火で
+        // last_fired_on を焼くと、同日にあとから起動した hook 持ち agent の分まで
+        // global gate で潰してしまうため。
+        super::super::append_memory("2026-06-04", "ひと月前の記憶。").expect("memory");
+        evaluate_on_session_spawn(false).expect("eval without delivery");
+        assert!(!home
+            .join(".yorishiro/journal/callback-pending.txt")
+            .exists());
+        assert!(!home.join(".yorishiro/journal/callback-state.json").exists());
+
+        // 同日に hook 持ち agent が spawn すれば通常どおり発火する。
+        evaluate_at((2026, 7, 4)).expect("eval with delivery");
+        assert!(home
+            .join(".yorishiro/journal/callback-pending.txt")
+            .exists());
 
         let _ = std::fs::remove_dir_all(&home);
     }
