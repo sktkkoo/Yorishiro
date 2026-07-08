@@ -22,11 +22,6 @@ export interface UiStrings {
   readonly motionLevelLively: string;
   readonly motionLevelOver: string;
   readonly selectVrmFile: string;
-  /**
-   * agent / Voice Summary の行下に出す注記。変更は確認ダイアログを経て即セッション
-   * 再起動するので、「次回から反映」系の遅延適用の文言にしない。
-   */
-  readonly restartsSessionNote: string;
   readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
@@ -144,7 +139,6 @@ const EN: UiStrings = {
   motionLevelLively: "Lively",
   motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
-  restartsSessionNote: "Changing this restarts the agent session",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -258,7 +252,6 @@ const JA: UiStrings = {
   motionLevelLively: "活発",
   motionLevelOver: "オーバー",
   selectVrmFile: "VRM ファイルを選択",
-  restartsSessionNote: "※ 切り替えるとセッションを再起動します",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",

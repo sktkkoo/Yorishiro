@@ -2840,22 +2840,12 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
         </div>
 
-        {/* Voice Summary（Sound の直下） */}
+        {/* Voice Summary（Sound の直下）。再起動の告知は確認ダイアログが担う。 */}
         <div style={{ ...gridStyle, marginTop: SPACING.md }}>
           <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
           <div>
             <Toggle checked={voiceFrequency === "on"} onChange={onVoiceToggle} />
           </div>
-        </div>
-        <div
-          style={{
-            marginTop: SPACING.xs,
-            marginLeft: `calc(${GRID_LABEL_COLUMN_WIDTH} + ${SPACING.md})`,
-            fontSize: FONT.sizeXs,
-            opacity: 0.5,
-          }}
-        >
-          {strings.restartsSessionNote}
         </div>
 
         {/* 24px gap */}
@@ -2873,18 +2863,19 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             />
           </div>
         </div>
-        <div
-          style={{
-            marginTop: SPACING.xs,
-            marginLeft: `calc(${GRID_LABEL_COLUMN_WIDTH} + ${SPACING.md})`,
-            fontSize: FONT.sizeXs,
-            opacity: 0.5,
-          }}
-        >
-          {agentPinnedBy !== null
-            ? `${strings.agentControlledByProfile}（${agentPinnedBy}）`
-            : strings.restartsSessionNote}
-        </div>
+        {/* 再起動の告知は確認ダイアログが担う。注記は defaultProfile 固定時のみ。 */}
+        {agentPinnedBy !== null ? (
+          <div
+            style={{
+              marginTop: SPACING.xs,
+              marginLeft: `calc(${GRID_LABEL_COLUMN_WIDTH} + ${SPACING.md})`,
+              fontSize: FONT.sizeXs,
+              opacity: 0.5,
+            }}
+          >
+            {`${strings.agentControlledByProfile}（${agentPinnedBy}）`}
+          </div>
+        ) : null}
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
