@@ -28,6 +28,8 @@ const LONG_ABSENCE_DAYS_RARE: i64 = 7;
 const GLOBAL_MIN_GAP_DAYS_NORMAL: i64 = 1;
 /// 同・rare。
 const GLOBAL_MIN_GAP_DAYS_RARE: i64 = 7;
+/// 「最近の記憶」として想起する window（日）。normal のみ。帰納的調整の対象。
+const RECENT_WINDOW_DAYS_NORMAL: i64 = 7;
 /// 同じ記憶を再発火させない cooldown（日）。
 const MEMORY_COOLDOWN_DAYS_NORMAL: i64 = 21;
 /// 同・rare。
@@ -71,6 +73,15 @@ impl Knob {
         match self {
             Knob::Rare => MEMORY_COOLDOWN_DAYS_RARE,
             _ => MEMORY_COOLDOWN_DAYS_NORMAL,
+        }
+    }
+
+    /// 「最近の記憶」想起の window（日）。0 は無効。rare は節目と久しぶりの
+    /// 起動だけに絞り、日常の想起をしない。
+    fn recent_window_days(self) -> i64 {
+        match self {
+            Knob::Normal => RECENT_WINDOW_DAYS_NORMAL,
+            _ => 0,
         }
     }
 }
@@ -210,8 +221,9 @@ fn parse_memories(content: &str) -> Vec<MemoryLine> {
 
 /// 発火判定の純関数本体。
 ///
-/// 優先順位: 一年前の節目 > ひと月前の節目 > 久しぶりの起動（直近の記憶）。
-/// cooldown 中の記憶は次の候補に譲る。すべて gate に落ちたら None。
+/// 優先順位: 一年前の節目 > ひと月前の節目 > 久しぶりの起動（直近の記憶） >
+/// 最近の記憶（normal のみ）。cooldown 中の記憶は次の候補に譲る。すべて
+/// gate に落ちたら None。
 fn decide(
     memories: &[MemoryLine],
     state: &CallbackState,
@@ -266,6 +278,28 @@ fn decide(
             if let Some(latest) = memories.iter().max_by_key(|m| m.days) {
                 candidates.push((latest, format!("{}日ぶりの起動", gap)));
             }
+        }
+    }
+
+    // 最近の記憶: 節目でも久しぶりでもない日の default 想起（normal のみ）。
+    // 記念日は「たまに」だから効く——日常は昨日や数日前が受け持つ。
+    // 今日書かれた行は「さっきのこと」なので対象外。最新 1 件だけを候補にし、
+    // cooldown 中でも古い記憶へは遡らない（journal が途絶えたら window と
+    // cooldown が自然に沈黙させ、次に口を開くのは節目だけになる）。
+    let recent_window = knob.recent_window_days();
+    if recent_window > 0 {
+        if let Some(latest) = memories
+            .iter()
+            .filter(|m| (1..=recent_window).contains(&(today_days - m.days)))
+            .max_by_key(|m| m.days)
+        {
+            let diff = today_days - latest.days;
+            let reason = if diff == 1 {
+                "昨日".to_string()
+            } else {
+                format!("{}日前", diff)
+            };
+            candidates.push((latest, reason));
         }
     }
 
@@ -491,7 +525,8 @@ mod tests {
 
     #[test]
     fn decide_short_gap_does_not_fire_absence() {
-        let memories = vec![memory("2026-06-28", "新しい記憶。")];
+        // recent window の外の記憶にして、久しぶり判定だけを見る。
+        let memories = vec![memory("2026-06-20", "少し前の記憶。")];
         let state = CallbackState::default();
         let shutdown = date_to_days("2026-07-03");
         assert!(decide(
@@ -503,6 +538,110 @@ mod tests {
             "clai"
         )
         .is_none());
+    }
+
+    #[test]
+    fn decide_fires_yesterdays_memory_as_recent() {
+        let memories = vec![memory("2026-07-03", "夕方の散歩。")];
+        let state = CallbackState::default();
+        let result =
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+        assert_eq!(result.memory_date, "2026-07-03");
+        assert!(result.message.contains("昨日"));
+    }
+
+    #[test]
+    fn decide_recent_reason_counts_days_ago() {
+        let memories = vec![memory("2026-07-01", "雨上がりの虹。")];
+        let state = CallbackState::default();
+        let result =
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+        assert_eq!(result.memory_date, "2026-07-01");
+        assert!(result.message.contains("3日前"));
+    }
+
+    #[test]
+    fn decide_recent_ignores_todays_entry() {
+        let memories = vec![memory("2026-07-04", "書いたばかりの記憶。")];
+        let state = CallbackState::default();
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
+    }
+
+    #[test]
+    fn decide_recent_window_boundary() {
+        // window ちょうどは発火し、1 日超えたら沈黙する。
+        // 帰納的調整（定数変更）に追従するよう、日付は定数から組み立てる。
+        let today = (2026, 7, 4);
+        let today_days = days_from_civil(today.0, today.1, today.2);
+        let date_at = |diff: i64| {
+            let (y, m, d) = super::super::cohabitation::civil_from_days(today_days - diff);
+            format!("{:04}-{:02}-{:02}", y, m, d)
+        };
+        let inside = vec![memory(&date_at(RECENT_WINDOW_DAYS_NORMAL), "window 内。")];
+        let state = CallbackState::default();
+        assert!(decide(&inside, &state, today, None, Knob::Normal, "clai").is_some());
+        let outside = vec![memory(
+            &date_at(RECENT_WINDOW_DAYS_NORMAL + 1),
+            "window 外。",
+        )];
+        assert!(decide(&outside, &state, today, None, Knob::Normal, "clai").is_none());
+    }
+
+    #[test]
+    fn decide_rare_has_no_recent_recall() {
+        let memories = vec![memory("2026-07-03", "夕方の散歩。")];
+        let state = CallbackState::default();
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Rare, "clai").is_none());
+    }
+
+    #[test]
+    fn decide_recent_does_not_fall_back_to_older_memories() {
+        // 最新が cooldown 中なら黙る。古い記憶まで遡って埋め草を喋らない。
+        let mut fired = BTreeMap::new();
+        fired.insert(fired_key("clai", "2026-07-03"), "2026-07-03".to_string());
+        let memories = vec![
+            memory("2026-07-02", "一昨日の買い物。"),
+            memory("2026-07-03", "夕方の散歩。"),
+        ];
+        let state = CallbackState {
+            last_fired_on: Some("2026-07-03".to_string()),
+            fired,
+            ..CallbackState::default()
+        };
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
+    }
+
+    #[test]
+    fn decide_prefers_anniversary_over_recent() {
+        let memories = vec![
+            memory("2026-07-03", "夕方の散歩。"),
+            memory("2026-06-04", "ひと月前の記憶。"),
+        ];
+        let state = CallbackState::default();
+        let result =
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+        assert_eq!(result.memory_date, "2026-06-04");
+        assert!(result.message.contains("ちょうどひと月前"));
+    }
+
+    #[test]
+    fn decide_recent_fires_daily_with_fresh_memories() {
+        // 毎日 journal が書かれていれば、翌日にはその「昨日」を想起できる。
+        let mut fired = BTreeMap::new();
+        fired.insert(fired_key("clai", "2026-07-02"), "2026-07-03".to_string());
+        let memories = vec![
+            memory("2026-07-02", "一昨日の買い物。"),
+            memory("2026-07-03", "夕方の散歩。"),
+        ];
+        let state = CallbackState {
+            last_fired_on: Some("2026-07-03".to_string()),
+            fired,
+            ..CallbackState::default()
+        };
+        let result =
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+        assert_eq!(result.memory_date, "2026-07-03");
+        assert!(result.message.contains("昨日"));
     }
 
     #[test]
