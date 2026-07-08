@@ -3,6 +3,7 @@ import { getStrings, resolvePackRepairPrompt } from "../../../src/i18n/strings";
 import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
+  configActiveSceneForSelection,
   configPrimaryPersonaForSelection,
   creditsSections,
   EXPERIMENTAL_AGENT_IDS,
@@ -13,6 +14,7 @@ import {
   resolveCloseTarget,
   resolveNewSessionConfirm,
   resolvePersonaSelectValue,
+  resolveSceneSelectValue,
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
   summarizePackDiagnosis,
@@ -127,6 +129,18 @@ describe("localized CLAI persona options", () => {
     expect(configPrimaryPersonaForSelection("clai-en")).toBeNull();
     expect(configPrimaryPersonaForSelection("clai-ja")).toBeNull();
     expect(configPrimaryPersonaForSelection("my-persona")).toBe("my-persona");
+  });
+});
+
+describe("default scene selection", () => {
+  it("shows Simple Room when activeScene is unset", () => {
+    expect(resolveSceneSelectValue(null)).toBe("simple-room");
+    expect(resolveSceneSelectValue("misty-grasslands")).toBe("misty-grasslands");
+  });
+
+  it("stores the default scene selection as null", () => {
+    expect(configActiveSceneForSelection("simple-room")).toBeNull();
+    expect(configActiveSceneForSelection("misty-grasslands")).toBe("misty-grasslands");
   });
 });
 

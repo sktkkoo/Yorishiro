@@ -53,10 +53,13 @@ import {
   localizedClaiPersonaId,
 } from "../../../src/runtime/user-pack-loader/config";
 import type { SnapshotEntry } from "../../../src/sdk/history";
+import simpleRoomManifest from "../../scenes/simple-room/manifest.json";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "yorishiro-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
+const DEFAULT_VRM_NAME = "CLAI";
+const DEFAULT_SCENE_ID = simpleRoomManifest.id;
 
 /** 公開リポジトリ。Credits 画面の「View on GitHub」リンク先。 */
 const YORISHIRO_REPO_URL = "https://github.com/sktkkoo/Yorishiro";
@@ -308,6 +311,14 @@ export function resolvePersonaSelectValue(
 
 export function configPrimaryPersonaForSelection(id: string): string | null {
   return isBundledClaiPersonaId(id) ? null : id;
+}
+
+export function resolveSceneSelectValue(activeScene: string | null): string {
+  return activeScene ?? DEFAULT_SCENE_ID;
+}
+
+export function configActiveSceneForSelection(id: string): string | null {
+  return id === DEFAULT_SCENE_ID ? null : id;
 }
 
 /**
@@ -1878,6 +1889,10 @@ const gridStyle: React.CSSProperties = {
   alignItems: "center",
 };
 
+const separatedToggleRowStyle: React.CSSProperties = {
+  paddingTop: SPACING.xs,
+};
+
 const MOTION_LEVEL_LABEL_LEFTS = ["0%", "33.3333%", "66.6667%", "100%"] as const;
 
 /** range の 0/1/2/3 tick にレベル名を固定する。 */
@@ -2158,7 +2173,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [vrmName, setVrmName] = useState<string>(() => {
     const stored = localStorage.getItem("yorishiro:vrm");
-    return stored ? (stored.split("/").pop() ?? stored) : "";
+    return stored ? (stored.split("/").pop() ?? stored) : DEFAULT_VRM_NAME;
   });
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
@@ -2198,6 +2213,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     ? resolvePersonaSelectValue(persona, resolvedLanguage)
     : "";
   const scenes = ctx.app.listScenes();
+  const sceneSelectValue = configLoaded ? resolveSceneSelectValue(scene) : "";
   const strings = getStrings(resolvedLanguage);
   const requestNewSessionChange = (change: PendingNewSessionChange) => {
     setPendingNewSessionChange(change);
@@ -2284,8 +2300,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   };
 
   const onSceneChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const next = configActiveSceneForSelection(e.target.value);
     void applyConfigUpdate({
-      next: e.target.value || null,
+      next,
       prev: scene,
       setLocal: setScene,
       write: (v) => ctx.app.setActiveScene(v),
@@ -2682,7 +2699,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             }}
             title={vrmName || undefined}
           >
-            {vrmName || strings.notLoaded}
+            {vrmName}
             <FolderOpen
               size={12}
               aria-hidden="true"
@@ -2716,9 +2733,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           <div style={{ opacity: 0.7 }}>{strings.labelScene}</div>
           <div>
             <Select
-              value={scene ?? ""}
+              value={sceneSelectValue}
               onChange={onSceneChange}
-              loadingPlaceholder={scene === null ? strings.loading : undefined}
+              loadingPlaceholder={!configLoaded ? strings.loading : undefined}
               emptyLabel={strings.noPacks}
               options={scenes.map((s) => ({
                 value: s.id,
@@ -2783,14 +2800,16 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
 
           {/* Aura */}
-          <div style={{ opacity: 0.7 }}>{strings.labelAura}</div>
-          <div>
+          <div style={{ opacity: 0.7, ...separatedToggleRowStyle }}>{strings.labelAura}</div>
+          <div style={separatedToggleRowStyle}>
             <Toggle checked={auraEnabled} onChange={onAuraToggle} />
           </div>
 
           {/* Light alert */}
-          <div style={{ opacity: 0.7 }}>{strings.labelAttentionLight}</div>
-          <div>
+          <div style={{ opacity: 0.7, ...separatedToggleRowStyle }}>
+            {strings.labelAttentionLight}
+          </div>
+          <div style={separatedToggleRowStyle}>
             <Toggle
               checked={attentionLightNotifications ?? true}
               disabled={attentionLightNotifications === null}

@@ -1183,6 +1183,12 @@ async fn yorishiro_home_dir() -> Result<String, String> {
     Ok(yorishiro_home_path()?.to_string_lossy().to_string())
 }
 
+/// Absolute path to the current OS user home directory. Does not create it.
+#[tauri::command]
+async fn user_home_dir() -> Result<String, String> {
+    Ok(home_dir_or_err()?.to_string_lossy().to_string())
+}
+
 /// Resolve a command through Yorishiro's launch PATH. Used by first-run health
 /// checks to explain missing Claude Code / Codex binaries before PTY spawn.
 #[tauri::command]
@@ -2296,6 +2302,7 @@ pub fn run() {
             pty_detach,
             import_vrm,
             poll_hook_signals,
+            user_home_dir,
             yorishiro_home_dir,
             ensure_yorishiro_dirs,
             list_user_packs,

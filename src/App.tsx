@@ -35,6 +35,7 @@ import {
   snapshotCreate,
   snapshotList,
   snapshotRestore,
+  userHomeDir,
 } from "./bindings/tauri-commands";
 import {
   abandonedFactoryManifest,
@@ -80,6 +81,7 @@ import CharacterSurface from "./character-surface";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
   formatMainSessionTabLabel,
+  formatPathLabel,
   formatShellSessionTabLabel,
 } from "./components/session-tab-labels";
 import {
@@ -252,6 +254,7 @@ import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amen
 import {
   parseConfig,
   resolvePrimaryPersonaForLanguage,
+  resolveProjectFolder,
   resolveSceneForProject,
   serializeConfig,
   type TerminalAgent,
@@ -889,7 +892,8 @@ function App() {
   //   module-registry : 各 trigger / swap-in module の registry（getModuleRegistry()）
   // 詳細: src/runtime/README.md §HMR と singleton
 
-  const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [cwd, setCwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  const [homeDir, setHomeDir] = useState<string | null>(null);
   // Persona resume gate（session-persona-gate.ts）の判定結果。boot Step 2 が
   // isUserLayerReady より先に書き、session restore effect が respawn mode と
   // AND で消費する。false 側（resume 抑止）にしか倒さない。
@@ -921,6 +925,20 @@ function App() {
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
+
+  useEffect(() => {
+    let cancelled = false;
+    userHomeDir()
+      .then((value) => {
+        if (!cancelled) setHomeDir(value.trim() || null);
+      })
+      .catch(() => {
+        if (!cancelled) setHomeDir(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // config write は read-modify-write なので UI / MCP 経路を 1 本の queue で直列化する。
   const pendingConfigWriteRef = useRef<Promise<void>>(Promise.resolve());
@@ -1489,6 +1507,17 @@ function App() {
       try {
         const configText = await readYorishiroConfigText();
         const config = parseConfig(configText);
+        const resolvedHomeDir = await userHomeDir().catch(() => null);
+        if (resolvedHomeDir !== null) setHomeDir(resolvedHomeDir.trim() || null);
+        const resolvedProjectFolder = resolveProjectFolder(
+          config.projectFolder,
+          cwd,
+          resolvedHomeDir,
+        );
+        if (resolvedProjectFolder !== cwd) setCwd(resolvedProjectFolder);
+        if (config.projectFolder !== null && resolvedProjectFolder !== null) {
+          localStorage.setItem(CWD_STORAGE_KEY, resolvedProjectFolder);
+        }
         disabledPacks = config.disabledPacks;
         terminalAgent = config.terminalAgent;
         ambientAudioMuted = config.ambientAudioMuted;
@@ -1525,7 +1554,7 @@ function App() {
         personaRegistry.setPrimaryPersona(
           resolvePrimaryPersonaForLanguage(config.primaryPersona, resolvedLanguage),
         );
-        const projectRoot = await resolveCurrentProjectRoot(cwd);
+        const projectRoot = await resolveCurrentProjectRoot(resolvedProjectFolder);
         rememberCurrentProjectRoot(projectRoot);
         scenePackRegistry.setActiveScene(
           resolveSceneForProject(config, projectRootValue(projectRoot)),
@@ -1538,7 +1567,7 @@ function App() {
         // のスレッドを蘇らせない）。失敗は resume 許可側に倒し boot を止めない。
         try {
           const gatePersona = normalizePersonaForGate(config.primaryPersona);
-          const gatePlace = projectRootValue(projectRoot) ?? cwd ?? "default";
+          const gatePlace = projectRootValue(projectRoot) ?? resolvedProjectFolder ?? "default";
           const records = parseSessionPersonaRecords(await readSessionPersonasText());
           const resumeAllowed = shouldAllowPersonaResume(records, {
             agent: terminalAgent,
@@ -3717,6 +3746,7 @@ function App() {
       });
       if (selected) {
         const nextCwd = selected as string;
+        await updateYorishiroConfig((cur) => ({ ...cur, projectFolder: nextCwd }));
         if (nextCwd === cwd) return;
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
         // Workspace 切替は runtime singleton 群を一度作り直す。
@@ -3726,7 +3756,7 @@ function App() {
     } catch {
       // Dialog not available outside Tauri
     }
-  }, [cwd, beginCurtainReload, strings.selectProjectFolder]);
+  }, [cwd, beginCurtainReload, strings.selectProjectFolder, updateYorishiroConfig]);
 
   // ── Settings ─────────────────────────────────────────────
 
@@ -4021,10 +4051,7 @@ function App() {
     };
   }, []);
 
-  const folderName = useMemo(
-    () => (cwd ? cwd.split("/").pop() || cwd : strings.defaultFolderName),
-    [cwd, strings.defaultFolderName],
-  );
+  const folderName = useMemo(() => formatPathLabel(cwd, { homeDir }), [cwd, homeDir]);
 
   const sessionTabLabels = useMemo(() => {
     const labels = new Map<string, string>();
@@ -4036,11 +4063,18 @@ function App() {
       const sessionCwd = tabManager.getSessionCwd(sessionId);
       labels.set(
         sessionId,
-        formatShellSessionTabLabel(sessionCwd === undefined ? cwd : sessionCwd),
+        formatShellSessionTabLabel(sessionCwd === undefined ? cwd : sessionCwd, { homeDir }),
       );
     }
     return labels;
-  }, [cwd, primaryPersonaState?.name, tabManager, tabState.mainSessionId, tabState.sessions]);
+  }, [
+    cwd,
+    homeDir,
+    primaryPersonaState?.name,
+    tabManager,
+    tabState.mainSessionId,
+    tabState.sessions,
+  ]);
 
   // ── Settings: close-requested listener ─────────────────────
 
