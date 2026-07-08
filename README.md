@@ -144,6 +144,8 @@ Yorishiro stores all user data in `~/.yorishiro/`:
 
 Switch persona, scene, terminal agent, and more from the settings screen or `config.json`. See [`docs/configuration.md`](docs/configuration.md) for details.
 
+`init.js` is Yorishiro's equivalent of Emacs's `init.el` — a startup script for customizations too small to be a pack: registering keyboard shortcuts, firing effects, or defining a small persona or effect inline. It re-runs automatically on save.
+
 For recovery paths, safe mode, and issue report details, see [`docs/troubleshooting.md`](docs/troubleshooting.md).
 
 ---
@@ -156,7 +158,7 @@ The inhabitant constantly observes terminal output. Hooks and text flowing throu
 
 ### Light Alert
 
-When the agent stops and asks for your input or approval, a light comes on beside the character and the terminal's edge pulses gently, twice, in the same warm color. Instead of a notification sound, the room's lighting tells you it is your turn. Turn it off with "Light Alert" in Settings. The inhabitant can also send the same cue via MCP.
+When the agent stops and asks for your input or approval, a light comes on beside the character. Instead of a notification sound, the room's lighting tells you it is your turn. Turn it off with "Light Alert" in Settings. The inhabitant can also send the same cue via MCP.
 
 ### Journal
 
@@ -210,7 +212,7 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
-- Light Alert: the lighting and terminal edge pulse when the agent waits for your input or approval
+- Light Alert: a light comes on when the agent waits for your input or approval
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
 - Journal: long-term memory across sessions, with recall at session start
 - Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
