@@ -27,6 +27,14 @@ export {
   resolveEffectiveAgent,
   resolveProfile,
 } from "./profiles";
+export {
+  normalizePersonaForGate,
+  parseSessionPersonaRecords,
+  type SessionPersonaRecords,
+  serializeSessionPersonaRecords,
+  shouldAllowPersonaResume,
+  withSessionPersonaRecord,
+} from "./session-persona-gate";
 export { getSessionRegistry, SessionRegistry } from "./session-registry";
 export type {
   SessionActivity,

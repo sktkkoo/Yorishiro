@@ -205,11 +205,16 @@ import {
   filterRestoredSessionsForMainRespawn,
   markMainSessionFreshSpawnPending,
   markMainSessionRespawnPending,
+  normalizePersonaForGate,
+  parseSessionPersonaRecords,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
   type SessionId,
+  serializeSessionPersonaRecords,
+  shouldAllowPersonaResume,
+  withSessionPersonaRecord,
 } from "./runtime/sessions";
 import {
   spawnSpecFromDefaultProfile,
@@ -262,7 +267,9 @@ import {
 } from "./runtime/user-pack-loader/init-changed-title";
 import {
   readLastStartupReport,
+  readSessionPersonasText,
   readYorishiroConfigText,
+  writeSessionPersonasText,
   writeYorishiroConfigText,
 } from "./runtime/user-pack-loader/yorishiro-io";
 import {
@@ -883,6 +890,10 @@ function App() {
   // 詳細: src/runtime/README.md §HMR と singleton
 
   const [cwd] = useState<string | null>(() => localStorage.getItem(CWD_STORAGE_KEY));
+  // Persona resume gate（session-persona-gate.ts）の判定結果。boot Step 2 が
+  // isUserLayerReady より先に書き、session restore effect が respawn mode と
+  // AND で消費する。false 側（resume 抑止）にしか倒さない。
+  const personaResumeBlockedRef = useRef(false);
   const currentProjectRootRef = useRef<ProjectRootResolution>({ kind: "none" });
   const rememberCurrentProjectRoot = useCallback((projectRoot: ProjectRootResolution) => {
     currentProjectRootRef.current = projectRoot;
@@ -1521,6 +1532,44 @@ function App() {
         );
         uiPackRegistry.setActiveUi(config.activeUi);
         syncAmbientUiActiveSet(config.activeAmbientUi);
+        // ─ Persona resume gate ─
+        // per (agent, place) で最後に spawn した persona を記録し、変わっていたら
+        // main session の resume を止める（他 agent / 他 folder に残った旧 persona
+        // のスレッドを蘇らせない）。失敗は resume 許可側に倒し boot を止めない。
+        try {
+          const gatePersona = normalizePersonaForGate(config.primaryPersona);
+          const gatePlace = projectRootValue(projectRoot) ?? cwd ?? "default";
+          const records = parseSessionPersonaRecords(await readSessionPersonasText());
+          const resumeAllowed = shouldAllowPersonaResume(records, {
+            agent: terminalAgent,
+            place: gatePlace,
+            persona: gatePersona,
+          });
+          personaResumeBlockedRef.current = !resumeAllowed;
+          await writeSessionPersonasText(
+            serializeSessionPersonaRecords(
+              withSessionPersonaRecord(records, {
+                agent: terminalAgent,
+                place: gatePlace,
+                persona: gatePersona,
+                resumeAllowed,
+                at: new Date().toISOString(),
+              }),
+            ),
+          );
+          if (!resumeAllowed) {
+            appLog.write({
+              phase: "register",
+              note: `persona changed since last spawn for (${terminalAgent}); disabling agent resume`,
+            });
+          }
+        } catch (err) {
+          appLog.write({
+            phase: "register",
+            note: "persona resume gate check failed; falling back to resume",
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+        }
       } catch (err) {
         appLog.write({
           phase: "register",
@@ -2419,7 +2468,8 @@ function App() {
         if (cancelled) return;
         const respawnMode = consumeMainSessionRespawnMode();
         const shouldRespawnMain = respawnMode !== "none";
-        setMainSessionResumeEnabled(respawnMode !== "fresh");
+        // persona gate（boot Step 2 で確定済み）は resume 抑止側にのみ効かせる。
+        setMainSessionResumeEnabled(respawnMode !== "fresh" && !personaResumeBlockedRef.current);
         if (shouldRespawnMain) {
           try {
             await sessionDestroy({ sessionId: DEFAULT_SESSION_ID });

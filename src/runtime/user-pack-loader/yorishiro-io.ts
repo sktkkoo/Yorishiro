@@ -28,6 +28,23 @@ export async function writeYorishiroConfigText(text: string): Promise<void> {
   });
 }
 
+/** session-personas.json（persona resume gate の記録）を text として読む。不在 → 空文字列。 */
+export async function readSessionPersonasText(): Promise<string> {
+  try {
+    return await invoke<string>("read_yorishiro_file", { relativePath: "session-personas.json" });
+  } catch {
+    return "";
+  }
+}
+
+/** session-personas.json を atomic に書く。 */
+export async function writeSessionPersonasText(text: string): Promise<void> {
+  await invoke("write_yorishiro_file_atomic", {
+    relativePath: "session-personas.json",
+    content: text,
+  });
+}
+
 /** last-startup.json を atomic に書く。 */
 export async function writeLastStartupReport(text: string): Promise<void> {
   await invoke("write_yorishiro_file_atomic", {
