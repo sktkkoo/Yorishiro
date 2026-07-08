@@ -155,6 +155,55 @@ export function localizedAgentOptions(experimentalSuffix: string): readonly Sele
   );
 }
 
+/** セッション再起動を伴う設定変更の種別。確認ダイアログの文言を分岐する。 */
+export type NewSessionChangeKind = "persona" | "agent" | "voice";
+
+export interface PendingNewSessionChange {
+  readonly kind: NewSessionChangeKind;
+  /** 現在値の表示名。voice では使わない。 */
+  readonly currentLabel?: string;
+  /** 変更後の表示名。voice では使わない。 */
+  readonly nextLabel?: string;
+  readonly run: () => void;
+}
+
+/**
+ * 確認ダイアログの文言を操作種別ごとに解決する。伝えるのは「新しいセッション」という
+ * システム語ではなく会話の行き先：persona はお別れ（引き継がない）、agent は区切り
+ * （戻れば続きから）、voice は継続。文言の使い分けは strings.ts 側の doc も参照。
+ */
+export function resolveNewSessionConfirm(
+  strings: UiStrings,
+  change: Pick<PendingNewSessionChange, "kind" | "currentLabel" | "nextLabel">,
+): { readonly message: string; readonly confirmLabel: string } {
+  switch (change.kind) {
+    case "persona":
+      return {
+        message: strings.personaSwitchConfirm
+          .replace("{current}", change.currentLabel ?? "")
+          .replace("{next}", change.nextLabel ?? ""),
+        confirmLabel: strings.personaSwitchConfirmButton,
+      };
+    case "agent":
+      return {
+        message: strings.agentSwitchConfirm
+          .replace("{current}", change.currentLabel ?? "")
+          .replace("{next}", change.nextLabel ?? ""),
+        confirmLabel: strings.agentSwitchConfirmButton,
+      };
+    case "voice":
+      return {
+        message: strings.voiceRestartConfirm,
+        confirmLabel: strings.voiceRestartConfirmButton,
+      };
+  }
+}
+
+/** ダイアログ本文用の agent 表示名。dropdown と違い experimental suffix は付けない。 */
+function terminalAgentLabel(id: string): string {
+  return TERMINAL_AGENT_OPTIONS.find((opt) => opt.value === id)?.label ?? id;
+}
+
 interface CreditLine {
   /** 主たる表記（asset 名 / library 名）。 */
   readonly text: string;
@@ -2126,9 +2175,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   // 言語切り替えは連打できるため、古い async completion で表示 state を戻さない。
   const languageChangeSeq = useRef(0);
   const [voiceFrequency, setVoiceFrequency] = useState<"on" | "off">("on");
-  const [pendingNewSessionChange, setPendingNewSessionChange] = useState<{
-    readonly run: () => void;
-  } | null>(null);
+  const [pendingNewSessionChange, setPendingNewSessionChange] =
+    useState<PendingNewSessionChange | null>(null);
   const [configLoaded, setConfigLoaded] = useState(false);
   // in-app update。設定を開いたときに一度だけ確認し、更新があればバナーを出す。
   // idle = 更新なし（確認前・確認失敗を含む）。downloading の ratio は 0-1 / null（不定）。
@@ -2145,14 +2193,17 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     : "";
   const scenes = ctx.app.listScenes();
   const strings = getStrings(resolvedLanguage);
-  const requestNewSessionChange = (run: () => void) => {
-    setPendingNewSessionChange({ run });
+  const requestNewSessionChange = (change: PendingNewSessionChange) => {
+    setPendingNewSessionChange(change);
   };
   const confirmPendingNewSessionChange = () => {
     const pending = pendingNewSessionChange;
     setPendingNewSessionChange(null);
     pending?.run();
   };
+  const newSessionConfirmContent = pendingNewSessionChange
+    ? resolveNewSessionConfirm(strings, pendingNewSessionChange)
+    : null;
 
   useEffect(() => {
     let aborted = false;
@@ -2200,18 +2251,30 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       });
   }, []);
 
+  // ダイアログ本文用の persona 表示名。localizedClaiPersonaId 等の解決済み id を渡す。
+  const personaLabelById = (id: string): string => {
+    const pack = personas.find((p) => p.id === id);
+    return pack ? formatPackOptionLabel(pack) : id;
+  };
+
   const onPersonaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const next = configPrimaryPersonaForSelection(e.target.value);
+    const selectedId = e.target.value;
+    const next = configPrimaryPersonaForSelection(selectedId);
     if (next === persona) return;
-    requestNewSessionChange(() => {
-      void applyConfigUpdate({
-        next,
-        prev: persona,
-        setLocal: setPersona,
-        write: (v) => ctx.app.setPrimaryPersona(v),
-        emitEvent: (n, p) => ctx.emitEvent(n, p),
-        field: "primaryPersona",
-      });
+    requestNewSessionChange({
+      kind: "persona",
+      currentLabel: personaLabelById(personaSelectValue),
+      nextLabel: personaLabelById(selectedId),
+      run: () => {
+        void applyConfigUpdate({
+          next,
+          prev: persona,
+          setLocal: setPersona,
+          write: (v) => ctx.app.setPrimaryPersona(v),
+          emitEvent: (n, p) => ctx.emitEvent(n, p),
+          field: "primaryPersona",
+        });
+      },
     });
   };
 
@@ -2229,15 +2292,20 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const onAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const next = e.target.value;
     if (next === agent) return;
-    requestNewSessionChange(() => {
-      void applyConfigUpdate({
-        next,
-        prev: agent,
-        setLocal: setAgent,
-        write: (v) => ctx.app.setTerminalAgent(v),
-        emitEvent: (n, p) => ctx.emitEvent(n, p),
-        field: "terminalAgent",
-      });
+    requestNewSessionChange({
+      kind: "agent",
+      currentLabel: terminalAgentLabel(agent),
+      nextLabel: terminalAgentLabel(next),
+      run: () => {
+        void applyConfigUpdate({
+          next,
+          prev: agent,
+          setLocal: setAgent,
+          write: (v) => ctx.app.setTerminalAgent(v),
+          emitEvent: (n, p) => ctx.emitEvent(n, p),
+          field: "terminalAgent",
+        });
+      },
     });
   };
 
@@ -2272,15 +2340,18 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
   const onVoiceToggle = () => {
     const next: "on" | "off" = voiceFrequency === "on" ? "off" : "on";
-    requestNewSessionChange(() => {
-      void applyConfigUpdate({
-        next,
-        prev: voiceFrequency,
-        setLocal: setVoiceFrequency,
-        write: (v) => ctx.app.setVoiceFrequency(v),
-        emitEvent: (n, p) => ctx.emitEvent(n, p),
-        field: "voiceFrequency",
-      });
+    requestNewSessionChange({
+      kind: "voice",
+      run: () => {
+        void applyConfigUpdate({
+          next,
+          prev: voiceFrequency,
+          setLocal: setVoiceFrequency,
+          write: (v) => ctx.app.setVoiceFrequency(v),
+          emitEvent: (n, p) => ctx.emitEvent(n, p),
+          field: "voiceFrequency",
+        });
+      },
     });
   };
 
@@ -2832,11 +2903,11 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       </main>
 
       {creditsOpen && <CreditsOverlay onBack={() => setCreditsOpen(false)} />}
-      {pendingNewSessionChange ? (
+      {newSessionConfirmContent ? (
         <NewSessionConfirmDialog
-          message={strings.newSessionConfirm}
+          message={newSessionConfirmContent.message}
           cancelLabel={strings.restoreConfirmCancel}
-          confirmLabel={strings.newSessionConfirmButton}
+          confirmLabel={newSessionConfirmContent.confirmLabel}
           onCancel={() => setPendingNewSessionChange(null)}
           onConfirm={confirmPendingNewSessionChange}
         />

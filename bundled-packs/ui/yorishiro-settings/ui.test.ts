@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolvePackRepairPrompt } from "../../../src/i18n/strings";
+import { getStrings, resolvePackRepairPrompt } from "../../../src/i18n/strings";
 import { KNOWN_AGENT_IDS } from "../../../src/runtime/user-pack-loader/config";
 import {
   applyConfigUpdate,
@@ -8,8 +8,10 @@ import {
   EXPERIMENTAL_AGENT_IDS,
   filterPersonaOptionsForLanguage,
   localizedAgentOptions,
+  type NewSessionChangeKind,
   packWorkbenchKey,
   resolveCloseTarget,
+  resolveNewSessionConfirm,
   resolvePersonaSelectValue,
   SETTINGS_PACK_ID,
   selectWorkbenchPack,
@@ -161,6 +163,65 @@ describe("terminal agent options", () => {
     expect(byId.get("claude")).toBe("Claude Code");
     expect(byId.get("codex")).toBe("Codex（experimental）");
     expect(byId.has("opencode")).toBe(false);
+  });
+});
+
+describe("resolveNewSessionConfirm", () => {
+  const ja = getStrings("ja");
+  const en = getStrings("en");
+  const kinds: readonly NewSessionChangeKind[] = ["persona", "agent", "voice"];
+
+  it("persona: goodbye wording with both display names, no carry-over", () => {
+    const r = resolveNewSessionConfirm(ja, {
+      kind: "persona",
+      currentLabel: "CLAI",
+      nextLabel: "Mint",
+    });
+    expect(r.message).toBe("CLAI とお別れして、Mint を迎えます。いまの会話は引き継がれません。");
+    expect(r.confirmLabel).toBe("お別れして切り替える");
+
+    const rEn = resolveNewSessionConfirm(en, {
+      kind: "persona",
+      currentLabel: "CLAI",
+      nextLabel: "Mint",
+    });
+    expect(rEn.message).toBe(
+      "Say goodbye to CLAI and welcome Mint. The current conversation will not carry over.",
+    );
+    expect(rEn.confirmLabel).toBe("Say Goodbye and Switch");
+  });
+
+  it("agent: pause wording with both agent names and a resume hint", () => {
+    const r = resolveNewSessionConfirm(ja, {
+      kind: "agent",
+      currentLabel: "Claude Code",
+      nextLabel: "Codex",
+    });
+    expect(r.message).toContain("Codex に切り替えて再起動");
+    expect(r.message).toContain("Claude Code との会話はいったん区切り");
+    expect(r.message).toContain("続きから再開");
+    expect(r.confirmLabel).toBe("切り替える");
+  });
+
+  it("voice: restart wording that promises the conversation continues", () => {
+    const r = resolveNewSessionConfirm(ja, { kind: "voice" });
+    expect(r.message).toBe("反映のためにセッションを再起動します。会話は続きから再開します。");
+    expect(r.confirmLabel).toBe("再起動する");
+    expect(resolveNewSessionConfirm(en, { kind: "voice" }).confirmLabel).toBe("Restart");
+  });
+
+  it("leaves no unreplaced placeholders and uses a distinct verb per kind", () => {
+    for (const strings of [ja, en]) {
+      const resolved = kinds.map((kind) =>
+        resolveNewSessionConfirm(strings, { kind, currentLabel: "A", nextLabel: "B" }),
+      );
+      for (const r of resolved) {
+        expect(r.message).not.toMatch(/[{}]/);
+        expect(r.confirmLabel.length).toBeGreaterThan(0);
+      }
+      // 操作ごとにボタンの動詞が違う（generic な「続ける」に縮退していない）。
+      expect(new Set(resolved.map((r) => r.confirmLabel)).size).toBe(kinds.length);
+    }
   });
 });
 

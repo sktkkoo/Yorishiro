@@ -35,8 +35,18 @@ export interface UiStrings {
   readonly voiceOn: string;
   readonly voiceOff: string;
   readonly voiceAppliesNextSession: string;
-  readonly newSessionConfirm: string;
-  readonly newSessionConfirmButton: string;
+  /**
+   * セッション再起動を伴う設定変更の確認ダイアログ。「セッション」というシステム語
+   * ではなく会話の行き先を伝える：persona はお別れ（引き継がない）、agent は区切り
+   * （戻れば続きから）、voice は継続。ボタンは generic な「続ける」でなく操作の動詞。
+   * {current} / {next} は表示名で置換する。
+   */
+  readonly personaSwitchConfirm: string;
+  readonly personaSwitchConfirmButton: string;
+  readonly agentSwitchConfirm: string;
+  readonly agentSwitchConfirmButton: string;
+  readonly voiceRestartConfirm: string;
+  readonly voiceRestartConfirmButton: string;
   readonly labelPersona: string;
   readonly labelScene: string;
   readonly labelSound: string;
@@ -143,8 +153,15 @@ const EN: UiStrings = {
   voiceOn: "On",
   voiceOff: "Off",
   voiceAppliesNextSession: "Applies from the next session",
-  newSessionConfirm: "This will start a new agent session. Continue?",
-  newSessionConfirmButton: "Continue",
+  personaSwitchConfirm:
+    "Say goodbye to {current} and welcome {next}. The current conversation will not carry over.",
+  personaSwitchConfirmButton: "Say Goodbye and Switch",
+  agentSwitchConfirm:
+    "Switch the agent to {next} and restart the session. The conversation with {current} pauses here — switching back resumes it.",
+  agentSwitchConfirmButton: "Switch",
+  voiceRestartConfirm:
+    "Restart the session to apply. The conversation continues where it left off.",
+  voiceRestartConfirmButton: "Restart",
   labelPersona: "Persona",
   labelScene: "Scene",
   labelSound: "Sound",
@@ -252,8 +269,13 @@ const JA: UiStrings = {
   voiceOn: "On",
   voiceOff: "Off",
   voiceAppliesNextSession: "※ 次回セッションから反映",
-  newSessionConfirm: "新しい agent セッションを開始します。続けますか？",
-  newSessionConfirmButton: "続ける",
+  personaSwitchConfirm: "{current} とお別れして、{next} を迎えます。いまの会話は引き継がれません。",
+  personaSwitchConfirmButton: "お別れして切り替える",
+  agentSwitchConfirm:
+    "agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）。",
+  agentSwitchConfirmButton: "切り替える",
+  voiceRestartConfirm: "反映のためにセッションを再起動します。会話は続きから再開します。",
+  voiceRestartConfirmButton: "再起動する",
   labelPersona: "Persona",
   labelScene: "Scene",
   labelSound: "Sound",
