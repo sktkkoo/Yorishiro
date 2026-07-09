@@ -23,7 +23,7 @@ interface ScreenshotThumbnailOptions {
   readonly holdMs: number;
   /** 退場 fade-out の時間（ms）。default: 360 */
   readonly fadeOutMs: number;
-  /** サムネイルの目標幅（CSS px）。default: 240 */
+  /** サムネイルの目標幅（CSS px）。default: 180 */
   readonly thumbnailWidth: number;
   /** 右下からの余白（CSS px）。default: 22 */
   readonly margin: number;
@@ -183,7 +183,7 @@ export default {
     const shrinkMs = clampPositive(options.shrinkMs, 460);
     const holdMs = Math.max(0, options.holdMs ?? 2600);
     const fadeOutMs = clampPositive(options.fadeOutMs, 360);
-    const thumbnailWidth = clampPositive(options.thumbnailWidth, 240);
+    const thumbnailWidth = clampPositive(options.thumbnailWidth, 180);
     const margin = Math.max(0, options.margin ?? 22);
     const easing = options.easing ?? "cubic-bezier(0.22, 1, 0.36, 1)";
 

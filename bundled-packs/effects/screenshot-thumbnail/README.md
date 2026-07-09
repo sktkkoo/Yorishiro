@@ -40,7 +40,7 @@ ctx.dispatchEffect({
 | `shrinkMs` | `number` | `460` | 全面画像からサムネイルへ縮小する時間（ms）。最低 1 |
 | `holdMs` | `number` | `2600` | サムネイル状態で保持する時間（ms）。0 以上 |
 | `fadeOutMs` | `number` | `360` | 退場 fade-out の時間（ms）。最低 1 |
-| `thumbnailWidth` | `number` | `240` | サムネイルの目標幅（CSS px）。最低 1 |
+| `thumbnailWidth` | `number` | `180` | サムネイルの目標幅（CSS px）。最低 1 |
 | `margin` | `number` | `22` | 右下からの余白（CSS px）。0 以上 |
 | `easing` | `string` | `"cubic-bezier(0.22, 1, 0.36, 1)"` | 縮小 transform の easing |
 
