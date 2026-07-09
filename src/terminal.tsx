@@ -3,12 +3,14 @@ import "@xterm/xterm/css/xterm.css";
 import { type SpawnSpec, sessionRefreshTheme } from "./bindings/tauri-commands";
 import type { Perception } from "./core/perception";
 import { type AttentionLightCue, getAttentionLightCueStore } from "./runtime/attention-light-cue";
+import { getLoopReelStore } from "./runtime/loop-reel";
 import {
   detectScreenAttentionRequest,
   getSessionStatusStore,
   isAttentionClearingInput,
   isOscAttentionNotificationMessage,
 } from "./runtime/session-status";
+import { getSurfaceRegistry } from "./runtime/surface-registry";
 import { getTerminalRuntime, type InterruptProtectionMode } from "./runtime/terminal-runtime";
 import { getCurrentTerminalTheme } from "./runtime/terminal-theme";
 import {
@@ -53,6 +55,7 @@ export default function Terminal({
     const status = getSessionStatusStore();
     status.register(sessionId);
     const runtime = getTerminalRuntime(sessionId);
+    runtime.setLoopReelRecorder(getLoopReelStore());
     const scheduleDebounced = (
       timerRef: MutableRefObject<number | null>,
       dueAtRef: MutableRefObject<number>,
@@ -132,6 +135,7 @@ export default function Terminal({
     const runtime = getTerminalRuntime(sessionId);
     if (visible) {
       getSessionStatusStore().markActive(sessionId);
+      getSurfaceRegistry().register("terminal", placeholder);
       runtime.attachTo(placeholder);
       runtime.setTheme(getCurrentTerminalTheme());
       void sessionRefreshTheme({ sessionId }).catch((err) => {
@@ -140,7 +144,10 @@ export default function Terminal({
     } else {
       runtime.detachContainer();
     }
-    return () => runtime.detachContainer();
+    return () => {
+      getSurfaceRegistry().unregister("terminal", placeholder);
+      runtime.detachContainer();
+    };
   }, [sessionId, visible]);
 
   useEffect(() => {

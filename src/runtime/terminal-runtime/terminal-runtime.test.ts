@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Perception } from "../../core/perception";
 import { _clearForTest } from "../hot-data/hot-data";
 import { encodeOsc633Value } from "./osc633";
+import type { LoopReelRecorderSink } from "./types";
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -50,6 +51,7 @@ const mockState = vi.hoisted(() => {
       textarea: HTMLTextAreaElement;
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
       dataHandler?: (data: string) => void;
+      resizeHandler?: (size: { cols: number; rows: number }) => void;
     }>;
     dataHandlers: Array<(data: string) => void>;
     decorations: Array<{ element: HTMLElement; dispose: ReturnType<typeof vi.fn> }>;
@@ -132,6 +134,7 @@ vi.mock("@xterm/xterm", () => ({
     textarea = document.createElement("textarea");
     customKeyEventHandler?: (event: KeyboardEvent) => boolean;
     dataHandler?: (data: string) => void;
+    resizeHandler?: (size: { cols: number; rows: number }) => void;
     buffer: MockBuffer;
     bufferLines = new Map<number, string>([
       [1, "$ npm test"],
@@ -195,7 +198,9 @@ vi.mock("@xterm/xterm", () => ({
       this.dataHandler = handler;
       mockState.dataHandlers.push(handler);
     }
-    onResize(): void {}
+    onResize(handler: (size: { cols: number; rows: number }) => void): void {
+      this.resizeHandler = handler;
+    }
     onScroll(): void {}
     scrollToLine(line: number): void {
       mockState.scrollToLineCalls.push(line);
@@ -268,6 +273,20 @@ function interruptNoticeElement(): HTMLElement {
   const el = document.body.querySelector<HTMLElement>(".terminal-runtime-notice");
   if (!el) throw new Error("interrupt notice element not found");
   return el;
+}
+
+function createRecorderSink(): LoopReelRecorderSink & {
+  readonly startSession: ReturnType<typeof vi.fn<LoopReelRecorderSink["startSession"]>>;
+  readonly endSession: ReturnType<typeof vi.fn<LoopReelRecorderSink["endSession"]>>;
+  readonly recordPty: ReturnType<typeof vi.fn<LoopReelRecorderSink["recordPty"]>>;
+  readonly recordResize: ReturnType<typeof vi.fn<LoopReelRecorderSink["recordResize"]>>;
+} {
+  return {
+    startSession: vi.fn<LoopReelRecorderSink["startSession"]>(),
+    endSession: vi.fn<LoopReelRecorderSink["endSession"]>(),
+    recordPty: vi.fn<LoopReelRecorderSink["recordPty"]>(),
+    recordResize: vi.fn<LoopReelRecorderSink["recordResize"]>(),
+  };
 }
 
 describe("TerminalRuntime", () => {
@@ -453,6 +472,86 @@ describe("TerminalRuntime", () => {
     expect(terminal.writes).toEqual([new Uint8Array([65]), new Uint8Array([66])]);
     expect(perception.onPtyOutput).toHaveBeenCalledOnce();
     expect(perception.onPtyOutput).toHaveBeenCalledWith("B");
+  });
+
+  it("attach-first の replay は録画せず live Channel だけを Loop Reel に記録する", async () => {
+    const attach = deferred<{ attached: boolean; replay: number[] }>();
+    mockState.sessionAttach.mockReturnValueOnce(attach.promise);
+    const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
+    const channel = mockState.channels[0];
+
+    runtime.setLoopReelRecorder(recorder);
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null }, { attachFirst: true });
+    await flushMicrotasks();
+
+    channel.onmessage?.(new Uint8Array([66]).buffer);
+    attach.resolve({ attached: true, replay: [65] });
+    await flushMicrotasks();
+
+    expect(recorder.recordPty).toHaveBeenCalledOnce();
+    expect(recorder.recordPty).toHaveBeenCalledWith("shell-1", "B");
+  });
+
+  it("単一 decode の text を録画と perception の両方に渡す（UTF-8 split 込み）", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
+    const channel = mockState.channels[0];
+    const perception = { onCommandBlock: vi.fn(), onPtyOutput: vi.fn(), onUserInput: vi.fn() };
+    const bytes = new TextEncoder().encode("あ");
+
+    runtime.setLoopReelRecorder(recorder);
+    runtime.setPerception(perception as unknown as Perception);
+    channel.onmessage?.(bytes.slice(0, 1).buffer);
+    channel.onmessage?.(bytes.slice(1).buffer);
+
+    expect(recorder.recordPty).toHaveBeenCalledOnce();
+    expect(recorder.recordPty).toHaveBeenCalledWith("shell-1", "あ");
+    expect(perception.onPtyOutput).toHaveBeenLastCalledWith("あ");
+  });
+
+  it("手動録画は現在 geometry を seed して開始・終了する", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
+
+    runtime.setLoopReelRecorder(recorder);
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
+    await flushMicrotasks();
+    runtime.startRecording("Manual dogfood");
+    runtime.stopRecording();
+
+    expect(recorder.startSession).toHaveBeenCalledWith("shell-1", {
+      label: "Manual dogfood",
+      kind: "shell",
+      geometry: { cols: 80, rows: 24 },
+    });
+    expect(recorder.endSession).toHaveBeenCalledWith("shell-1");
+  });
+
+  it("seedLoopReelGeometry は現在 geometry を recordResize で補給する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
+
+    runtime.setLoopReelRecorder(recorder);
+    runtime.seedLoopReelGeometry();
+
+    expect(recorder.recordResize).toHaveBeenCalledWith("shell-1", 80, 24);
+  });
+
+  it("terminal resize を Loop Reel に記録する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
+    const terminal = mockState.terminals[0];
+
+    runtime.setLoopReelRecorder(recorder);
+    terminal.resizeHandler?.({ cols: 100, rows: 30 });
+
+    expect(mockState.sessionResize).toHaveBeenCalledWith({
+      sessionId: "shell-1",
+      cols: 100,
+      rows: 30,
+    });
+    expect(recorder.recordResize).toHaveBeenCalledWith("shell-1", 100, 30);
   });
 
   it("stale attach は新しい attach の live buffer を破壊しない", async () => {
@@ -739,7 +838,9 @@ describe("TerminalRuntime", () => {
 
   it("OSC D が無い running run を pty-exit で finalize する", async () => {
     const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
 
+    runtime.setLoopReelRecorder(recorder);
     runtime.updatePtyParams({ spec: shellSpec, cwd: null });
     await flushMicrotasks();
     mockState.oscHandlers.get(633)?.(`E;${encodeOsc633Value("sleep 1")}`);
@@ -758,6 +859,7 @@ describe("TerminalRuntime", () => {
       completedBy: "pty-exit",
       exitCode: 0,
     });
+    expect(recorder.endSession).toHaveBeenCalledWith("shell-1");
   });
 
   it("destroys a PTY when an in-flight spawn completes after dispose", async () => {

@@ -96,6 +96,16 @@ describe("Perception", () => {
 
       expect(dispatched).toHaveLength(0);
     });
+
+    it("does not call recordObserved for coalesced PTY output", () => {
+      const recordObserved = vi.fn();
+      const { perception } = createStack({ recordObserved });
+
+      perception.onPtyOutput("hello");
+      vi.advanceTimersByTime(16);
+
+      expect(recordObserved).not.toHaveBeenCalled();
+    });
   });
 
   // ── Command block ─────────────────────────────────────────
@@ -463,6 +473,18 @@ describe("Perception", () => {
       perception.ingestLoopLifecycle("iterating", "claude");
 
       expect(dispatched).toHaveLength(0);
+    });
+
+    it("calls recordObserved after dispatch for loop lifecycle only", () => {
+      const recordObserved = vi.fn();
+      const { perception, dispatched } = createStack({ recordObserved });
+      clockMs = 5000;
+
+      perception.ingestLoopLifecycle("started", "codex", { goal: "record" });
+
+      expect(dispatched).toHaveLength(1);
+      expect(recordObserved).toHaveBeenCalledOnce();
+      expect(recordObserved).toHaveBeenCalledWith(dispatched[0]);
     });
 
     it("does not count as user activity (idle still fires after a loop event)", () => {
