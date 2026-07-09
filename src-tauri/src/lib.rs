@@ -1,6 +1,7 @@
 mod bundled_examples_gen;
 mod history;
 mod journal;
+mod loop_reel;
 mod mcp;
 mod pty;
 mod sessions;
@@ -2325,6 +2326,13 @@ pub fn run() {
             history::snapshot_list,
             history::snapshot_restore,
             history::snapshot_prune,
+            loop_reel::loop_reel_create,
+            loop_reel::loop_reel_update_meta,
+            loop_reel::loop_reel_append_entries,
+            loop_reel::loop_reel_list,
+            loop_reel::loop_reel_load_entries,
+            loop_reel::loop_reel_delete,
+            loop_reel::loop_reel_redaction_sources,
             system_exec
         ])
         .setup(|app| {

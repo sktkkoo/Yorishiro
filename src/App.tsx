@@ -224,7 +224,11 @@ import {
   withAgentResumePolicy,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
-import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
+import {
+  getSurfaceRegistry,
+  type SurfaceName,
+  TERMINAL_SURFACE_FALLBACK_SELECTOR,
+} from "./runtime/surface-registry";
 import {
   getAgentToolRunStore,
   getAllTerminalRuntimes,
@@ -652,6 +656,8 @@ function fallbackSelectorForSurface(name: SurfaceName): string {
       return ".charactor-container";
     case "chrome":
       return ".sidebar";
+    case "terminal":
+      return TERMINAL_SURFACE_FALLBACK_SELECTOR;
   }
 }
 

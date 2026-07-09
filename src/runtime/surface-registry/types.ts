@@ -9,12 +9,15 @@
  *   - "shell"     : width / collapse を所有する縦カラム（P1 で .sidebar を包む .shell-column wrapper として導入）
  *   - "character" : Three/VRM/Scene viewport の mount node（.charactor-container）
  *   - "chrome"    : folder/gear の chrome 行（.sidebar）。P3 で単独非表示可能に
- * 後続 phase で "terminal" を追加する。
+ *   - "terminal"  : active terminal placeholder。Loop Reel replay overlay の基準矩形。
  *
  * Internal design-record: specs/2026-05-18-shell-named-surfaces-design.md §1/§2
  */
 
-export type SurfaceName = "shell" | "character" | "chrome";
+export type SurfaceName = "shell" | "character" | "chrome" | "terminal";
+
+export const TERMINAL_SURFACE_FALLBACK_SELECTOR =
+  '.terminal-container[data-active="true"], .terminal-container';
 
 export interface SurfaceRegistry {
   /** surface 名に DOM node を結び付ける。既存登録があれば置換する。 */
