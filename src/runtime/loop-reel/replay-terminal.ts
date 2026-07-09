@@ -1,6 +1,6 @@
-import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { applyFixedRect, readPaddedFixedRect } from "../terminal-runtime/fixed-terminal-rect";
+import { getCurrentTerminalTheme } from "../terminal-theme";
 import {
   buildReplayTimeline,
   type ReplayFrame,
@@ -8,15 +8,6 @@ import {
   replayDurationMs,
 } from "./reel-player";
 import type { SessionRecording } from "./types";
-
-const REPLAY_THEME: XTermTheme = {
-  background: "#0f1923",
-  foreground: "#eceff4",
-  cursor: "#4dd9cf",
-  cursorAccent: "#0f1923",
-  selectionBackground: "#243447",
-  selectionForeground: "#eceff4",
-};
 
 export interface ReplayTerminal {
   /** live terminal と同じ terminal placeholder に replay xterm を重ねる。 */
@@ -65,8 +56,10 @@ class ReplayTerminalImpl implements ReplayTerminal {
   private readonly positionListeners = new Set<(timestamp: number) => void>();
 
   constructor() {
+    // テーマは live terminal と同じ供給源（scene 由来の現在テーマ）を読む。
+    // 独自テーマを持つと再生中だけ背景が scene とずれる。
     this.term = new XTerm({
-      theme: { ...REPLAY_THEME },
+      theme: { ...getCurrentTerminalTheme() },
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, monospace",
       fontSize: 13,
       cursorBlink: false,
@@ -88,6 +81,8 @@ class ReplayTerminalImpl implements ReplayTerminal {
 
   attachTo(container: HTMLElement): void {
     if (this.disposed) return;
+    // 生成後に scene が切り替わっていても attach 時点の現在テーマに揃える。
+    this.term.options.theme = { ...getCurrentTerminalTheme() };
     this.attachedContainer = container;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;

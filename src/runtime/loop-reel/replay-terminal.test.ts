@@ -10,6 +10,7 @@ const mockState = vi.hoisted(() => {
       resizes: Array<{ cols: number; rows: number }>;
       resetCalls: number;
       disposed: boolean;
+      options: { theme?: Record<string, string> };
     }>;
     onDataCalls: number;
   } = {
@@ -19,14 +20,25 @@ const mockState = vi.hoisted(() => {
   return state;
 });
 
+const themeState = vi.hoisted(() => ({
+  current: { background: "#111111" } as Record<string, string>,
+}));
+
+// live terminal と同じテーマ供給源を読む契約をテストするため、供給源を差し替える。
+vi.mock("../terminal-theme", () => ({
+  getCurrentTerminalTheme: () => ({ ...themeState.current }),
+}));
+
 vi.mock("@xterm/xterm", () => ({
   Terminal: class MockTerminal {
     writes: unknown[] = [];
     resizes: Array<{ cols: number; rows: number }> = [];
     resetCalls = 0;
     disposed = false;
+    options: { theme?: Record<string, string> };
 
-    constructor() {
+    constructor(options: { theme?: Record<string, string> } = {}) {
+      this.options = options;
       mockState.terminals.push(this);
     }
 
@@ -93,6 +105,22 @@ describe("ReplayTerminal", () => {
 
     expect(mockState.onDataCalls).toBe(0);
 
+    replay.dispose();
+  });
+
+  it("scene 供給源の現在テーマで xterm を作り、attach 時に再適用する", () => {
+    themeState.current = { background: "#123456" };
+    const replay = createReplayTerminal();
+    const terminal = mockState.terminals[0];
+
+    expect(terminal.options.theme?.background).toBe("#123456");
+
+    themeState.current = { background: "#654321" };
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    replay.attachTo(host);
+
+    expect(terminal.options.theme?.background).toBe("#654321");
     replay.dispose();
   });
 
