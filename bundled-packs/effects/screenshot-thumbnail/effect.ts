@@ -36,7 +36,17 @@ interface ActiveThumbnailLayer {
   disposed: boolean;
 }
 
+interface TargetTransform {
+  readonly transform: string;
+  readonly scale: number;
+}
+
 let currentLayer: ActiveThumbnailLayer | null = null;
+
+const CARD_BORDER_RADIUS_PX = 10;
+const CARD_BORDER_WIDTH_PX = 1;
+const CARD_SHADOW_Y_PX = 14;
+const CARD_SHADOW_BLUR_PX = 34;
 
 function disposeLayer(layer: ActiveThumbnailLayer): void {
   if (layer.disposed) return;
@@ -60,7 +70,7 @@ function resolveTargetTransform(
   container: HTMLDivElement,
   thumbnailWidth: number,
   margin: number,
-): string {
+): TargetTransform {
   const rect = container.getBoundingClientRect();
   const viewportWidth = Math.max(1, rect.width || window.innerWidth || 1);
   const viewportHeight = Math.max(1, rect.height || window.innerHeight || 1);
@@ -70,7 +80,11 @@ function resolveTargetTransform(
   const targetHeight = viewportHeight * scale;
   const translateX = Math.max(0, viewportWidth - safeMargin - targetWidth);
   const translateY = Math.max(0, viewportHeight - safeMargin - targetHeight);
-  return `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+  return { transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`, scale };
+}
+
+function compensateScaledPx(finalPx: number, scale: number): string {
+  return `${finalPx / Math.max(0.001, scale)}px`;
 }
 
 export default {
@@ -92,7 +106,7 @@ export default {
     disposeCurrentLayer();
 
     let overlay: HTMLImageElement | null = null;
-    let targetTransform = "translate(0px, 0px) scale(1)";
+    let targetTransform: TargetTransform = { transform: "translate(0px, 0px) scale(1)", scale: 1 };
     const handle = ctx.renderer.addDomLayer((container) => {
       const img = document.createElement("img");
       img.src = options.dataUrl ?? "";
@@ -108,13 +122,14 @@ export default {
       img.style.transform = "translate(0px, 0px) scale(1)";
       img.style.opacity = "1";
       img.style.borderRadius = "0";
-      img.style.border = "1px solid transparent";
+      img.style.border = "0 solid transparent";
       img.style.boxSizing = "border-box";
       img.style.boxShadow = "0 0 0 rgba(0, 0, 0, 0)";
       img.style.willChange = "transform, opacity, border-radius, box-shadow";
       img.style.transition = [
         `transform ${shrinkMs}ms ${easing}`,
         `border-radius ${shrinkMs}ms ${easing}`,
+        `border-width ${shrinkMs}ms ${easing}`,
         `box-shadow ${shrinkMs}ms ${easing}`,
         `border-color ${shrinkMs}ms ${easing}`,
       ].join(", ");
@@ -130,10 +145,16 @@ export default {
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       if (overlay) {
         const el = overlay as HTMLImageElement;
-        el.style.transform = targetTransform;
-        el.style.borderRadius = "10px";
+        // カード装飾の長さは「縮小後に見える CSS px」として扱い、scale 分を逆補正する。
+        const borderRadius = compensateScaledPx(CARD_BORDER_RADIUS_PX, targetTransform.scale);
+        const borderWidth = compensateScaledPx(CARD_BORDER_WIDTH_PX, targetTransform.scale);
+        const shadowY = compensateScaledPx(CARD_SHADOW_Y_PX, targetTransform.scale);
+        const shadowBlur = compensateScaledPx(CARD_SHADOW_BLUR_PX, targetTransform.scale);
+        el.style.transform = targetTransform.transform;
+        el.style.borderRadius = borderRadius;
+        el.style.borderWidth = borderWidth;
         el.style.borderColor = "rgba(255, 255, 255, 0.42)";
-        el.style.boxShadow = "0 14px 34px rgba(0, 0, 0, 0.28)";
+        el.style.boxShadow = `0 ${shadowY} ${shadowBlur} rgba(0, 0, 0, 0.28)`;
       }
       await ctx.time.after(shrinkMs);
       await ctx.time.after(holdMs);

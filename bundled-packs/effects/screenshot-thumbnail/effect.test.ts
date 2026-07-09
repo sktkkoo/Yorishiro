@@ -78,6 +78,27 @@ describe("screenshot-thumbnail effect", () => {
     expect(after).toHaveBeenCalledWith(180);
   });
 
+  it("card decoration lengths are compensated by the final thumbnail scale", async () => {
+    const { ctx, container } = makeCtx();
+    await screenshotThumbnail.run(ctx, {
+      dataUrl: "data:image/png;base64,AAAA",
+      thumbnailWidth: 240,
+      margin: 0,
+    });
+
+    const img = container.firstElementChild as HTMLImageElement | null;
+    const scale = 240 / 800;
+    const shadowLengths =
+      img?.style.boxShadow.match(/\d+(?:\.\d+)?px/g)?.map((value) => Number.parseFloat(value)) ??
+      [];
+
+    expect(img?.style.transform).toBe("translate(560px, 420px) scale(0.3)");
+    expect(Number.parseFloat(img?.style.borderRadius ?? "")).toBeCloseTo(10 / scale, 5);
+    expect(Number.parseFloat(img?.style.borderWidth ?? "")).toBeCloseTo(1 / scale, 5);
+    expect(shadowLengths[0]).toBeCloseTo(14 / scale, 5);
+    expect(shadowLengths[1]).toBeCloseTo(34 / scale, 5);
+  });
+
   it("does not create a layer without dataUrl", async () => {
     const { ctx, addDomLayer } = makeCtx();
     await screenshotThumbnail.run(ctx, {});
