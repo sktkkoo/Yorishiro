@@ -457,6 +457,72 @@ describe("LoopReelStore as session recorder", () => {
     ]);
   });
 
+  it("throttles noisy intervention markers per active recording", () => {
+    const store = createLoopReelStore();
+
+    store.startSession("default-session", { label: "claude", kind: "agent", timestamp: 100 });
+    store.recordMarker("default-session", "intervention", undefined, { length: 1 }, 1000);
+    store.recordMarker("default-session", "intervention", undefined, { length: 2 }, 5999);
+    store.recordMarker("default-session", "intervention", undefined, { length: 3 }, 6000);
+    store.recordMarker("default-session", "command-failed", "npm test", { exitCode: 1 }, 6001);
+
+    const markers = store
+      .list()[0]
+      .entries.filter((entry) => entry.kind === "marker")
+      .map((entry) => ({
+        marker: entry.marker,
+        label: entry.label,
+        detail: entry.detail,
+        timestamp: entry.timestamp,
+      }));
+    expect(markers).toEqual([
+      {
+        marker: "session-start",
+        label: "claude",
+        detail: undefined,
+        timestamp: 100,
+      },
+      {
+        marker: "intervention",
+        label: "User intervention",
+        detail: { length: 1 },
+        timestamp: 1000,
+      },
+      {
+        marker: "intervention",
+        label: "User intervention",
+        detail: { length: 3 },
+        timestamp: 6000,
+      },
+      {
+        marker: "command-failed",
+        label: "npm test",
+        detail: { exitCode: 1 },
+        timestamp: 6001,
+      },
+    ]);
+  });
+
+  it("resets intervention throttle state for a new recording on the same session", () => {
+    const store = createLoopReelStore();
+
+    store.startSession("default-session", { label: "first", kind: "agent", timestamp: 100 });
+    store.recordMarker("default-session", "intervention", undefined, { length: 1 }, 1000);
+    store.endSession("default-session", 1200);
+    store.startSession("default-session", { label: "second", kind: "agent", timestamp: 1500 });
+    store.recordMarker("default-session", "intervention", undefined, { length: 2 }, 1501);
+
+    const [second] = store.list();
+    expect(second.label).toBe("second");
+    expect(second.entries).toContainEqual({
+      kind: "marker",
+      marker: "intervention",
+      label: "User intervention",
+      detail: { length: 2 },
+      timestamp: 1501,
+    });
+  });
+
   it("drops old pty entries at the cap, warns once, and keeps structured markers", () => {
     const warn = vi.fn();
     const store = createLoopReelStore({ maxEntriesPerRecording: 4, warn });
@@ -507,6 +573,25 @@ describe("LoopReelStore as session recorder", () => {
       [{ kind: "pty", text: "middle\n", timestamp: 120 }],
       [{ kind: "pty", text: "new\n", timestamp: 130 }],
     ]);
+  });
+
+  it("reuses one cloned entry array for append callbacks and subscribers", () => {
+    const callbackAppended = vi.fn();
+    const subscriberAppended = vi.fn();
+    const store = createLoopReelStore({
+      callbacks: { onEntriesAppended: callbackAppended },
+    });
+    store.subscribeRecordingEvents({ onEntriesAppended: subscriberAppended });
+
+    store.startSession("default-session", { label: "codex", kind: "agent", timestamp: 100 });
+    store.recordPty("default-session", "hello\n", 110);
+
+    expect(callbackAppended).toHaveBeenCalledTimes(2);
+    expect(subscriberAppended).toHaveBeenCalledTimes(2);
+    expect(callbackAppended.mock.calls[1][0].entries).toBe(
+      subscriberAppended.mock.calls[1][0].entries,
+    );
+    expect(callbackAppended.mock.calls[1][0].entries).not.toBe(store.list()[0].entries);
   });
 
   it("evicts the oldest ended recordings at the recording cap", () => {

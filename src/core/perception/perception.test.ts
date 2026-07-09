@@ -134,6 +134,23 @@ describe("Perception", () => {
       }
     });
 
+    it("calls recordObserved after dispatch for command blocks", () => {
+      const recordObserved = vi.fn();
+      const { perception, dispatched } = createStack({ recordObserved });
+      clockMs = 2500;
+
+      perception.onCommandBlock({
+        command: "npm test",
+        exitCode: 1,
+        durationMs: 1200,
+        sessionId: "shell-1",
+      });
+
+      expect(dispatched).toHaveLength(1);
+      expect(recordObserved).toHaveBeenCalledOnce();
+      expect(recordObserved).toHaveBeenCalledWith(dispatched[0]);
+    });
+
     it("does not dispatch after dispose", () => {
       const { perception, dispatched } = createStack();
       perception.dispose();
@@ -475,7 +492,7 @@ describe("Perception", () => {
       expect(dispatched).toHaveLength(0);
     });
 
-    it("calls recordObserved after dispatch for loop lifecycle only", () => {
+    it("calls recordObserved after dispatch for loop lifecycle", () => {
       const recordObserved = vi.fn();
       const { perception, dispatched } = createStack({ recordObserved });
       clockMs = 5000;

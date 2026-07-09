@@ -1070,6 +1070,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private acceptUserInputData(data: string): void {
     if (this.shouldSuppressProtectedInterruptData(data)) return;
     this.lastUserInputAt = performance.now();
+    this.loopReelRecorder?.recordMarker(this.sessionId, "intervention", "User intervention", {
+      length: data.length,
+    });
     this.perceptionRef.current?.onUserInput(data);
     this.notifyUserInputListeners(data);
     this.detectClearCommand(data);
