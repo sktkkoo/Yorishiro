@@ -41,6 +41,23 @@ interface TargetTransform {
   readonly scale: number;
 }
 
+interface ViewportBox {
+  readonly width: number;
+  readonly height: number;
+}
+
+interface ImageDimensions {
+  readonly width: number;
+  readonly height: number;
+}
+
+interface ImageBox {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 let currentLayer: ActiveThumbnailLayer | null = null;
 
 const CARD_BORDER_RADIUS_PX = 10;
@@ -66,20 +83,87 @@ function clampPositive(value: number | undefined, fallback: number): number {
   return Math.max(1, value);
 }
 
+function resolveViewportBox(container: HTMLDivElement): ViewportBox {
+  const rect = container.getBoundingClientRect();
+  return {
+    width: Math.max(1, rect.width || window.innerWidth || 1),
+    height: Math.max(1, rect.height || window.innerHeight || 1),
+  };
+}
+
+function resolveContainImageBox(viewport: ViewportBox, image: ImageDimensions | null): ImageBox {
+  if (!image) {
+    return { left: 0, top: 0, width: viewport.width, height: viewport.height };
+  }
+
+  const fitScale = Math.min(viewport.width / image.width, viewport.height / image.height);
+  const width = image.width * fitScale;
+  const height = image.height * fitScale;
+  return {
+    left: (viewport.width - width) / 2,
+    top: (viewport.height - height) / 2,
+    width,
+    height,
+  };
+}
+
+function applyImageBox(img: HTMLImageElement, box: ImageBox): void {
+  img.style.left = `${box.left}px`;
+  img.style.top = `${box.top}px`;
+  img.style.width = `${box.width}px`;
+  img.style.height = `${box.height}px`;
+}
+
+function readNaturalDimensions(img: HTMLImageElement): ImageDimensions | null {
+  const width = img.naturalWidth;
+  const height = img.naturalHeight;
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return null;
+  }
+  return { width, height };
+}
+
+async function waitForNaturalDimensions(img: HTMLImageElement): Promise<ImageDimensions | null> {
+  if (typeof img.decode === "function") {
+    try {
+      await img.decode();
+    } catch {
+      return readNaturalDimensions(img);
+    }
+    return readNaturalDimensions(img);
+  }
+
+  const alreadyAvailable = readNaturalDimensions(img);
+  if (alreadyAvailable || img.complete) return alreadyAvailable;
+  if (typeof img.addEventListener !== "function") return null;
+
+  await new Promise<void>((resolve) => {
+    const done = () => {
+      img.removeEventListener("load", done);
+      img.removeEventListener("error", done);
+      resolve();
+    };
+    img.addEventListener("load", done, { once: true });
+    img.addEventListener("error", done, { once: true });
+  });
+
+  return readNaturalDimensions(img);
+}
+
 function resolveTargetTransform(
-  container: HTMLDivElement,
+  viewport: ViewportBox,
+  imageBox: ImageBox,
   thumbnailWidth: number,
   margin: number,
 ): TargetTransform {
-  const rect = container.getBoundingClientRect();
-  const viewportWidth = Math.max(1, rect.width || window.innerWidth || 1);
-  const viewportHeight = Math.max(1, rect.height || window.innerHeight || 1);
   const safeMargin = Math.max(0, margin);
-  const targetWidth = Math.max(1, Math.min(thumbnailWidth, viewportWidth - safeMargin * 2));
-  const scale = targetWidth / viewportWidth;
-  const targetHeight = viewportHeight * scale;
-  const translateX = Math.max(0, viewportWidth - safeMargin - targetWidth);
-  const translateY = Math.max(0, viewportHeight - safeMargin - targetHeight);
+  const targetWidth = Math.max(1, Math.min(thumbnailWidth, viewport.width - safeMargin * 2));
+  const scale = targetWidth / imageBox.width;
+  const targetHeight = imageBox.height * scale;
+  const targetLeft = viewport.width - safeMargin - targetWidth;
+  const targetTop = viewport.height - safeMargin - targetHeight;
+  const translateX = targetLeft - imageBox.left;
+  const translateY = targetTop - imageBox.top;
   return { transform: `translate(${translateX}px, ${translateY}px) scale(${scale})`, scale };
 }
 
@@ -106,17 +190,15 @@ export default {
     disposeCurrentLayer();
 
     let overlay: HTMLImageElement | null = null;
+    let layerContainer: HTMLDivElement | null = null;
     let targetTransform: TargetTransform = { transform: "translate(0px, 0px) scale(1)", scale: 1 };
     const handle = ctx.renderer.addDomLayer((container) => {
       const img = document.createElement("img");
       img.src = options.dataUrl ?? "";
       img.alt = "";
       img.style.position = "absolute";
-      img.style.inset = "0";
-      img.style.width = "100%";
-      img.style.height = "100%";
-      img.style.objectFit = "fill";
       img.style.display = "block";
+      img.style.visibility = "hidden";
       img.style.pointerEvents = "none";
       img.style.transformOrigin = "top left";
       img.style.transform = "translate(0px, 0px) scale(1)";
@@ -135,12 +217,23 @@ export default {
       ].join(", ");
       container.appendChild(img);
       overlay = img;
-      targetTransform = resolveTargetTransform(container, thumbnailWidth, margin);
+      layerContainer = container;
     });
     const activeLayer: ActiveThumbnailLayer = { handle, disposed: false };
     currentLayer = activeLayer;
 
     try {
+      if (overlay && layerContainer) {
+        const el = overlay as HTMLImageElement;
+        const dimensions = await waitForNaturalDimensions(el);
+        if (activeLayer.disposed) return;
+        const viewport = resolveViewportBox(layerContainer);
+        const imageBox = resolveContainImageBox(viewport, dimensions);
+        applyImageBox(el, imageBox);
+        targetTransform = resolveTargetTransform(viewport, imageBox, thumbnailWidth, margin);
+        el.style.visibility = "visible";
+      }
+
       // 次フレームで transform を入れて、全面画像から右下サムネイルへ縮小する。
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       if (overlay) {

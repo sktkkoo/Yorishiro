@@ -1,7 +1,8 @@
 # screenshot-thumbnail — 撮影した screenshot を右下サムネイル表示する（bundled effect pack）
 
-撮影済み screenshot の `dataUrl` を受け取り、`ctx.renderer.addDomLayer` で全画面の
-DOM overlay として貼る bundled Effect Pack。次フレームで transform の
+撮影済み screenshot の `dataUrl` を受け取り、`ctx.renderer.addDomLayer` の DOM
+overlay 内に表示する bundled Effect Pack。画像 decode 後に intrinsic size を読み、
+viewport へ contain フィットして縦横比を保持する。次フレームで transform の
 translate + scale のみを使って右下へ縮小し、縮小中に border-radius / box-shadow /
 枠を fade-in してカード化する。主用途は MCP screenshot 撮影時の視覚フィードバック。
 
@@ -47,6 +48,8 @@ ctx.dispatchEffect({
 
 - DOM overlay (`pointer-events: none`) であり、Three.js scene 内の描画ではない。
   screenshot には写らない（上記の dispatch 順序が前提）。
+- decode / load で natural size が読める場合は画像の縦横比を保持する。読めない
+  環境では viewport 全面サイズに fallback する。
 - 短命 effect 専任。run 終了時（fade-out 完了 or 中断）に overlay layer は
   `dispose` される。
 - 表示中に次の dispatch が来た場合は、古い layer を即 dispose して置換する。

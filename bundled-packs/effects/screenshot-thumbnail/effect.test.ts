@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Disposable, EffectContext } from "@yorishiro/sdk";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import screenshotThumbnail from "./effect";
 
 function makeCtx(options: Partial<Record<string, unknown>> = {}): {
@@ -38,6 +38,76 @@ function makeCtx(options: Partial<Record<string, unknown>> = {}): {
   return { ctx, addDomLayer, dispose, container, after };
 }
 
+let restoreDefaultImageMock: (() => void) | null = null;
+
+function installMockDecodedImage(dimensions: { readonly width: number; readonly height: number }): {
+  readonly decode: ReturnType<typeof vi.fn>;
+  readonly restore: () => void;
+} {
+  const naturalWidthDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLImageElement.prototype,
+    "naturalWidth",
+  );
+  const naturalHeightDescriptor = Object.getOwnPropertyDescriptor(
+    HTMLImageElement.prototype,
+    "naturalHeight",
+  );
+  const decodeDescriptor = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "decode");
+  const decode = vi.fn(() => Promise.resolve());
+
+  Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", {
+    configurable: true,
+    get: () => dimensions.width,
+  });
+  Object.defineProperty(HTMLImageElement.prototype, "naturalHeight", {
+    configurable: true,
+    get: () => dimensions.height,
+  });
+  Object.defineProperty(HTMLImageElement.prototype, "decode", {
+    configurable: true,
+    value: decode,
+  });
+
+  return {
+    decode,
+    restore: () => {
+      if (naturalWidthDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, "naturalWidth", naturalWidthDescriptor);
+      }
+      if (naturalHeightDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, "naturalHeight", naturalHeightDescriptor);
+      }
+      if (decodeDescriptor) {
+        Object.defineProperty(HTMLImageElement.prototype, "decode", decodeDescriptor);
+      } else {
+        delete (HTMLImageElement.prototype as unknown as Record<string, unknown>).decode;
+      }
+    },
+  };
+}
+
+async function withMockDecodedImage(
+  dimensions: { readonly width: number; readonly height: number },
+  run: (decode: ReturnType<typeof vi.fn>) => Promise<void>,
+): Promise<void> {
+  const mock = installMockDecodedImage(dimensions);
+
+  try {
+    await run(mock.decode);
+  } finally {
+    mock.restore();
+  }
+}
+
+beforeEach(() => {
+  restoreDefaultImageMock = installMockDecodedImage({ width: 0, height: 0 }).restore;
+});
+
+afterEach(() => {
+  restoreDefaultImageMock?.();
+  restoreDefaultImageMock = null;
+});
+
 describe("screenshot-thumbnail effect", () => {
   it("is declared as an EffectDefinition with id 'screenshot-thumbnail'", () => {
     expect(screenshotThumbnail.id).toBe("screenshot-thumbnail");
@@ -53,9 +123,10 @@ describe("screenshot-thumbnail effect", () => {
     expect(img?.tagName).toBe("IMG");
     expect(img?.getAttribute("src")).toBe("data:image/png;base64,AAAA");
     expect(img?.style.position).toBe("absolute");
-    expect(img?.style.inset).toBe("0");
-    expect(img?.style.width).toBe("100%");
-    expect(img?.style.height).toBe("100%");
+    expect(img?.style.left).toBe("0px");
+    expect(img?.style.top).toBe("0px");
+    expect(img?.style.width).toBe("800px");
+    expect(img?.style.height).toBe("600px");
     expect(img?.style.pointerEvents).toBe("none");
   });
 
@@ -76,6 +147,26 @@ describe("screenshot-thumbnail effect", () => {
     expect(after).toHaveBeenCalledWith(120);
     expect(after).toHaveBeenCalledWith(900);
     expect(after).toHaveBeenCalledWith(180);
+  });
+
+  it("sizes decoded images with contain fit so the aspect ratio is preserved", async () => {
+    await withMockDecodedImage({ width: 1000, height: 500 }, async (decode) => {
+      const { ctx, container } = makeCtx();
+      await screenshotThumbnail.run(ctx, {
+        dataUrl: "data:image/png;base64,WIDE",
+        thumbnailWidth: 200,
+        margin: 20,
+      });
+
+      const img = container.firstElementChild as HTMLImageElement | null;
+      expect(decode).toHaveBeenCalledOnce();
+      expect(img?.style.left).toBe("0px");
+      expect(img?.style.top).toBe("100px");
+      expect(img?.style.width).toBe("800px");
+      expect(img?.style.height).toBe("400px");
+      expect(img?.style.objectFit).toBe("");
+      expect(img?.style.transform).toBe("translate(580px, 380px) scale(0.25)");
+    });
   });
 
   it("card decoration lengths are compensated by the final thumbnail scale", async () => {
