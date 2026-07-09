@@ -21,6 +21,8 @@ export const KEYS = {
   ATTENTION_LIGHT_CUE: "attention-light:cue",
   /** LoopReelStore singleton: 自律 loop の記録を HMR 越しに保持する。 */
   LOOP_REEL_STORE: "loop-reel:store",
+  /** LoopReel catch-up lastSeen map: 再起動では消えてよい hot-data の視聴位置。 */
+  LOOP_REEL_LAST_SEEN: "loop-reel:last-seen",
   /** AttentionCueClaimRegistry singleton: AttentionCueLight の yielding default 用 claim カウンタ。 */
   ATTENTION_CUE_CLAIMS: "attention-cue:claims",
   /** AmbientUiPackRegistry singleton: ambient-ui pack の登録と active 集合（multi-active）を管理する。 */

@@ -23,7 +23,9 @@ import {
   buildIterationClips,
   clampTimestamp,
   createReplayTerminal,
-  endedLoopReelMetas,
+  getLoopReelLastSeenMap,
+  isAtLiveEdge,
+  LOOP_REEL_TUNING,
   type LoopReelPersistedMeta,
   type LoopReelPersistenceController,
   type LoopReelRedactionSources,
@@ -32,13 +34,15 @@ import {
   mergeLoopReelMetas,
   nextClipTimestamp,
   nextFailedTimestamp,
-  phaseMarkersOfRecording,
   previousClipTimestamp,
+  type RecordedEntry,
   type ReplayTerminal,
   recordingTimeRange,
   redactLoopReelRecording,
+  resolveCatchUpStart,
   resolveReplayTerminalSurface,
   type SessionRecording,
+  scrubberMarkersOfRecording,
 } from "../runtime/loop-reel";
 
 interface LoopReelPlayerProps {
@@ -67,15 +71,14 @@ const EMPTY_REDACTION_SOURCES: LoopReelRedactionSources = {
   gitUserEmail: null,
 };
 
-// 実機調整前提: placement と操作感の値は dogfooding 後にまとめて詰める。
 const PLAYER_UI = {
-  surfaceRetryMs: 250,
-  refreshDebounceMs: 300,
-  controlBarHeight: 46,
-  markerSize: 9,
+  surfaceRetryMs: LOOP_REEL_TUNING.surfaceRetryMs,
+  refreshDebounceMs: LOOP_REEL_TUNING.refreshDebounceMs,
+  controlBarHeight: LOOP_REEL_TUNING.controlBarHeight,
+  markerSize: LOOP_REEL_TUNING.markerSize,
 } as const;
 
-const PLAYER_SPEEDS = [1, 2, 4] as const;
+const PLAYER_SPEEDS = LOOP_REEL_TUNING.playbackSpeeds;
 
 export function LoopReelPlayer({
   open,
@@ -87,13 +90,27 @@ export function LoopReelPlayer({
 }: LoopReelPlayerProps) {
   const replayRef = useRef<ReplayTerminal | null>(null);
   const positionRef = useRef(0);
+  const speedRef = useRef<(typeof PLAYER_SPEEDS)[number]>(1);
   const redactionRequestRef = useRef<Promise<LoopReelRedactionSources> | null>(null);
+  const redactionEnabledRef = useRef(false);
+  const redactionSourcesRef = useRef<LoopReelRedactionSources | null>(null);
+  const recordingRef = useRef<SessionRecording | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
   const refreshRequestIdRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
+  const liveTailBufferRef = useRef<RecordedEntry[]>([]);
+  const liveTailBufferConsumedRef = useRef(false);
+  const pendingLiveStateEntriesRef = useRef(new Map<string, RecordedEntry[]>());
+  const liveStateFlushTimerRef = useRef<number | null>(null);
+  const maskedReloadTimerRef = useRef<number | null>(null);
+  const pendingCatchUpAutoplayRef = useRef(false);
+  const speedTouchedRef = useRef(false);
+  const rememberCatchUpPositionRef = useRef<() => void>(() => {});
   const [surfaceBox, setSurfaceBox] = useState<SurfaceBox | null>(null);
   const [metas, setMetas] = useState<readonly LoopReelPersistedMeta[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recording, setRecording] = useState<SessionRecording | null>(null);
+  const [streamLoadVersion, setStreamLoadVersion] = useState(0);
   const [position, setPosition] = useState(0);
   const [speed, setSpeed] = useState<(typeof PLAYER_SPEEDS)[number]>(1);
   const [playing, setPlaying] = useState(false);
@@ -104,25 +121,93 @@ export function LoopReelPlayer({
   const [redactionSources, setRedactionSources] = useState<LoopReelRedactionSources | null>(null);
   const [redactionLoading, setRedactionLoading] = useState(false);
 
-  const endedMetas = useMemo(() => endedLoopReelMetas(metas), [metas]);
+  const lastSeenMap = useMemo(() => getLoopReelLastSeenMap(), []);
+  const selectedMeta = useMemo(
+    () => metas.find((meta) => meta.id === selectedId) ?? null,
+    [metas, selectedId],
+  );
+  const catchUpMode = selectedMeta?.status === "recording";
   const displayRecording = useMemo(() => {
     if (!recording || !redactionEnabled) return recording;
     return redactLoopReelRecording(recording, redactionSources ?? EMPTY_REDACTION_SOURCES);
   }, [recording, redactionEnabled, redactionSources]);
   const range = useMemo(() => (recording ? recordingTimeRange(recording) : null), [recording]);
   const clips = useMemo(() => (recording ? buildIterationClips(recording) : []), [recording]);
-  const markers = useMemo(() => (recording ? phaseMarkersOfRecording(recording) : []), [recording]);
+  const markers = useMemo(
+    () => (recording ? scrubberMarkersOfRecording(recording) : []),
+    [recording],
+  );
   const previousClip = useMemo(() => previousClipTimestamp(clips, position), [clips, position]);
   const nextClip = useMemo(() => nextClipTimestamp(clips, position), [clips, position]);
   const nextFailed = useMemo(
     () => (recording ? nextFailedTimestamp(recording, position) : null),
     [recording, position],
   );
+  const liveEdge = range?.toTs ?? 0;
+  const atLiveEdge =
+    catchUpMode && range
+      ? isAtLiveEdge(position, liveEdge, LOOP_REEL_TUNING.liveEdgeToleranceMs)
+      : false;
 
   const setCurrentPosition = useCallback((timestamp: number) => {
     positionRef.current = timestamp;
     setPosition(timestamp);
   }, []);
+
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
+
+  useEffect(() => {
+    redactionEnabledRef.current = redactionEnabled;
+    redactionSourcesRef.current = redactionSources;
+  }, [redactionEnabled, redactionSources]);
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+
+  useEffect(() => {
+    recordingRef.current = recording;
+  }, [recording]);
+
+  const markSeenAtEdge = useCallback(
+    (target: SessionRecording, edge: number) => {
+      lastSeenMap.set(target.sessionId, edge);
+    },
+    [lastSeenMap],
+  );
+
+  const isWithinLiveEdge = useCallback(
+    (timestamp: number, edge: number) =>
+      isAtLiveEdge(timestamp, edge, LOOP_REEL_TUNING.liveEdgeToleranceMs),
+    [],
+  );
+
+  const finishCatchUpAtEdge = useCallback(
+    (target: SessionRecording, edge: number) => {
+      setPlaying(false);
+      setCurrentPosition(edge);
+      markSeenAtEdge(target, edge);
+    },
+    [markSeenAtEdge, setCurrentPosition],
+  );
+
+  const rememberCatchUpPosition = useCallback(() => {
+    if (!recording || !range || !catchUpMode) return;
+    lastSeenMap.set(recording.sessionId, clampTimestamp(positionRef.current, range));
+  }, [catchUpMode, lastSeenMap, range, recording]);
+
+  useEffect(() => {
+    rememberCatchUpPositionRef.current = rememberCatchUpPosition;
+  }, [rememberCatchUpPosition]);
+
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      rememberCatchUpPositionRef.current();
+    };
+  }, [open]);
 
   const refreshList = useCallback(
     async (options: { flush: boolean; showLoading: boolean }) => {
@@ -135,11 +220,10 @@ export function LoopReelPlayer({
         const persisted = await persistence.listRecordings();
         const merged = mergeLoopReelMetas(persisted, store.listMetas());
         if (requestId !== refreshRequestIdRef.current) return;
-        const ended = endedLoopReelMetas(merged);
         setMetas(merged);
         setSelectedId((current) => {
-          if (current && ended.some((meta) => meta.id === current)) return current;
-          return ended[0]?.id ?? null;
+          if (current && merged.some((meta) => meta.id === current)) return current;
+          return merged[0]?.id ?? null;
         });
       } catch (err) {
         if (requestId === refreshRequestIdRef.current) {
@@ -154,10 +238,66 @@ export function LoopReelPlayer({
     [persistence, store],
   );
 
+  const flushPendingLiveState = useCallback(() => {
+    liveStateFlushTimerRef.current = null;
+    const targetId = selectedIdRef.current;
+    if (!targetId) return;
+    const entries = pendingLiveStateEntriesRef.current.get(targetId);
+    if (!entries || entries.length === 0) return;
+    pendingLiveStateEntriesRef.current.delete(targetId);
+    setRecording((current) =>
+      current?.id === targetId ? appendRecordingEntries(current, entries) : current,
+    );
+  }, []);
+
+  const queueLiveStateAppend = useCallback(
+    (recordingId: string, entries: readonly RecordedEntry[]) => {
+      if (entries.length === 0) return;
+      const pending = pendingLiveStateEntriesRef.current.get(recordingId) ?? [];
+      pending.push(...entries);
+      pendingLiveStateEntriesRef.current.set(recordingId, pending);
+      if (liveStateFlushTimerRef.current !== null) return;
+      liveStateFlushTimerRef.current = window.setTimeout(
+        flushPendingLiveState,
+        LOOP_REEL_TUNING.liveTailStateCoalesceMs,
+      );
+    },
+    [flushPendingLiveState],
+  );
+
+  const scheduleMaskedStreamReload = useCallback(() => {
+    if (maskedReloadTimerRef.current !== null) {
+      window.clearTimeout(maskedReloadTimerRef.current);
+    }
+    maskedReloadTimerRef.current = window.setTimeout(() => {
+      maskedReloadTimerRef.current = null;
+      setStreamLoadVersion((version) => version + 1);
+    }, LOOP_REEL_TUNING.maskedLiveTailReloadDebounceMs);
+  }, []);
+
+  const clearLiveTailTimers = useCallback(() => {
+    if (liveStateFlushTimerRef.current !== null) {
+      window.clearTimeout(liveStateFlushTimerRef.current);
+      liveStateFlushTimerRef.current = null;
+    }
+    if (maskedReloadTimerRef.current !== null) {
+      window.clearTimeout(maskedReloadTimerRef.current);
+      maskedReloadTimerRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     setRedactionEnabled(false);
     setPlaying(false);
+    setRecording(null);
+    recordingRef.current = null;
+    setStreamLoadVersion(0);
+    pendingLiveStateEntriesRef.current.clear();
+    liveTailBufferRef.current = [];
+    liveTailBufferConsumedRef.current = false;
+    clearLiveTailTimers();
+    speedTouchedRef.current = false;
     void refreshList({ flush: true, showLoading: true });
     const subscription = store.subscribe(() => {
       // 実機調整前提: PTY append ごとの点滅を避け、一覧更新だけを trailing でまとめる。
@@ -173,9 +313,11 @@ export function LoopReelPlayer({
         window.clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
+      pendingLiveStateEntriesRef.current.clear();
+      clearLiveTailTimers();
       subscription.dispose();
     };
-  }, [open, refreshList, store]);
+  }, [clearLiveTailTimers, open, refreshList, store]);
 
   useEffect(() => {
     if (!open) return;
@@ -230,24 +372,80 @@ export function LoopReelPlayer({
   }, [open, setCurrentPosition]);
 
   useEffect(() => {
+    liveTailBufferRef.current = [];
+    liveTailBufferConsumedRef.current = false;
+    pendingLiveStateEntriesRef.current.clear();
+    clearLiveTailTimers();
+    if (!open || !selectedId || selectedMeta?.status !== "recording") return;
+    const subscription = store.subscribeRecordingEvents({
+      onEntriesAppended: (event) => {
+        if (event.recordingId !== selectedId) return;
+        const entries = [...event.entries];
+        if (!liveTailBufferConsumedRef.current) {
+          liveTailBufferRef.current.push(...entries);
+          return;
+        }
+
+        const currentRecording = recordingRef.current;
+        if (!currentRecording || currentRecording.id !== selectedId) return;
+        if (redactionEnabledRef.current) {
+          queueLiveStateAppend(selectedId, entries);
+          scheduleMaskedStreamReload();
+          return;
+        }
+        replayRef.current?.appendEntries(entries);
+        queueLiveStateAppend(selectedId, entries);
+      },
+    });
+    return () => subscription.dispose();
+  }, [
+    clearLiveTailTimers,
+    open,
+    queueLiveStateAppend,
+    scheduleMaskedStreamReload,
+    selectedId,
+    selectedMeta?.status,
+    store,
+  ]);
+
+  useEffect(() => {
     if (!open || !selectedId) {
       setRecording(null);
       return;
     }
     let cancelled = false;
+    const isCatchUpSelection = selectedMeta?.status === "recording";
     setLoadingRecording(true);
     setError(null);
-    void persistence
-      .loadRecording(selectedId)
+    void (async () => {
+      if (isCatchUpSelection) await persistence.flushRecording(selectedId);
+      return persistence.loadRecording(selectedId);
+    })()
       .then((loaded) => {
         if (cancelled) return;
-        setRecording(loaded);
         if (!loaded) {
           setError("Loop Reel recording not found.");
           return;
         }
-        const nextRange = recordingTimeRange(loaded);
-        setCurrentPosition(nextRange.fromTs);
+        const bufferedTail = liveTailBufferRef.current;
+        liveTailBufferRef.current = [];
+        const loadedWithTail =
+          isCatchUpSelection && bufferedTail.length > 0
+            ? appendRecordingEntries(loaded, bufferedTail)
+            : loaded;
+        recordingRef.current = loadedWithTail;
+        liveTailBufferConsumedRef.current = true;
+        setRecording(loadedWithTail);
+        const nextRange = recordingTimeRange(loadedWithTail);
+        const start = isCatchUpSelection
+          ? clampTimestamp(resolveCatchUpStart(lastSeenMap, loadedWithTail), nextRange)
+          : nextRange.fromTs;
+        if (!speedTouchedRef.current) {
+          setSpeed(isCatchUpSelection ? LOOP_REEL_TUNING.catchUpDefaultSpeed : 1);
+        }
+        pendingCatchUpAutoplayRef.current = isCatchUpSelection;
+        setCurrentPosition(start);
+        setStreamLoadVersion((version) => version + 1);
       })
       .catch((err) => {
         if (!cancelled) setError(`Loop Reel load failed: ${stringifyError(err)}`);
@@ -258,25 +456,57 @@ export function LoopReelPlayer({
     return () => {
       cancelled = true;
     };
-  }, [open, persistence, selectedId, setCurrentPosition]);
+  }, [lastSeenMap, open, persistence, selectedId, selectedMeta?.status, setCurrentPosition]);
 
   useEffect(() => {
+    if (streamLoadVersion === 0) return;
     const replay = replayRef.current;
-    if (!open || !displayRecording || !replay) return;
-    const nextRange = recordingTimeRange(displayRecording);
+    const currentRecording = recordingRef.current;
+    if (!open || !currentRecording || !replay) return;
+    const streamRecording =
+      redactionEnabled && redactionSources
+        ? redactLoopReelRecording(currentRecording, redactionSources)
+        : currentRecording;
+    const nextRange = recordingTimeRange(streamRecording);
     const timestamp = clampTimestamp(positionRef.current, nextRange);
-    replay.loadStream(displayRecording);
+    replay.loadStream(streamRecording, {
+      maxGapMs: catchUpMode ? LOOP_REEL_TUNING.catchUpMaxGapMs : undefined,
+    });
     replay.seekLinear(timestamp);
     replay.setHidden(false);
     setCurrentPosition(timestamp);
     setPlaying(false);
-  }, [displayRecording, open, setCurrentPosition]);
+    if (!catchUpMode || !pendingCatchUpAutoplayRef.current) return;
+    pendingCatchUpAutoplayRef.current = false;
+    if (isWithinLiveEdge(timestamp, nextRange.toTs)) {
+      markSeenAtEdge(currentRecording, nextRange.toTs);
+      return;
+    }
+    const nextSpeed = speedTouchedRef.current
+      ? speedRef.current
+      : LOOP_REEL_TUNING.catchUpDefaultSpeed;
+    replay.playWindow(timestamp, nextRange.toTs, nextSpeed, () => {
+      finishCatchUpAtEdge(currentRecording, nextRange.toTs);
+    });
+    setPlaying(true);
+  }, [
+    catchUpMode,
+    finishCatchUpAtEdge,
+    isWithinLiveEdge,
+    markSeenAtEdge,
+    open,
+    redactionEnabled,
+    redactionSources,
+    setCurrentPosition,
+    streamLoadVersion,
+  ]);
 
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
+      rememberCatchUpPositionRef.current();
       onClose();
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -299,22 +529,57 @@ export function LoopReelPlayer({
   const playFromCurrent = useCallback(
     (nextSpeed = speed) => {
       if (!range || !displayRecording) return;
-      const start = positionRef.current >= range.toTs ? range.fromTs : positionRef.current;
-      replayRef.current?.loadStream(displayRecording);
+      const start =
+        positionRef.current >= range.toTs
+          ? catchUpMode
+            ? range.toTs
+            : range.fromTs
+          : positionRef.current;
+      if (catchUpMode && isWithinLiveEdge(start, range.toTs)) {
+        replayRef.current?.seekLinear(range.toTs);
+        if (recording) {
+          finishCatchUpAtEdge(recording, range.toTs);
+        } else {
+          setPlaying(false);
+          setCurrentPosition(range.toTs);
+        }
+        return;
+      }
+      replayRef.current?.loadStream(displayRecording, {
+        maxGapMs: catchUpMode ? LOOP_REEL_TUNING.catchUpMaxGapMs : undefined,
+      });
       replayRef.current?.playWindow(start, range.toTs, nextSpeed, () => {
-        setPlaying(false);
-        setCurrentPosition(range.toTs);
+        if (catchUpMode && recording) {
+          finishCatchUpAtEdge(recording, range.toTs);
+        } else {
+          setPlaying(false);
+          setCurrentPosition(range.toTs);
+        }
       });
       setCurrentPosition(start);
       setPlaying(true);
     },
-    [displayRecording, range, setCurrentPosition, speed],
+    [
+      catchUpMode,
+      displayRecording,
+      finishCatchUpAtEdge,
+      isWithinLiveEdge,
+      range,
+      recording,
+      setCurrentPosition,
+      speed,
+    ],
   );
 
   const pause = useCallback(() => {
     replayRef.current?.pause();
     setPlaying(false);
   }, []);
+
+  const closePlayer = useCallback(() => {
+    rememberCatchUpPosition();
+    onClose();
+  }, [onClose, rememberCatchUpPosition]);
 
   const toggleRedaction = useCallback(async () => {
     if (redactionEnabled) {
@@ -338,11 +603,12 @@ export function LoopReelPlayer({
 
   if (!open) return null;
 
-  const hasPlayableRecording = endedMetas.length > 0;
-  const inactiveReason =
-    metas.length === 0
-      ? "No loop recordings yet."
-      : "Recording is still in progress. Finished recordings can be replayed here.";
+  const emptyMessage =
+    loadingList && metas.length === 0
+      ? "Loading..."
+      : metas.length === 0
+        ? "No loop recordings yet. Running recordings can be followed with catch-up."
+        : null;
 
   return (
     <div
@@ -353,9 +619,7 @@ export function LoopReelPlayer({
       <div className="loop-reel-player-status" data-visible={error ? "true" : "false"}>
         {error}
       </div>
-      {!hasPlayableRecording ? (
-        <div className="loop-reel-player-empty">{loadingList ? "Loading..." : inactiveReason}</div>
-      ) : null}
+      {emptyMessage ? <div className="loop-reel-player-empty">{emptyMessage}</div> : null}
       <div className="loop-reel-player-controls" style={{ minHeight: PLAYER_UI.controlBarHeight }}>
         <button
           type="button"
@@ -377,7 +641,9 @@ export function LoopReelPlayer({
           className="loop-reel-player-select"
           value={selectedId ?? ""}
           onChange={(event) => {
+            rememberCatchUpPosition();
             pause();
+            pendingCatchUpAutoplayRef.current = false;
             setSelectedId(event.currentTarget.value || null);
           }}
           disabled={loadingList}
@@ -385,15 +651,16 @@ export function LoopReelPlayer({
         >
           {metas.length === 0 ? <option value="">No recordings</option> : null}
           {metas.map((meta) => (
-            <option
-              key={meta.id}
-              value={meta.status === "ended" ? meta.id : ""}
-              disabled={meta.status !== "ended"}
-            >
+            <option key={meta.id} value={meta.id}>
               {formatRecordingOption(meta)}
             </option>
           ))}
         </select>
+        {catchUpMode ? (
+          <span className="loop-reel-player-live-badge" data-live={atLiveEdge ? "true" : "false"}>
+            {atLiveEdge ? "LIVE" : "CATCH-UP"}
+          </span>
+        ) : null}
         <IconButton
           label={playing ? "Pause Loop Reel" : "Play Loop Reel"}
           disabled={!recording || loadingRecording}
@@ -408,6 +675,7 @@ export function LoopReelPlayer({
               type="button"
               className={value === speed ? "is-active" : ""}
               onClick={() => {
+                speedTouchedRef.current = true;
                 setSpeed(value);
                 if (playing) playFromCurrent(value);
               }}
@@ -424,17 +692,17 @@ export function LoopReelPlayer({
             {range
               ? markers.map((marker) => (
                   <button
-                    key={`${marker.phase}-${marker.timestamp}`}
+                    key={`${marker.kind}-${marker.marker}-${marker.timestamp}`}
                     type="button"
                     className="loop-reel-player-marker"
-                    data-phase={marker.phase}
+                    data-marker={marker.marker}
                     style={{
                       left: `${markerLeft(marker.timestamp, range.fromTs, range.toTs)}%`,
                       width: PLAYER_UI.markerSize,
                       height: PLAYER_UI.markerSize,
                     }}
-                    aria-label={`Jump to ${marker.phase}`}
-                    title={marker.phase}
+                    aria-label={`Jump to ${marker.label ?? marker.marker}`}
+                    title={marker.label ?? marker.marker}
                     onClick={() => seekTo(marker.timestamp)}
                   />
                 ))
@@ -500,7 +768,7 @@ export function LoopReelPlayer({
           )}
           <span>{redactionEnabled ? "MASKED" : "RAW"}</span>
         </button>
-        <IconButton label="Close Loop Reel" onClick={onClose}>
+        <IconButton label="Close Loop Reel" onClick={closePlayer}>
           <X size={15} aria-hidden="true" />
         </IconButton>
       </div>
@@ -528,6 +796,14 @@ function IconButton({ label, disabled = false, onClick, children }: IconButtonPr
       {children}
     </button>
   );
+}
+
+function appendRecordingEntries(
+  recording: SessionRecording,
+  entries: readonly RecordedEntry[],
+): SessionRecording {
+  if (entries.length === 0) return recording;
+  return { ...recording, entries: [...recording.entries, ...entries] };
 }
 
 const sameSurfaceBox = (a: SurfaceBox | null, b: SurfaceBox): boolean =>

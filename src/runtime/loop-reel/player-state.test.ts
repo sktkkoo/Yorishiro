@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { LoopReelPersistedMeta } from "./persistence";
 import {
   clampTimestamp,
-  endedLoopReelMetas,
+  isAtLiveEdge,
   mergeLoopReelMetas,
   nextClipTimestamp,
   nextFailedTimestamp,
-  phaseMarkersOfRecording,
   previousClipTimestamp,
   recordingTimeRange,
+  resolveCatchUpStart,
+  scrubberMarkersOfRecording,
 } from "./player-state";
 import type { SessionRecording } from "./types";
 
@@ -48,12 +49,6 @@ describe("loop reel player state helpers", () => {
     ]);
   });
 
-  it("filters player selection to ended recordings", () => {
-    expect(endedLoopReelMetas([meta("recording", 200, "recording"), meta("ended", 100)])).toEqual([
-      meta("ended", 100),
-    ]);
-  });
-
   it("derives a stable scrub range from recording timestamps", () => {
     const recording: SessionRecording = {
       ...meta("r1", 100),
@@ -67,6 +62,25 @@ describe("loop reel player state helpers", () => {
     expect(recordingTimeRange(recording)).toEqual({ fromTs: 100, toTs: 180 });
     expect(clampTimestamp(90, recordingTimeRange(recording))).toBe(100);
     expect(clampTimestamp(999, recordingTimeRange(recording))).toBe(180);
+  });
+
+  it("resolves catch-up start from hot lastSeen without moving before recording start", () => {
+    const recording = meta("r1", 100);
+    const lastSeen = new Map([
+      ["default-session", 240],
+      ["other", 999],
+    ]);
+
+    expect(resolveCatchUpStart(lastSeen, recording)).toBe(240);
+    expect(resolveCatchUpStart(new Map([["default-session", 50]]), recording)).toBe(100);
+    expect(resolveCatchUpStart(new Map(), recording)).toBe(100);
+  });
+
+  it("detects live edge with tolerance", () => {
+    expect(isAtLiveEdge(975, 1000, 25)).toBe(true);
+    expect(isAtLiveEdge(974, 1000, 25)).toBe(false);
+    expect(isAtLiveEdge(1010, 1000, 25)).toBe(true);
+    expect(isAtLiveEdge(Number.NaN, 1000, 25)).toBe(false);
   });
 
   it("finds clip and failed jump targets", () => {
@@ -91,19 +105,38 @@ describe("loop reel player state helpers", () => {
     expect(nextFailedTimestamp(recording, 250)).toBeNull();
   });
 
-  it("sorts phase markers by timestamp", () => {
+  it("extends scrubber markers with salience marker entries", () => {
     const recording: SessionRecording = {
       ...meta("r1", 100),
       entries: [
-        { kind: "phase", phase: "completed", agent: null, timestamp: 300 },
-        { kind: "pty", text: "x", timestamp: 200 },
+        { kind: "marker", marker: "command-failed", label: "npm test", timestamp: 220 },
         { kind: "phase", phase: "started", agent: null, timestamp: 100 },
+        {
+          kind: "marker",
+          marker: "intervention",
+          label: "User intervention",
+          detail: { length: 3 },
+          timestamp: 180,
+        },
       ],
     };
 
-    expect(phaseMarkersOfRecording(recording)).toEqual([
-      { phase: "started", timestamp: 100 },
-      { phase: "completed", timestamp: 300 },
+    expect(scrubberMarkersOfRecording(recording)).toEqual([
+      { kind: "phase", marker: "started", timestamp: 100, detail: undefined },
+      {
+        kind: "marker",
+        marker: "intervention",
+        label: "User intervention",
+        detail: { length: 3 },
+        timestamp: 180,
+      },
+      {
+        kind: "marker",
+        marker: "command-failed",
+        label: "npm test",
+        detail: undefined,
+        timestamp: 220,
+      },
     ]);
   });
 });

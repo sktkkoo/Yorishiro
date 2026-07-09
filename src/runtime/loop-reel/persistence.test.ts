@@ -123,6 +123,34 @@ describe("LoopReelPersistence", () => {
     }
   });
 
+  it("flushes only the requested recording id", async () => {
+    const backend = new MemoryLoopReelBackend();
+    const store = createLoopReelStore();
+    const persistence = createLoopReelPersistence(store, {
+      backend,
+      flushEntryCount: 64,
+      flushIntervalMs: 1000,
+    });
+
+    store.startSession("session-a", { label: "a", kind: "agent", timestamp: 100 });
+    store.startSession("session-b", { label: "b", kind: "agent", timestamp: 200 });
+    store.recordPty("session-a", "a\n", 210);
+    store.recordPty("session-b", "b\n", 220);
+
+    await persistence.flushRecording("session-session-a-100-1");
+
+    expect(backend.appendCalls.map((call) => call.id)).toEqual(["session-session-a-100-1"]);
+    expect(backend.entries.get("session-session-a-100-1")).toContain("a\\n");
+    expect(backend.entries.has("session-session-b-200-2")).toBe(false);
+
+    await persistence.flushAll();
+
+    expect(backend.appendCalls.map((call) => call.id)).toEqual([
+      "session-session-a-100-1",
+      "session-session-b-200-2",
+    ]);
+  });
+
   it("flushes immediately when a recording ends", async () => {
     const backend = new MemoryLoopReelBackend();
     const store = createLoopReelStore();
