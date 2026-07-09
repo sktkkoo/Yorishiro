@@ -17,6 +17,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 | `body-scheduler/` | 複数 persona の motion 衝突解決 | `index.ts` | **skeleton**, post-MVP |
 | `hot-data/` | HMR-aware singleton store（Vite reload を生き残る） | `hot-data.ts` | foundational |
 | `module-registry/` | Typed registry of swappable runtime modules（VRM loader / audio player ...） | `module-registry.ts` + `keys.ts` | foundational、HMR で hot-data 経由 survive |
+| `loop-reel/` | 自律 loop の recording meta / JSONL persistence bridge / replay helper / redaction view 変換 | `index.ts` | [README](./loop-reel/README.md) |
 | `terminal-runtime/` | Webview lifetime singleton — xterm + PTY channel + terminal agent params + command run memory + perception ref | `terminal-runtime.ts` | |
 | `three-runtime/` | Webview lifetime singleton — Three.js canvas / RAF / VRM model | `three-runtime.ts` | |
 | `vrm-cache/` | URL → ArrayBuffer LRU cache（VRM blob） | `vrm-cache.ts` | |
