@@ -1,0 +1,26 @@
+/*
+ * Boot 時のアンチフラッシュ用スタイル（JS 読込前に適用される最小セット）。
+ *
+ * NOTE: これは意図的に index.html の inline <style> ではなく外部 CSS にしている。
+ * inline <style> があると Tauri が build 時に nonce を付与して CSP style-src に
+ * 追記し、CSP 仕様により 'unsafe-inline' が無効化される。その結果 leva
+ * (@stitches/react) など実行時に <style> を注入するライブラリが production で
+ * 全滅し、entry モジュール評価が module scope で死んで黒画面になる。
+ * 詳細: Charminal-design-record/pitfalls/log.md の 2026-07-10 エントリ。
+ */
+:root {
+  color-scheme: dark;
+  background: #020304;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #020304;
+  color: #e8ebe7;
+}
