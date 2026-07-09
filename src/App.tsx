@@ -79,6 +79,7 @@ import {
   yorishiroSettingsPack,
 } from "./bundled-packs";
 import CharacterSurface from "./character-surface";
+import { LoopReelPlayer } from "./components/LoopReelPlayer";
 import { RestoreConfirmDialog } from "./components/RestoreConfirmDialog";
 import {
   formatMainSessionTabLabel,
@@ -146,6 +147,7 @@ import {
   type ResolvedLanguage,
   resolveLanguage,
 } from "./runtime/language/language";
+import { createLoopReelPersistence, getLoopReelStore } from "./runtime/loop-reel";
 import { getModuleRegistry, KEYS } from "./runtime/module-registry";
 import { PersonaReflexDispatcher } from "./runtime/persona-reflex";
 import type { PersonaEntry } from "./runtime/persona-registry";
@@ -930,6 +932,8 @@ function App() {
   const [, setTabMetadataBadgesEnabled] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<RestoreDialogRequest | null>(null);
   const restoreDialogResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const [loopReelPlayerOpen, setLoopReelPlayerOpen] = useState(false);
+  const [loopReelRecordingActive, setLoopReelRecordingActive] = useState(false);
   const runtimeLevaStore = useRuntimeLevaStore();
   const activeSceneLevaStore = useActiveSceneLevaStore();
 
@@ -1212,11 +1216,33 @@ function App() {
     // bind 完了前に hook が発火しても no-op で安全側に倒れる。
     const presenceRestoreRef: { current: () => void } = { current: () => {} };
 
+    const loopReelStore = getLoopReelStore();
+    loopReelStore.setActiveSession(loopReelStore.getActiveSession() ?? DEFAULT_SESSION_ID);
+    const loopReelPersistence = createLoopReelPersistence(loopReelStore, {
+      time,
+      warn: (message, meta) => logger.warn(message, meta),
+    });
+    void loopReelPersistence.initialize().catch((err) => {
+      logger.warn("Loop Reel persistence initialization failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    });
+
     const perception = new Perception({
       bus,
       time,
       devLog: createSubsystemLog(devLog, "Perception"),
       onPresenceRestore: () => presenceRestoreRef.current(),
+      recordObserved: (event) => {
+        if (event.kind !== "loop-lifecycle") return;
+        const fallbackSessionId = loopReelStore.getActiveSession() ?? DEFAULT_SESSION_ID;
+        const loopReelSessionId = loopReelStore.recordLifecycle(fallbackSessionId, event);
+        // loop_announce 起点の録画は geometry を知らずに作られるため、started 観測時に
+        // terminal 側から初期 cols/rows を seed する（store の resize dedup で冪等）。
+        if (event.phase === "started" && loopReelSessionId !== null) {
+          getTerminalRuntime(loopReelSessionId).seedLoopReelGeometry();
+        }
+      },
     });
 
     // Scene pack registry — HMR singleton（KEYS.SCENE_PACK_REGISTRY で共有）。
@@ -2282,6 +2308,8 @@ function App() {
       packRegistry,
       claimState,
       uiState,
+      loopReelStore,
+      loopReelPersistence,
       userLayerReady,
       createAmenityContext,
       ambientAudio,
@@ -2301,6 +2329,8 @@ function App() {
     packRegistry,
     claimState,
     uiState,
+    loopReelStore,
+    loopReelPersistence,
     time,
     userLayerReady,
     createAmenityContext,
@@ -2525,8 +2555,28 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, tabState.activeSessionId);
+    loopReelStore.setActiveSession(tabState.activeSessionId);
     applyTerminalPresentationForMountedSessions();
-  }, [tabState.activeSessionId, applyTerminalPresentationForMountedSessions]);
+  }, [applyTerminalPresentationForMountedSessions, loopReelStore, tabState.activeSessionId]);
+
+  useEffect(() => {
+    const refreshRecordingActive = () => {
+      setLoopReelRecordingActive(loopReelStore.hasActiveRecording(tabState.activeSessionId));
+    };
+    const subscription = loopReelStore.subscribe(refreshRecordingActive);
+    refreshRecordingActive();
+    return () => subscription.dispose();
+  }, [loopReelStore, tabState.activeSessionId]);
+
+  // loop_announce が来ない session を録画するための手動トグル（player header から呼ばれる）。
+  const handleToggleLoopReelRecording = useCallback(() => {
+    const runtime = getTerminalRuntime(tabState.activeSessionId);
+    if (loopReelStore.hasActiveRecording(tabState.activeSessionId)) {
+      runtime.stopRecording();
+    } else {
+      runtime.startRecording();
+    }
+  }, [loopReelStore, tabState.activeSessionId]);
 
   const canMountTerminals =
     isUserLayerReady && isSessionRestoreReady && resolvedSystemPrompt !== undefined;
@@ -4231,8 +4281,11 @@ function App() {
         settingsActive={settingsActive}
         sidebarLabel={strings.labelPresence}
         settingsLabel={strings.settings}
+        loopReelActive={loopReelPlayerOpen}
+        loopReelLabel="Loop Reel"
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
+        onOpenLoopReel={() => setLoopReelPlayerOpen(true)}
         tabs={
           <TabIndicator
             state={tabState}
@@ -4318,6 +4371,14 @@ function App() {
           onConfirm={handleRestoreDialogConfirm}
         />
       ) : null}
+      <LoopReelPlayer
+        open={loopReelPlayerOpen}
+        store={loopReelStore}
+        persistence={loopReelPersistence}
+        recordingActive={loopReelRecordingActive}
+        onToggleRecording={handleToggleLoopReelRecording}
+        onClose={() => setLoopReelPlayerOpen(false)}
+      />
       {reloadCurtainPhase !== "hidden" ? (
         <div className="reload-curtain" data-phase={reloadCurtainPhase} aria-hidden="true" />
       ) : null}
