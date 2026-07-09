@@ -4285,7 +4285,7 @@ function App() {
         loopReelLabel="Loop Reel"
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
-        onOpenLoopReel={() => setLoopReelPlayerOpen(true)}
+        onToggleLoopReel={() => setLoopReelPlayerOpen((open) => !open)}
         tabs={
           <TabIndicator
             state={tabState}

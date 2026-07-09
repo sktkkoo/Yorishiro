@@ -78,15 +78,16 @@ describe("TitleBar", () => {
     expect(screen.getByRole("button", { name: "shell-1" })).toBeTruthy();
   });
 
-  it("renders the Loop Reel button whenever a handler is provided", () => {
-    const onOpenLoopReel = vi.fn();
+  it("renders the Loop Reel button and fires the toggle on every click", () => {
+    const onToggleLoopReel = vi.fn();
     renderTitleBar({
       loopReelLabel: "Loop Reel",
-      onOpenLoopReel,
+      onToggleLoopReel,
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Loop Reel" }));
-    expect(onOpenLoopReel).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Loop Reel" }));
+    expect(onToggleLoopReel).toHaveBeenCalledTimes(2);
   });
 
   it("omits the Loop Reel button when no handler is provided", () => {

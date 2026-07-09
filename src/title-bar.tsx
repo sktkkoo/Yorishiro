@@ -10,7 +10,8 @@ export interface TitleBarProps {
   readonly sidebarLabel: string;
   readonly loopReelLabel?: string;
   readonly loopReelActive?: boolean;
-  readonly onOpenLoopReel?: () => void;
+  /** Loop Reel player の開閉トグル。開いている間は loopReelActive を立てる。 */
+  readonly onToggleLoopReel?: () => void;
   readonly tabs?: ReactNode;
 }
 
@@ -23,7 +24,7 @@ export default function TitleBar({
   sidebarLabel,
   loopReelLabel = "Loop Reel",
   loopReelActive = false,
-  onOpenLoopReel,
+  onToggleLoopReel,
   tabs,
 }: TitleBarProps) {
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
@@ -55,14 +56,14 @@ export default function TitleBar({
         </button>
       </div>
       <div className="title-bar-tabs">{tabs}</div>
-      {onOpenLoopReel ? (
+      {onToggleLoopReel ? (
         <div className="title-bar-actions">
           <button
             type="button"
             className={`title-bar-button title-bar-loop-reel-button${
               loopReelActive ? " is-active" : ""
             }`}
-            onClick={onOpenLoopReel}
+            onClick={onToggleLoopReel}
             aria-label={loopReelLabel}
             aria-pressed={loopReelActive}
             title={loopReelLabel}
