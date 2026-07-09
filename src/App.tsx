@@ -68,6 +68,7 @@ import {
   screenFlashPack,
   screenShakeManifest,
   screenShakePack,
+  screenshotThumbnailPack,
   simpleRoomManifest,
   simpleRoomPack,
   textPhysicsManifest,
@@ -1193,6 +1194,7 @@ function App() {
     effectPackRunner.register(abandonedMonitorPack);
     effectPackRunner.register(screenShakePack);
     effectPackRunner.register(screenFlashPack);
+    effectPackRunner.register(screenshotThumbnailPack);
     effectPackRunner.register(fireworksPack);
     effectPackRunner.register(fireworksVolleyPack);
     effectPackRunner.register(textPhysicsPack);
@@ -2135,8 +2137,12 @@ function App() {
             getScene: () => getThreeRuntime().getScene(),
             getRenderer: () => getThreeRuntime().getRenderer(),
             claimCamera: () => claimState.claim("camera"),
-            onAfterCapture: () => {
+            onAfterCapture: (result) => {
               effectDispatcher.dispatch({ kind: "screen-flash" });
+              effectDispatcher.dispatch({
+                kind: "screenshot-thumbnail",
+                dataUrl: result.dataUrl,
+              });
             },
           }),
           // ── Presence intensity ────────────────────────────

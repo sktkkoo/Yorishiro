@@ -2484,6 +2484,16 @@ describe("scene.screenshot handler", () => {
     expect(canvas.toDataURL).toHaveBeenCalledWith("image/png");
   });
 
+  it("onAfterCapture に撮影結果を渡す", async () => {
+    const { deps } = makeDeps();
+    const onAfterCapture = vi.fn();
+    const handler = createSceneScreenshotHandler({ ...deps, onAfterCapture });
+    const result = await handler({});
+
+    expect(onAfterCapture).toHaveBeenCalledOnce();
+    expect(onAfterCapture).toHaveBeenCalledWith(result);
+  });
+
   it("camera override を適用して復元する", async () => {
     const { deps, camera } = makeDeps();
     const cam = camera as unknown as {
