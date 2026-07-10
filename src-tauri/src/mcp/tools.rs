@@ -1111,7 +1111,7 @@ impl Yorishiro {
 
     /// ウィンドウ全体（DOM + WebGL canvas）のスクリーンショットを撮影する。macOS のみ。
     #[tool(
-        description = "Capture a screenshot of the entire Yorishiro window (DOM + WebGL canvas). macOS only."
+        description = "Capture a screenshot of the entire Yorishiro app window, including the terminal UI (DOM + WebGL canvas, composited). Use for full-window / whole-app screen capture. macOS only."
     )]
     async fn app_screenshot(
         &self,
