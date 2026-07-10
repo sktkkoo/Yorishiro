@@ -220,20 +220,6 @@ pub struct BodyAnimationPlayRequest {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BodyMotionCancelRequest {}
 
-/// `scene_screenshot` の引数。optional camera override で「カメラ移動→撮影→復元」をアトミックに行う。
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SceneScreenshotRequest {
-    /// Camera position override [x, y, z]。省略で現在位置のまま撮影。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub position: Option<[f32; 3]>,
-    /// Camera lookAt target override [x, y, z]。省略で現在の向きのまま。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub target: Option<[f32; 3]>,
-    /// Camera field of view override (degrees)。省略で現在の fov。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub fov: Option<f32>,
-}
-
 /// `pomodoro_start` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PomodoroStartRequest {
@@ -956,29 +942,6 @@ impl Yorishiro {
         .await
     }
 
-    /// Three.js canvas のスクリーンショットを撮影する。optional camera override で
-    /// 任意の角度・位置・FOV から撮影し、撮影後にカメラを元の状態に復元する。
-    #[tool(
-        description = "Capture a screenshot of the Three.js scene canvas. Optionally override camera position/target/fov for the shot — camera is restored after capture. Returns an image."
-    )]
-    async fn scene_screenshot(
-        &self,
-        Parameters(req): Parameters<SceneScreenshotRequest>,
-    ) -> Result<CallToolResult, McpError> {
-        let response = emit_tool_event(
-            &self.app_handle,
-            "scene.screenshot",
-            json!({
-                "position": req.position,
-                "target": req.target,
-                "fov": req.fov,
-            }),
-        )
-        .await
-        .map_err(|e| McpError::internal_error(e, None))?;
-        unwrap_image_response(response)
-    }
-
     /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。
     #[tool(
         description = "journal にエントリを書き込む。住人の日々の記録。作業ログではなく、その日の手触りや情景を書く。summary は時間が経っても思い出したい一行で、記憶に残る"
@@ -1148,8 +1111,7 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
                 "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",
-                "- 3D scene の見た目を画像で確認する → scene_screenshot（scene canvas のみ。camera override 可）\n",
-                "- ターミナル UI 込みでウィンドウ全体を撮る → app_screenshot（macOS のみ。初回は「画面収録」の許可が必要）\n",
+                "- スクリーンショットを撮る → app_screenshot（ターミナル UI 込みのウィンドウ全体。macOS のみ。初回は「画面収録」の許可が必要）\n",
                 "- 表情だけ変える → body_expression_set\n",
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
@@ -1202,35 +1164,6 @@ fn unwrap_ts_response(response: Value) -> Result<CallToolResult, McpError> {
             .to_string();
         Err(McpError::internal_error(reason, None))
     }
-}
-
-/// TS 側が返す `{ ok, payload: { dataUrl: "data:image/png;base64,..." } }` を
-/// MCP `ImageContent` に変換する。screenshot tool 専用。
-fn unwrap_image_response(response: Value) -> Result<CallToolResult, McpError> {
-    let ok = response
-        .get("ok")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    if !ok {
-        let reason = response
-            .get("reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("ts handler error")
-            .to_string();
-        return Err(McpError::internal_error(reason, None));
-    }
-    let data_url = response
-        .get("payload")
-        .and_then(|p| p.get("dataUrl"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| McpError::internal_error("missing dataUrl in response", None))?;
-
-    let base64_data = data_url
-        .strip_prefix("data:image/png;base64,")
-        .unwrap_or(data_url);
-
-    let content = Content::image(base64_data, "image/png");
-    Ok(CallToolResult::success(vec![content]))
 }
 
 /// list_load_errors の実装本体（Rust 内で完結するため test からも直接叩ける）。
@@ -1316,13 +1249,9 @@ mod tests {
 
     /// 住人 AI は instructions のツール選択ガイドを頼りに tool を探すため、
     /// ガイドに載っていない tool は「存在しない」と誤答されやすい
-    /// （schema 遅延ロード時は tool 名しか見えない）。screenshot 系の載せ忘れ再発を固定する。
+    /// （schema 遅延ロード時は tool 名しか見えない）。screenshot の載せ忘れ再発を固定する。
     #[test]
     fn instructions_mention_screenshot_tools() {
-        assert!(
-            SERVER_INSTRUCTIONS.contains("scene_screenshot"),
-            "server instructions must mention scene_screenshot"
-        );
         assert!(
             SERVER_INSTRUCTIONS.contains("app_screenshot"),
             "server instructions must mention app_screenshot"
@@ -1421,46 +1350,5 @@ mod tests {
         let resp = json!({ "ok": false, "reason": "missing id" });
         let err = unwrap_ts_response(resp).expect_err("should be err");
         assert!(err.message.contains("missing id"));
-    }
-
-    #[test]
-    fn unwrap_image_response_extracts_base64_from_data_url() {
-        let resp = json!({
-            "ok": true,
-            "payload": { "dataUrl": "data:image/png;base64,AAAA" }
-        });
-        let result = unwrap_image_response(resp).expect("ok");
-        assert_ne!(result.is_error, Some(true));
-        // Content::image wraps base64 data (prefix stripped)
-        let content = &result.content[0];
-        let serialized = serde_json::to_value(content).unwrap();
-        assert_eq!(serialized["data"], "AAAA");
-        assert_eq!(serialized["mimeType"], "image/png");
-    }
-
-    #[test]
-    fn unwrap_image_response_handles_raw_base64_without_prefix() {
-        let resp = json!({
-            "ok": true,
-            "payload": { "dataUrl": "RAWBASE64DATA" }
-        });
-        let result = unwrap_image_response(resp).expect("ok");
-        let content = &result.content[0];
-        let serialized = serde_json::to_value(content).unwrap();
-        assert_eq!(serialized["data"], "RAWBASE64DATA");
-    }
-
-    #[test]
-    fn unwrap_image_response_maps_not_ok_to_error() {
-        let resp = json!({ "ok": false, "reason": "scene not ready" });
-        let err = unwrap_image_response(resp).expect_err("should be err");
-        assert!(err.message.contains("scene not ready"));
-    }
-
-    #[test]
-    fn unwrap_image_response_returns_error_on_missing_data_url() {
-        let resp = json!({ "ok": true, "payload": {} });
-        let err = unwrap_image_response(resp).expect_err("should be err");
-        assert!(err.message.contains("missing dataUrl"));
     }
 }

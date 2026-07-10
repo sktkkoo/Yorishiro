@@ -1811,8 +1811,6 @@ function App() {
           createSceneActivateHandler,
           createUiActivateHandler,
           createPersonaGoodbyeSwitchHandler,
-          // Screenshot:
-          createSceneScreenshotHandler,
           // Presence intensity:
           createPresenceSetIntensityHandler,
           createSetMotionIntensityHandler,
@@ -2130,20 +2128,6 @@ function App() {
             markMainSessionRespawnPending: markMainSessionFreshSpawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
-          }),
-          // ── Screenshot ────────────────────────────────────
-          "scene.screenshot": createSceneScreenshotHandler({
-            getCamera: () => getThreeRuntime().getCamera(),
-            getScene: () => getThreeRuntime().getScene(),
-            getRenderer: () => getThreeRuntime().getRenderer(),
-            claimCamera: () => claimState.claim("camera"),
-            onAfterCapture: (result) => {
-              effectDispatcher.dispatch({ kind: "screen-flash" });
-              effectDispatcher.dispatch({
-                kind: "screenshot-thumbnail",
-                dataUrl: result.dataUrl,
-              });
-            },
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({

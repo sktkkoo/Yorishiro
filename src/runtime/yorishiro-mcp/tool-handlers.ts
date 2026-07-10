@@ -8,7 +8,6 @@
  */
 
 import type {
-  Disposable,
   ExpressionHandle,
   LoopPhase,
   MotionHandle,
@@ -1383,12 +1382,6 @@ export function createSpaceEffectPlayHandler(deps: SpaceEffectPlayDeps) {
   };
 }
 
-function parseVec3(v: unknown): readonly [number, number, number] | undefined {
-  if (!Array.isArray(v) || v.length !== 3) return undefined;
-  if (!v.every((n) => typeof n === "number" && Number.isFinite(n))) return undefined;
-  return [v[0] as number, v[1] as number, v[2] as number];
-}
-
 /* ──────────────────────────────────────────────────────────
  * body.animation.play
  * ────────────────────────────────────────────────────────── */
@@ -1779,97 +1772,6 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
     });
 
     return { active: id, reloading: true };
-  };
-}
-
-/* ──────────────────────────────────────────────────────────
- * scene.screenshot
- * ────────────────────────────────────────────────────────── */
-
-export interface SceneScreenshotDeps {
-  readonly getCamera: () => THREE.PerspectiveCamera | null;
-  readonly getScene: () => THREE.Scene | null;
-  readonly getRenderer: () => THREE.WebGLRenderer | null;
-  readonly claimCamera: () => Disposable;
-  /** 撮影完了後に呼ばれる任意の hook。screen-flash / thumbnail effect の発火等に使う。 */
-  readonly onAfterCapture?: (result: SceneScreenshotResult) => void;
-}
-
-export interface SceneScreenshotResult {
-  readonly dataUrl: string;
-  readonly width: number;
-  readonly height: number;
-}
-
-/**
- * Three.js canvas のスクリーンショットを撮影する handler。
- * optional camera override（position / target / fov）をアトミックに適用し、
- * 撮影後にカメラを元の状態に復元する。preserveDrawingBuffer: false でも
- * renderer.render() → toDataURL() を同一同期ブロック内で呼ぶため安全。
- *
- * カメラ復元は quaternion ベース。PerspectiveCamera は lookAt target を保持しないため、
- * quaternion が orientation の唯一の SOT。
- */
-export function createSceneScreenshotHandler(deps: SceneScreenshotDeps) {
-  return async (request: unknown): Promise<SceneScreenshotResult> => {
-    const cam = deps.getCamera();
-    const scene = deps.getScene();
-    const renderer = deps.getRenderer();
-    if (!cam || !scene || !renderer) {
-      throw new Error("scene not ready");
-    }
-
-    const r = (request ?? {}) as {
-      position?: unknown;
-      target?: unknown;
-      fov?: unknown;
-    };
-    const position = parseVec3(r.position);
-    const target = parseVec3(r.target);
-    const fovValue = typeof r.fov === "number" && Number.isFinite(r.fov) ? r.fov : undefined;
-
-    const hasOverride = position !== undefined || target !== undefined || fovValue !== undefined;
-
-    const savedPos = cam.position.clone();
-    const savedQuat = cam.quaternion.clone();
-    const savedFov = cam.fov;
-
-    const claim = deps.claimCamera();
-
-    try {
-      if (position) cam.position.set(position[0], position[1], position[2]);
-      if (target) cam.lookAt(target[0], target[1], target[2]);
-      if (fovValue !== undefined) {
-        cam.fov = fovValue;
-        cam.updateProjectionMatrix();
-      }
-
-      renderer.render(scene, cam);
-      const dataUrl = renderer.domElement.toDataURL("image/png");
-      const result = {
-        dataUrl,
-        width: renderer.domElement.width,
-        height: renderer.domElement.height,
-      };
-
-      // 撮影が完了して dataUrl を握った後に feedback hook を発火する。
-      // dataUrl 確定後なので flash / thumbnail 自身が screenshot に写り込むことはない。
-      try {
-        deps.onAfterCapture?.(result);
-      } catch {
-        // hook 失敗は screenshot を壊さない方針: silent に握りつぶす。
-      }
-
-      return result;
-    } finally {
-      if (hasOverride) {
-        cam.position.copy(savedPos);
-        cam.quaternion.copy(savedQuat);
-        cam.fov = savedFov;
-        cam.updateProjectionMatrix();
-      }
-      claim.dispose();
-    }
   };
 }
 
