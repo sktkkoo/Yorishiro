@@ -1132,12 +1132,14 @@ impl Yorishiro {
     }
 }
 
-#[tool_handler(router = self.tool_router)]
-impl ServerHandler for Yorishiro {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions(concat!(
-                "Yorishiro — 住人の身体・声・環境を操作する MCP ツール群。\n",
+/// MCP client（住人 AI）へ渡す server instructions。
+///
+/// Claude Code は MCP tool が多いと schema を遅延ロードするため、住人からは
+/// tool 名しか見えないことがある。このガイドに載っていない tool は「存在しない」
+/// と誤答されやすい——tool を追加したらここにも 1 行足すこと
+/// （instructions_mention_screenshot_tools テストが screenshot 系の載せ忘れを固定する）。
+const SERVER_INSTRUCTIONS: &str = concat!(
+    "Yorishiro — 住人の身体・声・環境を操作する MCP ツール群。\n",
                 "\n",
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
@@ -1146,6 +1148,8 @@ impl ServerHandler for Yorishiro {
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
                 "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",
+                "- 3D scene の見た目を画像で確認する → scene_screenshot（scene canvas のみ。camera override 可）\n",
+                "- ターミナル UI 込みでウィンドウ全体を撮る → app_screenshot（macOS のみ。初回は「画面収録」の許可が必要）\n",
                 "- 表情だけ変える → body_expression_set\n",
                 "- ポーズ・ジェスチャーだけ → body_animation_play\n",
                 "- pack の一覧・有効化・無効化 → list_packs / enable_pack / disable_pack\n",
@@ -1161,7 +1165,13 @@ impl ServerHandler for Yorishiro {
                 "- persona 新規作成後にそのまま切り替える場合は、お別れを言ってから persona_goodbye_switch を使う。設定変更として明示的に変えるだけなら config.json の primaryPersona 変更でよい\n",
                 "- history_restore は復元前 snapshot を残す可逆操作だが、packs/config.json/init.js を full-replace する。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
                 "- journal は機械的ログではなく情緒的な思い出を書く\n",
-            ))
+);
+
+#[tool_handler(router = self.tool_router)]
+impl ServerHandler for Yorishiro {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
+            .with_instructions(SERVER_INSTRUCTIONS)
     }
 }
 
@@ -1302,6 +1312,21 @@ mod tests {
         let _ = fs::remove_dir_all(&tmp);
         fs::create_dir_all(tmp.join(".yorishiro")).expect("mkdir");
         tmp
+    }
+
+    /// 住人 AI は instructions のツール選択ガイドを頼りに tool を探すため、
+    /// ガイドに載っていない tool は「存在しない」と誤答されやすい
+    /// （schema 遅延ロード時は tool 名しか見えない）。screenshot 系の載せ忘れ再発を固定する。
+    #[test]
+    fn instructions_mention_screenshot_tools() {
+        assert!(
+            SERVER_INSTRUCTIONS.contains("scene_screenshot"),
+            "server instructions must mention scene_screenshot"
+        );
+        assert!(
+            SERVER_INSTRUCTIONS.contains("app_screenshot"),
+            "server instructions must mention app_screenshot"
+        );
     }
 
     #[test]
