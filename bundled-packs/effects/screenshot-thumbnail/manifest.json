@@ -1,0 +1,10 @@
+{
+  "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
+  "id": "screenshot-thumbnail",
+  "type": "effect",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "author": "Yorishiro team",
+  "description": "Shows a captured screenshot as a lower-right thumbnail.",
+  "entry": "effect.ts"
+}

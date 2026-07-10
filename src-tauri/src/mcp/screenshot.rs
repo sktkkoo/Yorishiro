@@ -33,11 +33,12 @@ pub async fn capture_webview_screenshot(app: &AppHandle) -> Result<CallToolResul
         .map_err(|_| McpError::internal_error("screenshot channel dropped", None))?
         .map_err(|e| McpError::internal_error(e, None))?;
 
-    // 撮影が完了して PNG bytes を握った後に JS 側へ flash 発火を通知する。
-    // 撮影 → bytes 確定 → emit の順序なので flash 自体は撮影画像に写り込まない。
-    let _ = app.emit("yorishiro:screen-flash", ());
-
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&png_bytes);
+
+    // 撮影が完了して PNG bytes / base64 payload を確定した後に JS 側へ通知する。
+    // 撮影 → bytes 確定 → emit の順序なので flash 自体は撮影画像に写り込まない。
+    let _ = app.emit("yorishiro:screenshot-taken", base64_data.clone());
+
     let content = Content::image(base64_data, "image/png");
     Ok(CallToolResult::success(vec![content]))
 }

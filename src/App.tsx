@@ -68,6 +68,7 @@ import {
   screenFlashPack,
   screenShakeManifest,
   screenShakePack,
+  screenshotThumbnailPack,
   simpleRoomManifest,
   simpleRoomPack,
   textPhysicsManifest,
@@ -1193,6 +1194,7 @@ function App() {
     effectPackRunner.register(abandonedMonitorPack);
     effectPackRunner.register(screenShakePack);
     effectPackRunner.register(screenFlashPack);
+    effectPackRunner.register(screenshotThumbnailPack);
     effectPackRunner.register(fireworksPack);
     effectPackRunner.register(fireworksVolleyPack);
     effectPackRunner.register(textPhysicsPack);
@@ -1809,8 +1811,6 @@ function App() {
           createSceneActivateHandler,
           createUiActivateHandler,
           createPersonaGoodbyeSwitchHandler,
-          // Screenshot:
-          createSceneScreenshotHandler,
           // Presence intensity:
           createPresenceSetIntensityHandler,
           createSetMotionIntensityHandler,
@@ -2128,16 +2128,6 @@ function App() {
             markMainSessionRespawnPending: markMainSessionFreshSpawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
-          }),
-          // ── Screenshot ────────────────────────────────────
-          "scene.screenshot": createSceneScreenshotHandler({
-            getCamera: () => getThreeRuntime().getCamera(),
-            getScene: () => getThreeRuntime().getScene(),
-            getRenderer: () => getThreeRuntime().getRenderer(),
-            claimCamera: () => claimState.claim("camera"),
-            onAfterCapture: () => {
-              effectDispatcher.dispatch({ kind: "screen-flash" });
-            },
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
@@ -4154,9 +4144,9 @@ function App() {
     };
   }, [isUserLayerReady, tabManager]);
 
-  // Rust 側の app_screenshot は撮影完了後に "yorishiro:screen-flash" を emit する。
-  // ここで listen して screen-flash effect を dispatch することで、
-  // OS-level screenshot 撮影直後の視覚フィードバックを提供する。
+  // Rust 側の app_screenshot は撮影完了後に "yorishiro:screenshot-taken" を
+  // base64 PNG payload 付きで emit する。ここで data URL に組み立て、
+  // OS-level screenshot 撮影直後の flash / thumbnail feedback を提供する。
   useEffect(() => {
     if (!isUserLayerReady) return;
     let disposed = false;
@@ -4164,9 +4154,14 @@ function App() {
 
     void (async () => {
       const { listen } = await import("@tauri-apps/api/event");
-      const unlisten = await listen("yorishiro:screen-flash", () => {
+      const unlisten = await listen<string>("yorishiro:screenshot-taken", (event) => {
         if (disposed) return;
+        const dataUrl = `data:image/png;base64,${event.payload}`;
         effectDispatcher.dispatch({ kind: "screen-flash" });
+        effectDispatcher.dispatch({
+          kind: "screenshot-thumbnail",
+          dataUrl,
+        });
       });
       if (disposed) {
         unlisten();

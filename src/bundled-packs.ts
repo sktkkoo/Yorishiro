@@ -25,6 +25,7 @@ export { default as fireworksVolleyManifest } from "../bundled-packs/effects/fir
 export { default as screenFlashPack } from "../bundled-packs/effects/screen-flash/effect";
 export { default as screenShakePack } from "../bundled-packs/effects/screen-shake/effect";
 export { default as screenShakeManifest } from "../bundled-packs/effects/screen-shake/manifest.json";
+export { default as screenshotThumbnailPack } from "../bundled-packs/effects/screenshot-thumbnail/effect";
 export { default as textPhysicsPack } from "../bundled-packs/effects/text-physics/effect";
 export { default as textPhysicsManifest } from "../bundled-packs/effects/text-physics/manifest.json";
 
