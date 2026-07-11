@@ -2382,17 +2382,22 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       waitForFarewell: async () => {
         calls.push("wait-farewell");
       },
+      recordFarewell: async (toPersonaId) => {
+        calls.push(`record-farewell:${toPersonaId}`);
+      },
     });
 
     const result = await handler({ id: "new-persona" });
 
     expect(result).toEqual({ active: "new-persona", reloading: true });
     expect(config.primaryPersona).toBe("new-persona");
-    // お別れの声を言い終わるのを待ってから暗転に入る。
+    // お別れの声を言い終わるのを待ってから暗転。記録は config 更新前
+    // （active がまだ去る側のうち）に書く。
     expect(calls).toEqual([
       "reload:new-persona",
       "wait-farewell",
       "curtain",
+      "record-farewell:new-persona",
       "update-config",
       "mark-main-respawn",
     ]);
@@ -2411,12 +2416,37 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       waitForFarewell: async () => {
         throw new Error("voice tracking broke");
       },
+      recordFarewell: vi.fn(async () => {}),
     });
 
     const result = await handler({ id: "next" });
 
     expect(result).toEqual({ active: "next", reloading: true });
     expect(beginCurtainReload).toHaveBeenCalled();
+  });
+
+  it("recordFarewell が失敗しても切替は進み、config は更新される", async () => {
+    let config: YorishiroConfig = { ...EMPTY_CONFIG, primaryPersona: "old" };
+    const handler = createPersonaGoodbyeSwitchHandler({
+      updateConfig: async (update) => {
+        config = update(config);
+      },
+      beginCurtainReload: async (prepareReload) => {
+        await prepareReload?.();
+      },
+      markMainSessionRespawnPending: vi.fn(),
+      listPersonaIds: () => ["next"],
+      reloadPack: vi.fn(),
+      waitForFarewell: vi.fn(async () => {}),
+      recordFarewell: async () => {
+        throw new Error("memories.md write failed");
+      },
+    });
+
+    const result = await handler({ id: "next" });
+
+    expect(result).toEqual({ active: "next", reloading: true });
+    expect(config.primaryPersona).toBe("next");
   });
 
   it("rejects when the target persona cannot be loaded", async () => {
@@ -2427,6 +2457,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       listPersonaIds: () => ["old"],
       reloadPack: async () => ({ ok: false, reason: "pack file not found" }),
       waitForFarewell: vi.fn(async () => {}),
+      recordFarewell: vi.fn(async () => {}),
     });
 
     await expect(handler({ id: "missing" })).rejects.toThrow(
@@ -2442,6 +2473,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       listPersonaIds: () => [],
       reloadPack: vi.fn(),
       waitForFarewell: vi.fn(async () => {}),
+      recordFarewell: vi.fn(async () => {}),
     });
 
     await expect(handler({ id: "" })).rejects.toThrow("id must be a non-empty string");

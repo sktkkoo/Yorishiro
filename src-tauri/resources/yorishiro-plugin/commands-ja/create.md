@@ -289,7 +289,7 @@ export default {
 4. `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
 5. journal に具体的断片が無い場合は、言葉は挟まず `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
 
-`persona_goodbye_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。
+`persona_goodbye_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。お別れの事実（誰に器を譲ったか）は去る側の記憶（memories.md）に自動で一行残る——いつかその persona に戻ったとき、想起が拾う。
 
 ## Effect pack を書く
 

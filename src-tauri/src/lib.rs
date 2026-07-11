@@ -1021,6 +1021,13 @@ fn read_journal_recent(days: usize) -> Result<Vec<journal::JournalEntry>, String
     journal::read_recent(days)
 }
 
+/// persona 交代（お別れ経路）で、去る側の memories.md にお別れの事実を
+/// 機械的に一行残す。primaryPersona の config 更新前に呼ぶこと。
+#[tauri::command]
+fn journal_record_farewell(to_persona: String) -> Result<(), String> {
+    journal::record_farewell(&to_persona)
+}
+
 #[tauri::command]
 fn check_tutorial_done() -> bool {
     match yorishiro_home_path() {
@@ -2314,6 +2321,7 @@ pub fn run() {
             mcp_tool_response,
             read_journal_memories,
             read_journal_recent,
+            journal_record_farewell,
             check_tutorial_done,
             mark_tutorial_done,
             tts::tts_speak,

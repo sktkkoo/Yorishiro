@@ -2139,6 +2139,8 @@ function App() {
               await voicePlayer.waitUntilIdle(FAREWELL_VOICE_WAIT_CAP_MS);
               await new Promise((resolve) => setTimeout(resolve, FAREWELL_AFTERGLOW_MS));
             },
+            recordFarewell: (toPersonaId) =>
+              invoke("journal_record_farewell", { toPersona: toPersonaId }),
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({

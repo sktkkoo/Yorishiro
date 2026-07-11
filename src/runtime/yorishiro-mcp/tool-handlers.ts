@@ -1744,6 +1744,12 @@ export interface PersonaGoodbyeSwitchDeps {
    * AudioContext を壊すため、これを待たずに暗転すると声が途中で切れる。
    */
   readonly waitForFarewell: () => Promise<void>;
+  /**
+   * 去る側 persona の memories.md にお別れの事実を機械的に一行残す。
+   * config の primaryPersona 更新前（= active がまだ去る側）に呼ぶこと。
+   * 戻ってきたとき想起がこの行を拾い、「一度離れたこと」を覚えている状態を作る。
+   */
+  readonly recordFarewell: (toPersonaId: string) => Promise<void>;
 }
 
 export interface PersonaGoodbyeSwitchResult {
@@ -1779,6 +1785,12 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
     }
 
     await deps.beginCurtainReload(async () => {
+      // 記録は config 更新前（active がまだ去る側のうち）に。失敗しても切替は止めない。
+      try {
+        await deps.recordFarewell(id);
+      } catch (error) {
+        console.error("[persona] farewell record failed; switching anyway.", error);
+      }
       await deps.updateConfig((cur) => withPrimaryPersonaSet(cur, id));
       deps.markMainSessionRespawnPending();
     });

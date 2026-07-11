@@ -295,7 +295,7 @@ This goodbye is a one-time scene the user will remember. Do not make it a formal
 4. Call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
 5. If there are no concrete journal fragments, skip the goodbye words and call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
 
-`persona_goodbye_switch` persists `primaryPersona` after the curtain is dark, then reloads behind the curtain. After the curtain opens, the next user message is answered by the new persona. Do not ask the user to run `/clear`.
+`persona_goodbye_switch` persists `primaryPersona` after the curtain is dark, then reloads behind the curtain. After the curtain opens, the next user message is answered by the new persona. Do not ask the user to run `/clear`. The fact of the farewell (who the vessel was handed to) is automatically recorded as one line in the departing persona's memories — if the user ever returns to that persona, recall will surface it.
 
 ## Effect Packs
 
