@@ -928,15 +928,16 @@ impl Yorishiro {
 
     /// persona 新規作成後、現 persona がお別れを言ってから active persona を切り替える。
     #[tool(
-        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a short goodbye grounded in journal details. It waits for the goodbye voice to finish, then persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
+        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a goodbye grounded in a few concrete journal memories (about one minute at most). It waits for the goodbye voice to finish, then persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
     )]
     async fn persona_goodbye_switch(
         &self,
         Parameters(req): Parameters<PersonaGoodbyeSwitchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        // TS 側がお別れの声の再生完了（上限 20s）+ 余韻を待ってから暗転するため、
-        // 既定の 5s では足りない。声の上限 + 暗転 + 余裕で 30s。
-        const FAREWELL_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        // TS 側がお別れの声の再生完了（上限 60s、いくつかの思い出に触れる想定）
+        // + 余韻を待ってから暗転するため、既定の 5s では足りない。
+        // 声の上限 + 暗転 + 余裕で 75s。
+        const FAREWELL_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(75);
         let r = crate::mcp::server::emit_tool_event_with_timeout(
             &self.app_handle,
             "persona.goodbye-switch",

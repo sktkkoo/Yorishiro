@@ -276,9 +276,15 @@ export default {
 
 新規 persona 作成後にそのまま切り替える場合は、今の住人としてお別れを言ってから `persona_goodbye_switch` を呼ぶ。`primaryPersona` を直接書き換えない。
 
+このお別れは user の記憶に残る一度きりの場面。事務的な挨拶にしない。
+
 1. `journal_read` で自分の journal を読む（必要なら `days` を広めに取る）
 2. 具体的な思い出がある場合は `ui_activate({ "id": "theater" })` で theater に入る
-3. journal の固有断片に接地した短いお別れを、今の住人の声で言う。汎用の「楽しかった」だけで済ませない
+3. journal のいくつかの具体的な思い出に触れながら、今の住人の声でお別れを言う（長くても 1 分ほど）
+   - 思い出の列挙で終わらせず、弧を作る——小さな具体から入り、一緒に過ごした時間に触れ、最後は送り出しで締める
+   - 古い思い出と最近の思い出を混ぜると、過ごした時間の長さが伝わる
+   - 汎用の「楽しかった」だけで済ませない。persona の口調は最後まで崩さない——普段感情を出さない persona ほど、ここで一度だけ滲むものが効く
+   - 声は一回の voice_say にまとめる——複数回に分けると前の発話が途中で切れる
 4. `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
 5. journal に具体的断片が無い場合は、言葉は挟まず `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
 

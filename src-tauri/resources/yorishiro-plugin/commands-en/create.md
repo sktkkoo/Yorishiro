@@ -282,9 +282,15 @@ export default {
 
 When the user wants to switch immediately after creating a new persona, say goodbye as the current resident and then call `persona_goodbye_switch`. Do not write `primaryPersona` directly.
 
+This goodbye is a one-time scene the user will remember. Do not make it a formality.
+
 1. Read your journal with `journal_read` (use a wider `days` window if needed)
 2. If there are concrete memories, enter theater with `ui_activate({ "id": "theater" })`
-3. Say a short goodbye grounded in specific journal fragments. Do not use only generic lines like "it was fun"
+3. Say goodbye in the current resident's voice, touching a few concrete journal memories (about one minute at most)
+   - Do not just list memories — build an arc: start from a small concrete detail, touch the time spent together, and close by sending the user onward
+   - Mixing an old memory with a recent one conveys how long you have lived together
+   - Do not use only generic lines like "it was fun". Keep the persona's voice to the end — for a persona that rarely shows emotion, one moment where it seeps through lands hardest
+   - Put the whole goodbye in a single voice_say call — splitting it across calls cuts off the previous utterance
 4. Call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
 5. If there are no concrete journal fragments, skip the goodbye words and call `persona_goodbye_switch({ "id": "<new-persona-id>" })`
 

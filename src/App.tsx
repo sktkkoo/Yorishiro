@@ -419,9 +419,10 @@ const SESSION_TAB_CWD_STORAGE_KEY = "yorishiro:session-tab-cwds";
 const VRM_STORAGE_KEY = "yorishiro:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
 // persona goodbye switch: お別れの声を待つ上限と、言い終わりから暗転までの余韻。
-// どちらも実機の感触で調整する初期値。上限は Rust 側 FAREWELL_TOOL_TIMEOUT より
-// 短く保つ（超えると tool 応答が timeout する）。
-const FAREWELL_VOICE_WAIT_CAP_MS = 20_000;
+// どちらも実機の感触で調整する初期値。お別れはいくつかの思い出に触れる想定で
+// 最大 1 分。上限は Rust 側 FAREWELL_TOOL_TIMEOUT より短く保つ（超えると
+// tool 応答が timeout する）。
+const FAREWELL_VOICE_WAIT_CAP_MS = 60_000;
 const FAREWELL_AFTERGLOW_MS = 700;
 
 interface RestoreDialogRequest {
