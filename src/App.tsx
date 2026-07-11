@@ -2145,10 +2145,14 @@ function App() {
             },
             recordFarewell: (toPersonaId) =>
               invoke("journal_record_farewell", { toPersona: toPersonaId }),
-            stageVrmPath: (path) => {
-              // storage のみ差し替える。live 状態（setVrmPath）を触ると暗転中に
-              // 旧 WebView がロードを始めて reload 後と二重になるため触らない。
-              localStorage.setItem(VRM_STORAGE_KEY, path);
+            stageVrmPath: async (path) => {
+              // 貼られたパスは asset protocol scope 外のことがある（settings の
+              // picker と違い dialog 経由ではない）。picker と同じ import_vrm で
+              // $APPDATA/avatars/ に複製し、scope 内の dest を次回 boot の VRM
+              // として保存する。live 状態（setVrmPath）は触らない——reload 後の
+              // boot が読む。
+              const dest = await invoke<string>("import_vrm", { src: path });
+              localStorage.setItem(VRM_STORAGE_KEY, dest);
             },
           }),
           // ── Presence intensity ────────────────────────────

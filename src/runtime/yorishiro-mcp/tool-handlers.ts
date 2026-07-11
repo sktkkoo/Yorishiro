@@ -1751,11 +1751,12 @@ export interface PersonaGoodbyeSwitchDeps {
    */
   readonly recordFarewell: (toPersonaId: string) => Promise<void>;
   /**
-   * 次回 boot が読む VRM パスを差し替える（storage のみ。live 状態は触らない）。
-   * 暗転中に呼ばれ、reload 後の boot が新しい姿でロードする——カーテンが
-   * 明けたとき、新しいアバターに切り替わっている。
+   * 次回 boot が読む VRM を差し替える（live 状態は触らない）。暗転中に呼ばれ、
+   * reload 後の boot が新しい姿でロードする——カーテンが明けたとき、新しい
+   * アバターに切り替わっている。貼られたパスは asset protocol scope 外のこと
+   * があるため、実装側で scope 内への import（複製）を挟むこと。
    */
-  readonly stageVrmPath: (path: string) => void;
+  readonly stageVrmPath: (path: string) => Promise<void>;
 }
 
 export interface PersonaGoodbyeSwitchResult {
@@ -1800,7 +1801,7 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
       }
       if (vrmPath !== null) {
         try {
-          deps.stageVrmPath(vrmPath);
+          await deps.stageVrmPath(vrmPath);
         } catch (error) {
           console.error("[persona] VRM staging failed; switching persona only.", error);
         }

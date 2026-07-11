@@ -2385,7 +2385,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       recordFarewell: async (toPersonaId) => {
         calls.push(`record-farewell:${toPersonaId}`);
       },
-      stageVrmPath: (path) => {
+      stageVrmPath: async (path) => {
         calls.push(`stage-vrm:${path}`);
       },
     });
@@ -2423,7 +2423,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       reloadPack: vi.fn(),
       waitForFarewell: vi.fn(async () => {}),
       recordFarewell: vi.fn(async () => {}),
-      stageVrmPath: (path) => {
+      stageVrmPath: async (path) => {
         calls.push(`stage-vrm:${path}`);
       },
     });
