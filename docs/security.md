@@ -58,10 +58,14 @@ before relying on any of them:
   produce a non-`local` source, so those branches never execute. Do not read the
   execution-class source table in `decisions/pack-execution-classes.md` or the
   community block in `decisions/system-exec-trust-model.md` as active controls.
-  Real enforcement requires a host-owned provenance ledger that assigns `source`
-  on receipt (a pack's own manifest must never be trusted to declare it); until
-  that lands, treat all packs as `local` trusted code regardless of how they
-  reached `~/.yorishiro/packs/`.
+  This is a deliberate boundary, not a gap to patch with an id-keyed gate: pack
+  ids are user-chosen and guessable, any token a pack carries leaks when packs
+  are shared, and content-hash binding breaks the routine edit workflow. So
+  until a distribution channel exists, treat all packs as `local` trusted code
+  regardless of how they reached `~/.yorishiro/packs/`, and enforce real
+  provenance/integrity at the distribution layer (the store signature chain),
+  where the receiver assigns provenance at install time and content is verified
+  by signature. See [`decisions/pack-provenance-boundary.md`](decisions/pack-provenance-boundary.md).
 - **MCP trust tiers are not yet implemented.** The local MCP server
   (`127.0.0.1`, loopback only) has no caller identification, no per-tier
   approval, no audit log, and no rate limit. All tools exposed by
