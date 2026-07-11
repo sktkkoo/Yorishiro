@@ -28,7 +28,11 @@ import type { UiPackRegistry } from "../ui-pack-registry";
 import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
 import type { InitScope } from "./init-scope";
 import { type LoadInitScriptDeps, reloadInitScript } from "./init-script";
-import { readManifestForEntry, validatePackExecutionPolicy } from "./pack-execution-policy";
+import {
+  type PackExecutionEnvironment,
+  readManifestForEntry,
+  validatePackExecutionPolicy,
+} from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
@@ -49,6 +53,7 @@ export interface StartPackWatcherDeps {
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
   readonly onInitChanged?: () => void;
+  readonly executionEnvironment?: PackExecutionEnvironment;
   /**
    * init.js hot reload 用の deps と、現在 active な init scope の holder。
    * 未指定なら従来通り「変更を log + onInitChanged のみ」（reload しない）。
@@ -219,13 +224,16 @@ async function reloadPack(
   const manifest = await readManifestForEntry(action.entryPath, {
     convertFileSrc: tauri.convertFileSrc,
   });
-  const policyError = validatePackExecutionPolicy({
-    id: action.id,
-    kind: action.kind,
-    entryPath: action.entryPath,
-    source: "local",
-    manifest,
-  });
+  const policyError = validatePackExecutionPolicy(
+    {
+      id: action.id,
+      kind: action.kind,
+      entryPath: action.entryPath,
+      source: "local",
+      manifest,
+    },
+    deps.executionEnvironment,
+  );
   if (policyError !== null) {
     deps.userPackLog.write({
       phase: "policy",

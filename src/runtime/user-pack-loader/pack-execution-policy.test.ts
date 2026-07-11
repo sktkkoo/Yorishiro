@@ -157,3 +157,49 @@ describe("validatePackExecutionPolicy / sandbox", () => {
     expect(validatePackExecutionPolicy(entry({ manifest: manifestBase }))).toBeNull();
   });
 });
+
+describe("validatePackExecutionPolicy / client compatibility", () => {
+  const manifestBase = {
+    id: "pack-a",
+    type: "effect",
+    entry: "effect.js",
+    executionClass: "trusted-main-thread-js",
+  };
+  const environment = { clientVersion: "1.2.3", platform: "macos" } as const;
+
+  it("minClientVersion より client が古ければ reject する", () => {
+    const error = validatePackExecutionPolicy(
+      entry({ manifest: { ...manifestBase, minClientVersion: "1.2.4" } }),
+      environment,
+    );
+    expect(error).toContain("requires Yorishiro 1.2.4 or newer");
+  });
+
+  it("prerelease は semver precedence に従って比較する", () => {
+    const error = validatePackExecutionPolicy(
+      entry({ manifest: { ...manifestBase, minClientVersion: "1.2.3" } }),
+      { ...environment, clientVersion: "1.2.3-rc.1" },
+    );
+    expect(error).toContain("requires Yorishiro 1.2.3 or newer");
+  });
+
+  it("platform が一致しなければ reject する", () => {
+    const error = validatePackExecutionPolicy(
+      entry({ manifest: { ...manifestBase, platform: ["windows", "linux"] } }),
+      environment,
+    );
+    expect(error).toContain('does not support platform "macos"');
+  });
+
+  it("minClientVersion と platform が両方 absent なら制約しない", () => {
+    expect(validatePackExecutionPolicy(entry({ manifest: manifestBase }), environment)).toBeNull();
+  });
+
+  it("制約があるのに client 情報が無ければ fail-closed する", () => {
+    expect(
+      validatePackExecutionPolicy(
+        entry({ manifest: { ...manifestBase, minClientVersion: "1.0.0" } }),
+      ),
+    ).toContain("client version is unavailable or invalid");
+  });
+});

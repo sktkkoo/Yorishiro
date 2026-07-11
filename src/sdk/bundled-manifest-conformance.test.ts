@@ -27,11 +27,7 @@ describe("bundled pack manifest schema conformance", () => {
       const input: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
       const result = parsePackManifest(input);
       if (!result.ok) {
-        failures.push(
-          `${relative(bundledPacksRoot, manifestPath)}: ${result.errors.join(
-            "; ",
-          )}`,
-        );
+        failures.push(`${relative(bundledPacksRoot, manifestPath)}: ${result.errors.join("; ")}`);
       }
     }
 
