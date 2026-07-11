@@ -48,6 +48,20 @@ before relying on any of them:
   trusted code" stance: installing a pack runs code with the same authority as
   your shell. Runtime isolation arrives only with the unimplemented
   `isolated-js` class for future community packs.
+- **Pack provenance is not yet wired — every discovered pack is `local`.**
+  `discover_user_pack_entries` (`src-tauri/src/lib.rs`) assigns `source:
+  "local"` unconditionally; there is no install path that records how a pack
+  arrived. The `community`/`curated` branches in
+  `pack-execution-policy.ts` (`validatePackExecutionPolicy`) and the
+  `source === "community"` guard in `amenity-activation.ts` are therefore
+  **forward-scaffolding, not reachable enforcement**: no code path can currently
+  produce a non-`local` source, so those branches never execute. Do not read the
+  execution-class source table in `decisions/pack-execution-classes.md` or the
+  community block in `decisions/system-exec-trust-model.md` as active controls.
+  Real enforcement requires a host-owned provenance ledger that assigns `source`
+  on receipt (a pack's own manifest must never be trusted to declare it); until
+  that lands, treat all packs as `local` trusted code regardless of how they
+  reached `~/.yorishiro/packs/`.
 - **MCP trust tiers are not yet implemented.** The local MCP server
   (`127.0.0.1`, loopback only) has no caller identification, no per-tier
   approval, no audit log, and no rate limit. All tools exposed by
