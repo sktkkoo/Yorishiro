@@ -16,9 +16,9 @@ bundled は **kind-first**（種類別に分類）：
 ```
 bundled-packs/
 ├── personas/
-│   ├── clai-en/             — flagship persona (English)
-│   ├── clai-ja/             — flagship persona (Japanese)
-│   └── clai-shared/         — 両 persona が import する共通 factory
+│   ├── yori-en/             — flagship persona (English)
+│   ├── yori-ja/             — flagship persona (Japanese)
+│   └── yori-shared/         — 両 persona が import する共通 factory
 ├── amenities/
 │   ├── music-shelf/         — Apple Music 制御 (MCP tools)
 │   └── pomodoro/            — pomodoro timer
@@ -55,18 +55,18 @@ bundled-packs/
 
 ## 同梱 pack 一覧
 
-### personas/clai-en, clai-ja
+### personas/yori-en, yori-ja
 - **Entry**: `persona.ts`
 - **Files**: `manifest.json`, `README.md`, `persona.md`（design memo）
 - **役割**: SDK の flagship reference。新規 persona pack を書く AI / user が **これを読んで pattern を掴む**
-- **言語別 split**: `clai-en` は英語 default、`clai-ja` は日本語 default。reaction 定義など共通部分は `personas/clai-shared/persona-factory.ts` を両方が import する
+- **言語別 split**: `yori-en` は英語 default、`yori-ja` は日本語 default。reaction 定義など共通部分は `personas/yori-shared/persona-factory.ts` を両方が import する
 - **主要 reaction**: `startled`, `contemplative`, `pleased`, `distressed`, `curious` ほか
 - 詳細：各 pack の `README.md`
 
-### personas/clai-shared
+### personas/yori-shared
 - **Entry**: 無し（pack ではなく shared module）
 - **Files**: `persona-factory.ts`
-- **役割**: `clai-en` / `clai-ja` から import される persona 構築 factory。reaction / handler の共通骨格を提供し、言語固有の voice / 文言を引数で受け取る
+- **役割**: `yori-en` / `yori-ja` から import される persona 構築 factory。reaction / handler の共通骨格を提供し、言語固有の voice / 文言を引数で受け取る
 
 ### amenities/music-shelf
 - **Entry**: `amenity.ts`
@@ -94,7 +94,7 @@ bundled-packs/
 ### scenes/abandoned-factory
 - **Entry**: `scene.tsx`
 - **Files**: `manifest.json`, `README.md`, `lib/`（procedural shader / lights / props / post-process / camera rig 一式）, `assets/`（user 提供 GLTF）
-- **役割**: 廃工場 R3F-component scene. CLAI がかつて、もう一人の自分のような誰かとすれ違った場所
+- **役割**: 廃工場 R3F-component scene. Yori がかつて、もう一人の自分のような誰かとすれ違った場所
 - 詳細：`bundled-packs/scenes/abandoned-factory/README.md`
 - 内部設計：`../Yorishiro-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 

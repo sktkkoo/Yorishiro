@@ -2,7 +2,7 @@
  * register-orphan-morphs — VRM 上で expression にバインドされていない morph target
  * を実行時に synthetic VRMExpression として登録する。
  *
- * 背景：CLAI で使用している VRM 0.x モデルは Hana Tool (VRoid Studio) 命名の
+ * 背景：Yori で使用している VRM 0.x モデルは Hana Tool (VRoid Studio) 命名の
  * 57 morph target を持つが、BlendShapeMaster に wired されているのは標準 14 group
  * のみで、残り 43 morph (Fcl_BRW_*, Fcl_EYE_part_*, asymmetric L/R 等) は orphan。
  * `vrm.expressionManager.setValue("Fcl_BRW_Sorrow", w)` は silently no-op だった。

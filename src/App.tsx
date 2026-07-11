@@ -45,10 +45,6 @@ import {
   attentionAuraManifest,
   cameraMoveManifest,
   cameraMovePack,
-  claiEnManifest,
-  claiEnPack,
-  claiJaManifest,
-  claiJaPack,
   desaturateManifest,
   desaturatePack,
   fireworksManifest,
@@ -75,6 +71,10 @@ import {
   textPhysicsPack,
   theaterManifest,
   theaterPack,
+  yoriEnManifest,
+  yoriEnPack,
+  yoriJaManifest,
+  yoriJaPack,
   yorishiroSettingsManifest,
   yorishiroSettingsPack,
 } from "./bundled-packs";
@@ -1222,7 +1222,7 @@ function App() {
 
     // ── PersonaRegistryImpl への bundled persona 登録 ────────────────────────
     // PersonaRegistryImpl は state management（active persona / subscribeActive）。
-    // bundled clai を sync register する。ここを async にすると
+    // bundled yori を sync register する。ここを async にすると
     // 初期 render で getActivePersona() が null を返し、Terminal が systemPrompt=null
     // で spawn → async 完了後に再 spawn、という race が起きる。
     // bundled pack は static import 済なので register は同期で確定する。
@@ -1234,8 +1234,8 @@ function App() {
       readonly pack: PersonaDefinition;
       readonly manifest: PersonaPackManifest;
     }> = [
-      { pack: claiJaPack, manifest: claiJaManifest as PersonaPackManifest },
-      { pack: claiEnPack, manifest: claiEnManifest as PersonaPackManifest },
+      { pack: yoriJaPack, manifest: yoriJaManifest as PersonaPackManifest },
+      { pack: yoriEnPack, manifest: yoriEnManifest as PersonaPackManifest },
     ];
     for (const { pack, manifest } of bundledPersonas) {
       personaRegistry.register({
@@ -1671,7 +1671,7 @@ function App() {
               bus.emitSynthetic({ type: "system", packId: "user-init" }, name, payload, 0);
             },
             packRegistry,
-            personaDefaults: resolvedLanguage === "ja" ? claiJaPack : claiEnPack,
+            personaDefaults: resolvedLanguage === "ja" ? yoriJaPack : yoriEnPack,
             userPackLog: createSubsystemLog(devLog, "UserPackLoader"),
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
@@ -2640,7 +2640,7 @@ function App() {
   }, []);
 
   // ── active persona を PersonaRegistryImpl から subscribe ────────────────
-  // bundled clai は runtime factory 内で register 済み。
+  // bundled yori は runtime factory 内で register 済み。
   // config.primaryPersona が切り替わった場合、次の Terminal セッションから反映される。
   // 既存 PTY session への注入は PTY observation-only 原則で行わない
   // （philosophy: docs/philosophy/PHILOSOPHY.md 「観察の境界」）。
@@ -2670,8 +2670,8 @@ function App() {
     () =>
       new Map(
         [
-          claiEnManifest,
-          claiJaManifest,
+          yoriEnManifest,
+          yoriJaManifest,
           abandonedFactoryManifest,
           mistyGrasslandsManifest,
           simpleRoomManifest,
@@ -3776,7 +3776,7 @@ function App() {
   // vrmPath が未設定なら組み込みモデルをデフォルトとして使う。
   useEffect(() => {
     if (!vrmPath) {
-      setVrmUrl("/models/CLAI.vrm");
+      setVrmUrl("/models/Yori.vrm");
       return;
     }
     setVrmUrl(convertFileSrc(vrmPath));

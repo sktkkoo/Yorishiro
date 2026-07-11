@@ -350,7 +350,7 @@ describe("loadInitScript", () => {
     const { subsystem } = makeDevLog();
 
     const userDefault = (ctx: YorishiroInitContext): void => {
-      ctx.emitEvent("clai:shoot", { source: "shortcut" });
+      ctx.emitEvent("yori:shoot", { source: "shortcut" });
     };
 
     const result = await loadInitScript({
@@ -366,7 +366,7 @@ describe("loadInitScript", () => {
     });
 
     expect(result.ran).toBe(true);
-    expect(emitted).toEqual([{ name: "clai:shoot", payload: { source: "shortcut" } }]);
+    expect(emitted).toEqual([{ name: "yori:shoot", payload: { source: "shortcut" } }]);
   });
 
   it("ctx.setActiveUi forwards the selected UI pack id", async () => {

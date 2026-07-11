@@ -30,10 +30,10 @@ export { default as textPhysicsPack } from "../bundled-packs/effects/text-physic
 export { default as textPhysicsManifest } from "../bundled-packs/effects/text-physics/manifest.json";
 
 // Personas
-export { default as claiEnManifest } from "../bundled-packs/personas/clai-en/manifest.json";
-export { default as claiEnPack } from "../bundled-packs/personas/clai-en/persona";
-export { default as claiJaManifest } from "../bundled-packs/personas/clai-ja/manifest.json";
-export { default as claiJaPack } from "../bundled-packs/personas/clai-ja/persona";
+export { default as yoriEnManifest } from "../bundled-packs/personas/yori-en/manifest.json";
+export { default as yoriEnPack } from "../bundled-packs/personas/yori-en/persona";
+export { default as yoriJaManifest } from "../bundled-packs/personas/yori-ja/manifest.json";
+export { default as yoriJaPack } from "../bundled-packs/personas/yori-ja/persona";
 
 // Scenes
 export { default as abandonedFactoryManifest } from "../bundled-packs/scenes/abandoned-factory/manifest.json";

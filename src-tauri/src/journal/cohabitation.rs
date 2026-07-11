@@ -9,7 +9,7 @@
 //!   "total_hours": 42.5,
 //!   "last_shutdown": "2026-05-04T12:34:56Z",
 //!   "per_persona": {
-//!     "clai": 40.0,
+//!     "yori": 40.0,
 //!     "other": 2.5
 //!   }
 //! }
@@ -189,7 +189,7 @@ mod tests {
         let dir = fresh_dir("save-new");
         let start = Instant::now();
         // 即座に save するので経過時間はほぼ 0
-        save_hours_impl(start, "clai", &dir).expect("save ok");
+        save_hours_impl(start, "yori", &dir).expect("save ok");
 
         assert!(!dir.join("config.json").exists());
         let text = fs::read_to_string(dir.join(COHABITATION_FILE)).expect("read");
@@ -197,7 +197,7 @@ mod tests {
 
         assert!(parsed.total_hours >= 0.0);
         assert!(parsed.last_shutdown.is_some());
-        assert!(parsed.per_persona["clai"] >= 0.0);
+        assert!(parsed.per_persona["yori"] >= 0.0);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -211,22 +211,22 @@ mod tests {
               "total_hours": 10.0,
               "last_shutdown": "2026-05-01T00:00:00Z",
               "per_persona": {
-                "clai": 8.0
+                "yori": 8.0
               }
             }"#,
         )
         .expect("write");
 
         let start = Instant::now();
-        save_hours_impl(start, "clai", &dir).expect("save ok");
+        save_hours_impl(start, "yori", &dir).expect("save ok");
 
         let text = fs::read_to_string(dir.join(COHABITATION_FILE)).expect("read");
         let cohabitation: CohabitationState = serde_json::from_str(&text).expect("parse");
 
         // total_hours は 10.0 以上（加算されているはず）
         assert!(cohabitation.total_hours >= 10.0);
-        // per_persona.clai は 8.0 以上
-        assert!(cohabitation.per_persona["clai"] >= 8.0);
+        // per_persona.yori は 8.0 以上
+        assert!(cohabitation.per_persona["yori"] >= 8.0);
         assert!(!dir.join("config.json").exists());
 
         let _ = fs::remove_dir_all(&dir);
@@ -241,7 +241,7 @@ mod tests {
               "total_hours": 5.0,
               "last_shutdown": null,
               "per_persona": {
-                "clai": 5.0
+                "yori": 5.0
               }
             }"#,
         )
@@ -256,7 +256,7 @@ mod tests {
         // 新しい persona が追加される
         assert!(parsed.per_persona.contains_key("other-persona"));
         // 既存 persona は保持される
-        assert_eq!(parsed.per_persona["clai"], 5.0);
+        assert_eq!(parsed.per_persona["yori"], 5.0);
 
         let _ = fs::remove_dir_all(&dir);
     }

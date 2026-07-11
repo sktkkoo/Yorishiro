@@ -87,7 +87,7 @@ export type TerminalAgent = string;
 /** Voice Summary の On/Off。"on" は毎回発話、"off" は voice_say を使わない（token 消費なし）。 */
 export type VoiceFrequency = "on" | "off";
 
-const BUNDLED_CLAI_PERSONA_IDS = new Set(["clai-en", "clai-ja"]);
+const BUNDLED_Yori_PERSONA_IDS = new Set(["yori-en", "yori-ja"]);
 
 export const EMPTY_CONFIG: YorishiroConfig = {
   disabledPacks: [],
@@ -111,20 +111,20 @@ export const EMPTY_CONFIG: YorishiroConfig = {
   mediaFolders: ["~/Music"],
 };
 
-export function localizedClaiPersonaId(language: ResolvedLanguage): "clai-en" | "clai-ja" {
-  return language === "ja" ? "clai-ja" : "clai-en";
+export function localizedYoriPersonaId(language: ResolvedLanguage): "yori-en" | "yori-ja" {
+  return language === "ja" ? "yori-ja" : "yori-en";
 }
 
-export function isBundledClaiPersonaId(id: string | null): boolean {
-  return id !== null && BUNDLED_CLAI_PERSONA_IDS.has(id);
+export function isBundledYoriPersonaId(id: string | null): boolean {
+  return id !== null && BUNDLED_Yori_PERSONA_IDS.has(id);
 }
 
 export function resolvePrimaryPersonaForLanguage(
   primaryPersona: string | null,
   language: ResolvedLanguage,
 ): string {
-  return primaryPersona === null || isBundledClaiPersonaId(primaryPersona)
-    ? localizedClaiPersonaId(language)
+  return primaryPersona === null || isBundledYoriPersonaId(primaryPersona)
+    ? localizedYoriPersonaId(language)
     : primaryPersona;
 }
 

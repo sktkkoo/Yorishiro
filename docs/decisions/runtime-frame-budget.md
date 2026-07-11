@@ -1,6 +1,6 @@
 # Runtime frame budget / GC — 毎フレーム処理の最適化境界とヘルスチェック
 
-> このファイルは「**ターミナルや CLAI の motion が一拍固まる**」「**voice / attention / scene の最適化で何を削ってよいか迷う**」「**GC や per-frame 負荷を health check したい**」時に読む。対象：dev / AI。
+> このファイルは「**ターミナルや Yori の motion が一拍固まる**」「**voice / attention / scene の最適化で何を削ってよいか迷う**」「**GC や per-frame 負荷を health check したい**」時に読む。対象：dev / AI。
 
 **Status**: active
 **Last updated**: 2026-07-05
@@ -102,7 +102,7 @@ folder 変更は「直接操作」ではなく workspace 全体の context switc
 
 ### 7. voice は async one-shot と playback frame loop を分ける
 
-VoiceSummary / CLAI speaking で固まりやすい経路は、TTS synth / fetch / decode / audio graph setup と、再生中の lip sync frame loop が重なって見える。
+VoiceSummary / Yori speaking で固まりやすい経路は、TTS synth / fetch / decode / audio graph setup と、再生中の lip sync frame loop が重なって見える。
 
 境界:
 
@@ -122,8 +122,8 @@ VoiceSummary / CLAI speaking で固まりやすい経路は、TTS synth / fetch 
 
 今回の調査対象は、`codex/attention-light-flash` 系の作業中に見えた次の停止感。
 
-1. プロジェクトフォルダ変更のためフォルダボタンをクリックしたタイミングで、CLAI / motion / 画面が一拍固まる。
-2. VoiceSummary などで CLAI が声を出すタイミングで、CLAI / motion / 画面が一拍固まる。
+1. プロジェクトフォルダ変更のためフォルダボタンをクリックしたタイミングで、Yori / motion / 画面が一拍固まる。
+2. VoiceSummary などで Yori が声を出すタイミングで、Yori / motion / 画面が一拍固まる。
 
 どちらも「単一の重い関数」だけでなく、interaction に module load / reload / audio decode / frame allocation / store publish が重なると悪化する。
 
@@ -162,7 +162,7 @@ rg -n "useFrame|requestAnimationFrame|setInterval|setTimeout|new Map|new Set|Arr
 
 Tauri / Chrome DevTools の Performance recording で、少なくとも次の 3 ケースを測る。
 
-1. idle 10-20 秒: CLAI motion / scene / terminal が表示された状態。
+1. idle 10-20 秒: Yori motion / scene / terminal が表示された状態。
 2. folder button click → dialog open: click 直後に long task / React commit burst がないこと。folder select 後の curtain reload は意図された遷移として扱う。
 3. VoiceSummary 相当の speech: synth / decode の one-shot work 後、playback 中に periodic minor GC が出ないこと。
 

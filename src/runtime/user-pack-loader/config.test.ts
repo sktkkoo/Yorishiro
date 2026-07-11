@@ -10,7 +10,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_CONFIG,
-  localizedClaiPersonaId,
+  localizedYoriPersonaId,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
   resolveProjectFolder,
@@ -62,10 +62,10 @@ describe("parseConfig", () => {
   });
 
   it("reads primaryPersona string", () => {
-    const json = JSON.stringify({ primaryPersona: "clai" });
+    const json = JSON.stringify({ primaryPersona: "yori" });
     expect(parseConfig(json)).toEqual({
       disabledPacks: [],
-      primaryPersona: "clai",
+      primaryPersona: "yori",
       mcpPort: null,
       projectFolder: null,
       activeScene: null,
@@ -137,7 +137,7 @@ describe("parseConfig", () => {
   });
 
   it("silently ignores legacy activePersonas field", () => {
-    const json = JSON.stringify({ activePersonas: ["clai"] });
+    const json = JSON.stringify({ activePersonas: ["yori"] });
     expect(parseConfig(json)).toEqual({
       disabledPacks: [],
       primaryPersona: null,
@@ -662,23 +662,23 @@ describe("withPrimaryPersonaSet", () => {
   });
 });
 
-describe("localized CLAI persona defaults", () => {
-  it("maps resolved language to the bundled CLAI persona id", () => {
-    expect(localizedClaiPersonaId("en")).toBe("clai-en");
-    expect(localizedClaiPersonaId("ja")).toBe("clai-ja");
+describe("localized Yori persona defaults", () => {
+  it("maps resolved language to the bundled Yori persona id", () => {
+    expect(localizedYoriPersonaId("en")).toBe("yori-en");
+    expect(localizedYoriPersonaId("ja")).toBe("yori-ja");
   });
 
-  it("uses localized CLAI when primaryPersona is unset", () => {
-    expect(resolvePrimaryPersonaForLanguage(null, "en")).toBe("clai-en");
-    expect(resolvePrimaryPersonaForLanguage(null, "ja")).toBe("clai-ja");
+  it("uses localized Yori when primaryPersona is unset", () => {
+    expect(resolvePrimaryPersonaForLanguage(null, "en")).toBe("yori-en");
+    expect(resolvePrimaryPersonaForLanguage(null, "ja")).toBe("yori-ja");
   });
 
-  it("treats localized CLAI ids as language-following defaults", () => {
-    expect(resolvePrimaryPersonaForLanguage("clai-en", "ja")).toBe("clai-ja");
-    expect(resolvePrimaryPersonaForLanguage("clai-ja", "en")).toBe("clai-en");
+  it("treats localized Yori ids as language-following defaults", () => {
+    expect(resolvePrimaryPersonaForLanguage("yori-en", "ja")).toBe("yori-ja");
+    expect(resolvePrimaryPersonaForLanguage("yori-ja", "en")).toBe("yori-en");
   });
 
-  it("preserves user-selected non-CLAI persona ids", () => {
+  it("preserves user-selected non-Yori persona ids", () => {
     expect(resolvePrimaryPersonaForLanguage("my-persona", "ja")).toBe("my-persona");
   });
 });

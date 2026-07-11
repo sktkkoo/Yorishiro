@@ -1238,7 +1238,7 @@ describe("loadSingleUserPack", () => {
     const packRegistry = new UserPackRegistry();
     const devLog = makeDevLog().subsystem;
     const defaults = {
-      id: "clai",
+      id: "yori",
       name: "Yorishiro",
       reflex: {
         customTriggers: [

@@ -99,35 +99,35 @@ describe("applyConfigUpdate", () => {
   });
 });
 
-describe("localized CLAI persona options", () => {
+describe("localized Yori persona options", () => {
   const personas = [
-    { id: "clai-en", name: "CLAI", origin: "bundled" as const },
-    { id: "clai-ja", name: "CLAI", origin: "bundled" as const },
+    { id: "yori-en", name: "Yori", origin: "bundled" as const },
+    { id: "yori-ja", name: "Yori", origin: "bundled" as const },
     { id: "my-persona", name: "Mine", origin: "user" as const },
   ];
 
-  it("shows only English CLAI for English UI language", () => {
+  it("shows only English Yori for English UI language", () => {
     expect(filterPersonaOptionsForLanguage(personas, "en").map((p) => p.id)).toEqual([
-      "clai-en",
+      "yori-en",
       "my-persona",
     ]);
   });
 
-  it("shows only Japanese CLAI for Japanese UI language", () => {
+  it("shows only Japanese Yori for Japanese UI language", () => {
     expect(filterPersonaOptionsForLanguage(personas, "ja").map((p) => p.id)).toEqual([
-      "clai-ja",
+      "yori-ja",
       "my-persona",
     ]);
   });
 
-  it("shows the localized CLAI selection for unset config", () => {
-    expect(resolvePersonaSelectValue(null, "ja")).toBe("clai-ja");
-    expect(resolvePersonaSelectValue("clai-en", "ja")).toBe("clai-ja");
+  it("shows the localized Yori selection for unset config", () => {
+    expect(resolvePersonaSelectValue(null, "ja")).toBe("yori-ja");
+    expect(resolvePersonaSelectValue("yori-en", "ja")).toBe("yori-ja");
   });
 
-  it("stores localized CLAI selection as null so language changes keep following", () => {
-    expect(configPrimaryPersonaForSelection("clai-en")).toBeNull();
-    expect(configPrimaryPersonaForSelection("clai-ja")).toBeNull();
+  it("stores localized Yori selection as null so language changes keep following", () => {
+    expect(configPrimaryPersonaForSelection("yori-en")).toBeNull();
+    expect(configPrimaryPersonaForSelection("yori-ja")).toBeNull();
     expect(configPrimaryPersonaForSelection("my-persona")).toBe("my-persona");
   });
 });
@@ -259,7 +259,7 @@ describe("credits sections", () => {
     const byLabel = new Map(creditsSections().map((s) => [s.label, s]));
 
     const character = byLabel.get("Character");
-    expect(character?.lines.map((l) => l.text)).toContain("CLAI — character model by LUCAS");
+    expect(character?.lines.map((l) => l.text)).toContain("Yori — character model by LUCAS");
 
     const builtWith = byLabel.get("Built with");
     const builtWithNames = builtWith?.lines.map((l) => l.text) ?? [];

@@ -18,7 +18,7 @@ describe("buildLoadReport", () => {
       result: {
         loaded: [
           { id: "fireworks", kind: "effect" },
-          { id: "clai", kind: "persona" },
+          { id: "yori", kind: "persona" },
         ],
         failed: [],
       },
@@ -28,7 +28,7 @@ describe("buildLoadReport", () => {
       safeMode: false,
       loadResults: [
         { id: "fireworks", kind: "effect", status: "loaded" },
-        { id: "clai", kind: "persona", status: "loaded" },
+        { id: "yori", kind: "persona", status: "loaded" },
       ],
     });
   });

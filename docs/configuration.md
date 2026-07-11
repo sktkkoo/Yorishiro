@@ -98,7 +98,7 @@ Settings の Scene dropdown と MCP `scene.activate` は、current project root 
 
 Identifiers are not localized: command ids (`/yori:create` / `$yori-create` / `/yori-create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
 
-If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Yorishiro chooses `clai-ja` for Japanese and `clai-en` otherwise.
+If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Yorishiro chooses `yori-ja` for Japanese and `yori-en` otherwise.
 
 Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and Yorishiro command/skill language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
 
@@ -148,7 +148,7 @@ Agent ごとの違い：
 | Agent | 起動 | Prompt overlay | Hook / command support |
 |---|---|---|---|
 | `claude` | `claude` | `--append-system-prompt` | Claude Code hooks、`/yori:*` plugin、Yorishiro MCP config を session-scoped に渡す |
-| `codex` | `codex` | `-c developer_instructions=...` | Yorishiro MCP config と `$yori-*` skill plugin を session-scoped に渡す。Yorishiro reminder は prompt overlay に追記する。Claude hooks は非対応 |
+| `codex` | `codex` | `-c developer_instructions=...` | Yorishiro MCP config を session-scoped に渡し、`$yori-*` は `~/.agents/skills/` に生成する。Yorishiro reminder は prompt overlay に追記する。Claude hooks は非対応 |
 | `opencode` | `opencode` | temp markdown file を `agent.build.prompt` / `agent.plan.prompt` の `{file:...}` 参照で渡す | Yorishiro MCP config と `/yori-*` command を `OPENCODE_CONFIG_CONTENT` で渡す。TUI theme は temp `tui.json` + `OPENCODE_TUI_CONFIG` で `system` にする。Yorishiro reminder は agent prompt に追記する。Claude hooks / session resume は非対応 |
 
 Claude Code hooks は cross-agent contract ではない。Codex / OpenCode が独自の

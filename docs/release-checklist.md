@@ -117,7 +117,7 @@ YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app
 
 ## 7. Core interaction smoke test
 
-- Confirm CLAI loads and idles.
+- Confirm Yori loads and idles.
 - Confirm the selected scene renders.
 - Confirm `Cmd+T` opens a shell tab.
 - Confirm `Ctrl+Tab` / `Ctrl+Shift+Tab` switches tabs.

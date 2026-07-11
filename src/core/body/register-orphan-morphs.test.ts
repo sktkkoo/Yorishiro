@@ -107,7 +107,7 @@ function makeMockVrm(opts: {
 }
 
 describe("registerOrphanMorphs", () => {
-  it("registers unbound Fcl_* morphs as synthetic expressions on a CLAI-like VRM", () => {
+  it("registers unbound Fcl_* morphs as synthetic expressions on a Yori-like VRM", () => {
     // VRM 0.x ライクな構成：joy preset が Fcl_ALL_Joy にバインド済み。
     // Fcl_BRW_Sorrow / Fcl_EYE_Spread は orphan として残っているはず。
     const mesh = makeMockMesh({ Fcl_ALL_Joy: 0, Fcl_BRW_Sorrow: 1, Fcl_EYE_Spread: 2 });

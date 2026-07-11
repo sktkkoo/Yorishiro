@@ -9,7 +9,7 @@ import {
 
 describe("session tab labels", () => {
   it("uses the persona name for the main session", () => {
-    expect(formatMainSessionTabLabel("CLAI")).toBe("CLAI");
+    expect(formatMainSessionTabLabel("Yori")).toBe("Yori");
   });
 
   it("falls back to Agent when the persona name is blank", () => {

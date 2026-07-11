@@ -147,9 +147,9 @@ fn collect_pack_groups(bundled_packs_dir: &Path) -> Vec<PackGroup> {
                 continue;
             }
 
-            // personas/clai-shared は manifest.json を持たない shared module。
+            // personas/yori-shared は manifest.json を持たない shared module。
             // kind="shared" ではなく、親ディレクトリの kind をそのまま使って
-            // id=clai-shared として格納する。
+            // id=yori-shared として格納する。
             let key = (pack_id.clone(), kind.to_string());
             let entry = groups.entry(key).or_default();
             for rel in &files {
