@@ -71,6 +71,7 @@
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.6.0",
+    "@yorishiro/pack-schema": "file:vendor/yorishiro-pack-schema-0.1.0.tgz",
     "jsdom": "^27.0.1",
     "lefthook": "^2.1.5",
     "typedoc": "^0.28.19",
