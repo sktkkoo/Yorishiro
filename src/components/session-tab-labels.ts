@@ -1,14 +1,13 @@
 const DEFAULT_SHELL_LABEL = "~";
-const MAX_PERSONA_LABEL_LENGTH = 18;
 const MAX_SHELL_LABEL_LENGTH = 24;
+const MAIN_SESSION_TAB_LABEL = "Main Agent";
 
 export interface PathLabelOptions {
   readonly homeDir?: string | null;
 }
 
-export function formatMainSessionTabLabel(personaName: string | null | undefined): string {
-  const label = personaName?.trim() || "Agent";
-  return truncateMiddle(label, MAX_PERSONA_LABEL_LENGTH);
+export function formatMainSessionTabLabel(): string {
+  return MAIN_SESSION_TAB_LABEL;
 }
 
 export function formatShellSessionTabLabel(

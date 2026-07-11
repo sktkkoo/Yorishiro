@@ -2639,19 +2639,7 @@ function App() {
     });
   }, []);
 
-  // ── active persona を PersonaRegistryImpl から subscribe ────────────────
-  // bundled clai は runtime factory 内で register 済み。
-  // config.primaryPersona が切り替わった場合、次の Terminal セッションから反映される。
-  // 既存 PTY session への注入は PTY observation-only 原則で行わない
-  // （philosophy: docs/philosophy/PHILOSOPHY.md 「観察の境界」）。
   const personaRegistry = getPersonaRegistry();
-  const [primaryPersonaState, setPrimaryPersonaState] = useState<PersonaDefinition | null>(() =>
-    personaRegistry.getActivePersona(),
-  );
-  useEffect(() => {
-    const sub = personaRegistry.subscribeActive(setPrimaryPersonaState);
-    return () => sub.dispose();
-  }, [personaRegistry]);
 
   /**
    * VRM file path を local state と localStorage に同時反映する。
@@ -4047,7 +4035,7 @@ function App() {
     const labels = new Map<string, string>();
     for (const sessionId of tabState.sessions) {
       if (sessionId === tabState.mainSessionId) {
-        labels.set(sessionId, formatMainSessionTabLabel(primaryPersonaState?.name));
+        labels.set(sessionId, formatMainSessionTabLabel());
         continue;
       }
       const sessionCwd = tabManager.getSessionCwd(sessionId);
@@ -4057,14 +4045,7 @@ function App() {
       );
     }
     return labels;
-  }, [
-    cwd,
-    homeDir,
-    primaryPersonaState?.name,
-    tabManager,
-    tabState.mainSessionId,
-    tabState.sessions,
-  ]);
+  }, [cwd, homeDir, tabManager, tabState.mainSessionId, tabState.sessions]);
 
   // ── Settings: close-requested listener ─────────────────────
 
