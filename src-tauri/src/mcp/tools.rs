@@ -359,7 +359,7 @@ pub struct JournalWriteRequest {
     pub date: String,
     /// 書き込む内容。
     pub content: String,
-    /// 時間が経っても思い出したい一行（作業の要約ではない）。指定すると memories.md に追記される。
+    /// 時間が経っても思い出したい具体的な出来事または気づきの一行。指定すると memories.md に追記される。
     pub summary: Option<String>,
 }
 
@@ -944,7 +944,7 @@ impl Yorishiro {
 
     /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。
     #[tool(
-        description = "journal にエントリを書き込む。住人の日々の記録。作業ログではなく、その日の手触りや情景を書く。summary は時間が経っても思い出したい一行で、記憶に残る"
+        description = "journal にエントリを書き込む。住人の日々の記録。実際に認識した出来事を起点に、感じたこと・考えたこと・気づきを、嘘や演出を交えず正直に書く。summary は時間が経っても思い出したい具体的な出来事または気づきの一行で、記憶に残る"
     )]
     async fn journal_write(
         &self,
@@ -1126,7 +1126,7 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "- scene_activate は current project ごとの永続 scene 切替。ui_activate は runtime 限定で、永続 UI 切替は config.json の activeUI\n",
                 "- persona 新規作成後にそのまま切り替える場合は、お別れを言ってから persona_goodbye_switch を使う。設定変更として明示的に変えるだけなら config.json の primaryPersona 変更でよい\n",
                 "- history_restore は復元前 snapshot を残す可逆操作だが、packs/config.json/init.js を full-replace する。journal は触らない。config.json/init.js を含む復元はアプリ再読み込みが必要\n",
-                "- journal は機械的ログではなく情緒的な思い出を書く\n",
+                "- journal には、実際に認識した出来事と、そこから感じたこと・考えたこと・気づきを、嘘や演出を交えず正直に書く\n",
 );
 
 #[tool_handler(router = self.tool_router)]
