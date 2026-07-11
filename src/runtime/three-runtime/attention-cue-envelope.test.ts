@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ATTENTION_CUE_DURATION_SECONDS,
   ATTENTION_CUE_PULSE_DURATION_SECONDS,
+  ATTENTION_CUE_PULSE_GAP_SECONDS,
   computeAttentionCueLightIntensity,
 } from "./attention-cue-envelope";
 
@@ -11,9 +12,13 @@ describe("computeAttentionCueLightIntensity", () => {
     const rising = computeAttentionCueLightIntensity(ATTENTION_CUE_PULSE_DURATION_SECONDS * 0.25);
     const firstPeak = computeAttentionCueLightIntensity(ATTENTION_CUE_PULSE_DURATION_SECONDS * 0.5);
     const falling = computeAttentionCueLightIntensity(ATTENTION_CUE_PULSE_DURATION_SECONDS * 0.75);
-    const betweenPulses = computeAttentionCueLightIntensity(ATTENTION_CUE_PULSE_DURATION_SECONDS);
+    const betweenPulses = computeAttentionCueLightIntensity(
+      ATTENTION_CUE_PULSE_DURATION_SECONDS + ATTENTION_CUE_PULSE_GAP_SECONDS * 0.5,
+    );
     const secondPeak = computeAttentionCueLightIntensity(
-      ATTENTION_CUE_PULSE_DURATION_SECONDS * 1.5,
+      ATTENTION_CUE_PULSE_DURATION_SECONDS +
+        ATTENTION_CUE_PULSE_GAP_SECONDS +
+        ATTENTION_CUE_PULSE_DURATION_SECONDS * 0.5,
     );
     const end = computeAttentionCueLightIntensity(ATTENTION_CUE_DURATION_SECONDS);
 
@@ -26,8 +31,9 @@ describe("computeAttentionCueLightIntensity", () => {
     expect(secondPeak.point).toBeCloseTo(firstPeak.point);
     expect(secondPeak.spot).toBeCloseTo(firstPeak.spot);
     expect(end).toEqual({ ambient: 0, point: 0, spot: 0 });
-    expect(firstPeak.ambient).toBeCloseTo(0.02);
-    expect(firstPeak.point).toBeCloseTo(0.18);
-    expect(firstPeak.spot).toBeCloseTo(0.21);
+    expect(ATTENTION_CUE_DURATION_SECONDS).toBeCloseTo(1.12);
+    expect(firstPeak.ambient).toBeCloseTo(0.03);
+    expect(firstPeak.point).toBeCloseTo(0.27);
+    expect(firstPeak.spot).toBeCloseTo(0.32);
   });
 });
