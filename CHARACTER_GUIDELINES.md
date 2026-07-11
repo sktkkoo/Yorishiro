@@ -6,7 +6,7 @@ Yori is the character bundled with Yorishiro. These guidelines describe what you
 
 ## Rights
 
-Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTuber)). All rights in the Yori character — including its name, design, and lore, and the copyright in the VRM model, official artwork, and other expressions of the character — belong to the Yorishiro project (its developer, [sktkkoo](https://github.com/sktkkoo)) by assignment. Moral rights remain with LUCAS. See [`CREDITS.md`](CREDITS.md) for details.
+Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTuber)). All rights in the Yori character — including its name, design, and lore, and the copyright in the VRM model, official artwork, and other expressions of the character — belong to the Yorishiro project (its developer, [sktkkoo](https://github.com/sktkkoo), X: [@sunafukin_vrc](https://x.com/sunafukin_vrc)) by assignment. Moral rights remain with LUCAS. See [`CREDITS.md`](CREDITS.md) for details.
 
 The Yori character, its VRM model, and official artwork are **not** covered by the repository's MIT license. The MIT license applies to source code only. The VRM model data is not part of this repository and is only bundled with the distributed application. Use of the model is permitted only within the scope granted by these guidelines and the license embedded in the model file; all other rights are reserved.
 
