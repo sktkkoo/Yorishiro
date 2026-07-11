@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Light alerts now use a brighter, quicker double pulse with a distinct beat between flashes.
 - Fixed Codex `$yori` command discovery by installing Yorishiro's generated skills in Codex's user skill directory (`~/.agents/skills`) instead of an undiscoverable plugin cache entry.
 - Renamed the product from Charminal to Yorishiro, including app metadata, command namespace, SDK package naming, bundled docs, and automatic `~/.charminal/` → `~/.yorishiro/` data directory migration.
 - Release asset fetching now fails packaging builds when `YORISHIRO_ASSETS_REQUIRED=1` is set and any required asset target is missing.

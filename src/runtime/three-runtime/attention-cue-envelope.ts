@@ -7,9 +7,11 @@
  */
 
 export const ATTENTION_CUE_PULSE_COUNT = 2;
-export const ATTENTION_CUE_PULSE_DURATION_SECONDS = 1.7;
+export const ATTENTION_CUE_PULSE_DURATION_SECONDS = 0.5;
+export const ATTENTION_CUE_PULSE_GAP_SECONDS = 0.12;
 export const ATTENTION_CUE_DURATION_SECONDS =
-  ATTENTION_CUE_PULSE_DURATION_SECONDS * ATTENTION_CUE_PULSE_COUNT;
+  ATTENTION_CUE_PULSE_DURATION_SECONDS * ATTENTION_CUE_PULSE_COUNT +
+  ATTENTION_CUE_PULSE_GAP_SECONDS * (ATTENTION_CUE_PULSE_COUNT - 1);
 
 export interface AttentionCueLightIntensity {
   readonly ambient: number;
@@ -18,9 +20,9 @@ export interface AttentionCueLightIntensity {
 }
 
 const ATTENTION_CUE_PEAK_INTENSITY: AttentionCueLightIntensity = {
-  ambient: 0.02,
-  point: 0.18,
-  spot: 0.21,
+  ambient: 0.03,
+  point: 0.27,
+  spot: 0.32,
 };
 
 export function computeAttentionCueLightIntensity(
@@ -39,7 +41,18 @@ export function computeAttentionCueLightIntensityInto(
     out.spot = 0;
     return out;
   }
-  const pulseElapsed = elapsedSeconds % ATTENTION_CUE_PULSE_DURATION_SECONDS;
+  const pulseInterval = ATTENTION_CUE_PULSE_DURATION_SECONDS + ATTENTION_CUE_PULSE_GAP_SECONDS;
+  const pulseIndex = Math.floor(elapsedSeconds / pulseInterval);
+  const pulseElapsed = elapsedSeconds - pulseIndex * pulseInterval;
+  if (
+    pulseIndex >= ATTENTION_CUE_PULSE_COUNT ||
+    pulseElapsed >= ATTENTION_CUE_PULSE_DURATION_SECONDS
+  ) {
+    out.ambient = 0;
+    out.point = 0;
+    out.spot = 0;
+    return out;
+  }
   const progress = pulseElapsed / ATTENTION_CUE_PULSE_DURATION_SECONDS;
   const fade = progress < 0.5 ? smootherstep(progress * 2) : smootherstep((1 - progress) * 2);
   out.ambient = ATTENTION_CUE_PEAK_INTENSITY.ambient * fade;
