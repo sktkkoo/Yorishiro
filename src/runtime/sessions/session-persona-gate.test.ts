@@ -10,12 +10,12 @@ import {
 const AT = "2026-07-08T12:00:00.000Z";
 
 describe("normalizePersonaForGate", () => {
-  it("treats bundled CLAI as one language-neutral persona", () => {
-    // 生の resolved id（clai-en / clai-ja）で比較すると UI 言語切替が
+  it("treats bundled Yori as one language-neutral persona", () => {
+    // 生の resolved id（yori-en / yori-ja）で比較すると UI 言語切替が
     // persona 切替に誤爆する。
-    expect(normalizePersonaForGate(null)).toBe("clai");
-    expect(normalizePersonaForGate("clai-en")).toBe("clai");
-    expect(normalizePersonaForGate("clai-ja")).toBe("clai");
+    expect(normalizePersonaForGate(null)).toBe("yori");
+    expect(normalizePersonaForGate("yori-en")).toBe("yori");
+    expect(normalizePersonaForGate("yori-ja")).toBe("yori");
   });
 
   it("keeps user persona ids as-is", () => {
@@ -36,14 +36,14 @@ describe("parseSessionPersonaRecords", () => {
       version: 1,
       records: {
         claude: {
-          "/proj/a": { persona: "clai", resumeAllowed: true, at: AT },
+          "/proj/a": { persona: "yori", resumeAllowed: true, at: AT },
           "/proj/bad": { persona: 5 },
         },
         codex: "broken",
       },
     });
     expect(parseSessionPersonaRecords(text)).toEqual({
-      claude: { "/proj/a": { persona: "clai", resumeAllowed: true, at: AT } },
+      claude: { "/proj/a": { persona: "yori", resumeAllowed: true, at: AT } },
     });
   });
 
@@ -68,7 +68,7 @@ describe("shouldAllowPersonaResume", () => {
     {
       agent: "claude",
       place: "/proj/a",
-      persona: "clai",
+      persona: "yori",
       resumeAllowed: true,
       at: AT,
     },
@@ -76,19 +76,19 @@ describe("shouldAllowPersonaResume", () => {
 
   it("allows resume when no record exists (fail-open for first run / upgrades)", () => {
     expect(
-      shouldAllowPersonaResume({}, { agent: "claude", place: "/proj/a", persona: "clai" }),
+      shouldAllowPersonaResume({}, { agent: "claude", place: "/proj/a", persona: "yori" }),
     ).toBe(true);
     expect(
-      shouldAllowPersonaResume(records, { agent: "codex", place: "/proj/a", persona: "clai" }),
+      shouldAllowPersonaResume(records, { agent: "codex", place: "/proj/a", persona: "yori" }),
     ).toBe(true);
     expect(
-      shouldAllowPersonaResume(records, { agent: "claude", place: "/proj/b", persona: "clai" }),
+      shouldAllowPersonaResume(records, { agent: "claude", place: "/proj/b", persona: "yori" }),
     ).toBe(true);
   });
 
   it("allows resume when the recorded persona matches", () => {
     expect(
-      shouldAllowPersonaResume(records, { agent: "claude", place: "/proj/a", persona: "clai" }),
+      shouldAllowPersonaResume(records, { agent: "claude", place: "/proj/a", persona: "yori" }),
     ).toBe(true);
   });
 
@@ -110,7 +110,7 @@ describe("withSessionPersonaRecord", () => {
       {
         agent: "claude",
         place: "/proj/a",
-        persona: "clai",
+        persona: "yori",
         resumeAllowed: true,
         at: AT,
       },
@@ -118,7 +118,7 @@ describe("withSessionPersonaRecord", () => {
     records = withSessionPersonaRecord(records, {
       agent: "codex",
       place: "/proj/a",
-      persona: "clai",
+      persona: "yori",
       resumeAllowed: true,
       at: AT,
     });
@@ -131,7 +131,7 @@ describe("withSessionPersonaRecord", () => {
     });
     expect(records.claude?.["/proj/a"]?.persona).toBe("my-persona");
     expect(records.claude?.["/proj/a"]?.resumeAllowed).toBe(false);
-    expect(records.codex?.["/proj/a"]?.persona).toBe("clai");
+    expect(records.codex?.["/proj/a"]?.persona).toBe("yori");
   });
 });
 

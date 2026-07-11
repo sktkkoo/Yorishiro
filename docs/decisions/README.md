@@ -77,7 +77,7 @@
 ### Persona / Identity
 
 - [**persona-multi-instance.md**](persona-multi-instance.md) — 複数 persona 並行 active は不可、single-active が正解（Claude Code additive system prompt 制約由来）
-- [**arg-mode-abandoned-monitor.md**](arg-mode-abandoned-monitor.md) — ARG モードの軸を旧クライ残留思念に置き、`abandoned-monitor` overlay を廃工場限定の発見経路として扱う
+- [**arg-mode-abandoned-monitor.md**](arg-mode-abandoned-monitor.md) — ARG モードの軸を旧ヨリ残留思念に置き、`abandoned-monitor` overlay を廃工場限定の発見経路として扱う
 
 ### Pack system
 
@@ -110,7 +110,7 @@
 - [**motion-intensity.md**](motion-intensity.md) — idle procedural motion の大きさと弾性を `motionIntensity` で調整する。range `0.0`–`3.0` / default `1.0`。settings・SDK・MCP に対称公開し、sway/head/arm は spring + arc で弾性化。短い速い beat は Phase 3 の discrete impulse event に分ける
 - [**agent-adapter.md**](agent-adapter.md) — Terminal agent (Claude / Codex / OpenCode / 将来) の adapter 抽象化と capability flag set
 - [**session-status-attention.md**](session-status-attention.md) — session ごとの観察 read model（lifecycle / activity / unread / exit / attention）と TabIndicator badge。許可待ち（`input`）は screen fast path を主に、agent hook（手動起動 shell は per-session shim で sessionId attribution）と OSC を fallback に観察し、focus / 出力では消さず、確定入力 / screen 消失 / resume hook で解除する。照明通知は attention 1 件につき一度だけの 2-pulse cue で、継続点滅はアンチパターン
-- [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない。Yorishiro MCP と `$yori-*` skill plugin は session-scoped config で注入する
+- [**codex-terminal-agent.md**](codex-terminal-agent.md) — `terminalAgent` config で Claude Code / Codex を選ぶ。Codex は `developer_instructions` で persona overlay を渡し、base instructions は置換しない。Yorishiro MCP は session-scoped config、`$yori-*` は `~/.agents/skills/` の user skills として渡す
 - [**loop-presence-layer.md**](loop-presence-layer.md) — 自律 agent loop（自動実行）は観察・可視化する presence layer として取り込み、execution engine 化はしない。loop-lifecycle event（6 phase）を `ObservedEvent` 同格で足し、SDK `ctx.loop` と MCP `loop_announce` に対称公開。agent-declared（host 推論しない）/ CC・Codex は `mcp_injection` で両対応 / fearless recovery は Yorishiro 自身と対象 repo を別軸で扱う
 - [**effect-rendering-primitives.md**](effect-rendering-primitives.md) — effect の rendering primitive は種類別に複数並列（filter / particle / canvas 2D / DOM / Three.js）。drawOnCanvas → addDomLayer / addThreeLayer → addParticles の順で帰納的に足す
 - [**pack-execution-classes.md**](pack-execution-classes.md) ([English](pack-execution-classes.en.md)) — Pack `type` は product semantics、`executionClass` は security boundary。declarative / isolated-js / trusted-main-thread-js の 3 class を分離。公開 amenity は `isolated-js` 完成後の future scope
@@ -123,7 +123,7 @@
 - [**avatar-import-validation.md**](avatar-import-validation.md) — `import_vrm` は symlink / 非 regular file / 非 GLB を拒否し、検証済み handle を直接コピー（TOCTOU 回避）。コピー先 avatars/ が assetProtocol scope 配下のため任意ファイル吸い出しを防ぐ。symlink import と spec 違反 GLB を意図的に弾く（UX より security 優先）
 - [**git2-embedded-snapshot-store.md**](git2-embedded-snapshot-store.md) — snapshot store を独自 full-copy から git2（libgit2 vendored）に移行。git dir は `.yorishiro-snapshots/` に分離（将来の pack 共有 repo と衝突しない）。content-addressed dedup / diff API / system git 非依存
 - [**render-on-resize-managed-layer.md**](render-on-resize-managed-layer.md) — `setSize()` は drawing buffer を clear するので resize した frame で必ず render する（ThreeRuntime + procedural-scene-layer の 2 経路で enforce 済み）。作者が自前 renderer を持ち込む `addDomLayer` 経路の再発防止に managed render-layer primitive を **proposed**（未実装）
-- [**runtime-frame-budget.md**](runtime-frame-budget.md) — CLAI motion / terminal / voice の停止感を防ぐ frame budget と GC の決定。毎フレーム計算は残し、steady-frame allocation / 同値 publish / 不要 DOM 計測 / click-path reload を削る。Body・lip sync・attention・camera modulation の mutable-output pattern と health check を定義
+- [**runtime-frame-budget.md**](runtime-frame-budget.md) — Yori motion / terminal / voice の停止感を防ぐ frame budget と GC の決定。毎フレーム計算は残し、steady-frame allocation / 同値 publish / 不要 DOM 計測 / click-path reload を削る。Body・lip sync・attention・camera modulation の mutable-output pattern と health check を定義
 - *（今後の追加候補）* `living-system-and-hot-reload.md` — TS が canonical runtime、Rust は IO 層のみ、Claude Code session は HMR で切らない
 - *（今後の追加候補）* `core-vs-pack-vs-mcp.md` — core 機能 vs pack vs MCP tool の判断軸（2026-04-19-core-mcp-pack-layers.md の topic 化）
 

@@ -35,9 +35,9 @@ const TARGETS = [
 // 単体ファイルのコピー定義（directory sync ではなく 1:1 コピー）
 const FILE_TARGETS = [
   {
-    label: "bundled VRM (CLAI)",
-    from: join(externalRoot, "models", "CLAI.vrm"),
-    to: join(REPO_ROOT, "public", "models", "CLAI.vrm"),
+    label: "bundled VRM (Yori)",
+    from: join(externalRoot, "models", "Yori.vrm"),
+    to: join(REPO_ROOT, "public", "models", "Yori.vrm"),
   },
 ];
 

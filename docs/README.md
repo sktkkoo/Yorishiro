@@ -77,7 +77,7 @@ Source code 内で参照するときは：
 |---|---|---|---|
 | TypeScript | `src/` | canonical runtime（思考・反射・身体・UI 全て） | `src/main.tsx` → `src/App.tsx` |
 | Rust | `src-tauri/src/` | IO 層（PTY / hooks / file I/O / MCP server） | `src-tauri/src/lib.rs:run()` |
-| Bundled packs | `bundled-packs/` | 標準同梱の persona / scene / effect / shared assets | `bundled-packs/personas/clai/persona.ts` |
+| Bundled packs | `bundled-packs/` | 標準同梱の persona / scene / effect / shared assets | `bundled-packs/personas/yori/persona.ts` |
 
 ### 3.2 TypeScript top-level
 
@@ -102,7 +102,7 @@ Source code 内で参照するときは：
 
 | Pack | Kind | 詳細 |
 |---|---|---|
-| `bundled-packs/personas/clai/` | persona | flagship reference implementation |
+| `bundled-packs/personas/yori/` | persona | flagship reference implementation |
 | `bundled-packs/scenes/simple-room/` | scene | Phase 1 default scene（3 layer composition） |
 | `bundled-packs/effects/screen-shake/` | effect | DOM shake on error |
 | `bundled-packs/effects/abandoned-monitor/` | effect | 放置された監視端末風の全画面 ARG overlay |

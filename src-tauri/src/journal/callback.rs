@@ -481,7 +481,7 @@ mod tests {
     fn decide_off_never_fires() {
         let memories = vec![memory("2026-06-04", "節目の記憶。")];
         let state = CallbackState::default();
-        let result = decide(&memories, &state, (2026, 7, 4), Some(0), Knob::Off, "clai");
+        let result = decide(&memories, &state, (2026, 7, 4), Some(0), Knob::Off, "yori");
         assert!(result.is_none());
     }
 
@@ -490,7 +490,7 @@ mod tests {
         let memories = vec![memory("2026-06-04", "ひと月前の記憶。")];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2026-06-04");
         assert!(result.message.contains("ちょうどひと月前"));
         assert!(result.message.contains("journal_read"));
@@ -506,7 +506,7 @@ mod tests {
         ];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2025-07-04");
         assert!(result.message.contains("ちょうど一年前"));
     }
@@ -525,7 +525,7 @@ mod tests {
             (2026, 7, 4),
             shutdown,
             Knob::Normal,
-            "clai",
+            "yori",
         )
         .expect("fires");
         assert_eq!(result.memory_date, "2026-06-28");
@@ -544,7 +544,7 @@ mod tests {
             (2026, 7, 4),
             shutdown,
             Knob::Normal,
-            "clai"
+            "yori"
         )
         .is_none());
     }
@@ -554,7 +554,7 @@ mod tests {
         let memories = vec![memory("2026-07-03", "夕方の散歩。")];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2026-07-03");
         assert!(result.message.contains("昨日"));
     }
@@ -564,7 +564,7 @@ mod tests {
         let memories = vec![memory("2026-07-01", "雨上がりの虹。")];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2026-07-01");
         assert!(result.message.contains("3日前"));
     }
@@ -573,7 +573,7 @@ mod tests {
     fn decide_recent_ignores_todays_entry() {
         let memories = vec![memory("2026-07-04", "書いたばかりの記憶。")];
         let state = CallbackState::default();
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").is_none());
     }
 
     #[test]
@@ -588,26 +588,26 @@ mod tests {
         };
         let inside = vec![memory(&date_at(RECENT_WINDOW_DAYS_NORMAL), "window 内。")];
         let state = CallbackState::default();
-        assert!(decide(&inside, &state, today, None, Knob::Normal, "clai").is_some());
+        assert!(decide(&inside, &state, today, None, Knob::Normal, "yori").is_some());
         let outside = vec![memory(
             &date_at(RECENT_WINDOW_DAYS_NORMAL + 1),
             "window 外。",
         )];
-        assert!(decide(&outside, &state, today, None, Knob::Normal, "clai").is_none());
+        assert!(decide(&outside, &state, today, None, Knob::Normal, "yori").is_none());
     }
 
     #[test]
     fn decide_rare_has_no_recent_recall() {
         let memories = vec![memory("2026-07-03", "夕方の散歩。")];
         let state = CallbackState::default();
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Rare, "clai").is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Rare, "yori").is_none());
     }
 
     #[test]
     fn decide_recent_does_not_fall_back_to_older_memories() {
         // 最新が cooldown 中なら黙る。古い記憶まで遡って埋め草を喋らない。
         let mut fired = BTreeMap::new();
-        fired.insert(fired_key("clai", "2026-07-03"), "2026-07-03".to_string());
+        fired.insert(fired_key("yori", "2026-07-03"), "2026-07-03".to_string());
         let memories = vec![
             memory("2026-07-02", "一昨日の買い物。"),
             memory("2026-07-03", "夕方の散歩。"),
@@ -617,7 +617,7 @@ mod tests {
             fired,
             ..CallbackState::default()
         };
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").is_none());
     }
 
     #[test]
@@ -628,7 +628,7 @@ mod tests {
         ];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2026-06-04");
         assert!(result.message.contains("ちょうどひと月前"));
     }
@@ -637,7 +637,7 @@ mod tests {
     fn decide_recent_fires_daily_with_fresh_memories() {
         // 毎日 journal が書かれていれば、翌日にはその「昨日」を想起できる。
         let mut fired = BTreeMap::new();
-        fired.insert(fired_key("clai", "2026-07-02"), "2026-07-03".to_string());
+        fired.insert(fired_key("yori", "2026-07-02"), "2026-07-03".to_string());
         let memories = vec![
             memory("2026-07-02", "一昨日の買い物。"),
             memory("2026-07-03", "夕方の散歩。"),
@@ -648,7 +648,7 @@ mod tests {
             ..CallbackState::default()
         };
         let result =
-            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2026-07-03");
         assert!(result.message.contains("昨日"));
     }
@@ -660,13 +660,13 @@ mod tests {
             last_fired_on: Some("2026-07-04".to_string()),
             ..CallbackState::default()
         };
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").is_none());
     }
 
     #[test]
     fn decide_skips_cooled_memory_and_falls_back() {
         let mut fired = BTreeMap::new();
-        fired.insert(fired_key("clai", "2026-06-04"), "2026-06-25".to_string());
+        fired.insert(fired_key("yori", "2026-06-04"), "2026-06-25".to_string());
         let memories = vec![
             memory("2026-06-04", "ひと月前だが最近発火済み。"),
             memory("2026-06-28", "新しい記憶。"),
@@ -684,7 +684,7 @@ mod tests {
             (2026, 7, 4),
             shutdown,
             Knob::Normal,
-            "clai",
+            "yori",
         )
         .expect("fires");
         assert_eq!(result.memory_date, "2026-06-28");
@@ -696,7 +696,7 @@ mod tests {
         let memories = vec![memory("2026-02-28", "二月末の記憶。")];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 3, 31), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 3, 31), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2026-02-28");
     }
 
@@ -705,7 +705,7 @@ mod tests {
         let memories = vec![memory("2025-12-31", "大晦日の記憶。")];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2026, 1, 31), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2026, 1, 31), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2025-12-31");
         assert!(result.message.contains("ちょうどひと月前"));
     }
@@ -716,7 +716,7 @@ mod tests {
         let memories = vec![memory("2027-02-28", "二月末の記憶。")];
         let state = CallbackState::default();
         let result =
-            decide(&memories, &state, (2028, 2, 29), None, Knob::Normal, "clai").expect("fires");
+            decide(&memories, &state, (2028, 2, 29), None, Knob::Normal, "yori").expect("fires");
         assert_eq!(result.memory_date, "2027-02-28");
         assert!(result.message.contains("ちょうど一年前"));
     }
@@ -725,7 +725,7 @@ mod tests {
     fn decide_no_shutdown_and_no_anniversary_is_silent() {
         let memories = vec![memory("2026-06-20", "節目でない記憶。")];
         let state = CallbackState::default();
-        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "clai").is_none());
+        assert!(decide(&memories, &state, (2026, 7, 4), None, Knob::Normal, "yori").is_none());
     }
 
     #[test]
@@ -740,7 +740,7 @@ mod tests {
             (2026, 7, 4),
             shutdown,
             Knob::Normal,
-            "clai"
+            "yori"
         )
         .is_some());
         assert!(decide(
@@ -749,7 +749,7 @@ mod tests {
             (2026, 7, 4),
             shutdown,
             Knob::Rare,
-            "clai"
+            "yori"
         )
         .is_none());
     }

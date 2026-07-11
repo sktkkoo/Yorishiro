@@ -17,7 +17,7 @@ Yorishiro is an app where an AI "lives" in a terminal. The sidebar character obs
 
 | Type | What it defines | Example |
 |---|---|---|
-| **persona** | Character personality, reactions, body, voice, and space. md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `clai` |
+| **persona** | Character personality, reactions, body, voice, and space. md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `yori` |
 | **effect** | Temporary visual effects on screen | `screen-shake`, `text-physics`, `fireworks-volley` |
 | **amenity** | Functional amenities such as timers or music playback, plus MCP tools. Local-trusted and has `system.exec` | `pomodoro`, `music-shelf` |
 | **scene** | The resident's place: background / foreground layers, R3F lighting / 3D, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
@@ -238,13 +238,13 @@ Persona is **single-active**. The active persona is selected by `primaryPersona`
 - **`persona.md`**: canonical personality prompt source
 - **`persona.js`**: shape core: id / name / optional reflex / world / logReading
 - If `persona.js` explicitly provides `thinking.systemPromptAddition`, that wins. Otherwise `persona.md` is injected.
-- Bundled CLAI follows the same idea, but uses Vite `?raw`; user packs are read by the runtime loader.
+- Bundled Yori follows the same idea, but uses Vite `?raw`; user packs are read by the runtime loader.
 
 ### Creating a Persona
 
 1. Decide id, name, and personality direction with the user
 2. Ask whether to switch to it now or only create it
-3. Read a bundled template such as `bundled-packs/personas/clai-en/persona.md` (or `clai-ja` for a Japanese-default persona)
+3. Read a bundled template such as `bundled-packs/personas/yori-en/persona.md` (or `yori-ja` for a Japanese-default persona)
 4. Write these files:
 
 `~/.yorishiro/packs/<id>/manifest.json`:
@@ -463,7 +463,7 @@ Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only
 
 - `~/.yorishiro/sdk.d.ts` - all SDK type definitions (pack definitions and contexts), rewritten every startup
 - `~/.yorishiro/sdk-guide.md` - SDK author guide (idioms, twin-trigger co-emission), rewritten every startup
-- `bundled-packs/personas/clai-en/`, `bundled-packs/personas/clai-ja/` - flagship persona pattern source (shared factory in `clai-shared/`)
+- `bundled-packs/personas/yori-en/`, `bundled-packs/personas/yori-ja/` - flagship persona pattern source (shared factory in `yori-shared/`)
 - `bundled-packs/amenities/` - amenity pack examples
 - `bundled-packs/ui/` - UI pack examples
 - `bundled-packs/ambient-ui/` - ambient-ui examples

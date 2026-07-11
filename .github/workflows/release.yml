@@ -64,7 +64,7 @@ jobs:
           # animations/ models/ voices/ land where the runtime loads them
           # (public/animations, public/models, bundled-packs/shared/voices).
           # A raw `unzip -d public/` left files under public/Yorishiro-assets/, so
-          # /animations/*.vrma and /models/CLAI.vrm 404'd in the packaged app.
+          # /animations/*.vrma and /models/Yori.vrm 404'd in the packaged app.
           if [ -d .r2-assets/Yorishiro-assets ]; then
             ASSET_SRC="$GITHUB_WORKSPACE/.r2-assets/Yorishiro-assets"
           else

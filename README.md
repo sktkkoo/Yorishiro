@@ -72,7 +72,7 @@ npm install
 npm run tauri dev
 ```
 
-On launch, the configured terminal agent starts inside the terminal and **CLAI**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
+On launch, the configured terminal agent starts inside the terminal and **Yori**, the bundled VRM character, appears beside it. Use Claude Code or Codex as you normally would.
 
 The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
 
@@ -203,9 +203,9 @@ What works today:
 - Launches Claude Code or Codex as the terminal — you work right there
 - Session tabs: multiple shell sessions in the title bar, with per-tab status badges — running / awaiting input / failed / unread (`Cmd+T` / `Ctrl+Tab`)
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
-- CLAI, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
+- Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
 - Custom VRM: swap in your own VRM model from Settings
-- Motion size: scale CLAI's idle motion intensity from Settings or via MCP
+- Motion size: scale Yori's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions
@@ -335,6 +335,6 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 
 The MIT license covers the source code only. The name "Yorishiro" and its icon/logo are trademarks of the author and are not licensed under MIT. You are free to fork and redistribute the code under the MIT terms, but please do not use the "Yorishiro" name or icon for your fork in a way that could cause confusion about its origin.
 
-The bundled character **CLAI** (character design and VRM model) is also not covered by MIT. Fan art, clips, and streams are welcome — see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md) for what you can do with the character, and [`CREDITS.md`](CREDITS.md) for rights details.
+The bundled character **Yori** (character design and VRM model) is also not covered by MIT. Fan art, clips, and streams are welcome — see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md) for what you can do with the character, and [`CREDITS.md`](CREDITS.md) for rights details.
 
 ---

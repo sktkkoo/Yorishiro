@@ -49,8 +49,8 @@ import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot
 import { getBrowserLocales, resolveLanguage } from "../../../src/runtime/language/language";
 import { type AvailableUpdate, checkForUpdate } from "../../../src/runtime/updater/app-updater";
 import {
-  isBundledClaiPersonaId,
-  localizedClaiPersonaId,
+  isBundledYoriPersonaId,
+  localizedYoriPersonaId,
 } from "../../../src/runtime/user-pack-loader/config";
 import type { SnapshotEntry } from "../../../src/sdk/history";
 import simpleRoomManifest from "../../scenes/simple-room/manifest.json";
@@ -58,7 +58,7 @@ import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
 export const SETTINGS_PACK_ID = "yorishiro-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
-const DEFAULT_VRM_NAME = "CLAI";
+const DEFAULT_VRM_NAME = "Yori";
 const DEFAULT_SCENE_ID = simpleRoomManifest.id;
 
 /** 公開リポジトリ。Credits 画面の「View on GitHub」リンク先。 */
@@ -223,7 +223,7 @@ interface CreditLine {
 interface CreditSection {
   readonly label: string;
   readonly lines: readonly CreditLine[];
-  /** section 下に添える注記（例: CLAI の利用条件）。 */
+  /** section 下に添える注記（例: Yori の利用条件）。 */
   readonly footnote?: string;
 }
 
@@ -243,7 +243,7 @@ export function creditsSections(): readonly CreditSection[] {
       // という意向を尊重し、social へ誘導しない。
       // footnote は VRM 埋め込み meta の利用条件を英語に書き写した固定文（CREDITS.md と一致）。
       label: "Character",
-      lines: [{ text: "CLAI — character model by LUCAS" }],
+      lines: [{ text: "Yori — character model by LUCAS" }],
       footnote:
         "Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model is prohibited. Violent expression is permitted; sexual expression is not.",
     },
@@ -258,7 +258,7 @@ export function creditsSections(): readonly CreditSection[] {
       ],
     },
     {
-      // bundled ambient。CLAI の事前収録 voice は未同梱なので載せない。
+      // bundled ambient。Yori の事前収録 voice は未同梱なので載せない。
       label: "Audio",
       lines: [{ text: "Pixabay", note: "Pixabay Content License" }],
     },
@@ -296,21 +296,21 @@ export function filterPersonaOptionsForLanguage<T extends { readonly id: string 
   personas: readonly T[],
   language: ResolvedLanguage,
 ): T[] {
-  const claiId = localizedClaiPersonaId(language);
-  return personas.filter((p) => !isBundledClaiPersonaId(p.id) || p.id === claiId);
+  const yoriId = localizedYoriPersonaId(language);
+  return personas.filter((p) => !isBundledYoriPersonaId(p.id) || p.id === yoriId);
 }
 
 export function resolvePersonaSelectValue(
   primaryPersona: string | null,
   language: ResolvedLanguage,
 ): string {
-  return primaryPersona === null || isBundledClaiPersonaId(primaryPersona)
-    ? localizedClaiPersonaId(language)
+  return primaryPersona === null || isBundledYoriPersonaId(primaryPersona)
+    ? localizedYoriPersonaId(language)
     : primaryPersona;
 }
 
 export function configPrimaryPersonaForSelection(id: string): string | null {
-  return isBundledClaiPersonaId(id) ? null : id;
+  return isBundledYoriPersonaId(id) ? null : id;
 }
 
 export function resolveSceneSelectValue(activeScene: string | null): string {
@@ -2273,7 +2273,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       });
   }, []);
 
-  // ダイアログ本文用の persona 表示名。localizedClaiPersonaId 等の解決済み id を渡す。
+  // ダイアログ本文用の persona 表示名。localizedYoriPersonaId 等の解決済み id を渡す。
   const personaLabelById = (id: string): string => {
     const pack = personas.find((p) => p.id === id);
     return pack ? formatPackOptionLabel(pack) : id;
