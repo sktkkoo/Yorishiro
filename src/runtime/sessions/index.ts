@@ -18,6 +18,8 @@ export {
   type MainSessionRespawnMode,
   markMainSessionFreshSpawnPending,
   markMainSessionRespawnPending,
+  peekMainSessionRespawnMode,
+  resolveUserLayerGraceMs,
 } from "./main-session-respawn-on-reload";
 export {
   getBundledProfile,

@@ -229,6 +229,11 @@ class ThreeRuntimeImpl implements ThreeRuntime {
               this.cameraBase.z = 1.1;
               this.camera.position.set(0, targetY, 1.1);
               this.camera.lookAt(0, targetY, 0);
+              // 新しい姿は背丈が違う。切替経路（お別れの暗転中 / 設定画面の
+              // live 差し替え）を問わず、ロード時は追従を ON に戻して頭位置の
+              // 構図から始める。ここは即時スナップなので、暗転中なら
+              // カーテンが明けた瞬間から構図が決まっている。
+              this.cameraTrackingEnabled = true;
 
               this.bodyListenerRef.current?.(this.currentBody);
               this.updatePlaceholderRect();

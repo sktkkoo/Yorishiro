@@ -639,3 +639,114 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(outputGain.gain.value).not.toBe(1);
   });
 });
+
+// ---------------------------------------------------------------------------
+// waitUntilIdle — お別れ切替が声を待つための idle 判定
+// ---------------------------------------------------------------------------
+
+describe("VoicePlayer.waitUntilIdle", () => {
+  afterEach(() => {
+    mockInvoke.mockReset();
+    mockInvoke.mockImplementation(() => Promise.resolve());
+    mockAudioContext.createAnalyser.mockClear();
+    mockAudioContext.createGain.mockClear();
+    mockAudioContext.createBufferSource.mockClear();
+    mockAudioContext.createBuffer.mockClear();
+    mockAudioContext.decodeAudioData.mockReset();
+    mockAudioContext.decodeAudioData.mockImplementation(async (audioData: ArrayBuffer) => {
+      detachAudioData(audioData);
+      return { duration: 0.02, length: 480, sampleRate: 24000 };
+    });
+    mockFetch.mockReset();
+    mockEnsureAudioContextRunning.mockReset();
+    mockEnsureAudioContextRunning.mockResolvedValue(mockAudioContext);
+  });
+
+  it("何も再生していなければ即座に解決する", async () => {
+    const player = new VoicePlayer();
+    await expect(player.waitUntilIdle(1000)).resolves.toBeUndefined();
+  });
+
+  it("WebAudio 再生中は onended まで解決しない", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+    api.say("お別れの言葉");
+    await flushPlaybackStart();
+    const source = mockAudioContext.createBufferSource.mock.results[0].value;
+
+    let settled = false;
+    const wait = player.waitUntilIdle(5000).then(() => {
+      settled = true;
+    });
+    await flushPlaybackStart();
+    expect(settled).toBe(false);
+
+    source.onended?.();
+    await wait;
+    expect(settled).toBe(true);
+  });
+
+  it("合成中（再生開始前）でも解決しない", async () => {
+    let resolveSynth: (v: ArrayBuffer) => void = () => {};
+    const engine: TtsEngine = {
+      name: "mock",
+      synthesize: vi.fn(
+        () =>
+          new Promise<ArrayBuffer>((resolve) => {
+            resolveSynth = resolve;
+          }),
+      ),
+    };
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+    api.say("合成待ち");
+
+    let settled = false;
+    void player.waitUntilIdle(5000).then(() => {
+      settled = true;
+    });
+    await flushPlaybackStart();
+    expect(settled).toBe(false);
+
+    resolveSynth(createMinimalWav());
+    await flushPlaybackStart();
+    const source = mockAudioContext.createBufferSource.mock.results[0].value;
+    source.onended?.();
+    await flushPlaybackStart();
+    expect(settled).toBe(true);
+  });
+
+  it("timeout を超えたら諦めて解決する（切替を止めない）", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+    api.say("終わらないセリフ");
+    await flushPlaybackStart();
+    await expect(player.waitUntilIdle(50)).resolves.toBeUndefined();
+  });
+
+  it("OS TTS フォールバックの発話完了も待つ", async () => {
+    let resolveSpeak: () => void = () => {};
+    mockInvoke.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSpeak = () => resolve();
+        }),
+    );
+    const player = new VoicePlayer();
+    const api = player.createVoiceAPI();
+    api.say("os tts");
+
+    let settled = false;
+    void player.waitUntilIdle(5000).then(() => {
+      settled = true;
+    });
+    await flushPlaybackStart();
+    expect(settled).toBe(false);
+
+    resolveSpeak();
+    await flushPlaybackStart();
+    expect(settled).toBe(true);
+  });
+});

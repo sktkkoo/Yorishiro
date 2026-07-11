@@ -360,7 +360,7 @@ fn last_shutdown_days() -> Option<i64> {
 /// 揃える。UTC のままだと JST では毎朝 9 時間の窓で節目判定が 1 日ずれる。
 /// chrono 非依存の方針のため unix では `date` コマンドに問い合わせ、
 /// 失敗時と非 unix は UTC 日へフォールバックする。
-fn local_today() -> Result<(i64, u32, u32), String> {
+pub(crate) fn local_today() -> Result<(i64, u32, u32), String> {
     #[cfg(unix)]
     {
         if let Ok(output) = std::process::Command::new("date").arg("+%Y-%m-%d").output() {

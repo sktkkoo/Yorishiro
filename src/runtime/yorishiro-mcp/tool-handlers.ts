@@ -1739,6 +1739,24 @@ export interface PersonaGoodbyeSwitchDeps {
   readonly markMainSessionRespawnPending: () => void;
   readonly listPersonaIds: () => ReadonlyArray<string>;
   readonly reloadPack: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * お別れの声（voice_say の再生）を言い終わるまで待つ。reload は WebView ごと
+   * AudioContext を壊すため、これを待たずに暗転すると声が途中で切れる。
+   */
+  readonly waitForFarewell: () => Promise<void>;
+  /**
+   * 去る側 persona の memories.md にお別れの事実を機械的に一行残す。
+   * config の primaryPersona 更新前（= active がまだ去る側）に呼ぶこと。
+   * 戻ってきたとき想起がこの行を拾い、「一度離れたこと」を覚えている状態を作る。
+   */
+  readonly recordFarewell: (toPersonaId: string) => Promise<void>;
+  /**
+   * 次回 boot が読む VRM を差し替える（live 状態は触らない）。暗転中に呼ばれ、
+   * reload 後の boot が新しい姿でロードする——カーテンが明けたとき、新しい
+   * アバターに切り替わっている。貼られたパスは asset protocol scope 外のこと
+   * があるため、実装側で scope 内への import（複製）を挟むこと。
+   */
+  readonly stageVrmPath: (path: string) => Promise<void>;
 }
 
 export interface PersonaGoodbyeSwitchResult {
@@ -1753,6 +1771,7 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
     if (typeof id !== "string" || id === "") {
       throw new Error("id must be a non-empty string");
     }
+    const vrmPath = typeof r.vrmPath === "string" && r.vrmPath !== "" ? r.vrmPath : null;
 
     let knownPersona = deps.listPersonaIds().includes(id);
     if (!knownPersona) {
@@ -1766,7 +1785,27 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
       throw new Error(`persona '${id}' is not registered`);
     }
 
+    // 演出は best-effort——待ちの失敗で切替自体は止めない。
+    try {
+      await deps.waitForFarewell();
+    } catch (error) {
+      console.error("[persona] farewell wait failed; switching anyway.", error);
+    }
+
     await deps.beginCurtainReload(async () => {
+      // 記録は config 更新前（active がまだ去る側のうち）に。失敗しても切替は止めない。
+      try {
+        await deps.recordFarewell(id);
+      } catch (error) {
+        console.error("[persona] farewell record failed; switching anyway.", error);
+      }
+      if (vrmPath !== null) {
+        try {
+          await deps.stageVrmPath(vrmPath);
+        } catch (error) {
+          console.error("[persona] VRM staging failed; switching persona only.", error);
+        }
+      }
       await deps.updateConfig((cur) => withPrimaryPersonaSet(cur, id));
       deps.markMainSessionRespawnPending();
     });

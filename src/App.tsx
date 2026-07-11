@@ -210,10 +210,12 @@ import {
   markMainSessionRespawnPending,
   normalizePersonaForGate,
   parseSessionPersonaRecords,
+  peekMainSessionRespawnMode,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
+  resolveUserLayerGraceMs,
   type SessionId,
   serializeSessionPersonaRecords,
   shouldAllowPersonaResume,
@@ -418,6 +420,13 @@ const ACTIVE_SESSION_STORAGE_KEY = "yorishiro:active-session";
 const SESSION_TAB_CWD_STORAGE_KEY = "yorishiro:session-tab-cwds";
 const VRM_STORAGE_KEY = "yorishiro:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
+// persona goodbye switch: お別れの声を待つ上限と、言い終わりから暗転までの余韻。
+// 上限は演出の制限ではなく、TTS が終わらない異常時にも切替を進めるための
+// 安全弁（お別れ本文はガイド側で 30〜60 秒相当の文字数に誘導する）。
+// Rust 側 FAREWELL_TOOL_TIMEOUT より短く保つ（超えると tool 応答が timeout する）。
+// 余韻は実機の感触で調整する初期値。
+const FAREWELL_VOICE_WAIT_CAP_MS = 180_000;
+const FAREWELL_AFTERGLOW_MS = 700;
 
 interface RestoreDialogRequest {
   readonly seq: number;
@@ -906,6 +915,10 @@ function App() {
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
+  // VRM の初回ロード完了 latch。reload curtain はこれが立つまで開けない——
+  // persona 切替で姿が変わるとき、カーテンが明けた瞬間に新しいアバターが
+  // 立っているようにするため（ロードが終わらない場合は curtain の failsafe が開ける）。
+  const [vrmReadyOnce, setVrmReadyOnce] = useState(false);
   const [appLanguage, setAppLanguage] = useState<{
     configured: AppLanguage;
     resolved: ResolvedLanguage;
@@ -1716,11 +1729,14 @@ function App() {
         }
       })();
 
+      const respawnMode = peekMainSessionRespawnMode();
+      const userLayerGraceMs = resolveUserLayerGraceMs(respawnMode);
       const [userLayerResult, globalPrompt] = await Promise.all([
-        withTimeout(userLayerPromise, 1200, null, () => {
+        withTimeout(userLayerPromise, userLayerGraceMs, null, () => {
           appLog.write({
             phase: "user-layer",
             note: "user-layer load timed out; starting terminal with current persona",
+            data: { graceMs: userLayerGraceMs, respawnMode },
           });
         }),
         withTimeout(globalPromptPromise, 1200, null, () => {
@@ -2128,6 +2144,21 @@ function App() {
             markMainSessionRespawnPending: markMainSessionFreshSpawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
+            waitForFarewell: async () => {
+              await voicePlayer.waitUntilIdle(FAREWELL_VOICE_WAIT_CAP_MS);
+              await new Promise((resolve) => setTimeout(resolve, FAREWELL_AFTERGLOW_MS));
+            },
+            recordFarewell: (toPersonaId) =>
+              invoke("journal_record_farewell", { toPersona: toPersonaId }),
+            stageVrmPath: async (path) => {
+              // 貼られたパスは asset protocol scope 外のことがある（settings の
+              // picker と違い dialog 経由ではない）。picker と同じ import_vrm で
+              // $APPDATA/avatars/ に複製し、scope 内の dest を次回 boot の VRM
+              // として保存する。live 状態（setVrmPath）は触らない——reload 後の
+              // boot が読む。
+              const dest = await invoke<string>("import_vrm", { src: path });
+              localStorage.setItem(VRM_STORAGE_KEY, dest);
+            },
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
@@ -2306,7 +2337,10 @@ function App() {
   // prompt overlay で 1 回だけ走る（多重 spawn / null prompt race を回避）。
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
   // project 切替 reload 専用の暗転フェード。Cmd+R や error boundary の reload は対象外。
-  const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(isUserLayerReady);
+  // VRM の初回ロードまで curtain を開けない（vrmReadyOnce のコメント参照）。
+  const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(
+    isUserLayerReady && vrmReadyOnce,
+  );
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
   const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
@@ -3490,6 +3524,12 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
+        // VRM ロード完了時、runtime 側は tracking を強制 ON + 頭位置スナップ
+        // 済み（three-runtime のロード完了処理）。leva の表示と手動制御分岐を
+        // それに追従させる——ずれたままだと OFF 側の leva が毎フレーム
+        // camera.position を書いて runtime と書き合いになる。
+        setRuntimeControlValue("camera.tracking", true);
+        setVrmReadyOnce(true);
         body.initAttention();
         body.setLipSyncSource(voicePlayer);
         dispatcher.setContextFactory(

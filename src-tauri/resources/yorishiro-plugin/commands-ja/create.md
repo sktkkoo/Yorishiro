@@ -276,13 +276,21 @@ export default {
 
 新規 persona 作成後にそのまま切り替える場合は、今の住人としてお別れを言ってから `persona_goodbye_switch` を呼ぶ。`primaryPersona` を直接書き換えない。
 
-1. `journal_read` で自分の journal を読む（必要なら `days` を広めに取る）
-2. 具体的な思い出がある場合は `ui_activate({ "id": "theater" })` で theater に入る
-3. journal の固有断片に接地した短いお別れを、今の住人の声で言う。汎用の「楽しかった」だけで済ませない
-4. `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
-5. journal に具体的断片が無い場合は、言葉は挟まず `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ
+このお別れは user の記憶に残る一度きりの場面。事務的な挨拶にしない。
 
-`persona_goodbye_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。
+1. VRM（アバターの姿）も切り替えるか user に確認する。切り替える場合は `.vrm` ファイルのパスを貼ってもらい、`vrm_validate({ "path": "<パス>" })` で**この時点で**検証する（無効なら理由を伝えて、再入力か「姿はそのまま」を選んでもらう）。モデルの切替はここでは行わない——検証で返ったパスを手順 5 で渡すと暗転中に切り替わり、カーテンが明けたときには新しい姿になっている
+2. `journal_read` で自分の journal を読む（必要なら `days` を広めに取る）
+3. 具体的な思い出がある場合は `ui_activate({ "id": "theater" })` で theater に入る
+4. journal のいくつかの具体的な思い出に触れながら、今の住人の声でお別れを言う。長さは 200〜400 字ほど——読み上げるとおよそ 30〜60 秒になる。時間はあくまで目安
+   - 構成・トーン・間の取り方は、自分の persona（口調・内面・振る舞いの原則）から導く。決まった型をなぞらない——淡白な persona なら最後に一度だけ何かが滲む、饒舌な persona なら急に言葉が減る、静かな persona なら言葉より沈黙が多い、というように、その persona らしい崩れ方・締め方を自分で選ぶ
+   - 古い思い出と最近の思い出を混ぜると、過ごした時間の長さが伝わる
+   - 汎用の「楽しかった」だけで済ませない。思い出の列挙だけでも終わらせない
+   - 声は一回の voice_say にまとめる——複数回に分けると前の発話が途中で切れる
+   - `[pause]` と書くと数秒の沈黙が入る。間の置き方にも persona が出る
+5. `persona_goodbye_switch({ "id": "<new-persona-id>" })` を呼ぶ。VRM も切り替える場合は検証済みパスを添える: `persona_goodbye_switch({ "id": "<new-persona-id>", "vrmPath": "<検証済みパス>" })`
+6. journal に具体的断片が無い場合は、言葉は挟まず `persona_goodbye_switch` を呼ぶ（vrmPath の扱いは同じ）
+
+`persona_goodbye_switch` は暗転後に `primaryPersona` を保存し、裏で reload する。カーテンが明けた後、user が次に話しかけたとき新しい persona として応答できる。user に `/clear` を促す必要はない。お別れの事実（誰に器を譲ったか）は去る側の記憶（memories.md）に自動で一行残る——いつかその persona に戻ったとき、想起が拾う。
 
 ## Effect pack を書く
 

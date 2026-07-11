@@ -52,6 +52,37 @@ fn active_persona_id() -> String {
     }
 }
 
+/// config.json の language を読む（不在 / 壊れは None）。
+fn config_language() -> Option<String> {
+    let home = crate::yorishiro_home_path().ok()?;
+    let text = std::fs::read_to_string(home.join("config.json")).ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    value
+        .get("language")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+}
+
+/// persona 交代（お別れ経路）で、去る側の memories.md にお別れの事実を
+/// 機械的に一行残す。**config の primaryPersona 更新前に呼ぶこと**（active が
+/// まだ去る側を指しているうちに書く）。
+///
+/// 住人の自筆ではないため、感情は書かず事実だけを記録する。戻ってきたとき
+/// 既存の想起（recent / 久しぶりの起動）がこの行を拾い、「一度離れたこと」を
+/// 覚えている状態になる。
+pub fn record_farewell(to_persona_id: &str) -> Result<(), String> {
+    let (y, m, d) = callback::local_today()?;
+    let date = format!("{:04}-{:02}-{:02}", y, m, d);
+    let line = match config_language().as_deref() {
+        Some("en") => format!(
+            "Handed this vessel over to \"{}\" and parted.",
+            to_persona_id
+        ),
+        _ => format!("「{}」に器を譲って、お別れをした。", to_persona_id),
+    };
+    append_memory(&date, &line)
+}
+
 fn encode_persona_path_component(id: &str) -> String {
     let mut encoded = String::new();
     for b in id.bytes() {
@@ -502,6 +533,67 @@ mod tests {
 
         write_entry("2026-06-10", "English fallback record.").expect("write");
         assert!(persona_daily_path(&home, FALLBACK_PERSONA_ID_EN, "2026-06-10").exists());
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn record_farewell_writes_fact_line_to_departing_persona() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("record-farewell");
+        std::env::set_var("HOME", &home);
+        let config_dir = home.join(".yorishiro");
+        fs::create_dir_all(&config_dir).expect("mkdir config dir");
+        fs::write(
+            config_dir.join("config.json"),
+            r#"{"primaryPersona":"old-resident"}"#,
+        )
+        .expect("write config");
+
+        record_farewell("new-resident").expect("record");
+
+        let memories =
+            fs::read_to_string(home.join(".yorishiro/journal/personas/old-resident/memories.md"))
+                .expect("departing persona memories exists");
+        assert!(
+            memories.contains("「new-resident」に器を譲って、お別れをした。"),
+            "{memories}"
+        );
+        // 行頭は YYYY-MM-DD: の日付前置（想起の突き合わせ対象になる）。
+        let line = memories.lines().last().expect("line");
+        assert_eq!(&line[4..5], "-");
+        assert_eq!(&line[7..8], "-");
+        assert_eq!(&line[10..12], ": ");
+
+        let _ = fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn record_farewell_uses_english_line_when_language_is_en() {
+        let _guard = crate::TEST_HOME_ENV_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = tmp_home("record-farewell-en");
+        std::env::set_var("HOME", &home);
+        let config_dir = home.join(".yorishiro");
+        fs::create_dir_all(&config_dir).expect("mkdir config dir");
+        fs::write(
+            config_dir.join("config.json"),
+            r#"{"primaryPersona":"old-resident","language":"en"}"#,
+        )
+        .expect("write config");
+
+        record_farewell("new-resident").expect("record");
+
+        let memories =
+            fs::read_to_string(home.join(".yorishiro/journal/personas/old-resident/memories.md"))
+                .expect("departing persona memories exists");
+        assert!(
+            memories.contains("Handed this vessel over to \"new-resident\" and parted."),
+            "{memories}"
+        );
 
         let _ = fs::remove_dir_all(&home);
     }
