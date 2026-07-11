@@ -41,6 +41,8 @@ export class VoicePlayer {
   private onMouthValues: ((values: MouthValues) => void) | null = null;
   private readonly mouthSampleScratch = createMouthValues();
   private readonly mouthCallbackScratch = createMouthValues();
+  /** 進行中の発話（合成中〜再生完了）。waitUntilIdle の待ち対象。 */
+  private readonly inFlight = new Set<Promise<void>>();
 
   constructor(voice?: string, engine?: TtsEngine) {
     this.voice = voice ?? null;
@@ -62,6 +64,33 @@ export class VoicePlayer {
   /** Body 側が idle frame で analyser を pull しないための cheap active 判定。 */
   isMouthActive(): boolean {
     return this.currentSource !== null && this.lipSync !== null;
+  }
+
+  /**
+   * 進行中の発話（合成中も含む）がすべて終わるまで待つ。
+   * timeoutMs を超えたら諦めて解決する——呼び出し側の遷移を止めないための
+   * best-effort。エラーで終わった発話も「終わった」として扱う。
+   */
+  async waitUntilIdle(timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (this.inFlight.size > 0) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return;
+      await Promise.race([
+        Promise.all([...this.inFlight]),
+        new Promise<void>((resolve) => setTimeout(resolve, remaining)),
+      ]);
+    }
+  }
+
+  /** 発話の completion を in-flight として追跡する。失敗も完了として扱う。 */
+  private trackCompletion(completion: Promise<unknown>): void {
+    const entry = completion.then(
+      () => {},
+      () => {},
+    );
+    this.inFlight.add(entry);
+    void entry.then(() => this.inFlight.delete(entry));
   }
 
   createVoiceAPI(options: { readonly resolveClip?: VoiceClipResolver } = {}): VoiceAPI {
@@ -118,6 +147,7 @@ export class VoicePlayer {
         await invoke("tts_speak", { text, voice: this.voice });
       }
     })();
+    this.trackCompletion(completion);
 
     return {
       startedAt,
@@ -197,6 +227,7 @@ export class VoicePlayer {
       }
     })();
     void completion.catch(() => {});
+    this.trackCompletion(completion);
 
     return {
       get startedAt() {
@@ -361,6 +392,7 @@ export class VoicePlayer {
       text,
       voice: this.voice,
     }).then(() => {});
+    this.trackCompletion(completion);
 
     return {
       startedAt: Date.now(),

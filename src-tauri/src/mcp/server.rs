@@ -63,6 +63,17 @@ fn lock_pending() -> std::sync::MutexGuard<'static, HashMap<String, oneshot::Sen
 /// Tauri event で TS 層に tool request を飛ばし、`mcp_tool_response` が返す
 /// `serde_json::Value` を await する。timeout や TS 側 error は `Err(String)`。
 pub async fn emit_tool_event(app: &AppHandle, tool: &str, request: Value) -> Result<Value, String> {
+    emit_tool_event_with_timeout(app, tool, request, TOOL_EVENT_TIMEOUT).await
+}
+
+/// timeout を個別指定できる版。persona_goodbye_switch のように TS 側が
+/// 意図的に長く待つ（お別れの声の再生完了待ち）tool で使う。
+pub async fn emit_tool_event_with_timeout(
+    app: &AppHandle,
+    tool: &str,
+    request: Value,
+    timeout: Duration,
+) -> Result<Value, String> {
     let request_id = uuid::Uuid::new_v4().to_string();
     let (tx, rx) = oneshot::channel();
 
@@ -83,7 +94,7 @@ pub async fn emit_tool_event(app: &AppHandle, tool: &str, request: Value) -> Res
         return Err(format!("emit mcp:tool-request failed: {}", err));
     }
 
-    match tokio::time::timeout(TOOL_EVENT_TIMEOUT, rx).await {
+    match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(_canceled)) => {
             // Sender が drop された（通常は起きない想定）。
@@ -94,7 +105,7 @@ pub async fn emit_tool_event(app: &AppHandle, tool: &str, request: Value) -> Res
             lock_pending().remove(&request_id);
             Err(format!(
                 "tool '{}' did not respond within {:?}",
-                tool, TOOL_EVENT_TIMEOUT
+                tool, timeout
             ))
         }
     }

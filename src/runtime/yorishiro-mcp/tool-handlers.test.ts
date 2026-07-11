@@ -2379,13 +2379,44 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
         personaIds = [...personaIds, id];
         return { ok: true };
       },
+      waitForFarewell: async () => {
+        calls.push("wait-farewell");
+      },
     });
 
     const result = await handler({ id: "new-persona" });
 
     expect(result).toEqual({ active: "new-persona", reloading: true });
     expect(config.primaryPersona).toBe("new-persona");
-    expect(calls).toEqual(["reload:new-persona", "curtain", "update-config", "mark-main-respawn"]);
+    // お別れの声を言い終わるのを待ってから暗転に入る。
+    expect(calls).toEqual([
+      "reload:new-persona",
+      "wait-farewell",
+      "curtain",
+      "update-config",
+      "mark-main-respawn",
+    ]);
+  });
+
+  it("waitForFarewell が失敗しても切替は進む（演出は best-effort）", async () => {
+    const beginCurtainReload = vi.fn(
+      async (prepareReload?: () => void | Promise<void>) => await prepareReload?.(),
+    );
+    const handler = createPersonaGoodbyeSwitchHandler({
+      updateConfig: vi.fn(async () => {}),
+      beginCurtainReload,
+      markMainSessionRespawnPending: vi.fn(),
+      listPersonaIds: () => ["next"],
+      reloadPack: vi.fn(),
+      waitForFarewell: async () => {
+        throw new Error("voice tracking broke");
+      },
+    });
+
+    const result = await handler({ id: "next" });
+
+    expect(result).toEqual({ active: "next", reloading: true });
+    expect(beginCurtainReload).toHaveBeenCalled();
   });
 
   it("rejects when the target persona cannot be loaded", async () => {
@@ -2395,6 +2426,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       markMainSessionRespawnPending: vi.fn(),
       listPersonaIds: () => ["old"],
       reloadPack: async () => ({ ok: false, reason: "pack file not found" }),
+      waitForFarewell: vi.fn(async () => {}),
     });
 
     await expect(handler({ id: "missing" })).rejects.toThrow(
@@ -2409,6 +2441,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       markMainSessionRespawnPending: vi.fn(),
       listPersonaIds: () => [],
       reloadPack: vi.fn(),
+      waitForFarewell: vi.fn(async () => {}),
     });
 
     await expect(handler({ id: "" })).rejects.toThrow("id must be a non-empty string");

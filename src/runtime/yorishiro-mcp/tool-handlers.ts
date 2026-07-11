@@ -1739,6 +1739,11 @@ export interface PersonaGoodbyeSwitchDeps {
   readonly markMainSessionRespawnPending: () => void;
   readonly listPersonaIds: () => ReadonlyArray<string>;
   readonly reloadPack: (id: string) => Promise<{ ok: boolean; reason?: string }>;
+  /**
+   * お別れの声（voice_say の再生）を言い終わるまで待つ。reload は WebView ごと
+   * AudioContext を壊すため、これを待たずに暗転すると声が途中で切れる。
+   */
+  readonly waitForFarewell: () => Promise<void>;
 }
 
 export interface PersonaGoodbyeSwitchResult {
@@ -1764,6 +1769,13 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
     }
     if (!knownPersona) {
       throw new Error(`persona '${id}' is not registered`);
+    }
+
+    // 演出は best-effort——待ちの失敗で切替自体は止めない。
+    try {
+      await deps.waitForFarewell();
+    } catch (error) {
+      console.error("[persona] farewell wait failed; switching anyway.", error);
     }
 
     await deps.beginCurtainReload(async () => {

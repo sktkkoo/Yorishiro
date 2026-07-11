@@ -928,18 +928,24 @@ impl Yorishiro {
 
     /// persona 新規作成後、現 persona がお別れを言ってから active persona を切り替える。
     #[tool(
-        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a short goodbye grounded in journal details. It persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
+        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a short goodbye grounded in journal details. It waits for the goodbye voice to finish, then persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
     )]
     async fn persona_goodbye_switch(
         &self,
         Parameters(req): Parameters<PersonaGoodbyeSwitchRequest>,
     ) -> Result<CallToolResult, McpError> {
-        emit_to(
+        // TS 側がお別れの声の再生完了（上限 20s）+ 余韻を待ってから暗転するため、
+        // 既定の 5s では足りない。声の上限 + 暗転 + 余裕で 30s。
+        const FAREWELL_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        let r = crate::mcp::server::emit_tool_event_with_timeout(
             &self.app_handle,
             "persona.goodbye-switch",
             json!({ "id": req.id }),
+            FAREWELL_TOOL_TIMEOUT,
         )
         .await
+        .map_err(|e| McpError::internal_error(e, None))?;
+        unwrap_ts_response(r)
     }
 
     /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。

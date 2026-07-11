@@ -418,6 +418,11 @@ const ACTIVE_SESSION_STORAGE_KEY = "yorishiro:active-session";
 const SESSION_TAB_CWD_STORAGE_KEY = "yorishiro:session-tab-cwds";
 const VRM_STORAGE_KEY = "yorishiro:vrm";
 const HOOK_BADGE_VISIBLE_MS = 6000;
+// persona goodbye switch: お別れの声を待つ上限と、言い終わりから暗転までの余韻。
+// どちらも実機の感触で調整する初期値。上限は Rust 側 FAREWELL_TOOL_TIMEOUT より
+// 短く保つ（超えると tool 応答が timeout する）。
+const FAREWELL_VOICE_WAIT_CAP_MS = 20_000;
+const FAREWELL_AFTERGLOW_MS = 700;
 
 interface RestoreDialogRequest {
   readonly seq: number;
@@ -2128,6 +2133,10 @@ function App() {
             markMainSessionRespawnPending: markMainSessionFreshSpawnPending,
             listPersonaIds: () => personaRegistry.listEntries().map((entry) => entry.id),
             reloadPack,
+            waitForFarewell: async () => {
+              await voicePlayer.waitUntilIdle(FAREWELL_VOICE_WAIT_CAP_MS);
+              await new Promise((resolve) => setTimeout(resolve, FAREWELL_AFTERGLOW_MS));
+            },
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
