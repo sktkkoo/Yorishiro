@@ -35,6 +35,7 @@ export interface LoopReelPersistenceOptions {
 export interface LoopReelPersistenceController {
   initialize(): Promise<void>;
   flushAll(): Promise<void>;
+  flushRecording(id: string): Promise<void>;
   listRecordings(): Promise<readonly LoopReelPersistedMeta[]>;
   loadRecording(id: string): Promise<SessionRecording | null>;
   dispose(): void;
@@ -139,6 +140,16 @@ export class LoopReelPersistence implements LoopReelPersistenceController {
     }
   }
 
+  async flushRecording(id: string): Promise<void> {
+    const entries = this.pendingEntries.get(id);
+    if (!entries || entries.length === 0) {
+      await (this.appendChains.get(id) ?? Promise.resolve());
+      return;
+    }
+    this.pendingEntries.delete(id);
+    await this.enqueueAppend(id, entries);
+  }
+
   async listRecordings(): Promise<readonly LoopReelPersistedMeta[]> {
     const metas = await this.backend.list();
     for (const meta of metas) {
@@ -205,16 +216,6 @@ export class LoopReelPersistence implements LoopReelPersistenceController {
     await this.backend.create(meta);
     this.knownMetaIds.add(meta.id);
     this.metas.set(meta.id, meta);
-  }
-
-  private async flushRecording(id: string): Promise<void> {
-    const entries = this.pendingEntries.get(id);
-    if (!entries || entries.length === 0) {
-      await (this.appendChains.get(id) ?? Promise.resolve());
-      return;
-    }
-    this.pendingEntries.delete(id);
-    await this.enqueueAppend(id, entries);
   }
 
   private enqueueAppend(id: string, entries: readonly RecordedEntry[]): Promise<void> {

@@ -2,19 +2,23 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { applyFixedRect, readPaddedFixedRect } from "../terminal-runtime/fixed-terminal-rect";
 import { getCurrentTerminalTheme } from "../terminal-theme";
 import {
+  appendReplayTimeline,
   buildReplayTimeline,
   type ReplayFrame,
   type ReplayStreamEntry,
+  type ReplayTimelineOptions,
   replayDurationMs,
 } from "./reel-player";
-import type { SessionRecording } from "./types";
+import type { RecordedEntry, SessionRecording } from "./types";
 
 export interface ReplayTerminal {
   /** live terminal と同じ terminal placeholder に replay xterm を重ねる。 */
   attachTo(container: HTMLElement): void;
   detachContainer(): void;
   /** 録画 stream を読み込み、開始時刻まで linear seek する。 */
-  loadStream(recording: SessionRecording): void;
+  loadStream(recording: SessionRecording, options?: ReplayTimelineOptions): void;
+  /** catch-up の live tail を末尾に足す。再生中の nextFrameIndex は動かさない。 */
+  appendEntries(entries: readonly RecordedEntry[]): void;
   play(speed?: number): void;
   /** from→to の window だけ連続再生し、到達したら pause する。 */
   playWindow(fromTimestamp: number, toTimestamp: number, speed?: number, onEnd?: () => void): void;
@@ -51,6 +55,7 @@ class ReplayTerminalImpl implements ReplayTerminal {
   private lastTickAt = 0;
   private windowEndReplayMs: number | null = null;
   private windowEndCallback: (() => void) | null = null;
+  private timelineOptions: ReplayTimelineOptions = {};
   private hidden = true;
   private disposed = false;
   private readonly positionListeners = new Set<(timestamp: number) => void>();
@@ -104,14 +109,23 @@ class ReplayTerminalImpl implements ReplayTerminal {
     this.container.style.visibility = "hidden";
   }
 
-  loadStream(recording: SessionRecording): void {
+  loadStream(recording: SessionRecording, options: ReplayTimelineOptions = {}): void {
     if (this.disposed) return;
     this.pause();
     this.recording = recording;
-    this.frames = buildReplayTimeline(recording);
+    this.timelineOptions = options;
+    this.frames = buildReplayTimeline(recording, options);
     this.replayMs = 0;
     this.nextFrameIndex = 0;
     this.term.reset();
+  }
+
+  appendEntries(entries: readonly RecordedEntry[]): void {
+    if (this.disposed || !this.recording || entries.length === 0) return;
+    this.frames = appendReplayTimeline(this.frames, entries, {
+      ...this.timelineOptions,
+      startedAt: this.recording.startedAt,
+    });
   }
 
   play(speed = 1): void {

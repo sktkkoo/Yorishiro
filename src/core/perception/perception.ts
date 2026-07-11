@@ -45,7 +45,7 @@ export interface PerceptionDeps {
   readonly devLog?: SubsystemLog;
   /** user-prompt-submit 検知時に呼ばれる。Presence を full に復帰する。 */
   readonly onPresenceRestore?: () => void;
-  /** Loop Reel など、dispatch 済み観察 event の追加記録 hook。P0 は loop-lifecycle のみ呼ぶ。 */
+  /** Loop Reel など、dispatch 済み観察 event の追加記録 hook。 */
   readonly recordObserved?: (event: DispatchEvent) => void;
 }
 
@@ -197,6 +197,7 @@ export class Perception {
       timestamp: this.time.now(),
     };
     this.bus.dispatch(event);
+    this.recordObserved?.(event);
   }
 
   /**

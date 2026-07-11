@@ -2,6 +2,7 @@ import type { ITheme as XTermTheme } from "@xterm/xterm";
 import type { Disposable, TerminalCellData } from "@yorishiro/sdk";
 import type { SpawnSpec } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
+import type { SessionTimelineMarker } from "../loop-reel/types";
 import type { TerminalCommandRun } from "./command-run-store";
 import type { RegionPoint } from "./region-selection";
 import type { TerminalProblem } from "./terminal-problems";
@@ -82,6 +83,12 @@ export interface LoopReelRecorderSink {
   endSession(sessionId: string): void;
   recordPty(sessionId: string, text: string): void;
   recordResize(sessionId: string, cols: number, rows: number): void;
+  recordMarker(
+    sessionId: string,
+    marker: SessionTimelineMarker,
+    label?: string,
+    detail?: unknown,
+  ): void;
 }
 
 export interface TerminalRegionContext {

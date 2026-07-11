@@ -280,12 +280,14 @@ function createRecorderSink(): LoopReelRecorderSink & {
   readonly endSession: ReturnType<typeof vi.fn<LoopReelRecorderSink["endSession"]>>;
   readonly recordPty: ReturnType<typeof vi.fn<LoopReelRecorderSink["recordPty"]>>;
   readonly recordResize: ReturnType<typeof vi.fn<LoopReelRecorderSink["recordResize"]>>;
+  readonly recordMarker: ReturnType<typeof vi.fn<LoopReelRecorderSink["recordMarker"]>>;
 } {
   return {
     startSession: vi.fn<LoopReelRecorderSink["startSession"]>(),
     endSession: vi.fn<LoopReelRecorderSink["endSession"]>(),
     recordPty: vi.fn<LoopReelRecorderSink["recordPty"]>(),
     recordResize: vi.fn<LoopReelRecorderSink["recordResize"]>(),
+    recordMarker: vi.fn<LoopReelRecorderSink["recordMarker"]>(),
   };
 }
 
@@ -508,6 +510,25 @@ describe("TerminalRuntime", () => {
     expect(recorder.recordPty).toHaveBeenCalledOnce();
     expect(recorder.recordPty).toHaveBeenCalledWith("shell-1", "あ");
     expect(perception.onPtyOutput).toHaveBeenLastCalledWith("あ");
+  });
+
+  it("user input の到達点で Loop Reel intervention marker を記録する", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const recorder = createRecorderSink();
+    const terminal = mockState.terminals[0];
+
+    runtime.setLoopReelRecorder(recorder);
+    terminal.dataHandler?.("npm test\r");
+    await flushMicrotasks();
+
+    expect(recorder.recordMarker).toHaveBeenCalledWith(
+      "shell-1",
+      "intervention",
+      "User intervention",
+      {
+        length: 9,
+      },
+    );
   });
 
   it("手動録画は現在 geometry を seed して開始・終了する", async () => {

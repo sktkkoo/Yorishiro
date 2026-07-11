@@ -1,4 +1,6 @@
+export { LOOP_REEL_TUNING } from "./constants";
 export { buildIterationClips } from "./iteration-clips";
+export { getLoopReelLastSeenMap } from "./last-seen";
 export { getLoopReelStore, type LoopReelStore } from "./loop-reel-store";
 export {
   createLoopReelPersistence,
@@ -7,19 +9,21 @@ export {
 } from "./persistence";
 export {
   clampTimestamp,
-  endedLoopReelMetas,
+  isAtLiveEdge,
   mergeLoopReelMetas,
   nextClipTimestamp,
   nextFailedTimestamp,
-  phaseMarkersOfRecording,
   previousClipTimestamp,
   recordingTimeRange,
+  resolveCatchUpStart,
+  scrubberMarkersOfRecording,
 } from "./player-state";
 export {
   type LoopReelRedactionSources,
   loadLoopReelRedactionSources,
+  redactLoopReelEntries,
   redactLoopReelRecording,
 } from "./redaction";
 export { resolveReplayTerminalSurface } from "./replay-surface";
 export { createReplayTerminal, type ReplayTerminal } from "./replay-terminal";
-export type { SessionRecording } from "./types";
+export type { RecordedEntry, SessionRecording } from "./types";

@@ -5,7 +5,9 @@ export type SessionTimelineMarker =
   | "session-start"
   | "session-resume"
   | "session-rewind"
-  | "session-ended";
+  | "session-ended"
+  | "intervention"
+  | "command-failed";
 
 /** 記録された観察 entry。timestamp は host 側で stamp された時刻を使う。 */
 export type RecordedEntry =

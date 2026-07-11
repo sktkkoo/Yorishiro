@@ -3,6 +3,7 @@ import { Time } from "../../core/time";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import type { SessionId, SessionKind } from "../sessions/types";
+import { LOOP_REEL_TUNING } from "./constants";
 import type {
   LoopMarker,
   RecordedEntry,
@@ -71,7 +72,7 @@ export interface LoopReelStore {
   recordMarker(
     sessionId: SessionId,
     marker: SessionTimelineMarker,
-    label: string,
+    label?: string,
     detail?: unknown,
     timestamp?: number,
   ): void;
@@ -127,6 +128,7 @@ class LoopReelStoreImpl implements LoopReelStore {
   private readonly time: LoopReelClock;
   private readonly callbacks: LoopReelStoreCallbacks;
   private readonly recordingEventSubscribers = new Set<LoopReelStoreCallbacks>();
+  private readonly lastInterventionBySessionId = new Map<SessionId, number>();
   private activeSessionId: SessionId | null = null;
   private warnedRecordingEviction = false;
   private ptyEmitScheduled = false;
@@ -176,6 +178,7 @@ class LoopReelStoreImpl implements LoopReelStore {
     };
     this.appendEntries(recording, [endedMarker], { emitPtySoon: false });
     this.activeBySessionId.delete(sessionId);
+    this.lastInterventionBySessionId.delete(sessionId);
     this.evictRecordingsIfNeeded();
     this.notifyRecordingChanged(recording);
     this.emit();
@@ -209,15 +212,19 @@ class LoopReelStoreImpl implements LoopReelStore {
   recordMarker(
     sessionId: SessionId,
     marker: SessionTimelineMarker,
-    label: string,
+    label = defaultMarkerLabel(marker),
     detail?: unknown,
     timestamp: number = this.time.now(),
   ): void {
     const recording = this.activeBySessionId.get(sessionId);
     if (!recording) return;
+    if (this.shouldThrottleInterventionMarker(sessionId, marker, timestamp)) return;
     this.appendEntries(recording, [{ kind: "marker", marker, label, detail, timestamp }], {
       emitPtySoon: false,
     });
+    if (marker === "intervention") {
+      this.lastInterventionBySessionId.set(sessionId, timestamp);
+    }
     this.emit();
   }
 
@@ -355,8 +362,22 @@ class LoopReelStoreImpl implements LoopReelStore {
     }
     this.recordings.unshift(recording);
     this.activeBySessionId.set(sessionId, recording);
+    this.lastInterventionBySessionId.delete(sessionId);
     this.appendEntries(recording, initialEntries, { emitPtySoon: false });
     return recording;
+  }
+
+  private shouldThrottleInterventionMarker(
+    sessionId: SessionId,
+    marker: SessionTimelineMarker,
+    timestamp: number,
+  ): boolean {
+    if (marker !== "intervention") return false;
+    const previousTimestamp = this.lastInterventionBySessionId.get(sessionId);
+    return (
+      previousTimestamp !== undefined &&
+      timestamp - previousTimestamp < LOOP_REEL_TUNING.interventionMarkerThrottleMs
+    );
   }
 
   private updateRecordingMetadata(
@@ -416,16 +437,18 @@ class LoopReelStoreImpl implements LoopReelStore {
     recording: MutableSessionRecording,
     entries: readonly RecordedEntry[],
   ): void {
+    const clonedEntries = entries.map(cloneEntry);
+    const meta = this.metaOf(recording);
     this.callbacks.onEntriesAppended?.({
       recordingId: recording.id,
-      meta: this.metaOf(recording),
-      entries: entries.map(cloneEntry),
+      meta,
+      entries: clonedEntries,
     });
     for (const callbacks of this.recordingEventSubscribers) {
       callbacks.onEntriesAppended?.({
         recordingId: recording.id,
-        meta: this.metaOf(recording),
-        entries: entries.map(cloneEntry),
+        meta,
+        entries: clonedEntries,
       });
     }
   }
@@ -557,6 +580,23 @@ const lastResizeEntry = (
     if (entry.kind === "resize") return entry;
   }
   return null;
+};
+
+const defaultMarkerLabel = (marker: SessionTimelineMarker): string => {
+  switch (marker) {
+    case "session-start":
+      return "Session started";
+    case "session-resume":
+      return "Session resumed";
+    case "session-rewind":
+      return "Session rewind";
+    case "session-ended":
+      return "Session ended";
+    case "intervention":
+      return "User intervention";
+    case "command-failed":
+      return "Command failed";
+  }
 };
 
 const cloneEntry = (entry: RecordedEntry): RecordedEntry => ({ ...entry });

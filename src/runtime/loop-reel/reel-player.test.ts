@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReplayTimeline, replayDurationMs } from "./reel-player";
+import { appendReplayTimeline, buildReplayTimeline, replayDurationMs } from "./reel-player";
 import type { SessionRecording } from "./types";
 
 const recording: SessionRecording = {
@@ -47,5 +47,32 @@ describe("reel-player", () => {
 
     expect(frames.map((frame) => frame.dueMs)).toEqual([0, 100, 1100, 1100, 1160]);
     expect(replayDurationMs(frames)).toBe(1160);
+  });
+
+  it("appends live tail frames without rebuilding the existing timeline", () => {
+    const frames = buildReplayTimeline(recording, { maxGapMs: 1000 });
+    const extended = appendReplayTimeline(
+      frames,
+      [
+        { kind: "marker", marker: "intervention", label: "User intervention", timestamp: 6000 },
+        { kind: "pty", text: "tail\n", timestamp: 9000 },
+        { kind: "resize", cols: 100, rows: 28, timestamp: 9010 },
+      ],
+      { startedAt: recording.startedAt, maxGapMs: 400 },
+    );
+
+    expect(extended.slice(0, frames.length)).toEqual(frames);
+    expect(extended.slice(frames.length)).toEqual([
+      {
+        entry: { kind: "pty", text: "tail\n", timestamp: 9000 },
+        timestamp: 9000,
+        dueMs: 1560,
+      },
+      {
+        entry: { kind: "resize", cols: 100, rows: 28, timestamp: 9010 },
+        timestamp: 9010,
+        dueMs: 1570,
+      },
+    ]);
   });
 });

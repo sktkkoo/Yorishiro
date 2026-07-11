@@ -157,6 +157,28 @@ describe("ReplayTerminal", () => {
     replay.dispose();
   });
 
+  it("appends live tail entries to the loaded stream", () => {
+    const replay = createReplayTerminal();
+    const terminal = mockState.terminals[0];
+
+    replay.loadStream(recording, { maxGapMs: 400 });
+    replay.appendEntries([
+      { kind: "marker", marker: "intervention", label: "User intervention", timestamp: 320 },
+      { kind: "pty", text: "tail\n", timestamp: 900 },
+      { kind: "resize", cols: 100, rows: 28, timestamp: 910 },
+    ]);
+    replay.seekLinear(910);
+
+    expect(terminal.writes).toEqual(["\x1b[32mhello\x1b[0m\n", "done\n", "tail\n"]);
+    expect(terminal.resizes).toEqual([
+      { cols: 80, rows: 24 },
+      { cols: 120, rows: 30 },
+      { cols: 100, rows: 28 },
+    ]);
+
+    replay.dispose();
+  });
+
   it("attaches as a fixed replay container and mirrors terminal rect visibility", () => {
     const replay = createReplayTerminal();
     const host = document.createElement("div");

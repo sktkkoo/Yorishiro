@@ -1234,13 +1234,28 @@ function App() {
       devLog: createSubsystemLog(devLog, "Perception"),
       onPresenceRestore: () => presenceRestoreRef.current(),
       recordObserved: (event) => {
-        if (event.kind !== "loop-lifecycle") return;
-        const fallbackSessionId = loopReelStore.getActiveSession() ?? DEFAULT_SESSION_ID;
-        const loopReelSessionId = loopReelStore.recordLifecycle(fallbackSessionId, event);
-        // loop_announce 起点の録画は geometry を知らずに作られるため、started 観測時に
-        // terminal 側から初期 cols/rows を seed する（store の resize dedup で冪等）。
-        if (event.phase === "started" && loopReelSessionId !== null) {
-          getTerminalRuntime(loopReelSessionId).seedLoopReelGeometry();
+        if (event.kind === "loop-lifecycle") {
+          const fallbackSessionId = loopReelStore.getActiveSession() ?? DEFAULT_SESSION_ID;
+          const loopReelSessionId = loopReelStore.recordLifecycle(fallbackSessionId, event);
+          // loop_announce 起点の録画は geometry を知らずに作られるため、started 観測時に
+          // terminal 側から初期 cols/rows を seed する（store の resize dedup で冪等）。
+          if (event.phase === "started" && loopReelSessionId !== null) {
+            getTerminalRuntime(loopReelSessionId).seedLoopReelGeometry();
+          }
+          return;
+        }
+        if (event.kind === "command-block" && event.exitCode !== null && event.exitCode !== 0) {
+          loopReelStore.recordMarker(
+            event.sessionId,
+            "command-failed",
+            event.command ?? "Command failed",
+            {
+              command: event.command,
+              exitCode: event.exitCode,
+              durationMs: event.durationMs,
+            },
+            event.timestamp,
+          );
         }
       },
     });
