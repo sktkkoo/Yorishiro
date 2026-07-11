@@ -99,7 +99,7 @@ export interface PersonaDefinition {
   // ─── 反射層への影響（二次、構造的）────
 
   /**
-   * optional — minimal persona pack では省略可（bundled clai の
+   * optional — minimal persona pack では省略可（bundled yori の
    * reflex が fallback として有効）。省略時は反応 handler を持たない。
    */
   readonly reflex?: {

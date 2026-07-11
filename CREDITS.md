@@ -73,17 +73,17 @@ For developer asset setup, see `scripts/fetch-assets.mjs`.
 
 ### VRM models
 
-#### CLAI (bundled default character)
+#### Yori (bundled default character)
 
 Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTuber)).
 
 Copyright in this model has been transferred to the Yorishiro project. Moral rights remain with LUCAS.
 
-**License (as embedded in the CLAI.vrm metadata):** Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
+**License (as embedded in the Yori.vrm metadata):** Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
 
-For what you can do with the CLAI character (fan art, clips, streams, and more), see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md).
+For what you can do with the Yori character (fan art, clips, streams, and more), see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md).
 
-We are deeply grateful for the exceptional design and craftsmanship that brings CLAI to life.
+We are deeply grateful for the exceptional design and craftsmanship that brings Yori to life.
 
 > LUCAS is not affiliated with the Yorishiro project in any way.
 > Please do not contact them regarding this application or any issues related to it.
@@ -122,7 +122,7 @@ Bundled ambient audio, referenced by scene packs via `sound:<name>`. The per-fil
 - `calming-rain.mp3` — [Pixabay](https://pixabay.com/) — [Pixabay Content License](https://pixabay.com/service/license-summary/) (no attribution required, commercial use permitted)
 - `bundled-packs/scenes/abandoned-factory/assets/abandoned-factory_piano-loop.mp3` — "Piano Loops 208 Octave Up Short Loop 120 BPM" by josefpres — [freesound.org](https://freesound.org/people/josefpres/sounds/852739/) — [CC0 1.0 Universal](https://creativecommons.org/publicdomain/zero/1.0/) (public domain dedication). Per-file terms are also recorded in [`bundled-packs/scenes/abandoned-factory/assets/LICENSE`](bundled-packs/scenes/abandoned-factory/assets/LICENSE).
 
-CLAI's pre-recorded voice clips are not bundled in this release.
+Yori's pre-recorded voice clips are not bundled in this release.
 
 ### Fonts / icons
 

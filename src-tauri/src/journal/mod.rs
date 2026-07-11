@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
-const FALLBACK_PERSONA_ID_JA: &str = "clai-ja";
-const FALLBACK_PERSONA_ID_EN: &str = "clai-en";
+const FALLBACK_PERSONA_ID_JA: &str = "yori-ja";
+const FALLBACK_PERSONA_ID_EN: &str = "yori-en";
 
 /// journal エントリ 1 日分。
 #[derive(Debug, Clone, Serialize)]

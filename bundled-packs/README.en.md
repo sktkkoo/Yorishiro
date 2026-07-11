@@ -16,9 +16,9 @@ Bundled packs use a **kind-first** layout (grouped by kind):
 ```
 bundled-packs/
 ├── personas/
-│   ├── clai-en/             — flagship persona (English)
-│   ├── clai-ja/             — flagship persona (Japanese)
-│   └── clai-shared/         — common factory imported by both personas
+│   ├── yori-en/             — flagship persona (English)
+│   ├── yori-ja/             — flagship persona (Japanese)
+│   └── yori-shared/         — common factory imported by both personas
 ├── amenities/
 │   ├── music-shelf/         — Apple Music control (MCP tools)
 │   └── pomodoro/            — pomodoro timer
@@ -55,18 +55,18 @@ bundled-packs/
 
 ## List of bundled packs
 
-### personas/clai-en, clai-ja
+### personas/yori-en, yori-ja
 - **Entry**: `persona.ts`
 - **Files**: `manifest.json`, `README.md`, `persona.md` (design memo)
 - **Role**: the flagship reference for the SDK. AIs / users writing a new persona pack **read this to grasp the patterns**
-- **Per-language split**: `clai-en` defaults to English, `clai-ja` to Japanese. Shared parts such as reaction definitions are imported by both from `personas/clai-shared/persona-factory.ts`
+- **Per-language split**: `yori-en` defaults to English, `yori-ja` to Japanese. Shared parts such as reaction definitions are imported by both from `personas/yori-shared/persona-factory.ts`
 - **Main reactions**: `startled`, `contemplative`, `pleased`, `distressed`, `curious`, and others
 - Details: each pack's `README.md`
 
-### personas/clai-shared
+### personas/yori-shared
 - **Entry**: none (a shared module, not a pack)
 - **Files**: `persona-factory.ts`
-- **Role**: the persona-construction factory imported by `clai-en` / `clai-ja`. It provides the shared skeleton of reactions / handlers and takes language-specific voice / wording as arguments
+- **Role**: the persona-construction factory imported by `yori-en` / `yori-ja`. It provides the shared skeleton of reactions / handlers and takes language-specific voice / wording as arguments
 
 ### amenities/music-shelf
 - **Entry**: `amenity.ts`
@@ -94,7 +94,7 @@ bundled-packs/
 ### scenes/abandoned-factory
 - **Entry**: `scene.tsx`
 - **Files**: `manifest.json`, `README.md`, `lib/` (a full set of procedural shaders / lights / props / post-process / camera rig), `assets/` (user-provided GLTF)
-- **Role**: an abandoned-factory R3F-component scene. The place where CLAI once passed by someone — someone like another version of itself
+- **Role**: an abandoned-factory R3F-component scene. The place where Yori once passed by someone — someone like another version of itself
 - Details: `bundled-packs/scenes/abandoned-factory/README.md`
 - Internal design: `../Yorishiro-design-record/specs/2026-05-03-abandoned-factory-scene-design.md`
 

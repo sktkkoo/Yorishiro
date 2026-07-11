@@ -693,7 +693,7 @@ async (ctx) => {
 
 ## 開発フロー
 
-1. 既存 pack（`personas/clai/` など）を `cat` で読んで pattern を把握する
+1. 既存 pack（`personas/yori/` など）を `cat` で読んで pattern を把握する
 2. どの Pack type を書くか決める
 3. `manifest.json` を書く（type と id を正しく指定）
 4. `.ts` entry file を書く（`satisfies <Type>Definition` で型チェック）

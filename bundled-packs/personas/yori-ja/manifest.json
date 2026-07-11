@@ -1,7 +1,7 @@
 {
   "$schema": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
-  "id": "clai-ja",
-  "name": "CLAI",
+  "id": "yori-ja",
+  "name": "Yori",
   "type": "persona",
   "version": "0.1.0",
   "yorishiroVersion": "^0.1.0",

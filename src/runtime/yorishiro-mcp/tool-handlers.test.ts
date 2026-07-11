@@ -2573,12 +2573,12 @@ describe("createBundledExampleReadHandler", () => {
   it("異常系: 存在しない id でエラーが返る", async () => {
     const handler = createBundledExampleReadHandler({
       readBundledPackSource: async () => {
-        throw new Error("Pack 'ghost' not found. Available: [screen-shake, clai-ja]");
+        throw new Error("Pack 'ghost' not found. Available: [screen-shake, yori-ja]");
       },
     });
 
     await expect(handler({ id: "ghost" })).rejects.toThrow(
-      "Pack 'ghost' not found. Available: [screen-shake, clai-ja]",
+      "Pack 'ghost' not found. Available: [screen-shake, yori-ja]",
     );
   });
 

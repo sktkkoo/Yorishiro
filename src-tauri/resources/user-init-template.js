@@ -23,7 +23,7 @@
  *   - F4: toggle immersive (terminal background transparent, character behind text)
  *   - Cmd+Shift+F: fireworks-volley
  *   - Cmd+Shift+G: desaturate toggle
- *   - Cmd+Shift+P: clai:shoot (gun motion + text physics)
+ *   - Cmd+Shift+P: yori:shoot (gun motion + text physics)
  *
  *   F2 is reserved by Yorishiro for the Common / Scene debug panels.
  *   Do not rebind it from init.js.
@@ -86,6 +86,6 @@ export default (ctx) => {
   });
 
   ctx.registerShortcut({ code: "KeyP", meta: true, shift: true }, () =>
-    ctx.emitEvent("clai:shoot", { source: "shortcut", key: "Cmd+Shift+P" }),
+    ctx.emitEvent("yori:shoot", { source: "shortcut", key: "Cmd+Shift+P" }),
   );
 };

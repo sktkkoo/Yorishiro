@@ -14,7 +14,7 @@ const SHOOT_CAMERA_PULL_Z = 1.2;
 const SHOOT_MOTION_RELEASE_DELAY_MS = 6000;
 const SHOOT_MOTION_FADE_OUT_MS = 400;
 const SHOOT_CAMERA_MOVE_KIND = "camera-move";
-const SHOOT_SYNTHETIC_EVENT = "clai:shoot";
+const SHOOT_SYNTHETIC_EVENT = "yori:shoot";
 const SHOOT_SHORTCUT_REACTION = "mischievous-shoot-shortcut";
 // idle 中の自動 shoot（いたずら）。idle が 15 分続いた「その到達時」に一度だけ
 // 低確率で発火する。発火しても外しても idleShootEvaluated を立て、persona reload
@@ -93,7 +93,7 @@ const runShootTimeline = async (ctx: PersonaContext): Promise<void> => {
  * この persona は dry-run の pattern として使われる。
  * 他の persona を書くときの参考実装として `cat` で読まれることを想定している。
  */
-export function createClaiPersona(args: {
+export function createYoriPersona(args: {
   readonly id: string;
   readonly name: string;
   readonly systemPromptAddition: string;
@@ -123,7 +123,7 @@ export function createClaiPersona(args: {
         // 身体表現（motion / expression / effect）は distressed handler 側で決める。
         // Philosophy: docs/philosophy/PHILOSOPHY.md「意識に先立つ反応」
         {
-          id: "clai:error",
+          id: "yori:error",
           match(event: DispatchEvent) {
             if (event.kind !== "hook-signal") return null;
             if (event.signal.name !== "post-tool-failure") return null;
@@ -154,7 +154,7 @@ export function createClaiPersona(args: {
         // Claude Code の TUI は tool output を折りたたむため PTY output には
         // push 結果行が流れない。PostToolUse hook の payload から検知する。
         {
-          id: "clai:git-push-success",
+          id: "yori:git-push-success",
           match(event: DispatchEvent) {
             if (event.kind !== "hook-signal") return null;
             if (event.signal.name !== "post-tool-use") return null;
@@ -180,7 +180,7 @@ export function createClaiPersona(args: {
         // idleShootEvaluated が立ち、persona reload まで再判定しない。
         // motion/effect の timeline は shortcut 経路と同じ runShootTimeline を共有する。
         {
-          id: "clai:idle-shoot",
+          id: "yori:idle-shoot",
           match(event: DispatchEvent) {
             if (event.kind !== "idle") return null;
             if (event.durationMs < SHOOT_IDLE_THRESHOLD_MS) return null;
@@ -198,7 +198,7 @@ export function createClaiPersona(args: {
         // shoot sequence は user が init.js のショートカットでも明示発火できる。
         // motion/effect の timeline は idle 経路と同じ response handler が持つ。
         {
-          id: "clai:shortcut-shoot",
+          id: "yori:shortcut-shoot",
           match(event: DispatchEvent) {
             if (event.kind !== "synthetic") return null;
             if (event.name !== SHOOT_SYNTHETIC_EVENT) return null;
@@ -215,7 +215,7 @@ export function createClaiPersona(args: {
         // 詳細 reason は dev log / console.error に残るが、user 画面には出さない。
         // Internal design-record: specs/2026-04-25-settings-screen-design.md §5
         {
-          id: "clai:settings-write-failed",
+          id: "yori:settings-write-failed",
           match(event: DispatchEvent) {
             if (event.kind !== "synthetic") return null;
             if (event.name !== "yorishiro-settings:write-failed") return null;
@@ -374,7 +374,7 @@ export function createClaiPersona(args: {
 
         // Effect Pack は passive rendering unit なので、銃撃 motion と TextPhysics の
         // tightly-synchronized timeline は persona handler（runShootTimeline）が持つ。
-        // idle 自動発火（clai:idle-shoot）と shortcut 明示発火（clai:shortcut-shoot）の
+        // idle 自動発火（yori:idle-shoot）と shortcut 明示発火（yori:shortcut-shoot）の
         // 両経路が同じ timeline を共有する。発火頻度は idle 経路 trigger の単発判定が担い
         // （1 run に最大 1 回・外したら再起動まで再判定なし）、runShootTimeline 自身の
         // single-flight guard が重複起動を防ぐ。判定が単発なので reaction cooldownMs は不要。

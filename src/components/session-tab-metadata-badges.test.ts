@@ -58,7 +58,7 @@ describe("deriveSessionTabMetadataBadge", () => {
       deriveSessionTabMetadataBadge(
         {
           ...systemSynthetic("deploy-failed"),
-          source: { type: "persona", packId: "clai" },
+          source: { type: "persona", packId: "yori" },
         },
         state,
       ),

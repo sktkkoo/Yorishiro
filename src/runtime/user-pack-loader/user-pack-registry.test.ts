@@ -130,7 +130,7 @@ describe("UserPackRegistry", () => {
   it("listEntries() returns {id, kind} for each registered entry", () => {
     const reg = new UserPackRegistry();
     reg.register("shake", "effect", makeDisposable());
-    reg.register("clai", "persona", makeDisposable());
+    reg.register("yori", "persona", makeDisposable());
     reg.register("shake", "persona", makeDisposable());
 
     const entries = reg.listEntries();
@@ -138,7 +138,7 @@ describe("UserPackRegistry", () => {
     expect(entries).toEqual(
       expect.arrayContaining([
         { id: "shake", kind: "effect" },
-        { id: "clai", kind: "persona" },
+        { id: "yori", kind: "persona" },
         { id: "shake", kind: "persona" },
       ]),
     );

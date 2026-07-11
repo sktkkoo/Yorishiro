@@ -19,7 +19,7 @@
  * 妨げない）。
  */
 
-import { isBundledClaiPersonaId } from "../user-pack-loader/config";
+import { isBundledYoriPersonaId } from "../user-pack-loader/config";
 
 export interface SessionPersonaRecord {
   /** normalizePersonaForGate 済みの persona 識別子。 */
@@ -36,12 +36,12 @@ export type SessionPersonaRecords = Readonly<
 >;
 
 /**
- * gate 比較用の persona 識別子。bundled CLAI（config 上は null / clai-*）は
- * 言語非依存の 1 つの persona として扱う。生の resolved id（clai-en / clai-ja）
+ * gate 比較用の persona 識別子。bundled Yori（config 上は null / yori-*）は
+ * 言語非依存の 1 つの persona として扱う。生の resolved id（yori-en / yori-ja）
  * で比較すると UI 言語の切替が persona 切替に誤爆する。
  */
 export function normalizePersonaForGate(primaryPersona: string | null): string {
-  if (primaryPersona === null || isBundledClaiPersonaId(primaryPersona)) return "clai";
+  if (primaryPersona === null || isBundledYoriPersonaId(primaryPersona)) return "yori";
   return primaryPersona;
 }
 

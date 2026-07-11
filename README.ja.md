@@ -73,7 +73,7 @@ npm install
 npm run tauri dev
 ```
 
-起動すると設定済みのterminal agentがターミナル内で立ち上がり、同梱のVRMキャラクター **CLAI**（クライ）が隣に表示されます。普段通りにClaude CodeまたはCodexを使えます。
+起動すると設定済みのterminal agentがターミナル内で立ち上がり、同梱のVRMキャラクター **Yori**（ヨリ）が隣に表示されます。普段通りにClaude CodeまたはCodexを使えます。
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
@@ -204,9 +204,9 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - Claude CodeまたはCodexをターミナルとして起動し、そのまま作業できる
 - Session tabs: title bar上で複数のshellセッションを操作し、tabごとの状態badge（実行中/入力待ち/失敗/未読）を表示（`Cmd+T` / `Ctrl+Tab`）
 - サイドバーからの作業フォルダ切替——暗転を挟んでそのフォルダで開き直す
-- VRMの3DキャラクターCLAIが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
+- VRMの3DキャラクターYoriが呼吸し、瞬きし、視線を動かし、生きたビートでアイドルする（同梱）
 - カスタムVRM: 設定画面から自分のVRMモデルに差し替えられる
-- モーションサイズ: CLAIのアイドルモーションの強度をSettingsから、またはMCP経由で調整
+- モーションサイズ: Yoriのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生
 - マイクロエクスプレッション: 眉・目・口の微細なアイドル表情変化
@@ -342,6 +342,6 @@ buildを公開する前のsmoke testには[`docs/release-checklist.md`](docs/rel
 
 MITライセンスが許諾するのはソースコード（著作権）のみで、商標権は含みません。「Yorishiro」の名称およびアイコン/ロゴは作者の商標であり、MITライセンスの対象には含まれません。コードはMITの条件で自由にfork・再配布できますが、forkに「Yorishiro」の名称やアイコンを用いて出自を誤認させるような使い方はお控えください。
 
-同梱キャラクター **CLAI**（キャラクターデザイン・VRMモデル）もMITライセンスの対象外です。ファンアート・クリップ・配信は歓迎です——キャラクターの利用については [`CHARACTER_GUIDELINES.ja.md`](CHARACTER_GUIDELINES.ja.md) を、権利の詳細は [`CREDITS.ja.md`](CREDITS.ja.md) を参照してください。
+同梱キャラクター **Yori**（キャラクターデザイン・VRMモデル）もMITライセンスの対象外です。ファンアート・クリップ・配信は歓迎です——キャラクターの利用については [`CHARACTER_GUIDELINES.ja.md`](CHARACTER_GUIDELINES.ja.md) を、権利の詳細は [`CREDITS.ja.md`](CREDITS.ja.md) を参照してください。
 
 ---

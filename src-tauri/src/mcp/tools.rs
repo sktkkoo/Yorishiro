@@ -1019,7 +1019,7 @@ impl Yorishiro {
                 Err(msg) => Err(McpError::internal_error(msg, None)),
             }
         } else {
-            // 最新 N 日分モード（clai/ + seed/ を統合）
+            // 最新 N 日分モード（yori/ + seed/ を統合）
             let days = req.days.unwrap_or(7) as usize;
             match crate::journal::read_recent(days) {
                 Ok(entries) => {

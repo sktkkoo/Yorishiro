@@ -2378,7 +2378,7 @@ pub fn run() {
                     .take();
                 if let Some(start) = start {
                     // TODO: active persona id は将来的に runtime state から取得する。
-                    let persona_id = "clai-ja";
+                    let persona_id = "yori-ja";
                     if let Err(err) = journal::cohabitation::save_hours(start, persona_id) {
                         eprintln!("[cohabitation] 保存失敗: {}", err);
                     }
@@ -2622,7 +2622,7 @@ mod layer_scope_tests {
     #[test]
     fn migrates_legacy_charminal_home_when_yorishiro_is_absent() {
         let home = fresh_dir("migrate-home");
-        fs::create_dir_all(home.join(".charminal").join("packs").join("clai"))
+        fs::create_dir_all(home.join(".charminal").join("packs").join("yori"))
             .expect("create legacy home");
         fs::write(
             home.join(".charminal").join("config.json"),
@@ -2638,7 +2638,7 @@ mod layer_scope_tests {
             fs::read_to_string(home.join(".yorishiro").join("config.json")).expect("read config"),
             "{\"language\":\"ja\"}"
         );
-        assert!(home.join(".yorishiro").join("packs").join("clai").exists());
+        assert!(home.join(".yorishiro").join("packs").join("yori").exists());
 
         let _ = fs::remove_dir_all(&home);
     }
@@ -3575,14 +3575,14 @@ mod bundled_examples_tests {
     }
 
     #[test]
-    fn clai_shared_is_persona_kind() {
+    fn yori_shared_is_persona_kind() {
         let pack = BUNDLED_EXAMPLES
             .iter()
-            .find(|p| p.id == "clai-shared")
-            .expect("clai-shared pack が見つからない");
+            .find(|p| p.id == "yori-shared")
+            .expect("yori-shared pack が見つからない");
         assert_eq!(
             pack.kind, "persona",
-            "clai-shared は personas/ 配下なので kind は persona"
+            "yori-shared は personas/ 配下なので kind は persona"
         );
         let paths: Vec<&str> = pack.files.iter().map(|f| f.path).collect();
         assert!(paths.contains(&"persona-factory.ts"));

@@ -36,7 +36,7 @@
 
 ## 検討したが却下した代替案
 
-### A. persona pack（CLAI）の reaction として実装
+### A. persona pack（Yori）の reaction として実装
 
 却下理由：persona を変えると瞬きや息継ぎの生理まで消える。生理は persona ではなく身体に属する。また dispatch 経路の抽選 / cooldown が即時性に合わない。
 

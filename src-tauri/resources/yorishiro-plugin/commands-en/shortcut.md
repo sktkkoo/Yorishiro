@@ -125,7 +125,7 @@ export default (ctx) => {
 - Open settings: `ctx.setActiveUi("yorishiro-settings")`
 - Close the active UI: `ctx.setActiveUi(null)`
 - Fire a user effect: `ctx.dispatchEffect({ kind: "<effect-pack-id>" })`
-- Trigger a persona reaction path: `ctx.emitEvent("clai:shoot", { source: "shortcut" })`
+- Trigger a persona reaction path: `ctx.emitEvent("yori:shoot", { source: "shortcut" })`
 
 ## Boundaries
 

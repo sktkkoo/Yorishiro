@@ -31,13 +31,13 @@
 
 - The SDK author guide is now shipped to `~/.charminal/sdk-guide.md` (rewritten on every startup), so the inhabitant AI can read the pack-authoring narrative even in packaged builds where the source tree is absent.
 - Every bundled pack now ships a README, and the `/charm` command docs reference packs and SDK types through production-available paths (`bundled_example_read` MCP tool, `~/.charminal/sdk.d.ts` / `sdk-guide.md`).
-- CLAI's idle-triggered TextPhysics mischief is back (a single low-probability roll after a long idle).
+- Yori's idle-triggered TextPhysics mischief is back (a single low-probability roll after a long idle).
 - Camera fixes: `camera-move` now works while tracking is off, F2 opens with tracking off by default, and the tutorial camera paths were corrected.
 - The shoot timeline is now single-flight, so rapid repeated presses no longer overlap.
 
 ## 0.5.0 - 2026-06-19
 
-- Motion size: a Settings slider and `motionIntensity` config field (0–3, default 1.0) scale CLAI's idle sway, breathing, and head/posture motion; inhabitants can adjust it through the `motion_intensity_set` MCP tool.
+- Motion size: a Settings slider and `motionIntensity` config field (0–3, default 1.0) scale Yori's idle sway, breathing, and head/posture motion; inhabitants can adjust it through the `motion_intensity_set` MCP tool.
 - Richer idle aliveness: idle beat scheduler (glances, micro-aversions, anticipation), eye-lead gaze with head recruitment, physiological state-dependent blink rates (suppressed while reading), and StatePose blending in ProceduralBones.
 - User scene packs can be authored as R3F (TSX) components, with live reload from nested source edits.
 - Scene layers support a drop-shadow filter.
@@ -71,4 +71,4 @@
 - Settings UI labels are localized (Japanese / English); product terms stay in English.
 - Render loop scheduling optimized to reduce idle CPU/GPU usage.
 - Default bundled fallback scene changed to `simple-room`.
-- Legacy `clai` persona removed; only `clai-en` and `clai-ja` remain.
+- Legacy `yori` persona removed; only `yori-en` and `yori-ja` remain.

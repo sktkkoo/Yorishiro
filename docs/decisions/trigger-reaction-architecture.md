@@ -267,16 +267,16 @@ handler が事実を観察
 
 ---
 
-## 実装の具体例（bundled clai persona）
+## 実装の具体例（bundled yori persona）
 
-`bundled-packs/personas/clai/persona.ts` より抜粋:
+`bundled-packs/personas/yori/persona.ts` より抜粋:
 
 ### Custom trigger の定義
 
 ```typescript
 customTriggers: [
   {
-    id: "clai:error",
+    id: "yori:error",
     match(event) {
       if (event.kind !== "hook-signal") return null;
       if (event.signal.name !== "post-tool-failure") return null;
@@ -287,7 +287,7 @@ customTriggers: [
     },
   },
   {
-    id: "clai:idle-shoot",
+    id: "yori:idle-shoot",
     match(event) {
       if (event.kind !== "idle") return null;
       if (event.durationMs < 90_000) return null;
@@ -332,7 +332,7 @@ responses: {
 | Perception | `src/core/perception/perception.ts` | 外部 event（PTY / hooks / idle）の収集 |
 | Context 型定義 | `src/sdk/context.d.ts` | PersonaContext / AmenityContext の API 境界 |
 | PersonaRegistry | `src/runtime/persona-registry/` | Single-active persona の状態管理 |
-| CLAI persona | `bundled-packs/personas/clai/persona.ts` | Trigger + response の reference implementation |
+| Yori persona | `bundled-packs/personas/yori/persona.ts` | Trigger + response の reference implementation |
 
 ---
 

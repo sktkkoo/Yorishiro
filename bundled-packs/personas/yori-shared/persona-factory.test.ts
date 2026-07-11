@@ -1,9 +1,9 @@
 import type { DispatchEvent, PersonaContext, PersonaDefinition } from "@yorishiro/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createClaiPersona } from "./persona-factory";
+import { createYoriPersona } from "./persona-factory";
 
 /**
- * clai persona の銃撃ち演出 `runShootTimeline` の single-flight 不変条件を守る test。
+ * yori persona の銃撃ち演出 `runShootTimeline` の single-flight 不変条件を守る test。
  *
  * shoot 演出は ~8 秒の重い one-shot cinematic（camera 引き + gun_fire + text-physics）。
  * reaction の signal は persona 単位で連打では abort されない（per-handler ではない）ため、
@@ -15,9 +15,9 @@ import { createClaiPersona } from "./persona-factory";
 const SHOOT_REACTION = "mischievous-shoot-shortcut";
 
 function getShootHandler(): (ctx: PersonaContext) => void | Promise<void> {
-  const persona = createClaiPersona({
-    id: "clai-test",
-    name: "Clai",
+  const persona = createYoriPersona({
+    id: "yori-test",
+    name: "Yori",
     systemPromptAddition: "test",
   }) as PersonaDefinition;
   const set = persona.reflex?.responses?.[SHOOT_REACTION];
@@ -50,7 +50,7 @@ function cameraMoveCount(injectEffect: ReturnType<typeof vi.fn>): number {
   return injectEffect.mock.calls.filter((c) => c[0]?.kind === "camera-move").length;
 }
 
-describe("clai shoot timeline single-flight", () => {
+describe("yori shoot timeline single-flight", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
@@ -96,21 +96,21 @@ describe("clai shoot timeline single-flight", () => {
  * 2026-05-17 に 90s + 30%（5 秒ごとに毎回判定）で一度廃止したが、離席の確証が高い
  * 15 分閾値 + 単発・低確率に侵襲を下げて復活。経緯: docs/decisions/idle-text-physics-removed.md。
  */
-describe("clai idle-shoot trigger（15 分 idle で確率発火）", () => {
+describe("yori idle-shoot trigger（15 分 idle で確率発火）", () => {
   const IDLE_THRESHOLD_MS = 900_000; // 15 分
 
   function buildPersona(): PersonaDefinition {
-    return createClaiPersona({
-      id: "clai-test",
-      name: "Clai",
+    return createYoriPersona({
+      id: "yori-test",
+      name: "Yori",
       systemPromptAddition: "test",
     }) as PersonaDefinition;
   }
   function getIdleTrigger() {
     const trigger = (buildPersona().reflex?.customTriggers ?? []).find(
-      (t) => t.id === "clai:idle-shoot",
+      (t) => t.id === "yori:idle-shoot",
     );
-    if (trigger === undefined) throw new Error("clai:idle-shoot trigger not registered");
+    if (trigger === undefined) throw new Error("yori:idle-shoot trigger not registered");
     return trigger;
   }
   const idleEvent = (durationMs: number): DispatchEvent =>
@@ -120,7 +120,7 @@ describe("clai idle-shoot trigger（15 分 idle で確率発火）", () => {
 
   it("customTriggers に登録されている", () => {
     expect(
-      (buildPersona().reflex?.customTriggers ?? []).find((t) => t.id === "clai:idle-shoot"),
+      (buildPersona().reflex?.customTriggers ?? []).find((t) => t.id === "yori:idle-shoot"),
     ).toBeDefined();
   });
 
@@ -150,9 +150,9 @@ describe("clai idle-shoot trigger（15 分 idle で確率発火）", () => {
 
   it("15 分判定は一度きり: 外したら同一 instance では再判定しない（再起動まで）", () => {
     const trigger = (buildPersona().reflex?.customTriggers ?? []).find(
-      (t) => t.id === "clai:idle-shoot",
+      (t) => t.id === "yori:idle-shoot",
     );
-    if (trigger === undefined) throw new Error("clai:idle-shoot trigger not registered");
+    if (trigger === undefined) throw new Error("yori:idle-shoot trigger not registered");
 
     // 1 回目: 15 分到達。probability を外す。
     vi.spyOn(Math, "random").mockReturnValue(0.999);

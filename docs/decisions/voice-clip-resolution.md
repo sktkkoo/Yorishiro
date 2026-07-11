@@ -30,7 +30,7 @@
 ### 検証中 / 未確定
 
 - **shared voice の basename alias**: 現状 `voice:filler_ah` のような basename ref を `voice:<category>/filler_ah` と等価に解決する。filler 系 voice の category 体系が固まれば、call site を category 付きに統一して alias は撤去する想定。当面は filler 検証のため残す
-- **filler 系 voice の同梱**: `bundled-packs/personas/clai-shared/persona-factory.ts:263` の `startled` reaction handler が `ctx.voice.play("voice:filler_ah")` を呼ぶ。一方 `bundled-packs/shared/voices/` には対応 WAV を未配置（filler の素材選定・category 設計・録音方針を未確定のまま留めている）。さらに **`startled` reaction を emit する trigger が現状コード上に存在しない**（handler は dead orphan、`clai-shared` の `customTriggers` 4 種いずれも `startled` を返さない、runtime / MCP からの dispatch 経路もなし）。つまり filler は **(a) WAV 未配置 / (b) trigger 未実装 / (c) handler 定義済み** の三層 dormant。WAV だけを `bundled-packs/shared/voices/` に追加しても trigger がないので鳴らない — 逆に言うと trigger を追加した時点で WAV が同梱されていれば即座に鳴り始める。**解除時は WAV 追加と `startled` を emit する trigger 追加をセットで行う**（片方だけ先行させると、handler の orphan 状態が解けて意図しないタイミングで filler が鳴り始める / `completion` reject + `console.error` が連発する、のいずれかが起きる）
+- **filler 系 voice の同梱**: `bundled-packs/personas/yori-shared/persona-factory.ts:263` の `startled` reaction handler が `ctx.voice.play("voice:filler_ah")` を呼ぶ。一方 `bundled-packs/shared/voices/` には対応 WAV を未配置（filler の素材選定・category 設計・録音方針を未確定のまま留めている）。さらに **`startled` reaction を emit する trigger が現状コード上に存在しない**（handler は dead orphan、`yori-shared` の `customTriggers` 4 種いずれも `startled` を返さない、runtime / MCP からの dispatch 経路もなし）。つまり filler は **(a) WAV 未配置 / (b) trigger 未実装 / (c) handler 定義済み** の三層 dormant。WAV だけを `bundled-packs/shared/voices/` に追加しても trigger がないので鳴らない — 逆に言うと trigger を追加した時点で WAV が同梱されていれば即座に鳴り始める。**解除時は WAV 追加と `startled` を emit する trigger 追加をセットで行う**（片方だけ先行させると、handler の orphan 状態が解けて意図しないタイミングで filler が鳴り始める / `completion` reject + `console.error` が連発する、のいずれかが起きる）
 
 ### 不採用
 
@@ -65,6 +65,6 @@
 - pack-local resolver + path safety: `src/runtime/persona-registry/voice-asset-resolver.ts`
 - 解決順序統合: `src/core/voice/voice-player.ts` の `resolveClipUrl()`
 - scoped resolver 配線: `src/runtime/persona-registry/real-context.ts`
-- filler call site（検証中）: `bundled-packs/personas/clai-shared/persona-factory.ts:263`
+- filler call site（検証中）: `bundled-packs/personas/yori-shared/persona-factory.ts:263`
 - 明示性原則: [voice-as-explicit-tool-call.md](voice-as-explicit-tool-call.md)
 - security 境界: [critical-constraints.md](critical-constraints.md)

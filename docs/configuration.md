@@ -98,7 +98,7 @@ Settings の Scene dropdown と MCP `scene.activate` は、current project root 
 
 Identifiers are not localized: command ids (`/yori:create` / `$yori-create` / `/yori-create`), MCP tool names (`journal_write`), config keys (`primaryPersona`), pack ids, SDK API names, and paths remain English / ASCII.
 
-If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Yorishiro chooses `clai-ja` for Japanese and `clai-en` otherwise.
+If `primaryPersona` is set, the language fallback does not override it. If `primaryPersona` is `null`, Yorishiro chooses `yori-ja` for Japanese and `yori-en` otherwise.
 
 Changing language from the settings screen updates UI labels and bundled persona fallback immediately when possible. Existing agent terminal sessions keep the system prompt and Yorishiro command/skill language they were started with; those surfaces are refreshed on the next agent terminal launch / app restart.
 
