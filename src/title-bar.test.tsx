@@ -78,6 +78,24 @@ describe("TitleBar", () => {
     expect(screen.getByRole("button", { name: "shell-1" })).toBeTruthy();
   });
 
+  it("renders the Loop Reel button and fires the toggle on every click", () => {
+    const onToggleLoopReel = vi.fn();
+    renderTitleBar({
+      loopReelLabel: "Loop Reel",
+      onToggleLoopReel,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Loop Reel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Loop Reel" }));
+    expect(onToggleLoopReel).toHaveBeenCalledTimes(2);
+  });
+
+  it("omits the Loop Reel button when no handler is provided", () => {
+    renderTitleBar({ loopReelLabel: "Loop Reel" });
+
+    expect(screen.queryByRole("button", { name: "Loop Reel" })).toBeNull();
+  });
+
   it("keeps only the title bar root as a Tauri drag region", () => {
     const { container } = renderTitleBar();
     const root = container.firstElementChild;

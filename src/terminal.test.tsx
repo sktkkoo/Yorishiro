@@ -29,6 +29,7 @@ const mockState = vi.hoisted(() => {
     readScreenTailText: vi.fn(() => ""),
     setAttentionCueIntensity: vi.fn(),
     setInterruptProtectionMode: vi.fn(),
+    setLoopReelRecorder: vi.fn(),
     setPerception: vi.fn(),
     setTheme: vi.fn(),
     subscribeActivation: vi.fn(() => disposables.activation),

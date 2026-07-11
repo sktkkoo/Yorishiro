@@ -14,6 +14,7 @@
  */
 
 import { type Channel, type InvokeArgs, invoke } from "@tauri-apps/api/core";
+import type { RecordedEntry, SessionRecording } from "../runtime/loop-reel/types";
 import type { SnapshotEntry } from "../sdk/history";
 
 // Tauri の invoke() は引数に Record<string, unknown> 互換を求める。こちらの
@@ -251,6 +252,53 @@ export const snapshotRestore = (args: {
 /** `history::snapshot_prune(keep_n)` → 直近 keepN 件に間引く。 */
 export const snapshotPrune = (args: { keepN: number }): Promise<void> =>
   call("snapshot_prune", args);
+
+// ─── Loop Reel ------------------------------------------------------
+
+export type LoopReelPersistedMeta = Omit<SessionRecording, "entries">;
+
+/** `~/.yorishiro/loop-reels/<id>/meta.json` を作成・上書きする。 */
+export const loopReelCreate = (args: { readonly meta: LoopReelPersistedMeta }): Promise<void> =>
+  call("loop_reel_create", args);
+
+/** 既存 recording の meta.json を更新する。 */
+export const loopReelUpdateMeta = (args: {
+  readonly id: string;
+  readonly meta: LoopReelPersistedMeta;
+}): Promise<void> => call("loop_reel_update_meta", args);
+
+/** entries.jsonl に JSON Lines 形式の entry を追記する。 */
+export const loopReelAppendEntries = (args: {
+  readonly id: string;
+  readonly jsonl: string;
+}): Promise<void> => call("loop_reel_append_entries", args);
+
+/** entries を読まず、meta.json の一覧だけを返す。 */
+export const loopReelList = (): Promise<ReadonlyArray<LoopReelPersistedMeta>> =>
+  invoke("loop_reel_list");
+
+/** player を開いたときだけ entries.jsonl を読む。 */
+export const loopReelLoadEntries = (args: { readonly id: string }): Promise<string> =>
+  call("loop_reel_load_entries", args);
+
+/** disk rotation 用に recording directory を削除する。 */
+export const loopReelDelete = (args: { readonly id: string }): Promise<void> =>
+  call("loop_reel_delete", args);
+
+export interface LoopReelRedactionSources {
+  readonly username: string | null;
+  readonly homeBasename: string | null;
+  readonly hostname: string | null;
+  readonly gitUserName: string | null;
+  readonly gitUserEmail: string | null;
+}
+
+/** replay 表示時の秘匿マスク候補。取得に失敗した field は null。 */
+export const loopReelRedactionSources = (): Promise<LoopReelRedactionSources> =>
+  invoke("loop_reel_redaction_sources");
+
+export const encodeLoopReelEntriesJsonl = (entries: readonly RecordedEntry[]): string =>
+  entries.map((entry) => JSON.stringify(entry)).join("\n");
 
 // ─── System exec (amenity) ─────────────────────────────────────
 

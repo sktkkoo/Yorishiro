@@ -14,6 +14,7 @@
 import type {
   Cancellable,
   CommandBlockEvent,
+  DispatchEvent,
   HookSignal,
   HookSignalEvent,
   IdleEvent,
@@ -44,6 +45,8 @@ export interface PerceptionDeps {
   readonly devLog?: SubsystemLog;
   /** user-prompt-submit 検知時に呼ばれる。Presence を full に復帰する。 */
   readonly onPresenceRestore?: () => void;
+  /** Loop Reel など、dispatch 済み観察 event の追加記録 hook。P0 は loop-lifecycle のみ呼ぶ。 */
+  readonly recordObserved?: (event: DispatchEvent) => void;
 }
 
 /**
@@ -126,6 +129,7 @@ export class Perception {
   private readonly idleThresholdMs: number;
   private readonly devLog?: SubsystemLog;
   private readonly onPresenceRestore?: () => void;
+  private readonly recordObserved?: (event: DispatchEvent) => void;
   private lastActivityAt: number;
   private idleTimer: Cancellable | null = null;
   private pendingPtyOutputText = "";
@@ -139,6 +143,7 @@ export class Perception {
     this.idleThresholdMs = deps.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
     this.devLog = deps.devLog;
     this.onPresenceRestore = deps.onPresenceRestore;
+    this.recordObserved = deps.recordObserved;
     this.lastActivityAt = this.time.now();
 
     const interval = deps.idleCheckIntervalMs ?? DEFAULT_IDLE_CHECK_INTERVAL_MS;
@@ -295,6 +300,7 @@ export class Perception {
       timestamp: this.time.now(),
     };
     this.bus.dispatch(event);
+    this.recordObserved?.(event);
   }
 
   dispose(): void {

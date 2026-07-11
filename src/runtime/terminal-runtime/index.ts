@@ -17,5 +17,10 @@ export {
   getAllTerminalRuntimes,
   getTerminalRuntime,
 } from "./terminal-runtime";
-export type { InterruptProtectionMode, PtyParams, TerminalRuntime } from "./types";
+export type {
+  InterruptProtectionMode,
+  LoopReelRecorderSink,
+  PtyParams,
+  TerminalRuntime,
+} from "./types";
 export { mergeRunTimeline, type RunTimelineEntry } from "./unified-timeline";

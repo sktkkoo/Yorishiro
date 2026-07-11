@@ -96,6 +96,7 @@ Source code 内で参照するときは：
 | `pty.rs` | Legacy PTY facade / hook server (port 19001) | 同上 |
 | `sessions/` | Per-session PTY lifecycle / registry / shell wrapper / terminal agent adapter | 同上 |
 | `mcp/` | MCP 1.5 server (port 18743 default) / pack diagnostics + self-referential tools | 同上 |
+| `loop_reel/` | Loop Reel の meta / entries JSONL 永続化と redaction source 収集 | 同上 |
 | User layer commands | `~/.yorishiro/` の watch / atomic write / pack scan | 同上 |
 
 ### 3.4 Bundled packs

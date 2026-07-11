@@ -148,6 +148,13 @@ body,
   overflow: visible;
 }
 
+.title-bar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 /* ── Runtime crash recovery ─────────────────────────── */
 .app-error-boundary {
   min-height: 100vh;
@@ -687,6 +694,224 @@ body,
 .xterm-singleton-container.xterm-bg-transparent .xterm-viewport,
 .xterm-singleton-container.xterm-bg-transparent .xterm-screen {
   background: transparent !important;
+}
+
+/* ── Loop Reel Player ───────────────────────────────── */
+.loop-reel-player-shell {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  align-items: flex-end;
+  justify-content: stretch;
+  padding: 0 12px 12px 22px;
+  pointer-events: none;
+}
+
+.loop-reel-player-controls {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  border: 1px solid rgba(226, 232, 240, 0.13);
+  border-radius: 8px;
+  background: rgba(16, 18, 22, 0.86);
+  box-shadow: 0 16px 52px rgba(0, 0, 0, 0.34);
+  padding: 6px 8px;
+  pointer-events: auto;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+.loop-reel-player-select {
+  flex: 0 0 min(260px, 32vw);
+  min-width: 168px;
+  height: 30px;
+  border: 1px solid rgba(226, 232, 240, 0.14);
+  border-radius: 6px;
+  background: rgba(7, 10, 14, 0.82);
+  color: rgba(244, 247, 250, 0.9);
+  font: inherit;
+  font-size: 12px;
+}
+
+.loop-reel-player-icon-button,
+.loop-reel-player-speed button,
+.loop-reel-player-mask,
+.loop-reel-player-record {
+  height: 30px;
+  border: 1px solid rgba(226, 232, 240, 0.13);
+  border-radius: 6px;
+  background: rgba(244, 247, 250, 0.07);
+  color: rgba(244, 247, 250, 0.86);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* 手動録画トグル。録画中だけ抑えた赤で状態を示す（実機調整前提）。 */
+.loop-reel-player-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+}
+
+.loop-reel-player-record[data-recording="true"] {
+  color: rgba(255, 138, 128, 0.95);
+  border-color: rgba(255, 138, 128, 0.4);
+}
+
+.loop-reel-player-icon-button {
+  width: 30px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loop-reel-player-icon-button:hover:not(:disabled),
+.loop-reel-player-icon-button:focus-visible:not(:disabled),
+.loop-reel-player-speed button:hover,
+.loop-reel-player-speed button:focus-visible,
+.loop-reel-player-mask:hover:not(:disabled),
+.loop-reel-player-mask:focus-visible:not(:disabled),
+.loop-reel-player-record:hover,
+.loop-reel-player-record:focus-visible {
+  background: rgba(244, 247, 250, 0.12);
+  color: #ffffff;
+  outline: none;
+}
+
+.loop-reel-player-icon-button:disabled,
+.loop-reel-player-mask:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.loop-reel-player-speed {
+  flex: 0 0 auto;
+  display: inline-flex;
+  gap: 3px;
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.loop-reel-player-speed button {
+  min-width: 34px;
+  padding: 0 7px;
+}
+
+.loop-reel-player-speed button.is-active,
+.loop-reel-player-mask[data-enabled="true"] {
+  background: rgba(116, 196, 182, 0.18);
+  border-color: rgba(116, 196, 182, 0.34);
+  color: #d8fff8;
+}
+
+.loop-reel-player-scrubber {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 180px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+}
+
+.loop-reel-player-scrubber input[type="range"] {
+  width: 100%;
+  accent-color: #74c4b6;
+}
+
+.loop-reel-player-markers {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -2px;
+  height: 10px;
+  pointer-events: none;
+}
+
+.loop-reel-player-marker {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.loop-reel-player-marker::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 7px solid rgba(205, 213, 222, 0.72);
+  content: "";
+}
+
+.loop-reel-player-marker[data-phase="failed"]::before {
+  border-top-color: #f08f8f;
+}
+
+.loop-reel-player-marker[data-phase="completed"]::before {
+  border-top-color: #7fd9a8;
+}
+
+.loop-reel-player-marker[data-phase="blocked-on-approval"]::before {
+  border-top-color: #f1c56f;
+}
+
+.loop-reel-player-marker[data-phase="progress-milestone"]::before {
+  border-top-color: #8ab4f8;
+}
+
+.loop-reel-player-time {
+  flex: 0 0 42px;
+  color: rgba(244, 247, 250, 0.72);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  text-align: center;
+}
+
+.loop-reel-player-mask {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.loop-reel-player-empty,
+.loop-reel-player-status {
+  position: absolute;
+  left: 22px;
+  bottom: 66px;
+  max-width: min(420px, calc(100% - 44px));
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 7px;
+  background: rgba(16, 18, 22, 0.82);
+  color: rgba(244, 247, 250, 0.72);
+  padding: 8px 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  pointer-events: auto;
+}
+
+.loop-reel-player-status {
+  bottom: 108px;
+  color: #f1c56f;
+}
+
+.loop-reel-player-status[data-visible="false"] {
+  display: none;
 }
 
 /* ── Sidebar top row ────────────────────────────────── */

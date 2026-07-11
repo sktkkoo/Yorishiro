@@ -16,6 +16,7 @@ import type { Perception } from "../../core/perception";
 import { getOrInit } from "../hot-data";
 import { KEYS } from "../module-registry/keys";
 import { type TerminalCommandRun, TerminalCommandRunStore } from "./command-run-store";
+import { applyFixedRect, readPaddedFixedRect } from "./fixed-terminal-rect";
 import {
   type OscNotificationCode,
   type TerminalNotification as ParsedTerminalNotification,
@@ -26,6 +27,7 @@ import { extractRegionText, polygonBounds, type RegionPoint } from "./region-sel
 import { detectTerminalProblems, type TerminalProblem } from "./terminal-problems";
 import type {
   InterruptProtectionMode,
+  LoopReelRecorderSink,
   PtyParams,
   TerminalCommandRunLocus,
   TerminalCursorClientPosition,
@@ -121,6 +123,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly ptyDataListeners = new Set<() => void>();
   private readonly notificationListeners = new Set<(event: TerminalNotificationEvent) => void>();
   private readonly userInputListeners = new Set<(data: string) => void>();
+  private loopReelRecorder: LoopReelRecorderSink | null = null;
   private readonly scrollListeners = new Set<() => void>();
   private readonly activationListeners = new Set<() => void>();
   private readonly regionContextListeners = new Set<(context: TerminalRegionContext) => void>();
@@ -219,6 +222,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         if (this.disposed) return;
         if (event.payload.session_id !== this.sessionId) return;
         this.finalizeCommandRun("pty-exit", normalizePtyExitCode(event.payload.code));
+        this.loopReelRecorder?.endSession(this.sessionId);
         this.term.write(`\r\n\x1b[90m[Process exited with code ${event.payload.code}]\x1b[0m\r\n`);
       });
       if (this.disposed) {
@@ -247,6 +251,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.onResize(({ cols, rows }) => {
       if (this.disposed) return;
       void sessionResize({ sessionId: this.sessionId, cols, rows });
+      this.loopReelRecorder?.recordResize(this.sessionId, cols, rows);
     });
   }
 
@@ -347,6 +352,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
    */
   dispose(): void {
     if (this.disposed) return;
+    this.loopReelRecorder?.endSession(this.sessionId);
     this.disposed = true;
     this.startGeneration++;
     this.resizeObserver?.disconnect();
@@ -489,6 +495,36 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       );
     }
     this.perceptionRef.current = perception;
+  }
+
+  setLoopReelRecorder(sink: LoopReelRecorderSink | null): void {
+    this.loopReelRecorder = sink;
+  }
+
+  startRecording(label = "Manual recording"): void {
+    if (this.disposed || this.loopReelRecorder === null) return;
+    this.loopReelRecorder.startSession(this.sessionId, {
+      label,
+      kind: this.currentParams?.spec.kind ?? "unknown",
+      geometry: {
+        cols: Math.max(2, this.term.cols || 80),
+        rows: Math.max(1, this.term.rows || 24),
+      },
+    });
+  }
+
+  stopRecording(): void {
+    if (this.disposed || this.loopReelRecorder === null) return;
+    this.loopReelRecorder.endSession(this.sessionId);
+  }
+
+  seedLoopReelGeometry(): void {
+    if (this.disposed || this.loopReelRecorder === null) return;
+    this.loopReelRecorder.recordResize(
+      this.sessionId,
+      Math.max(2, this.term.cols || 80),
+      Math.max(1, this.term.rows || 24),
+    );
   }
 
   setTheme(theme: Partial<XTermTheme>): void {
@@ -1053,6 +1089,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.notifyPtyDataListeners();
     if (opts.replay) return;
     const text = this.textDecoder.decode(bytes, { stream: true });
+    if (text.length > 0) {
+      this.loopReelRecorder?.recordPty(this.sessionId, text);
+    }
     this.perceptionRef.current?.onPtyOutput(text);
   }
 
@@ -1401,20 +1440,11 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private syncAttachedRect(): void {
     const container = this.attachedContainer;
     if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const cs = getComputedStyle(container);
-    const padLeft = parseFloat(cs.paddingLeft) || 0;
-    const padTop = parseFloat(cs.paddingTop) || 0;
-    const padRight = parseFloat(cs.paddingRight) || 0;
-    const padBottom = parseFloat(cs.paddingBottom) || 0;
-    const w = Math.max(0, Math.floor(rect.width - padLeft - padRight));
-    const h = Math.max(0, Math.floor(rect.height - padTop - padBottom));
-    this.xtermContainer.style.top = `${rect.top + padTop}px`;
-    this.xtermContainer.style.left = `${rect.left + padLeft}px`;
-    this.xtermContainer.style.width = `${w}px`;
-    this.xtermContainer.style.height = `${h}px`;
+    const rect = readPaddedFixedRect(container);
+    const w = rect.width;
+    const h = rect.height;
+    applyFixedRect(this.xtermContainer, rect, this.hidden);
     this.resizeRegionCanvas(w, h);
-    this.xtermContainer.style.visibility = this.hidden ? "hidden" : "visible";
     // opacity は per-frame で触らないのが既定だが、layout で <1 が宣言されている
     // ときだけフラグから再適用して attach 経路の取りこぼしを防ぐ（既定 1 では
     // inline style を一切付けず「素の不透明」を保つ）。

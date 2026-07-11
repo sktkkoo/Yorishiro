@@ -70,6 +70,20 @@ export interface TerminalNotificationEvent {
 
 export type InterruptProtectionMode = "none" | "repeated" | "all";
 
+export interface LoopReelRecorderSink {
+  startSession(
+    sessionId: string,
+    metadata?: {
+      readonly label?: string;
+      readonly kind?: "shell" | "agent" | "unknown";
+      readonly geometry?: { readonly cols: number; readonly rows: number };
+    },
+  ): void;
+  endSession(sessionId: string): void;
+  recordPty(sessionId: string, text: string): void;
+  recordResize(sessionId: string, cols: number, rows: number): void;
+}
+
 export interface TerminalRegionContext {
   readonly kind: "terminal-region-context";
   readonly sessionId: string;
@@ -178,6 +192,23 @@ export interface TerminalRuntime {
    * scene light と同じ cue envelope から呼ばれ、文字描画や PTY には触れない。
    */
   setAttentionCueIntensity(intensity: number): void;
+
+  /** Loop Reel 録画 sink を late-bind する。null で録画を無効化する。 */
+  setLoopReelRecorder(sink: LoopReelRecorderSink | null): void;
+
+  /** active session の手動録画を開始する。loop_announce が無い時の dogfooding 用。 */
+  startRecording(label?: string): void;
+
+  /** active session の手動録画を終了する。 */
+  stopRecording(): void;
+
+  /**
+   * active recording に現在の xterm geometry を補給する。
+   * loop_announce 起点の録画は terminal 側の geometry を知らずに作られるため、
+   * 録画開始直後にこれを呼んで初期 resize entry を seed する（store 側 dedup で冪等）。
+   * 初期 geometry が無い録画は TUI 再生が崩れる。
+   */
+  seedLoopReelGeometry(): void;
 
   /**
    * Session が close されるときに呼ぶ。xterm を dispose、xterm container DOM を
