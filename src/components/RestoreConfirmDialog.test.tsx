@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RestoreConfirmDialog, type RestoreConfirmStrings } from "./RestoreConfirmDialog";
@@ -104,6 +104,10 @@ describe("RestoreConfirmDialog", () => {
 
     expect((await screen.findByRole("alert")).textContent).toBe("Restore failed: disk is locked");
     expect(screen.getByRole("button", { name: STRINGS.retry })).toBeTruthy();
-    expect(screen.getByRole("button", { name: STRINGS.close })).toBe(document.activeElement);
+    // フォーカス移動は phase 遷移後の passive effect で走るため、findByRole（commit 時点で解決）
+    // 直後に同期 assert すると effect flush 前の一瞬を踏んで flaky になる。確定を待つ。
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: STRINGS.close })).toBe(document.activeElement),
+    );
   });
 });
