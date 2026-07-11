@@ -79,7 +79,7 @@ Character design and VRM model by LUCAS ([@lucas_VTuber](https://x.com/lucas_VTu
 
 Copyright in this model has been transferred to the Yorishiro project. Moral rights remain with LUCAS.
 
-**License (as embedded in the Yori.vrm metadata):** Use within Yorishiro is permitted for everyone. Standalone redistribution or reuse of the model itself is prohibited. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Other`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
+**License (as embedded in the Yori.vrm metadata):** Use within Yorishiro is permitted for everyone (that is, Yorishiro displaying and animating Yori as its bundled character — see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md)). Standalone redistribution or reuse of the model itself is prohibited, and performing as the avatar is limited to explicitly licensed persons. Violent expression is permitted; sexual expression is not. These terms are carried in the VRM's own license metadata (`licenseName: Redistribution_Prohibited`, `allowedUserName: ExplicitlyLicensedPerson`, `violentUssageName: Allow`, `sexualUssageName: Disallow`, `commercialUssageName: Allow`) and are shown in the app's in-screen Credits.
 
 For what you can do with the Yori character (fan art, clips, streams, and more), see [`CHARACTER_GUIDELINES.md`](CHARACTER_GUIDELINES.md).
 
