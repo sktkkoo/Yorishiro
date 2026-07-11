@@ -3519,6 +3519,11 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
+        // VRM ロード完了時、runtime 側は tracking を強制 ON + 頭位置スナップ
+        // 済み（three-runtime のロード完了処理）。leva の表示と手動制御分岐を
+        // それに追従させる——ずれたままだと OFF 側の leva が毎フレーム
+        // camera.position を書いて runtime と書き合いになる。
+        setRuntimeControlValue("camera.tracking", true);
         setVrmReadyOnce(true);
         body.initAttention();
         body.setLipSyncSource(voicePlayer);

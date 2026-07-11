@@ -36,7 +36,9 @@ export function CameraControls({ store }: CameraControlsProps) {
   const [controls, set] = useControls(
     () => ({
       camera: folder({
-        tracking: { value: false, label: "tracking" },
+        // default ON — 住人の頭位置に追従するのが基本姿勢。OFF は x/y/z を
+        // 直接制御したいときの opt-out（x/y/z を触ると自動で OFF になる）。
+        tracking: { value: true, label: "tracking" },
         offsetX: {
           value: 0,
           min: -3,
