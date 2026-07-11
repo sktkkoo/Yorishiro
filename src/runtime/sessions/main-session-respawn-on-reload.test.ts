@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { RELOAD_CURTAIN_FAILSAFE_MS } from "../../reload-curtain";
 import {
   consumeMainSessionRespawnMode,
   filterRestoredSessionsForMainRespawn,
   markMainSessionFreshSpawnPending,
   markMainSessionRespawnPending,
+  peekMainSessionRespawnMode,
+  resolveUserLayerGraceMs,
 } from "./main-session-respawn-on-reload";
 import type { SessionDescriptor, SessionId } from "./types";
 
@@ -52,6 +55,31 @@ describe("main session respawn reload flag", () => {
 
     expect(consumeMainSessionRespawnMode(storage)).toBe("fresh");
     expect(consumeMainSessionRespawnMode(storage)).toBe("none");
+  });
+
+  it("peeks a pending respawn mode before it is consumed", () => {
+    const storage = memoryStorage();
+
+    markMainSessionRespawnPending(storage);
+
+    expect(peekMainSessionRespawnMode(storage)).toBe("resume");
+    expect(consumeMainSessionRespawnMode(storage)).toBe("resume");
+  });
+
+  it("peeks the cached respawn mode after it is consumed", () => {
+    const storage = memoryStorage();
+
+    markMainSessionFreshSpawnPending(storage);
+
+    expect(consumeMainSessionRespawnMode(storage)).toBe("fresh");
+    expect(peekMainSessionRespawnMode(storage)).toBe("fresh");
+  });
+
+  it("extends user-layer grace only for reload respawns", () => {
+    expect(resolveUserLayerGraceMs("none")).toBe(1200);
+    expect(resolveUserLayerGraceMs("fresh")).toBe(4500);
+    expect(resolveUserLayerGraceMs("resume")).toBe(4500);
+    expect(resolveUserLayerGraceMs("fresh")).toBeLessThan(RELOAD_CURTAIN_FAILSAFE_MS);
   });
 
   it("filters only the main session descriptor when respawn is pending", () => {

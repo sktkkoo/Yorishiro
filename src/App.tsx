@@ -210,10 +210,12 @@ import {
   markMainSessionRespawnPending,
   normalizePersonaForGate,
   parseSessionPersonaRecords,
+  peekMainSessionRespawnMode,
   resolveDefaultAgentProfileId,
   resolveEffectiveAgent,
   resolveInterruptProtectionModeForSpawnSpec,
   resolveProfile,
+  resolveUserLayerGraceMs,
   type SessionId,
   serializeSessionPersonaRecords,
   shouldAllowPersonaResume,
@@ -1727,11 +1729,14 @@ function App() {
         }
       })();
 
+      const respawnMode = peekMainSessionRespawnMode();
+      const userLayerGraceMs = resolveUserLayerGraceMs(respawnMode);
       const [userLayerResult, globalPrompt] = await Promise.all([
-        withTimeout(userLayerPromise, 1200, null, () => {
+        withTimeout(userLayerPromise, userLayerGraceMs, null, () => {
           appLog.write({
             phase: "user-layer",
             note: "user-layer load timed out; starting terminal with current persona",
+            data: { graceMs: userLayerGraceMs, respawnMode },
           });
         }),
         withTimeout(globalPromptPromise, 1200, null, () => {
