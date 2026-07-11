@@ -8,12 +8,8 @@ import {
 } from "./session-tab-labels";
 
 describe("session tab labels", () => {
-  it("uses the persona name for the main session", () => {
-    expect(formatMainSessionTabLabel("Yori")).toBe("Yori");
-  });
-
-  it("falls back to Agent when the persona name is blank", () => {
-    expect(formatMainSessionTabLabel(" ")).toBe("Agent");
+  it("always labels the main session as Main Agent", () => {
+    expect(formatMainSessionTabLabel()).toBe("Main Agent");
   });
 
   it("compacts home paths for shell sessions", () => {
