@@ -80,6 +80,13 @@ export function validatePackExecutionPolicy(entry: UserPackEntry): string | null
     return "isolated-js runtime is not implemented yet";
   }
 
+  // NOTE: source は現状 discovery で常に "local" 固定（src-tauri/src/lib.rs の
+  // discover_user_pack_entries）。pack がどう届いたかを記録する install 経路が
+  // 未実装のため、この community/curated 排除は forward-scaffolding であって
+  // 到達可能な enforcement ではない（source が "local" 以外になる経路が無い）。
+  // 実 enforcement には host 所有の provenance ledger（受信側で source を assign。
+  // pack 自身の manifest の自己申告は信じない）が要る。docs/security.md の
+  // "Current enforcement status" 参照。
   if (executionClass === "trusted-main-thread-js" && !TRUSTED_MAIN_THREAD_SOURCES.has(source)) {
     return "trusted-main-thread-js is only allowed for local, curated, or bundled packs";
   }
