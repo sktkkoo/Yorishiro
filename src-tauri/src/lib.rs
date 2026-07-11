@@ -41,7 +41,7 @@ pub(crate) fn home_dir_or_err() -> Result<std::path::PathBuf, String> {
 }
 
 /// `~` / `~/...` を home directory に展開する。それ以外のパスはそのまま返す。
-fn expand_tilde(path: &str, home: &Path) -> PathBuf {
+pub(crate) fn expand_tilde(path: &str, home: &Path) -> PathBuf {
     if path == "~" {
         home.to_path_buf()
     } else if let Some(rest) = path.strip_prefix("~/") {

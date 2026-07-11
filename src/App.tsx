@@ -913,6 +913,10 @@ function App() {
   const [vrmPath, setVrmPath] = useState<string | null>(() =>
     localStorage.getItem(VRM_STORAGE_KEY),
   );
+  // VRM の初回ロード完了 latch。reload curtain はこれが立つまで開けない——
+  // persona 切替で姿が変わるとき、カーテンが明けた瞬間に新しいアバターが
+  // 立っているようにするため（ロードが終わらない場合は curtain の failsafe が開ける）。
+  const [vrmReadyOnce, setVrmReadyOnce] = useState(false);
   const [appLanguage, setAppLanguage] = useState<{
     configured: AppLanguage;
     resolved: ResolvedLanguage;
@@ -2141,6 +2145,11 @@ function App() {
             },
             recordFarewell: (toPersonaId) =>
               invoke("journal_record_farewell", { toPersona: toPersonaId }),
+            stageVrmPath: (path) => {
+              // storage のみ差し替える。live 状態（setVrmPath）を触ると暗転中に
+              // 旧 WebView がロードを始めて reload 後と二重になるため触らない。
+              localStorage.setItem(VRM_STORAGE_KEY, path);
+            },
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
@@ -2319,7 +2328,10 @@ function App() {
   // prompt overlay で 1 回だけ走る（多重 spawn / null prompt race を回避）。
   const [isUserLayerReady, setIsUserLayerReady] = useState(false);
   // project 切替 reload 専用の暗転フェード。Cmd+R や error boundary の reload は対象外。
-  const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(isUserLayerReady);
+  // VRM の初回ロードまで curtain を開けない（vrmReadyOnce のコメント参照）。
+  const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(
+    isUserLayerReady && vrmReadyOnce,
+  );
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
   const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
@@ -3503,6 +3515,7 @@ function App() {
     (body: Body | null) => {
       bodyRef.current = body;
       if (body) {
+        setVrmReadyOnce(true);
         body.initAttention();
         body.setLipSyncSource(voicePlayer);
         dispatcher.setContextFactory(

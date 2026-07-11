@@ -1750,6 +1750,12 @@ export interface PersonaGoodbyeSwitchDeps {
    * 戻ってきたとき想起がこの行を拾い、「一度離れたこと」を覚えている状態を作る。
    */
   readonly recordFarewell: (toPersonaId: string) => Promise<void>;
+  /**
+   * 次回 boot が読む VRM パスを差し替える（storage のみ。live 状態は触らない）。
+   * 暗転中に呼ばれ、reload 後の boot が新しい姿でロードする——カーテンが
+   * 明けたとき、新しいアバターに切り替わっている。
+   */
+  readonly stageVrmPath: (path: string) => void;
 }
 
 export interface PersonaGoodbyeSwitchResult {
@@ -1764,6 +1770,7 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
     if (typeof id !== "string" || id === "") {
       throw new Error("id must be a non-empty string");
     }
+    const vrmPath = typeof r.vrmPath === "string" && r.vrmPath !== "" ? r.vrmPath : null;
 
     let knownPersona = deps.listPersonaIds().includes(id);
     if (!knownPersona) {
@@ -1790,6 +1797,13 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
         await deps.recordFarewell(id);
       } catch (error) {
         console.error("[persona] farewell record failed; switching anyway.", error);
+      }
+      if (vrmPath !== null) {
+        try {
+          deps.stageVrmPath(vrmPath);
+        } catch (error) {
+          console.error("[persona] VRM staging failed; switching persona only.", error);
+        }
       }
       await deps.updateConfig((cur) => withPrimaryPersonaSet(cur, id));
       deps.markMainSessionRespawnPending();

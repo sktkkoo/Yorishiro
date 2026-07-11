@@ -2385,6 +2385,9 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       recordFarewell: async (toPersonaId) => {
         calls.push(`record-farewell:${toPersonaId}`);
       },
+      stageVrmPath: (path) => {
+        calls.push(`stage-vrm:${path}`);
+      },
     });
 
     const result = await handler({ id: "new-persona" });
@@ -2392,12 +2395,45 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
     expect(result).toEqual({ active: "new-persona", reloading: true });
     expect(config.primaryPersona).toBe("new-persona");
     // お別れの声を言い終わるのを待ってから暗転。記録は config 更新前
-    // （active がまだ去る側のうち）に書く。
+    // （active がまだ去る側のうち）に書く。vrmPath 無しなら VRM は触らない。
     expect(calls).toEqual([
       "reload:new-persona",
       "wait-farewell",
       "curtain",
       "record-farewell:new-persona",
+      "update-config",
+      "mark-main-respawn",
+    ]);
+  });
+
+  it("vrmPath が渡されたら暗転中に次回 boot の VRM を差し替える", async () => {
+    const calls: string[] = [];
+    const handler = createPersonaGoodbyeSwitchHandler({
+      updateConfig: async () => {
+        calls.push("update-config");
+      },
+      beginCurtainReload: async (prepareReload) => {
+        calls.push("curtain");
+        await prepareReload?.();
+      },
+      markMainSessionRespawnPending: () => {
+        calls.push("mark-main-respawn");
+      },
+      listPersonaIds: () => ["next"],
+      reloadPack: vi.fn(),
+      waitForFarewell: vi.fn(async () => {}),
+      recordFarewell: vi.fn(async () => {}),
+      stageVrmPath: (path) => {
+        calls.push(`stage-vrm:${path}`);
+      },
+    });
+
+    const result = await handler({ id: "next", vrmPath: "/tmp/new-avatar.vrm" });
+
+    expect(result).toEqual({ active: "next", reloading: true });
+    expect(calls).toEqual([
+      "curtain",
+      "stage-vrm:/tmp/new-avatar.vrm",
       "update-config",
       "mark-main-respawn",
     ]);
@@ -2417,6 +2453,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
         throw new Error("voice tracking broke");
       },
       recordFarewell: vi.fn(async () => {}),
+      stageVrmPath: vi.fn(),
     });
 
     const result = await handler({ id: "next" });
@@ -2441,6 +2478,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       recordFarewell: async () => {
         throw new Error("memories.md write failed");
       },
+      stageVrmPath: vi.fn(),
     });
 
     const result = await handler({ id: "next" });
@@ -2458,6 +2496,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       reloadPack: async () => ({ ok: false, reason: "pack file not found" }),
       waitForFarewell: vi.fn(async () => {}),
       recordFarewell: vi.fn(async () => {}),
+      stageVrmPath: vi.fn(),
     });
 
     await expect(handler({ id: "missing" })).rejects.toThrow(
@@ -2474,6 +2513,7 @@ describe("createPersonaGoodbyeSwitchHandler", () => {
       reloadPack: vi.fn(),
       waitForFarewell: vi.fn(async () => {}),
       recordFarewell: vi.fn(async () => {}),
+      stageVrmPath: vi.fn(),
     });
 
     await expect(handler({ id: "" })).rejects.toThrow("id must be a non-empty string");

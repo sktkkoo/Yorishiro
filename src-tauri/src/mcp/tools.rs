@@ -269,6 +269,49 @@ pub struct UiActivateRequest {
 pub struct PersonaGoodbyeSwitchRequest {
     /// 新しく active にする persona pack id。
     pub id: String,
+    /// 切替と同時に適用する VRM ファイルパス（省略可）。事前に `vrm_validate`
+    /// で検証しておく。適用は暗転中——カーテンが明けたとき新しい姿になっている。
+    #[serde(default, rename = "vrmPath")]
+    pub vrm_path: Option<String>,
+}
+
+/// `vrm_validate` の引数。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct VrmValidateRequest {
+    /// 検証する VRM ファイルパス（`~` 展開対応）。
+    pub path: String,
+}
+
+/// VRM ファイルパスの事前検証。`~` を展開し、存在・`.vrm` 拡張子・glTF binary
+/// マジック（先頭 4 bytes = "glTF"）を確認して展開済みパスを返す。
+/// モデルとして完全にロード可能かまでは保証しない（それは boot 時に判る）。
+fn validate_vrm_file(path: &str) -> Result<std::path::PathBuf, String> {
+    let home = crate::home_dir_or_err()?;
+    let expanded = crate::expand_tilde(path.trim(), &home);
+    if !expanded.is_file() {
+        return Err(format!("VRM file not found: {}", expanded.display()));
+    }
+    let ext_ok = expanded
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("vrm"));
+    if !ext_ok {
+        return Err(format!("not a .vrm file: {}", expanded.display()));
+    }
+    let mut head = [0u8; 4];
+    {
+        use std::io::Read;
+        let mut file = std::fs::File::open(&expanded).map_err(|e| format!("open failed: {}", e))?;
+        file.read_exact(&mut head)
+            .map_err(|e| format!("read failed: {}", e))?;
+    }
+    if &head != b"glTF" {
+        return Err(format!(
+            "not a valid VRM (glTF binary magic missing): {}",
+            expanded.display()
+        ));
+    }
+    Ok(expanded)
 }
 
 /// `ui_terminal_set` の引数。terminal container の opacity を操作する。
@@ -937,15 +980,36 @@ impl Yorishiro {
         // TS 側がお別れの声の再生完了 + 余韻を待ってから暗転するため、既定の
         // 5s では足りない。TS 側の安全弁（180s）より長く取る。
         const FAREWELL_TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(200);
+        let mut payload = json!({ "id": req.id });
+        if let Some(vrm) = req.vrm_path.as_deref() {
+            // 事前検証済みのはずだが、暗転してから壊れたパスに気づくと
+            // 取り返しがつかないので、切替直前にもう一度確かめる。
+            let validated =
+                validate_vrm_file(vrm).map_err(|e| McpError::invalid_params(e, None))?;
+            payload["vrmPath"] = json!(validated.to_string_lossy());
+        }
         let r = crate::mcp::server::emit_tool_event_with_timeout(
             &self.app_handle,
             "persona.goodbye-switch",
-            json!({ "id": req.id }),
+            payload,
             FAREWELL_TOOL_TIMEOUT,
         )
         .await
         .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(r)
+    }
+
+    /// VRM パスの事前検証。モデルの切替は行わない。
+    #[tool(
+        description = "Validate a VRM avatar file path (existence, .vrm extension, glTF binary magic; supports ~ expansion). Does NOT switch the model. Use before persona_goodbye_switch: pass the returned path as its vrmPath so the avatar is swapped during the curtain and the new persona appears with its new body."
+    )]
+    async fn vrm_validate(
+        &self,
+        Parameters(req): Parameters<VrmValidateRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let path = validate_vrm_file(&req.path).map_err(|e| McpError::invalid_params(e, None))?;
+        let content = Content::json(json!({ "ok": true, "path": path.to_string_lossy() }))?;
+        Ok(CallToolResult::success(vec![content]))
     }
 
     /// journal にエントリを書き込む。住人の日々の記録。summary を指定すると memories.md にも追記される。
@@ -1356,5 +1420,45 @@ mod tests {
         let resp = json!({ "ok": false, "reason": "missing id" });
         let err = unwrap_ts_response(resp).expect_err("should be err");
         assert!(err.message.contains("missing id"));
+    }
+
+    fn tmp_vrm(label: &str, bytes: &[u8]) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "yorishiro-vrm-validate-{}-{}.vrm",
+            label,
+            std::process::id()
+        ));
+        std::fs::write(&path, bytes).expect("write vrm fixture");
+        path
+    }
+
+    #[test]
+    fn validate_vrm_file_accepts_gltf_binary() {
+        let path = tmp_vrm("ok", b"glTF\x02\x00\x00\x00rest");
+        let validated = super::validate_vrm_file(path.to_str().unwrap()).expect("valid");
+        assert_eq!(validated, path);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn validate_vrm_file_rejects_missing_magic() {
+        let path = tmp_vrm("bad-magic", b"not a gltf binary");
+        let err = super::validate_vrm_file(path.to_str().unwrap()).expect_err("invalid");
+        assert!(err.contains("magic"), "{err}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn validate_vrm_file_rejects_wrong_extension_and_missing_file() {
+        let dir = std::env::temp_dir();
+        let glb = dir.join(format!("yorishiro-vrm-validate-{}.glb", std::process::id()));
+        std::fs::write(&glb, b"glTF....").expect("write");
+        let err = super::validate_vrm_file(glb.to_str().unwrap()).expect_err("wrong ext");
+        assert!(err.contains(".vrm"), "{err}");
+        let _ = std::fs::remove_file(&glb);
+
+        let missing = dir.join("yorishiro-vrm-validate-does-not-exist.vrm");
+        let err = super::validate_vrm_file(missing.to_str().unwrap()).expect_err("missing");
+        assert!(err.contains("not found"), "{err}");
     }
 }
