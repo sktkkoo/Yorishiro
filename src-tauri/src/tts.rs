@@ -26,6 +26,22 @@ impl TtsState {
     }
 }
 
+/// 発話テキスト中の間マーカー。住人が「間」を演出に使うための中立記法で、
+/// エンジンごとの無音表現に変換する（お別れ等で思い出と思い出のあいだに置く）。
+const PAUSE_MARKER: &str = "[pause]";
+/// マーカー 1 個あたりの無音（ms）。実機の感触で調整する初期値。
+const PAUSE_MS: u32 = 2000;
+
+/// macOS `say` 向け: `[pause]` を埋め込み無音命令 `[[slnc N]]` に変換する。
+fn expand_pause_markers_macos(text: &str) -> String {
+    text.replace(PAUSE_MARKER, &format!("[[slnc {}]]", PAUSE_MS))
+}
+
+/// 無音の埋め込み表現を持たないエンジン向け: マーカーを読み上げないよう除去する。
+fn strip_pause_markers(text: &str) -> String {
+    text.replace(PAUSE_MARKER, " ")
+}
+
 /// OS に応じた TTS コマンドを組み立てる。未対応 OS では None。
 fn build_tts_command(text: &str, voice: Option<&str>) -> Option<Command> {
     if cfg!(target_os = "macos") {
@@ -33,14 +49,14 @@ fn build_tts_command(text: &str, voice: Option<&str>) -> Option<Command> {
         if let Some(v) = voice {
             cmd.arg("-v").arg(v);
         }
-        cmd.arg("--").arg(text);
+        cmd.arg("--").arg(expand_pause_markers_macos(text));
         Some(cmd)
     } else if cfg!(target_os = "windows") {
         let mut cmd = Command::new("powershell");
         #[cfg(target_os = "windows")]
         hide_window(&mut cmd);
         cmd.arg("-NoProfile").arg("-Command");
-        let escaped = text.replace('\'', "''");
+        let escaped = strip_pause_markers(text).replace('\'', "''");
         let ps_script = if let Some(v) = voice {
             let v_escaped = v.replace('\'', "''");
             format!(
@@ -134,7 +150,7 @@ fn synthesize_macos(text: &str, voice: Option<&str>) -> Result<Vec<u8>, String> 
         .arg("--file-format=WAVE")
         .arg("--data-format=LEI16@24000")
         .arg("--")
-        .arg(text);
+        .arg(expand_pause_markers_macos(text));
     cmd.stderr(Stdio::piped());
 
     let output = cmd.output().map_err(|e| format!("say: {}", e))?;
@@ -203,7 +219,7 @@ fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<Vec<u8>, String
     cmd.arg("-NoProfile").arg("-Command");
     // PowerShell の single-quoted string 内では ' 以外の特殊文字 ($, `, () 等) は
     // リテラル扱いされるため、' → '' のエスケープのみで安全。
-    let escaped = text.replace('\'', "''");
+    let escaped = strip_pause_markers(text).replace('\'', "''");
     let ps_script = if let Some(v) = voice {
         let v_escaped = v.replace('\'', "''");
         format!(
@@ -242,7 +258,29 @@ fn synthesize_windows(text: &str, voice: Option<&str>) -> Result<Vec<u8>, String
 
 #[cfg(test)]
 mod tests {
-    use super::strip_fllr_chunk;
+    use super::{expand_pause_markers_macos, strip_fllr_chunk, strip_pause_markers};
+
+    #[test]
+    fn pause_markers_expand_to_slnc_for_macos_say() {
+        assert_eq!(
+            expand_pause_markers_macos("最初の思い出。[pause]次の思い出。[pause]じゃあね。"),
+            "最初の思い出。[[slnc 2000]]次の思い出。[[slnc 2000]]じゃあね。"
+        );
+    }
+
+    #[test]
+    fn pause_markers_are_stripped_for_engines_without_silence() {
+        assert_eq!(
+            strip_pause_markers("こっち。[pause]そっち。"),
+            "こっち。 そっち。"
+        );
+    }
+
+    #[test]
+    fn text_without_markers_passes_through_unchanged() {
+        assert_eq!(expand_pause_markers_macos("そのまま。"), "そのまま。");
+        assert_eq!(strip_pause_markers("そのまま。"), "そのまま。");
+    }
 
     fn riff_with_chunks(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
         let mut wav = Vec::new();
