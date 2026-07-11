@@ -47,9 +47,6 @@ impl TerminalAgent for CodexAgent {
         args.push("-c".to_string());
         args.push(codex_yorishiro_mcp_config_arg(ctx.mcp_port));
 
-        args.push("-c".to_string());
-        args.push(codex_yorishiro_plugin_enable_arg());
-
         if let Some(prompt) =
             super::merge_system_prompt_and_reminder(ctx.system_prompt, ctx.prompt_reminder)
         {
@@ -164,13 +161,6 @@ fn toml_basic_string(value: &str) -> String {
 fn codex_yorishiro_mcp_config_arg(port: u16) -> String {
     let url = format!("http://127.0.0.1:{}/mcp", port);
     format!("mcp_servers.yorishiro.url={}", toml_basic_string(&url))
-}
-
-/// Codex の yori プラグイン有効化に必要な -c config override を返す。
-/// プラグイン自体は prepare_localized_plugin_dir で Codex のキャッシュに
-/// 直接インストール済み。ここでは有効化フラグだけ渡す。
-fn codex_yorishiro_plugin_enable_arg() -> String {
-    "plugins.\"yori@yorishiro-local\".enabled=true".to_string()
 }
 
 #[cfg(test)]
@@ -293,20 +283,13 @@ mod tests {
     }
 
     #[test]
-    fn codex_yorishiro_plugin_enable_arg_returns_enable_flag() {
-        assert_eq!(
-            codex_yorishiro_plugin_enable_arg(),
-            "plugins.\"yori@yorishiro-local\".enabled=true"
-        );
-    }
-
-    #[test]
     fn codex_injects_prompt_reminder_as_developer_instructions() {
         let ctx = make_ctx(None, None, Some("## Yorishiro reminders\n\n- voice_say"));
         let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
 
         assert!(result.args.iter().any(|arg| arg
             .contains("developer_instructions=\"## Yorishiro reminders\\n\\n- voice_say\"")));
+        assert!(!result.args.iter().any(|arg| arg.starts_with("plugins.")));
     }
 
     #[test]

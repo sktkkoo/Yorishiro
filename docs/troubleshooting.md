@@ -25,7 +25,7 @@ the Agent setting and restart Yorishiro.
 | `~/.yorishiro/journal/` | Journal and memory files |
 | `~/.yorishiro/shell/` | Generated shell integration files |
 | `~/.yorishiro/runtime-plugin/` | Generated Yorishiro command plugin used by Claude Code and OpenCode launches |
-| `~/.codex/plugins/cache/yorishiro-local/` | Yorishiro's local Codex plugin cache for `$yori-*` skills |
+| `~/.agents/skills/yori*/` | Yorishiro-managed `$yori-*` user skills discovered directly by Codex |
 
 ## Broken user pack
 
@@ -65,16 +65,16 @@ Removing the Yorishiro app does not automatically delete user data or generated
 agent integration cache. This matches the common desktop-app pattern where a
 normal uninstall preserves settings and extensions for reinstall.
 
-Yorishiro commands are only injected when Yorishiro launches the selected
-agent. If Yorishiro is not running, the generated Claude/OpenCode command
-plugin is not passed to those agents, and the Codex plugin cache is not enabled
-because Yorishiro supplies the enabling `-c` flag only at launch time.
+Claude/OpenCode commands are injected only when Yorishiro launches those
+agents. Codex `$yori-*` skills are generated in Codex's standard user skill
+discovery location, so they remain visible to Codex after Yorishiro has created
+them.
 
 To remove generated command integration cache without deleting packs, run:
 
 ```bash
 rm -rf ~/.yorishiro/runtime-plugin
-rm -rf ~/.codex/plugins/cache/yorishiro-local
+rm -rf ~/.agents/skills/yori{,-create,-update,-help,-shortcut,-tutorial}
 ```
 
 To remove all Yorishiro user data, including packs, config, cohabitation state,

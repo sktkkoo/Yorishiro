@@ -742,40 +742,52 @@ fn write_codex_skill_files(src_dir: &Path, skills_dir: &Path) -> Result<(), Stri
             .unwrap_or("unknown");
         let skill_name = format!("yori-{}", command_name);
         let skill_dir = skills_dir.join(&skill_name);
+        if skill_dir.exists() {
+            std::fs::remove_dir_all(&skill_dir)
+                .map_err(|e| format!("codex skill cleanup failed: {}", e))?;
+        }
         std::fs::create_dir_all(&skill_dir)
             .map_err(|e| format!("codex skill dir create failed: {}", e))?;
         let converted = convert_command_to_codex_skill(&content, command_name);
         std::fs::write(skill_dir.join("SKILL.md"), converted)
             .map_err(|e| format!("write codex skill {} failed: {}", path.display(), e))?;
+        std::fs::write(skill_dir.join(".yorishiro-managed"), "")
+            .map_err(|e| format!("write codex skill marker failed: {}", e))?;
     }
     Ok(())
 }
 
-fn write_codex_plugin_cache(
-    cache_root: &Path,
-    codex_plugin_json: &Path,
+fn write_codex_user_skills(
+    skills_root: &Path,
     source_commands: &Path,
     language: &str,
 ) -> Result<(), String> {
-    let cache_meta = cache_root.join(".codex-plugin");
-    let stale_commands = cache_root.join("commands");
-    let cache_skills = cache_root.join("skills");
+    std::fs::create_dir_all(skills_root)
+        .map_err(|e| format!("codex user skills dir create failed: {}", e))?;
 
-    std::fs::create_dir_all(&cache_meta)
-        .map_err(|e| format!("codex cache meta dir create failed: {}", e))?;
-    if stale_commands.exists() {
-        std::fs::remove_dir_all(&stale_commands)
-            .map_err(|e| format!("codex cache commands cleanup failed: {}", e))?;
+    // 前回 Yorishiro が生成した skill だけを消す。command が削除・改名されても
+    // marker 付きの stale skill が残らないようにする。
+    for entry in std::fs::read_dir(skills_root)
+        .map_err(|e| format!("read codex user skills dir failed: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("read codex skill entry failed: {}", e))?;
+        let path = entry.path();
+        if path.is_dir() && path.join(".yorishiro-managed").is_file() {
+            std::fs::remove_dir_all(&path).map_err(|e| {
+                format!(
+                    "remove stale Yorishiro Codex skill {} failed: {}",
+                    path.display(),
+                    e
+                )
+            })?;
+        }
     }
-    if cache_skills.exists() {
-        std::fs::remove_dir_all(&cache_skills)
-            .map_err(|e| format!("codex cache skills cleanup failed: {}", e))?;
-    }
-    std::fs::create_dir_all(&cache_skills)
-        .map_err(|e| format!("codex cache skills dir create failed: {}", e))?;
 
-    copy_file_to_dir(codex_plugin_json, &cache_meta)?;
-    let entry_skill_dir = cache_skills.join("yori");
+    let entry_skill_dir = skills_root.join("yori");
+    if entry_skill_dir.exists() {
+        std::fs::remove_dir_all(&entry_skill_dir)
+            .map_err(|e| format!("codex entry skill cleanup failed: {}", e))?;
+    }
     std::fs::create_dir_all(&entry_skill_dir)
         .map_err(|e| format!("codex entry skill dir create failed: {}", e))?;
     std::fs::write(
@@ -783,7 +795,9 @@ fn write_codex_plugin_cache(
         codex_entrypoint_skill(language),
     )
     .map_err(|e| format!("write codex entry skill failed: {}", e))?;
-    write_codex_skill_files(source_commands, &cache_skills)?;
+    std::fs::write(entry_skill_dir.join(".yorishiro-managed"), "")
+        .map_err(|e| format!("write codex entry skill marker failed: {}", e))?;
+    write_codex_skill_files(source_commands, skills_root)?;
 
     Ok(())
 }
@@ -792,7 +806,7 @@ fn remove_legacy_codex_plugin_caches(codex_dir: &Path) -> Result<(), String> {
     let cache_dir = codex_dir.join("plugins").join("cache");
     for stale in [
         cache_dir.join("charminal-local"),
-        cache_dir.join("yorishiro-local").join("charm"),
+        cache_dir.join("yorishiro-local"),
     ] {
         if stale.exists() {
             std::fs::remove_dir_all(&stale).map_err(|e| {
@@ -807,14 +821,11 @@ fn remove_legacy_codex_plugin_caches(codex_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Codex プラグインキャッシュに yori プラグインをインストール。
-/// `~/.codex/plugins/cache/yorishiro-local/yori/current/` に配置する。
+/// Codex の user skill discovery location に `$yori*` skills をインストール。
+/// plugin 経由では `yori:yori-*` と namespace されて公開 command 契約が変わるため、
+/// namespace なしで読まれる `~/.agents/skills/` を使う。
 #[cfg(not(test))]
-fn install_codex_plugin_to_cache(
-    codex_plugin_json: &Path,
-    source_commands: &Path,
-    language: &str,
-) -> Result<(), String> {
+fn install_codex_user_skills(source_commands: &Path, language: &str) -> Result<(), String> {
     let Some(home) = dirs::home_dir() else {
         return Ok(());
     };
@@ -823,21 +834,15 @@ fn install_codex_plugin_to_cache(
         return Ok(());
     }
     remove_legacy_codex_plugin_caches(&codex_dir)?;
-    let cache_root = codex_dir
-        .join("plugins")
-        .join("cache")
-        .join("yorishiro-local")
-        .join("yori")
-        .join("current");
-    write_codex_plugin_cache(&cache_root, codex_plugin_json, source_commands, language)
+    write_codex_user_skills(
+        &home.join(".agents").join("skills"),
+        source_commands,
+        language,
+    )
 }
 
 #[cfg(test)]
-fn install_codex_plugin_to_cache(
-    _codex_plugin_json: &Path,
-    _source_commands: &Path,
-    _language: &str,
-) -> Result<(), String> {
+fn install_codex_user_skills(_source_commands: &Path, _language: &str) -> Result<(), String> {
     Ok(())
 }
 
@@ -874,17 +879,10 @@ fn prepare_localized_plugin_dir_at(
     )?;
     copy_markdown_files_to_dir(&source_commands, &target_commands)?;
 
-    // Codex: プラグインキャッシュに直接インストール。
-    // Codex は ~/.codex/plugins/cache/<marketplace>/<plugin>/<hash>/ から
-    // プラグインを発見する。-c config override の marketplace 登録だけでは
-    // キャッシュへのインストールが行われず発見されない。
-    if let Err(e) = install_codex_plugin_to_cache(
-        &resource_root.join(".codex-plugin").join("plugin.json"),
-        &source_commands,
-        language,
-    ) {
+    // Codex: namespace なしの `$yori*` として user skill location へ展開する。
+    if let Err(e) = install_codex_user_skills(&source_commands, language) {
         eprintln!(
-            "[prepare_localized_plugin_dir] codex cache install failed (non-fatal): {}",
+            "[prepare_localized_plugin_dir] codex user skill install failed (non-fatal): {}",
             e
         );
     }
@@ -3275,7 +3273,7 @@ mod user_init_seed_tests {
 mod localized_plugin_dir_tests {
     use super::{
         convert_command_to_codex_skill, prepare_localized_plugin_dir_at,
-        remove_legacy_codex_plugin_caches, write_codex_plugin_cache,
+        remove_legacy_codex_plugin_caches, write_codex_user_skills,
     };
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -3424,40 +3422,38 @@ mod localized_plugin_dir_tests {
     }
 
     #[test]
-    fn write_codex_cache_installs_skills_and_removes_stale_commands() {
-        let tmp = fresh_dir("codex-cache");
+    fn write_codex_user_skills_installs_plain_yori_names_and_removes_managed_stale_skills() {
+        let tmp = fresh_dir("codex-user-skills");
         let resource = tmp.join("resource");
-        let cache = tmp.join("cache");
+        let skills = tmp.join("skills");
         write_fixture(&resource);
-        fs::create_dir_all(cache.join("commands")).expect("create stale commands");
-        fs::write(cache.join("commands").join("old.md"), "stale").expect("write stale command");
-        fs::create_dir_all(cache.join("skills").join("old")).expect("create stale skill");
-        fs::write(cache.join("skills").join("old").join("SKILL.md"), "stale")
-            .expect("write stale skill");
+        fs::create_dir_all(skills.join("yori-old")).expect("create stale skill");
+        fs::write(skills.join("yori-old").join("SKILL.md"), "stale").expect("write stale skill");
+        fs::write(skills.join("yori-old").join(".yorishiro-managed"), "")
+            .expect("write stale marker");
+        fs::create_dir_all(skills.join("unrelated")).expect("create unrelated skill");
+        fs::write(skills.join("unrelated").join("SKILL.md"), "keep")
+            .expect("write unrelated skill");
 
-        write_codex_plugin_cache(
-            &cache,
-            &resource.join(".codex-plugin").join("plugin.json"),
-            &resource.join("commands-en"),
-            "en",
-        )
-        .expect("write cache");
+        write_codex_user_skills(&skills, &resource.join("commands-en"), "en")
+            .expect("write user skills");
 
-        assert!(!cache.join("commands").exists());
-        assert_eq!(
-            fs::read_to_string(cache.join(".codex-plugin").join("plugin.json"))
-                .expect("read codex plugin json"),
-            "{\"name\":\"yori\",\"skills\":\"./skills/\"}"
-        );
-        let entry = fs::read_to_string(cache.join("skills").join("yori").join("SKILL.md"))
-            .expect("read entry skill");
+        assert!(!skills.join("yori-old").exists());
+        assert!(skills.join("unrelated").exists());
+        let entry =
+            fs::read_to_string(skills.join("yori").join("SKILL.md")).expect("read entry skill");
         assert!(entry.contains("$yori-create"));
-        let create = fs::read_to_string(cache.join("skills").join("yori-create").join("SKILL.md"))
+        let create = fs::read_to_string(skills.join("yori-create").join("SKILL.md"))
             .expect("read create skill");
         assert!(create.contains("name: yori-create"));
         assert!(create.contains("$ARGUMENTS"));
         assert!(create.contains("English create content."));
         assert!(!create.contains("# /create"));
+        assert!(skills.join("yori").join(".yorishiro-managed").is_file());
+        assert!(skills
+            .join("yori-create")
+            .join(".yorishiro-managed")
+            .is_file());
 
         let _ = fs::remove_dir_all(&tmp);
     }
@@ -3477,8 +3473,7 @@ mod localized_plugin_dir_tests {
         remove_legacy_codex_plugin_caches(&codex).expect("cleanup ok");
 
         assert!(!cache.join("charminal-local").exists());
-        assert!(!cache.join("yorishiro-local").join("charm").exists());
-        assert!(cache.join("yorishiro-local").join("yori").exists());
+        assert!(!cache.join("yorishiro-local").exists());
 
         let _ = fs::remove_dir_all(&tmp);
     }

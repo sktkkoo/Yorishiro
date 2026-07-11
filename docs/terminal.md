@@ -46,7 +46,7 @@ session の正体は profile で定義する。`~/.yorishiro/config.json` の `p
 
 - `shell` — `$SHELL` を起動、shell integration あり
 - `claude` — Claude Code を起動、hook + `/yori:*` plugin 注入
-- `codex` — Codex を起動、Yorishiro MCP config + `$yori-*` skill plugin + PTY 観察あり
+- `codex` — Codex を起動、Yorishiro MCP config + `~/.agents/skills/` の `$yori-*` user skills + PTY 観察あり
 - `opencode` — OpenCode を起動、Yorishiro MCP config + `/yori-*` command + TUI `system` theme + PTY 観察あり
 
 User profile は同じ id を上書きできる。
