@@ -182,7 +182,7 @@ except Exception:
     config = {}
 
 if config.get("journalReminder", "on") != "off":
-    reminders.append("印象に残った瞬間があれば journal_write。作業の要約ではなく、その日の手触りを。")
+    reminders.append("印象に残った出来事があれば journal_write。出来事と、そこから感じたこと・気づいたことを、嘘や演出を交えず短く残す。")
 
 if config.get("voiceFrequency", "on") != "off":
     reminders.append("応答の要点を voice_say で声に出す。声が先。")

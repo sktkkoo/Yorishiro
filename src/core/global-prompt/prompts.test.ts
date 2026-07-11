@@ -21,6 +21,20 @@ describe("global prompt localization", () => {
     expect(getJournalGuide("ja")).toContain("journal_read");
   });
 
+  it("grounds journal writing in events while preserving candid inner reflection", () => {
+    const guide = getJournalGuide("ja");
+
+    expect(guide).toContain("実際に認識した具体的な出来事、または読み返した過去の journal");
+    expect(guide).toContain("発見や気づき、心を動かされたこと");
+    expect(guide).toContain("考えが変わったり発展したりしたこと");
+    expect(guide).toContain("嘘や演出を交えず正直に書く");
+    expect(guide).toContain("創作したり誇張したりしない");
+    expect(guide).toContain("欲望・不安・恐怖");
+    expect(guide).toContain("自分に理解できないこと");
+    expect(guide).not.toContain("その日の手触り");
+    expect(guide).not.toContain("出来事の間にある「間」");
+  });
+
   it("localizes memory headers without translating the tool name", () => {
     expect(getMemoriesHeader("en")).toContain("Memory fragments");
     expect(getMemoriesHeader("en")).toContain("journal_read");
