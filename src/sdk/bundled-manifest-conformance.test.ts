@@ -1,9 +1,12 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { parsePackManifest } from "@yorishiro/pack-schema";
+import type { AnySchemaObject } from "ajv";
+import Ajv2020 from "ajv/dist/2020";
+import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 
 const bundledPacksRoot = join(import.meta.dirname, "../../bundled-packs");
+const schemaPath = join(import.meta.dirname, "vendor/pack-manifest.schema.json");
 
 async function collectManifestPaths(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -18,16 +21,24 @@ async function collectManifestPaths(directory: string): Promise<string[]> {
 }
 
 describe("bundled pack manifest schema conformance", () => {
-  it("validates every bundled manifest against the store schema", async () => {
+  it("validates every bundled manifest against the vendored store schema", async () => {
+    const schema = JSON.parse(await readFile(schemaPath, "utf8")) as AnySchemaObject;
+    // strict:false — このテストは manifest の妥当性検査であって schema 自体の lint ではない。
+    const ajv = new Ajv2020({ allErrors: true, strict: false });
+    addFormats(ajv);
+    const validate = ajv.compile(schema);
+
     const manifestPaths = await collectManifestPaths(bundledPacksRoot);
     expect(manifestPaths.length).toBeGreaterThan(0);
 
     const failures: string[] = [];
     for (const manifestPath of manifestPaths) {
       const input: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
-      const result = parsePackManifest(input);
-      if (!result.ok) {
-        failures.push(`${relative(bundledPacksRoot, manifestPath)}: ${result.errors.join("; ")}`);
+      if (!validate(input)) {
+        const errors = (validate.errors ?? [])
+          .map((error) => `${error.instancePath || "/"} ${error.message}`)
+          .join("; ");
+        failures.push(`${relative(bundledPacksRoot, manifestPath)}: ${errors}`);
       }
     }
 
