@@ -3727,6 +3727,8 @@ function App() {
         await updateYorishiroConfig((cur) => ({ ...cur, projectFolder: nextCwd }));
         if (nextCwd === cwd) return;
         localStorage.setItem(CWD_STORAGE_KEY, nextCwd);
+        // 既存 main PTY は作り直しつつ、新しい workspace の会話履歴があれば resume する。
+        markMainSessionRespawnPending();
         // Workspace 切替は runtime singleton 群を一度作り直す。
         // PTY / xterm / perception の寿命が絡むため、差分更新より WebView reload の方が安定する。
         beginCurtainReload();
