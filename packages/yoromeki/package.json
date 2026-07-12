@@ -9,9 +9,12 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
+    "demo": "vite --config demo/vite.config.ts",
     "test:run": "vitest run --passWithNoTests"
   },
   "devDependencies": {
+    "@types/three": "^0.183.1",
+    "three": "^0.183.2",
     "typescript": "~5.8.3",
     "vitest": "^4.1.4"
   }
