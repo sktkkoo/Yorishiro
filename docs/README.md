@@ -78,6 +78,7 @@ Source code 内で参照するときは：
 | TypeScript | `src/` | canonical runtime（思考・反射・身体・UI 全て） | `src/main.tsx` → `src/App.tsx` |
 | Rust | `src-tauri/src/` | IO 層（PTY / hooks / file I/O / MCP server） | `src-tauri/src/lib.rs:run()` |
 | Bundled packs | `bundled-packs/` | 標準同梱の persona / scene / effect / shared assets | `bundled-packs/personas/yori/persona.ts` |
+| Yoromeki package | `packages/yoromeki/` | VRM / Three.js 非依存の外力 secondary-response simulator と collision helper | `packages/yoromeki/src/index.ts` |
 
 ### 3.2 TypeScript top-level
 
