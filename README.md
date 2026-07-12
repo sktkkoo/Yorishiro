@@ -10,9 +10,9 @@
   <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
 </p>
 
-<p align="center"><strong>A terminal your AI lives in.</strong></p>
+<p align="center"><strong>A terminal your AI inhabits.</strong></p>
 
-Yorishiro is a terminal that gives your AI a place to live — and a sense of presence.
+Yorishiro is a terminal that gives your AI a face — and a sense of presence.
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
 
