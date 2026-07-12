@@ -10,7 +10,7 @@
   <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
 </p>
 
-<p align="center"><strong>ターミナルを、AIの住む場所に。</strong></p>
+<p align="center"><strong>住人の宿る、ターミナル。</strong></p>
 
 Yorishiroは、AIに住む場所と実在感を与えるターミナルです。
 
