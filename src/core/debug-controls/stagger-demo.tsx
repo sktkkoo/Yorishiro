@@ -19,6 +19,10 @@ const GRAVITY = -9.81;
 const SPHERE_RADIUS = 0.11;
 const CAPSULE_RADIUS = 0.08;
 const CAPSULE_HALF_AXIS = 0.18;
+const BODY_CAPSULE_RADIUS = 0.17;
+const HEAD_SPHERE_RADIUS = 0.14;
+// 暫定値: 実機シーンの照明条件に左右されず落下物を確認できる程度に留める。
+const DROP_EMISSIVE_INTENSITY = 0.18;
 
 type DropKind = "sphere" | "capsule";
 
@@ -38,6 +42,7 @@ export function StaggerDemo({ store }: StaggerDemoProps) {
   const runtime = getThreeRuntime();
   const [drops, setDrops] = useState<Drop[]>([]);
   const dropsRef = useRef(drops);
+  const dropMeshes = useRef(new Map<number, THREE.Object3D>());
   const nextId = useRef(1);
   const spawnSphere = useRef<() => void>(() => undefined);
   const spawnCapsule = useRef<() => void>(() => undefined);
@@ -46,6 +51,7 @@ export function StaggerDemo({ store }: StaggerDemoProps) {
     () => ({
       yoromeki: folder({
         enabled: { value: true, label: "enabled" },
+        showColliders: { value: false, label: "show colliders" },
         "Sphere を落とす": button(() => spawnSphere.current()),
         "Capsule を落とす": button(() => spawnCapsule.current()),
         gain: { value: TENTATIVE_RESPONSE_DEFAULTS.gain, min: 0, max: 5, step: 0.05 },
@@ -134,6 +140,7 @@ export function StaggerDemo({ store }: StaggerDemoProps) {
       drop.previousPosition.copy(drop.position);
       drop.velocity.y += GRAVITY * dt;
       drop.position.addScaledVector(drop.velocity, dt);
+      dropMeshes.current.get(drop.id)?.position.copy(drop.position);
       const contact = findContact(drop, bodyCapsules);
       if (contact) {
         body.injectWorldStaggerForce(contactToForceEvent(contact, {}, "demo"));
@@ -147,22 +154,104 @@ export function StaggerDemo({ store }: StaggerDemoProps) {
 
   return (
     <>
+      {controls.showColliders && <BodyColliderWireframes />}
       {drops.map((drop) =>
         drop.kind === "sphere" ? (
-          <mesh key={drop.id} position={drop.position}>
+          <mesh
+            key={drop.id}
+            ref={(mesh) => {
+              if (mesh) dropMeshes.current.set(drop.id, mesh);
+              else dropMeshes.current.delete(drop.id);
+            }}
+            position={drop.position}
+          >
             <sphereGeometry args={[SPHERE_RADIUS, 20, 14]} />
-            <meshStandardMaterial color="#f5a45d" roughness={0.55} />
+            <meshStandardMaterial
+              color="#f5a45d"
+              emissive="#f5a45d"
+              emissiveIntensity={DROP_EMISSIVE_INTENSITY}
+              roughness={0.55}
+            />
           </mesh>
         ) : (
-          <group key={drop.id} position={drop.position}>
+          <group
+            key={drop.id}
+            ref={(group) => {
+              if (group) dropMeshes.current.set(drop.id, group);
+              else dropMeshes.current.delete(drop.id);
+            }}
+            position={drop.position}
+          >
             <mesh>
               <capsuleGeometry args={[CAPSULE_RADIUS, CAPSULE_HALF_AXIS * 2, 8, 16]} />
-              <meshStandardMaterial color="#66c7db" roughness={0.5} />
+              <meshStandardMaterial
+                color="#66c7db"
+                emissive="#66c7db"
+                emissiveIntensity={DROP_EMISSIVE_INTENSITY}
+                roughness={0.5}
+              />
             </mesh>
           </group>
         ),
       )}
     </>
+  );
+}
+
+function BodyColliderWireframes() {
+  const runtime = getThreeRuntime();
+  const cylinder = useRef<THREE.Mesh>(null);
+  const hipsEnd = useRef<THREE.Mesh>(null);
+  const chestEnd = useRef<THREE.Mesh>(null);
+  const headSphere = useRef<THREE.Mesh>(null);
+  const axis = useRef(new THREE.Vector3());
+  const midpoint = useRef(new THREE.Vector3());
+  const up = useRef(new THREE.Vector3(0, 1, 0));
+
+  useFrame(() => {
+    const hips = getWorldBonePosition(runtime.getVrm(), "hips");
+    const chest = getWorldBonePosition(runtime.getVrm(), "chest");
+    const head = getWorldBonePosition(runtime.getVrm(), "head");
+
+    if (cylinder.current && hipsEnd.current && chestEnd.current) {
+      const visible = hips !== null && chest !== null;
+      cylinder.current.visible = visible;
+      hipsEnd.current.visible = visible;
+      chestEnd.current.visible = visible;
+      if (hips && chest) {
+        axis.current.subVectors(chest, hips);
+        cylinder.current.position.copy(midpoint.current.copy(hips).add(chest).multiplyScalar(0.5));
+        cylinder.current.scale.set(1, axis.current.length(), 1);
+        cylinder.current.quaternion.setFromUnitVectors(up.current, axis.current.normalize());
+        hipsEnd.current.position.copy(hips);
+        chestEnd.current.position.copy(chest);
+      }
+    }
+    if (headSphere.current) {
+      headSphere.current.visible = head !== null;
+      if (head) headSphere.current.position.copy(head);
+    }
+  });
+
+  return (
+    <group>
+      <mesh ref={cylinder}>
+        <cylinderGeometry args={[BODY_CAPSULE_RADIUS, BODY_CAPSULE_RADIUS, 1, 16, 1, true]} />
+        <meshBasicMaterial color="#7dff9a" wireframe />
+      </mesh>
+      <mesh ref={hipsEnd}>
+        <sphereGeometry args={[BODY_CAPSULE_RADIUS, 16, 10]} />
+        <meshBasicMaterial color="#7dff9a" wireframe />
+      </mesh>
+      <mesh ref={chestEnd}>
+        <sphereGeometry args={[BODY_CAPSULE_RADIUS, 16, 10]} />
+        <meshBasicMaterial color="#7dff9a" wireframe />
+      </mesh>
+      <mesh ref={headSphere}>
+        <sphereGeometry args={[HEAD_SPHERE_RADIUS, 16, 10]} />
+        <meshBasicMaterial color="#ffeb70" wireframe />
+      </mesh>
+    </group>
   );
 }
 
@@ -180,8 +269,8 @@ function getBodyCapsules(vrm: ReturnType<ReturnType<typeof getThreeRuntime>["get
   const chest = getWorldBonePosition(vrm, "chest");
   const head = getWorldBonePosition(vrm, "head");
   const capsules: Capsule[] = [];
-  if (hips && chest) capsules.push({ start: hips, end: chest, radius: 0.17 });
-  if (head) capsules.push({ start: head, end: head, radius: 0.14 });
+  if (hips && chest) capsules.push({ start: hips, end: chest, radius: BODY_CAPSULE_RADIUS });
+  if (head) capsules.push({ start: head, end: head, radius: HEAD_SPHERE_RADIUS });
   return capsules;
 }
 
