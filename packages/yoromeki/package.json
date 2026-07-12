@@ -1,0 +1,17 @@
+{
+  "name": "yoromeki",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test:run": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.3",
+    "vitest": "^4.1.4"
+  }
+}
