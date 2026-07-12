@@ -164,19 +164,19 @@ When the agent stops and asks for your input or approval, a light comes on besid
 
 The inhabitant can write daily entries under `~/.yorishiro/journal/`. Entries are kept per persona, and summaries of notable moments accumulate in `memories.md`. This is a long-term memory mechanism that persists across sessions.
 
-Memories are not only stored — they resurface. At the start of a session, the inhabitant may recall a moment from yesterday or a few days ago — and sometimes an entry from exactly a year or a month ago. Open Yorishiro after a long absence, and it recalls the last one. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
+The inhabitant sometimes recalls what happened yesterday or a few days ago — and occasionally an entry from months back. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
 
 ### Session tabs
 
 Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current tab. The main agent session is protected and cannot be closed — if it exits unexpectedly, Yorishiro automatically restarts it.
 
-### Context sharing
+### Voice Summary
 
-A few small features help bridge the gap between what you see on screen and what the AI knows. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say`; support for additional speech engines is planned. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text.
+A feature that bridges the gap between the volume of text an AI produces and what a human can absorb. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output. Voice uses macOS `say`; support for additional speech engines is planned.
 
-### Restore
+### Pack / settings restore
 
-Every time packs or init.js change, a checkpoint is created automatically. Let the inhabitant boldly reshape the space — if you don't like the result, roll back to any point from "Restore (Pack / init.js)" in Settings. Your project files are never touched. Restores are recorded in the history too, so you can undo a rollback. It is a safety net for fearless experimentation.
+Every time packs or init.js change, a checkpoint is created automatically. Let the inhabitant boldly reshape packs — if you don't like the result, roll back to any point from "Restore (Pack / init.js)" in Settings. Your project files are never touched. Restores are recorded in the history too, so you can undo a rollback. It is a safety net for fearless experimentation.
 
 ### Self-referential MCP
 
