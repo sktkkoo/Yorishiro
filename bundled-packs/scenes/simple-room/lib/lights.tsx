@@ -23,7 +23,7 @@ export function Lights() {
     targetX: { value: 0.1, min: -3, max: 3, step: 0.1, label: "target X" },
     targetY: { value: -0.1, min: -1, max: 3, step: 0.1, label: "target Y" },
     targetZ: { value: 0, min: -3, max: 3, step: 0.1, label: "target Z" },
-    angle: { value: 0.85, min: 0.05, max: 1.5, step: 0.01, label: "angle" },
+    angle: { value: 1.1, min: 0.05, max: 1.5, step: 0.01, label: "angle" },
     penumbra: { value: 0.74, min: 0, max: 1, step: 0.01, label: "penumbra" },
     distance: { value: 1.4, min: 0, max: 20, step: 0.1, label: "distance" },
     decay: { value: 1.1, min: 0, max: 5, step: 0.1, label: "decay" },
