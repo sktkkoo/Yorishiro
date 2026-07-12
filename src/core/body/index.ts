@@ -30,6 +30,7 @@ import type {
   MotionRequest as SdkMotionRequest,
   MotionSnapshot as SdkMotionSnapshot,
 } from "@yorishiro/sdk";
+import type { BodyResponseParams, ForceEvent } from "yoromeki";
 import { getAttentionRuntime } from "../../runtime/attention-runtime";
 import { type ClaimState, getClaimState } from "../../runtime/ui-claim-state";
 import type { SubsystemLog } from "../dev-log";
@@ -67,6 +68,7 @@ import {
   MotionScheduler,
 } from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
+import { StaggerAdapter } from "./stagger-adapter";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -146,6 +148,7 @@ export class Body {
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
+  private readonly stagger: StaggerAdapter;
   private readonly beatScheduler: IdleBeatScheduler;
   private readonly beatTarget: BeatTarget;
   private readonly claimState: ClaimState;
@@ -269,6 +272,7 @@ export class Body {
     this.animationPlayer = new AnimationPlayer(vrm, devLog);
     this.proceduralBones = new ProceduralBones();
     this.proceduralBones.bindVrm(vrm);
+    this.stagger = new StaggerAdapter(vrm);
     this.beatTarget = this.createBeatTarget();
     this.beatScheduler = new IdleBeatScheduler(defaultProfiles);
 
@@ -445,6 +449,7 @@ export class Body {
   }
 
   update(delta: number, elapsed: number): void {
+    this.stagger.restoreTargetPose();
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
     this.timeSinceStartle += delta;
@@ -483,6 +488,10 @@ export class Body {
     } else {
       this.proceduralBones.clearTransientReflexes();
     }
+
+    // 加算の身体応答。mixer / procedural の書き込み後かつ vrm.update() が
+    // normalized humanoid を raw へ転送する前に、一度だけ sample して合成する。
+    this.stagger.applyAfterAnimation(delta, animationClaimed);
 
     // 3. Blink
     const blinkValue = this.blinkSystem.update(delta);
@@ -576,6 +585,26 @@ export class Body {
       gaze: (target: GazeTarget, options?: GazeOptions) => this.gaze(target, options),
       interrupt: (reason?: string) => this.interrupt(reason),
     };
+  }
+
+  injectStaggerForce(event: ForceEvent): void {
+    this.stagger.injectForce(event);
+  }
+
+  injectWorldStaggerForce(event: ForceEvent): void {
+    this.stagger.injectWorldForce(event);
+  }
+
+  setStaggerParams(params: Partial<BodyResponseParams>): void {
+    this.stagger.setParams(params);
+  }
+
+  setStaggerEnabled(enabled: boolean): void {
+    this.stagger.setEnabled(enabled);
+  }
+
+  resetStagger(): void {
+    this.stagger.reset();
   }
 
   /** Dispose all resources. */
