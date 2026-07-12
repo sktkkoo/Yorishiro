@@ -16,7 +16,7 @@ import { useFrame } from "@react-three/fiber";
 import { useCreateStore } from "leva";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import type * as THREE from "three";
-import { CameraControls, SceneLayerControls } from "../../core/debug-controls";
+import { CameraControls, SceneLayerControls, StaggerDemo } from "../../core/debug-controls";
 import type { Disposable, Vec3 } from "../../sdk/context";
 import { ControlStoreProvider } from "../../sdk/controls";
 import type { ScenePackCameraAPI } from "../../sdk/scene-pack";
@@ -71,6 +71,7 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
       ) : null}
       <DefaultAttentionCueLight />
       <CameraControls store={runtimeLevaStore} />
+      <StaggerDemo store={runtimeLevaStore} />
       {children}
     </>
   );
