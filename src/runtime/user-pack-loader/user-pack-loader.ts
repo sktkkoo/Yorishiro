@@ -34,7 +34,10 @@ import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
 import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
 import { buildLoadReport, type LoadReport } from "./load-report";
-import { validatePackExecutionPolicy } from "./pack-execution-policy";
+import {
+  type PackExecutionEnvironment,
+  validatePackExecutionPolicy,
+} from "./pack-execution-policy";
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
@@ -52,6 +55,8 @@ export interface UserPackEntry {
     readonly type: string;
     readonly entry: string;
     readonly executionClass?: string;
+    readonly minClientVersion?: string;
+    readonly platform?: ReadonlyArray<string>;
     readonly description?: string;
     readonly author?: string;
     /** 能力ラダーの sandbox 宣言（raw 値。検証は pack-execution-policy 側）。 */
@@ -110,6 +115,7 @@ export interface LoadUserPacksDeps {
   ) => Promise<void>;
   readonly timestamp?: string;
   readonly safeMode?: boolean;
+  readonly executionEnvironment?: PackExecutionEnvironment;
 }
 
 export interface LoadedPackInfo {
@@ -148,6 +154,7 @@ export interface LoadSingleUserPackDeps {
   readonly devLog: SubsystemLog;
   readonly importModule: (entryPath: string) => Promise<unknown>;
   readonly personaDefaults?: PersonaDefinition;
+  readonly executionEnvironment?: PackExecutionEnvironment;
 }
 
 /**
@@ -209,7 +216,7 @@ export async function loadSingleUserPack(
     return { status: "failed", id: entry.id, kind: entry.kind, error };
   }
 
-  const policyError = validatePackExecutionPolicy(entry);
+  const policyError = validatePackExecutionPolicy(entry, deps.executionEnvironment);
   if (policyError !== null) {
     devLog.write({
       phase: "policy",
@@ -490,6 +497,7 @@ export async function loadUserPacks(deps: LoadUserPacksDeps): Promise<LoadUserPa
       personaDefaults,
       devLog,
       importModule,
+      executionEnvironment: deps.executionEnvironment,
     });
     if (result.status === "loaded") {
       loaded.push({ id: result.id, kind: result.kind });

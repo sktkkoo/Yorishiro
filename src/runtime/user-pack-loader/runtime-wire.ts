@@ -16,6 +16,7 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 5
  */
 
+import { getVersion } from "@tauri-apps/api/app";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type { SubsystemLog } from "../../core/dev-log";
 import type { TweenManager } from "../../core/tween/tween-manager";
@@ -33,6 +34,7 @@ import {
   type LoadInitScriptResult,
   loadInitScript,
 } from "./init-script";
+import { normalizeClientPlatform, type PackExecutionEnvironment } from "./pack-execution-policy";
 import {
   type EffectRegistrar,
   type LoadUserPacksResult,
@@ -76,6 +78,16 @@ export interface LoadUserLayerResult {
   readonly safeMode: boolean;
 }
 
+async function resolvePackExecutionEnvironment(): Promise<PackExecutionEnvironment | undefined> {
+  const platform = normalizeClientPlatform(navigator.platform);
+  if (platform === null) return undefined;
+  try {
+    return { clientVersion: await getVersion(), platform };
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * ~/.yorishiro/ の pack と init.js を一度に読み込み、file watcher を起動する。
  * 起動時に 1 回だけ呼ぶ。
@@ -95,6 +107,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
 
   const configText = await readYorishiroConfigText();
   const config = parseConfig(configText);
+  const executionEnvironment = await resolvePackExecutionEnvironment();
 
   // ?v=<mtime> を URL に混ぜて engine の module registry cache を毎回 bust する
   // （pitfall #11）。mtime の取得に失敗したときは base URL に fallback ——
@@ -170,6 +183,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
       },
       timestamp: new Date().toISOString(),
       safeMode: false,
+      executionEnvironment,
     });
   }
 
@@ -194,6 +208,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
     onInitChanged: deps.onInitChanged,
+    executionEnvironment,
     // safe mode は recovery 契約として user packs と init.js を実行しない。
     // watcher は diagnostics / snapshot 用に張るが、init.js 変更時も reload はせず
     // legacy の log/title marker に留める。
@@ -288,6 +303,7 @@ export async function reloadSingleUserPack(
     personaDefaults: deps.personaDefaults,
     devLog: deps.userPackLog,
     importModule: importUserPackModule,
+    executionEnvironment: await resolvePackExecutionEnvironment(),
   });
 
   if (result.status === "failed") {

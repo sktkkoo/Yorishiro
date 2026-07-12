@@ -1,0 +1,138 @@
+{
+  "$id": "https://yorishiro.dev/schemas/pack-manifest.schema.json",
+  "title": "Yorishiro Pack Manifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{1,63}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "type": {
+      "type": "string",
+      "enum": ["persona", "effect", "scene", "amenity", "ui", "ambient-ui"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$"
+    },
+    "yorishiroVersion": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 50
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "author": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "entry": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "preview": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "executionClass": {
+      "type": "string",
+      "enum": ["declarative", "isolated-js", "trusted-main-thread-js"]
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": ["sha256", "sizeBytes"],
+      "additionalProperties": false
+    },
+    "license": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^\\(?[A-Za-z0-9][A-Za-z0-9.+-]*(?: WITH [A-Za-z0-9][A-Za-z0-9.+-]*)?\\)?(?: (?:AND|OR) \\(?[A-Za-z0-9][A-Za-z0-9.+-]*(?: WITH [A-Za-z0-9][A-Za-z0-9.+-]*)?\\)?)*$"
+    },
+    "attribution": {
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "holder": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "license": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "source": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "required": ["holder"],
+        "additionalProperties": false
+      }
+    },
+    "platform": {
+      "minItems": 1,
+      "maxItems": 3,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["macos", "windows", "linux"]
+      }
+    },
+    "minClientVersion": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z][0-9A-Za-z.-]*)?$"
+    },
+    "permissions": {
+      "maxItems": 50,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      }
+    },
+    "tags": {
+      "maxItems": 10,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 30
+      }
+    }
+  },
+  "required": ["id", "type", "version", "yorishiroVersion", "entry"],
+  "additionalProperties": false
+}

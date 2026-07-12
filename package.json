@@ -71,6 +71,8 @@
     "@types/react-dom": "^19.1.6",
     "@types/three": "^0.183.1",
     "@vitejs/plugin-react": "^4.6.0",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1",
     "jsdom": "^27.0.1",
     "lefthook": "^2.1.5",
     "typedoc": "^0.28.19",
