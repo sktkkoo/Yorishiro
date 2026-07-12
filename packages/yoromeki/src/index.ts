@@ -1,4 +1,4 @@
-import { NoopBackend } from "./noop-backend";
+import { SpringBackend } from "./spring-backend";
 import type { BodyResponseParams, BodyResponseSimulator, SkeletonDefinition } from "./types";
 
 export { TENTATIVE_RESPONSE_DEFAULTS } from "./default-params";
@@ -17,7 +17,7 @@ export type {
 
 export function createSimulator(
   skeleton: SkeletonDefinition,
-  _params?: Partial<BodyResponseParams>,
+  params?: Partial<BodyResponseParams>,
 ): BodyResponseSimulator {
-  return new NoopBackend(skeleton);
+  return new SpringBackend(skeleton, params);
 }
