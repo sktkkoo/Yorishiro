@@ -1,6 +1,6 @@
 [package]
 name = "yorishiro"
-version = "0.5.2"
+version = "0.6.0"
 description = "Yorishiro — a terminal your AI dwells in."
 authors = ["okktks"]
 license = "MIT"

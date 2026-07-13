@@ -1,7 +1,7 @@
 {
   "name": "yorishiro",
   "private": true,
-  "version": "0.5.2",
+  "version": "0.6.0",
   "type": "module",
   "description": "Yorishiro — a terminal your AI dwells in. A Tauri desktop app pairing Claude Code with a 3D VRM character that shares your workspace.",
   "keywords": [
