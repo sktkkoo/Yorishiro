@@ -12,25 +12,23 @@
 
 <p align="center"><strong>A terminal your AI inhabits.</strong></p>
 
-Yorishiro is a terminal that gives your AI a face — and a sense of presence.
+Yorishiro is a terminal that gives your AI a visible form — and a sense of presence.
 
-When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
-
-The inhabitant can reshape its environment in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly. The two of you share one environment.
+When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Yorishiro is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
+Yorishiro is also self-modifiable. Nearly everything beyond the core can be extended or changed through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved. This applies not only to the inhabitant's appearance and personality, but also to its surroundings, including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
-**Make working with AI feel like working with someone.**
+What Yorishiro builds is not a harness designed to enhance AI's capabilities. It is a structure for making an AI feel **present** beside you — a **Presence Harness**. In Yorishiro, the inhabitant can reshape its environment in real time: changing the lighting, switching scenes, and rearranging the UI. You can operate that same environment directly. The inhabitant and the user share a single environment.
 
-The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Yorishiro builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Yorishiro, the environment the inhabitant lives in and reshapes also becomes part of that body.
+The time we spend working with AI will only grow longer. This means that the relationship between humans and AI will grow closer — and, at the same time, that it is time to reconsider how humans and AI should interact.
 
 There is something we once saw in fiction — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Yorishiro is a project that starts building that experience from the terminal.
 
-Much of Yorishiro itself has been developed in collaboration with the inhabitant running inside it.
+Much of Yorishiro itself has been developed in collaboration with the inhabitant who dwells within it.
 
 > [日本語版 README はこちら](README.ja.md)
 
@@ -217,6 +215,7 @@ What works today:
 - Journal: long-term memory across sessions, with recall at session start
 - Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
 - `/yori:*` commands for interactive pack creation and editing
+- Guided tutorial via `/yori:tutorial`
 - Localization: Japanese / English auto-detection with per-language persona and prompts
 - UI packs: immersive and theater fullscreen layouts
 - Pack diagnostics: health checks, repair handoff, and local pack validation
