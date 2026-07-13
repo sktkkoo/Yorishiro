@@ -231,7 +231,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Experimental
 
-正式サポートはClaude Codeです。Codexは**experimental（実験的）**な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
+正式サポートはClaude Codeです。Codexはexperimental（実験的）な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
 
 ### Codex support（実験的）
 
