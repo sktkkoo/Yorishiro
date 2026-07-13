@@ -17,7 +17,7 @@ Yorishiro is a terminal that gives your AI a visible form — and a sense of pre
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
+  <video src="https://github.com/user-attachments/assets/2cd1425f-d61e-4dd8-9910-1a14d86f1773" autoplay loop muted playsinline width="720"></video>
 </p>
 
 Yorishiro is also self-modifiable. Nearly everything beyond the core can be extended or changed through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved. This applies not only to the inhabitant's appearance and personality, but also to its surroundings, including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
@@ -323,10 +323,9 @@ Before publishing a build, use [`docs/release-checklist.md`](docs/release-checkl
 - [`docs/security.md`](docs/security.md) — Trust boundaries and attack surface map
 - [`SECURITY.md`](SECURITY.md) — Security policy and vulnerability reporting
 
-### Philosophy — what this project believes
+### Philosophy
 
-- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md) — Presence Harness, the Inhabited Character Interface, the self-referential MCP, and why an AI's body can be the environment it lives in
-
+- [`docs/philosophy/PHILOSOPHY.md`](docs/philosophy/PHILOSOPHY.md)
 ---
 
 ## License
