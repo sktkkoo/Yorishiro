@@ -12,7 +12,7 @@
 
 <p align="center"><strong>A terminal your AI inhabits.</strong></p>
 
-Yorishiro is a terminal that gives your AI a visible form — and a sense of presence.
+Yorishiro is a new kind of terminal that gives your AI a body — and a sense of presence.
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
 
