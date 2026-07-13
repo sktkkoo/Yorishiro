@@ -29,6 +29,11 @@ const TARGETS = [
     label: "voices",
     from: join(externalRoot, "voices"),
     to: join(REPO_ROOT, "bundled-packs", "shared", "voices"),
+    // voice クリップは third-party 由来の任意アセット。CREDITS.md の通り本リリースでは
+    // 非同梱で、ストアに voices/ が無いのが既定状態（voice-clip-resolver も present な
+    // ときだけ解決する optional 設計）。存在すれば copy するが、不在でも packaging
+    // build を止めない。必須なのは animations と bundled VRM のみ。
+    optional: true,
   },
 ];
 
@@ -50,21 +55,21 @@ async function exists(path) {
   }
 }
 
-async function syncFile({ label, from, to }) {
+async function syncFile({ label, from, to, optional = false }) {
   if (!(await exists(from))) {
     console.warn(`  [skip] ${label}: source not found at ${from}`);
-    return { label, copied: 0, skipped: true };
+    return { label, copied: 0, skipped: true, optional };
   }
   await mkdir(dirname(to), { recursive: true });
   await cp(from, to);
   console.log(`  [ok]   ${label}: → ${to}`);
-  return { label, copied: 1, skipped: false };
+  return { label, copied: 1, skipped: false, optional };
 }
 
-async function syncDir({ label, from, to }) {
+async function syncDir({ label, from, to, optional = false }) {
   if (!(await exists(from))) {
     console.warn(`  [skip] ${label}: source not found at ${from}`);
-    return { label, copied: 0, skipped: true };
+    return { label, copied: 0, skipped: true, optional };
   }
 
   // Clean target while preserving .gitkeep so the directory stays tracked.
@@ -81,7 +86,7 @@ async function syncDir({ label, from, to }) {
     copied += 1;
   }
   console.log(`  [ok]   ${label}: ${copied} entr${copied === 1 ? "y" : "ies"} → ${to}`);
-  return { label, copied, skipped: false };
+  return { label, copied, skipped: false, optional };
 }
 
 async function main() {
@@ -131,7 +136,10 @@ under the store and re-run:
   }
 
   if (required) {
-    const missing = results.filter((result) => result.skipped || result.copied === 0);
+    // optional なターゲット（voices 等）の不在は許容し、必須アセットの欠落のみで止める。
+    const missing = results.filter(
+      (result) => !result.optional && (result.skipped || result.copied === 0),
+    );
     if (missing.length > 0) {
       console.error(`
 fetch-assets: required asset targets are missing:
