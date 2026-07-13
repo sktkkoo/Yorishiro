@@ -22,6 +22,7 @@ export interface UiStrings {
   readonly motionLevelLively: string;
   readonly motionLevelOver: string;
   readonly selectVrmFile: string;
+  readonly resetVrmToYori: string;
   readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
@@ -139,6 +140,7 @@ const EN: UiStrings = {
   motionLevelLively: "Lively",
   motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
+  resetVrmToYori: "Return to Yori",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -252,6 +254,7 @@ const JA: UiStrings = {
   motionLevelLively: "活発",
   motionLevelOver: "オーバー",
   selectVrmFile: "VRM ファイルを選択",
+  resetVrmToYori: "Yori に戻す",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",

@@ -203,7 +203,7 @@ export type FixedTerminalPromptKey = "help" | "tutorial" | "shortcut" | "create-
 export interface UiAppAPI {
   /**
    * VRM body を切り替える。localStorage 永続化と App-level vrmPath state への
-   * 反映を行う。`null` で VRM 未読み込み状態に戻す。
+   * 反映を行う。`null` で custom VRM の選択を解除し、同梱 Yori に戻す。
    */
   setVrm(path: string | null): void;
   /**

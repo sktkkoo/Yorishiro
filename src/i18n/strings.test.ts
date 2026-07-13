@@ -127,6 +127,11 @@ describe("changeStrings", () => {
     expect(getStrings("en").defaultFolderName).toBe("~");
     expect(getStrings("ja").defaultFolderName).toBe("~");
   });
+
+  it("labels the bundled Yori VRM reset action in both languages", () => {
+    expect(getStrings("en").resetVrmToYori).toBe("Return to Yori");
+    expect(getStrings("ja").resetVrmToYori).toBe("Yori に戻す");
+  });
 });
 
 describe("restoreConfirmStrings", () => {

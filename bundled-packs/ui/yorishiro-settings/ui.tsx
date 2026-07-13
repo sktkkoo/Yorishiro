@@ -2175,6 +2175,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     const stored = localStorage.getItem("yorishiro:vrm");
     return stored ? (stored.split("/").pop() ?? stored) : DEFAULT_VRM_NAME;
   });
+  const [usesCustomVrm, setUsesCustomVrm] = useState(
+    () => localStorage.getItem("yorishiro:vrm") !== null,
+  );
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
   const [agent, setAgent] = useState<string>("claude");
@@ -2454,11 +2457,19 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       const dest = await invoke<string>("import_vrm", { src: selected as string });
       ctx.app.setVrm(dest);
       setVrmName(dest.split("/").pop() ?? dest);
+      setUsesCustomVrm(true);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error("[yorishiro-settings] vrm load failed:", reason);
       ctx.emitEvent("yorishiro-settings:write-failed", { field: "vrm", reason });
     }
+  };
+
+  /** custom VRM の選択だけを解除し、app に同梱された Yori へ戻す。import 済み file は残す。 */
+  const onResetVrm = () => {
+    ctx.app.setVrm(null);
+    setVrmName(DEFAULT_VRM_NAME);
+    setUsesCustomVrm(false);
   };
 
   /** 設定パネルを閉じる共通 helper。 */
@@ -2674,45 +2685,78 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
 
           {/* VRM */}
           <div style={{ opacity: 0.7 }}>VRM</div>
-          <button
-            type="button"
-            onClick={onPickVrm}
+          <div
             style={{
-              position: "relative",
+              display: "flex",
+              alignItems: "center",
+              gap: SPACING.sm,
               width: "100%",
               minWidth: "220px",
               maxWidth: "360px",
-              background: COLORS.bgInput,
-              padding: `6px ${SPACING.xl} 6px 10px`,
-              borderRadius: RADIUS.sm,
-              border: `1px solid ${COLORS.borderSubtle}`,
-              opacity: 0.85,
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-              cursor: "pointer",
-              color: COLORS.fg,
-              font: "inherit",
-              fontFamily: FONT.family,
-              fontSize: FONT.sizeS,
-              textAlign: "left",
             }}
-            title={vrmName || undefined}
           >
-            {vrmName}
-            <FolderOpen
-              size={12}
-              aria-hidden="true"
+            <button
+              type="button"
+              onClick={onPickVrm}
               style={{
-                position: "absolute",
-                right: SPACING.sm,
-                top: "50%",
-                transform: "translateY(-50%)",
-                pointerEvents: "none",
-                color: COLORS.fgDimmer,
+                position: "relative",
+                flex: 1,
+                minWidth: 0,
+                background: COLORS.bgInput,
+                padding: `6px ${SPACING.xl} 6px 10px`,
+                borderRadius: RADIUS.sm,
+                border: `1px solid ${COLORS.borderSubtle}`,
+                opacity: 0.85,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                color: COLORS.fg,
+                font: "inherit",
+                fontFamily: FONT.family,
+                fontSize: FONT.sizeS,
+                textAlign: "left",
               }}
-            />
-          </button>
+              title={vrmName || undefined}
+            >
+              {vrmName}
+              <FolderOpen
+                size={12}
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  right: SPACING.sm,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  pointerEvents: "none",
+                  color: COLORS.fgDimmer,
+                }}
+              />
+            </button>
+            {usesCustomVrm ? (
+              <button
+                type="button"
+                onClick={onResetVrm}
+                title={strings.resetVrmToYori}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: SPACING.xs,
+                  flexShrink: 0,
+                  border: "none",
+                  background: "transparent",
+                  padding: `${SPACING.xs} 0`,
+                  color: COLORS.fgDimmer,
+                  cursor: "pointer",
+                  font: "inherit",
+                  fontSize: FONT.sizeXs,
+                }}
+              >
+                <RotateCcw size={12} aria-hidden="true" />
+                {strings.resetVrmToYori}
+              </button>
+            ) : null}
+          </div>
 
           {/* Persona */}
           <div style={{ opacity: 0.7 }}>{strings.labelPersona}</div>
