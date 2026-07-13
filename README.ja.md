@@ -17,7 +17,7 @@ Yorishiroは、AIに姿と実在感を与えるターミナルです。
 AIが考え込めば視線がさまよい、エラーが出れば即座に顔が反応します。許可待ちを知らせるのは部屋の照明です。長い処理を待つあいだ、スピナーが回るのではなく、そこに誰かがたたずんでいます。
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
+  <video src="https://github.com/user-attachments/assets/2cd1425f-d61e-4dd8-9910-1a14d86f1773" autoplay loop muted playsinline width="720"></video>
 </p>
 
 Yorishiroは自己改変可能なターミナルでもあります。基盤機能を除くほぼすべてをpackという単位で拡張・改変できます。住人との対話を通じて、それらのpackを書き換え、保存できます。住人の見た目や性格だけでなく、シーンやUIを含めた空間も対象です。変更は即座に反映され、気に入らなければ1クリックで元に戻せます。
@@ -326,9 +326,9 @@ buildを公開する前のsmoke testには[`docs/release-checklist.md`](docs/rel
 - [`docs/security.md`](docs/security.md) — 信頼境界とattack surfaceの地図
 - [`SECURITY.md`](SECURITY.md) — セキュリティポリシーと脆弱性報告
 
-### Philosophy — このプロジェクトの思想
+### Philosophy
 
-- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md) — Presence Harness、Inhabited Character Interface、自己言及的MCP、そしてAIの身体が「住む環境」でもありうる理由
+- [`docs/philosophy/PHILOSOPHY.ja.md`](docs/philosophy/PHILOSOPHY.ja.md)
 
 ### Design record（内部 — 別repo）
 
