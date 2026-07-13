@@ -266,7 +266,7 @@ const JA: UiStrings = {
   personaSwitchConfirm: "{next} に切り替えます。会話は新しく始まります。",
   personaSwitchConfirmButton: "切り替える",
   agentSwitchConfirm:
-    "Main Agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）。",
+    "Main Agent を {next} に切り替えて再起動します。{current} との会話はいったん区切りになります（戻すと続きから再開できます）",
   agentSwitchConfirmButton: "切り替える",
   voiceRestartConfirm: "反映のためにセッションを再起動します。会話は続きから再開します。",
   voiceRestartConfirmButton: "再起動する",

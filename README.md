@@ -2,7 +2,7 @@
   <img src="src-tauri/icons/icon.png" alt="Yorishiro" width="160" />
 </p>
 
-<h1 align="center">Yorishiro</h1>
+<h1 align="center">yorishiro</h1>
 
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Yorishiro?style=flat-square"></a>
@@ -10,27 +10,25 @@
   <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
 </p>
 
-<p align="center"><strong>A terminal your AI lives in.</strong></p>
+<p align="center"><strong>A terminal your AI inhabits.</strong></p>
 
-Yorishiro is a terminal that gives your AI a place to live — and a sense of presence.
+Yorishiro is a terminal that gives your AI a visible form — and a sense of presence.
 
-When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts before words do. During a long-running process, instead of a spinner, someone is standing there.
-
-The inhabitant can reshape its environment in real time — changing the lighting, switching scenes, rearranging the UI. You can operate the same space directly. The two of you share one environment.
+When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
 
 <p align="center">
   <video src="https://github.com/user-attachments/assets/c969b1e3-22a8-46f1-ad9a-f50adc65404c" autoplay loop muted playsinline width="720"></video>
 </p>
 
-Yorishiro is also self-modifiable. Nearly everything beyond the core is extensible and modifiable through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved — changing not only the inhabitant's appearance and personality, but the entire space including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
+Yorishiro is also self-modifiable. Nearly everything beyond the core can be extended or changed through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved. This applies not only to the inhabitant's appearance and personality, but also to its surroundings, including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
-**Make working with AI feel like working with someone.**
+What Yorishiro builds is not a harness designed to enhance AI's capabilities. It is a structure for making an AI feel **present** beside you — a **Presence Harness**. In Yorishiro, the inhabitant can reshape its environment in real time: changing the lighting, switching scenes, and rearranging the UI. You can operate that same environment directly. The inhabitant and the user share a single environment.
 
-The time we spend working beside AI will only grow longer, but today's agents remain faceless: their attention, hesitation, and errors have no visible place in the workspace. Working next to an invisible partner is draining. Yorishiro builds a different kind of harness: not a harness for AI's capabilities, but a **Presence Harness** — a structure for how an AI comes to *feel present* beside you. The first body you notice is the character, but in Yorishiro, the environment the inhabitant lives in and reshapes also becomes part of that body.
+The time we spend working with AI will only grow longer. This means that the relationship between humans and AI will grow closer — and, at the same time, that it is time to reconsider how humans and AI should interact.
 
 There is something we once saw in fiction — an AI as a partner. Alive inside the screen, understanding your work, simply being there. Yorishiro is a project that starts building that experience from the terminal.
 
-Much of Yorishiro itself has been developed in collaboration with the inhabitant running inside it.
+Much of Yorishiro itself has been developed in collaboration with the inhabitant who dwells within it.
 
 > [日本語版 README はこちら](README.ja.md)
 
@@ -164,19 +162,19 @@ When the agent stops and asks for your input or approval, a light comes on besid
 
 The inhabitant can write daily entries under `~/.yorishiro/journal/`. Entries are kept per persona, and summaries of notable moments accumulate in `memories.md`. This is a long-term memory mechanism that persists across sessions.
 
-Memories are not only stored — they resurface. At the start of a session, the inhabitant may recall a moment from yesterday or a few days ago — and sometimes an entry from exactly a year or a month ago. Open Yorishiro after a long absence, and it recalls the last one. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
+The inhabitant sometimes recalls what happened yesterday or a few days ago — and occasionally an entry from months back. Tune the frequency with `journalCallback` (`normal` / `rare` / `off`) in `config.json`.
 
 ### Session tabs
 
 Open multiple shell sessions alongside the main agent terminal. `Cmd+T` opens a new shell tab, `Ctrl+Tab` / `Ctrl+Shift+Tab` cycles between tabs, `Cmd+W` closes the current tab. The main agent session is protected and cannot be closed — if it exits unexpectedly, Yorishiro automatically restarts it.
 
-### Context sharing
+### Voice Summary
 
-A few small features help bridge the gap between what you see on screen and what the AI knows. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output — reducing cognitive load during long sessions. Voice uses macOS `say`; support for additional speech engines is planned. **Terminal Reference Markers** let you Cmd+click a line (or Option+Shift+drag a region) to capture it — a `[#Term1]` marker is inserted into your input so the AI can resolve the referenced text.
+A feature that bridges the gap between the volume of text an AI produces and what a human can absorb. **Voice Summary** has the inhabitant speak a brief summary of its response aloud, so you can grasp the gist without reading through the full output. Voice uses macOS `say`; support for additional speech engines is planned.
 
-### Restore
+### Pack / settings restore
 
-Every time packs or init.js change, a checkpoint is created automatically. Let the inhabitant boldly reshape the space — if you don't like the result, roll back to any point from "Restore (Pack / init.js)" in Settings. Your project files are never touched. Restores are recorded in the history too, so you can undo a rollback. It is a safety net for fearless experimentation.
+Every time packs or init.js change, a checkpoint is created automatically. Let the inhabitant boldly reshape packs — if you don't like the result, roll back to any point from "Restore (Pack / init.js)" in Settings. Your project files are never touched. Restores are recorded in the history too, so you can undo a rollback. It is a safety net for fearless experimentation.
 
 ### Self-referential MCP
 
@@ -212,11 +210,13 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
+- Fireworks celebrate a successful `git push` by the inhabitant (bundled Yori persona)
 - Light Alert: a light comes on when the agent waits for your input or approval
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
 - Journal: long-term memory across sessions, with recall at session start
 - Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
 - `/yori:*` commands for interactive pack creation and editing
+- Guided tutorial via `/yori:tutorial`
 - Localization: Japanese / English auto-detection with per-language persona and prompts
 - UI packs: immersive and theater fullscreen layouts
 - Pack diagnostics: health checks, repair handoff, and local pack validation

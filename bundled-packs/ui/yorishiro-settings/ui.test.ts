@@ -216,6 +216,7 @@ describe("resolveNewSessionConfirm", () => {
     expect(r.message).toContain("Main Agent を Codex に切り替えて再起動");
     expect(r.message).toContain("Claude Code との会話はいったん区切り");
     expect(r.message).toContain("続きから再開");
+    expect(r.message).not.toMatch(/）。$/);
     expect(r.confirmLabel).toBe("切り替える");
   });
 

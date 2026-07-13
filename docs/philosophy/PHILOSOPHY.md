@@ -8,21 +8,19 @@
 
 The terminal is an excellent UI for LLM-based AI. It is optimized for text I/O, context flows naturally, and tool invocations are seamless. It is no accident that agents like Claude Code and Codex have made the terminal their primary battleground.
 
-But for humans, staring at a black, sterile screen for hours on end is not easy. GUI, on the other hand, is intuitive and approachable for humans, but not necessarily so for AI.
+But for humans, staring at a black, sterile screen for hours on end is not easy. Humans and AI spend their time together, yet the only spaces available are optimized for one side or the other.
 
-Humans and AI spend time together, yet the only spaces available are optimized for one side or the other. This is the problem at the root of Yorishiro.
+A conventional GUI, as it stands, is no solution either. The real issue is not that the screen is sterile.
 
-But the real issue is not that the screen is sterile. In human collaboration, we unconsciously read whether our partner is deep in thought, stuck, or focused — through facial expressions, posture, and timing. This peripheral awareness supports our decisions about when to speak, when to wait, and when to help.
+In human collaboration, we unconsciously read whether our partner is deep in thought, stuck, or focused — through facial expressions, posture, and timing. This peripheral awareness supports our decisions about when to speak, when to wait, and when to help.
 
 AI lacks this entirely. No matter how intelligent it is, if you cannot see its state, you must constantly and actively guess: "What is it doing right now?" "Is it going well?" This is cognitive load, and it is what makes long collaboration sessions draining.
-
-The problem, then, is that **working alongside an invisible partner for extended periods is fundamentally unnatural for humans.**
 
 There is more than one way to reduce this load. You can always add status indicators, build dashboards, format logs — the path of *displaying* information is always available. But displayed information only arrives if you go and read it. Information that demands focal attention and interpretation can never become peripheral awareness.
 
 Humans, however, already come equipped with a perception for reading others. Reading expressions, posture, and timing happens automatically, at the edge of vision, at almost no cognitive cost. And this perception is built on the premise that the other is a living being. A perfectly predictable counterpart slips off this channel, pushing the human back into the mode of monitoring a device.
 
-In other words, the lowest-load channel for conveying AI's state to humans is not a display of information — it is the body of a living being. So the solution is not merely to display a character's body. It is to build a structure where the AI's state rides naturally on human social perception, and its presence permeates the environment itself — in short, to build a *sense of presence*.
+In other words, the lowest-load channel for conveying AI's state to humans is not a display of information — it is the body of a living being. But displaying a character's body is not a sufficient solution. The solution is to build a structure where the AI's state rides naturally on human social perception, and its presence permeates the environment itself — in short, to build a *sense of presence*.
 
 ---
 
@@ -42,7 +40,7 @@ Presence Harness shares similar building blocks, but with a different purpose. A
 
 When Claude Code throws an error, for example: the capability harness handles how to process and retry the error. The Presence Harness is where the character's face grimaces and the screen shudders slightly at that moment. Different layers doing different work in response to the same event.
 
-The relationship between the two: **independent in operation, shared in state.** A capability harness alone yields an AI that is smart but does not feel present. A presence harness alone yields something that seems to be there but cannot do anything. Only when both come together do you get an AI that is both capable and present.
+With only a capability harness, AI can be grasped only as "what it does for you," and even a counterpart you ought to communicate with easily comes to be treated as a tool. With only a presence harness, if there is no shared purpose, the substance of the relationship drifts into sycophancy toward the user and friendly performance. Only when both come together can humans and AI reforge their relationship.
 
 The sections that follow make this Presence Harness concrete as an interface form (ICI) and as an implementation mechanism (the two layers of thinking and reflex).
 
@@ -96,11 +94,11 @@ The thinking layer (capability) and reflex layer (presence) respond independentl
 
 ### Three Moments of Presence
 
-Three typical moments when an inhabitant feels present:
+Three typical moments when an inhabitant's being *there* in the terminal takes on meaning:
 
-**Filling the void.** While Claude Code is thinking and output has stopped, the VRM moves subtly. Instead of a spinner, someone is there.
+**Filling the void.** While Claude Code is thinking and output has stopped, the body moves subtly. Instead of a spinner, someone is there.
 
-**Reaction preceding thought.** Before Claude Code verbalizes an error, the VRM's face grimaces. When the body moves before thought catches up, you feel a subject there. This reaction is wired directly to the actual stream of events — the thinking layer cannot produce it to present itself favorably. The reflex layer moving before the thinking layer, responding only to real events: that ordering and grounding is what structurally backs the claim that it is "not acting."
+**Reaction preceding thought.** Before Claude Code verbalizes an error, its face grimaces. When the body moves before thought catches up, you feel a subject there. This reaction is wired directly to the actual stream of events — the thinking layer cannot produce it to present itself favorably. The reflex layer moving before the thinking layer, responding only to real events: that ordering and grounding is what structurally backs the claim that it is "not acting."
 
 **Emergence beyond expectation.** An inhabitant that only follows reflexes becomes an apparatus. Sometimes, small movements arise on their own, not directly related to the task at hand. Such unexpected flickers make the inhabitant someone whose next action cannot be fully predicted. But this autonomy is not unlimited. It is allowed only within contexts the inhabitant actually recognizes, and only in forms that do not disrupt the user's work (see "Boundaries and Integrity" and "The Boundary of Autonomy" below). Unpredictability does not mean anything goes.
 
@@ -117,6 +115,8 @@ For the inhabitant, changing its own facial expression and changing the room's l
 Yorishiro is like a house wired with nerves. Nerves run everywhere in the house, and the inhabitant can open windows, change lights, and move furniture through them.
 
 If the inhabitant can directly touch its own house, the house is an extension of the inhabitant's body. Not just the character's appearance — the lighting, effects, and atmosphere of the entire space can become part of the inhabitant.
+
+In this way, the terminal becomes not a screen that merely displays an inhabitant, but an environment the inhabitant dwells in.
 
 ### Symmetry
 
@@ -207,4 +207,4 @@ This brings us back to the Presence Harness. Yorishiro is a harness for building
 
 Working with an invisible partner for extended periods is draining. Yorishiro builds not a harness for enhancing AI's capabilities, but a harness for establishing AI's sense of presence. That presence is designed not only through the character, but as something that permeates the environment itself. And once presence stands, the smoothness of collaboration and the substance of a relationship beyond tooling grow from that same single design.
 
-The goal is simple: to make the time spent working with AI more free and compelling.
+Only then does the time spent working with AI become freer and more comfortable. That is Yorishiro's goal.
