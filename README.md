@@ -210,6 +210,7 @@ What works today:
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions
+- Fireworks celebrate a successful `git push` by the inhabitant (bundled Yori persona)
 - Light Alert: a light comes on when the agent waits for your input or approval
 - Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
 - Journal: long-term memory across sessions, with recall at session start

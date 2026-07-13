@@ -211,6 +211,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - 6種類のpackによるカスタマイズ（persona/scene/effect/ui/amenity/ambient-ui）
 - 自己言及的MCP（20以上のツール）— カメラ・ライティング制御を含む
 - 反射層によるPTY観察と即時反応
+- 住人の`git push`成功を花火で祝う（同梱Yoriペルソナの反応）
 - Light Alert: agentが入力・許可待ちになると明かりがついて知らせる
 - コンテキスト共有: Voice SummaryとTerminal Reference Marker（Cmd+click / Option+Shift+drag）
 - Journalによる長期記憶と、セッション開始時の想起
