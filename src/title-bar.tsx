@@ -48,7 +48,9 @@ export default function TitleBar({
           <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
         </button>
       </div>
-      <div className="title-bar-tabs">{tabs}</div>
+      <div className="title-bar-tabs" data-tauri-drag-region="">
+        {tabs}
+      </div>
     </header>
   );
 }

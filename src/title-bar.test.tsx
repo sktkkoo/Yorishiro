@@ -78,11 +78,13 @@ describe("TitleBar", () => {
     expect(screen.getByRole("button", { name: "shell-1" })).toBeTruthy();
   });
 
-  it("keeps only the title bar root as a Tauri drag region", () => {
+  it("marks the empty tab area as a Tauri drag region while keeping controls interactive", () => {
     const { container } = renderTitleBar();
     const root = container.firstElementChild;
+    const tabs = container.querySelector(".title-bar-tabs");
 
     expect(root?.hasAttribute("data-tauri-drag-region")).toBe(true);
+    expect(tabs?.hasAttribute("data-tauri-drag-region")).toBe(true);
     expect(
       screen.getByRole("button", { name: "Sidebar" }).hasAttribute("data-tauri-drag-region"),
     ).toBe(false);
