@@ -16,11 +16,11 @@ Yorishiro is a terminal that gives your AI a visible form — and a sense of pre
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
 
+Yorishiro is also self-modifiable. Nearly everything beyond the core can be extended or changed through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved. This applies not only to the inhabitant's appearance and personality, but also to its surroundings, including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
+
 <p align="center">
   <video src="https://github.com/user-attachments/assets/2cd1425f-d61e-4dd8-9910-1a14d86f1773" autoplay loop muted playsinline width="720"></video>
 </p>
-
-Yorishiro is also self-modifiable. Nearly everything beyond the core can be extended or changed through units called packs. Through conversation with the inhabitant, those packs can be rewritten and saved. This applies not only to the inhabitant's appearance and personality, but also to its surroundings, including scenes and UI. Changes take effect immediately; if you don't like the result, one click reverts it.
 
 What Yorishiro builds is not a harness designed to enhance AI's capabilities. It is a structure for making an AI feel **present** beside you — a **Presence Harness**. In Yorishiro, the inhabitant can reshape its environment in real time: changing the lighting, switching scenes, and rearranging the UI. You can operate that same environment directly. The inhabitant and the user share a single environment.
 
