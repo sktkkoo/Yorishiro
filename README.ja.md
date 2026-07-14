@@ -1,18 +1,22 @@
-![Yorishiro](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/yorishiro-icon.png)
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="Yorishiro" width="160" />
+</p>
 
-# yorishiro
+<h1 align="center">yorishiro</h1>
 
-[![MIT License](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/badge-license.png)](LICENSE)
-[![最新リリース](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/badge-release.png)](https://github.com/sktkkoo/Yorishiro/releases)
-![対応プラットフォーム: macOS](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/badge-platform.png)
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Yorishiro?style=flat-square"></a>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/sktkkoo/Yorishiro?style=flat-square"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
+</p>
 
-**住人の宿る、ターミナル。**
+<p align="center"><strong>住人の宿る、ターミナル。</strong></p>
 
 Yorishiroは、AIに身体と実在感を与える、新しいかたちのターミナルです。
 
-[![ターミナルの動きに反応する Yorishiro のプレビュー](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/demo-preview.gif)](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/demo.mp4)
-
-[20秒のデモ動画を再生（MP4、1.6 MB）](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/demo.mp4)
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/12581721-4b81-4b3d-8f85-6f55afd4dfe0" autoplay loop muted playsinline width="720"></video>
+</p>
 
 AIが考え込めば視線がさまよい、エラーが出れば即座に顔が反応します。許可待ちを知らせるのは部屋の照明です。長い処理を待つあいだ、スピナーが回るのではなく、そこに誰かがたたずんでいます。
 
@@ -48,8 +52,11 @@ brew install --cask sktkkoo/yorishiro/yorishiro
 
 または、以下から最新版をダウンロードできます。
 
-[![Apple Silicon版をダウンロード](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/download-apple-silicon.png)](https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Apple-Silicon.dmg)
-[![Intel版をダウンロード](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/download-intel.png)](https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Intel.dmg)
+<p>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Apple Silicon版をダウンロード" /></a>
+  &nbsp;
+  <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Intel版をダウンロード" /></a>
+</p>
 
 ダウンロードした`.dmg`を開き、`yorishiro.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 

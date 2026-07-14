@@ -1,18 +1,22 @@
-![Yorishiro](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/yorishiro-icon.png)
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="Yorishiro" width="160" />
+</p>
 
-# yorishiro
+<h1 align="center">yorishiro</h1>
 
-[![MIT License](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/badge-license.png)](LICENSE)
-[![Latest release](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/badge-release.png)](https://github.com/sktkkoo/Yorishiro/releases)
-![Platform: macOS](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/badge-platform.png)
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/sktkkoo/Yorishiro?style=flat-square"></a>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases"><img alt="Latest Release" src="https://img.shields.io/github/v/release/sktkkoo/Yorishiro?style=flat-square"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/macOS-000000?style=flat-square&logo=apple&logoColor=white">
+</p>
 
-**A terminal your AI inhabits.**
+<p align="center"><strong>A terminal your AI inhabits.</strong></p>
 
 Yorishiro is a new kind of terminal that gives your AI a body — and a sense of presence.
 
-[![Animated preview of Yorishiro reacting to terminal activity](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/demo-preview.gif)](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/demo.mp4)
-
-[Watch the full 20-second demo (MP4, 1.6 MB)](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/demo.mp4)
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/12581721-4b81-4b3d-8f85-6f55afd4dfe0" autoplay loop muted playsinline width="720"></video>
+</p>
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
 
@@ -47,8 +51,11 @@ brew install --cask sktkkoo/yorishiro/yorishiro
 
 Or download the latest build below.
 
-[![Download for Apple Silicon](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/download-apple-silicon.png)](https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Apple-Silicon.dmg)
-[![Download for Intel](https://raw.githubusercontent.com/sktkkoo/Yorishiro/main/docs/assets/readme/download-intel.png)](https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Intel.dmg)
+<p>
+  <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Apple-Silicon.dmg"><img src="https://img.shields.io/badge/Apple%20Silicon-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Apple Silicon" /></a>
+  &nbsp;
+  <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Download for Intel" /></a>
+</p>
 
 Open the `.dmg` and drag `yorishiro.app` to `/Applications`. The builds are signed and notarized with an Apple Developer ID, so they launch without any extra steps.
 
