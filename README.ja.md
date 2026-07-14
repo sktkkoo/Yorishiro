@@ -15,7 +15,7 @@
 Yorishiroは、AIに身体と実在感を与える、新しいかたちのターミナルです。
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/12581721-4b81-4b3d-8f85-6f55afd4dfe0" autoplay loop muted playsinline width="720"></video>
+  <video src="https://github.com/user-attachments/assets/2cd1425f-d61e-4dd8-9910-1a14d86f1773" autoplay loop muted playsinline width="720"></video>
 </p>
 
 AIが考え込めば視線がさまよい、エラーが出れば即座に顔が反応します。許可待ちを知らせるのは部屋の照明です。長い処理を待つあいだ、スピナーが回るのではなく、そこに誰かがたたずんでいます。

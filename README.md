@@ -15,7 +15,7 @@
 Yorishiro is a new kind of terminal that gives your AI a body — and a sense of presence.
 
 <p align="center">
-  <video src="https://github.com/user-attachments/assets/12581721-4b81-4b3d-8f85-6f55afd4dfe0" autoplay loop muted playsinline width="720"></video>
+  <video src="https://github.com/user-attachments/assets/2cd1425f-d61e-4dd8-9910-1a14d86f1773" autoplay loop muted playsinline width="720"></video>
 </p>
 
 When the agent is deep in thought, its gaze wanders. When an error appears, its face reacts immediately. When it needs your approval, the room's lighting lets you know. During a long-running process, instead of a spinner, someone is standing there.
