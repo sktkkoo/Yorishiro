@@ -99,6 +99,7 @@ import simpleRoomDefinition from "../../../bundled-packs/scenes/simple-room/scen
 import { controlFolder, useYorishiroControls } from "../../sdk/controls";
 import { getSceneRegistry } from "../scene-pack-registry";
 import { R3fRuntimeRoot } from "./r3f-runtime-root";
+import { getRuntimeLevaStore } from "./runtime-leva-store";
 import { getActiveSceneLevaStore } from "./scene-pack-leva-store";
 
 function getMockRegistry(): SceneRegistryHarness {
@@ -134,6 +135,17 @@ afterEach(() => {
 });
 
 describe("R3fRuntimeRoot", () => {
+  it("runtime store に speech folder を既定値どおり登録する", () => {
+    render(<R3fRuntimeRoot />);
+
+    const store = getRuntimeLevaStore();
+    expect(store?.get("speech.enabled")).toBe(true);
+    expect(store?.get("speech.attackMs")).toBe(150);
+    expect(store?.get("speech.releaseMs")).toBe(800);
+    expect(store?.get("speech.blinkProbability")).toBe(0.6);
+    expect(store?.get("speech.refractoryMs")).toBe(1_500);
+  });
+
   it("subscribes to active entry and disposes on unmount", () => {
     const registry = getMockRegistry();
     const afterUnmountRender = vi.fn((props: ScenePackComponentProps) => {
