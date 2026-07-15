@@ -230,6 +230,65 @@ describe("Body speech microexpression wiring", () => {
   });
 });
 
+describe("Body speech mood wiring", () => {
+  function systemMood(body: Body) {
+    return body
+      .getExpressionSlots()
+      .find((slot) => slot.source === "system" && slot.kind === "mood");
+  }
+
+  it("(system, mood) slot を attack 時間で ramp し、(mcp, mood) と共存する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.acquireExpressionSlot("mcp", "mood", "sad", 0.2);
+
+    body.setSpeechMood("happy", 0.8);
+    expect(systemMood(body)).toMatchObject({
+      source: "system",
+      kind: "mood",
+      expressionName: "happy",
+      requestedWeight: 0,
+    });
+
+    body.update(0.15, 0);
+    expect(systemMood(body)?.requestedWeight).toBeCloseTo(0.4);
+    expect(body.getExpressionSlots()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "mcp", kind: "mood", expressionName: "sad" }),
+      ]),
+    );
+  });
+
+  it("release 時間で weight を 0 にしてから slot を解放する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechMood("relaxed", 0.8);
+    body.update(0.3, 0);
+
+    body.releaseSpeechMood();
+    body.update(0.25, 0.25);
+    expect(systemMood(body)?.requestedWeight).toBeCloseTo(0.4);
+
+    body.update(0.25, 0.5);
+    expect(systemMood(body)).toBeUndefined();
+  });
+
+  it("新しい speech mood で前の slot を上書きする", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechMood("happy", 0.8);
+    body.update(0.1, 0);
+
+    body.setSpeechMood("surprised", 0.6);
+
+    const slots = body
+      .getExpressionSlots()
+      .filter((slot) => slot.source === "system" && slot.kind === "mood");
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ expressionName: "surprised", requestedWeight: 0 });
+  });
+});
+
 // ─── ExpressionManager ───────────────────────────────────
 
 describe("ExpressionManager", () => {

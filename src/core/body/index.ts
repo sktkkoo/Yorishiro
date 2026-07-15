@@ -72,6 +72,7 @@ import {
   type SpeechMicroexpressionParams,
   SpeechMicroexpressionSystem,
 } from "./speech-microexpression-system";
+import { SpeechMoodChannel } from "./speech-mood-channel";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -155,6 +156,8 @@ export class Body {
   private readonly hasSpeechBrowExpression: boolean;
   private readonly hasSpeechEyeExpression: boolean;
   private speechExpressionEnabled = true;
+  /** voice_say に付随する発話粒度 mood の envelope。 */
+  private readonly speechMood: SpeechMoodChannel;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -235,6 +238,9 @@ export class Body {
     this.devLog = devLog;
     this.claimState = claimState ?? getClaimState();
     this.expressions = new ExpressionManager();
+    this.speechMood = new SpeechMoodChannel((preset, intensity) =>
+      this.acquireExpressionSlot("system", "mood", preset, intensity),
+    );
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
@@ -356,6 +362,16 @@ export class Body {
     this.speechMicroexpression.setParams(params);
   }
 
+  /** 発話に同期する system mood を attack 付きで開始する。 */
+  setSpeechMood(preset: string, intensity: number): void {
+    this.speechMood.setSpeechMood(preset, intensity);
+  }
+
+  /** 発話に同期する system mood の release を開始する。 */
+  releaseSpeechMood(): void {
+    this.speechMood.releaseSpeechMood();
+  }
+
   /** idle motion 倍率（0-3, 1 で現状）を breathing / procedural bones に伝播する。 */
   setMotionIntensity(intensity: number): void {
     this.breathing.setIntensity(intensity);
@@ -474,6 +490,7 @@ export class Body {
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
     this.timeSinceStartle += delta;
+    this.speechMood.update(delta);
     this.cursorAttention.update(delta);
     const cursorAttention = this.cursorAttention.writeOutput(this.cursorAttentionOutput);
     this.proceduralBones.setHeadLookAtOffset(

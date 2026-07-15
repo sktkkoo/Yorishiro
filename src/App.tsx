@@ -1931,6 +1931,8 @@ function App() {
             .map((e) => ({ id: e.id, kind: "amenity" })),
         ];
 
+        let speechMoodGeneration = 0;
+        let speechMoodBody: Body | null = null;
         const handlers: ToolHandlerMap = {
           "list-packs": createListPacksHandler({
             readRegistry: () => packRegistry.listEntries(),
@@ -2170,8 +2172,30 @@ function App() {
           }),
           // ── Voice ─────────────────────────────────────────
           "voice.say": createVoiceSayHandler({
-            speak: (text) => {
-              voiceApi.say(text);
+            speak: (text, _voice, mood) => {
+              const handle = voiceApi.say(text);
+              const body = bodyRef.current;
+              const generation = ++speechMoodGeneration;
+
+              // mood なしの後続発話も発話粒度の上書きとして扱い、前 mood を解く。
+              if (speechMoodBody && (speechMoodBody !== body || mood === undefined)) {
+                speechMoodBody.releaseSpeechMood();
+                speechMoodBody = null;
+              }
+              if (!mood || !body) return;
+
+              body.setSpeechMood(mood.preset, mood.intensity);
+              speechMoodBody = body;
+              // 先行発話の completion が後続発話の mood を解かないよう世代で guard する。
+              void handle.completion
+                .finally(() => {
+                  if (generation !== speechMoodGeneration || speechMoodBody !== body) return;
+                  body.releaseSpeechMood();
+                  speechMoodBody = null;
+                })
+                .catch(() => {
+                  // VoicePlayer の失敗は completion の終了として扱い、handler へ再送出しない。
+                });
             },
             getFrequency: () => voiceFrequency,
           }),
