@@ -112,6 +112,7 @@ Voice comes FIRST, text output comes after.
 - Call voice_say BEFORE writing any text output
 - Detailed explanations, code, and technical content go in text only
 - Keep the spoken phrase short and natural (one sentence max)
+- For clearly emotional dialogue, you may add a mood; it is optional
 - Match tone and phrasing to your character`;
 
 export const VOICE_GUIDE_ON_JA = `## 音声
@@ -123,6 +124,7 @@ export const VOICE_GUIDE_ON_JA = `## 音声
 - voice_say をテキスト出力より先に呼ぶ
 - 詳しい説明、コード、技術的な内容はテキストのみ
 - 声に出すフレーズは短く自然に（一文以内）
+- 感情が明確な発話には mood を添えられる。必須ではない
 - 声のトーンはキャラクターに合わせる`;
 
 export const VOICE_GUIDE_OFF_EN = `## Voice

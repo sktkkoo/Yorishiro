@@ -365,6 +365,13 @@ pub struct VoiceSayRequest {
     /// 音声名（省略時は OS デフォルト）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub voice: Option<String>,
+    /// 発話中だけ重ねる mood。happy / sad / angry / relaxed / surprised を受理する。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mood: Option<String>,
+    /// mood の強さ（0.0-1.0）。省略時は 1.0。
+    #[serde(rename = "moodIntensity")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mood_intensity: Option<f64>,
 }
 
 /// `voice_play` の引数。
@@ -915,7 +922,7 @@ impl Yorishiro {
     /// voice_say: TTS でテキストを発話する。住人 AI がキャラクターとして
     /// 声に出したいセリフにのみ使う（全テキスト出力に使うものではない）。
     #[tool(
-        description = "Speak text aloud using text-to-speech. Use this to say something out loud as the character — only call this for dialogue you intend to be heard, not for all text output."
+        description = "Speak text aloud using text-to-speech. Use this to say something out loud as the character — only call this for dialogue you intend to be heard, not for all text output. You may optionally attach a mood (happy/sad/angry/relaxed/surprised) that fades in while speaking and releases when the speech ends."
     )]
     async fn voice_say(
         &self,
@@ -924,7 +931,12 @@ impl Yorishiro {
         emit_to(
             &self.app_handle,
             "voice.say",
-            json!({ "text": req.text, "voice": req.voice }),
+            json!({
+                "text": req.text,
+                "voice": req.voice,
+                "mood": req.mood,
+                "moodIntensity": req.mood_intensity,
+            }),
         )
         .await
     }
@@ -1326,6 +1338,18 @@ mod tests {
             SERVER_INSTRUCTIONS.contains("app_screenshot"),
             "server instructions must mention app_screenshot"
         );
+    }
+
+    #[test]
+    fn voice_say_request_accepts_optional_mood_fields() {
+        let req: VoiceSayRequest = serde_json::from_value(json!({
+            "text": "hello",
+            "mood": "happy",
+            "moodIntensity": 0.4,
+        }))
+        .expect("voice_say request");
+        assert_eq!(req.mood.as_deref(), Some("happy"));
+        assert_eq!(req.mood_intensity, Some(0.4));
     }
 
     #[test]
