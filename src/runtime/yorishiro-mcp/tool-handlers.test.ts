@@ -56,6 +56,7 @@ import {
   createUiActivateHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
+  createVoiceSayHandler,
 } from "./tool-handlers";
 
 /**
@@ -2603,6 +2604,66 @@ describe("createSetMotionIntensityHandler", () => {
 
     expect(config.disabledPacks).toEqual(["target"]);
     expect(config.motionIntensity).toBe(2);
+  });
+});
+
+describe("createVoiceSayHandler", () => {
+  it("valid mood と intensity を speak へ透過する", async () => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
+
+    await handler({ text: "hello", voice: "Kyoko", mood: "happy", moodIntensity: 0.4 });
+
+    expect(speak).toHaveBeenCalledWith("hello", "Kyoko", {
+      preset: "happy",
+      intensity: 0.4,
+    });
+  });
+
+  it.each(["happy", "sad", "angry", "relaxed", "surprised"])("mood=%s を受理する", async (mood) => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
+
+    await handler({ text: "hello", mood });
+
+    expect(speak).toHaveBeenCalledWith("hello", undefined, { preset: mood, intensity: 1 });
+  });
+
+  it("invalid mood は無視して発話を続ける", async () => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
+
+    await expect(handler({ text: "hello", mood: "excited", moodIntensity: 0.5 })).resolves.toEqual({
+      spoken: true,
+    });
+    expect(speak).toHaveBeenCalledWith("hello", undefined, undefined);
+  });
+
+  it.each([
+    [-1, 0],
+    [2, 1],
+  ])("moodIntensity=%s を %s にクランプする", async (input, expected) => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
+
+    await handler({ text: "hello", mood: "sad", moodIntensity: input });
+
+    expect(speak).toHaveBeenCalledWith("hello", undefined, {
+      preset: "sad",
+      intensity: expected,
+    });
+  });
+
+  it("moodIntensity が number でなければ既定値 1 を使う", async () => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
+
+    await handler({ text: "hello", mood: "relaxed", moodIntensity: "strong" });
+
+    expect(speak).toHaveBeenCalledWith("hello", undefined, {
+      preset: "relaxed",
+      intensity: 1,
+    });
   });
 });
 

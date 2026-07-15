@@ -1819,8 +1819,13 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
  * ────────────────────────────────────────────────────────── */
 
 export interface VoiceSayDeps {
-  readonly speak: (text: string, voice?: string) => void;
+  readonly speak: (text: string, voice?: string, mood?: VoiceSayMood) => void;
   readonly getFrequency: () => "on" | "off";
+}
+
+export interface VoiceSayMood {
+  readonly preset: "happy" | "sad" | "angry" | "relaxed" | "surprised";
+  readonly intensity: number;
 }
 
 export interface VoiceSayResult {
@@ -1841,7 +1846,25 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
       return { spoken: false };
     }
     const voice = typeof r.voice === "string" ? r.voice : undefined;
-    deps.speak(text, voice);
+    const preset =
+      r.mood === "happy" ||
+      r.mood === "sad" ||
+      r.mood === "angry" ||
+      r.mood === "relaxed" ||
+      r.mood === "surprised"
+        ? r.mood
+        : null;
+    const rawIntensity = r.moodIntensity;
+    const mood: VoiceSayMood | undefined = preset
+      ? {
+          preset,
+          intensity:
+            typeof rawIntensity === "number" && Number.isFinite(rawIntensity)
+              ? Math.max(0, Math.min(1, rawIntensity))
+              : 1,
+        }
+      : undefined;
+    deps.speak(text, voice, mood);
     return { spoken: true };
   };
 }

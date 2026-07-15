@@ -67,6 +67,12 @@ import {
   MotionScheduler,
 } from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
+import {
+  type SpeechMicroexpressionOutput,
+  type SpeechMicroexpressionParams,
+  SpeechMicroexpressionSystem,
+} from "./speech-microexpression-system";
+import { SpeechMoodChannel } from "./speech-mood-channel";
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -77,6 +83,8 @@ export interface LipSyncSource {
 }
 
 const BLINK_EXPRESSION_NAME = "blink";
+const SPEECH_BROW_EXPRESSION_NAME = "Fcl_BRW_Surprised";
+const SPEECH_EYE_EXPRESSION_NAME = "Fcl_EYE_Spread";
 
 // Eye-head coordination：この magnitude 以上の saccade で頭が視線に追従する。
 // gain は「目の移動角の何割を頭が肩代わりするか」（人間はおよそ 2〜3 割）。
@@ -143,6 +151,13 @@ export class Body {
    * Hana 名が無い region は空 pool になり no-op 化する）。
    */
   private readonly microChannels: ReadonlyArray<MicroChannel>;
+  /** 発話音響から顔全体の生理的な賦活を作る反射層。 */
+  private readonly speechMicroexpression = new SpeechMicroexpressionSystem();
+  private readonly hasSpeechBrowExpression: boolean;
+  private readonly hasSpeechEyeExpression: boolean;
+  private speechExpressionEnabled = true;
+  /** voice_say に付随する発話粒度 mood の envelope。 */
+  private readonly speechMood: SpeechMoodChannel;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -223,6 +238,9 @@ export class Body {
     this.devLog = devLog;
     this.claimState = claimState ?? getClaimState();
     this.expressions = new ExpressionManager();
+    this.speechMood = new SpeechMoodChannel((preset, intensity) =>
+      this.acquireExpressionSlot("system", "mood", preset, intensity),
+    );
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
     this.eyelids = new EyelidExpressionController(this.expressions, this.blinkSystem);
@@ -231,6 +249,10 @@ export class Body {
     // pool が空になっても system は no-op 化するだけで動作は壊れない）。
     const filterPool = (pool: ReadonlyArray<string>): ReadonlyArray<string> =>
       pool.filter((name) => vrm.expressionManager?.getExpression(name) !== null);
+    this.hasSpeechBrowExpression =
+      vrm.expressionManager?.getExpression(SPEECH_BROW_EXPRESSION_NAME) !== null;
+    this.hasSpeechEyeExpression =
+      vrm.expressionManager?.getExpression(SPEECH_EYE_EXPRESSION_NAME) !== null;
     this.microChannels = [
       new MicroChannel(
         "brow",
@@ -328,6 +350,26 @@ export class Body {
    */
   setLipSyncSource(source: LipSyncSource | null): void {
     this.lipSyncSource = source;
+  }
+
+  /** 発話反射層の master enable を切り替える。 */
+  setSpeechExpressionEnabled(enabled: boolean): void {
+    this.speechExpressionEnabled = enabled;
+  }
+
+  /** 発話反射層の感触パラメータを部分更新する。 */
+  setSpeechExpressionParams(params: Partial<SpeechMicroexpressionParams>): void {
+    this.speechMicroexpression.setParams(params);
+  }
+
+  /** 発話に同期する system mood を attack 付きで開始する。 */
+  setSpeechMood(preset: string, intensity: number): void {
+    this.speechMood.setSpeechMood(preset, intensity);
+  }
+
+  /** 発話に同期する system mood の release を開始する。 */
+  releaseSpeechMood(): void {
+    this.speechMood.releaseSpeechMood();
   }
 
   /** idle motion 倍率（0-3, 1 で現状）を breathing / procedural bones に伝播する。 */
@@ -448,6 +490,7 @@ export class Body {
     const animationClaimed = this.claimState.isClaimed("animation");
     const expressionClaimed = this.claimState.isClaimed("expression");
     this.timeSinceStartle += delta;
+    this.speechMood.update(delta);
     this.cursorAttention.update(delta);
     const cursorAttention = this.cursorAttention.writeOutput(this.cursorAttentionOutput);
     this.proceduralBones.setHeadLookAtOffset(
@@ -526,6 +569,12 @@ export class Body {
         ? lipSyncSource.sampleMouth(this.lipSyncMouthScratch)
         : null;
     const lipSyncHasSignal = lipSyncMouth ? hasMouthSignal(lipSyncMouth) : false;
+    const speechReflex = this.speechMicroexpression.update(
+      delta,
+      lipSyncMouth,
+      !expressionClaimed && this.speechExpressionEnabled,
+    );
+    if (speechReflex.blinkRequested) this.blinkSystem.requestBlink();
 
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
@@ -539,10 +588,13 @@ export class Body {
       });
 
       // 5b. Region 別 idle micro layer — brow / eye / mouth が独立 instance で並走。
-      //     mouth だけは lip sync 中は suspend（visemes と競合させない）。
+      //     発話中は mouth の viseme に加え、brow / eye も発話反射層へ所有権を渡す。
       const microBaseEnabled = !nonIdleMoodActive;
+      const speechEngaged = this.speechMicroexpression.engagement > 0;
       for (const ch of this.microChannels) {
-        const enabled = microBaseEnabled && (ch.region !== "mouth" || !lipSyncHasSignal);
+        const speechSuspended =
+          (ch.region === "mouth" && lipSyncHasSignal) || (ch.region !== "mouth" && speechEngaged);
+        const enabled = microBaseEnabled && !speechSuspended;
         ch.update(delta, enabled);
       }
     } else {
@@ -555,7 +607,7 @@ export class Body {
 
     // 6. Apply expressions to VRM
     if (!expressionClaimed) {
-      this.applyExpressions(lipSyncMouth);
+      this.applyExpressions(lipSyncMouth, speechReflex);
     }
 
     // 7. Apply eye gaze to VRM
@@ -803,7 +855,10 @@ export class Body {
 
   // ─── Internal apply methods ───────────────────────────
 
-  private applyExpressions(lipSyncMouth: MouthValues | null): void {
+  private applyExpressions(
+    lipSyncMouth: MouthValues | null,
+    speechReflex: SpeechMicroexpressionOutput,
+  ): void {
     const exprMgr = this.vrm.expressionManager;
     if (!exprMgr) return;
 
@@ -820,6 +875,21 @@ export class Body {
           batch.set(k, lipSyncMouth[k]);
         }
       }
+    }
+
+    // 発話反射は slot を持たず、lip sync と同じ batch 直書きで既存表情へ加算する。
+    // ExpressionManager の kind 単位 suppress から独立させ、persona / idle を壊さない。
+    if (this.hasSpeechBrowExpression && speechReflex.browWeight > 0) {
+      batch.set(
+        SPEECH_BROW_EXPRESSION_NAME,
+        Math.min(1, (batch.get(SPEECH_BROW_EXPRESSION_NAME) ?? 0) + speechReflex.browWeight),
+      );
+    }
+    if (this.hasSpeechEyeExpression && speechReflex.eyeWeight > 0) {
+      batch.set(
+        SPEECH_EYE_EXPRESSION_NAME,
+        Math.min(1, (batch.get(SPEECH_EYE_EXPRESSION_NAME) ?? 0) + speechReflex.eyeWeight),
+      );
     }
 
     this.expressionSink.apply(batch, (name, weight) => {

@@ -123,6 +123,172 @@ describe("Body lip sync sampling", () => {
   });
 });
 
+// ─── Body speech microexpression wiring ─────────────────
+
+describe("Body speech microexpression wiring", () => {
+  function speechSource(volume: number) {
+    return {
+      isMouthActive: () => true,
+      sampleMouth: vi.fn(() => ({ aa: volume, ih: 0, ou: 0, ee: 0, oh: 0 })),
+    };
+  }
+
+  function exposeExpressions(vrm: VRM, names: ReadonlySet<string>) {
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    vi.spyOn(manager, "getExpression").mockImplementation((name) =>
+      names.has(name) ? ({} as never) : null,
+    );
+    return vi.spyOn(manager, "setValue");
+  }
+
+  it("取得済み mouth 信号から既存 batch へ眉・目の反射 weight を加算する", () => {
+    const { vrm } = mockBodyVrm();
+    const setValue = exposeExpressions(vrm, new Set(["Fcl_BRW_Surprised", "Fcl_EYE_Spread"]));
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setState("thinking");
+    body.acquireExpressionSlot("persona", "part-brow", "Fcl_BRW_Surprised", 0.03);
+    body.setSpeechExpressionParams({ flickEnabled: false, attackMs: 100 });
+    const source = speechSource(0.8);
+    body.setLipSyncSource(source);
+
+    body.update(0.05, 0);
+
+    expect(source.sampleMouth).toHaveBeenCalledOnce();
+    expect(setValue).toHaveBeenCalledWith("Fcl_BRW_Surprised", expect.any(Number));
+    expect(setValue).toHaveBeenCalledWith("Fcl_EYE_Spread", expect.any(Number));
+    const browWrite = setValue.mock.calls.find(([name]) => name === "Fcl_BRW_Surprised");
+    expect(browWrite?.[1]).toBeGreaterThan(0.03);
+  });
+
+  it("expression claim 中は発話反射を更新・適用しない", () => {
+    const { vrm } = mockBodyVrm();
+    const setValue = exposeExpressions(vrm, new Set(["Fcl_BRW_Surprised", "Fcl_EYE_Spread"]));
+    const claimState = mockClaimState();
+    const body = new Body(vrm, undefined, claimState);
+    body.setLipSyncSource(speechSource(0.8));
+    const claim = claimState.claim("expression");
+
+    body.update(0.1, 0);
+
+    expect(setValue).not.toHaveBeenCalled();
+    claim.dispose();
+  });
+
+  it("対象 morph が無い VRM では発話反射だけを no-op にする", () => {
+    const { vrm } = mockBodyVrm();
+    const setValue = exposeExpressions(vrm, new Set());
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setLipSyncSource(speechSource(0.8));
+
+    body.update(0.1, 0);
+
+    expect(setValue).not.toHaveBeenCalledWith("Fcl_BRW_Surprised", expect.any(Number));
+    expect(setValue).not.toHaveBeenCalledWith("Fcl_EYE_Spread", expect.any(Number));
+    expect(setValue).toHaveBeenCalledWith("aa", 0.8);
+  });
+
+  it("発話 engagement 中は brow / eye の idle micro を suspend する", () => {
+    const { vrm } = mockBodyVrm();
+    exposeExpressions(vrm, new Set([...MICRO_BROW_POOL, ...MICRO_EYE_POOL, ...MICRO_MOUTH_POOL]));
+    const body = new Body(vrm, undefined, mockClaimState());
+    const channels = (
+      body as unknown as {
+        microChannels: ReadonlyArray<{
+          region: "brow" | "eye" | "mouth";
+          system: IdleMicroexpressionSystem;
+        }>;
+      }
+    ).microChannels;
+    const brow = channels.find((channel) => channel.region === "brow");
+    const eye = channels.find((channel) => channel.region === "eye");
+    brow?.system.injectEpisode("Fcl_BRW_Joy", 0.2, 0.4);
+    eye?.system.injectEpisode("Fcl_EYE_Sorrow", 0.2, 0.4);
+    body.setSpeechExpressionParams({ flickEnabled: false });
+    body.setLipSyncSource(speechSource(0.8));
+
+    body.update(0.05, 0);
+
+    expect(brow?.system.value).toBeNull();
+    expect(eye?.system.value).toBeNull();
+  });
+
+  it("フレーズ境界の要求を BlinkSystem へ渡す", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
+    const requestBlink = vi.spyOn(blinkSystem, "requestBlink");
+    const source = speechSource(0.8);
+    body.setLipSyncSource(source);
+    body.setSpeechExpressionParams({ gapThresholdMs: 100, blinkProbability: 1 });
+    body.update(0.1, 0);
+    source.sampleMouth.mockReturnValue({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+
+    body.update(0.11, 0.11);
+
+    expect(requestBlink).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Body speech mood wiring", () => {
+  function systemMood(body: Body) {
+    return body
+      .getExpressionSlots()
+      .find((slot) => slot.source === "system" && slot.kind === "mood");
+  }
+
+  it("(system, mood) slot を attack 時間で ramp し、(mcp, mood) と共存する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.acquireExpressionSlot("mcp", "mood", "sad", 0.2);
+
+    body.setSpeechMood("happy", 0.8);
+    expect(systemMood(body)).toMatchObject({
+      source: "system",
+      kind: "mood",
+      expressionName: "happy",
+      requestedWeight: 0,
+    });
+
+    body.update(0.15, 0);
+    expect(systemMood(body)?.requestedWeight).toBeCloseTo(0.4);
+    expect(body.getExpressionSlots()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: "mcp", kind: "mood", expressionName: "sad" }),
+      ]),
+    );
+  });
+
+  it("release 時間で weight を 0 にしてから slot を解放する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechMood("relaxed", 0.8);
+    body.update(0.3, 0);
+
+    body.releaseSpeechMood();
+    body.update(0.25, 0.25);
+    expect(systemMood(body)?.requestedWeight).toBeCloseTo(0.4);
+
+    body.update(0.25, 0.5);
+    expect(systemMood(body)).toBeUndefined();
+  });
+
+  it("新しい speech mood で前の slot を上書きする", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechMood("happy", 0.8);
+    body.update(0.1, 0);
+
+    body.setSpeechMood("surprised", 0.6);
+
+    const slots = body
+      .getExpressionSlots()
+      .filter((slot) => slot.source === "system" && slot.kind === "mood");
+    expect(slots).toHaveLength(1);
+    expect(slots[0]).toMatchObject({ expressionName: "surprised", requestedWeight: 0 });
+  });
+});
+
 // ─── ExpressionManager ───────────────────────────────────
 
 describe("ExpressionManager", () => {
