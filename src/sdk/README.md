@@ -103,7 +103,6 @@ export default {
   world: {
     body: 'vrm:default',      // 既存 VRM の shared ref
     voice: 'voice:default',
-    space: 'space:default',
   },
 
   logReading: {

@@ -440,7 +440,6 @@ export function createYoriPersona(args: {
     world: {
       body: "vrm:default",
       voice: "voice:default",
-      space: "space:default",
     },
 
     // ─── ログ参照ポリシー ──────────────────────────────

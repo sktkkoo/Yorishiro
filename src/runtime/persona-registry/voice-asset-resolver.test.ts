@@ -12,7 +12,7 @@ import {
 const persona: PersonaDefinition = {
   id: "singer",
   name: "Singer",
-  world: { body: "", voice: "", space: "" },
+  world: { body: "", voice: "" },
   logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
 };
 

@@ -16,7 +16,7 @@ const makeEntry = (id: string, origin: "bundled" | "user"): PersonaEntry => ({
     id,
     name: id,
     reflex: { responses: {} },
-    world: { body: "", voice: "", space: "" },
+    world: { body: "", voice: "" },
     logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
   },
 });
@@ -197,7 +197,7 @@ describe("PersonaRegistryImpl", () => {
         id: "same-id",
         name: "User Persona",
         reflex: { responses: {} },
-        world: { body: "vrm:custom", voice: "", space: "" },
+        world: { body: "vrm:custom", voice: "" },
         logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
       },
     };

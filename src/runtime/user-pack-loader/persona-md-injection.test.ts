@@ -55,7 +55,7 @@ describe("injectPersonaPrompt", () => {
     const defWithOthers: PersonaDefinition = {
       ...baseDef,
       reflex: { customTriggers: [], responses: {} },
-      world: { body: "vrm:x", voice: "voice:y", space: "space:z" },
+      world: { body: "vrm:x", voice: "voice:y" },
     } as unknown as PersonaDefinition;
     const result = injectPersonaPrompt(defWithOthers, "md content");
     expect(result.reflex).toBe(defWithOthers.reflex);

@@ -54,7 +54,7 @@ describe("PersonaReflexDispatcher × PersonaRegistryImpl integration", () => {
         customTriggers: [userInputTrigger("pleased", "bundled-trigger")],
         responses: { pleased: { handlers: [{ handler: bundledHandler }] } },
       },
-      world: { body: "", voice: "", space: "" },
+      world: { body: "", voice: "" },
       logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
     };
 
@@ -115,7 +115,7 @@ describe("PersonaReflexDispatcher × PersonaRegistryImpl integration", () => {
         customTriggers: [userInputTrigger("pleased", "bundled-trigger")],
         responses: { pleased: { handlers: [{ handler: bundledHandler }] } },
       },
-      world: { body: "", voice: "", space: "" },
+      world: { body: "", voice: "" },
       logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
     };
 

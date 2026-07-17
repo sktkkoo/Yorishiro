@@ -47,7 +47,7 @@ const validPersonaPack = {
   name: "User Persona",
   thinking: { systemPromptAddition: "" },
   reflex: { responses: {} },
-  world: { body: "", voice: "", space: "" },
+  world: { body: "", voice: "" },
   logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
 } as unknown as PersonaDefinition;
 
@@ -1061,7 +1061,7 @@ describe("loadSingleUserPack", () => {
               name: "MD 住人",
               // thinking なし — loader が persona.md から inject する
               reflex: { responses: {} },
-              world: { body: "", voice: "", space: "" },
+              world: { body: "", voice: "" },
               logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
@@ -1113,7 +1113,7 @@ describe("loadSingleUserPack", () => {
               name: "明示住人",
               thinking: { systemPromptAddition: "js で明示したプロンプト" },
               reflex: { responses: {} },
-              world: { body: "", voice: "", space: "" },
+              world: { body: "", voice: "" },
               logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
@@ -1159,7 +1159,7 @@ describe("loadSingleUserPack", () => {
               name: "MD 無し住人",
               thinking: { systemPromptAddition: "js 側のプロンプト" },
               reflex: { responses: {} },
-              world: { body: "", voice: "", space: "" },
+              world: { body: "", voice: "" },
               logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
@@ -1210,7 +1210,7 @@ describe("loadSingleUserPack", () => {
               name: "素の住人",
               // thinking なし、md も 404 → systemPromptAddition は undefined のまま
               reflex: { responses: {} },
-              world: { body: "", voice: "", space: "" },
+              world: { body: "", voice: "" },
               logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
@@ -1251,7 +1251,7 @@ describe("loadSingleUserPack", () => {
           "mischievous-shoot": { handlers: [{ handler: async () => {} }] },
         },
       },
-      world: { body: "vrm:default", voice: "voice:default", space: "space:default" },
+      world: { body: "vrm:default", voice: "voice:default" },
       logReading: { readWhen: { kind: "session-boundary" }, framing: "own", windowSize: 10 },
     } satisfies PersonaDefinition;
 

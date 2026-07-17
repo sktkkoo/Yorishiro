@@ -34,7 +34,7 @@ const validPersonaPack = {
   name: "Init Persona",
   thinking: { systemPromptAddition: "" },
   reflex: { responses: {} },
-  world: { body: "", voice: "", space: "" },
+  world: { body: "", voice: "" },
   logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
 } as unknown as PersonaDefinition;
 

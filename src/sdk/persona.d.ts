@@ -70,7 +70,7 @@ export interface LogReadingPolicy {
  *   name: 'わたし',
  *   thinking: { systemPromptAddition: '...' }, // optional — persona.md から loader が inject することもある
  *   reflex: { responses: {} },
- *   world: { body: 'vrm:default', voice: 'voice:default', space: 'space:default' },
+ *   world: { body: 'vrm:default', voice: 'voice:default' },
  *   logReading: { readWhen: { kind: 'session-boundary' }, framing: 'own', windowSize: 10 },
  * } satisfies PersonaDefinition;
  * ```
@@ -118,14 +118,14 @@ export interface PersonaDefinition {
 
   /**
    * optional — minimal persona pack では省略可（既存 world 設定が維持される）。
+   *
+   * 空間（scene）は workspace に紐づくため persona は選ばない。
    */
   readonly world?: {
     /** 身体 VRM の ref。'vrm:default' など shared ref か、local ref */
     readonly body: string;
     /** 声の ref */
     readonly voice: string;
-    /** 空間の ref */
-    readonly space: string;
   };
 
   // ─── 第四の軸：ログ参照ポリシー ────
