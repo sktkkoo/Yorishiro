@@ -12,6 +12,7 @@ import type {
   LoopPhase,
   MotionHandle,
   MotionSnapshot,
+  PersonaDefinition,
   SpaceEffectRequest,
 } from "@yorishiro/sdk";
 import type * as THREE from "three";
@@ -1811,6 +1812,104 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
     });
 
     return { active: id, reloading: true };
+  };
+}
+
+/* ──────────────────────────────────────────────────────────
+ * persona.reflex-list
+ * ────────────────────────────────────────────────────────── */
+
+export interface PersonaReflexEntryInput {
+  readonly id: string;
+  readonly origin: "bundled" | "user";
+  readonly persona: PersonaDefinition;
+}
+
+export interface PersonaReflexListDeps {
+  /** 登録済み persona の列挙（PersonaRegistry.listEntries 相当）。 */
+  readonly listPersonaEntries: () => ReadonlyArray<PersonaReflexEntryInput>;
+  readonly getActivePersonaId: () => string | null;
+  /**
+   * loader が reflex 省略時の fallback に使う bundled default の reflex。
+   * registry には merge 後の definition が入るため、reference 比較で
+   * 「丸ごと継承」かどうかを判定する。
+   */
+  readonly getDefaultReflex: () => PersonaDefinition["reflex"] | undefined;
+}
+
+export interface PersonaReflexTriggerSummary {
+  readonly id: string;
+  /** Trigger.description（未宣言なら null）。match 条件は introspect できない。 */
+  readonly description: string | null;
+}
+
+export interface PersonaReflexHandlerSummary {
+  readonly label: string | null;
+  readonly weight: number;
+  readonly cooldownMs: number | null;
+}
+
+export interface PersonaReflexListResponse {
+  readonly personaId: string;
+  readonly name: string;
+  readonly origin: "bundled" | "user";
+  /**
+   * own: この persona 自身が reflex を定義 / inherited-default: reflex を
+   * 書いておらず bundled default を丸ごと継承 / none: reflex なし。
+   */
+  readonly reflexSource: "own" | "inherited-default" | "none";
+  readonly triggers: ReadonlyArray<PersonaReflexTriggerSummary>;
+  readonly responses: Readonly<Record<string, ReadonlyArray<PersonaReflexHandlerSummary>>>;
+}
+
+export function createPersonaReflexListHandler(deps: PersonaReflexListDeps) {
+  return async (request: unknown): Promise<PersonaReflexListResponse> => {
+    const r = requestRecord(request);
+    const requested = typeof r.personaId === "string" && r.personaId !== "" ? r.personaId : null;
+    const id = requested ?? deps.getActivePersonaId();
+    if (id === null) {
+      throw new Error("no active persona and no personaId given");
+    }
+    const entries = deps.listPersonaEntries();
+    const entry = entries.find((e) => e.id === id);
+    if (entry === undefined) {
+      const known = entries.map((e) => e.id).join(", ");
+      throw new Error(`persona '${id}' is not registered (known: ${known})`);
+    }
+
+    const reflex = entry.persona.reflex;
+    const reflexSource: PersonaReflexListResponse["reflexSource"] =
+      reflex === undefined
+        ? "none"
+        : entry.origin === "bundled"
+          ? "own"
+          : reflex === deps.getDefaultReflex()
+            ? "inherited-default"
+            : "own";
+
+    const triggers = (reflex?.customTriggers ?? []).map((t) => ({
+      id: t.id,
+      description: t.description ?? null,
+    }));
+
+    const responses: Record<string, PersonaReflexHandlerSummary[]> = {};
+    for (const [reaction, set] of Object.entries(reflex?.responses ?? {})) {
+      if (set === undefined) continue;
+      responses[reaction] = set.handlers.map((h) => ({
+        label: h.label ?? null,
+        weight: h.weight ?? 1,
+        cooldownMs: h.cooldownMs ?? null,
+      }));
+    }
+
+    return {
+      personaId: entry.id,
+      name: entry.persona.name,
+      origin: entry.origin,
+      reflexSource,
+      triggers,
+      responses,
+    };
   };
 }
 

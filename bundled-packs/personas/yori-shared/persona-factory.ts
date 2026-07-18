@@ -124,6 +124,7 @@ export function createYoriPersona(args: {
         // Philosophy: docs/philosophy/PHILOSOPHY.md「意識に先立つ反応」
         {
           id: "yori:error",
+          description: "tool 失敗で distressed を発火（Grep / Glob の空振りは benign として抑止）",
           match(event: DispatchEvent) {
             if (event.kind !== "hook-signal") return null;
             if (event.signal.name !== "post-tool-failure") return null;
@@ -155,6 +156,7 @@ export function createYoriPersona(args: {
         // push 結果行が流れない。PostToolUse hook の payload から検知する。
         {
           id: "yori:git-push-success",
+          description: "git push 成功を bash tool の出力から検知して celebrate を発火",
           match(event: DispatchEvent) {
             if (event.kind !== "hook-signal") return null;
             if (event.signal.name !== "post-tool-use") return null;
@@ -181,6 +183,8 @@ export function createYoriPersona(args: {
         // motion/effect の timeline は shortcut 経路と同じ runShootTimeline を共有する。
         {
           id: "yori:idle-shoot",
+          description:
+            "idle 15 分到達時に一度だけ低確率でいたずらの shoot 演出を発火（1 run 最大 1 回）",
           match(event: DispatchEvent) {
             if (event.kind !== "idle") return null;
             if (event.durationMs < SHOOT_IDLE_THRESHOLD_MS) return null;
@@ -199,6 +203,7 @@ export function createYoriPersona(args: {
         // motion/effect の timeline は idle 経路と同じ response handler が持つ。
         {
           id: "yori:shortcut-shoot",
+          description: "synthetic event yori:shoot（init.js ショートカット）で shoot 演出を発火",
           match(event: DispatchEvent) {
             if (event.kind !== "synthetic") return null;
             if (event.name !== SHOOT_SYNTHETIC_EVENT) return null;
@@ -216,6 +221,8 @@ export function createYoriPersona(args: {
         // Internal design-record: specs/2026-04-25-settings-screen-design.md §5
         {
           id: "yori:settings-write-failed",
+          description:
+            "設定 UI の書き込み失敗（synthetic event）で shake なしの settings-error を発火",
           match(event: DispatchEvent) {
             if (event.kind !== "synthetic") return null;
             if (event.name !== "yorishiro-settings:write-failed") return null;

@@ -279,6 +279,16 @@ export default {
 6. If switching now, do not edit `~/.yorishiro/config.json` directly. Use the say-goodbye switch below
 7. If creating only, briefly tell the user the persona was created
 
+### Designing reflexes
+
+Reflexes define which events move the body and how — the other half of the personality, on par with speech. They can be omitted, but choose knowingly:
+
+- **If you omit `reflex`, the persona inherits the bundled default (Yori) reflexes wholesale**: frowning on errors, fireworks on a successful push, a mischievous gunshot after a long absence. That may not fit a serious persona — if so, declare `reflex` explicitly (declaring even one severs the inheritance entirely)
+- The reaction vocabulary is the standard set (`startled` / `contemplative` / `pleased` / `distressed` / `curious` / `focused` / `acknowledging` / `idle-fidget` / `confused` / `bored`) plus arbitrary custom strings. Start with 2-3 reactions and add more after observing them live
+- Give each custom trigger a `description` (one human-readable sentence describing when it fires). The match function's code cannot be read from outside, so this is the only explanation that appears in listings
+- Check what an existing persona reacts to with `persona_reflex_list({ "personaId": "<id>" })` (omit personaId for the active persona). `reflexSource: "inherited-default"` means the bundled defaults are inherited wholesale
+- Reference implementation: `bundled-packs/personas/yori-shared/persona-factory.ts`
+
 ### Say Goodbye and Switch
 
 When the user wants to switch immediately after creating a new persona, say goodbye as the current resident and then call `persona_goodbye_switch`. Do not write `primaryPersona` directly.

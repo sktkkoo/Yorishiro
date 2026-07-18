@@ -275,6 +275,14 @@ pub struct PersonaGoodbyeSwitchRequest {
     pub vrm_path: Option<String>,
 }
 
+/// `persona_reflex_list` の引数。personaId 省略時は active persona。
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PersonaReflexListRequest {
+    /// 対象 persona pack id（省略時は active persona）。
+    #[serde(default, rename = "personaId")]
+    pub persona_id: Option<String>,
+}
+
 /// `vrm_validate` の引数。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct VrmValidateRequest {
@@ -1009,6 +1017,25 @@ impl Yorishiro {
         .await
         .map_err(|e| McpError::internal_error(e, None))?;
         unwrap_ts_response(r)
+    }
+
+    /// persona_reflex_list: TS runtime に委譲。persona の反射一覧
+    /// （trigger の宣言と reaction handler の構成）を返す。
+    #[tool(
+        description = "List a persona's reflexes: triggers (id + human-readable description) and responses (reaction -> handlers with label/weight/cooldownMs). Omit personaId for the active persona. reflexSource shows whether the persona defines its own reflexes, inherits the bundled defaults wholesale, or has none. Use before switching personas or when authoring a persona pack."
+    )]
+    async fn persona_reflex_list(
+        &self,
+        Parameters(req): Parameters<PersonaReflexListRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let response = emit_tool_event(
+            &self.app_handle,
+            "persona-reflex-list",
+            json!({ "personaId": req.persona_id }),
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
+        unwrap_ts_response(response)
     }
 
     /// VRM パスの事前検証。モデルの切替は行わない。

@@ -5,7 +5,13 @@
  * merge 規則と state 更新の correctness のみ確認する。
  */
 
-import type { SpaceEffectRequest, UiContext, UiLayout, UiPackManifest } from "@yorishiro/sdk";
+import type {
+  PersonaDefinition,
+  SpaceEffectRequest,
+  UiContext,
+  UiLayout,
+  UiPackManifest,
+} from "@yorishiro/sdk";
 import type * as THREE from "three";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TweenManager } from "../../core/tween/tween-manager";
@@ -45,6 +51,7 @@ import {
   createLoopAnnounceHandler,
   createPackDiagnoseHandler,
   createPersonaGoodbyeSwitchHandler,
+  createPersonaReflexListHandler,
   createPresenceSetIntensityHandler,
   createSceneActivateHandler,
   createSetMotionIntensityHandler,
@@ -2792,5 +2799,126 @@ describe("createAttentionLightCueHandler", () => {
     const handler = createAttentionLightCueHandler({ trigger });
     const result = await handler({});
     expect(result).toEqual({ triggered: false, reason: "cooldown" });
+  });
+});
+
+describe("createPersonaReflexListHandler", () => {
+  const noop = async () => {};
+
+  const yoriReflex: NonNullable<PersonaDefinition["reflex"]> = {
+    customTriggers: [
+      {
+        id: "yori:git-push-success",
+        description: "git push 成功で celebrate を発火",
+        match: () => null,
+      },
+      // description 未宣言の trigger
+      { id: "yori:error", match: () => null },
+    ],
+    responses: {
+      celebrate: { handlers: [{ label: "fireworks-and-smile", handler: noop }] },
+      "idle-fidget": {
+        handlers: [
+          { weight: 3, label: "look-around", handler: noop },
+          { weight: 1, cooldownMs: 180000, label: "subtle-stretch", handler: noop },
+        ],
+      },
+    },
+  };
+
+  const yoriEntry = {
+    id: "yori",
+    origin: "bundled" as const,
+    persona: { id: "yori", name: "Yori", reflex: yoriReflex } as PersonaDefinition,
+  };
+
+  const makeHandler = (
+    overrides: Partial<Parameters<typeof createPersonaReflexListHandler>[0]> = {},
+  ) =>
+    createPersonaReflexListHandler({
+      listPersonaEntries: () => [yoriEntry],
+      getActivePersonaId: () => "yori",
+      getDefaultReflex: () => yoriReflex,
+      ...overrides,
+    });
+
+  it("personaId 省略時は active persona の trigger / response 一覧を返す", async () => {
+    const result = await makeHandler()({});
+    expect(result.personaId).toBe("yori");
+    expect(result.origin).toBe("bundled");
+    expect(result.triggers).toEqual([
+      { id: "yori:git-push-success", description: "git push 成功で celebrate を発火" },
+      { id: "yori:error", description: null },
+    ]);
+    expect(result.responses).toEqual({
+      celebrate: [{ label: "fireworks-and-smile", weight: 1, cooldownMs: null }],
+      "idle-fidget": [
+        { label: "look-around", weight: 3, cooldownMs: null },
+        { label: "subtle-stretch", weight: 1, cooldownMs: 180000 },
+      ],
+    });
+  });
+
+  it("bundled persona は default reflex と同一 reference でも own と報告する", async () => {
+    const result = await makeHandler()({});
+    expect(result.reflexSource).toBe("own");
+  });
+
+  it("reflex を持たない user persona（loader が default を merge 済み）は inherited-default", async () => {
+    const minimal = {
+      id: "minimal",
+      origin: "user" as const,
+      // loader の applyPersonaDefaults 相当：bundled default の reflex を共有
+      persona: { id: "minimal", name: "最小住人", reflex: yoriReflex } as PersonaDefinition,
+    };
+    const result = await makeHandler({
+      listPersonaEntries: () => [yoriEntry, minimal],
+    })({ personaId: "minimal" });
+    expect(result.reflexSource).toBe("inherited-default");
+    // 継承の場合も「実際に発火するもの」として default の中身を列挙する
+    expect(result.triggers).toHaveLength(2);
+  });
+
+  it("独自 reflex を持つ user persona は own", async () => {
+    const custom = {
+      id: "custom",
+      origin: "user" as const,
+      persona: {
+        id: "custom",
+        name: "独自",
+        reflex: { responses: { pleased: { handlers: [{ handler: noop }] } } },
+      } as PersonaDefinition,
+    };
+    const result = await makeHandler({
+      listPersonaEntries: () => [yoriEntry, custom],
+    })({ personaId: "custom" });
+    expect(result.reflexSource).toBe("own");
+    expect(result.responses).toEqual({
+      pleased: [{ label: null, weight: 1, cooldownMs: null }],
+    });
+  });
+
+  it("reflex が無い（fallback も無効な）persona は none で空一覧", async () => {
+    const bare = {
+      id: "bare",
+      origin: "user" as const,
+      persona: { id: "bare", name: "素" } as PersonaDefinition,
+    };
+    const result = await makeHandler({
+      listPersonaEntries: () => [yoriEntry, bare],
+    })({ personaId: "bare" });
+    expect(result.reflexSource).toBe("none");
+    expect(result.triggers).toEqual([]);
+    expect(result.responses).toEqual({});
+  });
+
+  it("未登録の personaId は既知 id 一覧つきで throw する", async () => {
+    await expect(makeHandler()({ personaId: "ghost" })).rejects.toThrow(/known: yori/);
+  });
+
+  it("active も personaId も無ければ throw する", async () => {
+    await expect(makeHandler({ getActivePersonaId: () => null })({})).rejects.toThrow(
+      /no active persona/,
+    );
   });
 });
