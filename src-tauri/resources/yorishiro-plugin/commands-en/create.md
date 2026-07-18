@@ -275,8 +275,9 @@ export default {
 };
 ```
 
-5. If switching now, do not edit `~/.yorishiro/config.json` directly. Use the say-goodbye switch below
-6. If creating only, briefly tell the user the persona was created
+5. Ask the user whether to prepare a VRM (body) for this persona. If yes, have them paste the path, validate it with `vrm_validate({ "path": "<path>" })`, then copy it to `~/.yorishiro/packs/<id>/avatar.vrm`. This is where the persona's body lives — the say-goodbye switch picks it up from here. If not, the current body carries over
+6. If switching now, do not edit `~/.yorishiro/config.json` directly. Use the say-goodbye switch below
+7. If creating only, briefly tell the user the persona was created
 
 ### Say Goodbye and Switch
 
@@ -284,7 +285,7 @@ When the user wants to switch immediately after creating a new persona, say good
 
 This goodbye is a one-time scene the user will remember. Do not make it a formality.
 
-1. Ask the user whether the VRM (avatar body) should switch too. If yes, have them paste the `.vrm` file path and validate it **now** with `vrm_validate({ "path": "<path>" })` (if invalid, explain why and let them re-enter or keep the current body). Do not switch the model here — pass the validated path in step 5 and the swap happens during the curtain, so the new body is already there when the curtain opens
+1. Decide the destination body. First check the destination pack for `~/.yorishiro/packs/<id>/avatar.vrm`; if it exists, validate it **now** with `vrm_validate({ "path": "<path>" })` and use it (a brief "switching to <name>'s body" to the user is enough). If not, ask the user whether the VRM (avatar body) should switch too; if yes, have them paste the `.vrm` file path and validate it (if invalid, explain why and let them re-enter or keep the current body). Do not switch the model here — pass the validated path in step 5 and the swap happens during the curtain, so the new body is already there when the curtain opens
 2. Read your journal with `journal_read` (use a wider `days` window if needed)
 3. If there are concrete memories, enter theater with `ui_activate({ "id": "theater" })`
 4. Say goodbye in the current resident's voice, touching a few concrete journal memories. Aim for roughly 75-150 words — about 30-60 seconds when spoken; treat the time as a guideline, not a limit
