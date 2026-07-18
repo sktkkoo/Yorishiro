@@ -17,7 +17,7 @@ Yorishiro is an app where an AI "lives" in a terminal. The sidebar character obs
 
 | Type | What it defines | Example |
 |---|---|---|
-| **persona** | Character personality, reactions, body, voice, and space. md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `yori` |
+| **persona** | Character personality (speech) and reflexes (body habits). md-first: `manifest.json` + `persona.md` + minimal `persona.js` | `yori` |
 | **effect** | Temporary visual effects on screen | `screen-shake`, `text-physics`, `fireworks-volley` |
 | **amenity** | Functional amenities such as timers or music playback, plus MCP tools. Local-trusted and has `system.exec` | `pomodoro`, `music-shelf` |
 | **scene** | The resident's place: background / foreground layers, R3F lighting / 3D, terminal colors, UI theme | `simple-room`, `misty-grasslands` |
@@ -236,7 +236,7 @@ Persona is **single-active**. The active persona is selected by `primaryPersona`
 ### persona.js and persona.md
 
 - **`persona.md`**: canonical personality prompt source
-- **`persona.js`**: shape core: id / name / optional reflex / world / logReading
+- **`persona.js`**: shape core: id / name / optional reflex
 - If `persona.js` explicitly provides `thinking.systemPromptAddition`, that wins. Otherwise `persona.md` is injected.
 - Bundled Yori follows the same idea, but uses Vite `?raw`; user packs are read by the runtime loader.
 
@@ -271,7 +271,7 @@ export default {
   id: "<new-persona-id>",
   name: "<display name>",
   // thinking.systemPromptAddition is injected from persona.md.
-  // Add reflex / world / logReading only when overriding defaults.
+  // Add reflex only when overriding defaults (omitting it inherits the bundled default reflexes wholesale).
 };
 ```
 
