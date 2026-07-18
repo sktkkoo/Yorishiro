@@ -2163,9 +2163,26 @@ async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
     Ok(dest.to_string_lossy().to_string())
 }
 
+/// `path` に有効な VRM ファイルが存在するか。存在しなければ Ok(false)、
+/// 存在するが VRM として不正（symlink / 拡張子 / GLB header）なら Err、有効なら Ok(true)。
+/// persona pack 同梱 `avatar.vrm` の存在確認用——不在は正常系なので error にしない。
+fn probe_vrm_source(src_path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(src_path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(e) => return Err(format!("Failed to inspect file: {}", e)),
+        Ok(_) => {}
+    }
+    open_vrm_import_source(src_path).map(|_| true)
+}
+
+#[tauri::command]
+async fn probe_vrm(src: String) -> Result<bool, String> {
+    probe_vrm_source(std::path::Path::new(&src))
+}
+
 #[cfg(test)]
 mod import_vrm_tests {
-    use super::{has_vrm_extension, open_vrm_import_source};
+    use super::{has_vrm_extension, open_vrm_import_source, probe_vrm_source};
     use std::fs;
     use std::path::{Path, PathBuf};
 
@@ -2211,6 +2228,31 @@ mod import_vrm_tests {
     #[test]
     fn rejects_missing_extension() {
         assert!(!has_vrm_extension(Path::new("/some/dir/noext")));
+    }
+
+    #[test]
+    fn probe_reports_missing_file_as_false() {
+        let dir = tmp_dir("probe-missing");
+        assert_eq!(probe_vrm_source(&dir.join("avatar.vrm")), Ok(false));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn probe_reports_valid_vrm_as_true() {
+        let dir = tmp_dir("probe-valid");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, minimal_glb_bytes()).expect("write");
+        assert_eq!(probe_vrm_source(&path), Ok(true));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn probe_reports_existing_but_invalid_file_as_error() {
+        let dir = tmp_dir("probe-invalid");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, b"not a glb").expect("write");
+        assert!(probe_vrm_source(&path).is_err());
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -2306,6 +2348,7 @@ pub fn run() {
             pty_attach,
             pty_detach,
             import_vrm,
+            probe_vrm,
             poll_hook_signals,
             user_home_dir,
             yorishiro_home_dir,
