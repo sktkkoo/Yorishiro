@@ -399,6 +399,12 @@ export interface SyntheticEvent {
  */
 export interface Trigger {
   readonly id: string;
+  /**
+   * 人間可読の発火条件の一文（例:「git push 成功で celebrate を発火」）。
+   * match 関数のコードは外から introspect できないため、`persona_reflex_list`
+   * はこの宣言を一覧に載せる。pack 作者は書くことを推奨。
+   */
+  readonly description?: string;
   /** 複数 trigger が同じ event に match したときの優先度（大きいほど先） */
   readonly priority?: number;
   /**
