@@ -99,17 +99,6 @@ export default {
       // ... 他の reaction も同じ形で
     },
   },
-
-  world: {
-    body: 'vrm:default',      // 既存 VRM の shared ref
-    voice: 'voice:default',
-  },
-
-  logReading: {
-    readWhen: { kind: 'session-boundary' },
-    framing: 'own',
-    windowSize: 10,
-  },
 } satisfies PersonaDefinition;
 ```
 

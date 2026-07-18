@@ -47,8 +47,6 @@ const validPersonaPack = {
   name: "User Persona",
   thinking: { systemPromptAddition: "" },
   reflex: { responses: {} },
-  world: { body: "", voice: "" },
-  logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
 } as unknown as PersonaDefinition;
 
 const validUiPack = {
@@ -1061,8 +1059,6 @@ describe("loadSingleUserPack", () => {
               name: "MD 住人",
               // thinking なし — loader が persona.md から inject する
               reflex: { responses: {} },
-              world: { body: "", voice: "" },
-              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
         },
@@ -1113,8 +1109,6 @@ describe("loadSingleUserPack", () => {
               name: "明示住人",
               thinking: { systemPromptAddition: "js で明示したプロンプト" },
               reflex: { responses: {} },
-              world: { body: "", voice: "" },
-              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
         },
@@ -1159,8 +1153,6 @@ describe("loadSingleUserPack", () => {
               name: "MD 無し住人",
               thinking: { systemPromptAddition: "js 側のプロンプト" },
               reflex: { responses: {} },
-              world: { body: "", voice: "" },
-              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
         },
@@ -1210,8 +1202,6 @@ describe("loadSingleUserPack", () => {
               name: "素の住人",
               // thinking なし、md も 404 → systemPromptAddition は undefined のまま
               reflex: { responses: {} },
-              world: { body: "", voice: "" },
-              logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
             },
           }),
         },
@@ -1251,8 +1241,6 @@ describe("loadSingleUserPack", () => {
           "mischievous-shoot": { handlers: [{ handler: async () => {} }] },
         },
       },
-      world: { body: "vrm:default", voice: "voice:default" },
-      logReading: { readWhen: { kind: "session-boundary" }, framing: "own", windowSize: 10 },
     } satisfies PersonaDefinition;
 
     const originalFetch = globalThis.fetch;
@@ -1289,8 +1277,6 @@ describe("loadSingleUserPack", () => {
       expect(registered[0].persona.id).toBe("minimal-persona");
       expect(registered[0].persona.thinking?.systemPromptAddition).toBe("私は最小住人。");
       expect(registered[0].persona.reflex).toBe(defaults.reflex);
-      expect(registered[0].persona.world).toBe(defaults.world);
-      expect(registered[0].persona.logReading).toBe(defaults.logReading);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -27,35 +27,6 @@ export interface PersonaReactionSet {
   readonly handlers: ReadonlyArray<WeightedPersonaHandler>;
 }
 
-// ─── Log reading policy ───────────────────────────────────
-
-/**
- * Persona の第四の軸：ログ参照ポリシー。
- * 思考層が反射層ログをいつ、どう読むかを定義する。
- * persona の性格の深い部分を決定する。
- */
-export interface LogReadingPolicy {
-  /** いつログを読むか */
-  readonly readWhen:
-    | { kind: "never" } // 没頭型
-    | { kind: "session-boundary" } // 内省型（区切りで振り返る）
-    | { kind: "on-query" } // 尋ねられたときだけ
-    | { kind: "periodic"; intervalMs: number } // 周期的
-    | { kind: "continuous" }; // 自意識過剰型
-
-  /** 読んだ内容をどう扱うか */
-  readonly framing:
-    | "own" // 内省型・自意識過剰型：「自分が X した」
-    | "distant" // 解離型：「身体が X したらしい」
-    | "absent"; // 没頭型：読むが使わない
-
-  /** 読む量（直近 N 件） */
-  readonly windowSize: number;
-
-  /** どれくらい過去まで遡るか（ms） */
-  readonly lookbackMs?: number;
-}
-
 // ─── PersonaDefinition ────────────────────────────────────
 
 /**
@@ -70,10 +41,13 @@ export interface LogReadingPolicy {
  *   name: 'わたし',
  *   thinking: { systemPromptAddition: '...' }, // optional — persona.md から loader が inject することもある
  *   reflex: { responses: {} },
- *   world: { body: 'vrm:default', voice: 'voice:default' },
- *   logReading: { readWhen: { kind: 'session-boundary' }, framing: 'own', windowSize: 10 },
  * } satisfies PersonaDefinition;
  * ```
+ *
+ * 軸は思考（thinking）と反射（reflex）の二つ。かつて存在した world / logReading 軸は
+ * 2026-07-18 に削除した（宣言のみで runtime に消費者がいなかった）。空間（scene）は
+ * workspace に紐づくため persona は選ばない。VRM / voice の persona 連動切替は
+ * この型の軸としてではなく別の形で設計する（design-record 2026-07-18-persona-scope-review.md）。
  */
 export interface PersonaDefinition {
   /** pack id。kebab-case */
@@ -113,23 +87,4 @@ export interface PersonaDefinition {
      */
     readonly responses: Partial<Record<ReactionType, PersonaReactionSet>>;
   };
-
-  // ─── 世界の選択（三次）────
-
-  /**
-   * optional — minimal persona pack では省略可（既存 world 設定が維持される）。
-   *
-   * 空間（scene）は workspace に紐づくため persona は選ばない。
-   */
-  readonly world?: {
-    /** 身体 VRM の ref。'vrm:default' など shared ref か、local ref */
-    readonly body: string;
-    /** 声の ref */
-    readonly voice: string;
-  };
-
-  // ─── 第四の軸：ログ参照ポリシー ────
-
-  /** optional — minimal persona pack では省略可（既存 policy が維持される）。 */
-  readonly logReading?: LogReadingPolicy;
 }

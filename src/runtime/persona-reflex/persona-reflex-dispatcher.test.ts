@@ -54,8 +54,6 @@ const makePersona = (overrides: MakePersonaOverrides = {}): PersonaDefinition =>
     id: overrides.id ?? "alice",
     name: overrides.name ?? "Alice",
     thinking: { systemPromptAddition: "" },
-    world: { body: "", voice: "" },
-    logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
   };
   if (overrides.noReflex === true) return base;
   return {

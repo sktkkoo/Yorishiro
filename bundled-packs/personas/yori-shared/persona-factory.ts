@@ -434,20 +434,5 @@ export function createYoriPersona(args: {
         },
       },
     },
-
-    // ─── 世界の選択 ────────────────────────────────────
-
-    world: {
-      body: "vrm:default",
-      voice: "voice:default",
-    },
-
-    // ─── ログ参照ポリシー ──────────────────────────────
-
-    logReading: {
-      readWhen: { kind: "session-boundary" }, // 内省型
-      framing: "own",
-      windowSize: 10,
-    },
   } satisfies PersonaDefinition;
 }

@@ -12,8 +12,6 @@ import {
 const persona: PersonaDefinition = {
   id: "singer",
   name: "Singer",
-  world: { body: "", voice: "" },
-  logReading: { readWhen: { kind: "never" }, framing: "absent", windowSize: 0 },
 };
 
 const entry = (overrides: Partial<PersonaEntry> = {}): PersonaEntry => ({
