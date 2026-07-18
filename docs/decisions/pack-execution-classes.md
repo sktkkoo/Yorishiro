@@ -278,7 +278,7 @@ JS / TS static scan は正規表現ではなく AST で行う。`import`, dynami
 | local authoring pack | public artifact | 備考 |
 |---|---|---|
 | `scene.js` | `scene.json` or manifest 内 `scene` field | JS を評価しない `declarative` scene に落とす |
-| `persona.js` + `persona.md` | persona data JSON + `persona.md` | prompt / reflex mapping / world 設定だけを schema 化 |
+| `persona.js` + `persona.md` | persona data JSON + `persona.md` | prompt / reflex mapping だけを schema 化 |
 | `effect.js` | effect recipe JSON | runtime primitive で表現できる演出だけ公開可能 |
 | `amenity.js` | 将来の `isolated-js` bundle | capability permission と RPC API に合わせる。MVP では公開しない |
 | `ui.js` / `ui.tsx` / `ambient-ui.js` | 原則変換不可 | 将来 isolated UI または curated trusted review が必要 |
