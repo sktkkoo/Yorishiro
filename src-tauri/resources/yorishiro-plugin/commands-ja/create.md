@@ -273,6 +273,16 @@ export default {
 6. 切り替える場合は `~/.yorishiro/config.json` を直接編集しない。下記「お別れして切り替える」を行う
 7. 作るだけで切り替えない場合は、作成完了を短く伝える
 
+### 反射（reflex）を設計する
+
+反射は「どの出来事に体がどう動くか」——口調と同格の、人格のもう半分。省略もできるが、挙動を知った上で選ぶ：
+
+- **reflex を書かない場合、bundled default（Yori）の反射を丸ごと継承する**。エラーで顔をしかめ、push 成功で花火を上げ、長い離席でいたずらの銃を撃つ——真面目な persona には合わないことがある。合わなければ reflex を明示する（1 つでも書けば継承は切れて、全て自前になる）
+- 反応の語彙は standard vocabulary（`startled` / `contemplative` / `pleased` / `distressed` / `curious` / `focused` / `acknowledging` / `idle-fidget` / `confused` / `bored`）+ 任意の custom 文字列。まず 2〜3 反応から始めて、実機で観察してから足す
+- custom trigger には `description`（人間可読の発火条件の一文）を書く。match 関数のコードは外から読めないため、これが一覧表示に載る唯一の説明になる
+- 既存 persona が何に反応するかは `persona_reflex_list({ "personaId": "<id>" })` で確認できる（personaId 省略で active persona）。`reflexSource: "inherited-default"` なら bundled default の丸ごと継承
+- 参考実装: `bundled-packs/personas/yori-shared/persona-factory.ts`
+
 ### お別れして切り替える
 
 新規 persona 作成後にそのまま切り替える場合は、今の住人としてお別れを言ってから `persona_goodbye_switch` を呼ぶ。`primaryPersona` を直接書き換えない。
