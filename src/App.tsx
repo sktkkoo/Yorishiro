@@ -1802,6 +1802,7 @@ function App() {
         const {
           createListPacksHandler,
           createPackDiagnoseHandler,
+          createPersonaReflexListHandler,
           createDisablePackHandler,
           createEnablePackHandler,
           createGetPackStateHandler,
@@ -2161,6 +2162,12 @@ function App() {
               const dest = await invoke<string>("import_vrm", { src: path });
               localStorage.setItem(VRM_STORAGE_KEY, dest);
             },
+          }),
+          "persona-reflex-list": createPersonaReflexListHandler({
+            listPersonaEntries: () => personaRegistry.listEntries(),
+            getActivePersonaId: () => personaRegistry.getActivePersonaId(),
+            // loader の personaDefaults と同じ選択（reference 比較で継承判定するため）
+            getDefaultReflex: () => (resolvedLanguage === "ja" ? yoriJaPack : yoriEnPack).reflex,
           }),
           // ── Presence intensity ────────────────────────────
           "presence.set-intensity": createPresenceSetIntensityHandler({
