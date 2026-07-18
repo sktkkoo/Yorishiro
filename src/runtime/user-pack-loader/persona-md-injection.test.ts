@@ -51,14 +51,12 @@ describe("injectPersonaPrompt", () => {
     expect(result.thinking?.systemPromptAddition).toBe("trimmed content");
   });
 
-  it("preserves other fields (reflex / world / logReading)", () => {
+  it("preserves other fields (reflex)", () => {
     const defWithOthers: PersonaDefinition = {
       ...baseDef,
       reflex: { customTriggers: [], responses: {} },
-      world: { body: "vrm:x", voice: "voice:y", space: "space:z" },
     } as unknown as PersonaDefinition;
     const result = injectPersonaPrompt(defWithOthers, "md content");
     expect(result.reflex).toBe(defWithOthers.reflex);
-    expect(result.world).toBe(defWithOthers.world);
   });
 });

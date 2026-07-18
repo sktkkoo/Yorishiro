@@ -19,7 +19,7 @@
  *     noticed: false、次回以降は true。これは「見る、ゆえに気づく」という
  *     哲学的対応: 観測という行為それ自体が「気づき」を生む。
  *   - tail() は personaId でフィルタしない。persona は sibling の行動を
- *     log 越しに観察できる (LogReadingPolicy.framing で語り口だけが変わる)。
+ *     log 越しに観察できる。
  */
 
 import type { LogAPI, LogEntry, LogEntryWrite, LogFilter } from "@yorishiro/sdk";
@@ -153,7 +153,7 @@ export class LogBridge {
  * bridge's internal filter field.
  *
  * Tail is intentionally NOT personaId-scoped; personas observe the shared
- * log and use LogReadingPolicy.framing to narrate sibling actions.
+ * log and may narrate sibling actions.
  */
 export function createLogAPI(bridge: LogBridge, personaId: string): LogAPI {
   return {

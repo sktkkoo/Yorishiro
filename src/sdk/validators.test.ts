@@ -93,13 +93,20 @@ describe("validatePersonaDefinition", () => {
     ).toThrow(/responses/);
   });
 
-  it("accepts missing world and logReading", () => {
-    // minimal persona は id + name のみで validator を通過する
+  it("accepts minimal persona (id + name のみ)", () => {
     expect(() => validatePersonaDefinition({ id: "a", name: "A" })).not.toThrow();
   });
 
-  it("rejects non-object world when present", () => {
-    expect(() => validatePersonaDefinition({ id: "a", name: "A", world: "bad" })).toThrow(/world/);
+  it("tolerates legacy world / logReading fields as ignored extras", () => {
+    // 2026-07-18 の軸削除以前に書かれた user pack を壊さないための後方互換
+    expect(() =>
+      validatePersonaDefinition({
+        id: "a",
+        name: "A",
+        world: { body: "vrm:default" },
+        logReading: { readWhen: { kind: "never" } },
+      }),
+    ).not.toThrow();
   });
 });
 

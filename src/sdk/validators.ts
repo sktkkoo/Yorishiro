@@ -122,9 +122,10 @@ export function validatePersonaDefinition(pack: unknown): PersonaDefinition {
   const ctx = "PersonaDefinition";
   requireField(pack, "id", (v) => typeof v === "string", "a string", ctx);
   requireField(pack, "name", (v) => typeof v === "string", "a string", ctx);
-  // thinking / reflex / world / logReading は全て optional。
+  // thinking / reflex はともに optional。
   // loader が persona.md から thinking を inject する経路、および minimal persona.js
   // （id + name だけ書いて他を省略）の経路のどちらもサポートするため。
+  // 旧 world / logReading field（2026-07-18 に軸ごと削除）は余剰プロパティとして無視される。
   if (pack.thinking !== undefined) {
     requireField(pack, "thinking", isObject, "an object", ctx);
   }
@@ -137,13 +138,6 @@ export function validatePersonaDefinition(pack: unknown): PersonaDefinition {
       );
     }
   }
-  if (pack.world !== undefined) {
-    requireField(pack, "world", isObject, "an object", ctx);
-  }
-  if (pack.logReading !== undefined) {
-    requireField(pack, "logReading", isObject, "an object", ctx);
-  }
-
   return pack as unknown as PersonaDefinition;
 }
 

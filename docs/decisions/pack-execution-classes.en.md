@@ -278,7 +278,7 @@ Conversion examples:
 | Local authoring pack | Public artifact | Notes |
 |---|---|---|
 | `scene.js` | `scene.json` or manifest `scene` field | Convert to `declarative` scene without JS evaluation |
-| `persona.js` + `persona.md` | Persona data JSON + `persona.md` | Schema-ize only prompt / reflex mapping / world settings |
+| `persona.js` + `persona.md` | Persona data JSON + `persona.md` | Schema-ize only prompt / reflex mapping |
 | `effect.js` | Effect recipe JSON | Only effects expressible via runtime primitives are publishable |
 | `amenity.js` | Future `isolated-js` bundle | Aligned to capability permission and RPC API. Not published in MVP |
 | `ui.js` / `ui.tsx` / `ambient-ui.js` | Generally not convertible | Requires future isolated UI or curated trusted review |
