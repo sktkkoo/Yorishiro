@@ -2922,3 +2922,59 @@ describe("createPersonaReflexListHandler", () => {
     );
   });
 });
+
+describe("createPersonaGoodbyeSwitchHandler avatar.vrm 自動適用", () => {
+  const makeHandler = (
+    calls: string[],
+    resolveAvatarVrm?: (id: string) => Promise<string | null>,
+  ) =>
+    createPersonaGoodbyeSwitchHandler({
+      updateConfig: async () => {},
+      beginCurtainReload: async (prepareReload) => {
+        await prepareReload?.();
+      },
+      markMainSessionRespawnPending: () => {},
+      listPersonaIds: () => ["miko"],
+      reloadPack: async () => ({ ok: true }),
+      waitForFarewell: async () => {},
+      recordFarewell: async () => {},
+      stageVrmPath: async (path) => {
+        calls.push(`stage:${path}`);
+      },
+      resolveAvatarVrm,
+    });
+
+  it("vrmPath 省略時は切替先 pack の avatar.vrm を自動適用する", async () => {
+    const calls: string[] = [];
+    const handler = makeHandler(calls, async (id) => `/packs/${id}/avatar.vrm`);
+    await handler({ id: "miko" });
+    expect(calls).toEqual(["stage:/packs/miko/avatar.vrm"]);
+  });
+
+  it("avatar.vrm が無ければ姿は引き継ぐ（stage しない）", async () => {
+    const calls: string[] = [];
+    const handler = makeHandler(calls, async () => null);
+    await handler({ id: "miko" });
+    expect(calls).toEqual([]);
+  });
+
+  it("明示 vrmPath は avatar.vrm より優先され、resolver は呼ばれない", async () => {
+    const calls: string[] = [];
+    const handler = makeHandler(calls, async () => {
+      calls.push("resolve");
+      return "/packs/miko/avatar.vrm";
+    });
+    await handler({ id: "miko", vrmPath: "/explicit/body.vrm" });
+    expect(calls).toEqual(["stage:/explicit/body.vrm"]);
+  });
+
+  it("resolver が throw しても切替は続行し、姿は据え置く", async () => {
+    const calls: string[] = [];
+    const handler = makeHandler(calls, async () => {
+      throw new Error("broken avatar.vrm");
+    });
+    const result = await handler({ id: "miko" });
+    expect(result).toEqual({ active: "miko", reloading: true });
+    expect(calls).toEqual([]);
+  });
+});

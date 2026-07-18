@@ -1758,6 +1758,11 @@ export interface PersonaGoodbyeSwitchDeps {
    * があるため、実装側で scope 内への import（複製）を挟むこと。
    */
   readonly stageVrmPath: (path: string) => Promise<void>;
+  /**
+   * 切替先 pack 同梱 avatar.vrm の解決（無ければ null）。request で vrmPath が
+   * 明示された場合は使わない（明示が最優先）。
+   */
+  readonly resolveAvatarVrm?: (personaId: string) => Promise<string | null>;
 }
 
 export interface PersonaGoodbyeSwitchResult {
@@ -1800,9 +1805,20 @@ export function createPersonaGoodbyeSwitchHandler(deps: PersonaGoodbyeSwitchDeps
       } catch (error) {
         console.error("[persona] farewell record failed; switching anyway.", error);
       }
-      if (vrmPath !== null) {
+      // 明示 vrmPath が最優先。無ければ切替先 pack 同梱の avatar.vrm を自動適用する
+      // （「pack dir の avatar.vrm = その persona の姿」規約）。どちらも無ければ
+      // 今の姿を引き継ぐ。失敗しても切替自体は止めない。
+      let stagePath = vrmPath;
+      if (stagePath === null && deps.resolveAvatarVrm !== undefined) {
         try {
-          await deps.stageVrmPath(vrmPath);
+          stagePath = await deps.resolveAvatarVrm(id);
+        } catch (error) {
+          console.error("[persona] avatar.vrm resolution failed; keeping current body.", error);
+        }
+      }
+      if (stagePath !== null) {
+        try {
+          await deps.stageVrmPath(stagePath);
         } catch (error) {
           console.error("[persona] VRM staging failed; switching persona only.", error);
         }

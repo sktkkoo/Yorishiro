@@ -154,6 +154,7 @@ import {
   createStubPersonaContextFactory,
   getPersonaRegistry,
 } from "./runtime/persona-registry";
+import { resolvePersonaAvatarVrm } from "./runtime/persona-registry/avatar-vrm";
 import {
   type ApplyPresenceOptions,
   type ApplyPresenceResult,
@@ -2162,6 +2163,14 @@ function App() {
               const dest = await invoke<string>("import_vrm", { src: path });
               localStorage.setItem(VRM_STORAGE_KEY, dest);
             },
+            resolveAvatarVrm: (personaId) =>
+              resolvePersonaAvatarVrm(
+                {
+                  getEntry: (pid) => personaRegistry.listEntries().find((e) => e.id === pid),
+                  probeVrm: (path) => invoke<boolean>("probe_vrm", { src: path }),
+                },
+                personaId,
+              ),
           }),
           "persona-reflex-list": createPersonaReflexListHandler({
             listPersonaEntries: () => personaRegistry.listEntries(),
@@ -3279,6 +3288,29 @@ function App() {
           getHealthReport: collectAppHealthReport,
           setPrimaryPersona: async (id) => {
             await beginCurtainReload(async () => {
+              // 「pack dir の avatar.vrm = その persona の姿」規約：切替先が姿を
+              // 同梱していれば暗転中に次回 boot の VRM を差し替える。無ければ今の
+              // 姿を引き継ぐ。失敗しても切替は止めない（goodbye-switch と同じ）。
+              if (id !== null) {
+                try {
+                  const avatar = await resolvePersonaAvatarVrm(
+                    {
+                      getEntry: (pid) => personaRegistry.listEntries().find((e) => e.id === pid),
+                      probeVrm: (path) => invoke<boolean>("probe_vrm", { src: path }),
+                    },
+                    id,
+                  );
+                  if (avatar !== null) {
+                    const dest = await invoke<string>("import_vrm", { src: avatar });
+                    localStorage.setItem(VRM_STORAGE_KEY, dest);
+                  }
+                } catch (error) {
+                  console.error(
+                    "[persona] avatar.vrm staging failed; switching persona only.",
+                    error,
+                  );
+                }
+              }
               await updateConfig({ primaryPersona: id });
               markMainSessionFreshSpawnPending();
             });

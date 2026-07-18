@@ -271,6 +271,7 @@ pub struct PersonaGoodbyeSwitchRequest {
     pub id: String,
     /// 切替と同時に適用する VRM ファイルパス（省略可）。事前に `vrm_validate`
     /// で検証しておく。適用は暗転中——カーテンが明けたとき新しい姿になっている。
+    /// 省略時は切替先 pack 同梱の `avatar.vrm` があれば自動適用される。
     #[serde(default, rename = "vrmPath")]
     pub vrm_path: Option<String>,
 }
@@ -991,7 +992,7 @@ impl Yorishiro {
 
     /// persona 新規作成後、現 persona がお別れを言ってから active persona を切り替える。
     #[tool(
-        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a goodbye grounded in a few concrete journal memories (roughly 30-60 seconds of speech). It waits for the goodbye voice to finish, then persists primaryPersona and reloads behind the curtain so the next user message uses the new persona."
+        description = "Switch to a newly-created persona after the current persona has said goodbye. Call this after saying a goodbye grounded in a few concrete journal memories (roughly 30-60 seconds of speech). It waits for the goodbye voice to finish, then persists primaryPersona and reloads behind the curtain so the next user message uses the new persona. If the destination pack bundles an avatar.vrm, it is applied automatically; pass vrmPath only to override with a different body."
     )]
     async fn persona_goodbye_switch(
         &self,
@@ -1040,7 +1041,7 @@ impl Yorishiro {
 
     /// VRM パスの事前検証。モデルの切替は行わない。
     #[tool(
-        description = "Validate a VRM avatar file path (existence, .vrm extension, glTF binary magic; supports ~ expansion). Does NOT switch the model. Use before persona_goodbye_switch: pass the returned path as its vrmPath so the avatar is swapped during the curtain and the new persona appears with its new body."
+        description = "Validate a VRM avatar file path (existence, .vrm extension, glTF binary magic; supports ~ expansion). Does NOT switch the model. Use before persona_goodbye_switch when overriding the body: pass the returned path as its vrmPath so the avatar is swapped during the curtain. Not needed when the destination pack bundles an avatar.vrm — that is applied automatically."
     )]
     async fn vrm_validate(
         &self,
