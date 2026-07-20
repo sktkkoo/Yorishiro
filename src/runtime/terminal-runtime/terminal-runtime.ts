@@ -75,6 +75,35 @@ export const DEFAULT_TERMINAL_THEME: XTermTheme = {
 };
 
 /**
+ * terminal 背景色を指定 alpha の rgba に変換する。
+ * scene が既に rgb/rgba を渡している場合も色成分を保ち、不正値は既定背景色へ戻す。
+ */
+export function hexToRgba(background: string, alpha: number): string {
+  const clampedAlpha = clamp01(alpha);
+  const hex = /^#([0-9a-f]{6})$/i.exec(background.trim());
+  if (hex) {
+    const value = Number.parseInt(hex[1], 16);
+    return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${clampedAlpha})`;
+  }
+
+  const rgb =
+    /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*(?:\d+(?:\.\d+)?|\.\d+)\s*)?\)$/i.exec(
+      background.trim(),
+    );
+  if (rgb) {
+    const channels = rgb.slice(1, 4).map(Number);
+    if (channels.every((channel) => Number.isFinite(channel) && channel >= 0 && channel <= 255)) {
+      return `rgba(${channels[0]},${channels[1]},${channels[2]},${clampedAlpha})`;
+    }
+  }
+
+  if (background !== DEFAULT_TERMINAL_THEME.background) {
+    return hexToRgba(DEFAULT_TERMINAL_THEME.background ?? "#141619", clampedAlpha);
+  }
+  return `rgba(20,22,25,${clampedAlpha})`;
+}
+
+/**
  * TerminalRuntime implementation. See types.ts for the contract.
  *
  * Key design choices (internal design-record: 2026-04-17-terminal-runtime-singleton.md):
@@ -129,9 +158,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private disposed = false;
   private hidden = false;
   private opacity = 1;
-  private bgTransparent = false;
+  private bgAlpha = 1;
   private attentionCueIntensity = 0;
-  /** 直近 setTheme でマージされた背景色。bgTransparent 解除時の復帰先。 */
+  /** 直近 setTheme で明示された背景色。背景 alpha の色元・不透明化時の復帰先。 */
   private currentThemeBackground: string | undefined;
   private startGeneration = 0;
   private ptyExitUnlisten: (() => void) | null = null;
@@ -166,8 +195,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       fontSize: 13,
       cursorBlink: true,
       allowProposedApi: true,
-      // 透明 background を合成可能にする。不透明 background のときは描画結果が
-      // 同一（無害）で、setBackgroundTransparent(true) で初めて効く。
+      // alpha 付き background を合成可能にする。不透明 background のときは描画結果が
+      // 同一（無害）で、setBackgroundOpacity(<1) で初めて効く。
       allowTransparency: true,
       scrollback: 5000,
     });
@@ -303,24 +332,34 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   }
 
   /**
-   * layout 由来：terminal の背景のみ透明にする（文字は前景色で不透明のまま）。
-   * xterm theme.background を透明色にし、singleton container の CSS 背景も透明化する。
-   * setTheme は scene 由来の不透明 background を上書きするため、bgTransparent 中は
-   * setTheme 後に再適用する（hidden/opacity の flag-reassert と同型）。
+   * layout 由来：terminal の背景だけに不透明度（0-1）を適用する。
+   * 文字は前景色で不透明のまま、背景色には直近 scene theme の色を使う。
    */
+  setBackgroundOpacity(alpha: number): void {
+    this.bgAlpha = clamp01(alpha);
+    this.applyBackgroundOpacity();
+  }
+
+  getBackgroundOpacity(): number {
+    return this.bgAlpha;
+  }
+
+  /** @deprecated setBackgroundOpacity(transparent ? 0 : 1) を使う。 */
   setBackgroundTransparent(transparent: boolean): void {
-    this.bgTransparent = transparent;
-    this.applyBackgroundTransparency();
+    this.setBackgroundOpacity(transparent ? 0 : 1);
   }
 
   /**
-   * bgTransparent フラグを theme.background と container の見た目に反映する。
-   * 透明時は theme.background を rgba(0,0,0,0) にし、背景を塗る各 xterm child を
-   * scoped class で透過させる。解除時は直近 setTheme の背景色（無ければ既定）へ戻す。
+   * 背景 alpha を theme.background と container の見た目に反映する。
+   * alpha < 1 では背景を塗る各 xterm child も scoped class で透過させる。
    */
-  private applyBackgroundTransparency(): void {
-    if (this.bgTransparent) {
-      this.term.options.theme = { ...this.term.options.theme, background: "rgba(0,0,0,0)" };
+  private applyBackgroundOpacity(): void {
+    if (this.bgAlpha < 1) {
+      const background = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
+      this.term.options.theme = {
+        ...this.term.options.theme,
+        background: hexToRgba(background ?? "#141619", this.bgAlpha),
+      };
       this.xtermContainer.style.background = "transparent";
     } else {
       const restored = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
@@ -328,7 +367,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       // 空文字で inline 背景を外し CSS（--yorishiro-bg）へ戻す。
       this.xtermContainer.style.background = "";
     }
-    this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgTransparent);
+    this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgAlpha < 1);
   }
 
   setAttentionCueIntensity(intensity: number): void {
@@ -494,16 +533,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   setTheme(theme: Partial<XTermTheme>): void {
     if (this.disposed) return;
     this.term.options.theme = { ...this.term.options.theme, ...theme };
-    // bgTransparent 解除時の復帰先。merged theme から拾うと、bgTransparent 中に
+    // 背景不透明化時の復帰先。merged theme から拾うと、背景 alpha 適用中に
     // background キーを持たない partial setTheme が来たとき stale な
     // "rgba(0,0,0,0)" を復帰先に焼き込んでしまう（stuck-transparent）。
     // 引数 theme が明示的に string background を運んだときだけ更新する。
     if (typeof theme.background === "string") {
       this.currentThemeBackground = theme.background;
     }
-    // bgTransparent が立っているなら scene 由来の不透明 background を透明で
-    // 再上書きする（hidden/opacity の flag-reassert と同型）。
-    this.applyBackgroundTransparency();
+    // scene 由来の background が変わっても保持中の alpha を再適用する。
+    this.applyBackgroundOpacity();
     // Theme update can leave renderer dimensions stale when scene switches
     // coincide with layout changes, so force a fresh fit before refresh.
     this.refit();
