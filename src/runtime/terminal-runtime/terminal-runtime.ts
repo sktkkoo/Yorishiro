@@ -356,16 +356,19 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private applyBackgroundOpacity(): void {
     if (this.bgAlpha < 1) {
       const background = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
+      const alphaBackground = hexToRgba(background ?? "#141619", this.bgAlpha);
       this.term.options.theme = {
         ...this.term.options.theme,
-        background: hexToRgba(background ?? "#141619", this.bgAlpha),
+        background: alphaBackground,
       };
       this.xtermContainer.style.background = "transparent";
+      this.xtermContainer.style.setProperty("--terminal-background-color", alphaBackground);
     } else {
       const restored = this.currentThemeBackground ?? DEFAULT_TERMINAL_THEME.background;
       this.term.options.theme = { ...this.term.options.theme, background: restored };
       // 空文字で inline 背景を外し CSS（--yorishiro-bg）へ戻す。
       this.xtermContainer.style.background = "";
+      this.xtermContainer.style.removeProperty("--terminal-background-color");
     }
     this.xtermContainer.classList.toggle("xterm-bg-transparent", this.bgAlpha < 1);
   }
@@ -1447,6 +1450,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const padBottom = parseFloat(cs.paddingBottom) || 0;
     const w = Math.max(0, Math.floor(rect.width - padLeft - padRight));
     const h = Math.max(0, Math.floor(rect.height - padTop - padBottom));
+    this.xtermContainer.style.setProperty("--terminal-placeholder-pad-left", `${padLeft}px`);
     this.xtermContainer.style.top = `${rect.top + padTop}px`;
     this.xtermContainer.style.left = `${rect.left + padLeft}px`;
     this.xtermContainer.style.width = `${w}px`;

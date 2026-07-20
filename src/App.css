@@ -679,7 +679,7 @@ body,
   background-color: var(--yorishiro-bg);
 }
 
-/* layout 由来：terminal 背景のみ透明化（文字は不透明のまま、背後の
+/* layout 由来：terminal 背景のみ半透明化（文字は不透明のまま、背後の
    character/scene が透ける）。runtime が container に xterm-bg-transparent を
    付けたときだけ各 background-painting layer を透過。通常 terminal は不変。 */
 .xterm-singleton-container.xterm-bg-transparent,
@@ -687,6 +687,19 @@ body,
 .xterm-singleton-container.xterm-bg-transparent .xterm-viewport,
 .xterm-singleton-container.xterm-bg-transparent .xterm-screen {
   background: transparent !important;
+}
+
+/* placeholder の左 padding は文字用に xterm 本体を右へずらすため、そのままだと
+   半透明背景と隣接する枠の間だけ scene が素通しになる。背景板だけ同じ幅ぶん延長する。 */
+.xterm-singleton-container.xterm-bg-transparent::after {
+  position: absolute;
+  top: 0;
+  right: 100%;
+  bottom: 0;
+  width: var(--terminal-placeholder-pad-left, 0px);
+  pointer-events: none;
+  content: "";
+  background: var(--terminal-background-color, transparent);
 }
 
 /* ── Sidebar top row ────────────────────────────────── */

@@ -1159,8 +1159,25 @@ describe("TerminalRuntime", () => {
 
     expect(themeBg()).toBe("rgba(18,52,86,0.5)");
     expect(xtermSingleton().style.background).toBe("transparent");
+    expect(xtermSingleton().style.getPropertyValue("--terminal-background-color")).toBe(
+      "rgba(18,52,86,0.5)",
+    );
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
     expect(runtime.getBackgroundOpacity()).toBe(0.5);
+  });
+
+  it("syncAttachedRect は文字用の左 padding を背景板の延長幅として保持する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const stub = document.createElement("div");
+    stub.style.paddingLeft = "10px";
+    document.body.appendChild(stub);
+
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.getPropertyValue("--terminal-placeholder-pad-left")).toBe("10px");
+
+    runtime.detachContainer();
+    stub.remove();
   });
 
   it("背景 alpha 適用中の setTheme は新しい scene 背景色へ alpha を再適用する", () => {
@@ -1181,6 +1198,7 @@ describe("TerminalRuntime", () => {
     runtime.setBackgroundOpacity(1);
     expect(themeBg()).toBe("#123456");
     expect(xtermSingleton().style.background).toBe("");
+    expect(xtermSingleton().style.getPropertyValue("--terminal-background-color")).toBe("");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
   });
 
