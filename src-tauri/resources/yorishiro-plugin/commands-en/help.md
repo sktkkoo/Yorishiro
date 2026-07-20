@@ -146,7 +146,7 @@ Use `controls_transition({ scope: "common", values, durationMs })` for camera mo
 | Tool | Arguments | Purpose |
 |---|---|---|
 | `ui_sidebar_set(...)` | width, optional durationMs | Set sidebar width in px, optionally animated |
-| `ui_terminal_set(...)` | opacity, optional durationMs | Set terminal opacity, optionally animated |
+| `ui_terminal_set(...)` | optional opacity, backgroundOpacity, durationMs | Set terminal or background opacity, optionally animated |
 
 ### Runtime State
 

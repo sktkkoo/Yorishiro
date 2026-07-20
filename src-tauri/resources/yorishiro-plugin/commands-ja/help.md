@@ -146,7 +146,7 @@ ui pack は `ctx.state` で独自の key-value を持ち、`get_ui_state` / `set
 | tool | 引数 | 説明 |
 |---|---|---|
 | `ui_sidebar_set(...)` | width, durationMs? | サイドバー幅を設定（px、durationMs で滑らか補間） |
-| `ui_terminal_set(...)` | opacity, durationMs? | ターミナル透明度を設定（durationMs で滑らか補間） |
+| `ui_terminal_set(...)` | opacity?, backgroundOpacity?, durationMs? | ターミナル全体または背景のみの不透明度を設定（durationMs で滑らか補間） |
 
 ### 全体 state
 

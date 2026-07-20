@@ -2110,6 +2110,15 @@ function App() {
               const ids = queryMountedSessionIds();
               return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getOpacity();
             },
+            setTerminalBackgroundOpacity: (value) => {
+              for (const id of queryMountedSessionIds()) {
+                getTerminalRuntime(id).setBackgroundOpacity(value);
+              }
+            },
+            getTerminalBackgroundOpacity: () => {
+              const ids = queryMountedSessionIds();
+              return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getBackgroundOpacity();
+            },
             tweenManager: getThreeRuntime().getTweenManager(),
           }),
           "ui.sidebar.set": createUiSidebarSetHandler({

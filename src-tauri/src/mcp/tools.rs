@@ -323,12 +323,16 @@ fn validate_vrm_file(path: &str) -> Result<std::path::PathBuf, String> {
     Ok(expanded)
 }
 
-/// `ui_terminal_set` の引数。terminal container の opacity を操作する。
+/// `ui_terminal_set` の引数。terminal 全体と背景の opacity を操作する。
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UiTerminalSetRequest {
     /// Terminal container opacity 0-1。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opacity: Option<f32>,
+    /// Terminal background opacity 0-1。文字の opacity には影響しない。
+    #[serde(rename = "backgroundOpacity")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub background_opacity: Option<f32>,
     /// 補間時間（ms）。省略 / 0 で即時反映。
     #[serde(rename = "durationMs")]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -843,8 +847,10 @@ impl Yorishiro {
         emit_to(&self.app_handle, "body.motion.cancel", json!({})).await
     }
 
-    /// terminal container の opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
-    #[tool(description = "Set terminal opacity. Supports smooth interpolation via durationMs.")]
+    /// terminal 全体または背景の opacity を設定する。durationMs > 0 で TweenManager による滑らか補間。
+    #[tool(
+        description = "Set terminal or terminal-background opacity. Supports smooth interpolation via durationMs."
+    )]
     async fn ui_terminal_set(
         &self,
         Parameters(req): Parameters<UiTerminalSetRequest>,
@@ -854,6 +860,7 @@ impl Yorishiro {
             "ui.terminal.set",
             json!({
                 "opacity": req.opacity,
+                "backgroundOpacity": req.background_opacity,
                 "durationMs": req.duration_ms,
             }),
         )

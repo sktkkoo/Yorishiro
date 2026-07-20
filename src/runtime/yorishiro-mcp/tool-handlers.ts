@@ -1508,11 +1508,14 @@ export function __resetMcpMotionHandleForTesting(): void {
 export interface UiTerminalSetDeps {
   readonly setTerminalOpacity: (value: number) => void;
   readonly getTerminalOpacity: () => number;
+  readonly setTerminalBackgroundOpacity: (value: number) => void;
+  readonly getTerminalBackgroundOpacity: () => number;
   readonly tweenManager: TweenManager;
 }
 
 export interface UiTerminalSetResult {
   readonly opacity?: number;
+  readonly backgroundOpacity?: number;
   readonly tweening?: boolean;
 }
 
@@ -1521,26 +1524,53 @@ export function createUiTerminalSetHandler(deps: UiTerminalSetDeps) {
     const r = requestRecord(request);
     const opacity =
       typeof r.opacity === "number" && Number.isFinite(r.opacity) ? clamp01(r.opacity) : undefined;
+    const backgroundOpacity =
+      typeof r.backgroundOpacity === "number" && Number.isFinite(r.backgroundOpacity)
+        ? clamp01(r.backgroundOpacity)
+        : undefined;
     const durationMs =
       typeof r.durationMs === "number" && Number.isFinite(r.durationMs) && r.durationMs > 0
         ? r.durationMs
         : 0;
 
-    if (opacity === undefined) {
+    if (opacity === undefined && backgroundOpacity === undefined) {
       return {};
     }
 
     if (durationMs > 0) {
-      deps.tweenManager.start("ui.terminal.opacity", opacity, durationMs, deps.setTerminalOpacity, {
-        from: deps.getTerminalOpacity(),
-      });
-      return { opacity, tweening: true };
+      if (opacity !== undefined) {
+        deps.tweenManager.start(
+          "ui.terminal.opacity",
+          opacity,
+          durationMs,
+          deps.setTerminalOpacity,
+          {
+            from: deps.getTerminalOpacity(),
+          },
+        );
+      }
+      if (backgroundOpacity !== undefined) {
+        deps.tweenManager.start(
+          "ui.terminal.backgroundOpacity",
+          backgroundOpacity,
+          durationMs,
+          deps.setTerminalBackgroundOpacity,
+          { from: deps.getTerminalBackgroundOpacity() },
+        );
+      }
+      return { opacity, backgroundOpacity, tweening: true };
     }
 
-    // 即時: active な tween を cancel + 直接 set
-    deps.tweenManager.cancel("ui.terminal.opacity");
-    deps.setTerminalOpacity(opacity);
-    return { opacity };
+    // 即時: 指定された値に対応する active tween だけを cancel + 直接 set
+    if (opacity !== undefined) {
+      deps.tweenManager.cancel("ui.terminal.opacity");
+      deps.setTerminalOpacity(opacity);
+    }
+    if (backgroundOpacity !== undefined) {
+      deps.tweenManager.cancel("ui.terminal.backgroundOpacity");
+      deps.setTerminalBackgroundOpacity(backgroundOpacity);
+    }
+    return { opacity, backgroundOpacity };
   };
 }
 

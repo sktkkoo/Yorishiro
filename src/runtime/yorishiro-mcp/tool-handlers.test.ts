@@ -2046,6 +2046,8 @@ describe("createUiTerminalSetHandler", () => {
     const handler = createUiTerminalSetHandler({
       setTerminalOpacity: () => {},
       getTerminalOpacity: () => 1,
+      setTerminalBackgroundOpacity: () => {},
+      getTerminalBackgroundOpacity: () => 1,
       tweenManager: tm,
     });
     const result = await handler({ opacity: 0.5, durationMs: 400 });
@@ -2061,11 +2063,53 @@ describe("createUiTerminalSetHandler", () => {
         setTo = v;
       },
       getTerminalOpacity: () => 1,
+      setTerminalBackgroundOpacity: () => {},
+      getTerminalBackgroundOpacity: () => 1,
       tweenManager: tm,
     });
     const result = await handler({ opacity: 0.5 });
     expect(result.tweening).toBeUndefined();
     expect(setTo).toBe(0.5);
+  });
+
+  it("backgroundOpacity を独立した key で tween する", async () => {
+    const tm = new TweenManager();
+    const handler = createUiTerminalSetHandler({
+      setTerminalOpacity: () => {},
+      getTerminalOpacity: () => 1,
+      setTerminalBackgroundOpacity: () => {},
+      getTerminalBackgroundOpacity: () => 0.8,
+      tweenManager: tm,
+    });
+
+    const result = await handler({ backgroundOpacity: 0.5, durationMs: 600 });
+
+    expect(result).toEqual({ backgroundOpacity: 0.5, tweening: true });
+    expect(tm.isActive("ui.terminal.backgroundOpacity")).toBe(true);
+    expect(tm.isActive("ui.terminal.opacity")).toBe(false);
+  });
+
+  it("opacity と backgroundOpacity を同時に即時反映する", async () => {
+    const tm = new TweenManager();
+    let opacity = -1;
+    let backgroundOpacity = -1;
+    const handler = createUiTerminalSetHandler({
+      setTerminalOpacity: (value) => {
+        opacity = value;
+      },
+      getTerminalOpacity: () => 1,
+      setTerminalBackgroundOpacity: (value) => {
+        backgroundOpacity = value;
+      },
+      getTerminalBackgroundOpacity: () => 1,
+      tweenManager: tm,
+    });
+
+    const result = await handler({ opacity: 0.7, backgroundOpacity: 0.45 });
+
+    expect(result).toEqual({ opacity: 0.7, backgroundOpacity: 0.45 });
+    expect(opacity).toBe(0.7);
+    expect(backgroundOpacity).toBe(0.45);
   });
 });
 
