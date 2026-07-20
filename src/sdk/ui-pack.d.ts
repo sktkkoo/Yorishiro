@@ -62,7 +62,12 @@ export interface UiLayout {
         };
     /** terminal 全体の不透明度 0-1。1=不透明（既定）。<1 で背後の character/scene が透ける。MCP `ui.terminal.set {opacity}` と対称。 */
     readonly opacity?: number;
-    /** true で terminal の背景のみ透明化（文字は不透明のまま）。背後の character/scene が見える没入用。MCP 対称。 */
+    /** 0=透明〜1=不透明（既定）。1 未満では文字を不透明に保ったまま、背後の scene が透ける。 */
+    readonly backgroundOpacity?: number;
+    /**
+     * true は backgroundOpacity: 0 の別名。
+     * @deprecated backgroundOpacity: 0 を使う。
+     */
     readonly transparentBackground?: boolean;
   };
   readonly character?: {

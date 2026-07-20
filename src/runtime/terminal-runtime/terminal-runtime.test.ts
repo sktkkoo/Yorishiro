@@ -255,7 +255,9 @@ vi.mock("../../bindings/tauri-commands", () => ({
   sessionWrite: mockState.sessionWrite,
 }));
 
-const { disposeTerminalRuntime, getTerminalRuntime } = await import("./terminal-runtime");
+const { disposeTerminalRuntime, getTerminalRuntime, hexToRgba } = await import(
+  "./terminal-runtime"
+);
 
 const shellSpec = { kind: "shell" as const, integration: true };
 
@@ -1123,39 +1125,80 @@ describe("TerminalRuntime", () => {
     stub.remove();
   });
 
-  // setBackgroundTransparent — 背景のみ透明・文字は不透明のまま。
+  // setBackgroundOpacity — 背景のみ半透明・文字は不透明のまま。
   // theme.background の値と、container に付く scoped class の両方を確認する。
   const themeBg = (): unknown => {
     const term = mockState.terminals[0] as unknown as { options: { theme?: unknown } };
     return (term.options.theme as { background?: unknown } | undefined)?.background;
   };
 
-  it("setBackgroundTransparent(true) で theme.background が透明色になり class が付く", () => {
-    const runtime = getTerminalRuntime("shell-1");
-    runtime.setBackgroundTransparent(true);
+  it("hexToRgba は hex 色を指定 alpha の rgba に変換する", () => {
+    expect(hexToRgba("#171422", 0.55)).toBe("rgba(23,20,34,0.55)");
+  });
 
-    expect(themeBg()).toBe("rgba(0,0,0,0)");
+  it("hexToRgba は既存 rgba の色成分を保って alpha を置換する", () => {
+    expect(hexToRgba("rgba(23, 20, 34, 0.8)", 0.4)).toBe("rgba(23,20,34,0.4)");
+  });
+
+  it("hexToRgba は不正な色を既定背景色へ fallback し alpha を clamp する", () => {
+    expect(hexToRgba("not-a-color", 2)).toBe("rgba(20,22,25,1)");
+  });
+
+  it("setBackgroundOpacity(0) で theme.background が透明色になり class が付く", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundOpacity(0);
+
+    expect(themeBg()).toBe("rgba(20,22,25,0)");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
   });
 
-  it("bgTransparent 中の setTheme は不透明 background を上書きしない（flag-reassert）", () => {
+  it("setBackgroundOpacity(0.5) は scene 背景色を半透明化し class を付ける", () => {
     const runtime = getTerminalRuntime("shell-1");
-    runtime.setBackgroundTransparent(true);
+    runtime.setTheme({ background: "#123456" });
+    runtime.setBackgroundOpacity(0.5);
+
+    expect(themeBg()).toBe("rgba(18,52,86,0.5)");
+    expect(xtermSingleton().style.background).toBe("transparent");
+    expect(xtermSingleton().style.getPropertyValue("--terminal-background-color")).toBe(
+      "rgba(18,52,86,0.5)",
+    );
+    expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
+    expect(runtime.getBackgroundOpacity()).toBe(0.5);
+  });
+
+  it("syncAttachedRect は文字用の左 padding を背景板の延長幅として保持する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const stub = document.createElement("div");
+    stub.style.paddingLeft = "10px";
+    document.body.appendChild(stub);
+
+    runtime.attachTo(stub);
+
+    expect(xtermSingleton().style.getPropertyValue("--terminal-placeholder-pad-left")).toBe("10px");
+
+    runtime.detachContainer();
+    stub.remove();
+  });
+
+  it("背景 alpha 適用中の setTheme は新しい scene 背景色へ alpha を再適用する", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    runtime.setBackgroundOpacity(0.5);
     runtime.setTheme({ background: "#123456" });
 
-    // scene 由来の不透明 background は透明で再上書きされる
-    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(themeBg()).toBe("rgba(18,52,86,0.5)");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(true);
   });
 
-  it("setBackgroundTransparent(false) で直近 theme の background へ復帰し class が外れる", () => {
+  it("setBackgroundOpacity(1) で直近 theme の background へ復帰し class が外れる", () => {
     const runtime = getTerminalRuntime("shell-1");
     runtime.setTheme({ background: "#123456" });
-    runtime.setBackgroundTransparent(true);
-    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    runtime.setBackgroundOpacity(0.5);
+    expect(themeBg()).toBe("rgba(18,52,86,0.5)");
 
-    runtime.setBackgroundTransparent(false);
+    runtime.setBackgroundOpacity(1);
     expect(themeBg()).toBe("#123456");
+    expect(xtermSingleton().style.background).toBe("");
+    expect(xtermSingleton().style.getPropertyValue("--terminal-background-color")).toBe("");
     expect(xtermSingleton().classList.contains("xterm-bg-transparent")).toBe(false);
   });
 
@@ -1172,7 +1215,7 @@ describe("TerminalRuntime", () => {
       white: "#ffffff",
     });
     // bgTransparent 中は flag-reassert で透明のまま
-    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(themeBg()).toBe("rgba(171,205,239,0)");
 
     runtime.setBackgroundTransparent(false);
     expect(themeBg()).toBe("#abcdef");
@@ -1186,7 +1229,7 @@ describe("TerminalRuntime", () => {
     runtime.setBackgroundTransparent(true);
     // background キーなし（merged theme は stale な "rgba(0,0,0,0)"）
     runtime.setTheme({ foreground: "#ffffff" });
-    expect(themeBg()).toBe("rgba(0,0,0,0)");
+    expect(themeBg()).toBe("rgba(18,52,86,0)");
 
     runtime.setBackgroundTransparent(false);
     // 直近の「本物の」background へ戻る（透明を焼き込んでいない）

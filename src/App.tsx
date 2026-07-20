@@ -696,7 +696,7 @@ function queryMountedSessionIds(): string[] {
 interface TerminalPresentation {
   readonly hidden: boolean;
   readonly opacity: number;
-  readonly backgroundTransparent: boolean;
+  readonly backgroundOpacity: number;
 }
 
 function terminalLayoutForcesSinglePane(layout: UiLayout | null): boolean {
@@ -717,11 +717,17 @@ function resolveTerminalPresentation(
     receivesLayout && typeof terminalLayout?.opacity === "number"
       ? Math.min(1, Math.max(0, terminalLayout.opacity))
       : 1;
+  const backgroundOpacity =
+    receivesLayout && typeof terminalLayout?.backgroundOpacity === "number"
+      ? Math.min(1, Math.max(0, terminalLayout.backgroundOpacity))
+      : receivesLayout && terminalLayout?.transparentBackground === true
+        ? 0
+        : 1;
 
   return {
     hidden: !receivesLayout || hiddenByLayout,
     opacity,
-    backgroundTransparent: receivesLayout && terminalLayout?.transparentBackground === true,
+    backgroundOpacity,
   };
 }
 
@@ -735,7 +741,7 @@ function applyTerminalPresentation(sessionId: string, presentation: TerminalPres
   const runtime = getTerminalRuntime(sessionId);
   runtime.setHidden(presentation.hidden);
   runtime.setOpacity(presentation.opacity);
-  runtime.setBackgroundTransparent(presentation.backgroundTransparent);
+  runtime.setBackgroundOpacity(presentation.backgroundOpacity);
 }
 // presence による sidebar 幅 mutation の単一 writer。
 // --sidebar-width は host 既定 presence の内部詳細として残置（P4 で default-shell pack へ降格）。
@@ -2103,6 +2109,15 @@ function App() {
             getTerminalOpacity: () => {
               const ids = queryMountedSessionIds();
               return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getOpacity();
+            },
+            setTerminalBackgroundOpacity: (value) => {
+              for (const id of queryMountedSessionIds()) {
+                getTerminalRuntime(id).setBackgroundOpacity(value);
+              }
+            },
+            getTerminalBackgroundOpacity: () => {
+              const ids = queryMountedSessionIds();
+              return ids.length === 0 ? 1 : getTerminalRuntime(ids[0]).getBackgroundOpacity();
             },
             tweenManager: getThreeRuntime().getTweenManager(),
           }),

@@ -168,9 +168,15 @@ export interface TerminalRuntime {
   getOpacity(): number;
 
   /**
-   * layout 由来：terminal の背景のみ透明化する（文字は不透明のまま）。
-   * scene の theme 変更をまたいでもフラグから再適用され、戻らない。
+   * layout 由来：terminal の背景だけに不透明度（0-1）を適用する。
+   * 文字は不透明のまま、scene の theme 変更後も保持した alpha を再適用する。
    */
+  setBackgroundOpacity(alpha: number): void;
+
+  /** 現在の layout 由来背景不透明度。未設定時は 1。 */
+  getBackgroundOpacity(): number;
+
+  /** @deprecated setBackgroundOpacity(transparent ? 0 : 1) を使う。 */
   setBackgroundTransparent(transparent: boolean): void;
 
   /**
