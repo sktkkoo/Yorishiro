@@ -1,9 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("esbuild-wasm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("esbuild-wasm")>();
+  return {
+    ...actual,
+    initialize: () => actual.initialize({}),
+  };
+});
+
 import {
   buildTsxEntryUrl,
   isSupportedTsxHostImport,
   isTsxEntryPath,
   resolveRelativeTsxImport,
+  transpileUiTsxEntry,
   tsxHostShimNamedExports,
 } from "./tsx-transpiler";
 
@@ -79,6 +89,34 @@ describe("resolveRelativeTsxImport", () => {
         "/Users/me/.yorishiro/packs/my-room",
       ),
     ).toBeNull();
+  });
+});
+
+describe("transpileUiTsxEntry", () => {
+  it("bundles an entry that imports a pack-local source file", async () => {
+    const entryPath = "/Users/me/.yorishiro/packs/my-room/scene.tsx";
+    const sources = new Map([
+      [entryPath, 'import { roomName } from "./lib/room"; export default { roomName };'],
+      ["/Users/me/.yorishiro/packs/my-room/lib/room.ts", 'export const roomName = "warm-room";'],
+    ]);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname;
+      const source = sources.get(path);
+      return source === undefined
+        ? new Response("not found", { status: 404 })
+        : new Response(source, { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const code = await transpileUiTsxEntry(entryPath, {
+        convertFileSrc: (path) => `https://asset.local${path}`,
+      });
+
+      expect(code).toContain("warm-room");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

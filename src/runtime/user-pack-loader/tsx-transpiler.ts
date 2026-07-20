@@ -341,7 +341,6 @@ function createPlan4MvpPlugin(
         return {
           path: resolved,
           namespace: USER_SOURCE_NAMESPACE,
-          resolveDir: dirname(resolved),
         };
       });
       build.onResolve({ filter: /.*/ }, (args) => ({
