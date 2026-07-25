@@ -7,6 +7,12 @@
  *   - debug cube は localStorage opt-in の確認用として残す。
  *     有効化: localStorage.setItem("yorishiro:r3f-debug", "1") + reload
  *     無効化: localStorage.removeItem("yorishiro:r3f-debug") + reload
+ *   - 発話反射層の leva controls も localStorage opt-in。voice_say の発話中しか
+ *     効かない条件依存の調整卓なので、Common panel には常駐させない。mount して
+ *     いない間も body 側の既定値で反射層は動く（Body の初期値と controls の初期
+ *     値が同一なため）。
+ *     有効化: localStorage.setItem("yorishiro:speech-debug", "1") + reload
+ *     無効化: localStorage.removeItem("yorishiro:speech-debug") + reload
  *   - VRM は本 phase では imperative のまま。vrmSlot prop は null を渡す。
  *
  * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §4
@@ -37,6 +43,15 @@ export interface R3fRuntimeRootProps {
   readonly children?: ReactNode;
 }
 
+/** localStorage の debug opt-in flag を読む。access 不能な環境では無効扱いにする。 */
+function readDebugFlag(key: string): boolean {
+  try {
+    return localStorage.getItem(key) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
   const [activeEntry, setActiveEntry] = useState<ScenePackEntry | null>(null);
   const runtimeLevaStore = useCreateStore();
@@ -51,13 +66,8 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
     };
   }, []);
 
-  const debugEnabled = useMemo(() => {
-    try {
-      return localStorage.getItem("yorishiro:r3f-debug") === "1";
-    } catch {
-      return false;
-    }
-  }, []);
+  const debugEnabled = useMemo(() => readDebugFlag("yorishiro:r3f-debug"), []);
+  const speechDebugEnabled = useMemo(() => readDebugFlag("yorishiro:speech-debug"), []);
 
   useEffect(() => {
     setRuntimeLevaStore(runtimeLevaStore);
@@ -75,7 +85,7 @@ export function R3fRuntimeRoot({ children }: R3fRuntimeRootProps) {
       ) : null}
       <DefaultAttentionCueLight />
       <CameraControls store={runtimeLevaStore} />
-      <SpeechExpressionControls store={runtimeLevaStore} />
+      {speechDebugEnabled ? <SpeechExpressionControls store={runtimeLevaStore} /> : null}
       {children}
     </>
   );

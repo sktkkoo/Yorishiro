@@ -131,11 +131,22 @@ afterEach(() => {
   cleanup();
   getMockRegistry().__reset();
   levaStore.dispose();
+  localStorage.clear();
   vi.clearAllMocks();
 });
 
 describe("R3fRuntimeRoot", () => {
-  it("runtime store に speech folder を既定値どおり登録する", () => {
+  it("speech folder を既定では runtime store に登録しない", () => {
+    render(<R3fRuntimeRoot />);
+
+    const store = getRuntimeLevaStore();
+    expect(store?.getVisiblePaths()).not.toContain("speech.enabled");
+    expect(store?.get("speech.enabled")).toBeUndefined();
+  });
+
+  it("yorishiro:speech-debug が有効なら speech folder を既定値どおり登録する", () => {
+    localStorage.setItem("yorishiro:speech-debug", "1");
+
     render(<R3fRuntimeRoot />);
 
     const store = getRuntimeLevaStore();
