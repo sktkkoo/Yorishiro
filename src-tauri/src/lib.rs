@@ -3,10 +3,12 @@ mod history;
 mod journal;
 mod mcp;
 mod pty;
+mod realtime_bridge;
 mod sessions;
 mod tts;
 
 use pty::{start_hook_server, PtyState};
+use realtime_bridge::RealtimeBridgeState;
 use sessions::{AttachResult, SessionRegistry, SpawnSpec};
 use std::collections::{BTreeSet, HashMap};
 use std::ffi::OsStr;
@@ -1000,6 +1002,38 @@ async fn session_attach(
 async fn session_detach(state: State<'_, PtyState>, session_id: String) -> Result<(), String> {
     state.detach(&session_id);
     Ok(())
+}
+
+/// WebView の代わりに Origin header なしで Codex app-server へ接続する。
+#[tauri::command]
+async fn session_realtime_connect(
+    pty_state: State<'_, PtyState>,
+    bridge_state: State<'_, RealtimeBridgeState>,
+    session_id: String,
+    on_message: Channel<String>,
+) -> Result<String, String> {
+    let endpoint = pty_state
+        .realtime_endpoint(&session_id)
+        .ok_or_else(|| "This Codex session does not expose a realtime endpoint".to_string())?;
+    bridge_state.connect(endpoint, on_message).await
+}
+
+#[tauri::command]
+async fn session_realtime_send(
+    bridge_state: State<'_, RealtimeBridgeState>,
+    connection_id: String,
+    message: String,
+) -> Result<(), String> {
+    bridge_state.send(&connection_id, message)
+}
+
+#[tauri::command]
+async fn session_realtime_disconnect(
+    bridge_state: State<'_, RealtimeBridgeState>,
+    connection_id: String,
+    final_message: Option<String>,
+) -> Result<(), String> {
+    bridge_state.disconnect(&connection_id, final_message)
 }
 
 #[tauri::command]
@@ -2325,6 +2359,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(pty_state)
         .manage(registry)
+        .manage(RealtimeBridgeState::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
         .manage(McpServerStatus::default())
@@ -2341,6 +2376,9 @@ pub fn run() {
             session_refresh_theme,
             session_attach,
             session_detach,
+            session_realtime_connect,
+            session_realtime_send,
+            session_realtime_disconnect,
             session_list,
             pty_write,
             pty_resize,

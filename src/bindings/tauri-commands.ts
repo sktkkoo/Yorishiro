@@ -144,6 +144,24 @@ export interface SessionDetachArgs {
 export const sessionDetach = (args: SessionDetachArgs): Promise<void> =>
   call("session_detach", args);
 
+/** Rust host が Codex app-server へ接続し、受信 JSON-RPC を Channel へ流す。 */
+export const sessionRealtimeConnect = (args: {
+  readonly sessionId: string;
+  readonly onMessage: Channel<string>;
+}): Promise<string> => call("session_realtime_connect", args);
+
+/** Rust host が所有する realtime connection へ JSON-RPC text を送る。 */
+export const sessionRealtimeSend = (args: {
+  readonly connectionId: string;
+  readonly message: string;
+}): Promise<void> => call("session_realtime_send", args);
+
+/** Realtime connection を閉じる。finalMessage は close 前に順序保証つきで送る。 */
+export const sessionRealtimeDisconnect = (args: {
+  readonly connectionId: string;
+  readonly finalMessage?: string | null;
+}): Promise<void> => call("session_realtime_disconnect", args);
+
 /** Registry に登録されてる全 session の descriptor を返す。 */
 export const sessionList = (): Promise<ReadonlyArray<SessionDescriptor>> => invoke("session_list");
 
@@ -180,6 +198,7 @@ export interface AgentCapabilities {
   readonly plugins: boolean;
   readonly lifecycleHooks: boolean;
   readonly sessionResume: boolean;
+  readonly realtimeConversation: boolean;
 }
 
 /** yori コマンドの記法（`<prefix>yori<separator><name>`）。Rust adapter が正本。 */

@@ -25,6 +25,7 @@ impl TerminalAgent for CodexAgent {
             plugins: true,
             lifecycle_hooks: false,
             session_resume: true,
+            realtime_conversation: true,
         }
     }
 
@@ -38,6 +39,11 @@ impl TerminalAgent for CodexAgent {
 
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String> {
         let mut args = Vec::new();
+
+        if let Some(endpoint) = ctx.realtime_endpoint {
+            args.push("--remote".to_string());
+            args.push(endpoint.to_string());
+        }
 
         if ctx.resume && self.has_existing_session(ctx.cwd) {
             args.push("resume".to_string());
@@ -180,6 +186,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume: true,
+            realtime_endpoint: None,
         }
     }
 
@@ -197,6 +204,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume,
+            realtime_endpoint: None,
         }
     }
 
@@ -314,5 +322,14 @@ mod tests {
             .args
             .iter()
             .any(|arg| arg.contains("persona prompt\\n\\n---\\n\\nruntime reminder")));
+    }
+
+    #[test]
+    fn codex_connects_tui_to_shared_app_server() {
+        let mut ctx = make_ctx_with_resume(None, None, None, false);
+        ctx.realtime_endpoint = Some("ws://127.0.0.1:19456");
+        let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
+
+        assert_eq!(&result.args[..2], ["--remote", "ws://127.0.0.1:19456"]);
     }
 }

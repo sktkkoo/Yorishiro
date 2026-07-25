@@ -135,6 +135,7 @@ import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
+import { CodexRealtimeClient, type CodexRealtimeState } from "./runtime/codex-realtime";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { collectHealthReport } from "./runtime/health-check";
 import { buildRestoreRows } from "./runtime/history/describe-snapshot";
@@ -3595,8 +3596,66 @@ function App() {
   // ── Body ↔ PersonaReflexDispatcher wiring ──────────────────
 
   const bodyRef = useRef<Body | null>(null);
+  const codexRealtimeRef = useRef<CodexRealtimeClient | null>(null);
+  const [codexRealtimeState, setCodexRealtimeState] = useState<CodexRealtimeState>({
+    status: "idle",
+  });
+  const codexVoiceAvailable =
+    terminalAgent === "codex" && tabState.activeSessionId === tabState.mainSessionId;
   const greetedRef = useRef(false);
   const inTurnRef = useRef(false);
+
+  const stopCodexRealtime = useCallback(() => {
+    codexRealtimeRef.current?.stop();
+    codexRealtimeRef.current = null;
+    bodyRef.current?.setLipSyncSource(voicePlayer);
+  }, [voicePlayer]);
+
+  const toggleCodexRealtime = useCallback(async () => {
+    if (codexRealtimeRef.current) {
+      stopCodexRealtime();
+      return;
+    }
+
+    try {
+      let client: CodexRealtimeClient;
+      client = new CodexRealtimeClient(tabState.activeSessionId, (state) => {
+        if (codexRealtimeRef.current !== client) return;
+        if (state.status === "error") {
+          client.stop();
+          codexRealtimeRef.current = null;
+          setCodexRealtimeState(state);
+          bodyRef.current?.setLipSyncSource(voicePlayer);
+          return;
+        }
+        setCodexRealtimeState(state);
+        if (state.status === "active") {
+          bodyRef.current?.setLipSyncSource(client);
+        } else if (state.status === "idle") {
+          bodyRef.current?.setLipSyncSource(voicePlayer);
+        }
+      });
+      codexRealtimeRef.current = client;
+      await client.start();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[codex-realtime] start failed", error);
+      codexRealtimeRef.current?.stop();
+      codexRealtimeRef.current = null;
+      setCodexRealtimeState({ status: "error", error: message });
+    }
+  }, [stopCodexRealtime, tabState.activeSessionId, voicePlayer]);
+
+  useEffect(() => {
+    if (!codexVoiceAvailable) stopCodexRealtime();
+  }, [codexVoiceAvailable, stopCodexRealtime]);
+
+  useEffect(() => {
+    return () => {
+      codexRealtimeRef.current?.stop();
+      codexRealtimeRef.current = null;
+    };
+  }, []);
 
   const handleBodyReady = useCallback(
     (body: Body | null) => {
@@ -3609,7 +3668,11 @@ function App() {
         setRuntimeControlValue("camera.tracking", true);
         setVrmReadyOnce(true);
         body.initAttention();
-        body.setLipSyncSource(voicePlayer);
+        body.setLipSyncSource(
+          codexRealtimeRef.current?.getStatus() === "active"
+            ? codexRealtimeRef.current
+            : voicePlayer,
+        );
         dispatcher.setContextFactory(
           createRealPersonaContextFactory({
             body,
@@ -4347,6 +4410,26 @@ function App() {
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
+        voiceAvailable={codexVoiceAvailable}
+        voiceActive={codexRealtimeState.status === "active"}
+        voiceBusy={codexRealtimeState.status === "connecting"}
+        voiceLabel={
+          codexRealtimeState.status === "active"
+            ? strings.codexVoiceStop
+            : codexRealtimeState.status === "connecting"
+              ? strings.codexVoiceConnecting
+              : codexRealtimeState.status === "error"
+                ? strings.codexVoiceRetry
+                : strings.codexVoiceStart
+        }
+        voiceBillingLabel={
+          codexRealtimeState.billing === "api" &&
+          (codexRealtimeState.status === "connecting" || codexRealtimeState.status === "active")
+            ? strings.codexVoiceApiBilling
+            : undefined
+        }
+        voiceError={codexRealtimeState.error}
+        onToggleVoice={() => void toggleCodexRealtime()}
         tabs={
           <TabIndicator
             state={tabState}

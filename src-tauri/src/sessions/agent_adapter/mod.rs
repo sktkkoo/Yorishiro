@@ -41,6 +41,8 @@ pub struct AgentCapabilities {
     pub plugins: bool,
     pub lifecycle_hooks: bool,
     pub session_resume: bool,
+    /// Codex app-server の realtime conversation に同居できる。
+    pub realtime_conversation: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,6 +69,8 @@ pub struct LaunchContext<'a> {
     pub mcp_port: u16,
     pub hook_port: u16,
     pub resume: bool,
+    /// 同じ conversation を共有する agent app-server の WebSocket endpoint。
+    pub realtime_endpoint: Option<&'a str>,
 }
 
 /// Adapter が返す起動 spec。pty_session.rs が CommandBuilder に apply する。

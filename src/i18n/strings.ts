@@ -34,6 +34,11 @@ export interface UiStrings {
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
+  readonly codexVoiceStart: string;
+  readonly codexVoiceStop: string;
+  readonly codexVoiceConnecting: string;
+  readonly codexVoiceRetry: string;
+  readonly codexVoiceApiBilling: string;
   /**
    * セッション再起動を伴う設定変更の確認ダイアログ。「セッション」というシステム語
    * ではなく会話の行き先を伝える：persona は新しく始まる（引き継がない）、agent は
@@ -152,6 +157,11 @@ const EN: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
+  codexVoiceStart: "Start Codex voice",
+  codexVoiceStop: "Stop Codex voice",
+  codexVoiceConnecting: "Connecting Codex voice…",
+  codexVoiceRetry: "Retry Codex voice",
+  codexVoiceApiBilling: "API billing",
   personaSwitchConfirm: "Switch to {next}. The conversation starts fresh.",
   personaSwitchConfirmButton: "Switch",
   agentSwitchConfirm:
@@ -266,6 +276,11 @@ const JA: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
+  codexVoiceStart: "Codex 音声会話を始める",
+  codexVoiceStop: "Codex 音声会話を終了",
+  codexVoiceConnecting: "Codex 音声会話に接続中…",
+  codexVoiceRetry: "Codex 音声会話を再試行",
+  codexVoiceApiBilling: "API従量課金",
   personaSwitchConfirm: "{next} に切り替えます。会話は新しく始まります。",
   personaSwitchConfirmButton: "切り替える",
   agentSwitchConfirm:

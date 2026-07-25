@@ -491,6 +491,11 @@ impl PtyState {
         }
     }
 
+    pub fn realtime_endpoint(&self, session_id: &str) -> Option<String> {
+        self.session_or_default(session_id)
+            .and_then(|session| session.realtime_endpoint())
+    }
+
     pub fn write_data(&self, session_id: &str, data: &str) -> Result<(), String> {
         let Some(session) = self.session_or_default(session_id) else {
             return Ok(());

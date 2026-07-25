@@ -1,13 +1,13 @@
 # Terminal Agent Adapter
 
 **Status**: active
-**Last updated**: 2026-05-29
+**Last updated**: 2026-07-25
 
 ## TL;DR
 
 Yorishiro が住まわせる外部 coding agent (Claude Code / Codex / OpenCode / 将来の追加) を **`TerminalAgent` trait + capability flag set** で抽象化する。`AgentKind { Claude, Codex }` enum は撤去し、各 agent は `src-tauri/src/sessions/agent_adapter/<agent>.rs` の adapter として独立する。
 
-Capability flag (`persona_overlay` / `mcp_injection` / `plugins` / `lifecycle_hooks` / `session_resume`) は **意味論を均すためではなく、ある／ない を declare する** ためにある。Claude Code の hook を他 agent でも完全互換として emulate する方向は明示的に避ける（[codex-terminal-agent.md](codex-terminal-agent.md) の却下案を継承）。
+Capability flag (`persona_overlay` / `mcp_injection` / `plugins` / `lifecycle_hooks` / `session_resume` / `realtime_conversation`) は **意味論を均すためではなく、ある／ない を declare する** ためにある。Claude Code の hook を他 agent でも完全互換として emulate する方向は明示的に避ける（[codex-terminal-agent.md](codex-terminal-agent.md) の却下案を継承）。
 
 第三の adapter として **OpenCode** を同時に足す。OpenCode は OSS で multi-provider (Anthropic / OpenAI / Google / Ollama 等) を受けるため、local LLM を Yorishiro に住まわせる経路を将来 OpenCode 経由で開く前提条件になる。
 
@@ -38,14 +38,15 @@ pub struct AgentCapabilities {
     pub plugins: bool,            // Yorishiro command/skill entrypoint を bundle できるか
     pub lifecycle_hooks: bool,    // PreToolUse / PostToolUse / UserPromptSubmit 同等を emit するか
     pub session_resume: bool,     // 既存 session を cwd から検出して resume できるか
+    pub realtime_conversation: bool, // TUI と同じ thread で realtime conversation を開始できるか
 }
 ```
 
-| Agent | persona_overlay | mcp_injection | plugins | lifecycle_hooks | session_resume |
-|---|---|---|---|---|---|
-| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ |
-| Codex | ✓ | ✓ | ✓ | ✗ | ✓ |
-| OpenCode | ✓ | ✓ | ✓ | ✗ | ✗ |
+| Agent | persona_overlay | mcp_injection | plugins | lifecycle_hooks | session_resume | realtime_conversation |
+|---|---|---|---|---|---|---|
+| Claude Code | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| Codex | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ |
+| OpenCode | ✓ | ✓ | ✓ | ✗ | ✗ | ✗ |
 
 Capability flag は **意味論を揃えるためではない**。Codex / OpenCode が独自の lifecycle hook や plugin event を持つ場合でも、Yorishiro はそれを Claude Code hook の完全互換 contract とは扱わない。共通化する挙動は Claude hook を emulate するのではなく、agent ごとの注入経路として明示的に実装する。
 
@@ -173,3 +174,4 @@ Codex / OpenCode にはそれぞれ独自の hook / plugin event surface があ�
 
 - 2026-05-26: 初版。`AgentKind` enum を撤去し `TerminalAgent` trait + capability flag に refactor、OpenCode adapter を同時投入。
 - 2026-05-29: agent 固有知識を adapter 正本に集約（§6 追加：`extra_path_dirs()` / `command_syntax()`）。§4 の mirror 同期対象に `TERMINAL_AGENT_OPTIONS` / `AGENT_COMMAND_SYNTAX` を追記し、health-check に Rust↔TS の `agent-registry` drift 検知を導入。Settings dropdown / health-check が `defaultProfile` を考慮した実起動 agent を表示するよう修正。
+- 2026-07-25: `realtime_conversation` capability を追加。Codex TUI と app-server を共有する音声 UI は [codex-realtime-voice.md](codex-realtime-voice.md) に分離。

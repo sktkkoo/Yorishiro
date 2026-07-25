@@ -9,7 +9,10 @@
 use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::{AppHandle, Emitter};
 
@@ -232,6 +235,75 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+// ─── Codex app-server ───────────────────────────────────────────
+
+/// Codex TUI と realtime conversation が同じ thread を共有するための sidecar。
+/// PTY session と寿命を揃え、途中エラーでも Drop で orphan process を残さない。
+struct CodexAppServerProcess {
+    child: Child,
+    endpoint: String,
+}
+
+impl CodexAppServerProcess {
+    fn spawn(binary: &str, cwd: Option<&str>) -> Result<Self, String> {
+        let listener = TcpListener::bind(("127.0.0.1", 0))
+            .map_err(|e| format!("Codex app-server port allocation failed: {e}"))?;
+        let address = listener
+            .local_addr()
+            .map_err(|e| format!("Codex app-server address lookup failed: {e}"))?;
+        drop(listener);
+
+        let endpoint = format!("ws://{address}");
+        let mut command = Command::new(binary);
+        command
+            .arg("app-server")
+            .arg("--listen")
+            .arg(&endpoint)
+            .env("PATH", crate::build_path_env())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(dir) = cwd {
+            command.current_dir(dir);
+        }
+
+        let child = command.spawn().map_err(|e| {
+            format!(
+                "Failed to spawn Codex app-server ({binary}). Codex 0.145.0 or newer is required: {e}"
+            )
+        })?;
+        let mut process = Self { child, endpoint };
+        process.wait_until_ready(address)?;
+        Ok(process)
+    }
+
+    fn wait_until_ready(&mut self, address: SocketAddr) -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if TcpStream::connect_timeout(&address, Duration::from_millis(50)).is_ok() {
+                return Ok(());
+            }
+            if let Some(status) = self
+                .child
+                .try_wait()
+                .map_err(|e| format!("Codex app-server status check failed: {e}"))?
+            {
+                return Err(format!(
+                    "Codex app-server exited before becoming ready ({status}). Codex 0.145.0 or newer is required."
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        Err("Codex app-server did not become ready within 5 seconds".to_string())
+    }
+}
+
+impl Drop for CodexAppServerProcess {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
 // ─── PtySession ──────────────────────────────────────────────────
 
 /// 1 PTY 分の lifecycle と resource を保持する。registry が `Arc<PtySession>`
@@ -251,6 +323,7 @@ pub struct PtySession {
     ring_buffer: Arc<Mutex<RingBuffer>>,
     spawned_cwd: Mutex<Option<String>>,
     temp_config_paths: Mutex<Vec<std::path::PathBuf>>,
+    codex_app_server: Mutex<Option<CodexAppServerProcess>>,
     /// true のとき reader thread は pty-exit event を emit しない。
     /// session_spawn が旧 session を replace する際に立てる。
     suppress_exit_event: Arc<std::sync::atomic::AtomicBool>,
@@ -268,6 +341,7 @@ impl PtySession {
             ring_buffer: Arc::new(Mutex::new(RingBuffer::new())),
             spawned_cwd: Mutex::new(None),
             temp_config_paths: Mutex::new(Vec::new()),
+            codex_app_server: Mutex::new(None),
             suppress_exit_event: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -294,6 +368,14 @@ impl PtySession {
         let _ = self.kill();
         std::thread::sleep(std::time::Duration::from_millis(10));
 
+        if let Some(ref dir) = cwd {
+            let metadata =
+                std::fs::metadata(dir).map_err(|e| format!("Workspace not accessible: {}", e))?;
+            if !metadata.is_dir() {
+                return Err(format!("Workspace is not a directory: {}", dir));
+            }
+        }
+
         let pty_system = native_pty_system();
         let pair = pty_system
             .openpty(PtySize {
@@ -305,6 +387,7 @@ impl PtySession {
             .map_err(|e| format!("PTY open failed: {}", e))?;
 
         let mut temp_paths_to_cleanup: Vec<std::path::PathBuf> = Vec::new();
+        let mut pending_app_server: Option<CodexAppServerProcess> = None;
         let (binary, mut cmd) = match spec {
             SpawnSpec::Agent {
                 agent: agent_id,
@@ -318,6 +401,11 @@ impl PtySession {
                 let binary = resolve_agent_binary(adapter, command.as_deref());
                 let mut cmd = CommandBuilder::new(&binary);
                 apply_base_env(&mut cmd);
+
+                if adapter.capabilities().realtime_conversation {
+                    pending_app_server =
+                        Some(CodexAppServerProcess::spawn(&binary, cwd.as_deref())?);
+                }
 
                 // journal callback の発火判定。agent session の spawn ごとに評価する
                 // ことで、app 開きっぱなし運用でも翌日の respawn で節目が拾われる。
@@ -340,6 +428,9 @@ impl PtySession {
                     mcp_port: crate::mcp::server::resolve_port(),
                     hook_port: crate::pty::HOOK_SERVER_PORT,
                     resume: *resume,
+                    realtime_endpoint: pending_app_server
+                        .as_ref()
+                        .map(|server| server.endpoint.as_str()),
                 };
                 let launch = adapter.build_launch_args(&ctx)?;
                 for (k, v) in &launch.env {
@@ -376,11 +467,6 @@ impl PtySession {
         };
 
         if let Some(ref dir) = cwd {
-            let metadata =
-                std::fs::metadata(dir).map_err(|e| format!("Workspace not accessible: {}", e))?;
-            if !metadata.is_dir() {
-                return Err(format!("Workspace is not a directory: {}", dir));
-            }
             cmd.cwd(dir);
         }
 
@@ -407,6 +493,7 @@ impl PtySession {
         *lock_or_recover(&self.output_channel) = Some(on_output);
         *lock_or_recover(&self.spawned_cwd) = cwd;
         *lock_or_recover(&self.temp_config_paths) = temp_paths_to_cleanup;
+        *lock_or_recover(&self.codex_app_server) = pending_app_server;
         lock_or_recover(&self.ring_buffer).clear();
 
         // Spawn reader thread。child Arc を別途渡すので registry を経由せずに
@@ -529,6 +616,13 @@ impl PtySession {
         *lock_or_recover(&self.output_channel) = None;
     }
 
+    /// Active Codex session と同じ thread に接続する realtime WebSocket endpoint。
+    pub fn realtime_endpoint(&self) -> Option<String> {
+        lock_or_recover(&self.codex_app_server)
+            .as_ref()
+            .map(|server| server.endpoint.clone())
+    }
+
     pub fn write_data(&self, data: &str) -> Result<(), String> {
         let mut guard = lock_or_recover(&self.writer);
         if let Some(writer) = guard.as_mut() {
@@ -614,6 +708,7 @@ impl PtySession {
         for path in lock_or_recover(&self.temp_config_paths).drain(..) {
             let _ = std::fs::remove_file(path);
         }
+        *lock_or_recover(&self.codex_app_server) = None;
         Ok(())
     }
 }
@@ -633,6 +728,10 @@ impl Drop for PtySession {
         {
             let _ = std::fs::remove_file(path);
         }
+        self.codex_app_server
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
     }
 }
 

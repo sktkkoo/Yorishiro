@@ -78,6 +78,71 @@ describe("TitleBar", () => {
     expect(screen.getByRole("button", { name: "shell-1" })).toBeTruthy();
   });
 
+  it("shows the Codex voice control only when available", () => {
+    const onToggleVoice = vi.fn();
+    const { rerender } = renderTitleBar();
+    expect(screen.queryByRole("button", { name: "Start voice" })).toBeNull();
+
+    rerender(
+      <TitleBar
+        sidebarOpen
+        settingsActive={false}
+        sidebarLabel="Sidebar"
+        settingsLabel="Settings"
+        voiceAvailable
+        voiceActive={false}
+        voiceLabel="Start voice"
+        onToggleVoice={onToggleVoice}
+        onToggleSidebar={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Start voice" }));
+    expect(onToggleVoice).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks the voice control active during a conversation", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceActive: true,
+      voiceLabel: "Stop voice",
+      onToggleVoice: vi.fn(),
+    });
+
+    expect(screen.getByRole("button", { name: "Stop voice" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+  });
+
+  it("shows API billing only when the voice session uses API-key auth", () => {
+    const { rerender } = renderTitleBar({
+      voiceAvailable: true,
+      voiceActive: true,
+      voiceLabel: "Stop voice",
+      onToggleVoice: vi.fn(),
+    });
+
+    expect(screen.queryByText("API billing")).toBeNull();
+
+    rerender(
+      <TitleBar
+        sidebarOpen
+        settingsActive={false}
+        sidebarLabel="Sidebar"
+        settingsLabel="Settings"
+        voiceAvailable
+        voiceActive
+        voiceLabel="Stop voice"
+        voiceBillingLabel="API billing"
+        onToggleVoice={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        onOpenSettings={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status").textContent).toBe("API billing");
+  });
+
   it("marks the empty tab area as a Tauri drag region while keeping controls interactive", () => {
     const { container } = renderTitleBar();
     const root = container.firstElementChild;
