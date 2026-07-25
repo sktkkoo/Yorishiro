@@ -248,9 +248,18 @@ Auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access w
 
 ## Contributing
 
-Issues and discussions are welcome. **Pull requests are not accepted yet; this will be revisited after the pack API and security boundary stabilize.**
+**Issues and Discussions are very welcome — right now they are the most valuable way to contribute.**
 
-For security reporting, see [SECURITY.md](SECURITY.md).
+Yorishiro is shaped by daily use, so an outside pair of eyes is genuinely useful. A single line is enough:
+
+- **Bug reports** — [open an Issue](https://github.com/sktkkoo/Yorishiro/issues/new/choose). Something broke, looked wrong, or felt off.
+- **Ideas and feature requests** — [Issues](https://github.com/sktkkoo/Yorishiro/issues) as well. Half-formed is fine: "this would feel better if…" is a real report when the thing being built is a sense of presence.
+- **Questions, impressions, and packs you made** — [Discussions](https://github.com/sktkkoo/Yorishiro/discussions). Screenshots, "is this the intended behavior?", and show-and-tell all belong here.
+- **Security reports** — see [SECURITY.md](SECURITY.md).
+
+English and Japanese are both fine, and you do not need to fill a template perfectly.
+
+Pull requests are the one exception: they are not accepted yet, and this will be revisited after the pack API and security boundary stabilize. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 

@@ -249,9 +249,18 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Contributing
 
-IssueやDiscussionは歓迎します。**Pull requestはまだ受け付けていません。pack APIとセキュリティ境界が安定したのち、改めて検討します。**
+**IssueとDiscussionは大歓迎です。いまのところ、これが一番ありがたい貢献の形です。**
 
-セキュリティ報告は[SECURITY.md](SECURITY.md)を参照してください。
+Yorishiroは日々の使用のなかで形になっているので、外からの視点は本当に貴重です。一行でも構いません。
+
+- **バグ報告** — [Issueを立てる](https://github.com/sktkkoo/Yorishiro/issues/new/choose)。壊れた・表示がおかしい・なんか変、で十分です。
+- **アイデア・機能要望** — 同じく[Issue](https://github.com/sktkkoo/Yorishiro/issues)へ。まとまっていなくて構いません。「こうだったらもっといい」は、実在感を作るアプリにとって立派な報告です。
+- **質問・感想・作ったpackの共有** — [Discussions](https://github.com/sktkkoo/Yorishiro/discussions)へ。スクリーンショットも、「これは仕様ですか？」も、自慢のpackも、どれも歓迎します。
+- **セキュリティ報告** — [SECURITY.md](SECURITY.md)を参照してください。
+
+日本語でも英語でも構いませんし、テンプレートをきれいに埋める必要もありません。
+
+Pull requestだけは例外で、まだ受け付けていません。pack APIとセキュリティ境界が安定したのち、改めて検討します。詳しくは[CONTRIBUTING.md](CONTRIBUTING.md)を参照してください。
 
 ---
 

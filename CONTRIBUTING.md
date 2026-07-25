@@ -4,14 +4,14 @@
 
 ## Contribution Policy
 
-Pull requests are not accepted yet; this will be revisited after the pack API and security boundary stabilize.
-
-What we welcome:
+**Issues and Discussions are very welcome — right now they are the most valuable way to contribute.** A single line is enough, you do not need to fill a template perfectly, and English and Japanese are both fine.
 
 - **Bug reports** — please use the [Issue templates](.github/ISSUE_TEMPLATE/)
-- **Feature requests and proposals** — feel free to open an Issue
-- **Questions and discussions** — please use Discussions
+- **Feature requests and proposals** — feel free to open an Issue, even half-formed ones
+- **Questions, impressions, and packs you made** — please use [Discussions](https://github.com/sktkkoo/Yorishiro/discussions)
 - **Security reports** — see [SECURITY.md](SECURITY.md)
+
+Pull requests are the one exception: they are not accepted yet, and this will be revisited after the pack API and security boundary stabilize.
 
 ### Extension via Packs
 

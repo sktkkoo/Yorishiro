@@ -4,14 +4,14 @@
 
 ## コントリビュートの方針
 
-Pull request はまだ受け付けていません。pack API とセキュリティ境界が安定したのち、改めて検討します。
-
-歓迎しているもの：
+**Issue と Discussion は大歓迎です。いまのところ、これが一番ありがたい貢献の形です。** 一行でも構いませんし、テンプレートをきれいに埋める必要もありません。日本語でも英語でも構いません。
 
 - **バグ報告** — [Issue テンプレート](.github/ISSUE_TEMPLATE/) を使ってください
-- **機能要望・提案** — Issue で自由にどうぞ
-- **質問・議論** — Discussions を使ってください
+- **機能要望・提案** — まとまっていなくて構いません。Issue で自由にどうぞ
+- **質問・感想・作った pack の共有** — [Discussions](https://github.com/sktkkoo/Yorishiro/discussions) を使ってください
 - **セキュリティ報告** — [SECURITY.md](SECURITY.md) を参照
+
+Pull request だけは例外で、まだ受け付けていません。pack API とセキュリティ境界が安定したのち、改めて検討します。
 
 ### Pack による拡張
 
