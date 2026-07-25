@@ -192,7 +192,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.6.1**
+**v0.6.2**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -202,11 +202,12 @@ What works today:
 - Session tabs: multiple shell sessions in the title bar, with per-tab status badges — running / awaiting input / failed / unread (`Cmd+T` / `Ctrl+Tab`)
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)
-- Custom VRM: swap in your own VRM model from Settings
+- Custom VRM: swap in your own VRM model from Settings, or let a persona pack ship its own `avatar.vrm`
 - Motion size: scale Yori's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions
+- Speech expression: the face activates while speaking, and a single line can carry a mood for exactly as long as it lasts
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)
 - Self-referential MCP (20+ tools) including camera/lighting controls
 - Reflex layer: PTY observation and instant reactions

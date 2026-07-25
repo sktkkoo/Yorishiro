@@ -1,7 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.6.2 - 2026-07-25
 
+- Speaking now activates the whole face. A speech reflex layer derives brow/eye engagement, phrase-boundary blinks, and prosodic brow flicks from the lip-sync audio signal, so Yori no longer talks with an idle face and a moving mouth. No emotion is inferred from the audio.
+- `voice_say` accepts an optional `mood` / `moodIntensity`. The expression fades in when the utterance starts and releases when it ends, so a mood lasts exactly as long as the line it belongs to. Omitting `mood` behaves exactly as before.
+- Persona packs can ship their own `avatar.vrm`. Switching persona from Settings or through `persona_goodbye_switch` now applies it automatically, instead of changing the body only when a VRM path was pasted by hand. An explicit `vrmPath` still takes precedence, and a failed lookup never blocks the switch.
+- Reflexes are inspectable. `Trigger.description` declares in one human-readable line what makes a reflex fire, and the new `persona_reflex_list` MCP tool lists a persona's triggers and responses — including whether the persona defines its own reflexes or inherits the bundled defaults wholesale.
+- `PersonaDefinition` is now two axes: thinking and reflex. The declared-but-unconsumed `world` (body / voice / space) and `logReading` axes were removed. Existing packs that declare them keep loading (the fields are ignored) and runtime behavior is unchanged.
+- UI packs can set terminal `backgroundOpacity` (0–1), so a readable semi-transparent terminal can sit over a scene. The tint is bridged into the surrounding frame padding so no gap shows, and `ui_terminal_set` exposes the same control independently. The existing `transparentBackground` boolean remains compatible.
+- Fixed user packs failing to bundle when `scene.tsx` / `ui.tsx` imported a pack-local module such as `./lib/palette`: the TSX transpiler passed an option esbuild rejects during resolve.
+- The F2 debug panel's `speech` folder is now opt-in (`localStorage.setItem("yorishiro:speech-debug", "1")`), so `Common` stays a place for controls that are meaningful whenever you open it. The reflex layer itself runs identically either way.
+- README now leads with the demo video, with mobile-friendly media and a tightened closing vision (EN / JA).
+- The Contributing sections now say plainly that Issues and Discussions are wanted, and what kinds of reports are useful (EN / JA).
+
+## 0.6.1 - 2026-07-14
+
+- Settings offers a "Return to Yori" action while a custom VRM is selected, so the bundled model can be restored without owning a standalone copy of its VRM file. Imported VRM files stay on disk.
+
+## 0.6.0 - 2026-07-14
+
+- In-app updates: Settings checks GitHub Releases for a new version and applies a signature-verified update on a single click. Releases now ship updater artifacts and a `latest.json` manifest alongside the `.dmg` files.
 - Light alerts now use a brighter, quicker double pulse with a distinct beat between flashes.
 - Fixed Codex `$yori` command discovery by installing Yorishiro's generated skills in Codex's user skill directory (`~/.agents/skills`) instead of an undiscoverable plugin cache entry.
 - Renamed the product from Charminal to Yorishiro, including app metadata, command namespace, SDK package naming, bundled docs, and automatic `~/.charminal/` → `~/.yorishiro/` data directory migration.
