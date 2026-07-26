@@ -47,7 +47,7 @@ Safe mode skips user packs and `init.js`. It does not delete user data.
 macOS:
 
 ```bash
-YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app
+YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app
 ```
 
 From source:

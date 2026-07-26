@@ -41,7 +41,7 @@ Notes:
 - Releases before v0.5.3 do not contain the in-app updater, so those installs
   only update via Homebrew (`brew upgrade`) or manual download.
 - The tap needs no per-release work. It only needs manual edits if the `.dmg`
-  naming scheme or the `yorishiro.app` bundle name changes. Also note GitHub
+  naming scheme or the `Yorishiro.app` bundle name changes. Also note GitHub
   disables cron workflows in repos with no activity for 60 days; if releases
   pause that long, re-enable the tap's bump workflow with
   `gh workflow enable bump-yorishiro.yml -R sktkkoo/homebrew-yorishiro`.
@@ -62,7 +62,7 @@ Notes:
   built unsigned bundles only, run:
 
 ```bash
-xattr -cr /Applications/yorishiro.app
+xattr -cr /Applications/Yorishiro.app
 ```
 
 - Launch Yorishiro from Finder.
@@ -106,7 +106,7 @@ xattr -cr /Applications/yorishiro.app
 - Launch with:
 
 ```bash
-YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app
+YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app
 ```
 
 - Confirm the window title includes `(Safe Mode)`.
