@@ -54,6 +54,11 @@ __yorishiro_current_command_line() {
 }
 
 __yorishiro_preexec_invoke_exec() {
+    # bind -x widget（fzf の Ctrl-R 等）の実行中も DEBUG trap は発火する。bash は
+    # widget 実行中だけ READLINE_LINE を set するので、それを目印に skip する。
+    # ready flag を消費する前に抜けることで、次の実 command の marks を守る
+    # （issue #67）。bash 3.x には READLINE_LINE が無く、このガードは素通りする。
+    [ -n "${READLINE_LINE+x}" ] && return 0
     [ "${__yorishiro_preexec_ready:-0}" = "1" ] || return 0
     [ "${__yorishiro_in_preexec:-0}" = "0" ] || return 0
     case "$BASH_COMMAND" in
