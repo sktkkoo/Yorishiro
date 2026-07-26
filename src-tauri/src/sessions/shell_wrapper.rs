@@ -935,6 +935,31 @@ mod tests {
     }
 
     #[test]
+    fn bash_preexec_skips_while_readline_line_is_set() {
+        // bind -x widget（fzf の Ctrl-R 等）の実行中も DEBUG trap は発火し、
+        // ready flag を誤消費して phantom run が生まれる（issue #67）。bash は
+        // widget 実行中だけ READLINE_LINE を set するので「set の間は preexec を
+        // 丸ごと skip する」を契約として固定する。pipe 経由では readline が動かず
+        // 本物の widget は起動できないため、変数を事前 set して契約面だけを見る。
+        let Some(combined) = run_bash_with_yorishiro_init_and_rc(
+            "bash-readline-guard",
+            "echo one\nexit\n",
+            "READLINE_LINE=widget-stub\n",
+        ) else {
+            return;
+        };
+
+        assert!(
+            combined.contains("]633;P;Cwd="),
+            "integration did not load: {combined:?}"
+        );
+        assert!(
+            !combined.contains("]633;E;echo\\x20one"),
+            "preexec fired despite READLINE_LINE being set: {combined:?}"
+        );
+    }
+
+    #[test]
     fn fish_escape_splits_od_bytes_before_prefixing_xhh() {
         assert!(INIT_FISH.contains("string split ' '"));
         assert!(INIT_FISH.contains("string match -r '^[0-9a-f][0-9a-f]$'"));
