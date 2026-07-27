@@ -6,7 +6,14 @@
 function __yorishiro_osc633_escape --argument-names input
     set -l out ""
     for byte in (printf '%s' "$input" | od -An -v -tx1 | string split ' ' | string match -r '^[0-9a-f][0-9a-f]$')
-        set out "$out\\x"(string upper "$byte")
+        # zsh/bash 版と同じ safe set は素通しする（issue #73）。それ以外
+        # （space・記号・UTF-8 継続 byte・改行 = 空 var を含む）は \xHH に escape。
+        set -l char (printf "\\x$byte")
+        if string match -qr -- '^[A-Za-z0-9_/:.,@%+=-]$' "$char"
+            set out "$out$char"
+        else
+            set out "$out\\x"(string upper "$byte")
+        end
     end
     printf '%s' "$out"
 end
