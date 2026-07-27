@@ -4277,7 +4277,7 @@ function App() {
     };
   }, [isUserLayerReady, effectDispatcher]);
 
-  // ── Cmd+R / Ctrl+R で全体 reload ─────────────────────────
+  // ── Cmd+R / Ctrl+R で全体 reload、Cmd+, で settings toggle ──
 
   const [levaHidden, setLevaHidden] = useState(true);
 
@@ -4298,6 +4298,10 @@ function App() {
         event.preventDefault();
         window.location.reload();
       }
+      if (event.code === "Comma" && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        handleOpenSettings();
+      }
       if (event.code === "F2") {
         event.preventDefault();
         setLevaHidden((prev) => !prev);
@@ -4307,7 +4311,7 @@ function App() {
     return () => {
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, []);
+  }, [handleOpenSettings]);
 
   // command run の keyboard 操作（active session）。
   // Cmd+Shift+F: 直近 failed run を reference 化。
