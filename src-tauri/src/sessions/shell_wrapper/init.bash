@@ -57,8 +57,17 @@ __yorishiro_preexec_invoke_exec() {
     # bind -x widget（fzf の Ctrl-R 等）の実行中も DEBUG trap は発火する。bash は
     # widget 実行中だけ READLINE_LINE を set するので、それを目印に skip する。
     # ready flag を消費する前に抜けることで、次の実 command の marks を守る
-    # （issue #67）。bash 3.x には READLINE_LINE が無く、このガードは素通りする。
+    # （issue #67）。
     [ -n "${READLINE_LINE+x}" ] && return 0
+    # bash 3.x には READLINE_LINE が無い。4.0 未満では bind -x handler が readline の
+    # raw mode（-icanon）のまま実行され、確定 command は canonical 復帰後に走る性質で
+    # 見分ける（issue #72、方式は soren-achebe の調査に拠る）。stty は fork を伴うので
+    # 4.0+ では使わない。tty が無い環境では出力が空になり素通りする。
+    if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ]; then
+        case $(stty -a </dev/tty 2>/dev/null) in
+            *-icanon*) return 0 ;;
+        esac
+    fi
     [ "${__yorishiro_preexec_ready:-0}" = "1" ] || return 0
     [ "${__yorishiro_in_preexec:-0}" = "0" ] || return 0
     case "$BASH_COMMAND" in
