@@ -960,6 +960,39 @@ mod tests {
     }
 
     #[test]
+    fn fish_escape_passes_safe_ascii_through() {
+        // issue #73: fish 版 escape は全 byte を hex 化していた。zsh/bash と同じく
+        // safe set [A-Za-z0-9_/:.,@%+=-] は素通しする契約を、実 fish で確認する。
+        // fish が無い環境では skip（bash テストと同じ流儀）。
+        let root = fresh_temp_root("fish-escape");
+        let init = root.join("init.fish");
+        fs::write(&init, INIT_FISH).unwrap();
+        let output = match Command::new("fish")
+            .arg("-c")
+            .arg(format!(
+                "source '{}'; __yorishiro_osc633_escape 'echo one/2.txt こ'",
+                init.display()
+            ))
+            .output()
+        {
+            Ok(output) => output,
+            Err(err) if err.kind() == io::ErrorKind::NotFound => {
+                let _ = fs::remove_dir_all(&root);
+                return;
+            }
+            Err(err) => panic!("spawn fish: {err}"),
+        };
+        let _ = fs::remove_dir_all(&root);
+        let escaped = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(
+            escaped,
+            "echo\\x20one/2.txt\\x20\\xE3\\x81\\x93",
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
     fn fish_escape_splits_od_bytes_before_prefixing_xhh() {
         assert!(INIT_FISH.contains("string split ' '"));
         assert!(INIT_FISH.contains("string match -r '^[0-9a-f][0-9a-f]$'"));
