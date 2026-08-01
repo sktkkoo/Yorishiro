@@ -37,6 +37,7 @@ import {
 import type { LoadReport } from "../user-pack-loader/load-report";
 import type { UserPackEntry } from "../user-pack-loader/user-pack-loader";
 import type { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
+import type { ToolInvocationContext } from "./event-channel";
 
 export interface PackStatusEntry {
   readonly id: string;
@@ -1984,8 +1985,14 @@ export interface VoiceSayResult {
  * - "off": 常に破棄（global prompt で voice_say を呼ばないよう指示済み）
  */
 export function createVoiceSayHandler(deps: VoiceSayDeps) {
-  return async (request: unknown): Promise<VoiceSayResult> => {
-    if (deps.getFrequency() === "off" || deps.canPlay?.() === false) return { spoken: false };
+  return async (request: unknown, context?: ToolInvocationContext): Promise<VoiceSayResult> => {
+    if (
+      deps.getFrequency() === "off" ||
+      context?.voicePlayback?.fallbackPlaybackEnabled === false ||
+      deps.canPlay?.() === false
+    ) {
+      return { spoken: false };
+    }
     const r = requestRecord(request);
     const text = r.text;
     if (typeof text !== "string" || text === "") {
@@ -2036,8 +2043,14 @@ export interface VoicePlayResult {
  * pack-local の `./...` `assets/...` は VoicePlayer 側で resolve 失敗扱いとなる。
  */
 export function createVoicePlayHandler(deps: VoicePlayDeps) {
-  return async (request: unknown): Promise<VoicePlayResult> => {
-    if (deps.getFrequency() === "off" || deps.canPlay?.() === false) return { played: false };
+  return async (request: unknown, context?: ToolInvocationContext): Promise<VoicePlayResult> => {
+    if (
+      deps.getFrequency() === "off" ||
+      context?.voicePlayback?.fallbackPlaybackEnabled === false ||
+      deps.canPlay?.() === false
+    ) {
+      return { played: false };
+    }
     const r = requestRecord(request);
     const clipRef = r.clipRef;
     if (typeof clipRef !== "string" || clipRef === "") {

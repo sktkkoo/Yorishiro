@@ -2271,19 +2271,26 @@ function App() {
           restorePresenceFromPrompt();
         };
 
-        await listen<{ requestId: string; tool: string; request: unknown }>(
-          "mcp:tool-request",
-          async (event) => {
-            const result = await dispatchToolEvent(handlers, {
-              tool: event.payload.tool,
-              request: event.payload.request,
-            });
-            await invoke("mcp_tool_response", {
-              requestId: event.payload.requestId,
-              response: result,
-            });
-          },
-        );
+        await listen<{
+          requestId: string;
+          tool: string;
+          request: unknown;
+          voicePlayback?: {
+            ownerEpochMs: number;
+            generation: number;
+            fallbackPlaybackEnabled: boolean;
+          };
+        }>("mcp:tool-request", async (event) => {
+          const result = await dispatchToolEvent(handlers, {
+            tool: event.payload.tool,
+            request: event.payload.request,
+            context: { voicePlayback: event.payload.voicePlayback },
+          });
+          await invoke("mcp_tool_response", {
+            requestId: event.payload.requestId,
+            response: result,
+          });
+        });
         appLog.write({
           phase: "mcp-channel",
           note: "mcp:tool-request listener attached",
@@ -3614,7 +3621,14 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
-    setFallbackPlaybackEnabled: (enabled) => voicePlayer.setPlaybackEnabled(enabled),
+    setFallbackPlaybackEnabled: async (enabled) => {
+      const ownership = voicePlayer.setPlaybackEnabled(enabled);
+      await invoke("mcp_voice_playback_set_enabled", {
+        ownerEpochMs: ownership.ownerEpochMs,
+        generation: ownership.generation,
+        enabled: ownership.fallbackPlaybackEnabled,
+      });
+    },
   });
 
   const handleBodyReady = useCallback(

@@ -9,13 +9,24 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
  */
 
-export type ToolHandler = (request: unknown) => Promise<unknown>;
+export interface VoicePlaybackProvenance {
+  readonly ownerEpochMs: number;
+  readonly generation: number;
+  readonly fallbackPlaybackEnabled: boolean;
+}
+
+export interface ToolInvocationContext {
+  readonly voicePlayback?: VoicePlaybackProvenance;
+}
+
+export type ToolHandler = (request: unknown, context?: ToolInvocationContext) => Promise<unknown>;
 
 export type ToolHandlerMap = Record<string, ToolHandler>;
 
 export interface ToolEvent {
   readonly tool: string;
   readonly request: unknown;
+  readonly context?: ToolInvocationContext;
 }
 
 export type ToolResponse =
@@ -31,7 +42,7 @@ export async function dispatchToolEvent(
     return { ok: false, reason: `unknown tool: ${event.tool}` };
   }
   try {
-    const payload = await handler(event.request);
+    const payload = await handler(event.request, event.context);
     return { ok: true, payload };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

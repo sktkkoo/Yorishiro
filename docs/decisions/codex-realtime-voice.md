@@ -166,9 +166,17 @@ branchにあるが、Mainへのwiringは未実装である。
 
 GPT Liveは`connecting` / `active`の間だけ唯一の音声ownerとなり、Voice Summaryは
 `idle` / `error`時のfallbackとする。Live開始時はVoicePlayerの再生中音声を停止し、
-合成やclip取得の完了待ちも無効化する。所有中に届いた`voice_say` / `voice_play`は
+合成やclip取得のpublic `completion` / `waitUntilIdle`を即時cancelし、進行中のfetchもabortする。
+cancel後にbackend promiseが完了してもgeneration guardで再生せず、`VoiceHandle.cancellationReason`で
+通常完了・実エラー・host cancelを区別できる。所有中に届いた`voice_say` / `voice_play`は
 `spoken: false` / `played: false`で完了し、切断後に古い要約を再生するqueueは持たない。
 stop、remote close、start failure、session切替でいずれもVoicePlayerを即時復帰させる。
+
+MCP tool requestにはRust側のevent作成時点でaudio ownershipの`ownerEpochMs` / `generation` /
+`fallbackPlaybackEnabled`をstampする。WebView dispatch時のcurrent stateだけで判断すると、Live中に
+作られたrequestがstop後に届いて古い要約を再生できるためである。handlerはrequest provenanceと
+current VoicePlayer stateの両方が許可する場合だけ再生する。frontendからRustへのownership更新は
+epoch + generationで順序付けし、非同期invokeが逆順に完了しても古い更新を採用しない。
 
 ## 今後も守る invariant
 
@@ -251,6 +259,11 @@ experience を失う。
 - timeout後のlate connection、stop後のlate microphoneを解放する
 - remote closed後は一回のクリックで再接続する
 - old attempt/clientがnew active clientを破棄しない
+- synthesis / resolver / fetch待機中のLive開始でpublic completionと`waitUntilIdle`が即時完了する
+- cancel後にfallbackを再有効化してもold generationの音声を再生しない
+- stop / start failure / session切替 / unmountの全経路でfallback playbackを復帰する
+- Live ownership provenance付きの遅延`voice_say` / `voice_play`を復帰後も再生しない
+- clipの実エラーとhost cancellationを`VoiceHandle.cancellationReason`で区別する
 
 加えて実機で、voice turnのTUI表示、TUI approval response、barge-in、session切替、remote close、
 複数subagent稼働中のvoice開始を確認する。

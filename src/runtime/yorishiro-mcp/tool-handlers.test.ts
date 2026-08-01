@@ -2672,6 +2672,29 @@ describe("createVoiceSayHandler", () => {
     expect(speak).not.toHaveBeenCalled();
   });
 
+  it("GPT Live ownership 中に作成された遅延 request は復帰後も発話しない", async () => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({
+      speak,
+      getFrequency: () => "on",
+      canPlay: () => true,
+    });
+
+    await expect(
+      handler(
+        { text: "stale live summary" },
+        {
+          voicePlayback: {
+            ownerEpochMs: 100,
+            generation: 1,
+            fallbackPlaybackEnabled: false,
+          },
+        },
+      ),
+    ).resolves.toEqual({ spoken: false });
+    expect(speak).not.toHaveBeenCalled();
+  });
+
   it("valid mood と intensity を speak へ透過する", async () => {
     const speak = vi.fn();
     const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
@@ -2745,6 +2768,29 @@ describe("createVoicePlayHandler", () => {
     });
 
     await expect(handler({ clipRef: "voice:greeting" })).resolves.toEqual({ played: false });
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("GPT Live ownership 中に作成された遅延 clip request は復帰後も再生しない", async () => {
+    const play = vi.fn();
+    const handler = createVoicePlayHandler({
+      play,
+      getFrequency: () => "on",
+      canPlay: () => true,
+    });
+
+    await expect(
+      handler(
+        { clipRef: "voice:greeting" },
+        {
+          voicePlayback: {
+            ownerEpochMs: 100,
+            generation: 1,
+            fallbackPlaybackEnabled: false,
+          },
+        },
+      ),
+    ).resolves.toEqual({ played: false });
     expect(play).not.toHaveBeenCalled();
   });
 });

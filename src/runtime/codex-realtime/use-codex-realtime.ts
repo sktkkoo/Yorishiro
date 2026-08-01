@@ -22,7 +22,7 @@ interface UseCodexRealtimeOptions {
   readonly available: boolean;
   readonly fallbackLipSyncSource: LipSyncSource;
   readonly applyLipSyncSource: (source: LipSyncSource) => void;
-  readonly setFallbackPlaybackEnabled?: (enabled: boolean) => void;
+  readonly setFallbackPlaybackEnabled?: (enabled: boolean) => void | Promise<void>;
   readonly createClient?: CodexRealtimeClientFactory;
 }
 
@@ -62,15 +62,28 @@ export function useCodexRealtime({
     applyLipSyncSourceRef.current(fallbackRef.current);
   }, []);
 
+  const restoreFallbackPlayback = useCallback(() => {
+    try {
+      const pending = setFallbackPlaybackEnabledRef.current(true);
+      if (pending) {
+        void pending.catch((error) => {
+          console.error("[codex-realtime] failed to restore fallback playback ownership", error);
+        });
+      }
+    } catch (error) {
+      console.error("[codex-realtime] failed to restore fallback playback ownership", error);
+    }
+  }, []);
+
   const stop = useCallback(() => {
     const client = clientRef.current;
     // stop() 内の同期 idle 通知も stale 扱いにするため、先に所有権を外す。
     clientRef.current = null;
     client?.stop();
     setState({ status: "idle" });
-    setFallbackPlaybackEnabledRef.current(true);
+    restoreFallbackPlayback();
     restoreFallback();
-  }, [restoreFallback]);
+  }, [restoreFallback, restoreFallbackPlayback]);
 
   const toggle = useCallback(async () => {
     if (clientRef.current) {
@@ -87,7 +100,7 @@ export function useCodexRealtime({
         clientRef.current = null;
         client.stop();
         setState(nextState);
-        setFallbackPlaybackEnabledRef.current(true);
+        restoreFallbackPlayback();
         restoreFallback();
         return;
       }
@@ -96,7 +109,7 @@ export function useCodexRealtime({
         // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
         clientRef.current = null;
         setState(nextState);
-        setFallbackPlaybackEnabledRef.current(true);
+        restoreFallbackPlayback();
         restoreFallback();
         return;
       }
@@ -107,10 +120,12 @@ export function useCodexRealtime({
       }
     });
     clientRef.current = client;
-    // connecting 開始時点から GPT Live を唯一の audio owner にする。
-    setFallbackPlaybackEnabledRef.current(false);
 
     try {
+      // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
+      const pendingOwnershipClaim = setFallbackPlaybackEnabledRef.current(false);
+      if (pendingOwnershipClaim) await pendingOwnershipClaim;
+      if (clientRef.current !== client) return;
       await client.start();
     } catch (error) {
       // client 自身の error 通知、stop、session 切替で所有権を失った後なら無視する。
@@ -120,10 +135,10 @@ export function useCodexRealtime({
       const message = error instanceof Error ? error.message : String(error);
       console.error("[codex-realtime] start failed", error);
       setState({ status: "error", error: message });
-      setFallbackPlaybackEnabledRef.current(true);
+      restoreFallbackPlayback();
       restoreFallback();
     }
-  }, [restoreFallback, sessionId, stop]);
+  }, [restoreFallback, restoreFallbackPlayback, sessionId, stop]);
 
   useEffect(() => {
     const sessionChanged = sessionIdRef.current !== sessionId;
@@ -132,13 +147,15 @@ export function useCodexRealtime({
   }, [available, sessionId, stop]);
 
   useEffect(() => {
+    // Re-stamp the default owner after a WebView reload because the Rust MCP process can survive it.
+    restoreFallbackPlayback();
     return () => {
       const client = clientRef.current;
       clientRef.current = null;
       client?.stop();
-      setFallbackPlaybackEnabledRef.current(true);
+      restoreFallbackPlayback();
     };
-  }, []);
+  }, [restoreFallbackPlayback]);
 
   const getLipSyncSource = useCallback(
     () => (clientRef.current?.getStatus() === "active" ? clientRef.current : fallbackRef.current),

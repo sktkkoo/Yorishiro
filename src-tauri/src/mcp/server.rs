@@ -38,6 +38,21 @@ const TOOL_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
 static PENDING: LazyLock<Mutex<HashMap<String, oneshot::Sender<Value>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VoicePlaybackProvenance {
+    pub owner_epoch_ms: u64,
+    pub generation: u64,
+    pub fallback_playback_enabled: bool,
+}
+
+static VOICE_PLAYBACK_PROVENANCE: LazyLock<Mutex<VoicePlaybackProvenance>> = LazyLock::new(|| {
+    Mutex::new(VoicePlaybackProvenance {
+        owner_epoch_ms: 0,
+        generation: 0,
+        fallback_playback_enabled: true,
+    })
+});
+
 /// config.json の mcpPort を読む（不在 / 不正 → None）。
 fn read_configured_port() -> Option<u16> {
     let path = crate::yorishiro_home_path().ok()?.join("config.json");
@@ -58,6 +73,31 @@ fn lock_pending() -> std::sync::MutexGuard<'static, HashMap<String, oneshot::Sen
     PENDING
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn lock_voice_playback_provenance() -> std::sync::MutexGuard<'static, VoicePlaybackProvenance> {
+    VOICE_PLAYBACK_PROVENANCE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn apply_voice_playback_update(
+    current: &mut VoicePlaybackProvenance,
+    next: VoicePlaybackProvenance,
+) {
+    let is_newer = next.owner_epoch_ms > current.owner_epoch_ms
+        || (next.owner_epoch_ms == current.owner_epoch_ms && next.generation > current.generation);
+    if is_newer {
+        *current = next;
+    }
+}
+
+pub fn set_voice_playback_provenance(next: VoicePlaybackProvenance) {
+    apply_voice_playback_update(&mut lock_voice_playback_provenance(), next);
+}
+
+fn voice_playback_provenance() -> VoicePlaybackProvenance {
+    *lock_voice_playback_provenance()
 }
 
 /// Tauri event で TS 層に tool request を飛ばし、`mcp_tool_response` が返す
@@ -82,10 +122,17 @@ pub async fn emit_tool_event_with_timeout(
         guard.insert(request_id.clone(), tx);
     }
 
+    // Stamp request creation, not WebView dispatch, so delayed Live-era voice tools stay suppressed.
+    let voice_playback = voice_playback_provenance();
     let payload = serde_json::json!({
         "requestId": request_id,
         "tool": tool,
         "request": request,
+        "voicePlayback": {
+            "ownerEpochMs": voice_playback.owner_epoch_ms,
+            "generation": voice_playback.generation,
+            "fallbackPlaybackEnabled": voice_playback.fallback_playback_enabled,
+        },
     });
 
     if let Err(err) = app.emit("mcp:tool-request", payload) {
@@ -209,5 +256,34 @@ mod tests {
         let result = resolve_pending_response("00000000-0000-0000-0000-000000000000", Value::Null);
         assert!(result.is_ok());
         assert_eq!(lock_pending().len(), before_len);
+    }
+
+    #[test]
+    fn voice_playback_provenance_ignores_out_of_order_updates() {
+        let mut current = VoicePlaybackProvenance {
+            owner_epoch_ms: 100,
+            generation: 2,
+            fallback_playback_enabled: true,
+        };
+        apply_voice_playback_update(
+            &mut current,
+            VoicePlaybackProvenance {
+                owner_epoch_ms: 100,
+                generation: 1,
+                fallback_playback_enabled: false,
+            },
+        );
+        assert!(current.fallback_playback_enabled);
+
+        apply_voice_playback_update(
+            &mut current,
+            VoicePlaybackProvenance {
+                owner_epoch_ms: 101,
+                generation: 0,
+                fallback_playback_enabled: false,
+            },
+        );
+        assert_eq!(current.owner_epoch_ms, 101);
+        assert!(!current.fallback_playback_enabled);
     }
 }
