@@ -11,6 +11,7 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 ```json
 {
   "terminalAgent": "codex",
+  "codexRealtimeVoice": "juniper",
   "language": "auto",
   "primaryPersona": "my-persona",
   "activeScene": "simple-room",
@@ -30,6 +31,7 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 |---|---|---|---|
 | `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` / `opencode` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
 | `terminalAgent` | `"claude"`, `"codex"`, or `"opencode"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
+| `codexRealtimeVoice` | `string` | `"sol"` | Codex GPT Live の出力 voice。新しい realtime session の開始時に読み込む |
 | `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / Yorishiro command/skill prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
@@ -40,6 +42,26 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 | `mcpPort` | `number` | `18743` | Rust MCP server の listen port |
 | `disabledPacks` | `string[]` | `[]` | rescue 用。指定 id の user pack を load しない |
 | `journalCallback` | `"normal"`, `"rare"`, or `"off"` | `"normal"` | journal callback（セッション開始時の記憶想起）の頻度ノブ。`rare` は日常の想起をせず節目と久しぶりの起動だけに絞り、`off` で無効化。Rust 側が config.json を直接読む |
+
+### Codex GPT Live voice
+
+`codexRealtimeVoice` は title bar から開始する Codex GPT Live の出力 voice を選ぶ。
+
+```json
+{
+  "codexRealtimeVoice": "juniper"
+}
+```
+
+設定は GPT Live を開始するたびに読み直されるため、アプリの再起動は不要。すでに音声を
+出力した realtime session の voice は途中変更できないので、active な会話を一度停止して
+開始し直すと反映される。空文字や文字列以外の値は default の `"sol"` に戻す。
+
+利用可能な voice は installed Codex app-server と account / upstream support に依存する。
+Codex 0.146.0 の realtime protocol v3 では `juniper`, `maple`, `spruce`, `ember`, `vale`,
+`breeze`, `arbor`, `sol`, `cove` が利用できる。`thread/realtime/listVoices` が別 catalog に
+列挙する `marin` などは v3 では利用できない。Yorishiro は将来の追加 voice を config parser
+で拒否せず、実際の対応可否と error message は接続先 app-server に委ねる。
 
 ### Journal callback
 

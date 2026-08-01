@@ -57,6 +57,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -82,6 +83,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -107,6 +109,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -132,6 +135,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -157,6 +161,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -182,6 +187,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -212,6 +218,7 @@ describe("parseConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     });
   });
@@ -266,6 +273,7 @@ describe("serializeConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
@@ -291,6 +299,7 @@ describe("serializeConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
@@ -329,6 +338,7 @@ describe("serializeConfig", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
@@ -349,6 +359,25 @@ describe("serializeConfig", () => {
     expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
     expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, tabMetadataBadges: true }))).toEqual({
       tabMetadataBadges: true,
+    });
+  });
+});
+
+describe("codexRealtimeVoice", () => {
+  it("defaults invalid values to sol", () => {
+    expect(parseConfig("{}").codexRealtimeVoice).toBe("sol");
+    expect(parseConfig('{"codexRealtimeVoice":""}').codexRealtimeVoice).toBe("sol");
+    expect(parseConfig('{"codexRealtimeVoice":42}').codexRealtimeVoice).toBe("sol");
+  });
+
+  it("trims and preserves a configured voice", () => {
+    expect(parseConfig('{"codexRealtimeVoice":"  juniper  "}').codexRealtimeVoice).toBe("juniper");
+  });
+
+  it("omits sol and serializes a non-default voice", () => {
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, codexRealtimeVoice: "maple" }))).toEqual({
+      codexRealtimeVoice: "maple",
     });
   });
 });
@@ -450,6 +479,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     };
     const next = withDisabledPackRemoved(base, "a");
@@ -476,6 +506,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       profiles: [],
       defaultProfile: null,
       voiceFrequency: "on",
+      codexRealtimeVoice: "sol",
       mediaFolders: ["~/Music"],
     };
     const next = withDisabledPackRemoved(base, "phantom");

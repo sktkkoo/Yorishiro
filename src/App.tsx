@@ -3664,6 +3664,7 @@ function App() {
     applyLipSyncSource: applyRealtimeLipSyncSource,
     setFallbackPlaybackEnabled: (enabled) => voicePlaybackLeaseSync.setEnabled(enabled),
     stateExpressionCallbacks: realtimeStateExpressionCallbacks,
+    getVoice: async () => parseConfig(await readYorishiroConfigText()).codexRealtimeVoice,
   });
 
   useEffect(() => {
