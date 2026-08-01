@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tokio::sync::oneshot;
 use tokio_tungstenite::tungstenite::{
-    handshake::server::{Request, Response},
+    handshake::server::{ErrorResponse, Request, Response},
     http::StatusCode,
     Message,
 };
@@ -106,25 +106,27 @@ impl Drop for CodexTuiProxy {
     }
 }
 
+// tungstenite fixes the callback error type to an HTTP response. Boxing that response would
+// avoid this lint, but would no longer satisfy the library's callback contract.
+#[allow(clippy::result_large_err)]
+fn reject_browser_origin(request: &Request, response: Response) -> Result<Response, ErrorResponse> {
+    if request.headers().contains_key("origin") {
+        return Err(Response::builder()
+            .status(StatusCode::FORBIDDEN)
+            .body(Some("Origin header is not allowed".to_string()))
+            .expect("static WebSocket rejection response should be valid"));
+    }
+    Ok(response)
+}
+
 async fn proxy_connection(
     client_stream: tokio::net::TcpStream,
     upstream_endpoint: String,
     selected_thread_id: Arc<Mutex<Option<String>>>,
 ) -> Result<(), String> {
-    let client = tokio_tungstenite::accept_hdr_async(
-        client_stream,
-        |request: &Request, response: Response| {
-            if request.headers().contains_key("origin") {
-                return Err(Response::builder()
-                    .status(StatusCode::FORBIDDEN)
-                    .body(Some("Origin header is not allowed".to_string()))
-                    .expect("static WebSocket rejection response should be valid"));
-            }
-            Ok(response)
-        },
-    )
-    .await
-    .map_err(|error| format!("TUI handshake failed: {error}"))?;
+    let client = tokio_tungstenite::accept_hdr_async(client_stream, reject_browser_origin)
+        .await
+        .map_err(|error| format!("TUI handshake failed: {error}"))?;
     let (upstream, _) = tokio_tungstenite::connect_async(&upstream_endpoint)
         .await
         .map_err(|error| format!("upstream connection failed: {error}"))?;
