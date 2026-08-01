@@ -142,9 +142,10 @@ active threadを推測してはならない。TUI は host-owned loopback proxy 
 tracker はその ID を host IPC で読み、`thread/read` で loaded top-level と再検証してから採用する。proxy は
 transcript、turn payload、approval内容を保存しない。
 
-加えて、`/clear` は全 initialized connection へ broadcast される `thread/started` で追跡する。coldな
-`/resume` は新しくloadしたthreadの `thread/status/changed`、grace period中に既にload済みのresume先は
-次のactive statusでも補助的に追跡する。これらはproxy観測が一時的に利用不能な場合のfail-safeである。
+加えて、`/clear` は fork provenance を持たない `thread/started` broadcast で追跡する。`/resume` と
+`/fork` の ownership はproxyが相関した成功responseだけを正本とし、globalな `thread/status/changed` から
+推測しない。status通知はloaded / notLoadedのbookkeepingとcurrent threadの無効化にだけ使う。side
+conversationを含む別のtop-level threadも同じstatusを発するため、ownershipのfail-safeにはできない。
 
 接続中に tracker の current thread が変わった場合、現在の realtime 接続を停止し、新しい明示 ID へ
 自動再接続する。tracker bridge の切断や current thread の close で ID を特定できなくなった場合は、
