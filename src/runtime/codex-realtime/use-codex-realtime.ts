@@ -84,6 +84,7 @@ export function useCodexRealtime({
   const setFallbackPlaybackEnabledRef = useRef(setFallbackPlaybackEnabled);
   const createClientRef = useRef(createClient);
   const sessionIdRef = useRef(sessionId);
+  const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
   const fallbackPlaybackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [state, setState] = useState<CodexRealtimeState>({ status: "idle" });
@@ -139,18 +140,25 @@ export function useCodexRealtime({
     return setFallbackPlaybackEnabledRef.current(false);
   }, [beginFallbackPlaybackTransition]);
 
-  const stop = useCallback(() => {
-    const client = clientRef.current;
-    // stop() 内の同期 idle 通知も stale 扱いにするため、先に所有権を外す。
-    clientRef.current = null;
-    client?.stop();
-    setState({ status: "idle" });
-    restoreFallbackPlayback();
-    restoreFallback();
-  }, [restoreFallback, restoreFallbackPlayback]);
+  const stopClient = useCallback(
+    (preserveVoiceIntent: boolean) => {
+      if (!preserveVoiceIntent) voiceIntentRef.current = false;
+      const client = clientRef.current;
+      // stop() 内の同期 idle 通知も stale 扱いにするため、先に所有権を外す。
+      clientRef.current = null;
+      client?.stop();
+      setState({ status: "idle" });
+      restoreFallbackPlayback();
+      restoreFallback();
+    },
+    [restoreFallback, restoreFallbackPlayback],
+  );
+
+  const stop = useCallback(() => stopClient(false), [stopClient]);
 
   const start = useCallback(async () => {
     if (clientRef.current) return;
+    voiceIntentRef.current = true;
     let client: CodexRealtimeClientLike;
     client = createClientRef.current(
       sessionId,
@@ -159,6 +167,7 @@ export function useCodexRealtime({
         if (clientRef.current !== client) return;
 
         if (nextState.status === "error") {
+          voiceIntentRef.current = false;
           clientRef.current = null;
           client.stop();
           setState(nextState);
@@ -169,6 +178,7 @@ export function useCodexRealtime({
 
         if (nextState.status === "idle") {
           // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
+          voiceIntentRef.current = false;
           clientRef.current = null;
           setState(nextState);
           restoreFallbackPlayback();
@@ -195,6 +205,7 @@ export function useCodexRealtime({
     } catch (error) {
       // client 自身の error 通知、stop、session 切替で所有権を失った後なら無視する。
       if (clientRef.current !== client) return;
+      voiceIntentRef.current = false;
       clientRef.current = null;
       client.stop();
       const message = error instanceof Error ? error.message : String(error);
@@ -220,20 +231,14 @@ export function useCodexRealtime({
   }, [start, stop]);
 
   useEffect(() => {
-    const sessionChanged = sessionIdRef.current !== sessionId;
-    sessionIdRef.current = sessionId;
-    if (!available || sessionChanged) stop();
-  }, [available, sessionId, stop]);
-
-  useEffect(() => {
     threadTrackerRef.current?.stop();
     threadTrackerRef.current = null;
     if (!available) return;
     let tracker: CodexThreadTrackerLike;
     tracker = createThreadTracker(sessionId, (threadId) => {
       if (threadTrackerRef.current !== tracker || !clientRef.current) return;
-      stop();
-      if (threadId) void start();
+      stopClient(true);
+      if (threadId && voiceIntentRef.current) void start();
     });
     threadTrackerRef.current = tracker;
     void tracker.start().catch((error) => {
@@ -244,13 +249,21 @@ export function useCodexRealtime({
       if (threadTrackerRef.current === tracker) threadTrackerRef.current = null;
       tracker.stop();
     };
-  }, [available, createThreadTracker, sessionId, start, stop]);
+  }, [available, createThreadTracker, sessionId, start, stopClient]);
+
+  useEffect(() => {
+    const sessionChanged = sessionIdRef.current !== sessionId;
+    sessionIdRef.current = sessionId;
+    if (!available || sessionChanged) stopClient(true);
+    if (available && voiceIntentRef.current && !clientRef.current) void start();
+  }, [available, sessionId, start, stopClient]);
 
   useEffect(() => {
     // Re-stamp the default owner after a WebView reload because the Rust MCP process can survive it.
     restoreFallbackPlayback();
     return () => {
       const client = clientRef.current;
+      voiceIntentRef.current = false;
       clientRef.current = null;
       client?.stop();
       restoreFallbackPlayback();

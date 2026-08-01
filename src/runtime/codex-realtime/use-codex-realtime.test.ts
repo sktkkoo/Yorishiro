@@ -32,6 +32,7 @@ class FakeClient implements CodexRealtimeClientLike {
   private status: CodexRealtimeState["status"] = "idle";
 
   constructor(
+    readonly sessionId: string,
     private readonly onStateChange: (state: CodexRealtimeState) => void,
     private readonly startResult: Promise<void>,
     private readonly getPreferredThreadId: () => string | null,
@@ -67,13 +68,13 @@ function setup(
   let trackedThreadId: string | null = "thread-1";
   let notifyThreadChange: (threadId: string | null) => void = () => {};
   const createClient: CodexRealtimeClientFactory = (
-    _sessionId,
+    sessionId,
     onStateChange,
     _stateExpressionCallbacks,
     getPreferredThreadId = () => null,
   ) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
-    const client = new FakeClient(onStateChange, startResult, getPreferredThreadId);
+    const client = new FakeClient(sessionId, onStateChange, startResult, getPreferredThreadId);
     clients.push(client);
     return client;
   };
@@ -205,6 +206,96 @@ describe("useCodexRealtime", () => {
 
     expect(result.current.state).toEqual({ status: "idle" });
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("active voice intentを保持して新しいworkspace sessionへ再接続する", async () => {
+    const { result, rerender, clients, setFallbackPlaybackEnabled } = setup([
+      Promise.resolve(),
+      Promise.resolve(),
+    ]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    rerender({ sessionId: "workspace-2-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients[1].sessionId).toBe("workspace-2-main");
+    expect(clients[1].start).toHaveBeenCalledTimes(1);
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+  });
+
+  it("unsupported destination releases audio ownership but preserves intent for the next supported workspace", async () => {
+    const { result, rerender, clients, setFallbackPlaybackEnabled } = setup([
+      Promise.resolve(),
+      Promise.resolve(),
+    ]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    rerender({ sessionId: "claude-workspace", available: false });
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    expect(clients).toHaveLength(1);
+
+    rerender({ sessionId: "codex-workspace", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+    expect(clients[1].sessionId).toBe("codex-workspace");
+    expect(clients[1].start).toHaveBeenCalledTimes(1);
+  });
+
+  it("explicit stop clears intent so a later workspace switch does not reconnect", async () => {
+    const { result, rerender, clients } = setup([Promise.resolve()]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => {
+      clients[0].emit({ status: "active", billing: "subscription" });
+      result.current.stop();
+    });
+
+    rerender({ sessionId: "workspace-2-main", available: true });
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients).toHaveLength(1);
+  });
+
+  it("rapid successive session changes leave only the latest client authoritative", async () => {
+    const first = deferred();
+    const second = deferred();
+    const { result, rerender, clients } = setup([first.promise, second.promise, Promise.resolve()]);
+    act(() => {
+      void result.current.toggle();
+    });
+    expect(clients[0].sessionId).toBe("main");
+
+    rerender({ sessionId: "workspace-2-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+    rerender({ sessionId: "workspace-3-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(3));
+    });
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients[1].stop).toHaveBeenCalledTimes(1);
+    expect(clients[2].sessionId).toBe("workspace-3-main");
+    act(() => clients[2].emit({ status: "active", billing: "subscription" }));
+    await act(async () => {
+      first.reject(new Error("stale first start"));
+      second.reject(new Error("stale second start"));
+      await Promise.all([first.promise.catch(() => {}), second.promise.catch(() => {})]);
+    });
+    expect(result.current.state).toEqual({ status: "active", billing: "subscription" });
   });
 
   it("current start failure 後に fallback playback を戻す", async () => {
