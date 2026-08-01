@@ -1,7 +1,7 @@
 # GPT Live Work Status Ledger — 作業状態の会話向け投影設計
 
 **Status**: accepted — Phase 1 / 2 / 3 implemented
-**Last updated**: 2026-08-01
+**Last updated**: 2026-08-02
 
 ## TL;DR
 
@@ -11,6 +11,9 @@ GPT Live（realtime voice）は会話・意図確認・進捗説明を担当す�
 状態遷移・構造化 event・sanitize 済みの短い自然言語要約だけを voice 層へ渡す。raw terminal
 log は台帳に一切入れない。既存の app-server 共有・thread targeting・
 approval ownership（[codex-realtime-voice.md](codex-realtime-voice.md)）は一切変更しない。
+台帳は素早い概況確認のための read model であって、マージ・削除・承認等の判断に使う
+一次情報ではない。各 work には観測鮮度を添え、将来の誤投影調査は台帳とは分離した
+容量制限付き診断ログで支える。
 
 > **実装注記**: 設計承認前の prototype は human review 後に Phase 1 の下書きとして採用し、
 > `src/runtime/work-status-ledger/` へ命名と境界を揃えて実装した。Phase 2 は Codex 0.146.0
@@ -64,6 +67,7 @@ Phase 2 で 0.146.0 schema を確認し、通常 turn と approval の lifecycle
   構造化 status）で publish する。完成した読み上げ文は生成しない
 - approval ownership（TUI 正本）を壊さずに「承認待ちである」という事実を表現する
 - protocol の観測と domain state を adapter で分離し、未確認の Codex event に依存しない
+- 最終観測時刻と経過時間を voice context に載せ、古い観測を現在の事実として断定させない
 
 ### Non-goals
 
@@ -74,6 +78,8 @@ Phase 2 で 0.146.0 schema を確認し、通常 turn と approval の lifecycle
 - 再起動を跨ぐ task の永続化（v1 は process lifetime。§永続化）
 - Claude / OpenCode / shell tab への拡張（GPT Live 自体が Codex Main Agent 限定）
 - semantic expression / gesture との同期（`feat/realtime-performance-cues` の別トラック）
+- 台帳を Git / CI / agent の正本として扱うこと、またはユーザーに台帳の手動管理を求めること
+- 診断ログの永続化（方針は決定済み、実装は Phase 4）。専用の書き出し UI は作らない
 
 ## なぜ GPT Live は受付で、作業状態台帳が必要なのか
 
@@ -108,7 +114,7 @@ DelegatedWork {
   note: string | null        // 最新の状態変化の短い注記（sanitize 済み・最大 200 字）
   sessionId: string | null   // 実行中の session（不明なら null）
   createdAt / updatedAt: number
-  pendingApprovals: string[] // 未解決 approval の識別 key。非空 ⇔ status = approval-required
+pendingApprovals: string[] // 未解決 approval の識別 key。非空 ⇔ status = approval-required
 }
 ```
 
@@ -203,6 +209,46 @@ voice 層は snapshot / event を受け取っても `voice_say` や別の TTS �
 この二層により、invariant 10 の両面 — 会話の自然さは GPT Live が、事実の正確さは
 構造化状態が担う — が同時に成立する。
 
+## 観測鮮度と信頼境界
+
+【決定済み・実装済み】voice context は snapshot / event を生成した時刻に、各 work の
+`updatedAt` から次の観測鮮度を導出する。
+
+- `fresh`: 最終観測から 60 秒以内
+- `aging`: 60 秒超〜5分以内
+- `stale`: 5分超
+
+payload には `observedAt / lastObservedAt / observedAgeSeconds / freshness` を含める。
+これは**作業の生死や進捗率ではなく、新しい event を最後に観測してからの時間**である。
+長時間の正常な作業も `stale` になり得るため、GPT Live には「stale は停止を意味しない」と
+明示する。マージ・削除・承認・完了宣言など重要な判断は、所有 agent、Git、CI、TUI の
+一次情報で必ず再確認する。閾値は UX 上の警告値であり protocol の保証ではない。
+
+## 台帳と診断ログの二層構造
+
+【決定済み・Phase 4 実装】台帳の誤投影を、ユーザーが日常的に訂正・管理する設計にはしない。
+代わりに、台帳とは別の **Work Status Diagnostic Log** を host が自動記録し、開発者が
+再現条件を調査できるブラックボックスレコーダーとする。
+
+- 記録対象: work ID、sanitize 済み短い summary、app/Codex version、観測 event の種別と時刻、
+  台帳の状態遷移、接続断・再接続、相関失敗・矛盾検出の理由
+- 記録禁止: 音声、transcript、raw terminal log、approval request ID、command 引数、環境変数、
+  secret を含み得る protocol payload 全体
+- retention: 容量または世代数で上限を持つ rotating local log。上限超過分は古い順に破棄する
+- UX: 通常画面には表示せず、app log directory 配下の固定ファイルへ保存する。Issue template
+  や support 案内でファイル位置を示し、ユーザーが内容を確認してから手動で添付する。
+  専用の書き出し UI は作らない
+- **現在の範囲では外部送信なし**: 現行実装と Phase 4 には、診断ログを外部へ送信する
+  network request、API、telemetry、background upload はない。現時点で外部共有が発生するのは、
+  ユーザー自身がファイルを確認し、Yorishiro の外で Issue 等へ手動添付した場合だけ。
+  将来送信機能を検討する場合は、別 Decision と明示的な user consent を先行条件とする
+- ownership: 台帳は概況表示、診断ログは調査証跡、Main Agent / Git / CI / TUI は一次情報。
+  診断ログも一次情報を置き換えない
+
+Phase 4 までは、誤りが判明した場合に Issue / Decision Record へ再現条件を人間が残す。
+台帳本体へ訂正履歴を埋め込んで履歴 DB 化する案は採用しない。表示モデルと診断証跡を
+分離することで、voice context の小ささと、バグ報告時の調査可能性を両立する。
+
 ## Raw terminal log の排除
 
 【提案・issue #80 完了条件】台帳は「raw terminal log を voice 層へ流さない」**境界
@@ -260,6 +306,8 @@ TUI がそこにある — それが TUI を残した理由である。
   hot reload は生き延びる）。app 再起動で消え、work ID の一意性 scope も process 内。
   委任作業自体が process 内の agent session に紐づくため、台帳だけ永続化しても
   再起動後に指す先がない — 永続化は「作業の再接続」を設計する時に一緒にやる。
+  Phase 4 の診断ログだけは例外として容量制限付きで local persistence するが、再起動後の
+  台帳復元には使わない。
 - **retention**: terminal 状態の task は直近 20 件だけ snapshot に残し、超過分は
   古い順に破棄する。active な task は件数によらず破棄しない。voice の「さっきのあれ」
   に答える程度の記憶で十分で、履歴 DB にしないため（20 は暫定値、§未解決の判断 5）。
@@ -291,6 +339,9 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
   枠組みで別途判断する。
 - sanitize は機微情報の redaction では**ない**。秘密が summary に書かれれば残る。
   防御線は「raw log を入れない」構造側にあり、redaction が要る場合は将来の課題。
+- 診断ログは許可リスト式の metadata schema から組み立て、protocol payload の JSON dump を
+  禁止する。ファイル位置を案内してユーザーが内容を確認・手動添付できるようにする。app から
+  Phase 4 では外部へ送る network path / API / telemetry を作らない。
 
 ## 統合の縫い目（integration seams）
 
@@ -323,7 +374,10 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
 - **Phase 3 — GPT Live 配線（実装済み）**: 委任の起点と読み上げ UX。realtime session への状態
   注入方法を実測・設計してから実装。実機で「委任 → 進捗質問 → 承認待ち案内 → 完了報告」
   の一連を確認（dev 検証だけで完了宣言しない）。
-- **Phase 4 以降（scope 外の種）**: 永続化と作業再接続、voice approval、常時観測
+- **Phase 4（決定済み・未実装）**: app log directory 内の固定ファイルへ保存する、容量制限付き
+  Work Status Diagnostic Log。台帳の永続化とは分離し、raw payload / transcript は保存しない。
+  Issue template から保存位置を案内し、専用の書き出し UI は作らない。
+- **Phase 5 以降（scope 外の種）**: 永続化と作業再接続、voice approval、常時観測
   client、Voice Summary との音声 ownership 整理（既存 doc の未決事項）。
 
 ## Tests / invariants
@@ -342,6 +396,7 @@ unit test で固定する不変条件（prototype の test が既に大半を写
 10. snapshot / work / pendingApprovals / event は runtime deep-freeze され、購読時即時通知・
     変更毎通知・publish 毎に不変 value object。subscriber 間で mutation が伝播しない
 11. terminal task は上限 20 で古い順に prune され、active は残る
+12. voice context は観測時刻・経過秒・鮮度を含み、stale を停止と断定しない policy を伴う
 
 adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状態が壊れない、
 未知 thread の event が無視される、approval 解決の観測漏れが snapshot 再同期で回復する。
@@ -370,6 +425,11 @@ adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状�
 7. **prototype の扱い（解決済み）**: prototype を Phase 1 の下書きとして採用し、review で
    不正な `created → completed` を拒否するよう修正した。旧 Task Coordinator 命名は残さず、
    `src/runtime/work-status-ledger/` と `work-status-ledger:store` に統一した。
+8. **誤投影の記録（解決済み）**: ユーザー向け台帳へ手動訂正履歴を積むのではなく、許可リスト
+   metadata の rotating diagnostic log を別層に持つ。普段は非表示で、外部送信用の
+   network path / API / telemetry は Phase 4 の範囲では作らず、
+   バグ報告時に固定の保存位置を案内してユーザーが確認・手動添付する。専用の書き出し UI は
+   作らない。実装は Phase 4。
 
 ## 関連 reference
 
