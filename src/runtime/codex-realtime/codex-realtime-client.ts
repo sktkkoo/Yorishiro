@@ -8,7 +8,12 @@ import type { LipSyncSource } from "../../core/body";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import { LipSyncAnalyser } from "../../core/voice/lip-sync-analyser";
 import type { MouthValues } from "../../core/voice/mouth-values";
-import { clearMouthValues, ZERO_MOUTH } from "../../core/voice/mouth-values";
+import {
+  clearMouthValues,
+  copyMouthValues,
+  createMouthValues,
+  ZERO_MOUTH,
+} from "../../core/voice/mouth-values";
 import {
   RealtimePerformanceCueController,
   type RealtimePerformanceCueControllerOptions,
@@ -56,6 +61,7 @@ const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
 const CODEX_REALTIME_VOICE = "sol";
 const REMOTE_SPEECH_SIGNAL_THRESHOLD = 0.025;
+const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 
 class StartAttemptCancelledError extends Error {
   constructor() {
@@ -80,6 +86,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private remoteSource: MediaStreamAudioSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private lipSync: LipSyncAnalyser | null = null;
+  private readonly remoteMouthValues = createMouthValues();
+  private remoteSpeechSampleInterval: ReturnType<typeof globalThis.setInterval> | null = null;
   private threadId: string | null = null;
   private nextRequestId = 1;
   private pending = new Map<number, PendingRequest>();
@@ -115,9 +123,7 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   sampleMouth(out?: MouthValues): MouthValues {
     if (this.isMouthActive() && this.lipSync) {
-      const values = this.lipSync.sample(out);
-      this.performanceCueController?.observeRemoteSpeech(hasRemoteSpeechSignal(values));
-      return values;
+      return out ? copyMouthValues(this.remoteMouthValues, out) : { ...this.remoteMouthValues };
     }
     return out ? clearMouthValues(out) : { ...ZERO_MOUTH };
   }
@@ -388,6 +394,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.remoteSource = source;
         this.analyserNode = analyser;
         this.lipSync = new LipSyncAnalyser(analyser);
+        this.startRemoteSpeechObservation(attempt);
       })
       .catch((error) => {
         if (!this.isAttemptOwner(attempt)) return;
@@ -513,8 +520,31 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.rejectRemoteSdp?.(error);
   }
 
+  private startRemoteSpeechObservation(attempt: number): void {
+    this.stopRemoteSpeechObservation();
+    const sample = () => {
+      if (!this.isAttemptOwner(attempt) || !this.lipSync) return;
+      const values = this.lipSync.sample(this.remoteMouthValues);
+      this.performanceCueController?.observeRemoteSpeech(hasRemoteSpeechSignal(values));
+    };
+    sample();
+    this.remoteSpeechSampleInterval = globalThis.setInterval(
+      sample,
+      REMOTE_SPEECH_SAMPLE_INTERVAL_MS,
+    );
+  }
+
+  private stopRemoteSpeechObservation(): void {
+    if (this.remoteSpeechSampleInterval !== null) {
+      globalThis.clearInterval(this.remoteSpeechSampleInterval);
+      this.remoteSpeechSampleInterval = null;
+    }
+    clearMouthValues(this.remoteMouthValues);
+  }
+
   private disposeResources(finalMessage?: string): void {
     this.performanceCueController?.cancelAll();
+    this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));
     this.acceptRemoteSdp = null;
     this.rejectRemoteSdp = null;

@@ -70,9 +70,19 @@ describe("RealtimePerformanceCueController", () => {
     h.clock.advance(700);
 
     expect(h.onCue).toHaveBeenCalledTimes(1);
-    expect(h.onCue.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ scheduledForMs: expect.any(Number) }),
-    );
+    expect(h.onCue.mock.calls[0][1]).toEqual(expect.objectContaining({ scheduledForMs: 390 }));
+  });
+
+  it("audio-first cue that arrives beyond the lateness budget is skipped", () => {
+    const h = setup();
+    h.clock.advance(100);
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(900);
+
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.clock.advance(1_000);
+
+    expect(h.onCue).not.toHaveBeenCalled();
   });
 
   it("transcript done後の無音で発話所有handleをcompleted releaseする", () => {
@@ -101,6 +111,41 @@ describe("RealtimePerformanceCueController", () => {
     expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
     h.clock.advance(5_000);
     expect(h.onCue).not.toHaveBeenCalled();
+  });
+
+  it("ignores late assistant callbacks until the interrupted user turn and remote audio finish", () => {
+    const h = setup();
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onTranscriptDelta("user", "待って");
+    h.controller.onTranscriptDelta("assistant", "ありがとう。");
+    h.controller.onTranscriptDone("assistant");
+    h.controller.onTranscriptDone("user");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(290);
+
+    expect(h.onCue).toHaveBeenCalledTimes(1);
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ expression: "happy", utteranceId: "realtime-2" }),
+      expect.any(Object),
+    );
+  });
+
+  it("completes when transcript done arrives after remote audio already ended", () => {
+    const h = setup();
+    h.controller.onTranscriptDelta("assistant", "大丈夫。");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.controller.onTranscriptDone("assistant");
+
+    expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "completed");
   });
 
   it("stop/disconnect用cancelAllは現在のutteranceだけを解放する", () => {

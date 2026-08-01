@@ -30,9 +30,14 @@ export class RealtimePerformanceCueController {
   private utteranceSequence = 0;
   private utteranceId: string | null = null;
   private transcriptDone = false;
+  private utteranceSpeechStarted = false;
   private speechStartedAtMs: number | null = null;
   private lastSpeechSignalAtMs: number | null = null;
   private remoteSpeechActive = false;
+  private speechAnchorClaimed = false;
+  private interruptionPending = false;
+  private interruptedUserTranscriptDone = false;
+  private remoteSilenceObservedAfterInterruption = false;
 
   constructor(
     callbacks: PerformanceCueSchedulerCallbacks,
@@ -48,11 +53,11 @@ export class RealtimePerformanceCueController {
 
   onTranscriptDelta(role: unknown, delta: unknown): void {
     if (role === "user") {
-      // user の発話開始は barge-in として扱い、未再生 cue と所有 handle を即解放する。
-      this.cancelAll();
+      this.beginUserInterruption();
       return;
     }
     if (role !== "assistant" || typeof delta !== "string" || delta.length === 0) return;
+    if (this.interruptionPending) return;
 
     const utteranceId = this.ensureAssistantUtterance();
     const resolution = resolveAssistantTranscriptDelta(this.resolverState, {
@@ -65,6 +70,11 @@ export class RealtimePerformanceCueController {
   }
 
   onTranscriptDone(role: unknown): void {
+    if (role === "user") {
+      this.finishUserInterruptionTranscript();
+      return;
+    }
+    if (this.interruptionPending) return;
     if (role !== "assistant" || !this.utteranceId) return;
     const resolution = finishAssistantTranscript(this.resolverState, {
       utteranceId: this.utteranceId,
@@ -75,10 +85,10 @@ export class RealtimePerformanceCueController {
     this.transcriptDone = true;
 
     // audio end が transcript/done より先に観測される順序も許容する。
-    if (this.speechStartedAtMs !== null && !this.remoteSpeechActive) this.completeCurrent();
+    if (this.utteranceSpeechStarted && !this.remoteSpeechActive) this.completeCurrent();
   }
 
-  /** Body の lip-sync sample と同じ render clock から remote speech activity を受け取る。 */
+  /** Receives remote speech activity from the client-owned audio sampling loop. */
   observeRemoteSpeech(hasSignal: boolean): void {
     const nowMs = this.clock.now();
     if (hasSignal) {
@@ -86,25 +96,46 @@ export class RealtimePerformanceCueController {
       if (!this.remoteSpeechActive) {
         this.remoteSpeechActive = true;
         this.speechStartedAtMs = nowMs;
-        if (this.utteranceId) this.scheduler.startUtterance(this.utteranceId, nowMs);
+        this.speechAnchorClaimed = false;
+        if (this.utteranceId && !this.interruptionPending) {
+          this.scheduler.startUtterance(this.utteranceId, nowMs);
+          this.utteranceSpeechStarted = true;
+          this.speechAnchorClaimed = true;
+        }
+      }
+      return;
+    }
+
+    if (!this.remoteSpeechActive) {
+      if (this.interruptionPending && this.lastSpeechSignalAtMs === null) {
+        this.remoteSilenceObservedAfterInterruption = true;
+        this.finishInterruptionIfReady();
       }
       return;
     }
 
     if (
-      !this.remoteSpeechActive ||
       this.lastSpeechSignalAtMs === null ||
       nowMs - this.lastSpeechSignalAtMs < this.silenceCompletionMs
     ) {
       return;
     }
     this.remoteSpeechActive = false;
+    this.speechStartedAtMs = null;
+    this.lastSpeechSignalAtMs = null;
+    this.speechAnchorClaimed = false;
+    if (this.interruptionPending) {
+      this.remoteSilenceObservedAfterInterruption = true;
+      this.finishInterruptionIfReady();
+    }
     if (this.transcriptDone) this.completeCurrent();
   }
 
   cancelAll(): void {
     this.scheduler.cancelAll();
     this.resetUtterance();
+    this.resetRemoteSpeech();
+    this.resetInterruption();
   }
 
   private ensureAssistantUtterance(): string {
@@ -117,10 +148,13 @@ export class RealtimePerformanceCueController {
     this.resolverState = createPerformanceCueResolverState();
     this.scheduler.prepareUtterance(utteranceId);
     if (this.remoteSpeechActive) {
-      // 前の発話との無音境界を検出できなかった場合は、新しい transcript の到着時刻を
-      // 新しい節の anchor にする。古い発話の start 時刻を流用しない。
-      this.speechStartedAtMs = this.clock.now();
-      this.scheduler.startUtterance(utteranceId, this.speechStartedAtMs);
+      const speechStartedAtMs =
+        !this.speechAnchorClaimed && this.speechStartedAtMs !== null
+          ? this.speechStartedAtMs
+          : this.clock.now();
+      this.scheduler.startUtterance(utteranceId, speechStartedAtMs);
+      this.utteranceSpeechStarted = true;
+      this.speechAnchorClaimed = true;
     }
     return utteranceId;
   }
@@ -134,10 +168,41 @@ export class RealtimePerformanceCueController {
   private resetUtterance(): void {
     this.utteranceId = null;
     this.transcriptDone = false;
+    this.utteranceSpeechStarted = false;
     this.resolverState = createPerformanceCueResolverState();
+  }
+
+  private resetRemoteSpeech(): void {
     this.speechStartedAtMs = null;
     this.lastSpeechSignalAtMs = null;
     this.remoteSpeechActive = false;
+    this.speechAnchorClaimed = false;
+  }
+
+  private beginUserInterruption(): void {
+    if (this.interruptionPending) return;
+    this.interruptionPending = true;
+    this.interruptedUserTranscriptDone = false;
+    this.remoteSilenceObservedAfterInterruption = false;
+    this.scheduler.cancelAll();
+    this.resetUtterance();
+  }
+
+  private finishUserInterruptionTranscript(): void {
+    if (!this.interruptionPending) this.beginUserInterruption();
+    this.interruptedUserTranscriptDone = true;
+    this.finishInterruptionIfReady();
+  }
+
+  private finishInterruptionIfReady(): void {
+    if (!this.interruptedUserTranscriptDone || !this.remoteSilenceObservedAfterInterruption) return;
+    this.resetInterruption();
+  }
+
+  private resetInterruption(): void {
+    this.interruptionPending = false;
+    this.interruptedUserTranscriptDone = false;
+    this.remoteSilenceObservedAfterInterruption = false;
   }
 }
 

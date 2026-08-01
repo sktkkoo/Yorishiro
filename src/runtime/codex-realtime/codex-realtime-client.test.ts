@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
+import type { MouthValues } from "../../core/voice/mouth-values";
 import { CodexRealtimeClient, type CodexRealtimeState } from "./codex-realtime-client";
 
 interface FakeChannel<T> {
@@ -286,6 +287,58 @@ describe("CodexRealtimeClient", () => {
     expect(onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
     client.stop();
     expect(onRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("tracks remote speech while rendering is paused without Body sampling", async () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    const onCue = vi.fn();
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      performanceCueCallbacks: { onCue, onRelease },
+    });
+    let sampleCount = 0;
+    const internals = client as unknown as {
+      state: CodexRealtimeState;
+      lipSync: {
+        sample(out?: MouthValues): MouthValues;
+        reset(): void;
+      };
+      performanceCueController: {
+        onTranscriptDelta(role: unknown, delta: unknown): void;
+        onTranscriptDone(role: unknown): void;
+      };
+      startRemoteSpeechObservation(attempt: number): void;
+    };
+    internals.state = { status: "active" };
+    internals.lipSync = {
+      sample: (out = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 }) => {
+        sampleCount++;
+        Object.assign(
+          out,
+          sampleCount === 1
+            ? { aa: 0.8, ih: 0, ou: 0, ee: 0, oh: 0 }
+            : { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 },
+        );
+        return out;
+      },
+      reset: vi.fn(),
+    };
+    internals.performanceCueController.onTranscriptDelta("assistant", "はい。");
+    internals.performanceCueController.onTranscriptDone("assistant");
+
+    internals.startRemoteSpeechObservation(0);
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(sampleCount).toBeGreaterThan(1);
+    expect(onCue).toHaveBeenCalledOnce();
+    expect(onRelease).toHaveBeenCalledWith("realtime-1", "completed");
+
+    client.stop();
+    const stoppedSampleCount = sampleCount;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sampleCount).toBe(stoppedSampleCount);
+    hidden.mockRestore();
   });
 
   it("ignores transcript notifications for a different thread", async () => {
