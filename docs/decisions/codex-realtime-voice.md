@@ -52,6 +52,135 @@ UI に残る。これは PTY を「AI が user の代わりに操作する経路
   voice を補助 UI として足せる
 - WebRTC は browser の microphone / echo cancellation / audio output をそのまま利用できる
 
+## 実装上の契約
+
+### TUI と voice bridge は別 client
+
+TUI と voice bridge は同じ app-server へ接続する独立 client である。文章が同一になるという意味では
+なく、同じ thread state と event stream を共有する。
+
+Codex 0.146.0 で次を実測した。
+
+- `thread/realtime/start` は呼び出し元 bridge client を対象 thread へ自動 subscribe する
+- realtime transcript / handoff / 通常 turn event は TUI 相当 client と bridge client の双方へ届く
+- approval request は全 subscriber へ同じ request ID で届き、最初の response で解決する
+
+したがって voice bridge に `thread/resume` を追加しない。二重 resume は ownership を明確にせず、
+別の副作用を増やす。
+
+### thread targeting
+
+`thread/loaded/list` は active TUI thread を返す API ではない。loaded ID を文字列 sort した一覧であり、
+`data[0]` は active thread を意味しない。先頭採用は禁止する。
+
+Main Agent が agent team を動かすと同じ app-server に複数 thread が loaded になるが、これは異常では
+ない。対象は次の手順で決める。
+
+1. `thread/loaded/list` を取得する
+2. 各 ID を `thread/read({ includeTurns: false })` で読む
+3. `parentThreadId === null` の top-level thread だけを候補にする
+4. top-level が一つなら、その ID で realtime を開始する
+5. subagent の終了と read が競合した場合は、最新の loaded snapshot からやり直す
+6. top-level が複数なら推測せず fail closed する
+
+Codex v2 Thread schema は `parentThreadId` を subagent の場合だけ設定する。recency、配列順、statusから
+active threadを推測してはならない。upstreamがactive threadの明示query / notificationを提供した場合は、
+この選択を明示IDへ置き換える。
+
+### approval ownership
+
+approval UI の正本は TUI である。
+
+- `id + method` は server-initiated request として分類する
+- `id + result` または `id + error` だけを client request の response として扱う
+- bridge は approval request に自動 approve / decline を返さない
+- TUI が利用不能な状態で自動承認する fallback を作らない
+
+approvalは全subscriberへfan-outされ、first-response-winsである。bridgeが独自応答するとTUIと競合する。
+voice approval UIを正式に設計するまではTUIへ委ねる。
+
+### start / stop ownership
+
+非同期startとUI stateは二層で所有権を守る。
+
+`CodexRealtimeClient`:
+
+- startごとにattempt epochを取得する
+- stop、timeout、remote closedでepochを無効化する
+- 各`await`後にcurrent attemptか確認する
+- timeout後に遅れて返ったbridge connectionは即disconnectする
+- stop後に遅れて返ったmicrophone trackは即stopする
+- 古いattemptは新しいattemptのpeer、audio、stateを変更できない
+
+`useCodexRealtime`:
+
+- current clientからのstateだけをUIとBodyへ反映する
+- session切替やstop後に古い`start()`が失敗してもerror UIへ戻さない
+- remote `idle`でclient ownershipを解放し、次の1クリックで再接続する
+- voice unavailableなsessionへ移ったら古いerrorもidleへ戻す
+- current clientがactiveな間だけ、そのclientをlip sync sourceにする
+
+Appだけのgeneration guardではlate Rust/WebRTC resourceを閉じられず、clientだけのepochではstale React
+refを解放できないため、この二層を一つに省略しない。
+
+### audio startup order
+
+1. user gesture直後にAudioContextをresumeする
+2. Rust bridgeへ接続してapp-serverをinitializeする
+3. `account/read`で認証・billingを確定する
+4. top-level threadを確定する
+5. ここで初めてmicrophone permissionを要求する
+6. WebRTC offer / ICE / realtime start / remote SDPを完了する
+7. remote audioを再生し、同じstreamを`LipSyncAnalyser`へ接続する
+
+課金やthread選択が不明な状態でmicrophoneを先に取得しない。
+
+## 現在の機能境界
+
+実装済み:
+
+- active Main Codex sessionとのrealtime音声会話
+- 同じtop-level threadへのvoice / text historyの合流
+- remote audio再生とVRM lip sync
+- ChatGPT login / API key loginの継承とbilling表示
+- stop、remote close、session切替、timeoutを跨ぐresource ownership
+
+未実装:
+
+- 複数agentをtask ID付きで編成・監督するTask Coordinator
+- voice UIだけでのapproval確定
+- progress / completionの構造化通知台帳
+- semantic expression / gesture / motionの自動同期
+- Claude / OpenCode / shell tabのrealtime voice
+
+### expression / gesture
+
+現行PRが同期するのはremote audioと口形だけである。spoken textへ`[smile]`等のinline tagを混ぜない。
+server-sideで読み上げる可能性があり、shared transcriptも汚染するためである。
+
+採用する方向は、assistant transcript deltaをhost側でsemantic intentへ解決し、spoken textとは別の
+performance cueとしてBodyへ渡すside channelである。独立コアは`feat/realtime-performance-cues`
+branchにあるが、Mainへのwiringは未実装である。
+
+### Voice Summaryとの共存
+
+GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割り込みが起きる。GPT Liveをactive時の
+唯一の音声owner、Voice Summaryをfallbackにする方向が妥当だが、抑止範囲、未通知resultの扱い、
+切断後の復帰方法は未決定である。現時点では挙動を変更せず、別decisionで確定する。
+
+## 今後も守る invariant
+
+1. PTY stdinへvoice transcriptを書かない
+2. active threadをloaded配列順、recency、statusから推測しない
+3. subagentが複数loadedであることだけをerrorにしない
+4. 複数top-levelを勝手に選ばない
+5. bridgeがapprovalへ自動応答しない
+6. billingとthread確定前にmicrophoneを要求しない
+7. stale attempt/clientがcurrent stateやresourceを変更できないようにする
+8. app-server endpointをWebView、pack、LANへ公開しない
+9. spoken textへ機械制御tagを混ぜない
+10. 将来のstructured task stateで自然なconversation historyを置き換えない
+
 ## Security / known limitations
 
 - 対応は **Codex 0.145.0 以降**。`app-server` / `--remote` / realtime API は Codex の
@@ -94,11 +223,42 @@ experience を失う。
 
 却下。text と voice の context が分断され、「同じ住人との会話」にならない。
 
+### D. `thread/loaded/list.data[0]` を active thread とみなす
+
+却下。配列順にactive selectionの契約がない。
+
+### E. loaded threadが2件以上なら常に停止する
+
+却下。agent teamを使うだけでsubagent threadが複数loadedになる。top-levelとsubagentを区別する。
+
+### F. voice bridgeもapprovalへ返答する
+
+却下。全subscriberへのfan-outとfirst-response-winsによりTUIと競合する。
+
+### G. spoken textへexpression tagを埋め込む
+
+却下。読み上げ漏れ、streaming chunk分割、shared history汚染を避けられない。
+
+## Verification contract
+
+- sole top-level + 複数subagentからtop-levelを選ぶ
+- thread readとsubagent unloadの競合はfresh snapshotからretryする
+- 複数top-level / malformed threadはmicrophone取得前にfail closedする
+- server requestをresponseとしてconsumeしない
+- connecting中stop後のlate errorはUIを上書きしない
+- timeout後のlate connection、stop後のlate microphoneを解放する
+- remote closed後は一回のクリックで再接続する
+- old attempt/clientがnew active clientを破棄しない
+
+加えて実機で、voice turnのTUI表示、TUI approval response、barge-in、session切替、remote close、
+複数subagent稼働中のvoice開始を確認する。
+
 ## 関連 reference
 
 - `src-tauri/src/sessions/pty_session.rs` — app-server process lifecycle
 - `src-tauri/src/sessions/agent_adapter/codex.rs` — `--remote` launch
 - `src/runtime/codex-realtime/` — JSON-RPC / WebRTC / lip sync
+- `src/runtime/codex-realtime/use-codex-realtime.ts` — App-level client ownership
 - `src/title-bar.tsx` — host-owned microphone UI
 - [OpenAI Codex app-server README](https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md)
 - [critical-constraints.md](critical-constraints.md) §1 PTY observation only
