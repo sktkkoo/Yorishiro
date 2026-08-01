@@ -34,13 +34,17 @@ class FakeClient implements CodexRealtimeClientLike {
   constructor(
     private readonly onStateChange: (state: CodexRealtimeState) => void,
     private readonly startResult: Promise<void>,
+    private readonly getPreferredThreadId: () => string | null,
   ) {}
+
+  preferredThreadIdAtStart: string | null = null;
 
   getStatus(): CodexRealtimeState["status"] {
     return this.status;
   }
 
   readonly start = vi.fn((): Promise<void> => {
+    this.preferredThreadIdAtStart = this.getPreferredThreadId();
     this.emit({ status: "connecting" });
     return this.startResult;
   });
@@ -60,9 +64,16 @@ function setup(
   setFallbackPlaybackEnabled: (enabled: boolean) => void | Promise<void> = vi.fn(),
 ) {
   const clients: FakeClient[] = [];
-  const createClient: CodexRealtimeClientFactory = (_sessionId, onStateChange) => {
+  let trackedThreadId: string | null = "thread-1";
+  let notifyThreadChange: (threadId: string | null) => void = () => {};
+  const createClient: CodexRealtimeClientFactory = (
+    _sessionId,
+    onStateChange,
+    _stateExpressionCallbacks,
+    getPreferredThreadId = () => null,
+  ) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
-    const client = new FakeClient(onStateChange, startResult);
+    const client = new FakeClient(onStateChange, startResult, getPreferredThreadId);
     clients.push(client);
     return client;
   };
@@ -77,15 +88,28 @@ function setup(
         applyLipSyncSource,
         setFallbackPlaybackEnabled,
         createClient,
-        createThreadTracker: () => ({
-          getCurrentThreadId: () => null,
-          start: async () => {},
-          stop: () => {},
-        }),
+        createThreadTracker: (_sessionId, onCurrentThreadChange) => {
+          notifyThreadChange = onCurrentThreadChange;
+          return {
+            getCurrentThreadId: () => trackedThreadId,
+            start: async () => {},
+            stop: () => {},
+          };
+        },
       }),
     { initialProps: { sessionId: "main", available: true } },
   );
-  return { ...hook, clients, fallback, applyLipSyncSource, setFallbackPlaybackEnabled };
+  return {
+    ...hook,
+    clients,
+    fallback,
+    applyLipSyncSource,
+    setFallbackPlaybackEnabled,
+    changeThread: (threadId: string | null) => {
+      trackedThreadId = threadId;
+      notifyThreadChange(threadId);
+    },
+  };
 }
 
 describe("useCodexRealtime", () => {
@@ -239,6 +263,38 @@ describe("useCodexRealtime", () => {
       await firstStart.promise.catch(() => {});
     });
     expect(result.current.state.status).toBe("active");
+  });
+
+  it("/clear または /resume で current thread が変わると active voice を再接続する", async () => {
+    const { result, clients, changeThread } = setup([Promise.resolve(), Promise.resolve()]);
+
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    await act(async () => {
+      changeThread("thread-2");
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients[1].start).toHaveBeenCalledTimes(1);
+    expect(clients[1].preferredThreadIdAtStart).toBe("thread-2");
+  });
+
+  it("current thread を特定できなくなった場合は active voice を切断する", async () => {
+    const { result, clients, changeThread } = setup([Promise.resolve()]);
+
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+    act(() => changeThread(null));
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients).toHaveLength(1);
+    expect(result.current.state).toEqual({ status: "idle" });
   });
 
   it("明示stopを先に所有権解除し、後着のclosed/error通知をidleへ戻さない", async () => {

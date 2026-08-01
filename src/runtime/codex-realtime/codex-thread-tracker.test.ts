@@ -19,9 +19,15 @@ const bridge = vi.hoisted(() => ({
   loadedThreads: ["thread-1"] as string[],
   parents: {} as Record<string, string | null>,
   pendingReads: false,
+  selectedThread: null as string | null,
+  connectFailuresRemaining: 0,
   readResponders: [] as Array<() => void>,
   disconnect: vi.fn(async () => {}),
   connect: vi.fn(async ({ onMessage }: { onMessage: FakeChannel<string> }): Promise<string> => {
+    if (bridge.connectFailuresRemaining > 0) {
+      bridge.connectFailuresRemaining -= 1;
+      throw new Error("connect failed");
+    }
     bridge.channel = onMessage;
     return `tracker-connection-${bridge.connect.mock.calls.length}`;
   }),
@@ -36,6 +42,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("../../bindings/tauri-commands", () => ({
   sessionRealtimeConnect: bridge.connect,
   sessionRealtimeDisconnect: bridge.disconnect,
+  sessionRealtimeSelectedThread: vi.fn(async () => bridge.selectedThread),
   sessionRealtimeSend: vi.fn(async ({ message }: { message: string }): Promise<void> => {
     const request = JSON.parse(message) as SentMessage;
     bridge.sent.push(request);
@@ -69,6 +76,8 @@ describe("CodexThreadTracker", () => {
     bridge.loadedThreads = ["thread-1"];
     bridge.parents = {};
     bridge.pendingReads = false;
+    bridge.selectedThread = null;
+    bridge.connectFailuresRemaining = 0;
     bridge.readResponders = [];
     bridge.disconnect.mockClear();
     bridge.connect.mockClear();
@@ -102,6 +111,141 @@ describe("CodexThreadTracker", () => {
       }),
     );
     expect(tracker.getCurrentThreadId()).toBe("thread-after-clear");
+    tracker.stop();
+  });
+
+  it("does not infer TUI ownership from a generic top-level status notification", async () => {
+    const changes: Array<string | null> = [];
+    const tracker = new CodexThreadTracker("main-session", (threadId) => changes.push(threadId));
+    await tracker.start();
+
+    bridge.loadedThreads = ["thread-1", "thread-after-resume"];
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thread-after-resume", status: { type: "idle" } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
+    expect(changes).toEqual(["thread-1"]);
+    tracker.stop();
+  });
+
+  it("does not infer TUI ownership when another loaded top-level thread becomes active", async () => {
+    bridge.loadedThreads = ["thread-1", "thread-2"];
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    expect(tracker.getCurrentThreadId()).toBeNull();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thread-2", status: { type: "idle" } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tracker.getCurrentThreadId()).toBeNull();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thread-2", status: { type: "active", activeFlags: [] } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tracker.getCurrentThreadId()).toBeNull();
+    tracker.stop();
+  });
+
+  it("ignores side-fork started and status signals without retargeting active voice", async () => {
+    const changes: Array<string | null> = [];
+    const tracker = new CodexThreadTracker("main-session", (threadId) => changes.push(threadId));
+    await tracker.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/started",
+        params: {
+          thread: { id: "side-fork", parentThreadId: null, forkedFromId: "thread-1" },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "side-fork", status: { type: "active", activeFlags: [] } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
+    expect(changes).toEqual(["thread-1"]);
+    tracker.stop();
+  });
+
+  it("tracks a normal fork only when the TUI proxy selects it", async () => {
+    bridge.loadedThreads = ["thread-1", "forked-thread"];
+    const changes: Array<string | null> = [];
+    const tracker = new CodexThreadTracker("main-session", (threadId) => changes.push(threadId));
+    await tracker.start();
+    expect(tracker.getCurrentThreadId()).toBeNull();
+
+    bridge.selectedThread = "forked-thread";
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("forked-thread"));
+
+    expect(changes).toEqual(["forked-thread"]);
+    tracker.stop();
+  });
+
+  it("tracks an already-loaded /resume target observed by the TUI proxy", async () => {
+    bridge.loadedThreads = ["thread-1", "thread-2"];
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    expect(tracker.getCurrentThreadId()).toBeNull();
+
+    bridge.selectedThread = "thread-2";
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-2"));
+    tracker.stop();
+  });
+
+  it("does not switch back when the previous top-level thread later becomes idle", async () => {
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/started",
+        params: { thread: { id: "thread-2", parentThreadId: null } },
+      }),
+    );
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thread-1", status: { type: "idle" } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tracker.getCurrentThreadId()).toBe("thread-2");
+    tracker.stop();
+  });
+
+  it("ignores a subagent status notification while resolving /resume", async () => {
+    bridge.parents.subagent = "thread-1";
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "subagent", status: { type: "idle" } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
     tracker.stop();
   });
 
@@ -152,6 +296,23 @@ describe("CodexThreadTracker", () => {
 
     expect(bridge.connect).toHaveBeenCalledTimes(2);
     expect(tracker.getCurrentThreadId()).toBeNull();
+    tracker.stop();
+    vi.useRealTimers();
+  });
+
+  it("starts proxy selection polling after an initial connect failure reconnects", async () => {
+    vi.useFakeTimers();
+    bridge.connectFailuresRemaining = 1;
+    bridge.loadedThreads = ["thread-1", "thread-2"];
+    bridge.selectedThread = "thread-2";
+    const tracker = new CodexThreadTracker("main-session");
+
+    await expect(tracker.start()).rejects.toThrow("connect failed");
+    expect(bridge.connect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-2"));
+
+    expect(bridge.connect).toHaveBeenCalledTimes(2);
     tracker.stop();
     vi.useRealTimers();
   });

@@ -150,6 +150,11 @@ export const sessionRealtimeConnect = (args: {
   readonly onMessage: Channel<string>;
 }): Promise<string> => call("session_realtime_connect", args);
 
+/** Codex TUI proxy が最後に確認した top-level thread selection。 */
+export const sessionRealtimeSelectedThread = (args: {
+  readonly sessionId: string;
+}): Promise<string | null> => call("session_realtime_selected_thread", args);
+
 /** Rust host が所有する realtime connection へ JSON-RPC text を送る。 */
 export const sessionRealtimeSend = (args: {
   readonly connectionId: string;
