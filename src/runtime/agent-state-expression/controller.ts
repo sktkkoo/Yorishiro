@@ -46,7 +46,10 @@ export class RealtimeStateExpressionController {
   private speechAnchorClaimed = false;
   private audioGeneration: number | null = null;
   private audioItemId: string | null = null;
+  private pendingAudioGeneration: number | null = null;
+  private pendingAudioItemId: string | null = null;
   private responsePhase: "open" | "user-speaking" | "awaiting-assistant" = "open";
+  private userTranscriptPending = false;
   private itemBoundaryMode = false;
   private assistantBoundaryAccepted = true;
   private responseItemId: string | null = null;
@@ -82,12 +85,12 @@ export class RealtimeStateExpressionController {
   onAssistantResponseBoundary(itemId: unknown): void {
     if (typeof itemId !== "string" || itemId.length === 0) return;
     this.itemBoundaryMode = true;
-    if (this.responsePhase === "user-speaking" || this.invalidatedItemIds.has(itemId)) {
-      this.invalidatedItemIds.add(itemId);
+    if (this.invalidatedItemIds.has(itemId)) {
       this.assistantBoundaryAccepted = false;
       this.responseItemId = null;
       return;
     }
+    if (this.responsePhase === "user-speaking") this.responsePhase = "open";
     this.responseItemId = itemId;
     this.assistantBoundaryAccepted = true;
   }
@@ -97,13 +100,17 @@ export class RealtimeStateExpressionController {
     if (typeof itemId !== "string" || itemId.length === 0) return;
     this.onAssistantResponseBoundary(itemId);
     if (!this.assistantBoundaryAccepted) return;
-    if (this.audioItemId === itemId && this.audioGeneration === this.responseGeneration) return;
-    this.claimAudioAnchor(this.clock.now(), itemId);
+    if (this.remoteSpeechActive && this.audioGeneration === this.responseGeneration) {
+      this.audioItemId = itemId;
+      return;
+    }
+    this.pendingAudioGeneration = this.responseGeneration;
+    this.pendingAudioItemId = itemId;
   }
 
   onTranscriptDelta(role: unknown, delta: unknown): void {
     if (role === "user") {
-      if (this.responsePhase !== "user-speaking") this.beginUserInterruption(null);
+      if (!this.userTranscriptPending) this.beginUserInterruption(null);
       return;
     }
     if (role !== "assistant" || typeof delta !== "string" || delta.length === 0) return;
@@ -153,7 +160,13 @@ export class RealtimeStateExpressionController {
           this.speechStartedAtMs === null ||
           (previousSignalAtMs !== null && nowMs - previousSignalAtMs > this.audioAnchorRetentionMs)
         ) {
-          this.claimAudioAnchor(nowMs, this.responseItemId);
+          const itemId =
+            this.pendingAudioGeneration === this.responseGeneration
+              ? this.pendingAudioItemId
+              : this.responseItemId;
+          this.claimAudioAnchor(nowMs, itemId);
+          this.pendingAudioGeneration = null;
+          this.pendingAudioItemId = null;
         } else {
           this.bindCurrentUtteranceToAudio();
         }
@@ -183,8 +196,11 @@ export class RealtimeStateExpressionController {
     this.resetUtterance();
     this.resetRemoteSpeech();
     this.responsePhase = "open";
+    this.userTranscriptPending = false;
     this.assistantBoundaryAccepted = !this.itemBoundaryMode;
     this.responseItemId = null;
+    this.pendingAudioGeneration = null;
+    this.pendingAudioItemId = null;
   }
 
   private ensureAssistantUtterance(): string {
@@ -234,14 +250,17 @@ export class RealtimeStateExpressionController {
     this.audioItemId = null;
   }
 
-  private beginUserInterruption(itemId: string | null): void {
-    if (this.responsePhase === "user-speaking") return;
+  private beginUserInterruption(_itemId: string | null): void {
+    if (this.userTranscriptPending) return;
     this.responseGeneration++;
     this.responsePhase = "user-speaking";
+    this.userTranscriptPending = true;
     this.cancelCompletionTimer();
     if (this.responseItemId) this.invalidatedItemIds.add(this.responseItemId);
     if (this.audioItemId) this.invalidatedItemIds.add(this.audioItemId);
-    if (itemId) this.invalidatedItemIds.add(itemId);
+    if (this.pendingAudioItemId) this.invalidatedItemIds.add(this.pendingAudioItemId);
+    this.pendingAudioGeneration = null;
+    this.pendingAudioItemId = null;
     this.responseItemId = null;
     this.assistantBoundaryAccepted = !this.itemBoundaryMode;
     this.scheduler.cancelAll();
@@ -249,8 +268,9 @@ export class RealtimeStateExpressionController {
   }
 
   private finishUserTranscript(): void {
-    if (this.responsePhase !== "user-speaking") this.beginUserInterruption(null);
-    this.responsePhase = "awaiting-assistant";
+    if (!this.userTranscriptPending) this.beginUserInterruption(null);
+    this.userTranscriptPending = false;
+    if (this.responsePhase === "user-speaking") this.responsePhase = "awaiting-assistant";
   }
 
   private claimAudioAnchor(startedAtMs: number, itemId: string | null): void {

@@ -179,6 +179,7 @@ describe("RealtimeStateExpressionController", () => {
     h.controller.onAssistantResponseBoundary("assistant-new");
     h.controller.onTranscriptDelta("assistant", "いいね。");
     h.controller.onOutputAudioItem("assistant-new");
+    h.controller.observeRemoteSpeech(true);
     h.clock.advance(290);
 
     expect(h.onCue).toHaveBeenCalledTimes(1);
@@ -186,6 +187,64 @@ describe("RealtimeStateExpressionController", () => {
       expect.objectContaining({ expression: "happy", utteranceId: "realtime-2" }),
       expect.any(Object),
     );
+  });
+
+  it("accepts a distinct next assistant item before the delayed user transcript done", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onAssistantResponseBoundary("assistant-new");
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.controller.onTranscriptDone("user");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.controller.onOutputAudioItem("assistant-new");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(290);
+
+    expect(h.onCue).toHaveBeenCalledTimes(1);
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ expression: "happy", utteranceId: "realtime-2" }),
+      expect.any(Object),
+    );
+  });
+
+  it("uses output audio metadata for identity without starting the playout clock", () => {
+    const h = setup();
+    h.clock.advance(100);
+    h.controller.onAssistantResponseBoundary("assistant-1");
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.controller.onOutputAudioItem("assistant-1");
+
+    h.clock.advance(500);
+    expect(h.onCue).not.toHaveBeenCalled();
+
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(289);
+    expect(h.onCue).not.toHaveBeenCalled();
+    h.clock.advance(1);
+
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ expression: "happy" }),
+      expect.objectContaining({ scheduledForMs: 890 }),
+    );
+  });
+
+  it("never starts response-owned cues when output audio metadata has no playout", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-1");
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.controller.onOutputAudioItem("assistant-1");
+    h.controller.onTranscriptDone("assistant");
+
+    h.clock.advance(10_000);
+
+    expect(h.onCue).not.toHaveBeenCalled();
+    expect(h.onRelease).not.toHaveBeenCalled();
   });
 
   it("binds a bounded completed audio interval to a late short transcript", () => {
