@@ -57,6 +57,8 @@ export const KEYS = {
   SESSION_TAB_MANAGER: "session-tabs:manager",
   /** WorkspaceAttentionStore singleton: host-owned attention item lifecycle + aggregate。 */
   WORKSPACE_ATTENTION_STORE: "workspace-attention:store",
+  /** WorkStatusLedgerStore singleton: GPT Live 向けの deterministic な委任作業投影。 */
+  WORK_STATUS_LEDGER_STORE: "work-status-ledger:store",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];

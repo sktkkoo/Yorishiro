@@ -12,6 +12,7 @@ Pack 管理、event dispatch、module registry、singleton service。core primit
 |---|---|---|---|
 | `ambient-audio/` | Scene Pack の `ambient` 宣言を Howler.js で再生する engine と ScenePackRegistry への配線 | `index.ts` | [README](./ambient-audio/README.md) |
 | `codex-realtime/` | Codex TUI と同じ app-server thread に WebRTC 音声を接続し、remote audio を lip sync source にする | `index.ts` | experimental、host-owned UI |
+| `work-status-ledger/` | GPT Live に渡す委任作業の安定 work ID・状態・短い事実要約を deterministic に投影する | `index.ts` | protocol / Main Agent / approval ownership から独立 |
 | `event-bus/` | Trigger dispatch engine — 環境 event → trigger match → reaction emit | `event-bus.ts` | Twin-trigger / Synthetic event の dispatch loop |
 | `persona-registry/` | Persona の state 管理 — **single-active**（複数 register 可、外に出すのは 1 個） | `persona-registry-impl.ts` | [decisions/persona-multi-instance.md](../../docs/decisions/persona-multi-instance.md) |
 | `persona-reflex/` | Active persona の reflex（customTriggers + responses）を EventBus に bridge | `persona-reflex-dispatcher.ts` | [decisions/motion-effect-trigger-axes.md](../../docs/decisions/motion-effect-trigger-axes.md) |
