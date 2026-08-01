@@ -86,6 +86,15 @@ export class RealtimeStateExpressionController {
     if (typeof itemId !== "string" || itemId.length === 0) return;
     this.itemBoundaryMode = true;
     if (this.invalidatedItemIds.has(itemId)) {
+      // A stale boundary can arrive after a newer response item was already accepted.
+      // It must not revoke ownership from that distinct current response.
+      if (
+        this.assistantBoundaryAccepted &&
+        this.responseItemId !== null &&
+        this.responseItemId !== itemId
+      ) {
+        return;
+      }
       this.assistantBoundaryAccepted = false;
       this.responseItemId = null;
       return;
@@ -153,6 +162,20 @@ export class RealtimeStateExpressionController {
       this.cancelCompletionTimer();
       const previousSignalAtMs = this.lastSpeechSignalAtMs;
       this.lastSpeechSignalAtMs = nowMs;
+      // An interrupted response and its replacement can have no measurable silence
+      // between them. Pending metadata from the current generation must still move
+      // the playout anchor away from the older generation.
+      if (
+        this.pendingAudioGeneration === this.responseGeneration &&
+        this.audioGeneration !== this.responseGeneration
+      ) {
+        const itemId = this.pendingAudioItemId ?? this.responseItemId;
+        this.remoteSpeechActive = true;
+        this.claimAudioAnchor(nowMs, itemId);
+        this.pendingAudioGeneration = null;
+        this.pendingAudioItemId = null;
+        return;
+      }
       if (!this.remoteSpeechActive) {
         this.remoteSpeechActive = true;
         if (
