@@ -10,6 +10,7 @@ import type { Disposable } from "@yorishiro/sdk";
 import * as THREE from "three";
 import { describe, expect, it, vi } from "vitest";
 import type { ClaimKind, ClaimState } from "../../runtime/ui-claim-state";
+import type { AnimationPlayer } from "./animation-player";
 import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
@@ -82,6 +83,22 @@ function beatTargetOf(body: Body): BeatTarget {
   return (body as unknown as { buildBeatTarget(): BeatTarget }).buildBeatTarget();
 }
 
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((onResolve) => {
+    resolve = onResolve;
+  });
+  return { promise, resolve };
+}
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 // ─── Body beat target wiring ─────────────────────────────
 
 describe("Body beat target wiring", () => {
@@ -120,6 +137,86 @@ describe("Body lip sync sampling", () => {
     body.update(1 / 60, 0);
 
     expect(sampleMouth).not.toHaveBeenCalled();
+  });
+});
+
+describe("Body motion activation ownership", () => {
+  type Playback = Awaited<ReturnType<AnimationPlayer["play"]>>;
+
+  function mockPendingPlay(body: Body) {
+    const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+    return vi.spyOn(player, "play");
+  }
+
+  function playback() {
+    const completion = deferred<void>();
+    const cancel = vi.fn(() => completion.resolve());
+    const stop = vi.fn(async () => completion.resolve());
+    return {
+      result: {
+        id: 1,
+        completion: completion.promise,
+        setWeight: vi.fn(),
+        stop,
+        cancel,
+      } satisfies Playback,
+      cancel,
+    };
+  }
+
+  it("cancels playback that finishes loading after its scheduler handle is released", async () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const loading = deferred<Playback>();
+    mockPendingPlay(body).mockReturnValue(loading.promise);
+    const latePlayback = playback();
+
+    const handle = body.acquireMotionSlot({
+      source: "system",
+      priority: "speech-performance",
+      animation: "anim:VRMA_head_tilt_down",
+    });
+    handle.cancel();
+    loading.resolve(latePlayback.result);
+    await flushMicrotasks();
+
+    expect(latePlayback.cancel).toHaveBeenCalledOnce();
+    await expect(handle.completion).resolves.toEqual({ reason: "cancelled" });
+  });
+
+  it("cancels a late lower-priority load without touching its active replacement", async () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const speechLoading = deferred<Playback>();
+    const personaLoading = deferred<Playback>();
+    mockPendingPlay(body)
+      .mockReturnValueOnce(speechLoading.promise)
+      .mockReturnValueOnce(personaLoading.promise);
+    const speechPlayback = playback();
+    const personaPlayback = playback();
+
+    const speech = body.acquireMotionSlot({
+      source: "system",
+      priority: "speech-performance",
+      animation: "anim:VRMA_head_tilt_down",
+    });
+    const persona = body.acquireMotionSlot({
+      source: "persona",
+      priority: "persona-handler",
+      animation: "anim:VRMA_wave",
+    });
+    personaLoading.resolve(personaPlayback.result);
+    await flushMicrotasks();
+    speechLoading.resolve(speechPlayback.result);
+    await flushMicrotasks();
+
+    expect(speechPlayback.cancel).toHaveBeenCalledOnce();
+    expect(personaPlayback.cancel).not.toHaveBeenCalled();
+    expect(persona.isActive()).toBe(true);
+    await expect(speech.completion).resolves.toEqual({ reason: "preempted" });
+
+    persona.cancel();
+    expect(personaPlayback.cancel).toHaveBeenCalledOnce();
   });
 });
 

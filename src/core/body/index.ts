@@ -199,6 +199,8 @@ export class Body {
     readonly stop: (fadeMs?: number) => Promise<void>;
     readonly cancel: () => void;
   } | null = null;
+  /** Invalidates AnimationPlayer.play() results that arrive after ownership changed. */
+  private motionActivationGeneration = 0;
 
   /** Track all active expression handles for interrupt(). */
   private readonly activeExprHandles = new Set<BodyExpressionHandle>();
@@ -296,6 +298,7 @@ export class Body {
 
     this.motionScheduler = new MotionScheduler({
       onActivate: async (req) => {
+        const generation = ++this.motionActivationGeneration;
         // AnimationPlayer.play() を呼んで clip を mixer に載せる。返値の handle
         // (stop / cancel / completion) を activeMotionPlayback に保持し、
         // onDeactivate が同じ playback を停止できるようにする。
@@ -311,6 +314,10 @@ export class Body {
           loop: req.options?.loop,
           speed: req.options?.speed,
         });
+        if (generation !== this.motionActivationGeneration) {
+          result.cancel();
+          return;
+        }
         this.activeMotionPlayback = { stop: result.stop, cancel: result.cancel };
         try {
           await result.completion;
@@ -321,6 +328,7 @@ export class Body {
         }
       },
       onDeactivate: (fadeMs) => {
+        this.motionActivationGeneration++;
         // active な playback があれば停止。fadeMs が 0 なら cancel（即時）、
         // それ以外は stop(fadeMs)。stop は async だが onDeactivate は void 契約
         // なので fire-and-forget でよい（completion 解決は MotionScheduler 側で
@@ -633,6 +641,7 @@ export class Body {
   /** Dispose all resources. */
   dispose(): void {
     this.disposeAttention();
+    this.motionActivationGeneration++;
     this.animationPlayer.stopAll();
     this.activeExprHandles.clear();
     this.activeGazeHandles.clear();
