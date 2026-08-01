@@ -411,17 +411,33 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   private startWorkStatusContextUpdates(threadId: string, attempt: number): void {
     this.workStatusSubscription?.dispose();
+    const ledger = this.workStatusLedger;
     this.workStatusSubscription =
-      this.workStatusLedger?.subscribeEvents((event) => {
+      ledger?.subscribeEvents((event) => {
         if (!this.isAttemptOwner(attempt) || this.threadId !== threadId) return;
-        void this.request("thread/realtime/appendText", {
-          threadId,
-          role: "developer",
-          text: formatWorkStatusEvent(event),
-        }).catch(() => {
-          // Status context is best-effort; voice and the work itself must keep running.
-        });
+        this.appendWorkStatusContext(threadId, formatWorkStatusEvent(event), attempt);
       }) ?? null;
+    // initialItems の snapshot 採取後〜SDP確立までの更新を、最新snapshotで再同期する。
+    if (ledger) {
+      this.appendWorkStatusContext(
+        threadId,
+        formatWorkStatusSnapshot(ledger.getSnapshot()),
+        attempt,
+      );
+    }
+  }
+
+  private appendWorkStatusContext(threadId: string, text: string, attempt: number): void {
+    void this.request("thread/realtime/appendText", {
+      threadId,
+      role: "developer",
+      text,
+    }).catch((error) => {
+      // Status context is best-effort; voice and the work itself must keep running.
+      if (this.isAttemptOwner(attempt)) {
+        console.warn("[codex-realtime] failed to append work status context", error);
+      }
+    });
   }
 
   private connectRemoteAudio(stream: MediaStream, attempt: number): void {

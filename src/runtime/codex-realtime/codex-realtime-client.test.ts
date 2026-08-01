@@ -31,6 +31,7 @@ const bridge = vi.hoisted(() => ({
   loadedThreadResponses: [] as string[][],
   loadedThreadParents: {} as Record<string, string | null | undefined>,
   threadReadFailures: {} as Record<string, number>,
+  realtimeStartPrelude: null as (() => void) | null,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -113,6 +114,7 @@ vi.mock("../../bindings/tauri-commands", () => ({
         respond({});
       }
       if (request.method === "thread/realtime/start") {
+        bridge.realtimeStartPrelude?.();
         queueMicrotask(() => {
           bridge.channel?.onmessage(
             JSON.stringify({
@@ -208,6 +210,7 @@ describe("CodexRealtimeClient", () => {
     vi.mocked(ensureAudioContextRunning).mockReset();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
+    bridge.realtimeStartPrelude = null;
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -275,17 +278,21 @@ describe("CodexRealtimeClient", () => {
     ]);
 
     ledger.complete(existing.id, "All checks passed");
-    await vi.waitFor(() =>
-      expect(
-        bridge.sent.find((message) => message.method === "thread/realtime/appendText"),
-      ).toMatchObject({
+    await vi.waitFor(() => {
+      const completedUpdate = bridge.sent.find(
+        (message) =>
+          message.method === "thread/realtime/appendText" &&
+          typeof message.params?.text === "string" &&
+          message.params.text.includes('"status":"completed"'),
+      );
+      expect(completedUpdate).toMatchObject({
         params: {
           threadId: "thread-1",
           role: "developer",
           text: expect.stringContaining('"status":"completed"'),
         },
-      }),
-    );
+      });
+    });
 
     client.stop();
     const appendCount = bridge.sent.filter(
@@ -295,6 +302,33 @@ describe("CodexRealtimeClient", () => {
     expect(
       bridge.sent.filter((message) => message.method === "thread/realtime/appendText"),
     ).toHaveLength(appendCount);
+  });
+
+  it("resyncs work created between the initial snapshot and context subscription", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    bridge.realtimeStartPrelude = () => {
+      const work = ledger.create({ summary: "Created while WebRTC starts" });
+      ledger.markRunning(work.id);
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.initialItems).toEqual([
+      expect.objectContaining({ text: expect.stringContaining('"activeCount":0') }),
+    ]);
+    expect(
+      bridge.sent.find(
+        (message) =>
+          message.method === "thread/realtime/appendText" &&
+          typeof message.params?.text === "string" &&
+          message.params.text.includes("Created while WebRTC starts"),
+      ),
+    ).toBeDefined();
+    client.stop();
   });
 
   it("observes delegated turn and approval events without answering the approval", async () => {
