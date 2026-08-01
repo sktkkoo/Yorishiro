@@ -77,6 +77,11 @@ function setup(
         applyLipSyncSource,
         setFallbackPlaybackEnabled,
         createClient,
+        createThreadTracker: () => ({
+          getCurrentThreadId: () => null,
+          start: async () => {},
+          stop: () => {},
+        }),
       }),
     { initialProps: { sessionId: "main", available: true } },
   );

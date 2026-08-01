@@ -553,6 +553,21 @@ describe("CodexRealtimeClient", () => {
     expect(client.getStatus()).toBe("error");
   });
 
+  it("uses the tracker-selected top-level thread while a cleared thread remains loaded", async () => {
+    bridge.loadedThreadResponses = [["cleared-thread", "current-thread"]];
+    bridge.loadedThreadParents = { "cleared-thread": null, "current-thread": null };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPreferredThreadId: () => "current-thread",
+    });
+
+    await client.start();
+
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
+    ).toMatchObject({ threadId: "current-thread" });
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
   it("fails closed when thread/read omits the subagent relationship", async () => {
     bridge.loadedThreadResponses = [["thread-1", "thread-2"]];
     bridge.loadedThreadParents = { "thread-1": null, "thread-2": undefined };
