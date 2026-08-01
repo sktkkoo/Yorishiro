@@ -8,12 +8,7 @@ import type { LipSyncSource } from "../../core/body";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import { LipSyncAnalyser } from "../../core/voice/lip-sync-analyser";
 import type { MouthValues } from "../../core/voice/mouth-values";
-import {
-  clearMouthValues,
-  copyMouthValues,
-  createMouthValues,
-  ZERO_MOUTH,
-} from "../../core/voice/mouth-values";
+import { clearMouthValues, ZERO_MOUTH } from "../../core/voice/mouth-values";
 import {
   RealtimeStateExpressionController,
   type RealtimeStateExpressionControllerOptions,
@@ -60,7 +55,6 @@ interface PendingRequest {
 const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
 const CODEX_REALTIME_VOICE = "sol";
-const REMOTE_SPEECH_SIGNAL_THRESHOLD = 0.025;
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 
 class StartAttemptCancelledError extends Error {
@@ -86,7 +80,6 @@ export class CodexRealtimeClient implements LipSyncSource {
   private remoteSource: MediaStreamAudioSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
   private lipSync: LipSyncAnalyser | null = null;
-  private readonly remoteMouthValues = createMouthValues();
   private remoteSpeechSampleInterval: ReturnType<typeof globalThis.setInterval> | null = null;
   private threadId: string | null = null;
   private nextRequestId = 1;
@@ -123,7 +116,7 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   sampleMouth(out?: MouthValues): MouthValues {
     if (this.isMouthActive() && this.lipSync) {
-      return out ? copyMouthValues(this.remoteMouthValues, out) : { ...this.remoteMouthValues };
+      return this.lipSync.sample(out);
     }
     return out ? clearMouthValues(out) : { ...ZERO_MOUTH };
   }
@@ -546,8 +539,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.stopRemoteSpeechObservation();
     const sample = () => {
       if (!this.isAttemptOwner(attempt) || !this.lipSync) return;
-      const values = this.lipSync.sample(this.remoteMouthValues);
-      this.stateExpressionController?.observeRemoteSpeech(hasRemoteSpeechSignal(values));
+      this.stateExpressionController?.observeRemoteSpeech(this.lipSync.hasSignal());
     };
     sample();
     this.remoteSpeechSampleInterval = globalThis.setInterval(
@@ -561,7 +553,6 @@ export class CodexRealtimeClient implements LipSyncSource {
       globalThis.clearInterval(this.remoteSpeechSampleInterval);
       this.remoteSpeechSampleInterval = null;
     }
-    clearMouthValues(this.remoteMouthValues);
   }
 
   private disposeResources(finalMessage?: string): void {
@@ -609,10 +600,6 @@ export class CodexRealtimeClient implements LipSyncSource {
   private invalidateAttempt(attempt?: number): void {
     if (attempt === undefined || this.startAttemptEpoch === attempt) this.startAttemptEpoch++;
   }
-}
-
-function hasRemoteSpeechSignal(values: MouthValues): boolean {
-  return Object.values(values).some((value) => value >= REMOTE_SPEECH_SIGNAL_THRESHOLD);
 }
 
 function hasOwn(value: object, key: string): boolean {

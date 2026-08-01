@@ -343,11 +343,12 @@ describe("CodexRealtimeClient", () => {
     const client = new CodexRealtimeClient("main-session", undefined, {
       stateExpressionCallbacks: { onCue, onRelease },
     });
-    let sampleCount = 0;
+    let signalSampleCount = 0;
     const internals = client as unknown as {
       state: CodexRealtimeState;
       lipSync: {
         sample(out?: MouthValues): MouthValues;
+        hasSignal(): boolean;
         reset(): void;
       };
       stateExpressionController: {
@@ -358,15 +359,10 @@ describe("CodexRealtimeClient", () => {
     };
     internals.state = { status: "active" };
     internals.lipSync = {
-      sample: (out = { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 }) => {
-        sampleCount++;
-        Object.assign(
-          out,
-          sampleCount === 1
-            ? { aa: 0.8, ih: 0, ou: 0, ee: 0, oh: 0 }
-            : { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 },
-        );
-        return out;
+      sample: vi.fn(() => ({ aa: 0.8, ih: 0, ou: 0, ee: 0, oh: 0 })),
+      hasSignal: () => {
+        signalSampleCount++;
+        return signalSampleCount === 1;
       },
       reset: vi.fn(),
     };
@@ -376,15 +372,37 @@ describe("CodexRealtimeClient", () => {
     internals.startRemoteSpeechObservation(0);
     await vi.advanceTimersByTimeAsync(1_600);
 
-    expect(sampleCount).toBeGreaterThan(1);
+    expect(signalSampleCount).toBeGreaterThan(1);
     expect(onCue).toHaveBeenCalledOnce();
     expect(onRelease).toHaveBeenCalledWith("realtime-1", "completed");
 
     client.stop();
-    const stoppedSampleCount = sampleCount;
+    const stoppedSampleCount = signalSampleCount;
     await vi.advanceTimersByTimeAsync(100);
-    expect(sampleCount).toBe(stoppedSampleCount);
+    expect(signalSampleCount).toBe(stoppedSampleCount);
     hidden.mockRestore();
+  });
+
+  it("samples fresh mouth values on every Body render pull", () => {
+    const client = new CodexRealtimeClient("main-session");
+    let renderSampleCount = 0;
+    const internals = client as unknown as {
+      state: CodexRealtimeState;
+      lipSync: {
+        sample(out?: MouthValues): MouthValues;
+        hasSignal(): boolean;
+        reset(): void;
+      };
+    };
+    internals.state = { status: "active" };
+    internals.lipSync = {
+      sample: () => ({ aa: ++renderSampleCount / 10, ih: 0, ou: 0, ee: 0, oh: 0 }),
+      hasSignal: () => true,
+      reset: vi.fn(),
+    };
+
+    expect(client.sampleMouth().aa).toBe(0.1);
+    expect(client.sampleMouth().aa).toBe(0.2);
   });
 
   it("ignores transcript notifications for a different thread", async () => {
