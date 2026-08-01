@@ -257,6 +257,34 @@ describe("RealtimeStateExpressionController", () => {
     );
   });
 
+  it("ignores late invalidated audio metadata after accepting a replacement item", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.onOutputAudioItem("assistant-old");
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onTranscriptDone("user");
+    h.controller.onAssistantResponseBoundary("assistant-new");
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.controller.onOutputAudioItem("assistant-old");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(1_000);
+
+    expect(h.onCue).not.toHaveBeenCalled();
+
+    h.controller.onOutputAudioItem("assistant-new");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(290);
+
+    expect(h.onCue).toHaveBeenCalledTimes(1);
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ expression: "happy", utteranceId: "realtime-2" }),
+      expect.any(Object),
+    );
+  });
+
   it("uses output audio metadata for identity without starting the playout clock", () => {
     const h = setup();
     h.clock.advance(100);

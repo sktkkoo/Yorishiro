@@ -82,8 +82,8 @@ export class RealtimeStateExpressionController {
   }
 
   /** Associates flat transcript notifications with a provider response item when available. */
-  onAssistantResponseBoundary(itemId: unknown): void {
-    if (typeof itemId !== "string" || itemId.length === 0) return;
+  onAssistantResponseBoundary(itemId: unknown): boolean {
+    if (typeof itemId !== "string" || itemId.length === 0) return false;
     this.itemBoundaryMode = true;
     if (this.invalidatedItemIds.has(itemId)) {
       // A stale boundary can arrive after a newer response item was already accepted.
@@ -93,22 +93,22 @@ export class RealtimeStateExpressionController {
         this.responseItemId !== null &&
         this.responseItemId !== itemId
       ) {
-        return;
+        return false;
       }
       this.assistantBoundaryAccepted = false;
       this.responseItemId = null;
-      return;
+      return false;
     }
     if (this.responsePhase === "user-speaking") this.responsePhase = "open";
     this.responseItemId = itemId;
     this.assistantBoundaryAccepted = true;
+    return true;
   }
 
   /** Uses output-audio item identity as an authoritative response/audio boundary. */
   onOutputAudioItem(itemId: unknown): void {
     if (typeof itemId !== "string" || itemId.length === 0) return;
-    this.onAssistantResponseBoundary(itemId);
-    if (!this.assistantBoundaryAccepted) return;
+    if (!this.onAssistantResponseBoundary(itemId)) return;
     if (this.remoteSpeechActive && this.audioGeneration === this.responseGeneration) {
       this.audioItemId = itemId;
       return;
