@@ -477,7 +477,14 @@ export class CodexRealtimeClient implements LipSyncSource {
           if (!this.isAttemptOwner(attempt) || this.peer !== peer || this.threadId !== threadId) {
             return;
           }
-          void this.reconcileWorkStatus(threadId, attempt, peer, retriesRemaining - 1);
+          void this.reconcileWorkStatus(threadId, attempt, peer, retriesRemaining - 1).catch(
+            (error) => {
+              // stop/bridge close が retry と競合した場合は expected cancellation。
+              if (this.isAttemptOwner(attempt)) {
+                console.warn("[codex-realtime] work status retry failed", error);
+              }
+            },
+          );
         }, WORK_STATUS_RECONCILE_RETRY_MS);
       }
     }
