@@ -45,13 +45,31 @@ pub struct VoicePlaybackProvenance {
     pub fallback_playback_enabled: bool,
 }
 
-static VOICE_PLAYBACK_PROVENANCE: LazyLock<Mutex<VoicePlaybackProvenance>> = LazyLock::new(|| {
-    Mutex::new(VoicePlaybackProvenance {
-        owner_id: String::new(),
-        generation: 0,
-        fallback_playback_enabled: true,
-    })
-});
+#[derive(Debug)]
+struct VoicePlaybackLeaseState {
+    provenance: VoicePlaybackProvenance,
+    next_registration: u64,
+    active_registration: u64,
+    candidates: HashMap<String, u64>,
+}
+
+impl Default for VoicePlaybackLeaseState {
+    fn default() -> Self {
+        Self {
+            provenance: VoicePlaybackProvenance {
+                owner_id: String::new(),
+                generation: 0,
+                fallback_playback_enabled: true,
+            },
+            next_registration: 0,
+            active_registration: 0,
+            candidates: HashMap::new(),
+        }
+    }
+}
+
+static VOICE_PLAYBACK_LEASE: LazyLock<Mutex<VoicePlaybackLeaseState>> =
+    LazyLock::new(|| Mutex::new(VoicePlaybackLeaseState::default()));
 
 /// config.json の mcpPort を読む（不在 / 不正 → None）。
 fn read_configured_port() -> Option<u16> {
@@ -75,44 +93,60 @@ fn lock_pending() -> std::sync::MutexGuard<'static, HashMap<String, oneshot::Sen
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-fn lock_voice_playback_provenance() -> std::sync::MutexGuard<'static, VoicePlaybackProvenance> {
-    VOICE_PLAYBACK_PROVENANCE
+fn lock_voice_playback_lease() -> std::sync::MutexGuard<'static, VoicePlaybackLeaseState> {
+    VOICE_PLAYBACK_LEASE
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn apply_voice_playback_update(
-    current: &mut VoicePlaybackProvenance,
+    state: &mut VoicePlaybackLeaseState,
     next: VoicePlaybackProvenance,
-) -> bool {
-    let belongs_to_current_owner = next.owner_id == current.owner_id;
-    let is_newer_or_retry = next.generation > current.generation
-        || (next.generation == current.generation
-            && next.fallback_playback_enabled == current.fallback_playback_enabled);
-    if belongs_to_current_owner && is_newer_or_retry {
-        *current = next;
-        true
-    } else {
-        false
+) -> Result<(), String> {
+    let belongs_to_current_owner = next.owner_id == state.provenance.owner_id;
+    let is_newer_or_retry = next.generation > state.provenance.generation
+        || (next.generation == state.provenance.generation
+            && next.fallback_playback_enabled == state.provenance.fallback_playback_enabled);
+    if belongs_to_current_owner {
+        if is_newer_or_retry {
+            state.provenance = next;
+            return Ok(());
+        }
+        return Err("voice playback generation is stale".to_string());
     }
+
+    let Some(registration) = state.candidates.remove(&next.owner_id) else {
+        return Err("voice playback owner is stale or unregistered".to_string());
+    };
+    if registration <= state.active_registration {
+        return Err("voice playback owner registration is stale".to_string());
+    }
+
+    state.active_registration = registration;
+    state
+        .candidates
+        .retain(|_, candidate| *candidate > registration);
+    state.provenance = next;
+    Ok(())
 }
 
-pub fn set_voice_playback_provenance(next: VoicePlaybackProvenance) {
-    apply_voice_playback_update(&mut lock_voice_playback_provenance(), next);
+pub fn set_voice_playback_provenance(next: VoicePlaybackProvenance) -> Result<(), String> {
+    apply_voice_playback_update(&mut lock_voice_playback_lease(), next)
 }
 
 pub fn register_voice_playback_owner() -> String {
     let owner_id = uuid::Uuid::new_v4().to_string();
-    *lock_voice_playback_provenance() = VoicePlaybackProvenance {
-        owner_id: owner_id.clone(),
-        generation: 0,
-        fallback_playback_enabled: true,
-    };
+    register_voice_playback_owner_with_id(&mut lock_voice_playback_lease(), owner_id.clone());
     owner_id
 }
 
+fn register_voice_playback_owner_with_id(state: &mut VoicePlaybackLeaseState, owner_id: String) {
+    state.next_registration = state.next_registration.saturating_add(1);
+    state.candidates.insert(owner_id, state.next_registration);
+}
+
 fn voice_playback_provenance() -> VoicePlaybackProvenance {
-    lock_voice_playback_provenance().clone()
+    lock_voice_playback_lease().provenance.clone()
 }
 
 /// Tauri event で TS 層に tool request を飛ばし、`mcp_tool_response` が返す
@@ -275,68 +309,124 @@ mod tests {
 
     #[test]
     fn voice_playback_provenance_ignores_out_of_order_updates() {
-        let mut current = VoicePlaybackProvenance {
-            owner_id: "current-owner".to_string(),
-            generation: 2,
-            fallback_playback_enabled: true,
+        let mut state = VoicePlaybackLeaseState {
+            provenance: VoicePlaybackProvenance {
+                owner_id: "current-owner".to_string(),
+                generation: 2,
+                fallback_playback_enabled: true,
+            },
+            next_registration: 1,
+            active_registration: 1,
+            candidates: HashMap::new(),
         };
-        assert!(!apply_voice_playback_update(
-            &mut current,
+        assert!(apply_voice_playback_update(
+            &mut state,
             VoicePlaybackProvenance {
                 owner_id: "current-owner".to_string(),
                 generation: 1,
                 fallback_playback_enabled: false,
             },
-        ));
-        assert!(current.fallback_playback_enabled);
+        )
+        .is_err());
+        assert!(state.provenance.fallback_playback_enabled);
 
-        assert!(!apply_voice_playback_update(
-            &mut current,
+        assert!(apply_voice_playback_update(
+            &mut state,
             VoicePlaybackProvenance {
                 owner_id: "stale-owner".to_string(),
                 generation: 3,
                 fallback_playback_enabled: false,
             },
-        ));
-        assert_eq!(current.owner_id, "current-owner");
-        assert!(current.fallback_playback_enabled);
+        )
+        .is_err());
+        assert_eq!(state.provenance.owner_id, "current-owner");
+        assert!(state.provenance.fallback_playback_enabled);
 
         assert!(apply_voice_playback_update(
-            &mut current,
+            &mut state,
             VoicePlaybackProvenance {
                 owner_id: "current-owner".to_string(),
                 generation: 3,
                 fallback_playback_enabled: false,
             },
-        ));
-        assert!(!current.fallback_playback_enabled);
+        )
+        .is_ok());
+        assert!(!state.provenance.fallback_playback_enabled);
     }
 
     #[test]
     fn voice_playback_provenance_accepts_idempotent_retry() {
-        let mut current = VoicePlaybackProvenance {
-            owner_id: "current-owner".to_string(),
-            generation: 2,
-            fallback_playback_enabled: true,
+        let mut state = VoicePlaybackLeaseState {
+            provenance: VoicePlaybackProvenance {
+                owner_id: "current-owner".to_string(),
+                generation: 2,
+                fallback_playback_enabled: true,
+            },
+            next_registration: 1,
+            active_registration: 1,
+            candidates: HashMap::new(),
         };
 
         assert!(apply_voice_playback_update(
-            &mut current,
+            &mut state,
             VoicePlaybackProvenance {
                 owner_id: "current-owner".to_string(),
                 generation: 2,
                 fallback_playback_enabled: true,
             },
-        ));
-        assert!(current.fallback_playback_enabled);
+        )
+        .is_ok());
+        assert!(state.provenance.fallback_playback_enabled);
     }
 
     #[test]
-    fn registering_voice_playback_owner_uses_rust_issued_unique_identity() {
+    fn voice_playback_reordered_registration_and_updates_preserve_the_active_lease() {
+        let mut state = VoicePlaybackLeaseState::default();
+        register_voice_playback_owner_with_id(&mut state, "previous-owner".to_string());
+        register_voice_playback_owner_with_id(&mut state, "current-owner".to_string());
+
+        assert!(apply_voice_playback_update(
+            &mut state,
+            VoicePlaybackProvenance {
+                owner_id: "current-owner".to_string(),
+                generation: 0,
+                fallback_playback_enabled: true,
+            },
+        )
+        .is_ok());
+        assert!(apply_voice_playback_update(
+            &mut state,
+            VoicePlaybackProvenance {
+                owner_id: "previous-owner".to_string(),
+                generation: 1,
+                fallback_playback_enabled: false,
+            },
+        )
+        .is_err());
+
+        register_voice_playback_owner_with_id(&mut state, "delayed-previous-owner".to_string());
+        assert_eq!(state.provenance.owner_id, "current-owner");
+        assert!(apply_voice_playback_update(
+            &mut state,
+            VoicePlaybackProvenance {
+                owner_id: "current-owner".to_string(),
+                generation: 1,
+                fallback_playback_enabled: false,
+            },
+        )
+        .is_ok());
+
+        assert_eq!(state.provenance.owner_id, "current-owner");
+        assert!(!state.provenance.fallback_playback_enabled);
+    }
+
+    #[test]
+    fn registering_voice_playback_owner_issues_unique_candidates_without_stealing() {
+        let before = voice_playback_provenance();
         let first = register_voice_playback_owner();
         let second = register_voice_playback_owner();
 
         assert_ne!(first, second);
-        assert_eq!(voice_playback_provenance().owner_id, second);
+        assert_eq!(voice_playback_provenance(), before);
     }
 }

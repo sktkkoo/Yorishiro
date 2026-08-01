@@ -1688,8 +1688,7 @@ async fn mcp_voice_playback_set_enabled(
         owner_id,
         generation,
         fallback_playback_enabled: enabled,
-    });
-    Ok(())
+    })
 }
 
 // ─── User layer file watcher (Phase 1-b) ────────────────────────────

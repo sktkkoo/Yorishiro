@@ -133,6 +133,10 @@ export class VoicePlayer {
     this.playbackOwnerId = ownerId;
   }
 
+  clearPlaybackOwnerId(ownerId: string): void {
+    if (this.playbackOwnerId === ownerId) this.playbackOwnerId = null;
+  }
+
   canPlayRequest(provenance: VoicePlaybackProvenanceStamp | undefined): boolean {
     return (
       provenance !== undefined &&

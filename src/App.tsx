@@ -1181,16 +1181,27 @@ function App() {
     const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
     const voiceApi = voicePlayer.createVoiceAPI();
     let voicePlaybackOwnerPromise: Promise<string> | null = null;
+    let voicePlaybackOwnerId: string | null = null;
     const getVoicePlaybackOwnerId = (): Promise<string> => {
       if (voicePlaybackOwnerPromise === null) {
-        voicePlaybackOwnerPromise = invoke<string>("mcp_voice_playback_register_owner").catch(
-          (error) => {
+        voicePlaybackOwnerPromise = invoke<string>("mcp_voice_playback_register_owner")
+          .then((ownerId) => {
+            voicePlaybackOwnerId = ownerId;
+            voicePlayer.setPlaybackOwnerId(ownerId);
+            return ownerId;
+          })
+          .catch((error) => {
             voicePlaybackOwnerPromise = null;
             throw error;
-          },
-        );
+          });
       }
       return voicePlaybackOwnerPromise;
+    };
+    const invalidateVoicePlaybackOwner = (ownerId: string): void => {
+      if (voicePlaybackOwnerId !== ownerId) return;
+      voicePlayer.clearPlaybackOwnerId(ownerId);
+      voicePlaybackOwnerId = null;
+      voicePlaybackOwnerPromise = null;
     };
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
@@ -2380,6 +2391,7 @@ function App() {
       effectPackRunner,
       voicePlayer,
       getVoicePlaybackOwnerId,
+      invalidateVoicePlaybackOwner,
       scenePackRegistry,
       uiPackRegistry,
       packRegistry,
@@ -2400,6 +2412,7 @@ function App() {
     effectPackRunner,
     voicePlayer,
     getVoicePlaybackOwnerId,
+    invalidateVoicePlaybackOwner,
     scenePackRegistry,
     uiPackRegistry,
     packRegistry,
@@ -3638,12 +3651,16 @@ function App() {
     setFallbackPlaybackEnabled: async (enabled) => {
       const ownership = voicePlayer.setPlaybackEnabled(enabled);
       const ownerId = await getVoicePlaybackOwnerId();
-      voicePlayer.setPlaybackOwnerId(ownerId);
-      await invoke("mcp_voice_playback_set_enabled", {
-        ownerId,
-        generation: ownership.generation,
-        enabled: ownership.fallbackPlaybackEnabled,
-      });
+      try {
+        await invoke("mcp_voice_playback_set_enabled", {
+          ownerId,
+          generation: ownership.generation,
+          enabled: ownership.fallbackPlaybackEnabled,
+        });
+      } catch (error) {
+        invalidateVoicePlaybackOwner(ownerId);
+        throw error;
+      }
     },
   });
 

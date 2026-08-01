@@ -365,6 +365,18 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     }
   });
 
+  it("only clears the owner ID that lost its Rust lease", () => {
+    const player = new VoicePlayer();
+    player.setPlaybackOwnerId("current-owner");
+
+    player.clearPlaybackOwnerId("stale-owner");
+    expect(player.getPlaybackOwnershipState().ownerId).toBe("current-owner");
+
+    player.clearPlaybackOwnerId("current-owner");
+    player.setPlaybackOwnerId("reacquired-owner");
+    expect(player.getPlaybackOwnershipState().ownerId).toBe("reacquired-owner");
+  });
+
   it("合成中に再生を無効化した発話は、後から完了しても再生しない", async () => {
     let resolveSynth: (audio: ArrayBuffer) => void = () => {};
     const engine: TtsEngine = {
