@@ -8,6 +8,10 @@ describe("work status voice context", () => {
 
     expect(context).toContain("do not hand off solely to read or restate the ledger");
     expect(context).toContain("Delegate only when the user requests actual work");
+    expect(context).toContain(
+      "immediately acknowledge the user with a very brief natural spoken response",
+    );
+    expect(context).toContain("do not leave the user in silence");
   });
 
   it("formats a compact structured snapshot without approval identifiers", () => {
