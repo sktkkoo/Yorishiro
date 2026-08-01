@@ -14,6 +14,8 @@ import {
   type RealtimeStateExpressionControllerOptions,
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
+import { CodexWorkStatusProtocolAdapter } from "../work-status-ledger/codex-protocol-adapter";
+import type { WorkLifecyclePort } from "../work-status-ledger/types";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
 export type CodexRealtimeBilling = "subscription" | "api";
@@ -28,6 +30,7 @@ export interface CodexRealtimeClientOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
   readonly getPreferredThreadId?: () => string | null;
+  readonly workStatusLedger?: WorkLifecyclePort;
 }
 
 interface JsonRpcMessage {
@@ -43,7 +46,7 @@ interface JsonRpcResponse extends JsonRpcMessage {
 }
 
 interface JsonRpcServerRequest extends JsonRpcMessage {
-  readonly id: number;
+  readonly id: string | number;
   readonly method: string;
 }
 
@@ -92,6 +95,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private startAttemptEpoch = 0;
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
   private readonly getPreferredThreadId: () => string | null;
+  private readonly workStatusAdapter: CodexWorkStatusProtocolAdapter | null;
 
   constructor(
     sessionId: string,
@@ -101,6 +105,9 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.sessionId = sessionId;
     this.onStateChange = onStateChange;
     this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
+    this.workStatusAdapter = options.workStatusLedger
+      ? new CodexWorkStatusProtocolAdapter(options.workStatusLedger, sessionId)
+      : null;
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
           options.stateExpressionCallbacks,
@@ -172,6 +179,7 @@ export class CodexRealtimeClient implements LipSyncSource {
       const threadId = await this.waitForLoadedThread(attempt);
       this.assertAttemptOwner(attempt);
       this.threadId = threadId;
+      this.workStatusAdapter?.setRootThreadId(threadId);
       await this.startWebRtc(threadId, attempt);
       this.assertAttemptOwner(attempt);
       this.setState({ status: "active", billing });
@@ -452,6 +460,7 @@ export class CodexRealtimeClient implements LipSyncSource {
 
     if (isJsonRpcServerRequest(message)) {
       // bridge は approval request に自動応答しない。承認 UI は TUI だけを正本とする。
+      this.workStatusAdapter?.observeServerRequest(message);
       return;
     }
 
@@ -479,6 +488,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           readonly audio?: { readonly itemId?: unknown };
         }
       | undefined;
+    this.workStatusAdapter?.observeNotification(message.method, message.params);
     if (message.method === "thread/realtime/sdp" && params?.sdp) {
       this.acceptRemoteSdp?.(params.sdp);
     } else if (message.method === "thread/realtime/error") {
@@ -618,7 +628,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isJsonRpcServerRequest(message: JsonRpcMessage): message is JsonRpcServerRequest {
-  return typeof message.id === "number" && typeof message.method === "string";
+  return (
+    (typeof message.id === "number" || typeof message.id === "string") &&
+    typeof message.method === "string"
+  );
 }
 
 function isJsonRpcResponse(message: JsonRpcMessage): message is JsonRpcResponse {

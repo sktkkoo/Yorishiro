@@ -1,6 +1,6 @@
 # GPT Live Work Status Ledger — 作業状態の会話向け投影設計
 
-**Status**: accepted — Phase 1 domain ledger implemented（Phase 2 / 3 は protocol 実測・追加設計待ち）
+**Status**: accepted — Phase 1 / 2 implemented（Phase 3 配線中）
 **Last updated**: 2026-08-01
 
 ## TL;DR
@@ -13,8 +13,8 @@ log は台帳に一切入れない。既存の app-server 共有・thread target
 approval ownership（[codex-realtime-voice.md](codex-realtime-voice.md)）は一切変更しない。
 
 > **実装注記**: 設計承認前の prototype は human review 後に Phase 1 の下書きとして採用し、
-> `src/runtime/work-status-ledger/` へ命名と境界を揃えて実装した。protocol adapter と
-> GPT Live 配線は未実測の event を仮定せず、Phase 2 / 3 まで実装しない。
+> `src/runtime/work-status-ledger/` へ命名と境界を揃えて実装した。Phase 2 は Codex 0.146.0
+> schema と実 event 境界を確認後、既存 bridge の subscriber 上に実装した。
 
 ## 実測済みの protocol 挙動と、app 側提案の区別
 
@@ -33,8 +33,22 @@ approval ownership（[codex-realtime-voice.md](codex-realtime-voice.md)）は一
 には対応物がない。特に注意すべきは、**Codex protocol には「task」という粒度の event が
 存在しない**ことである。protocol が持つのは thread / turn / item / approval であり、
 「委任 task」への対応付けは全面的に app 側（protocol adapter）の解釈になる。turn event や
-subagent thread event が task 追跡に十分な情報を運ぶかどうかは**未実測**であり、Phase 2 の
-着手前に実測で確定する（§実装計画）。
+Phase 2 で 0.146.0 schema を確認し、通常 turn と approval の lifecycle を投影するために
+必要な ID と終端状態が揃うことを確認した（§Phase 2 実測結果）。
+
+### Phase 2 実測結果（Codex 0.146.0）
+
+- `turn/started` / `turn/completed` は `threadId` と安定した `turn.id` を持ち、完了時は
+  `completed / failed / interrupted` を区別できる。voice から Codex へ handoff された
+  通常 turn を v1 の work 粒度とする。
+- turn 開始 payload または後続 `item/started` の `userMessage` から、raw terminal log を
+  参照せず人間可読 summary を得られる。
+- 3 種の approval request は `threadId / turnId / itemId` を持ち、
+  `serverRequest/resolved` は元の string/number request ID を返す。adapter の key は型衝突を
+  避けるため `string:<id>` / `number:<id>` とする。
+- `collabAgentToolCall.receiverThreadIds` により、root turn から spawn された subagent thread
+  の approval を同じ work に関連付けられる。
+- bridge はこれらを既存 subscription で受け取り、server request へは一切応答しない。
 
 ## Goals / Non-goals
 
@@ -282,11 +296,10 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
 
 1. **module registry**: `work-status-ledger:store` の singleton として `getOrInit` で生成する。
    prototype の旧 `task-coordinator:store` 名は採用せず rename した。
-2. **protocol adapter（Phase 2、未実装）**: `CodexRealtimeClient` が受ける server
+2. **protocol adapter（Phase 2、実装済み）**: `CodexRealtimeClient` が受ける server
    notification を観測し、thread/turn/approval event を work ID へ解決して観測 port
    （3 操作）を呼ぶ。task ↔ thread の対応表は adapter 内部に閉じる。
-   **どの event を使えるかは Phase 2 冒頭の実測で確定する**（protocol に task 粒度の
-   event はない【前掲】）。
+   root turn を work、`turnId` と subagent `threadId` を adapter 内部の相関 key とする。
 3. **voice 層（Phase 3、未実装）**: GPT Live の会話 pipeline が snapshot / event を
    完成した台本としてではなく、応答生成の事実 context として参照する。
    読み、進捗説明・承認待ち案内に使う。**realtime session への状態注入方法
@@ -302,7 +315,7 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
 - **Phase 1 — domain 台帳（実装済み）**: `WorkStatusLedgerStore` + sanitize + unit test。
   実装は prototype を review し、Work Status Ledger / work ID 命名へ揃えた。gate:
   tsc / biome / vitest green。
-- **Phase 2 — protocol adapter**: まず Codex 実測（turn / item / approval event が
+- **Phase 2 — protocol adapter（完了）**: Codex 実測（turn / item / approval event が
   task 追跡に十分か、approvalKey の導出、subagent thread と委任の対応）。実測結果を
   本 doc に追記してから adapter を実装し、観測 port 経由で配線。fake protocol event
   での unit test + 実機で approval 保留 → TUI 解決 → running 復帰を確認。
@@ -332,12 +345,11 @@ unit test で固定する不変条件（prototype の test が既に大半を写
 adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状態が壊れない、
 未知 thread の event が無視される、approval 解決の観測漏れが snapshot 再同期で回復する。
 
-## 未解決の判断（マスター承認が必要）
+## 判断記録
 
-1. **委任の起点**: `create()` を呼ぶのは誰か。候補: (a) voice 層が GPT Live の
-   委任発話を検出して host が記帳、(b) Main Agent が MCP tool（yorishiro-mcp）で
-   自己申告、(c) 両方。(b) は agent に台帳書き込み面を公開することになり、
-   MCP trust tier との整合確認が要る。推奨は「v1 は (a) のみ、(b) は需要が立ってから」。
+1. **委任の起点（解決済み）**: v1 は既存 voice bridge が観測した root
+   `turn/started`（summary が遅れる場合は `item/started`）で host が `create()` する。
+   MCP 書き込み面は公開しない。voice 接続中のTUI起点 turnも同じ投影へ入る制約を許容する。
 2. **GPT Live への状態伝達方法**: snapshot を realtime session へどう見せるか
    （conversation item 注入 / 応答時参照 / 定期 context）。protocol 実測が先行条件。
    event の自動読み上げや定型文 TTS は採用せず、最終的な発話内容・タイミングは GPT Live に
@@ -345,9 +357,9 @@ adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状�
 3. **cancel の実効性**: 台帳 cancel は記帳のみ（本 doc の提案）で良いか、
    「voice で止めてと言ったら実際に止まる」まで踏み込むか。後者は実行制御への
    経路を開くため、境界設計を別 decision に切るべきと考える。
-4. **完了判定の主体**: `complete` / `fail` を観測 port に含めず host / voice 層判断に
-   残す設計（本 doc の提案）で良いか。Phase 2 実測で「終了を確定できる protocol
-   event」が見つかった場合に port へ昇格するか。
+4. **完了判定の主体（解決済み）**: definitive な root `turn/completed` が確認できたため、
+   lifecycle port に `complete / fail / cancel` を昇格した。child turn の完了は root work の
+   終端に使わない。
 5. **感触値**: retention 20 件、summary 120 字、note 200 字は全て暫定。実機で
    読み上げてから帰納的に調整する（先に決め込まない）。
 6. **常時観測**: voice 非接続時も台帳を追従させる観測専用 client を将来立てるか。

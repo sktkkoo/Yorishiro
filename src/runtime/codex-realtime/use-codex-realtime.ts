@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
+import { getWorkStatusLedgerStore } from "../work-status-ledger/work-status-ledger-store";
 import {
   CodexRealtimeClient,
   type CodexRealtimeState,
@@ -57,6 +58,7 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
   new CodexRealtimeClient(sessionId, onStateChange, {
     stateExpressionCallbacks,
     getPreferredThreadId,
+    workStatusLedger: getWorkStatusLedgerStore(),
   });
 
 const defaultCreateThreadTracker = (

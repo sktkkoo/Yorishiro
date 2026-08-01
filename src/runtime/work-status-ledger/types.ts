@@ -79,3 +79,14 @@ export interface WorkObservationPort {
   /** 積んだ approval を下ろす。key が無ければ false。 */
   releaseApproval(workId: string, approvalKey: string): boolean;
 }
+
+/**
+ * Definitive turn lifecycle events を扱う Codex adapter 向けの mutation port。
+ * protocol 型そのものは持ち込まず、domain operation だけを公開する。
+ */
+export interface WorkLifecyclePort extends WorkObservationPort {
+  create(input: CreateDelegatedWorkInput): DelegatedWork;
+  complete(workId: string, note?: string): boolean;
+  fail(workId: string, note?: string): boolean;
+  cancel(workId: string, note?: string): boolean;
+}
