@@ -173,7 +173,7 @@ describe("Body motion activation ownership", () => {
 
     const handle = body.acquireMotionSlot({
       source: "system",
-      priority: "speech-performance",
+      priority: "speech-expression",
       animation: "anim:VRMA_head_tilt_down",
     });
     handle.cancel();
@@ -197,7 +197,7 @@ describe("Body motion activation ownership", () => {
 
     const speech = body.acquireMotionSlot({
       source: "system",
-      priority: "speech-performance",
+      priority: "speech-expression",
       animation: "anim:VRMA_head_tilt_down",
     });
     const persona = body.acquireMotionSlot({

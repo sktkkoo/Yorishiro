@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
-import type { PerformanceCueSchedulerCallbacks } from "../realtime-performance-cue";
+import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
 import {
   CodexRealtimeClient,
   type CodexRealtimeState,
@@ -16,7 +16,7 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
 export type CodexRealtimeClientFactory = (
   sessionId: string,
   onStateChange: (state: CodexRealtimeState) => void,
-  performanceCueCallbacks?: PerformanceCueSchedulerCallbacks,
+  stateExpressionCallbacks?: StateExpressionSchedulerCallbacks,
 ) => CodexRealtimeClientLike;
 
 interface UseCodexRealtimeOptions {
@@ -24,7 +24,7 @@ interface UseCodexRealtimeOptions {
   readonly available: boolean;
   readonly fallbackLipSyncSource: LipSyncSource;
   readonly applyLipSyncSource: (source: LipSyncSource) => void;
-  readonly performanceCueCallbacks?: PerformanceCueSchedulerCallbacks;
+  readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly createClient?: CodexRealtimeClientFactory;
 }
 
@@ -38,8 +38,8 @@ interface UseCodexRealtimeResult {
 const defaultCreateClient: CodexRealtimeClientFactory = (
   sessionId,
   onStateChange,
-  performanceCueCallbacks,
-) => new CodexRealtimeClient(sessionId, onStateChange, { performanceCueCallbacks });
+  stateExpressionCallbacks,
+) => new CodexRealtimeClient(sessionId, onStateChange, { stateExpressionCallbacks });
 
 /** App が所有する realtime client を一つに限定し、古い client の通知を遮断する。 */
 export function useCodexRealtime({
@@ -47,7 +47,7 @@ export function useCodexRealtime({
   available,
   fallbackLipSyncSource,
   applyLipSyncSource,
-  performanceCueCallbacks,
+  stateExpressionCallbacks,
   createClient = defaultCreateClient,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
@@ -108,7 +108,7 @@ export function useCodexRealtime({
           applyLipSyncSourceRef.current(client);
         }
       },
-      performanceCueCallbacks,
+      stateExpressionCallbacks,
     );
     clientRef.current = client;
 
@@ -124,7 +124,7 @@ export function useCodexRealtime({
       setState({ status: "error", error: message });
       restoreFallback();
     }
-  }, [performanceCueCallbacks, restoreFallback, sessionId, stop]);
+  }, [stateExpressionCallbacks, restoreFallback, sessionId, stop]);
 
   useEffect(() => {
     const sessionChanged = sessionIdRef.current !== sessionId;

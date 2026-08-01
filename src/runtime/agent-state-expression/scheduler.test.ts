@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
-import { createPerformanceCueResolverState, resolveAssistantTranscriptDelta } from "./resolver";
+import { createStateExpressionResolverState, resolveAssistantTranscriptDelta } from "./resolver";
 import {
-  type PerformanceCueClock,
-  PerformanceCueScheduler,
-  type PerformanceCueSchedulerCallbacks,
+  type StateExpressionClock,
+  StateExpressionScheduler,
+  type StateExpressionSchedulerCallbacks,
 } from "./scheduler";
-import type { PerformanceCue } from "./types";
+import type { StateExpressionCue } from "./types";
 
 interface PendingTimer {
   readonly atMs: number;
   readonly callback: () => void;
 }
 
-class FakeClock implements PerformanceCueClock {
+class FakeClock implements StateExpressionClock {
   private timeMs = 0;
   private nextTimerId = 1;
   private readonly timers = new Map<number, PendingTimer>();
@@ -52,7 +52,7 @@ class FakeClock implements PerformanceCueClock {
   }
 }
 
-function cue(overrides: Partial<PerformanceCue> = {}): PerformanceCue {
+function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
   return {
     utteranceId: "utterance-1",
     atMs: 500,
@@ -65,15 +65,15 @@ function cue(overrides: Partial<PerformanceCue> = {}): PerformanceCue {
   };
 }
 
-function harness(options: ConstructorParameters<typeof PerformanceCueScheduler>[1] = {}) {
+function harness(options: ConstructorParameters<typeof StateExpressionScheduler>[1] = {}) {
   const clock = new FakeClock();
-  const onCue = vi.fn<PerformanceCueSchedulerCallbacks["onCue"]>();
-  const onRelease = vi.fn<PerformanceCueSchedulerCallbacks["onRelease"]>();
-  const scheduler = new PerformanceCueScheduler({ onCue, onRelease }, options, clock);
+  const onCue = vi.fn<StateExpressionSchedulerCallbacks["onCue"]>();
+  const onRelease = vi.fn<StateExpressionSchedulerCallbacks["onRelease"]>();
+  const scheduler = new StateExpressionScheduler({ onCue, onRelease }, options, clock);
   return { clock, onCue, onRelease, scheduler };
 }
 
-describe("PerformanceCueScheduler", () => {
+describe("StateExpressionScheduler", () => {
   it("remote speech start 基準の相対時刻で cue を発火する", () => {
     const h = harness();
     h.scheduler.startUtterance("utterance-1", 0);
@@ -109,7 +109,7 @@ describe("PerformanceCueScheduler", () => {
 
   it("節末で解決した transcript cue は同期到着の小さな遅れなら発火できる", () => {
     const h = harness({ maxLateMs: 450 });
-    const resolved = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const resolved = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "うん、そうですね。",
       phase: "assistant-speaking",
@@ -167,7 +167,7 @@ describe("PerformanceCueScheduler", () => {
     expect(h.onCue).not.toHaveBeenCalled();
   });
 
-  it("cancel は未発火 timer を消し、utterance の演技を release する", () => {
+  it("cancels pending timers and releases the utterance state expression", () => {
     const h = harness();
     h.scheduler.startUtterance("utterance-1", 0);
     h.scheduler.schedule(cue());

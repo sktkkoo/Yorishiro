@@ -114,6 +114,7 @@ import {
   restoreConfirmStrings,
 } from "./i18n/strings";
 import { useReloadCurtain } from "./reload-curtain";
+import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -184,7 +185,6 @@ import {
   projectRootValue,
   resolveCurrentProjectRoot,
 } from "./runtime/project-context/project-context";
-import { createBodyPerformanceCueAdapter } from "./runtime/realtime-performance-cue";
 import {
   getSceneRegistry,
   resolveSceneAssets,
@@ -3604,8 +3604,8 @@ function App() {
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
     bodyRef.current?.setLipSyncSource(source);
   }, []);
-  const realtimePerformanceCueCallbacks = useMemo(
-    () => createBodyPerformanceCueAdapter(() => bodyRef.current),
+  const realtimeStateExpressionCallbacks = useMemo(
+    () => createBodyStateExpressionAdapter(() => bodyRef.current),
     [],
   );
   const {
@@ -3617,7 +3617,7 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
-    performanceCueCallbacks: realtimePerformanceCueCallbacks,
+    stateExpressionCallbacks: realtimeStateExpressionCallbacks,
   });
 
   const handleBodyReady = useCallback(

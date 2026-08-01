@@ -84,7 +84,7 @@ const idleReq: MotionRequest = {
 
 const speechReq: MotionRequest = {
   source: "system",
-  priority: "speech-performance",
+  priority: "speech-expression",
   animation: "anim:VRMA_small_nod",
 };
 
@@ -170,7 +170,7 @@ describe("MotionScheduler", () => {
     expect(snap.active?.source).toBe("mcp");
   });
 
-  it("speech performance is above idle but below state-driven activity", async () => {
+  it("speech expression is above idle but below state-driven activity", async () => {
     const idle = h.scheduler.request(idleReq);
     const speech = h.scheduler.request(speechReq);
 

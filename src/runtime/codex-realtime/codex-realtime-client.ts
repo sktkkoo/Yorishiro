@@ -15,10 +15,10 @@ import {
   ZERO_MOUTH,
 } from "../../core/voice/mouth-values";
 import {
-  RealtimePerformanceCueController,
-  type RealtimePerformanceCueControllerOptions,
-} from "../realtime-performance-cue/controller";
-import type { PerformanceCueSchedulerCallbacks } from "../realtime-performance-cue/scheduler";
+  RealtimeStateExpressionController,
+  type RealtimeStateExpressionControllerOptions,
+} from "../agent-state-expression/controller";
+import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
 export type CodexRealtimeBilling = "subscription" | "api";
@@ -30,8 +30,8 @@ export interface CodexRealtimeState {
 }
 
 export interface CodexRealtimeClientOptions {
-  readonly performanceCueCallbacks?: PerformanceCueSchedulerCallbacks;
-  readonly performanceCueController?: RealtimePerformanceCueControllerOptions;
+  readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
+  readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
 }
 
 interface JsonRpcMessage {
@@ -96,7 +96,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private state: CodexRealtimeState = { status: "idle" };
   private stopping = false;
   private startAttemptEpoch = 0;
-  private readonly performanceCueController: RealtimePerformanceCueController | null;
+  private readonly stateExpressionController: RealtimeStateExpressionController | null;
 
   constructor(
     sessionId: string,
@@ -105,10 +105,10 @@ export class CodexRealtimeClient implements LipSyncSource {
   ) {
     this.sessionId = sessionId;
     this.onStateChange = onStateChange;
-    this.performanceCueController = options.performanceCueCallbacks
-      ? new RealtimePerformanceCueController(
-          options.performanceCueCallbacks,
-          options.performanceCueController,
+    this.stateExpressionController = options.stateExpressionCallbacks
+      ? new RealtimeStateExpressionController(
+          options.stateExpressionCallbacks,
+          options.stateExpressionController,
         )
       : null;
   }
@@ -501,13 +501,13 @@ export class CodexRealtimeClient implements LipSyncSource {
       message.method === "thread/realtime/transcript/delta" &&
       params?.threadId === this.threadId
     ) {
-      this.performanceCueController?.onTranscriptDelta(params.role, params.delta);
+      this.stateExpressionController?.onTranscriptDelta(params.role, params.delta);
     } else if (
       message.method === "thread/realtime/transcript/done" &&
       params?.threadId === this.threadId
     ) {
       // done.text は全 delta の完成版なのでresolverへ再投入しない。
-      this.performanceCueController?.onTranscriptDone(params.role);
+      this.stateExpressionController?.onTranscriptDone(params.role);
     }
   }
 
@@ -525,7 +525,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const sample = () => {
       if (!this.isAttemptOwner(attempt) || !this.lipSync) return;
       const values = this.lipSync.sample(this.remoteMouthValues);
-      this.performanceCueController?.observeRemoteSpeech(hasRemoteSpeechSignal(values));
+      this.stateExpressionController?.observeRemoteSpeech(hasRemoteSpeechSignal(values));
     };
     sample();
     this.remoteSpeechSampleInterval = globalThis.setInterval(
@@ -543,7 +543,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
-    this.performanceCueController?.cancelAll();
+    this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));
     this.acceptRemoteSdp = null;

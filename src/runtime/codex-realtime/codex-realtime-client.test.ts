@@ -255,11 +255,11 @@ describe("CodexRealtimeClient", () => {
     expect(client.getStatus()).toBe("idle");
   });
 
-  it("routes assistant transcript to performance cues and cancels them on user barge-in", async () => {
+  it("routes assistant transcript to state expressions and cancels them on user barge-in", async () => {
     const onCue = vi.fn();
     const onRelease = vi.fn();
     const client = new CodexRealtimeClient("main-session", undefined, {
-      performanceCueCallbacks: { onCue, onRelease },
+      stateExpressionCallbacks: { onCue, onRelease },
     });
     await client.start();
 
@@ -295,7 +295,7 @@ describe("CodexRealtimeClient", () => {
     const onCue = vi.fn();
     const onRelease = vi.fn();
     const client = new CodexRealtimeClient("main-session", undefined, {
-      performanceCueCallbacks: { onCue, onRelease },
+      stateExpressionCallbacks: { onCue, onRelease },
     });
     let sampleCount = 0;
     const internals = client as unknown as {
@@ -304,7 +304,7 @@ describe("CodexRealtimeClient", () => {
         sample(out?: MouthValues): MouthValues;
         reset(): void;
       };
-      performanceCueController: {
+      stateExpressionController: {
         onTranscriptDelta(role: unknown, delta: unknown): void;
         onTranscriptDone(role: unknown): void;
       };
@@ -324,8 +324,8 @@ describe("CodexRealtimeClient", () => {
       },
       reset: vi.fn(),
     };
-    internals.performanceCueController.onTranscriptDelta("assistant", "はい。");
-    internals.performanceCueController.onTranscriptDone("assistant");
+    internals.stateExpressionController.onTranscriptDelta("assistant", "はい。");
+    internals.stateExpressionController.onTranscriptDone("assistant");
 
     internals.startRemoteSpeechObservation(0);
     await vi.advanceTimersByTimeAsync(500);
@@ -344,7 +344,7 @@ describe("CodexRealtimeClient", () => {
   it("ignores transcript notifications for a different thread", async () => {
     const onRelease = vi.fn();
     const client = new CodexRealtimeClient("main-session", undefined, {
-      performanceCueCallbacks: { onCue: vi.fn(), onRelease },
+      stateExpressionCallbacks: { onCue: vi.fn(), onRelease },
     });
     await client.start();
 

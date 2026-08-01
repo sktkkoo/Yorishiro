@@ -1,31 +1,31 @@
 import type {
   AssistantTranscriptDelta,
   AssistantTranscriptDone,
-  PerformanceCue,
-  PerformanceExpression,
-  PerformanceGestureIntent,
+  StateExpressionCue,
+  StateExpressionGestureIntent,
+  StateExpressionPreset,
 } from "./types";
 
-export interface PerformanceCueResolverState {
+export interface StateExpressionResolverState {
   readonly utteranceId: string | null;
   readonly pendingText: string;
   readonly elapsedSpeechMs: number;
 }
 
-export interface PerformanceCueResolution {
-  readonly state: PerformanceCueResolverState;
-  readonly cues: ReadonlyArray<PerformanceCue>;
+export interface StateExpressionResolution {
+  readonly state: StateExpressionResolverState;
+  readonly cues: ReadonlyArray<StateExpressionCue>;
 }
 
-interface SemanticPerformance {
-  readonly expression: PerformanceExpression;
+interface SemanticStateExpression {
+  readonly expression: StateExpressionPreset;
   readonly expressionWeight: number;
-  readonly gestureIntent: PerformanceGestureIntent;
+  readonly gestureIntent: StateExpressionGestureIntent;
   readonly intensity: "small" | "medium";
   readonly durationMs: number;
 }
 
-const INITIAL_STATE: PerformanceCueResolverState = {
+const INITIAL_STATE: StateExpressionResolverState = {
   utteranceId: null,
   pendingText: "",
   elapsedSpeechMs: 0,
@@ -48,7 +48,7 @@ const CONSIDER_PATTERN =
   /(?:確認(?:する|します)|調べ(?:る|ます)|考え(?:る|ます)|かもしれない|可能性|一方で|ただし|まずは)/u;
 const EMPHASIZE_PATTERN = /(?:重要|必ず|注意|ポイント|つまり|結論として)/u;
 
-export function createPerformanceCueResolverState(): PerformanceCueResolverState {
+export function createStateExpressionResolverState(): StateExpressionResolverState {
   return INITIAL_STATE;
 }
 
@@ -57,25 +57,25 @@ export function createPerformanceCueResolverState(): PerformanceCueResolverState
  * chunk の切れ目には依存せず、句読点または transcript/done まで発火を保留する。
  */
 export function resolveAssistantTranscriptDelta(
-  previous: PerformanceCueResolverState,
+  previous: StateExpressionResolverState,
   input: AssistantTranscriptDelta,
-): PerformanceCueResolution {
+): StateExpressionResolution {
   return resolveTranscript(previous, input, false);
 }
 
 /** transcript/done では done.text を再投入せず、delta で残った末尾だけを確定する。 */
 export function finishAssistantTranscript(
-  previous: PerformanceCueResolverState,
+  previous: StateExpressionResolverState,
   input: AssistantTranscriptDone,
-): PerformanceCueResolution {
+): StateExpressionResolution {
   return resolveTranscript(previous, { ...input, delta: "" }, true);
 }
 
 function resolveTranscript(
-  previous: PerformanceCueResolverState,
+  previous: StateExpressionResolverState,
   input: AssistantTranscriptDelta,
   flushRemainder: boolean,
-): PerformanceCueResolution {
+): StateExpressionResolution {
   if (!isAssistantOutputPhase(input.phase)) {
     return { state: INITIAL_STATE, cues: [] };
   }
@@ -90,7 +90,7 @@ function resolveTranscript(
         };
   const combined = state.pendingText + input.delta;
   const { clauses, remainder } = splitCompletedClauses(combined, flushRemainder);
-  const cues: PerformanceCue[] = [];
+  const cues: StateExpressionCue[] = [];
   let elapsedSpeechMs = state.elapsedSpeechMs;
 
   for (const clause of clauses) {
@@ -146,41 +146,41 @@ function splitCompletedClauses(
   return { clauses, remainder };
 }
 
-function classifyClause(clause: string): SemanticPerformance | null {
+function classifyClause(clause: string): SemanticStateExpression | null {
   const normalized = clause.trim();
   if (normalized.length === 0) return null;
 
   if (APOLOGY_PATTERN.test(normalized)) {
-    return performance("sad", 0.42, "none", "small", 1_500);
+    return stateExpression("sad", 0.42, "none", "small", 1_500);
   }
   if (SURPRISE_PATTERN.test(normalized)) {
-    return performance("surprised", 0.38, "none", "small", 1_100);
+    return stateExpression("surprised", 0.38, "none", "small", 1_100);
   }
   if (HAPPY_PATTERN.test(normalized)) {
-    return performance("happy", 0.45, "none", "small", 1_500);
+    return stateExpression("happy", 0.45, "none", "small", 1_500);
   }
   if (REASSURE_PATTERN.test(normalized)) {
-    return performance("relaxed", 0.36, "reassure", "small", 1_600);
+    return stateExpression("relaxed", 0.36, "reassure", "small", 1_600);
   }
   if (AGREE_PATTERN.test(normalized)) {
-    return performance("relaxed", 0.3, "agree", "small", 1_200);
+    return stateExpression("relaxed", 0.3, "agree", "small", 1_200);
   }
   if (CONSIDER_PATTERN.test(normalized)) {
-    return performance("neutral", 0.24, "consider", "small", 1_500);
+    return stateExpression("neutral", 0.24, "consider", "small", 1_500);
   }
   if (EMPHASIZE_PATTERN.test(normalized)) {
-    return performance("neutral", 0.28, "emphasize", "small", 1_300);
+    return stateExpression("neutral", 0.28, "emphasize", "small", 1_300);
   }
   return null;
 }
 
-function performance(
-  expression: PerformanceExpression,
+function stateExpression(
+  expression: StateExpressionPreset,
   expressionWeight: number,
-  gestureIntent: PerformanceGestureIntent,
+  gestureIntent: StateExpressionGestureIntent,
   intensity: "small" | "medium",
   durationMs: number,
-): SemanticPerformance {
+): SemanticStateExpression {
   return { expression, expressionWeight, gestureIntent, intensity, durationMs };
 }
 

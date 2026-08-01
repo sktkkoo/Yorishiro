@@ -1,29 +1,29 @@
-import type { PerformanceCue } from "./types";
+import type { StateExpressionCue } from "./types";
 
-export type PerformanceCueReleaseReason = "completed" | "cancelled" | "replaced";
+export type StateExpressionReleaseReason = "completed" | "cancelled" | "replaced";
 
 type TimerHandle = unknown;
 
-export interface PerformanceCueClock {
+export interface StateExpressionClock {
   readonly now: () => number;
   readonly setTimeout: (callback: () => void, delayMs: number) => TimerHandle;
   readonly clearTimeout: (handle: TimerHandle) => void;
 }
 
-export interface PerformanceCueDispatchContext {
+export interface StateExpressionDispatchContext {
   readonly scheduledForMs: number;
   readonly firedAtMs: number;
   readonly lateByMs: number;
 }
 
-export interface PerformanceCueSchedulerCallbacks {
+export interface StateExpressionSchedulerCallbacks {
   /** semantic cue を persona / avatar / motion catalog に解決する integration point。 */
-  readonly onCue: (cue: PerformanceCue, context: PerformanceCueDispatchContext) => void;
+  readonly onCue: (cue: StateExpressionCue, context: StateExpressionDispatchContext) => void;
   /** voice stop 等で、この発話が所有する expression / gesture handle を解放する。 */
-  readonly onRelease: (utteranceId: string, reason: PerformanceCueReleaseReason) => void;
+  readonly onRelease: (utteranceId: string, reason: StateExpressionReleaseReason) => void;
 }
 
-export interface PerformanceCueSchedulerOptions {
+export interface StateExpressionSchedulerOptions {
   /** この値より遅く届いた cue は再生しない。 */
   readonly maxLateMs?: number;
   /** cue 全体の最短間隔。遅着 cue の一斉発火もここで抑える。 */
@@ -32,7 +32,7 @@ export interface PerformanceCueSchedulerOptions {
   readonly gestureCooldownMs?: number;
 }
 
-export type PerformanceCueScheduleResult =
+export type StateExpressionScheduleResult =
   | { readonly status: "queued" }
   | { readonly status: "scheduled"; readonly scheduledForMs: number }
   | { readonly status: "clamped"; readonly scheduledForMs: number; readonly lateByMs: number }
@@ -46,14 +46,14 @@ interface ActiveUtterance {
   speechStartedAtMs: number | null;
   readonly timers: Map<string, TimerHandle>;
   readonly cueKeys: Set<string>;
-  readonly queuedCues: Map<string, PerformanceCue>;
+  readonly queuedCues: Map<string, StateExpressionCue>;
 }
 
 const DEFAULT_MAX_LATE_MS = 450;
 const DEFAULT_CUE_COOLDOWN_MS = 800;
 const DEFAULT_GESTURE_COOLDOWN_MS = 2_200;
 
-const systemClock: PerformanceCueClock = {
+const systemClock: StateExpressionClock = {
   now: () => performance.now(),
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
   clearTimeout: (handle) =>
@@ -64,7 +64,7 @@ const systemClock: PerformanceCueClock = {
  * remote speech clock に semantic cue を載せる utterance 単位 scheduler。
  * Clock と dispatch は注入可能で、Web Audio / Body runtime には直接依存しない。
  */
-export class PerformanceCueScheduler {
+export class StateExpressionScheduler {
   private readonly maxLateMs: number;
   private readonly cueCooldownMs: number;
   private readonly gestureCooldownMs: number;
@@ -73,9 +73,9 @@ export class PerformanceCueScheduler {
   private lastGestureAtMs = Number.NEGATIVE_INFINITY;
 
   constructor(
-    private readonly callbacks: PerformanceCueSchedulerCallbacks,
-    options: PerformanceCueSchedulerOptions = {},
-    private readonly clock: PerformanceCueClock = systemClock,
+    private readonly callbacks: StateExpressionSchedulerCallbacks,
+    options: StateExpressionSchedulerOptions = {},
+    private readonly clock: StateExpressionClock = systemClock,
   ) {
     this.maxLateMs = nonNegative(options.maxLateMs, DEFAULT_MAX_LATE_MS);
     this.cueCooldownMs = nonNegative(options.cueCooldownMs, DEFAULT_CUE_COOLDOWN_MS);
@@ -107,7 +107,7 @@ export class PerformanceCueScheduler {
     active.queuedCues.clear();
   }
 
-  schedule(cue: PerformanceCue): PerformanceCueScheduleResult {
+  schedule(cue: StateExpressionCue): StateExpressionScheduleResult {
     const active = this.active;
     if (!active || active.id !== cue.utteranceId) {
       return { status: "skipped", reason: "unknown-utterance" };
@@ -130,8 +130,8 @@ export class PerformanceCueScheduler {
   private scheduleStartedCue(
     active: ActiveUtterance,
     key: string,
-    cue: PerformanceCue,
-  ): PerformanceCueScheduleResult {
+    cue: StateExpressionCue,
+  ): StateExpressionScheduleResult {
     const speechStartedAtMs = active.speechStartedAtMs;
     if (speechStartedAtMs === null) return { status: "queued" };
 
@@ -159,13 +159,13 @@ export class PerformanceCueScheduler {
       : { status: "scheduled", scheduledForMs };
   }
 
-  /** remote audio の自然終了。未発火 cue は捨て、発話由来の演技を release する。 */
+  /** Drops pending cues and releases speech state expressions after natural audio completion. */
   completeUtterance(utteranceId: string): void {
     if (this.active?.id !== utteranceId) return;
     this.releaseActive("completed");
   }
 
-  /** barge-in / voice stop / disconnect。未発火 cue と演技 handle を即座に解放する。 */
+  /** Immediately releases pending state expressions on barge-in, voice stop, or disconnect. */
   cancelUtterance(utteranceId: string): void {
     if (this.active?.id !== utteranceId) return;
     this.releaseActive("cancelled");
@@ -175,7 +175,7 @@ export class PerformanceCueScheduler {
     if (this.active) this.releaseActive("cancelled");
   }
 
-  private dispatchWithCooldown(cue: PerformanceCue, scheduledForMs: number): void {
+  private dispatchWithCooldown(cue: StateExpressionCue, scheduledForMs: number): void {
     const firedAtMs = this.clock.now();
     if (firedAtMs - this.lastCueAtMs < this.cueCooldownMs) return;
 
@@ -200,7 +200,7 @@ export class PerformanceCueScheduler {
     });
   }
 
-  private releaseActive(reason: PerformanceCueReleaseReason): void {
+  private releaseActive(reason: StateExpressionReleaseReason): void {
     const active = this.active;
     if (!active) return;
     this.active = null;
@@ -210,7 +210,7 @@ export class PerformanceCueScheduler {
   }
 }
 
-function cueKey(cue: PerformanceCue): string {
+function cueKey(cue: StateExpressionCue): string {
   return [
     cue.atMs,
     cue.expression ?? "",

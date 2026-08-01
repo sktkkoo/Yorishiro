@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  createPerformanceCueResolverState,
+  createStateExpressionResolverState,
   finishAssistantTranscript,
   resolveAssistantTranscriptDelta,
 } from "./resolver";
 
 describe("resolveAssistantTranscriptDelta", () => {
   it("chunk 境界をまたぐ節を agree cue へ決定論的に解決する", () => {
-    const first = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const first = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "う",
       phase: "assistant-responding",
@@ -33,14 +33,14 @@ describe("resolveAssistantTranscriptDelta", () => {
 
   it("どの文字位置で chunk を分けても同じ cue と state になる", () => {
     const text = "うん、そうですね。ありがとう！";
-    const whole = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const whole = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: text,
       phase: "assistant-speaking",
     });
 
     for (let splitAt = 1; splitAt < text.length; splitAt += 1) {
-      const first = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+      const first = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
         utteranceId: "utterance-1",
         delta: text.slice(0, splitAt),
         phase: "assistant-speaking",
@@ -57,7 +57,7 @@ describe("resolveAssistantTranscriptDelta", () => {
   });
 
   it("意味のある限定語彙がない通常文では cue を出さない", () => {
-    const result = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "ファイルを三つ読みました。次へ進みます。",
       phase: "assistant-speaking",
@@ -67,7 +67,7 @@ describe("resolveAssistantTranscriptDelta", () => {
   });
 
   it("transcript done で句点のない末尾を flush する", () => {
-    const pending = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const pending = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "まずは確認します",
       phase: "assistant-responding",
@@ -84,7 +84,7 @@ describe("resolveAssistantTranscriptDelta", () => {
   });
 
   it("複数節の cue は発話内の文字位置に応じた相対時刻を持つ", () => {
-    const result = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "うん、そうですね。ありがとう！",
       phase: "assistant-speaking",
@@ -98,7 +98,7 @@ describe("resolveAssistantTranscriptDelta", () => {
   });
 
   it("user speaking / interrupted 中の delta は捨てて resolver を reset する", () => {
-    const pending = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const pending = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "ありが",
       phase: "assistant-speaking",
@@ -110,7 +110,7 @@ describe("resolveAssistantTranscriptDelta", () => {
     });
 
     expect(interrupted.cues).toEqual([]);
-    expect(interrupted.state).toEqual(createPerformanceCueResolverState());
+    expect(interrupted.state).toEqual(createStateExpressionResolverState());
   });
 
   it.each([
@@ -118,7 +118,7 @@ describe("resolveAssistantTranscriptDelta", () => {
     "interrupted",
     "disconnected",
   ] as const)("%s では cue を生成しない", (phase) => {
-    const result = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "ありがとう。",
       phase,
@@ -128,7 +128,7 @@ describe("resolveAssistantTranscriptDelta", () => {
   });
 
   it("utterance が変わった時は前発話の未確定 text を結合しない", () => {
-    const pending = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const pending = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "ありが",
       phase: "assistant-speaking",
@@ -144,7 +144,7 @@ describe("resolveAssistantTranscriptDelta", () => {
   });
 
   it("inline gesture tag を制御 protocol として解釈しない", () => {
-    const result = resolveAssistantTranscriptDelta(createPerformanceCueResolverState(), {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "[gesture:nod] 続けます。",
       phase: "assistant-speaking",

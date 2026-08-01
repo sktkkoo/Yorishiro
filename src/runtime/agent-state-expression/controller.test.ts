@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { RealtimePerformanceCueController } from "./controller";
-import type { PerformanceCueClock } from "./scheduler";
+import { RealtimeStateExpressionController } from "./controller";
+import type { StateExpressionClock } from "./scheduler";
 
-class FakeClock implements PerformanceCueClock {
+class FakeClock implements StateExpressionClock {
   timeMs = 0;
   private nextId = 1;
   private readonly timers = new Map<
@@ -37,7 +37,7 @@ function setup() {
   const clock = new FakeClock();
   const onCue = vi.fn();
   const onRelease = vi.fn();
-  const controller = new RealtimePerformanceCueController(
+  const controller = new RealtimeStateExpressionController(
     { onCue, onRelease },
     { silenceCompletionMs: 400, scheduler: { cueCooldownMs: 0, gestureCooldownMs: 0 } },
     clock,
@@ -45,7 +45,7 @@ function setup() {
   return { clock, controller, onCue, onRelease };
 }
 
-describe("RealtimePerformanceCueController", () => {
+describe("RealtimeStateExpressionController", () => {
   it("assistant transcriptを変更せずsemantic cueをremote speech clockへ載せる", () => {
     const h = setup();
     const transcript = "はい。";

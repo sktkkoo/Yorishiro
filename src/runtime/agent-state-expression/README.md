@@ -1,9 +1,9 @@
-# Realtime performance cue core
+# Agent State Expression
 
-Realtime Voice の spoken text と分離した、avatar 非依存の演技 side channel。新しい model call、
-inline tag、MCP 往復は使わない。
+Realtime speech の spoken text と分離した、provider / avatar 非依存の状態表現 side channel。
+新しい model call、inline tag、MCP 往復は使わない。
 
-統合 API は `resolveAssistantTranscriptDelta()` と `PerformanceCueScheduler` の二段。前者へ
+統合 API は `resolveAssistantTranscriptDelta()` と `StateExpressionScheduler` の二段。前者へ
 assistant の `thread/realtime/transcript/delta` だけを渡し、後者の `startUtterance()` へ remote
 audio の speech start と同じ clock を渡す。`onCue` が受け取るのは `agree` 等の semantic intent
 であり、animation file 名への解決は既存 Body / Motion catalog adapter が所有する。
@@ -18,7 +18,7 @@ transcript が speech start より先に届く順序もあるため、最初の 
   full `text` は delta と重複するため再投入しない。
 - stable item ID は upstream contract に無いため、client 内連番を `utteranceId` に使う。
 - Body が lip-sync をsampleする同じrender clockからremote speech start/endを検出し、schedulerへ渡す。
-- expression は `speech` source の専用 mood slot、gesture は `speech-performance` motion laneへ解決する。
+- expression は `speech` source の専用 mood slot、gesture は `speech-expression` motion laneへ解決する。
   `neutral` はpresetをacquireせず、adapterが所有するslotだけをreleaseする。
 - user transcriptによるbarge-in、voice stop、disconnect、session切替は未発火cueと所有handleを解放する。
 

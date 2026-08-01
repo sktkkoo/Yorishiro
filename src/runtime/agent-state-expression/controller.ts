@@ -1,18 +1,18 @@
 import {
-  createPerformanceCueResolverState,
+  createStateExpressionResolverState,
   finishAssistantTranscript,
-  type PerformanceCueResolverState,
   resolveAssistantTranscriptDelta,
+  type StateExpressionResolverState,
 } from "./resolver";
 import {
-  type PerformanceCueClock,
-  PerformanceCueScheduler,
-  type PerformanceCueSchedulerCallbacks,
-  type PerformanceCueSchedulerOptions,
+  type StateExpressionClock,
+  StateExpressionScheduler,
+  type StateExpressionSchedulerCallbacks,
+  type StateExpressionSchedulerOptions,
 } from "./scheduler";
 
-export interface RealtimePerformanceCueControllerOptions {
-  readonly scheduler?: PerformanceCueSchedulerOptions;
+export interface RealtimeStateExpressionControllerOptions {
+  readonly scheduler?: StateExpressionSchedulerOptions;
   /** 無音がこの時間続いたら remote speech end とみなす。 */
   readonly silenceCompletionMs?: number;
 }
@@ -23,10 +23,10 @@ const DEFAULT_SILENCE_COMPLETION_MS = 420;
  * Codex realtime notification と remote audio activity を utterance 単位に束ねる。
  * transcript は読み取り専用で扱い、spoken text 自体は一切変更しない。
  */
-export class RealtimePerformanceCueController {
-  private readonly scheduler: PerformanceCueScheduler;
+export class RealtimeStateExpressionController {
+  private readonly scheduler: StateExpressionScheduler;
   private readonly silenceCompletionMs: number;
-  private resolverState: PerformanceCueResolverState = createPerformanceCueResolverState();
+  private resolverState: StateExpressionResolverState = createStateExpressionResolverState();
   private utteranceSequence = 0;
   private utteranceId: string | null = null;
   private transcriptDone = false;
@@ -40,11 +40,11 @@ export class RealtimePerformanceCueController {
   private remoteSilenceObservedAfterInterruption = false;
 
   constructor(
-    callbacks: PerformanceCueSchedulerCallbacks,
-    options: RealtimePerformanceCueControllerOptions = {},
-    private readonly clock: PerformanceCueClock = browserClock,
+    callbacks: StateExpressionSchedulerCallbacks,
+    options: RealtimeStateExpressionControllerOptions = {},
+    private readonly clock: StateExpressionClock = browserClock,
   ) {
-    this.scheduler = new PerformanceCueScheduler(callbacks, options.scheduler, clock);
+    this.scheduler = new StateExpressionScheduler(callbacks, options.scheduler, clock);
     this.silenceCompletionMs = nonNegative(
       options.silenceCompletionMs,
       DEFAULT_SILENCE_COMPLETION_MS,
@@ -145,7 +145,7 @@ export class RealtimePerformanceCueController {
     const utteranceId = `realtime-${++this.utteranceSequence}`;
     this.utteranceId = utteranceId;
     this.transcriptDone = false;
-    this.resolverState = createPerformanceCueResolverState();
+    this.resolverState = createStateExpressionResolverState();
     this.scheduler.prepareUtterance(utteranceId);
     if (this.remoteSpeechActive) {
       const speechStartedAtMs =
@@ -169,7 +169,7 @@ export class RealtimePerformanceCueController {
     this.utteranceId = null;
     this.transcriptDone = false;
     this.utteranceSpeechStarted = false;
-    this.resolverState = createPerformanceCueResolverState();
+    this.resolverState = createStateExpressionResolverState();
   }
 
   private resetRemoteSpeech(): void {
@@ -206,7 +206,7 @@ export class RealtimePerformanceCueController {
   }
 }
 
-const browserClock: PerformanceCueClock = {
+const browserClock: StateExpressionClock = {
   now: () => performance.now(),
   setTimeout: (callback, delayMs) => globalThis.setTimeout(callback, delayMs),
   clearTimeout: (handle) =>

@@ -1,28 +1,28 @@
 import type { ExpressionHandle, MotionHandle } from "@yorishiro/sdk";
 import type { Body } from "../../core/body";
-import type { PerformanceCueSchedulerCallbacks } from "./scheduler";
-import type { PerformanceCue, PerformanceGestureIntent } from "./types";
+import type { StateExpressionSchedulerCallbacks } from "./scheduler";
+import type { StateExpressionCue, StateExpressionGestureIntent } from "./types";
 
-type PerformanceCueBody = Pick<Body, "acquireExpressionSlot" | "acquireMotionSlot">;
+type StateExpressionBody = Pick<Body, "acquireExpressionSlot" | "acquireMotionSlot">;
 
-interface OwnedPerformance {
+interface OwnedStateExpression {
   expression: ExpressionHandle | null;
   motion: MotionHandle | null;
   releaseTimer: ReturnType<typeof globalThis.setTimeout> | null;
 }
 
-const GESTURE_ANIMATION: Readonly<Partial<Record<PerformanceGestureIntent, string>>> = {
+const GESTURE_ANIMATION: Readonly<Partial<Record<StateExpressionGestureIntent, string>>> = {
   agree: "anim:VRMA_small_nod",
   consider: "anim:VRMA_head_tilt_down",
   reassure: "anim:VRMA_small_nod",
   emphasize: "anim:VRMA_small_nod",
 };
 
-/** semantic cue を現在の Body が持つ発話演技専用 slot へ変換する。 */
-export function createBodyPerformanceCueAdapter(
-  getBody: () => PerformanceCueBody | null,
-): PerformanceCueSchedulerCallbacks {
-  const ownedByUtterance = new Map<string, OwnedPerformance>();
+/** Resolves a semantic state expression into Body-owned speech slots. */
+export function createBodyStateExpressionAdapter(
+  getBody: () => StateExpressionBody | null,
+): StateExpressionSchedulerCallbacks {
+  const ownedByUtterance = new Map<string, OwnedStateExpression>();
 
   const release = (utteranceId: string): void => {
     const owned = ownedByUtterance.get(utteranceId);
@@ -43,7 +43,7 @@ export function createBodyPerformanceCueAdapter(
       const motion = acquireGesture(body, cue);
       if (!expression && !motion) return;
 
-      const owned: OwnedPerformance = { expression, motion, releaseTimer: null };
+      const owned: OwnedStateExpression = { expression, motion, releaseTimer: null };
       ownedByUtterance.set(cue.utteranceId, owned);
       if (cue.durationMs && cue.durationMs > 0) {
         owned.releaseTimer = globalThis.setTimeout(() => release(cue.utteranceId), cue.durationMs);
@@ -53,17 +53,20 @@ export function createBodyPerformanceCueAdapter(
   };
 }
 
-function acquireExpression(body: PerformanceCueBody, cue: PerformanceCue): ExpressionHandle | null {
+function acquireExpression(
+  body: StateExpressionBody,
+  cue: StateExpressionCue,
+): ExpressionHandle | null {
   if (!cue.expression || cue.expression === "neutral") return null;
   return body.acquireExpressionSlot("speech", "mood", cue.expression, cue.expressionWeight ?? 0.3);
 }
 
-function acquireGesture(body: PerformanceCueBody, cue: PerformanceCue): MotionHandle | null {
+function acquireGesture(body: StateExpressionBody, cue: StateExpressionCue): MotionHandle | null {
   const animation = cue.gestureIntent ? GESTURE_ANIMATION[cue.gestureIntent] : undefined;
   if (!animation) return null;
   return body.acquireMotionSlot({
     source: "system",
-    priority: "speech-performance",
+    priority: "speech-expression",
     animation,
     options: {
       fadeInMs: 160,

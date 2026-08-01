@@ -412,7 +412,7 @@ export type MotionSource = "reflex" | "mcp" | "persona" | "idle" | "state" | "sy
  * - "mcp-conscious" (L5): 住人 AI の意思
  * - "persona-handler" (L4): persona reflex の演技 motion
  * - "state-driven" (L3): state 連動 (Typing during writing 等)
- * - "speech-performance" (L2): GPT Live 発話に同期する補助 gesture
+ * - "speech-expression" (L2): realtime speech に同期する補助 gesture
  * - "idle-fidget" (L1): 30s+ idle の小動作
  *
  * "default-pose" は queue 外（active が無いとき procedural-bones + breathing が default）、
@@ -423,7 +423,7 @@ export type MotionPriority =
   | "mcp-conscious"
   | "persona-handler"
   | "state-driven"
-  | "speech-performance"
+  | "speech-expression"
   | "idle-fidget";
 
 /** Motion 起動時の補助 option（fade / loop / speed 等の表現 parameter）。 */
