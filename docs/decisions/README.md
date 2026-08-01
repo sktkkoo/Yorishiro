@@ -106,6 +106,7 @@
 
 ### Architecture
 
+- [**expression-intent-arbitration.md**](expression-intent-arbitration.md) — #83 は expression-only の intent arbiter を `ExpressionManager` の上に置き、region / salience / ownership / reason を集約する。motion / lip sync は共通 envelope 語彙だけを共有する future domain coordinator とし、単一の presence mixer は作らない（**proposed**）
 - [**single-active-registry-pattern.md**](single-active-registry-pattern.md) — 新しい single-active pack 種別を追加する時の extend recipe。`SingleActiveRegistry<TEntry, TValue>` を extend して domain alias 2 個を生やすだけ、実装をコピーしない
 - [**physiological-reflex-layer.md**](physiological-reflex-layer.md) — 生理反射（startle / 注意切替 / 一息 / 認知瞬き）は persona reaction ではなく Body built-in。event → state mutation axis から発火。表情 preset / motion clip / effect を使うなら演技なので persona 側
 - [**motion-intensity.md**](motion-intensity.md) — idle procedural motion の大きさと弾性を `motionIntensity` で調整する。range `0.0`–`3.0` / default `1.0`。settings・SDK・MCP に対称公開し、sway/head/arm は spring + arc で弾性化。短い速い beat は Phase 3 の discrete impulse event に分ける
