@@ -39,6 +39,12 @@ export interface UiStrings {
   readonly codexVoiceConnecting: string;
   readonly codexVoiceRetry: string;
   readonly codexVoiceApiBilling: string;
+  readonly gptLiveRequiresCodex: string;
+  readonly gptLiveSwitchBody: string;
+  readonly gptLiveSetupBody: string;
+  readonly gptLiveCancel: string;
+  readonly gptLiveConfirmSwitch: string;
+  readonly gptLiveOpenSettings: string;
   /**
    * セッション再起動を伴う設定変更の確認ダイアログ。「セッション」というシステム語
    * ではなく会話の行き先を伝える：persona は新しく始まる（引き継がない）、agent は
@@ -162,6 +168,14 @@ const EN: UiStrings = {
   codexVoiceConnecting: "Connecting Codex voice…",
   codexVoiceRetry: "Retry Codex voice",
   codexVoiceApiBilling: "API billing",
+  gptLiveRequiresCodex: "GPT Live currently requires Codex",
+  gptLiveSwitchBody:
+    "Your current Main Agent does not support GPT Live. Switch to Codex and start GPT Live? Your current conversation and work state are preserved, and switching back resumes it.",
+  gptLiveSetupBody:
+    "Install the Codex CLI and sign in with ChatGPT (or configure an API key), then open Settings to select Codex as the Main Agent.",
+  gptLiveCancel: "Cancel",
+  gptLiveConfirmSwitch: "Switch and start",
+  gptLiveOpenSettings: "Open Settings",
   personaSwitchConfirm: "Switch to {next}. The conversation starts fresh.",
   personaSwitchConfirmButton: "Switch",
   agentSwitchConfirm:
@@ -281,6 +295,14 @@ const JA: UiStrings = {
   codexVoiceConnecting: "Codex 音声会話に接続中…",
   codexVoiceRetry: "Codex 音声会話を再試行",
   codexVoiceApiBilling: "API従量課金",
+  gptLiveRequiresCodex: "GPT Liveには現在Codexが必要です",
+  gptLiveSwitchBody:
+    "現在のMain AgentはGPT Liveに対応していません。Codexへ切り替えてGPT Liveを始めますか？現在の会話と作業状態は保持され、元のAgentへ戻すと続きから再開できます。",
+  gptLiveSetupBody:
+    "Codex CLIをインストールし、ChatGPTでサインイン（またはAPIキーを設定）してから、SettingsでMain AgentにCodexを選んでください。",
+  gptLiveCancel: "キャンセル",
+  gptLiveConfirmSwitch: "切り替えて開始",
+  gptLiveOpenSettings: "Settingsを開く",
   personaSwitchConfirm: "{next} に切り替えます。会話は新しく始まります。",
   personaSwitchConfirmButton: "切り替える",
   agentSwitchConfirm:
