@@ -475,6 +475,8 @@ export class CodexRealtimeClient implements LipSyncSource {
           readonly message?: string;
           readonly role?: string;
           readonly delta?: string;
+          readonly item?: unknown;
+          readonly audio?: { readonly itemId?: unknown };
         }
       | undefined;
     if (message.method === "thread/realtime/sdp" && params?.sdp) {
@@ -498,6 +500,16 @@ export class CodexRealtimeClient implements LipSyncSource {
       this.threadId = null;
       this.setState({ status: "error", error: error.message });
     } else if (
+      message.method === "thread/realtime/itemAdded" &&
+      params?.threadId === this.threadId
+    ) {
+      this.routeRealtimeItemBoundary(params.item);
+    } else if (
+      message.method === "thread/realtime/outputAudio/delta" &&
+      params?.threadId === this.threadId
+    ) {
+      this.stateExpressionController?.onOutputAudioItem(params.audio?.itemId);
+    } else if (
       message.method === "thread/realtime/transcript/delta" &&
       params?.threadId === this.threadId
     ) {
@@ -509,6 +521,16 @@ export class CodexRealtimeClient implements LipSyncSource {
       // done.text は全 delta の完成版なのでresolverへ再投入しない。
       this.stateExpressionController?.onTranscriptDone(params.role);
     }
+  }
+
+  private routeRealtimeItemBoundary(value: unknown): void {
+    if (!isRecord(value)) return;
+    if (value.type === "input_audio_buffer.speech_started") {
+      this.stateExpressionController?.onUserSpeechStarted(value.item_id);
+      return;
+    }
+    if (value.role !== "assistant") return;
+    this.stateExpressionController?.onAssistantResponseBoundary(value.id);
   }
 
   private rejectAllPending(error: Error): void {
@@ -595,6 +617,10 @@ function hasRemoteSpeechSignal(values: MouthValues): boolean {
 
 function hasOwn(value: object, key: string): boolean {
   return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function isJsonRpcServerRequest(message: JsonRpcMessage): message is JsonRpcServerRequest {

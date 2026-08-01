@@ -289,6 +289,52 @@ describe("CodexRealtimeClient", () => {
     expect(onRelease).toHaveBeenCalledTimes(1);
   });
 
+  it("routes item and output-audio ownership boundaries to state expressions", async () => {
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue: vi.fn(), onRelease: vi.fn() },
+    });
+    await client.start();
+    const controller = (
+      client as unknown as {
+        stateExpressionController: {
+          onUserSpeechStarted(itemId?: unknown): void;
+          onAssistantResponseBoundary(itemId: unknown): void;
+          onOutputAudioItem(itemId: unknown): void;
+        };
+      }
+    ).stateExpressionController;
+    const onUserSpeechStarted = vi.spyOn(controller, "onUserSpeechStarted");
+    const onAssistantResponseBoundary = vi.spyOn(controller, "onAssistantResponseBoundary");
+    const onOutputAudioItem = vi.spyOn(controller, "onOutputAudioItem");
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/itemAdded",
+        params: {
+          threadId: "thread-1",
+          item: { type: "input_audio_buffer.speech_started", item_id: "user-1" },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/itemAdded",
+        params: { threadId: "thread-1", item: { id: "assistant-1", role: "assistant" } },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/outputAudio/delta",
+        params: { threadId: "thread-1", audio: { itemId: "assistant-1" } },
+      }),
+    );
+
+    expect(onUserSpeechStarted).toHaveBeenCalledWith("user-1");
+    expect(onAssistantResponseBoundary).toHaveBeenCalledWith("assistant-1");
+    expect(onOutputAudioItem).toHaveBeenCalledWith("assistant-1");
+    client.stop();
+  });
+
   it("tracks remote speech while rendering is paused without Body sampling", async () => {
     vi.useFakeTimers();
     const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
@@ -328,7 +374,7 @@ describe("CodexRealtimeClient", () => {
     internals.stateExpressionController.onTranscriptDone("assistant");
 
     internals.startRemoteSpeechObservation(0);
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(1_600);
 
     expect(sampleCount).toBeGreaterThan(1);
     expect(onCue).toHaveBeenCalledOnce();

@@ -39,7 +39,11 @@ function setup() {
   const onRelease = vi.fn();
   const controller = new RealtimeStateExpressionController(
     { onCue, onRelease },
-    { silenceCompletionMs: 400, scheduler: { cueCooldownMs: 0, gestureCooldownMs: 0 } },
+    {
+      silenceCompletionMs: 400,
+      responseCompletionSilenceMs: 1_500,
+      scheduler: { cueCooldownMs: 0, gestureCooldownMs: 0, repeatCooldownMs: 0 },
+    },
     clock,
   );
   return { clock, controller, onCue, onRelease };
@@ -85,7 +89,7 @@ describe("RealtimeStateExpressionController", () => {
     expect(h.onCue).not.toHaveBeenCalled();
   });
 
-  it("transcript done後の無音で発話所有handleをcompleted releaseする", () => {
+  it("releases response-owned handles after transcript completion and the resumption window", () => {
     const h = setup();
     h.controller.onTranscriptDelta("assistant", "大丈夫。 ");
     h.controller.observeRemoteSpeech(true);
@@ -98,6 +102,9 @@ describe("RealtimeStateExpressionController", () => {
 
     h.clock.advance(1);
     h.controller.observeRemoteSpeech(false);
+    expect(h.onRelease).not.toHaveBeenCalled();
+
+    h.clock.advance(1_100);
     expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "completed");
   });
 
@@ -136,6 +143,88 @@ describe("RealtimeStateExpressionController", () => {
     );
   });
 
+  it("queues the next response transcript before interrupted audio becomes quiet", () => {
+    const h = setup();
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onTranscriptDone("user");
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(290);
+
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ expression: "happy", utteranceId: "realtime-2" }),
+      expect.any(Object),
+    );
+  });
+
+  it("rejects an invalidated item after cross-transport reorder and accepts the next item", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onTranscriptDone("user");
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "ありがとう。");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.controller.onAssistantResponseBoundary("assistant-new");
+    h.controller.onTranscriptDelta("assistant", "いいね。");
+    h.controller.onOutputAudioItem("assistant-new");
+    h.clock.advance(290);
+
+    expect(h.onCue).toHaveBeenCalledTimes(1);
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ expression: "happy", utteranceId: "realtime-2" }),
+      expect.any(Object),
+    );
+  });
+
+  it("binds a bounded completed audio interval to a late short transcript", () => {
+    const h = setup();
+    h.clock.advance(100);
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.onTranscriptDone("assistant");
+    h.clock.advance(0);
+
+    expect(h.onCue).toHaveBeenCalledWith(
+      expect.objectContaining({ gestureIntent: "agree" }),
+      expect.objectContaining({ scheduledForMs: 300, lateByMs: 200 }),
+    );
+    expect(h.onRelease).not.toHaveBeenCalled();
+  });
+
+  it("treats a long waveform gap as resumable while the response can continue", () => {
+    const h = setup();
+    h.controller.onTranscriptDelta("assistant", "大丈夫。");
+    h.controller.observeRemoteSpeech(true);
+    h.controller.onTranscriptDone("assistant");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+
+    h.clock.advance(800);
+    h.controller.observeRemoteSpeech(true);
+
+    expect(h.onRelease).not.toHaveBeenCalled();
+
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+    h.clock.advance(1_100);
+    expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "completed");
+  });
+
   it("completes when transcript done arrives after remote audio already ended", () => {
     const h = setup();
     h.controller.onTranscriptDelta("assistant", "大丈夫。");
@@ -144,6 +233,7 @@ describe("RealtimeStateExpressionController", () => {
     h.controller.observeRemoteSpeech(false);
 
     h.controller.onTranscriptDone("assistant");
+    h.clock.advance(1_100);
 
     expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "completed");
   });
