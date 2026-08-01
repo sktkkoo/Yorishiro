@@ -16,6 +16,11 @@ import {
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
 import { CodexWorkStatusProtocolAdapter } from "../work-status-ledger/codex-protocol-adapter";
 import type { WorkLifecyclePort } from "../work-status-ledger/types";
+import {
+  formatWorkStatusEvent,
+  formatWorkStatusSnapshot,
+  type WorkStatusVoiceContextSource,
+} from "../work-status-ledger/voice-context";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
 export type CodexRealtimeBilling = "subscription" | "api";
@@ -30,7 +35,7 @@ export interface CodexRealtimeClientOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
   readonly getPreferredThreadId?: () => string | null;
-  readonly workStatusLedger?: WorkLifecyclePort;
+  readonly workStatusLedger?: WorkLifecyclePort & WorkStatusVoiceContextSource;
 }
 
 interface JsonRpcMessage {
@@ -96,6 +101,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
   private readonly getPreferredThreadId: () => string | null;
   private readonly workStatusAdapter: CodexWorkStatusProtocolAdapter | null;
+  private readonly workStatusLedger: (WorkLifecyclePort & WorkStatusVoiceContextSource) | null;
+  private workStatusSubscription: { dispose(): void } | null = null;
 
   constructor(
     sessionId: string,
@@ -105,8 +112,9 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.sessionId = sessionId;
     this.onStateChange = onStateChange;
     this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
-    this.workStatusAdapter = options.workStatusLedger
-      ? new CodexWorkStatusProtocolAdapter(options.workStatusLedger, sessionId)
+    this.workStatusLedger = options.workStatusLedger ?? null;
+    this.workStatusAdapter = this.workStatusLedger
+      ? new CodexWorkStatusProtocolAdapter(this.workStatusLedger, sessionId)
       : null;
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
@@ -376,6 +384,16 @@ export class CodexRealtimeClient implements LipSyncSource {
       version: "v3",
       voice: CODEX_REALTIME_VOICE,
       transport: { type: "webrtc", sdp },
+      ...(this.workStatusLedger
+        ? {
+            initialItems: [
+              {
+                role: "developer",
+                text: formatWorkStatusSnapshot(this.workStatusLedger.getSnapshot()),
+              },
+            ],
+          }
+        : {}),
     });
     this.assertAttemptOwner(attempt, peer);
     const answerSdp = await withTimeout(
@@ -388,6 +406,22 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.rejectRemoteSdp = null;
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     this.assertAttemptOwner(attempt, peer);
+    this.startWorkStatusContextUpdates(threadId, attempt);
+  }
+
+  private startWorkStatusContextUpdates(threadId: string, attempt: number): void {
+    this.workStatusSubscription?.dispose();
+    this.workStatusSubscription =
+      this.workStatusLedger?.subscribeEvents((event) => {
+        if (!this.isAttemptOwner(attempt) || this.threadId !== threadId) return;
+        void this.request("thread/realtime/appendText", {
+          threadId,
+          role: "developer",
+          text: formatWorkStatusEvent(event),
+        }).catch(() => {
+          // Status context is best-effort; voice and the work itself must keep running.
+        });
+      }) ?? null;
   }
 
   private connectRemoteAudio(stream: MediaStream, attempt: number): void {
@@ -573,6 +607,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
+    this.workStatusSubscription?.dispose();
+    this.workStatusSubscription = null;
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));

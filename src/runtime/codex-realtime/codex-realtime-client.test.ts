@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import type { MouthValues } from "../../core/voice/mouth-values";
+import { createWorkStatusLedgerStore } from "../work-status-ledger/work-status-ledger-store";
 import { CodexRealtimeClient, type CodexRealtimeState } from "./codex-realtime-client";
 
 interface FakeChannel<T> {
@@ -11,7 +12,7 @@ interface FakeChannel<T> {
 
 interface SentMessage {
   readonly method?: string;
-  readonly id?: number;
+  readonly id?: string | number;
   readonly params?: Record<string, unknown>;
   readonly result?: unknown;
 }
@@ -253,6 +254,104 @@ describe("CodexRealtimeClient", () => {
       }),
     );
     expect(client.getStatus()).toBe("idle");
+  });
+
+  it("gives GPT Live an initial work snapshot and appends later status events", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    const existing = ledger.create({ summary: "Prepare release" });
+    ledger.markRunning(existing.id);
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.initialItems).toEqual([
+      expect.objectContaining({
+        role: "developer",
+        text: expect.stringContaining('"summary":"Prepare release"'),
+      }),
+    ]);
+
+    ledger.complete(existing.id, "All checks passed");
+    await vi.waitFor(() =>
+      expect(
+        bridge.sent.find((message) => message.method === "thread/realtime/appendText"),
+      ).toMatchObject({
+        params: {
+          threadId: "thread-1",
+          role: "developer",
+          text: expect.stringContaining('"status":"completed"'),
+        },
+      }),
+    );
+
+    client.stop();
+    const appendCount = bridge.sent.filter(
+      (message) => message.method === "thread/realtime/appendText",
+    ).length;
+    ledger.create({ summary: "Must not reach a stopped session" });
+    expect(
+      bridge.sent.filter((message) => message.method === "thread/realtime/appendText"),
+    ).toHaveLength(appendCount);
+  });
+
+  it("observes delegated turn and approval events without answering the approval", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await client.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/started",
+        params: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-1",
+            status: "inProgress",
+            items: [
+              {
+                type: "userMessage",
+                id: "user-1",
+                content: [{ type: "text", text: "Create sample.md", text_elements: [] }],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        id: "approval-from-server",
+        method: "item/fileChange/requestApproval",
+        params: { threadId: "thread-1", turnId: "turn-1", itemId: "patch-1" },
+      }),
+    );
+
+    expect(ledger.get("work-1")).toMatchObject({
+      summary: "Create sample.md",
+      status: "approval-required",
+    });
+    expect(bridge.sent.some((message) => message.id === "approval-from-server")).toBe(false);
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "serverRequest/resolved",
+        params: { threadId: "thread-1", requestId: "approval-from-server" },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/completed",
+        params: { threadId: "thread-1", turn: { id: "turn-1", status: "completed", items: [] } },
+      }),
+    );
+
+    expect(ledger.get("work-1")?.status).toBe("completed");
+    client.stop();
   });
 
   it("routes assistant transcript to state expressions and cancels them on user barge-in", async () => {

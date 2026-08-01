@@ -1,6 +1,6 @@
 # GPT Live Work Status Ledger — 作業状態の会話向け投影設計
 
-**Status**: accepted — Phase 1 / 2 implemented（Phase 3 配線中）
+**Status**: accepted — Phase 1 / 2 / 3 implemented
 **Last updated**: 2026-08-01
 
 ## TL;DR
@@ -300,12 +300,11 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
    notification を観測し、thread/turn/approval event を work ID へ解決して観測 port
    （3 操作）を呼ぶ。task ↔ thread の対応表は adapter 内部に閉じる。
    root turn を work、`turnId` と subagent `threadId` を adapter 内部の相関 key とする。
-3. **voice 層（Phase 3、未実装）**: GPT Live の会話 pipeline が snapshot / event を
+3. **voice 層（Phase 3、実装済み）**: GPT Live の会話 pipeline が snapshot / event を
    完成した台本としてではなく、応答生成の事実 context として参照する。
-   読み、進捗説明・承認待ち案内に使う。**realtime session への状態注入方法
-   （conversation item として送るのか、応答生成時に参照させるのか）は未実測・未設計**
-   であり、Phase 3 の設計判断とする。委任の起点（誰が `create()` を呼ぶか）も
-   §未解決の判断 1 で承認を得てから配線する。
+   読み、進捗説明・承認待ち案内に使う。v3 `initialItems` の developer item で接続時
+   snapshot を渡し、以後は `thread/realtime/appendText` の developer item で event を
+   追記する。どちらも既存 bridge client 上で行い、応答開始や自動読み上げは要求しない。
 
 ## 実装計画（phased）
 
@@ -319,7 +318,7 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
   task 追跡に十分か、approvalKey の導出、subagent thread と委任の対応）。実測結果を
   本 doc に追記してから adapter を実装し、観測 port 経由で配線。fake protocol event
   での unit test + 実機で approval 保留 → TUI 解決 → running 復帰を確認。
-- **Phase 3 — GPT Live 配線**: 委任の起点と読み上げ UX。realtime session への状態
+- **Phase 3 — GPT Live 配線（実装済み）**: 委任の起点と読み上げ UX。realtime session への状態
   注入方法を実測・設計してから実装。実機で「委任 → 進捗質問 → 承認待ち案内 → 完了報告」
   の一連を確認（dev 検証だけで完了宣言しない）。
 - **Phase 4 以降（scope 外の種）**: 永続化と作業再接続、voice approval、常時観測
@@ -350,10 +349,10 @@ adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状�
 1. **委任の起点（解決済み）**: v1 は既存 voice bridge が観測した root
    `turn/started`（summary が遅れる場合は `item/started`）で host が `create()` する。
    MCP 書き込み面は公開しない。voice 接続中のTUI起点 turnも同じ投影へ入る制約を許容する。
-2. **GPT Live への状態伝達方法**: snapshot を realtime session へどう見せるか
-   （conversation item 注入 / 応答時参照 / 定期 context）。protocol 実測が先行条件。
-   event の自動読み上げや定型文 TTS は採用せず、最終的な発話内容・タイミングは GPT Live に
-   委ねる。そのうえで、承認待ち等の重要 event を応答開始の契機にするかは別途決める。
+2. **GPT Live への状態伝達方法（解決済み）**: v3 start の `initialItems` に接続時 snapshot、
+   `thread/realtime/appendText` に以後の event を developer role で渡す。応答開始は要求せず、
+   最終的な発話内容・タイミングは GPT Live に委ねる。summary / note は未信頼の引用データと
+   明示し、approval request ID は渡さず件数だけを投影する。
 3. **cancel の実効性**: 台帳 cancel は記帳のみ（本 doc の提案）で良いか、
    「voice で止めてと言ったら実際に止まる」まで踏み込むか。後者は実行制御への
    経路を開くため、境界設計を別 decision に切るべきと考える。
