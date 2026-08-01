@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatWorkStatusEvent, formatWorkStatusSnapshot } from "./voice-context";
+import {
+  formatWorkStatusEvent,
+  formatWorkStatusSnapshot,
+  nextWorkStatusFreshnessDelay,
+  summarizeWorkStatusFreshness,
+} from "./voice-context";
 import { createWorkStatusLedgerStore } from "./work-status-ledger-store";
 
 describe("work status voice context", () => {
@@ -60,5 +65,23 @@ describe("work status voice context", () => {
     expect(stale).toContain('"freshness":"stale"');
     expect(stale).toContain("stale does not prove that work stopped");
     expect(stale).toContain("verify important decisions");
+  });
+
+  it("schedules the fresh and aging boundaries for active work only", () => {
+    const ledger = createWorkStatusLedgerStore({ now: () => 1_000 });
+    const work = ledger.create({ summary: "Long-running review" });
+    ledger.markRunning(work.id);
+
+    expect(nextWorkStatusFreshnessDelay(ledger.getSnapshot(), 1_000)).toBe(60_001);
+    expect(nextWorkStatusFreshnessDelay(ledger.getSnapshot(), 61_001)).toBe(240_000);
+    expect(nextWorkStatusFreshnessDelay(ledger.getSnapshot(), 301_001)).toBeNull();
+    expect(summarizeWorkStatusFreshness(ledger.getSnapshot(), 301_001)).toEqual({
+      freshness: "stale",
+      observedAgeSeconds: 300,
+    });
+
+    ledger.complete(work.id);
+    expect(nextWorkStatusFreshnessDelay(ledger.getSnapshot(), 1_000)).toBeNull();
+    expect(summarizeWorkStatusFreshness(ledger.getSnapshot(), 1_000)).toBeNull();
   });
 });

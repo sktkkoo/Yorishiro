@@ -59,6 +59,8 @@ export const KEYS = {
   WORKSPACE_ATTENTION_STORE: "workspace-attention:store",
   /** WorkStatusLedgerStore singleton: GPT Live 向けの deterministic な委任作業投影。 */
   WORK_STATUS_LEDGER_STORE: "work-status-ledger:store",
+  /** Codex work adapter registry: voice reconnect を跨いで thread/turn 相関を保持する。 */
+  WORK_STATUS_CODEX_ADAPTERS: "work-status-ledger:codex-adapters",
 } as const;
 
 export type KnownKey = (typeof KEYS)[keyof typeof KEYS];

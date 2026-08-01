@@ -30,6 +30,7 @@ const bridge = vi.hoisted(() => ({
   accountPrelude: null as "server-request" | "id-only" | "error-response" | null,
   loadedThreadResponses: [] as string[][],
   loadedThreadParents: {} as Record<string, string | null | undefined>,
+  threadReadDetails: {} as Record<string, Record<string, unknown>>,
   threadReadFailures: {} as Record<string, number>,
   realtimeStartPrelude: null as (() => void) | null,
   diagnosticLog: vi.fn(async () => {}),
@@ -105,8 +106,12 @@ vi.mock("../../bindings/tauri-commands", () => ({
           Object.getOwnPropertyDescriptor(bridge.loadedThreadParents, threadId) !== undefined;
         const parentThreadId =
           typeof threadId === "string" && hasParent ? bridge.loadedThreadParents[threadId] : null;
+        const detail =
+          request.params?.includeTurns === true && typeof threadId === "string"
+            ? bridge.threadReadDetails[threadId]
+            : undefined;
         respond({
-          thread: {
+          thread: detail ?? {
             id: threadId,
             ...(parentThreadId !== undefined ? { parentThreadId } : {}),
           },
@@ -209,6 +214,7 @@ describe("CodexRealtimeClient", () => {
     bridge.accountPrelude = null;
     bridge.loadedThreadResponses = [];
     bridge.loadedThreadParents = {};
+    bridge.threadReadDetails = {};
     vi.mocked(ensureAudioContextRunning).mockReset();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
@@ -357,6 +363,93 @@ describe("CodexRealtimeClient", () => {
           message.params.text.includes("Created while WebRTC starts"),
       ),
     ).toBeDefined();
+    client.stop();
+  });
+
+  it("reconciles a completion that occurred while voice was stopped", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    const first = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await first.start();
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/started",
+        params: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-1",
+            status: "inProgress",
+            items: [
+              {
+                type: "userMessage",
+                id: "user-1",
+                content: [{ type: "text", text: "Run checks", text_elements: [] }],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    expect(ledger.get("work-1")?.status).toBe("running");
+    first.stop();
+
+    bridge.threadReadDetails["thread-1"] = {
+      id: "thread-1",
+      parentThreadId: null,
+      status: { type: "idle" },
+      turns: [{ id: "turn-1", status: "completed", items: [] }],
+    };
+    const second = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await second.start();
+
+    expect(ledger.get("work-1")?.status).toBe("completed");
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "correlation-resync-delivered",
+      activeCount: 0,
+      correlationCount: 1,
+    });
+    second.stop();
+  });
+
+  it("refreshes work freshness as time crosses the aging and stale boundaries", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const ledger = createWorkStatusLedgerStore();
+    const work = ledger.create({ summary: "Long-running review" });
+    ledger.markRunning(work.id);
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await client.start();
+
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(
+      bridge.sent.some(
+        (message) =>
+          message.method === "thread/realtime/appendText" &&
+          typeof message.params?.text === "string" &&
+          message.params.text.includes('"freshness":"aging"'),
+      ),
+    ).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(240_000);
+    expect(
+      bridge.sent.some(
+        (message) =>
+          message.method === "thread/realtime/appendText" &&
+          typeof message.params?.text === "string" &&
+          message.params.text.includes('"freshness":"stale"'),
+      ),
+    ).toBe(true);
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "freshness-refresh-delivered",
+      activeCount: 1,
+      freshness: "stale",
+      observedAgeSeconds: 300,
+    });
     client.stop();
   });
 
@@ -874,5 +967,9 @@ describe("CodexRealtimeClient", () => {
 
     expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
     expect(client.getStatus()).toBe("idle");
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "realtime-closed-observed",
+      activeCount: undefined,
+    });
   });
 });

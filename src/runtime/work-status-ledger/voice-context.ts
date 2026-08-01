@@ -5,6 +5,8 @@ const MAX_CONTEXT_ITEMS = 20;
 const FRESH_MAX_AGE_MS = 60_000;
 const AGING_MAX_AGE_MS = 5 * 60_000;
 
+export type WorkStatusFreshness = "fresh" | "aging" | "stale";
+
 export interface WorkStatusVoiceContextSource {
   getSnapshot(): WorkStatusLedgerSnapshot;
   subscribeEvents(listener: (event: WorkStatusLedgerEvent) => void): Disposable;
@@ -54,6 +56,49 @@ function formatWork(work: WorkStatusLedgerSnapshot["work"][number], observedAt: 
     approvalCount: work.pendingApprovals.length,
     lastObservedAt: work.updatedAt,
     observedAgeSeconds: Math.floor(ageMs / 1_000),
-    freshness: ageMs <= FRESH_MAX_AGE_MS ? "fresh" : ageMs <= AGING_MAX_AGE_MS ? "aging" : "stale",
+    freshness: freshnessForAge(ageMs),
   };
+}
+
+/** active work の次の freshness 境界までの待ち時間。全件 stale なら null。 */
+export function nextWorkStatusFreshnessDelay(
+  snapshot: WorkStatusLedgerSnapshot,
+  observedAt = Date.now(),
+): number | null {
+  let nextAt = Number.POSITIVE_INFINITY;
+  for (const work of snapshot.work) {
+    if (isTerminal(work.status)) continue;
+    const ageMs = Math.max(0, observedAt - work.updatedAt);
+    if (ageMs <= FRESH_MAX_AGE_MS) {
+      nextAt = Math.min(nextAt, work.updatedAt + FRESH_MAX_AGE_MS + 1);
+    } else if (ageMs <= AGING_MAX_AGE_MS) {
+      nextAt = Math.min(nextAt, work.updatedAt + AGING_MAX_AGE_MS + 1);
+    }
+  }
+  return Number.isFinite(nextAt) ? Math.max(1, nextAt - observedAt) : null;
+}
+
+/** 診断ログ用に active work のうち最も古い観測鮮度だけを返す。 */
+export function summarizeWorkStatusFreshness(
+  snapshot: WorkStatusLedgerSnapshot,
+  observedAt = Date.now(),
+): { readonly freshness: WorkStatusFreshness; readonly observedAgeSeconds: number } | null {
+  let oldestAgeMs = -1;
+  for (const work of snapshot.work) {
+    if (isTerminal(work.status)) continue;
+    oldestAgeMs = Math.max(oldestAgeMs, Math.max(0, observedAt - work.updatedAt));
+  }
+  if (oldestAgeMs < 0) return null;
+  return {
+    freshness: freshnessForAge(oldestAgeMs),
+    observedAgeSeconds: Math.floor(oldestAgeMs / 1_000),
+  };
+}
+
+function freshnessForAge(ageMs: number): WorkStatusFreshness {
+  return ageMs <= FRESH_MAX_AGE_MS ? "fresh" : ageMs <= AGING_MAX_AGE_MS ? "aging" : "stale";
+}
+
+function isTerminal(status: WorkStatusLedgerSnapshot["work"][number]["status"]): boolean {
+  return status === "completed" || status === "failed" || status === "cancelled";
 }

@@ -230,8 +230,8 @@ payload には `observedAt / lastObservedAt / observedAgeSeconds / freshness` �
 代わりに、台帳とは別の **Work Status Diagnostic Log** を host が自動記録し、開発者が
 再現条件を調査できるブラックボックスレコーダーとする。
 
-- 記録対象: work ID、sanitize 済み短い summary、app/Codex version、観測 event の種別と時刻、
-  台帳の状態遷移、接続断・再接続、相関失敗・矛盾検出の理由
+- 記録対象: work ID、app version、観測 event の種別と時刻、台帳の状態遷移、
+  context 配送、相関再同期の成否と件数、鮮度更新時の最古 active work の区分・経過秒
 - 記録禁止: 音声、transcript、raw terminal log、approval request ID、command 引数、環境変数、
   secret を含み得る protocol payload 全体
 - retention: 容量または世代数で上限を持つ rotating local log。上限超過分は古い順に破棄する
@@ -299,9 +299,11 @@ TUI がそこにある — それが TUI を残した理由である。
 - thread targeting（top-level 選定・fail closed・subagent 除外）の手順に触れない。
   台帳は「どの thread と話すか」を知らないし、決めない。
 - domain に thread ID を持たないため、targeting 仕様が変わっても台帳は無傷。
-- voice が接続していない間の観測は**行わない**（v1）。bridge 非接続時に task が
-  進んだ場合、台帳は次回接続時の観測まで古い状態を示す。常時観測用の別 client を
-  立てるかは将来判断（§未解決の判断 6）。
+- voice が接続していない間の live event 観測は**行わない**（v1）。ただし adapter の
+  session/thread/turn 相関は再接続を跨いで保持し、次回接続時に
+  `thread/read(includeTurns: true)` の保存済み turn history と runtime status を読み、
+  取りこぼした root turn の終端と root approval 解決を reconcile する。常時観測用の
+  別 client を立てるかは将来判断（§未解決の判断 6）。
 
 ## 永続化・lifetime・再接続・cancel
 
@@ -316,9 +318,11 @@ TUI がそこにある — それが TUI を残した理由である。
 - **retention**: terminal 状態の task は直近 20 件だけ snapshot に残し、超過分は
   古い順に破棄する。active な task は件数によらず破棄しない。voice の「さっきのあれ」
   に答える程度の記憶で十分で、履歴 DB にしないため（20 は暫定値、§未解決の判断 5）。
-- **再接続**: GPT Live の stop / remote close / 再接続で台帳は何も変えない。
-  再接続した voice 層は snapshot を読み直すだけで最新状態に追いつく。event の
-  取りこぼし補償はしない（snapshot が正）。
+- **再接続**: GPT Live の stop / remote close では台帳と protocol 相関を保持する。
+  同じ session/thread へ再接続した client は `thread/read(includeTurns: true)` で保存済み
+  turn を読み、既知 work の `completed / failed / interrupted` と root thread の
+  approval 待ち状態を reconcile してから、更新済み snapshot を GPT Live へ再送する。
+  相関できない未知 turn を summary の類似だけで既存 work に推測対応させない。
 - **cancel の意味**: 台帳の `cancel()` は**記帳のみ**であり、実行中の agent の作業を
   中断しない。作業の中断は TUI / 既存の session 操作の管轄で、台帳から実行制御への
   経路は作らない（observation-only の台帳版）。「voice で頼んだら実際に止まる」を
@@ -402,9 +406,12 @@ unit test で固定する不変条件（prototype の test が既に大半を写
     変更毎通知・publish 毎に不変 value object。subscriber 間で mutation が伝播しない
 11. terminal task は上限 20 で古い順に prune され、active は残る
 12. voice context は観測時刻・経過秒・鮮度を含み、stale を停止と断定しない policy を伴う
+13. active work の鮮度は event が無くても 60 秒・5 分の境界で snapshot を再送し、
+    GPT Live context の `fresh / aging / stale` を時間経過に追従させる
 
 adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状態が壊れない、
-未知 thread の event が無視される、approval 解決の観測漏れが snapshot 再同期で回復する。
+未知 thread の event が無視される、同じ session/thread の adapter 相関が再利用され、
+approval 解決・turn 終端の観測漏れが `thread/read` 再同期で回復する。
 
 ## 判断記録
 

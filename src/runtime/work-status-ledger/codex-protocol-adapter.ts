@@ -1,3 +1,5 @@
+import { getOrInit } from "../hot-data";
+import { KEYS } from "../module-registry/keys";
 import type { WorkLifecyclePort } from "./types";
 
 type RequestId = string | number;
@@ -11,7 +13,14 @@ interface JsonRpcServerRequest {
 interface PendingApproval {
   readonly key: string;
   readonly turnId: string;
+  readonly threadId: string;
   resolved: boolean;
+}
+
+export interface WorkStatusReconcileResult {
+  readonly matchedTurns: number;
+  readonly terminalTurns: number;
+  readonly releasedApprovals: number;
 }
 
 /**
@@ -36,6 +45,7 @@ export class CodexWorkStatusProtocolAdapter {
   }
 
   setRootThreadId(threadId: string): void {
+    if (this.rootThreadId === threadId) return;
     this.rootThreadId = threadId;
     this.turnToWork.clear();
     this.threadToWork.clear();
@@ -54,7 +64,7 @@ export class CodexWorkStatusProtocolAdapter {
 
     const key = approvalKey(request.id);
     if (this.approvals.has(key)) return;
-    const approval: PendingApproval = { key, turnId, resolved: false };
+    const approval: PendingApproval = { key, turnId, threadId, resolved: false };
     this.approvals.set(key, approval);
     const workId = this.workFor(turnId, threadId);
     if (workId) this.ledger.holdApproval(workId, key, "Waiting for approval in the TUI.");
@@ -80,6 +90,54 @@ export class CodexWorkStatusProtocolAdapter {
         this.observeApprovalResolved(params);
         break;
     }
+  }
+
+  /**
+   * voice が切れていた間に取りこぼした definitive な turn 終端と approval 解決を、
+   * `thread/read(includeTurns: true)` の保存済み状態から回復する。
+   */
+  reconcileRootThread(value: unknown): WorkStatusReconcileResult {
+    const thread = recordValue(value);
+    if (!thread || stringValue(thread.id) !== this.rootThreadId) {
+      return { matchedTurns: 0, terminalTurns: 0, releasedApprovals: 0 };
+    }
+
+    let matchedTurns = 0;
+    let terminalTurns = 0;
+    const turns = Array.isArray(thread.turns) ? thread.turns : [];
+    for (const value of turns) {
+      const turn = recordValue(value);
+      if (!turn) continue;
+      const turnId = stringValue(turn.id);
+      const workId = turnId ? this.turnToWork.get(turnId) : undefined;
+      if (!turnId || !workId) continue;
+      matchedTurns += 1;
+      if (turn.status === "completed") {
+        if (this.ledger.complete(workId, "Completed by Codex.")) terminalTurns += 1;
+      } else if (turn.status === "failed") {
+        if (this.ledger.fail(workId, "Codex reported that the work failed.")) terminalTurns += 1;
+      } else if (turn.status === "interrupted") {
+        if (this.ledger.cancel(workId, "The Codex turn was interrupted.")) terminalTurns += 1;
+      } else if (turn.status === "inProgress") {
+        this.ledger.markRunning(workId);
+      }
+    }
+
+    let releasedApprovals = 0;
+    const status = recordValue(thread.status);
+    const activeFlags = Array.isArray(status?.activeFlags) ? status.activeFlags : [];
+    const rootStillWaiting = status?.type === "active" && activeFlags.includes("waitingOnApproval");
+    if (!rootStillWaiting) {
+      for (const approval of this.approvals.values()) {
+        if (approval.resolved || approval.threadId !== this.rootThreadId) continue;
+        const workId = this.turnToWork.get(approval.turnId);
+        if (!workId) continue;
+        approval.resolved = true;
+        if (this.ledger.releaseApproval(workId, approval.key)) releasedApprovals += 1;
+      }
+    }
+
+    return { matchedTurns, terminalTurns, releasedApprovals };
   }
 
   private observeTurnStarted(params: Record<string, unknown>): void {
@@ -237,6 +295,30 @@ export class CodexWorkStatusProtocolAdapter {
       if (turnId && workId) this.associateTurn(turnId, workId);
     }
   }
+}
+
+type AdapterRegistry = WeakMap<WorkLifecyclePort, Map<string, CodexWorkStatusProtocolAdapter>>;
+
+/** 同じ ledger/session/thread の adapter を voice reconnect と HMR を跨いで再利用する。 */
+export function getCodexWorkStatusProtocolAdapter(
+  ledger: WorkLifecyclePort,
+  sessionId: string,
+  rootThreadId: string,
+): CodexWorkStatusProtocolAdapter {
+  const registry = getOrInit<AdapterRegistry>(KEYS.WORK_STATUS_CODEX_ADAPTERS, () => new WeakMap());
+  let byThread = registry.get(ledger);
+  if (!byThread) {
+    byThread = new Map();
+    registry.set(ledger, byThread);
+  }
+  const key = `${sessionId}\u0000${rootThreadId}`;
+  let adapter = byThread.get(key);
+  if (!adapter) {
+    adapter = new CodexWorkStatusProtocolAdapter(ledger, sessionId);
+    adapter.setRootThreadId(rootThreadId);
+    byThread.set(key, adapter);
+  }
+  return adapter;
 }
 
 function isApprovalMethod(method: string): boolean {

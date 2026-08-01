@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CodexWorkStatusProtocolAdapter } from "./codex-protocol-adapter";
+import {
+  CodexWorkStatusProtocolAdapter,
+  getCodexWorkStatusProtocolAdapter,
+} from "./codex-protocol-adapter";
 import { createWorkStatusLedgerStore } from "./work-status-ledger-store";
 
 const userMessage = (text: string) => ({
@@ -174,6 +177,50 @@ describe("CodexWorkStatusProtocolAdapter", () => {
       threadId: "root",
       requestId: "approval-1",
     });
+    expect(ledger.get("work-1")?.status).toBe("running");
+  });
+
+  it("reuses correlation state and reconciles a completion missed while voice was stopped", () => {
+    const ledger = createWorkStatusLedgerStore();
+    const adapter = getCodexWorkStatusProtocolAdapter(ledger, "session-1", "root");
+    adapter.observeNotification("turn/started", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "inProgress", items: [userMessage("Run checks")] },
+    });
+
+    const reconnected = getCodexWorkStatusProtocolAdapter(ledger, "session-1", "root");
+    expect(reconnected).toBe(adapter);
+    expect(
+      reconnected.reconcileRootThread({
+        id: "root",
+        status: { type: "idle" },
+        turns: [{ id: "turn-1", status: "completed", items: [] }],
+      }),
+    ).toEqual({ matchedTurns: 1, terminalTurns: 1, releasedApprovals: 0 });
+    expect(ledger.get("work-1")?.status).toBe("completed");
+  });
+
+  it("reconciles an approval resolution missed while the root turn remains active", () => {
+    const ledger = createWorkStatusLedgerStore();
+    const adapter = getCodexWorkStatusProtocolAdapter(ledger, "session-1", "root");
+    adapter.observeNotification("turn/started", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "inProgress", items: [userMessage("Publish build")] },
+    });
+    adapter.observeServerRequest({
+      id: "approval-1",
+      method: "item/commandExecution/requestApproval",
+      params: { threadId: "root", turnId: "turn-1", itemId: "exec-1" },
+    });
+
+    expect(ledger.get("work-1")?.status).toBe("approval-required");
+    expect(
+      adapter.reconcileRootThread({
+        id: "root",
+        status: { type: "active", activeFlags: [] },
+        turns: [{ id: "turn-1", status: "inProgress", items: [] }],
+      }),
+    ).toEqual({ matchedTurns: 1, terminalTurns: 0, releasedApprovals: 1 });
     expect(ledger.get("work-1")?.status).toBe("running");
   });
 

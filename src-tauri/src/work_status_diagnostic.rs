@@ -22,6 +22,7 @@ pub struct WorkStatusDiagnosticEntry {
     active_count: Option<u32>,
     freshness: Option<Freshness>,
     observed_age_seconds: Option<u64>,
+    correlation_count: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -31,6 +32,12 @@ enum DiagnosticEventKind {
     ContextResyncDelivered,
     ContextEventDelivered,
     ContextDeliveryFailed,
+    CorrelationResyncDelivered,
+    CorrelationResyncFailed,
+    FreshnessRefreshDelivered,
+    RealtimeErrorObserved,
+    RealtimeClosedObserved,
+    BridgeClosedObserved,
     HandoffObserved,
     WorkCreated,
     WorkUpdated,
@@ -130,6 +137,7 @@ mod tests {
             active_count: Some(1),
             freshness: None,
             observed_age_seconds: None,
+            correlation_count: None,
         }
     }
 

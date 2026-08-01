@@ -172,6 +172,12 @@ export type WorkStatusDiagnosticEventKind =
   | "context-resync-delivered"
   | "context-event-delivered"
   | "context-delivery-failed"
+  | "correlation-resync-delivered"
+  | "correlation-resync-failed"
+  | "freshness-refresh-delivered"
+  | "realtime-error-observed"
+  | "realtime-closed-observed"
+  | "bridge-closed-observed"
   | "handoff-observed"
   | "work-created"
   | "work-updated";
@@ -196,6 +202,7 @@ export interface WorkStatusDiagnosticEntry {
   readonly activeCount?: number;
   readonly freshness?: "fresh" | "aging" | "stale";
   readonly observedAgeSeconds?: number;
+  readonly correlationCount?: number;
 }
 
 /** GPT Live work 経路の allowlist metadata を容量制限付き local log へ追記する。 */
