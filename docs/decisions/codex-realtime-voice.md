@@ -37,7 +37,26 @@ remote audio は Web Audio の `LipSyncAnalyser` に接続し、通常の Voice 
 Realtime v3 の voice は session 開始時に `sol` を明示する。Codex 0.145.0 の v1/v3
 voice list に含まれる音声合成プリセットであり、未指定時の `cove` には依存しない。
 
-### 3. PTY observation-only 境界は変えない
+### 3. 音声 transport は Lead Agent の native capability に合わせる
+
+Yorishiro は provider に依存しない共通 shell として、マイク button、permission、audio output、
+lip sync、performance cue、接続状態 UI を所有する。一方、会話 thread への接続、transcript、
+tool / approval event、handoff は各 harness の native voice adapter が所有する。
+
+v1 で実装する first-class adapter は Codex である。Codex app-server が TUI と realtime voice を
+同じ thread に接続できるため、音声から依頼した作業、subagent の進捗、tool execution、approval、
+text history を一つの流れとして保持できる。これは単に PTY output を読み取ることとは異なる。
+
+将来 Claude Code、OpenCode、または別の harness が同じ conversation / work session に接続する
+native realtime voice capability を提供した場合は、その harness 専用 adapter を追加する。active な
+Lead Agent が Claude Code なら Claude の native voice、Codex なら GPT Live、という対応にする。
+音声のためだけに別 provider の thread へ会話を複製しない。
+
+Lead Agent と voice adapter の概念名は provider-neutral に保つが、未実装 provider を Codex と同等に
+見せる疑似互換は作らない。必要な capability がない harness では、共通マイク button から現在の制約と
+利用可能な切替先を説明できるが、user の明示確認なしに Lead Agent を自動切替してはならない。
+
+### 4. PTY observation-only 境界は変えない
 
 音声入力は app-server の thread API に入り、PTY stdin には書かない。realtime response は
 同じ Codex thread に合流するため、承認・tool execution・text history は Codex 側の通常の
@@ -151,7 +170,9 @@ refを解放できないため、この二層を一つに省略しない。
 - 複数agentをtask ID付きで編成・監督するTask Coordinator
 - voice UIだけでのapproval確定
 - progress / completionの構造化通知台帳
-- Claude / OpenCode / shell tabのrealtime voice
+- Lead Agent capabilityに応じたprovider別voice adapter選択
+- Claude / OpenCodeがnative realtime voiceを提供した場合の専用adapter
+- 非対応harnessでも機能を発見できる共通マイクbuttonと明示的な切替導線
 
 ### expression / gesture
 
@@ -186,6 +207,8 @@ GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割�
 8. app-server endpointをWebView、pack、LANへ公開しない
 9. spoken textへ機械制御tagを混ぜない
 10. 将来のstructured task stateで自然なconversation historyを置き換えない
+11. native voice capabilityがないharnessを、PTY log転送で疑似的に同等扱いしない
+12. voice利用のためにLead Agentをuser確認なしで自動切替しない
 
 ## Security / known limitations
 
@@ -211,8 +234,9 @@ GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割�
   承認 UI は TUI だけを正本とする
 - `thread/loaded/list` の順序には active thread の意味がない。subagent は `parentThreadId` で除外し、
   複数の top-level thread が loaded の場合は誤接続を避けて voice を開始しない
-- v1 は active Main Codex session だけを対象とし、shell tab や Claude / OpenCode では
-  button を表示しない
+- v1 の接続実装は active Main Codex session だけを対象とする。shell tab や Claude / OpenCode には
+  native voice adapterがなく、現在はbuttonも表示しない。将来の共通buttonは非対応を隠さず説明し、
+  userが明示確認した場合だけ既存の安全なagent切替経路を使う
 
 ## 検討したが却下した代替案
 
