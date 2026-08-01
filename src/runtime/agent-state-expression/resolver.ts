@@ -1,6 +1,7 @@
 import type {
   AssistantTranscriptDelta,
   AssistantTranscriptDone,
+  GroundedAgentState,
   StateExpressionCue,
   StateExpressionGestureIntent,
   StateExpressionPreset,
@@ -18,6 +19,7 @@ export interface StateExpressionResolution {
 }
 
 interface SemanticStateExpression {
+  readonly state: GroundedAgentState;
   readonly expression: StateExpressionPreset;
   readonly expressionWeight: number;
   readonly gestureIntent: StateExpressionGestureIntent;
@@ -36,17 +38,27 @@ const CJK_CHARACTER_MS = 90;
 const LATIN_WORD_MS = 260;
 const PUNCTUATION_PAUSE_MS = 120;
 
-// 誤発火を抑えるため、自由な sentiment 推定ではなく限定語彙だけを扱う。
-const APOLOGY_PATTERN = /(?:ごめん|すみません|申し訳|残念|失敗しました|できません)/u;
-const SURPRISE_PATTERN = /(?:びっくり|驚(?:いた|きました)|まさか|本当に[？?!！])/u;
-const HAPPY_PATTERN = /(?:ありがとう|嬉しい|うれしい|よかった|良かった|いいね|素晴らしい)/u;
+// Use explicit grounded vocabulary instead of unconstrained sentiment inference.
+const APOLOGY_PATTERN =
+  /(?:ごめん|すみません|申し訳|残念|失敗しました|\b(?:sorry|apolog(?:y|ize|ise)|regret)\b)/iu;
+const CONCERN_PATTERN =
+  /(?:難し|困(?:った|難)|懸念|慎重|不確実|不明|リスク|問題|注意が必要|できません|\b(?:difficult|uncertain|concern|risk|problem|careful|cannot|can't)\b)/iu;
+const SURPRISE_PATTERN =
+  /(?:びっくり|驚(?:いた|きました)|まさか|本当に[？?!！]|\b(?:surpris(?:e|ed|ing)|unexpected)\b)/iu;
+const APPRECIATION_PATTERN =
+  /(?:ありがとう|嬉しい|うれしい|よかった|良かった|いいね|素晴らしい|\b(?:thank(?:s| you)?|glad|delighted|wonderful)\b)/iu;
 const REASSURE_PATTERN =
-  /(?:大丈夫|安心して|任せて|心配(?:しないで|いらない)|問題ない|対応でき(?:る|ます))/u;
+  /(?:大丈夫|安心して|任せて|心配(?:しないで|いらない)|問題ない|対応でき(?:る|ます)|\b(?:rest assured|no problem|don't worry|can handle)\b)/iu;
+const DISCOVERY_PATTERN =
+  /(?:見つけました|見つかりました|判明しました|分かりました|わかりました|確認できました|原因は|\b(?:found|discovered|confirmed|turns out)\b)/iu;
 const AGREE_PATTERN =
-  /(?:^|[\s、，])(?:うん|はい|そうですね|その通り|了解)(?:[\s、，。.!！?？]|$)/u;
+  /(?:^|[\s、，])(?:うん|はい|そうですね|その通り|了解|agreed|exactly)(?:[\s、，。.!！?？]|$)/iu;
 const CONSIDER_PATTERN =
-  /(?:確認(?:する|します)|調べ(?:る|ます)|考え(?:る|ます)|かもしれない|可能性|一方で|ただし|まずは)/u;
-const EMPHASIZE_PATTERN = /(?:重要|必ず|注意|ポイント|つまり|結論として)/u;
+  /(?:確認(?:する|します)|調べ(?:る|ます)|考え(?:る|ます)|かもしれない|可能性|一方で|ただし|まずは|\b(?:check|investigate|consider|possibly|perhaps|however|first)\b)/iu;
+const EMPHASIZE_PATTERN =
+  /(?:重要|必ず|注意|ポイント|つまり|結論として|\b(?:important|must|key point|in short|the conclusion)\b)/iu;
+const PROGRESS_PATTERN =
+  /(?:確認しました|読みました|更新しました|修正しました|実行しました|進めます|次に|これから|対応します|\b(?:checked|updated|fixed|completed|next|proceeding)\b)/iu;
 
 export function createStateExpressionResolverState(): StateExpressionResolverState {
   return INITIAL_STATE;
@@ -102,6 +114,7 @@ function resolveTranscript(
         // 意味が確定する節末を基準にする。節頭へ置くと delta 到着時には
         // 長い節ほど maxLateMs を越え、ほぼ必ず skip されてしまう。
         atMs: Math.max(0, elapsedSpeechMs + clauseDurationMs - EXPRESSION_LEAD_MS),
+        state: semantic.state,
         expression: semantic.expression,
         expressionWeight: semantic.expressionWeight,
         gestureIntent: semantic.gestureIntent,
@@ -151,37 +164,47 @@ function classifyClause(clause: string): SemanticStateExpression | null {
   if (normalized.length === 0) return null;
 
   if (APOLOGY_PATTERN.test(normalized)) {
-    return stateExpression("sad", 0.42, "none", "small", 1_500);
+    return stateExpression("concerned", "sad", 0.38, "none", "medium", 2_800);
   }
   if (SURPRISE_PATTERN.test(normalized)) {
-    return stateExpression("surprised", 0.38, "none", "small", 1_100);
+    return stateExpression("surprised", "surprised", 0.36, "none", "medium", 2_200);
   }
-  if (HAPPY_PATTERN.test(normalized)) {
-    return stateExpression("happy", 0.45, "none", "small", 1_500);
+  if (APPRECIATION_PATTERN.test(normalized)) {
+    return stateExpression("appreciative", "happy", 0.4, "none", "medium", 2_600);
   }
   if (REASSURE_PATTERN.test(normalized)) {
-    return stateExpression("relaxed", 0.36, "reassure", "small", 1_600);
+    return stateExpression("reassuring", "relaxed", 0.28, "reassure", "small", 2_800);
+  }
+  if (CONCERN_PATTERN.test(normalized)) {
+    return stateExpression("concerned", "sad", 0.24, "consider", "small", 3_200);
+  }
+  if (DISCOVERY_PATTERN.test(normalized)) {
+    return stateExpression("discovering", "surprised", 0.22, "none", "small", 2_400);
   }
   if (AGREE_PATTERN.test(normalized)) {
-    return stateExpression("relaxed", 0.3, "agree", "small", 1_200);
+    return stateExpression("acknowledging", "relaxed", 0.22, "agree", "small", 2_200);
   }
   if (CONSIDER_PATTERN.test(normalized)) {
-    return stateExpression("neutral", 0.24, "consider", "small", 1_500);
+    return stateExpression("considering", "neutral", 0, "consider", "small", 3_200);
   }
   if (EMPHASIZE_PATTERN.test(normalized)) {
-    return stateExpression("neutral", 0.28, "emphasize", "small", 1_300);
+    return stateExpression("emphatic", "neutral", 0, "emphasize", "medium", 2_200);
+  }
+  if (PROGRESS_PATTERN.test(normalized)) {
+    return stateExpression("progressing", "neutral", 0, "none", "small", 2_400);
   }
   return null;
 }
 
 function stateExpression(
+  state: GroundedAgentState,
   expression: StateExpressionPreset,
   expressionWeight: number,
   gestureIntent: StateExpressionGestureIntent,
   intensity: "small" | "medium",
   durationMs: number,
 ): SemanticStateExpression {
-  return { expression, expressionWeight, gestureIntent, intensity, durationMs };
+  return { state, expression, expressionWeight, gestureIntent, intensity, durationMs };
 }
 
 function estimateSpeechDurationMs(text: string): number {

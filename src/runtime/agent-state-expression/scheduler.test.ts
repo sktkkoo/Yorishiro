@@ -56,6 +56,7 @@ function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
   return {
     utteranceId: "utterance-1",
     atMs: 500,
+    state: "acknowledging",
     expression: "relaxed",
     expressionWeight: 0.3,
     gestureIntent: "agree",
@@ -207,15 +208,40 @@ describe("StateExpressionScheduler", () => {
     const h = harness({ cueCooldownMs: 0, gestureCooldownMs: 2_200 });
     h.scheduler.startUtterance("utterance-1", 0);
     h.scheduler.schedule(cue({ atMs: 0 }));
-    h.scheduler.schedule(cue({ atMs: 900, expression: "happy", gestureIntent: "emphasize" }));
+    h.scheduler.schedule(
+      cue({
+        atMs: 900,
+        state: "emphatic",
+        expression: "happy",
+        gestureIntent: "emphasize",
+      }),
+    );
 
     h.clock.advanceBy(0);
     h.clock.advanceBy(900);
 
     expect(h.onCue).toHaveBeenCalledTimes(2);
     expect(h.onCue.mock.calls[1][0]).toEqual(
-      cue({ atMs: 900, expression: "happy", gestureIntent: "none" }),
+      cue({ atMs: 900, state: "emphatic", expression: "happy", gestureIntent: "none" }),
     );
+  });
+
+  it("suppresses repeated grounded states without suppressing a different state", () => {
+    const h = harness({ cueCooldownMs: 0, gestureCooldownMs: 0, repeatCooldownMs: 3_000 });
+    h.scheduler.startUtterance("utterance-1", 0);
+    h.scheduler.schedule(cue({ atMs: 0 }));
+    h.scheduler.schedule(cue({ atMs: 1_000, expression: "happy" }));
+    h.scheduler.schedule(
+      cue({ atMs: 1_500, state: "concerned", expression: "sad", gestureIntent: "none" }),
+    );
+
+    h.clock.advanceBy(1_500);
+
+    expect(h.onCue).toHaveBeenCalledTimes(2);
+    expect(h.onCue.mock.calls.map(([dispatched]) => dispatched.state)).toEqual([
+      "acknowledging",
+      "concerned",
+    ]);
   });
 
   it("同じ cue の重複 notification は一度だけ schedule する", () => {

@@ -68,6 +68,7 @@ import {
 } from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
 import {
+  DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
   type SpeechMicroexpressionOutput,
   type SpeechMicroexpressionParams,
   SpeechMicroexpressionSystem,
@@ -241,7 +242,7 @@ export class Body {
     this.claimState = claimState ?? getClaimState();
     this.expressions = new ExpressionManager();
     this.speechMood = new SpeechMoodChannel((preset, intensity) =>
-      this.acquireExpressionSlot("system", "mood", preset, intensity),
+      this.acquireExpressionSlot("speech", "mood", preset, intensity),
     );
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
@@ -370,12 +371,17 @@ export class Body {
     this.speechMicroexpression.setParams(params);
   }
 
-  /** 発話に同期する system mood を attack 付きで開始する。 */
+  /** Restores the low-salience acoustic variation profile used without a grounded state. */
+  resetSpeechExpressionParams(): void {
+    this.speechMicroexpression.setParams(DEFAULT_SPEECH_MICROEXPRESSION_PARAMS);
+  }
+
+  /** Starts a speech-owned mood with an attack envelope. */
   setSpeechMood(preset: string, intensity: number): void {
     this.speechMood.setSpeechMood(preset, intensity);
   }
 
-  /** 発話に同期する system mood の release を開始する。 */
+  /** Begins releasing the speech-owned mood. */
   releaseSpeechMood(): void {
     this.speechMood.releaseSpeechMood();
   }

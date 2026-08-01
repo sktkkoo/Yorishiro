@@ -30,6 +30,8 @@ export interface StateExpressionSchedulerOptions {
   readonly cueCooldownMs?: number;
   /** body gesture の最短間隔。表情だけは残せる。 */
   readonly gestureCooldownMs?: number;
+  /** Minimum interval before the same grounded state can be emitted again. */
+  readonly repeatCooldownMs?: number;
 }
 
 export type StateExpressionScheduleResult =
@@ -52,6 +54,7 @@ interface ActiveUtterance {
 const DEFAULT_MAX_LATE_MS = 450;
 const DEFAULT_CUE_COOLDOWN_MS = 800;
 const DEFAULT_GESTURE_COOLDOWN_MS = 2_200;
+const DEFAULT_REPEAT_COOLDOWN_MS = 3_000;
 
 const systemClock: StateExpressionClock = {
   now: () => performance.now(),
@@ -68,9 +71,11 @@ export class StateExpressionScheduler {
   private readonly maxLateMs: number;
   private readonly cueCooldownMs: number;
   private readonly gestureCooldownMs: number;
+  private readonly repeatCooldownMs: number;
   private active: ActiveUtterance | null = null;
   private lastCueAtMs = Number.NEGATIVE_INFINITY;
   private lastGestureAtMs = Number.NEGATIVE_INFINITY;
+  private readonly lastStateAtMs = new Map<StateExpressionCue["state"], number>();
 
   constructor(
     private readonly callbacks: StateExpressionSchedulerCallbacks,
@@ -80,6 +85,7 @@ export class StateExpressionScheduler {
     this.maxLateMs = nonNegative(options.maxLateMs, DEFAULT_MAX_LATE_MS);
     this.cueCooldownMs = nonNegative(options.cueCooldownMs, DEFAULT_CUE_COOLDOWN_MS);
     this.gestureCooldownMs = nonNegative(options.gestureCooldownMs, DEFAULT_GESTURE_COOLDOWN_MS);
+    this.repeatCooldownMs = nonNegative(options.repeatCooldownMs, DEFAULT_REPEAT_COOLDOWN_MS);
   }
 
   /** transcript が audio より先に届く場合の cue queue を用意する。 */
@@ -178,6 +184,8 @@ export class StateExpressionScheduler {
   private dispatchWithCooldown(cue: StateExpressionCue, scheduledForMs: number): void {
     const firedAtMs = this.clock.now();
     if (firedAtMs - this.lastCueAtMs < this.cueCooldownMs) return;
+    const lastSameStateAtMs = this.lastStateAtMs.get(cue.state) ?? Number.NEGATIVE_INFINITY;
+    if (firedAtMs - lastSameStateAtMs < this.repeatCooldownMs) return;
 
     let effectiveCue = cue;
     if (
@@ -190,6 +198,7 @@ export class StateExpressionScheduler {
     }
 
     this.lastCueAtMs = firedAtMs;
+    this.lastStateAtMs.set(effectiveCue.state, firedAtMs);
     if (effectiveCue.gestureIntent && effectiveCue.gestureIntent !== "none") {
       this.lastGestureAtMs = firedAtMs;
     }
@@ -213,6 +222,7 @@ export class StateExpressionScheduler {
 function cueKey(cue: StateExpressionCue): string {
   return [
     cue.atMs,
+    cue.state,
     cue.expression ?? "",
     cue.expressionWeight ?? "",
     cue.gestureIntent ?? "",

@@ -5,8 +5,9 @@ Realtime speech の spoken text と分離した、provider / avatar 非依存の
 
 統合 API は `resolveAssistantTranscriptDelta()` と `StateExpressionScheduler` の二段。前者へ
 assistant の `thread/realtime/transcript/delta` だけを渡し、後者の `startUtterance()` へ remote
-audio の speech start と同じ clock を渡す。`onCue` が受け取るのは `agree` 等の semantic intent
-であり、animation file 名への解決は既存 Body / Motion catalog adapter が所有する。
+audio の speech start と同じ clock を渡す。`onCue` が受け取るのは `acknowledging` や
+`concerned` 等の grounded state と semantic body intent であり、animation file 名への解決は
+既存 Body / Motion catalog adapter が所有する。
 
 transcript が speech start より先に届く順序もあるため、最初の assistant delta で
 `prepareUtterance()` を呼ぶ。start 前の `schedule()` は cue を queue し、正確な audio clock を
@@ -17,9 +18,14 @@ transcript が speech start より先に届く順序もあるため、最初の 
 - `codex-realtime-client.ts` は assistant の transcript delta だけを controller へ渡す。done notification の
   full `text` は delta と重複するため再投入しない。
 - stable item ID は upstream contract に無いため、client 内連番を `utteranceId` に使う。
-- Body が lip-sync をsampleする同じrender clockからremote speech start/endを検出し、schedulerへ渡す。
-- expression は `speech` source の専用 mood slot、gesture は `speech-expression` motion laneへ解決する。
-  `neutral` はpresetをacquireせず、adapterが所有するslotだけをreleaseする。
+- realtime client 所有のaudio sampling loopからremote speech start/endを検出し、schedulerへ渡す。
+  Bodyのrenderやdocument visibilityから独立してlifecycleを完了できる。
+- expression は既存`SpeechMoodChannel`から`ExpressionManager`の低優先度`speech` mood slotへ流し、
+  persona / MCP / reflexの所有権を上書きしない。gestureは`MotionScheduler`の`speech-expression`
+  laneへ解決し、procedural motionとはVRMA weightで相補blendする。
+- grounded stateが続く間は既存`SpeechMicroexpressionSystem`の弱いbrow / eye / blink profileだけを
+  調整する。`neutral` stateでもこのorganic variationは残すが、新しい感情categoryは生成しない。
+- speech mood中は既存idle squint / idle microをsuspendし、lip syncとreflex blinkは独立channelで維持する。
 - user transcriptによるbarge-in、voice stop、disconnect、session切替は未発火cueと所有handleを解放する。
 
 ## 実機調整 TODO

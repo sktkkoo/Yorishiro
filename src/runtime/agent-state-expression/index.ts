@@ -22,6 +22,7 @@ export {
 export type {
   AssistantTranscriptDelta,
   AssistantTranscriptDone,
+  GroundedAgentState,
   StateExpressionConversationPhase,
   StateExpressionCue,
   StateExpressionGestureIntent,

@@ -1,6 +1,18 @@
 /** Provider- and avatar-independent facial state preset for realtime speech. */
 export type StateExpressionPreset = "neutral" | "relaxed" | "happy" | "sad" | "surprised";
 
+/** Conversational or cognitive state explicitly grounded in the assistant output. */
+export type GroundedAgentState =
+  | "acknowledging"
+  | "appreciative"
+  | "concerned"
+  | "considering"
+  | "discovering"
+  | "emphatic"
+  | "progressing"
+  | "reassuring"
+  | "surprised";
+
 /** Semantic body intent resolved to a concrete motion by the runtime. */
 export type StateExpressionGestureIntent = "agree" | "consider" | "reassure" | "emphasize" | "none";
 
@@ -11,6 +23,7 @@ export type StateExpressionGestureIntent = "agree" | "consider" | "reassure" | "
 export interface StateExpressionCue {
   readonly utteranceId: string;
   readonly atMs: number;
+  readonly state: GroundedAgentState;
   readonly expression?: StateExpressionPreset;
   readonly expressionWeight?: number;
   readonly gestureIntent?: StateExpressionGestureIntent;

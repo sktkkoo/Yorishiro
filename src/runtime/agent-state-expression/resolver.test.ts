@@ -24,6 +24,7 @@ describe("resolveAssistantTranscriptDelta", () => {
       expect.objectContaining({
         utteranceId: "utterance-1",
         atMs: expect.any(Number),
+        state: "acknowledging",
         expression: "relaxed",
         gestureIntent: "agree",
         intensity: "small",
@@ -56,14 +57,21 @@ describe("resolveAssistantTranscriptDelta", () => {
     }
   });
 
-  it("意味のある限定語彙がない通常文では cue を出さない", () => {
+  it("emits a subtle grounded progress state for routine completion language", () => {
     const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
       utteranceId: "utterance-1",
       delta: "ファイルを三つ読みました。次へ進みます。",
       phase: "assistant-speaking",
     });
 
-    expect(result.cues).toEqual([]);
+    expect(result.cues).toEqual([
+      expect.objectContaining({
+        state: "progressing",
+        expression: "neutral",
+        gestureIntent: "none",
+        intensity: "small",
+      }),
+    ]);
   });
 
   it("transcript done で句点のない末尾を flush する", () => {
@@ -79,7 +87,12 @@ describe("resolveAssistantTranscriptDelta", () => {
 
     expect(result.state.pendingText).toBe("");
     expect(result.cues).toEqual([
-      expect.objectContaining({ expression: "neutral", gestureIntent: "consider" }),
+      expect.objectContaining({
+        state: "considering",
+        expression: "neutral",
+        gestureIntent: "consider",
+        intensity: "small",
+      }),
     ]);
   });
 
@@ -94,7 +107,9 @@ describe("resolveAssistantTranscriptDelta", () => {
     expect(result.cues[0].atMs).toBeGreaterThan(0);
     expect(result.cues[1].atMs).toBeGreaterThan(0);
     expect(result.cues[1].expression).toBe("happy");
+    expect(result.cues[1].state).toBe("appreciative");
     expect(result.cues[1].gestureIntent).toBe("none");
+    expect(result.cues[1].intensity).toBe("medium");
   });
 
   it("user speaking / interrupted 中の delta は捨てて resolver を reset する", () => {
@@ -151,5 +166,43 @@ describe("resolveAssistantTranscriptDelta", () => {
     });
 
     expect(result.cues).toEqual([]);
+  });
+
+  it("keeps difficult reasoning concerned rather than relaxed", () => {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      utteranceId: "utterance-1",
+      delta: "ここは慎重な検討が必要で、難しい問題です。",
+      phase: "assistant-speaking",
+    });
+
+    expect(result.cues).toEqual([
+      expect.objectContaining({
+        state: "concerned",
+        expression: "sad",
+        expressionWeight: 0.24,
+        gestureIntent: "consider",
+        intensity: "small",
+        durationMs: 3_200,
+      }),
+    ]);
+  });
+
+  it.each([
+    ["申し訳ありません。", "concerned", "medium"],
+    ["本当にびっくりしました！", "surprised", "medium"],
+    ["ありがとう、嬉しいです。", "appreciative", "medium"],
+    ["重要なポイントです。", "emphatic", "medium"],
+    ["大丈夫、対応できます。", "reassuring", "small"],
+    ["確認します。", "considering", "small"],
+  ] as const)("maps %s to grounded %s with %s intensity", (delta, state, intensity) => {
+    const result = resolveAssistantTranscriptDelta(createStateExpressionResolverState(), {
+      utteranceId: "utterance-1",
+      delta,
+      phase: "assistant-speaking",
+    });
+
+    expect(result.cues[0]).toMatchObject({ state, intensity });
+    expect(result.cues[0].durationMs).toBeGreaterThanOrEqual(2_000);
+    expect(result.cues[0].durationMs).toBeLessThanOrEqual(4_000);
   });
 });

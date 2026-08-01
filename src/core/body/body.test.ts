@@ -218,6 +218,36 @@ describe("Body motion activation ownership", () => {
     persona.cancel();
     expect(personaPlayback.cancel).toHaveBeenCalledOnce();
   });
+
+  it("blends procedural motion beneath an active speech-expression VRMA", async () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const activePlayback = playback();
+    const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+    vi.spyOn(player, "play").mockResolvedValue(activePlayback.result);
+    vi.spyOn(player, "getTotalEffectiveWeight").mockReturnValue(0.32);
+    const proceduralBones = (
+      body as unknown as {
+        proceduralBones: { update(delta: number, elapsed: number, weight: number): void };
+      }
+    ).proceduralBones;
+    const updateProcedural = vi.spyOn(proceduralBones, "update");
+
+    const speech = body.acquireMotionSlot({
+      source: "system",
+      priority: "speech-expression",
+      animation: "anim:VRMA_small_nod",
+      options: { weight: 0.32 },
+    });
+    await flushMicrotasks();
+    body.update(1 / 60, 0);
+
+    expect(updateProcedural).toHaveBeenCalledOnce();
+    expect(updateProcedural.mock.calls[0][0]).toBe(1 / 60);
+    expect(updateProcedural.mock.calls[0][1]).toBe(0);
+    expect(updateProcedural.mock.calls[0][2]).toBeCloseTo(0.68);
+    speech.cancel();
+  });
 });
 
 // ─── Body speech microexpression wiring ─────────────────
@@ -328,32 +358,34 @@ describe("Body speech microexpression wiring", () => {
 });
 
 describe("Body speech mood wiring", () => {
-  function systemMood(body: Body) {
+  function speechMood(body: Body) {
     return body
       .getExpressionSlots()
-      .find((slot) => slot.source === "system" && slot.kind === "mood");
+      .find((slot) => slot.source === "speech" && slot.kind === "mood");
   }
 
-  it("(system, mood) slot を attack 時間で ramp し、(mcp, mood) と共存する", () => {
+  it("ramps the speech mood and yields to persona and MCP mood ownership", () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());
-    body.acquireExpressionSlot("mcp", "mood", "sad", 0.2);
 
     body.setSpeechMood("happy", 0.8);
-    expect(systemMood(body)).toMatchObject({
-      source: "system",
+    expect(speechMood(body)).toMatchObject({
+      source: "speech",
       kind: "mood",
       expressionName: "happy",
       requestedWeight: 0,
     });
 
-    body.update(0.15, 0);
-    expect(systemMood(body)?.requestedWeight).toBeCloseTo(0.4);
-    expect(body.getExpressionSlots()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ source: "mcp", kind: "mood", expressionName: "sad" }),
-      ]),
-    );
+    body.update(0.3, 0);
+    expect(speechMood(body)?.requestedWeight).toBeCloseTo(0.8);
+
+    const persona = body.acquireExpressionSlot("persona", "mood", "sad", 0.4);
+    expect(speechMood(body)?.effectiveWeight).toBe(0);
+    expect(persona.effectiveWeight).toBeCloseTo(0.4);
+
+    const mcp = body.acquireExpressionSlot("mcp", "mood", "surprised", 0.3);
+    expect(persona.effectiveWeight).toBe(0);
+    expect(mcp.effectiveWeight).toBeCloseTo(0.3);
   });
 
   it("release 時間で weight を 0 にしてから slot を解放する", () => {
@@ -364,10 +396,10 @@ describe("Body speech mood wiring", () => {
 
     body.releaseSpeechMood();
     body.update(0.25, 0.25);
-    expect(systemMood(body)?.requestedWeight).toBeCloseTo(0.4);
+    expect(speechMood(body)?.requestedWeight).toBeCloseTo(0.4);
 
     body.update(0.25, 0.5);
-    expect(systemMood(body)).toBeUndefined();
+    expect(speechMood(body)).toBeUndefined();
   });
 
   it("新しい speech mood で前の slot を上書きする", () => {
@@ -380,9 +412,57 @@ describe("Body speech mood wiring", () => {
 
     const slots = body
       .getExpressionSlots()
-      .filter((slot) => slot.source === "system" && slot.kind === "mood");
+      .filter((slot) => slot.source === "speech" && slot.kind === "mood");
     expect(slots).toHaveLength(1);
     expect(slots[0]).toMatchObject({ expressionName: "surprised", requestedWeight: 0 });
+  });
+
+  it("suspends idle micro channels while a grounded speech mood is active", () => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    vi.spyOn(manager, "getExpression").mockImplementation((name) =>
+      name === "Fcl_BRW_Joy" ? ({} as never) : null,
+    );
+    const body = new Body(vrm, undefined, mockClaimState());
+    const channels = (
+      body as unknown as {
+        microChannels: ReadonlyArray<{
+          region: "brow" | "eye" | "mouth";
+          system: IdleMicroexpressionSystem;
+        }>;
+      }
+    ).microChannels;
+    const brow = channels.find((channel) => channel.region === "brow");
+    brow?.system.injectEpisode("Fcl_BRW_Joy", 0.2, 0.4);
+    body.update(0.05, 0);
+    expect(brow?.system.value).not.toBeNull();
+
+    body.setSpeechMood("happy", 0.3);
+    body.update(0.3, 0.3);
+
+    expect(speechMood(body)?.effectiveWeight).toBeGreaterThan(0);
+    expect(brow?.system.value).toBeNull();
+  });
+
+  it("coexists with reflex blink and lip sync without taking either channel", () => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    const setValue = vi.spyOn(manager, "setValue");
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setLipSyncSource({
+      isMouthActive: () => true,
+      sampleMouth: () => ({ aa: 0.7, ih: 0, ou: 0, ee: 0, oh: 0 }),
+    });
+    body.setSpeechMood("happy", 0.3);
+    body.acquireExpressionSlot("reflex", "eye", "blink", 0.6);
+
+    body.update(0.3, 0);
+
+    expect(setValue).toHaveBeenCalledWith("happy", 0.3);
+    expect(setValue).toHaveBeenCalledWith("blink", 0.6);
+    expect(setValue).toHaveBeenCalledWith("aa", 0.7);
   });
 });
 
@@ -1351,6 +1431,28 @@ describe("EyelidExpressionController", () => {
     });
 
     expect(expressions.getResolved().get("blink")).toBeUndefined();
+    expect(blink.isSuppressed).toBe(false);
+  });
+
+  it("clears an idle squint when a speech mood makes the face non-idle", () => {
+    const expressions = new ExpressionManager();
+    const blink = new BlinkSystem(() => 0);
+    const squint = new IdleSquintSystem(() => 0);
+    const eyelids = new EyelidExpressionController(expressions, blink, squint);
+    const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
+    const idleOptions = {
+      idle: true,
+      explicitBlinkActive: false,
+      relaxedValue: 0,
+      neutralSlotId: neutralSlot,
+    };
+    eyelids.update(0, 8.1, idleOptions);
+    eyelids.update(0, 0.2, idleOptions);
+    expect(eyelids.hasIdleSquint).toBe(true);
+
+    eyelids.update(0, 0.1, { ...idleOptions, idle: false });
+
+    expect(eyelids.hasIdleSquint).toBe(false);
     expect(blink.isSuppressed).toBe(false);
   });
 });
