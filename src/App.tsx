@@ -25,9 +25,11 @@ import * as ReactDomClient from "react-dom/client";
 import * as THREE from "three";
 import {
   checkTutorialDone,
+  listSupportedAgents,
   markTutorialDone,
   prepareLocalizedPluginDir,
   ptyWrite,
+  resolveCommandPath,
   type SpawnSpec,
   sessionDestroy,
   sessionList,
@@ -91,6 +93,7 @@ import {
 } from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import TerminalWorkspace from "./components/TerminalWorkspace";
+import { VoiceEntryDialog, type VoiceEntryDialogMode } from "./components/VoiceEntryDialog";
 import type { Body, EyeState, LipSyncSource, SpeechStateExpressionHandle } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
@@ -137,6 +140,12 @@ import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
 import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
+import {
+  consumePendingRealtimeStart,
+  isVoiceEntryAvailable,
+  markPendingRealtimeStart,
+  resolveVoiceEntryAction,
+} from "./runtime/codex-realtime/voice-entry";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { collectHealthReport } from "./runtime/health-check";
 import { buildRestoreRows } from "./runtime/history/describe-snapshot";
@@ -2416,7 +2425,23 @@ function App() {
   const { phase: reloadCurtainPhase, beginCurtainReload } = useReloadCurtain(
     isUserLayerReady && vrmReadyOnce,
   );
+  const switchMainAgent = useCallback(
+    async (agent: string, afterPersist?: () => void): Promise<void> => {
+      await beginCurtainReload(async () => {
+        await updateConfig({ terminalAgent: agent });
+        markMainSessionRespawnPending();
+        afterPersist?.();
+      });
+    },
+    [beginCurtainReload, updateConfig],
+  );
   const [terminalAgent, setTerminalAgent] = useState<TerminalAgent>("claude");
+  const [voiceEntryDialog, setVoiceEntryDialog] = useState<{
+    readonly mode: VoiceEntryDialogMode;
+    readonly targetAgentId: string | null;
+  } | null>(null);
+  const [pendingRealtimeStart] = useState(() => consumePendingRealtimeStart());
+  const pendingRealtimeStartRef = useRef(pendingRealtimeStart);
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
   const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
   // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
@@ -3354,10 +3379,7 @@ function App() {
             await setActiveSceneFromUserSelection(id);
           },
           setTerminalAgent: async (agent) => {
-            await beginCurtainReload(async () => {
-              await updateConfig({ terminalAgent: agent });
-              markMainSessionRespawnPending();
-            });
+            await switchMainAgent(agent);
           },
           setAmbientAudioMuted: async (muted) => {
             await updateConfig({ ambientAudioMuted: muted });
@@ -3607,6 +3629,7 @@ function App() {
     updateYorishiroConfig,
     updateConfig,
     beginCurtainReload,
+    switchMainAgent,
     setActiveSceneFromUserSelection,
   ]);
 
@@ -3617,6 +3640,10 @@ function App() {
   const bodyRef = useRef<Body | null>(null);
   const codexVoiceAvailable =
     terminalAgent === "codex" && tabState.activeSessionId === tabState.mainSessionId;
+  const voiceEntryAvailable = isVoiceEntryAvailable(
+    tabState.activeSessionId,
+    tabState.mainSessionId,
+  );
   const greetedRef = useRef(false);
   const inTurnRef = useRef(false);
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
@@ -3638,6 +3665,39 @@ function App() {
     setFallbackPlaybackEnabled: (enabled) => voicePlaybackLeaseSync.setEnabled(enabled),
     stateExpressionCallbacks: realtimeStateExpressionCallbacks,
   });
+
+  useEffect(() => {
+    if (
+      !pendingRealtimeStartRef.current ||
+      !codexVoiceAvailable ||
+      codexRealtimeState.status !== "idle"
+    ) {
+      return;
+    }
+    pendingRealtimeStartRef.current = false;
+    void toggleCodexRealtime();
+  }, [codexRealtimeState.status, codexVoiceAvailable, toggleCodexRealtime]);
+
+  const handleToggleVoice = useCallback(async () => {
+    if (codexVoiceAvailable) {
+      await toggleCodexRealtime();
+      return;
+    }
+
+    const action = await resolveVoiceEntryAction({
+      activeAgent: terminalAgent,
+      agents: await listSupportedAgents().catch(() => []),
+      resolveCommandPath: (command) => resolveCommandPath({ command }),
+    });
+    if (action.kind === "start") {
+      await toggleCodexRealtime();
+      return;
+    }
+    setVoiceEntryDialog({
+      mode: action.kind === "confirm-switch" ? "switch" : "setup",
+      targetAgentId: action.agent?.id ?? null,
+    });
+  }, [codexVoiceAvailable, terminalAgent, toggleCodexRealtime]);
 
   const handleBodyReady = useCallback(
     (body: Body | null) => {
@@ -3925,6 +3985,24 @@ function App() {
     uiState.set(SETTINGS_PACK_ID, PREVIOUS_ACTIVE_UI_KEY, current);
     uiPackRegistry.setActiveUi(SETTINGS_PACK_ID);
   }, []);
+
+  const handleVoiceEntryCancel = useCallback(() => {
+    setVoiceEntryDialog(null);
+  }, []);
+
+  const handleVoiceEntryConfirmSwitch = useCallback(() => {
+    if (voiceEntryDialog?.mode !== "switch" || voiceEntryDialog.targetAgentId === null) return;
+    const targetAgentId = voiceEntryDialog.targetAgentId;
+    setVoiceEntryDialog(null);
+    void switchMainAgent(targetAgentId, markPendingRealtimeStart);
+  }, [switchMainAgent, voiceEntryDialog]);
+
+  const handleVoiceEntryOpenSettings = useCallback(() => {
+    setVoiceEntryDialog(null);
+    if (getUiRegistry().getActiveUi()?.id !== SETTINGS_PACK_ID) {
+      handleOpenSettings();
+    }
+  }, [handleOpenSettings]);
 
   const [vrmUrl, setVrmUrl] = useState<string | null>(null);
 
@@ -4399,7 +4477,7 @@ function App() {
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
-        voiceAvailable={codexVoiceAvailable}
+        voiceAvailable={voiceEntryAvailable}
         voiceActive={codexRealtimeState.status === "active"}
         voiceBusy={codexRealtimeState.status === "connecting"}
         voiceLabel={
@@ -4418,7 +4496,7 @@ function App() {
             : undefined
         }
         voiceError={codexRealtimeState.error}
-        onToggleVoice={() => void toggleCodexRealtime()}
+        onToggleVoice={() => void handleToggleVoice()}
         tabs={
           <TabIndicator
             state={tabState}
@@ -4502,6 +4580,22 @@ function App() {
           strings={restoreConfirmStrings(strings)}
           onClose={handleRestoreDialogClose}
           onConfirm={handleRestoreDialogConfirm}
+        />
+      ) : null}
+      {voiceEntryDialog ? (
+        <VoiceEntryDialog
+          mode={voiceEntryDialog.mode}
+          strings={{
+            title: strings.gptLiveRequiresCodex,
+            switchBody: strings.gptLiveSwitchBody,
+            setupBody: strings.gptLiveSetupBody,
+            cancel: strings.gptLiveCancel,
+            confirmSwitch: strings.gptLiveConfirmSwitch,
+            openSettings: strings.gptLiveOpenSettings,
+          }}
+          onCancel={handleVoiceEntryCancel}
+          onConfirmSwitch={handleVoiceEntryConfirmSwitch}
+          onOpenSettings={handleVoiceEntryOpenSettings}
         />
       ) : null}
       {reloadCurtainPhase !== "hidden" ? (
