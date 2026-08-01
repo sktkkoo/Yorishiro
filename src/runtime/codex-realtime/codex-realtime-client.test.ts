@@ -2,6 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
+import type { MouthValues } from "../../core/voice/mouth-values";
 import { CodexRealtimeClient, type CodexRealtimeState } from "./codex-realtime-client";
 
 interface FakeChannel<T> {
@@ -252,6 +253,174 @@ describe("CodexRealtimeClient", () => {
       }),
     );
     expect(client.getStatus()).toBe("idle");
+  });
+
+  it("routes assistant transcript to state expressions and cancels them on user barge-in", async () => {
+    const onCue = vi.fn();
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue, onRelease },
+    });
+    await client.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/delta",
+        params: { threadId: "thread-1", role: "assistant", delta: "はい。" },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/done",
+        params: { threadId: "thread-1", role: "assistant", text: "はい。" },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/delta",
+        params: { threadId: "thread-1", role: "user", delta: "待って" },
+      }),
+    );
+
+    // audio start前なのでcueはqueueのまま。barge-inはそのqueueと所有slotを解放する。
+    expect(onCue).not.toHaveBeenCalled();
+    expect(onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
+    client.stop();
+    expect(onRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes item and output-audio ownership boundaries to state expressions", async () => {
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue: vi.fn(), onRelease: vi.fn() },
+    });
+    await client.start();
+    const controller = (
+      client as unknown as {
+        stateExpressionController: {
+          onUserSpeechStarted(itemId?: unknown): void;
+          onAssistantResponseBoundary(itemId: unknown): void;
+          onOutputAudioItem(itemId: unknown): void;
+        };
+      }
+    ).stateExpressionController;
+    const onUserSpeechStarted = vi.spyOn(controller, "onUserSpeechStarted");
+    const onAssistantResponseBoundary = vi.spyOn(controller, "onAssistantResponseBoundary");
+    const onOutputAudioItem = vi.spyOn(controller, "onOutputAudioItem");
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/itemAdded",
+        params: {
+          threadId: "thread-1",
+          item: { type: "input_audio_buffer.speech_started", item_id: "user-1" },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/itemAdded",
+        params: { threadId: "thread-1", item: { id: "assistant-1", role: "assistant" } },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/outputAudio/delta",
+        params: { threadId: "thread-1", audio: { itemId: "assistant-1" } },
+      }),
+    );
+
+    expect(onUserSpeechStarted).toHaveBeenCalledWith("user-1");
+    expect(onAssistantResponseBoundary).toHaveBeenCalledWith("assistant-1");
+    expect(onOutputAudioItem).toHaveBeenCalledWith("assistant-1");
+    client.stop();
+  });
+
+  it("tracks remote speech while rendering is paused without Body sampling", async () => {
+    vi.useFakeTimers();
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    const onCue = vi.fn();
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue, onRelease },
+    });
+    let signalSampleCount = 0;
+    const internals = client as unknown as {
+      state: CodexRealtimeState;
+      lipSync: {
+        sample(out?: MouthValues): MouthValues;
+        hasSignal(): boolean;
+        reset(): void;
+      };
+      stateExpressionController: {
+        onTranscriptDelta(role: unknown, delta: unknown): void;
+        onTranscriptDone(role: unknown): void;
+      };
+      startRemoteSpeechObservation(attempt: number): void;
+    };
+    internals.state = { status: "active" };
+    internals.lipSync = {
+      sample: vi.fn(() => ({ aa: 0.8, ih: 0, ou: 0, ee: 0, oh: 0 })),
+      hasSignal: () => {
+        signalSampleCount++;
+        return signalSampleCount === 1;
+      },
+      reset: vi.fn(),
+    };
+    internals.stateExpressionController.onTranscriptDelta("assistant", "はい。");
+    internals.stateExpressionController.onTranscriptDone("assistant");
+
+    internals.startRemoteSpeechObservation(0);
+    await vi.advanceTimersByTimeAsync(1_600);
+
+    expect(signalSampleCount).toBeGreaterThan(1);
+    expect(onCue).toHaveBeenCalledOnce();
+    expect(onRelease).toHaveBeenCalledWith("realtime-1", "completed");
+
+    client.stop();
+    const stoppedSampleCount = signalSampleCount;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(signalSampleCount).toBe(stoppedSampleCount);
+    hidden.mockRestore();
+  });
+
+  it("samples fresh mouth values on every Body render pull", () => {
+    const client = new CodexRealtimeClient("main-session");
+    let renderSampleCount = 0;
+    const internals = client as unknown as {
+      state: CodexRealtimeState;
+      lipSync: {
+        sample(out?: MouthValues): MouthValues;
+        hasSignal(): boolean;
+        reset(): void;
+      };
+    };
+    internals.state = { status: "active" };
+    internals.lipSync = {
+      sample: () => ({ aa: ++renderSampleCount / 10, ih: 0, ou: 0, ee: 0, oh: 0 }),
+      hasSignal: () => true,
+      reset: vi.fn(),
+    };
+
+    expect(client.sampleMouth().aa).toBe(0.1);
+    expect(client.sampleMouth().aa).toBe(0.2);
+  });
+
+  it("ignores transcript notifications for a different thread", async () => {
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue: vi.fn(), onRelease },
+    });
+    await client.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/delta",
+        params: { threadId: "other-thread", role: "assistant", delta: "はい。" },
+      }),
+    );
+    client.stop();
+
+    expect(onRelease).not.toHaveBeenCalled();
   });
 
   it("uses API-key auth and exposes API billing before requesting the microphone", async () => {

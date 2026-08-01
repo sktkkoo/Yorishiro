@@ -159,4 +159,17 @@ describe("LipSyncAnalyser", () => {
     const secondTotal = MOUTH_KEYS.reduce((s, k) => s + second[k], 0);
     expect(secondTotal).toBeGreaterThanOrEqual(firstTotal);
   });
+
+  it("hasSignal は音声を検出しても口形の平滑化状態を進めない", () => {
+    const bins = makeBins();
+    for (let i = 2; i <= 42; i++) bins[i] = 200;
+    const analyser = new LipSyncAnalyser(createStubAnalyser(bins));
+
+    const first = analyser.sample();
+    analyser.reset();
+    expect(analyser.hasSignal()).toBe(true);
+    const afterObservation = analyser.sample();
+
+    expect(afterObservation).toEqual(first);
+  });
 });

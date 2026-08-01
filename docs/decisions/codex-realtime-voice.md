@@ -9,6 +9,35 @@ Codex を Main Agent にしたとき、通常の TUI を残したまま title ba
 realtime voice conversation を開始できる。Codex TUI と音声 UI は session ごとの
 `codex app-server` に同居し、同じ thread・approval・tool flow を共有する。
 
+### 発話テキスト（transcript）
+
+このDecisionでいうtranscriptは、音声会話の一回の発話を文字で表した**発話テキスト**である。
+user側ではmicrophone音声の文字起こし、Main Agent側では生成して読み上げている内容の文字表現を指す。
+完成文が一度に届くとは限らず、`delta` eventで断片が増え、`done` eventでその発話が確定する。
+
+発話テキストは実際にspeakerへ流すaudioとは別streamで届く。terminal log全体やconversation history全体を
+意味せず、audioと発話テキストの到着順にも保証はない。
+
+## 設計を読む前の4つの前提
+
+1. **audio、発話テキスト（transcript）、tool / work eventは独立したstreamであり、到着順を保証しない。**
+   textがaudioより先に届く場合も、短いaudioが最初のtranscriptより先に終わる場合もある。
+   arrival orderから同一responseだと推測せず、response / itemのidentityとgenerationで対応づける。
+2. **非同期resourceはboolean stateではなくownershipで管理する。**
+   connection、microphone、audio playback、expression、motionにはownerとなるattempt / response / handleを
+   持たせる。古いownerは、stop、切替、user発話割り込み後の新しいresourceやstateを変更してはならない。
+3. **WebViewとRustに跨るstateは、片側の更新だけで正しいとみなさない。**
+   Rust processやMCP serverはWebView reload後も生きることがある。voice ownershipのような共有stateは
+   provenance付きかつidempotentに同期し、失敗を再試行または明示的にreconcileできるようにする。
+4. **表情・motionのproducerと、最終的な合成判断を分ける。**
+   blink、lip sync、microexpression、persona / MCP、Agent State ExpressionはVRMへ個別に最終判断を
+   書き込まず、共通のpriority、region、weight budget、ownershipを通す。最終weightの集約は現在の
+   `ExpressionManager`が担う。producer側に散らばるpolicyの集約は[#83](https://github.com/sktkkoo/Yorishiro/issues/83)
+   で段階的に行い、このDecisionが未実装の完全統合を主張しないようにする。
+
+これらの境界はhappy pathだけでは検証できない。audio / transcriptの順序を入れ替える、処理を遅延させる、
+途中でstop / reload / IPC failureを起こすtestを、通常の成功testと同じ設計契約として扱う。
+
 ## 何を決めたか
 
 ### 1. TUI は残し、app-server を共有する
@@ -37,7 +66,26 @@ remote audio は Web Audio の `LipSyncAnalyser` に接続し、通常の Voice 
 Realtime v3 の voice は session 開始時に `sol` を明示する。Codex 0.145.0 の v1/v3
 voice list に含まれる音声合成プリセットであり、未指定時の `cove` には依存しない。
 
-### 3. PTY observation-only 境界は変えない
+### 3. 音声 transport は Main Agent の native capability に合わせる
+
+Yorishiro は provider に依存しない共通 shell として、マイク button、permission、audio output、
+lip sync、Agent State Expression、接続状態 UI を所有する。一方、会話 thread への接続、transcript、
+tool / approval event、handoff は各 harness の native voice adapter が所有する。
+
+v1 で実装する first-class adapter は Codex である。Codex app-server が TUI と realtime voice を
+同じ thread に接続できるため、音声から依頼した作業、subagent の進捗、tool execution、approval、
+text history を一つの流れとして保持できる。これは単に PTY output を読み取ることとは異なる。
+
+将来 Claude Code、OpenCode、または別の harness が同じ conversation / work session に接続する
+native realtime voice capability を提供した場合は、その harness 専用 adapter を追加する。active な
+Main Agent が Claude Code なら Claude の native voice、Codex なら GPT Live、という対応にする。
+音声のためだけに別 provider の thread へ会話を複製しない。
+
+Main Agent と voice adapter の概念名は provider-neutral に保つが、未実装 provider を Codex と同等に
+見せる疑似互換は作らない。必要な capability がない harness では、共通マイク button から現在の制約と
+利用可能な切替先を説明できるが、user の明示確認なしに Main Agent を自動切替してはならない。
+
+### 4. PTY observation-only 境界は変えない
 
 音声入力は app-server の thread API に入り、PTY stdin には書かない。realtime response は
 同じ Codex thread に合流するため、承認・tool execution・text history は Codex 側の通常の
@@ -139,28 +187,56 @@ refを解放できないため、この二層を一つに省略しない。
 
 実装済み:
 
-- active Main Codex sessionとのrealtime音声会話
+- activeなCodex-backed Main Agent sessionとのrealtime音声会話
 - 同じtop-level threadへのvoice / text historyの合流
 - remote audio再生とVRM lip sync
 - ChatGPT login / API key loginの継承とbilling表示
 - stop、remote close、session切替、timeoutを跨ぐresource ownership
+- assistant transcriptから読み取れるMain Agentの状態を、spoken textと分離した表情・身体反応で補足
 
 未実装:
 
-- 複数agentをtask ID付きで編成・監督するTask Coordinator
+- 委任作業の状態を会話向けに投影するWork Status Ledger
 - voice UIだけでのapproval確定
 - progress / completionの構造化通知台帳
-- semantic expression / gesture / motionの自動同期
-- Claude / OpenCode / shell tabのrealtime voice
+- Main Agent capabilityに応じたprovider別voice adapter選択
+- Claude / OpenCodeがnative realtime voiceを提供した場合の専用adapter
+- 非対応harnessでも機能を発見できる共通マイクbuttonと明示的な切替導線
 
-### expression / gesture
+### Agent State Expression（旧 performance cue）
 
-現行PRが同期するのはremote audioと口形だけである。spoken textへ`[smile]`等のinline tagを混ぜない。
-server-sideで読み上げる可能性があり、shared transcriptも汚染するためである。
+spoken textへ`[smile]`等のinline tagを混ぜない。server-sideで読み上げる可能性があり、shared transcriptも
+汚染するためである。
 
-採用する方向は、assistant transcript deltaをhost側でsemantic intentへ解決し、spoken textとは別の
-performance cueとしてBodyへ渡すside channelである。独立コアは`feat/realtime-performance-cues`
-branchにあるが、Mainへのwiringは未実装である。
+この機能の目的は、avatarに装飾的な「演技」をさせることではない。Main Agentが会話で表している
+認知・感情状態を、textだけでは落ちる情報も含めて表情と小さな身体反応へ投影することである。
+domain conceptは **Agent State Expression**、個々の出力は`StateExpressionCue`と呼ぶ。
+
+assistant transcript deltaをhost側でsemantic stateへ解決し、spoken textとは別のstate expression cueとして
+Bodyへ渡すside channelを採用する。remote audioのlip-sync sampleから得る**発話タイムライン**
+（speech clock。textの到着時刻ではなく、実際の音声再生開始を基準にした時間軸）でspeech start/endを検出し、
+表情は専用`speech` slot、gestureはactivityより低くidleより高い`speech-expression` laneへ渡す。
+user transcriptによる**ユーザー発話割り込み**（barge-in。Main Agentの発話中にuserが話し始めること）、
+voice stop、disconnect、session切替では、このadapterが所有するhandleだけを解放する。語単位timestampは
+無いため、実機計測後の節単位re-anchorは今後の調整対象である。
+
+現在観察できる正本は発話内容とspeech lifecycleであり、modelの非公開な内部感情を読めるとは扱わない。
+難しい検討、不確実性、困惑、発見、安心、懸念、同意など、発話に根拠がある状態だけを解決する。
+ただし、表情を離散的な「状態変化」が起きた瞬間だけに限定しない。一度根拠づけられた状態は一定時間
+継続し、その範囲では低salienceな微笑み、考え込む仕草、視線や姿勢の小さな揺らぎを有機的な
+micro-variationとして許容する。randomnessは発生時刻、variant、弱いintensityを選ぶためだけに使い、
+根拠のない新しい感情categoryや強い表情を生成するためには使わない。
+
+したがって表現は二層に分ける。発話やstructured stateに直接根拠づけられたsalient expressionと、
+そのgrounded stateが続く間のlow-salience organic variationである。前者は状態の意味を正確に伝え、
+後者は人間らしい連続性と頻度を補う。同じsalient expressionの連打はcooldownで抑え、grounded stateが
+無い箇所では、感情を捏造せずblink、breathing、gazeなどの生理的baselineだけを維持する。
+
+motionと表情の強弱はstate expression cueの`intensity`で表現し、Body adapterがanimation / expression
+weightへ変換する。routineな状態は`small`、明確な感情・強調だけを`medium`にする。
+当面はhost共通のsemantic state→body mappingを使い、personaごとのmotion、weight、expression
+mappingは導入しない。persona固有のstate expression catalogは、共通mappingを実機で安定させた後に
+別途設計する。
 
 ### Voice Summaryとの共存
 
@@ -180,6 +256,11 @@ GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割�
 8. app-server endpointをWebView、pack、LANへ公開しない
 9. spoken textへ機械制御tagを混ぜない
 10. 将来のstructured task stateで自然なconversation historyを置き換えない
+11. native voice capabilityがないharnessを、PTY log転送で疑似的に同等扱いしない
+12. voice利用のためにMain Agentをuser確認なしで自動切替しない
+13. 発話やstructured stateに根拠がない感情を、見栄えのためだけに生成しない
+14. domain conceptをperformance / actingとして扱わず、Main Agentのstate expressionとして扱う
+15. randomnessで感情categoryを決めず、grounded state内の低salienceなtiming / variant / intensityだけを揺らす
 
 ## Security / known limitations
 
@@ -205,8 +286,9 @@ GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割�
   承認 UI は TUI だけを正本とする
 - `thread/loaded/list` の順序には active thread の意味がない。subagent は `parentThreadId` で除外し、
   複数の top-level thread が loaded の場合は誤接続を避けて voice を開始しない
-- v1 は active Main Codex session だけを対象とし、shell tab や Claude / OpenCode では
-  button を表示しない
+- v1 の接続実装は activeなCodex-backed Main Agent session だけを対象とする。shell tab や Claude / OpenCode には
+  native voice adapterがなく、現在はbuttonも表示しない。将来の共通buttonは非対応を隠さず説明し、
+  userが明示確認した場合だけ既存の安全なagent切替経路を使う
 
 ## 検討したが却下した代替案
 
@@ -250,7 +332,7 @@ experience を失う。
 - remote closed後は一回のクリックで再接続する
 - old attempt/clientがnew active clientを破棄しない
 
-加えて実機で、voice turnのTUI表示、TUI approval response、barge-in、session切替、remote close、
+加えて実機で、voice turnのTUI表示、TUI approval response、ユーザー発話割り込み、session切替、remote close、
 複数subagent稼働中のvoice開始を確認する。
 
 ## 関連 reference

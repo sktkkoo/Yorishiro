@@ -96,6 +96,17 @@ export class LipSyncAnalyser {
     return this.computeFromBins(this.frequencyBins, this.timeDomainBins, out);
   }
 
+  /**
+   * Detects speech-level audio without advancing the mouth-shape smoothing state.
+   * Lifecycle observers may call this while rendering is paused; visible lip sync
+   * remains owned by sample().
+   */
+  hasSignal(): boolean {
+    this.analyser.getByteFrequencyData(this.frequencyBins);
+    this.analyser.getByteTimeDomainData(this.timeDomainBins);
+    return measureVolume(this.frequencyBins, this.timeDomainBins) >= SILENCE_THRESHOLD;
+  }
+
   /** smoothing state をリセットする（音源切り替え時などに） */
   reset(): void {
     clearMouthValues(this.smoothed);
@@ -113,20 +124,7 @@ export class LipSyncAnalyser {
     let bandTotal = 0;
     for (let i = VOICE_BIN_START; i <= VOICE_BIN_END; i++) bandTotal += bins[i];
 
-    let timeSqSum = 0;
-    for (const value of timeDomainBins) {
-      const normalized = (value - 128) / 128;
-      timeSqSum += normalized * normalized;
-    }
-    const timeRms = timeDomainBins.length > 0 ? Math.sqrt(timeSqSum / timeDomainBins.length) : 0;
-
-    // Spectrum RMS + waveform RMS → volume
-    let sqSum = 0;
-    for (let i = VOICE_BIN_START; i <= VOICE_BIN_END; i++) sqSum += bins[i] * bins[i];
-    const rms = Math.sqrt(sqSum / (VOICE_BIN_END - VOICE_BIN_START + 1));
-    const spectrumVolume = Math.min(rms / SPECTRUM_VOLUME_SCALE, 1.0);
-    const waveformVolume = Math.min(timeRms / TIME_DOMAIN_VOLUME_SCALE, 1.0);
-    const volume = Math.max(spectrumVolume, waveformVolume);
+    const volume = measureVolume(bins, timeDomainBins);
     if (volume < SILENCE_THRESHOLD) {
       clearMouthValues(this.smoothed);
       return out ? clearMouthValues(out) : { aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 };
@@ -187,4 +185,20 @@ export class LipSyncAnalyser {
     }
     return out ? copyMouthValues(s, out) : { ...s };
   }
+}
+
+function measureVolume(bins: Uint8Array, timeDomainBins: Uint8Array): number {
+  let timeSqSum = 0;
+  for (const value of timeDomainBins) {
+    const normalized = (value - 128) / 128;
+    timeSqSum += normalized * normalized;
+  }
+  const timeRms = timeDomainBins.length > 0 ? Math.sqrt(timeSqSum / timeDomainBins.length) : 0;
+
+  let sqSum = 0;
+  for (let i = VOICE_BIN_START; i <= VOICE_BIN_END; i++) sqSum += bins[i] * bins[i];
+  const rms = Math.sqrt(sqSum / (VOICE_BIN_END - VOICE_BIN_START + 1));
+  const spectrumVolume = Math.min(rms / SPECTRUM_VOLUME_SCALE, 1.0);
+  const waveformVolume = Math.min(timeRms / TIME_DOMAIN_VOLUME_SCALE, 1.0);
+  return Math.max(spectrumVolume, waveformVolume);
 }

@@ -91,7 +91,7 @@ import {
 } from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import TerminalWorkspace from "./components/TerminalWorkspace";
-import type { Body, EyeState, LipSyncSource } from "./core/body";
+import type { Body, EyeState, LipSyncSource, SpeechStateExpressionHandle } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
@@ -114,6 +114,7 @@ import {
   restoreConfirmStrings,
 } from "./i18n/strings";
 import { useReloadCurtain } from "./reload-curtain";
+import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
@@ -1941,7 +1942,7 @@ function App() {
         ];
 
         let speechMoodGeneration = 0;
-        let speechMoodBody: Body | null = null;
+        let speechMoodHandle: SpeechStateExpressionHandle | null = null;
         const handlers: ToolHandlerMap = {
           "list-packs": createListPacksHandler({
             readRegistry: () => packRegistry.listEntries(),
@@ -2210,20 +2211,22 @@ function App() {
               const generation = ++speechMoodGeneration;
 
               // mood なしの後続発話も発話粒度の上書きとして扱い、前 mood を解く。
-              if (speechMoodBody && (speechMoodBody !== body || mood === undefined)) {
-                speechMoodBody.releaseSpeechMood();
-                speechMoodBody = null;
-              }
+              speechMoodHandle?.release();
+              speechMoodHandle = null;
               if (!mood || !body) return;
 
-              body.setSpeechMood(mood.preset, mood.intensity);
-              speechMoodBody = body;
+              const moodHandle = body.acquireSpeechStateExpression({
+                preset: mood.preset,
+                intensity: mood.intensity,
+              });
+              speechMoodHandle = moodHandle;
               // 先行発話の completion が後続発話の mood を解かないよう世代で guard する。
               void handle.completion
                 .finally(() => {
-                  if (generation !== speechMoodGeneration || speechMoodBody !== body) return;
-                  body.releaseSpeechMood();
-                  speechMoodBody = null;
+                  if (generation !== speechMoodGeneration || speechMoodHandle !== moodHandle)
+                    return;
+                  moodHandle.release();
+                  speechMoodHandle = null;
                 })
                 .catch(() => {
                   // VoicePlayer の失敗は completion の終了として扱い、handler へ再送出しない。
@@ -3603,6 +3606,10 @@ function App() {
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
     bodyRef.current?.setLipSyncSource(source);
   }, []);
+  const realtimeStateExpressionCallbacks = useMemo(
+    () => createBodyStateExpressionAdapter(() => bodyRef.current),
+    [],
+  );
   const {
     state: codexRealtimeState,
     toggle: toggleCodexRealtime,
@@ -3612,6 +3619,7 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
+    stateExpressionCallbacks: realtimeStateExpressionCallbacks,
   });
 
   const handleBodyReady = useCallback(

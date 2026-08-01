@@ -34,6 +34,7 @@ export type MotionPriority =
   | "mcp-conscious"
   | "persona-handler"
   | "state-driven"
+  | "speech-expression"
   | "idle-fidget";
 
 /**
@@ -43,10 +44,11 @@ export type MotionPriority =
  * 置換される（spec §4 contract 5）。
  */
 const PRIORITY_LEVEL: Record<MotionPriority, number> = {
-  "critical-reflex": 5,
-  "mcp-conscious": 4,
-  "persona-handler": 3,
-  "state-driven": 2,
+  "critical-reflex": 6,
+  "mcp-conscious": 5,
+  "persona-handler": 4,
+  "state-driven": 3,
+  "speech-expression": 2,
   "idle-fidget": 1,
 };
 
