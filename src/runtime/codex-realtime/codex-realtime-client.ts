@@ -43,6 +43,8 @@ export interface CodexRealtimeClientOptions {
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
   readonly getPreferredThreadId?: () => string | null;
   readonly workStatusLedger?: WorkLifecyclePort & WorkStatusVoiceContextSource;
+  /** 実験用。既定では ledger context を GPT Live へ自動注入しない。 */
+  readonly injectWorkStatusContext?: boolean;
   readonly voice?: string;
   readonly getVoice?: () => string | Promise<string>;
 }
@@ -113,6 +115,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private readonly getPreferredThreadId: () => string | null;
   private workStatusAdapter: CodexWorkStatusProtocolAdapter | null = null;
   private readonly workStatusLedger: (WorkLifecyclePort & WorkStatusVoiceContextSource) | null;
+  private readonly injectWorkStatusContext: boolean;
   private workStatusSubscription: { dispose(): void } | null = null;
   private workStatusFreshnessTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private workStatusReconcileRetryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
@@ -127,6 +130,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.onStateChange = onStateChange;
     this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
     this.workStatusLedger = options.workStatusLedger ?? null;
+    this.injectWorkStatusContext = options.injectWorkStatusContext ?? false;
     this.getVoice = options.getVoice ?? (() => options.voice ?? DEFAULT_CODEX_REALTIME_VOICE);
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
@@ -400,7 +404,7 @@ export class CodexRealtimeClient implements LipSyncSource {
       version: "v3",
       voice,
       transport: { type: "webrtc", sdp },
-      ...(this.workStatusLedger
+      ...(this.injectWorkStatusContext && this.workStatusLedger
         ? {
             initialItems: [
               {
@@ -411,10 +415,12 @@ export class CodexRealtimeClient implements LipSyncSource {
           }
         : {}),
     });
-    this.writeWorkStatusDiagnostic({
-      eventKind: "context-initial-enqueued",
-      activeCount: this.workStatusLedger?.getSnapshot().activeCount,
-    });
+    if (this.injectWorkStatusContext) {
+      this.writeWorkStatusDiagnostic({
+        eventKind: "context-initial-enqueued",
+        activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+      });
+    }
     await this.reconcileWorkStatus(threadId, attempt, peer);
     this.assertAttemptOwner(attempt, peer);
     const answerSdp = await withTimeout(
@@ -427,7 +433,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.rejectRemoteSdp = null;
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
     this.assertAttemptOwner(attempt, peer);
-    this.startWorkStatusContextUpdates(threadId, attempt);
+    if (this.injectWorkStatusContext) this.startWorkStatusContextUpdates(threadId, attempt);
   }
 
   private async reconcileWorkStatus(

@@ -255,11 +255,6 @@ describe("CodexRealtimeClient", () => {
 
     await client.start();
 
-    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
-      eventKind: "context-initial-enqueued",
-      activeCount: undefined,
-    });
-
     expect(client.getStatus()).toBe("active");
     expect(states.map((state) => state.status)).toEqual(["connecting", "active"]);
     expect(states[states.length - 1]).toEqual({ status: "active", billing: "subscription" });
@@ -288,12 +283,32 @@ describe("CodexRealtimeClient", () => {
     expect(client.getStatus()).toBe("idle");
   });
 
-  it("gives GPT Live an initial work snapshot and appends later status events", async () => {
+  it("does not inject work status context into GPT Live by default", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+
+    await client.start();
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.initialItems).toBeUndefined();
+
+    const work = ledger.create({ summary: "Keep this in the host ledger" });
+    ledger.markRunning(work.id);
+    await Promise.resolve();
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/appendText")).toBe(
+      false,
+    );
+    client.stop();
+  });
+
+  it("injects a work snapshot and later events only when explicitly enabled", async () => {
     const ledger = createWorkStatusLedgerStore();
     const existing = ledger.create({ summary: "Prepare release" });
     ledger.markRunning(existing.id);
     const client = new CodexRealtimeClient("main-session", undefined, {
       workStatusLedger: ledger,
+      injectWorkStatusContext: true,
     });
 
     await client.start();
@@ -362,6 +377,7 @@ describe("CodexRealtimeClient", () => {
     };
     const client = new CodexRealtimeClient("main-session", undefined, {
       workStatusLedger: ledger,
+      injectWorkStatusContext: true,
     });
 
     await client.start();
@@ -552,6 +568,7 @@ describe("CodexRealtimeClient", () => {
     ledger.markRunning(work.id);
     const client = new CodexRealtimeClient("main-session", undefined, {
       workStatusLedger: ledger,
+      injectWorkStatusContext: true,
     });
     await client.start();
 

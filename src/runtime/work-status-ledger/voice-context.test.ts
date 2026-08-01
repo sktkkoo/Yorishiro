@@ -17,6 +17,8 @@ describe("work status voice context", () => {
       "immediately acknowledge the user with a very brief natural spoken response",
     );
     expect(context).toContain("do not leave the user in silence");
+    expect(context).toContain("Do not announce, summarize, or acknowledge this context merely");
+    expect(context).toContain("mention it only when the user asks about work status");
   });
 
   it("formats a compact structured snapshot without approval identifiers", () => {
