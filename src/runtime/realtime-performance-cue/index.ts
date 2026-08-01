@@ -1,3 +1,8 @@
+export { createBodyPerformanceCueAdapter } from "./body-adapter";
+export {
+  RealtimePerformanceCueController,
+  type RealtimePerformanceCueControllerOptions,
+} from "./controller";
 export {
   createPerformanceCueResolverState,
   finishAssistantTranscript,
