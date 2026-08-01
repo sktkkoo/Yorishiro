@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
+import type { PerformanceCueSchedulerCallbacks } from "../realtime-performance-cue";
 import {
   CodexRealtimeClient,
   type CodexRealtimeState,
@@ -15,6 +16,7 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
 export type CodexRealtimeClientFactory = (
   sessionId: string,
   onStateChange: (state: CodexRealtimeState) => void,
+  performanceCueCallbacks?: PerformanceCueSchedulerCallbacks,
 ) => CodexRealtimeClientLike;
 
 interface UseCodexRealtimeOptions {
@@ -22,6 +24,7 @@ interface UseCodexRealtimeOptions {
   readonly available: boolean;
   readonly fallbackLipSyncSource: LipSyncSource;
   readonly applyLipSyncSource: (source: LipSyncSource) => void;
+  readonly performanceCueCallbacks?: PerformanceCueSchedulerCallbacks;
   readonly createClient?: CodexRealtimeClientFactory;
 }
 
@@ -32,8 +35,11 @@ interface UseCodexRealtimeResult {
   readonly getLipSyncSource: () => LipSyncSource;
 }
 
-const defaultCreateClient: CodexRealtimeClientFactory = (sessionId, onStateChange) =>
-  new CodexRealtimeClient(sessionId, onStateChange);
+const defaultCreateClient: CodexRealtimeClientFactory = (
+  sessionId,
+  onStateChange,
+  performanceCueCallbacks,
+) => new CodexRealtimeClient(sessionId, onStateChange, { performanceCueCallbacks });
 
 /** App が所有する realtime client を一つに限定し、古い client の通知を遮断する。 */
 export function useCodexRealtime({
@@ -41,6 +47,7 @@ export function useCodexRealtime({
   available,
   fallbackLipSyncSource,
   applyLipSyncSource,
+  performanceCueCallbacks,
   createClient = defaultCreateClient,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
@@ -74,31 +81,35 @@ export function useCodexRealtime({
     }
 
     let client: CodexRealtimeClientLike;
-    client = createClientRef.current(sessionId, (nextState) => {
-      // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
-      if (clientRef.current !== client) return;
+    client = createClientRef.current(
+      sessionId,
+      (nextState) => {
+        // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
+        if (clientRef.current !== client) return;
 
-      if (nextState.status === "error") {
-        clientRef.current = null;
-        client.stop();
+        if (nextState.status === "error") {
+          clientRef.current = null;
+          client.stop();
+          setState(nextState);
+          restoreFallback();
+          return;
+        }
+
+        if (nextState.status === "idle") {
+          // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
+          clientRef.current = null;
+          setState(nextState);
+          restoreFallback();
+          return;
+        }
+
         setState(nextState);
-        restoreFallback();
-        return;
-      }
-
-      if (nextState.status === "idle") {
-        // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
-        clientRef.current = null;
-        setState(nextState);
-        restoreFallback();
-        return;
-      }
-
-      setState(nextState);
-      if (nextState.status === "active") {
-        applyLipSyncSourceRef.current(client);
-      }
-    });
+        if (nextState.status === "active") {
+          applyLipSyncSourceRef.current(client);
+        }
+      },
+      performanceCueCallbacks,
+    );
     clientRef.current = client;
 
     try {
@@ -113,7 +124,7 @@ export function useCodexRealtime({
       setState({ status: "error", error: message });
       restoreFallback();
     }
-  }, [restoreFallback, sessionId, stop]);
+  }, [performanceCueCallbacks, restoreFallback, sessionId, stop]);
 
   useEffect(() => {
     const sessionChanged = sessionIdRef.current !== sessionId;

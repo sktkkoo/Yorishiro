@@ -184,6 +184,7 @@ import {
   projectRootValue,
   resolveCurrentProjectRoot,
 } from "./runtime/project-context/project-context";
+import { createBodyPerformanceCueAdapter } from "./runtime/realtime-performance-cue";
 import {
   getSceneRegistry,
   resolveSceneAssets,
@@ -3603,6 +3604,10 @@ function App() {
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
     bodyRef.current?.setLipSyncSource(source);
   }, []);
+  const realtimePerformanceCueCallbacks = useMemo(
+    () => createBodyPerformanceCueAdapter(() => bodyRef.current),
+    [],
+  );
   const {
     state: codexRealtimeState,
     toggle: toggleCodexRealtime,
@@ -3612,6 +3617,7 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
+    performanceCueCallbacks: realtimePerformanceCueCallbacks,
   });
 
   const handleBodyReady = useCallback(

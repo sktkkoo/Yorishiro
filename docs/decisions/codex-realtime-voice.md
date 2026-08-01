@@ -144,23 +144,25 @@ refを解放できないため、この二層を一つに省略しない。
 - remote audio再生とVRM lip sync
 - ChatGPT login / API key loginの継承とbilling表示
 - stop、remote close、session切替、timeoutを跨ぐresource ownership
+- assistant transcriptのsemantic expression / gestureをspoken textと分離したside channelで同期
 
 未実装:
 
 - 複数agentをtask ID付きで編成・監督するTask Coordinator
 - voice UIだけでのapproval確定
 - progress / completionの構造化通知台帳
-- semantic expression / gesture / motionの自動同期
 - Claude / OpenCode / shell tabのrealtime voice
 
 ### expression / gesture
 
-現行PRが同期するのはremote audioと口形だけである。spoken textへ`[smile]`等のinline tagを混ぜない。
-server-sideで読み上げる可能性があり、shared transcriptも汚染するためである。
+spoken textへ`[smile]`等のinline tagを混ぜない。server-sideで読み上げる可能性があり、shared transcriptも
+汚染するためである。
 
-採用する方向は、assistant transcript deltaをhost側でsemantic intentへ解決し、spoken textとは別の
-performance cueとしてBodyへ渡すside channelである。独立コアは`feat/realtime-performance-cues`
-branchにあるが、Mainへのwiringは未実装である。
+assistant transcript deltaをhost側でsemantic intentへ解決し、spoken textとは別のperformance cueとして
+Bodyへ渡すside channelを採用した。remote audioのlip-sync sampleと同じrender clockでspeech start/endを
+検出し、表情は専用`speech` slot、gestureはactivityより低くidleより高い`speech-performance` laneへ渡す。
+user transcriptによるbarge-in、voice stop、disconnect、session切替では、このadapterが所有するhandleだけを
+解放する。語単位timestampは無いため、実機計測後の節単位re-anchorは今後の調整対象である。
 
 ### Voice Summaryとの共存
 

@@ -254,6 +254,58 @@ describe("CodexRealtimeClient", () => {
     expect(client.getStatus()).toBe("idle");
   });
 
+  it("routes assistant transcript to performance cues and cancels them on user barge-in", async () => {
+    const onCue = vi.fn();
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      performanceCueCallbacks: { onCue, onRelease },
+    });
+    await client.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/delta",
+        params: { threadId: "thread-1", role: "assistant", delta: "はい。" },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/done",
+        params: { threadId: "thread-1", role: "assistant", text: "はい。" },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/delta",
+        params: { threadId: "thread-1", role: "user", delta: "待って" },
+      }),
+    );
+
+    // audio start前なのでcueはqueueのまま。barge-inはそのqueueと所有slotを解放する。
+    expect(onCue).not.toHaveBeenCalled();
+    expect(onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
+    client.stop();
+    expect(onRelease).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores transcript notifications for a different thread", async () => {
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      performanceCueCallbacks: { onCue: vi.fn(), onRelease },
+    });
+    await client.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/transcript/delta",
+        params: { threadId: "other-thread", role: "assistant", delta: "はい。" },
+      }),
+    );
+    client.stop();
+
+    expect(onRelease).not.toHaveBeenCalled();
+  });
+
   it("uses API-key auth and exposes API billing before requesting the microphone", async () => {
     bridge.accountType = "apiKey";
     const states: CodexRealtimeState[] = [];
