@@ -9,6 +9,26 @@ Codex を Main Agent にしたとき、通常の TUI を残したまま title ba
 realtime voice conversation を開始できる。Codex TUI と音声 UI は session ごとの
 `codex app-server` に同居し、同じ thread・approval・tool flow を共有する。
 
+## 設計を読む前の4つの前提
+
+1. **audio、transcript、tool / work eventは独立したstreamであり、到着順を保証しない。**
+   textがaudioより先に届く場合も、短いaudioが最初のtranscriptより先に終わる場合もある。
+   arrival orderから同一responseだと推測せず、response / itemのidentityとgenerationで対応づける。
+2. **非同期resourceはboolean stateではなくownershipで管理する。**
+   connection、microphone、audio playback、expression、motionにはownerとなるattempt / response / handleを
+   持たせる。古いownerは、stop、切替、user発話割り込み後の新しいresourceやstateを変更してはならない。
+3. **WebViewとRustに跨るstateは、片側の更新だけで正しいとみなさない。**
+   Rust processやMCP serverはWebView reload後も生きることがある。voice ownershipのような共有stateは
+   provenance付きかつidempotentに同期し、失敗を再試行または明示的にreconcileできるようにする。
+4. **表情・motionのproducerと、最終的な合成判断を分ける。**
+   blink、lip sync、microexpression、persona / MCP、Agent State ExpressionはVRMへ個別に最終判断を
+   書き込まず、共通のpriority、region、weight budget、ownershipを通す。最終weightの集約は現在の
+   `ExpressionManager`が担う。producer側に散らばるpolicyの集約は[#83](https://github.com/sktkkoo/Yorishiro/issues/83)
+   で段階的に行い、このDecisionが未実装の完全統合を主張しないようにする。
+
+これらの境界はhappy pathだけでは検証できない。audio / transcriptの順序を入れ替える、処理を遅延させる、
+途中でstop / reload / IPC failureを起こすtestを、通常の成功testと同じ設計契約として扱う。
+
 ## 何を決めたか
 
 ### 1. TUI は残し、app-server を共有する
