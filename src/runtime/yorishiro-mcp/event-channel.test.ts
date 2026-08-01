@@ -61,7 +61,7 @@ describe("dispatchToolEvent", () => {
       "voice.say": async (_request, context) => context?.voicePlayback,
     };
     const voicePlayback = {
-      ownerEpochMs: 100,
+      ownerId: "rust-owner-1",
       generation: 3,
       fallbackPlaybackEnabled: false,
     };

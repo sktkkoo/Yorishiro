@@ -18,8 +18,14 @@ const FADE_OUT_MS = 150;
 
 export type VoiceClipResolver = (clipRef: VoiceClipRef) => Promise<string | null> | string | null;
 
+export interface VoicePlaybackProvenanceStamp {
+  readonly ownerId: string;
+  readonly generation: number;
+  readonly fallbackPlaybackEnabled: boolean;
+}
+
 export interface VoicePlaybackOwnershipState {
-  readonly ownerEpochMs: number;
+  readonly ownerId: string | null;
   readonly generation: number;
   readonly fallbackPlaybackEnabled: boolean;
 }
@@ -59,7 +65,7 @@ export class VoicePlayer {
   /** 進行中の発話（合成中〜再生完了）。waitUntilIdle の待ち対象。 */
   private readonly inFlight = new Set<Promise<void>>();
   private readonly operations = new Set<VoicePlaybackOperation>();
-  private readonly playbackOwnerEpochMs = Date.now();
+  private playbackOwnerId: string | null = null;
   private playbackEnabled = true;
   private playbackGeneration = 0;
 
@@ -119,9 +125,28 @@ export class VoicePlayer {
     return this.playbackEnabled;
   }
 
+  setPlaybackOwnerId(ownerId: string): void {
+    if (ownerId === "") throw new Error("Voice playback owner ID must not be empty");
+    if (this.playbackOwnerId !== null && this.playbackOwnerId !== ownerId) {
+      throw new Error("Voice playback owner ID cannot change during a WebView incarnation");
+    }
+    this.playbackOwnerId = ownerId;
+  }
+
+  canPlayRequest(provenance: VoicePlaybackProvenanceStamp | undefined): boolean {
+    return (
+      provenance !== undefined &&
+      this.playbackOwnerId !== null &&
+      provenance.ownerId === this.playbackOwnerId &&
+      provenance.generation === this.playbackGeneration &&
+      provenance.fallbackPlaybackEnabled &&
+      this.playbackEnabled
+    );
+  }
+
   getPlaybackOwnershipState(): VoicePlaybackOwnershipState {
     return {
-      ownerEpochMs: this.playbackOwnerEpochMs,
+      ownerId: this.playbackOwnerId,
       generation: this.playbackGeneration,
       fallbackPlaybackEnabled: this.playbackEnabled,
     };

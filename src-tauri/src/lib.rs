@@ -1674,13 +1674,18 @@ async fn mcp_tool_response(request_id: String, response: serde_json::Value) -> R
 }
 
 #[tauri::command]
+async fn mcp_voice_playback_register_owner() -> Result<String, String> {
+    Ok(mcp::server::register_voice_playback_owner())
+}
+
+#[tauri::command]
 async fn mcp_voice_playback_set_enabled(
-    owner_epoch_ms: u64,
+    owner_id: String,
     generation: u64,
     enabled: bool,
 ) -> Result<(), String> {
     mcp::server::set_voice_playback_provenance(mcp::server::VoicePlaybackProvenance {
-        owner_epoch_ms,
+        owner_id,
         generation,
         fallback_playback_enabled: enabled,
     });
@@ -2414,6 +2419,7 @@ pub fn run() {
             watch_yorishiro_layer,
             stat_file_mtime,
             mcp_tool_response,
+            mcp_voice_playback_register_owner,
             mcp_voice_playback_set_enabled,
             read_journal_memories,
             read_journal_recent,

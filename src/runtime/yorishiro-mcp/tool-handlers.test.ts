@@ -2685,9 +2685,40 @@ describe("createVoiceSayHandler", () => {
         { text: "stale live summary" },
         {
           voicePlayback: {
-            ownerEpochMs: 100,
+            ownerId: "rust-owner-1",
             generation: 1,
             fallbackPlaybackEnabled: false,
+          },
+        },
+      ),
+    ).resolves.toEqual({ spoken: false });
+    expect(speak).not.toHaveBeenCalled();
+  });
+
+  it("Live cycle 前の enabled request は current generation と一致しないため発話しない", async () => {
+    const speak = vi.fn();
+    const current = {
+      ownerId: "rust-owner-1",
+      generation: 2,
+      fallbackPlaybackEnabled: true,
+    };
+    const handler = createVoiceSayHandler({
+      speak,
+      getFrequency: () => "on",
+      canPlay: (provenance) =>
+        provenance?.ownerId === current.ownerId &&
+        provenance.generation === current.generation &&
+        provenance.fallbackPlaybackEnabled === current.fallbackPlaybackEnabled,
+    });
+
+    await expect(
+      handler(
+        { text: "pre-live summary" },
+        {
+          voicePlayback: {
+            ownerId: "rust-owner-1",
+            generation: 0,
+            fallbackPlaybackEnabled: true,
           },
         },
       ),
@@ -2784,9 +2815,33 @@ describe("createVoicePlayHandler", () => {
         { clipRef: "voice:greeting" },
         {
           voicePlayback: {
-            ownerEpochMs: 100,
+            ownerId: "rust-owner-1",
             generation: 1,
             fallbackPlaybackEnabled: false,
+          },
+        },
+      ),
+    ).resolves.toEqual({ played: false });
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("前の WebView owner が作った enabled clip request は再生しない", async () => {
+    const play = vi.fn();
+    const handler = createVoicePlayHandler({
+      play,
+      getFrequency: () => "on",
+      canPlay: (provenance) =>
+        provenance?.ownerId === "current-rust-owner" && provenance.generation === 0,
+    });
+
+    await expect(
+      handler(
+        { clipRef: "voice:greeting" },
+        {
+          voicePlayback: {
+            ownerId: "previous-rust-owner",
+            generation: 0,
+            fallbackPlaybackEnabled: true,
           },
         },
       ),

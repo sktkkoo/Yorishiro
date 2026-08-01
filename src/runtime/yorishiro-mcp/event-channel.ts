@@ -9,14 +9,10 @@
  * Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5
  */
 
-export interface VoicePlaybackProvenance {
-  readonly ownerEpochMs: number;
-  readonly generation: number;
-  readonly fallbackPlaybackEnabled: boolean;
-}
+import type { VoicePlaybackProvenanceStamp } from "../../core/voice/voice-player";
 
 export interface ToolInvocationContext {
-  readonly voicePlayback?: VoicePlaybackProvenance;
+  readonly voicePlayback?: VoicePlaybackProvenanceStamp;
 }
 
 export type ToolHandler = (request: unknown, context?: ToolInvocationContext) => Promise<unknown>;

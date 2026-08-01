@@ -19,6 +19,7 @@ import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { VoicePlaybackProvenanceStamp } from "../../core/voice/voice-player";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ManualCueResult } from "../attention-light-cue/cue-store";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
@@ -1967,7 +1968,7 @@ export function createPersonaReflexListHandler(deps: PersonaReflexListDeps) {
 export interface VoiceSayDeps {
   readonly speak: (text: string, voice?: string, mood?: VoiceSayMood) => void;
   readonly getFrequency: () => "on" | "off";
-  readonly canPlay?: () => boolean;
+  readonly canPlay?: (provenance: VoicePlaybackProvenanceStamp | undefined) => boolean;
 }
 
 export interface VoiceSayMood {
@@ -1989,7 +1990,7 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
     if (
       deps.getFrequency() === "off" ||
       context?.voicePlayback?.fallbackPlaybackEnabled === false ||
-      deps.canPlay?.() === false
+      deps.canPlay?.(context?.voicePlayback) === false
     ) {
       return { spoken: false };
     }
@@ -2029,7 +2030,7 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
 export interface VoicePlayDeps {
   readonly play: (clipRef: string, options?: { readonly volume?: number }) => void;
   readonly getFrequency: () => "on" | "off";
-  readonly canPlay?: () => boolean;
+  readonly canPlay?: (provenance: VoicePlaybackProvenanceStamp | undefined) => boolean;
 }
 
 export interface VoicePlayResult {
@@ -2047,7 +2048,7 @@ export function createVoicePlayHandler(deps: VoicePlayDeps) {
     if (
       deps.getFrequency() === "off" ||
       context?.voicePlayback?.fallbackPlaybackEnabled === false ||
-      deps.canPlay?.() === false
+      deps.canPlay?.(context?.voicePlayback) === false
     ) {
       return { played: false };
     }

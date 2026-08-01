@@ -310,6 +310,61 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(player.isPlaybackEnabled()).toBe(false);
   });
 
+  it("Rust-issued owner ID と current generation が一致する request だけを許可する", () => {
+    const player = new VoicePlayer();
+    player.setPlaybackOwnerId("rust-owner-1");
+    const initial = player.getPlaybackOwnershipState();
+
+    expect(
+      player.canPlayRequest({
+        ownerId: "rust-owner-1",
+        generation: initial.generation,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(true);
+
+    player.setPlaybackEnabled(false);
+    player.setPlaybackEnabled(true);
+
+    expect(
+      player.canPlayRequest({
+        ownerId: "rust-owner-1",
+        generation: initial.generation,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      player.canPlayRequest({
+        ownerId: "previous-rust-owner",
+        generation: 2,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      player.canPlayRequest({
+        ownerId: "rust-owner-1",
+        generation: 2,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("playback owner identity does not depend on wall-clock ordering", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValueOnce(200).mockReturnValueOnce(100);
+    try {
+      const first = new VoicePlayer();
+      const second = new VoicePlayer();
+      first.setPlaybackOwnerId("rust-owner-first");
+      second.setPlaybackOwnerId("rust-owner-second");
+
+      expect(first.getPlaybackOwnershipState().ownerId).toBe("rust-owner-first");
+      expect(second.getPlaybackOwnershipState().ownerId).toBe("rust-owner-second");
+      expect(now).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("合成中に再生を無効化した発話は、後から完了しても再生しない", async () => {
     let resolveSynth: (audio: ArrayBuffer) => void = () => {};
     const engine: TtsEngine = {
