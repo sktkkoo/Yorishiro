@@ -164,9 +164,11 @@ branchにあるが、Mainへのwiringは未実装である。
 
 ### Voice Summaryとの共存
 
-GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割り込みが起きる。GPT Liveをactive時の
-唯一の音声owner、Voice Summaryをfallbackにする方向が妥当だが、抑止範囲、未通知resultの扱い、
-切断後の復帰方法は未決定である。現時点では挙動を変更せず、別decisionで確定する。
+GPT Liveは`connecting` / `active`の間だけ唯一の音声ownerとなり、Voice Summaryは
+`idle` / `error`時のfallbackとする。Live開始時はVoicePlayerの再生中音声を停止し、
+合成やclip取得の完了待ちも無効化する。所有中に届いた`voice_say` / `voice_play`は
+`spoken: false` / `played: false`で完了し、切断後に古い要約を再生するqueueは持たない。
+stop、remote close、start failure、session切替でいずれもVoicePlayerを即時復帰させる。
 
 ## 今後も守る invariant
 

@@ -285,6 +285,40 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
     expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
   });
 
+  it("再生無効中は新しい発話を合成しない", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    player.setPlaybackEnabled(false);
+
+    const handle = player.createVoiceAPI().say("スキップ");
+
+    await expect(handle.completion).resolves.toBeUndefined();
+    expect(engine.synthesize).not.toHaveBeenCalled();
+    expect(player.isPlaybackEnabled()).toBe(false);
+  });
+
+  it("合成中に再生を無効化した発話は、後から完了しても再生しない", async () => {
+    let resolveSynth: (audio: ArrayBuffer) => void = () => {};
+    const engine: TtsEngine = {
+      name: "mock",
+      synthesize: vi.fn(
+        () =>
+          new Promise<ArrayBuffer>((resolve) => {
+            resolveSynth = resolve;
+          }),
+      ),
+    };
+    const player = new VoicePlayer(undefined, engine);
+    const handle = player.createVoiceAPI().say("合成中");
+
+    player.setPlaybackEnabled(false);
+    resolveSynth(createMinimalWav());
+    await handle.completion;
+
+    expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalledWith("tts_stop", {});
+  });
+
   it("say() は VoiceHandle を返す", () => {
     const engine = createMockEngine();
     const player = new VoicePlayer(undefined, engine);

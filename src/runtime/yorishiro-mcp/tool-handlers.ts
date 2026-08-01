@@ -1966,6 +1966,7 @@ export function createPersonaReflexListHandler(deps: PersonaReflexListDeps) {
 export interface VoiceSayDeps {
   readonly speak: (text: string, voice?: string, mood?: VoiceSayMood) => void;
   readonly getFrequency: () => "on" | "off";
+  readonly canPlay?: () => boolean;
 }
 
 export interface VoiceSayMood {
@@ -1984,7 +1985,7 @@ export interface VoiceSayResult {
  */
 export function createVoiceSayHandler(deps: VoiceSayDeps) {
   return async (request: unknown): Promise<VoiceSayResult> => {
-    if (deps.getFrequency() === "off") return { spoken: false };
+    if (deps.getFrequency() === "off" || deps.canPlay?.() === false) return { spoken: false };
     const r = requestRecord(request);
     const text = r.text;
     if (typeof text !== "string" || text === "") {
@@ -2021,6 +2022,7 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
 export interface VoicePlayDeps {
   readonly play: (clipRef: string, options?: { readonly volume?: number }) => void;
   readonly getFrequency: () => "on" | "off";
+  readonly canPlay?: () => boolean;
 }
 
 export interface VoicePlayResult {
@@ -2035,7 +2037,7 @@ export interface VoicePlayResult {
  */
 export function createVoicePlayHandler(deps: VoicePlayDeps) {
   return async (request: unknown): Promise<VoicePlayResult> => {
-    if (deps.getFrequency() === "off") return { played: false };
+    if (deps.getFrequency() === "off" || deps.canPlay?.() === false) return { played: false };
     const r = requestRecord(request);
     const clipRef = r.clipRef;
     if (typeof clipRef !== "string" || clipRef === "") {

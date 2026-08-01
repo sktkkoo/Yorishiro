@@ -63,6 +63,7 @@ import {
   createUiActivateHandler,
   createUiSidebarSetHandler,
   createUiTerminalSetHandler,
+  createVoicePlayHandler,
   createVoiceSayHandler,
 } from "./tool-handlers";
 
@@ -2659,6 +2660,18 @@ describe("createSetMotionIntensityHandler", () => {
 });
 
 describe("createVoiceSayHandler", () => {
+  it("audio owner が別にいる間は発話を破棄する", async () => {
+    const speak = vi.fn();
+    const handler = createVoiceSayHandler({
+      speak,
+      getFrequency: () => "on",
+      canPlay: () => false,
+    });
+
+    await expect(handler({ text: "hello" })).resolves.toEqual({ spoken: false });
+    expect(speak).not.toHaveBeenCalled();
+  });
+
   it("valid mood と intensity を speak へ透過する", async () => {
     const speak = vi.fn();
     const handler = createVoiceSayHandler({ speak, getFrequency: () => "on" });
@@ -2721,6 +2734,20 @@ describe("createVoiceSayHandler", () => {
 /* ──────────────────────────────────────────────────────────
  * createUiSidebarSetHandler — loud-unavailable
  * ────────────────────────────────────────────────────────── */
+
+describe("createVoicePlayHandler", () => {
+  it("audio owner が別にいる間は clip 再生を破棄する", async () => {
+    const play = vi.fn();
+    const handler = createVoicePlayHandler({
+      play,
+      getFrequency: () => "on",
+      canPlay: () => false,
+    });
+
+    await expect(handler({ clipRef: "voice:greeting" })).resolves.toEqual({ played: false });
+    expect(play).not.toHaveBeenCalled();
+  });
+});
 
 describe("createUiSidebarSetHandler loud-unavailable", () => {
   // loud-unavailable: presence 解決不能時、ui.sidebar.set は width を書かず

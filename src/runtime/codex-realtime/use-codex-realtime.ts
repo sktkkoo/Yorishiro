@@ -22,6 +22,7 @@ interface UseCodexRealtimeOptions {
   readonly available: boolean;
   readonly fallbackLipSyncSource: LipSyncSource;
   readonly applyLipSyncSource: (source: LipSyncSource) => void;
+  readonly setFallbackPlaybackEnabled?: (enabled: boolean) => void;
   readonly createClient?: CodexRealtimeClientFactory;
 }
 
@@ -41,17 +42,20 @@ export function useCodexRealtime({
   available,
   fallbackLipSyncSource,
   applyLipSyncSource,
+  setFallbackPlaybackEnabled = () => {},
   createClient = defaultCreateClient,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
   const fallbackRef = useRef(fallbackLipSyncSource);
   const applyLipSyncSourceRef = useRef(applyLipSyncSource);
+  const setFallbackPlaybackEnabledRef = useRef(setFallbackPlaybackEnabled);
   const createClientRef = useRef(createClient);
   const sessionIdRef = useRef(sessionId);
   const [state, setState] = useState<CodexRealtimeState>({ status: "idle" });
 
   fallbackRef.current = fallbackLipSyncSource;
   applyLipSyncSourceRef.current = applyLipSyncSource;
+  setFallbackPlaybackEnabledRef.current = setFallbackPlaybackEnabled;
   createClientRef.current = createClient;
 
   const restoreFallback = useCallback(() => {
@@ -64,6 +68,7 @@ export function useCodexRealtime({
     clientRef.current = null;
     client?.stop();
     setState({ status: "idle" });
+    setFallbackPlaybackEnabledRef.current(true);
     restoreFallback();
   }, [restoreFallback]);
 
@@ -82,6 +87,7 @@ export function useCodexRealtime({
         clientRef.current = null;
         client.stop();
         setState(nextState);
+        setFallbackPlaybackEnabledRef.current(true);
         restoreFallback();
         return;
       }
@@ -90,6 +96,7 @@ export function useCodexRealtime({
         // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
         clientRef.current = null;
         setState(nextState);
+        setFallbackPlaybackEnabledRef.current(true);
         restoreFallback();
         return;
       }
@@ -100,6 +107,8 @@ export function useCodexRealtime({
       }
     });
     clientRef.current = client;
+    // connecting 開始時点から GPT Live を唯一の audio owner にする。
+    setFallbackPlaybackEnabledRef.current(false);
 
     try {
       await client.start();
@@ -111,6 +120,7 @@ export function useCodexRealtime({
       const message = error instanceof Error ? error.message : String(error);
       console.error("[codex-realtime] start failed", error);
       setState({ status: "error", error: message });
+      setFallbackPlaybackEnabledRef.current(true);
       restoreFallback();
     }
   }, [restoreFallback, sessionId, stop]);
@@ -126,6 +136,7 @@ export function useCodexRealtime({
       const client = clientRef.current;
       clientRef.current = null;
       client?.stop();
+      setFallbackPlaybackEnabledRef.current(true);
     };
   }, []);
 

@@ -65,6 +65,7 @@ function setup(starts: Promise<void>[]) {
   };
   const fallback: LipSyncSource = { sampleMouth: () => ({ ...ZERO_MOUTH }) };
   const applyLipSyncSource = vi.fn<(source: LipSyncSource) => void>();
+  const setFallbackPlaybackEnabled = vi.fn<(enabled: boolean) => void>();
   const hook = renderHook(
     ({ sessionId, available }) =>
       useCodexRealtime({
@@ -72,14 +73,36 @@ function setup(starts: Promise<void>[]) {
         available,
         fallbackLipSyncSource: fallback,
         applyLipSyncSource,
+        setFallbackPlaybackEnabled,
         createClient,
       }),
     { initialProps: { sessionId: "main", available: true } },
   );
-  return { ...hook, clients, fallback, applyLipSyncSource };
+  return { ...hook, clients, fallback, applyLipSyncSource, setFallbackPlaybackEnabled };
 }
 
 describe("useCodexRealtime", () => {
+  it("connecting から GPT Live が audio を所有し、remote close 後に fallback を戻す", async () => {
+    const start = deferred();
+    const { result, clients, setFallbackPlaybackEnabled } = setup([start.promise]);
+
+    act(() => {
+      void result.current.toggle();
+    });
+    expect(result.current.state.status).toBe("connecting");
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+
+    act(() => {
+      clients[0].emit({ status: "active", billing: "subscription" });
+    });
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+
+    act(() => {
+      clients[0].emit({ status: "idle" });
+    });
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+  });
+
   it("connecting中のsession切替後にstartが失敗してもidleをerrorで上書きしない", async () => {
     const start = deferred();
     const { result, rerender, clients, fallback, applyLipSyncSource } = setup([start.promise]);

@@ -2230,12 +2230,14 @@ function App() {
                 });
             },
             getFrequency: () => voiceFrequency,
+            canPlay: () => voicePlayer.isPlaybackEnabled(),
           }),
           "voice.play": createVoicePlayHandler({
             play: (clipRef, options) => {
               voiceApi.play(clipRef, options);
             },
             getFrequency: () => voiceFrequency,
+            canPlay: () => voicePlayer.isPlaybackEnabled(),
           }),
           // ── Pomodoro ─────────────────────────────────────
           "pomodoro.start": createPomodoroStartHandler({
@@ -3612,6 +3614,7 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
+    setFallbackPlaybackEnabled: (enabled) => voicePlayer.setPlaybackEnabled(enabled),
   });
 
   const handleBodyReady = useCallback(
