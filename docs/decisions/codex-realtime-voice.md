@@ -240,9 +240,24 @@ mappingは導入しない。persona固有のstate expression catalogは、共通
 
 ### Voice Summaryとの共存
 
-GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割り込みが起きる。GPT Liveをactive時の
-唯一の音声owner、Voice Summaryをfallbackにする方向が妥当だが、抑止範囲、未通知resultの扱い、
-切断後の復帰方法は未決定である。現時点では挙動を変更せず、別decisionで確定する。
+GPT Liveは`connecting` / `active`の間だけ唯一の音声ownerとなり、Voice Summaryは
+`idle` / `error`時のfallbackとする。Live開始時はVoicePlayerの再生中音声を停止し、
+合成やclip取得のpublic `completion` / `waitUntilIdle`を即時cancelし、進行中のfetchもabortする。
+cancel後にbackend promiseが完了してもgeneration guardで再生せず、`VoiceHandle.cancellationReason`で
+通常完了・実エラー・host cancelを区別できる。所有中に届いた`voice_say` / `voice_play`は
+`spoken: false` / `played: false`で完了し、切断後に古い要約を再生するqueueは持たない。
+stop、remote close、start failure、session切替でいずれもVoicePlayerを即時復帰させる。
+
+MCP tool requestにはRust側のevent作成時点でaudio ownershipの`ownerId` / `generation` /
+`fallbackPlaybackEnabled`をstampする。WebView dispatch時のcurrent stateだけで判断すると、Live中に
+作られたrequestがstop後に届いて古い要約を再生できるためである。handlerはrequest provenanceと
+current VoicePlayerのowner ID + generationが完全一致する場合だけ再生する。owner IDはWebViewの
+wall clockではなく、生存中のRust processがWebView incarnationごとに発行する。frontendからRustへの
+ownership更新は同じowner ID内のgenerationで順序付けし、非同期invokeが逆順に完了しても古い更新を
+採用しない。owner登録はcandidate発行と最初のstate更新によるactivationの二段階に分け、前WebViewの
+遅延registerだけではactive leaseを奪えない。owner mismatchはIPC errorとして返し、frontendはcandidateを
+再取得してからreconcileする。ただし古いgeneration / update attemptの後着errorは、より新しい成功済み
+leaseをinvalidateしない。fallbackへのrestore IPCは一時失敗に備えてbounded retryする。
 
 ## 今後も守る invariant
 
@@ -331,6 +346,11 @@ experience を失う。
 - timeout後のlate connection、stop後のlate microphoneを解放する
 - remote closed後は一回のクリックで再接続する
 - old attempt/clientがnew active clientを破棄しない
+- synthesis / resolver / fetch待機中のLive開始でpublic completionと`waitUntilIdle`が即時完了する
+- cancel後にfallbackを再有効化してもold generationの音声を再生しない
+- stop / start failure / session切替 / unmountの全経路でfallback playbackを復帰する
+- Live ownership provenance付きの遅延`voice_say` / `voice_play`を復帰後も再生しない
+- clipの実エラーとhost cancellationを`VoiceHandle.cancellationReason`で区別する
 
 加えて実機で、voice turnのTUI表示、TUI approval response、ユーザー発話割り込み、session切替、remote close、
 複数subagent稼働中のvoice開始を確認する。

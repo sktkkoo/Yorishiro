@@ -547,8 +547,19 @@ export interface VoicePlayOptions {
   volume?: number;
 }
 
+/** Host-side reason why a voice operation completed without reaching natural playback completion. */
+export type VoiceCancellationReason = "playback-disabled" | "stopped" | "disposed";
+
 export interface VoiceHandle {
   readonly startedAt: number;
+  /**
+   * Set when the host cancels playback. In that case `completion` resolves immediately even if
+   * synthesis, clip resolution, or fetch cleanup is still finishing in the background.
+   *
+   * A real clip resolution or fetch failure that wins before cancellation still rejects
+   * `completion`; callers can therefore distinguish failure from host cancellation.
+   */
+  readonly cancellationReason?: VoiceCancellationReason;
   stop(fadeMs?: number): Promise<void>;
   readonly completion: Promise<void>;
 }

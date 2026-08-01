@@ -40,10 +40,10 @@ class FakeClient implements CodexRealtimeClientLike {
     return this.status;
   }
 
-  start(): Promise<void> {
+  readonly start = vi.fn((): Promise<void> => {
     this.emit({ status: "connecting" });
     return this.startResult;
-  }
+  });
 
   sampleMouth(out?: MouthValues): MouthValues {
     return out ?? { ...ZERO_MOUTH };
@@ -55,7 +55,10 @@ class FakeClient implements CodexRealtimeClientLike {
   }
 }
 
-function setup(starts: Promise<void>[]) {
+function setup(
+  starts: Promise<void>[],
+  setFallbackPlaybackEnabled: (enabled: boolean) => void | Promise<void> = vi.fn(),
+) {
   const clients: FakeClient[] = [];
   const createClient: CodexRealtimeClientFactory = (_sessionId, onStateChange) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
@@ -72,17 +75,88 @@ function setup(starts: Promise<void>[]) {
         available,
         fallbackLipSyncSource: fallback,
         applyLipSyncSource,
+        setFallbackPlaybackEnabled,
         createClient,
       }),
     { initialProps: { sessionId: "main", available: true } },
   );
-  return { ...hook, clients, fallback, applyLipSyncSource };
+  return { ...hook, clients, fallback, applyLipSyncSource, setFallbackPlaybackEnabled };
 }
 
 describe("useCodexRealtime", () => {
+  it("mount 時に Rust 側 ownership provenance を fallback へ同期する", () => {
+    const { setFallbackPlaybackEnabled } = setup([]);
+
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it("connecting から GPT Live が audio を所有し、remote close 後に fallback を戻す", async () => {
+    const start = deferred();
+    const { result, clients, setFallbackPlaybackEnabled } = setup([start.promise]);
+
+    act(() => {
+      void result.current.toggle();
+    });
+    expect(result.current.state.status).toBe("connecting");
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+
+    act(() => {
+      clients[0].emit({ status: "active", billing: "subscription" });
+    });
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+
+    act(() => {
+      clients[0].emit({ status: "idle" });
+    });
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it("ownership provenance の claim 完了前には client を開始しない", async () => {
+    const ownershipClaim = deferred();
+    const setFallbackPlaybackEnabled = vi.fn((enabled: boolean) =>
+      enabled ? undefined : ownershipClaim.promise,
+    );
+    const { result, clients } = setup([Promise.resolve()], setFallbackPlaybackEnabled);
+
+    let toggle: Promise<void> = Promise.resolve();
+    act(() => {
+      toggle = result.current.toggle();
+    });
+    expect(clients[0].start).not.toHaveBeenCalled();
+
+    await act(async () => {
+      ownershipClaim.resolve();
+      await toggle;
+    });
+
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+  });
+
+  it("ownership provenance の claim 待機中に stop した client は後から開始しない", async () => {
+    const ownershipClaim = deferred();
+    const setFallbackPlaybackEnabled = vi.fn((enabled: boolean) =>
+      enabled ? undefined : ownershipClaim.promise,
+    );
+    const { result, clients } = setup([Promise.resolve()], setFallbackPlaybackEnabled);
+
+    let toggle: Promise<void> = Promise.resolve();
+    act(() => {
+      toggle = result.current.toggle();
+      result.current.stop();
+    });
+    await act(async () => {
+      ownershipClaim.resolve();
+      await toggle;
+    });
+
+    expect(clients[0].start).not.toHaveBeenCalled();
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+  });
+
   it("connecting中のsession切替後にstartが失敗してもidleをerrorで上書きしない", async () => {
     const start = deferred();
-    const { result, rerender, clients, fallback, applyLipSyncSource } = setup([start.promise]);
+    const { result, rerender, clients, fallback, applyLipSyncSource, setFallbackPlaybackEnabled } =
+      setup([start.promise]);
 
     act(() => {
       void result.current.toggle();
@@ -93,6 +167,7 @@ describe("useCodexRealtime", () => {
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
     expect(result.current.state).toEqual({ status: "idle" });
     expect(applyLipSyncSource).toHaveBeenLastCalledWith(fallback);
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
 
     await act(async () => {
       start.reject(new Error("stale start failure"));
@@ -101,6 +176,26 @@ describe("useCodexRealtime", () => {
 
     expect(result.current.state).toEqual({ status: "idle" });
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("current start failure 後に fallback playback を戻す", async () => {
+    const start = deferred();
+    const { result, clients, setFallbackPlaybackEnabled } = setup([start.promise]);
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    let toggle: Promise<void> = Promise.resolve();
+    act(() => {
+      toggle = result.current.toggle();
+    });
+    await act(async () => {
+      start.reject(new Error("start failed"));
+      await toggle;
+    });
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toEqual({ status: "error", error: "start failed" });
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    consoleError.mockRestore();
   });
 
   it("remote closedのidleで所有権を解放し、次の1クリックで再接続する", async () => {
@@ -142,7 +237,9 @@ describe("useCodexRealtime", () => {
   });
 
   it("明示stopを先に所有権解除し、後着のclosed/error通知をidleへ戻さない", async () => {
-    const { result, clients, fallback, applyLipSyncSource } = setup([Promise.resolve()]);
+    const { result, clients, fallback, applyLipSyncSource, setFallbackPlaybackEnabled } = setup([
+      Promise.resolve(),
+    ]);
 
     await act(async () => {
       await result.current.toggle();
@@ -158,10 +255,12 @@ describe("useCodexRealtime", () => {
     expect(result.current.state).toEqual({ status: "idle" });
     expect(result.current.getLipSyncSource()).toBe(fallback);
     expect(applyLipSyncSource).toHaveBeenLastCalledWith(fallback);
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
   });
 
   it("error後にsessionを切り替えると旧sessionのerrorをidleへ戻す", async () => {
-    const { result, rerender, clients, fallback, applyLipSyncSource } = setup([Promise.resolve()]);
+    const { result, rerender, clients, fallback, applyLipSyncSource, setFallbackPlaybackEnabled } =
+      setup([Promise.resolve()]);
 
     await act(async () => {
       await result.current.toggle();
@@ -175,5 +274,79 @@ describe("useCodexRealtime", () => {
 
     expect(result.current.state).toEqual({ status: "idle" });
     expect(applyLipSyncSource).toHaveBeenLastCalledWith(fallback);
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it("unmount 中に client を止めて fallback playback を戻す", async () => {
+    const { result, clients, unmount, setFallbackPlaybackEnabled } = setup([Promise.resolve()]);
+
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => {
+      clients[0].emit({ status: "active", billing: "subscription" });
+    });
+
+    unmount();
+
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+  });
+
+  it.each([
+    "stop",
+    "error",
+    "remote-close",
+    "session-switch",
+  ] as const)("%s path retries a rejected fallback ownership restore", async (path) => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    let rustFallbackEnabled = true;
+    let rejectNextRestore = false;
+    const setFallbackPlaybackEnabled = vi.fn(async (enabled: boolean) => {
+      if (enabled && rejectNextRestore) {
+        rejectNextRestore = false;
+        throw new Error("transient restore IPC failure");
+      }
+      rustFallbackEnabled = enabled;
+    });
+
+    try {
+      const { result, clients, rerender, unmount } = setup(
+        [Promise.resolve()],
+        setFallbackPlaybackEnabled,
+      );
+      await act(async () => {
+        await result.current.toggle();
+      });
+      act(() => {
+        clients[0].emit({ status: "active", billing: "subscription" });
+      });
+      expect(rustFallbackEnabled).toBe(false);
+      rejectNextRestore = true;
+
+      if (path === "stop") {
+        act(() => result.current.stop());
+      } else if (path === "error") {
+        act(() => clients[0].emit({ status: "error", error: "connection failed" }));
+      } else if (path === "remote-close") {
+        act(() => clients[0].emit({ status: "idle" }));
+      } else {
+        rerender({ sessionId: "other", available: false });
+      }
+
+      await act(async () => {
+        await Promise.resolve();
+        await vi.runAllTimersAsync();
+      });
+
+      expect(rustFallbackEnabled).toBe(true);
+      expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+      expect(setFallbackPlaybackEnabled.mock.calls.filter(([enabled]) => enabled)).toHaveLength(3);
+      unmount();
+    } finally {
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

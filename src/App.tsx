@@ -105,7 +105,7 @@ import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
-import { SayTtsEngine, VoicePlayer } from "./core/voice";
+import { SayTtsEngine, VoicePlaybackLeaseSync, VoicePlayer } from "./core/voice";
 import {
   changeStrings,
   getStrings,
@@ -1181,6 +1181,11 @@ function App() {
     const effectDispatcher = new EffectDispatcher();
     const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
     const voiceApi = voicePlayer.createVoiceAPI();
+    const voicePlaybackLeaseSync = new VoicePlaybackLeaseSync(voicePlayer, {
+      registerOwner: () => invoke<string>("mcp_voice_playback_register_owner"),
+      update: ({ ownerId, generation, enabled }) =>
+        invoke("mcp_voice_playback_set_enabled", { ownerId, generation, enabled }),
+    });
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
@@ -2233,12 +2238,14 @@ function App() {
                 });
             },
             getFrequency: () => voiceFrequency,
+            canPlay: (provenance) => voicePlayer.canPlayRequest(provenance),
           }),
           "voice.play": createVoicePlayHandler({
             play: (clipRef, options) => {
               voiceApi.play(clipRef, options);
             },
             getFrequency: () => voiceFrequency,
+            canPlay: (provenance) => voicePlayer.canPlayRequest(provenance),
           }),
           // ── Pomodoro ─────────────────────────────────────
           "pomodoro.start": createPomodoroStartHandler({
@@ -2272,19 +2279,26 @@ function App() {
           restorePresenceFromPrompt();
         };
 
-        await listen<{ requestId: string; tool: string; request: unknown }>(
-          "mcp:tool-request",
-          async (event) => {
-            const result = await dispatchToolEvent(handlers, {
-              tool: event.payload.tool,
-              request: event.payload.request,
-            });
-            await invoke("mcp_tool_response", {
-              requestId: event.payload.requestId,
-              response: result,
-            });
-          },
-        );
+        await listen<{
+          requestId: string;
+          tool: string;
+          request: unknown;
+          voicePlayback?: {
+            ownerId: string;
+            generation: number;
+            fallbackPlaybackEnabled: boolean;
+          };
+        }>("mcp:tool-request", async (event) => {
+          const result = await dispatchToolEvent(handlers, {
+            tool: event.payload.tool,
+            request: event.payload.request,
+            context: { voicePlayback: event.payload.voicePlayback },
+          });
+          await invoke("mcp_tool_response", {
+            requestId: event.payload.requestId,
+            response: result,
+          });
+        });
         appLog.write({
           phase: "mcp-channel",
           note: "mcp:tool-request listener attached",
@@ -2361,6 +2375,7 @@ function App() {
       effectDispatcher,
       effectPackRunner,
       voicePlayer,
+      voicePlaybackLeaseSync,
       scenePackRegistry,
       uiPackRegistry,
       packRegistry,
@@ -2380,6 +2395,7 @@ function App() {
     effectDispatcher,
     effectPackRunner,
     voicePlayer,
+    voicePlaybackLeaseSync,
     scenePackRegistry,
     uiPackRegistry,
     packRegistry,
@@ -3619,6 +3635,7 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
+    setFallbackPlaybackEnabled: (enabled) => voicePlaybackLeaseSync.setEnabled(enabled),
     stateExpressionCallbacks: realtimeStateExpressionCallbacks,
   });
 

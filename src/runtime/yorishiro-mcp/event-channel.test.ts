@@ -55,4 +55,23 @@ describe("dispatchToolEvent", () => {
       reason: "inner failure",
     });
   });
+
+  it("passes request creation provenance to the selected handler", async () => {
+    const handlers: ToolHandlerMap = {
+      "voice.say": async (_request, context) => context?.voicePlayback,
+    };
+    const voicePlayback = {
+      ownerId: "rust-owner-1",
+      generation: 3,
+      fallbackPlaybackEnabled: false,
+    };
+
+    const result = await dispatchToolEvent(handlers, {
+      tool: "voice.say",
+      request: { text: "delayed" },
+      context: { voicePlayback },
+    });
+
+    expect(result).toEqual({ ok: true, payload: voicePlayback });
+  });
 });

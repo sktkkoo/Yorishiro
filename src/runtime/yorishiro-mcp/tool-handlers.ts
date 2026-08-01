@@ -19,6 +19,7 @@ import type * as THREE from "three";
 import type { Body, ExpressionKind } from "../../core/body";
 import { colorLerp } from "../../core/tween/lerp";
 import type { TweenManager } from "../../core/tween/tween-manager";
+import type { VoicePlaybackProvenanceStamp } from "../../core/voice/voice-player";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ManualCueResult } from "../attention-light-cue/cue-store";
 import type { ApplyPresenceResult } from "../presence-intensity/presence-intensity";
@@ -37,6 +38,7 @@ import {
 import type { LoadReport } from "../user-pack-loader/load-report";
 import type { UserPackEntry } from "../user-pack-loader/user-pack-loader";
 import type { UserPackRegistry } from "../user-pack-loader/user-pack-registry";
+import type { ToolInvocationContext } from "./event-channel";
 
 export interface PackStatusEntry {
   readonly id: string;
@@ -1966,6 +1968,7 @@ export function createPersonaReflexListHandler(deps: PersonaReflexListDeps) {
 export interface VoiceSayDeps {
   readonly speak: (text: string, voice?: string, mood?: VoiceSayMood) => void;
   readonly getFrequency: () => "on" | "off";
+  readonly canPlay?: (provenance: VoicePlaybackProvenanceStamp | undefined) => boolean;
 }
 
 export interface VoiceSayMood {
@@ -1983,8 +1986,14 @@ export interface VoiceSayResult {
  * - "off": 常に破棄（global prompt で voice_say を呼ばないよう指示済み）
  */
 export function createVoiceSayHandler(deps: VoiceSayDeps) {
-  return async (request: unknown): Promise<VoiceSayResult> => {
-    if (deps.getFrequency() === "off") return { spoken: false };
+  return async (request: unknown, context?: ToolInvocationContext): Promise<VoiceSayResult> => {
+    if (
+      deps.getFrequency() === "off" ||
+      context?.voicePlayback?.fallbackPlaybackEnabled === false ||
+      deps.canPlay?.(context?.voicePlayback) === false
+    ) {
+      return { spoken: false };
+    }
     const r = requestRecord(request);
     const text = r.text;
     if (typeof text !== "string" || text === "") {
@@ -2021,6 +2030,7 @@ export function createVoiceSayHandler(deps: VoiceSayDeps) {
 export interface VoicePlayDeps {
   readonly play: (clipRef: string, options?: { readonly volume?: number }) => void;
   readonly getFrequency: () => "on" | "off";
+  readonly canPlay?: (provenance: VoicePlaybackProvenanceStamp | undefined) => boolean;
 }
 
 export interface VoicePlayResult {
@@ -2034,8 +2044,14 @@ export interface VoicePlayResult {
  * pack-local の `./...` `assets/...` は VoicePlayer 側で resolve 失敗扱いとなる。
  */
 export function createVoicePlayHandler(deps: VoicePlayDeps) {
-  return async (request: unknown): Promise<VoicePlayResult> => {
-    if (deps.getFrequency() === "off") return { played: false };
+  return async (request: unknown, context?: ToolInvocationContext): Promise<VoicePlayResult> => {
+    if (
+      deps.getFrequency() === "off" ||
+      context?.voicePlayback?.fallbackPlaybackEnabled === false ||
+      deps.canPlay?.(context?.voicePlayback) === false
+    ) {
+      return { played: false };
+    }
     const r = requestRecord(request);
     const clipRef = r.clipRef;
     if (typeof clipRef !== "string" || clipRef === "") {

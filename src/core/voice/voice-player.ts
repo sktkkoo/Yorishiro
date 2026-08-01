@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   SayOptions,
   VoiceAPI,
+  VoiceCancellationReason,
   VoiceClipRef,
   VoiceHandle,
   VoicePlayOptions,
@@ -16,6 +17,26 @@ import { isPlayableVoiceUrl, resolveSharedVoiceRef } from "./voice-clip-resolver
 const FADE_OUT_MS = 150;
 
 export type VoiceClipResolver = (clipRef: VoiceClipRef) => Promise<string | null> | string | null;
+
+export interface VoicePlaybackProvenanceStamp {
+  readonly ownerId: string;
+  readonly generation: number;
+  readonly fallbackPlaybackEnabled: boolean;
+}
+
+export interface VoicePlaybackOwnershipState {
+  readonly ownerId: string | null;
+  readonly generation: number;
+  readonly fallbackPlaybackEnabled: boolean;
+}
+
+interface VoicePlaybackOperation {
+  readonly generation: number;
+  readonly abortController: AbortController;
+  readonly cancellation: Promise<void>;
+  cancellationReason: VoiceCancellationReason | undefined;
+  cancel(reason: VoiceCancellationReason): void;
+}
 
 /**
  * TTS 音声を Web Audio パイプラインで再生する VoicePlayer。
@@ -43,6 +64,10 @@ export class VoicePlayer {
   private readonly mouthCallbackScratch = createMouthValues();
   /** 進行中の発話（合成中〜再生完了）。waitUntilIdle の待ち対象。 */
   private readonly inFlight = new Set<Promise<void>>();
+  private readonly operations = new Set<VoicePlaybackOperation>();
+  private playbackOwnerId: string | null = null;
+  private playbackEnabled = true;
+  private playbackGeneration = 0;
 
   constructor(voice?: string, engine?: TtsEngine) {
     this.voice = voice ?? null;
@@ -83,6 +108,54 @@ export class VoicePlayer {
     }
   }
 
+  /** GPT Live など別の audio owner がいる間、VoicePlayer の全再生を抑止する。 */
+  setPlaybackEnabled(enabled: boolean): VoicePlaybackOwnershipState {
+    if (this.playbackEnabled === enabled) return this.getPlaybackOwnershipState();
+    this.playbackEnabled = enabled;
+    this.playbackGeneration += 1;
+    if (!enabled) {
+      this.cancelOperations("playback-disabled");
+      this.stopPlayback();
+      void invoke("tts_stop", {});
+    }
+    return this.getPlaybackOwnershipState();
+  }
+
+  isPlaybackEnabled(): boolean {
+    return this.playbackEnabled;
+  }
+
+  setPlaybackOwnerId(ownerId: string): void {
+    if (ownerId === "") throw new Error("Voice playback owner ID must not be empty");
+    if (this.playbackOwnerId !== null && this.playbackOwnerId !== ownerId) {
+      throw new Error("Voice playback owner ID cannot change during a WebView incarnation");
+    }
+    this.playbackOwnerId = ownerId;
+  }
+
+  clearPlaybackOwnerId(ownerId: string): void {
+    if (this.playbackOwnerId === ownerId) this.playbackOwnerId = null;
+  }
+
+  canPlayRequest(provenance: VoicePlaybackProvenanceStamp | undefined): boolean {
+    return (
+      provenance !== undefined &&
+      this.playbackOwnerId !== null &&
+      provenance.ownerId === this.playbackOwnerId &&
+      provenance.generation === this.playbackGeneration &&
+      provenance.fallbackPlaybackEnabled &&
+      this.playbackEnabled
+    );
+  }
+
+  getPlaybackOwnershipState(): VoicePlaybackOwnershipState {
+    return {
+      ownerId: this.playbackOwnerId,
+      generation: this.playbackGeneration,
+      fallbackPlaybackEnabled: this.playbackEnabled,
+    };
+  }
+
   /** 発話の completion を in-flight として追跡する。失敗も完了として扱う。 */
   private trackCompletion(completion: Promise<unknown>): void {
     const entry = completion.then(
@@ -106,6 +179,7 @@ export class VoicePlayer {
         this.playClip(clipRef, playOptions, options.resolveClip),
 
       silence: (_fadeMs?: number): void => {
+        this.cancelOperations("stopped");
         this.stopPlayback();
         invoke("tts_stop", {});
       },
@@ -113,6 +187,8 @@ export class VoicePlayer {
   }
 
   dispose(): void {
+    this.playbackGeneration += 1;
+    this.cancelOperations("disposed");
     this.stopPlayback();
     this.disconnectGraph();
     this.onMouthValues = null;
@@ -125,34 +201,39 @@ export class VoicePlayer {
   private sayViaWebAudio(text: string, options?: SayOptions): VoiceHandle {
     const startedAt = Date.now();
     const playbackId = this.createPlaybackId();
-    let stopped = false;
+    const operation = this.createOperation();
 
-    const completion = (async () => {
+    const work = (async () => {
+      if (!this.isOperationCurrent(operation)) return;
       try {
         const audioData = await this.engine?.synthesize(text, this.voice ?? undefined);
-        if (!audioData || stopped) return;
+        if (!audioData || !this.isOperationCurrent(operation)) return;
 
         const ctx = await ensureAudioContextRunning();
+        if (!this.isOperationCurrent(operation)) return;
 
         this.ensureGraph(ctx);
 
         const audioBuffer = await decodeAudioData(ctx, audioData);
-        if (stopped) return;
+        if (!this.isOperationCurrent(operation)) return;
 
         await this.playBuffer(playbackId, ctx, audioBuffer, normalizeVolume(options?.volume));
       } catch (error) {
-        if (stopped) return;
+        if (!this.isOperationCurrent(operation)) return;
         this.stopPlayback(playbackId);
         console.error("[voice] Web Audio TTS failed; lip sync cannot run.", error);
         await invoke("tts_speak", { text, voice: this.voice });
       }
     })();
-    this.trackCompletion(completion);
+    const completion = this.completeOperation(operation, work);
 
     return {
       startedAt,
+      get cancellationReason() {
+        return operation.cancellationReason;
+      },
       stop: () => {
-        stopped = true;
+        operation.cancel("stopped");
         this.stopPlayback(playbackId);
         void invoke("tts_stop", {});
         return Promise.resolve();
@@ -186,29 +267,31 @@ export class VoicePlayer {
   ): VoiceHandle {
     let startedAt = 0;
     const playbackId = this.createPlaybackId();
-    let stopped = false;
+    const operation = this.createOperation();
 
-    const completion = (async () => {
+    const work = (async () => {
+      if (!this.isOperationCurrent(operation)) return;
       const url = await this.resolveClipUrl(clipRef, resolveClip);
-      if (stopped) return;
+      if (!this.isOperationCurrent(operation)) return;
       if (url === null) {
         throw new Error(`Unable to resolve voice clip '${clipRef}'`);
       }
 
       try {
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: operation.abortController.signal });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
         const audioData = await response.arrayBuffer();
-        if (stopped) return;
+        if (!this.isOperationCurrent(operation)) return;
 
         const ctx = await ensureAudioContextRunning();
+        if (!this.isOperationCurrent(operation)) return;
 
         this.ensureGraph(ctx);
 
         const audioBuffer = await decodeAudioData(ctx, audioData);
-        if (stopped) return;
+        if (!this.isOperationCurrent(operation)) return;
 
         await this.playBuffer(
           playbackId,
@@ -220,21 +303,24 @@ export class VoicePlayer {
           },
         );
       } catch (error) {
-        if (!stopped) {
+        if (this.isOperationCurrent(operation)) {
           console.error(`[voice] Failed to play clip '${clipRef}'.`, error);
           throw error;
         }
       }
     })();
+    const completion = this.completeOperation(operation, work);
     void completion.catch(() => {});
-    this.trackCompletion(completion);
 
     return {
       get startedAt() {
         return startedAt;
       },
+      get cancellationReason() {
+        return operation.cancellationReason;
+      },
       stop: () => {
-        stopped = true;
+        operation.cancel("stopped");
         this.stopPlayback(playbackId);
         return Promise.resolve();
       },
@@ -388,17 +474,45 @@ export class VoicePlayer {
   // ---------------------------------------------------------------------------
 
   private sayViaOsTts(text: string): VoiceHandle {
-    const completion = invoke("tts_speak", {
-      text,
-      voice: this.voice,
-    }).then(() => {});
-    this.trackCompletion(completion);
+    const operation = this.createOperation();
+    const work = this.isOperationCurrent(operation)
+      ? invoke("tts_speak", {
+          text,
+          voice: this.voice,
+        }).then(() => {})
+      : Promise.resolve();
+    const completion = this.completeOperation(operation, work);
 
     return {
       startedAt: Date.now(),
-      stop: () => invoke("tts_stop", {}).then(() => {}),
+      get cancellationReason() {
+        return operation.cancellationReason;
+      },
+      stop: () => {
+        operation.cancel("stopped");
+        return invoke("tts_stop", {}).then(() => {});
+      },
       completion,
     };
+  }
+
+  private createOperation(): VoicePlaybackOperation {
+    const operation = createVoicePlaybackOperation(this.playbackGeneration);
+    this.operations.add(operation);
+    if (!this.playbackEnabled) operation.cancel("playback-disabled");
+    return operation;
+  }
+
+  private completeOperation(operation: VoicePlaybackOperation, work: Promise<void>): Promise<void> {
+    const completion = Promise.race([work, operation.cancellation]).finally(() => {
+      this.operations.delete(operation);
+    });
+    this.trackCompletion(completion);
+    return completion;
+  }
+
+  private cancelOperations(reason: VoiceCancellationReason): void {
+    for (const operation of this.operations) operation.cancel(reason);
   }
 
   private createPlaybackId(): number {
@@ -406,6 +520,35 @@ export class VoicePlayer {
     this.nextPlaybackId += 1;
     return id;
   }
+
+  private isOperationCurrent(operation: VoicePlaybackOperation): boolean {
+    return (
+      operation.cancellationReason === undefined &&
+      this.playbackEnabled &&
+      operation.generation === this.playbackGeneration
+    );
+  }
+}
+
+function createVoicePlaybackOperation(generation: number): VoicePlaybackOperation {
+  const abortController = new AbortController();
+  let resolveCancellation: () => void = () => {};
+  const cancellation = new Promise<void>((resolve) => {
+    resolveCancellation = resolve;
+  });
+  const operation: VoicePlaybackOperation = {
+    generation,
+    abortController,
+    cancellation,
+    cancellationReason: undefined,
+    cancel(reason) {
+      if (operation.cancellationReason !== undefined) return;
+      operation.cancellationReason = reason;
+      abortController.abort();
+      resolveCancellation();
+    },
+  };
+  return operation;
 }
 
 async function resolveWith(

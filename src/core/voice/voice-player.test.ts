@@ -174,7 +174,7 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
     await flushPlaybackStart();
 
     expect(handle.startedAt).toBeGreaterThan(0);
-    expect(mockFetch).toHaveBeenCalledWith("/voice.wav");
+    expect(mockFetch).toHaveBeenCalledWith("/voice.wav", { signal: expect.any(AbortSignal) });
     expect(mockAudioContext.decodeAudioData).toHaveBeenCalledTimes(1);
     expect(mockAudioContext.createBuffer).not.toHaveBeenCalled();
 
@@ -189,6 +189,19 @@ describe("VoicePlayer (engine なし — OS TTS フォールバック)", () => {
 
     await expect(handle.completion).rejects.toThrow("Unable to resolve voice clip");
     expect(handle.startedAt).toBe(0);
+    expect(handle.cancellationReason).toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("再生無効中の play() は typed cancellation として完了する", async () => {
+    const player = new VoicePlayer();
+    player.setPlaybackEnabled(false);
+
+    const handle = player.createVoiceAPI().play("clip:missing");
+
+    await expect(handle.completion).resolves.toBeUndefined();
+    expect(handle.startedAt).toBe(0);
+    expect(handle.cancellationReason).toBe("playback-disabled");
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
@@ -283,6 +296,195 @@ describe("VoicePlayer (engine あり — Web Audio)", () => {
 
     expect(engine.synthesize).toHaveBeenCalledWith("テスト", "Kyoko");
     expect(mockInvoke).not.toHaveBeenCalledWith("tts_speak", expect.anything());
+  });
+
+  it("再生無効中は新しい発話を合成しない", async () => {
+    const engine = createMockEngine();
+    const player = new VoicePlayer(undefined, engine);
+    player.setPlaybackEnabled(false);
+
+    const handle = player.createVoiceAPI().say("スキップ");
+
+    await expect(handle.completion).resolves.toBeUndefined();
+    expect(engine.synthesize).not.toHaveBeenCalled();
+    expect(player.isPlaybackEnabled()).toBe(false);
+  });
+
+  it("Rust-issued owner ID と current generation が一致する request だけを許可する", () => {
+    const player = new VoicePlayer();
+    player.setPlaybackOwnerId("rust-owner-1");
+    const initial = player.getPlaybackOwnershipState();
+
+    expect(
+      player.canPlayRequest({
+        ownerId: "rust-owner-1",
+        generation: initial.generation,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(true);
+
+    player.setPlaybackEnabled(false);
+    player.setPlaybackEnabled(true);
+
+    expect(
+      player.canPlayRequest({
+        ownerId: "rust-owner-1",
+        generation: initial.generation,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      player.canPlayRequest({
+        ownerId: "previous-rust-owner",
+        generation: 2,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(false);
+    expect(
+      player.canPlayRequest({
+        ownerId: "rust-owner-1",
+        generation: 2,
+        fallbackPlaybackEnabled: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("playback owner identity does not depend on wall-clock ordering", () => {
+    const now = vi.spyOn(Date, "now").mockReturnValueOnce(200).mockReturnValueOnce(100);
+    try {
+      const first = new VoicePlayer();
+      const second = new VoicePlayer();
+      first.setPlaybackOwnerId("rust-owner-first");
+      second.setPlaybackOwnerId("rust-owner-second");
+
+      expect(first.getPlaybackOwnershipState().ownerId).toBe("rust-owner-first");
+      expect(second.getPlaybackOwnershipState().ownerId).toBe("rust-owner-second");
+      expect(now).not.toHaveBeenCalled();
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it("only clears the owner ID that lost its Rust lease", () => {
+    const player = new VoicePlayer();
+    player.setPlaybackOwnerId("current-owner");
+
+    player.clearPlaybackOwnerId("stale-owner");
+    expect(player.getPlaybackOwnershipState().ownerId).toBe("current-owner");
+
+    player.clearPlaybackOwnerId("current-owner");
+    player.setPlaybackOwnerId("reacquired-owner");
+    expect(player.getPlaybackOwnershipState().ownerId).toBe("reacquired-owner");
+  });
+
+  it("合成中に再生を無効化した発話は、後から完了しても再生しない", async () => {
+    let resolveSynth: (audio: ArrayBuffer) => void = () => {};
+    const engine: TtsEngine = {
+      name: "mock",
+      synthesize: vi.fn(
+        () =>
+          new Promise<ArrayBuffer>((resolve) => {
+            resolveSynth = resolve;
+          }),
+      ),
+    };
+    const player = new VoicePlayer(undefined, engine);
+    const handle = player.createVoiceAPI().say("合成中");
+
+    player.setPlaybackEnabled(false);
+    await handle.completion;
+
+    expect(handle.cancellationReason).toBe("playback-disabled");
+    await expect(player.waitUntilIdle(100)).resolves.toBeUndefined();
+
+    player.setPlaybackEnabled(true);
+    resolveSynth(createMinimalWav());
+    await flushPlaybackStart();
+
+    expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalledWith("tts_stop", {});
+  });
+
+  it("clip resolver 待機中の completion を即時 cancel し、再有効化後も再生しない", async () => {
+    let resolveClip: (url: string) => void = () => {};
+    const player = new VoicePlayer();
+    const api = player.createVoiceAPI({
+      resolveClip: () =>
+        new Promise<string>((resolve) => {
+          resolveClip = resolve;
+        }),
+    });
+    const handle = api.play("clip:pending");
+    await Promise.resolve();
+
+    player.setPlaybackEnabled(false);
+    await handle.completion;
+    expect(handle.cancellationReason).toBe("playback-disabled");
+    await expect(player.waitUntilIdle(100)).resolves.toBeUndefined();
+
+    player.setPlaybackEnabled(true);
+    resolveClip("/late.wav");
+    await flushPlaybackStart();
+
+    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+  });
+
+  it("clip fetch 待機中は AbortSignal を中断して completion を即時 cancel する", async () => {
+    let fetchSignal: AbortSignal | undefined;
+    mockFetch.mockImplementationOnce(
+      (_url: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          fetchSignal = init?.signal ?? undefined;
+          fetchSignal?.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        }),
+    );
+    const player = new VoicePlayer();
+    const api = player.createVoiceAPI({ resolveClip: () => "/pending.wav" });
+    const handle = api.play("clip:pending");
+    await flushPlaybackStart();
+
+    player.setPlaybackEnabled(false);
+    await handle.completion;
+
+    expect(fetchSignal?.aborted).toBe(true);
+    expect(handle.cancellationReason).toBe("playback-disabled");
+    await expect(player.waitUntilIdle(100)).resolves.toBeUndefined();
+    expect(mockAudioContext.createBufferSource).not.toHaveBeenCalled();
+  });
+
+  it("cancel 後に再有効化しても古い synthesis generation は新しい発話を置き換えない", async () => {
+    let resolveOldSynth: (audio: ArrayBuffer) => void = () => {};
+    const engine: TtsEngine = {
+      name: "mock",
+      synthesize: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<ArrayBuffer>((resolve) => {
+              resolveOldSynth = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(createMinimalWav()),
+    };
+    const player = new VoicePlayer(undefined, engine);
+    const api = player.createVoiceAPI();
+    const oldHandle = api.say("old");
+
+    player.setPlaybackEnabled(false);
+    await oldHandle.completion;
+    player.setPlaybackEnabled(true);
+    api.say("new");
+    await flushPlaybackStart();
+    const newSource = mockAudioContext.createBufferSource.mock.results[0].value;
+
+    resolveOldSynth(createMinimalWav());
+    await flushPlaybackStart();
+
+    expect(mockAudioContext.createBufferSource).toHaveBeenCalledTimes(1);
+    expect(newSource.stop).not.toHaveBeenCalled();
   });
 
   it("say() は VoiceHandle を返す", () => {

@@ -21,6 +21,7 @@
   - `http(s)://` / `asset://` / `blob:` — caller が解決済みの URL
 - 解決順序: scoped resolver（persona-aware）→ shared voice map → playable URL passthrough → null
 - 解決失敗は **silent ではない**: `completion` が reject、`startedAt` は `0` のまま。caller は「鳴っていない」を判定できる
+- GPT Live等のhost audio ownerが先にcancelした場合はfailureよりcancelが優先され、`completion`は即時resolve、`startedAt`は`0`のまま、`cancellationReason`に`playback-disabled`等を設定する。cancelより先に確定した解決・fetch失敗は従来通りrejectする
 - pack-local ref の path safety:
   - `./` または `assets/` prefix のみ許容
   - normalize 後の **全 segment** で `.` `..` を拒否
