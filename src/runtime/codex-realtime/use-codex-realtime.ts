@@ -156,71 +156,76 @@ export function useCodexRealtime({
 
   const stop = useCallback(() => stopClient(false), [stopClient]);
 
-  const start = useCallback(async () => {
-    if (clientRef.current) return;
-    voiceIntentRef.current = true;
-    let client: CodexRealtimeClientLike;
-    client = createClientRef.current(
-      sessionId,
-      (nextState) => {
-        // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
+  const start = useCallback(
+    async (preserveIntentUntilActive = false) => {
+      if (clientRef.current) return;
+      voiceIntentRef.current = true;
+      let preserveIntentOnFailure = preserveIntentUntilActive;
+      let client: CodexRealtimeClientLike;
+      client = createClientRef.current(
+        sessionId,
+        (nextState) => {
+          // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
+          if (clientRef.current !== client) return;
+
+          if (nextState.status === "error") {
+            if (!preserveIntentOnFailure) voiceIntentRef.current = false;
+            clientRef.current = null;
+            client.stop();
+            setState(nextState);
+            restoreFallbackPlayback();
+            restoreFallback();
+            return;
+          }
+
+          if (nextState.status === "idle") {
+            // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
+            if (!preserveIntentOnFailure) voiceIntentRef.current = false;
+            clientRef.current = null;
+            setState(nextState);
+            restoreFallbackPlayback();
+            restoreFallback();
+            return;
+          }
+
+          setState(nextState);
+          if (nextState.status === "active") {
+            preserveIntentOnFailure = false;
+            applyLipSyncSourceRef.current(client);
+          }
+        },
+        stateExpressionCallbacks,
+        () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
+      );
+      clientRef.current = client;
+
+      try {
+        // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
+        const pendingOwnershipClaim = claimFallbackPlayback();
+        if (pendingOwnershipClaim) await pendingOwnershipClaim;
         if (clientRef.current !== client) return;
-
-        if (nextState.status === "error") {
-          voiceIntentRef.current = false;
-          clientRef.current = null;
-          client.stop();
-          setState(nextState);
-          restoreFallbackPlayback();
-          restoreFallback();
-          return;
-        }
-
-        if (nextState.status === "idle") {
-          // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
-          voiceIntentRef.current = false;
-          clientRef.current = null;
-          setState(nextState);
-          restoreFallbackPlayback();
-          restoreFallback();
-          return;
-        }
-
-        setState(nextState);
-        if (nextState.status === "active") {
-          applyLipSyncSourceRef.current(client);
-        }
-      },
+        await client.start();
+      } catch (error) {
+        // client 自身の error 通知、stop、session 切替で所有権を失った後なら無視する。
+        if (clientRef.current !== client) return;
+        if (!preserveIntentOnFailure) voiceIntentRef.current = false;
+        clientRef.current = null;
+        client.stop();
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[codex-realtime] start failed", error);
+        setState({ status: "error", error: message });
+        restoreFallbackPlayback();
+        restoreFallback();
+      }
+    },
+    [
+      claimFallbackPlayback,
+      restoreFallback,
+      restoreFallbackPlayback,
+      sessionId,
       stateExpressionCallbacks,
-      () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
-    );
-    clientRef.current = client;
-
-    try {
-      // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
-      const pendingOwnershipClaim = claimFallbackPlayback();
-      if (pendingOwnershipClaim) await pendingOwnershipClaim;
-      if (clientRef.current !== client) return;
-      await client.start();
-    } catch (error) {
-      // client 自身の error 通知、stop、session 切替で所有権を失った後なら無視する。
-      if (clientRef.current !== client) return;
-      voiceIntentRef.current = false;
-      clientRef.current = null;
-      client.stop();
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[codex-realtime] start failed", error);
-      setState({ status: "error", error: message });
-      restoreFallbackPlayback();
-      restoreFallback();
-    }
-  }, [
-    claimFallbackPlayback,
-    restoreFallback,
-    restoreFallbackPlayback,
-    sessionId,
-    stateExpressionCallbacks,
-  ]);
+    ],
+  );
 
   const toggle = useCallback(async () => {
     if (clientRef.current) {
@@ -236,9 +241,9 @@ export function useCodexRealtime({
     if (!available) return;
     let tracker: CodexThreadTrackerLike;
     tracker = createThreadTracker(sessionId, (threadId) => {
-      if (threadTrackerRef.current !== tracker || !clientRef.current) return;
-      stopClient(true);
-      if (threadId && voiceIntentRef.current) void start();
+      if (threadTrackerRef.current !== tracker) return;
+      if (clientRef.current) stopClient(true);
+      if (threadId && voiceIntentRef.current) void start(true);
     });
     threadTrackerRef.current = tracker;
     void tracker.start().catch((error) => {
@@ -255,7 +260,14 @@ export function useCodexRealtime({
     const sessionChanged = sessionIdRef.current !== sessionId;
     sessionIdRef.current = sessionId;
     if (!available || sessionChanged) stopClient(true);
-    if (available && voiceIntentRef.current && !clientRef.current) void start();
+    if (
+      available &&
+      voiceIntentRef.current &&
+      !clientRef.current &&
+      threadTrackerRef.current?.getCurrentThreadId()
+    ) {
+      void start(true);
+    }
   }, [available, sessionId, start, stopClient]);
 
   useEffect(() => {

@@ -110,6 +110,9 @@ function setup(
       trackedThreadId = threadId;
       notifyThreadChange(threadId);
     },
+    setTrackedThreadId: (threadId: string | null) => {
+      trackedThreadId = threadId;
+    },
   };
 }
 
@@ -229,6 +232,48 @@ describe("useCodexRealtime", () => {
     expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
   });
 
+  it("waits for the new workspace tracker before reconnecting voice", async () => {
+    const { result, rerender, clients, setTrackedThreadId, changeThread } = setup([
+      Promise.resolve(),
+      Promise.resolve(),
+    ]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    setTrackedThreadId(null);
+    rerender({ sessionId: "workspace-2-main", available: true });
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients).toHaveLength(1);
+
+    await act(async () => {
+      changeThread("workspace-2-thread");
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+    expect(clients[1].sessionId).toBe("workspace-2-main");
+    expect(clients[1].preferredThreadIdAtStart).toBe("workspace-2-thread");
+  });
+
+  it("reconnects when a tracker recovers from null while voice intent remains active", async () => {
+    const { result, clients, changeThread } = setup([Promise.resolve(), Promise.resolve()]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    act(() => changeThread(null));
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients).toHaveLength(1);
+
+    await act(async () => {
+      changeThread("recovered-thread");
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+    expect(clients[1].start).toHaveBeenCalledTimes(1);
+    expect(clients[1].preferredThreadIdAtStart).toBe("recovered-thread");
+  });
+
   it("unsupported destination releases audio ownership but preserves intent for the next supported workspace", async () => {
     const { result, rerender, clients, setFallbackPlaybackEnabled } = setup([
       Promise.resolve(),
@@ -298,9 +343,40 @@ describe("useCodexRealtime", () => {
     expect(result.current.state).toEqual({ status: "active", billing: "subscription" });
   });
 
+  it("preserves auto-retarget intent after a transient start failure", async () => {
+    const failedRetarget = deferred();
+    const { result, rerender, clients } = setup([
+      Promise.resolve(),
+      failedRetarget.promise,
+      Promise.resolve(),
+    ]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    rerender({ sessionId: "workspace-2-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+      failedRetarget.reject(new Error("temporary retarget failure"));
+      await failedRetarget.promise.catch(() => {});
+    });
+    expect(result.current.state).toEqual({
+      status: "error",
+      error: "temporary retarget failure",
+    });
+
+    rerender({ sessionId: "workspace-3-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(3));
+    });
+    expect(clients[2].sessionId).toBe("workspace-3-main");
+    expect(clients[2].start).toHaveBeenCalledTimes(1);
+  });
+
   it("current start failure 後に fallback playback を戻す", async () => {
     const start = deferred();
-    const { result, clients, setFallbackPlaybackEnabled } = setup([start.promise]);
+    const { result, rerender, clients, setFallbackPlaybackEnabled } = setup([start.promise]);
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 
     let toggle: Promise<void> = Promise.resolve();
@@ -315,6 +391,8 @@ describe("useCodexRealtime", () => {
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
     expect(result.current.state).toEqual({ status: "error", error: "start failed" });
     expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    rerender({ sessionId: "workspace-after-manual-failure", available: true });
+    expect(clients).toHaveLength(1);
     consoleError.mockRestore();
   });
 
