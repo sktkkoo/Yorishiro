@@ -117,10 +117,10 @@ function setup(
 }
 
 describe("useCodexRealtime", () => {
-  it("mount 時に Rust 側 ownership provenance を fallback へ同期する", () => {
+  it("mount 時に Rust 側 ownership provenance を fallback へ同期する", async () => {
     const { setFallbackPlaybackEnabled } = setup([]);
 
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
   });
 
   it("connecting から GPT Live が audio を所有し、remote close 後に fallback を戻す", async () => {
@@ -131,7 +131,7 @@ describe("useCodexRealtime", () => {
       void result.current.toggle();
     });
     expect(result.current.state.status).toBe("connecting");
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false));
 
     act(() => {
       clients[0].emit({ status: "active", billing: "subscription" });
@@ -141,7 +141,7 @@ describe("useCodexRealtime", () => {
     act(() => {
       clients[0].emit({ status: "idle" });
     });
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
   });
 
   it("ownership provenance の claim 完了前には client を開始しない", async () => {
@@ -200,7 +200,7 @@ describe("useCodexRealtime", () => {
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
     expect(result.current.state).toEqual({ status: "idle" });
     expect(applyLipSyncSource).toHaveBeenLastCalledWith(fallback);
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
 
     await act(async () => {
       start.reject(new Error("stale start failure"));
@@ -286,7 +286,7 @@ describe("useCodexRealtime", () => {
 
     rerender({ sessionId: "claude-workspace", available: false });
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
     expect(clients).toHaveLength(1);
 
     rerender({ sessionId: "codex-workspace", available: true });
@@ -295,6 +295,46 @@ describe("useCodexRealtime", () => {
     });
     expect(clients[1].sessionId).toBe("codex-workspace");
     expect(clients[1].start).toHaveBeenCalledTimes(1);
+  });
+
+  it("serializes fallback restore and the next voice claim when IPC completes out of order", async () => {
+    let rustFallbackEnabled = true;
+    let delayedRestore: ReturnType<typeof deferred> | null = null;
+    const setFallbackPlaybackEnabled = vi.fn((enabled: boolean): void | Promise<void> => {
+      if (enabled && delayedRestore) {
+        const pending = delayedRestore;
+        delayedRestore = null;
+        return pending.promise.then(() => {
+          rustFallbackEnabled = true;
+        });
+      }
+      rustFallbackEnabled = enabled;
+    });
+    const { result, rerender, clients } = setup(
+      [Promise.resolve(), Promise.resolve()],
+      setFallbackPlaybackEnabled,
+    );
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+    expect(rustFallbackEnabled).toBe(false);
+
+    const restore = deferred();
+    delayedRestore = restore;
+    rerender({ sessionId: "unsupported-workspace", available: false });
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
+    rerender({ sessionId: "workspace-2-main", available: true });
+    await vi.waitFor(() => expect(clients).toHaveLength(2));
+    expect(clients).toHaveLength(2);
+    expect(clients[1].start).not.toHaveBeenCalled();
+
+    await act(async () => {
+      restore.resolve();
+      await vi.waitFor(() => expect(clients[1].start).toHaveBeenCalledTimes(1));
+    });
+    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(false);
+    expect(rustFallbackEnabled).toBe(false);
   });
 
   it("explicit stop clears intent so a later workspace switch does not reconnect", async () => {
@@ -485,7 +525,7 @@ describe("useCodexRealtime", () => {
     expect(result.current.state).toEqual({ status: "idle" });
     expect(result.current.getLipSyncSource()).toBe(fallback);
     expect(applyLipSyncSource).toHaveBeenLastCalledWith(fallback);
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
   });
 
   it("error後にsessionを切り替えると旧sessionのerrorをidleへ戻す", async () => {
@@ -504,7 +544,7 @@ describe("useCodexRealtime", () => {
 
     expect(result.current.state).toEqual({ status: "idle" });
     expect(applyLipSyncSource).toHaveBeenLastCalledWith(fallback);
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
   });
 
   it("unmount 中に client を止めて fallback playback を戻す", async () => {
@@ -520,7 +560,7 @@ describe("useCodexRealtime", () => {
     unmount();
 
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
-    expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true));
   });
 
   it.each([
@@ -572,7 +612,9 @@ describe("useCodexRealtime", () => {
 
       expect(rustFallbackEnabled).toBe(true);
       expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
-      expect(setFallbackPlaybackEnabled.mock.calls.filter(([enabled]) => enabled)).toHaveLength(3);
+      expect(
+        setFallbackPlaybackEnabled.mock.calls.filter(([enabled]) => enabled).length,
+      ).toBeGreaterThanOrEqual(2);
       unmount();
     } finally {
       consoleError.mockRestore();

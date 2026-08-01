@@ -66,6 +66,10 @@ const defaultCreateThreadTracker = (
 
 const FALLBACK_RESTORE_RETRY_DELAYS_MS = [50, 200] as const;
 
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
 /** App が所有する realtime client を一つに限定し、古い client の通知を遮断する。 */
 export function useCodexRealtime({
   sessionId,
@@ -86,7 +90,7 @@ export function useCodexRealtime({
   const sessionIdRef = useRef(sessionId);
   const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
-  const fallbackPlaybackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [state, setState] = useState<CodexRealtimeState>({ status: "idle" });
 
   fallbackRef.current = fallbackLipSyncSource;
@@ -98,47 +102,47 @@ export function useCodexRealtime({
     applyLipSyncSourceRef.current(fallbackRef.current);
   }, []);
 
-  const beginFallbackPlaybackTransition = useCallback(() => {
-    fallbackPlaybackTransitionRef.current += 1;
-    if (fallbackPlaybackRetryTimerRef.current !== null) {
-      clearTimeout(fallbackPlaybackRetryTimerRef.current);
-      fallbackPlaybackRetryTimerRef.current = null;
-    }
-    return fallbackPlaybackTransitionRef.current;
-  }, []);
+  const enqueueFallbackPlayback = useCallback(
+    (enabled: boolean, retryDelays: ReadonlyArray<number> = []): Promise<void> => {
+      const transition = ++fallbackPlaybackTransitionRef.current;
+      const apply = async (): Promise<void> => {
+        // A newer desired state superseded this transition before it reached the Rust owner.
+        if (fallbackPlaybackTransitionRef.current !== transition) return;
+        let retryIndex = 0;
+        while (true) {
+          if (fallbackPlaybackTransitionRef.current !== transition) return;
+          try {
+            await setFallbackPlaybackEnabledRef.current(enabled);
+            return;
+          } catch (error) {
+            if (fallbackPlaybackTransitionRef.current !== transition) return;
+            console.error(
+              `[codex-realtime] failed to ${enabled ? "restore" : "claim"} fallback playback ownership`,
+              error,
+            );
+            const delay = retryDelays[retryIndex];
+            if (delay === undefined) throw error;
+            retryIndex += 1;
+            await wait(delay);
+          }
+        }
+      };
+      const operation = fallbackPlaybackQueueRef.current.catch(() => {}).then(apply);
+      // A rejected claim must reach start(), but must not poison later ownership transitions.
+      fallbackPlaybackQueueRef.current = operation.catch(() => {});
+      return operation;
+    },
+    [],
+  );
 
   const restoreFallbackPlayback = useCallback(() => {
-    const transition = beginFallbackPlaybackTransition();
-    let retryIndex = 0;
+    void enqueueFallbackPlayback(true, FALLBACK_RESTORE_RETRY_DELAYS_MS).catch(() => {});
+  }, [enqueueFallbackPlayback]);
 
-    const retry = (error: unknown): void => {
-      console.error("[codex-realtime] failed to restore fallback playback ownership", error);
-      if (fallbackPlaybackTransitionRef.current !== transition) return;
-      const delay = FALLBACK_RESTORE_RETRY_DELAYS_MS[retryIndex];
-      if (delay === undefined) return;
-      retryIndex += 1;
-      fallbackPlaybackRetryTimerRef.current = setTimeout(() => {
-        fallbackPlaybackRetryTimerRef.current = null;
-        if (fallbackPlaybackTransitionRef.current === transition) attempt();
-      }, delay);
-    };
-
-    const attempt = (): void => {
-      try {
-        const pending = setFallbackPlaybackEnabledRef.current(true);
-        if (pending) void pending.catch(retry);
-      } catch (error) {
-        retry(error);
-      }
-    };
-
-    attempt();
-  }, [beginFallbackPlaybackTransition]);
-
-  const claimFallbackPlayback = useCallback((): void | Promise<void> => {
-    beginFallbackPlaybackTransition();
-    return setFallbackPlaybackEnabledRef.current(false);
-  }, [beginFallbackPlaybackTransition]);
+  const claimFallbackPlayback = useCallback(
+    (): Promise<void> => enqueueFallbackPlayback(false),
+    [enqueueFallbackPlayback],
+  );
 
   const stopClient = useCallback(
     (preserveVoiceIntent: boolean) => {
@@ -198,11 +202,11 @@ export function useCodexRealtime({
         () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
       );
       clientRef.current = client;
+      setState({ status: "connecting" });
 
       try {
         // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
-        const pendingOwnershipClaim = claimFallbackPlayback();
-        if (pendingOwnershipClaim) await pendingOwnershipClaim;
+        await claimFallbackPlayback();
         if (clientRef.current !== client) return;
         await client.start();
       } catch (error) {
