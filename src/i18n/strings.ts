@@ -168,9 +168,9 @@ const EN: UiStrings = {
   codexVoiceConnecting: "Connecting Codex voice…",
   codexVoiceRetry: "Retry Codex voice",
   codexVoiceApiBilling: "API billing",
-  gptLiveRequiresCodex: "GPT Live currently requires Codex",
+  gptLiveRequiresCodex: "Voice conversation (GPT Live) currently requires Codex",
   gptLiveSwitchBody:
-    "Your current Main Agent does not support GPT Live. Switch to Codex and start GPT Live? Your current conversation and work state are preserved, and switching back resumes it.",
+    "Your current Main Agent does not support voice conversation. Switch to Codex and start a voice conversation? Your current conversation and work state are preserved, and switching back to the original agent resumes where you left off.",
   gptLiveSetupBody:
     "Install the Codex CLI and sign in with ChatGPT (or configure an API key), then open Settings to select Codex as the Main Agent.",
   gptLiveCancel: "Cancel",
@@ -295,9 +295,9 @@ const JA: UiStrings = {
   codexVoiceConnecting: "Codex 音声会話に接続中…",
   codexVoiceRetry: "Codex 音声会話を再試行",
   codexVoiceApiBilling: "API従量課金",
-  gptLiveRequiresCodex: "GPT Liveには現在Codexが必要です",
+  gptLiveRequiresCodex: "音声対話（GPT Live）の利用には、現在Codexが必要です",
   gptLiveSwitchBody:
-    "現在のMain AgentはGPT Liveに対応していません。Codexへ切り替えてGPT Liveを始めますか？現在の会話と作業状態は保持され、元のAgentへ戻すと続きから再開できます。",
+    "現在のメインエージェントは音声対話に対応していません。Codexへ切り替えて、音声対話を始めますか？現在の会話と作業状態は保持され、元のエージェントへ戻すと続きから再開できます。",
   gptLiveSetupBody:
     "Codex CLIをインストールし、ChatGPTでサインイン（またはAPIキーを設定）してから、SettingsでMain AgentにCodexを選んでください。",
   gptLiveCancel: "キャンセル",
