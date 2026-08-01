@@ -1019,6 +1019,14 @@ async fn session_realtime_connect(
 }
 
 #[tauri::command]
+async fn session_realtime_selected_thread(
+    pty_state: State<'_, PtyState>,
+    session_id: String,
+) -> Result<Option<String>, String> {
+    Ok(pty_state.realtime_selected_thread_id(&session_id))
+}
+
+#[tauri::command]
 async fn session_realtime_send(
     bridge_state: State<'_, RealtimeBridgeState>,
     connection_id: String,
@@ -2395,6 +2403,7 @@ pub fn run() {
             session_attach,
             session_detach,
             session_realtime_connect,
+            session_realtime_selected_thread,
             session_realtime_send,
             session_realtime_disconnect,
             session_list,

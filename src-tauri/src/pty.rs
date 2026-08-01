@@ -496,6 +496,11 @@ impl PtyState {
             .and_then(|session| session.realtime_endpoint())
     }
 
+    pub fn realtime_selected_thread_id(&self, session_id: &str) -> Option<String> {
+        self.session_or_default(session_id)
+            .and_then(|session| session.realtime_selected_thread_id())
+    }
+
     pub fn write_data(&self, session_id: &str, data: &str) -> Result<(), String> {
         let Some(session) = self.session_or_default(session_id) else {
             return Ok(());

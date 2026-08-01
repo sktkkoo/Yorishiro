@@ -35,7 +35,10 @@ interface UseCodexRealtimeOptions {
   readonly setFallbackPlaybackEnabled?: (enabled: boolean) => void | Promise<void>;
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly createClient?: CodexRealtimeClientFactory;
-  readonly createThreadTracker?: (sessionId: string) => CodexThreadTrackerLike;
+  readonly createThreadTracker?: (
+    sessionId: string,
+    onCurrentThreadChange: (threadId: string | null) => void,
+  ) => CodexThreadTrackerLike;
 }
 
 interface UseCodexRealtimeResult {
@@ -56,8 +59,10 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
     getPreferredThreadId,
   });
 
-const defaultCreateThreadTracker = (sessionId: string): CodexThreadTrackerLike =>
-  new CodexThreadTracker(sessionId);
+const defaultCreateThreadTracker = (
+  sessionId: string,
+  onCurrentThreadChange: (threadId: string | null) => void,
+): CodexThreadTrackerLike => new CodexThreadTracker(sessionId, onCurrentThreadChange);
 
 const FALLBACK_RESTORE_RETRY_DELAYS_MS = [50, 200] as const;
 
@@ -144,12 +149,8 @@ export function useCodexRealtime({
     restoreFallback();
   }, [restoreFallback, restoreFallbackPlayback]);
 
-  const toggle = useCallback(async () => {
-    if (clientRef.current) {
-      stop();
-      return;
-    }
-
+  const start = useCallback(async () => {
+    if (clientRef.current) return;
     let client: CodexRealtimeClientLike;
     client = createClientRef.current(
       sessionId,
@@ -208,8 +209,15 @@ export function useCodexRealtime({
     restoreFallbackPlayback,
     sessionId,
     stateExpressionCallbacks,
-    stop,
   ]);
+
+  const toggle = useCallback(async () => {
+    if (clientRef.current) {
+      stop();
+      return;
+    }
+    await start();
+  }, [start, stop]);
 
   useEffect(() => {
     const sessionChanged = sessionIdRef.current !== sessionId;
@@ -221,7 +229,12 @@ export function useCodexRealtime({
     threadTrackerRef.current?.stop();
     threadTrackerRef.current = null;
     if (!available) return;
-    const tracker = createThreadTracker(sessionId);
+    let tracker: CodexThreadTrackerLike;
+    tracker = createThreadTracker(sessionId, (threadId) => {
+      if (threadTrackerRef.current !== tracker || !clientRef.current) return;
+      stop();
+      if (threadId) void start();
+    });
     threadTrackerRef.current = tracker;
     void tracker.start().catch((error) => {
       if (threadTrackerRef.current !== tracker) return;
@@ -231,7 +244,7 @@ export function useCodexRealtime({
       if (threadTrackerRef.current === tracker) threadTrackerRef.current = null;
       tracker.stop();
     };
-  }, [available, createThreadTracker, sessionId]);
+  }, [available, createThreadTracker, sessionId, start, stop]);
 
   useEffect(() => {
     // Re-stamp the default owner after a WebView reload because the Rust MCP process can survive it.

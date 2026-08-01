@@ -2,6 +2,7 @@ import { Channel } from "@tauri-apps/api/core";
 import {
   sessionRealtimeConnect,
   sessionRealtimeDisconnect,
+  sessionRealtimeSelectedThread,
   sessionRealtimeSend,
 } from "../../bindings/tauri-commands";
 
@@ -21,6 +22,7 @@ interface JsonRpcMessage {
 
 const RPC_TIMEOUT_MS = 15_000;
 const RECONNECT_DELAY_MS = 250;
+const TUI_SELECTION_POLL_MS = 100;
 
 class TrackerRequestTimeoutError extends Error {}
 
@@ -32,18 +34,27 @@ class TrackerRequestTimeoutError extends Error {}
  */
 export class CodexThreadTracker {
   private readonly sessionId: string;
+  private readonly onCurrentThreadChange: (threadId: string | null) => void;
   private connectionId: string | null = null;
   private nextRequestId = 1;
   private pending = new Map<number, PendingRequest>();
   private currentThreadId: string | null = null;
+  private knownLoadedThreadIds = new Set<string>();
   private epoch = 0;
   private topLevelStartedGeneration = 0;
+  private threadSelectionGeneration = 0;
+  private validatingThreadId: string | null = null;
   private running = false;
   private connecting = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private selectionPollTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(sessionId: string) {
+  constructor(
+    sessionId: string,
+    onCurrentThreadChange: (threadId: string | null) => void = () => {},
+  ) {
     this.sessionId = sessionId;
+    this.onCurrentThreadChange = onCurrentThreadChange;
   }
 
   getCurrentThreadId(): string | null {
@@ -56,6 +67,7 @@ export class CodexThreadTracker {
     const epoch = ++this.epoch;
     try {
       await this.connect(epoch);
+      this.startSelectionPolling(epoch);
     } catch (error) {
       if (epoch === this.epoch && this.running) this.scheduleReconnect(epoch);
       throw error;
@@ -70,9 +82,14 @@ export class CodexThreadTracker {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.selectionPollTimer !== null) {
+      clearInterval(this.selectionPollTimer);
+      this.selectionPollTimer = null;
+    }
     const connectionId = this.connectionId;
     this.connectionId = null;
-    this.currentThreadId = null;
+    this.setCurrentThreadId(null);
+    this.knownLoadedThreadIds.clear();
     this.rejectPending(new Error("Codex thread tracker stopped"));
     if (connectionId) void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
   }
@@ -136,6 +153,9 @@ export class CodexThreadTracker {
     if (epoch !== this.epoch || generation !== this.topLevelStartedGeneration) return;
     const ids = result.data;
     if (!Array.isArray(ids)) return;
+    this.knownLoadedThreadIds = new Set(
+      ids.filter((id): id is string => typeof id === "string" && id.length > 0),
+    );
 
     const topLevelIds: string[] = [];
     for (const id of ids) {
@@ -156,8 +176,65 @@ export class CodexThreadTracker {
     // Startup 時に一意なら初期値にできる。複数時は過去の broadcast がないため推測しない。
     const unique = [...new Set(topLevelIds)];
     if (unique.length === 1 && generation === this.topLevelStartedGeneration) {
-      this.currentThreadId = unique[0] ?? null;
+      this.setCurrentThreadId(unique[0] ?? null);
     }
+  }
+
+  private setCurrentThreadId(threadId: string | null): void {
+    if (this.currentThreadId === threadId) return;
+    this.currentThreadId = threadId;
+    this.onCurrentThreadChange(threadId);
+  }
+
+  private startSelectionPolling(epoch: number): void {
+    if (this.selectionPollTimer !== null) return;
+    const poll = (): void => {
+      void sessionRealtimeSelectedThread({ sessionId: this.sessionId })
+        .then((threadId) => {
+          if (epoch !== this.epoch || !this.running || !threadId) return;
+          this.considerStatusThread(threadId, epoch);
+        })
+        .catch(() => {});
+    };
+    poll();
+    this.selectionPollTimer = setInterval(poll, TUI_SELECTION_POLL_MS);
+  }
+
+  /**
+   * TUI proxy selection and lifecycle notifications are both untrusted candidates until
+   * `thread/read` confirms they are loaded top-level threads.
+   */
+  private considerStatusThread(threadId: string, epoch: number): void {
+    if (threadId === this.currentThreadId || threadId === this.validatingThreadId) return;
+    this.validatingThreadId = threadId;
+    const generation = ++this.threadSelectionGeneration;
+    void this.request("thread/read", { threadId, includeTurns: false })
+      .then((read) => {
+        if (
+          epoch !== this.epoch ||
+          !this.running ||
+          generation !== this.threadSelectionGeneration
+        ) {
+          return;
+        }
+        const thread = (read as { readonly thread?: unknown }).thread;
+        if (
+          isRecord(thread) &&
+          thread.id === threadId &&
+          "parentThreadId" in thread &&
+          thread.parentThreadId === null
+        ) {
+          this.setCurrentThreadId(threadId);
+        }
+      })
+      .catch((error) => {
+        if (error instanceof TrackerRequestTimeoutError) {
+          console.warn("[codex-realtime] timed out validating resumed thread", error);
+        }
+      })
+      .finally(() => {
+        if (this.validatingThreadId === threadId) this.validatingThreadId = null;
+      });
   }
 
   private request(method: string, params: Record<string, unknown>): Promise<unknown> {
@@ -205,7 +282,8 @@ export class CodexThreadTracker {
       this.connectionId = null;
       // この接続が見ていない間に /clear された可能性がある。grace period 中の
       // 旧 thread を preferred として再利用せず、再接続後に一意なら再発見する。
-      this.currentThreadId = null;
+      this.setCurrentThreadId(null);
+      this.knownLoadedThreadIds.clear();
       this.rejectPending(new Error("Codex thread tracker connection closed"));
       this.scheduleReconnect(epoch);
       return;
@@ -231,15 +309,45 @@ export class CodexThreadTracker {
         thread.parentThreadId === null
       ) {
         this.topLevelStartedGeneration += 1;
-        this.currentThreadId = thread.id;
+        this.threadSelectionGeneration += 1;
+        this.knownLoadedThreadIds.add(thread.id);
+        this.setCurrentThreadId(thread.id);
       }
+      return;
+    }
+
+    if (message.method === "thread/status/changed") {
+      const params = message.params;
+      if (
+        !isRecord(params) ||
+        typeof params.threadId !== "string" ||
+        params.threadId.length === 0
+      ) {
+        return;
+      }
+      const status = params.status;
+      if (!isRecord(status) || typeof status.type !== "string") return;
+      if (status.type === "notLoaded") {
+        this.knownLoadedThreadIds.delete(params.threadId);
+        if (params.threadId === this.currentThreadId) this.setCurrentThreadId(null);
+        return;
+      }
+      const wasAlreadyLoaded = this.knownLoadedThreadIds.has(params.threadId);
+      this.knownLoadedThreadIds.add(params.threadId);
+      // A cold /resume announces the newly loaded idle thread. If it was already kept loaded
+      // by the grace period, the first reliable ownership signal is its next active turn.
+      if (status.type !== "active" && wasAlreadyLoaded) return;
+      this.considerStatusThread(params.threadId, epoch);
       return;
     }
 
     if (message.method === "thread/closed" || message.method === "thread/deleted") {
       const params = message.params;
+      if (isRecord(params) && typeof params.threadId === "string") {
+        this.knownLoadedThreadIds.delete(params.threadId);
+      }
       if (isRecord(params) && params.threadId === this.currentThreadId) {
-        this.currentThreadId = null;
+        this.setCurrentThreadId(null);
       }
     }
   }
