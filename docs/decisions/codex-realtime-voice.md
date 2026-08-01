@@ -184,10 +184,12 @@ spoken textへ`[smile]`等のinline tagを混ぜない。server-sideで読み上
 domain conceptは **Agent State Expression**、個々の出力は`StateExpressionCue`と呼ぶ。
 
 assistant transcript deltaをhost側でsemantic stateへ解決し、spoken textとは別のstate expression cueとして
-Bodyへ渡すside channelを採用する。remote audioのlip-sync sampleと同じspeech clockでspeech start/endを
-検出し、表情は専用`speech` slot、gestureはactivityより低くidleより高い`speech-expression` laneへ渡す。
-user transcriptによるbarge-in、voice stop、disconnect、session切替では、このadapterが所有するhandleだけを
-解放する。語単位timestampは無いため、実機計測後の節単位re-anchorは今後の調整対象である。
+Bodyへ渡すside channelを採用する。remote audioのlip-sync sampleから得る**発話タイムライン**
+（speech clock。textの到着時刻ではなく、実際の音声再生開始を基準にした時間軸）でspeech start/endを検出し、
+表情は専用`speech` slot、gestureはactivityより低くidleより高い`speech-expression` laneへ渡す。
+user transcriptによる**ユーザー発話割り込み**（barge-in。Main Agentの発話中にuserが話し始めること）、
+voice stop、disconnect、session切替では、このadapterが所有するhandleだけを解放する。語単位timestampは
+無いため、実機計測後の節単位re-anchorは今後の調整対象である。
 
 現在観察できる正本は発話内容とspeech lifecycleであり、modelの非公開な内部感情を読めるとは扱わない。
 難しい検討、不確実性、困惑、発見、安心、懸念、同意など、発話に根拠がある状態だけを解決する。
@@ -301,7 +303,7 @@ experience を失う。
 - remote closed後は一回のクリックで再接続する
 - old attempt/clientがnew active clientを破棄しない
 
-加えて実機で、voice turnのTUI表示、TUI approval response、barge-in、session切替、remote close、
+加えて実機で、voice turnのTUI表示、TUI approval response、ユーザー発話割り込み、session切替、remote close、
 複数subagent稼働中のvoice開始を確認する。
 
 ## 関連 reference
