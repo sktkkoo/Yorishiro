@@ -47,8 +47,9 @@ Codex session の起動は次の 3 要素に分ける。
 1. Rust が random loopback port で `codex app-server --listen ws://127.0.0.1:<port>` を起動
 2. PTY 内の Codex TUI を `codex --remote <endpoint>` で同じ server へ接続
 3. Rust の realtime bridge が Origin header なしで同じ server へ接続
-4. WebView の `CodexRealtimeClient` は Tauri Channel 経由で `thread/loaded/list` を送り、
-   複数件なら `thread/read` の `parentThreadId` で subagent を除外した唯一の top-level thread を選ぶ
+4. WebView の thread tracker は voice が停止中も `thread/started` を監視して TUI の current thread ID を保持する。
+   `CodexRealtimeClient` は Tauri Channel 経由の `thread/loaded/list` と `thread/read` で、その ID が
+   loaded な top-level thread であることを再検証する
 5. 選んだ thread で `thread/realtime/start` の realtime v3 + WebRTC transport を開始
 
 app-server process は `PtySession` が所有する。spawn 途中の失敗、session kill、Drop の
@@ -119,7 +120,9 @@ Codex 0.146.0 で次を実測した。
 ### thread targeting
 
 `thread/loaded/list` は active TUI thread を返す API ではない。loaded ID を文字列 sort した一覧であり、
-`data[0]` は active thread を意味しない。先頭採用は禁止する。
+`data[0]` は active thread を意味しない。さらに TUI が `/clear` や thread 切替で unsubscribe しても、
+app-server は無購読・無活動の thread を grace period 中 loaded のまま保持する。先頭採用と「top-level が
+複数なら即エラー」のどちらも current thread の判定には使えない。
 
 Main Agent が agent team を動かすと同じ app-server に複数 thread が loaded になるが、これは異常では
 ない。対象は次の手順で決める。
@@ -127,13 +130,15 @@ Main Agent が agent team を動かすと同じ app-server に複数 thread が 
 1. `thread/loaded/list` を取得する
 2. 各 ID を `thread/read({ includeTurns: false })` で読む
 3. `parentThreadId === null` の top-level thread だけを候補にする
-4. top-level が一つなら、その ID で realtime を開始する
-5. subagent の終了と read が競合した場合は、最新の loaded snapshot からやり直す
-6. top-level が複数なら推測せず fail closed する
+4. tracker が保持する latest top-level `thread/started` ID と照合する
+5. 一致する loaded top-level があれば、その ID で realtime を開始する
+6. tracker の初期 discovery 時だけ、top-level が一つならその ID を初期値にする
+7. subagent の終了と read が競合した場合は、最新の loaded snapshot からやり直す
+8. tracker に明示 ID がなく top-level が複数なら推測せず fail closed する
 
 Codex v2 Thread schema は `parentThreadId` を subagent の場合だけ設定する。recency、配列順、statusから
-active threadを推測してはならない。upstreamがactive threadの明示query / notificationを提供した場合は、
-この選択を明示IDへ置き換える。
+active threadを推測してはならない。`thread/started` は全 initialized connection へ broadcast されるため、
+session 中継続する tracker が `/clear` と `/resume` の切替を明示 ID として記録する。
 
 ### approval ownership
 

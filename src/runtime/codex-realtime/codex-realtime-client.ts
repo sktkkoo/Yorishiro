@@ -27,6 +27,7 @@ export interface CodexRealtimeState {
 export interface CodexRealtimeClientOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
+  readonly getPreferredThreadId?: () => string | null;
 }
 
 interface JsonRpcMessage {
@@ -90,6 +91,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private stopping = false;
   private startAttemptEpoch = 0;
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
+  private readonly getPreferredThreadId: () => string | null;
 
   constructor(
     sessionId: string,
@@ -98,6 +100,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   ) {
     this.sessionId = sessionId;
     this.onStateChange = onStateChange;
+    this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
           options.stateExpressionCallbacks,
@@ -271,12 +274,16 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
 
     const uniquePrimaryThreadIds = [...new Set(primaryThreadIds)];
-    if (uniquePrimaryThreadIds.length > 1) {
+    const preferredThreadId = this.getPreferredThreadId();
+    const candidate =
+      preferredThreadId && uniquePrimaryThreadIds.includes(preferredThreadId)
+        ? preferredThreadId
+        : uniquePrimaryThreadIds[0];
+    if (uniquePrimaryThreadIds.length > 1 && candidate !== preferredThreadId) {
       throw new Error(
         "Multiple top-level Codex threads are loaded; voice connection was not started.",
       );
     }
-    const candidate = uniquePrimaryThreadIds[0];
     if (!candidate) return null;
 
     let revalidated: unknown;
