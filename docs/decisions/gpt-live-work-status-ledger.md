@@ -41,8 +41,10 @@ Phase 2 で 0.146.0 schema を確認し、通常 turn と approval の lifecycle
 - `turn/started` / `turn/completed` は `threadId` と安定した `turn.id` を持ち、完了時は
   `completed / failed / interrupted` を区別できる。voice から Codex へ handoff された
   通常 turn を v1 の work 粒度とする。
-- turn 開始 payload または後続 `item/started` の `userMessage` から、raw terminal log を
-  参照せず人間可読 summary を得られる。
+- realtime handoff は `thread/realtime/itemAdded` の `handoff_request` として
+  `handoff_id / input_transcript / active_transcript` を伴って届く。`turn/started` の `items` は
+  空であるため、handoff を work 作成の起点にし、後続 `item/started` の `userMessage` は
+  通常 turn と観測欠落時の fallback に使う。
 - 3 種の approval request は `threadId / turnId / itemId` を持ち、
   `serverRequest/resolved` は元の string/number request ID を返す。adapter の key は型衝突を
   避けるため `string:<id>` / `number:<id>` とする。
@@ -346,9 +348,10 @@ adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状�
 
 ## 判断記録
 
-1. **委任の起点（解決済み）**: v1 は既存 voice bridge が観測した root
-   `turn/started`（summary が遅れる場合は `item/started`）で host が `create()` する。
-   MCP 書き込み面は公開しない。voice 接続中のTUI起点 turnも同じ投影へ入る制約を許容する。
+1. **委任の起点（解決済み）**: Codex 0.146.0 が realtime handoff 時に送る
+   `thread/realtime/itemAdded` の `handoff_request` で host が `create()` し、直後の root turn と
+   通知順序に依存せず関連付ける。通常の TUI 起点 turn は `item/started` の `userMessage` を
+   fallback として同じ投影へ入れる。MCP 書き込み面は公開しない。
 2. **GPT Live への状態伝達方法（解決済み）**: v3 start の `initialItems` に接続時 snapshot、
    `thread/realtime/appendText` に以後の event を developer role で渡す。応答開始は要求せず、
    最終的な発話内容・タイミングは GPT Live に委ねる。summary / note は未信頼の引用データと

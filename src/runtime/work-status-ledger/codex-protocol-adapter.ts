@@ -25,6 +25,10 @@ export class CodexWorkStatusProtocolAdapter {
   private readonly turnToWork = new Map<string, string>();
   private readonly threadToWork = new Map<string, string>();
   private readonly approvals = new Map<string, PendingApproval>();
+  private readonly handoffToWork = new Map<string, string>();
+  private readonly pendingRootTurns: string[] = [];
+  private readonly pendingRootWorks: string[] = [];
+  private activeRootTurnId: string | null = null;
 
   constructor(ledger: WorkLifecyclePort, sessionId: string) {
     this.ledger = ledger;
@@ -36,6 +40,10 @@ export class CodexWorkStatusProtocolAdapter {
     this.turnToWork.clear();
     this.threadToWork.clear();
     this.approvals.clear();
+    this.handoffToWork.clear();
+    this.pendingRootTurns.length = 0;
+    this.pendingRootWorks.length = 0;
+    this.activeRootTurnId = null;
   }
 
   observeServerRequest(request: JsonRpcServerRequest): void {
@@ -62,6 +70,9 @@ export class CodexWorkStatusProtocolAdapter {
       case "item/completed":
         this.observeItem(params);
         break;
+      case "thread/realtime/itemAdded":
+        this.observeRealtimeItem(params);
+        break;
       case "turn/completed":
         this.observeTurnCompleted(params);
         break;
@@ -76,6 +87,7 @@ export class CodexWorkStatusProtocolAdapter {
     const turn = recordValue(params.turn);
     const turnId = stringValue(turn?.id);
     if (!threadId || !turnId || !this.isObservedThread(threadId)) return;
+    if (threadId === this.rootThreadId) this.activeRootTurnId = turnId;
 
     const inheritedWork = threadId === this.rootThreadId ? null : this.threadToWork.get(threadId);
     if (inheritedWork) {
@@ -85,8 +97,11 @@ export class CodexWorkStatusProtocolAdapter {
     }
     if (threadId !== this.rootThreadId || this.turnToWork.has(turnId)) return;
     const summary = summaryFromItems(turn?.items);
-    if (!summary) return;
-    this.createRootWork(turnId, summary);
+    if (summary) {
+      this.createRootWork(turnId, summary);
+      return;
+    }
+    this.queueRootTurn(turnId);
   }
 
   private observeItem(params: Record<string, unknown>): void {
@@ -97,8 +112,12 @@ export class CodexWorkStatusProtocolAdapter {
 
     let workId = this.workFor(turnId, threadId);
     if (!workId && threadId === this.rootThreadId && item.type === "userMessage") {
-      const summary = summaryFromUserMessage(item);
-      if (summary) workId = this.createRootWork(turnId, summary);
+      this.queueRootTurn(turnId);
+      workId = this.turnToWork.get(turnId) ?? null;
+      if (!workId) {
+        const summary = summaryFromUserMessage(item);
+        if (summary) workId = this.createRootWork(turnId, summary);
+      }
     }
     if (!workId) return;
 
@@ -112,13 +131,48 @@ export class CodexWorkStatusProtocolAdapter {
     }
   }
 
+  /**
+   * Realtime handoff is the first definitive signal that GPT Live delegated backend work.
+   * Codex emits it before or around the empty `turn/started`, so pair the two independently
+   * of their delivery order.
+   */
+  private observeRealtimeItem(params: Record<string, unknown>): void {
+    const threadId = stringValue(params.threadId);
+    const item = recordValue(params.item);
+    if (threadId !== this.rootThreadId || item?.type !== "handoff_request") return;
+
+    const handoffId = stringValue(item.handoff_id);
+    if (!handoffId || this.handoffToWork.has(handoffId)) return;
+    const summary = summaryFromHandoffRequest(item);
+    if (!summary) return;
+
+    const activeWorkId = this.activeRootTurnId
+      ? this.turnToWork.get(this.activeRootTurnId)
+      : undefined;
+    if (activeWorkId) {
+      this.handoffToWork.set(handoffId, activeWorkId);
+      this.ledger.markRunning(activeWorkId);
+      return;
+    }
+
+    const work = this.ledger.create({ summary, sessionId: this.sessionId });
+    this.ledger.markRunning(work.id, "Codex is working on it.");
+    this.handoffToWork.set(handoffId, work.id);
+    this.pendingRootWorks.push(work.id);
+    this.pairPendingRootWork();
+  }
+
   private observeTurnCompleted(params: Record<string, unknown>): void {
     const threadId = stringValue(params.threadId);
     const turn = recordValue(params.turn);
     const turnId = stringValue(turn?.id);
     if (!threadId || !turnId || threadId !== this.rootThreadId) return;
+    if (this.activeRootTurnId === turnId) this.activeRootTurnId = null;
     const workId = this.turnToWork.get(turnId);
-    if (!workId) return;
+    if (!workId) {
+      removeValue(this.pendingRootTurns, turnId);
+      return;
+    }
 
     this.ledger.markRunning(workId);
     if (turn?.status === "completed") {
@@ -152,6 +206,8 @@ export class CodexWorkStatusProtocolAdapter {
 
   private associateTurn(turnId: string, workId: string): void {
     this.turnToWork.set(turnId, workId);
+    removeValue(this.pendingRootTurns, turnId);
+    removeValue(this.pendingRootWorks, workId);
     for (const approval of this.approvals.values()) {
       if (!approval.resolved && approval.turnId === turnId) {
         this.ledger.holdApproval(workId, approval.key, "Waiting for approval in the TUI.");
@@ -165,6 +221,21 @@ export class CodexWorkStatusProtocolAdapter {
 
   private isObservedThread(threadId: string): boolean {
     return threadId === this.rootThreadId || this.threadToWork.has(threadId);
+  }
+
+  private queueRootTurn(turnId: string): void {
+    if (!this.turnToWork.has(turnId) && !this.pendingRootTurns.includes(turnId)) {
+      this.pendingRootTurns.push(turnId);
+    }
+    this.pairPendingRootWork();
+  }
+
+  private pairPendingRootWork(): void {
+    while (this.pendingRootTurns.length > 0 && this.pendingRootWorks.length > 0) {
+      const turnId = this.pendingRootTurns.shift();
+      const workId = this.pendingRootWorks.shift();
+      if (turnId && workId) this.associateTurn(turnId, workId);
+    }
   }
 }
 
@@ -199,6 +270,24 @@ function summaryFromUserMessage(item: Record<string, unknown>): string | null {
     .filter(Boolean)
     .join(" ");
   return text.length > 0 ? text : null;
+}
+
+function summaryFromHandoffRequest(item: Record<string, unknown>): string | null {
+  const inputTranscript = stringValue(item.input_transcript);
+  if (inputTranscript) return inputTranscript;
+  if (!Array.isArray(item.active_transcript)) return null;
+  for (let index = item.active_transcript.length - 1; index >= 0; index--) {
+    const entry = recordValue(item.active_transcript[index]);
+    if (entry?.role !== "user") continue;
+    const text = stringValue(entry.text);
+    if (text) return text;
+  }
+  return null;
+}
+
+function removeValue(values: string[], value: string): void {
+  const index = values.indexOf(value);
+  if (index >= 0) values.splice(index, 1);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

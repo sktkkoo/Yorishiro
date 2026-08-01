@@ -306,19 +306,28 @@ describe("CodexRealtimeClient", () => {
 
     bridge.channel?.onmessage(
       JSON.stringify({
+        method: "thread/realtime/itemAdded",
+        params: {
+          threadId: "thread-1",
+          item: {
+            type: "handoff_request",
+            handoff_id: "handoff-1",
+            item_id: "realtime-item-1",
+            input_transcript: "Create sample.md",
+            active_transcript: [],
+          },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
         method: "turn/started",
         params: {
           threadId: "thread-1",
           turn: {
             id: "turn-1",
             status: "inProgress",
-            items: [
-              {
-                type: "userMessage",
-                id: "user-1",
-                content: [{ type: "text", text: "Create sample.md", text_elements: [] }],
-              },
-            ],
+            items: [],
           },
         },
       }),

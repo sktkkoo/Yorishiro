@@ -49,6 +49,104 @@ describe("CodexWorkStatusProtocolAdapter", () => {
     expect(ledger.getSnapshot().work).toHaveLength(1);
   });
 
+  it("creates delegated work from the realtime handoff before its empty root turn", () => {
+    const ledger = createWorkStatusLedgerStore();
+    const adapter = new CodexWorkStatusProtocolAdapter(ledger, "session-1");
+    adapter.setRootThreadId("root");
+
+    const handoff = {
+      threadId: "root",
+      item: {
+        type: "handoff_request",
+        handoff_id: "handoff-1",
+        item_id: "item-1",
+        input_transcript: "Create sample.md",
+        active_transcript: [],
+      },
+    };
+    adapter.observeNotification("thread/realtime/itemAdded", handoff);
+    adapter.observeNotification("thread/realtime/itemAdded", handoff);
+    expect(ledger.getSnapshot().work).toHaveLength(1);
+    expect(ledger.get("work-1")).toMatchObject({
+      summary: "Create sample.md",
+      status: "running",
+    });
+
+    adapter.observeNotification("turn/started", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "inProgress", items: [] },
+    });
+    adapter.observeNotification("item/started", {
+      threadId: "root",
+      turnId: "turn-1",
+      item: userMessage("<realtime_delegation>...</realtime_delegation>"),
+    });
+    expect(ledger.getSnapshot().work).toHaveLength(1);
+
+    adapter.observeNotification("turn/completed", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "completed", items: [] },
+    });
+    expect(ledger.get("work-1")?.status).toBe("completed");
+  });
+
+  it("pairs a realtime handoff that arrives after its empty root turn", () => {
+    const ledger = createWorkStatusLedgerStore();
+    const adapter = new CodexWorkStatusProtocolAdapter(ledger, "session-1");
+    adapter.setRootThreadId("root");
+    adapter.observeNotification("turn/started", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "inProgress", items: [] },
+    });
+
+    adapter.observeNotification("thread/realtime/itemAdded", {
+      threadId: "root",
+      item: {
+        type: "handoff_request",
+        handoff_id: "handoff-1",
+        item_id: "item-1",
+        input_transcript: "",
+        active_transcript: [
+          { role: "assistant", text: "What should I do?" },
+          { role: "user", text: "Run the checks" },
+        ],
+      },
+    });
+    adapter.observeNotification("turn/completed", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "failed", items: [] },
+    });
+
+    expect(ledger.get("work-1")).toMatchObject({
+      summary: "Run the checks",
+      status: "failed",
+    });
+  });
+
+  it("treats a realtime handoff during an active root turn as steering", () => {
+    const ledger = createWorkStatusLedgerStore();
+    const adapter = new CodexWorkStatusProtocolAdapter(ledger, "session-1");
+    adapter.setRootThreadId("root");
+    adapter.observeNotification("turn/started", {
+      threadId: "root",
+      turn: { id: "turn-1", status: "inProgress", items: [userMessage("Initial task")] },
+    });
+
+    adapter.observeNotification("thread/realtime/itemAdded", {
+      threadId: "root",
+      item: {
+        type: "handoff_request",
+        handoff_id: "handoff-steer",
+        item_id: "item-steer",
+        input_transcript: "Also check formatting",
+        active_transcript: [],
+      },
+    });
+
+    expect(ledger.getSnapshot().work).toHaveLength(1);
+    expect(ledger.get("work-1")).toMatchObject({ summary: "Initial task", status: "running" });
+  });
+
   it("mirrors approval hold and resolution without responding to the request", () => {
     const ledger = createWorkStatusLedgerStore();
     const adapter = new CodexWorkStatusProtocolAdapter(ledger, "session-1");
