@@ -247,6 +247,8 @@ Auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access w
 
 With Codex 0.145.0 or newer, the microphone button in the title bar starts an experimental realtime voice conversation. The normal Codex TUI stays visible: voice and text share the same thread, approvals, and tool flow. Voice inherits the current Codex CLI login: ChatGPT sign-in uses the subscription, while API-key authentication incurs metered API charges. Yorishiro keeps an “API billing” badge visible whenever API-key voice is connecting or active. Microphone access is requested only when you press the button. See [the realtime voice decision](docs/decisions/codex-realtime-voice.md) for architecture and limitations.
 
+Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live output voice globally (default: `sol`). The value is read whenever a new voice session starts, so stop and restart an active voice conversation to apply a change. See [configuration](docs/configuration.md#codex-gpt-live-voice).
+
 ---
 
 ## Contributing

@@ -6,6 +6,7 @@ import {
   CodexRealtimeClient,
   type CodexRealtimeState,
   type CodexRealtimeStatus,
+  DEFAULT_CODEX_REALTIME_VOICE,
 } from "./codex-realtime-client";
 import { CodexThreadTracker } from "./codex-thread-tracker";
 
@@ -20,6 +21,7 @@ export type CodexRealtimeClientFactory = (
   onStateChange: (state: CodexRealtimeState) => void,
   stateExpressionCallbacks?: StateExpressionSchedulerCallbacks,
   getPreferredThreadId?: () => string | null,
+  getVoice?: () => string | Promise<string>,
 ) => CodexRealtimeClientLike;
 
 export interface CodexThreadTrackerLike {
@@ -35,6 +37,8 @@ interface UseCodexRealtimeOptions {
   readonly applyLipSyncSource: (source: LipSyncSource) => void;
   readonly setFallbackPlaybackEnabled?: (enabled: boolean) => void | Promise<void>;
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
+  /** Called for every new session so config edits apply without restarting the app. */
+  readonly getVoice?: () => string | Promise<string>;
   readonly createClient?: CodexRealtimeClientFactory;
   readonly createThreadTracker?: (
     sessionId: string,
@@ -54,11 +58,13 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
   onStateChange,
   stateExpressionCallbacks,
   getPreferredThreadId,
+  getVoice,
 ) =>
   new CodexRealtimeClient(sessionId, onStateChange, {
     stateExpressionCallbacks,
     getPreferredThreadId,
     workStatusLedger: getWorkStatusLedgerStore(),
+    getVoice,
   });
 
 const defaultCreateThreadTracker = (
@@ -76,6 +82,7 @@ export function useCodexRealtime({
   applyLipSyncSource,
   setFallbackPlaybackEnabled = () => {},
   stateExpressionCallbacks,
+  getVoice = () => DEFAULT_CODEX_REALTIME_VOICE,
   createClient = defaultCreateClient,
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
@@ -85,6 +92,7 @@ export function useCodexRealtime({
   const applyLipSyncSourceRef = useRef(applyLipSyncSource);
   const setFallbackPlaybackEnabledRef = useRef(setFallbackPlaybackEnabled);
   const createClientRef = useRef(createClient);
+  const getVoiceRef = useRef(getVoice);
   const sessionIdRef = useRef(sessionId);
   const fallbackPlaybackTransitionRef = useRef(0);
   const fallbackPlaybackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,6 +102,7 @@ export function useCodexRealtime({
   applyLipSyncSourceRef.current = applyLipSyncSource;
   setFallbackPlaybackEnabledRef.current = setFallbackPlaybackEnabled;
   createClientRef.current = createClient;
+  getVoiceRef.current = getVoice;
 
   const restoreFallback = useCallback(() => {
     applyLipSyncSourceRef.current(fallbackRef.current);
@@ -185,6 +194,7 @@ export function useCodexRealtime({
       },
       stateExpressionCallbacks,
       () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
+      () => getVoiceRef.current(),
     );
     clientRef.current = client;
 
