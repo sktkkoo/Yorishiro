@@ -9,9 +9,18 @@ Codex を Main Agent にしたとき、通常の TUI を残したまま title ba
 realtime voice conversation を開始できる。Codex TUI と音声 UI は session ごとの
 `codex app-server` に同居し、同じ thread・approval・tool flow を共有する。
 
+### 発話テキスト（transcript）
+
+このDecisionでいうtranscriptは、音声会話の一回の発話を文字で表した**発話テキスト**である。
+user側ではmicrophone音声の文字起こし、Main Agent側では生成して読み上げている内容の文字表現を指す。
+完成文が一度に届くとは限らず、`delta` eventで断片が増え、`done` eventでその発話が確定する。
+
+発話テキストは実際にspeakerへ流すaudioとは別streamで届く。terminal log全体やconversation history全体を
+意味せず、audioと発話テキストの到着順にも保証はない。
+
 ## 設計を読む前の4つの前提
 
-1. **audio、transcript、tool / work eventは独立したstreamであり、到着順を保証しない。**
+1. **audio、発話テキスト（transcript）、tool / work eventは独立したstreamであり、到着順を保証しない。**
    textがaudioより先に届く場合も、短いaudioが最初のtranscriptより先に終わる場合もある。
    arrival orderから同一responseだと推測せず、response / itemのidentityとgenerationで対応づける。
 2. **非同期resourceはboolean stateではなくownershipで管理する。**
