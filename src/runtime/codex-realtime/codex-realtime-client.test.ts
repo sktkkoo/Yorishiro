@@ -255,6 +255,17 @@ describe("CodexRealtimeClient", () => {
     expect(client.getStatus()).toBe("idle");
   });
 
+  it("passes the configured voice to Codex realtime", async () => {
+    const client = new CodexRealtimeClient("main-session", undefined, { voice: "juniper" });
+
+    await client.start();
+
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
+    ).toMatchObject({ voice: "juniper" });
+    client.stop();
+  });
+
   it("routes assistant transcript to state expressions and cancels them on user barge-in", async () => {
     const onCue = vi.fn();
     const onRelease = vi.fn();
