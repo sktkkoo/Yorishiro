@@ -34,13 +34,17 @@ class FakeClient implements CodexRealtimeClientLike {
   constructor(
     private readonly onStateChange: (state: CodexRealtimeState) => void,
     private readonly startResult: Promise<void>,
+    private readonly getPreferredThreadId: () => string | null,
   ) {}
+
+  preferredThreadIdAtStart: string | null = null;
 
   getStatus(): CodexRealtimeState["status"] {
     return this.status;
   }
 
   readonly start = vi.fn((): Promise<void> => {
+    this.preferredThreadIdAtStart = this.getPreferredThreadId();
     this.emit({ status: "connecting" });
     return this.startResult;
   });
@@ -62,9 +66,14 @@ function setup(
   const clients: FakeClient[] = [];
   let trackedThreadId: string | null = "thread-1";
   let notifyThreadChange: (threadId: string | null) => void = () => {};
-  const createClient: CodexRealtimeClientFactory = (_sessionId, onStateChange) => {
+  const createClient: CodexRealtimeClientFactory = (
+    _sessionId,
+    onStateChange,
+    _stateExpressionCallbacks,
+    getPreferredThreadId = () => null,
+  ) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
-    const client = new FakeClient(onStateChange, startResult);
+    const client = new FakeClient(onStateChange, startResult, getPreferredThreadId);
     clients.push(client);
     return client;
   };
@@ -271,6 +280,7 @@ describe("useCodexRealtime", () => {
 
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
     expect(clients[1].start).toHaveBeenCalledTimes(1);
+    expect(clients[1].preferredThreadIdAtStart).toBe("thread-2");
   });
 
   it("current thread を特定できなくなった場合は active voice を切断する", async () => {

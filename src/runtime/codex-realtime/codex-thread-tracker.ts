@@ -67,7 +67,6 @@ export class CodexThreadTracker {
     const epoch = ++this.epoch;
     try {
       await this.connect(epoch);
-      this.startSelectionPolling(epoch);
     } catch (error) {
       if (epoch === this.epoch && this.running) this.scheduleReconnect(epoch);
       throw error;
@@ -118,6 +117,10 @@ export class CodexThreadTracker {
       if (epoch !== this.epoch || !this.running) return;
       this.notify("initialized", {});
       await this.discoverInitialThread(epoch);
+      if (epoch !== this.epoch || !this.running) return;
+      // Initial connect and every later reconnect share this path. Keep proxy polling alive even
+      // when the first connection attempt failed before start() could install it.
+      this.startSelectionPolling(epoch);
     } catch (error) {
       const connectionId = this.connectionId;
       this.connectionId = null;
@@ -192,7 +195,7 @@ export class CodexThreadTracker {
       void sessionRealtimeSelectedThread({ sessionId: this.sessionId })
         .then((threadId) => {
           if (epoch !== this.epoch || !this.running || !threadId) return;
-          this.considerStatusThread(threadId, epoch);
+          this.considerProxyThread(threadId, epoch);
         })
         .catch(() => {});
     };
@@ -201,10 +204,10 @@ export class CodexThreadTracker {
   }
 
   /**
-   * TUI proxy selection and lifecycle notifications are both untrusted candidates until
-   * `thread/read` confirms they are loaded top-level threads.
+   * TUI proxy selection is authoritative for ownership, but its ID is still validated with
+   * `thread/read` before voice uses it.
    */
-  private considerStatusThread(threadId: string, epoch: number): void {
+  private considerProxyThread(threadId: string, epoch: number): void {
     if (threadId === this.currentThreadId || threadId === this.validatingThreadId) return;
     this.validatingThreadId = threadId;
     const generation = ++this.threadSelectionGeneration;
@@ -306,7 +309,8 @@ export class CodexThreadTracker {
         isRecord(thread) &&
         typeof thread.id === "string" &&
         thread.id.length > 0 &&
-        thread.parentThreadId === null
+        thread.parentThreadId === null &&
+        (!("forkedFromId" in thread) || thread.forkedFromId === null)
       ) {
         this.topLevelStartedGeneration += 1;
         this.threadSelectionGeneration += 1;
@@ -332,12 +336,9 @@ export class CodexThreadTracker {
         if (params.threadId === this.currentThreadId) this.setCurrentThreadId(null);
         return;
       }
-      const wasAlreadyLoaded = this.knownLoadedThreadIds.has(params.threadId);
       this.knownLoadedThreadIds.add(params.threadId);
-      // A cold /resume announces the newly loaded idle thread. If it was already kept loaded
-      // by the grace period, the first reliable ownership signal is its next active turn.
-      if (status.type !== "active" && wasAlreadyLoaded) return;
-      this.considerStatusThread(params.threadId, epoch);
+      // Status is global thread activity, not evidence that the TUI selected this thread. In
+      // particular side forks and other top-level work can become active independently.
       return;
     }
 

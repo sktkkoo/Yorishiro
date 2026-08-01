@@ -20,9 +20,14 @@ const bridge = vi.hoisted(() => ({
   parents: {} as Record<string, string | null>,
   pendingReads: false,
   selectedThread: null as string | null,
+  connectFailuresRemaining: 0,
   readResponders: [] as Array<() => void>,
   disconnect: vi.fn(async () => {}),
   connect: vi.fn(async ({ onMessage }: { onMessage: FakeChannel<string> }): Promise<string> => {
+    if (bridge.connectFailuresRemaining > 0) {
+      bridge.connectFailuresRemaining -= 1;
+      throw new Error("connect failed");
+    }
     bridge.channel = onMessage;
     return `tracker-connection-${bridge.connect.mock.calls.length}`;
   }),
@@ -72,6 +77,7 @@ describe("CodexThreadTracker", () => {
     bridge.parents = {};
     bridge.pendingReads = false;
     bridge.selectedThread = null;
+    bridge.connectFailuresRemaining = 0;
     bridge.readResponders = [];
     bridge.disconnect.mockClear();
     bridge.connect.mockClear();
@@ -108,7 +114,7 @@ describe("CodexThreadTracker", () => {
     tracker.stop();
   });
 
-  it("tracks the top-level thread loaded by /resume from its status notification", async () => {
+  it("does not infer TUI ownership from a generic top-level status notification", async () => {
     const changes: Array<string | null> = [];
     const tracker = new CodexThreadTracker("main-session", (threadId) => changes.push(threadId));
     await tracker.start();
@@ -120,13 +126,14 @@ describe("CodexThreadTracker", () => {
         params: { threadId: "thread-after-resume", status: { type: "idle" } },
       }),
     );
-    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-after-resume"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(changes).toEqual(["thread-1", "thread-after-resume"]);
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
+    expect(changes).toEqual(["thread-1"]);
     tracker.stop();
   });
 
-  it("tracks a grace-period loaded /resume target when its next turn becomes active", async () => {
+  it("does not infer TUI ownership when another loaded top-level thread becomes active", async () => {
     bridge.loadedThreads = ["thread-1", "thread-2"];
     const tracker = new CodexThreadTracker("main-session");
     await tracker.start();
@@ -147,7 +154,48 @@ describe("CodexThreadTracker", () => {
         params: { threadId: "thread-2", status: { type: "active", activeFlags: [] } },
       }),
     );
-    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-2"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tracker.getCurrentThreadId()).toBeNull();
+    tracker.stop();
+  });
+
+  it("ignores side-fork started and status signals without retargeting active voice", async () => {
+    const changes: Array<string | null> = [];
+    const tracker = new CodexThreadTracker("main-session", (threadId) => changes.push(threadId));
+    await tracker.start();
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/started",
+        params: {
+          thread: { id: "side-fork", parentThreadId: null, forkedFromId: "thread-1" },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "side-fork", status: { type: "active", activeFlags: [] } },
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
+    expect(changes).toEqual(["thread-1"]);
+    tracker.stop();
+  });
+
+  it("tracks a normal fork only when the TUI proxy selects it", async () => {
+    bridge.loadedThreads = ["thread-1", "forked-thread"];
+    const changes: Array<string | null> = [];
+    const tracker = new CodexThreadTracker("main-session", (threadId) => changes.push(threadId));
+    await tracker.start();
+    expect(tracker.getCurrentThreadId()).toBeNull();
+
+    bridge.selectedThread = "forked-thread";
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("forked-thread"));
+
+    expect(changes).toEqual(["forked-thread"]);
     tracker.stop();
   });
 
@@ -248,6 +296,23 @@ describe("CodexThreadTracker", () => {
 
     expect(bridge.connect).toHaveBeenCalledTimes(2);
     expect(tracker.getCurrentThreadId()).toBeNull();
+    tracker.stop();
+    vi.useRealTimers();
+  });
+
+  it("starts proxy selection polling after an initial connect failure reconnects", async () => {
+    vi.useFakeTimers();
+    bridge.connectFailuresRemaining = 1;
+    bridge.loadedThreads = ["thread-1", "thread-2"];
+    bridge.selectedThread = "thread-2";
+    const tracker = new CodexThreadTracker("main-session");
+
+    await expect(tracker.start()).rejects.toThrow("connect failed");
+    expect(bridge.connect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(250);
+    await vi.waitFor(() => expect(tracker.getCurrentThreadId()).toBe("thread-2"));
+
+    expect(bridge.connect).toHaveBeenCalledTimes(2);
     tracker.stop();
     vi.useRealTimers();
   });

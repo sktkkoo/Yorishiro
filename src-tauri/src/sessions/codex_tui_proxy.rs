@@ -5,7 +5,11 @@ use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tokio::sync::oneshot;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{
+    handshake::server::{Request, Response},
+    http::StatusCode,
+    Message,
+};
 
 /// Codex TUI の app-server transport を透過中継し、thread 選択 response の ID だけを保持する。
 /// transcript や turn payload は保存しない。
@@ -107,9 +111,20 @@ async fn proxy_connection(
     upstream_endpoint: String,
     selected_thread_id: Arc<Mutex<Option<String>>>,
 ) -> Result<(), String> {
-    let client = tokio_tungstenite::accept_async(client_stream)
-        .await
-        .map_err(|error| format!("TUI handshake failed: {error}"))?;
+    let client = tokio_tungstenite::accept_hdr_async(
+        client_stream,
+        |request: &Request, response: Response| {
+            if request.headers().contains_key("origin") {
+                return Err(Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .body(Some("Origin header is not allowed".to_string()))
+                    .expect("static WebSocket rejection response should be valid"));
+            }
+            Ok(response)
+        },
+    )
+    .await
+    .map_err(|error| format!("TUI handshake failed: {error}"))?;
     let (upstream, _) = tokio_tungstenite::connect_async(&upstream_endpoint)
         .await
         .map_err(|error| format!("upstream connection failed: {error}"))?;
@@ -179,6 +194,15 @@ fn track_thread_selection_request(raw: &str, pending: &mut HashSet<String>) {
 
 fn take_selected_thread_response(raw: &str, pending: &mut HashSet<String>) -> Option<String> {
     let message = serde_json::from_str::<Value>(raw).ok()?;
+    let object = message.as_object()?;
+    if object.contains_key("method") {
+        return None;
+    }
+    let has_result = object.contains_key("result");
+    let has_error = object.contains_key("error");
+    if has_result == has_error {
+        return None;
+    }
     let key = message.get("id").and_then(request_id_key)?;
     if !pending.remove(&key) {
         return None;
@@ -195,6 +219,10 @@ fn take_selected_thread_response(raw: &str, pending: &mut HashSet<String>) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio_tungstenite::tungstenite::{
+        client::IntoClientRequest,
+        http::{header::ORIGIN, HeaderValue},
+    };
 
     #[tokio::test]
     async fn forwards_websocket_messages_and_records_the_selected_thread() {
@@ -249,6 +277,28 @@ mod tests {
         upstream_task.await.expect("upstream task");
     }
 
+    #[tokio::test]
+    async fn rejects_websocket_handshakes_with_an_origin_header() {
+        let proxy =
+            CodexTuiProxy::spawn("ws://127.0.0.1:9".to_string()).expect("proxy should start");
+        let mut request = proxy
+            .endpoint()
+            .into_client_request()
+            .expect("valid proxy request");
+        request
+            .headers_mut()
+            .insert(ORIGIN, HeaderValue::from_static("http://tauri.localhost"));
+
+        let error = match tokio_tungstenite::connect_async(request).await {
+            Ok(_) => panic!("Origin-bearing handshake must be rejected"),
+            Err(error) => error,
+        };
+        let tokio_tungstenite::tungstenite::Error::Http(response) = error else {
+            panic!("expected HTTP handshake rejection, got {error}");
+        };
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+
     #[test]
     fn observes_only_successful_thread_selection_responses() {
         let mut pending = HashSet::new();
@@ -296,5 +346,49 @@ mod tests {
             None
         );
         assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn server_request_id_collision_does_not_consume_pending_selection() {
+        let mut pending = HashSet::new();
+        track_thread_selection_request(
+            r#"{"method":"thread/resume","id":7,"params":{"threadId":"old"}}"#,
+            &mut pending,
+        );
+
+        assert_eq!(
+            take_selected_thread_response(
+                r#"{"method":"item/commandExecution/requestApproval","id":7,"params":{}}"#,
+                &mut pending,
+            ),
+            None
+        );
+        assert!(pending.contains("7"));
+        assert_eq!(
+            take_selected_thread_response(
+                r#"{"id":7,"result":{"thread":{"id":"resumed"}}}"#,
+                &mut pending,
+            ),
+            Some("resumed".to_string())
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn malformed_response_does_not_consume_pending_selection() {
+        let mut pending = HashSet::new();
+        track_thread_selection_request(
+            r#"{"method":"thread/start","id":9,"params":{}}"#,
+            &mut pending,
+        );
+
+        assert_eq!(
+            take_selected_thread_response(
+                r#"{"id":9,"result":{"thread":{"id":"wrong"}},"error":{"message":"also wrong"}}"#,
+                &mut pending,
+            ),
+            None
+        );
+        assert!(pending.contains("9"));
     }
 }
