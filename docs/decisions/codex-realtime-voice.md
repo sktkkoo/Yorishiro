@@ -180,7 +180,8 @@ wall clockではなく、生存中のRust processがWebView incarnationごとに
 ownership更新は同じowner ID内のgenerationで順序付けし、非同期invokeが逆順に完了しても古い更新を
 採用しない。owner登録はcandidate発行と最初のstate更新によるactivationの二段階に分け、前WebViewの
 遅延registerだけではactive leaseを奪えない。owner mismatchはIPC errorとして返し、frontendはcandidateを
-再取得してからreconcileする。fallbackへのrestore IPCは一時失敗に備えてbounded retryする。
+再取得してからreconcileする。ただし古いgeneration / update attemptの後着errorは、より新しい成功済み
+leaseをinvalidateしない。fallbackへのrestore IPCは一時失敗に備えてbounded retryする。
 
 ## 今後も守る invariant
 

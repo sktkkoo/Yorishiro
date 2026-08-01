@@ -105,7 +105,7 @@ import { registerSceneLayerBridge } from "./core/scene/scene-layer-bridge";
 import { EffectDispatcher, EffectPackRunner, Renderer } from "./core/space";
 import { Time } from "./core/time";
 import { applyLayout, type LayoutTargets, resetLayout } from "./core/ui-layout";
-import { SayTtsEngine, VoicePlayer } from "./core/voice";
+import { SayTtsEngine, VoicePlaybackLeaseSync, VoicePlayer } from "./core/voice";
 import {
   changeStrings,
   getStrings,
@@ -1180,29 +1180,11 @@ function App() {
     const effectDispatcher = new EffectDispatcher();
     const voicePlayer = new VoicePlayer("Kyoko", new SayTtsEngine());
     const voiceApi = voicePlayer.createVoiceAPI();
-    let voicePlaybackOwnerPromise: Promise<string> | null = null;
-    let voicePlaybackOwnerId: string | null = null;
-    const getVoicePlaybackOwnerId = (): Promise<string> => {
-      if (voicePlaybackOwnerPromise === null) {
-        voicePlaybackOwnerPromise = invoke<string>("mcp_voice_playback_register_owner")
-          .then((ownerId) => {
-            voicePlaybackOwnerId = ownerId;
-            voicePlayer.setPlaybackOwnerId(ownerId);
-            return ownerId;
-          })
-          .catch((error) => {
-            voicePlaybackOwnerPromise = null;
-            throw error;
-          });
-      }
-      return voicePlaybackOwnerPromise;
-    };
-    const invalidateVoicePlaybackOwner = (ownerId: string): void => {
-      if (voicePlaybackOwnerId !== ownerId) return;
-      voicePlayer.clearPlaybackOwnerId(ownerId);
-      voicePlaybackOwnerId = null;
-      voicePlaybackOwnerPromise = null;
-    };
+    const voicePlaybackLeaseSync = new VoicePlaybackLeaseSync(voicePlayer, {
+      registerOwner: () => invoke<string>("mcp_voice_playback_register_owner"),
+      update: ({ ownerId, generation, enabled }) =>
+        invoke("mcp_voice_playback_set_enabled", { ownerId, generation, enabled }),
+    });
     const claimState = getClaimState();
     // Effect Pack infrastructure. screen-shake は body に transform を当てる
     // ことで fixed 子孫（three-runtime の canvas container）も含めて一緒に
@@ -2390,8 +2372,7 @@ function App() {
       effectDispatcher,
       effectPackRunner,
       voicePlayer,
-      getVoicePlaybackOwnerId,
-      invalidateVoicePlaybackOwner,
+      voicePlaybackLeaseSync,
       scenePackRegistry,
       uiPackRegistry,
       packRegistry,
@@ -2411,8 +2392,7 @@ function App() {
     effectDispatcher,
     effectPackRunner,
     voicePlayer,
-    getVoicePlaybackOwnerId,
-    invalidateVoicePlaybackOwner,
+    voicePlaybackLeaseSync,
     scenePackRegistry,
     uiPackRegistry,
     packRegistry,
@@ -3648,20 +3628,7 @@ function App() {
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
-    setFallbackPlaybackEnabled: async (enabled) => {
-      const ownership = voicePlayer.setPlaybackEnabled(enabled);
-      const ownerId = await getVoicePlaybackOwnerId();
-      try {
-        await invoke("mcp_voice_playback_set_enabled", {
-          ownerId,
-          generation: ownership.generation,
-          enabled: ownership.fallbackPlaybackEnabled,
-        });
-      } catch (error) {
-        invalidateVoicePlaybackOwner(ownerId);
-        throw error;
-      }
-    },
+    setFallbackPlaybackEnabled: (enabled) => voicePlaybackLeaseSync.setEnabled(enabled),
   });
 
   const handleBodyReady = useCallback(
