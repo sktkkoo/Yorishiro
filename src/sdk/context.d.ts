@@ -407,11 +407,12 @@ export interface GazeHandle {
 export type MotionSource = "reflex" | "mcp" | "persona" | "idle" | "state" | "system";
 
 /**
- * Motion priority levels（5 段、固定 enum）。higher が lower を preempt する。
- * - "critical-reflex" (L5): 強制割り込み（startle / flinch、MVP では未使用枠）
- * - "mcp-conscious" (L4): 住人 AI の意思
- * - "persona-handler" (L3): persona reflex の演技 motion
- * - "state-driven" (L2): state 連動 (Typing during writing 等)
+ * Motion priority levels（6 段、固定 enum）。higher が lower を preempt する。
+ * - "critical-reflex" (L6): 強制割り込み（startle / flinch、MVP では未使用枠）
+ * - "mcp-conscious" (L5): 住人 AI の意思
+ * - "persona-handler" (L4): persona reflex の演技 motion
+ * - "state-driven" (L3): state 連動 (Typing during writing 等)
+ * - "speech-performance" (L2): GPT Live 発話に同期する補助 gesture
  * - "idle-fidget" (L1): 30s+ idle の小動作
  *
  * "default-pose" は queue 外（active が無いとき procedural-bones + breathing が default）、
@@ -422,6 +423,7 @@ export type MotionPriority =
   | "mcp-conscious"
   | "persona-handler"
   | "state-driven"
+  | "speech-performance"
   | "idle-fidget";
 
 /** Motion 起動時の補助 option（fade / loop / speed 等の表現 parameter）。 */

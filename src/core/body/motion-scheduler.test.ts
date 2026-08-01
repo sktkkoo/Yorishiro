@@ -82,6 +82,12 @@ const idleReq: MotionRequest = {
   animation: "anim:VRMA_idle_breath",
 };
 
+const speechReq: MotionRequest = {
+  source: "system",
+  priority: "speech-performance",
+  animation: "anim:VRMA_small_nod",
+};
+
 // `flush` は microtask 解決を待つだけの helper。
 async function flush(): Promise<void> {
   await Promise.resolve();
@@ -162,6 +168,26 @@ describe("MotionScheduler", () => {
     expect(higher.isActive()).toBe(true);
     const snap = h.scheduler.getSnapshot();
     expect(snap.active?.source).toBe("mcp");
+  });
+
+  it("speech performance is above idle but below state-driven activity", async () => {
+    const idle = h.scheduler.request(idleReq);
+    const speech = h.scheduler.request(speechReq);
+
+    expect(idle.isPreempted()).toBe(true);
+    expect(speech.isActive()).toBe(true);
+
+    const state = h.scheduler.request({
+      source: "state",
+      priority: "state-driven",
+      animation: "anim:Typing",
+    });
+    expect(speech.isPreempted()).toBe(true);
+    expect(state.isActive()).toBe(true);
+
+    const rejectedSpeech = h.scheduler.request(speechReq);
+    expect(rejectedSpeech.isPreempted()).toBe(true);
+    expect(h.scheduler.getSnapshot().active?.priority).toBe("state-driven");
   });
 
   it("same priority replaces (last-write-wins)", async () => {
