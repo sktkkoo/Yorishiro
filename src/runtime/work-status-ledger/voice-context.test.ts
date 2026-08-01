@@ -3,6 +3,13 @@ import { formatWorkStatusEvent, formatWorkStatusSnapshot } from "./voice-context
 import { createWorkStatusLedgerStore } from "./work-status-ledger-store";
 
 describe("work status voice context", () => {
+  it("tells GPT Live to answer ledger-only questions without a backend handoff", () => {
+    const context = formatWorkStatusSnapshot(createWorkStatusLedgerStore().getSnapshot());
+
+    expect(context).toContain("do not hand off solely to read or restate the ledger");
+    expect(context).toContain("Delegate only when the user requests actual work");
+  });
+
   it("formats a compact structured snapshot without approval identifiers", () => {
     const ledger = createWorkStatusLedgerStore();
     const work = ledger.create({ summary: "Build\nrelease" });
