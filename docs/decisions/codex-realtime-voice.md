@@ -191,8 +191,15 @@ user transcriptによるbarge-in、voice stop、disconnect、session切替では
 
 現在観察できる正本は発話内容とspeech lifecycleであり、modelの非公開な内部感情を読めるとは扱わない。
 難しい検討、不確実性、困惑、発見、安心、懸念、同意など、発話に根拠がある状態だけを解決する。
-表情の頻度を上げる場合もtimerでランダムな感情を足さず、検出する節・状態遷移のcoverageを広げる。
-同じ状態の連打はcooldownで抑え、状態変化がない箇所ではneutralな身体性を維持する。
+ただし、表情を離散的な「状態変化」が起きた瞬間だけに限定しない。一度根拠づけられた状態は一定時間
+継続し、その範囲では低salienceな微笑み、考え込む仕草、視線や姿勢の小さな揺らぎを有機的な
+micro-variationとして許容する。randomnessは発生時刻、variant、弱いintensityを選ぶためだけに使い、
+根拠のない新しい感情categoryや強い表情を生成するためには使わない。
+
+したがって表現は二層に分ける。発話やstructured stateに直接根拠づけられたsalient expressionと、
+そのgrounded stateが続く間のlow-salience organic variationである。前者は状態の意味を正確に伝え、
+後者は人間らしい連続性と頻度を補う。同じsalient expressionの連打はcooldownで抑え、grounded stateが
+無い箇所では、感情を捏造せずblink、breathing、gazeなどの生理的baselineだけを維持する。
 
 motionと表情の強弱はstate expression cueの`intensity`で表現し、Body adapterがanimation / expression
 weightへ変換する。routineな状態は`small`、明確な感情・強調だけを`medium`にする。
@@ -222,6 +229,7 @@ GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割�
 12. voice利用のためにMain Agentをuser確認なしで自動切替しない
 13. 発話やstructured stateに根拠がない感情を、見栄えのためだけに生成しない
 14. domain conceptをperformance / actingとして扱わず、Main Agentのstate expressionとして扱う
+15. randomnessで感情categoryを決めず、grounded state内の低salienceなtiming / variant / intensityだけを揺らす
 
 ## Security / known limitations
 
