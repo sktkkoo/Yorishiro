@@ -19,12 +19,21 @@ export interface CodexRealtimeState {
   readonly error?: string;
 }
 
-interface JsonRpcResponse {
-  readonly id?: number;
-  readonly method?: string;
+interface JsonRpcMessage {
+  readonly id?: unknown;
+  readonly method?: unknown;
   readonly params?: unknown;
   readonly result?: unknown;
-  readonly error?: { readonly message?: string };
+  readonly error?: unknown;
+}
+
+interface JsonRpcResponse extends JsonRpcMessage {
+  readonly id: number;
+}
+
+interface JsonRpcServerRequest extends JsonRpcMessage {
+  readonly id: number;
+  readonly method: string;
 }
 
 interface PendingRequest {
@@ -36,6 +45,12 @@ interface PendingRequest {
 const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
 const CODEX_REALTIME_VOICE = "sol";
+
+class StartAttemptCancelledError extends Error {
+  constructor() {
+    super("Codex realtime start attempt is no longer active");
+  }
+}
 
 /**
  * Codex app-server の experimental realtime API と WebRTC を結ぶ。
@@ -61,6 +76,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private rejectRemoteSdp: ((reason: Error) => void) | null = null;
   private state: CodexRealtimeState = { status: "idle" };
   private stopping = false;
+  private startAttemptEpoch = 0;
 
   constructor(sessionId: string, onStateChange: (state: CodexRealtimeState) => void = () => {}) {
     this.sessionId = sessionId;
@@ -82,17 +98,20 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   async start(): Promise<void> {
     if (this.state.status === "connecting" || this.state.status === "active") return;
+    const attempt = ++this.startAttemptEpoch;
     this.stopping = false;
     this.setState({ status: "connecting" });
 
     try {
       // Click gesture の直後に resume し、WebKit の autoplay 制限を先に解く。
       await ensureAudioContextRunning();
+      this.assertAttemptOwner(attempt);
       await withTimeout(
-        this.connectBridge(),
+        this.connectBridge(attempt),
         RPC_TIMEOUT_MS,
         "Codex app-server connection timed out",
       );
+      this.assertAttemptOwner(attempt);
       await this.request("initialize", {
         clientInfo: {
           name: "yorishiro",
@@ -101,11 +120,13 @@ export class CodexRealtimeClient implements LipSyncSource {
         },
         capabilities: { experimentalApi: true },
       });
+      this.assertAttemptOwner(attempt);
       this.notify("initialized", {});
 
       const account = (await this.request("account/read", { refreshToken: false })) as {
         readonly account?: { readonly type?: string } | null;
       };
+      this.assertAttemptOwner(attempt);
       const billing =
         account.account?.type === "chatgpt"
           ? "subscription"
@@ -120,11 +141,17 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.setState({ status: "connecting", billing });
       }
 
-      this.threadId = await this.waitForLoadedThread();
-      await this.startWebRtc(this.threadId);
+      const threadId = await this.waitForLoadedThread(attempt);
+      this.assertAttemptOwner(attempt);
+      this.threadId = threadId;
+      await this.startWebRtc(threadId, attempt);
+      this.assertAttemptOwner(attempt);
       this.setState({ status: "active", billing });
     } catch (error) {
+      if (!this.isAttemptOwner(attempt)) throw error;
       const message = error instanceof Error ? error.message : String(error);
+      this.invalidateAttempt(attempt);
+      this.stopping = true;
       this.disposeResources();
       this.setState({ status: "error", error: message });
       throw error;
@@ -132,6 +159,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   stop(): void {
+    this.invalidateAttempt();
     this.stopping = true;
     const finalMessage =
       this.connectionId && this.threadId
@@ -146,67 +174,155 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.setState({ status: "idle" });
   }
 
-  private async connectBridge(): Promise<void> {
+  private async connectBridge(attempt: number): Promise<void> {
     const onMessage = new Channel<string>();
-    onMessage.onmessage = (message) => this.handleMessage(message);
+    onMessage.onmessage = (message) => this.handleMessage(message, attempt);
     const connectionId = await sessionRealtimeConnect({
       sessionId: this.sessionId,
       onMessage,
     });
-    if (this.stopping) {
-      void sessionRealtimeDisconnect({ connectionId });
+    if (!this.isAttemptOwner(attempt)) {
+      void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
       return;
     }
     this.connectionId = connectionId;
   }
 
-  private async waitForLoadedThread(): Promise<string> {
+  private async waitForLoadedThread(attempt: number): Promise<string> {
     const deadline = Date.now() + THREAD_DISCOVERY_TIMEOUT_MS;
     while (Date.now() < deadline) {
       const result = (await this.request("thread/loaded/list", {})) as {
         readonly data?: ReadonlyArray<string>;
       };
-      const threadId = result.data?.[0];
-      if (threadId) return threadId;
+      this.assertAttemptOwner(attempt);
+      const threads = result.data ?? [];
+      if (threads.length > 0) {
+        const primaryThreadId = await this.findPrimaryThread(threads, attempt);
+        if (primaryThreadId) return primaryThreadId;
+      }
       await new Promise((resolve) => window.setTimeout(resolve, 100));
+      this.assertAttemptOwner(attempt);
     }
     throw new Error("Codex thread was not loaded in time");
   }
 
-  private async startWebRtc(threadId: string): Promise<void> {
+  private async findPrimaryThread(
+    threadIds: ReadonlyArray<string>,
+    attempt: number,
+  ): Promise<string | null> {
+    const primaryThreadIds: string[] = [];
+    for (const threadId of threadIds) {
+      if (typeof threadId !== "string" || threadId.length === 0) {
+        throw new Error("Codex returned an invalid loaded thread.");
+      }
+      let result: unknown;
+      try {
+        result = await this.request("thread/read", {
+          threadId,
+          includeTurns: false,
+        });
+      } catch (error) {
+        this.assertAttemptOwner(attempt);
+        // loaded/list の直後に subagent が終了する競合は次の poll で再評価する。
+        if (error instanceof StartAttemptCancelledError) throw error;
+        return null;
+      }
+      this.assertAttemptOwner(attempt);
+      const thread = (result as { readonly thread?: unknown }).thread;
+      if (typeof thread !== "object" || thread === null) {
+        throw new Error("Codex returned an invalid loaded thread.");
+      }
+      const loaded = thread as { readonly id?: unknown; readonly parentThreadId?: unknown };
+      if (loaded.id !== threadId || !("parentThreadId" in loaded)) {
+        throw new Error("Codex returned an invalid loaded thread.");
+      }
+      // parentThreadId は subagent にだけ設定される。agent team の子 thread を除外し、
+      // TUI が所有する唯一の top-level thread へ接続する。
+      if (loaded.parentThreadId === null) {
+        primaryThreadIds.push(threadId);
+      } else if (typeof loaded.parentThreadId !== "string" || loaded.parentThreadId.length === 0) {
+        throw new Error("Codex returned an invalid loaded thread.");
+      }
+    }
+
+    const uniquePrimaryThreadIds = [...new Set(primaryThreadIds)];
+    if (uniquePrimaryThreadIds.length > 1) {
+      throw new Error(
+        "Multiple top-level Codex threads are loaded; voice connection was not started.",
+      );
+    }
+    const candidate = uniquePrimaryThreadIds[0];
+    if (!candidate) return null;
+
+    let revalidated: unknown;
+    try {
+      revalidated = await this.request("thread/loaded/list", {});
+    } catch (error) {
+      this.assertAttemptOwner(attempt);
+      if (error instanceof StartAttemptCancelledError) throw error;
+      return null;
+    }
+    this.assertAttemptOwner(attempt);
+    const revalidatedIds = (revalidated as { readonly data?: unknown }).data;
+    if (!Array.isArray(revalidatedIds)) return null;
+    const normalizedBefore = normalizeThreadIdSet(threadIds);
+    const normalizedAfter = normalizeThreadIdSet(revalidatedIds);
+    if (
+      !normalizedBefore ||
+      !normalizedAfter ||
+      normalizedBefore.length !== normalizedAfter.length ||
+      normalizedBefore.some((threadId, index) => threadId !== normalizedAfter[index])
+    ) {
+      // read中に別threadがload/unloadされたsnapshotは採用しない。
+      return null;
+    }
+    return candidate;
+  }
+
+  private async startWebRtc(threadId: string, attempt: number): Promise<void> {
+    this.assertAttemptOwner(attempt);
     const peer = new RTCPeerConnection();
     this.peer = peer;
     this.remoteStream = new MediaStream();
     peer.addEventListener("track", (event) => {
+      if (!this.isAttemptOwner(attempt)) return;
       const stream = event.streams[0] ?? this.remoteStream;
       if (!stream) return;
       this.remoteStream = stream;
       if (event.streams.length === 0 && !stream.getTracks().includes(event.track)) {
         stream.addTrack(event.track);
       }
-      this.connectRemoteAudio(stream);
+      this.connectRemoteAudio(stream, attempt);
     });
     peer.addEventListener("connectionstatechange", () => {
-      if (!this.stopping && peer.connectionState === "failed") {
+      if (this.isAttemptOwner(attempt) && peer.connectionState === "failed") {
         this.setState({ status: "error", error: `Voice connection ${peer.connectionState}` });
       }
     });
 
-    this.microphone = await navigator.mediaDevices.getUserMedia({
+    const microphone = await navigator.mediaDevices.getUserMedia({
       audio: {
         autoGainControl: true,
         echoCancellation: true,
         noiseSuppression: true,
       },
     });
-    for (const track of this.microphone.getAudioTracks()) {
-      peer.addTrack(track, this.microphone);
+    if (!this.isAttemptOwner(attempt) || this.peer !== peer) {
+      for (const track of microphone.getTracks()) track.stop();
+      throw new StartAttemptCancelledError();
+    }
+    this.microphone = microphone;
+    for (const track of microphone.getAudioTracks()) {
+      peer.addTrack(track, microphone);
     }
     this.eventChannel = peer.createDataChannel("oai-events");
 
     const offer = await peer.createOffer();
+    this.assertAttemptOwner(attempt, peer);
     await peer.setLocalDescription(offer);
+    this.assertAttemptOwner(attempt, peer);
     await withTimeout(waitForIceGathering(peer), 10_000, "WebRTC ICE gathering timed out");
+    this.assertAttemptOwner(attempt, peer);
     const sdp = peer.localDescription?.sdp;
     if (!sdp) throw new Error("WebRTC offer did not contain SDP");
 
@@ -221,21 +337,24 @@ export class CodexRealtimeClient implements LipSyncSource {
       voice: CODEX_REALTIME_VOICE,
       transport: { type: "webrtc", sdp },
     });
+    this.assertAttemptOwner(attempt, peer);
     const answerSdp = await withTimeout(
       remoteSdp,
       RPC_TIMEOUT_MS,
       "Codex realtime SDP answer timed out",
     );
+    this.assertAttemptOwner(attempt, peer);
     this.acceptRemoteSdp = null;
     this.rejectRemoteSdp = null;
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    this.assertAttemptOwner(attempt, peer);
   }
 
-  private connectRemoteAudio(stream: MediaStream): void {
+  private connectRemoteAudio(stream: MediaStream, attempt: number): void {
     if (this.remoteSource) return;
     void ensureAudioContextRunning()
       .then((context) => {
-        if (this.stopping || this.remoteSource) return;
+        if (!this.isAttemptOwner(attempt) || this.remoteSource) return;
         const analyser = LipSyncAnalyser.createAnalyserNode(context);
         const source = context.createMediaStreamSource(stream);
         source.connect(analyser);
@@ -245,6 +364,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.lipSync = new LipSyncAnalyser(analyser);
       })
       .catch((error) => {
+        if (!this.isAttemptOwner(attempt)) return;
         const message = error instanceof Error ? error.message : String(error);
         this.setState({ status: "error", error: message });
       });
@@ -285,22 +405,30 @@ export class CodexRealtimeClient implements LipSyncSource {
     }).catch(() => {});
   }
 
-  private handleMessage(raw: unknown): void {
+  private handleMessage(raw: unknown, attempt: number): void {
+    if (!this.isAttemptOwner(attempt)) return;
     if (typeof raw !== "string") return;
-    let message: JsonRpcResponse;
+    let message: JsonRpcMessage;
     try {
-      message = JSON.parse(raw) as JsonRpcResponse;
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null) return;
+      message = parsed as JsonRpcMessage;
     } catch {
       return;
     }
 
-    if (typeof message.id === "number") {
+    if (isJsonRpcServerRequest(message)) {
+      // bridge は approval request に自動応答しない。承認 UI は TUI だけを正本とする。
+      return;
+    }
+
+    if (isJsonRpcResponse(message)) {
       const pending = this.pending.get(message.id);
       if (!pending) return;
       window.clearTimeout(pending.timeoutId);
       this.pending.delete(message.id);
-      if (message.error) {
-        pending.reject(new Error(message.error.message ?? "Codex app-server request failed"));
+      if (hasOwn(message, "error")) {
+        pending.reject(new Error(jsonRpcErrorMessage(message.error)));
       } else {
         pending.resolve(message.result);
       }
@@ -317,12 +445,15 @@ export class CodexRealtimeClient implements LipSyncSource {
       this.rejectRemoteSdp?.(error);
       if (!this.stopping) this.setState({ status: "error", error: error.message });
     } else if (message.method === "thread/realtime/closed" && !this.stopping) {
+      this.invalidateAttempt(attempt);
       this.stopping = true;
       this.disposeResources();
       this.threadId = null;
       this.setState({ status: "idle" });
     } else if (message.method === "yorishiro/realtime-bridge/closed" && !this.stopping) {
       const error = new Error(params?.message ?? "Codex app-server connection closed");
+      this.invalidateAttempt(attempt);
+      this.stopping = true;
       this.rejectAllPending(error);
       this.disposeResources();
       this.threadId = null;
@@ -368,6 +499,45 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.state = state;
     this.onStateChange(state);
   }
+
+  private isAttemptOwner(attempt: number): boolean {
+    return !this.stopping && this.startAttemptEpoch === attempt;
+  }
+
+  private assertAttemptOwner(attempt: number, peer?: RTCPeerConnection): void {
+    if (!this.isAttemptOwner(attempt) || (peer !== undefined && this.peer !== peer)) {
+      throw new StartAttemptCancelledError();
+    }
+  }
+
+  private invalidateAttempt(attempt?: number): void {
+    if (attempt === undefined || this.startAttemptEpoch === attempt) this.startAttemptEpoch++;
+  }
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+}
+
+function isJsonRpcServerRequest(message: JsonRpcMessage): message is JsonRpcServerRequest {
+  return typeof message.id === "number" && typeof message.method === "string";
+}
+
+function isJsonRpcResponse(message: JsonRpcMessage): message is JsonRpcResponse {
+  return typeof message.id === "number" && (hasOwn(message, "result") || hasOwn(message, "error"));
+}
+
+function jsonRpcErrorMessage(error: unknown): string {
+  if (typeof error !== "object" || error === null || !("message" in error)) {
+    return "Codex app-server request failed";
+  }
+  const message = (error as { readonly message?: unknown }).message;
+  return typeof message === "string" ? message : "Codex app-server request failed";
+}
+
+function normalizeThreadIdSet(values: ReadonlyArray<unknown>): string[] | null {
+  if (values.some((value) => typeof value !== "string" || value.length === 0)) return null;
+  return [...new Set(values as ReadonlyArray<string>)].sort();
 }
 
 async function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {

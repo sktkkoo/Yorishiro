@@ -1,7 +1,7 @@
 # Codex realtime voice
 
 **Status**: experimental
-**Last updated**: 2026-07-25
+**Last updated**: 2026-08-01
 
 ## TL;DR
 
@@ -19,7 +19,8 @@ Codex session の起動は次の 3 要素に分ける。
 2. PTY 内の Codex TUI を `codex --remote <endpoint>` で同じ server へ接続
 3. Rust の realtime bridge が Origin header なしで同じ server へ接続
 4. WebView の `CodexRealtimeClient` は Tauri Channel 経由で `thread/loaded/list` を送り、
-   TUI の thread を見つけて `thread/realtime/start` の realtime v3 + WebRTC transport を開始
+   複数件なら `thread/read` の `parentThreadId` で subagent を除外した唯一の top-level thread を選ぶ
+5. 選んだ thread で `thread/realtime/start` の realtime v3 + WebRTC transport を開始
 
 app-server process は `PtySession` が所有する。spawn 途中の失敗、session kill、Drop の
 どの経路でも child を kill + wait し、orphan process を残さない。
@@ -69,6 +70,12 @@ UI に残る。これは PTY を「AI が user の代わりに操作する経路
   開始しない
 - realtime voice は Codex 側でも experimental。利用可否・voice・model は Codex account と
   upstream configuration に依存する
+- Codex 0.146.0 の実測では、`thread/realtime/start` を呼んだ bridge client は対象 thread へ
+  自動購読され、TUI と bridge の双方へ realtime transcript、handoff、通常 turn event が届く
+- approval request は同じ thread の subscriber 全員へ届く。bridge は自動応答せず、v1 の
+  承認 UI は TUI だけを正本とする
+- `thread/loaded/list` の順序には active thread の意味がない。subagent は `parentThreadId` で除外し、
+  複数の top-level thread が loaded の場合は誤接続を避けて voice を開始しない
 - v1 は active Main Codex session だけを対象とし、shell tab や Claude / OpenCode では
   button を表示しない
 

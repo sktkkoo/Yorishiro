@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import { CodexRealtimeClient, type CodexRealtimeState } from "./codex-realtime-client";
 
 interface FakeChannel<T> {
@@ -8,16 +9,26 @@ interface FakeChannel<T> {
 }
 
 interface SentMessage {
-  readonly method: string;
+  readonly method?: string;
   readonly id?: number;
   readonly params?: Record<string, unknown>;
+  readonly result?: unknown;
 }
 
 const bridge = vi.hoisted(() => ({
   channel: null as FakeChannel<string> | null,
   sent: [] as SentMessage[],
+  connect: vi.fn(async ({ onMessage }: { onMessage: FakeChannel<string> }): Promise<string> => {
+    bridge.channel = onMessage;
+    return bridge.connectPromise ? await bridge.connectPromise : "connection-1";
+  }),
+  connectPromise: null as Promise<string> | null,
   disconnect: vi.fn(async () => {}),
   accountType: "chatgpt",
+  accountPrelude: null as "server-request" | "id-only" | "error-response" | null,
+  loadedThreadResponses: [] as string[][],
+  loadedThreadParents: {} as Record<string, string | null | undefined>,
+  threadReadFailures: {} as Record<string, number>,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -27,12 +38,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("../../bindings/tauri-commands", () => ({
-  sessionRealtimeConnect: vi.fn(
-    async ({ onMessage }: { onMessage: FakeChannel<string> }): Promise<string> => {
-      bridge.channel = onMessage;
-      return "connection-1";
-    },
-  ),
+  sessionRealtimeConnect: bridge.connect,
   sessionRealtimeSend: vi.fn(
     async ({ message }: { connectionId: string; message: string }): Promise<void> => {
       const request = JSON.parse(message) as SentMessage;
@@ -46,9 +52,61 @@ vi.mock("../../bindings/tauri-commands", () => ({
       };
 
       if (request.method === "account/read") {
+        if (bridge.accountPrelude === "error-response") {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({ id: request.id, error: { message: "account failed" } }),
+            );
+          });
+          return;
+        }
+        if (bridge.accountPrelude === "server-request") {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({
+                id: request.id,
+                method: "item/commandExecution/requestApproval",
+                params: { reason: "test" },
+              }),
+            );
+          });
+        } else if (bridge.accountPrelude === "id-only") {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(JSON.stringify({ id: request.id }));
+          });
+        }
         respond({ account: { type: bridge.accountType, planType: "plus" } });
       } else if (request.method === "thread/loaded/list") {
-        respond({ data: ["thread-1"], nextCursor: null });
+        const loadedThreads =
+          bridge.loadedThreadResponses.length > 1
+            ? bridge.loadedThreadResponses.shift()
+            : bridge.loadedThreadResponses[0];
+        respond({
+          data: loadedThreads ?? ["thread-1"],
+          nextCursor: null,
+        });
+      } else if (request.method === "thread/read") {
+        const threadId = request.params?.threadId;
+        if (typeof threadId === "string" && (bridge.threadReadFailures[threadId] ?? 0) > 0) {
+          bridge.threadReadFailures[threadId] -= 1;
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({ id: request.id, error: { message: "thread disappeared" } }),
+            );
+          });
+          return;
+        }
+        const hasParent =
+          typeof threadId === "string" &&
+          Object.getOwnPropertyDescriptor(bridge.loadedThreadParents, threadId) !== undefined;
+        const parentThreadId =
+          typeof threadId === "string" && hasParent ? bridge.loadedThreadParents[threadId] : null;
+        respond({
+          thread: {
+            id: threadId,
+            ...(parentThreadId !== undefined ? { parentThreadId } : {}),
+          },
+        });
       } else {
         respond({});
       }
@@ -138,8 +196,16 @@ describe("CodexRealtimeClient", () => {
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
     bridge.channel = null;
     bridge.sent = [];
+    bridge.connect.mockClear();
+    bridge.connectPromise = null;
     bridge.disconnect.mockClear();
     bridge.accountType = "chatgpt";
+    bridge.accountPrelude = null;
+    bridge.loadedThreadResponses = [];
+    bridge.loadedThreadParents = {};
+    vi.mocked(ensureAudioContextRunning).mockReset();
+    vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
+    bridge.threadReadFailures = {};
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -149,6 +215,7 @@ describe("CodexRealtimeClient", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     FakePeerConnection.latest = null;
   });
@@ -202,5 +269,240 @@ describe("CodexRealtimeClient", () => {
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
     expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(true);
     expect(client.getStatus()).toBe("active");
+  });
+
+  it("keeps an id+method server request separate from the matching response", async () => {
+    bridge.accountPrelude = "server-request";
+    const client = new CodexRealtimeClient("main-session");
+
+    await client.start();
+
+    expect(client.getStatus()).toBe("active");
+    expect(bridge.sent.every((message) => typeof message.method === "string")).toBe(true);
+  });
+
+  it("ignores an id-only message until a result or error response arrives", async () => {
+    bridge.accountPrelude = "id-only";
+    const client = new CodexRealtimeClient("main-session");
+
+    await client.start();
+
+    expect(client.getStatus()).toBe("active");
+  });
+
+  it("rejects a matching id+error response", async () => {
+    bridge.accountPrelude = "error-response";
+    const client = new CodexRealtimeClient("main-session");
+
+    await expect(client.start()).rejects.toThrow("account failed");
+
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("waits while no thread is loaded and uses the sole loaded thread", async () => {
+    bridge.loadedThreadResponses = [[], ["thread-after-wait"]];
+    const client = new CodexRealtimeClient("main-session");
+
+    await client.start();
+
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
+    ).toMatchObject({ threadId: "thread-after-wait" });
+    expect(bridge.sent.filter((message) => message.method === "thread/loaded/list")).toHaveLength(
+      3,
+    );
+  });
+
+  it("selects the sole top-level thread when its subagents are also loaded", async () => {
+    bridge.loadedThreadResponses = [["main-thread", "subagent-1", "subagent-2"]];
+    bridge.loadedThreadParents = {
+      "main-thread": null,
+      "subagent-1": "main-thread",
+      "subagent-2": "main-thread",
+    };
+    const client = new CodexRealtimeClient("main-session");
+
+    await client.start();
+
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
+    ).toMatchObject({ threadId: "main-thread" });
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries the whole loaded snapshot when one thread/read races with subagent exit", async () => {
+    bridge.loadedThreadResponses = [
+      ["main-thread", "subagent-1"],
+      ["main-thread", "subagent-1"],
+    ];
+    bridge.loadedThreadParents = { "main-thread": null, "subagent-1": "main-thread" };
+    bridge.threadReadFailures = { "subagent-1": 1 };
+    const client = new CodexRealtimeClient("main-session");
+
+    await client.start();
+
+    expect(bridge.sent.filter((message) => message.method === "thread/loaded/list")).toHaveLength(
+      3,
+    );
+    expect(bridge.sent.filter((message) => message.method === "thread/read")).toHaveLength(4);
+    expect(
+      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
+    ).toMatchObject({ threadId: "main-thread" });
+  });
+
+  it("rejects a stale candidate when a second top-level thread loads during discovery", async () => {
+    bridge.loadedThreadResponses = [
+      ["main-thread", "subagent-1"],
+      ["main-thread", "subagent-1", "second-thread"],
+    ];
+    bridge.loadedThreadParents = {
+      "main-thread": null,
+      "subagent-1": "main-thread",
+      "second-thread": null,
+    };
+    const client = new CodexRealtimeClient("main-session");
+
+    await expect(client.start()).rejects.toThrow("Multiple top-level Codex threads are loaded");
+
+    expect(bridge.sent.filter((message) => message.method === "thread/loaded/list")).toHaveLength(
+      3,
+    );
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
+  });
+
+  it("fails closed before microphone access when multiple top-level threads are loaded", async () => {
+    bridge.loadedThreadResponses = [["thread-1", "thread-2"]];
+    bridge.loadedThreadParents = { "thread-1": null, "thread-2": null };
+    const client = new CodexRealtimeClient("main-session");
+
+    await expect(client.start()).rejects.toThrow("Multiple top-level Codex threads are loaded");
+
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("fails closed when thread/read omits the subagent relationship", async () => {
+    bridge.loadedThreadResponses = [["thread-1", "thread-2"]];
+    bridge.loadedThreadParents = { "thread-1": null, "thread-2": undefined };
+    const client = new CodexRealtimeClient("main-session");
+
+    await expect(client.start()).rejects.toThrow("Codex returned an invalid loaded thread");
+
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
+  });
+
+  it("disconnects a bridge connection that arrives after the connect timeout", async () => {
+    vi.useFakeTimers();
+    let resolveConnection: ((connectionId: string) => void) | undefined;
+    bridge.connectPromise = new Promise((resolve) => {
+      resolveConnection = resolve;
+    });
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(bridge.connect).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(await result).toEqual(new Error("Codex app-server connection timed out"));
+
+    resolveConnection?.("late-connection");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(bridge.disconnect).toHaveBeenCalledWith({ connectionId: "late-connection" });
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("stops microphone tracks returned after stop invalidates the start attempt", async () => {
+    let resolveMicrophone: ((stream: FakeMediaStream) => void) | undefined;
+    const microphone = new Promise<FakeMediaStream>((resolve) => {
+      resolveMicrophone = resolve;
+    });
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValueOnce(
+      microphone as unknown as Promise<MediaStream>,
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+    await vi.waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+
+    client.stop();
+    resolveMicrophone?.(new FakeMediaStream([microphoneTrack]));
+    expect(await result).toBeInstanceOf(Error);
+
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("does not let a late stopped attempt dispose a newer active attempt", async () => {
+    const lateTrack = new FakeAudioTrack();
+    let resolveMicrophone: ((stream: FakeMediaStream) => void) | undefined;
+    const microphone = new Promise<FakeMediaStream>((resolve) => {
+      resolveMicrophone = resolve;
+    });
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValueOnce(
+      microphone as unknown as Promise<MediaStream>,
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const firstResult = client.start().catch((error: unknown) => error);
+    await vi.waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+
+    client.stop();
+    await client.start();
+    resolveMicrophone?.(new FakeMediaStream([lateTrack]));
+    expect(await firstResult).toBeInstanceOf(Error);
+
+    expect(lateTrack.stop).toHaveBeenCalledTimes(1);
+    expect(microphoneTrack.stop).not.toHaveBeenCalled();
+    expect(client.getStatus()).toBe("active");
+  });
+
+  it("ignores remote audio setup failure from an invalidated attempt", async () => {
+    let rejectRemoteAudio: ((error: Error) => void) | undefined;
+    const remoteAudio = new Promise<AudioContext>((_resolve, reject) => {
+      rejectRemoteAudio = reject;
+    });
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const firstPeer = FakePeerConnection.latest;
+    vi.mocked(ensureAudioContextRunning).mockReturnValueOnce(remoteAudio);
+
+    const remoteTrack = new FakeAudioTrack();
+    const remoteStream = new FakeMediaStream([remoteTrack]);
+    const trackEvent = new Event("track");
+    Object.defineProperties(trackEvent, {
+      streams: { value: [remoteStream] },
+      track: { value: remoteTrack },
+    });
+    firstPeer?.dispatchEvent(trackEvent);
+
+    client.stop();
+    await client.start();
+    rejectRemoteAudio?.(new Error("stale remote audio failed"));
+    await Promise.resolve();
+
+    expect(client.getStatus()).toBe("active");
+  });
+
+  it("invalidates a pending start when realtime closes and releases a late microphone", async () => {
+    let resolveMicrophone: ((stream: FakeMediaStream) => void) | undefined;
+    const microphone = new Promise<FakeMediaStream>((resolve) => {
+      resolveMicrophone = resolve;
+    });
+    vi.mocked(navigator.mediaDevices.getUserMedia).mockReturnValueOnce(
+      microphone as unknown as Promise<MediaStream>,
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+    await vi.waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+
+    bridge.channel?.onmessage(JSON.stringify({ method: "thread/realtime/closed", params: {} }));
+    resolveMicrophone?.(new FakeMediaStream([microphoneTrack]));
+    expect(await result).toBeInstanceOf(Error);
+
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(client.getStatus()).toBe("idle");
   });
 });
