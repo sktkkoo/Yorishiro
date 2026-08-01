@@ -219,6 +219,50 @@ describe("Body motion activation ownership", () => {
     expect(personaPlayback.cancel).toHaveBeenCalledOnce();
   });
 
+  it("cancels a pending scheduler slot before a late load resolves after disposal", async () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const loading = deferred<Playback>();
+    mockPendingPlay(body).mockReturnValue(loading.promise);
+    const latePlayback = playback();
+    const handle = body.acquireMotionSlot({
+      source: "system",
+      priority: "speech-expression",
+      animation: "anim:VRMA_small_nod",
+    });
+
+    body.dispose();
+    loading.resolve(latePlayback.result);
+    await flushMicrotasks();
+
+    expect(body.getMotionSnapshot().active).toBeNull();
+    expect(latePlayback.cancel).toHaveBeenCalledOnce();
+    await expect(handle.completion).resolves.toEqual({ reason: "cancelled" });
+  });
+
+  it("cancels an active scheduler slot before stopping all playback during disposal", async () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const activePlayback = playback();
+    const player = (body as unknown as { animationPlayer: AnimationPlayer }).animationPlayer;
+    vi.spyOn(player, "play").mockResolvedValue(activePlayback.result);
+    const order: string[] = [];
+    activePlayback.cancel.mockImplementation(() => order.push("slot-cancel"));
+    vi.spyOn(player, "stopAll").mockImplementation(() => order.push("stop-all"));
+    const handle = body.acquireMotionSlot({
+      source: "system",
+      priority: "speech-expression",
+      animation: "anim:VRMA_small_nod",
+    });
+    await flushMicrotasks();
+
+    body.dispose();
+
+    expect(order).toEqual(["slot-cancel", "stop-all"]);
+    expect(body.getMotionSnapshot().active).toBeNull();
+    await expect(handle.completion).resolves.toEqual({ reason: "cancelled" });
+  });
+
   it("blends procedural motion beneath an active speech-expression VRMA", async () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());

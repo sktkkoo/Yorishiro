@@ -683,6 +683,7 @@ export class Body {
   /** Dispose all resources. */
   dispose(): void {
     this.disposeAttention();
+    this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
     this.animationPlayer.stopAll();
     this.activeExprHandles.clear();
