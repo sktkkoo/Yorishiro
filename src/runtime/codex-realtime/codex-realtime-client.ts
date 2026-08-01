@@ -28,6 +28,8 @@ export interface CodexRealtimeClientOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
   readonly getPreferredThreadId?: () => string | null;
+  readonly voice?: string;
+  readonly getVoice?: () => string | Promise<string>;
 }
 
 interface JsonRpcMessage {
@@ -55,7 +57,7 @@ interface PendingRequest {
 
 const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
-const CODEX_REALTIME_VOICE = "sol";
+export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 
 class StartAttemptCancelledError extends Error {
@@ -92,6 +94,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private startAttemptEpoch = 0;
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
   private readonly getPreferredThreadId: () => string | null;
+  private readonly getVoice: () => string | Promise<string>;
 
   constructor(
     sessionId: string,
@@ -101,6 +104,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.sessionId = sessionId;
     this.onStateChange = onStateChange;
     this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
+    this.getVoice = options.getVoice ?? (() => options.voice ?? DEFAULT_CODEX_REALTIME_VOICE);
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
           options.stateExpressionCallbacks,
@@ -362,11 +366,13 @@ export class CodexRealtimeClient implements LipSyncSource {
       this.acceptRemoteSdp = resolve;
       this.rejectRemoteSdp = reject;
     });
+    const voice = await this.getVoice();
+    this.assertAttemptOwner(attempt, peer);
     await this.request("thread/realtime/start", {
       threadId,
       outputModality: "audio",
       version: "v3",
-      voice: CODEX_REALTIME_VOICE,
+      voice,
       transport: { type: "webrtc", sdp },
     });
     this.assertAttemptOwner(attempt, peer);

@@ -35,6 +35,7 @@ class FakeClient implements CodexRealtimeClientLike {
     private readonly onStateChange: (state: CodexRealtimeState) => void,
     private readonly startResult: Promise<void>,
     private readonly getPreferredThreadId: () => string | null,
+    private readonly getVoice: () => string | Promise<string>,
   ) {}
 
   preferredThreadIdAtStart: string | null = null;
@@ -43,11 +44,14 @@ class FakeClient implements CodexRealtimeClientLike {
     return this.status;
   }
 
-  readonly start = vi.fn((): Promise<void> => {
+  readonly start = vi.fn(async (): Promise<void> => {
     this.preferredThreadIdAtStart = this.getPreferredThreadId();
     this.emit({ status: "connecting" });
-    return this.startResult;
+    this.voiceAtStart = await this.getVoice();
+    await this.startResult;
   });
+
+  voiceAtStart: string | null = null;
 
   sampleMouth(out?: MouthValues): MouthValues {
     return out ?? { ...ZERO_MOUTH };
@@ -62,6 +66,7 @@ class FakeClient implements CodexRealtimeClientLike {
 function setup(
   starts: Promise<void>[],
   setFallbackPlaybackEnabled: (enabled: boolean) => void | Promise<void> = vi.fn(),
+  getVoice: () => string | Promise<string> = () => "sol",
 ) {
   const clients: FakeClient[] = [];
   let trackedThreadId: string | null = "thread-1";
@@ -71,9 +76,15 @@ function setup(
     onStateChange,
     _stateExpressionCallbacks,
     getPreferredThreadId = () => null,
+    getVoiceForClient = () => "sol",
   ) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
-    const client = new FakeClient(onStateChange, startResult, getPreferredThreadId);
+    const client = new FakeClient(
+      onStateChange,
+      startResult,
+      getPreferredThreadId,
+      getVoiceForClient,
+    );
     clients.push(client);
     return client;
   };
@@ -87,6 +98,7 @@ function setup(
         fallbackLipSyncSource: fallback,
         applyLipSyncSource,
         setFallbackPlaybackEnabled,
+        getVoice,
         createClient,
         createThreadTracker: (_sessionId, onCurrentThreadChange) => {
           notifyThreadChange = onCurrentThreadChange;
@@ -113,6 +125,22 @@ function setup(
 }
 
 describe("useCodexRealtime", () => {
+  it("reads the configured voice for each new realtime session", async () => {
+    let voice = "marin";
+    const { result, clients } = setup(
+      [Promise.resolve(), Promise.resolve()],
+      undefined,
+      () => voice,
+    );
+
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "idle" }));
+    voice = "cedar";
+    await act(async () => result.current.toggle());
+
+    expect(clients.map((client) => client.voiceAtStart)).toEqual(["marin", "cedar"]);
+  });
+
   it("mount 時に Rust 側 ownership provenance を fallback へ同期する", () => {
     const { setFallbackPlaybackEnabled } = setup([]);
 

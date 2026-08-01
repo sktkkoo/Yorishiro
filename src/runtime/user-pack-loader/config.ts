@@ -20,6 +20,7 @@
  * - `ambientAudioMuted: boolean`（optional）: scene pack の環境音を mute する
  * - `attentionLightNotifications: boolean`（optional）: 入力/承認待ちの照明通知を有効にする。default true
  * - `motionIntensity: number`（optional）: idle procedural motion の大きさ倍率
+ * - `codexRealtimeVoice: string`（optional）: Codex GPT Live の出力 voice。default `sol`
  * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
  * - `defaultProfile: string | null`（optional）: 起動時 default-session に使う profile id。bundled (`shell` / `claude` / `codex` / `opencode`) または user `profiles[]` の id。null なら `terminalAgent` を fallback に使う
  *
@@ -74,6 +75,8 @@ export interface YorishiroConfig {
   readonly defaultProfile: string | null;
   /** TTS 音声の利用頻度。 */
   readonly voiceFrequency: VoiceFrequency;
+  /** Codex GPT Live session の出力 voice。次回の voice session 開始時に反映される。 */
+  readonly codexRealtimeVoice: string;
   /**
    * asset protocol scope に追加するメディアフォルダ。
    * user amenity pack が `new Audio()` 等でローカルファイルを再生するために使う。
@@ -108,6 +111,7 @@ export const EMPTY_CONFIG: YorishiroConfig = {
   profiles: [],
   defaultProfile: null,
   voiceFrequency: "on",
+  codexRealtimeVoice: "sol",
   mediaFolders: ["~/Music"],
 };
 
@@ -172,6 +176,12 @@ const toDefaultTrueBoolean = (value: unknown): boolean => {
 const toVoiceFrequency = (value: unknown): VoiceFrequency => {
   if (value === "off" || value === "none") return "off";
   return "on";
+};
+
+const toCodexRealtimeVoice = (value: unknown): string => {
+  if (typeof value !== "string") return EMPTY_CONFIG.codexRealtimeVoice;
+  const voice = value.trim();
+  return voice === "" ? EMPTY_CONFIG.codexRealtimeVoice : voice;
 };
 
 /** 0.0-1.0 の float を返す。無効値は 1.0（default）に fallback。 */
@@ -294,6 +304,7 @@ export function parseConfig(text: string): YorishiroConfig {
     profiles: toSessionProfiles(obj.profiles),
     defaultProfile: toNullableString(obj.defaultProfile),
     voiceFrequency: toVoiceFrequency(obj.voiceFrequency),
+    codexRealtimeVoice: toCodexRealtimeVoice(obj.codexRealtimeVoice),
     mediaFolders:
       "mediaFolders" in obj ? toStringArray(obj.mediaFolders) : EMPTY_CONFIG.mediaFolders,
   };
@@ -327,6 +338,9 @@ export function serializeConfig(cfg: YorishiroConfig): string {
   if (cfg.profiles.length > 0) out.profiles = cfg.profiles.map(serializeProfile);
   if (cfg.defaultProfile !== null) out.defaultProfile = cfg.defaultProfile;
   if (cfg.voiceFrequency !== "on") out.voiceFrequency = cfg.voiceFrequency;
+  if (cfg.codexRealtimeVoice !== EMPTY_CONFIG.codexRealtimeVoice) {
+    out.codexRealtimeVoice = cfg.codexRealtimeVoice;
+  }
   if (!stringArraysEqual(cfg.mediaFolders, EMPTY_CONFIG.mediaFolders)) {
     out.mediaFolders = [...cfg.mediaFolders];
   }
