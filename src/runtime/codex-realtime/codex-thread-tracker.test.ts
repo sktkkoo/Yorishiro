@@ -21,6 +21,10 @@ const bridge = vi.hoisted(() => ({
   pendingReads: false,
   readResponders: [] as Array<() => void>,
   disconnect: vi.fn(async () => {}),
+  connect: vi.fn(async ({ onMessage }: { onMessage: FakeChannel<string> }): Promise<string> => {
+    bridge.channel = onMessage;
+    return `tracker-connection-${bridge.connect.mock.calls.length}`;
+  }),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -30,12 +34,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("../../bindings/tauri-commands", () => ({
-  sessionRealtimeConnect: vi.fn(
-    async ({ onMessage }: { onMessage: FakeChannel<string> }): Promise<string> => {
-      bridge.channel = onMessage;
-      return "tracker-connection";
-    },
-  ),
+  sessionRealtimeConnect: bridge.connect,
   sessionRealtimeDisconnect: bridge.disconnect,
   sessionRealtimeSend: vi.fn(async ({ message }: { message: string }): Promise<void> => {
     const request = JSON.parse(message) as SentMessage;
@@ -72,6 +71,7 @@ describe("CodexThreadTracker", () => {
     bridge.pendingReads = false;
     bridge.readResponders = [];
     bridge.disconnect.mockClear();
+    bridge.connect.mockClear();
   });
 
   it("uses the sole top-level thread as its startup value", async () => {
@@ -132,5 +132,27 @@ describe("CodexThreadTracker", () => {
 
     expect(tracker.getCurrentThreadId()).toBe("thread-after-clear");
     tracker.stop();
+  });
+
+  it("reconnects after an unexpected bridge closure", async () => {
+    vi.useFakeTimers();
+    const tracker = new CodexThreadTracker("main-session");
+    await tracker.start();
+    expect(tracker.getCurrentThreadId()).toBe("thread-1");
+    expect(bridge.connect).toHaveBeenCalledTimes(1);
+
+    bridge.loadedThreads = ["thread-1", "thread-after-clear"];
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "yorishiro/realtime-bridge/closed",
+        params: { message: "closed" },
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(250);
+
+    expect(bridge.connect).toHaveBeenCalledTimes(2);
+    expect(tracker.getCurrentThreadId()).toBeNull();
+    tracker.stop();
+    vi.useRealTimers();
   });
 });

@@ -8,6 +8,7 @@ import {
 interface PendingRequest {
   readonly resolve: (value: unknown) => void;
   readonly reject: (reason: Error) => void;
+  readonly timeoutId: number;
 }
 
 interface JsonRpcMessage {
@@ -17,6 +18,11 @@ interface JsonRpcMessage {
   readonly result?: unknown;
   readonly error?: unknown;
 }
+
+const RPC_TIMEOUT_MS = 15_000;
+const RECONNECT_DELAY_MS = 250;
+
+class TrackerRequestTimeoutError extends Error {}
 
 /**
  * TUI の thread/started broadcast を voice が停止中も監視する。
@@ -32,6 +38,9 @@ export class CodexThreadTracker {
   private currentThreadId: string | null = null;
   private epoch = 0;
   private topLevelStartedGeneration = 0;
+  private running = false;
+  private connecting = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(sessionId: string) {
     this.sessionId = sessionId;
@@ -42,13 +51,40 @@ export class CodexThreadTracker {
   }
 
   async start(): Promise<void> {
-    if (this.connectionId) return;
+    if (this.running) return;
+    this.running = true;
     const epoch = ++this.epoch;
+    try {
+      await this.connect(epoch);
+    } catch (error) {
+      if (epoch === this.epoch && this.running) this.scheduleReconnect(epoch);
+      throw error;
+    }
+  }
+
+  stop(): void {
+    this.epoch += 1;
+    this.running = false;
+    this.connecting = false;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    const connectionId = this.connectionId;
+    this.connectionId = null;
+    this.currentThreadId = null;
+    this.rejectPending(new Error("Codex thread tracker stopped"));
+    if (connectionId) void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
+  }
+
+  private async connect(epoch: number): Promise<void> {
+    if (!this.running || this.connecting || this.connectionId) return;
+    this.connecting = true;
     try {
       const onMessage = new Channel<string>();
       onMessage.onmessage = (message) => this.handleMessage(message, epoch);
       const connectionId = await sessionRealtimeConnect({ sessionId: this.sessionId, onMessage });
-      if (epoch !== this.epoch) {
+      if (epoch !== this.epoch || !this.running) {
         void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
         return;
       }
@@ -62,24 +98,34 @@ export class CodexThreadTracker {
         },
         capabilities: { experimentalApi: true },
       });
-      if (epoch !== this.epoch) return;
+      if (epoch !== this.epoch || !this.running) return;
       this.notify("initialized", {});
       await this.discoverInitialThread(epoch);
     } catch (error) {
-      if (epoch === this.epoch) this.stop();
+      const connectionId = this.connectionId;
+      this.connectionId = null;
+      this.rejectPending(error instanceof Error ? error : new Error(String(error)));
+      if (connectionId) void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
       throw error;
+    } finally {
+      this.connecting = false;
     }
   }
 
-  stop(): void {
-    this.epoch += 1;
-    const connectionId = this.connectionId;
-    this.connectionId = null;
-    this.currentThreadId = null;
-    const error = new Error("Codex thread tracker stopped");
-    for (const pending of this.pending.values()) pending.reject(error);
+  private scheduleReconnect(epoch: number): void {
+    if (!this.running || epoch !== this.epoch || this.reconnectTimer !== null) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect(epoch).catch(() => this.scheduleReconnect(epoch));
+    }, RECONNECT_DELAY_MS);
+  }
+
+  private rejectPending(error: Error): void {
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timeoutId);
+      pending.reject(error);
+    }
     this.pending.clear();
-    if (connectionId) void sessionRealtimeDisconnect({ connectionId }).catch(() => {});
   }
 
   private async discoverInitialThread(epoch: number): Promise<void> {
@@ -97,7 +143,8 @@ export class CodexThreadTracker {
       let read: unknown;
       try {
         read = await this.request("thread/read", { threadId: id, includeTurns: false });
-      } catch {
+      } catch (error) {
+        if (error instanceof TrackerRequestTimeoutError) throw error;
         return;
       }
       if (epoch !== this.epoch || generation !== this.topLevelStartedGeneration) return;
@@ -118,7 +165,11 @@ export class CodexThreadTracker {
     if (!connectionId) return Promise.reject(new Error("Codex thread tracker is not connected"));
     const id = this.nextRequestId++;
     const promise = new Promise<unknown>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timeoutId = window.setTimeout(() => {
+        if (!this.pending.delete(id)) return;
+        reject(new TrackerRequestTimeoutError(`Codex thread tracker request timed out: ${method}`));
+      }, RPC_TIMEOUT_MS);
+      this.pending.set(id, { resolve, reject, timeoutId });
     });
     void sessionRealtimeSend({
       connectionId,
@@ -127,6 +178,7 @@ export class CodexThreadTracker {
       const pending = this.pending.get(id);
       if (!pending) return;
       this.pending.delete(id);
+      clearTimeout(pending.timeoutId);
       pending.reject(error instanceof Error ? error : new Error(String(error)));
     });
     return promise;
@@ -149,10 +201,21 @@ export class CodexThreadTracker {
       return;
     }
 
+    if (message.method === "yorishiro/realtime-bridge/closed") {
+      this.connectionId = null;
+      // この接続が見ていない間に /clear された可能性がある。grace period 中の
+      // 旧 thread を preferred として再利用せず、再接続後に一意なら再発見する。
+      this.currentThreadId = null;
+      this.rejectPending(new Error("Codex thread tracker connection closed"));
+      this.scheduleReconnect(epoch);
+      return;
+    }
+
     if (typeof message.id === "number" && ("result" in message || "error" in message)) {
       const pending = this.pending.get(message.id);
       if (!pending) return;
       this.pending.delete(message.id);
+      clearTimeout(pending.timeoutId);
       if ("error" in message) pending.reject(new Error(jsonRpcErrorMessage(message.error)));
       else pending.resolve(message.result);
       return;
