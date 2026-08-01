@@ -1,6 +1,7 @@
 export {
   type CodexRealtimeBilling,
   CodexRealtimeClient,
+  type CodexRealtimeClientOptions,
   type CodexRealtimeState,
   type CodexRealtimeStatus,
 } from "./codex-realtime-client";

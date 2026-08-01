@@ -68,6 +68,7 @@ import {
 } from "./motion-scheduler";
 import { ProceduralBones } from "./procedural-bones";
 import {
+  DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
   type SpeechMicroexpressionOutput,
   type SpeechMicroexpressionParams,
   SpeechMicroexpressionSystem,
@@ -80,6 +81,20 @@ import { SpeechMoodChannel } from "./speech-mood-channel";
 export interface LipSyncSource {
   isMouthActive?(): boolean;
   sampleMouth(out?: MouthValues): MouthValues;
+}
+
+export interface SpeechStateExpressionRequest {
+  readonly preset?: string;
+  readonly intensity?: number;
+  readonly microexpressionParams?: Partial<SpeechMicroexpressionParams>;
+}
+
+export interface SpeechStateExpressionHandle {
+  release(): void;
+}
+
+interface SpeechStateExpressionLayer extends SpeechStateExpressionRequest {
+  readonly id: number;
 }
 
 const BLINK_EXPRESSION_NAME = "blink";
@@ -153,11 +168,16 @@ export class Body {
   private readonly microChannels: ReadonlyArray<MicroChannel>;
   /** 発話音響から顔全体の生理的な賦活を作る反射層。 */
   private readonly speechMicroexpression = new SpeechMicroexpressionSystem();
+  private speechExpressionBaseParams: SpeechMicroexpressionParams = {
+    ...DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
+  };
   private readonly hasSpeechBrowExpression: boolean;
   private readonly hasSpeechEyeExpression: boolean;
   private speechExpressionEnabled = true;
   /** voice_say に付随する発話粒度 mood の envelope。 */
   private readonly speechMood: SpeechMoodChannel;
+  private readonly speechStateExpressionLayers = new Map<number, SpeechStateExpressionLayer>();
+  private nextSpeechStateExpressionLayerId = 1;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -199,6 +219,8 @@ export class Body {
     readonly stop: (fadeMs?: number) => Promise<void>;
     readonly cancel: () => void;
   } | null = null;
+  /** Invalidates AnimationPlayer.play() results that arrive after ownership changed. */
+  private motionActivationGeneration = 0;
 
   /** Track all active expression handles for interrupt(). */
   private readonly activeExprHandles = new Set<BodyExpressionHandle>();
@@ -239,7 +261,7 @@ export class Body {
     this.claimState = claimState ?? getClaimState();
     this.expressions = new ExpressionManager();
     this.speechMood = new SpeechMoodChannel((preset, intensity) =>
-      this.acquireExpressionSlot("system", "mood", preset, intensity),
+      this.acquireExpressionSlot("speech", "mood", preset, intensity),
     );
     this.blinkSystem = new BlinkSystem();
     this.eyeSystem = new EyeSystem();
@@ -296,6 +318,7 @@ export class Body {
 
     this.motionScheduler = new MotionScheduler({
       onActivate: async (req) => {
+        const generation = ++this.motionActivationGeneration;
         // AnimationPlayer.play() を呼んで clip を mixer に載せる。返値の handle
         // (stop / cancel / completion) を activeMotionPlayback に保持し、
         // onDeactivate が同じ playback を停止できるようにする。
@@ -311,6 +334,10 @@ export class Body {
           loop: req.options?.loop,
           speed: req.options?.speed,
         });
+        if (generation !== this.motionActivationGeneration) {
+          result.cancel();
+          return;
+        }
         this.activeMotionPlayback = { stop: result.stop, cancel: result.cancel };
         try {
           await result.completion;
@@ -321,6 +348,7 @@ export class Body {
         }
       },
       onDeactivate: (fadeMs) => {
+        this.motionActivationGeneration++;
         // active な playback があれば停止。fadeMs が 0 なら cancel（即時）、
         // それ以外は stop(fadeMs)。stop は async だが onDeactivate は void 契約
         // なので fire-and-forget でよい（completion 解決は MotionScheduler 側で
@@ -359,17 +387,44 @@ export class Body {
 
   /** 発話反射層の感触パラメータを部分更新する。 */
   setSpeechExpressionParams(params: Partial<SpeechMicroexpressionParams>): void {
-    this.speechMicroexpression.setParams(params);
+    this.speechExpressionBaseParams = { ...this.speechExpressionBaseParams, ...params };
+    this.applySpeechExpressionParams();
   }
 
-  /** 発話に同期する system mood を attack 付きで開始する。 */
+  /** Restores the low-salience acoustic variation profile used without a grounded state. */
+  resetSpeechExpressionParams(): void {
+    this.speechExpressionBaseParams = { ...DEFAULT_SPEECH_MICROEXPRESSION_PARAMS };
+    this.applySpeechExpressionParams();
+  }
+
+  /** Starts a speech-owned mood with an attack envelope. */
   setSpeechMood(preset: string, intensity: number): void {
     this.speechMood.setSpeechMood(preset, intensity);
   }
 
-  /** 発話に同期する system mood の release を開始する。 */
+  /** Begins releasing the speech-owned mood. */
   releaseSpeechMood(): void {
     this.speechMood.releaseSpeechMood();
+  }
+
+  /** Acquires a layered speech state that restores the previous owner when released. */
+  acquireSpeechStateExpression(request: SpeechStateExpressionRequest): SpeechStateExpressionHandle {
+    const layer: SpeechStateExpressionLayer = {
+      id: this.nextSpeechStateExpressionLayerId++,
+      ...request,
+    };
+    this.speechStateExpressionLayers.set(layer.id, layer);
+    this.applySpeechStateExpressionLayers();
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        const wasTop = this.topSpeechStateExpressionLayer()?.id === layer.id;
+        this.speechStateExpressionLayers.delete(layer.id);
+        if (wasTop) this.applySpeechStateExpressionLayers();
+      },
+    };
   }
 
   /** idle motion 倍率（0-3, 1 で現状）を breathing / procedural bones に伝播する。 */
@@ -633,6 +688,8 @@ export class Body {
   /** Dispose all resources. */
   dispose(): void {
     this.disposeAttention();
+    this.motionScheduler.cancelAll(0);
+    this.motionActivationGeneration++;
     this.animationPlayer.stopAll();
     this.activeExprHandles.clear();
     this.activeGazeHandles.clear();
@@ -821,6 +878,32 @@ export class Body {
    */
   getMotionSnapshot(): SdkMotionSnapshot {
     return this.motionScheduler.getSnapshot() as SdkMotionSnapshot;
+  }
+
+  private topSpeechStateExpressionLayer(): SpeechStateExpressionLayer | null {
+    let top: SpeechStateExpressionLayer | null = null;
+    for (const layer of this.speechStateExpressionLayers.values()) {
+      if (!top || layer.id > top.id) top = layer;
+    }
+    return top;
+  }
+
+  private applySpeechStateExpressionLayers(): void {
+    const layer = this.topSpeechStateExpressionLayer();
+    this.applySpeechExpressionParams();
+    if (layer?.preset && layer.preset !== "neutral") {
+      this.setSpeechMood(layer.preset, layer.intensity ?? 0.3);
+    } else {
+      this.releaseSpeechMood();
+    }
+  }
+
+  private applySpeechExpressionParams(): void {
+    const layer = this.topSpeechStateExpressionLayer();
+    this.speechMicroexpression.setParams(this.speechExpressionBaseParams);
+    if (layer?.microexpressionParams) {
+      this.speechMicroexpression.setParams(layer.microexpressionParams);
+    }
   }
 
   private gaze(target: GazeTarget, _options?: GazeOptions): GazeHandle {

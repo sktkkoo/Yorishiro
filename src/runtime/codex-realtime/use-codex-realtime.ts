@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LipSyncSource } from "../../core/body";
+import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression";
 import {
   CodexRealtimeClient,
   type CodexRealtimeState,
@@ -15,6 +16,7 @@ export interface CodexRealtimeClientLike extends LipSyncSource {
 export type CodexRealtimeClientFactory = (
   sessionId: string,
   onStateChange: (state: CodexRealtimeState) => void,
+  stateExpressionCallbacks?: StateExpressionSchedulerCallbacks,
 ) => CodexRealtimeClientLike;
 
 interface UseCodexRealtimeOptions {
@@ -23,6 +25,7 @@ interface UseCodexRealtimeOptions {
   readonly fallbackLipSyncSource: LipSyncSource;
   readonly applyLipSyncSource: (source: LipSyncSource) => void;
   readonly setFallbackPlaybackEnabled?: (enabled: boolean) => void | Promise<void>;
+  readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly createClient?: CodexRealtimeClientFactory;
 }
 
@@ -33,8 +36,11 @@ interface UseCodexRealtimeResult {
   readonly getLipSyncSource: () => LipSyncSource;
 }
 
-const defaultCreateClient: CodexRealtimeClientFactory = (sessionId, onStateChange) =>
-  new CodexRealtimeClient(sessionId, onStateChange);
+const defaultCreateClient: CodexRealtimeClientFactory = (
+  sessionId,
+  onStateChange,
+  stateExpressionCallbacks,
+) => new CodexRealtimeClient(sessionId, onStateChange, { stateExpressionCallbacks });
 
 const FALLBACK_RESTORE_RETRY_DELAYS_MS = [50, 200] as const;
 
@@ -45,6 +51,7 @@ export function useCodexRealtime({
   fallbackLipSyncSource,
   applyLipSyncSource,
   setFallbackPlaybackEnabled = () => {},
+  stateExpressionCallbacks,
   createClient = defaultCreateClient,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
   const clientRef = useRef<CodexRealtimeClientLike | null>(null);
@@ -125,33 +132,37 @@ export function useCodexRealtime({
     }
 
     let client: CodexRealtimeClientLike;
-    client = createClientRef.current(sessionId, (nextState) => {
-      // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
-      if (clientRef.current !== client) return;
+    client = createClientRef.current(
+      sessionId,
+      (nextState) => {
+        // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
+        if (clientRef.current !== client) return;
 
-      if (nextState.status === "error") {
-        clientRef.current = null;
-        client.stop();
+        if (nextState.status === "error") {
+          clientRef.current = null;
+          client.stop();
+          setState(nextState);
+          restoreFallbackPlayback();
+          restoreFallback();
+          return;
+        }
+
+        if (nextState.status === "idle") {
+          // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
+          clientRef.current = null;
+          setState(nextState);
+          restoreFallbackPlayback();
+          restoreFallback();
+          return;
+        }
+
         setState(nextState);
-        restoreFallbackPlayback();
-        restoreFallback();
-        return;
-      }
-
-      if (nextState.status === "idle") {
-        // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
-        clientRef.current = null;
-        setState(nextState);
-        restoreFallbackPlayback();
-        restoreFallback();
-        return;
-      }
-
-      setState(nextState);
-      if (nextState.status === "active") {
-        applyLipSyncSourceRef.current(client);
-      }
-    });
+        if (nextState.status === "active") {
+          applyLipSyncSourceRef.current(client);
+        }
+      },
+      stateExpressionCallbacks,
+    );
     clientRef.current = client;
 
     try {
@@ -171,7 +182,14 @@ export function useCodexRealtime({
       restoreFallbackPlayback();
       restoreFallback();
     }
-  }, [claimFallbackPlayback, restoreFallback, restoreFallbackPlayback, sessionId, stop]);
+  }, [
+    claimFallbackPlayback,
+    restoreFallback,
+    restoreFallbackPlayback,
+    sessionId,
+    stateExpressionCallbacks,
+    stop,
+  ]);
 
   useEffect(() => {
     const sessionChanged = sessionIdRef.current !== sessionId;

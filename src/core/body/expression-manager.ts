@@ -23,7 +23,14 @@
  * - thinking: thinking-family state による表情上書き
  * - system: 上記に当てはまらない frame-internal な system 用途
  */
-export type ExpressionSource = "reflex" | "persona" | "idle" | "mcp" | "thinking" | "system";
+export type ExpressionSource =
+  | "reflex"
+  | "persona"
+  | "idle"
+  | "mcp"
+  | "thinking"
+  | "speech"
+  | "system";
 
 /**
  * 部位別表情を author するときの region 識別子。Hana Tool (VRoid) 由来の
@@ -77,6 +84,7 @@ export interface SlotSnapshot {
 const SOURCE_PRIORITY: Record<ExpressionSource, number> = {
   idle: 0,
   thinking: 1,
+  speech: 1.5,
   persona: 2,
   mcp: 3,
   system: 3,
