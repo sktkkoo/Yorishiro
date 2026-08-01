@@ -126,7 +126,7 @@ function setup(
 
 describe("useCodexRealtime", () => {
   it("reads the configured voice for each new realtime session", async () => {
-    let voice = "marin";
+    let voice = "juniper";
     const { result, clients } = setup(
       [Promise.resolve(), Promise.resolve()],
       undefined,
@@ -135,10 +135,10 @@ describe("useCodexRealtime", () => {
 
     await act(async () => result.current.toggle());
     act(() => clients[0].emit({ status: "idle" }));
-    voice = "cedar";
+    voice = "maple";
     await act(async () => result.current.toggle());
 
-    expect(clients.map((client) => client.voiceAtStart)).toEqual(["marin", "cedar"]);
+    expect(clients.map((client) => client.voiceAtStart)).toEqual(["juniper", "maple"]);
   });
 
   it("mount 時に Rust 側 ownership provenance を fallback へ同期する", () => {

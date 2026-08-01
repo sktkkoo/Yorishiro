@@ -256,13 +256,13 @@ describe("CodexRealtimeClient", () => {
   });
 
   it("passes the configured voice to Codex realtime", async () => {
-    const client = new CodexRealtimeClient("main-session", undefined, { voice: "marin" });
+    const client = new CodexRealtimeClient("main-session", undefined, { voice: "juniper" });
 
     await client.start();
 
     expect(
       bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
-    ).toMatchObject({ voice: "marin" });
+    ).toMatchObject({ voice: "juniper" });
     client.stop();
   });
 

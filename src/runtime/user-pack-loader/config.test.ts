@@ -371,13 +371,13 @@ describe("codexRealtimeVoice", () => {
   });
 
   it("trims and preserves a configured voice", () => {
-    expect(parseConfig('{"codexRealtimeVoice":"  marin  "}').codexRealtimeVoice).toBe("marin");
+    expect(parseConfig('{"codexRealtimeVoice":"  juniper  "}').codexRealtimeVoice).toBe("juniper");
   });
 
   it("omits sol and serializes a non-default voice", () => {
     expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
-    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, codexRealtimeVoice: "cedar" }))).toEqual({
-      codexRealtimeVoice: "cedar",
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, codexRealtimeVoice: "maple" }))).toEqual({
+      codexRealtimeVoice: "maple",
     });
   });
 });

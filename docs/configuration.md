@@ -11,7 +11,7 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 ```json
 {
   "terminalAgent": "codex",
-  "codexRealtimeVoice": "marin",
+  "codexRealtimeVoice": "juniper",
   "language": "auto",
   "primaryPersona": "my-persona",
   "activeScene": "simple-room",
@@ -49,7 +49,7 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 
 ```json
 {
-  "codexRealtimeVoice": "marin"
+  "codexRealtimeVoice": "juniper"
 }
 ```
 
@@ -58,10 +58,10 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 開始し直すと反映される。空文字や文字列以外の値は default の `"sol"` に戻す。
 
 利用可能な voice は installed Codex app-server と account / upstream support に依存する。
-Codex 0.146.0 の `thread/realtime/listVoices` では `alloy`, `arbor`, `ash`, `ballad`,
-`breeze`, `cedar`, `coral`, `cove`, `echo`, `ember`, `juniper`, `maple`, `marin`, `sage`,
-`shimmer`, `sol`, `spruce`, `vale`, `verse` が列挙される。Yorishiro は将来の追加 voice を
-config parser で拒否せず、実際の対応可否は接続先 app-server に委ねる。
+Codex 0.146.0 の realtime protocol v3 では `juniper`, `maple`, `spruce`, `ember`, `vale`,
+`breeze`, `arbor`, `sol`, `cove` が利用できる。`thread/realtime/listVoices` が別 catalog に
+列挙する `marin` などは v3 では利用できない。Yorishiro は将来の追加 voice を config parser
+で拒否せず、実際の対応可否と error message は接続先 app-server に委ねる。
 
 ### Journal callback
 
