@@ -6,6 +6,7 @@ mod pty;
 mod realtime_bridge;
 mod sessions;
 mod tts;
+mod work_status_diagnostic;
 
 use pty::{start_hook_server, PtyState};
 use realtime_bridge::RealtimeBridgeState;
@@ -2406,6 +2407,7 @@ pub fn run() {
             session_realtime_selected_thread,
             session_realtime_send,
             session_realtime_disconnect,
+            work_status_diagnostic::work_status_diagnostic_log,
             session_list,
             pty_write,
             pty_resize,

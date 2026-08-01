@@ -3,6 +3,8 @@ import {
   sessionRealtimeConnect,
   sessionRealtimeDisconnect,
   sessionRealtimeSend,
+  type WorkStatusDiagnosticEntry,
+  workStatusDiagnosticLog,
 } from "../../bindings/tauri-commands";
 import type { LipSyncSource } from "../../core/body";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
@@ -395,6 +397,10 @@ export class CodexRealtimeClient implements LipSyncSource {
           }
         : {}),
     });
+    this.writeWorkStatusDiagnostic({
+      eventKind: "context-initial-enqueued",
+      activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+    });
     this.assertAttemptOwner(attempt, peer);
     const answerSdp = await withTimeout(
       remoteSdp,
@@ -415,7 +421,14 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.workStatusSubscription =
       ledger?.subscribeEvents((event) => {
         if (!this.isAttemptOwner(attempt) || this.threadId !== threadId) return;
-        this.appendWorkStatusContext(threadId, formatWorkStatusEvent(event), attempt);
+        this.writeWorkStatusDiagnostic({
+          eventKind: event.kind,
+          workId: event.workId,
+          status: event.work.status,
+          ...(event.kind === "work-updated" ? { previousStatus: event.previousStatus } : {}),
+          activeCount: ledger.getSnapshot().activeCount,
+        });
+        this.appendWorkStatusContext(threadId, formatWorkStatusEvent(event), attempt, "event");
       }) ?? null;
     // initialItems の snapshot 採取後〜SDP確立までの更新を、最新snapshotで再同期する。
     if (ledger) {
@@ -423,20 +436,44 @@ export class CodexRealtimeClient implements LipSyncSource {
         threadId,
         formatWorkStatusSnapshot(ledger.getSnapshot()),
         attempt,
+        "resync",
       );
     }
   }
 
-  private appendWorkStatusContext(threadId: string, text: string, attempt: number): void {
+  private appendWorkStatusContext(
+    threadId: string,
+    text: string,
+    attempt: number,
+    source: "event" | "resync",
+  ): void {
     void this.request("thread/realtime/appendText", {
       threadId,
       role: "developer",
       text,
-    }).catch((error) => {
-      // Status context is best-effort; voice and the work itself must keep running.
-      if (this.isAttemptOwner(attempt)) {
-        console.warn("[codex-realtime] failed to append work status context", error);
-      }
+    })
+      .then(() => {
+        if (!this.isAttemptOwner(attempt)) return;
+        this.writeWorkStatusDiagnostic({
+          eventKind: source === "event" ? "context-event-delivered" : "context-resync-delivered",
+          activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+        });
+      })
+      .catch((error) => {
+        // Status context is best-effort; voice and the work itself must keep running.
+        if (this.isAttemptOwner(attempt)) {
+          this.writeWorkStatusDiagnostic({
+            eventKind: "context-delivery-failed",
+            activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+          });
+          console.warn("[codex-realtime] failed to append work status context", error);
+        }
+      });
+  }
+
+  private writeWorkStatusDiagnostic(entry: WorkStatusDiagnosticEntry): void {
+    void workStatusDiagnosticLog(entry).catch((error) => {
+      console.warn("[codex-realtime] failed to write work status diagnostic log", error);
     });
   }
 
@@ -539,6 +576,16 @@ export class CodexRealtimeClient implements LipSyncSource {
         }
       | undefined;
     this.workStatusAdapter?.observeNotification(message.method, message.params);
+    if (
+      message.method === "thread/realtime/itemAdded" &&
+      isRecord(params?.item) &&
+      params.item.type === "handoff_request"
+    ) {
+      this.writeWorkStatusDiagnostic({
+        eventKind: "handoff-observed",
+        activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+      });
+    }
     if (message.method === "thread/realtime/sdp" && params?.sdp) {
       this.acceptRemoteSdp?.(params.sdp);
     } else if (message.method === "thread/realtime/error") {

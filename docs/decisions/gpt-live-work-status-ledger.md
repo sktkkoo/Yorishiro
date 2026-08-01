@@ -1,6 +1,6 @@
 # GPT Live Work Status Ledger — 作業状態の会話向け投影設計
 
-**Status**: accepted — Phase 1 / 2 / 3 implemented
+**Status**: accepted — Phase 1 / 2 / 3 / 4 implemented
 **Last updated**: 2026-08-02
 
 ## TL;DR
@@ -79,7 +79,7 @@ Phase 2 で 0.146.0 schema を確認し、通常 turn と approval の lifecycle
 - Claude / OpenCode / shell tab への拡張（GPT Live 自体が Codex Main Agent 限定）
 - semantic expression / gesture との同期（`feat/realtime-performance-cues` の別トラック）
 - 台帳を Git / CI / agent の正本として扱うこと、またはユーザーに台帳の手動管理を求めること
-- 診断ログの永続化（方針は決定済み、実装は Phase 4）。専用の書き出し UI は作らない
+- 台帳本体の永続化。診断ログだけは Phase 4 として実装し、台帳復元には使わない
 
 ## なぜ GPT Live は受付で、作業状態台帳が必要なのか
 
@@ -226,7 +226,7 @@ payload には `observedAt / lastObservedAt / observedAgeSeconds / freshness` �
 
 ## 台帳と診断ログの二層構造
 
-【決定済み・Phase 4 実装】台帳の誤投影を、ユーザーが日常的に訂正・管理する設計にはしない。
+【決定済み・Phase 4 実装済み】台帳の誤投影を、ユーザーが日常的に訂正・管理する設計にはしない。
 代わりに、台帳とは別の **Work Status Diagnostic Log** を host が自動記録し、開発者が
 再現条件を調査できるブラックボックスレコーダーとする。
 
@@ -244,6 +244,11 @@ payload には `observedAt / lastObservedAt / observedAgeSeconds / freshness` �
   将来送信機能を検討する場合は、別 Decision と明示的な user consent を先行条件とする
 - ownership: 台帳は概況表示、診断ログは調査証跡、Main Agent / Git / CI / TUI は一次情報。
   診断ログも一次情報を置き換えない
+
+実装は `~/.yorishiro/logs/work-status-diagnostic.jsonl` に JSON Lines で追記する。
+512 KiB 到達時に `.1` へ1世代だけ rotate し、最大でも概ね 1 MiB に抑える。記録するのは
+context の初期注入・再同期・差分配送、handoff 観測、work 状態遷移と配送失敗の allowlist
+metadata のみで、summary / transcript / raw protocol payload は保存しない。
 
 Phase 4 までは、誤りが判明した場合に Issue / Decision Record へ再現条件を人間が残す。
 台帳本体へ訂正履歴を埋め込んで履歴 DB 化する案は採用しない。表示モデルと診断証跡を
@@ -374,7 +379,7 @@ agent 出力由来の文字列が UI や読み上げへ渡る際に、端末制�
 - **Phase 3 — GPT Live 配線（実装済み）**: 委任の起点と読み上げ UX。realtime session への状態
   注入方法を実測・設計してから実装。実機で「委任 → 進捗質問 → 承認待ち案内 → 完了報告」
   の一連を確認（dev 検証だけで完了宣言しない）。
-- **Phase 4（決定済み・未実装）**: app log directory 内の固定ファイルへ保存する、容量制限付き
+- **Phase 4（実装済み）**: app log directory 内の固定ファイルへ保存する、容量制限付き
   Work Status Diagnostic Log。台帳の永続化とは分離し、raw payload / transcript は保存しない。
   Issue template から保存位置を案内し、専用の書き出し UI は作らない。
 - **Phase 5 以降（scope 外の種）**: 永続化と作業再接続、voice approval、常時観測

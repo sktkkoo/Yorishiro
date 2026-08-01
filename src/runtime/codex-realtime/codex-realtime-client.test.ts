@@ -32,6 +32,7 @@ const bridge = vi.hoisted(() => ({
   loadedThreadParents: {} as Record<string, string | null | undefined>,
   threadReadFailures: {} as Record<string, number>,
   realtimeStartPrelude: null as (() => void) | null,
+  diagnosticLog: vi.fn(async () => {}),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -127,6 +128,7 @@ vi.mock("../../bindings/tauri-commands", () => ({
     },
   ),
   sessionRealtimeDisconnect: bridge.disconnect,
+  workStatusDiagnosticLog: bridge.diagnosticLog,
 }));
 
 vi.mock("../../core/voice/audio-context", () => ({
@@ -211,6 +213,7 @@ describe("CodexRealtimeClient", () => {
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
     bridge.realtimeStartPrelude = null;
+    bridge.diagnosticLog.mockClear();
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -292,6 +295,14 @@ describe("CodexRealtimeClient", () => {
           text: expect.stringContaining('"status":"completed"'),
         },
       });
+      expect(bridge.diagnosticLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          eventKind: "work-updated",
+          workId: existing.id,
+          status: "completed",
+          activeCount: 0,
+        }),
+      );
     });
 
     client.stop();
@@ -377,6 +388,10 @@ describe("CodexRealtimeClient", () => {
     expect(ledger.get("work-1")).toMatchObject({
       summary: "Create sample.md",
       status: "approval-required",
+    });
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "handoff-observed",
+      activeCount: 1,
     });
     expect(bridge.sent.some((message) => message.id === "approval-from-server")).toBe(false);
 

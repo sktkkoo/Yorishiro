@@ -167,6 +167,41 @@ export const sessionRealtimeDisconnect = (args: {
   readonly finalMessage?: string | null;
 }): Promise<void> => call("session_realtime_disconnect", args);
 
+export type WorkStatusDiagnosticEventKind =
+  | "context-initial-enqueued"
+  | "context-resync-delivered"
+  | "context-event-delivered"
+  | "context-delivery-failed"
+  | "handoff-observed"
+  | "work-created"
+  | "work-updated";
+
+export interface WorkStatusDiagnosticEntry {
+  readonly eventKind: WorkStatusDiagnosticEventKind;
+  readonly workId?: string;
+  readonly status?:
+    | "created"
+    | "running"
+    | "approval-required"
+    | "completed"
+    | "failed"
+    | "cancelled";
+  readonly previousStatus?:
+    | "created"
+    | "running"
+    | "approval-required"
+    | "completed"
+    | "failed"
+    | "cancelled";
+  readonly activeCount?: number;
+  readonly freshness?: "fresh" | "aging" | "stale";
+  readonly observedAgeSeconds?: number;
+}
+
+/** GPT Live work 経路の allowlist metadata を容量制限付き local log へ追記する。 */
+export const workStatusDiagnosticLog = (entry: WorkStatusDiagnosticEntry): Promise<void> =>
+  call("work_status_diagnostic_log", { entry });
+
 /** Registry に登録されてる全 session の descriptor を返す。 */
 export const sessionList = (): Promise<ReadonlyArray<SessionDescriptor>> => invoke("session_list");
 
