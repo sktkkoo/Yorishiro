@@ -32,4 +32,22 @@ describe("work status voice context", () => {
     expect(context).toContain('"previousStatus":"created"');
     expect(context).toContain('"status":"running"');
   });
+
+  it("includes observation age and a non-authoritative freshness label", () => {
+    const ledger = createWorkStatusLedgerStore({ now: () => 1_000 });
+    const work = ledger.create({ summary: "Long-running review" });
+    ledger.markRunning(work.id);
+
+    const fresh = formatWorkStatusSnapshot(ledger.getSnapshot(), 61_000);
+    const aging = formatWorkStatusSnapshot(ledger.getSnapshot(), 61_001);
+    const stale = formatWorkStatusSnapshot(ledger.getSnapshot(), 301_001);
+
+    expect(fresh).toContain('"lastObservedAt":1000');
+    expect(fresh).toContain('"observedAgeSeconds":60');
+    expect(fresh).toContain('"freshness":"fresh"');
+    expect(aging).toContain('"freshness":"aging"');
+    expect(stale).toContain('"freshness":"stale"');
+    expect(stale).toContain("stale does not prove that work stopped");
+    expect(stale).toContain("verify important decisions");
+  });
 });
