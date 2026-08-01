@@ -1,4 +1,4 @@
-import { PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
+import { LoaderCircle, Mic, MicOff, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { ReactNode } from "react";
 
 export interface TitleBarProps {
@@ -8,6 +8,13 @@ export interface TitleBarProps {
   readonly settingsActive: boolean;
   readonly settingsLabel: string;
   readonly sidebarLabel: string;
+  readonly voiceAvailable?: boolean;
+  readonly voiceActive?: boolean;
+  readonly voiceBusy?: boolean;
+  readonly voiceLabel?: string;
+  readonly voiceBillingLabel?: string;
+  readonly voiceError?: string;
+  readonly onToggleVoice?: () => void;
   readonly tabs?: ReactNode;
 }
 
@@ -18,6 +25,13 @@ export default function TitleBar({
   settingsActive,
   settingsLabel,
   sidebarLabel,
+  voiceAvailable = false,
+  voiceActive = false,
+  voiceBusy = false,
+  voiceLabel = "",
+  voiceBillingLabel,
+  voiceError,
+  onToggleVoice,
   tabs,
 }: TitleBarProps) {
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
@@ -47,7 +61,37 @@ export default function TitleBar({
         >
           <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
         </button>
+        {voiceAvailable ? (
+          <button
+            type="button"
+            className={`title-bar-button title-bar-voice-button${
+              voiceActive ? " is-active" : ""
+            }${voiceBusy ? " is-busy" : ""}`}
+            onClick={onToggleVoice}
+            aria-label={voiceLabel}
+            aria-pressed={voiceActive}
+            title={voiceLabel}
+          >
+            {voiceBusy ? (
+              <LoaderCircle size={15} strokeWidth={1.8} aria-hidden="true" />
+            ) : voiceActive ? (
+              <MicOff size={15} strokeWidth={1.8} aria-hidden="true" />
+            ) : (
+              <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
+            )}
+          </button>
+        ) : null}
+        {voiceAvailable && voiceBillingLabel ? (
+          <span className="title-bar-voice-billing" role="status" title={voiceBillingLabel}>
+            {voiceBillingLabel}
+          </span>
+        ) : null}
       </div>
+      {voiceError ? (
+        <div className="title-bar-voice-error" role="status" title={voiceError}>
+          {voiceError}
+        </div>
+      ) : null}
       <div className="title-bar-tabs" data-tauri-drag-region="">
         {tabs}
       </div>

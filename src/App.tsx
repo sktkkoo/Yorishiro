@@ -91,7 +91,7 @@ import {
 } from "./components/session-tab-metadata-badges";
 import TabIndicator, { type TabIndicatorBadge } from "./components/TabIndicator";
 import TerminalWorkspace from "./components/TerminalWorkspace";
-import type { Body, EyeState } from "./core/body";
+import type { Body, EyeState, LipSyncSource } from "./core/body";
 import { shouldTriggerStartleForToolFailure } from "./core/body/tool-failure-reflex";
 import { createSubsystemLog, DevLog, type DevLogEntry } from "./core/dev-log";
 import { collectGlobalPrompt } from "./core/global-prompt";
@@ -135,6 +135,7 @@ import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
+import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
 import { EventBus, type EventBusLogger } from "./runtime/event-bus";
 import { collectHealthReport } from "./runtime/health-check";
 import { buildRestoreRows } from "./runtime/history/describe-snapshot";
@@ -3595,8 +3596,23 @@ function App() {
   // ── Body ↔ PersonaReflexDispatcher wiring ──────────────────
 
   const bodyRef = useRef<Body | null>(null);
+  const codexVoiceAvailable =
+    terminalAgent === "codex" && tabState.activeSessionId === tabState.mainSessionId;
   const greetedRef = useRef(false);
   const inTurnRef = useRef(false);
+  const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
+    bodyRef.current?.setLipSyncSource(source);
+  }, []);
+  const {
+    state: codexRealtimeState,
+    toggle: toggleCodexRealtime,
+    getLipSyncSource: getCodexRealtimeLipSyncSource,
+  } = useCodexRealtime({
+    sessionId: tabState.activeSessionId,
+    available: codexVoiceAvailable,
+    fallbackLipSyncSource: voicePlayer,
+    applyLipSyncSource: applyRealtimeLipSyncSource,
+  });
 
   const handleBodyReady = useCallback(
     (body: Body | null) => {
@@ -3609,7 +3625,7 @@ function App() {
         setRuntimeControlValue("camera.tracking", true);
         setVrmReadyOnce(true);
         body.initAttention();
-        body.setLipSyncSource(voicePlayer);
+        body.setLipSyncSource(getCodexRealtimeLipSyncSource());
         dispatcher.setContextFactory(
           createRealPersonaContextFactory({
             body,
@@ -3637,7 +3653,14 @@ function App() {
         dispatcher.setContextFactory(createStubPersonaContextFactory());
       }
     },
-    [dispatcher, logBridge, effectDispatcher, voicePlayer, personaRegistry],
+    [
+      dispatcher,
+      logBridge,
+      effectDispatcher,
+      voicePlayer,
+      personaRegistry,
+      getCodexRealtimeLipSyncSource,
+    ],
   );
 
   // ── Workspace attention → Aura / Body minimal presence wiring ─────
@@ -4351,6 +4374,26 @@ function App() {
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
+        voiceAvailable={codexVoiceAvailable}
+        voiceActive={codexRealtimeState.status === "active"}
+        voiceBusy={codexRealtimeState.status === "connecting"}
+        voiceLabel={
+          codexRealtimeState.status === "active"
+            ? strings.codexVoiceStop
+            : codexRealtimeState.status === "connecting"
+              ? strings.codexVoiceConnecting
+              : codexRealtimeState.status === "error"
+                ? strings.codexVoiceRetry
+                : strings.codexVoiceStart
+        }
+        voiceBillingLabel={
+          codexRealtimeState.billing === "api" &&
+          (codexRealtimeState.status === "connecting" || codexRealtimeState.status === "active")
+            ? strings.codexVoiceApiBilling
+            : undefined
+        }
+        voiceError={codexRealtimeState.error}
+        onToggleVoice={() => void toggleCodexRealtime()}
         tabs={
           <TabIndicator
             state={tabState}

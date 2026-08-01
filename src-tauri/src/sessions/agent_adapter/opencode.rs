@@ -27,6 +27,7 @@ impl TerminalAgent for OpencodeAgent {
             plugins: true,
             lifecycle_hooks: false,
             session_resume: false,
+            realtime_conversation: false,
         }
     }
 
@@ -254,6 +255,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume: true,
+            realtime_endpoint: None,
         }
     }
 
@@ -269,6 +271,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume: true,
+            realtime_endpoint: None,
         }
     }
 

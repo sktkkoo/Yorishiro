@@ -246,6 +246,8 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessが動作します。`/yori:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$yori-*`スキルとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのYorishiro reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
 
+Codex 0.145.0以降では、title barのマイクボタンからexperimentalなrealtime音声会話を開始できます。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
+
 ---
 
 ## Contributing

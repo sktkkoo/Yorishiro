@@ -46,6 +46,8 @@ git2 = { version = "0.19", default-features = false, features = ["vendored-libgi
 # 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5 / 4.6。
 tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
 axum = "0.8"
 rmcp = { version = "1.7", features = ["server", "transport-streamable-http-server", "macros"] }
 schemars = "1"

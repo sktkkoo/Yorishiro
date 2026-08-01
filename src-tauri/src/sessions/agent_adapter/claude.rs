@@ -25,6 +25,7 @@ impl TerminalAgent for ClaudeAgent {
             plugins: true,
             lifecycle_hooks: true,
             session_resume: true,
+            realtime_conversation: false,
         }
     }
 

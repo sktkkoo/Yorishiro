@@ -245,6 +245,8 @@ Claude Code is the primary, fully-supported agent. Codex is available as an **ex
 
 Auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access work. `/yori:*` commands are registered as `$yori-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Yorishiro reminders are prompt-based on Codex instead of Claude `UserPromptSubmit` hook output.
 
+With Codex 0.145.0 or newer, the microphone button in the title bar starts an experimental realtime voice conversation. The normal Codex TUI stays visible: voice and text share the same thread, approvals, and tool flow. Voice inherits the current Codex CLI login: ChatGPT sign-in uses the subscription, while API-key authentication incurs metered API charges. Yorishiro keeps an “API billing” badge visible whenever API-key voice is connecting or active. Microphone access is requested only when you press the button. See [the realtime voice decision](docs/decisions/codex-realtime-voice.md) for architecture and limitations.
+
 ---
 
 ## Contributing

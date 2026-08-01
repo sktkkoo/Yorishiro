@@ -40,7 +40,7 @@ src-tauri/src/
 | Module | 責務 | TS 側との関係 |
 |---|---|---|
 | `pty.rs` | Legacy Tauri command facade / hook server / default-session delegation | TS 側 perception primitive が PTY output を **read のみ** で受け取る。terminal agent launch 引数差分は `sessions/agent_adapter/` で吸収 |
-| `sessions/pty_session.rs` | Per-session PTY spawn / I/O / resize / kill / replay (HMR 越し) | `SpawnSpec` を受け取り、agent は adapter lookup、shell は wrapper 経由で起動。attach replay は invoke response、live は raw Channel |
+| `sessions/pty_session.rs` | Per-session PTY spawn / I/O / resize / kill / replay (HMR 越し) | `SpawnSpec` を受け取り、agent は adapter lookup、shell は wrapper 経由で起動。Codex では同寿命の app-server も所有。attach replay は invoke response、live は raw Channel |
 | `sessions/agent_adapter/` | TerminalAgent trait + Claude / Codex / OpenCode adapter registry | CLI args / env / temp config file の差を `LaunchArgs` に閉じる。capability flag は feature 有無の宣言 |
 | `mcp/server.rs` | MCP server の listen / round-trip dispatch | TS handler に request 投げて response を待つ async bridge |
 | `mcp/tools.rs` | Rust-native (`list_load_errors`) と TS-delegated tools の宣言 | TS-delegated tool は実装が TS、Rust は schema 宣言と forwarding のみ。`terminal_runs_recent` は metadata-only sensitive-read |
@@ -53,7 +53,7 @@ src-tauri/src/
 ## #[tauri::command] 一覧
 
 Session / PTY:
-- `session_spawn(session_id?, spec, cols, rows, cwd?, on_output)` / `session_write(session_id, data)` / `session_resize(session_id, cols, rows)` / `session_refresh_theme(session_id)` / `session_attach(session_id, cwd?, on_output) → AttachResult { attached, replay }` / `session_detach(session_id)` / `session_destroy(session_id)` / `session_list()`
+- `session_spawn(session_id?, spec, cols, rows, cwd?, on_output)` / `session_write(session_id, data)` / `session_resize(session_id, cols, rows)` / `session_refresh_theme(session_id)` / `session_attach(session_id, cwd?, on_output) → AttachResult { attached, replay }` / `session_detach(session_id)` / `session_realtime_connect(session_id, on_message)` / `session_realtime_send(connection_id, message)` / `session_realtime_disconnect(connection_id, final_message?)` / `session_destroy(session_id)` / `session_list()`
 - Legacy default-session shim: `pty_write(data)` / `pty_resize(cols, rows)` / `pty_kill()` / `pty_attach(cwd?, on_output) → AttachResult { attached, replay }` / `pty_detach()` / `poll_hook_signals() → Vec<String>`
 
 User layer:
