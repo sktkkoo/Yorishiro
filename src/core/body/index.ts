@@ -168,6 +168,9 @@ export class Body {
   private readonly microChannels: ReadonlyArray<MicroChannel>;
   /** 発話音響から顔全体の生理的な賦活を作る反射層。 */
   private readonly speechMicroexpression = new SpeechMicroexpressionSystem();
+  private speechExpressionBaseParams: SpeechMicroexpressionParams = {
+    ...DEFAULT_SPEECH_MICROEXPRESSION_PARAMS,
+  };
   private readonly hasSpeechBrowExpression: boolean;
   private readonly hasSpeechEyeExpression: boolean;
   private speechExpressionEnabled = true;
@@ -384,12 +387,14 @@ export class Body {
 
   /** 発話反射層の感触パラメータを部分更新する。 */
   setSpeechExpressionParams(params: Partial<SpeechMicroexpressionParams>): void {
-    this.speechMicroexpression.setParams(params);
+    this.speechExpressionBaseParams = { ...this.speechExpressionBaseParams, ...params };
+    this.applySpeechExpressionParams();
   }
 
   /** Restores the low-salience acoustic variation profile used without a grounded state. */
   resetSpeechExpressionParams(): void {
-    this.speechMicroexpression.setParams(DEFAULT_SPEECH_MICROEXPRESSION_PARAMS);
+    this.speechExpressionBaseParams = { ...DEFAULT_SPEECH_MICROEXPRESSION_PARAMS };
+    this.applySpeechExpressionParams();
   }
 
   /** Starts a speech-owned mood with an attack envelope. */
@@ -885,14 +890,19 @@ export class Body {
 
   private applySpeechStateExpressionLayers(): void {
     const layer = this.topSpeechStateExpressionLayer();
-    this.resetSpeechExpressionParams();
-    if (layer?.microexpressionParams) {
-      this.setSpeechExpressionParams(layer.microexpressionParams);
-    }
+    this.applySpeechExpressionParams();
     if (layer?.preset && layer.preset !== "neutral") {
       this.setSpeechMood(layer.preset, layer.intensity ?? 0.3);
     } else {
       this.releaseSpeechMood();
+    }
+  }
+
+  private applySpeechExpressionParams(): void {
+    const layer = this.topSpeechStateExpressionLayer();
+    this.speechMicroexpression.setParams(this.speechExpressionBaseParams);
+    if (layer?.microexpressionParams) {
+      this.speechMicroexpression.setParams(layer.microexpressionParams);
     }
   }
 

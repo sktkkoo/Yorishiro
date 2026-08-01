@@ -461,6 +461,32 @@ describe("Body speech mood wiring", () => {
     second.release();
   });
 
+  it("keeps a newer voice.say layer when an older grounded state releases", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const groundedState = body.acquireSpeechStateExpression({ preset: "happy", intensity: 0.3 });
+    const voiceSayMood = body.acquireSpeechStateExpression({ preset: "surprised", intensity: 0.6 });
+
+    groundedState.release();
+
+    expect(speechMood(body)?.expressionName).toBe("surprised");
+    voiceSayMood.release();
+  });
+
+  it("restores the debug speech profile after a grounded state layer releases", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechExpressionParams({ engagementBrowWeight: 0.09 });
+    const groundedState = body.acquireSpeechStateExpression({
+      microexpressionParams: { engagementBrowWeight: 0.02 },
+    });
+
+    expect(speechBrowWeight(body)).toBe(0.02);
+    groundedState.release();
+
+    expect(speechBrowWeight(body)).toBe(0.09);
+  });
+
   it("ramps the speech mood and yields to persona and MCP mood ownership", () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());
