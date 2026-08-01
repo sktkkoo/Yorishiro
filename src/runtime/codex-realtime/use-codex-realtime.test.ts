@@ -292,4 +292,61 @@ describe("useCodexRealtime", () => {
     expect(clients[0].stop).toHaveBeenCalledTimes(1);
     expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
   });
+
+  it.each([
+    "stop",
+    "error",
+    "remote-close",
+    "session-switch",
+  ] as const)("%s path retries a rejected fallback ownership restore", async (path) => {
+    vi.useFakeTimers();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    let rustFallbackEnabled = true;
+    let rejectNextRestore = false;
+    const setFallbackPlaybackEnabled = vi.fn(async (enabled: boolean) => {
+      if (enabled && rejectNextRestore) {
+        rejectNextRestore = false;
+        throw new Error("transient restore IPC failure");
+      }
+      rustFallbackEnabled = enabled;
+    });
+
+    try {
+      const { result, clients, rerender, unmount } = setup(
+        [Promise.resolve()],
+        setFallbackPlaybackEnabled,
+      );
+      await act(async () => {
+        await result.current.toggle();
+      });
+      act(() => {
+        clients[0].emit({ status: "active", billing: "subscription" });
+      });
+      expect(rustFallbackEnabled).toBe(false);
+      rejectNextRestore = true;
+
+      if (path === "stop") {
+        act(() => result.current.stop());
+      } else if (path === "error") {
+        act(() => clients[0].emit({ status: "error", error: "connection failed" }));
+      } else if (path === "remote-close") {
+        act(() => clients[0].emit({ status: "idle" }));
+      } else {
+        rerender({ sessionId: "other", available: false });
+      }
+
+      await act(async () => {
+        await Promise.resolve();
+        await vi.runAllTimersAsync();
+      });
+
+      expect(rustFallbackEnabled).toBe(true);
+      expect(setFallbackPlaybackEnabled).toHaveBeenLastCalledWith(true);
+      expect(setFallbackPlaybackEnabled.mock.calls.filter(([enabled]) => enabled)).toHaveLength(3);
+      unmount();
+    } finally {
+      consoleError.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });

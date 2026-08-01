@@ -172,11 +172,13 @@ cancel後にbackend promiseが完了してもgeneration guardで再生せず、`
 `spoken: false` / `played: false`で完了し、切断後に古い要約を再生するqueueは持たない。
 stop、remote close、start failure、session切替でいずれもVoicePlayerを即時復帰させる。
 
-MCP tool requestにはRust側のevent作成時点でaudio ownershipの`ownerEpochMs` / `generation` /
+MCP tool requestにはRust側のevent作成時点でaudio ownershipの`ownerId` / `generation` /
 `fallbackPlaybackEnabled`をstampする。WebView dispatch時のcurrent stateだけで判断すると、Live中に
 作られたrequestがstop後に届いて古い要約を再生できるためである。handlerはrequest provenanceと
-current VoicePlayer stateの両方が許可する場合だけ再生する。frontendからRustへのownership更新は
-epoch + generationで順序付けし、非同期invokeが逆順に完了しても古い更新を採用しない。
+current VoicePlayerのowner ID + generationが完全一致する場合だけ再生する。owner IDはWebViewの
+wall clockではなく、生存中のRust processがWebView incarnationごとに発行する。frontendからRustへの
+ownership更新は同じowner ID内のgenerationで順序付けし、非同期invokeが逆順に完了しても古い更新を
+採用しない。fallbackへのrestore IPCは一時失敗に備えてbounded retryする。
 
 ## 今後も守る invariant
 

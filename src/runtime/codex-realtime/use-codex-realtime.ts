@@ -36,6 +36,8 @@ interface UseCodexRealtimeResult {
 const defaultCreateClient: CodexRealtimeClientFactory = (sessionId, onStateChange) =>
   new CodexRealtimeClient(sessionId, onStateChange);
 
+const FALLBACK_RESTORE_RETRY_DELAYS_MS = [50, 200] as const;
+
 /** App が所有する realtime client を一つに限定し、古い client の通知を遮断する。 */
 export function useCodexRealtime({
   sessionId,
@@ -51,6 +53,8 @@ export function useCodexRealtime({
   const setFallbackPlaybackEnabledRef = useRef(setFallbackPlaybackEnabled);
   const createClientRef = useRef(createClient);
   const sessionIdRef = useRef(sessionId);
+  const fallbackPlaybackTransitionRef = useRef(0);
+  const fallbackPlaybackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [state, setState] = useState<CodexRealtimeState>({ status: "idle" });
 
   fallbackRef.current = fallbackLipSyncSource;
@@ -62,18 +66,47 @@ export function useCodexRealtime({
     applyLipSyncSourceRef.current(fallbackRef.current);
   }, []);
 
-  const restoreFallbackPlayback = useCallback(() => {
-    try {
-      const pending = setFallbackPlaybackEnabledRef.current(true);
-      if (pending) {
-        void pending.catch((error) => {
-          console.error("[codex-realtime] failed to restore fallback playback ownership", error);
-        });
-      }
-    } catch (error) {
-      console.error("[codex-realtime] failed to restore fallback playback ownership", error);
+  const beginFallbackPlaybackTransition = useCallback(() => {
+    fallbackPlaybackTransitionRef.current += 1;
+    if (fallbackPlaybackRetryTimerRef.current !== null) {
+      clearTimeout(fallbackPlaybackRetryTimerRef.current);
+      fallbackPlaybackRetryTimerRef.current = null;
     }
+    return fallbackPlaybackTransitionRef.current;
   }, []);
+
+  const restoreFallbackPlayback = useCallback(() => {
+    const transition = beginFallbackPlaybackTransition();
+    let retryIndex = 0;
+
+    const retry = (error: unknown): void => {
+      console.error("[codex-realtime] failed to restore fallback playback ownership", error);
+      if (fallbackPlaybackTransitionRef.current !== transition) return;
+      const delay = FALLBACK_RESTORE_RETRY_DELAYS_MS[retryIndex];
+      if (delay === undefined) return;
+      retryIndex += 1;
+      fallbackPlaybackRetryTimerRef.current = setTimeout(() => {
+        fallbackPlaybackRetryTimerRef.current = null;
+        if (fallbackPlaybackTransitionRef.current === transition) attempt();
+      }, delay);
+    };
+
+    const attempt = (): void => {
+      try {
+        const pending = setFallbackPlaybackEnabledRef.current(true);
+        if (pending) void pending.catch(retry);
+      } catch (error) {
+        retry(error);
+      }
+    };
+
+    attempt();
+  }, [beginFallbackPlaybackTransition]);
+
+  const claimFallbackPlayback = useCallback((): void | Promise<void> => {
+    beginFallbackPlaybackTransition();
+    return setFallbackPlaybackEnabledRef.current(false);
+  }, [beginFallbackPlaybackTransition]);
 
   const stop = useCallback(() => {
     const client = clientRef.current;
@@ -123,7 +156,7 @@ export function useCodexRealtime({
 
     try {
       // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
-      const pendingOwnershipClaim = setFallbackPlaybackEnabledRef.current(false);
+      const pendingOwnershipClaim = claimFallbackPlayback();
       if (pendingOwnershipClaim) await pendingOwnershipClaim;
       if (clientRef.current !== client) return;
       await client.start();
@@ -138,7 +171,7 @@ export function useCodexRealtime({
       restoreFallbackPlayback();
       restoreFallback();
     }
-  }, [restoreFallback, restoreFallbackPlayback, sessionId, stop]);
+  }, [claimFallbackPlayback, restoreFallback, restoreFallbackPlayback, sessionId, stop]);
 
   useEffect(() => {
     const sessionChanged = sessionIdRef.current !== sessionId;
