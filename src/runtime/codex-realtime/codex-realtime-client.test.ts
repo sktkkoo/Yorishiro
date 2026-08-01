@@ -234,6 +234,11 @@ describe("CodexRealtimeClient", () => {
 
     await client.start();
 
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "context-initial-enqueued",
+      activeCount: undefined,
+    });
+
     expect(client.getStatus()).toBe("active");
     expect(states.map((state) => state.status)).toEqual(["connecting", "active"]);
     expect(states[states.length - 1]).toEqual({ status: "active", billing: "subscription" });
@@ -303,6 +308,19 @@ describe("CodexRealtimeClient", () => {
           activeCount: 0,
         }),
       );
+    });
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "work-updated",
+      workId: existing.id,
+      previousStatus: "running",
+      status: "completed",
+      activeCount: 0,
+    });
+    await vi.waitFor(() => {
+      expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+        eventKind: "context-event-delivered",
+        activeCount: 0,
+      });
     });
 
     client.stop();
