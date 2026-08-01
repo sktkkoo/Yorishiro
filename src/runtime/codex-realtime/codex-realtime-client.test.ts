@@ -32,6 +32,7 @@ const bridge = vi.hoisted(() => ({
   loadedThreadParents: {} as Record<string, string | null | undefined>,
   threadReadDetails: {} as Record<string, Record<string, unknown>>,
   threadReadFailures: {} as Record<string, number>,
+  threadReconcileReadFailures: {} as Record<string, number>,
   realtimeStartPrelude: null as (() => void) | null,
   diagnosticLog: vi.fn(async () => {}),
 }));
@@ -92,6 +93,19 @@ vi.mock("../../bindings/tauri-commands", () => ({
         });
       } else if (request.method === "thread/read") {
         const threadId = request.params?.threadId;
+        if (
+          request.params?.includeTurns === true &&
+          typeof threadId === "string" &&
+          (bridge.threadReconcileReadFailures[threadId] ?? 0) > 0
+        ) {
+          bridge.threadReconcileReadFailures[threadId] -= 1;
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({ id: request.id, error: { message: "resync unavailable" } }),
+            );
+          });
+          return;
+        }
         if (typeof threadId === "string" && (bridge.threadReadFailures[threadId] ?? 0) > 0) {
           bridge.threadReadFailures[threadId] -= 1;
           queueMicrotask(() => {
@@ -218,6 +232,7 @@ describe("CodexRealtimeClient", () => {
     vi.mocked(ensureAudioContextRunning).mockReset();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
+    bridge.threadReconcileReadFailures = {};
     bridge.realtimeStartPrelude = null;
     bridge.diagnosticLog.mockClear();
     Object.defineProperty(navigator, "mediaDevices", {
@@ -411,6 +426,121 @@ describe("CodexRealtimeClient", () => {
       activeCount: 0,
       correlationCount: 1,
     });
+    second.stop();
+  });
+
+  it("reconciles a subagent approval resolved while voice was stopped", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    const first = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await first.start();
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/started",
+        params: {
+          threadId: "thread-1",
+          turn: {
+            id: "root-turn",
+            status: "inProgress",
+            items: [
+              {
+                type: "userMessage",
+                id: "user-1",
+                content: [{ type: "text", text: "Review it", text_elements: [] }],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          threadId: "thread-1",
+          turnId: "root-turn",
+          item: { type: "collabAgentToolCall", id: "spawn-1", receiverThreadIds: ["child"] },
+        },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/started",
+        params: { threadId: "child", turn: { id: "child-turn", status: "inProgress", items: [] } },
+      }),
+    );
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        id: "child-approval",
+        method: "item/commandExecution/requestApproval",
+        params: { threadId: "child", turnId: "child-turn" },
+      }),
+    );
+    expect(ledger.get("work-1")?.status).toBe("approval-required");
+    first.stop();
+
+    bridge.threadReadDetails["thread-1"] = {
+      id: "thread-1",
+      status: { type: "active", activeFlags: [] },
+      turns: [{ id: "root-turn", status: "inProgress", items: [] }],
+    };
+    bridge.threadReadDetails.child = { id: "child", status: { type: "idle" } };
+    const second = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await second.start();
+
+    expect(ledger.get("work-1")?.status).toBe("running");
+    expect(
+      bridge.sent.some(
+        (message) => message.method === "thread/read" && message.params?.threadId === "child",
+      ),
+    ).toBe(true);
+    second.stop();
+  });
+
+  it("retries reconciliation after a transient thread/read failure", async () => {
+    const ledger = createWorkStatusLedgerStore();
+    const first = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await first.start();
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "turn/started",
+        params: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-1",
+            status: "inProgress",
+            items: [
+              {
+                type: "userMessage",
+                id: "user-1",
+                content: [{ type: "text", text: "Run checks", text_elements: [] }],
+              },
+            ],
+          },
+        },
+      }),
+    );
+    first.stop();
+
+    bridge.threadReadDetails["thread-1"] = {
+      id: "thread-1",
+      status: { type: "idle" },
+      turns: [{ id: "turn-1", status: "completed", items: [] }],
+    };
+    bridge.threadReconcileReadFailures["thread-1"] = 1;
+    const second = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+    await second.start();
+    expect(ledger.get("work-1")?.status).toBe("running");
+
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 1_100));
+    expect(ledger.get("work-1")?.status).toBe("completed");
     second.stop();
   });
 

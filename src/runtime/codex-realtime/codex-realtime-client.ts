@@ -72,6 +72,8 @@ interface PendingRequest {
 
 const RPC_TIMEOUT_MS = 15_000;
 const THREAD_DISCOVERY_TIMEOUT_MS = 8_000;
+const WORK_STATUS_RECONCILE_RETRY_MS = 1_000;
+const WORK_STATUS_RECONCILE_RETRIES = 2;
 export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 
@@ -113,6 +115,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private readonly workStatusLedger: (WorkLifecyclePort & WorkStatusVoiceContextSource) | null;
   private workStatusSubscription: { dispose(): void } | null = null;
   private workStatusFreshnessTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private workStatusReconcileRetryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private readonly getVoice: () => string | Promise<string>;
 
   constructor(
@@ -431,6 +434,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     threadId: string,
     attempt: number,
     peer: RTCPeerConnection,
+    retriesRemaining = WORK_STATUS_RECONCILE_RETRIES,
   ): Promise<void> {
     const adapter = this.workStatusAdapter;
     if (!adapter) return;
@@ -441,10 +445,24 @@ export class CodexRealtimeClient implements LipSyncSource {
       })) as { readonly thread?: unknown };
       this.assertAttemptOwner(attempt, peer);
       const reconciled = adapter.reconcileRootThread(result.thread);
+      let releasedApprovals = reconciled.releasedApprovals;
+      for (const approvalThreadId of adapter.pendingApprovalThreadIds()) {
+        if (approvalThreadId === threadId) continue;
+        const childResult = (await this.request("thread/read", {
+          threadId: approvalThreadId,
+          includeTurns: true,
+        })) as { readonly thread?: unknown };
+        this.assertAttemptOwner(attempt, peer);
+        releasedApprovals += adapter.reconcileApprovalThread(childResult.thread);
+      }
+      if (this.workStatusReconcileRetryTimer !== null) {
+        globalThis.clearTimeout(this.workStatusReconcileRetryTimer);
+        this.workStatusReconcileRetryTimer = null;
+      }
       this.writeWorkStatusDiagnostic({
         eventKind: "correlation-resync-delivered",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
-        correlationCount: reconciled.matchedTurns,
+        correlationCount: reconciled.matchedTurns + releasedApprovals,
       });
     } catch (error) {
       if (!this.isAttemptOwner(attempt)) throw error;
@@ -453,6 +471,15 @@ export class CodexRealtimeClient implements LipSyncSource {
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
       console.warn("[codex-realtime] failed to reconcile work status", error);
+      if (retriesRemaining > 0 && this.workStatusReconcileRetryTimer === null) {
+        this.workStatusReconcileRetryTimer = globalThis.setTimeout(() => {
+          this.workStatusReconcileRetryTimer = null;
+          if (!this.isAttemptOwner(attempt) || this.peer !== peer || this.threadId !== threadId) {
+            return;
+          }
+          void this.reconcileWorkStatus(threadId, attempt, peer, retriesRemaining - 1);
+        }, WORK_STATUS_RECONCILE_RETRY_MS);
+      }
     }
   }
 
@@ -767,6 +794,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     if (this.workStatusFreshnessTimer !== null) {
       globalThis.clearTimeout(this.workStatusFreshnessTimer);
       this.workStatusFreshnessTimer = null;
+    }
+    if (this.workStatusReconcileRetryTimer !== null) {
+      globalThis.clearTimeout(this.workStatusReconcileRetryTimer);
+      this.workStatusReconcileRetryTimer = null;
     }
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();

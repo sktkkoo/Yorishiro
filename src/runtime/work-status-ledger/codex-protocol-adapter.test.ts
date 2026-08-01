@@ -254,6 +254,15 @@ describe("CodexWorkStatusProtocolAdapter", () => {
       status: "approval-required",
       pendingApprovals: ["number:7"],
     });
+
+    expect(adapter.pendingApprovalThreadIds()).toEqual(["child"]);
+    expect(
+      adapter.reconcileApprovalThread({
+        id: "child",
+        status: { type: "idle" },
+      }),
+    ).toBe(1);
+    expect(ledger.get("work-1")?.status).toBe("running");
   });
 
   it("ignores unrelated threads and maps failed/interrupted terminal outcomes", () => {

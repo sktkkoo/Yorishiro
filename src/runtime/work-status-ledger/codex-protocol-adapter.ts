@@ -123,21 +123,28 @@ export class CodexWorkStatusProtocolAdapter {
       }
     }
 
-    let releasedApprovals = 0;
-    const status = recordValue(thread.status);
-    const activeFlags = Array.isArray(status?.activeFlags) ? status.activeFlags : [];
-    const rootStillWaiting = status?.type === "active" && activeFlags.includes("waitingOnApproval");
-    if (!rootStillWaiting) {
-      for (const approval of this.approvals.values()) {
-        if (approval.resolved || approval.threadId !== this.rootThreadId) continue;
-        const workId = this.turnToWork.get(approval.turnId);
-        if (!workId) continue;
-        approval.resolved = true;
-        if (this.ledger.releaseApproval(workId, approval.key)) releasedApprovals += 1;
-      }
-    }
+    const releasedApprovals = this.reconcileApprovalsForThread(thread);
 
     return { matchedTurns, terminalTurns, releasedApprovals };
+  }
+
+  /** voice gap 中に解決された可能性がある approval を持つ thread 一覧。 */
+  pendingApprovalThreadIds(): readonly string[] {
+    return [
+      ...new Set(
+        [...this.approvals.values()]
+          .filter((approval) => !approval.resolved)
+          .map((approval) => approval.threadId),
+      ),
+    ];
+  }
+
+  /** child thread の保存済み runtime status から approval 解決を回復する。 */
+  reconcileApprovalThread(value: unknown): number {
+    const thread = recordValue(value);
+    const threadId = stringValue(thread?.id);
+    if (!thread || !threadId || !this.isObservedThread(threadId)) return 0;
+    return this.reconcileApprovalsForThread(thread);
   }
 
   private observeTurnStarted(params: Record<string, unknown>): void {
@@ -275,6 +282,25 @@ export class CodexWorkStatusProtocolAdapter {
 
   private workFor(turnId: string, threadId: string): string | null {
     return this.turnToWork.get(turnId) ?? this.threadToWork.get(threadId) ?? null;
+  }
+
+  private reconcileApprovalsForThread(thread: Record<string, unknown>): number {
+    const threadId = stringValue(thread.id);
+    if (!threadId) return 0;
+    const status = recordValue(thread.status);
+    const activeFlags = Array.isArray(status?.activeFlags) ? status.activeFlags : [];
+    const stillWaiting = status?.type === "active" && activeFlags.includes("waitingOnApproval");
+    if (stillWaiting) return 0;
+
+    let released = 0;
+    for (const approval of this.approvals.values()) {
+      if (approval.resolved || approval.threadId !== threadId) continue;
+      const workId = this.workFor(approval.turnId, threadId);
+      if (!workId) continue;
+      approval.resolved = true;
+      if (this.ledger.releaseApproval(workId, approval.key)) released += 1;
+    }
+    return released;
   }
 
   private isObservedThread(threadId: string): boolean {
