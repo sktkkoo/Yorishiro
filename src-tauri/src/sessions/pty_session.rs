@@ -18,6 +18,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::pty::PtyExit;
 
+use super::codex_tui_proxy::CodexTuiProxy;
 use super::osc133::{Osc133Parser, OscEvent};
 use super::registry::SessionRegistry;
 use super::types::{SessionActivity, SessionId};
@@ -242,6 +243,7 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 struct CodexAppServerProcess {
     child: Child,
     endpoint: String,
+    tui_proxy: Option<CodexTuiProxy>,
 }
 
 impl CodexAppServerProcess {
@@ -271,9 +273,24 @@ impl CodexAppServerProcess {
                 "Failed to spawn Codex app-server ({binary}). Codex 0.145.0 or newer is required: {e}"
             )
         })?;
-        let mut process = Self { child, endpoint };
+        let mut process = Self {
+            child,
+            endpoint,
+            tui_proxy: None,
+        };
         process.wait_until_ready(address)?;
+        process.tui_proxy = Some(CodexTuiProxy::spawn(process.endpoint.clone())?);
         Ok(process)
+    }
+
+    fn tui_endpoint(&self) -> Option<&str> {
+        self.tui_proxy.as_ref().map(CodexTuiProxy::endpoint)
+    }
+
+    fn selected_thread_id(&self) -> Option<String> {
+        self.tui_proxy
+            .as_ref()
+            .and_then(CodexTuiProxy::selected_thread_id)
     }
 
     fn wait_until_ready(&mut self, address: SocketAddr) -> Result<(), String> {
@@ -299,6 +316,7 @@ impl CodexAppServerProcess {
 
 impl Drop for CodexAppServerProcess {
     fn drop(&mut self) {
+        self.tui_proxy.take();
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
@@ -430,7 +448,7 @@ impl PtySession {
                     resume: *resume,
                     realtime_endpoint: pending_app_server
                         .as_ref()
-                        .map(|server| server.endpoint.as_str()),
+                        .and_then(CodexAppServerProcess::tui_endpoint),
                 };
                 let launch = adapter.build_launch_args(&ctx)?;
                 for (k, v) in &launch.env {
@@ -621,6 +639,12 @@ impl PtySession {
         lock_or_recover(&self.codex_app_server)
             .as_ref()
             .map(|server| server.endpoint.clone())
+    }
+
+    pub fn realtime_selected_thread_id(&self) -> Option<String> {
+        lock_or_recover(&self.codex_app_server)
+            .as_ref()
+            .and_then(CodexAppServerProcess::selected_thread_id)
     }
 
     pub fn write_data(&self, data: &str) -> Result<(), String> {

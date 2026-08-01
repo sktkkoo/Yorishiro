@@ -47,8 +47,9 @@ Codex session の起動は次の 3 要素に分ける。
 1. Rust が random loopback port で `codex app-server --listen ws://127.0.0.1:<port>` を起動
 2. PTY 内の Codex TUI を `codex --remote <endpoint>` で同じ server へ接続
 3. Rust の realtime bridge が Origin header なしで同じ server へ接続
-4. WebView の `CodexRealtimeClient` は Tauri Channel 経由で `thread/loaded/list` を送り、
-   複数件なら `thread/read` の `parentThreadId` で subagent を除外した唯一の top-level thread を選ぶ
+4. WebView の thread tracker は voice が停止中も `thread/started` を監視して TUI の current thread ID を保持する。
+   `CodexRealtimeClient` は Tauri Channel 経由の `thread/loaded/list` と `thread/read` で、その ID が
+   loaded な top-level thread であることを再検証する
 5. 選んだ thread で `thread/realtime/start` の realtime v3 + WebRTC transport を開始
 
 app-server process は `PtySession` が所有する。spawn 途中の失敗、session kill、Drop の
@@ -119,7 +120,9 @@ Codex 0.146.0 で次を実測した。
 ### thread targeting
 
 `thread/loaded/list` は active TUI thread を返す API ではない。loaded ID を文字列 sort した一覧であり、
-`data[0]` は active thread を意味しない。先頭採用は禁止する。
+`data[0]` は active thread を意味しない。さらに TUI が `/clear` や thread 切替で unsubscribe しても、
+app-server は無購読・無活動の thread を grace period 中 loaded のまま保持する。先頭採用と「top-level が
+複数なら即エラー」のどちらも current thread の判定には使えない。
 
 Main Agent が agent team を動かすと同じ app-server に複数 thread が loaded になるが、これは異常では
 ない。対象は次の手順で決める。
@@ -127,13 +130,26 @@ Main Agent が agent team を動かすと同じ app-server に複数 thread が 
 1. `thread/loaded/list` を取得する
 2. 各 ID を `thread/read({ includeTurns: false })` で読む
 3. `parentThreadId === null` の top-level thread だけを候補にする
-4. top-level が一つなら、その ID で realtime を開始する
-5. subagent の終了と read が競合した場合は、最新の loaded snapshot からやり直す
-6. top-level が複数なら推測せず fail closed する
+4. tracker が保持する latest top-level thread ID と照合する
+5. 一致する loaded top-level があれば、その ID で realtime を開始する
+6. tracker の初期 discovery 時だけ、top-level が一つならその ID を初期値にする
+7. subagent の終了と read が競合した場合は、最新の loaded snapshot からやり直す
+8. tracker に明示 ID がなく top-level が複数なら推測せず fail closed する
 
-Codex v2 Thread schema は `parentThreadId` を subagent の場合だけ設定する。recency、配列順、statusから
-active threadを推測してはならない。upstreamがactive threadの明示query / notificationを提供した場合は、
-この選択を明示IDへ置き換える。
+Codex v2 Thread schema は `parentThreadId` を subagent の場合だけ設定する。recency、配列順、statusだけから
+active threadを推測してはならない。TUI は host-owned loopback proxy 経由で app-server へ接続し、proxy は
+`thread/start` / `thread/resume` / `thread/fork` の成功 response に含まれる thread ID だけを保持する。
+tracker はその ID を host IPC で読み、`thread/read` で loaded top-level と再検証してから採用する。proxy は
+transcript、turn payload、approval内容を保存しない。
+
+加えて、`/clear` は fork provenance を持たない `thread/started` broadcast で追跡する。`/resume` と
+`/fork` の ownership はproxyが相関した成功responseだけを正本とし、globalな `thread/status/changed` から
+推測しない。status通知はloaded / notLoadedのbookkeepingとcurrent threadの無効化にだけ使う。side
+conversationを含む別のtop-level threadも同じstatusを発するため、ownershipのfail-safeにはできない。
+
+接続中に tracker の current thread が変わった場合、現在の realtime 接続を停止し、新しい明示 ID へ
+自動再接続する。tracker bridge の切断や current thread の close で ID を特定できなくなった場合は、
+誤った thread へつなぎ続けず realtime を停止する。この契約は `/clear` と `/resume` で共通とする。
 
 ### approval ownership
 
@@ -300,7 +316,8 @@ leaseをinvalidateしない。fallbackへのrestore IPCは一時失敗に備え�
 - approval request は同じ thread の subscriber 全員へ届く。bridge は自動応答せず、v1 の
   承認 UI は TUI だけを正本とする
 - `thread/loaded/list` の順序には active thread の意味がない。subagent は `parentThreadId` で除外し、
-  複数の top-level thread が loaded の場合は誤接続を避けて voice を開始しない
+  複数の top-level thread が loaded の場合は tracker の `/clear`・`/resume` 通知由来の明示 ID がなければ
+  誤接続を避けて voice を開始しない
 - v1 の接続実装は activeなCodex-backed Main Agent session だけを対象とする。shell tab や Claude / OpenCode には
   native voice adapterがなく、現在はbuttonも表示しない。将来の共通buttonは非対応を隠さず説明し、
   userが明示確認した場合だけ既存の安全なagent切替経路を使う
