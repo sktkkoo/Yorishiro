@@ -1,5 +1,6 @@
 import type { MotionHandle } from "@yorishiro/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SpeechStateExpressionHandle } from "../../core/body";
 import { createBodyStateExpressionAdapter } from "./body-adapter";
 import type { StateExpressionCue } from "./types";
 
@@ -15,6 +16,10 @@ function motionHandle(): MotionHandle {
     isPreempted: () => false,
     completion: new Promise(() => {}),
   };
+}
+
+function stateHandle() {
+  return { release: vi.fn<() => void>() } satisfies SpeechStateExpressionHandle;
 }
 
 function cue(overrides: Partial<StateExpressionCue> = {}): StateExpressionCue {
@@ -38,20 +43,23 @@ afterEach(() => {
 describe("createBodyStateExpressionAdapter", () => {
   it("resolves facial and body cues into speech state-expression slots", () => {
     const motion = motionHandle();
+    const state = stateHandle();
     const body = {
       acquireMotionSlot: vi.fn(() => motion),
-      releaseSpeechMood: vi.fn(),
-      resetSpeechExpressionParams: vi.fn(),
-      setSpeechExpressionParams: vi.fn(),
-      setSpeechMood: vi.fn(),
+      acquireSpeechStateExpression: vi.fn(() => state),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
 
     adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
 
-    expect(body.setSpeechMood).toHaveBeenCalledWith("happy", 0.42);
-    expect(body.setSpeechExpressionParams).toHaveBeenCalledWith(
-      expect.objectContaining({ engagementBrowWeight: expect.any(Number) }),
+    expect(body.acquireSpeechStateExpression).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preset: "happy",
+        intensity: 0.42,
+        microexpressionParams: expect.objectContaining({
+          engagementBrowWeight: expect.any(Number),
+        }),
+      }),
     );
     expect(body.acquireMotionSlot).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -64,12 +72,14 @@ describe("createBodyStateExpressionAdapter", () => {
 
   it("releases the current speech state without acquiring a neutral preset", () => {
     const firstMotion = motionHandle();
+    const firstState = stateHandle();
+    const secondState = stateHandle();
     const body = {
       acquireMotionSlot: vi.fn(() => firstMotion),
-      releaseSpeechMood: vi.fn(),
-      resetSpeechExpressionParams: vi.fn(),
-      setSpeechExpressionParams: vi.fn(),
-      setSpeechMood: vi.fn(),
+      acquireSpeechStateExpression: vi
+        .fn<() => SpeechStateExpressionHandle>()
+        .mockReturnValueOnce(firstState)
+        .mockReturnValueOnce(secondState),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
     adapter.onCue(cue(), { scheduledForMs: 0, firedAtMs: 0, lateByMs: 0 });
@@ -80,22 +90,22 @@ describe("createBodyStateExpressionAdapter", () => {
       lateByMs: 0,
     });
 
-    expect(body.releaseSpeechMood).toHaveBeenCalledTimes(1);
-    expect(body.resetSpeechExpressionParams).toHaveBeenCalledTimes(1);
+    expect(firstState.release).toHaveBeenCalledTimes(1);
+    expect(secondState.release).not.toHaveBeenCalled();
     expect(firstMotion.release).toHaveBeenCalledWith(180);
-    expect(body.setSpeechMood).toHaveBeenCalledTimes(1);
+    expect(body.acquireSpeechStateExpression).toHaveBeenLastCalledWith(
+      expect.objectContaining({ preset: "neutral" }),
+    );
     expect(body.acquireMotionSlot).toHaveBeenCalledTimes(1);
   });
 
   it("releases owned state once when duration and utterance completion overlap", () => {
     vi.useFakeTimers();
     const motion = motionHandle();
+    const state = stateHandle();
     const body = {
       acquireMotionSlot: vi.fn(() => motion),
-      releaseSpeechMood: vi.fn(),
-      resetSpeechExpressionParams: vi.fn(),
-      setSpeechExpressionParams: vi.fn(),
-      setSpeechMood: vi.fn(),
+      acquireSpeechStateExpression: vi.fn(() => state),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
     adapter.onCue(cue({ durationMs: 500 }), {
@@ -107,18 +117,15 @@ describe("createBodyStateExpressionAdapter", () => {
     vi.advanceTimersByTime(500);
     adapter.onRelease("u1", "completed");
 
-    expect(body.releaseSpeechMood).toHaveBeenCalledTimes(1);
-    expect(body.resetSpeechExpressionParams).toHaveBeenCalledTimes(1);
+    expect(state.release).toHaveBeenCalledTimes(1);
     expect(motion.release).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a grounded low-salience profile even without a mood or gesture", () => {
+    const state = stateHandle();
     const body = {
       acquireMotionSlot: vi.fn(),
-      releaseSpeechMood: vi.fn(),
-      resetSpeechExpressionParams: vi.fn(),
-      setSpeechExpressionParams: vi.fn(),
-      setSpeechMood: vi.fn(),
+      acquireSpeechStateExpression: vi.fn(() => state),
     };
     const adapter = createBodyStateExpressionAdapter(() => body);
 
@@ -129,10 +136,47 @@ describe("createBodyStateExpressionAdapter", () => {
     });
     adapter.onRelease("u1", "completed");
 
-    expect(body.setSpeechExpressionParams).toHaveBeenCalledOnce();
-    expect(body.setSpeechMood).not.toHaveBeenCalled();
+    expect(body.acquireSpeechStateExpression).toHaveBeenCalledWith(
+      expect.objectContaining({
+        preset: "neutral",
+        microexpressionParams: expect.objectContaining({
+          engagementBrowWeight: expect.any(Number),
+        }),
+      }),
+    );
     expect(body.acquireMotionSlot).not.toHaveBeenCalled();
-    expect(body.resetSpeechExpressionParams).toHaveBeenCalledOnce();
+    expect(state.release).toHaveBeenCalledOnce();
+  });
+
+  it("releases only the state handle owned by each utterance", () => {
+    const firstState = stateHandle();
+    const secondState = stateHandle();
+    const body = {
+      acquireMotionSlot: vi.fn(),
+      acquireSpeechStateExpression: vi
+        .fn<() => SpeechStateExpressionHandle>()
+        .mockReturnValueOnce(firstState)
+        .mockReturnValueOnce(secondState),
+    };
+    const adapter = createBodyStateExpressionAdapter(() => body);
+    adapter.onCue(cue({ utteranceId: "u1", gestureIntent: "none" }), {
+      scheduledForMs: 0,
+      firedAtMs: 0,
+      lateByMs: 0,
+    });
+    adapter.onCue(cue({ utteranceId: "u2", gestureIntent: "none" }), {
+      scheduledForMs: 1,
+      firedAtMs: 1,
+      lateByMs: 0,
+    });
+
+    adapter.onRelease("u1", "cancelled");
+
+    expect(firstState.release).toHaveBeenCalledOnce();
+    expect(secondState.release).not.toHaveBeenCalled();
+
+    adapter.onRelease("u2", "completed");
+    expect(secondState.release).toHaveBeenCalledOnce();
   });
 
   it("Bodyが無い間は安全にno-opする", () => {

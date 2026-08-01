@@ -364,6 +364,59 @@ describe("Body speech mood wiring", () => {
       .find((slot) => slot.source === "speech" && slot.kind === "mood");
   }
 
+  function speechBrowWeight(body: Body): number {
+    return (
+      body as unknown as {
+        speechMicroexpression: { currentParams: { engagementBrowWeight: number } };
+      }
+    ).speechMicroexpression.currentParams.engagementBrowWeight;
+  }
+
+  it("restores the previous speech state layer when the newer owner releases", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const first = body.acquireSpeechStateExpression({
+      preset: "happy",
+      intensity: 0.3,
+      microexpressionParams: { engagementBrowWeight: 0.02 },
+    });
+    const second = body.acquireSpeechStateExpression({
+      preset: "sad",
+      intensity: 0.4,
+      microexpressionParams: { engagementBrowWeight: 0.03 },
+    });
+
+    expect(speechMood(body)?.expressionName).toBe("sad");
+    expect(speechBrowWeight(body)).toBe(0.03);
+
+    second.release();
+
+    expect(speechMood(body)?.expressionName).toBe("happy");
+    expect(speechBrowWeight(body)).toBe(0.02);
+    first.release();
+    expect(speechMood(body)).toBeUndefined();
+    expect(speechBrowWeight(body)).toBe(0.06);
+  });
+
+  it("does not let an older speech state owner release the newer layer", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const first = body.acquireSpeechStateExpression({
+      preset: "happy",
+      microexpressionParams: { engagementBrowWeight: 0.02 },
+    });
+    const second = body.acquireSpeechStateExpression({
+      preset: "surprised",
+      microexpressionParams: { engagementBrowWeight: 0.04 },
+    });
+
+    first.release();
+
+    expect(speechMood(body)?.expressionName).toBe("surprised");
+    expect(speechBrowWeight(body)).toBe(0.04);
+    second.release();
+  });
+
   it("ramps the speech mood and yields to persona and MCP mood ownership", () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());

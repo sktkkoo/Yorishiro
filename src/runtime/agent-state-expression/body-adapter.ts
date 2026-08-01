@@ -1,21 +1,13 @@
 import type { MotionHandle } from "@yorishiro/sdk";
-import type { Body } from "../../core/body";
+import type { Body, SpeechStateExpressionHandle } from "../../core/body";
 import type { SpeechMicroexpressionParams } from "../../core/body/speech-microexpression-system";
 import type { StateExpressionSchedulerCallbacks } from "./scheduler";
 import type { GroundedAgentState, StateExpressionCue, StateExpressionGestureIntent } from "./types";
 
-type StateExpressionBody = Pick<
-  Body,
-  | "acquireMotionSlot"
-  | "releaseSpeechMood"
-  | "resetSpeechExpressionParams"
-  | "setSpeechExpressionParams"
-  | "setSpeechMood"
->;
+type StateExpressionBody = Pick<Body, "acquireMotionSlot" | "acquireSpeechStateExpression">;
 
 interface OwnedStateExpression {
-  readonly body: StateExpressionBody;
-  readonly moodActive: boolean;
+  readonly state: SpeechStateExpressionHandle;
   motion: MotionHandle | null;
   releaseTimer: ReturnType<typeof globalThis.setTimeout> | null;
 }
@@ -52,8 +44,7 @@ export function createBodyStateExpressionAdapter(
     if (!owned) return;
     ownedByUtterance.delete(utteranceId);
     if (owned.releaseTimer !== null) globalThis.clearTimeout(owned.releaseTimer);
-    if (owned.moodActive) owned.body.releaseSpeechMood();
-    owned.body.resetSpeechExpressionParams();
+    owned.state.release();
     owned.motion?.release(180);
   };
 
@@ -63,11 +54,14 @@ export function createBodyStateExpressionAdapter(
       const body = getBody();
       if (!body) return;
 
-      body.setSpeechExpressionParams(MICROEXPRESSION_PROFILES[cue.state]);
-      const moodActive = acquireMood(body, cue);
+      const state = body.acquireSpeechStateExpression({
+        preset: cue.expression,
+        intensity: cue.expressionWeight,
+        microexpressionParams: MICROEXPRESSION_PROFILES[cue.state],
+      });
       const motion = acquireGesture(body, cue);
 
-      const owned: OwnedStateExpression = { body, moodActive, motion, releaseTimer: null };
+      const owned: OwnedStateExpression = { state, motion, releaseTimer: null };
       ownedByUtterance.set(cue.utteranceId, owned);
       if (cue.durationMs && cue.durationMs > 0) {
         owned.releaseTimer = globalThis.setTimeout(() => release(cue.utteranceId), cue.durationMs);
@@ -75,12 +69,6 @@ export function createBodyStateExpressionAdapter(
     },
     onRelease: (utteranceId) => release(utteranceId),
   };
-}
-
-function acquireMood(body: StateExpressionBody, cue: StateExpressionCue): boolean {
-  if (!cue.expression || cue.expression === "neutral") return false;
-  body.setSpeechMood(cue.expression, cue.expressionWeight ?? 0.3);
-  return true;
 }
 
 function subtleProfile(

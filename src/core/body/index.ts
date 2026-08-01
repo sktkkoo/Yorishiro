@@ -83,6 +83,20 @@ export interface LipSyncSource {
   sampleMouth(out?: MouthValues): MouthValues;
 }
 
+export interface SpeechStateExpressionRequest {
+  readonly preset?: string;
+  readonly intensity?: number;
+  readonly microexpressionParams?: Partial<SpeechMicroexpressionParams>;
+}
+
+export interface SpeechStateExpressionHandle {
+  release(): void;
+}
+
+interface SpeechStateExpressionLayer extends SpeechStateExpressionRequest {
+  readonly id: number;
+}
+
 const BLINK_EXPRESSION_NAME = "blink";
 const SPEECH_BROW_EXPRESSION_NAME = "Fcl_BRW_Surprised";
 const SPEECH_EYE_EXPRESSION_NAME = "Fcl_EYE_Spread";
@@ -159,6 +173,8 @@ export class Body {
   private speechExpressionEnabled = true;
   /** voice_say に付随する発話粒度 mood の envelope。 */
   private readonly speechMood: SpeechMoodChannel;
+  private readonly speechStateExpressionLayers = new Map<number, SpeechStateExpressionLayer>();
+  private nextSpeechStateExpressionLayerId = 1;
   private readonly cursorAttention: CursorAttentionSystem;
   private readonly animationPlayer: AnimationPlayer;
   private readonly proceduralBones: ProceduralBones;
@@ -384,6 +400,26 @@ export class Body {
   /** Begins releasing the speech-owned mood. */
   releaseSpeechMood(): void {
     this.speechMood.releaseSpeechMood();
+  }
+
+  /** Acquires a layered speech state that restores the previous owner when released. */
+  acquireSpeechStateExpression(request: SpeechStateExpressionRequest): SpeechStateExpressionHandle {
+    const layer: SpeechStateExpressionLayer = {
+      id: this.nextSpeechStateExpressionLayerId++,
+      ...request,
+    };
+    this.speechStateExpressionLayers.set(layer.id, layer);
+    this.applySpeechStateExpressionLayers();
+    let released = false;
+    return {
+      release: () => {
+        if (released) return;
+        released = true;
+        const wasTop = this.topSpeechStateExpressionLayer()?.id === layer.id;
+        this.speechStateExpressionLayers.delete(layer.id);
+        if (wasTop) this.applySpeechStateExpressionLayers();
+      },
+    };
   }
 
   /** idle motion 倍率（0-3, 1 で現状）を breathing / procedural bones に伝播する。 */
@@ -836,6 +872,27 @@ export class Body {
    */
   getMotionSnapshot(): SdkMotionSnapshot {
     return this.motionScheduler.getSnapshot() as SdkMotionSnapshot;
+  }
+
+  private topSpeechStateExpressionLayer(): SpeechStateExpressionLayer | null {
+    let top: SpeechStateExpressionLayer | null = null;
+    for (const layer of this.speechStateExpressionLayers.values()) {
+      if (!top || layer.id > top.id) top = layer;
+    }
+    return top;
+  }
+
+  private applySpeechStateExpressionLayers(): void {
+    const layer = this.topSpeechStateExpressionLayer();
+    this.resetSpeechExpressionParams();
+    if (layer?.microexpressionParams) {
+      this.setSpeechExpressionParams(layer.microexpressionParams);
+    }
+    if (layer?.preset && layer.preset !== "neutral") {
+      this.setSpeechMood(layer.preset, layer.intensity ?? 0.3);
+    } else {
+      this.releaseSpeechMood();
+    }
   }
 
   private gaze(target: GazeTarget, _options?: GazeOptions): GazeHandle {
