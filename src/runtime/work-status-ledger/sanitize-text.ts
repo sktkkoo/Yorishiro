@@ -6,11 +6,12 @@
  * 一行の短文に正規化する。
  */
 
-/** ANSI escape sequence（CSI / OSC / single-char escape）。 */
+/** ECMA-48 escape sequence（7-bit / 8-bit CSI、control string、single-char escape）。 */
 const ANSI_PATTERN = new RegExp(
   [
-    "\\u001b\\[[0-9;?]*[ -/]*[@-~]",
-    "\\u001b\\][^\\u0007\\u001b]*(?:\\u0007|\\u001b\\\\)",
+    "(?:\\u001b\\[|\\u009b)[0-?]*[ -/]*[@-~]",
+    "(?:\\u001b\\]|\\u009d)[^\\u0007\\u001b\\u009c]*(?:\\u0007|\\u001b\\\\|\\u009c)",
+    "(?:\\u001b[PX^_]|[\\u0090\\u0098\\u009e-\\u009f])[^\\u001b\\u009c]*(?:\\u001b\\\\|\\u009c)",
     "\\u001b[@-_]",
   ].join("|"),
   "g",
@@ -31,7 +32,7 @@ export function sanitizeHumanText(value: string, maxLength: number): string {
   const withoutControls = [...withoutAnsi]
     .map((character) => {
       const code = character.charCodeAt(0);
-      return code <= 0x1f || code === 0x7f ? " " : character;
+      return code <= 0x1f || (code >= 0x7f && code <= 0x9f) ? " " : character;
     })
     .join("");
   const collapsed = withoutControls.replace(/\s+/g, " ").trim();

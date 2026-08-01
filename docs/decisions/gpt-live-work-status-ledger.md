@@ -152,8 +152,10 @@ created ──→ running ⇄ (approval-required)   ※導出。基底は runnin
 
 - **snapshot 購読**: `subscribe(listener)` は購読時に現在の snapshot を即時通知し、
   以後は変更ごとに通知する（repo の store 慣習に一致）。snapshot は publish ごとの
-  不変 value object で、`work`（作成順）・`activeCount`（非 terminal 数）・
-  `updatedAt` を持つ。**再接続した GPT Live はこれ 1 発で全体像を復元できる**。
+  runtime でも deep-freeze した不変 value object で、`work`（作成順）・`activeCount`
+  （非 terminal 数）・`updatedAt` を持つ。work item、`pendingApprovals`、event も freeze し、
+  一つの subscriber が後続 subscriber の観測値を書き換えられないようにする。
+  **再接続した GPT Live はこれ 1 発で全体像を復元できる**。
 - **work ID lookup**: `get(workId)` は保持中の個別 snapshot を返す。snapshot の work と
   event はどちらも同じ不変 `workId` で相関できる。
 - **event 購読**: `subscribeEvents(listener)` は `work-created` と
@@ -257,8 +259,9 @@ TUI がそこにある — それが TUI を残した理由である。
 
 【提案】台帳へ入る全自然文（summary / note）は単一の sanitize 関数を通す:
 
-1. ANSI escape sequence（CSI / OSC / single-char escape）を除去
-2. C0 制御文字と DEL を空白化（改行・タブ含む）
+1. ECMA-48 escape sequence（7-bit / 8-bit CSI、control string、single-char escape）を除去。
+   parameter byte は `0x30–0x3f` の全域（colon / private marker を含む）を扱う
+2. C0 / C1 制御文字と DEL を空白化（改行・タブ含む）
 3. 連続空白を畳んで一行化し、上限長（summary 120 / note 200）で "…" 丸め
 4. 結果が空なら「情報なし」と扱う（summary は拒否、note は null）
 
@@ -322,7 +325,8 @@ unit test で固定する不変条件（prototype の test が既に大半を写
 7. terminal 到達で pendingApprovals が空になる
 8. note の raw log（escape sequence / 改行）が sanitize される
 9. event は `previousStatus` 付きで公開 status の遷移列を正しく報告する
-10. snapshot は購読時即時通知・変更毎通知・publish 毎に不変 value object
+10. snapshot / work / pendingApprovals / event は runtime deep-freeze され、購読時即時通知・
+    変更毎通知・publish 毎に不変 value object。subscriber 間で mutation が伝播しない
 11. terminal task は上限 20 で古い順に prune され、active は残る
 
 adapter 実装時に追加する不変条件（Phase 2）: 重複 event で状態が壊れない、

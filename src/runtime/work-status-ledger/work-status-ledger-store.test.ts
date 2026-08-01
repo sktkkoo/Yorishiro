@@ -199,6 +199,89 @@ describe("WorkStatusLedgerStore", () => {
     expect(after.work[0]?.status).toBe("running");
   });
 
+  it("deep-freezes published snapshots, work items, approval lists, and events", () => {
+    const { store } = createStore();
+    const events: WorkStatusLedgerEvent[] = [];
+    store.subscribeEvents((event) => events.push(event));
+
+    const work = store.create({ summary: "変更できない作業" });
+    store.markRunning(work.id);
+    store.holdApproval(work.id, "approval-1");
+
+    const snapshot = store.getSnapshot();
+    const item = snapshot.work[0];
+    const event = events[events.length - 1];
+    expect(item).toBeDefined();
+    expect(event).toBeDefined();
+    if (!item || !event) throw new Error("expected published work");
+
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot.work)).toBe(true);
+    expect(Object.isFrozen(item)).toBe(true);
+    expect(Object.isFrozen(item.pendingApprovals)).toBe(true);
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(Object.isFrozen(event.work)).toBe(true);
+    expect(Object.isFrozen(event.work.pendingApprovals)).toBe(true);
+
+    expect(() => {
+      (snapshot as unknown as { activeCount: number }).activeCount = 99;
+    }).toThrow(TypeError);
+    expect(() => {
+      (snapshot.work as unknown as Array<typeof item>).push(item);
+    }).toThrow(TypeError);
+    expect(() => {
+      (item as unknown as { summary: string }).summary = "改竄";
+    }).toThrow(TypeError);
+    expect(() => {
+      (item.pendingApprovals as unknown as string[]).push("forged");
+    }).toThrow(TypeError);
+    expect(() => {
+      (event as unknown as { workId: string }).workId = "work-forged";
+    }).toThrow(TypeError);
+  });
+
+  it("prevents one subscriber from mutating data observed by later subscribers", () => {
+    const { store } = createStore();
+    let snapshotMutationRejected = false;
+    let eventMutationRejected = false;
+    const snapshotSummaries: string[] = [];
+    const eventSummaries: string[] = [];
+
+    const firstSnapshot = store.subscribe((snapshot) => {
+      const item = snapshot.work[0];
+      if (!item) return;
+      try {
+        (item as unknown as { summary: string }).summary = "改竄された snapshot";
+      } catch (error) {
+        snapshotMutationRejected = error instanceof TypeError;
+      }
+    });
+    const secondSnapshot = store.subscribe((snapshot) => {
+      const item = snapshot.work[0];
+      if (item) snapshotSummaries.push(item.summary);
+    });
+    const firstEvent = store.subscribeEvents((event) => {
+      try {
+        (event.work as unknown as { summary: string }).summary = "改竄された event";
+      } catch (error) {
+        eventMutationRejected = error instanceof TypeError;
+      }
+    });
+    const secondEvent = store.subscribeEvents((event) => eventSummaries.push(event.work.summary));
+
+    store.create({ summary: "正しい要約" });
+
+    expect(snapshotMutationRejected).toBe(true);
+    expect(eventMutationRejected).toBe(true);
+    expect(snapshotSummaries).toEqual(["正しい要約"]);
+    expect(eventSummaries).toEqual(["正しい要約"]);
+
+    firstSnapshot.dispose();
+    secondSnapshot.dispose();
+    firstEvent.dispose();
+    secondEvent.dispose();
+  });
+
   it("prunes the oldest finished tasks beyond the retention cap but keeps active ones", () => {
     const { store, tick } = createStore();
     const active = store.create({ summary: "生き続ける作業" });

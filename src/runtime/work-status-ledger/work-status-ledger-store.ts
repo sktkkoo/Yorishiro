@@ -54,7 +54,7 @@ export class WorkStatusLedgerStore implements WorkObservationPort {
   private readonly snapshotListeners = new Set<(snapshot: WorkStatusLedgerSnapshot) => void>();
   private readonly eventListeners = new Set<(event: WorkStatusLedgerEvent) => void>();
   private nextId = 1;
-  private snapshot: WorkStatusLedgerSnapshot = { work: [], activeCount: 0, updatedAt: 0 };
+  private snapshot: WorkStatusLedgerSnapshot = immutableSnapshot([], 0, 0);
 
   constructor(options: WorkStatusLedgerStoreOptions = {}) {
     this.now = options.now ?? Date.now;
@@ -197,7 +197,7 @@ export class WorkStatusLedgerStore implements WorkObservationPort {
   }
 
   private toDelegatedWork(record: WorkRecord): DelegatedWork {
-    return {
+    return Object.freeze({
       id: record.id,
       summary: record.summary,
       status: this.publicStatus(record),
@@ -205,8 +205,8 @@ export class WorkStatusLedgerStore implements WorkObservationPort {
       sessionId: record.sessionId,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
-      pendingApprovals: [...record.pendingApprovals],
-    };
+      pendingApprovals: Object.freeze([...record.pendingApprovals]),
+    });
   }
 
   private publish(): void {
@@ -216,7 +216,7 @@ export class WorkStatusLedgerStore implements WorkObservationPort {
       (item) =>
         item.status !== "completed" && item.status !== "failed" && item.status !== "cancelled",
     ).length;
-    this.snapshot = { work, activeCount, updatedAt: this.now() };
+    this.snapshot = immutableSnapshot(work, activeCount, this.now());
     for (const listener of this.snapshotListeners) {
       listener(this.snapshot);
     }
@@ -235,10 +235,19 @@ export class WorkStatusLedgerStore implements WorkObservationPort {
   }
 
   private emit(event: WorkStatusLedgerEvent): void {
+    const immutableEvent = Object.freeze(event);
     for (const listener of this.eventListeners) {
-      listener(event);
+      listener(immutableEvent);
     }
   }
+}
+
+function immutableSnapshot(
+  work: ReadonlyArray<DelegatedWork>,
+  activeCount: number,
+  updatedAt: number,
+): WorkStatusLedgerSnapshot {
+  return Object.freeze({ work: Object.freeze([...work]), activeCount, updatedAt });
 }
 
 export function createWorkStatusLedgerStore(
