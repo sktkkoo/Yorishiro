@@ -40,7 +40,7 @@ voice list に含まれる音声合成プリセットであり、未指定時の
 ### 3. 音声 transport は Main Agent の native capability に合わせる
 
 Yorishiro は provider に依存しない共通 shell として、マイク button、permission、audio output、
-lip sync、performance cue、接続状態 UI を所有する。一方、会話 thread への接続、transcript、
+lip sync、Agent State Expression、接続状態 UI を所有する。一方、会話 thread への接続、transcript、
 tool / approval event、handoff は各 harness の native voice adapter が所有する。
 
 v1 で実装する first-class adapter は Codex である。Codex app-server が TUI と realtime voice を
@@ -163,7 +163,7 @@ refを解放できないため、この二層を一つに省略しない。
 - remote audio再生とVRM lip sync
 - ChatGPT login / API key loginの継承とbilling表示
 - stop、remote close、session切替、timeoutを跨ぐresource ownership
-- assistant transcriptのsemantic expression / gestureをspoken textと分離したside channelで同期
+- assistant transcriptから読み取れるMain Agentの状態を、spoken textと分離した表情・身体反応で補足
 
 未実装:
 
@@ -174,20 +174,31 @@ refを解放できないため、この二層を一つに省略しない。
 - Claude / OpenCodeがnative realtime voiceを提供した場合の専用adapter
 - 非対応harnessでも機能を発見できる共通マイクbuttonと明示的な切替導線
 
-### expression / gesture
+### Agent State Expression（旧 performance cue）
 
 spoken textへ`[smile]`等のinline tagを混ぜない。server-sideで読み上げる可能性があり、shared transcriptも
 汚染するためである。
 
-assistant transcript deltaをhost側でsemantic intentへ解決し、spoken textとは別のperformance cueとして
-Bodyへ渡すside channelを採用した。remote audioのlip-sync sampleと同じrender clockでspeech start/endを
-検出し、表情は専用`speech` slot、gestureはactivityより低くidleより高い`speech-performance` laneへ渡す。
+この機能の目的は、avatarに装飾的な「演技」をさせることではない。Main Agentが会話で表している
+認知・感情状態を、textだけでは落ちる情報も含めて表情と小さな身体反応へ投影することである。
+domain conceptは **Agent State Expression**、個々の出力は`StateExpressionCue`と呼ぶ。
+
+assistant transcript deltaをhost側でsemantic stateへ解決し、spoken textとは別のstate expression cueとして
+Bodyへ渡すside channelを採用する。remote audioのlip-sync sampleと同じspeech clockでspeech start/endを
+検出し、表情は専用`speech` slot、gestureはactivityより低くidleより高い`speech-expression` laneへ渡す。
 user transcriptによるbarge-in、voice stop、disconnect、session切替では、このadapterが所有するhandleだけを
 解放する。語単位timestampは無いため、実機計測後の節単位re-anchorは今後の調整対象である。
 
-motionの強弱はperformance cueの`intensity`で表現し、Body adapterがanimation weightへ変換する。
-当面はhost共通のsemantic intent→animation mappingを使い、personaごとのmotion、weight、expression
-mappingは導入しない。persona固有の演技catalogは、共通のintensity調整を実機で安定させた後に別途設計する。
+現在観察できる正本は発話内容とspeech lifecycleであり、modelの非公開な内部感情を読めるとは扱わない。
+難しい検討、不確実性、困惑、発見、安心、懸念、同意など、発話に根拠がある状態だけを解決する。
+表情の頻度を上げる場合もtimerでランダムな感情を足さず、検出する節・状態遷移のcoverageを広げる。
+同じ状態の連打はcooldownで抑え、状態変化がない箇所ではneutralな身体性を維持する。
+
+motionと表情の強弱はstate expression cueの`intensity`で表現し、Body adapterがanimation / expression
+weightへ変換する。routineな状態は`small`、明確な感情・強調だけを`medium`にする。
+当面はhost共通のsemantic state→body mappingを使い、personaごとのmotion、weight、expression
+mappingは導入しない。persona固有のstate expression catalogは、共通mappingを実機で安定させた後に
+別途設計する。
 
 ### Voice Summaryとの共存
 
@@ -209,6 +220,8 @@ GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割�
 10. 将来のstructured task stateで自然なconversation historyを置き換えない
 11. native voice capabilityがないharnessを、PTY log転送で疑似的に同等扱いしない
 12. voice利用のためにMain Agentをuser確認なしで自動切替しない
+13. 発話やstructured stateに根拠がない感情を、見栄えのためだけに生成しない
+14. domain conceptをperformance / actingとして扱わず、Main Agentのstate expressionとして扱う
 
 ## Security / known limitations
 
