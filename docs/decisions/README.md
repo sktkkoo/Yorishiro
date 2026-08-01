@@ -95,6 +95,7 @@
 
 ### Design discipline / compass
 
+- [**public-development-language.md**](public-development-language.md) — 外部 contributor の Issue / Discussion は英語・日本語とも歓迎しつつ、maintainer / 開発 agent が新規作成する Issue・PR・commit・code comment は英語を default にする。既存の日本語 comment は一括変換せず、周辺変更時に段階移行
 - [**cognitive-load-design-lens.md**](cognitive-load-design-lens.md) — 設計 / refactor 判断の lens：「読者が追跡する layer を減らす / 保持する state を減らす」の 2 原則。over-abstraction を見抜く判定軸込み
 - [**separate-distinct-systems.md**](separate-distinct-systems.md) — 表面的類似で統合しない、動作モデルが違えば別 concept で
 - [**presence-over-spectacle.md**](presence-over-spectacle.md) — visual layer は実在感の増幅が第一、過剰演出は合わない
