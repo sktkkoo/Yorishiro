@@ -164,6 +164,10 @@ Bodyへ渡すside channelを採用した。remote audioのlip-sync sampleと同�
 user transcriptによるbarge-in、voice stop、disconnect、session切替では、このadapterが所有するhandleだけを
 解放する。語単位timestampは無いため、実機計測後の節単位re-anchorは今後の調整対象である。
 
+motionの強弱はperformance cueの`intensity`で表現し、Body adapterがanimation weightへ変換する。
+当面はhost共通のsemantic intent→animation mappingを使い、personaごとのmotion、weight、expression
+mappingは導入しない。persona固有の演技catalogは、共通のintensity調整を実機で安定させた後に別途設計する。
+
 ### Voice Summaryとの共存
 
 GPT Live接続中にVoice Summaryを自動再生すると音声の重複や割り込みが起きる。GPT Liveをactive時の
