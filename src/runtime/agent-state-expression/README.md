@@ -28,6 +28,23 @@ transcript が speech start より先に届く順序もあるため、最初の 
 - speech mood中は既存idle squint / idle microをsuspendし、lip syncとreflex blinkは独立channelで維持する。
 - user transcriptによるbarge-in、voice stop、disconnect、session切替は未発火cueと所有handleを解放する。
 
+## Realtime function tool spike (issue #85, dev 限定・default off)
+
+phrase resolver と並走する第二経路として、`codex-realtime/realtime-expression-tool.ts` が
+WebRTC `oai-events` data channel 上で `emit_state_expression` function tool を運用する。
+dev build で `localStorage.setItem("yorishiro:realtime-expression-tool", "1")` して
+voice を接続し直すと有効になる。
+
+- `session.created` / `session.updated` で既存 session 設定を観察してから、既存 tools を
+  verbatim に保った `session.update` で自 tool だけを additive 登録する。観察前は送らない。
+- function call は `response.output_item.done` で受け、`response.created` が示す active
+  response に属する call だけを `onExpressionToolCue()` へ転送する。barge-in
+  (`input_audio_buffer.speech_started`)・response 終了・dispose で stale call は破棄。
+- model は grounded state と intensity だけを選び、表情値への解決は `tool-cue.ts` の
+  host 側固定 mapping が担う。cue JSON は音声にも transcript にも混ざらない。
+- ack は `function_call_output` のみで `response.create` は送らない = 追加 model call なし。
+- phrase resolver は削除しない。両経路の重複は scheduler の cooldown が調停する。
+
 ## 実機調整 TODO
 
 1. transcript delta と audio の到着差を記録する。現 core の `atMs` は固定話速の推定なので、

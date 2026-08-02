@@ -14,6 +14,7 @@ import {
   type RealtimeStateExpressionControllerOptions,
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
+import { RealtimeExpressionToolChannel } from "./realtime-expression-tool";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
 export type CodexRealtimeBilling = "subscription" | "api";
@@ -30,6 +31,11 @@ export interface CodexRealtimeClientOptions {
   readonly getPreferredThreadId?: () => string | null;
   readonly voice?: string;
   readonly getVoice?: () => string | Promise<string>;
+  /**
+   * Issue #85 spike: `emit_state_expression` function tool を data channel 経由で登録する。
+   * default off。有効化判定 (dev build + localStorage flag) は呼び出し側が担う。
+   */
+  readonly expressionToolEnabled?: boolean;
 }
 
 interface JsonRpcMessage {
@@ -93,6 +99,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private stopping = false;
   private startAttemptEpoch = 0;
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
+  private readonly expressionToolEnabled: boolean;
+  private expressionTool: RealtimeExpressionToolChannel | null = null;
   private readonly getPreferredThreadId: () => string | null;
   private readonly getVoice: () => string | Promise<string>;
 
@@ -111,6 +119,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           options.stateExpressionController,
         )
       : null;
+    this.expressionToolEnabled = options.expressionToolEnabled ?? false;
   }
 
   getStatus(): CodexRealtimeStatus {
@@ -352,6 +361,14 @@ export class CodexRealtimeClient implements LipSyncSource {
       peer.addTrack(track, microphone);
     }
     this.eventChannel = peer.createDataChannel("oai-events");
+    if (this.expressionToolEnabled && this.stateExpressionController) {
+      // dev 限定 spike (issue #85)。cue の識別・stale 破棄は channel 側、
+      // Codex notification 由来の phase guard は controller 側で二重に守る。
+      this.expressionTool = new RealtimeExpressionToolChannel(this.eventChannel, (cue) => {
+        if (!this.isAttemptOwner(attempt)) return;
+        this.stateExpressionController?.onExpressionToolCue(cue.state, cue.intensity);
+      });
+    }
 
     const offer = await peer.createOffer();
     this.assertAttemptOwner(attempt, peer);
@@ -569,6 +586,9 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
+    // stop / disconnect / session replacement で未発火 cue と tool channel を同時に破棄する。
+    this.expressionTool?.dispose();
+    this.expressionTool = null;
     this.stateExpressionController?.cancelAll();
     this.stopRemoteSpeechObservation();
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));

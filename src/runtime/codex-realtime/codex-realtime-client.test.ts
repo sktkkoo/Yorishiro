@@ -157,6 +157,27 @@ class FakeMediaStream {
 
 class FakeDataChannel {
   readonly close = vi.fn();
+  readyState: RTCDataChannelState = "open";
+  readonly sent: Array<Record<string, unknown>> = [];
+  private readonly listeners = new Set<(event: MessageEvent) => void>();
+
+  send(data: string): void {
+    this.sent.push(JSON.parse(data) as Record<string, unknown>);
+  }
+
+  addEventListener(_type: string, listener: (event: MessageEvent) => void): void {
+    this.listeners.add(listener);
+  }
+
+  removeEventListener(_type: string, listener: (event: MessageEvent) => void): void {
+    this.listeners.delete(listener);
+  }
+
+  emit(event: object): void {
+    for (const listener of [...this.listeners]) {
+      listener({ data: JSON.stringify(event) } as MessageEvent);
+    }
+  }
 }
 
 class FakePeerConnection extends EventTarget {
@@ -343,6 +364,66 @@ describe("CodexRealtimeClient", () => {
     expect(onUserSpeechStarted).toHaveBeenCalledWith("user-1");
     expect(onAssistantResponseBoundary).toHaveBeenCalledWith("assistant-1");
     expect(onOutputAudioItem).toHaveBeenCalledWith("assistant-1");
+    client.stop();
+  });
+
+  it("opt-in時だけdata channelでtoolをadditive登録し、stopで観察と送信を止める", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const onCue = vi.fn();
+    const onRelease = vi.fn();
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue, onRelease },
+      expressionToolEnabled: true,
+    });
+    await client.start();
+    const channel = FakePeerConnection.latest?.channel;
+    if (!channel) throw new Error("data channel was not created");
+
+    channel.emit({
+      type: "session.created",
+      session: { tools: [{ type: "function", name: "codex_tool" }] },
+    });
+
+    expect(channel.sent).toHaveLength(1);
+    expect(channel.sent[0]).toMatchObject({ type: "session.update" });
+    const tools = (channel.sent[0].session as { tools: Array<{ name?: string }> }).tools;
+    expect(tools.map((tool) => tool.name)).toEqual(["codex_tool", "emit_state_expression"]);
+
+    // active responseのfunction callはcontrollerへ届き、audio開始前なのでqueueされる。
+    channel.emit({ type: "response.created", response: { id: "resp-1" } });
+    channel.emit({
+      type: "response.output_item.done",
+      response_id: "resp-1",
+      item: {
+        type: "function_call",
+        id: "item-1",
+        call_id: "call-1",
+        name: "emit_state_expression",
+        arguments: '{"state":"surprised"}',
+      },
+    });
+    expect(onCue).not.toHaveBeenCalled();
+
+    client.stop();
+
+    // stopは未発火cueの解放とtool channelのdisposeを同時に行う。
+    expect(onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
+    channel.emit({ type: "session.updated", session: { tools: [] } });
+    expect(channel.sent.filter((message) => message.type === "session.update")).toHaveLength(1);
+    info.mockRestore();
+  });
+
+  it("default offではdata channelのsession設定を観察も更新もしない", async () => {
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      stateExpressionCallbacks: { onCue: vi.fn(), onRelease: vi.fn() },
+    });
+    await client.start();
+    const channel = FakePeerConnection.latest?.channel;
+    if (!channel) throw new Error("data channel was not created");
+
+    channel.emit({ type: "session.created", session: { tools: [] } });
+
+    expect(channel.sent).toHaveLength(0);
     client.stop();
   });
 

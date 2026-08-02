@@ -10,6 +10,7 @@ import {
   type StateExpressionSchedulerCallbacks,
   type StateExpressionSchedulerOptions,
 } from "./scheduler";
+import { groundedStateCueTemplate, isGroundedAgentState } from "./tool-cue";
 
 export interface RealtimeStateExpressionControllerOptions {
   readonly scheduler?: StateExpressionSchedulerOptions;
@@ -153,6 +154,38 @@ export class RealtimeStateExpressionController {
     for (const cue of resolution.cues) this.scheduler.schedule(cue);
     this.transcriptDone = true;
     this.scheduleCompletionIfQuiet();
+  }
+
+  /**
+   * Realtime function tool (`emit_state_expression`) からの model-authored cue を
+   * 現在の assistant response に適用する。response / item identity への紐づけと
+   * stale call の破棄は transport 層 (`RealtimeExpressionToolChannel`) が済ませており、
+   * ここでは Codex notification 由来の phase / boundary guard だけを再適用する。
+   */
+  onExpressionToolCue(state: unknown, intensity?: unknown): void {
+    if (!isGroundedAgentState(state)) return;
+    if (this.responsePhase === "user-speaking") return;
+    if (this.itemBoundaryMode && !this.assistantBoundaryAccepted) return;
+    this.responsePhase = "open";
+
+    const utteranceId = this.ensureAssistantUtterance();
+    const template = groundedStateCueTemplate(state);
+    // tool cue は transcript と違い到着時点が発火意図なので、speech clock 上の
+    // 「今」に置く。audio 未開始なら atMs 0 で queue し、speech start と同時に出す。
+    const atMs =
+      this.utteranceSpeechStarted && this.speechStartedAtMs !== null
+        ? Math.max(0, this.clock.now() - this.speechStartedAtMs)
+        : 0;
+    this.scheduler.schedule({
+      utteranceId,
+      atMs,
+      state,
+      expression: template.expression,
+      expressionWeight: template.expressionWeight,
+      gestureIntent: template.gestureIntent,
+      intensity: intensity === "small" || intensity === "medium" ? intensity : template.intensity,
+      durationMs: template.durationMs,
+    });
   }
 
   /** Receives remote speech activity from the client-owned audio sampling loop. */

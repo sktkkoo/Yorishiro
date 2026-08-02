@@ -8,6 +8,7 @@ import {
   DEFAULT_CODEX_REALTIME_VOICE,
 } from "./codex-realtime-client";
 import { CodexThreadTracker } from "./codex-thread-tracker";
+import { isRealtimeExpressionToolEnabled } from "./realtime-expression-tool";
 
 export interface CodexRealtimeClientLike extends LipSyncSource {
   getStatus(): CodexRealtimeStatus;
@@ -63,6 +64,8 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
     stateExpressionCallbacks,
     getPreferredThreadId,
     getVoice,
+    // dev build 限定・default off の spike (issue #85)。接続ごとに評価し flag 変更を反映する。
+    expressionToolEnabled: isRealtimeExpressionToolEnabled(),
   });
 
 const defaultCreateThreadTracker = (

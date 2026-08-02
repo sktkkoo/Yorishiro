@@ -19,6 +19,12 @@ export {
   type StateExpressionSchedulerCallbacks,
   type StateExpressionSchedulerOptions,
 } from "./scheduler";
+export {
+  GROUNDED_AGENT_STATES,
+  type GroundedStateCueTemplate,
+  groundedStateCueTemplate,
+  isGroundedAgentState,
+} from "./tool-cue";
 export type {
   AssistantTranscriptDelta,
   AssistantTranscriptDone,

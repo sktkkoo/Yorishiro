@@ -378,4 +378,108 @@ describe("RealtimeStateExpressionController", () => {
     expect(h.onRelease).toHaveBeenCalledTimes(1);
     expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
   });
+
+  it("audio開始前のtool cueをqueueし、speech startと同時に発火する", () => {
+    const h = setup();
+    h.controller.onExpressionToolCue("surprised", "medium");
+    h.clock.advance(500);
+    expect(h.onCue).not.toHaveBeenCalled();
+
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(0);
+
+    expect(h.onCue).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        state: "surprised",
+        expression: "surprised",
+        intensity: "medium",
+        utteranceId: "realtime-1",
+        atMs: 0,
+      }),
+      expect.objectContaining({ scheduledForMs: 500 }),
+    );
+  });
+
+  it("speech開始後のtool cueは到着時点のspeech clockで即発火する", () => {
+    const h = setup();
+    h.controller.onTranscriptDelta("assistant", "少し確認しますね");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(700);
+
+    h.controller.onExpressionToolCue("acknowledging");
+    h.clock.advance(0);
+
+    expect(h.onCue).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ state: "acknowledging", gestureIntent: "agree", atMs: 700 }),
+      expect.objectContaining({ scheduledForMs: 700, lateByMs: 0 }),
+    );
+  });
+
+  it("host mappingに無いstateやintensityを持つtool cueを無視・補正する", () => {
+    const h = setup();
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onExpressionToolCue("angry");
+    h.controller.onExpressionToolCue(42);
+    h.clock.advance(1_000);
+    expect(h.onCue).not.toHaveBeenCalled();
+
+    h.controller.onExpressionToolCue("considering", "huge");
+    h.clock.advance(0);
+    expect(h.onCue).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ state: "considering", intensity: "small" }),
+      expect.any(Object),
+    );
+  });
+
+  it("user barge-in中のtool cueを破棄し、queue済みcueもcancelする", () => {
+    const h = setup();
+    h.controller.onExpressionToolCue("reassuring");
+
+    h.controller.onTranscriptDelta("user", "待って");
+    h.controller.onExpressionToolCue("appreciative");
+
+    expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(5_000);
+    expect(h.onCue).not.toHaveBeenCalled();
+  });
+
+  it("voice stopのcancelAllでqueue済みtool cueを解放する", () => {
+    const h = setup();
+    h.controller.onExpressionToolCue("discovering");
+
+    h.controller.cancelAll();
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(5_000);
+
+    expect(h.onRelease).toHaveBeenCalledWith("realtime-1", "cancelled");
+    expect(h.onCue).not.toHaveBeenCalled();
+  });
+
+  it("invalidated boundaryの間はtool cueを受けず、次のitem受理後に再開する", () => {
+    const h = setup();
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onTranscriptDelta("assistant", "はい。");
+    h.controller.observeRemoteSpeech(true);
+
+    h.controller.onUserSpeechStarted("user-1");
+    h.controller.onTranscriptDone("user");
+    h.controller.onAssistantResponseBoundary("assistant-old");
+    h.controller.onExpressionToolCue("appreciative");
+    h.clock.advance(400);
+    h.controller.observeRemoteSpeech(false);
+    expect(h.onCue).not.toHaveBeenCalled();
+
+    h.controller.onAssistantResponseBoundary("assistant-new");
+    h.controller.onExpressionToolCue("appreciative");
+    h.controller.onOutputAudioItem("assistant-new");
+    h.controller.observeRemoteSpeech(true);
+    h.clock.advance(0);
+
+    expect(h.onCue).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ state: "appreciative", utteranceId: "realtime-2" }),
+      expect.any(Object),
+    );
+  });
 });
