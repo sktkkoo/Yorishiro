@@ -1,7 +1,7 @@
 # Codex realtime voice
 
 **Status**: experimental
-**Last updated**: 2026-08-01
+**Last updated**: 2026-08-03
 
 ## TL;DR
 
@@ -186,6 +186,67 @@ voice approval UIを正式に設計するまではTUIへ委ねる。
 
 Appだけのgeneration guardではlate Rust/WebRTC resourceを閉じられず、clientだけのepochではstale React
 refを解放できないため、この二層を一つに省略しない。
+
+### connection diagnostics / retry / 二重接続防止
+
+この領域の実装・修正では、個別のfailure caseへの対症療法より、次の4原則を優先する。将来別の
+接続不良を扱う場合も、まずこの原則に沿って原因の観測、resource ownership、復旧方法を設計する。
+
+1. **一つの接続runには一人のownerだけを持たせる。**
+   同時に始まった`start()`、manual retry、automatic retry、late callbackを独立した正当な接続として
+   競合させない。現在のownerだけがresourceとUI stateを変更できる。
+2. **再接続は部分修理による延命ではなく、完全cleanup後の再生成とする。**
+   半壊したpeer、microphone、bridge、server sessionを使い回さない。短い中断より、古い状態を
+   引き継がず確実に正常な状態へ戻ることを優先する。
+3. **自動retryは一時障害だけに限定し、必ず回数上限を持たせる。**
+   timeout、network、一時的なremote failureはfresh attemptで再試行できる。一方、permission、
+   authentication、configuration、ownershipの問題はuser操作や設定変更なしには改善しないため繰り返さない。
+4. **診断は接続stageを正本とし、privacy-safeな構造化情報だけを残す。**
+   共通のerror messageだけで判断せず、attempt、stage、category、retry decisionを記録する。ただし
+   audio、transcript、prompt、credential、server由来のraw messageは診断のためにも永続化しない。
+
+この4原則は、現在の実装方式を説明するだけでなく、今後のconnection recovery変更をreviewする際の
+判断基準である。例外を設ける場合は、途切れの短縮とownership・cleanup・privacyのどれを交換条件にするかを
+新しいDecisionで明示する。
+
+Realtime接続は一つの非同期処理ではなく、bridge接続、initialize、account確認、thread discovery、
+microphone取得、WebRTC offer、ICE gathering、`thread/realtime/start`、remote SDP適用という複数段階から
+成る。単一の`Voice connection failed`だけでは原因も復旧可否も判断できないため、接続attemptごとに
+correlation IDとcurrent stageを持つ。
+
+同時に、接続開始の所有権は次の規則で一つに限定する。
+
+- `start()`実行中は同じ`startPromise`を返し、button連打やretry中の手動startで別runを作らない
+- 各run / attemptにepochを発行し、stopやowner切替後に返ったbridge、microphone、RPC、SDP、callbackを
+  staleとして無視する。遅れて取得したresourceはその場で解放する
+- timeout後の古いattemptと新しいattemptが同じfieldやUI stateを書き換えない
+- app / WebView再mount、HMR、manual retry、automatic retryを、同じsingle-owner contractの例外にしない
+
+failureは文字列をそのままUI policyにせず、少なくともpermission、authentication、configuration、
+ownership、timeout、network、remote、unknownへ分類する。timeout、network、一時的なremote failureだけを
+transientとして扱い、短いjitter付きbackoffで最大3 attemptまで再試行する。permission拒否、認証不備、
+invalid configuration、thread ownership ambiguityは自動再試行しない。永久failureをloopさせると、
+permission prompt、microphone取得、server session、課金を意図せず繰り返すためである。
+
+retryは同じconnectionを延命する処理ではなく、前attemptを完全に終了してfresh attemptを作る処理である。
+failure teardownでは、local / remote audio track、data channel、peer connection、Web Audio node、timer、
+pending request、bridge connection、thread ownershipを全て解放する。serverがRealtime startを受理した可能性が
+あり、connection IDとthread IDが判明している場合は、bridge disconnectのfinal messageとして
+`thread/realtime/stop`も送る。client側だけ閉じてserver sessionを残してはならない。
+
+接続成立後のunexpected close、peer failure、playback failureは同じfatal teardownを通すが、現在は
+自動でmicrophoneを再取得しない。backgroundで勝手にcaptureを再開する驚きと無限reconnect loopを避け、
+UIをerrorまたはidleへ戻してuserの明示的な再接続を待つ。将来自動復旧を追加する場合も、voice intent、
+foreground状態、retry budgetを独立して設計し、この境界を暗黙に変えない。
+
+診断はlocalStorageのbounded ring（直近40 record）へ保存し、reloadを跨ぐ調査を可能にする。recordには
+attempt ID、timestamp、stage、finite category/code、elapsed time、retry decision、termination request、
+peer / ICE state、app versionだけを含める。audio、transcript、prompt、tool argument、approval payload、
+credential、SDP / ICE credential、server由来のraw error messageは永続化しない。`negotiated`はremote SDP適用が
+完了したことだけを表し、ICE / peerが実際にconnectedになった証明として扱わない。
+
+この診断は初期の原因調査用であり、通常user向けUIはまだ持たない。設定画面へ表示やcopy/exportを追加する
+場合も、同じallowlist済みstructured recordだけを用い、Web Inspectorのraw logをsupport bundleへ含めない。
 
 ### audio startup order
 
