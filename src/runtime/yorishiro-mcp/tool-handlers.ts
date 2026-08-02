@@ -1040,14 +1040,72 @@ export interface ExpressionSlotEntry {
 }
 
 /**
+ * 表情 intent arbitration の reason 付き観察（#83 M6）。互換の slot view
+ * （expressions field）に対する追加の説明レイヤーで、どの intent が
+ * admitted / suppressed か、なぜその結果になったかを住人 AI が読める。
+ */
+export interface ExpressionIntentEntry {
+  readonly producer: string;
+  readonly scope: string;
+  readonly source: string;
+  readonly role: string;
+  readonly state: string | null;
+  readonly target: string | null;
+  readonly salience: string;
+  readonly requestedIntensity: number;
+  readonly effectiveIntensity: number;
+  readonly phase: string;
+  readonly reason: string | null;
+  readonly suppressedBy: string | null;
+  /** concrete morph contribution。既存fieldを維持したまま追加するdebug情報。 */
+  readonly contributions: ReadonlyArray<{
+    readonly kind: string;
+    readonly name: string;
+    readonly requestedWeight: number;
+    readonly effectiveWeight: number;
+    readonly numericNote: "budget-scaled" | "manager-suppressed" | null;
+  }>;
+}
+
+type BodyExpressionIntentSnapshotEntry = ReturnType<
+  Body["getExpressionIntentSnapshot"]
+>["intents"][number];
+
+function toExpressionIntentEntry(
+  intent: BodyExpressionIntentSnapshotEntry,
+  contributions: ExpressionIntentEntry["contributions"] = [],
+): ExpressionIntentEntry {
+  return {
+    producer: intent.owner.producerId,
+    scope: intent.owner.scopeId,
+    source: intent.source,
+    role: intent.semantic.role,
+    state: intent.semantic.state ?? null,
+    target: intent.semantic.target ?? null,
+    salience: intent.salience,
+    requestedIntensity: intent.requestedIntensity,
+    effectiveIntensity: intent.effectiveIntensity,
+    phase: intent.phase,
+    reason: intent.reason,
+    suppressedBy: intent.suppressedBy,
+    contributions,
+  };
+}
+
+/**
  * Body の subset 型。tool-handlers が必要とする method のみ。
  * test mock を書きやすくするため、Body 全体ではなく shape で受ける。
+ * getExpressionIntentDebugView は #83 M6 の完全観察。無い旧mockでは
+ * getExpressionIntentSnapshotへfallbackし、それも無ければ
+ * intent view が空になるだけ（互換の slot view は不変）。
  */
 export interface BodyLike {
   readonly acquireExpressionSlot: Body["acquireExpressionSlot"];
   readonly getExpressionSlots: Body["getExpressionSlots"];
   readonly getMotionSnapshot: Body["getMotionSnapshot"];
   readonly acquireMotionSlot: Body["acquireMotionSlot"];
+  readonly getExpressionIntentSnapshot?: Body["getExpressionIntentSnapshot"];
+  readonly getExpressionIntentDebugView?: Body["getExpressionIntentDebugView"];
 }
 
 export interface StateGetDeps {
@@ -1107,6 +1165,11 @@ export interface StateGetResult {
   };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
+  /**
+   * 表情 intent arbitration の reason 付き view（#83 M6 追加）。互換の
+   * `expressions`（slot view）はそのままに、suppress 理由まで観察できる。
+   */
+  readonly expressionIntents: ReadonlyArray<ExpressionIntentEntry>;
   /**
    * 現在 active な motion の snapshot。`preempted` は単一 active stop model のため
    * 現状常に空配列だが、symmetry 確保のため field として保持される。Body 未生成
@@ -1172,6 +1235,23 @@ export function createStateGetHandler(deps: StateGetDeps) {
           }),
         )
       : [];
+    const debugIntents = body?.getExpressionIntentDebugView?.().intents;
+    const expressionIntents = debugIntents
+      ? debugIntents.map((intent) =>
+          toExpressionIntentEntry(
+            intent,
+            intent.contributions.map((contribution) => ({
+              kind: contribution.kind,
+              name: contribution.expressionName,
+              requestedWeight: contribution.requestedWeight,
+              effectiveWeight: contribution.effectiveWeight,
+              numericNote: contribution.numericNote,
+            })),
+          ),
+        )
+      : (body?.getExpressionIntentSnapshot?.().intents ?? []).map((intent) =>
+          toExpressionIntentEntry(intent),
+        );
     const motion: MotionSnapshot = body?.getMotionSnapshot() ?? {
       active: null,
       preempted: [],
@@ -1192,6 +1272,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       },
       vrmLoaded: deps.getVrm() !== null,
       expressions,
+      expressionIntents,
       motion,
       ui: {
         sidebar: { width: deps.getSidebarWidth() },

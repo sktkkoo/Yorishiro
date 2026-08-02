@@ -164,25 +164,25 @@ function classifyClause(clause: string): SemanticStateExpression | null {
   if (normalized.length === 0) return null;
 
   if (APOLOGY_PATTERN.test(normalized)) {
-    return stateExpression("concerned", "sad", 0.38, "none", "medium", 2_800);
+    return stateExpression("concerned", "sad", 0.57, "none", "medium", 2_800);
   }
   if (SURPRISE_PATTERN.test(normalized)) {
-    return stateExpression("surprised", "surprised", 0.36, "none", "medium", 2_200);
+    return stateExpression("surprised", "surprised", 0.54, "none", "medium", 2_200);
   }
   if (APPRECIATION_PATTERN.test(normalized)) {
-    return stateExpression("appreciative", "happy", 0.4, "none", "medium", 2_600);
+    return stateExpression("appreciative", "happy", 0.6, "none", "medium", 2_600);
   }
   if (REASSURE_PATTERN.test(normalized)) {
-    return stateExpression("reassuring", "relaxed", 0.28, "reassure", "small", 2_800);
+    return stateExpression("reassuring", "relaxed", 0.5, "reassure", "small", 2_800);
   }
   if (CONCERN_PATTERN.test(normalized)) {
-    return stateExpression("concerned", "sad", 0.24, "consider", "small", 3_200);
+    return stateExpression("concerned", "sad", 0.36, "consider", "small", 3_200);
   }
   if (DISCOVERY_PATTERN.test(normalized)) {
-    return stateExpression("discovering", "surprised", 0.22, "none", "small", 2_400);
+    return stateExpression("discovering", "surprised", 0.33, "none", "small", 2_400);
   }
   if (AGREE_PATTERN.test(normalized)) {
-    return stateExpression("acknowledging", "relaxed", 0.22, "agree", "small", 2_200);
+    return stateExpression("acknowledging", "relaxed", 0.33, "agree", "small", 2_200);
   }
   if (CONSIDER_PATTERN.test(normalized)) {
     return stateExpression("considering", "neutral", 0, "consider", "small", 3_200);
