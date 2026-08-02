@@ -145,7 +145,7 @@ body,
  * （tab-indicator の失敗と同系）と隣接テキストで区別する。
  */
 .title-bar-voice-button[data-voice-state="active"] {
-  color: var(--yorishiro-accent);
+  color: color-mix(in srgb, var(--yorishiro-accent) 78%, white);
 }
 
 .title-bar-voice-button[data-voice-state="active"] svg,
