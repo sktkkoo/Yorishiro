@@ -4,7 +4,7 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { LipSyncSource } from "../../core/body";
 import type { MouthValues } from "../../core/voice/mouth-values";
-import type { CodexRealtimeState } from "./codex-realtime-client";
+import type { CodexRealtimeState, CodexRealtimeVoiceFallback } from "./codex-realtime-client";
 import {
   type CodexRealtimeClientFactory,
   type CodexRealtimeClientLike,
@@ -37,6 +37,8 @@ class FakeClient implements CodexRealtimeClientLike {
     private readonly startResult: Promise<void>,
     private readonly getPreferredThreadId: () => string | null,
     private readonly getVoice: () => string | Promise<string>,
+    readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>,
+    readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void,
   ) {}
 
   preferredThreadIdAtStart: string | null = null;
@@ -48,11 +50,15 @@ class FakeClient implements CodexRealtimeClientLike {
   readonly start = vi.fn(async (): Promise<void> => {
     this.preferredThreadIdAtStart = this.getPreferredThreadId();
     this.emit({ status: "connecting" });
-    this.voiceAtStart = await this.getVoice();
+    this.voiceCandidatesAtStart = this.getVoiceCandidates
+      ? [...(await this.getVoiceCandidates())]
+      : null;
+    this.voiceAtStart = this.voiceCandidatesAtStart?.[0] ?? (await this.getVoice());
     await this.startResult;
   });
 
   voiceAtStart: string | null = null;
+  voiceCandidatesAtStart: ReadonlyArray<string> | null = null;
 
   sampleMouth(out?: MouthValues): MouthValues {
     return out ?? { ...ZERO_MOUTH };
@@ -68,6 +74,10 @@ function setup(
   starts: Promise<void>[],
   setFallbackPlaybackEnabled: (enabled: boolean) => void | Promise<void> = vi.fn(),
   getVoice: () => string | Promise<string> = () => "sol",
+  options: {
+    readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
+    readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
+  } = {},
 ) {
   const clients: FakeClient[] = [];
   let trackedThreadId: string | null = "thread-1";
@@ -78,6 +88,8 @@ function setup(
     _stateExpressionCallbacks,
     getPreferredThreadId = () => null,
     getVoiceForClient = () => "sol",
+    getVoiceCandidatesForClient,
+    onVoiceFallbackForClient,
   ) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
     const client = new FakeClient(
@@ -86,6 +98,8 @@ function setup(
       startResult,
       getPreferredThreadId,
       getVoiceForClient,
+      getVoiceCandidatesForClient,
+      onVoiceFallbackForClient,
     );
     clients.push(client);
     return client;
@@ -101,6 +115,8 @@ function setup(
         applyLipSyncSource,
         setFallbackPlaybackEnabled,
         getVoice,
+        getVoiceCandidates: options.getVoiceCandidates,
+        onVoiceFallback: options.onVoiceFallback,
         createClient,
         createThreadTracker: (_sessionId, onCurrentThreadChange) => {
           notifyThreadChange = onCurrentThreadChange;
@@ -144,6 +160,97 @@ describe("useCodexRealtime", () => {
     await act(async () => result.current.toggle());
 
     expect(clients.map((client) => client.voiceAtStart)).toEqual(["juniper", "maple"]);
+  });
+
+  it("re-reads persona voice candidates when a new session starts after a persona switch", async () => {
+    // persona A → B：切替で session が作り直されると候補列が読み直される。
+    let candidates: ReadonlyArray<string> = ["maple", "juniper", "sol"];
+    const { result, clients } = setup(
+      [Promise.resolve(), Promise.resolve()],
+      undefined,
+      undefined,
+      {
+        getVoiceCandidates: () => candidates,
+      },
+    );
+
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "idle" }));
+    candidates = ["vale", "juniper", "sol"];
+    await act(async () => result.current.toggle());
+
+    expect(clients.map((client) => client.voiceCandidatesAtStart)).toEqual([
+      ["maple", "juniper", "sol"],
+      ["vale", "juniper", "sol"],
+    ]);
+  });
+
+  it("keeps the active session's voice when candidates change mid-session", async () => {
+    // 接続中の切替境界：active な session は影響を受けず、反映は次 session から。
+    let candidates: ReadonlyArray<string> = ["maple"];
+    const { result, clients, changeThread } = setup(
+      [Promise.resolve(), Promise.resolve()],
+      undefined,
+      undefined,
+      { getVoiceCandidates: () => candidates },
+    );
+
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+    candidates = ["vale"];
+
+    // 候補が変わっても active session は再起動されず、start は 1 回のまま。
+    expect(clients).toHaveLength(1);
+    expect(clients[0].start).toHaveBeenCalledTimes(1);
+    expect(clients[0].voiceCandidatesAtStart).toEqual(["maple"]);
+
+    // /clear 等で thread が変わると次 session が新しい候補で始まる。
+    await act(async () => {
+      changeThread("thread-2");
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+    expect(clients[1].voiceCandidatesAtStart).toEqual(["vale"]);
+  });
+
+  it("re-reads voice candidates when voice follows a workspace session switch", async () => {
+    let candidates: ReadonlyArray<string> = ["maple"];
+    const { result, rerender, clients } = setup(
+      [Promise.resolve(), Promise.resolve()],
+      undefined,
+      undefined,
+      { getVoiceCandidates: () => candidates },
+    );
+
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+    candidates = ["vale"];
+
+    rerender({ sessionId: "workspace-2-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+
+    expect(clients[1].sessionId).toBe("workspace-2-main");
+    expect(clients[1].voiceCandidatesAtStart).toEqual(["vale"]);
+  });
+
+  it("forwards voice fallback diagnostics from the client to the option callback", async () => {
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const { result, clients } = setup([Promise.resolve()], undefined, undefined, {
+      getVoiceCandidates: () => ["maple", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await act(async () => result.current.toggle());
+    clients[0].onVoiceFallback?.({
+      fromVoice: "maple",
+      toVoice: "sol",
+      reason: "Invalid voice: maple",
+    });
+
+    expect(fallbacks).toEqual([
+      { fromVoice: "maple", toVoice: "sol", reason: "Invalid voice: maple" },
+    ]);
   });
 
   it("mount 時に Rust 側 ownership provenance を fallback へ同期する", async () => {

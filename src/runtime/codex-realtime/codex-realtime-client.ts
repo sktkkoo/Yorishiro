@@ -14,6 +14,7 @@ import {
   type RealtimeStateExpressionControllerOptions,
 } from "../agent-state-expression/controller";
 import type { StateExpressionSchedulerCallbacks } from "../agent-state-expression/scheduler";
+import { isCodexVoiceRejectionMessage } from "./voice-rejection";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
 export type CodexRealtimeBilling = "subscription" | "api";
@@ -24,12 +25,28 @@ export interface CodexRealtimeState {
   readonly error?: string;
 }
 
+/** Voice fallback が起きたときの診断情報。UI 側は dev log へ流す。 */
+export interface CodexRealtimeVoiceFallback {
+  readonly fromVoice: string;
+  readonly toVoice: string;
+  /** app-server が返した拒否 message。 */
+  readonly reason: string;
+}
+
 export interface CodexRealtimeClientOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
   readonly getPreferredThreadId?: () => string | null;
   readonly voice?: string;
   readonly getVoice?: () => string | Promise<string>;
+  /**
+   * Voice 候補を優先順で返す（persona override → global → built-in default）。
+   * 指定時は `voice` / `getVoice` より優先。先頭候補で start し、app-server が
+   * voice を明確に拒否した場合に限り後続候補で再試行する。
+   */
+  readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
+  /** Voice fallback が起きるたびに呼ばれる（再試行の直前）。 */
+  readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
 }
 
 interface JsonRpcMessage {
@@ -94,7 +111,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private startAttemptEpoch = 0;
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
   private readonly getPreferredThreadId: () => string | null;
-  private readonly getVoice: () => string | Promise<string>;
+  private readonly getVoiceCandidates: () => Promise<ReadonlyArray<string>>;
+  private readonly onVoiceFallback: ((fallback: CodexRealtimeVoiceFallback) => void) | null;
 
   constructor(
     sessionId: string,
@@ -104,7 +122,11 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.sessionId = sessionId;
     this.onStateChange = onStateChange;
     this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
-    this.getVoice = options.getVoice ?? (() => options.voice ?? DEFAULT_CODEX_REALTIME_VOICE);
+    const legacyGetVoice =
+      options.getVoice ?? (() => options.voice ?? DEFAULT_CODEX_REALTIME_VOICE);
+    const getCandidates = options.getVoiceCandidates ?? (async () => [await legacyGetVoice()]);
+    this.getVoiceCandidates = async () => normalizeVoiceCandidates(await getCandidates());
+    this.onVoiceFallback = options.onVoiceFallback ?? null;
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
           options.stateExpressionCallbacks,
@@ -362,19 +384,43 @@ export class CodexRealtimeClient implements LipSyncSource {
     const sdp = peer.localDescription?.sdp;
     if (!sdp) throw new Error("WebRTC offer did not contain SDP");
 
-    const remoteSdp = new Promise<string>((resolve, reject) => {
-      this.acceptRemoteSdp = resolve;
-      this.rejectRemoteSdp = reject;
-    });
-    const voice = await this.getVoice();
+    const candidates = await this.getVoiceCandidates();
     this.assertAttemptOwner(attempt, peer);
-    await this.request("thread/realtime/start", {
-      threadId,
-      outputModality: "audio",
-      version: "v3",
-      voice,
-      transport: { type: "webrtc", sdp },
-    });
+
+    // Voice は audio 開始後に変更できないため、start の成否がこの session の voice を
+    // 確定させる。app-server が voice を明確に拒否した場合に限り、次の候補
+    // （persona override → global → built-in default）で再試行する。認証・接続などの
+    // 一般エラーはそのまま投げ、voice fallback で隠さない。
+    let remoteSdp: Promise<string> | null = null;
+    for (let index = 0; index < candidates.length && remoteSdp === null; index++) {
+      const voice = candidates[index];
+      this.assertAttemptOwner(attempt, peer);
+      const attemptRemoteSdp = new Promise<string>((resolve, reject) => {
+        this.acceptRemoteSdp = resolve;
+        this.rejectRemoteSdp = reject;
+      });
+      // start が失敗した attempt の promise は誰も await しない。後始末の
+      // rejectAllPending が reject しても unhandled rejection にしない。
+      void attemptRemoteSdp.catch(() => {});
+      try {
+        await this.request("thread/realtime/start", {
+          threadId,
+          outputModality: "audio",
+          version: "v3",
+          voice,
+          transport: { type: "webrtc", sdp },
+        });
+        remoteSdp = attemptRemoteSdp;
+      } catch (error) {
+        if (error instanceof StartAttemptCancelledError) throw error;
+        this.assertAttemptOwner(attempt, peer);
+        const nextVoice = candidates[index + 1];
+        const reason = error instanceof Error ? error.message : String(error);
+        if (nextVoice === undefined || !isCodexVoiceRejectionMessage(reason)) throw error;
+        this.onVoiceFallback?.({ fromVoice: voice, toVoice: nextVoice, reason });
+      }
+    }
+    if (remoteSdp === null) throw new Error("Codex realtime start did not accept any voice");
     this.assertAttemptOwner(attempt, peer);
     const answerSdp = await withTimeout(
       remoteSdp,
@@ -617,6 +663,18 @@ export class CodexRealtimeClient implements LipSyncSource {
 
 function hasOwn(value: object, key: string): boolean {
   return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+}
+
+/** trim・空文字除去・dedupe した voice 候補列。空になったら built-in default に落とす。 */
+function normalizeVoiceCandidates(values: ReadonlyArray<string>): ReadonlyArray<string> {
+  const candidates: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const voice = value.trim();
+    if (voice === "" || candidates.includes(voice)) continue;
+    candidates.push(voice);
+  }
+  return candidates.length > 0 ? candidates : [DEFAULT_CODEX_REALTIME_VOICE];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

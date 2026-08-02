@@ -3,7 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import type { MouthValues } from "../../core/voice/mouth-values";
-import { CodexRealtimeClient, type CodexRealtimeState } from "./codex-realtime-client";
+import {
+  CodexRealtimeClient,
+  type CodexRealtimeState,
+  type CodexRealtimeVoiceFallback,
+} from "./codex-realtime-client";
 
 interface FakeChannel<T> {
   onmessage: (message: T) => void;
@@ -30,6 +34,8 @@ const bridge = vi.hoisted(() => ({
   loadedThreadResponses: [] as string[][],
   loadedThreadParents: {} as Record<string, string | null | undefined>,
   threadReadFailures: {} as Record<string, number>,
+  /** voice → error message。entry がある voice の thread/realtime/start を error 応答にする。 */
+  realtimeStartErrors: {} as Record<string, string>,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -108,10 +114,18 @@ vi.mock("../../bindings/tauri-commands", () => ({
             ...(parentThreadId !== undefined ? { parentThreadId } : {}),
           },
         });
-      } else {
+      } else if (request.method === "thread/realtime/start") {
+        const voice = request.params?.voice;
+        const rejection = typeof voice === "string" ? bridge.realtimeStartErrors[voice] : undefined;
+        if (rejection !== undefined) {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({ id: request.id, error: { message: rejection } }),
+            );
+          });
+          return;
+        }
         respond({});
-      }
-      if (request.method === "thread/realtime/start") {
         queueMicrotask(() => {
           bridge.channel?.onmessage(
             JSON.stringify({
@@ -120,6 +134,8 @@ vi.mock("../../bindings/tauri-commands", () => ({
             }),
           );
         });
+      } else {
+        respond({});
       }
     },
   ),
@@ -207,6 +223,7 @@ describe("CodexRealtimeClient", () => {
     vi.mocked(ensureAudioContextRunning).mockReset();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
+    bridge.realtimeStartErrors = {};
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -263,6 +280,136 @@ describe("CodexRealtimeClient", () => {
     expect(
       bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
     ).toMatchObject({ voice: "juniper" });
+    client.stop();
+  });
+
+  it("falls back to the next candidate only when the app-server rejects the voice", async () => {
+    bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper"]);
+    expect(fallbacks).toEqual([
+      { fromVoice: "maple", toVoice: "juniper", reason: "Invalid voice: maple" },
+    ]);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("falls back through global to the built-in default when both are rejected", async () => {
+    bridge.realtimeStartErrors = {
+      maple: "unsupported voice",
+      juniper: "voice 'juniper' is not supported",
+    };
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper", "sol"]);
+    expect(fallbacks.map((fallback) => fallback.toVoice)).toEqual(["juniper", "sol"]);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("surfaces the rejection when every candidate voice is refused", async () => {
+    bridge.realtimeStartErrors = {
+      maple: "unsupported voice",
+      sol: "unsupported voice",
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "sol"],
+    });
+
+    await expect(client.start()).rejects.toThrow("unsupported voice");
+
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("does not hide a generic start failure behind voice fallback", async () => {
+    bridge.realtimeStartErrors = { maple: "realtime is not enabled for this account" };
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await expect(client.start()).rejects.toThrow("realtime is not enabled for this account");
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple"]);
+    expect(fallbacks).toEqual([]);
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("does not treat a voice-adjacent auth failure as a voice rejection", async () => {
+    bridge.realtimeStartErrors = {
+      maple: "Voice requires Codex to be signed in with ChatGPT or an API key.",
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "sol"],
+    });
+
+    await expect(client.start()).rejects.toThrow("Voice requires Codex to be signed in");
+
+    expect(
+      bridge.sent.filter((message) => message.method === "thread/realtime/start"),
+    ).toHaveLength(1);
+  });
+
+  it("stops the fallback chain when the attempt is cancelled between candidates", async () => {
+    bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper"],
+      onVoiceFallback: () => client.stop(),
+    });
+
+    await expect(client.start()).rejects.toThrow(
+      "Codex realtime start attempt is no longer active",
+    );
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple"]);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("re-reads voice candidates for every new session start", async () => {
+    // persona A → B 切替相当：session をまたぐと候補が読み直される。
+    let candidates: ReadonlyArray<string> = ["maple"];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => candidates,
+    });
+
+    await client.start();
+    client.stop();
+    candidates = ["vale"];
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "vale"]);
+    client.stop();
+  });
+
+  it("normalizes duplicate and blank voice candidates before starting", async () => {
+    bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["  maple  ", "maple", "", "juniper"],
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper"]);
     client.stop();
   });
 
