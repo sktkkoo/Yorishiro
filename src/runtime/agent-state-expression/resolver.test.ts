@@ -179,7 +179,7 @@ describe("resolveAssistantTranscriptDelta", () => {
       expect.objectContaining({
         state: "concerned",
         expression: "sad",
-        expressionWeight: 0.24,
+        expressionWeight: 0.36,
         gestureIntent: "consider",
         intensity: "small",
         durationMs: 3_200,
