@@ -1040,14 +1040,37 @@ export interface ExpressionSlotEntry {
 }
 
 /**
+ * 表情 intent arbitration の reason 付き観察（#83 M6）。互換の slot view
+ * （expressions field）に対する追加の説明レイヤーで、どの intent が
+ * admitted / suppressed か、なぜその結果になったかを住人 AI が読める。
+ */
+export interface ExpressionIntentEntry {
+  readonly producer: string;
+  readonly scope: string;
+  readonly source: string;
+  readonly role: string;
+  readonly state: string | null;
+  readonly target: string | null;
+  readonly salience: string;
+  readonly requestedIntensity: number;
+  readonly effectiveIntensity: number;
+  readonly phase: string;
+  readonly reason: string | null;
+  readonly suppressedBy: string | null;
+}
+
+/**
  * Body の subset 型。tool-handlers が必要とする method のみ。
  * test mock を書きやすくするため、Body 全体ではなく shape で受ける。
+ * getExpressionIntentSnapshot は #83 M6 の追加観察で、無い mock では
+ * intent view が空になるだけ（互換の slot view は不変）。
  */
 export interface BodyLike {
   readonly acquireExpressionSlot: Body["acquireExpressionSlot"];
   readonly getExpressionSlots: Body["getExpressionSlots"];
   readonly getMotionSnapshot: Body["getMotionSnapshot"];
   readonly acquireMotionSlot: Body["acquireMotionSlot"];
+  readonly getExpressionIntentSnapshot?: Body["getExpressionIntentSnapshot"];
 }
 
 export interface StateGetDeps {
@@ -1107,6 +1130,11 @@ export interface StateGetResult {
   };
   readonly vrmLoaded: boolean;
   readonly expressions: ReadonlyArray<ExpressionSlotEntry>;
+  /**
+   * 表情 intent arbitration の reason 付き view（#83 M6 追加）。互換の
+   * `expressions`（slot view）はそのままに、suppress 理由まで観察できる。
+   */
+  readonly expressionIntents: ReadonlyArray<ExpressionIntentEntry>;
   /**
    * 現在 active な motion の snapshot。`preempted` は単一 active stop model のため
    * 現状常に空配列だが、symmetry 確保のため field として保持される。Body 未生成
@@ -1172,6 +1200,24 @@ export function createStateGetHandler(deps: StateGetDeps) {
           }),
         )
       : [];
+    const expressionIntents = body?.getExpressionIntentSnapshot
+      ? body.getExpressionIntentSnapshot().intents.map(
+          (i): ExpressionIntentEntry => ({
+            producer: i.owner.producerId,
+            scope: i.owner.scopeId,
+            source: i.source,
+            role: i.semantic.role,
+            state: i.semantic.state ?? null,
+            target: i.semantic.target ?? null,
+            salience: i.salience,
+            requestedIntensity: i.requestedIntensity,
+            effectiveIntensity: i.effectiveIntensity,
+            phase: i.phase,
+            reason: i.reason,
+            suppressedBy: i.suppressedBy,
+          }),
+        )
+      : [];
     const motion: MotionSnapshot = body?.getMotionSnapshot() ?? {
       active: null,
       preempted: [],
@@ -1192,6 +1238,7 @@ export function createStateGetHandler(deps: StateGetDeps) {
       },
       vrmLoaded: deps.getVrm() !== null,
       expressions,
+      expressionIntents,
       motion,
       ui: {
         sidebar: { width: deps.getSidebarWidth() },
