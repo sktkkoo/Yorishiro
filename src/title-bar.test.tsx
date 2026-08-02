@@ -78,7 +78,7 @@ describe("TitleBar", () => {
     expect(screen.getByRole("button", { name: "shell-1" })).toBeTruthy();
   });
 
-  it("shows the Codex voice control only when available", () => {
+  it("shows the GPT Live voice control only when available", () => {
     const onToggleVoice = vi.fn();
     const { rerender } = renderTitleBar();
     expect(screen.queryByRole("button", { name: "Start voice" })).toBeNull();
@@ -90,7 +90,7 @@ describe("TitleBar", () => {
         sidebarLabel="Sidebar"
         settingsLabel="Settings"
         voiceAvailable
-        voiceActive={false}
+        voiceState="idle"
         voiceLabel="Start voice"
         onToggleVoice={onToggleVoice}
         onToggleSidebar={vi.fn()}
@@ -101,23 +101,92 @@ describe("TitleBar", () => {
     expect(onToggleVoice).toHaveBeenCalledTimes(1);
   });
 
-  it("marks the voice control active during a conversation", () => {
+  it("shows a plain unpressed mic while idle", () => {
     renderTitleBar({
       voiceAvailable: true,
-      voiceActive: true,
+      voiceState: "idle",
+      voiceLabel: "Start voice",
+      onToggleVoice: vi.fn(),
+    });
+
+    const button = screen.getByRole("button", { name: "Start voice" });
+    expect(button.getAttribute("data-voice-state")).toBe("idle");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.getAttribute("aria-busy")).toBeNull();
+    expect(button.querySelector(".lucide-mic")).toBeTruthy();
+    expect(button.querySelector(".lucide-mic-off")).toBeNull();
+  });
+
+  it("shows a spinner and aria-busy while connecting", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "connecting",
+      voiceLabel: "Connecting voice…",
+      onToggleVoice: vi.fn(),
+    });
+
+    const button = screen.getByRole("button", { name: "Connecting voice…" });
+    expect(button.getAttribute("data-voice-state")).toBe("connecting");
+    expect(button.getAttribute("aria-busy")).toBe("true");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.querySelector(".lucide-loader-circle")).toBeTruthy();
+    expect(button.querySelector(".lucide-mic")).toBeNull();
+  });
+
+  // active はスラッシュ無しの Mic のまま。MicOff は「ミュート」の慣習アイコンで、
+  // ミュート状態が存在しない現状ではどの状態にも出さない。
+  it("keeps the plain mic (never a slashed mic) while the conversation is live", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "active",
       voiceLabel: "Stop voice",
       onToggleVoice: vi.fn(),
     });
 
-    expect(screen.getByRole("button", { name: "Stop voice" }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    const button = screen.getByRole("button", { name: "Stop voice" });
+    expect(button.getAttribute("data-voice-state")).toBe("active");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.querySelector(".lucide-mic")).toBeTruthy();
+    expect(button.querySelector(".lucide-mic-off")).toBeNull();
+  });
+
+  it("exposes the error state for retry with an alert message", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "error",
+      voiceLabel: "Retry voice",
+      voiceError: "connection failed",
+      onToggleVoice: vi.fn(),
+    });
+
+    const button = screen.getByRole("button", { name: "Retry voice" });
+    expect(button.getAttribute("data-voice-state")).toBe("error");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.querySelector(".lucide-mic")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toBe("connection failed");
+  });
+
+  // 回転 animation は CSS class（data-voice-state="connecting"）にだけ紐づける。
+  // inline style で animation を焼き込むと prefers-reduced-motion の media query で
+  // 止められなくなる。
+  it("does not inline animation styles so reduced-motion CSS can disable the spinner", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "connecting",
+      voiceLabel: "Connecting voice…",
+      onToggleVoice: vi.fn(),
+    });
+
+    const svg = screen
+      .getByRole("button", { name: "Connecting voice…" })
+      .querySelector(".lucide-loader-circle");
+    expect(svg?.getAttribute("style") ?? "").not.toContain("animation");
   });
 
   it("shows API billing only when the voice session uses API-key auth", () => {
     const { rerender } = renderTitleBar({
       voiceAvailable: true,
-      voiceActive: true,
+      voiceState: "active",
       voiceLabel: "Stop voice",
       onToggleVoice: vi.fn(),
     });
@@ -131,7 +200,7 @@ describe("TitleBar", () => {
         sidebarLabel="Sidebar"
         settingsLabel="Settings"
         voiceAvailable
-        voiceActive
+        voiceState="active"
         voiceLabel="Stop voice"
         voiceBillingLabel="API billing"
         onToggleVoice={vi.fn()}

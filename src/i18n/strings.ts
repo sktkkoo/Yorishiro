@@ -34,11 +34,15 @@ export interface UiStrings {
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
-  readonly codexVoiceStart: string;
-  readonly codexVoiceStop: string;
-  readonly codexVoiceConnecting: string;
-  readonly codexVoiceRetry: string;
-  readonly codexVoiceApiBilling: string;
+  /**
+   * GPT Live 音声会話ボタンの tooltip / aria-label。ユーザー向け文言は provider
+   * （Codex）ではなく「GPT Liveの音声会話」で統一する。
+   */
+  readonly gptLiveVoiceStart: string;
+  readonly gptLiveVoiceStop: string;
+  readonly gptLiveVoiceConnecting: string;
+  readonly gptLiveVoiceRetry: string;
+  readonly gptLiveVoiceApiBilling: string;
   readonly gptLiveRequiresCodex: string;
   readonly gptLiveSwitchBody: string;
   readonly gptLiveSetupBody: string;
@@ -163,11 +167,11 @@ const EN: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  codexVoiceStart: "Start Codex voice",
-  codexVoiceStop: "Stop Codex voice",
-  codexVoiceConnecting: "Connecting Codex voice…",
-  codexVoiceRetry: "Retry Codex voice",
-  codexVoiceApiBilling: "API billing",
+  gptLiveVoiceStart: "Start GPT Live voice conversation",
+  gptLiveVoiceStop: "Stop GPT Live voice conversation",
+  gptLiveVoiceConnecting: "Connecting GPT Live voice conversation… (click to cancel)",
+  gptLiveVoiceRetry: "Retry GPT Live voice conversation",
+  gptLiveVoiceApiBilling: "API billing",
   gptLiveRequiresCodex: "Voice conversation (GPT Live) currently requires Codex",
   gptLiveSwitchBody:
     "Your current Main Agent does not support voice conversation. Switch to Codex and start a voice conversation? Your current conversation and work state are preserved, and switching back to the original agent resumes where you left off.",
@@ -290,14 +294,14 @@ const JA: UiStrings = {
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
-  codexVoiceStart: "Codex 音声会話を始める",
-  codexVoiceStop: "Codex 音声会話を終了",
-  codexVoiceConnecting: "Codex 音声会話に接続中…",
-  codexVoiceRetry: "Codex 音声会話を再試行",
-  codexVoiceApiBilling: "API従量課金",
-  gptLiveRequiresCodex: "音声対話（GPT Live）の利用には、現在Codexが必要です",
+  gptLiveVoiceStart: "GPT Liveの音声会話を始める",
+  gptLiveVoiceStop: "GPT Liveの音声会話を終了",
+  gptLiveVoiceConnecting: "GPT Liveの音声会話に接続中…（クリックで中止）",
+  gptLiveVoiceRetry: "GPT Liveの音声会話を再試行",
+  gptLiveVoiceApiBilling: "API従量課金",
+  gptLiveRequiresCodex: "音声会話（GPT Live）の利用には、現在Codexが必要です",
   gptLiveSwitchBody:
-    "現在のメインエージェントは音声対話に対応していません。Codexへ切り替えて、音声対話を始めますか？現在の会話と作業状態は保持され、元のエージェントへ戻すと続きから再開できます。",
+    "現在のメインエージェントは音声会話に対応していません。Codexへ切り替えて、音声会話を始めますか？現在の会話と作業状態は保持され、元のエージェントへ戻すと続きから再開できます。",
   gptLiveSetupBody:
     "Codex CLIをインストールし、ChatGPTでサインイン（またはAPIキーを設定）してから、SettingsでMain AgentにCodexを選んでください。",
   gptLiveCancel: "キャンセル",

@@ -139,12 +139,40 @@ body,
   color: #f0f0f0;
 }
 
-.title-bar-voice-button.is-active {
-  color: #8bd7ff;
+/*
+ * GPT Live 音声会話ボタンの状態語彙。色相だけに頼らず、active は塗り+枠の
+ * 明度差、connecting はアイコン形状（スピナー）、error は失敗の赤系
+ * （tab-indicator の失敗と同系）でも区別できるようにする。
+ */
+.title-bar-voice-button[data-voice-state="active"] {
+  color: var(--yorishiro-accent);
+  border-color: var(--yorishiro-accent-border);
+  background: var(--yorishiro-accent-soft);
 }
 
-.title-bar-voice-button.is-busy svg {
+.title-bar-voice-button[data-voice-state="active"] svg,
+.title-bar-voice-button[data-voice-state="error"] svg {
+  opacity: 1;
+}
+
+.title-bar-voice-button[data-voice-state="connecting"] svg {
   animation: title-bar-voice-spin 0.9s linear infinite;
+}
+
+.title-bar-voice-button[data-voice-state="error"] {
+  color: #ffb8b8;
+  border-color: rgba(255, 95, 95, 0.36);
+}
+
+.title-bar-voice-button[data-voice-state="error"]:hover,
+.title-bar-voice-button[data-voice-state="error"]:focus-visible {
+  color: #ffd2d2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-bar-voice-button[data-voice-state="connecting"] svg {
+    animation: none;
+  }
 }
 
 .title-bar-voice-billing {
