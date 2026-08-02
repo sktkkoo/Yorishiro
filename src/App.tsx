@@ -139,6 +139,7 @@ import { registerBundledAttentionAura } from "./runtime/bundled-attention-aura";
 import { registerBundledMusicShelf } from "./runtime/bundled-music-shelf";
 import { registerBundledPomodoro } from "./runtime/bundled-pomodoro";
 import { registerBundledPomodoroUi } from "./runtime/bundled-pomodoro-ui";
+import { appendCodexRealtimePersonaDiagnostic } from "./runtime/codex-realtime/persona-diagnostics";
 import { useCodexRealtime } from "./runtime/codex-realtime/use-codex-realtime";
 import {
   consumePendingRealtimeStart,
@@ -3682,6 +3683,43 @@ function App() {
         data: { candidates },
       });
       return candidates.map((candidate) => candidate.voice);
+    },
+    getPersonaSnapshot: () => {
+      const personaId = personaRegistry.getActivePersonaId();
+      const instructions =
+        personaRegistry.getActivePersona()?.thinking?.systemPromptAddition ?? null;
+      return { personaId, instructions };
+    },
+    personaPromptMode: "supplemental",
+    includeStartupContext: false,
+    onPersonaApplication: ({
+      personaId,
+      status,
+      appServerVersion,
+      delivery,
+      startupContextIncluded,
+    }) => {
+      appendCodexRealtimePersonaDiagnostic({
+        personaId,
+        status,
+        appServerVersion,
+        delivery,
+        startupContextIncluded,
+      });
+      // Prompt contents are intentionally absent from both note and structured diagnostics.
+      console.info("[codex-realtime] GPT Live persona application", {
+        personaId,
+        status,
+        appServerVersion,
+        delivery,
+        startupContextIncluded,
+      });
+      devLog.write({
+        subsystem: "Voice",
+        phase: "realtime-persona",
+        note: `GPT Live persona application ${status} (persona=${personaId ?? "none"})`,
+        data: { personaId, status, appServerVersion, delivery, startupContextIncluded },
+      });
     },
     onVoiceFallback: ({ fromVoice, toVoice, reason }) => {
       devLog.write({

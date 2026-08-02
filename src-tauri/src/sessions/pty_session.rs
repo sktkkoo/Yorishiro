@@ -243,11 +243,69 @@ fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 struct CodexAppServerProcess {
     child: Child,
     endpoint: String,
+    capabilities: CodexRealtimeCapabilities,
     tui_proxy: Option<CodexTuiProxy>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexRealtimeCapabilities {
+    pub app_server_version: Option<String>,
+    pub persona_initial_items: bool,
+}
+
+fn parse_codex_cli_version(output: &str) -> Option<String> {
+    let version =
+        output.split_whitespace().find(|part| {
+            let mut components = part.split('.');
+            components.by_ref().take(3).all(|component| {
+                !component.is_empty() && component.chars().all(|c| c.is_ascii_digit())
+            }) && components.next().is_none()
+                && part.matches('.').count() == 2
+        })?;
+    Some(version.to_string())
+}
+
+fn codex_version_at_least(version: &str, minimum: [u64; 3]) -> bool {
+    let values: Vec<u64> = version
+        .split('.')
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .unwrap_or_default();
+    values.len() == 3 && [values[0], values[1], values[2]] >= minimum
+}
+
+fn detect_codex_realtime_capabilities(
+    binary: &str,
+    cwd: Option<&str>,
+) -> CodexRealtimeCapabilities {
+    let mut command = Command::new(binary);
+    command
+        .arg("--version")
+        .env("PATH", crate::build_path_env())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    if let Some(dir) = cwd {
+        command.current_dir(dir);
+    }
+    let app_server_version = command
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(|output| parse_codex_cli_version(&output));
+    let persona_initial_items = app_server_version
+        .as_deref()
+        .is_some_and(|version| codex_version_at_least(version, [0, 146, 0]));
+    CodexRealtimeCapabilities {
+        app_server_version,
+        persona_initial_items,
+    }
 }
 
 impl CodexAppServerProcess {
     fn spawn(binary: &str, cwd: Option<&str>) -> Result<Self, String> {
+        let capabilities = detect_codex_realtime_capabilities(binary, cwd);
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .map_err(|e| format!("Codex app-server port allocation failed: {e}"))?;
         let address = listener
@@ -276,6 +334,7 @@ impl CodexAppServerProcess {
         let mut process = Self {
             child,
             endpoint,
+            capabilities,
             tui_proxy: None,
         };
         process.wait_until_ready(address)?;
@@ -641,6 +700,12 @@ impl PtySession {
             .map(|server| server.endpoint.clone())
     }
 
+    pub fn realtime_capabilities(&self) -> Option<CodexRealtimeCapabilities> {
+        lock_or_recover(&self.codex_app_server)
+            .as_ref()
+            .map(|server| server.capabilities.clone())
+    }
+
     pub fn realtime_selected_thread_id(&self) -> Option<String> {
         lock_or_recover(&self.codex_app_server)
             .as_ref()
@@ -734,6 +799,28 @@ impl PtySession {
         }
         *lock_or_recover(&self.codex_app_server) = None;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod codex_realtime_capability_tests {
+    use super::{codex_version_at_least, parse_codex_cli_version};
+
+    #[test]
+    fn parses_codex_cli_version_output() {
+        assert_eq!(
+            parse_codex_cli_version("codex-cli 0.146.0\n"),
+            Some("0.146.0".to_string())
+        );
+        assert_eq!(parse_codex_cli_version("unexpected output"), None);
+    }
+
+    #[test]
+    fn gates_realtime_persona_initial_items_by_version() {
+        assert!(!codex_version_at_least("0.145.9", [0, 146, 0]));
+        assert!(codex_version_at_least("0.146.0", [0, 146, 0]));
+        assert!(codex_version_at_least("0.147.0", [0, 146, 0]));
+        assert!(!codex_version_at_least("invalid", [0, 146, 0]));
     }
 }
 

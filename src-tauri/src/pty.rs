@@ -496,6 +496,14 @@ impl PtyState {
             .and_then(|session| session.realtime_endpoint())
     }
 
+    pub fn realtime_capabilities(
+        &self,
+        session_id: &str,
+    ) -> Option<crate::sessions::pty_session::CodexRealtimeCapabilities> {
+        self.session_or_default(session_id)
+            .and_then(|session| session.realtime_capabilities())
+    }
+
     pub fn realtime_selected_thread_id(&self, session_id: &str) -> Option<String> {
         self.session_or_default(session_id)
             .and_then(|session| session.realtime_selected_thread_id())

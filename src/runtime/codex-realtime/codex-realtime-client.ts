@@ -1,5 +1,6 @@
 import { Channel } from "@tauri-apps/api/core";
 import {
+  sessionRealtimeCapabilities,
   sessionRealtimeConnect,
   sessionRealtimeDisconnect,
   sessionRealtimeSend,
@@ -33,6 +34,30 @@ export interface CodexRealtimeVoiceFallback {
   readonly reason: string;
 }
 
+export interface CodexRealtimePersonaSnapshot {
+  /** Diagnostics-safe identity. Persona prompt contents must never be logged from this value. */
+  readonly personaId: string | null;
+  /** Canonical PersonaDefinition.thinking.systemPromptAddition for the active persona. */
+  readonly instructions: string | null | undefined;
+}
+
+export type CodexRealtimePersonaApplicationStatus =
+  | "applied"
+  | "skipped-no-persona"
+  | "skipped-empty"
+  | "unsupported"
+  | "load-failed";
+
+/** Prompt-free diagnostics for one accepted GPT Live session. */
+export interface CodexRealtimePersonaApplication {
+  readonly personaId: string | null;
+  readonly status: CodexRealtimePersonaApplicationStatus;
+  /** Host-verified `codex --version` value when available; never contains persona text. */
+  readonly appServerVersion: string | null;
+  readonly delivery?: "initial-items" | "prompt-replacement";
+  readonly startupContextIncluded?: boolean;
+}
+
 export interface CodexRealtimeClientOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   readonly stateExpressionController?: RealtimeStateExpressionControllerOptions;
@@ -47,6 +72,16 @@ export interface CodexRealtimeClientOptions {
   readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
   /** Voice fallback が起きるたびに呼ばれる（再試行の直前）。 */
   readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
+  /** Read once per start. Text seeds only the ephemeral Realtime session, not Codex thread history. */
+  readonly getPersonaSnapshot?: () =>
+    | CodexRealtimePersonaSnapshot
+    | Promise<CodexRealtimePersonaSnapshot>;
+  /** Called only with prompt-free persona application diagnostics. */
+  readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
+  /** Explicit comparison experiment. `replace` removes the configured Realtime backend prompt. */
+  readonly personaPromptMode?: "supplemental" | "replace";
+  /** Experimental comparison. False omits Codex startup context without replacing its prompt. */
+  readonly includeStartupContext?: boolean;
 }
 
 interface JsonRpcMessage {
@@ -113,6 +148,14 @@ export class CodexRealtimeClient implements LipSyncSource {
   private readonly getPreferredThreadId: () => string | null;
   private readonly getVoiceCandidates: () => Promise<ReadonlyArray<string>>;
   private readonly onVoiceFallback: ((fallback: CodexRealtimeVoiceFallback) => void) | null;
+  private readonly getPersonaSnapshot:
+    | (() => CodexRealtimePersonaSnapshot | Promise<CodexRealtimePersonaSnapshot>)
+    | null;
+  private readonly onPersonaApplication:
+    | ((application: CodexRealtimePersonaApplication) => void)
+    | null;
+  private readonly personaPromptMode: "supplemental" | "replace";
+  private readonly includeStartupContext: boolean;
 
   constructor(
     sessionId: string,
@@ -127,6 +170,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     const getCandidates = options.getVoiceCandidates ?? (async () => [await legacyGetVoice()]);
     this.getVoiceCandidates = async () => normalizeVoiceCandidates(await getCandidates());
     this.onVoiceFallback = options.onVoiceFallback ?? null;
+    this.getPersonaSnapshot = options.getPersonaSnapshot ?? null;
+    this.onPersonaApplication = options.onPersonaApplication ?? null;
+    this.personaPromptMode = options.personaPromptMode ?? "supplemental";
+    this.includeStartupContext = options.includeStartupContext ?? true;
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
           options.stateExpressionCallbacks,
@@ -166,6 +213,10 @@ export class CodexRealtimeClient implements LipSyncSource {
         "Codex app-server connection timed out",
       );
       this.assertAttemptOwner(attempt);
+      const realtimeCapabilities = await sessionRealtimeCapabilities({
+        sessionId: this.sessionId,
+      });
+      this.assertAttemptOwner(attempt);
       await this.request("initialize", {
         clientInfo: {
           name: "yorishiro",
@@ -176,6 +227,9 @@ export class CodexRealtimeClient implements LipSyncSource {
       });
       this.assertAttemptOwner(attempt);
       this.notify("initialized", {});
+
+      const personaApplication = await this.preparePersonaApplication(realtimeCapabilities);
+      this.assertAttemptOwner(attempt);
 
       const account = (await this.request("account/read", { refreshToken: false })) as {
         readonly account?: { readonly type?: string } | null;
@@ -198,9 +252,15 @@ export class CodexRealtimeClient implements LipSyncSource {
       const threadId = await this.waitForLoadedThread(attempt);
       this.assertAttemptOwner(attempt);
       this.threadId = threadId;
-      await this.startWebRtc(threadId, attempt);
+      await this.startWebRtc(
+        threadId,
+        attempt,
+        personaApplication.initialItems,
+        personaApplication.prompt,
+      );
       this.assertAttemptOwner(attempt);
       this.setState({ status: "active", billing });
+      this.onPersonaApplication?.(personaApplication.diagnostic);
     } catch (error) {
       if (!this.isAttemptOwner(attempt)) throw error;
       const message = error instanceof Error ? error.message : String(error);
@@ -337,7 +397,90 @@ export class CodexRealtimeClient implements LipSyncSource {
     return candidate;
   }
 
-  private async startWebRtc(threadId: string, attempt: number): Promise<void> {
+  private async preparePersonaApplication(capabilities: {
+    readonly appServerVersion: string | null;
+    readonly personaInitialItems: boolean;
+  }): Promise<{
+    readonly initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>;
+    readonly prompt?: string;
+    readonly diagnostic: CodexRealtimePersonaApplication;
+  }> {
+    let snapshot: CodexRealtimePersonaSnapshot;
+    try {
+      snapshot = this.getPersonaSnapshot
+        ? await this.getPersonaSnapshot()
+        : { personaId: null, instructions: null };
+    } catch {
+      return {
+        diagnostic: {
+          personaId: null,
+          status: "load-failed",
+          appServerVersion: capabilities.appServerVersion,
+        },
+      };
+    }
+
+    const personaId = normalizePersonaId(snapshot.personaId);
+    if (!personaId) {
+      return {
+        diagnostic: {
+          personaId: null,
+          status: "skipped-no-persona",
+          appServerVersion: capabilities.appServerVersion,
+        },
+      };
+    }
+    const instructions = snapshot.instructions?.trim() ?? "";
+    if (!instructions) {
+      return {
+        diagnostic: {
+          personaId,
+          status: "skipped-empty",
+          appServerVersion: capabilities.appServerVersion,
+        },
+      };
+    }
+    if (!capabilities.personaInitialItems) {
+      return {
+        diagnostic: {
+          personaId,
+          status: "unsupported",
+          appServerVersion: capabilities.appServerVersion,
+        },
+      };
+    }
+    if (this.personaPromptMode === "replace") {
+      return {
+        prompt: instructions,
+        diagnostic: {
+          personaId,
+          status: "applied",
+          appServerVersion: capabilities.appServerVersion,
+          delivery: "prompt-replacement",
+          startupContextIncluded: this.includeStartupContext,
+        },
+      };
+    }
+    return {
+      // A developer initial item supplements the backend prompt. Do not use the realtime `prompt`
+      // field here: setting it would replace Codex's configured realtime backend instructions.
+      initialItems: [{ role: "developer", text: instructions }],
+      diagnostic: {
+        personaId,
+        status: "applied",
+        appServerVersion: capabilities.appServerVersion,
+        delivery: "initial-items",
+        startupContextIncluded: this.includeStartupContext,
+      },
+    };
+  }
+
+  private async startWebRtc(
+    threadId: string,
+    attempt: number,
+    initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>,
+    prompt?: string,
+  ): Promise<void> {
     this.assertAttemptOwner(attempt);
     const peer = new RTCPeerConnection();
     this.peer = peer;
@@ -408,6 +551,9 @@ export class CodexRealtimeClient implements LipSyncSource {
           outputModality: "audio",
           version: "v3",
           voice,
+          includeStartupContext: this.includeStartupContext,
+          ...(initialItems ? { initialItems } : {}),
+          ...(prompt ? { prompt } : {}),
           transport: { type: "webrtc", sdp },
         });
         remoteSdp = attemptRemoteSdp;
@@ -663,6 +809,12 @@ export class CodexRealtimeClient implements LipSyncSource {
 
 function hasOwn(value: object, key: string): boolean {
   return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+}
+
+function normalizePersonaId(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /** trim・空文字除去・dedupe した voice 候補列。空になったら built-in default に落とす。 */

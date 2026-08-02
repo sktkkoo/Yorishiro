@@ -4,7 +4,12 @@ import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { LipSyncSource } from "../../core/body";
 import type { MouthValues } from "../../core/voice/mouth-values";
-import type { CodexRealtimeState, CodexRealtimeVoiceFallback } from "./codex-realtime-client";
+import type {
+  CodexRealtimePersonaApplication,
+  CodexRealtimePersonaSnapshot,
+  CodexRealtimeState,
+  CodexRealtimeVoiceFallback,
+} from "./codex-realtime-client";
 import {
   type CodexRealtimeClientFactory,
   type CodexRealtimeClientLike,
@@ -39,6 +44,10 @@ class FakeClient implements CodexRealtimeClientLike {
     private readonly getVoice: () => string | Promise<string>,
     readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>,
     readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void,
+    private readonly getPersonaSnapshot?: () =>
+      | CodexRealtimePersonaSnapshot
+      | Promise<CodexRealtimePersonaSnapshot>,
+    readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void,
   ) {}
 
   preferredThreadIdAtStart: string | null = null;
@@ -54,11 +63,13 @@ class FakeClient implements CodexRealtimeClientLike {
       ? [...(await this.getVoiceCandidates())]
       : null;
     this.voiceAtStart = this.voiceCandidatesAtStart?.[0] ?? (await this.getVoice());
+    this.personaSnapshotAtStart = this.getPersonaSnapshot ? await this.getPersonaSnapshot() : null;
     await this.startResult;
   });
 
   voiceAtStart: string | null = null;
   voiceCandidatesAtStart: ReadonlyArray<string> | null = null;
+  personaSnapshotAtStart: CodexRealtimePersonaSnapshot | null = null;
 
   sampleMouth(out?: MouthValues): MouthValues {
     return out ?? { ...ZERO_MOUTH };
@@ -77,6 +88,10 @@ function setup(
   options: {
     readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
     readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
+    readonly getPersonaSnapshot?: () =>
+      | CodexRealtimePersonaSnapshot
+      | Promise<CodexRealtimePersonaSnapshot>;
+    readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
   } = {},
 ) {
   const clients: FakeClient[] = [];
@@ -90,6 +105,8 @@ function setup(
     getVoiceForClient = () => "sol",
     getVoiceCandidatesForClient,
     onVoiceFallbackForClient,
+    getPersonaSnapshotForClient,
+    onPersonaApplicationForClient,
   ) => {
     const startResult = starts[clients.length] ?? Promise.resolve();
     const client = new FakeClient(
@@ -100,6 +117,8 @@ function setup(
       getVoiceForClient,
       getVoiceCandidatesForClient,
       onVoiceFallbackForClient,
+      getPersonaSnapshotForClient,
+      onPersonaApplicationForClient,
     );
     clients.push(client);
     return client;
@@ -117,6 +136,8 @@ function setup(
         getVoice,
         getVoiceCandidates: options.getVoiceCandidates,
         onVoiceFallback: options.onVoiceFallback,
+        getPersonaSnapshot: options.getPersonaSnapshot,
+        onPersonaApplication: options.onPersonaApplication,
         createClient,
         createThreadTracker: (_sessionId, onCurrentThreadChange) => {
           notifyThreadChange = onCurrentThreadChange;
@@ -183,6 +204,41 @@ describe("useCodexRealtime", () => {
       ["maple", "juniper", "sol"],
       ["vale", "juniper", "sol"],
     ]);
+  });
+
+  it("snapshots the active persona again after thread and workspace switches", async () => {
+    let snapshot: CodexRealtimePersonaSnapshot = {
+      personaId: "persona-a",
+      instructions: "instructions A",
+    };
+    const { result, rerender, clients, changeThread } = setup(
+      [Promise.resolve(), Promise.resolve(), Promise.resolve()],
+      undefined,
+      undefined,
+      { getPersonaSnapshot: () => snapshot },
+    );
+
+    await act(async () => result.current.toggle());
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    // A running session owns its original immutable snapshot.
+    snapshot = { personaId: "persona-b", instructions: "instructions B" };
+    expect(clients[0].personaSnapshotAtStart?.personaId).toBe("persona-a");
+
+    await act(async () => {
+      changeThread("thread-2");
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+    expect(clients[1].personaSnapshotAtStart).toEqual(snapshot);
+    act(() => clients[1].emit({ status: "active", billing: "subscription" }));
+
+    snapshot = { personaId: "persona-c", instructions: "instructions C" };
+    rerender({ sessionId: "workspace-2-main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(3));
+    });
+    expect(clients[2].sessionId).toBe("workspace-2-main");
+    expect(clients[2].personaSnapshotAtStart).toEqual(snapshot);
   });
 
   it("keeps the active session's voice when candidates change mid-session", async () => {

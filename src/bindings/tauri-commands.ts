@@ -150,6 +150,17 @@ export const sessionRealtimeConnect = (args: {
   readonly onMessage: Channel<string>;
 }): Promise<string> => call("session_realtime_connect", args);
 
+export interface SessionRealtimeCapabilities {
+  readonly appServerVersion: string | null;
+  /** Codex V3 supports supplemental developer `initialItems` without replacing its base prompt. */
+  readonly personaInitialItems: boolean;
+}
+
+/** Host-verified capabilities of the Codex binary that owns this session's app-server. */
+export const sessionRealtimeCapabilities = (args: {
+  readonly sessionId: string;
+}): Promise<SessionRealtimeCapabilities> => call("session_realtime_capabilities", args);
+
 /** Codex TUI proxy が最後に確認した top-level thread selection。 */
 export const sessionRealtimeSelectedThread = (args: {
   readonly sessionId: string;
