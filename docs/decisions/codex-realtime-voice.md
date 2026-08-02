@@ -189,6 +189,26 @@ refを解放できないため、この二層を一つに省略しない。
 
 ### connection diagnostics / retry / 二重接続防止
 
+この領域の実装・修正では、個別のfailure caseへの対症療法より、次の4原則を優先する。将来別の
+接続不良を扱う場合も、まずこの原則に沿って原因の観測、resource ownership、復旧方法を設計する。
+
+1. **一つの接続runには一人のownerだけを持たせる。**
+   同時に始まった`start()`、manual retry、automatic retry、late callbackを独立した正当な接続として
+   競合させない。現在のownerだけがresourceとUI stateを変更できる。
+2. **再接続は部分修理による延命ではなく、完全cleanup後の再生成とする。**
+   半壊したpeer、microphone、bridge、server sessionを使い回さない。短い中断より、古い状態を
+   引き継がず確実に正常な状態へ戻ることを優先する。
+3. **自動retryは一時障害だけに限定し、必ず回数上限を持たせる。**
+   timeout、network、一時的なremote failureはfresh attemptで再試行できる。一方、permission、
+   authentication、configuration、ownershipの問題はuser操作や設定変更なしには改善しないため繰り返さない。
+4. **診断は接続stageを正本とし、privacy-safeな構造化情報だけを残す。**
+   共通のerror messageだけで判断せず、attempt、stage、category、retry decisionを記録する。ただし
+   audio、transcript、prompt、credential、server由来のraw messageは診断のためにも永続化しない。
+
+この4原則は、現在の実装方式を説明するだけでなく、今後のconnection recovery変更をreviewする際の
+判断基準である。例外を設ける場合は、途切れの短縮とownership・cleanup・privacyのどれを交換条件にするかを
+新しいDecisionで明示する。
+
 Realtime接続は一つの非同期処理ではなく、bridge接続、initialize、account確認、thread discovery、
 microphone取得、WebRTC offer、ICE gathering、`thread/realtime/start`、remote SDP適用という複数段階から
 成る。単一の`Voice connection failed`だけでは原因も復旧可否も判断できないため、接続attemptごとに
