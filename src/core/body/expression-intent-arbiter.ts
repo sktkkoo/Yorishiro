@@ -218,7 +218,6 @@ export class ExpressionIntentArbiter {
         }
         continue;
       }
-      if (record.ambientViolation) continue;
       if (!record.releasing) {
         const attackMs = record.lifecycle.attackMs ?? 0;
         if (record.envelope < 1) {
@@ -345,7 +344,9 @@ export class ExpressionIntentArbiter {
   private beginRelease(record: IntentRecord, reason: ExpressionIntentReason): void {
     record.releasing = true;
     record.releaseReason = reason;
-    record.reason = reason;
+    // ambient guard で拒否された intent も lifecycle は進めるが、debug view
+    // では「なぜ出力されなかったか」を terminal reason より優先して残す。
+    record.reason = record.ambientViolation ? "ambient-policy-rejected" : reason;
     const releaseMs = record.lifecycle.releaseMs ?? 0;
     if (releaseMs <= 0 || record.envelope <= 0) {
       this.markExpired(record, reason);
@@ -356,7 +357,7 @@ export class ExpressionIntentArbiter {
     record.expired = true;
     record.releasing = true;
     record.envelope = 0;
-    record.reason = reason;
+    record.reason = record.ambientViolation ? "ambient-policy-rejected" : reason;
     record.admitted = false;
     this.admissionDirty = true;
   }

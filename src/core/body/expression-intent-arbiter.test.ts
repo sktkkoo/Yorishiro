@@ -541,6 +541,60 @@ describe("ExpressionIntentArbiter guards", () => {
     expect(entryOf(arbiter, violating.intentId).reason).toBe("ambient-policy-rejected");
   });
 
+  it("拒否された ambient pulse も期限切れ・releaseを経てpurgeされる", () => {
+    const arbiter = new ExpressionIntentArbiter();
+    const violating = arbiter.acquire(
+      request({
+        semantic: { role: "grounded-state", state: "happy" },
+        lifecycle: { kind: "pulse", durationMs: 100, releaseMs: 100 },
+      }),
+    );
+
+    arbiter.update(0.1);
+    expect(violating.isAlive).toBe(true);
+    expect(entryOf(arbiter, violating.intentId)).toMatchObject({
+      phase: "suppressed",
+      reason: "ambient-policy-rejected",
+    });
+
+    arbiter.update(0.1);
+    expect(violating.isAlive).toBe(false);
+    expect(entryOf(arbiter, violating.intentId)).toMatchObject({
+      phase: "expired",
+      reason: "ambient-policy-rejected",
+    });
+
+    arbiter.update(1 / 60);
+    arbiter.update(1 / 60);
+    expect(arbiter.getSnapshot().intents).toHaveLength(0);
+  });
+
+  it("拒否された held intent も明示releaseのenvelope完了後にpurgeされる", () => {
+    const arbiter = new ExpressionIntentArbiter();
+    const violating = arbiter.acquire(
+      request({
+        semantic: { role: "grounded-state", state: "happy" },
+        lifecycle: { kind: "held", releaseMs: 200 },
+      }),
+    );
+
+    violating.release();
+    arbiter.update(0.1);
+    expect(violating.isAlive).toBe(true);
+    expect(entryOf(arbiter, violating.intentId).reason).toBe("ambient-policy-rejected");
+
+    arbiter.update(0.1);
+    expect(violating.isAlive).toBe(false);
+    expect(entryOf(arbiter, violating.intentId)).toMatchObject({
+      phase: "expired",
+      reason: "ambient-policy-rejected",
+    });
+
+    arbiter.update(1 / 60);
+    arbiter.update(1 / 60);
+    expect(arbiter.getSnapshot().intents).toHaveLength(0);
+  });
+
   it("domain claim 中は全 intent が domain-claimed になり、解除で復帰する", () => {
     const arbiter = new ExpressionIntentArbiter();
     const idle = arbiter.acquire(request());
