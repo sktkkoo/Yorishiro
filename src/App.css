@@ -140,18 +140,17 @@ body,
 }
 
 /*
- * GPT Live 音声会話ボタンの状態語彙。active は theme accent のアイコン色、
+ * GPT Live 音声会話ボタンの状態語彙。active は明るいアイコン＋送話中の赤い点、
  * connecting はアイコン形状（スピナー）、error は失敗の赤系
  * （tab-indicator の失敗と同系）と隣接テキストで区別する。
  */
 .title-bar-voice-button[data-voice-state="active"] {
   position: relative;
-  color: color-mix(in srgb, var(--yorishiro-accent) 60%, white);
+  color: #f0f0f0;
 }
 
 .title-bar-voice-button[data-voice-state="active"] svg {
   opacity: 1;
-  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--yorishiro-accent) 55%, transparent));
 }
 
 .title-bar-voice-status-dot {
@@ -161,8 +160,8 @@ body,
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 4px color-mix(in srgb, var(--yorishiro-accent) 70%, transparent);
+  background: #ff5f5f;
+  box-shadow: 0 0 4px rgba(255, 95, 95, 0.65);
   pointer-events: none;
 }
 
