@@ -129,6 +129,14 @@ export function findOccupancyConflict(
  *   並存（現挙動）を保つ
  */
 export function isExclusiveCategoricalPair(a: ExpressionIntent, b: ExpressionIntent): boolean {
+  // Legacy ExpressionManager は mcp / system を同じ priority として blend していた。
+  // external と system は別 producer から来る同格の明示要求なので、同じ full-face
+  // occupancy でも categorical latest-wins にしない（#83 review parity fix）。
+  const isExternalSource = (source: ExpressionSource): boolean =>
+    source === "mcp" || source === "system";
+  if (a.source !== b.source && isExternalSource(a.source) && isExternalSource(b.source)) {
+    return false;
+  }
   const categorical = (role: ExpressionSemantic["role"]): boolean =>
     role === "grounded-state" || role === "explicit-action";
   if (!categorical(a.semantic.role) || !categorical(b.semantic.role)) return false;

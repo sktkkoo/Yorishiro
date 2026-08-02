@@ -426,4 +426,30 @@ describe("expression intent shadow comparison", () => {
     const emptyDiffs = diffShadowAgainstSlots(expectations, [], () => true);
     expect(emptyDiffs.some((d) => d.includes("intent-only") && d.includes("neutral"))).toBe(true);
   });
+
+  it("M6 cutover後はpure harnessでbridge出力とのparityを検証できる", () => {
+    const arbiter = new ExpressionIntentArbiter();
+    const resolver = new ExpressionIntentResolver();
+    const manager = new ExpressionManager();
+    const bridge = new ExpressionIntentSlotBridge(manager, resolver);
+    arbiter.acquire({
+      owner: { producerId: "speech-brow", scopeId: "acoustic" },
+      source: "speech",
+      semantic: { role: "grounded-state", target: "Fcl_BRW_Surprised" },
+      occupancy: [{ region: "brow", lane: "affect" }],
+      salience: "grounded",
+      intensity: 0.06,
+      lifecycle: { kind: "held" },
+    });
+
+    const admitted = arbiter.getAdmitted();
+    bridge.sync(admitted);
+    expect(
+      diffShadowAgainstSlots(
+        collectShadowExpectations(admitted, resolver),
+        manager.getSlots(),
+        (slot) => slot.key !== undefined,
+      ),
+    ).toEqual([]);
+  });
 });

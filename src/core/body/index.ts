@@ -198,6 +198,12 @@ export class Body {
   };
   private readonly hasSpeechBrowExpression: boolean;
   private readonly hasSpeechEyeExpression: boolean;
+  /** speech acoustic activation は region 別 grounded intent として仲裁する。 */
+  private speechBrowIntent: ExpressionIntentHandle | null = null;
+  private speechEyeIntent: ExpressionIntentHandle | null = null;
+  /** phrase boundary blink の owner。pulse lifecycle は arbiter が回収する。 */
+  private speechBoundaryBlinkIntent: ExpressionIntentHandle | null = null;
+  private speechBoundaryBlinkCount = 0;
   private speechExpressionEnabled = true;
   /** voice_say に付随する発話粒度 mood の envelope。 */
   private readonly speechMood: SpeechMoodChannel;
@@ -711,46 +717,34 @@ export class Body {
       lipSyncSource && (lipSyncSource.isMouthActive?.() ?? true)
         ? lipSyncSource.sampleMouth(this.lipSyncMouthScratch)
         : null;
-    const lipSyncHasSignal = lipSyncMouth ? hasMouthSignal(lipSyncMouth) : false;
     const speechReflex = this.speechMicroexpression.update(
       delta,
       lipSyncMouth,
       !expressionClaimed && this.speechExpressionEnabled,
     );
-    if (speechReflex.blinkRequested) this.blinkSystem.requestBlink();
+    if (!expressionClaimed) this.updateSpeechMicroexpressionIntents(speechReflex);
 
     // 5. Gradual relaxed expression (idle 30s+ → relaxed face)
     if (!expressionClaimed) {
-      const nonIdleMoodActive = this.expressions.hasActiveNonIdleMood();
-      this.updateRelaxed(delta, nonIdleMoodActive);
-      const idleFace = this.eyeSystem.state === "idle" && !nonIdleMoodActive;
-      // idle squint episode（eyelid physiology の ambient 占有）。squint 中は
-      // auto blink slot を出さない（squint が eyelid を所有している現挙動）。
-      const squintValue = this.updateIdleSquint(delta, idleFace && !this.hasActiveExplicitBlink());
-      this.updateAutoBlink(squintValue > 0 ? 0 : blinkValue);
-      // idle 中は relaxed / squint と協調して state base (neutral) を減衰する
-      if (idleFace) {
-        this.stateExprIntents[0]?.updateIntensity(
-          Math.max(0, 1.0 - this.relaxedValue - squintValue),
-        );
-      }
+      // producer は自身の生成条件（idle state）だけを見る。persona / speech 等との
+      // overlap は intent を維持したまま Arbiter が suppress / revive する。
+      this.updateRelaxed(delta);
+      const idleFace = this.eyeSystem.state === "idle";
+      // idle squint episode（eyelid physiology の ambient 占有）。auto blinkとの
+      // overlapは両intentを維持したままphysiology precedenceが調停する。
+      this.updateIdleSquint(delta, idleFace);
+      this.updateAutoBlink(blinkValue);
 
       // 5b. Region 別 idle micro layer — brow / eye / mouth が独立 instance で並走。
       //     発話中は mouth の viseme に加え、brow / eye も発話反射層へ所有権を渡す。
-      const microBaseEnabled = !nonIdleMoodActive;
-      const speechEngaged = this.speechMicroexpression.engagement > 0;
       for (const ch of this.microChannels) {
-        const speechSuspended =
-          (ch.region === "mouth" && lipSyncHasSignal) || (ch.region !== "mouth" && speechEngaged);
-        const enabled = microBaseEnabled && !speechSuspended;
-        ch.update(delta, enabled);
+        // mouth articulation も別laneなので競合扱いしない。全regionともproducer
+        // 固有条件（idle state）のみで進め、overlapはArbiterへ委譲する。
+        ch.update(delta, idleFace);
       }
     } else {
-      this.clearIdleSquint();
-      // claim 中は全 channel を clear して内部 timer を reset しておく
-      for (const ch of this.microChannels) {
-        ch.update(delta, false);
-      }
+      // domain claim中はproducer clockを凍結し、owner/episodeを維持する。
+      // Arbiter snapshotはdomain-claimedを示し、claim解除後はtimer再sampleなしで復帰する。
     }
 
     // 5c. admitted intent を slot bridge で ExpressionManager に同期する。
@@ -761,7 +755,7 @@ export class Body {
 
     // 6. Apply expressions to VRM
     if (!expressionClaimed) {
-      this.applyExpressions(lipSyncMouth, speechReflex);
+      this.applyExpressions(lipSyncMouth);
     }
 
     // 7. Apply eye gaze to VRM
@@ -790,8 +784,34 @@ export class Body {
     this.motionScheduler.cancelAll(0);
     this.motionActivationGeneration++;
     this.animationPlayer.stopAll();
-    this.activeExprHandles.clear();
-    this.activeGazeHandles.clear();
+    for (const handle of [...this.activeExprHandles]) handle.releaseInternal();
+    for (const handle of [...this.activeGazeHandles]) handle.releaseInternal();
+    this.speechMood.dispose();
+    this.speechStateExpressionLayers.clear();
+    for (const handle of this.stateExprIntents) handle.release();
+    this.stateExprIntents = [];
+    this.clearRelaxedSlot();
+    this.clearIdleSquint();
+    this.autoBlinkIntent?.release();
+    this.autoBlinkIntent = null;
+    this.speechBrowIntent?.release();
+    this.speechBrowIntent = null;
+    this.speechEyeIntent?.release();
+    this.speechEyeIntent = null;
+    this.speechBoundaryBlinkIntent?.release();
+    this.speechBoundaryBlinkIntent = null;
+    for (const channel of this.microChannels) channel.clear();
+    this.expressionIntents.clear();
+    this.expressionIntentBridge.clear();
+
+    // 前frameにsinkへ書いたcustom morphを含め、dispose時に必ず0へ戻す。
+    const exprMgr = this.vrm.expressionManager;
+    if (exprMgr) {
+      this.expressionBatch.clear();
+      this.expressionSink.apply(this.expressionBatch, (name, weight) => {
+        exprMgr.setValue(name, weight);
+      });
+    }
   }
 
   /**
@@ -1097,10 +1117,7 @@ export class Body {
    * batch 構築と sink 書き込み、および articulation compatibility seam の
    * 合流だけを行う。
    */
-  private applyExpressions(
-    lipSyncMouth: MouthValues | null,
-    speechReflex: SpeechMicroexpressionOutput,
-  ): void {
+  private applyExpressions(lipSyncMouth: MouthValues | null): void {
     const exprMgr = this.vrm.expressionManager;
     if (!exprMgr) return;
 
@@ -1109,7 +1126,7 @@ export class Body {
     const batch = this.expressionBatch;
     this.expressions.writeResolved(batch);
 
-    this.mergeArticulationSeam(batch, lipSyncMouth, speechReflex);
+    this.mergeArticulationSeam(batch, lipSyncMouth);
 
     this.expressionSink.apply(batch, (name, weight) => {
       exprMgr.setValue(name, weight);
@@ -1123,36 +1140,79 @@ export class Body {
    *   emotion intent ではない。slot 由来の同名 viseme を上書きする（音声
    *   解析値が優先）。audio / viseme lifecycle を articulation coordinator へ
    *   移す作業は #83 の範囲外（decision doc「#83 では行わない」）。
-   * - 発話反射（音響賦活）: slot を持たず既存表情へ加算する。slot 化すると
-   *   kind 内 source priority が「persona part 指定 + 音響賦活の加算共存」を
-   *   壊すため（PR #60 の設計）、意図的にこの seam に残している。
-   *
    * expression arbiter はこの seam を suppress しない（mouth/articulation
-   * lane の予約。decision doc §3）。
+   * lane の予約。decision doc §3）。speech brow / eye activation は region別
+   * grounded intentへ移行済みで、このpost-mix seamには残さない。
    */
   private mergeArticulationSeam(
     batch: Map<string, number>,
     lipSyncMouth: MouthValues | null,
-    speechReflex: SpeechMicroexpressionOutput,
   ): void {
     if (lipSyncMouth && hasMouthSignal(lipSyncMouth)) {
       for (const k of MOUTH_KEYS) {
         batch.set(k, lipSyncMouth[k]);
       }
     }
+  }
 
-    if (this.hasSpeechBrowExpression && speechReflex.browWeight > 0) {
-      batch.set(
-        SPEECH_BROW_EXPRESSION_NAME,
-        Math.min(1, (batch.get(SPEECH_BROW_EXPRESSION_NAME) ?? 0) + speechReflex.browWeight),
-      );
+  /** speech acoustic outputをregion別intentへ同期する。visemeはarticulation seamのまま。 */
+  private updateSpeechMicroexpressionIntents(output: SpeechMicroexpressionOutput): void {
+    this.speechBrowIntent = this.updateSpeechRegionIntent(
+      this.speechBrowIntent,
+      this.hasSpeechBrowExpression ? output.browWeight : 0,
+      "speech-brow",
+      SPEECH_BROW_EXPRESSION_NAME,
+      BROW_AFFECT_OCCUPANCY,
+    );
+    this.speechEyeIntent = this.updateSpeechRegionIntent(
+      this.speechEyeIntent,
+      this.hasSpeechEyeExpression ? output.eyeWeight : 0,
+      "speech-eye",
+      SPEECH_EYE_EXPRESSION_NAME,
+      EYE_AFFECT_OCCUPANCY,
+    );
+
+    if (output.blinkRequested) {
+      this.speechBoundaryBlinkIntent = this.expressionIntents.acquire({
+        owner: {
+          producerId: "speech-boundary-blink",
+          scopeId: `boundary-${++this.speechBoundaryBlinkCount}`,
+          replacementKey: "blink",
+        },
+        source: "speech",
+        semantic: { role: "explicit-action", target: BLINK_EXPRESSION_NAME, legacyKind: "eye" },
+        occupancy: EYELID_PHYSIOLOGY_OCCUPANCY,
+        salience: "grounded",
+        intensity: 1,
+        lifecycle: { kind: "pulse", durationMs: 50, attackMs: 50, releaseMs: 85 },
+      });
     }
-    if (this.hasSpeechEyeExpression && speechReflex.eyeWeight > 0) {
-      batch.set(
-        SPEECH_EYE_EXPRESSION_NAME,
-        Math.min(1, (batch.get(SPEECH_EYE_EXPRESSION_NAME) ?? 0) + speechReflex.eyeWeight),
-      );
+  }
+
+  private updateSpeechRegionIntent(
+    current: ExpressionIntentHandle | null,
+    weight: number,
+    producerId: string,
+    target: string,
+    occupancy: ReadonlyArray<ExpressionOccupancy>,
+  ): ExpressionIntentHandle | null {
+    if (weight <= 0) {
+      current?.release();
+      return null;
     }
+    if (current !== null) {
+      current.updateIntensity(weight);
+      return current;
+    }
+    return this.expressionIntents.acquire({
+      owner: { producerId, scopeId: "acoustic", replacementKey: "activation" },
+      source: "speech",
+      semantic: { role: "grounded-state", target },
+      occupancy,
+      salience: "grounded",
+      intensity: weight,
+      lifecycle: { kind: "held" },
+    });
   }
 
   private applyGaze(): void {
@@ -1285,8 +1345,7 @@ export class Body {
 
   /**
    * 自律 blink を intent として管理する（#83 M5 で EyelidExpressionController
-   * から移管）。squint episode 中は caller が 0 を渡して blink を出さない。
-   * explicit blink（mcp / persona / system の eyelid action）との調停は
+   * から移管）。squint / auto blink / explicit blink の調停は
    * physiology precedence（policy table）が行う。
    */
   private updateAutoBlink(value: number): void {
@@ -1311,8 +1370,8 @@ export class Body {
   }
 
   /** Gradual relaxed expression after idle threshold. */
-  private updateRelaxed(delta: number, nonIdleMoodActive: boolean): void {
-    if (this.eyeSystem.state !== "idle" || nonIdleMoodActive) {
+  private updateRelaxed(delta: number): void {
+    if (this.eyeSystem.state !== "idle") {
       this.idleElapsedTime = 0;
       this.relaxedValue = 0;
       this.clearRelaxedSlot();
@@ -1354,13 +1413,6 @@ export class Body {
       this.relaxedIntent = null;
     }
   }
-
-  private hasActiveExplicitBlink(): boolean {
-    for (const handle of this.activeExprHandles) {
-      if (handle.expressionName === BLINK_EXPRESSION_NAME) return true;
-    }
-    return false;
-  }
 }
 
 // ─── Idle micro channel ─────────────────────────────────
@@ -1388,6 +1440,12 @@ class MicroChannel {
 
   update(delta: number, enabled: boolean): void {
     this.flush(this.system.writeUpdate(delta, enabled, this.eventScratch));
+  }
+
+  clear(): void {
+    this.intent?.release();
+    this.intent = null;
+    this.intentMorph = null;
   }
 
   /**

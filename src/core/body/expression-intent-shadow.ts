@@ -1,13 +1,14 @@
 /**
  * Expression intent shadow comparison（#83 M2）。
  *
- * 移行対象 producer を intent として並行登録（shadow）し、intent 経路が
+ * M2移行時に対象 producer を intent として並行登録（shadow）し、intent 経路が
  * 予測する contribution と legacy slot の実際を突き合わせて差分を debug log
  * に出すための純関数群。shadow 中は intent 側から VRM を駆動せず、
  * ExpressionManager に slot も作らない（二重 mixer を作らない）。
  *
- * debug 専用のため allocation は許容する。呼び出し側（Body）が devLog の
- * 有無と間引きで実行頻度を制御する。
+ * M6 cutover後はlegacy producerが残らないためruntimeには接続しない。これは
+ * migration/parity test harnessとして保持し、productionで二重owner・二重slotを
+ * 作らない。再移行時にのみdev harnessから明示的に呼ぶ。
  */
 
 import type { AdmittedExpressionIntent } from "./expression-intent";

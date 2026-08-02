@@ -310,6 +310,26 @@ export class ExpressionIntentArbiter {
     return count;
   }
 
+  /**
+   * 全 owner を即時失効させる。Body.dispose() 専用。
+   * record を expired にしてから map を空にするため、外部に残った古い handle の
+   * update / release closure も以後 no-op になる。
+   */
+  clear(): void {
+    for (const record of this.records.values()) {
+      record.expired = true;
+      record.admitted = false;
+      record.envelope = 0;
+      record.reason = "released";
+    }
+    this.records.clear();
+    this.replacementIndex.clear();
+    this.candidateScratch.length = 0;
+    this.admittedScratch.length = 0;
+    this.domainClaimed = false;
+    this.admissionDirty = true;
+  }
+
   // ─── internal ─────────────────────────────────────────
 
   private replacementKeyOf(intent: { readonly owner: ExpressionIntent["owner"] }): string | null {

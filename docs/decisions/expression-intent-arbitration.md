@@ -283,6 +283,9 @@ manager slot snapshot を `intentId` で join し、`budget-scaled` を説明す
 - `ExpressionIntentSlotBridge` を `ExpressionManager` に接続する
 - selected producer を intent として shadow 登録し、legacy slot / gate の結果との差を debug log へ出す
 - shadow 中は intent 側から VRM を駆動せず、二重 slot / 二重 mixer を作らない
+- M6 cutover 後は比較対象の legacy producer が存在しないため runtime shadow は外す。
+  pure comparison harness と parity test は将来の段階移行用に残し、production で
+  legacy owner / intent owner を二重登録しない
 
 ### M3 — ambient / state producer を先に移す
 
@@ -317,6 +320,8 @@ Agent State resolver / scheduler と motion gesture lane は変更しない。
   output の sink orchestrationへ縮める。既存 lip-sync merge は named articulation compatibility seam として隔離し、
   #83 で audio / viseme lifecycle を移さない
 - manager の compatibility source arbitration を残す必要があるか、shadow diff と test を根拠に判断する
+- M2 の shadow は移行時検証であり、M6 完了後の常設 runtime 機能ではない。常設すると
+  legacy producer の復活か二重 owner が必要になるため、cutover 後は pure harness のみ保持する
 - reason 付き snapshot を debug / `state.get` へ公開する
 
 M6 完了が #83 の expression scope の完了条件である。motion / lip-sync coordinator はここへ含めない。
