@@ -479,6 +479,19 @@ describe("ExpressionIntentArbiter lifecycle clock", () => {
     expect(entryOf(arbiter, handle.intentId).phase).toBe("expired");
   });
 
+  it("handleのisAliveでsnapshotを作らずpulse lifecycleを観察できる", () => {
+    const arbiter = new ExpressionIntentArbiter();
+    const handle = arbiter.acquire(
+      request({ lifecycle: { kind: "pulse", durationMs: 100, releaseMs: 100 } }),
+    );
+
+    expect(handle.isAlive).toBe(true);
+    arbiter.update(0.1);
+    expect(handle.isAlive).toBe(true);
+    arbiter.update(0.1);
+    expect(handle.isAlive).toBe(false);
+  });
+
   it("suppressed の間も envelope clock は進む（復帰時に到達済みの値で出る）", () => {
     const arbiter = new ExpressionIntentArbiter();
     const idle = arbiter.acquire(

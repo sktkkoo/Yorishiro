@@ -759,7 +759,8 @@ export class Body {
       const idleFace = this.eyeSystem.state === "idle";
       // idle squint episode（eyelid physiology の ambient 占有）。auto blinkとの
       // overlapは両intentを維持したままphysiology precedenceが調停する。
-      this.updateIdleSquint(delta, idleFace);
+      const squintValue = this.updateIdleSquint(delta, idleFace);
+      this.updateIdleNeutralWeight(squintValue);
       this.updateAutoBlink(blinkValue);
 
       // 5b. Region 別 idle micro layer — brow / eye / mouth が独立 instance で並走。
@@ -1206,7 +1207,9 @@ export class Body {
           replacementKey: "blink",
         },
         source: "speech",
-        semantic: { role: "explicit-action", target: BLINK_EXPRESSION_NAME, legacyKind: "eye" },
+        // Phrase boundary は ordinary blink と同格の生理 baseline。persona / MCP の
+        // 明示 blink には譲り、startle safety-reflex だけが全 blink より優先する。
+        semantic: { role: "baseline", target: BLINK_EXPRESSION_NAME, legacyKind: "eye" },
         occupancy: EYELID_PHYSIOLOGY_OCCUPANCY,
         salience: "grounded",
         intensity: 1,
@@ -1229,18 +1232,12 @@ export class Body {
 
   private updateSpeechBoundaryBlinkSuppression(): void {
     if (this.speechBoundaryBlinkSuppressionToken === null) return;
-    const boundaryId = this.speechBoundaryBlinkIntent?.intentId;
-    const boundary = boundaryId
-      ? this.expressionIntents
-          .getSnapshot()
-          .intents.find((intent) => intent.intentId === boundaryId)
-      : undefined;
     // Pulse のrelease envelopeが完全に終わるまでstate machineを止める。
     // 固定timerにすると大きなframe deltaでrelease開始とordinary再開が同frameに
-    // 重なるため、Arbiter lifecycleをSOTとして追う。
-    if (!boundary || boundary.phase === "expired") {
-      this.clearSpeechBoundaryBlinkSuppression();
-    }
+    // 重なるため、handle の allocation-free lifecycle view をSOTとして追う。
+    if (this.speechBoundaryBlinkIntent?.isAlive) return;
+    this.speechBoundaryBlinkIntent = null;
+    this.clearSpeechBoundaryBlinkSuppression();
   }
 
   private clearSpeechBoundaryBlinkSuppression(): void {
@@ -1428,6 +1425,17 @@ export class Body {
       this.autoBlinkIntent.release();
       this.autoBlinkIntent = null;
     }
+  }
+
+  /**
+   * 旧 EyelidExpressionController の配分を維持する。neutral と relaxed / squint
+   * の要求値合計を 1 に保ち、ExpressionManager の global budget 正規化で部分表情が
+   * 相対的に弱まらないようにする。
+   */
+  private updateIdleNeutralWeight(extraEyeWeight: number): void {
+    if (this.eyeSystem.state !== "idle") return;
+    const neutral = this.stateExprIntents[0];
+    neutral?.updateIntensity(Math.max(0, 1 - this.relaxedValue - extraEyeWeight));
   }
 
   /** Gradual relaxed expression after idle threshold. */

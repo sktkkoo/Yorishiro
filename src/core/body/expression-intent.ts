@@ -180,6 +180,11 @@ export interface AdmittedExpressionIntent {
 /** Producer が受け取る owner-scoped handle。 */
 export interface ExpressionIntentHandle {
   readonly intentId: string;
+  /**
+   * release envelope を含め、record が lifecycle 上まだ生存しているか。
+   * hot path から snapshot を生成せず pulse 完了を確認するための allocation-free view。
+   */
+  readonly isAlive: boolean;
   /** requested intensity を更新する。stale handle からの呼び出しは無視される。 */
   updateIntensity(intensity: number): void;
   /** release envelope を開始する。stale handle からの呼び出しは無視される。 */

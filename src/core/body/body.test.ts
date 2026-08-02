@@ -482,7 +482,7 @@ describe("Body speech microexpression wiring", () => {
       .getExpressionIntentSnapshot()
       .intents.find((i) => i.owner.producerId === "speech-boundary-blink");
     expect(boundary?.occupancy).toEqual([{ region: "eyelid", lane: "physiology" }]);
-    expect(boundary?.semantic.role).toBe("explicit-action");
+    expect(boundary?.semantic.role).toBe("baseline");
     expect(boundary?.phase).toMatch(/^(active|blended)$/);
     expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
 
@@ -490,6 +490,41 @@ describe("Body speech microexpression wiring", () => {
     expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
     body.update(0.09, 0.34);
     expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(false);
+  });
+
+  it("speech-boundary blinkは明示blinkへ譲り、startle safety-reflexだけが最優先になる", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const explicit = body.acquireExpressionSlot("persona", "eye", "blink", 0.8);
+    const source = speechSource(0.8);
+    body.setLipSyncSource(source);
+    body.setSpeechExpressionParams({ gapThresholdMs: 100, blinkProbability: 1 });
+    body.update(0.1, 0);
+    source.sampleMouth.mockReturnValue({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+
+    body.update(0.11, 0.11);
+
+    let snapshot = body.getExpressionIntentSnapshot();
+    const explicitEntry = snapshot.intents.find((i) => i.owner.producerId === "legacy-persona");
+    expect(explicitEntry?.phase).toBe("active");
+    expect(
+      snapshot.intents.find((i) => i.owner.producerId === "speech-boundary-blink"),
+    ).toMatchObject({
+      semantic: { role: "baseline" },
+      phase: "suppressed",
+      suppressedBy: explicitEntry?.intentId,
+    });
+
+    body.notifyStartle();
+    snapshot = body.getExpressionIntentSnapshot();
+    const startle = snapshot.intents.find((i) => i.owner.producerId === "startle-blink");
+    expect(startle?.phase).toBe("active");
+    expect(snapshot.intents.find((i) => i.owner.producerId === "legacy-persona")).toMatchObject({
+      phase: "suppressed",
+      suppressedBy: startle?.intentId,
+    });
+
+    explicit.release();
   });
 });
 
@@ -909,6 +944,27 @@ describe("Body idle relaxed wiring", () => {
     expect(neutral).toBeDefined();
     expect(relaxed).toBeDefined();
     expect(relaxed?.requestedWeight).toBeGreaterThan(0);
+  });
+
+  it("idle neutralとrelaxedは旧配分 neutral=1-relaxed を維持する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
+    const suppressionToken = blinkSystem.suppress();
+
+    // 1 frameでrelaxed上限まで進める。squintはepisode開始frameではまだ0。
+    // 長いdeltaでordinary blinkが同時発火してglobal budgetへ混ざらないよう、
+    // この配分テスト中だけblink state machineを停止する。
+    body.update(34, 0);
+
+    const slots = idleSlots(body);
+    const neutral = slots.find((s) => s.kind === "mood" && s.expressionName === "neutral");
+    const relaxed = slots.find((s) => s.kind === "custom" && s.expressionName === "relaxed");
+    expect(neutral?.requestedWeight).toBeCloseTo(0.6);
+    expect(relaxed?.requestedWeight).toBeCloseTo(0.4);
+    expect(neutral?.effectiveWeight).toBeCloseTo(0.6);
+    expect(relaxed?.effectiveWeight).toBeCloseTo(0.4);
+    blinkSystem.resume(suppressionToken);
   });
 
   it("non-idle mood中もrelaxed timer/intentを維持しrelease直後に復帰する", () => {
@@ -2004,7 +2060,7 @@ describe("Body idle squint wiring", () => {
     return body.getExpressionSlots().find((s) => s.source === "idle" && s.kind === "eye");
   }
 
-  it("idle squint は blink intentとして立ち、global budgetでneutralと合成しauto blinkを止める", () => {
+  it("idle squint は旧配分 neutral=1-squint を維持しauto blinkを止める", () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());
     injectDeterministicSquint(body);
@@ -2017,9 +2073,9 @@ describe("Body idle squint wiring", () => {
     expect(squintSlot?.expressionName).toBe("blink");
     expect(squintSlot?.requestedWeight).toBeCloseTo(0.1);
     const neutral = body.getExpressionSlots().find((s) => s.source === "idle" && s.kind === "mood");
-    expect(neutral?.requestedWeight).toBeCloseTo(1);
-    expect(neutral?.effectiveWeight).toBeCloseTo(1 / 1.1);
-    expect(squintSlot?.effectiveWeight).toBeCloseTo(0.1 / 1.1);
+    expect(neutral?.requestedWeight).toBeCloseTo(0.9);
+    expect(neutral?.effectiveWeight).toBeCloseTo(0.9);
+    expect(squintSlot?.effectiveWeight).toBeCloseTo(0.1);
     expect(blinkSystem.isSuppressed).toBe(true);
   });
 

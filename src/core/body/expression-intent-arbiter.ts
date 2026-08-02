@@ -85,6 +85,7 @@ interface ReplacementEntry {
 /** stale acquire（古い generation の再取得）に返す不活性 handle。 */
 const INERT_HANDLE: ExpressionIntentHandle = {
   intentId: "stale",
+  isAlive: false,
   updateIntensity: () => {},
   release: () => {},
 };
@@ -172,6 +173,9 @@ export class ExpressionIntentArbiter {
 
     return {
       intentId,
+      get isAlive() {
+        return !record.expired;
+      },
       updateIntensity: (intensity: number) => {
         if (record.expired) return;
         record.intensity = intensity;
