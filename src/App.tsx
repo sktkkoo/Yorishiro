@@ -3707,7 +3707,7 @@ function App() {
         startupContextIncluded,
       });
       // Prompt contents are intentionally absent from both note and structured diagnostics.
-      console.info("[codex-realtime] GPT Live persona application", {
+      console.info("[codex-realtime] GPT Live persona delivery", {
         personaId,
         status,
         appServerVersion,
@@ -3717,7 +3717,7 @@ function App() {
       devLog.write({
         subsystem: "Voice",
         phase: "realtime-persona",
-        note: `GPT Live persona application ${status} (persona=${personaId ?? "none"})`,
+        note: `GPT Live persona delivery ${status} (persona=${personaId ?? "none"})`,
         data: { personaId, status, appServerVersion, delivery, startupContextIncluded },
       });
     },

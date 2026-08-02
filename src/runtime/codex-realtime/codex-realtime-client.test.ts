@@ -301,7 +301,7 @@ describe("CodexRealtimeClient", () => {
     expect(diagnostics).toEqual([
       {
         personaId: "bundled-yori",
-        status: "applied",
+        status: "accepted",
         appServerVersion: "0.146.0",
         delivery: "initial-items",
         startupContextIncluded: true,
@@ -316,6 +316,7 @@ describe("CodexRealtimeClient", () => {
     const client = new CodexRealtimeClient("main-session", undefined, {
       getPersonaSnapshot: () => ({ personaId: "yori-ja", instructions: "I am Yori" }),
       personaPromptMode: "replace",
+      includeStartupContext: false,
       onPersonaApplication: (application) => diagnostics.push(application),
     });
 
@@ -324,10 +325,11 @@ describe("CodexRealtimeClient", () => {
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params?.prompt).toBe("I am Yori");
     expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params?.includeStartupContext).toBe(true);
     expect(diagnostics).toEqual([
       {
         personaId: "yori-ja",
-        status: "applied",
+        status: "accepted",
         appServerVersion: "0.146.0",
         delivery: "prompt-replacement",
         startupContextIncluded: true,
@@ -398,6 +400,7 @@ describe("CodexRealtimeClient", () => {
     const diagnostics: CodexRealtimePersonaApplication[] = [];
     const client = new CodexRealtimeClient("main-session", undefined, {
       getPersonaSnapshot: () => snapshot,
+      includeStartupContext: false,
       onPersonaApplication: (application) => diagnostics.push(application),
     });
 
@@ -405,6 +408,7 @@ describe("CodexRealtimeClient", () => {
 
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params?.includeStartupContext).toBe(true);
     expect(diagnostics[0]?.status).toBe(status);
     client.stop();
   });
@@ -414,14 +418,15 @@ describe("CodexRealtimeClient", () => {
     const diagnostics: CodexRealtimePersonaApplication[] = [];
     const client = new CodexRealtimeClient("main-session", undefined, {
       getPersonaSnapshot: () => ({ personaId: "yori", instructions: "persona prompt" }),
+      includeStartupContext: false,
       onPersonaApplication: (application) => diagnostics.push(application),
     });
 
     await client.start();
 
-    expect(
-      bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
-    ).not.toHaveProperty("initialItems");
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params?.includeStartupContext).toBe(true);
     expect(diagnostics).toEqual([
       { personaId: "yori", status: "unsupported", appServerVersion: "0.145.0" },
     ]);
@@ -434,12 +439,15 @@ describe("CodexRealtimeClient", () => {
       getPersonaSnapshot: () => {
         throw new Error("sensitive persona contents");
       },
+      includeStartupContext: false,
       onPersonaApplication: (application) => diagnostics.push(application),
     });
 
     await client.start();
 
     expect(client.getStatus()).toBe("active");
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.includeStartupContext).toBe(true);
     expect(diagnostics).toEqual([
       { personaId: null, status: "load-failed", appServerVersion: "0.146.0" },
     ]);

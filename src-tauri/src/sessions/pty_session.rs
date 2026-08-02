@@ -275,6 +275,33 @@ fn codex_version_at_least(version: &str, minimum: [u64; 3]) -> bool {
     values.len() == 3 && [values[0], values[1], values[2]] >= minimum
 }
 
+const CODEX_VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn read_child_stdout_with_timeout(mut child: Child, timeout: Duration) -> Option<String> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                if !status.success() {
+                    return None;
+                }
+                let mut bytes = Vec::new();
+                child.stdout.take()?.read_to_end(&mut bytes).ok()?;
+                return String::from_utf8(bytes).ok();
+            }
+            Ok(None) if Instant::now() < deadline => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(None) | Err(_) => {
+                // Capability detection is advisory. A broken shim must not block session spawn.
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
+}
+
 fn detect_codex_realtime_capabilities(
     binary: &str,
     cwd: Option<&str>,
@@ -289,10 +316,9 @@ fn detect_codex_realtime_capabilities(
         command.current_dir(dir);
     }
     let app_server_version = command
-        .output()
+        .spawn()
         .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .and_then(|child| read_child_stdout_with_timeout(child, CODEX_VERSION_PROBE_TIMEOUT))
         .and_then(|output| parse_codex_cli_version(&output));
     let persona_initial_items = app_server_version
         .as_deref()
@@ -804,7 +830,9 @@ impl PtySession {
 
 #[cfg(test)]
 mod codex_realtime_capability_tests {
-    use super::{codex_version_at_least, parse_codex_cli_version};
+    use super::{codex_version_at_least, parse_codex_cli_version, read_child_stdout_with_timeout};
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
 
     #[test]
     fn parses_codex_cli_version_output() {
@@ -821,6 +849,24 @@ mod codex_realtime_capability_tests {
         assert!(codex_version_at_least("0.146.0", [0, 146, 0]));
         assert!(codex_version_at_least("0.147.0", [0, 146, 0]));
         assert!(!codex_version_at_least("invalid", [0, 146, 0]));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bounds_a_stalled_codex_version_probe() {
+        let mut command = Command::new("/bin/sh");
+        command
+            .args(["-c", "while :; do :; done"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        let child = command.spawn().expect("spawn stalled probe");
+        let started = Instant::now();
+
+        assert_eq!(
+            read_child_stdout_with_timeout(child, Duration::from_millis(25)),
+            None
+        );
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 }
 

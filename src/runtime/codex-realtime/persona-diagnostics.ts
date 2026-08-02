@@ -12,7 +12,7 @@ export interface CodexRealtimePersonaDiagnosticRecord
 }
 
 export const CODEX_REALTIME_PERSONA_DIAGNOSTICS_KEY =
-  "yorishiro.codex-realtime.persona-diagnostics.v1";
+  "yorishiro.codex-realtime.persona-diagnostics.v2";
 const MAX_RECORDS = 12;
 
 export function appendCodexRealtimePersonaDiagnostic(
@@ -32,7 +32,7 @@ export function appendCodexRealtimePersonaDiagnostic(
       status: application.status,
       appServerVersion: application.appServerVersion,
       initialItemsSent:
-        application.status === "applied" && application.delivery === "initial-items",
+        application.status === "accepted" && application.delivery === "initial-items",
       sessionActive: true,
       delivery: application.delivery ?? "none",
       startupContextIncluded: application.startupContextIncluded ?? null,

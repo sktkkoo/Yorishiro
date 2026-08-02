@@ -42,7 +42,7 @@ export interface CodexRealtimePersonaSnapshot {
 }
 
 export type CodexRealtimePersonaApplicationStatus =
-  | "applied"
+  | "accepted"
   | "skipped-no-persona"
   | "skipped-empty"
   | "unsupported"
@@ -80,7 +80,10 @@ export interface CodexRealtimeClientOptions {
   readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
   /** Explicit comparison experiment. `replace` removes the configured Realtime backend prompt. */
   readonly personaPromptMode?: "supplemental" | "replace";
-  /** Experimental comparison. False omits Codex startup context without replacing its prompt. */
+  /**
+   * Experimental comparison. False omits Codex startup context only when a supplemental
+   * developer initial item can actually be included. Fallback sessions retain startup context.
+   */
   readonly includeStartupContext?: boolean;
 }
 
@@ -257,6 +260,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         attempt,
         personaApplication.initialItems,
         personaApplication.prompt,
+        personaApplication.startupContextIncluded,
       );
       this.assertAttemptOwner(attempt);
       this.setState({ status: "active", billing });
@@ -403,6 +407,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   }): Promise<{
     readonly initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>;
     readonly prompt?: string;
+    readonly startupContextIncluded: boolean;
     readonly diagnostic: CodexRealtimePersonaApplication;
   }> {
     let snapshot: CodexRealtimePersonaSnapshot;
@@ -412,6 +417,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         : { personaId: null, instructions: null };
     } catch {
       return {
+        startupContextIncluded: true,
         diagnostic: {
           personaId: null,
           status: "load-failed",
@@ -423,6 +429,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const personaId = normalizePersonaId(snapshot.personaId);
     if (!personaId) {
       return {
+        startupContextIncluded: true,
         diagnostic: {
           personaId: null,
           status: "skipped-no-persona",
@@ -433,6 +440,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     const instructions = snapshot.instructions?.trim() ?? "";
     if (!instructions) {
       return {
+        startupContextIncluded: true,
         diagnostic: {
           personaId,
           status: "skipped-empty",
@@ -442,6 +450,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
     if (!capabilities.personaInitialItems) {
       return {
+        startupContextIncluded: true,
         diagnostic: {
           personaId,
           status: "unsupported",
@@ -452,12 +461,14 @@ export class CodexRealtimeClient implements LipSyncSource {
     if (this.personaPromptMode === "replace") {
       return {
         prompt: instructions,
+        // Prompt replacement does not use the supplemental developer-item experiment.
+        startupContextIncluded: true,
         diagnostic: {
           personaId,
-          status: "applied",
+          status: "accepted",
           appServerVersion: capabilities.appServerVersion,
           delivery: "prompt-replacement",
-          startupContextIncluded: this.includeStartupContext,
+          startupContextIncluded: true,
         },
       };
     }
@@ -465,9 +476,10 @@ export class CodexRealtimeClient implements LipSyncSource {
       // A developer initial item supplements the backend prompt. Do not use the realtime `prompt`
       // field here: setting it would replace Codex's configured realtime backend instructions.
       initialItems: [{ role: "developer", text: instructions }],
+      startupContextIncluded: this.includeStartupContext,
       diagnostic: {
         personaId,
-        status: "applied",
+        status: "accepted",
         appServerVersion: capabilities.appServerVersion,
         delivery: "initial-items",
         startupContextIncluded: this.includeStartupContext,
@@ -480,6 +492,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     attempt: number,
     initialItems?: ReadonlyArray<{ readonly role: "developer"; readonly text: string }>,
     prompt?: string,
+    startupContextIncluded = true,
   ): Promise<void> {
     this.assertAttemptOwner(attempt);
     const peer = new RTCPeerConnection();
@@ -551,7 +564,7 @@ export class CodexRealtimeClient implements LipSyncSource {
           outputModality: "audio",
           version: "v3",
           voice,
-          includeStartupContext: this.includeStartupContext,
+          includeStartupContext: startupContextIncluded,
           ...(initialItems ? { initialItems } : {}),
           ...(prompt ? { prompt } : {}),
           transport: { type: "webrtc", sdp },

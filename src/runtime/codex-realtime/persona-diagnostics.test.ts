@@ -14,7 +14,7 @@ describe("GPT Live persona diagnostics", () => {
     appendCodexRealtimePersonaDiagnostic(
       {
         personaId: "yori-ja",
-        status: "applied",
+        status: "accepted",
         appServerVersion: "0.146.0",
         delivery: "initial-items",
       },
@@ -26,7 +26,7 @@ describe("GPT Live persona diagnostics", () => {
       {
         timestamp: "2026-08-02T12:00:00.000Z",
         personaId: "yori-ja",
-        status: "applied",
+        status: "accepted",
         appServerVersion: "0.146.0",
         initialItemsSent: true,
         sessionActive: true,
@@ -60,7 +60,7 @@ describe("GPT Live persona diagnostics", () => {
   it("does not claim initial items were sent during prompt replacement", () => {
     appendCodexRealtimePersonaDiagnostic({
       personaId: "yori-ja",
-      status: "applied",
+      status: "accepted",
       appServerVersion: "0.146.0",
       delivery: "prompt-replacement",
     });
