@@ -83,6 +83,9 @@ export default function TitleBar({
             ) : (
               <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
             )}
+            {voiceState === "active" ? (
+              <span className="title-bar-voice-status-dot" aria-hidden="true" />
+            ) : null}
           </button>
         ) : null}
         {voiceAvailable && voiceBillingLabel ? (

@@ -145,10 +145,27 @@ body,
  * （tab-indicator の失敗と同系）と隣接テキストで区別する。
  */
 .title-bar-voice-button[data-voice-state="active"] {
-  color: color-mix(in srgb, var(--yorishiro-accent) 78%, white);
+  position: relative;
+  color: color-mix(in srgb, var(--yorishiro-accent) 60%, white);
 }
 
-.title-bar-voice-button[data-voice-state="active"] svg,
+.title-bar-voice-button[data-voice-state="active"] svg {
+  opacity: 1;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--yorishiro-accent) 55%, transparent));
+}
+
+.title-bar-voice-status-dot {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 4px color-mix(in srgb, var(--yorishiro-accent) 70%, transparent);
+  pointer-events: none;
+}
+
 .title-bar-voice-button[data-voice-state="error"] svg {
   opacity: 1;
 }

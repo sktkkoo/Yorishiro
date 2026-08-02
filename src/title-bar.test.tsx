@@ -148,6 +148,7 @@ describe("TitleBar", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.querySelector(".lucide-mic")).toBeTruthy();
     expect(button.querySelector(".lucide-mic-off")).toBeNull();
+    expect(button.querySelector(".title-bar-voice-status-dot")).toBeTruthy();
   });
 
   it("exposes the error state for retry with an alert message", () => {
