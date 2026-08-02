@@ -136,6 +136,10 @@ const GLANCE_HEAD_RECRUITMENT_MIN = 0.08;
 const STARTLE_COOLDOWN_S = 10;
 // Startle 時の息止め時間
 const STARTLE_BREATH_HOLD_S = 0.5;
+const EYELID_REFLEX_ATTACK_MS = 50;
+const EYELID_REFLEX_RELEASE_MS = 85;
+const SPEECH_BOUNDARY_BLINK_DURATION_MS = 50;
+const STARTLE_BLINK_DURATION_MS = 50;
 
 // State-dependent expression targets (ported from old vrmExpressions.ts)
 const STATE_EXPRESSIONS: Record<EyeState, ReadonlyArray<[string, number]>> = {
@@ -204,6 +208,10 @@ export class Body {
   /** phrase boundary blink の owner。pulse lifecycle は arbiter が回収する。 */
   private speechBoundaryBlinkIntent: ExpressionIntentHandle | null = null;
   private speechBoundaryBlinkCount = 0;
+  /** phrase boundary blink 中に ordinary BlinkSystem を停止する token。 */
+  private speechBoundaryBlinkSuppressionToken: number | null = null;
+  /** startle safety pulse の scope 連番。ordinary auto blink とは別 owner。 */
+  private startleBlinkCount = 0;
   private speechExpressionEnabled = true;
   /** voice_say に付随する発話粒度 mood の envelope。 */
   private readonly speechMood: SpeechMoodChannel;
@@ -581,7 +589,25 @@ export class Body {
   notifyStartle(): void {
     if (this.timeSinceStartle < STARTLE_COOLDOWN_S) return;
     this.timeSinceStartle = 0;
-    this.blinkSystem.requestBlink();
+    this.expressionIntents.acquire({
+      owner: {
+        producerId: "startle-blink",
+        scopeId: `startle-${++this.startleBlinkCount}`,
+        replacementKey: "blink",
+      },
+      source: "reflex",
+      semantic: { role: "safety-reflex", target: BLINK_EXPRESSION_NAME, legacyKind: "eye" },
+      occupancy: EYELID_PHYSIOLOGY_OCCUPANCY,
+      salience: "reflex",
+      intensity: 1,
+      lifecycle: {
+        kind: "pulse",
+        durationMs: STARTLE_BLINK_DURATION_MS,
+        attackMs: EYELID_REFLEX_ATTACK_MS,
+        releaseMs: EYELID_REFLEX_RELEASE_MS,
+      },
+    });
+    this.syncExpressionIntents();
     if (this.claimState.isClaimed("animation")) return;
     this.breathing.hold(STARTLE_BREATH_HOLD_S);
     this.proceduralBones.flinchHead();
@@ -636,6 +662,7 @@ export class Body {
     // #83: expression claim は arbiter の context input（domain-claimed reason）
     this.expressionIntents.setDomainClaimed(expressionClaimed);
     this.expressionIntents.update(delta);
+    this.updateSpeechBoundaryBlinkSuppression();
     this.speechMood.update(delta);
     // speech mood envelope の intensity 変化を、後段の gate 判定
     // （hasActiveNonIdleMood 等）が同 frame で見えるよう即時反映する。
@@ -800,6 +827,7 @@ export class Body {
     this.speechEyeIntent = null;
     this.speechBoundaryBlinkIntent?.release();
     this.speechBoundaryBlinkIntent = null;
+    this.clearSpeechBoundaryBlinkSuppression();
     for (const channel of this.microChannels) channel.clear();
     this.expressionIntents.clear();
     this.expressionIntentBridge.clear();
@@ -973,15 +1001,12 @@ export class Body {
     });
     this.syncExpressionIntents();
 
-    // ordinary auto-blink の抑止：explicit（mcp / persona / system）の blink は
-    // arbiter の physiology precedence（explicit-action > baseline reflex）が
-    // auto blink intent を suppress する。reflex source での blink 直接 acquire
-    // だけは auto blink と同 precedence（blend になってしまう）ため、legacy
-    // 同様 BlinkSystem を suppression token で止める。
+    // ordinary auto-blink の state machine を explicit blink の間 pause/resetする。
+    // Arbiter の precedence だけで出力を隠すと、裏で進んだ途中値が release 直後に
+    // 現れるため、source を問わず direct blink owner ごとに token を保持する。
+    // startle はこの経路を通らない独立 safety-reflex pulse なので影響を受けない。
     const blinkSuppressionToken =
-      expressionName === BLINK_EXPRESSION_NAME && source === "reflex"
-        ? this.blinkSystem.suppress()
-        : null;
+      expressionName === BLINK_EXPRESSION_NAME ? this.blinkSystem.suppress() : null;
 
     const handle = new BodyExpressionHandle(
       target,
@@ -1173,6 +1198,7 @@ export class Body {
     );
 
     if (output.blinkRequested) {
+      this.beginSpeechBoundaryBlinkSuppression();
       this.speechBoundaryBlinkIntent = this.expressionIntents.acquire({
         owner: {
           producerId: "speech-boundary-blink",
@@ -1184,8 +1210,43 @@ export class Body {
         occupancy: EYELID_PHYSIOLOGY_OCCUPANCY,
         salience: "grounded",
         intensity: 1,
-        lifecycle: { kind: "pulse", durationMs: 50, attackMs: 50, releaseMs: 85 },
+        lifecycle: {
+          kind: "pulse",
+          durationMs: SPEECH_BOUNDARY_BLINK_DURATION_MS,
+          attackMs: EYELID_REFLEX_ATTACK_MS,
+          releaseMs: EYELID_REFLEX_RELEASE_MS,
+        },
       });
+    }
+  }
+
+  /** speech-boundary pulse の可視期間だけ ordinary auto blink をpause/resetする。 */
+  private beginSpeechBoundaryBlinkSuppression(): void {
+    if (this.speechBoundaryBlinkSuppressionToken === null) {
+      this.speechBoundaryBlinkSuppressionToken = this.blinkSystem.suppress();
+    }
+  }
+
+  private updateSpeechBoundaryBlinkSuppression(): void {
+    if (this.speechBoundaryBlinkSuppressionToken === null) return;
+    const boundaryId = this.speechBoundaryBlinkIntent?.intentId;
+    const boundary = boundaryId
+      ? this.expressionIntents
+          .getSnapshot()
+          .intents.find((intent) => intent.intentId === boundaryId)
+      : undefined;
+    // Pulse のrelease envelopeが完全に終わるまでstate machineを止める。
+    // 固定timerにすると大きなframe deltaでrelease開始とordinary再開が同frameに
+    // 重なるため、Arbiter lifecycleをSOTとして追う。
+    if (!boundary || boundary.phase === "expired") {
+      this.clearSpeechBoundaryBlinkSuppression();
+    }
+  }
+
+  private clearSpeechBoundaryBlinkSuppression(): void {
+    if (this.speechBoundaryBlinkSuppressionToken !== null) {
+      this.blinkSystem.resume(this.speechBoundaryBlinkSuppressionToken);
+      this.speechBoundaryBlinkSuppressionToken = null;
     }
   }
 

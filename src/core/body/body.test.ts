@@ -484,6 +484,12 @@ describe("Body speech microexpression wiring", () => {
     expect(boundary?.occupancy).toEqual([{ region: "eyelid", lane: "physiology" }]);
     expect(boundary?.semantic.role).toBe("explicit-action");
     expect(boundary?.phase).toMatch(/^(active|blended)$/);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
+
+    body.update(0.14, 0.25);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
+    body.update(0.09, 0.34);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(false);
   });
 });
 
@@ -765,6 +771,40 @@ describe("Body speech mood wiring", () => {
 // ため token を維持する（下のテスト）。
 
 describe("Body explicit blink wiring", () => {
+  it.each([
+    { phase: "closing", steps: [2.49, 0.02] },
+    { phase: "opening", steps: [2.49, 0.05, 0.02] },
+  ])("$phase途中でexplicit blinkを取得・releaseしてもordinary blinkの途中値を露出しない", ({
+    steps,
+  }) => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    const setValue = vi.spyOn(manager, "setValue");
+    const body = new Body(vrm, undefined, mockClaimState());
+    const deterministicBlink = new BlinkSystem(() => 0);
+    (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem = deterministicBlink;
+    let elapsed = 0;
+    for (const step of steps) {
+      elapsed += step;
+      body.update(step, elapsed);
+    }
+    expect(deterministicBlink.value).toBeGreaterThan(0);
+
+    const handle = body.acquireExpressionSlot("persona", "eye", "blink", 0.8);
+    expect(deterministicBlink.value).toBe(0);
+    elapsed += 0.01;
+    body.update(0.01, elapsed);
+    setValue.mockClear();
+    handle.release();
+    body.update(0.01, elapsed + 0.01);
+
+    const immediateBlinkWrites = setValue.mock.calls.filter(
+      ([name, weight]) => name === "blink" && (weight as number) > 0,
+    );
+    expect(immediateBlinkWrites).toEqual([]);
+  });
+
   it("explicit blink 中は自律瞬きが出力に混ざらず、release 後に再開する", () => {
     const { vrm } = mockBodyVrm();
     const manager = vrm.expressionManager;
@@ -825,6 +865,26 @@ describe("Body explicit blink wiring", () => {
     const handle = body.acquireExpressionSlot("mcp", "eye", "lookUp", 0.5);
     expect(blinkSystem.isSuppressed).toBe(false);
     handle.release();
+  });
+
+  it("startle blinkはexplicit blinkを上書きする独立safety-reflex pulseになる", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const explicit = body.acquireExpressionSlot("persona", "eye", "blink", 0.8);
+
+    body.notifyStartle();
+    body.update(0.025, 0);
+
+    const snapshot = body.getExpressionIntentSnapshot();
+    expect(snapshot.intents.find((i) => i.owner.producerId === "startle-blink")).toMatchObject({
+      semantic: { role: "safety-reflex", target: "blink" },
+      phase: "active",
+    });
+    expect(snapshot.intents.find((i) => i.owner.producerId === "legacy-persona")).toMatchObject({
+      phase: "suppressed",
+      reason: "lower-priority-overlap",
+    });
+    explicit.release();
   });
 });
 
@@ -2001,6 +2061,27 @@ describe("Body idle squint wiring", () => {
       body.getExpressionIntentSnapshot().intents.find((i) => i.owner.producerId === "idle-squint")
         ?.phase,
     ).toMatch(/^(active|blended)$/);
+  });
+
+  it("startle safety blinkはidle squintとordinary blinkのpauseを越えて表示される", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    injectDeterministicSquint(body);
+    body.update(8.1, 0);
+    body.update(0.2, 8.1);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
+
+    body.notifyStartle();
+    body.update(0.025, 8.3);
+
+    const snapshot = body.getExpressionIntentSnapshot();
+    expect(snapshot.intents.find((i) => i.owner.producerId === "startle-blink")?.phase).toBe(
+      "active",
+    );
+    expect(snapshot.intents.find((i) => i.owner.producerId === "idle-squint")).toMatchObject({
+      phase: "suppressed",
+      suppressedBy: expect.stringMatching(/^expr-intent-/),
+    });
   });
 });
 

@@ -1057,12 +1057,46 @@ export interface ExpressionIntentEntry {
   readonly phase: string;
   readonly reason: string | null;
   readonly suppressedBy: string | null;
+  /** concrete morph contribution。既存fieldを維持したまま追加するdebug情報。 */
+  readonly contributions: ReadonlyArray<{
+    readonly kind: string;
+    readonly name: string;
+    readonly requestedWeight: number;
+    readonly effectiveWeight: number;
+    readonly numericNote: "budget-scaled" | "manager-suppressed" | null;
+  }>;
+}
+
+type BodyExpressionIntentSnapshotEntry = ReturnType<
+  Body["getExpressionIntentSnapshot"]
+>["intents"][number];
+
+function toExpressionIntentEntry(
+  intent: BodyExpressionIntentSnapshotEntry,
+  contributions: ExpressionIntentEntry["contributions"] = [],
+): ExpressionIntentEntry {
+  return {
+    producer: intent.owner.producerId,
+    scope: intent.owner.scopeId,
+    source: intent.source,
+    role: intent.semantic.role,
+    state: intent.semantic.state ?? null,
+    target: intent.semantic.target ?? null,
+    salience: intent.salience,
+    requestedIntensity: intent.requestedIntensity,
+    effectiveIntensity: intent.effectiveIntensity,
+    phase: intent.phase,
+    reason: intent.reason,
+    suppressedBy: intent.suppressedBy,
+    contributions,
+  };
 }
 
 /**
  * Body の subset 型。tool-handlers が必要とする method のみ。
  * test mock を書きやすくするため、Body 全体ではなく shape で受ける。
- * getExpressionIntentSnapshot は #83 M6 の追加観察で、無い mock では
+ * getExpressionIntentDebugView は #83 M6 の完全観察。無い旧mockでは
+ * getExpressionIntentSnapshotへfallbackし、それも無ければ
  * intent view が空になるだけ（互換の slot view は不変）。
  */
 export interface BodyLike {
@@ -1071,6 +1105,7 @@ export interface BodyLike {
   readonly getMotionSnapshot: Body["getMotionSnapshot"];
   readonly acquireMotionSlot: Body["acquireMotionSlot"];
   readonly getExpressionIntentSnapshot?: Body["getExpressionIntentSnapshot"];
+  readonly getExpressionIntentDebugView?: Body["getExpressionIntentDebugView"];
 }
 
 export interface StateGetDeps {
@@ -1200,24 +1235,23 @@ export function createStateGetHandler(deps: StateGetDeps) {
           }),
         )
       : [];
-    const expressionIntents = body?.getExpressionIntentSnapshot
-      ? body.getExpressionIntentSnapshot().intents.map(
-          (i): ExpressionIntentEntry => ({
-            producer: i.owner.producerId,
-            scope: i.owner.scopeId,
-            source: i.source,
-            role: i.semantic.role,
-            state: i.semantic.state ?? null,
-            target: i.semantic.target ?? null,
-            salience: i.salience,
-            requestedIntensity: i.requestedIntensity,
-            effectiveIntensity: i.effectiveIntensity,
-            phase: i.phase,
-            reason: i.reason,
-            suppressedBy: i.suppressedBy,
-          }),
+    const debugIntents = body?.getExpressionIntentDebugView?.().intents;
+    const expressionIntents = debugIntents
+      ? debugIntents.map((intent) =>
+          toExpressionIntentEntry(
+            intent,
+            intent.contributions.map((contribution) => ({
+              kind: contribution.kind,
+              name: contribution.expressionName,
+              requestedWeight: contribution.requestedWeight,
+              effectiveWeight: contribution.effectiveWeight,
+              numericNote: contribution.numericNote,
+            })),
+          ),
         )
-      : [];
+      : (body?.getExpressionIntentSnapshot?.().intents ?? []).map((intent) =>
+          toExpressionIntentEntry(intent),
+        );
     const motion: MotionSnapshot = body?.getMotionSnapshot() ?? {
       active: null,
       preempted: [],
