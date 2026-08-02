@@ -10,8 +10,10 @@
 import { describe, expect, it } from "vitest";
 import {
   EMPTY_CONFIG,
+  listCodexRealtimeVoiceCandidatesForPersona,
   localizedYoriPersonaId,
   parseConfig,
+  resolveCodexRealtimeVoiceForPersona,
   resolvePrimaryPersonaForLanguage,
   resolveProjectFolder,
   resolveSceneForProject,
@@ -58,6 +60,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -84,6 +88,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -110,6 +116,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -136,6 +144,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -162,6 +172,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -188,6 +200,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -219,6 +233,8 @@ describe("parseConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     });
   });
@@ -274,6 +290,8 @@ describe("serializeConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ disabledPacks: ["a"] });
@@ -300,6 +318,8 @@ describe("serializeConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     };
     expect(JSON.parse(serializeConfig(cfg))).toEqual({ primaryPersona: "my-persona" });
@@ -339,6 +359,8 @@ describe("serializeConfig", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     };
     expect(parseConfig(serializeConfig(cfg))).toEqual(cfg);
@@ -379,6 +401,245 @@ describe("codexRealtimeVoice", () => {
     expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, codexRealtimeVoice: "maple" }))).toEqual({
       codexRealtimeVoice: "maple",
     });
+  });
+
+  it("marks a configured voice as explicit, including an explicit sol", () => {
+    expect(parseConfig("{}").codexRealtimeVoiceExplicit).toBe(false);
+    expect(parseConfig('{"codexRealtimeVoice":""}').codexRealtimeVoiceExplicit).toBe(false);
+    expect(parseConfig('{"codexRealtimeVoice":42}').codexRealtimeVoiceExplicit).toBe(false);
+    expect(parseConfig('{"codexRealtimeVoice":"sol"}').codexRealtimeVoiceExplicit).toBe(true);
+    expect(parseConfig('{"codexRealtimeVoice":"  sol  "}').codexRealtimeVoiceExplicit).toBe(true);
+    expect(parseConfig('{"codexRealtimeVoice":"juniper"}').codexRealtimeVoiceExplicit).toBe(true);
+  });
+
+  it("does not serialize the derived explicit flag", () => {
+    const explicitSol = parseConfig('{"codexRealtimeVoice":"sol"}');
+    expect(explicitSol.codexRealtimeVoiceExplicit).toBe(true);
+    expect(JSON.parse(serializeConfig(explicitSol))).toEqual({});
+  });
+});
+
+describe("realtimeVoiceByPersona", () => {
+  it("defaults to empty mapping", () => {
+    expect(EMPTY_CONFIG.realtimeVoiceByPersona).toEqual({});
+    expect(parseConfig("{}").realtimeVoiceByPersona).toEqual({});
+  });
+
+  it("parses persona id → voice entries and trims voice values", () => {
+    const json = JSON.stringify({
+      realtimeVoiceByPersona: { "yori-ja": "  maple  ", "my-persona": "juniper" },
+    });
+    expect(parseConfig(json).realtimeVoiceByPersona).toEqual({
+      "yori-ja": "maple",
+      "my-persona": "juniper",
+    });
+  });
+
+  it("drops invalid entries without failing the rest", () => {
+    const json = JSON.stringify({
+      realtimeVoiceByPersona: {
+        "yori-ja": "maple",
+        "bad-number": 42,
+        "bad-empty": "   ",
+        "  ": "vale",
+      },
+    });
+    expect(parseConfig(json).realtimeVoiceByPersona).toEqual({ "yori-ja": "maple" });
+  });
+
+  it("tolerates non-object shapes", () => {
+    expect(parseConfig('{"realtimeVoiceByPersona": null}').realtimeVoiceByPersona).toEqual({});
+    expect(parseConfig('{"realtimeVoiceByPersona": ["maple"]}').realtimeVoiceByPersona).toEqual({});
+    expect(parseConfig('{"realtimeVoiceByPersona": "maple"}').realtimeVoiceByPersona).toEqual({});
+  });
+
+  it("omits empty mapping and round-trips non-empty mapping", () => {
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG }))).toEqual({});
+    const cfg = { ...EMPTY_CONFIG, realtimeVoiceByPersona: { "yori-ja": "maple" } };
+    const serialized = serializeConfig(cfg);
+    expect(JSON.parse(serialized)).toEqual({ realtimeVoiceByPersona: { "yori-ja": "maple" } });
+    expect(parseConfig(serialized).realtimeVoiceByPersona).toEqual({ "yori-ja": "maple" });
+  });
+
+  it("drops a __proto__ entry instead of touching the prototype", () => {
+    const parsed = parseConfig('{"realtimeVoiceByPersona":{"__proto__":"maple","yori-ja":"vale"}}');
+    expect(parsed.realtimeVoiceByPersona).toEqual({ "yori-ja": "vale" });
+    expect(Object.getOwnPropertyDescriptor(parsed.realtimeVoiceByPersona, "__proto__")).toBe(
+      undefined,
+    );
+    expect(Object.getPrototypeOf(parsed.realtimeVoiceByPersona)).toBe(Object.prototype);
+  });
+});
+
+describe("resolveCodexRealtimeVoiceForPersona", () => {
+  const cfg = (overrides: Partial<YorishiroConfig>): YorishiroConfig => ({
+    ...EMPTY_CONFIG,
+    ...overrides,
+  });
+
+  it("prefers the persona override over the global voice", () => {
+    const resolved = resolveCodexRealtimeVoiceForPersona(
+      cfg({
+        codexRealtimeVoice: "juniper",
+        realtimeVoiceByPersona: { "yori-ja": "maple" },
+      }),
+      "yori-ja",
+    );
+    expect(resolved).toEqual({ voice: "maple", source: "persona", personaId: "yori-ja" });
+  });
+
+  it("falls back to the global voice when the persona has no entry", () => {
+    const resolved = resolveCodexRealtimeVoiceForPersona(
+      cfg({
+        codexRealtimeVoice: "juniper",
+        realtimeVoiceByPersona: { "other-persona": "maple" },
+      }),
+      "yori-ja",
+    );
+    expect(resolved).toEqual({ voice: "juniper", source: "global", personaId: "yori-ja" });
+  });
+
+  it("falls back to the built-in default when nothing is configured", () => {
+    const resolved = resolveCodexRealtimeVoiceForPersona(cfg({}), "yori-ja");
+    expect(resolved).toEqual({ voice: "sol", source: "default", personaId: "yori-ja" });
+  });
+
+  it("skips persona overrides when the active persona id is unknown", () => {
+    const resolved = resolveCodexRealtimeVoiceForPersona(
+      cfg({ realtimeVoiceByPersona: { "yori-ja": "maple" } }),
+      null,
+    );
+    expect(resolved).toEqual({ voice: "sol", source: "default", personaId: null });
+  });
+
+  it("keeps entries for removed personas inert", () => {
+    // persona pack を削除 / rename しても mapping は残ってよい。
+    // 該当 id が active にならない限り解決に影響しない。
+    const resolved = resolveCodexRealtimeVoiceForPersona(
+      cfg({
+        codexRealtimeVoice: "juniper",
+        realtimeVoiceByPersona: { "removed-persona": "maple" },
+      }),
+      "current-persona",
+    );
+    expect(resolved).toEqual({ voice: "juniper", source: "global", personaId: "current-persona" });
+  });
+
+  it("resolves per localized bundled persona id", () => {
+    // bundled Yori は language で yori-en / yori-ja に解決されるため、
+    // override も localized id 単位で効く。
+    const config = cfg({ realtimeVoiceByPersona: { "yori-ja": "maple" } });
+    expect(resolveCodexRealtimeVoiceForPersona(config, "yori-ja").voice).toBe("maple");
+    expect(resolveCodexRealtimeVoiceForPersona(config, "yori-en")).toEqual({
+      voice: "sol",
+      source: "default",
+      personaId: "yori-en",
+    });
+  });
+
+  it("follows the bundled language fallback to the localized persona id", () => {
+    // primaryPersona が null / bundled Yori のとき active id は language で決まる。
+    // その解決結果に対して override が引かれることを、二層をつないで確認する。
+    const config = cfg({
+      primaryPersona: null,
+      realtimeVoiceByPersona: { "yori-ja": "maple", "yori-en": "vale" },
+    });
+    const jaPersona = resolvePrimaryPersonaForLanguage(config.primaryPersona, "ja");
+    const enPersona = resolvePrimaryPersonaForLanguage(config.primaryPersona, "en");
+    expect(jaPersona).toBe("yori-ja");
+    expect(enPersona).toBe("yori-en");
+    expect(resolveCodexRealtimeVoiceForPersona(config, jaPersona).voice).toBe("maple");
+    expect(resolveCodexRealtimeVoiceForPersona(config, enPersona).voice).toBe("vale");
+  });
+
+  it("diagnoses an explicitly configured sol as source=global", () => {
+    const parsed = parseConfig('{"codexRealtimeVoice":"sol"}');
+    expect(resolveCodexRealtimeVoiceForPersona(parsed, "yori-ja")).toEqual({
+      voice: "sol",
+      source: "global",
+      personaId: "yori-ja",
+    });
+    // 未設定なら従来どおり default と診断する。
+    expect(resolveCodexRealtimeVoiceForPersona(parseConfig("{}"), "yori-ja").source).toBe(
+      "default",
+    );
+  });
+
+  it("ignores prototype-inherited keys when looking up a persona override", () => {
+    // persona id が constructor / toString / __proto__ でも、mapping の own entry
+    // でない限り prototype 由来の値を voice として拾わない。
+    const config = cfg({ realtimeVoiceByPersona: {} });
+    for (const personaId of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(resolveCodexRealtimeVoiceForPersona(config, personaId)).toEqual({
+        voice: "sol",
+        source: "default",
+        personaId,
+      });
+    }
+    // own entry として明示された危険風 id は普通の persona id として尊重する。
+    const parsed = parseConfig('{"realtimeVoiceByPersona":{"constructor":"maple"}}');
+    expect(resolveCodexRealtimeVoiceForPersona(parsed, "constructor").voice).toBe("maple");
+  });
+});
+
+describe("listCodexRealtimeVoiceCandidatesForPersona", () => {
+  const cfg = (overrides: Partial<YorishiroConfig>): YorishiroConfig => ({
+    ...EMPTY_CONFIG,
+    ...overrides,
+  });
+
+  it("orders candidates persona → global → default", () => {
+    const candidates = listCodexRealtimeVoiceCandidatesForPersona(
+      cfg({
+        codexRealtimeVoice: "juniper",
+        realtimeVoiceByPersona: { "yori-ja": "maple" },
+      }),
+      "yori-ja",
+    );
+    expect(candidates).toEqual([
+      { voice: "maple", source: "persona", personaId: "yori-ja" },
+      { voice: "juniper", source: "global", personaId: "yori-ja" },
+      { voice: "sol", source: "default", personaId: "yori-ja" },
+    ]);
+  });
+
+  it("dedupes the same voice across layers keeping the higher-priority source", () => {
+    const candidates = listCodexRealtimeVoiceCandidatesForPersona(
+      cfg({
+        codexRealtimeVoice: "maple",
+        realtimeVoiceByPersona: { "yori-ja": "maple" },
+      }),
+      "yori-ja",
+    );
+    expect(candidates).toEqual([
+      { voice: "maple", source: "persona", personaId: "yori-ja" },
+      { voice: "sol", source: "default", personaId: "yori-ja" },
+    ]);
+  });
+
+  it("collapses an explicit sol into a single global candidate", () => {
+    const candidates = listCodexRealtimeVoiceCandidatesForPersona(
+      parseConfig('{"codexRealtimeVoice":"sol"}'),
+      null,
+    );
+    expect(candidates).toEqual([{ voice: "sol", source: "global", personaId: null }]);
+  });
+
+  it("returns only the default when nothing is configured", () => {
+    expect(listCodexRealtimeVoiceCandidatesForPersona(cfg({}), null)).toEqual([
+      { voice: "sol", source: "default", personaId: null },
+    ]);
+  });
+
+  it("matches resolveCodexRealtimeVoiceForPersona at the head", () => {
+    const config = parseConfig(
+      '{"codexRealtimeVoice":"juniper","realtimeVoiceByPersona":{"yori-ja":"maple"}}',
+    );
+    for (const personaId of ["yori-ja", "yori-en", null]) {
+      expect(listCodexRealtimeVoiceCandidatesForPersona(config, personaId)[0]).toEqual(
+        resolveCodexRealtimeVoiceForPersona(config, personaId),
+      );
+    }
   });
 });
 
@@ -480,6 +741,8 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     };
     const next = withDisabledPackRemoved(base, "a");
@@ -507,6 +770,8 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       defaultProfile: null,
       voiceFrequency: "on",
       codexRealtimeVoice: "sol",
+      codexRealtimeVoiceExplicit: false,
+      realtimeVoiceByPersona: {},
       mediaFolders: ["~/Music"],
     };
     const next = withDisabledPackRemoved(base, "phantom");

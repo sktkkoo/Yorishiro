@@ -5,6 +5,7 @@ import {
   CodexRealtimeClient,
   type CodexRealtimeState,
   type CodexRealtimeStatus,
+  type CodexRealtimeVoiceFallback,
   DEFAULT_CODEX_REALTIME_VOICE,
 } from "./codex-realtime-client";
 import { CodexThreadTracker } from "./codex-thread-tracker";
@@ -21,6 +22,8 @@ export type CodexRealtimeClientFactory = (
   stateExpressionCallbacks?: StateExpressionSchedulerCallbacks,
   getPreferredThreadId?: () => string | null,
   getVoice?: () => string | Promise<string>,
+  getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>,
+  onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void,
 ) => CodexRealtimeClientLike;
 
 export interface CodexThreadTrackerLike {
@@ -38,6 +41,14 @@ interface UseCodexRealtimeOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   /** Called for every new session so config edits apply without restarting the app. */
   readonly getVoice?: () => string | Promise<string>;
+  /**
+   * Voice 候補（persona override → global → default）を session 開始ごとに返す。
+   * 指定時は `getVoice` より優先。後続候補は app-server が voice を明確に拒否した
+   * ときの fallback にだけ使われる。
+   */
+  readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
+  /** Voice fallback の診断通知（dev log 用）。 */
+  readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
   readonly createClient?: CodexRealtimeClientFactory;
   readonly createThreadTracker?: (
     sessionId: string,
@@ -58,11 +69,15 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
   stateExpressionCallbacks,
   getPreferredThreadId,
   getVoice,
+  getVoiceCandidates,
+  onVoiceFallback,
 ) =>
   new CodexRealtimeClient(sessionId, onStateChange, {
     stateExpressionCallbacks,
     getPreferredThreadId,
     getVoice,
+    getVoiceCandidates,
+    onVoiceFallback,
   });
 
 const defaultCreateThreadTracker = (
@@ -85,6 +100,8 @@ export function useCodexRealtime({
   setFallbackPlaybackEnabled = () => {},
   stateExpressionCallbacks,
   getVoice = () => DEFAULT_CODEX_REALTIME_VOICE,
+  getVoiceCandidates,
+  onVoiceFallback,
   createClient = defaultCreateClient,
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
@@ -95,6 +112,8 @@ export function useCodexRealtime({
   const setFallbackPlaybackEnabledRef = useRef(setFallbackPlaybackEnabled);
   const createClientRef = useRef(createClient);
   const getVoiceRef = useRef(getVoice);
+  const getVoiceCandidatesRef = useRef(getVoiceCandidates);
+  const onVoiceFallbackRef = useRef(onVoiceFallback);
   const sessionIdRef = useRef(sessionId);
   const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
@@ -106,6 +125,8 @@ export function useCodexRealtime({
   setFallbackPlaybackEnabledRef.current = setFallbackPlaybackEnabled;
   createClientRef.current = createClient;
   getVoiceRef.current = getVoice;
+  getVoiceCandidatesRef.current = getVoiceCandidates;
+  onVoiceFallbackRef.current = onVoiceFallback;
 
   const restoreFallback = useCallback(() => {
     applyLipSyncSourceRef.current(fallbackRef.current);
@@ -210,6 +231,10 @@ export function useCodexRealtime({
         stateExpressionCallbacks,
         () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
         () => getVoiceRef.current(),
+        getVoiceCandidatesRef.current
+          ? () => getVoiceCandidatesRef.current?.() ?? [DEFAULT_CODEX_REALTIME_VOICE]
+          : undefined,
+        (fallback) => onVoiceFallbackRef.current?.(fallback),
       );
       clientRef.current = client;
       setState({ status: "connecting" });

@@ -31,7 +31,8 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 |---|---|---|---|
 | `defaultProfile` | `string` or `null` | `null` | 起動時 default-session に使う profile id（`shell` / `claude` / `codex` / `opencode` または user `profiles[]` の id）。`null` なら `terminalAgent` を fallback |
 | `terminalAgent` | `"claude"`, `"codex"`, or `"opencode"` | `"claude"` | legacy。`defaultProfile` 未指定時に使う coding agent |
-| `codexRealtimeVoice` | `string` | `"sol"` | Codex GPT Live の出力 voice。新しい realtime session の開始時に読み込む |
+| `codexRealtimeVoice` | `string` | `"sol"` | Codex GPT Live の出力 voice（global fallback）。新しい realtime session の開始時に読み込む |
+| `realtimeVoiceByPersona` | `{ [personaId: string]: string }` | `{}` | persona pack id ごとの GPT Live voice override。active persona に entry があれば `codexRealtimeVoice` より優先 |
 | `language` | `"auto"`, `"en"`, or `"ja"` | `"auto"` | UI / bundled persona fallback / global system prompt / Yorishiro command/skill prompts の言語 |
 | `profiles` | `SessionProfile[]` | `[]` | user 定義の session profile（→ [terminal.md](terminal.md)） |
 | `primaryPersona` | `string` or `null` | `null` | active persona pack の user pick。`null` なら bundled fallback |
@@ -46,16 +47,43 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 ### Codex GPT Live voice
 
 `codexRealtimeVoice` は title bar から開始する Codex GPT Live の出力 voice を選ぶ。
+`realtimeVoiceByPersona` を併用すると persona ごとに voice を変えられる。
 
 ```json
 {
-  "codexRealtimeVoice": "juniper"
+  "codexRealtimeVoice": "juniper",
+  "realtimeVoiceByPersona": {
+    "my-persona": "maple",
+    "yori-ja": "vale"
+  }
 }
 ```
 
+Voice は次の優先順位で決まる：
+
+1. `realtimeVoiceByPersona[<active persona id>]` — persona 別の user override
+2. `codexRealtimeVoice` — global 設定（default と同じ `"sol"` を明示した場合も global として扱う）
+3. built-in default（`"sol"`）
+
+どの層で決まったかは dev log（subsystem `Voice`）に記録される。
+
+接続先の app-server が選ばれた voice を「無効 / 未対応」として明確に拒否した場合に
+限り、Yorishiro は同じ優先順位の次の候補（persona → global → default）で自動的に
+再試行し、その旨を dev log に記録する。認証・通信・permission などの一般的な接続
+失敗はこの fallback の対象にせず、そのままエラーとして表示する——voice 設定が
+別種の問題を隠さないようにするため。
+
 設定は GPT Live を開始するたびに読み直されるため、アプリの再起動は不要。すでに音声を
 出力した realtime session の voice は途中変更できないので、active な会話を一度停止して
-開始し直すと反映される。空文字や文字列以外の値は default の `"sol"` に戻す。
+開始し直すと反映される。空文字や文字列以外の値は default の `"sol"` に戻す
+（`realtimeVoiceByPersona` では不正な entry だけが無視され、残りは生きる）。
+
+`realtimeVoiceByPersona` の key は persona pack の id。bundled の Yori は `language` に
+応じて `yori-en` / `yori-ja` に解決されるため、override も localized id 単位で書く。
+削除・rename した persona の entry は無害に無視され、config は壊れない（該当 persona が
+再び active にならない限り効果を持たない）。voice id は installed Codex app-server に
+依存する環境設定なので、persona pack 側（`persona.js` / `persona.md`）には書けない——
+pack の可搬性を保つため、mapping はこの config だけが持つ。
 
 利用可能な voice は installed Codex app-server と account / upstream support に依存する。
 Codex 0.146.0 の realtime protocol v3 では `juniper`, `maple`, `spruce`, `ember`, `vale`,

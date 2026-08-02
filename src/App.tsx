@@ -267,6 +267,7 @@ import { getUiStateStore } from "./runtime/ui-state-store";
 import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
 import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amenity-activation";
 import {
+  listCodexRealtimeVoiceCandidatesForPersona,
   parseConfig,
   resolvePrimaryPersonaForLanguage,
   resolveProjectFolder,
@@ -3664,7 +3665,32 @@ function App() {
     applyLipSyncSource: applyRealtimeLipSyncSource,
     setFallbackPlaybackEnabled: (enabled) => voicePlaybackLeaseSync.setEnabled(enabled),
     stateExpressionCallbacks: realtimeStateExpressionCallbacks,
-    getVoice: async () => parseConfig(await readYorishiroConfigText()).codexRealtimeVoice,
+    getVoiceCandidates: async () => {
+      // Voice は session 開始時に一度だけ読まれる（audio 開始後は変更不可）。
+      // 先頭が採用候補（persona override → global codexRealtimeVoice → built-in default）、
+      // 後続は app-server が voice を明確に拒否したときにだけ使われる fallback 候補。
+      const config = parseConfig(await readYorishiroConfigText());
+      const candidates = listCodexRealtimeVoiceCandidatesForPersona(
+        config,
+        personaRegistry.getActivePersonaId(),
+      );
+      const [selected] = candidates;
+      devLog.write({
+        subsystem: "Voice",
+        phase: "realtime-start",
+        note: `GPT Live voice "${selected.voice}" (source=${selected.source}, persona=${selected.personaId ?? "none"})`,
+        data: { candidates },
+      });
+      return candidates.map((candidate) => candidate.voice);
+    },
+    onVoiceFallback: ({ fromVoice, toVoice, reason }) => {
+      devLog.write({
+        subsystem: "Voice",
+        phase: "realtime-voice-fallback",
+        note: `GPT Live voice "${fromVoice}" rejected by app-server; retrying with "${toVoice}"`,
+        data: { fromVoice, toVoice, reason },
+      });
+    },
   });
 
   useEffect(() => {
