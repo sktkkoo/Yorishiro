@@ -4505,21 +4505,20 @@ function App() {
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
         voiceAvailable={voiceEntryAvailable}
-        voiceActive={codexRealtimeState.status === "active"}
-        voiceBusy={codexRealtimeState.status === "connecting"}
+        voiceState={codexRealtimeState.status}
         voiceLabel={
           codexRealtimeState.status === "active"
-            ? strings.codexVoiceStop
+            ? strings.gptLiveVoiceStop
             : codexRealtimeState.status === "connecting"
-              ? strings.codexVoiceConnecting
+              ? strings.gptLiveVoiceConnecting
               : codexRealtimeState.status === "error"
-                ? strings.codexVoiceRetry
-                : strings.codexVoiceStart
+                ? strings.gptLiveVoiceRetry
+                : strings.gptLiveVoiceStart
         }
         voiceBillingLabel={
           codexRealtimeState.billing === "api" &&
           (codexRealtimeState.status === "connecting" || codexRealtimeState.status === "active")
-            ? strings.codexVoiceApiBilling
+            ? strings.gptLiveVoiceApiBilling
             : undefined
         }
         voiceError={codexRealtimeState.error}
