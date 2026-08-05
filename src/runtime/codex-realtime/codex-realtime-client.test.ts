@@ -9,6 +9,7 @@ import {
   type CodexRealtimeState,
   type CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
+import { readRealtimeDiagnostics } from "./realtime-diagnostics";
 
 interface FakeChannel<T> {
   onmessage: (message: T) => void;
@@ -29,7 +30,9 @@ const bridge = vi.hoisted(() => ({
     return bridge.connectPromise ? await bridge.connectPromise : "connection-1";
   }),
   connectPromise: null as Promise<string> | null,
-  disconnect: vi.fn(async () => {}),
+  disconnect: vi.fn(
+    async (_args?: { readonly connectionId: string; readonly finalMessage?: string }) => {},
+  ),
   accountType: "chatgpt",
   accountPrelude: null as "server-request" | "id-only" | "error-response" | null,
   loadedThreadResponses: [] as string[][],
@@ -39,6 +42,7 @@ const bridge = vi.hoisted(() => ({
   realtimeStartErrors: {} as Record<string, string>,
   initializeUserAgent: "codex_cli_rs/0.146.0",
   capabilities: { appServerVersion: "0.146.0", personaInitialItems: true },
+  suppressRealtimeSdp: false,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -132,14 +136,16 @@ vi.mock("../../bindings/tauri-commands", () => ({
           return;
         }
         respond({});
-        queueMicrotask(() => {
-          bridge.channel?.onmessage(
-            JSON.stringify({
-              method: "thread/realtime/sdp",
-              params: { threadId: "thread-1", sdp: "remote-answer" },
-            }),
-          );
-        });
+        if (!bridge.suppressRealtimeSdp) {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({
+                method: "thread/realtime/sdp",
+                params: { threadId: "thread-1", sdp: "remote-answer" },
+              }),
+            );
+          });
+        }
       } else {
         respond({});
       }
@@ -214,6 +220,7 @@ describe("CodexRealtimeClient", () => {
   let microphoneTrack: FakeAudioTrack;
 
   beforeEach(() => {
+    localStorage.clear();
     microphoneTrack = new FakeAudioTrack();
     vi.stubGlobal("MediaStream", FakeMediaStream);
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
@@ -232,6 +239,7 @@ describe("CodexRealtimeClient", () => {
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
     bridge.realtimeStartErrors = {};
+    bridge.suppressRealtimeSdp = false;
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -426,7 +434,9 @@ describe("CodexRealtimeClient", () => {
 
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params).not.toHaveProperty("prompt");
     expect(start?.params?.includeStartupContext).toBe(true);
+    expect(JSON.stringify(start?.params)).not.toContain("persona prompt");
     expect(diagnostics).toEqual([
       { personaId: "yori", status: "unsupported", appServerVersion: "0.145.0" },
     ]);
@@ -892,6 +902,20 @@ describe("CodexRealtimeClient", () => {
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
     expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
     expect(client.getStatus()).toBe("error");
+    expect(readRealtimeDiagnostics()).toEqual([
+      expect.objectContaining({
+        attemptId: expect.any(String),
+        event: "started",
+        stage: "preflight",
+      }),
+      expect.objectContaining({
+        event: "failed",
+        stage: "thread-discovery",
+        category: "ownership",
+        retryDecision: "none",
+        terminationRequested: false,
+      }),
+    ]);
   });
 
   it("uses the tracker-selected top-level thread while a cleared thread remains loaded", async () => {
@@ -922,6 +946,7 @@ describe("CodexRealtimeClient", () => {
 
   it("disconnects a bridge connection that arrives after the connect timeout", async () => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     let resolveConnection: ((connectionId: string) => void) | undefined;
     bridge.connectPromise = new Promise((resolve) => {
       resolveConnection = resolve;
@@ -931,13 +956,182 @@ describe("CodexRealtimeClient", () => {
 
     await vi.advanceTimersByTimeAsync(0);
     expect(bridge.connect).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(15_000);
+    // Three bounded attempts: 15s timeout, then 0.5s / 1.5s backoff.
+    await vi.advanceTimersByTimeAsync(47_000);
     expect(await result).toEqual(new Error("Codex app-server connection timed out"));
 
     resolveConnection?.("late-connection");
     await vi.advanceTimersByTimeAsync(0);
     expect(bridge.disconnect).toHaveBeenCalledWith({ connectionId: "late-connection" });
+    expect(bridge.connect).toHaveBeenCalledTimes(3);
     expect(client.getStatus()).toBe("error");
+  });
+
+  it("cancels a pending transient retry when explicitly stopped", async () => {
+    vi.useFakeTimers();
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("network connection failed"),
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getStatus()).toBe("connecting");
+    expect(ensureAudioContextRunning).toHaveBeenCalledTimes(1);
+
+    client.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await result).toBeInstanceOf(Error);
+    expect(ensureAudioContextRunning).toHaveBeenCalledTimes(1);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("deduplicates start calls while a transient retry is pending", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("network connection failed"),
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const first = client.start();
+    const second = client.start();
+
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.all([first, second]);
+
+    expect(ensureAudioContextRunning).toHaveBeenCalledTimes(2);
+    expect(bridge.connect).toHaveBeenCalledTimes(1);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("reuses one persona snapshot across transient connection retries", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("network connection failed"),
+    );
+    const getPersonaSnapshot = vi.fn(() => ({
+      personaId: "yori-ja",
+      instructions: "stable persona snapshot",
+    }));
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+    const result = client.start();
+
+    await vi.advanceTimersByTimeAsync(500);
+    await result;
+
+    expect(getPersonaSnapshot).toHaveBeenCalledTimes(1);
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.params?.initialItems).toEqual([
+      { role: "developer", text: "stable persona snapshot" },
+    ]);
+    expect(diagnostics).toEqual([
+      {
+        personaId: "yori-ja",
+        status: "accepted",
+        appServerVersion: "0.146.0",
+        delivery: "initial-items",
+        startupContextIncluded: true,
+      },
+    ]);
+    client.stop();
+  });
+
+  it("sends realtime stop before retrying after an accepted start times out", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    bridge.suppressRealtimeSdp = true;
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(47_000);
+    expect(await result).toEqual(new Error("Codex realtime SDP answer timed out"));
+    expect(bridge.disconnect).toHaveBeenCalledTimes(3);
+    for (const call of bridge.disconnect.mock.calls) {
+      expect(call[0]).toEqual(
+        expect.objectContaining({
+          finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+        }),
+      );
+    }
+  });
+
+  it("fully tears down an active session after a remote error", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const peer = FakePeerConnection.latest;
+    const channel = peer?.channel;
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/error",
+        params: { message: "remote failed token=must-not-be-persisted" },
+      }),
+    );
+
+    expect(client.getStatus()).toBe("error");
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(channel?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: "connection-1",
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
+    expect(JSON.stringify(readRealtimeDiagnostics())).not.toContain("must-not-be-persisted");
+  });
+
+  it("fully tears down an active session after peer connection failure", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const peer = FakePeerConnection.latest;
+    Object.defineProperty(peer, "connectionState", { configurable: true, value: "failed" });
+
+    peer?.dispatchEvent(new Event("connectionstatechange"));
+
+    expect(client.getStatus()).toBe("error");
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
+  });
+
+  it("fully tears down an active session after remote playback setup fails", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const peer = FakePeerConnection.latest;
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("audio playback setup failed"),
+    );
+    const remoteTrack = new FakeAudioTrack();
+    const remoteStream = new FakeMediaStream([remoteTrack]);
+    const trackEvent = new Event("track");
+    Object.defineProperties(trackEvent, {
+      streams: { value: [remoteStream] },
+      track: { value: remoteTrack },
+    });
+
+    peer?.dispatchEvent(trackEvent);
+    await vi.waitFor(() => expect(client.getStatus()).toBe("error"));
+
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(remoteTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
   });
 
   it("stops microphone tracks returned after stop invalidates the start attempt", async () => {
