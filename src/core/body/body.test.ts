@@ -14,13 +14,13 @@ import type { AnimationPlayer } from "./animation-player";
 import type { BeatTarget } from "./beat-types";
 import { BlinkSystem } from "./blink-system";
 import { CursorAttentionSystem } from "./cursor-attention";
+import type { ExpressionIntentArbiter } from "./expression-intent-arbiter";
 import {
   ExpressionManager,
   ExpressionSinkTracker,
   expressionTargetToName,
 } from "./expression-manager";
 import { EyeSystem, gazeTargetToAngles } from "./eye-system";
-import { EyelidExpressionController } from "./eyelid-expression-controller";
 import {
   IdleMicroexpressionSystem,
   MICRO_BROW_POOL,
@@ -137,6 +137,25 @@ describe("Body lip sync sampling", () => {
     body.update(1 / 60, 0);
 
     expect(sampleMouth).not.toHaveBeenCalled();
+  });
+
+  it("lip sync 信号は slot 由来の同名 viseme を加算せず上書きする", () => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    const setValue = vi.spyOn(manager, "setValue");
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.acquireExpressionSlot("persona", "lip", "aa", 0.2);
+    body.setLipSyncSource({
+      isMouthActive: () => true,
+      sampleMouth: () => ({ aa: 0.7, ih: 0, ou: 0, ee: 0, oh: 0 }),
+    });
+
+    body.update(1 / 60, 0);
+
+    const aaWrites = setValue.mock.calls.filter(([name]) => name === "aa");
+    expect(aaWrites).toHaveLength(1);
+    expect(aaWrites[0]?.[1]).toBeCloseTo(0.7);
   });
 });
 
@@ -263,6 +282,34 @@ describe("Body motion activation ownership", () => {
     await expect(handle.completion).resolves.toEqual({ reason: "cancelled" });
   });
 
+  it("dispose releases expression owners, invalidates retained handles, clears slots, and zeros sink", () => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    vi.spyOn(manager, "getExpression").mockImplementation((name) =>
+      name === "Fcl_BRW_Joy" ? ({} as never) : null,
+    );
+    const setValue = vi.spyOn(manager, "setValue");
+    const body = new Body(vrm, undefined, mockClaimState());
+    const retained = body.acquireExpressionSlot("persona", "custom", "Fcl_BRW_Joy", 0.6);
+    const explicitBlink = body.acquireExpressionSlot("reflex", "eye", "blink", 0.8);
+    body.update(1 / 60, 0);
+    expect(setValue).toHaveBeenCalledWith("Fcl_BRW_Joy", expect.any(Number));
+
+    setValue.mockClear();
+    body.dispose();
+
+    expect(body.getExpressionSlots()).toEqual([]);
+    expect(body.getExpressionIntentSnapshot().intents).toEqual([]);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(false);
+    expect(setValue).toHaveBeenCalledWith("Fcl_BRW_Joy", 0);
+
+    retained.setIntensity(1);
+    retained.release();
+    explicitBlink.release();
+    expect(body.getExpressionSlots()).toEqual([]);
+  });
+
   it("blends procedural motion beneath an active speech-expression VRMA", async () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());
@@ -313,12 +360,11 @@ describe("Body speech microexpression wiring", () => {
     return vi.spyOn(manager, "setValue");
   }
 
-  it("取得済み mouth 信号から既存 batch へ眉・目の反射 weight を加算する", () => {
+  it("取得済み mouth 信号を眉・目のgrounded intentとして出力する", () => {
     const { vrm } = mockBodyVrm();
     const setValue = exposeExpressions(vrm, new Set(["Fcl_BRW_Surprised", "Fcl_EYE_Spread"]));
     const body = new Body(vrm, undefined, mockClaimState());
     body.setState("thinking");
-    body.acquireExpressionSlot("persona", "part-brow", "Fcl_BRW_Surprised", 0.03);
     body.setSpeechExpressionParams({ flickEnabled: false, attackMs: 100 });
     const source = speechSource(0.8);
     body.setLipSyncSource(source);
@@ -329,7 +375,37 @@ describe("Body speech microexpression wiring", () => {
     expect(setValue).toHaveBeenCalledWith("Fcl_BRW_Surprised", expect.any(Number));
     expect(setValue).toHaveBeenCalledWith("Fcl_EYE_Spread", expect.any(Number));
     const browWrite = setValue.mock.calls.find(([name]) => name === "Fcl_BRW_Surprised");
-    expect(browWrite?.[1]).toBeGreaterThan(0.03);
+    expect(browWrite?.[1]).toBeGreaterThan(0);
+    const snapshot = body.getExpressionIntentSnapshot();
+    expect(snapshot.intents.find((i) => i.owner.producerId === "speech-brow")?.phase).toMatch(
+      /^(active|blended)$/,
+    );
+    expect(snapshot.intents.find((i) => i.owner.producerId === "speech-eye")?.phase).toMatch(
+      /^(active|blended)$/,
+    );
+  });
+
+  it("explicit personaが眉領域を所有するとspeech browをreason付きでsuppressする", () => {
+    const { vrm } = mockBodyVrm();
+    exposeExpressions(vrm, new Set(["Fcl_BRW_Surprised", "Fcl_EYE_Spread"]));
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechExpressionParams({ flickEnabled: false, attackMs: 100 });
+    body.setLipSyncSource(speechSource(0.8));
+    body.update(0.05, 0);
+
+    const persona = body.acquireExpressionSlot("persona", "part-brow", "Fcl_BRW_Surprised", 0.3);
+    const snapshot = body.getExpressionIntentSnapshot();
+    const speech = snapshot.intents.find((i) => i.owner.producerId === "speech-brow");
+    const owner = snapshot.intents.find((i) => i.owner.producerId === "legacy-persona");
+    expect(speech).toMatchObject({ phase: "suppressed", reason: "lower-priority-overlap" });
+    expect(speech?.suppressedBy).toBe(owner?.intentId);
+    expect(
+      body
+        .getExpressionSlots()
+        .find((s) => s.source === "speech" && s.expressionName === "Fcl_BRW_Surprised")
+        ?.effectiveWeight,
+    ).toBe(0);
+    persona.release();
   });
 
   it("expression claim 中は発話反射を更新・適用しない", () => {
@@ -359,7 +435,7 @@ describe("Body speech microexpression wiring", () => {
     expect(setValue).toHaveBeenCalledWith("aa", 0.8);
   });
 
-  it("発話 engagement 中は brow / eye の idle micro を suspend する", () => {
+  it("発話 engagement 中もidle micro timerを維持しArbiterでsuppressする", () => {
     const { vrm } = mockBodyVrm();
     exposeExpressions(vrm, new Set([...MICRO_BROW_POOL, ...MICRO_EYE_POOL, ...MICRO_MOUTH_POOL]));
     const body = new Body(vrm, undefined, mockClaimState());
@@ -380,15 +456,20 @@ describe("Body speech microexpression wiring", () => {
 
     body.update(0.05, 0);
 
-    expect(brow?.system.value).toBeNull();
-    expect(eye?.system.value).toBeNull();
+    expect(brow?.system.value).not.toBeNull();
+    expect(eye?.system.value).not.toBeNull();
+    const snapshot = body.getExpressionIntentSnapshot();
+    for (const producerId of ["idle-micro-brow", "idle-micro-eye"]) {
+      expect(snapshot.intents.find((i) => i.owner.producerId === producerId)).toMatchObject({
+        phase: "suppressed",
+        reason: "ambient-suspended-by-grounded",
+      });
+    }
   });
 
-  it("フレーズ境界の要求を BlinkSystem へ渡す", () => {
+  it("フレーズ境界blinkをeyelid/physiology intentとして発行する", () => {
     const { vrm } = mockBodyVrm();
     const body = new Body(vrm, undefined, mockClaimState());
-    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
-    const requestBlink = vi.spyOn(blinkSystem, "requestBlink");
     const source = speechSource(0.8);
     body.setLipSyncSource(source);
     body.setSpeechExpressionParams({ gapThresholdMs: 100, blinkProbability: 1 });
@@ -397,7 +478,53 @@ describe("Body speech microexpression wiring", () => {
 
     body.update(0.11, 0.11);
 
-    expect(requestBlink).toHaveBeenCalledOnce();
+    const boundary = body
+      .getExpressionIntentSnapshot()
+      .intents.find((i) => i.owner.producerId === "speech-boundary-blink");
+    expect(boundary?.occupancy).toEqual([{ region: "eyelid", lane: "physiology" }]);
+    expect(boundary?.semantic.role).toBe("baseline");
+    expect(boundary?.phase).toMatch(/^(active|blended)$/);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
+
+    body.update(0.14, 0.25);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
+    body.update(0.09, 0.34);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(false);
+  });
+
+  it("speech-boundary blinkは明示blinkへ譲り、startle safety-reflexだけが最優先になる", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const explicit = body.acquireExpressionSlot("persona", "eye", "blink", 0.8);
+    const source = speechSource(0.8);
+    body.setLipSyncSource(source);
+    body.setSpeechExpressionParams({ gapThresholdMs: 100, blinkProbability: 1 });
+    body.update(0.1, 0);
+    source.sampleMouth.mockReturnValue({ aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+
+    body.update(0.11, 0.11);
+
+    let snapshot = body.getExpressionIntentSnapshot();
+    const explicitEntry = snapshot.intents.find((i) => i.owner.producerId === "legacy-persona");
+    expect(explicitEntry?.phase).toBe("active");
+    expect(
+      snapshot.intents.find((i) => i.owner.producerId === "speech-boundary-blink"),
+    ).toMatchObject({
+      semantic: { role: "baseline" },
+      phase: "suppressed",
+      suppressedBy: explicitEntry?.intentId,
+    });
+
+    body.notifyStartle();
+    snapshot = body.getExpressionIntentSnapshot();
+    const startle = snapshot.intents.find((i) => i.owner.producerId === "startle-blink");
+    expect(startle?.phase).toBe("active");
+    expect(snapshot.intents.find((i) => i.owner.producerId === "legacy-persona")).toMatchObject({
+      phase: "suppressed",
+      suppressedBy: startle?.intentId,
+    });
+
+    explicit.release();
   });
 });
 
@@ -540,7 +667,7 @@ describe("Body speech mood wiring", () => {
     expect(slots[0]).toMatchObject({ expressionName: "surprised", requestedWeight: 0 });
   });
 
-  it("suspends idle micro channels while a grounded speech mood is active", () => {
+  it("keeps idle micro episode alive while speech mood suppresses it", () => {
     const { vrm } = mockBodyVrm();
     const manager = vrm.expressionManager;
     if (!manager) throw new Error("expression manager is required");
@@ -565,7 +692,70 @@ describe("Body speech mood wiring", () => {
     body.update(0.3, 0.3);
 
     expect(speechMood(body)?.effectiveWeight).toBeGreaterThan(0);
-    expect(brow?.system.value).toBeNull();
+    expect(brow?.system.value).not.toBeNull();
+    const micro = body
+      .getExpressionIntentSnapshot()
+      .intents.find((i) => i.owner.producerId === "idle-micro-brow");
+    expect(micro).toMatchObject({
+      phase: "suppressed",
+      reason: "ambient-suspended-by-grounded",
+    });
+  });
+
+  it("speech mood intent は ambient を reason 付きで suppress し、release で復帰する（#83 M4）", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const arbiter = (body as unknown as { expressionIntents: ExpressionIntentArbiter })
+      .expressionIntents;
+    body.update(1 / 60, 0);
+
+    body.setSpeechMood("happy", 0.6);
+    body.update(0.3, 0.3);
+
+    const snapshot = arbiter.getSnapshot();
+    const mood = snapshot.intents.find((i) => i.owner.producerId === "speech-mood");
+    const stateBase = snapshot.intents.find((i) => i.owner.producerId === "state-base");
+    expect(mood?.phase).toBe("active");
+    expect(stateBase?.phase).toBe("suppressed");
+    expect(stateBase?.reason).toBe("ambient-suspended-by-grounded");
+    expect(stateBase?.suppressedBy).toBe(mood?.intentId);
+
+    // release は speech mood owner だけを閉じ、ambient が復帰する
+    // （blended になるかは同時に走る micro episode の乱数次第なので admitted 系
+    //   phase であることだけを見る）
+    body.releaseSpeechMood();
+    for (let t = 0; t < 1; t += 0.1) body.update(0.1, 0.3 + t);
+    expect(
+      arbiter.getSnapshot().intents.find((i) => i.owner.producerId === "state-base")?.phase,
+    ).toMatch(/^(active|blended)$/);
+    expect(body.getExpressionSlots().some((s) => s.source === "speech" && s.kind === "mood")).toBe(
+      false,
+    );
+  });
+
+  it("persona expression は speech mood を suppress し、reason が snapshot に残る（#83 M5）", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.setSpeechMood("happy", 0.6);
+    body.update(0.3, 0);
+
+    const persona = body.acquireExpressionSlot("persona", "mood", "sad", 0.4);
+
+    const snapshot = body.getExpressionIntentSnapshot();
+    const mood = snapshot.intents.find((i) => i.owner.producerId === "speech-mood");
+    const personaIntent = snapshot.intents.find((i) => i.owner.producerId === "legacy-persona");
+    expect(mood?.phase).toBe("suppressed");
+    expect(mood?.reason).toBe("lower-priority-overlap");
+    expect(mood?.suppressedBy).toBe(personaIntent?.intentId);
+    // slot view 互換: suppress された speech mood slot は effective 0 で残る
+    const slot = body.getExpressionSlots().find((s) => s.source === "speech" && s.kind === "mood");
+    expect(slot?.effectiveWeight).toBe(0);
+
+    persona.release();
+    expect(
+      body.getExpressionIntentSnapshot().intents.find((i) => i.owner.producerId === "speech-mood")
+        ?.phase,
+    ).toBe("active");
   });
 
   it("coexists with reflex blink and lip sync without taking either channel", () => {
@@ -586,6 +776,314 @@ describe("Body speech mood wiring", () => {
     expect(setValue).toHaveBeenCalledWith("happy", 0.3);
     expect(setValue).toHaveBeenCalledWith("blink", 0.6);
     expect(setValue).toHaveBeenCalledWith("aa", 0.7);
+  });
+
+  it("Body経路でもmcpとsystemの同格moodを旧挙動どおりblendする", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    body.acquireExpressionSlot("mcp", "mood", "sad", 0.3);
+    body.acquireExpressionSlot("system", "mood", "neutral", 0.4);
+
+    const slots = body
+      .getExpressionSlots()
+      .filter((slot) => slot.source === "mcp" || slot.source === "system");
+    expect(slots).toHaveLength(2);
+    expect(slots.find((slot) => slot.source === "mcp")?.effectiveWeight).toBeCloseTo(0.3);
+    expect(slots.find((slot) => slot.source === "system")?.effectiveWeight).toBeCloseTo(0.4);
+    const intents = body
+      .getExpressionIntentSnapshot()
+      .intents.filter((intent) => intent.source === "mcp" || intent.source === "system");
+    expect(intents.map((intent) => intent.phase)).toEqual(["blended", "blended"]);
+  });
+});
+
+// ─── Body explicit blink wiring ──────────────────────────
+//
+// #83 M5 で explicit blink の ownership は BlinkSystem の suppression token
+// から arbiter の physiology precedence（explicit-action > baseline reflex）
+// へ移った。出力パリティ（explicit 中は自律瞬きが混ざらない・release で
+// 再開する）を固定する。reflex source の直接 acquire だけは同 precedence の
+// ため token を維持する（下のテスト）。
+
+describe("Body explicit blink wiring", () => {
+  it.each([
+    { phase: "closing", steps: [2.49, 0.02] },
+    { phase: "opening", steps: [2.49, 0.05, 0.02] },
+  ])("$phase途中でexplicit blinkを取得・releaseしてもordinary blinkの途中値を露出しない", ({
+    steps,
+  }) => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    const setValue = vi.spyOn(manager, "setValue");
+    const body = new Body(vrm, undefined, mockClaimState());
+    const deterministicBlink = new BlinkSystem(() => 0);
+    (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem = deterministicBlink;
+    let elapsed = 0;
+    for (const step of steps) {
+      elapsed += step;
+      body.update(step, elapsed);
+    }
+    expect(deterministicBlink.value).toBeGreaterThan(0);
+
+    const handle = body.acquireExpressionSlot("persona", "eye", "blink", 0.8);
+    expect(deterministicBlink.value).toBe(0);
+    elapsed += 0.01;
+    body.update(0.01, elapsed);
+    setValue.mockClear();
+    handle.release();
+    body.update(0.01, elapsed + 0.01);
+
+    const immediateBlinkWrites = setValue.mock.calls.filter(
+      ([name, weight]) => name === "blink" && (weight as number) > 0,
+    );
+    expect(immediateBlinkWrites).toEqual([]);
+  });
+
+  it("explicit blink 中は自律瞬きが出力に混ざらず、release 後に再開する", () => {
+    const { vrm } = mockBodyVrm();
+    const manager = vrm.expressionManager;
+    if (!manager) throw new Error("expression manager is required");
+    const setValue = vi.spyOn(manager, "setValue");
+    const body = new Body(vrm, undefined, mockClaimState());
+
+    const handle = body.acquireExpressionSlot("mcp", "eye", "blink", 0.8);
+    // 自律瞬き間隔（最大 ~4.5s）を跨いで回しても、blink への write は
+    // explicit slot の budget 済み一定値のみ（自律瞬きの変動が混ざらない）
+    for (let t = 0; t < 6; t += 0.05) body.update(0.05, t);
+    const during = setValue.mock.calls.filter(([name]) => name === "blink");
+    expect(during.length).toBeGreaterThan(0);
+    const uniqueWeights = new Set(during.map(([, w]) => (w as number).toFixed(6)));
+    expect(uniqueWeights.size).toBe(1);
+
+    // arbiter は auto blink の suppression を reason 付きで説明できる
+    const arbiter = (body as unknown as { expressionIntents: ExpressionIntentArbiter })
+      .expressionIntents;
+    const autoBlink = arbiter
+      .getSnapshot()
+      .intents.find((i) => i.owner.producerId === "auto-blink");
+    if (autoBlink) {
+      expect(autoBlink.phase).toBe("suppressed");
+      expect(autoBlink.reason).toBe("lower-priority-overlap");
+    }
+
+    // release 後は自律瞬きが再開する（explicit の一定値以外の write が現れる）
+    setValue.mockClear();
+    handle.release();
+    const explicitWeight = [...uniqueWeights][0];
+    for (let t = 6; t < 20; t += 0.05) body.update(0.05, t);
+    const resumed = setValue.mock.calls.filter(
+      ([name, w]) =>
+        name === "blink" && (w as number) > 0 && (w as number).toFixed(6) !== explicitWeight,
+    );
+    expect(resumed.length).toBeGreaterThan(0);
+  });
+
+  it("reflex source の blink 直接 acquire は suppression token で自律瞬きを止める", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
+    expect(blinkSystem.isSuppressed).toBe(false);
+
+    const handle = body.acquireExpressionSlot("reflex", "eye", "blink", 0.8);
+    expect(blinkSystem.isSuppressed).toBe(true);
+
+    handle.release();
+    expect(blinkSystem.isSuppressed).toBe(false);
+  });
+
+  it("blink 以外の eye slot は自律瞬きを suppress しない", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
+
+    const handle = body.acquireExpressionSlot("mcp", "eye", "lookUp", 0.5);
+    expect(blinkSystem.isSuppressed).toBe(false);
+    handle.release();
+  });
+
+  it("startle blinkはexplicit blinkを上書きする独立safety-reflex pulseになる", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const explicit = body.acquireExpressionSlot("persona", "eye", "blink", 0.8);
+
+    body.notifyStartle();
+    body.update(0.025, 0);
+
+    const snapshot = body.getExpressionIntentSnapshot();
+    expect(snapshot.intents.find((i) => i.owner.producerId === "startle-blink")).toMatchObject({
+      semantic: { role: "safety-reflex", target: "blink" },
+      phase: "active",
+    });
+    expect(snapshot.intents.find((i) => i.owner.producerId === "legacy-persona")).toMatchObject({
+      phase: "suppressed",
+      reason: "lower-priority-overlap",
+    });
+    explicit.release();
+  });
+});
+
+// ─── Body idle relaxed wiring ────────────────────────────
+//
+// relaxed は state base (idle/mood) との (source, kind) 衝突を避けて
+// idle/custom で併存する現挙動の characterization（#83 M0、M3 の移行対象）。
+
+describe("Body idle relaxed wiring", () => {
+  function idleSlots(body: Body) {
+    return body.getExpressionSlots().filter((slot) => slot.source === "idle");
+  }
+
+  it("30 秒 idle 後、relaxed (custom) は state base (mood) と併存する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    for (let t = 0; t < 45; t += 0.5) body.update(0.5, t);
+
+    const slots = idleSlots(body);
+    const neutral = slots.find((s) => s.kind === "mood" && s.expressionName === "neutral");
+    const relaxed = slots.find((s) => s.kind === "custom" && s.expressionName === "relaxed");
+    expect(neutral).toBeDefined();
+    expect(relaxed).toBeDefined();
+    expect(relaxed?.requestedWeight).toBeGreaterThan(0);
+  });
+
+  it("idle neutralとrelaxedは旧配分 neutral=1-relaxed を維持する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
+    const suppressionToken = blinkSystem.suppress();
+
+    // 1 frameでrelaxed上限まで進める。squintはepisode開始frameではまだ0。
+    // 長いdeltaでordinary blinkが同時発火してglobal budgetへ混ざらないよう、
+    // この配分テスト中だけblink state machineを停止する。
+    body.update(34, 0);
+
+    const slots = idleSlots(body);
+    const neutral = slots.find((s) => s.kind === "mood" && s.expressionName === "neutral");
+    const relaxed = slots.find((s) => s.kind === "custom" && s.expressionName === "relaxed");
+    expect(neutral?.requestedWeight).toBeCloseTo(0.6);
+    expect(relaxed?.requestedWeight).toBeCloseTo(0.4);
+    expect(neutral?.effectiveWeight).toBeCloseTo(0.6);
+    expect(relaxed?.effectiveWeight).toBeCloseTo(0.4);
+    blinkSystem.resume(suppressionToken);
+  });
+
+  it("non-idle mood中もrelaxed timer/intentを維持しrelease直後に復帰する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    for (let t = 0; t < 45; t += 0.5) body.update(0.5, t);
+    expect(idleSlots(body).some((s) => s.expressionName === "relaxed")).toBe(true);
+
+    const persona = body.acquireExpressionSlot("persona", "mood", "happy", 0.5);
+    body.update(0.1, 45.1);
+
+    const slots = idleSlots(body);
+    const relaxed = slots.find((s) => s.expressionName === "relaxed");
+    expect(relaxed?.requestedWeight).toBe(0);
+    expect(relaxed?.effectiveWeight).toBe(0);
+    expect(slots.some((s) => s.kind === "mood" && s.expressionName === "neutral")).toBe(true);
+    expect(
+      body.getExpressionIntentSnapshot().intents.find((i) => i.owner.producerId === "idle-relaxed"),
+    ).toMatchObject({ phase: "suppressed", reason: "ambient-suspended-by-grounded" });
+
+    persona.release();
+    body.update(0.01, 45.11);
+    expect(
+      idleSlots(body).find((s) => s.expressionName === "relaxed")?.requestedWeight,
+    ).toBeGreaterThan(0);
+  });
+});
+
+// ─── Body expression claim wiring ────────────────────────
+//
+// ClaimState.expression が Body の frame orchestration を bypass する
+// 現挙動の characterization（#83 M0）。arbiter 移行後は `domain-claimed`
+// reason として観察可能になる予定の seam。
+
+describe("Body expression claim wiring", () => {
+  it("claim 中の setState は state base 表情を書き換えず、release 後の update で追従する", () => {
+    const { vrm } = mockBodyVrm();
+    const claimState = mockClaimState();
+    const body = new Body(vrm, undefined, claimState);
+    const claim = claimState.claim("expression");
+
+    body.setState("thinking");
+    const during = body.getExpressionSlots().find((s) => s.source === "idle" && s.kind === "mood");
+    // idle 時の neutral 1.0 のまま（thinking の 0.4 に切り替わらない）
+    expect(during?.requestedWeight).toBe(1);
+
+    claim.dispose();
+    body.update(1 / 60, 0);
+
+    const after = body.getExpressionSlots().find((s) => s.source === "idle" && s.kind === "mood");
+    expect(after?.requestedWeight).toBeCloseTo(0.4);
+  });
+});
+
+// ─── Body ambient intent cutover（#83 M3）────────────────
+//
+// ambient producer（state base / relaxed / squint / micro）は intent →
+// arbiter → slot bridge の経路で ExpressionManager keyed slot になる。
+// 併存の見た目（M0 characterization）は上の describe が固定しているので、
+// ここでは intent 経路固有の観察（keyed slot / reason 付き snapshot /
+// claim 中の凍結）を固定する。
+
+describe("Body ambient intent cutover", () => {
+  function arbiterOf(body: Body) {
+    return (body as unknown as { expressionIntents: ExpressionIntentArbiter }).expressionIntents;
+  }
+
+  it("idle neutral + relaxed は keyed slot として併存し、blended として観察できる", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    for (let t = 0; t < 45; t += 0.5) body.update(0.5, t);
+
+    const slots = body.getExpressionSlots();
+    const neutral = slots.find((s) => s.source === "idle" && s.kind === "mood");
+    const relaxed = slots.find((s) => s.kind === "custom" && s.expressionName === "relaxed");
+    expect(neutral?.key).toBeDefined();
+    expect(relaxed?.key).toBeDefined();
+
+    const snapshot = arbiterOf(body).getSnapshot();
+    const stateBase = snapshot.intents.find((i) => i.owner.producerId === "state-base");
+    const relaxedIntent = snapshot.intents.find((i) => i.owner.producerId === "idle-relaxed");
+    // neutral (full-face) と relaxed (eye) は eye/affect で重なり blend する
+    expect(stateBase?.phase).toBe("blended");
+    expect(relaxedIntent?.phase).toBe("blended");
+  });
+
+  it("expression claim 中は intent が domain-claimed になり、slot は凍結される", () => {
+    const { vrm } = mockBodyVrm();
+    const claimState = mockClaimState();
+    const body = new Body(vrm, undefined, claimState);
+    body.update(1 / 60, 0);
+    const before = body
+      .getExpressionSlots()
+      .filter((s) => s.source === "idle" && s.kind === "mood");
+    expect(before).toHaveLength(1);
+
+    const claim = claimState.claim("expression");
+    body.update(1 / 60, 0.1);
+    body.update(1 / 60, 0.2);
+
+    // claim は apply 層で止まるだけで slot は据え置き（legacy の claim 挙動と互換）
+    const during = body
+      .getExpressionSlots()
+      .filter((s) => s.source === "idle" && s.kind === "mood");
+    expect(during).toHaveLength(1);
+    // arbiter 側は理由付きで suppress を説明する
+    const stateBase = arbiterOf(body)
+      .getSnapshot()
+      .intents.find((i) => i.owner.producerId === "state-base");
+    expect(stateBase?.phase).toBe("suppressed");
+    expect(stateBase?.reason).toBe("domain-claimed");
+
+    claim.dispose();
+    body.update(1 / 60, 0.3);
+    expect(
+      arbiterOf(body)
+        .getSnapshot()
+        .intents.find((i) => i.owner.producerId === "state-base")?.phase,
+    ).toBe("active");
   });
 });
 
@@ -777,6 +1275,47 @@ describe("ExpressionManager", () => {
     // total 1.1 → scaled-down
     expect(happy?.effectiveWeight).toBeCloseTo(0.7 / 1.1);
     expect(blink?.effectiveWeight).toBeCloseTo(0.4 / 1.1);
+  });
+
+  // ─── source priority golden tests（#83 M0 characterization）──
+  //
+  // arbiter 移行中の compatibility guard として、priority ladder 全段と
+  // mcp/system の同格 blend を parity test の基準に固定する。
+
+  it("source priority ladder を同 kind 内で固定する（idle<thinking<speech<persona<mcp<reflex）", () => {
+    const ladder = ["idle", "thinking", "speech", "persona", "mcp", "reflex"] as const;
+    for (let i = 0; i < ladder.length - 1; i++) {
+      const lower = ladder[i];
+      const higher = ladder[i + 1];
+      if (!lower || !higher) continue;
+      const mgr = new ExpressionManager();
+      const low = mgr.addSlot(lower, "mood", "happy", 0.3);
+      const high = mgr.addSlot(higher, "mood", "sad", 0.3);
+      expect(mgr.getEffectiveWeight(low), `${lower} < ${higher}`).toBe(0);
+      expect(mgr.getEffectiveWeight(high), `${lower} < ${higher}`).toBeCloseTo(0.3);
+    }
+  });
+
+  it("mcp と system は同格で相互抑止せず blend し、reflex には両方とも譲る", () => {
+    const mgr = new ExpressionManager();
+    const mcp = mgr.addSlot("mcp", "mood", "sad", 0.3);
+    const system = mgr.addSlot("system", "mood", "neutral", 0.4);
+    expect(mgr.getEffectiveWeight(mcp)).toBeCloseTo(0.3);
+    expect(mgr.getEffectiveWeight(system)).toBeCloseTo(0.4);
+
+    const reflex = mgr.addSlot("reflex", "mood", "blink", 0.2);
+    expect(mgr.getEffectiveWeight(mcp)).toBe(0);
+    expect(mgr.getEffectiveWeight(system)).toBe(0);
+    expect(mgr.getEffectiveWeight(reflex)).toBeCloseTo(0.2);
+  });
+
+  it("priority 抑止は同 kind 内に閉じる（異 kind の下位 source は生き残る）", () => {
+    const mgr = new ExpressionManager();
+    const idleCustom = mgr.addSlot("idle", "custom", "relaxed", 0.3);
+    const personaMood = mgr.addSlot("persona", "mood", "happy", 0.4);
+    // persona(2) > idle(0) だが kind が違う（custom vs mood）ので共存する
+    expect(mgr.getEffectiveWeight(idleCustom)).toBeCloseTo(0.3);
+    expect(mgr.getEffectiveWeight(personaMood)).toBeCloseTo(0.4);
   });
 
   it("detects active non-idle mood so Body can suspend idle overlays", () => {
@@ -1504,79 +2043,101 @@ describe("MICRO_MORPH_POOL (backward-compat aggregate)", () => {
   });
 });
 
-// ─── EyelidExpressionController ─────────────────────────
+// ─── Body idle squint wiring ─────────────────────────────
+//
+// #83 M3 で idle squint の管理（intent / neutral 減衰 / blink suppression）
+// は EyelidExpressionController から Body に移った。決定論化のため
+// IdleSquintSystem を random 注入版に差し替える（8 秒で発火・weight 0.1）。
 
-describe("EyelidExpressionController", () => {
-  it("applies idle squint as blink while reducing neutral budget", () => {
-    const expressions = new ExpressionManager();
-    const blink = new BlinkSystem(() => 0);
-    const squint = new IdleSquintSystem(() => 0);
-    const eyelids = new EyelidExpressionController(expressions, blink, squint);
-    const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
+describe("Body idle squint wiring", () => {
+  function injectDeterministicSquint(body: Body): void {
+    (body as unknown as { idleSquint: IdleSquintSystem }).idleSquint = new IdleSquintSystem(
+      () => 0,
+    );
+  }
 
-    eyelids.update(0, 8.1, {
-      idle: true,
-      explicitBlinkActive: false,
-      relaxedValue: 0,
-      neutralSlotId: neutralSlot,
-    });
-    eyelids.update(0, 0.2, {
-      idle: true,
-      explicitBlinkActive: false,
-      relaxedValue: 0,
-      neutralSlotId: neutralSlot,
-    });
+  function idleEyeSlot(body: Body) {
+    return body.getExpressionSlots().find((s) => s.source === "idle" && s.kind === "eye");
+  }
 
-    const resolved = expressions.getResolved();
-    expect(resolved.get("blink")).toBeCloseTo(0.1);
-    expect(expressions.getRequestedWeight(neutralSlot)).toBeCloseTo(0.9);
-    expect(blink.isSuppressed).toBe(true);
+  it("idle squint は旧配分 neutral=1-squint を維持しauto blinkを止める", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    injectDeterministicSquint(body);
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
+
+    body.update(8.1, 0);
+    body.update(0.2, 8.1);
+
+    const squintSlot = idleEyeSlot(body);
+    expect(squintSlot?.expressionName).toBe("blink");
+    expect(squintSlot?.requestedWeight).toBeCloseTo(0.1);
+    const neutral = body.getExpressionSlots().find((s) => s.source === "idle" && s.kind === "mood");
+    expect(neutral?.requestedWeight).toBeCloseTo(0.9);
+    expect(neutral?.effectiveWeight).toBeCloseTo(0.9);
+    expect(squintSlot?.effectiveWeight).toBeCloseTo(0.1);
+    expect(blinkSystem.isSuppressed).toBe(true);
   });
 
-  it("does not start idle squint while an explicit blink is active", () => {
-    const expressions = new ExpressionManager();
-    const blink = new BlinkSystem(() => 0);
-    const squint = new IdleSquintSystem(() => 0);
-    const eyelids = new EyelidExpressionController(expressions, blink, squint);
-    const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
+  it("explicit blink中もsquint episodeを維持しArbiterで抑止、releaseで即復帰する", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    injectDeterministicSquint(body);
 
-    eyelids.update(0, 6.1, {
-      idle: true,
-      explicitBlinkActive: true,
-      relaxedValue: 0,
-      neutralSlotId: neutralSlot,
-    });
-    eyelids.update(0, 0.3, {
-      idle: true,
-      explicitBlinkActive: true,
-      relaxedValue: 0,
-      neutralSlotId: neutralSlot,
-    });
+    const explicitBlink = body.acquireExpressionSlot("mcp", "eye", "blink", 0.8);
+    body.update(8.1, 0);
+    body.update(0.3, 8.1);
 
-    expect(expressions.getResolved().get("blink")).toBeUndefined();
-    expect(blink.isSuppressed).toBe(false);
+    expect(idleEyeSlot(body)?.requestedWeight).toBe(0);
+    expect(
+      body.getExpressionIntentSnapshot().intents.find((i) => i.owner.producerId === "idle-squint"),
+    ).toMatchObject({ phase: "suppressed", reason: "ambient-suspended-by-grounded" });
+    explicitBlink.release();
+    body.update(0.01, 8.41);
+    expect(idleEyeSlot(body)?.requestedWeight).toBeGreaterThan(0);
   });
 
-  it("clears an idle squint when a speech mood makes the face non-idle", () => {
-    const expressions = new ExpressionManager();
-    const blink = new BlinkSystem(() => 0);
-    const squint = new IdleSquintSystem(() => 0);
-    const eyelids = new EyelidExpressionController(expressions, blink, squint);
-    const neutralSlot = expressions.addSlot("idle", "mood", "neutral", 1);
-    const idleOptions = {
-      idle: true,
-      explicitBlinkActive: false,
-      relaxedValue: 0,
-      neutralSlotId: neutralSlot,
-    };
-    eyelids.update(0, 8.1, idleOptions);
-    eyelids.update(0, 0.2, idleOptions);
-    expect(eyelids.hasIdleSquint).toBe(true);
+  it("non-idle affect moodは別laneのsquint episodeを停止しない", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    injectDeterministicSquint(body);
+    const blinkSystem = (body as unknown as { blinkSystem: BlinkSystem }).blinkSystem;
 
-    eyelids.update(0, 0.1, { ...idleOptions, idle: false });
+    body.update(8.1, 0);
+    body.update(0.2, 8.1);
+    expect(idleEyeSlot(body)).toBeDefined();
+    expect(blinkSystem.isSuppressed).toBe(true);
 
-    expect(eyelids.hasIdleSquint).toBe(false);
-    expect(blink.isSuppressed).toBe(false);
+    body.acquireExpressionSlot("persona", "mood", "happy", 0.5);
+    body.update(0.1, 8.3);
+
+    expect(idleEyeSlot(body)?.requestedWeight).toBeGreaterThan(0);
+    expect(blinkSystem.isSuppressed).toBe(true);
+    expect(
+      body.getExpressionIntentSnapshot().intents.find((i) => i.owner.producerId === "idle-squint")
+        ?.phase,
+    ).toMatch(/^(active|blended)$/);
+  });
+
+  it("startle safety blinkはidle squintとordinary blinkのpauseを越えて表示される", () => {
+    const { vrm } = mockBodyVrm();
+    const body = new Body(vrm, undefined, mockClaimState());
+    injectDeterministicSquint(body);
+    body.update(8.1, 0);
+    body.update(0.2, 8.1);
+    expect((body as unknown as { blinkSystem: BlinkSystem }).blinkSystem.isSuppressed).toBe(true);
+
+    body.notifyStartle();
+    body.update(0.025, 8.3);
+
+    const snapshot = body.getExpressionIntentSnapshot();
+    expect(snapshot.intents.find((i) => i.owner.producerId === "startle-blink")?.phase).toBe(
+      "active",
+    );
+    expect(snapshot.intents.find((i) => i.owner.producerId === "idle-squint")).toMatchObject({
+      phase: "suppressed",
+      suppressedBy: expect.stringMatching(/^expr-intent-/),
+    });
   });
 });
 

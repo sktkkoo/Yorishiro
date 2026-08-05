@@ -28,6 +28,14 @@ import {
   summarizeWorkStatusFreshness,
   type WorkStatusVoiceContextSource,
 } from "../work-status-ledger/voice-context";
+import {
+  appendRealtimeDiagnostic,
+  classifyRealtimeFailure,
+  createRealtimeAttemptId,
+  type RealtimeConnectionStage,
+  realtimeDiagnosticCode,
+} from "./realtime-diagnostics";
+import { isCodexVoiceRejectionMessage } from "./voice-rejection";
 
 export type CodexRealtimeStatus = "idle" | "connecting" | "active" | "error";
 export type CodexRealtimeBilling = "subscription" | "api";
@@ -36,6 +44,14 @@ export interface CodexRealtimeState {
   readonly status: CodexRealtimeStatus;
   readonly billing?: CodexRealtimeBilling;
   readonly error?: string;
+}
+
+/** Voice fallback が起きたときの診断情報。UI 側は dev log へ流す。 */
+export interface CodexRealtimeVoiceFallback {
+  readonly fromVoice: string;
+  readonly toVoice: string;
+  /** app-server が返した拒否 message。 */
+  readonly reason: string;
 }
 
 export interface CodexRealtimeClientOptions {
@@ -47,6 +63,14 @@ export interface CodexRealtimeClientOptions {
   readonly injectWorkStatusContext?: boolean;
   readonly voice?: string;
   readonly getVoice?: () => string | Promise<string>;
+  /**
+   * Voice 候補を優先順で返す（persona override → global → built-in default）。
+   * 指定時は `voice` / `getVoice` より優先。先頭候補で start し、app-server が
+   * voice を明確に拒否した場合に限り後続候補で再試行する。
+   */
+  readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
+  /** Voice fallback が起きるたびに呼ばれる（再試行の直前）。 */
+  readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
 }
 
 interface JsonRpcMessage {
@@ -78,11 +102,18 @@ const WORK_STATUS_RECONCILE_RETRY_MS = 1_000;
 const WORK_STATUS_RECONCILE_RETRIES = 2;
 export const DEFAULT_CODEX_REALTIME_VOICE = "sol";
 const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
+const START_RETRY_BASE_DELAYS_MS = [500, 1_500] as const;
+const APP_VERSION = "0.6.2";
 
 class StartAttemptCancelledError extends Error {
   constructor() {
     super("Codex realtime start attempt is no longer active");
+    this.name = "StartAttemptCancelledError";
   }
+}
+
+export function realtimeRetryDelay(baseDelayMs: number, random = Math.random): number {
+  return Math.round(baseDelayMs * (0.8 + random() * 0.4));
 }
 
 /**
@@ -111,6 +142,16 @@ export class CodexRealtimeClient implements LipSyncSource {
   private state: CodexRealtimeState = { status: "idle" };
   private stopping = false;
   private startAttemptEpoch = 0;
+  private startRunEpoch = 0;
+  private startPromise: Promise<void> | null = null;
+  private retryWait: {
+    readonly run: number;
+    readonly timeoutId: number;
+    readonly reject: (reason: Error) => void;
+  } | null = null;
+  private currentAttemptId = "";
+  private currentAttemptStartedAt = 0;
+  private currentStage: RealtimeConnectionStage = "preflight";
   private readonly stateExpressionController: RealtimeStateExpressionController | null;
   private readonly getPreferredThreadId: () => string | null;
   private workStatusAdapter: CodexWorkStatusProtocolAdapter | null = null;
@@ -119,7 +160,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private workStatusSubscription: { dispose(): void } | null = null;
   private workStatusFreshnessTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private workStatusReconcileRetryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
-  private readonly getVoice: () => string | Promise<string>;
+  private readonly getVoiceCandidates: () => Promise<ReadonlyArray<string>>;
+  private readonly onVoiceFallback: ((fallback: CodexRealtimeVoiceFallback) => void) | null;
 
   constructor(
     sessionId: string,
@@ -131,7 +173,11 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.getPreferredThreadId = options.getPreferredThreadId ?? (() => null);
     this.workStatusLedger = options.workStatusLedger ?? null;
     this.injectWorkStatusContext = options.injectWorkStatusContext ?? false;
-    this.getVoice = options.getVoice ?? (() => options.voice ?? DEFAULT_CODEX_REALTIME_VOICE);
+    const legacyGetVoice =
+      options.getVoice ?? (() => options.voice ?? DEFAULT_CODEX_REALTIME_VOICE);
+    const getCandidates = options.getVoiceCandidates ?? (async () => [await legacyGetVoice()]);
+    this.getVoiceCandidates = async () => normalizeVoiceCandidates(await getCandidates());
+    this.onVoiceFallback = options.onVoiceFallback ?? null;
     this.stateExpressionController = options.stateExpressionCallbacks
       ? new RealtimeStateExpressionController(
           options.stateExpressionCallbacks,
@@ -156,82 +202,114 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   async start(): Promise<void> {
-    if (this.state.status === "connecting" || this.state.status === "active") return;
-    const attempt = ++this.startAttemptEpoch;
-    this.stopping = false;
-    this.setState({ status: "connecting" });
-
+    if (this.state.status === "active") return;
+    if (this.startPromise) return this.startPromise;
+    const promise = this.startWithRetries();
+    this.startPromise = promise;
     try {
-      // Click gesture の直後に resume し、WebKit の autoplay 制限を先に解く。
-      await ensureAudioContextRunning();
-      this.assertAttemptOwner(attempt);
-      await withTimeout(
-        this.connectBridge(attempt),
-        RPC_TIMEOUT_MS,
-        "Codex app-server connection timed out",
-      );
-      this.assertAttemptOwner(attempt);
-      await this.request("initialize", {
-        clientInfo: {
-          name: "yorishiro",
-          title: "Yorishiro",
-          version: "0.6.1",
-        },
-        capabilities: { experimentalApi: true },
-      });
-      this.assertAttemptOwner(attempt);
-      this.notify("initialized", {});
-
-      const account = (await this.request("account/read", { refreshToken: false })) as {
-        readonly account?: { readonly type?: string } | null;
-      };
-      this.assertAttemptOwner(attempt);
-      const billing =
-        account.account?.type === "chatgpt"
-          ? "subscription"
-          : account.account?.type === "apiKey"
-            ? "api"
-            : null;
-      if (!billing) {
-        throw new Error("Voice requires Codex to be signed in with ChatGPT or an API key.");
-      }
-      if (billing === "api") {
-        // API 認証時はマイク取得と realtime 開始より先に UI へ課金モードを通知する。
-        this.setState({ status: "connecting", billing });
-      }
-
-      const threadId = await this.waitForLoadedThread(attempt);
-      this.assertAttemptOwner(attempt);
-      this.threadId = threadId;
-      this.workStatusAdapter = this.workStatusLedger
-        ? getCodexWorkStatusProtocolAdapter(this.workStatusLedger, this.sessionId, threadId)
-        : null;
-      await this.startWebRtc(threadId, attempt);
-      this.assertAttemptOwner(attempt);
-      this.setState({ status: "active", billing });
-    } catch (error) {
-      if (!this.isAttemptOwner(attempt)) throw error;
-      const message = error instanceof Error ? error.message : String(error);
-      this.invalidateAttempt(attempt);
-      this.stopping = true;
-      this.disposeResources();
-      this.setState({ status: "error", error: message });
-      throw error;
+      await promise;
+    } finally {
+      if (this.startPromise === promise) this.startPromise = null;
     }
   }
 
+  private async startWithRetries(): Promise<void> {
+    const run = ++this.startRunEpoch;
+    this.stopping = false;
+    this.setState({ status: "connecting" });
+    for (let retryIndex = 0; ; retryIndex++) {
+      if (this.startRunEpoch !== run) throw new StartAttemptCancelledError();
+      const attempt = ++this.startAttemptEpoch;
+      this.stopping = false;
+      this.currentAttemptId = createRealtimeAttemptId();
+      this.currentAttemptStartedAt = Date.now();
+      this.currentStage = "preflight";
+      this.recordDiagnostic("started", "none");
+      try {
+        const billing = await this.performStartAttempt(attempt);
+        this.assertAttemptOwner(attempt);
+        // SDP negotiation succeeded. Actual peer connectivity can still fail asynchronously.
+        this.recordDiagnostic("negotiated", "none");
+        this.setState({ status: "active", billing });
+        return;
+      } catch (error) {
+        if (!this.isAttemptOwner(attempt) || this.startRunEpoch !== run) throw error;
+        const classification = classifyRealtimeFailure(error, this.currentStage);
+        const retryBase = classification.retryable
+          ? START_RETRY_BASE_DELAYS_MS[retryIndex]
+          : undefined;
+        this.recordDiagnostic(
+          "failed",
+          retryBase === undefined ? (classification.retryable ? "exhausted" : "none") : "scheduled",
+          error,
+          classification.category,
+        );
+        this.invalidateAttempt(attempt);
+        this.stopping = true;
+        this.disposeResources(this.createStopMessage());
+        this.threadId = null;
+        if (retryBase === undefined) {
+          const message = error instanceof Error ? error.message : String(error);
+          this.setState({ status: "error", error: message });
+          throw error;
+        }
+        await this.waitForRetry(run, realtimeRetryDelay(retryBase));
+      }
+    }
+  }
+
+  private async performStartAttempt(attempt: number): Promise<CodexRealtimeBilling> {
+    await ensureAudioContextRunning();
+    this.assertAttemptOwner(attempt);
+    this.currentStage = "bridge-connect";
+    await withTimeout(
+      this.connectBridge(attempt),
+      RPC_TIMEOUT_MS,
+      "Codex app-server connection timed out",
+    );
+    this.assertAttemptOwner(attempt);
+    this.currentStage = "initialize";
+    await this.request("initialize", {
+      clientInfo: { name: "yorishiro", title: "Yorishiro", version: APP_VERSION },
+      capabilities: { experimentalApi: true },
+    });
+    this.assertAttemptOwner(attempt);
+    this.notify("initialized", {});
+    this.currentStage = "account";
+    const account = (await this.request("account/read", { refreshToken: false })) as {
+      readonly account?: { readonly type?: string } | null;
+    };
+    this.assertAttemptOwner(attempt);
+    const billing =
+      account.account?.type === "chatgpt"
+        ? "subscription"
+        : account.account?.type === "apiKey"
+          ? "api"
+          : null;
+    if (!billing)
+      throw new Error("Voice requires Codex to be signed in with ChatGPT or an API key.");
+    if (billing === "api") this.setState({ status: "connecting", billing });
+    this.currentStage = "thread-discovery";
+    const threadId = await this.waitForLoadedThread(attempt);
+    this.assertAttemptOwner(attempt);
+    this.threadId = threadId;
+    this.workStatusAdapter = this.workStatusLedger
+      ? getCodexWorkStatusProtocolAdapter(this.workStatusLedger, this.sessionId, threadId)
+      : null;
+    await this.startWebRtc(threadId, attempt);
+    this.assertAttemptOwner(attempt);
+    return billing;
+  }
+
   stop(): void {
+    this.startRunEpoch++;
+    this.cancelRetryWait();
+    // Explicit stop permits an immediate fresh start even if a cancelled browser API
+    // (notably getUserMedia) has not settled yet. Epoch ownership keeps that late work inert.
+    this.startPromise = null;
     this.invalidateAttempt();
     this.stopping = true;
-    const finalMessage =
-      this.connectionId && this.threadId
-        ? JSON.stringify({
-            method: "thread/realtime/stop",
-            id: this.nextRequestId++,
-            params: { threadId: this.threadId },
-          })
-        : undefined;
-    this.disposeResources(finalMessage);
+    this.disposeResources(this.createStopMessage());
     this.threadId = null;
     this.setState({ status: "idle" });
   }
@@ -347,6 +425,7 @@ export class CodexRealtimeClient implements LipSyncSource {
 
   private async startWebRtc(threadId: string, attempt: number): Promise<void> {
     this.assertAttemptOwner(attempt);
+    this.currentStage = "microphone";
     const peer = new RTCPeerConnection();
     this.peer = peer;
     this.remoteStream = new MediaStream();
@@ -362,7 +441,9 @@ export class CodexRealtimeClient implements LipSyncSource {
     });
     peer.addEventListener("connectionstatechange", () => {
       if (this.isAttemptOwner(attempt) && peer.connectionState === "failed") {
-        this.setState({ status: "error", error: `Voice connection ${peer.connectionState}` });
+        const error = new Error(`Voice connection ${peer.connectionState}`);
+        this.currentStage = "peer-connection";
+        this.failActiveAttempt(attempt, error, "network");
       }
     });
 
@@ -383,45 +464,71 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
     this.eventChannel = peer.createDataChannel("oai-events");
 
+    this.currentStage = "webrtc-offer";
     const offer = await peer.createOffer();
     this.assertAttemptOwner(attempt, peer);
     await peer.setLocalDescription(offer);
     this.assertAttemptOwner(attempt, peer);
+    this.currentStage = "ice-gathering";
     await withTimeout(waitForIceGathering(peer), 10_000, "WebRTC ICE gathering timed out");
     this.assertAttemptOwner(attempt, peer);
     const sdp = peer.localDescription?.sdp;
     if (!sdp) throw new Error("WebRTC offer did not contain SDP");
 
-    const remoteSdp = new Promise<string>((resolve, reject) => {
-      this.acceptRemoteSdp = resolve;
-      this.rejectRemoteSdp = reject;
-    });
-    const voice = await this.getVoice();
+    const candidates = await this.getVoiceCandidates();
     this.assertAttemptOwner(attempt, peer);
-    await this.request("thread/realtime/start", {
-      threadId,
-      outputModality: "audio",
-      version: "v3",
-      voice,
-      transport: { type: "webrtc", sdp },
-      ...(this.injectWorkStatusContext && this.workStatusLedger
-        ? {
-            initialItems: [
-              {
-                role: "developer",
-                text: formatWorkStatusSnapshot(this.workStatusLedger.getSnapshot()),
-              },
-            ],
-          }
-        : {}),
-    });
-    if (this.injectWorkStatusContext) {
-      this.writeWorkStatusDiagnostic({
-        eventKind: "context-initial-enqueued",
-        activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+
+    // Voice は audio 開始後に変更できないため、start の成否がこの session の voice を
+    // 確定させる。app-server が voice を明確に拒否した場合に限り、次の候補
+    // （persona override → global → built-in default）で再試行する。認証・接続などの
+    // 一般エラーはそのまま投げ、voice fallback で隠さない。
+    let remoteSdp: Promise<string> | null = null;
+    this.currentStage = "realtime-start";
+    for (let index = 0; index < candidates.length && remoteSdp === null; index++) {
+      const voice = candidates[index];
+      this.assertAttemptOwner(attempt, peer);
+      const attemptRemoteSdp = new Promise<string>((resolve, reject) => {
+        this.acceptRemoteSdp = resolve;
+        this.rejectRemoteSdp = reject;
       });
+      // start が失敗した attempt の promise は誰も await しない。後始末の
+      // rejectAllPending が reject しても unhandled rejection にしない。
+      void attemptRemoteSdp.catch(() => {});
+      try {
+        await this.request("thread/realtime/start", {
+          threadId,
+          outputModality: "audio",
+          version: "v3",
+          voice,
+          transport: { type: "webrtc", sdp },
+          ...(this.injectWorkStatusContext && this.workStatusLedger
+            ? {
+                initialItems: [
+                  {
+                    role: "developer",
+                    text: formatWorkStatusSnapshot(this.workStatusLedger.getSnapshot()),
+                  },
+                ],
+              }
+            : {}),
+        });
+        remoteSdp = attemptRemoteSdp;
+        if (this.injectWorkStatusContext) {
+          this.writeWorkStatusDiagnostic({
+            eventKind: "context-initial-enqueued",
+            activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+          });
+        }
+      } catch (error) {
+        if (error instanceof StartAttemptCancelledError) throw error;
+        this.assertAttemptOwner(attempt, peer);
+        const nextVoice = candidates[index + 1];
+        const reason = error instanceof Error ? error.message : String(error);
+        if (nextVoice === undefined || !isCodexVoiceRejectionMessage(reason)) throw error;
+        this.onVoiceFallback?.({ fromVoice: voice, toVoice: nextVoice, reason });
+      }
     }
-    await this.reconcileWorkStatus(threadId, attempt, peer);
+    if (remoteSdp === null) throw new Error("Codex realtime start did not accept any voice");
     this.assertAttemptOwner(attempt, peer);
     const answerSdp = await withTimeout(
       remoteSdp,
@@ -431,7 +538,12 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.assertAttemptOwner(attempt, peer);
     this.acceptRemoteSdp = null;
     this.rejectRemoteSdp = null;
+    this.currentStage = "sdp-application";
     await peer.setRemoteDescription({ type: "answer", sdp: answerSdp });
+    this.assertAttemptOwner(attempt, peer);
+    // Voice negotiation is completed before ledger reconciliation so a slow status read
+    // cannot delay SDP application or make a healthy voice session look like startup failure.
+    await this.reconcileWorkStatus(threadId, attempt, peer);
     this.assertAttemptOwner(attempt, peer);
     if (this.injectWorkStatusContext) this.startWorkStatusContextUpdates(threadId, attempt);
   }
@@ -602,6 +714,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     void ensureAudioContextRunning()
       .then((context) => {
         if (!this.isAttemptOwner(attempt) || this.remoteSource) return;
+        this.currentStage = "playback";
         const analyser = LipSyncAnalyser.createAnalyserNode(context);
         const source = context.createMediaStreamSource(stream);
         source.connect(analyser);
@@ -613,8 +726,9 @@ export class CodexRealtimeClient implements LipSyncSource {
       })
       .catch((error) => {
         if (!this.isAttemptOwner(attempt)) return;
-        const message = error instanceof Error ? error.message : String(error);
-        this.setState({ status: "error", error: message });
+        const classification = classifyRealtimeFailure(error, "playback");
+        this.currentStage = "playback";
+        this.failActiveAttempt(attempt, error, classification.category);
       });
   }
 
@@ -715,15 +829,24 @@ export class CodexRealtimeClient implements LipSyncSource {
       });
       const error = new Error(params?.message ?? "Codex realtime conversation failed");
       this.rejectRemoteSdp?.(error);
-      if (!this.stopping) this.setState({ status: "error", error: error.message });
+      if (!this.stopping && this.state.status === "active") {
+        const classification = classifyRealtimeFailure(error, "realtime-start");
+        this.failActiveAttempt(attempt, error, classification.category, "remote-error");
+      }
     } else if (message.method === "thread/realtime/closed" && !this.stopping) {
       this.writeWorkStatusDiagnostic({
         eventKind: "realtime-closed-observed",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
+      this.recordDiagnostic(
+        "closed",
+        "none",
+        new Error("Codex realtime conversation closed"),
+        "remote",
+      );
       this.invalidateAttempt(attempt);
       this.stopping = true;
-      this.disposeResources();
+      this.disposeResources(this.createStopMessage());
       this.threadId = null;
       this.setState({ status: "idle" });
     } else if (message.method === "yorishiro/realtime-bridge/closed" && !this.stopping) {
@@ -732,6 +855,7 @@ export class CodexRealtimeClient implements LipSyncSource {
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
       const error = new Error(params?.message ?? "Codex app-server connection closed");
+      this.recordDiagnostic("closed", "none", error, "network");
       this.invalidateAttempt(attempt);
       this.stopping = true;
       this.rejectAllPending(error);
@@ -801,6 +925,81 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
   }
 
+  private waitForRetry(run: number, delayMs: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const wait = {
+        run,
+        timeoutId: window.setTimeout(() => {
+          if (this.retryWait === wait) this.retryWait = null;
+          if (this.startRunEpoch !== run) reject(new StartAttemptCancelledError());
+          else resolve();
+        }, delayMs),
+        reject,
+      };
+      this.retryWait = wait;
+    });
+  }
+
+  private cancelRetryWait(): void {
+    const wait = this.retryWait;
+    this.retryWait = null;
+    if (!wait) return;
+    window.clearTimeout(wait.timeoutId);
+    wait.reject(new StartAttemptCancelledError());
+  }
+
+  private failActiveAttempt(
+    attempt: number,
+    error: unknown,
+    category: Parameters<typeof appendRealtimeDiagnostic>[0]["category"],
+    event: "failed" | "remote-error" = "failed",
+  ): void {
+    if (!this.isAttemptOwner(attempt)) return;
+    const message = error instanceof Error ? error.message : String(error);
+    this.recordDiagnostic(event, "none", error, category);
+    this.invalidateAttempt(attempt);
+    this.stopping = true;
+    this.disposeResources(this.createStopMessage());
+    this.threadId = null;
+    // Established-session failures deliberately require a user restart. Automatically
+    // reopening the microphone after a remote disconnect would be surprising and can loop.
+    this.setState({ status: "error", error: message });
+  }
+
+  private createStopMessage(): string | undefined {
+    if (!this.connectionId || !this.threadId) return undefined;
+    return JSON.stringify({
+      method: "thread/realtime/stop",
+      id: this.nextRequestId++,
+      params: { threadId: this.threadId },
+    });
+  }
+
+  private recordDiagnostic(
+    event: "started" | "negotiated" | "failed" | "remote-error" | "closed",
+    retryDecision: "none" | "scheduled" | "exhausted",
+    error?: unknown,
+    category?: Parameters<typeof appendRealtimeDiagnostic>[0]["category"],
+  ): void {
+    appendRealtimeDiagnostic({
+      attemptId: this.currentAttemptId,
+      timestamp: new Date().toISOString(),
+      stage: this.currentStage,
+      event,
+      category,
+      elapsedMs: Math.max(0, Date.now() - this.currentAttemptStartedAt),
+      retryDecision,
+      terminationRequested: this.stopping,
+      peerConnectionState: this.peer?.connectionState,
+      iceConnectionState: this.peer?.iceConnectionState,
+      code:
+        error === undefined || category === undefined
+          ? undefined
+          : realtimeDiagnosticCode(category, this.currentStage),
+      appVersion: APP_VERSION,
+    });
+  }
+
   private disposeResources(finalMessage?: string): void {
     this.workStatusSubscription?.dispose();
     this.workStatusSubscription = null;
@@ -860,6 +1059,18 @@ export class CodexRealtimeClient implements LipSyncSource {
 
 function hasOwn(value: object, key: string): boolean {
   return Object.getOwnPropertyDescriptor(value, key) !== undefined;
+}
+
+/** trim・空文字除去・dedupe した voice 候補列。空になったら built-in default に落とす。 */
+function normalizeVoiceCandidates(values: ReadonlyArray<string>): ReadonlyArray<string> {
+  const candidates: string[] = [];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const voice = value.trim();
+    if (voice === "" || candidates.includes(voice)) continue;
+    candidates.push(voice);
+  }
+  return candidates.length > 0 ? candidates : [DEFAULT_CODEX_REALTIME_VOICE];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

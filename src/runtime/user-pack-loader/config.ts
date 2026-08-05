@@ -21,6 +21,8 @@
  * - `attentionLightNotifications: boolean`（optional）: 入力/承認待ちの照明通知を有効にする。default true
  * - `motionIntensity: number`（optional）: idle procedural motion の大きさ倍率
  * - `codexRealtimeVoice: string`（optional）: Codex GPT Live の出力 voice。default `sol`
+ * - `realtimeVoiceByPersona: Record<string, string>`（optional）: persona pack id ごとの
+ *   Codex GPT Live voice override。global `codexRealtimeVoice` より優先
  * - `profiles: SessionProfile[]`（optional）: user 定義の session profile 一覧
  * - `defaultProfile: string | null`（optional）: 起動時 default-session に使う profile id。bundled (`shell` / `claude` / `codex` / `opencode`) または user `profiles[]` の id。null なら `terminalAgent` を fallback に使う
  *
@@ -78,6 +80,20 @@ export interface YorishiroConfig {
   /** Codex GPT Live session の出力 voice。次回の voice session 開始時に反映される。 */
   readonly codexRealtimeVoice: string;
   /**
+   * `codexRealtimeVoice` が config file に明示されていたか（parse 時に導出）。
+   * default と同じ `"sol"` を明示した場合も source=global と診断できるようにする。
+   * File schema の field ではないため serialize では書き出さない。
+   */
+  readonly codexRealtimeVoiceExplicit: boolean;
+  /**
+   * Persona pack id ごとの Codex GPT Live voice override。active persona の
+   * entry があれば `codexRealtimeVoice` より優先。登録されていない persona id の
+   * entry は無害に無視される（persona の削除 / rename で config は壊れない）。
+   * Voice id は環境依存（installed Codex app-server / account 依存）のため、
+   * PersonaDefinition や persona pack には持たせずここに置く。
+   */
+  readonly realtimeVoiceByPersona: Readonly<Record<string, string>>;
+  /**
    * asset protocol scope に追加するメディアフォルダ。
    * user amenity pack が `new Audio()` 等でローカルファイルを再生するために使う。
    * `~` は home directory に展開される。Rust 側 setup で scope に追加。
@@ -112,6 +128,8 @@ export const EMPTY_CONFIG: YorishiroConfig = {
   defaultProfile: null,
   voiceFrequency: "on",
   codexRealtimeVoice: "sol",
+  codexRealtimeVoiceExplicit: false,
+  realtimeVoiceByPersona: {},
   mediaFolders: ["~/Music"],
 };
 
@@ -182,6 +200,34 @@ const toCodexRealtimeVoice = (value: unknown): string => {
   if (typeof value !== "string") return EMPTY_CONFIG.codexRealtimeVoice;
   const voice = value.trim();
   return voice === "" ? EMPTY_CONFIG.codexRealtimeVoice : voice;
+};
+
+const isExplicitCodexRealtimeVoice = (value: unknown): boolean => {
+  return typeof value === "string" && value.trim() !== "";
+};
+
+/** `Object.hasOwn` 相当の own-property 判定（target ES2020 のため descriptor 経由）。 */
+const hasOwnEntry = (record: Readonly<Record<string, string>>, key: string): boolean => {
+  return Object.getOwnPropertyDescriptor(record, key) !== undefined;
+};
+
+/**
+ * persona id → voice の mapping を tolerant に読む。object 以外は `{}`、
+ * 文字列以外の値・空白だけの key / value entry は捨てる。voice 値は
+ * `toCodexRealtimeVoice` と同じく trim して保持する。
+ * `__proto__` key は plain object への代入が own property にならず
+ * prototype 汚染の入口にもなるため、明示的に捨てる。
+ */
+const toRealtimeVoiceByPersona = (value: unknown): Record<string, string> => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const [personaId, voice] of Object.entries(value as Record<string, unknown>)) {
+    if (personaId.trim() === "" || personaId === "__proto__" || typeof voice !== "string") continue;
+    const trimmed = voice.trim();
+    if (trimmed === "") continue;
+    result[personaId] = trimmed;
+  }
+  return result;
 };
 
 /** 0.0-1.0 の float を返す。無効値は 1.0（default）に fallback。 */
@@ -305,6 +351,8 @@ export function parseConfig(text: string): YorishiroConfig {
     defaultProfile: toNullableString(obj.defaultProfile),
     voiceFrequency: toVoiceFrequency(obj.voiceFrequency),
     codexRealtimeVoice: toCodexRealtimeVoice(obj.codexRealtimeVoice),
+    codexRealtimeVoiceExplicit: isExplicitCodexRealtimeVoice(obj.codexRealtimeVoice),
+    realtimeVoiceByPersona: toRealtimeVoiceByPersona(obj.realtimeVoiceByPersona),
     mediaFolders:
       "mediaFolders" in obj ? toStringArray(obj.mediaFolders) : EMPTY_CONFIG.mediaFolders,
   };
@@ -340,6 +388,9 @@ export function serializeConfig(cfg: YorishiroConfig): string {
   if (cfg.voiceFrequency !== "on") out.voiceFrequency = cfg.voiceFrequency;
   if (cfg.codexRealtimeVoice !== EMPTY_CONFIG.codexRealtimeVoice) {
     out.codexRealtimeVoice = cfg.codexRealtimeVoice;
+  }
+  if (Object.keys(cfg.realtimeVoiceByPersona).length > 0) {
+    out.realtimeVoiceByPersona = { ...cfg.realtimeVoiceByPersona };
   }
   if (!stringArraysEqual(cfg.mediaFolders, EMPTY_CONFIG.mediaFolders)) {
     out.mediaFolders = [...cfg.mediaFolders];
@@ -425,6 +476,59 @@ export function resolveSceneForProject(
     if (sceneId !== undefined) return sceneId;
   }
   return cfg.activeScene;
+}
+
+/** Codex GPT Live voice がどの層で決まったか。dev log で説明可能にするための tag。 */
+export type CodexRealtimeVoiceSource = "persona" | "global" | "default";
+
+export interface CodexRealtimeVoiceResolution {
+  readonly voice: string;
+  readonly source: CodexRealtimeVoiceSource;
+  /** 解決に使った active persona id（null なら persona 不明のまま global へ fallback）。 */
+  readonly personaId: string | null;
+}
+
+/**
+ * Realtime session 開始時の voice 候補を優先順で返す。
+ *   1. `realtimeVoiceByPersona[personaId]`（persona 別 user override）
+ *   2. `codexRealtimeVoice`（global user 設定。明示されていれば default と同値でも含む）
+ *   3. built-in default（`sol`）
+ * 先頭が採用候補で、後続は app-server が voice を明確に拒否した場合にだけ使う
+ * fallback 候補。同じ voice が複数層にあれば先勝ちで dedupe する（常に 1 個以上）。
+ * persona entry は own property だけを見る——prototype 由来の値
+ * （`constructor` 等の persona id）を voice として拾わない。
+ */
+export function listCodexRealtimeVoiceCandidatesForPersona(
+  cfg: YorishiroConfig,
+  personaId: string | null,
+): ReadonlyArray<CodexRealtimeVoiceResolution> {
+  const candidates: CodexRealtimeVoiceResolution[] = [];
+  const push = (voice: string, source: CodexRealtimeVoiceSource): void => {
+    if (candidates.some((candidate) => candidate.voice === voice)) return;
+    candidates.push({ voice, source, personaId });
+  };
+  if (personaId !== null && hasOwnEntry(cfg.realtimeVoiceByPersona, personaId)) {
+    push(cfg.realtimeVoiceByPersona[personaId], "persona");
+  }
+  if (
+    cfg.codexRealtimeVoiceExplicit ||
+    cfg.codexRealtimeVoice !== EMPTY_CONFIG.codexRealtimeVoice
+  ) {
+    push(cfg.codexRealtimeVoice, "global");
+  }
+  push(EMPTY_CONFIG.codexRealtimeVoice, "default");
+  return candidates;
+}
+
+/**
+ * Realtime session 開始時の voice を解決する（候補リストの先頭）。
+ * 優先順位と診断 tag の意味は `listCodexRealtimeVoiceCandidatesForPersona` を参照。
+ */
+export function resolveCodexRealtimeVoiceForPersona(
+  cfg: YorishiroConfig,
+  personaId: string | null,
+): CodexRealtimeVoiceResolution {
+  return listCodexRealtimeVoiceCandidatesForPersona(cfg, personaId)[0];
 }
 
 /**

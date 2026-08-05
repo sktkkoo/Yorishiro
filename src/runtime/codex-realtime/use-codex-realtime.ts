@@ -6,6 +6,7 @@ import {
   CodexRealtimeClient,
   type CodexRealtimeState,
   type CodexRealtimeStatus,
+  type CodexRealtimeVoiceFallback,
   DEFAULT_CODEX_REALTIME_VOICE,
 } from "./codex-realtime-client";
 import { CodexThreadTracker } from "./codex-thread-tracker";
@@ -22,6 +23,8 @@ export type CodexRealtimeClientFactory = (
   stateExpressionCallbacks?: StateExpressionSchedulerCallbacks,
   getPreferredThreadId?: () => string | null,
   getVoice?: () => string | Promise<string>,
+  getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>,
+  onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void,
 ) => CodexRealtimeClientLike;
 
 export interface CodexThreadTrackerLike {
@@ -39,6 +42,14 @@ interface UseCodexRealtimeOptions {
   readonly stateExpressionCallbacks?: StateExpressionSchedulerCallbacks;
   /** Called for every new session so config edits apply without restarting the app. */
   readonly getVoice?: () => string | Promise<string>;
+  /**
+   * Voice 候補（persona override → global → default）を session 開始ごとに返す。
+   * 指定時は `getVoice` より優先。後続候補は app-server が voice を明確に拒否した
+   * ときの fallback にだけ使われる。
+   */
+  readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
+  /** Voice fallback の診断通知（dev log 用）。 */
+  readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
   readonly createClient?: CodexRealtimeClientFactory;
   readonly createThreadTracker?: (
     sessionId: string,
@@ -59,12 +70,16 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
   stateExpressionCallbacks,
   getPreferredThreadId,
   getVoice,
+  getVoiceCandidates,
+  onVoiceFallback,
 ) =>
   new CodexRealtimeClient(sessionId, onStateChange, {
     stateExpressionCallbacks,
     getPreferredThreadId,
     workStatusLedger: getWorkStatusLedgerStore(),
     getVoice,
+    getVoiceCandidates,
+    onVoiceFallback,
   });
 
 const defaultCreateThreadTracker = (
@@ -73,6 +88,10 @@ const defaultCreateThreadTracker = (
 ): CodexThreadTrackerLike => new CodexThreadTracker(sessionId, onCurrentThreadChange);
 
 const FALLBACK_RESTORE_RETRY_DELAYS_MS = [50, 200] as const;
+
+function wait(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
 
 /** App が所有する realtime client を一つに限定し、古い client の通知を遮断する。 */
 export function useCodexRealtime({
@@ -83,6 +102,8 @@ export function useCodexRealtime({
   setFallbackPlaybackEnabled = () => {},
   stateExpressionCallbacks,
   getVoice = () => DEFAULT_CODEX_REALTIME_VOICE,
+  getVoiceCandidates,
+  onVoiceFallback,
   createClient = defaultCreateClient,
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
@@ -93,9 +114,12 @@ export function useCodexRealtime({
   const setFallbackPlaybackEnabledRef = useRef(setFallbackPlaybackEnabled);
   const createClientRef = useRef(createClient);
   const getVoiceRef = useRef(getVoice);
+  const getVoiceCandidatesRef = useRef(getVoiceCandidates);
+  const onVoiceFallbackRef = useRef(onVoiceFallback);
   const sessionIdRef = useRef(sessionId);
+  const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
-  const fallbackPlaybackRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fallbackPlaybackQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [state, setState] = useState<CodexRealtimeState>({ status: "idle" });
 
   fallbackRef.current = fallbackLipSyncSource;
@@ -103,125 +127,146 @@ export function useCodexRealtime({
   setFallbackPlaybackEnabledRef.current = setFallbackPlaybackEnabled;
   createClientRef.current = createClient;
   getVoiceRef.current = getVoice;
+  getVoiceCandidatesRef.current = getVoiceCandidates;
+  onVoiceFallbackRef.current = onVoiceFallback;
 
   const restoreFallback = useCallback(() => {
     applyLipSyncSourceRef.current(fallbackRef.current);
   }, []);
 
-  const beginFallbackPlaybackTransition = useCallback(() => {
-    fallbackPlaybackTransitionRef.current += 1;
-    if (fallbackPlaybackRetryTimerRef.current !== null) {
-      clearTimeout(fallbackPlaybackRetryTimerRef.current);
-      fallbackPlaybackRetryTimerRef.current = null;
-    }
-    return fallbackPlaybackTransitionRef.current;
-  }, []);
+  const enqueueFallbackPlayback = useCallback(
+    (enabled: boolean, retryDelays: ReadonlyArray<number> = []): Promise<void> => {
+      const transition = ++fallbackPlaybackTransitionRef.current;
+      const apply = async (): Promise<void> => {
+        // A newer desired state superseded this transition before it reached the Rust owner.
+        if (fallbackPlaybackTransitionRef.current !== transition) return;
+        let retryIndex = 0;
+        while (true) {
+          if (fallbackPlaybackTransitionRef.current !== transition) return;
+          try {
+            await setFallbackPlaybackEnabledRef.current(enabled);
+            return;
+          } catch (error) {
+            if (fallbackPlaybackTransitionRef.current !== transition) return;
+            console.error(
+              `[codex-realtime] failed to ${enabled ? "restore" : "claim"} fallback playback ownership`,
+              error,
+            );
+            const delay = retryDelays[retryIndex];
+            if (delay === undefined) throw error;
+            retryIndex += 1;
+            await wait(delay);
+          }
+        }
+      };
+      const operation = fallbackPlaybackQueueRef.current.catch(() => {}).then(apply);
+      // A rejected claim must reach start(), but must not poison later ownership transitions.
+      fallbackPlaybackQueueRef.current = operation.catch(() => {});
+      return operation;
+    },
+    [],
+  );
 
   const restoreFallbackPlayback = useCallback(() => {
-    const transition = beginFallbackPlaybackTransition();
-    let retryIndex = 0;
+    void enqueueFallbackPlayback(true, FALLBACK_RESTORE_RETRY_DELAYS_MS).catch(() => {});
+  }, [enqueueFallbackPlayback]);
 
-    const retry = (error: unknown): void => {
-      console.error("[codex-realtime] failed to restore fallback playback ownership", error);
-      if (fallbackPlaybackTransitionRef.current !== transition) return;
-      const delay = FALLBACK_RESTORE_RETRY_DELAYS_MS[retryIndex];
-      if (delay === undefined) return;
-      retryIndex += 1;
-      fallbackPlaybackRetryTimerRef.current = setTimeout(() => {
-        fallbackPlaybackRetryTimerRef.current = null;
-        if (fallbackPlaybackTransitionRef.current === transition) attempt();
-      }, delay);
-    };
+  const claimFallbackPlayback = useCallback(
+    (): Promise<void> => enqueueFallbackPlayback(false),
+    [enqueueFallbackPlayback],
+  );
 
-    const attempt = (): void => {
-      try {
-        const pending = setFallbackPlaybackEnabledRef.current(true);
-        if (pending) void pending.catch(retry);
-      } catch (error) {
-        retry(error);
-      }
-    };
-
-    attempt();
-  }, [beginFallbackPlaybackTransition]);
-
-  const claimFallbackPlayback = useCallback((): void | Promise<void> => {
-    beginFallbackPlaybackTransition();
-    return setFallbackPlaybackEnabledRef.current(false);
-  }, [beginFallbackPlaybackTransition]);
-
-  const stop = useCallback(() => {
-    const client = clientRef.current;
-    // stop() 内の同期 idle 通知も stale 扱いにするため、先に所有権を外す。
-    clientRef.current = null;
-    client?.stop();
-    setState({ status: "idle" });
-    restoreFallbackPlayback();
-    restoreFallback();
-  }, [restoreFallback, restoreFallbackPlayback]);
-
-  const start = useCallback(async () => {
-    if (clientRef.current) return;
-    let client: CodexRealtimeClientLike;
-    client = createClientRef.current(
-      sessionId,
-      (nextState) => {
-        // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
-        if (clientRef.current !== client) return;
-
-        if (nextState.status === "error") {
-          clientRef.current = null;
-          client.stop();
-          setState(nextState);
-          restoreFallbackPlayback();
-          restoreFallback();
-          return;
-        }
-
-        if (nextState.status === "idle") {
-          // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
-          clientRef.current = null;
-          setState(nextState);
-          restoreFallbackPlayback();
-          restoreFallback();
-          return;
-        }
-
-        setState(nextState);
-        if (nextState.status === "active") {
-          applyLipSyncSourceRef.current(client);
-        }
-      },
-      stateExpressionCallbacks,
-      () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
-      () => getVoiceRef.current(),
-    );
-    clientRef.current = client;
-
-    try {
-      // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
-      const pendingOwnershipClaim = claimFallbackPlayback();
-      if (pendingOwnershipClaim) await pendingOwnershipClaim;
-      if (clientRef.current !== client) return;
-      await client.start();
-    } catch (error) {
-      // client 自身の error 通知、stop、session 切替で所有権を失った後なら無視する。
-      if (clientRef.current !== client) return;
+  const stopClient = useCallback(
+    (preserveVoiceIntent: boolean) => {
+      if (!preserveVoiceIntent) voiceIntentRef.current = false;
+      const client = clientRef.current;
+      // stop() 内の同期 idle 通知も stale 扱いにするため、先に所有権を外す。
       clientRef.current = null;
-      client.stop();
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("[codex-realtime] start failed", error);
-      setState({ status: "error", error: message });
+      client?.stop();
+      setState({ status: "idle" });
       restoreFallbackPlayback();
       restoreFallback();
-    }
-  }, [
-    claimFallbackPlayback,
-    restoreFallback,
-    restoreFallbackPlayback,
-    sessionId,
-    stateExpressionCallbacks,
-  ]);
+    },
+    [restoreFallback, restoreFallbackPlayback],
+  );
+
+  const stop = useCallback(() => stopClient(false), [stopClient]);
+
+  const start = useCallback(
+    async (preserveIntentUntilActive = false) => {
+      if (clientRef.current) return;
+      voiceIntentRef.current = true;
+      let preserveIntentOnFailure = preserveIntentUntilActive;
+      let client: CodexRealtimeClientLike;
+      client = createClientRef.current(
+        sessionId,
+        (nextState) => {
+          // stop・session切替後や、置き換え済みclientからの通知は全て捨てる。
+          if (clientRef.current !== client) return;
+
+          if (nextState.status === "error") {
+            if (!preserveIntentOnFailure) voiceIntentRef.current = false;
+            clientRef.current = null;
+            client.stop();
+            setState(nextState);
+            restoreFallbackPlayback();
+            restoreFallback();
+            return;
+          }
+
+          if (nextState.status === "idle") {
+            // remote closed 後の次クリックを、新規 start として扱えるよう解放する。
+            if (!preserveIntentOnFailure) voiceIntentRef.current = false;
+            clientRef.current = null;
+            setState(nextState);
+            restoreFallbackPlayback();
+            restoreFallback();
+            return;
+          }
+
+          setState(nextState);
+          if (nextState.status === "active") {
+            preserveIntentOnFailure = false;
+            applyLipSyncSourceRef.current(client);
+          }
+        },
+        stateExpressionCallbacks,
+        () => threadTrackerRef.current?.getCurrentThreadId() ?? null,
+        () => getVoiceRef.current(),
+        getVoiceCandidatesRef.current
+          ? () => getVoiceCandidatesRef.current?.() ?? [DEFAULT_CODEX_REALTIME_VOICE]
+          : undefined,
+        (fallback) => onVoiceFallbackRef.current?.(fallback),
+      );
+      clientRef.current = client;
+      setState({ status: "connecting" });
+
+      try {
+        // Claim request provenance before connecting so delayed Live-era voice tools remain suppressed.
+        await claimFallbackPlayback();
+        if (clientRef.current !== client) return;
+        await client.start();
+      } catch (error) {
+        // client 自身の error 通知、stop、session 切替で所有権を失った後なら無視する。
+        if (clientRef.current !== client) return;
+        if (!preserveIntentOnFailure) voiceIntentRef.current = false;
+        clientRef.current = null;
+        client.stop();
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[codex-realtime] start failed", error);
+        setState({ status: "error", error: message });
+        restoreFallbackPlayback();
+        restoreFallback();
+      }
+    },
+    [
+      claimFallbackPlayback,
+      restoreFallback,
+      restoreFallbackPlayback,
+      sessionId,
+      stateExpressionCallbacks,
+    ],
+  );
 
   const toggle = useCallback(async () => {
     if (clientRef.current) {
@@ -232,20 +277,14 @@ export function useCodexRealtime({
   }, [start, stop]);
 
   useEffect(() => {
-    const sessionChanged = sessionIdRef.current !== sessionId;
-    sessionIdRef.current = sessionId;
-    if (!available || sessionChanged) stop();
-  }, [available, sessionId, stop]);
-
-  useEffect(() => {
     threadTrackerRef.current?.stop();
     threadTrackerRef.current = null;
     if (!available) return;
     let tracker: CodexThreadTrackerLike;
     tracker = createThreadTracker(sessionId, (threadId) => {
-      if (threadTrackerRef.current !== tracker || !clientRef.current) return;
-      stop();
-      if (threadId) void start();
+      if (threadTrackerRef.current !== tracker) return;
+      if (clientRef.current) stopClient(true);
+      if (threadId && voiceIntentRef.current) void start(true);
     });
     threadTrackerRef.current = tracker;
     void tracker.start().catch((error) => {
@@ -256,13 +295,28 @@ export function useCodexRealtime({
       if (threadTrackerRef.current === tracker) threadTrackerRef.current = null;
       tracker.stop();
     };
-  }, [available, createThreadTracker, sessionId, start, stop]);
+  }, [available, createThreadTracker, sessionId, start, stopClient]);
+
+  useEffect(() => {
+    const sessionChanged = sessionIdRef.current !== sessionId;
+    sessionIdRef.current = sessionId;
+    if (!available || sessionChanged) stopClient(true);
+    if (
+      available &&
+      voiceIntentRef.current &&
+      !clientRef.current &&
+      threadTrackerRef.current?.getCurrentThreadId()
+    ) {
+      void start(true);
+    }
+  }, [available, sessionId, start, stopClient]);
 
   useEffect(() => {
     // Re-stamp the default owner after a WebView reload because the Rust MCP process can survive it.
     restoreFallbackPlayback();
     return () => {
       const client = clientRef.current;
+      voiceIntentRef.current = false;
       clientRef.current = null;
       client?.stop();
       restoreFallbackPlayback();

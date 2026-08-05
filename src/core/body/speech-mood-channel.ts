@@ -55,6 +55,15 @@ export class SpeechMoodChannel {
     if (this.releasing && this.envelope <= 0) this.finishRelease();
   }
 
+  /** Body.dispose() 用の即時 owner release。envelope は進めない。 */
+  dispose(): void {
+    this.handle?.release();
+    this.handle = null;
+    this.intensity = 0;
+    this.envelope = 0;
+    this.releasing = false;
+  }
+
   private finishRelease(): void {
     this.handle?.release();
     this.handle = null;

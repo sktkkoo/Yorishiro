@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import type { MouthValues } from "../../core/voice/mouth-values";
 import { createWorkStatusLedgerStore } from "../work-status-ledger/work-status-ledger-store";
-import { CodexRealtimeClient, type CodexRealtimeState } from "./codex-realtime-client";
+import {
+  CodexRealtimeClient,
+  type CodexRealtimeState,
+  type CodexRealtimeVoiceFallback,
+} from "./codex-realtime-client";
+import { readRealtimeDiagnostics } from "./realtime-diagnostics";
 
 interface FakeChannel<T> {
   onmessage: (message: T) => void;
@@ -25,7 +30,9 @@ const bridge = vi.hoisted(() => ({
     return bridge.connectPromise ? await bridge.connectPromise : "connection-1";
   }),
   connectPromise: null as Promise<string> | null,
-  disconnect: vi.fn(async () => {}),
+  disconnect: vi.fn(
+    async (_args?: { readonly connectionId: string; readonly finalMessage?: string }) => {},
+  ),
   accountType: "chatgpt",
   accountPrelude: null as "server-request" | "id-only" | "error-response" | null,
   loadedThreadResponses: [] as string[][],
@@ -35,6 +42,10 @@ const bridge = vi.hoisted(() => ({
   threadReconcileReadFailures: {} as Record<string, number>,
   realtimeStartPrelude: null as (() => void) | null,
   diagnosticLog: vi.fn(async () => {}),
+  /** voice → error message。entry がある voice の thread/realtime/start を error 応答にする。 */
+  realtimeStartErrors: {} as Record<string, string>,
+  suppressRealtimeSdp: false,
+  realtimeSdpSuppressions: 0,
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -130,19 +141,32 @@ vi.mock("../../bindings/tauri-commands", () => ({
             ...(parentThreadId !== undefined ? { parentThreadId } : {}),
           },
         });
+      } else if (request.method === "thread/realtime/start") {
+        const voice = request.params?.voice;
+        const rejection = typeof voice === "string" ? bridge.realtimeStartErrors[voice] : undefined;
+        if (rejection !== undefined) {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({ id: request.id, error: { message: rejection } }),
+            );
+          });
+          return;
+        }
+        bridge.realtimeStartPrelude?.();
+        respond({});
+        const suppressSdp = bridge.suppressRealtimeSdp || bridge.realtimeSdpSuppressions-- > 0;
+        if (!suppressSdp) {
+          queueMicrotask(() => {
+            bridge.channel?.onmessage(
+              JSON.stringify({
+                method: "thread/realtime/sdp",
+                params: { threadId: "thread-1", sdp: "remote-answer" },
+              }),
+            );
+          });
+        }
       } else {
         respond({});
-      }
-      if (request.method === "thread/realtime/start") {
-        bridge.realtimeStartPrelude?.();
-        queueMicrotask(() => {
-          bridge.channel?.onmessage(
-            JSON.stringify({
-              method: "thread/realtime/sdp",
-              params: { threadId: "thread-1", sdp: "remote-answer" },
-            }),
-          );
-        });
       }
     },
   ),
@@ -216,6 +240,7 @@ describe("CodexRealtimeClient", () => {
   let microphoneTrack: FakeAudioTrack;
 
   beforeEach(() => {
+    localStorage.clear();
     microphoneTrack = new FakeAudioTrack();
     vi.stubGlobal("MediaStream", FakeMediaStream);
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
@@ -235,6 +260,9 @@ describe("CodexRealtimeClient", () => {
     bridge.threadReconcileReadFailures = {};
     bridge.realtimeStartPrelude = null;
     bridge.diagnosticLog.mockClear();
+    bridge.realtimeStartErrors = {};
+    bridge.suppressRealtimeSdp = false;
+    bridge.realtimeSdpSuppressions = 0;
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: {
@@ -560,6 +588,40 @@ describe("CodexRealtimeClient", () => {
     second.stop();
   });
 
+  it("cancels a stale ledger reconciliation retry before an immediate reconnect", async () => {
+    vi.useFakeTimers();
+    const ledger = createWorkStatusLedgerStore();
+    bridge.threadReconcileReadFailures["thread-1"] = 1;
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+    });
+
+    await client.start();
+    const failedAttemptReads = bridge.sent.filter(
+      (message) => message.method === "thread/read" && message.params?.includeTurns === true,
+    ).length;
+    expect(failedAttemptReads).toBe(1);
+
+    client.stop();
+    await client.start();
+    const readsAfterReconnect = bridge.sent.filter(
+      (message) => message.method === "thread/read" && message.params?.includeTurns === true,
+    ).length;
+    expect(readsAfterReconnect).toBe(2);
+
+    // The first session scheduled a retry for +1s. Advancing beyond it must not let that
+    // stale timer read into, mutate, or tear down the replacement voice session.
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(
+      bridge.sent.filter(
+        (message) => message.method === "thread/read" && message.params?.includeTurns === true,
+      ),
+    ).toHaveLength(readsAfterReconnect);
+    expect(client.getStatus()).toBe("active");
+
+    client.stop();
+  });
+
   it("refreshes work freshness as time crosses the aging and stale boundaries", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -678,6 +740,136 @@ describe("CodexRealtimeClient", () => {
     expect(
       bridge.sent.find((message) => message.method === "thread/realtime/start")?.params,
     ).toMatchObject({ voice: "juniper" });
+    client.stop();
+  });
+
+  it("falls back to the next candidate only when the app-server rejects the voice", async () => {
+    bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper"]);
+    expect(fallbacks).toEqual([
+      { fromVoice: "maple", toVoice: "juniper", reason: "Invalid voice: maple" },
+    ]);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("falls back through global to the built-in default when both are rejected", async () => {
+    bridge.realtimeStartErrors = {
+      maple: "unsupported voice",
+      juniper: "voice 'juniper' is not supported",
+    };
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper", "sol"]);
+    expect(fallbacks.map((fallback) => fallback.toVoice)).toEqual(["juniper", "sol"]);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("surfaces the rejection when every candidate voice is refused", async () => {
+    bridge.realtimeStartErrors = {
+      maple: "unsupported voice",
+      sol: "unsupported voice",
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "sol"],
+    });
+
+    await expect(client.start()).rejects.toThrow("unsupported voice");
+
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("does not hide a generic start failure behind voice fallback", async () => {
+    bridge.realtimeStartErrors = { maple: "realtime is not enabled for this account" };
+    const fallbacks: CodexRealtimeVoiceFallback[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper", "sol"],
+      onVoiceFallback: (fallback) => fallbacks.push(fallback),
+    });
+
+    await expect(client.start()).rejects.toThrow("realtime is not enabled for this account");
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple"]);
+    expect(fallbacks).toEqual([]);
+    expect(client.getStatus()).toBe("error");
+  });
+
+  it("does not treat a voice-adjacent auth failure as a voice rejection", async () => {
+    bridge.realtimeStartErrors = {
+      maple: "Voice requires Codex to be signed in with ChatGPT or an API key.",
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "sol"],
+    });
+
+    await expect(client.start()).rejects.toThrow("Voice requires Codex to be signed in");
+
+    expect(
+      bridge.sent.filter((message) => message.method === "thread/realtime/start"),
+    ).toHaveLength(1);
+  });
+
+  it("stops the fallback chain when the attempt is cancelled between candidates", async () => {
+    bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["maple", "juniper"],
+      onVoiceFallback: () => client.stop(),
+    });
+
+    await expect(client.start()).rejects.toThrow(
+      "Codex realtime start attempt is no longer active",
+    );
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple"]);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("re-reads voice candidates for every new session start", async () => {
+    // persona A → B 切替相当：session をまたぐと候補が読み直される。
+    let candidates: ReadonlyArray<string> = ["maple"];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => candidates,
+    });
+
+    await client.start();
+    client.stop();
+    candidates = ["vale"];
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "vale"]);
+    client.stop();
+  });
+
+  it("normalizes duplicate and blank voice candidates before starting", async () => {
+    bridge.realtimeStartErrors = { maple: "Invalid voice: maple" };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getVoiceCandidates: () => ["  maple  ", "maple", "", "juniper"],
+    });
+
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.voice)).toEqual(["maple", "juniper"]);
     client.stop();
   });
 
@@ -977,6 +1169,20 @@ describe("CodexRealtimeClient", () => {
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
     expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
     expect(client.getStatus()).toBe("error");
+    expect(readRealtimeDiagnostics()).toEqual([
+      expect.objectContaining({
+        attemptId: expect.any(String),
+        event: "started",
+        stage: "preflight",
+      }),
+      expect.objectContaining({
+        event: "failed",
+        stage: "thread-discovery",
+        category: "ownership",
+        retryDecision: "none",
+        terminationRequested: false,
+      }),
+    ]);
   });
 
   it("uses the tracker-selected top-level thread while a cleared thread remains loaded", async () => {
@@ -1007,6 +1213,7 @@ describe("CodexRealtimeClient", () => {
 
   it("disconnects a bridge connection that arrives after the connect timeout", async () => {
     vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
     let resolveConnection: ((connectionId: string) => void) | undefined;
     bridge.connectPromise = new Promise((resolve) => {
       resolveConnection = resolve;
@@ -1016,13 +1223,215 @@ describe("CodexRealtimeClient", () => {
 
     await vi.advanceTimersByTimeAsync(0);
     expect(bridge.connect).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(15_000);
+    // Three bounded attempts: 15s timeout, then 0.5s / 1.5s backoff.
+    await vi.advanceTimersByTimeAsync(47_000);
     expect(await result).toEqual(new Error("Codex app-server connection timed out"));
 
     resolveConnection?.("late-connection");
     await vi.advanceTimersByTimeAsync(0);
     expect(bridge.disconnect).toHaveBeenCalledWith({ connectionId: "late-connection" });
+    expect(bridge.connect).toHaveBeenCalledTimes(3);
     expect(client.getStatus()).toBe("error");
+  });
+
+  it("cancels a pending transient retry when explicitly stopped", async () => {
+    vi.useFakeTimers();
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("network connection failed"),
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(client.getStatus()).toBe("connecting");
+    expect(ensureAudioContextRunning).toHaveBeenCalledTimes(1);
+
+    client.stop();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await result).toBeInstanceOf(Error);
+    expect(ensureAudioContextRunning).toHaveBeenCalledTimes(1);
+    expect(client.getStatus()).toBe("idle");
+  });
+
+  it("deduplicates start calls while a transient retry is pending", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("network connection failed"),
+    );
+    const client = new CodexRealtimeClient("main-session");
+    const first = client.start();
+    const second = client.start();
+
+    await vi.advanceTimersByTimeAsync(500);
+    await Promise.all([first, second]);
+
+    expect(ensureAudioContextRunning).toHaveBeenCalledTimes(2);
+    expect(bridge.connect).toHaveBeenCalledTimes(1);
+    expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("sends realtime stop before retrying after an accepted start times out", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    bridge.suppressRealtimeSdp = true;
+    const client = new CodexRealtimeClient("main-session");
+    const result = client.start().catch((error: unknown) => error);
+
+    await vi.advanceTimersByTimeAsync(47_000);
+    expect(await result).toEqual(new Error("Codex realtime SDP answer timed out"));
+    expect(bridge.disconnect).toHaveBeenCalledTimes(3);
+    for (const call of bridge.disconnect.mock.calls) {
+      expect(call[0]).toEqual(
+        expect.objectContaining({
+          finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+        }),
+      );
+    }
+  });
+
+  it("recovers an SDP timeout with the work ledger enabled and keeps one active publisher", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    bridge.realtimeSdpSuppressions = 1;
+    const ledger = createWorkStatusLedgerStore();
+    const work = ledger.create({ summary: "Verify the release" });
+    ledger.markRunning(work.id);
+    let workCreatedDuringFailure: ReturnType<typeof ledger.create> | undefined;
+    let startCount = 0;
+    bridge.realtimeStartPrelude = () => {
+      startCount++;
+      if (startCount !== 1) return;
+      workCreatedDuringFailure = ledger.create({ summary: "Created during failed negotiation" });
+      ledger.markRunning(workCreatedDuringFailure.id);
+    };
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      workStatusLedger: ledger,
+      injectWorkStatusContext: true,
+    });
+
+    const result = client.start();
+    await vi.advanceTimersByTimeAsync(15_500);
+    await result;
+
+    expect(client.getStatus()).toBe("active");
+    expect(workCreatedDuringFailure).toBeDefined();
+    const workDuringFailureId = workCreatedDuringFailure?.id ?? "";
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts).toHaveLength(2);
+    expect(starts).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          initialItems: [expect.objectContaining({ text: expect.stringContaining(work.id) })],
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          initialItems: [
+            expect.objectContaining({
+              text: expect.stringContaining(workDuringFailureId),
+            }),
+          ],
+        }),
+      }),
+    ]);
+    expect(JSON.stringify(starts[0]?.params?.initialItems)).not.toContain(workDuringFailureId);
+    expect(bridge.disconnect).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
+
+    const beforeCompletion = bridge.sent.filter(
+      (message) => message.method === "thread/realtime/appendText",
+    ).length;
+    ledger.complete(work.id, "verified");
+    await vi.advanceTimersByTimeAsync(0);
+    const completionMessages = bridge.sent
+      .filter((message) => message.method === "thread/realtime/appendText")
+      .slice(beforeCompletion)
+      .filter(
+        (message) =>
+          typeof message.params?.text === "string" &&
+          message.params.text.includes('"status":"completed"'),
+      );
+    expect(completionMessages).toHaveLength(1);
+
+    client.stop();
+  });
+
+  it("fully tears down an active session after a remote error", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const peer = FakePeerConnection.latest;
+    const channel = peer?.channel;
+
+    bridge.channel?.onmessage(
+      JSON.stringify({
+        method: "thread/realtime/error",
+        params: { message: "remote failed token=must-not-be-persisted" },
+      }),
+    );
+
+    expect(client.getStatus()).toBe("error");
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(channel?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connectionId: "connection-1",
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
+    expect(JSON.stringify(readRealtimeDiagnostics())).not.toContain("must-not-be-persisted");
+  });
+
+  it("fully tears down an active session after peer connection failure", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const peer = FakePeerConnection.latest;
+    Object.defineProperty(peer, "connectionState", { configurable: true, value: "failed" });
+
+    peer?.dispatchEvent(new Event("connectionstatechange"));
+
+    expect(client.getStatus()).toBe("error");
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
+  });
+
+  it("fully tears down an active session after remote playback setup fails", async () => {
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    const peer = FakePeerConnection.latest;
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("audio playback setup failed"),
+    );
+    const remoteTrack = new FakeAudioTrack();
+    const remoteStream = new FakeMediaStream([remoteTrack]);
+    const trackEvent = new Event("track");
+    Object.defineProperties(trackEvent, {
+      streams: { value: [remoteStream] },
+      track: { value: remoteTrack },
+    });
+
+    peer?.dispatchEvent(trackEvent);
+    await vi.waitFor(() => expect(client.getStatus()).toBe("error"));
+
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+    expect(remoteTrack.stop).toHaveBeenCalledTimes(1);
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
   });
 
   it("stops microphone tracks returned after stop invalidates the start attempt", async () => {

@@ -64,6 +64,13 @@ interface ExpressionSlot {
   readonly source: ExpressionSource;
   readonly kind: ExpressionKind;
   readonly expressionName: string;
+  /**
+   * ExpressionIntentSlotBridge が管理する keyed slot の識別子。
+   * key 付き slot は (source, kind) dedup に参加せず、同 key の replace のみ
+   * 行う（#83 M2: arbiter が admission 済みの contribution を manager 側の
+   * dedup で意図せず release しないため）。legacy caller の slot は undefined。
+   */
+  readonly key?: string;
   requestedWeight: number;
   effectiveWeight: number;
 }
@@ -73,6 +80,12 @@ export interface SlotSnapshot {
   readonly source: ExpressionSource;
   readonly kind: ExpressionKind;
   readonly expressionName: string;
+  /**
+   * keyed slot（intent bridge 管理）の識別子。`{intentId}:{kind}:{name}` 形式
+   * なので、debug facade は arbiter snapshot と intentId で join できる。
+   * legacy slot では undefined。
+   */
+  readonly key?: string;
   readonly requestedWeight: number;
   readonly effectiveWeight: number;
 }
@@ -116,8 +129,10 @@ export class ExpressionManager {
     expressionName: string,
     weight: number,
   ): number {
-    // Dedup: kind:"custom" は name を含む 3-tuple、それ以外は 2-tuple
+    // Dedup: kind:"custom" は name を含む 3-tuple、それ以外は 2-tuple。
+    // keyed slot（intent bridge 管理）は legacy dedup の対象外。
     for (const [id, slot] of this.slots) {
+      if (slot.key !== undefined) continue;
       if (slot.source !== source || slot.kind !== kind) continue;
       if (kind === "custom" && slot.expressionName !== expressionName) continue;
       this.slots.delete(id);
@@ -128,6 +143,40 @@ export class ExpressionManager {
       source,
       kind,
       expressionName,
+      requestedWeight: weight,
+      effectiveWeight: 0,
+    });
+    this.recompute();
+    return id;
+  }
+
+  /**
+   * Keyed slot entrypoint（#83 M2）。ExpressionIntentSlotBridge が admitted
+   * intent の contribution を反映するために使う。
+   *
+   * - dedup は同一 `key` の replace のみ。legacy の (source, kind) dedup には
+   *   参加しない（1 intent が複数 morph へ展開されても bridge が key で
+   *   差分管理する）
+   * - source priority による同 kind 内 suppress と global weight budget は
+   *   legacy slot と共通の recompute で適用される（mixer は一つ）
+   */
+  addKeyedSlot(
+    key: string,
+    source: ExpressionSource,
+    kind: ExpressionKind,
+    expressionName: string,
+    weight: number,
+  ): number {
+    for (const [id, slot] of this.slots) {
+      if (slot.key === key) this.slots.delete(id);
+    }
+    const id = nextSlotId++;
+    this.slots.set(id, {
+      id,
+      source,
+      kind,
+      expressionName,
+      key,
       requestedWeight: weight,
       effectiveWeight: 0,
     });
@@ -196,6 +245,7 @@ export class ExpressionManager {
       source: s.source,
       kind: s.kind,
       expressionName: s.expressionName,
+      key: s.key,
       requestedWeight: s.requestedWeight,
       effectiveWeight: s.effectiveWeight,
     }));
@@ -231,10 +281,15 @@ export class ExpressionManager {
    * 2. 残った slot の合計が 1 を超えたら proportional scale-down
    */
   private recompute(): void {
-    // kind ごとに最高 priority の source を求める
+    // kind ごとに最高 priority の source を求める。
+    // requestedWeight 0 の slot（arbiter に suppress され weight 0 で残る
+    // 互換 slot 等）は何も出力していないので優先権を主張しない —
+    // 参加させると「suppress 済み reflex slot が explicit slot を kind 内で
+    // 逆に抑止する」矛盾が起きる（#83 M5）。
     const kindTopPriority = this.recomputeKindTopPriority;
     kindTopPriority.clear();
     for (const slot of this.slots.values()) {
+      if (slot.requestedWeight <= 0) continue;
       const p = SOURCE_PRIORITY[slot.source];
       const current = kindTopPriority.get(slot.kind) ?? -1;
       if (p > current) kindTopPriority.set(slot.kind, p);

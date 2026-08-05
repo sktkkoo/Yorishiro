@@ -1352,6 +1352,66 @@ const defaultPresenceSnapshot = () => ({
 });
 
 describe("createStateGetHandler", () => {
+  it("完全debug viewを使いunmapped-targetとcontributionを公開する", async () => {
+    const handler = createStateGetHandler({
+      readConfig: vi.fn().mockResolvedValue({
+        primaryPersona: null,
+        activeScene: null,
+        terminalAgent: "claude" as const,
+      }),
+      getCamera: () => null,
+      getVrm: () => ({}),
+      getBody: () =>
+        ({
+          acquireExpressionSlot: vi.fn(),
+          getExpressionSlots: () => [],
+          getExpressionIntentDebugView: () => ({
+            intents: [
+              {
+                intentId: "expr-intent-1",
+                owner: { producerId: "mystery", scopeId: "scope-1" },
+                source: "mcp",
+                semantic: { role: "explicit-action" },
+                occupancy: [],
+                salience: "explicit",
+                requestedIntensity: 1,
+                effectiveIntensity: 1,
+                phase: "active",
+                reason: "unmapped-target",
+                suppressedBy: null,
+                contributions: [],
+              },
+            ],
+            legacySlots: [],
+          }),
+          getExpressionIntentSnapshot: vi.fn(() => {
+            throw new Error("raw snapshot must not be used when debug view exists");
+          }),
+          getMotionSnapshot: () => ({ active: null, preempted: [] }),
+        }) as unknown as BodyLike,
+      tweenManager: new TweenManager(),
+      getSidebarWidth: () => 280,
+      getTerminalOpacity: () => 1,
+      getSceneLayerValues: () => ({ blur: 0, opacity: 1 }),
+      getCameraTracking: () => true,
+      getCameraModulationState: () => ({ enabled: true, suspended: false, activeKeys: [] }),
+      getEffectKinds: () => [],
+      getRuntimeActive: () => ({ scene: null, ui: null }),
+      getPresenceSnapshot: defaultPresenceSnapshot,
+      getActiveSceneId: () => null,
+      uiState: createUiStateStore(),
+    });
+
+    const result = await handler({});
+    expect(result.expressionIntents).toEqual([
+      expect.objectContaining({
+        producer: "mystery",
+        reason: "unmapped-target",
+        contributions: [],
+      }),
+    ]);
+  });
+
   it("aggregates config + camera + vrmLoaded + expressions", async () => {
     const handler = createStateGetHandler({
       readConfig: vi.fn().mockResolvedValue({
@@ -1527,6 +1587,8 @@ describe("createStateGetHandler", () => {
         defaultProfile: null,
         voiceFrequency: "on" as const,
         codexRealtimeVoice: "sol",
+        codexRealtimeVoiceExplicit: false,
+        realtimeVoiceByPersona: {},
         mediaFolders: ["~/Music"],
       }),
       getCamera: () => null,
@@ -1575,6 +1637,8 @@ describe("createStateGetHandler", () => {
         defaultProfile: null,
         voiceFrequency: "on" as const,
         codexRealtimeVoice: "sol",
+        codexRealtimeVoiceExplicit: false,
+        realtimeVoiceByPersona: {},
         mediaFolders: ["~/Music"],
       }),
       getCamera: () => null,
