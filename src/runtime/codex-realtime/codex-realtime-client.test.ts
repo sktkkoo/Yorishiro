@@ -5,6 +5,7 @@ import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import type { MouthValues } from "../../core/voice/mouth-values";
 import {
   CodexRealtimeClient,
+  type CodexRealtimePersonaApplication,
   type CodexRealtimeState,
   type CodexRealtimeVoiceFallback,
 } from "./codex-realtime-client";
@@ -39,6 +40,8 @@ const bridge = vi.hoisted(() => ({
   threadReadFailures: {} as Record<string, number>,
   /** voice → error message。entry がある voice の thread/realtime/start を error 応答にする。 */
   realtimeStartErrors: {} as Record<string, string>,
+  initializeUserAgent: "codex_cli_rs/0.146.0",
+  capabilities: { appServerVersion: "0.146.0", personaInitialItems: true },
   suppressRealtimeSdp: false,
 }));
 
@@ -49,6 +52,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("../../bindings/tauri-commands", () => ({
+  sessionRealtimeCapabilities: vi.fn(async () => bridge.capabilities),
   sessionRealtimeConnect: bridge.connect,
   sessionRealtimeSend: vi.fn(
     async ({ message }: { connectionId: string; message: string }): Promise<void> => {
@@ -62,7 +66,9 @@ vi.mock("../../bindings/tauri-commands", () => ({
         });
       };
 
-      if (request.method === "account/read") {
+      if (request.method === "initialize") {
+        respond({ userAgent: bridge.initializeUserAgent });
+      } else if (request.method === "account/read") {
         if (bridge.accountPrelude === "error-response") {
           queueMicrotask(() => {
             bridge.channel?.onmessage(
@@ -227,6 +233,8 @@ describe("CodexRealtimeClient", () => {
     bridge.accountPrelude = null;
     bridge.loadedThreadResponses = [];
     bridge.loadedThreadParents = {};
+    bridge.initializeUserAgent = "codex_cli_rs/0.146.0";
+    bridge.capabilities = { appServerVersion: "0.146.0", personaInitialItems: true };
     vi.mocked(ensureAudioContextRunning).mockReset();
     vi.mocked(ensureAudioContextRunning).mockResolvedValue({} as AudioContext);
     bridge.threadReadFailures = {};
@@ -278,6 +286,183 @@ describe("CodexRealtimeClient", () => {
       }),
     );
     expect(client.getStatus()).toBe("idle");
+  });
+
+  it("supplements Codex realtime with the active persona as a developer initial item", async () => {
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({
+        personaId: "bundled-yori",
+        instructions: "  persona speaking guidance  ",
+      }),
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.initialItems).toEqual([
+      { role: "developer", text: "persona speaking guidance" },
+    ]);
+    // `prompt` replaces Codex's configured realtime backend instructions and must stay absent.
+    expect(start?.params).not.toHaveProperty("prompt");
+    expect(diagnostics).toEqual([
+      {
+        personaId: "bundled-yori",
+        status: "accepted",
+        appServerVersion: "0.146.0",
+        delivery: "initial-items",
+        startupContextIncluded: true,
+      },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("persona speaking guidance");
+    client.stop();
+  });
+
+  it("can explicitly replace the realtime backend prompt for a comparison experiment", async () => {
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId: "yori-ja", instructions: "I am Yori" }),
+      personaPromptMode: "replace",
+      includeStartupContext: false,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.prompt).toBe("I am Yori");
+    expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(diagnostics).toEqual([
+      {
+        personaId: "yori-ja",
+        status: "accepted",
+        appServerVersion: "0.146.0",
+        delivery: "prompt-replacement",
+        startupContextIncluded: true,
+      },
+    ]);
+    client.stop();
+  });
+
+  it("can omit Codex startup context while keeping persona supplemental", async () => {
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId: "yori-ja", instructions: "I am Yori" }),
+      includeStartupContext: false,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params).toMatchObject({
+      includeStartupContext: false,
+      initialItems: [{ role: "developer", text: "I am Yori" }],
+    });
+    expect(start?.params).not.toHaveProperty("prompt");
+    expect(diagnostics[diagnostics.length - 1]).toMatchObject({
+      delivery: "initial-items",
+      startupContextIncluded: false,
+    });
+    client.stop();
+  });
+
+  it("reads a fresh authoritative persona snapshot for each new realtime session", async () => {
+    let personaId = "user-a";
+    let instructions = "persona A";
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId, instructions }),
+    });
+
+    await client.start();
+    client.stop();
+    personaId = "user-b";
+    instructions = "persona B";
+    await client.start();
+
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts.map((message) => message.params?.initialItems)).toEqual([
+      [{ role: "developer", text: "persona A" }],
+      [{ role: "developer", text: "persona B" }],
+    ]);
+    client.stop();
+  });
+
+  it.each([
+    {
+      name: "no active persona",
+      snapshot: { personaId: null, instructions: "orphaned text" },
+      status: "skipped-no-persona",
+    },
+    {
+      name: "empty addition",
+      snapshot: { personaId: "quiet", instructions: "  " },
+      status: "skipped-empty",
+    },
+  ] as const)("starts honestly without persona initial items for $name", async ({
+    snapshot,
+    status,
+  }) => {
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => snapshot,
+      includeStartupContext: false,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(diagnostics[0]?.status).toBe(status);
+    client.stop();
+  });
+
+  it("falls back without inventing fields when app-server capability is absent", async () => {
+    bridge.capabilities = { appServerVersion: "0.145.0", personaInitialItems: false };
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => ({ personaId: "yori", instructions: "persona prompt" }),
+      includeStartupContext: false,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params).not.toHaveProperty("initialItems");
+    expect(start?.params).not.toHaveProperty("prompt");
+    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(JSON.stringify(start?.params)).not.toContain("persona prompt");
+    expect(diagnostics).toEqual([
+      { personaId: "yori", status: "unsupported", appServerVersion: "0.145.0" },
+    ]);
+    client.stop();
+  });
+
+  it("keeps GPT Live available with prompt-free diagnostics when persona loading fails", async () => {
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot: () => {
+        throw new Error("sensitive persona contents");
+      },
+      includeStartupContext: false,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+
+    await client.start();
+
+    expect(client.getStatus()).toBe("active");
+    const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
+    expect(start?.params?.includeStartupContext).toBe(true);
+    expect(diagnostics).toEqual([
+      { personaId: null, status: "load-failed", appServerVersion: "0.146.0" },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain("sensitive");
+    client.stop();
   });
 
   it("passes the configured voice to Codex realtime", async () => {
@@ -817,6 +1002,44 @@ describe("CodexRealtimeClient", () => {
     expect(ensureAudioContextRunning).toHaveBeenCalledTimes(2);
     expect(bridge.connect).toHaveBeenCalledTimes(1);
     expect(client.getStatus()).toBe("active");
+    client.stop();
+  });
+
+  it("reuses one persona snapshot across transient connection retries", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    vi.mocked(ensureAudioContextRunning).mockRejectedValueOnce(
+      new Error("network connection failed"),
+    );
+    const getPersonaSnapshot = vi.fn(() => ({
+      personaId: "yori-ja",
+      instructions: "stable persona snapshot",
+    }));
+    const diagnostics: CodexRealtimePersonaApplication[] = [];
+    const client = new CodexRealtimeClient("main-session", undefined, {
+      getPersonaSnapshot,
+      onPersonaApplication: (application) => diagnostics.push(application),
+    });
+    const result = client.start();
+
+    await vi.advanceTimersByTimeAsync(500);
+    await result;
+
+    expect(getPersonaSnapshot).toHaveBeenCalledTimes(1);
+    const starts = bridge.sent.filter((message) => message.method === "thread/realtime/start");
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.params?.initialItems).toEqual([
+      { role: "developer", text: "stable persona snapshot" },
+    ]);
+    expect(diagnostics).toEqual([
+      {
+        personaId: "yori-ja",
+        status: "accepted",
+        appServerVersion: "0.146.0",
+        delivery: "initial-items",
+        startupContextIncluded: true,
+      },
+    ]);
     client.stop();
   });
 

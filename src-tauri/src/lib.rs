@@ -1018,6 +1018,17 @@ async fn session_realtime_connect(
     bridge_state.connect(endpoint, on_message).await
 }
 
+/// Installed Codex app-server features verified by the host from `codex --version`.
+#[tauri::command]
+async fn session_realtime_capabilities(
+    pty_state: State<'_, PtyState>,
+    session_id: String,
+) -> Result<crate::sessions::pty_session::CodexRealtimeCapabilities, String> {
+    pty_state
+        .realtime_capabilities(&session_id)
+        .ok_or_else(|| "This Codex session does not expose realtime capabilities".to_string())
+}
+
 #[tauri::command]
 async fn session_realtime_selected_thread(
     pty_state: State<'_, PtyState>,
@@ -2403,6 +2414,7 @@ pub fn run() {
             session_attach,
             session_detach,
             session_realtime_connect,
+            session_realtime_capabilities,
             session_realtime_selected_thread,
             session_realtime_send,
             session_realtime_disconnect,
