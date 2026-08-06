@@ -55,11 +55,37 @@ Notes:
 - Confirm bundled assets are fetched without missing VRM, animation, or voice
   errors.
 
+### Local macOS app bundle
+
+The base Tauri configuration uses Apple's ad-hoc signing identity (`-`). This
+keeps local production bundles signed and applies `src-tauri/Entitlements.plist`
+even when no Apple Developer certificate is installed. Build and verify the app
+bundle with:
+
+```bash
+YORISHIRO_ASSETS_DIR=/path/to/Yorishiro-assets npm run build:macos:app
+npm run check:macos-signature
+```
+
+The verification script runs the equivalent of:
+
+```bash
+codesign --verify --deep --strict src-tauri/target/release/bundle/macos/yorishiro.app
+codesign -d --entitlements :- src-tauri/target/release/bundle/macos/yorishiro.app
+```
+
+and requires the audio-input, network-client, JIT, and unsigned executable
+memory entitlements. Ad-hoc signatures are for local builds only; they are not
+notarized and do not establish a developer identity. In release CI,
+`APPLE_SIGNING_IDENTITY` overrides the ad-hoc configuration with the imported
+Developer ID identity, after which Tauri performs the existing signing and
+notarization flow.
+
 ## 2. Fresh macOS install
 
 - Install the `.dmg` build into `/Applications`.
 - Release builds are signed and notarized and need no extra steps. For locally
-  built unsigned bundles only, run:
+  built ad-hoc signed bundles only, removing quarantine may still be necessary:
 
 ```bash
 xattr -cr /Applications/yorishiro.app

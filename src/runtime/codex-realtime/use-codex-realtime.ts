@@ -4,6 +4,8 @@ import type { StateExpressionSchedulerCallbacks } from "../agent-state-expressio
 import { getWorkStatusLedgerStore } from "../work-status-ledger/work-status-ledger-store";
 import {
   CodexRealtimeClient,
+  type CodexRealtimePersonaApplication,
+  type CodexRealtimePersonaSnapshot,
   type CodexRealtimeState,
   type CodexRealtimeStatus,
   type CodexRealtimeVoiceFallback,
@@ -25,6 +27,10 @@ export type CodexRealtimeClientFactory = (
   getVoice?: () => string | Promise<string>,
   getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>,
   onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void,
+  getPersonaSnapshot?: () => CodexRealtimePersonaSnapshot | Promise<CodexRealtimePersonaSnapshot>,
+  onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void,
+  personaPromptMode?: "supplemental" | "replace",
+  includeStartupContext?: boolean,
 ) => CodexRealtimeClientLike;
 
 export interface CodexThreadTrackerLike {
@@ -50,6 +56,15 @@ interface UseCodexRealtimeOptions {
   readonly getVoiceCandidates?: () => ReadonlyArray<string> | Promise<ReadonlyArray<string>>;
   /** Voice fallback の診断通知（dev log 用）。 */
   readonly onVoiceFallback?: (fallback: CodexRealtimeVoiceFallback) => void;
+  /** Canonical active persona snapshot, read once when a new GPT Live session starts. */
+  readonly getPersonaSnapshot?: () =>
+    | CodexRealtimePersonaSnapshot
+    | Promise<CodexRealtimePersonaSnapshot>;
+  /** Prompt-free diagnostic for the accepted session's persona application status. */
+  readonly onPersonaApplication?: (application: CodexRealtimePersonaApplication) => void;
+  /** Explicit backend-prompt replacement experiment; defaults to safe supplementation. */
+  readonly personaPromptMode?: "supplemental" | "replace";
+  readonly includeStartupContext?: boolean;
   readonly createClient?: CodexRealtimeClientFactory;
   readonly createThreadTracker?: (
     sessionId: string,
@@ -72,6 +87,10 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
   getVoice,
   getVoiceCandidates,
   onVoiceFallback,
+  getPersonaSnapshot,
+  onPersonaApplication,
+  personaPromptMode,
+  includeStartupContext,
 ) =>
   new CodexRealtimeClient(sessionId, onStateChange, {
     stateExpressionCallbacks,
@@ -80,6 +99,10 @@ const defaultCreateClient: CodexRealtimeClientFactory = (
     getVoice,
     getVoiceCandidates,
     onVoiceFallback,
+    getPersonaSnapshot,
+    onPersonaApplication,
+    personaPromptMode,
+    includeStartupContext,
   });
 
 const defaultCreateThreadTracker = (
@@ -104,6 +127,10 @@ export function useCodexRealtime({
   getVoice = () => DEFAULT_CODEX_REALTIME_VOICE,
   getVoiceCandidates,
   onVoiceFallback,
+  getPersonaSnapshot,
+  onPersonaApplication,
+  personaPromptMode = "supplemental",
+  includeStartupContext = true,
   createClient = defaultCreateClient,
   createThreadTracker = defaultCreateThreadTracker,
 }: UseCodexRealtimeOptions): UseCodexRealtimeResult {
@@ -116,6 +143,8 @@ export function useCodexRealtime({
   const getVoiceRef = useRef(getVoice);
   const getVoiceCandidatesRef = useRef(getVoiceCandidates);
   const onVoiceFallbackRef = useRef(onVoiceFallback);
+  const getPersonaSnapshotRef = useRef(getPersonaSnapshot);
+  const onPersonaApplicationRef = useRef(onPersonaApplication);
   const sessionIdRef = useRef(sessionId);
   const voiceIntentRef = useRef(false);
   const fallbackPlaybackTransitionRef = useRef(0);
@@ -129,6 +158,8 @@ export function useCodexRealtime({
   getVoiceRef.current = getVoice;
   getVoiceCandidatesRef.current = getVoiceCandidates;
   onVoiceFallbackRef.current = onVoiceFallback;
+  getPersonaSnapshotRef.current = getPersonaSnapshot;
+  onPersonaApplicationRef.current = onPersonaApplication;
 
   const restoreFallback = useCallback(() => {
     applyLipSyncSourceRef.current(fallbackRef.current);
@@ -237,6 +268,16 @@ export function useCodexRealtime({
           ? () => getVoiceCandidatesRef.current?.() ?? [DEFAULT_CODEX_REALTIME_VOICE]
           : undefined,
         (fallback) => onVoiceFallbackRef.current?.(fallback),
+        getPersonaSnapshotRef.current
+          ? () =>
+              getPersonaSnapshotRef.current?.() ?? {
+                personaId: null,
+                instructions: null,
+              }
+          : undefined,
+        (application) => onPersonaApplicationRef.current?.(application),
+        personaPromptMode,
+        includeStartupContext,
       );
       clientRef.current = client;
       setState({ status: "connecting" });
@@ -265,6 +306,8 @@ export function useCodexRealtime({
       restoreFallbackPlayback,
       sessionId,
       stateExpressionCallbacks,
+      personaPromptMode,
+      includeStartupContext,
     ],
   );
 
