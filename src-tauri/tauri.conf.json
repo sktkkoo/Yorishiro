@@ -41,6 +41,7 @@
     "active": true,
     "targets": "all",
     "macOS": {
+      "signingIdentity": "-",
       "entitlements": "Entitlements.plist"
     },
     "icon": [
