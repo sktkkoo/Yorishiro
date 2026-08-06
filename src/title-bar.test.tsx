@@ -134,11 +134,12 @@ describe("TitleBar", () => {
   });
 
   // active はスラッシュ無しの Mic のまま。MicOff は「ミュート」の慣習アイコンで、
-  // ミュート状態が存在しない現状ではどの状態にも出さない。
+  // ユーザー操作のミュートが存在しない現状ではどの状態にも出さない。
   it("keeps the plain mic (never a slashed mic) while the conversation is live", () => {
     renderTitleBar({
       voiceAvailable: true,
       voiceState: "active",
+      voiceMicrophoneActive: true,
       voiceLabel: "Stop voice",
       onToggleVoice: vi.fn(),
     });
@@ -149,6 +150,22 @@ describe("TitleBar", () => {
     expect(button.querySelector(".lucide-mic")).toBeTruthy();
     expect(button.querySelector(".lucide-mic-off")).toBeNull();
     expect(button.querySelector(".title-bar-voice-status-dot")).toBeTruthy();
+  });
+
+  it("hides the red dot while the conversation is live but microphone capture is interrupted", () => {
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceState: "active",
+      voiceMicrophoneActive: false,
+      voiceLabel: "Stop voice",
+      onToggleVoice: vi.fn(),
+    });
+
+    const button = screen.getByRole("button", { name: "Stop voice" });
+    expect(button.getAttribute("data-voice-state")).toBe("active");
+    expect(button.getAttribute("data-microphone-active")).toBe("false");
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.querySelector(".title-bar-voice-status-dot")).toBeNull();
   });
 
   it("exposes the error state for retry with an alert message", () => {

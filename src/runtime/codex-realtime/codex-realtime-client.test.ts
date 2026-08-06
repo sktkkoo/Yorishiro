@@ -158,15 +158,31 @@ vi.mock("../../core/voice/audio-context", () => ({
   ensureAudioContextRunning: vi.fn(async () => ({})),
 }));
 
-class FakeAudioTrack {
+class FakeAudioTrack extends EventTarget {
   readonly kind = "audio";
+  enabled = true;
+  muted = false;
+  readyState: MediaStreamTrackState = "live";
   readonly stop = vi.fn();
+
+  setMuted(muted: boolean): void {
+    if (this.muted === muted) return;
+    this.muted = muted;
+    this.dispatchEvent(new Event(muted ? "mute" : "unmute"));
+  }
+
+  end(): void {
+    if (this.readyState === "ended") return;
+    this.readyState = "ended";
+    this.dispatchEvent(new Event("ended"));
+  }
 }
 
-class FakeMediaStream {
+class FakeMediaStream extends EventTarget {
   private readonly tracks: FakeAudioTrack[];
 
   constructor(tracks: FakeAudioTrack[] = []) {
+    super();
     this.tracks = [...tracks];
   }
 
@@ -176,6 +192,10 @@ class FakeMediaStream {
 
   getAudioTracks(): FakeAudioTrack[] {
     return this.getTracks();
+  }
+
+  get active(): boolean {
+    return this.tracks.some((track) => track.readyState === "live");
   }
 
   addTrack(track: FakeAudioTrack): void {
@@ -262,7 +282,11 @@ describe("CodexRealtimeClient", () => {
 
     expect(client.getStatus()).toBe("active");
     expect(states.map((state) => state.status)).toEqual(["connecting", "active"]);
-    expect(states[states.length - 1]).toEqual({ status: "active", billing: "subscription" });
+    expect(states[states.length - 1]).toEqual({
+      status: "active",
+      billing: "subscription",
+      microphoneActive: true,
+    });
     const start = bridge.sent.find((message) => message.method === "thread/realtime/start");
     expect(start?.params).toMatchObject({
       threadId: "thread-1",
@@ -784,7 +808,7 @@ describe("CodexRealtimeClient", () => {
     expect(states).toEqual([
       { status: "connecting" },
       { status: "connecting", billing: "api" },
-      { status: "active", billing: "api" },
+      { status: "active", billing: "api", microphoneActive: true },
     ]);
     expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
     expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(true);
@@ -1104,6 +1128,92 @@ describe("CodexRealtimeClient", () => {
         finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
       }),
     );
+  });
+
+  it("publishes microphone mute and recovery independently from the live conversation", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+
+    microphoneTrack.setMuted(true);
+
+    expect(client.getStatus()).toBe("active");
+    expect(states[states.length - 1]).toEqual({
+      status: "active",
+      billing: "subscription",
+      microphoneActive: false,
+    });
+    expect(microphoneTrack.stop).not.toHaveBeenCalled();
+
+    microphoneTrack.setMuted(false);
+
+    expect(states[states.length - 1]).toEqual({
+      status: "active",
+      billing: "subscription",
+      microphoneActive: true,
+    });
+    client.stop();
+  });
+
+  it("tears down the live conversation when its last microphone track ends", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+    const peer = FakePeerConnection.latest;
+
+    microphoneTrack.end();
+
+    expect(client.getStatus()).toBe("error");
+    expect(states[states.length - 1]).toEqual({
+      status: "error",
+      error: "Microphone capture ended",
+    });
+    expect(peer?.close).toHaveBeenCalledTimes(1);
+    expect(bridge.disconnect).toHaveBeenCalledWith(
+      expect.objectContaining({
+        finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
+      }),
+    );
+  });
+
+  it("tears down when the microphone stream reports that capture became inactive", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+    const microphone = (client as unknown as { readonly microphone: FakeMediaStream }).microphone;
+
+    microphone.dispatchEvent(new Event("inactive"));
+
+    expect(client.getStatus()).toBe("error");
+    expect(states[states.length - 1]).toEqual({
+      status: "error",
+      error: "Microphone capture became inactive",
+    });
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it("removes microphone liveness observers during an explicit stop", async () => {
+    const states: CodexRealtimeState[] = [];
+    const client = new CodexRealtimeClient("main-session", (state) => states.push(state));
+    await client.start();
+
+    client.stop();
+    microphoneTrack.setMuted(true);
+    microphoneTrack.end();
+
+    expect(client.getStatus()).toBe("idle");
+    expect(states[states.length - 1]).toEqual({ status: "idle" });
+  });
+
+  it("fails before negotiation when getUserMedia returns no live audio track", async () => {
+    microphoneTrack.readyState = "ended";
+    const client = new CodexRealtimeClient("main-session");
+
+    await expect(client.start()).rejects.toThrow("Microphone did not provide a live audio track");
+
+    expect(client.getStatus()).toBe("error");
+    expect(bridge.sent.some((message) => message.method === "thread/realtime/start")).toBe(false);
+    expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
   });
 
   it("fully tears down an active session after remote playback setup fails", async () => {

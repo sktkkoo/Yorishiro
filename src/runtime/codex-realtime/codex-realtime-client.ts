@@ -30,6 +30,12 @@ export type CodexRealtimeBilling = "subscription" | "api";
 export interface CodexRealtimeState {
   readonly status: CodexRealtimeStatus;
   readonly billing?: CodexRealtimeBilling;
+  /**
+   * The local microphone is currently producing a live capture track.
+   * This is deliberately separate from `status`: a realtime conversation can remain
+   * established while macOS temporarily interrupts or mutes the input device.
+   */
+  readonly microphoneActive?: boolean;
   readonly error?: string;
 }
 
@@ -152,6 +158,7 @@ export class CodexRealtimeClient implements LipSyncSource {
   private peer: RTCPeerConnection | null = null;
   private eventChannel: RTCDataChannel | null = null;
   private microphone: MediaStream | null = null;
+  private microphoneLivenessCleanups: Array<() => void> = [];
   private remoteStream: MediaStream | null = null;
   private remoteSource: MediaStreamAudioSourceNode | null = null;
   private analyserNode: AnalyserNode | null = null;
@@ -260,7 +267,11 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.assertAttemptOwner(attempt);
         // SDP negotiation succeeded. Actual peer connectivity can still fail asynchronously.
         this.recordDiagnostic("negotiated", "none");
-        this.setState({ status: "active", billing: result.billing });
+        this.setState({
+          status: "active",
+          billing: result.billing,
+          microphoneActive: this.isMicrophoneCaptureActive(),
+        });
         this.onPersonaApplication?.(result.personaApplication);
         return;
       } catch (error) {
@@ -612,8 +623,14 @@ export class CodexRealtimeClient implements LipSyncSource {
       for (const track of microphone.getTracks()) track.stop();
       throw new StartAttemptCancelledError();
     }
+    const audioTracks = microphone.getAudioTracks();
+    if (audioTracks.length === 0 || audioTracks.every((track) => track.readyState === "ended")) {
+      for (const track of microphone.getTracks()) track.stop();
+      throw new Error("Microphone did not provide a live audio track");
+    }
     this.microphone = microphone;
-    for (const track of microphone.getAudioTracks()) {
+    this.observeMicrophoneLiveness(microphone, attempt);
+    for (const track of audioTracks) {
       peer.addTrack(track, microphone);
     }
     this.eventChannel = peer.createDataChannel("oai-events");
@@ -876,6 +893,64 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
   }
 
+  /**
+   * Keep the UI capture indicator tied to the browser-owned input source rather than
+   * the longer-lived realtime session. `mute` is non-terminal (device switching and
+   * OS interruptions can recover), while the loss of every live track is terminal.
+   */
+  private observeMicrophoneLiveness(microphone: MediaStream, attempt: number): void {
+    this.clearMicrophoneLivenessObservers();
+
+    const refresh = () => this.publishMicrophoneActivity(attempt);
+    const handleEnded = () => {
+      if (!this.isAttemptOwner(attempt) || this.microphone !== microphone) return;
+      this.publishMicrophoneActivity(attempt);
+      if (microphone.getAudioTracks().some((track) => track.readyState === "live")) return;
+      this.currentStage = "microphone";
+      this.failActiveAttempt(attempt, new Error("Microphone capture ended"), "unknown");
+    };
+    const handleInactive = () => {
+      if (!this.isAttemptOwner(attempt) || this.microphone !== microphone) return;
+      this.publishMicrophoneActivity(attempt);
+      this.currentStage = "microphone";
+      this.failActiveAttempt(attempt, new Error("Microphone capture became inactive"), "unknown");
+    };
+
+    for (const track of microphone.getAudioTracks()) {
+      track.addEventListener("mute", refresh);
+      track.addEventListener("unmute", refresh);
+      track.addEventListener("ended", handleEnded);
+      this.microphoneLivenessCleanups.push(() => {
+        track.removeEventListener("mute", refresh);
+        track.removeEventListener("unmute", refresh);
+        track.removeEventListener("ended", handleEnded);
+      });
+    }
+    microphone.addEventListener("inactive", handleInactive);
+    this.microphoneLivenessCleanups.push(() => {
+      microphone.removeEventListener("inactive", handleInactive);
+    });
+  }
+
+  private publishMicrophoneActivity(attempt: number): void {
+    if (!this.isAttemptOwner(attempt) || this.state.status !== "active") return;
+    const microphoneActive = this.isMicrophoneCaptureActive();
+    if (this.state.microphoneActive === microphoneActive) return;
+    this.setState({ ...this.state, microphoneActive });
+  }
+
+  private isMicrophoneCaptureActive(): boolean {
+    const microphone = this.microphone;
+    if (!microphone?.active) return false;
+    return microphone
+      .getAudioTracks()
+      .some((track) => track.readyState === "live" && track.enabled && !track.muted);
+  }
+
+  private clearMicrophoneLivenessObservers(): void {
+    for (const cleanup of this.microphoneLivenessCleanups.splice(0)) cleanup();
+  }
+
   private waitForRetry(run: number, delayMs: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const wait = {
@@ -957,6 +1032,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     this.rejectAllPending(new Error("Codex realtime conversation stopped"));
     this.acceptRemoteSdp = null;
     this.rejectRemoteSdp = null;
+    this.clearMicrophoneLivenessObservers();
     for (const track of this.microphone?.getTracks() ?? []) track.stop();
     this.microphone = null;
     for (const track of this.remoteStream?.getTracks() ?? []) track.stop();
