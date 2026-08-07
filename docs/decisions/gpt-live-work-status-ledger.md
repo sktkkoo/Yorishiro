@@ -231,7 +231,8 @@ payload には `observedAt / lastObservedAt / observedAgeSeconds / freshness` �
 再現条件を調査できるブラックボックスレコーダーとする。
 
 - 記録対象: work ID、app version、観測 event の種別と時刻、台帳の状態遷移、
-  context 配送、相関再同期の成否と件数、鮮度更新時の最古 active work の区分・経過秒
+  context 配送、相関再同期の成否と件数、鮮度更新時の最古 active work の区分・経過秒。
+  session / thread は原値ではなく相関用の不透明 key として保存する
 - 記録禁止: 音声、transcript、raw terminal log、approval request ID、command 引数、環境変数、
   secret を含み得る protocol payload 全体
 - retention: 容量または世代数で上限を持つ rotating local log。上限超過分は古い順に破棄する
@@ -249,6 +250,14 @@ payload には `observedAt / lastObservedAt / observedAgeSeconds / freshness` �
 512 KiB 到達時に `.1` へ1世代だけ rotate し、最大でも概ね 1 MiB に抑える。記録するのは
 context の初期注入・再同期・差分配送、handoff 観測、work 状態遷移と配送失敗の allowlist
 metadata のみで、summary / transcript / raw protocol payload は保存しない。
+
+診断上の route は次の観測事実だけを表す。`ledger-context` は snapshot / event が
+GPT Live の session start に enqueue された、または `appendText` で配送成功したことを示す。
+これは **model 内部でその情報を実際に読んだ／回答根拠に採用したことまでは証明しない**。
+`main-agent-handoff` は app-server の `handoff_request` を host が実際に受信した場合だけ記録し、
+GPT Live の発話からの推測では記録しない。各 route event には `result` と、固定 allowlist の
+`reason` を付ける。これにより「台帳が利用可能だったか」と「委譲が発生したか」を後から
+区別できる一方、観測不能な model 内部状態を「参照済み」と誤記録しない。
 
 Phase 4 までは、誤りが判明した場合に Issue / Decision Record へ再現条件を人間が残す。
 台帳本体へ訂正履歴を埋め込んで履歴 DB 化する案は採用しない。表示モデルと診断証跡を

@@ -193,8 +193,27 @@ export type WorkStatusDiagnosticEventKind =
   | "work-created"
   | "work-updated";
 
+export type WorkStatusDiagnosticRoute = "ledger-context" | "main-agent-handoff";
+export type WorkStatusDiagnosticResult = "enqueued" | "delivered" | "failed" | "observed";
+export type WorkStatusDiagnosticReason =
+  | "session-start-snapshot"
+  | "post-connect-resync"
+  | "ledger-event"
+  | "freshness-boundary"
+  | "realtime-handoff-request"
+  | "correlation-resync"
+  | "realtime-error"
+  | "realtime-closed"
+  | "bridge-closed";
+
 export interface WorkStatusDiagnosticEntry {
   readonly eventKind: WorkStatusDiagnosticEventKind;
+  /** Rust host hashes these identifiers before writing; raw values never enter the log file. */
+  readonly sessionId?: string;
+  readonly threadId?: string;
+  readonly route?: WorkStatusDiagnosticRoute;
+  readonly result?: WorkStatusDiagnosticResult;
+  readonly reason?: WorkStatusDiagnosticReason;
   readonly workId?: string;
   readonly status?:
     | "created"

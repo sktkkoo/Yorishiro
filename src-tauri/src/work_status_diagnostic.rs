@@ -16,6 +16,11 @@ static LOG_LOCK: Mutex<()> = Mutex::new(());
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkStatusDiagnosticEntry {
     event_kind: DiagnosticEventKind,
+    session_id: Option<String>,
+    thread_id: Option<String>,
+    route: Option<DiagnosticRoute>,
+    result: Option<DiagnosticResult>,
+    reason: Option<DiagnosticReason>,
     work_id: Option<String>,
     status: Option<WorkStatus>,
     previous_status: Option<WorkStatus>,
@@ -23,6 +28,36 @@ pub struct WorkStatusDiagnosticEntry {
     freshness: Option<Freshness>,
     observed_age_seconds: Option<u64>,
     correlation_count: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum DiagnosticRoute {
+    LedgerContext,
+    MainAgentHandoff,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum DiagnosticResult {
+    Enqueued,
+    Delivered,
+    Failed,
+    Observed,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum DiagnosticReason {
+    SessionStartSnapshot,
+    PostConnectResync,
+    LedgerEvent,
+    FreshnessBoundary,
+    RealtimeHandoffRequest,
+    CorrelationResync,
+    RealtimeError,
+    RealtimeClosed,
+    BridgeClosed,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -67,8 +102,19 @@ enum Freshness {
 struct StoredEntry<'a> {
     timestamp_ms: u128,
     app_version: &'static str,
-    #[serde(flatten)]
-    entry: &'a WorkStatusDiagnosticEntry,
+    event_kind: &'a DiagnosticEventKind,
+    session_key: Option<String>,
+    thread_key: Option<String>,
+    route: &'a Option<DiagnosticRoute>,
+    result: &'a Option<DiagnosticResult>,
+    reason: &'a Option<DiagnosticReason>,
+    work_id: &'a Option<String>,
+    status: &'a Option<WorkStatus>,
+    previous_status: &'a Option<WorkStatus>,
+    active_count: &'a Option<u32>,
+    freshness: &'a Option<Freshness>,
+    observed_age_seconds: &'a Option<u64>,
+    correlation_count: &'a Option<u32>,
 }
 
 #[tauri::command]
@@ -93,7 +139,19 @@ fn append_entry(yorishiro_home: &Path, entry: &WorkStatusDiagnosticEntry) -> Res
             .unwrap_or_default()
             .as_millis(),
         app_version: env!("CARGO_PKG_VERSION"),
-        entry,
+        event_kind: &entry.event_kind,
+        session_key: safe_identifier("session", entry.session_id.as_deref()),
+        thread_key: safe_identifier("thread", entry.thread_id.as_deref()),
+        route: &entry.route,
+        result: &entry.result,
+        reason: &entry.reason,
+        work_id: &entry.work_id,
+        status: &entry.status,
+        previous_status: &entry.previous_status,
+        active_count: &entry.active_count,
+        freshness: &entry.freshness,
+        observed_age_seconds: &entry.observed_age_seconds,
+        correlation_count: &entry.correlation_count,
     };
     let mut line = serde_json::to_vec(&stored)
         .map_err(|error| format!("failed to encode diagnostic log entry: {error}"))?;
@@ -105,6 +163,27 @@ fn append_entry(yorishiro_home: &Path, entry: &WorkStatusDiagnosticEntry) -> Res
         .map_err(|error| format!("failed to open diagnostic log: {error}"))?;
     file.write_all(&line)
         .map_err(|error| format!("failed to append diagnostic log: {error}"))
+}
+
+fn safe_identifier(namespace: &str, value: Option<&str>) -> Option<String> {
+    let value = value?.trim();
+    if value.is_empty() {
+        return None;
+    }
+    // Diagnostic correlation needs a stable opaque key, not the original app-server ID.
+    // This fixed FNV-1a encoding is deterministic across app runs; it is not an auth token.
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in namespace
+        .as_bytes()
+        .iter()
+        .copied()
+        .chain(std::iter::once(0))
+        .chain(value.as_bytes().iter().copied())
+    {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    Some(format!("{namespace}-{hash:016x}"))
 }
 
 fn rotate_if_needed(path: &Path, rotated_path: &Path) -> Result<(), String> {
@@ -131,6 +210,11 @@ mod tests {
     fn sample_entry() -> WorkStatusDiagnosticEntry {
         WorkStatusDiagnosticEntry {
             event_kind: DiagnosticEventKind::HandoffObserved,
+            session_id: Some("private session label".to_string()),
+            thread_id: Some("thread-secret-value".to_string()),
+            route: Some(DiagnosticRoute::MainAgentHandoff),
+            result: Some(DiagnosticResult::Observed),
+            reason: Some(DiagnosticReason::RealtimeHandoffRequest),
             work_id: None,
             status: None,
             previous_status: None,
@@ -150,11 +234,21 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(text.trim()).expect("json");
 
         assert_eq!(value["eventKind"], "handoff-observed");
+        assert_eq!(value["route"], "main-agent-handoff");
+        assert_eq!(value["result"], "observed");
+        assert_eq!(value["reason"], "realtime-handoff-request");
+        assert!(value["sessionKey"]
+            .as_str()
+            .unwrap()
+            .starts_with("session-"));
+        assert!(value["threadKey"].as_str().unwrap().starts_with("thread-"));
         assert_eq!(value["activeCount"], 1);
         assert!(value.get("timestampMs").is_some());
         assert!(value.get("appVersion").is_some());
         assert!(value.get("transcript").is_none());
         assert!(value.get("payload").is_none());
+        assert!(!text.contains("private session label"));
+        assert!(!text.contains("thread-secret-value"));
     }
 
     #[test]

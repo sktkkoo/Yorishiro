@@ -336,6 +336,18 @@ describe("CodexRealtimeClient", () => {
         text: expect.stringContaining('"summary":"Prepare release"'),
       }),
     ]);
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
+      eventKind: "context-initial-enqueued",
+      sessionId: "main-session",
+      threadId: "thread-1",
+      route: "ledger-context",
+      result: "enqueued",
+      reason: "session-start-snapshot",
+      activeCount: 1,
+    });
+    expect(
+      bridge.sent.filter((message) => message.method === "thread/realtime/appendText"),
+    ).toHaveLength(0);
 
     ledger.complete(existing.id, "All checks passed");
     await vi.waitFor(() => {
@@ -361,16 +373,25 @@ describe("CodexRealtimeClient", () => {
         }),
       );
     });
-    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
-      eventKind: "work-updated",
-      workId: existing.id,
-      previousStatus: "running",
-      status: "completed",
-      activeCount: 0,
-    });
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "work-updated",
+        sessionId: "main-session",
+        threadId: "thread-1",
+        workId: existing.id,
+        previousStatus: "running",
+        status: "completed",
+        activeCount: 0,
+      }),
+    );
     await vi.waitFor(() => {
       expect(bridge.diagnosticLog).toHaveBeenCalledWith({
         eventKind: "context-event-delivered",
+        sessionId: "main-session",
+        threadId: "thread-1",
+        route: "ledger-context",
+        result: "delivered",
+        reason: "ledger-event",
         activeCount: 0,
       });
     });
@@ -452,11 +473,15 @@ describe("CodexRealtimeClient", () => {
     await second.start();
 
     expect(ledger.get("work-1")?.status).toBe("completed");
-    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
-      eventKind: "correlation-resync-delivered",
-      activeCount: 0,
-      correlationCount: 1,
-    });
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "correlation-resync-delivered",
+        result: "delivered",
+        reason: "correlation-resync",
+        activeCount: 0,
+        correlationCount: 1,
+      }),
+    );
     second.stop();
   });
 
@@ -641,6 +666,11 @@ describe("CodexRealtimeClient", () => {
     ).toBe(true);
     expect(bridge.diagnosticLog).toHaveBeenCalledWith({
       eventKind: "freshness-refresh-delivered",
+      sessionId: "main-session",
+      threadId: "thread-1",
+      route: "ledger-context",
+      result: "delivered",
+      reason: "freshness-boundary",
       activeCount: 1,
       freshness: "stale",
       observedAgeSeconds: 300,
@@ -697,6 +727,11 @@ describe("CodexRealtimeClient", () => {
     });
     expect(bridge.diagnosticLog).toHaveBeenCalledWith({
       eventKind: "handoff-observed",
+      sessionId: "main-session",
+      threadId: "thread-1",
+      route: "main-agent-handoff",
+      result: "observed",
+      reason: "realtime-handoff-request",
       activeCount: 1,
     });
     expect(bridge.sent.some((message) => message.id === "approval-from-server")).toBe(false);
@@ -1744,9 +1779,13 @@ describe("CodexRealtimeClient", () => {
 
     expect(microphoneTrack.stop).toHaveBeenCalledTimes(1);
     expect(client.getStatus()).toBe("idle");
-    expect(bridge.diagnosticLog).toHaveBeenCalledWith({
-      eventKind: "realtime-closed-observed",
-      activeCount: undefined,
-    });
+    expect(bridge.diagnosticLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventKind: "realtime-closed-observed",
+        result: "observed",
+        reason: "realtime-closed",
+        activeCount: undefined,
+      }),
+    );
   });
 });

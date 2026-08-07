@@ -21,7 +21,7 @@ import {
   type CodexWorkStatusProtocolAdapter,
   getCodexWorkStatusProtocolAdapter,
 } from "../work-status-ledger/codex-protocol-adapter";
-import type { WorkLifecyclePort } from "../work-status-ledger/types";
+import type { WorkLifecyclePort, WorkStatusLedgerSnapshot } from "../work-status-ledger/types";
 import {
   formatWorkStatusEvent,
   formatWorkStatusSnapshot,
@@ -657,13 +657,14 @@ export class CodexRealtimeClient implements LipSyncSource {
 
     const candidates = await this.getVoiceCandidates();
     this.assertAttemptOwner(attempt, peer);
+    const initialWorkStatusSnapshot = this.workStatusLedger?.getSnapshot() ?? null;
     const sessionInitialItems = [
       ...(initialItems ?? []),
-      ...(this.workStatusLedger
+      ...(initialWorkStatusSnapshot
         ? [
             {
               role: "developer" as const,
-              text: formatWorkStatusSnapshot(this.workStatusLedger.getSnapshot()),
+              text: formatWorkStatusSnapshot(initialWorkStatusSnapshot),
             },
           ]
         : []),
@@ -700,6 +701,9 @@ export class CodexRealtimeClient implements LipSyncSource {
         if (this.workStatusLedger) {
           this.writeWorkStatusDiagnostic({
             eventKind: "context-initial-enqueued",
+            route: "ledger-context",
+            result: "enqueued",
+            reason: "session-start-snapshot",
             activeCount: this.workStatusLedger?.getSnapshot().activeCount,
           });
         }
@@ -729,7 +733,9 @@ export class CodexRealtimeClient implements LipSyncSource {
     // cannot delay SDP application or make a healthy voice session look like startup failure.
     await this.reconcileWorkStatus(threadId, attempt, peer);
     this.assertAttemptOwner(attempt, peer);
-    if (this.workStatusLedger) this.startWorkStatusContextUpdates(threadId, attempt);
+    if (this.workStatusLedger) {
+      this.startWorkStatusContextUpdates(threadId, attempt, initialWorkStatusSnapshot);
+    }
   }
 
   private async reconcileWorkStatus(
@@ -763,6 +769,8 @@ export class CodexRealtimeClient implements LipSyncSource {
       }
       this.writeWorkStatusDiagnostic({
         eventKind: "correlation-resync-delivered",
+        result: "delivered",
+        reason: "correlation-resync",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
         correlationCount: reconciled.matchedTurns + releasedApprovals,
       });
@@ -770,6 +778,8 @@ export class CodexRealtimeClient implements LipSyncSource {
       if (!this.isAttemptOwner(attempt)) throw error;
       this.writeWorkStatusDiagnostic({
         eventKind: "correlation-resync-failed",
+        result: "failed",
+        reason: "correlation-resync",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
       console.warn("[codex-realtime] failed to reconcile work status", error);
@@ -792,7 +802,11 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
   }
 
-  private startWorkStatusContextUpdates(threadId: string, attempt: number): void {
+  private startWorkStatusContextUpdates(
+    threadId: string,
+    attempt: number,
+    initialSnapshot: WorkStatusLedgerSnapshot | null,
+  ): void {
     this.workStatusSubscription?.dispose();
     const ledger = this.workStatusLedger;
     this.workStatusSubscription =
@@ -800,6 +814,8 @@ export class CodexRealtimeClient implements LipSyncSource {
         if (!this.isAttemptOwner(attempt) || this.threadId !== threadId) return;
         this.writeWorkStatusDiagnostic({
           eventKind: event.kind,
+          result: "observed",
+          reason: "ledger-event",
           workId: event.workId,
           status: event.work.status,
           ...(event.kind === "work-updated" ? { previousStatus: event.previousStatus } : {}),
@@ -808,14 +824,19 @@ export class CodexRealtimeClient implements LipSyncSource {
         this.appendWorkStatusContext(threadId, formatWorkStatusEvent(event), attempt, "event");
         this.scheduleWorkStatusFreshnessRefresh(threadId, attempt);
       }) ?? null;
-    // initialItems の snapshot 採取後〜SDP確立までの更新を、最新snapshotで再同期する。
+    // initialItems の snapshot 採取後〜SDP確立までに実際の更新があった場合だけ
+    // 最新 snapshot を再同期する。同一 snapshot の無条件な追送は、音声開始直後の
+    // developer input として扱われ、自発的な進捗報告を誘発し得るため行わない。
     if (ledger) {
-      this.appendWorkStatusContext(
-        threadId,
-        formatWorkStatusSnapshot(ledger.getSnapshot()),
-        attempt,
-        "resync",
-      );
+      const currentSnapshot = ledger.getSnapshot();
+      if (currentSnapshot !== initialSnapshot) {
+        this.appendWorkStatusContext(
+          threadId,
+          formatWorkStatusSnapshot(currentSnapshot),
+          attempt,
+          "resync",
+        );
+      }
       this.scheduleWorkStatusFreshnessRefresh(threadId, attempt);
     }
   }
@@ -840,6 +861,14 @@ export class CodexRealtimeClient implements LipSyncSource {
               : source === "resync"
                 ? "context-resync-delivered"
                 : "freshness-refresh-delivered",
+          route: "ledger-context",
+          result: "delivered",
+          reason:
+            source === "event"
+              ? "ledger-event"
+              : source === "resync"
+                ? "post-connect-resync"
+                : "freshness-boundary",
           activeCount: this.workStatusLedger?.getSnapshot().activeCount,
           ...(source === "freshness" ? this.currentFreshnessDiagnostic() : {}),
         });
@@ -849,6 +878,14 @@ export class CodexRealtimeClient implements LipSyncSource {
         if (this.isAttemptOwner(attempt)) {
           this.writeWorkStatusDiagnostic({
             eventKind: "context-delivery-failed",
+            route: "ledger-context",
+            result: "failed",
+            reason:
+              source === "event"
+                ? "ledger-event"
+                : source === "resync"
+                  ? "post-connect-resync"
+                  : "freshness-boundary",
             activeCount: this.workStatusLedger?.getSnapshot().activeCount,
           });
           console.warn("[codex-realtime] failed to append work status context", error);
@@ -888,7 +925,11 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private writeWorkStatusDiagnostic(entry: WorkStatusDiagnosticEntry): void {
-    void workStatusDiagnosticLog(entry).catch((error) => {
+    void workStatusDiagnosticLog({
+      sessionId: this.sessionId,
+      ...(this.threadId ? { threadId: this.threadId } : {}),
+      ...entry,
+    }).catch((error) => {
       console.warn("[codex-realtime] failed to write work status diagnostic log", error);
     });
   }
@@ -1001,6 +1042,10 @@ export class CodexRealtimeClient implements LipSyncSource {
     ) {
       this.writeWorkStatusDiagnostic({
         eventKind: "handoff-observed",
+        threadId: params.threadId,
+        route: "main-agent-handoff",
+        result: "observed",
+        reason: "realtime-handoff-request",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
     }
@@ -1009,6 +1054,8 @@ export class CodexRealtimeClient implements LipSyncSource {
     } else if (message.method === "thread/realtime/error") {
       this.writeWorkStatusDiagnostic({
         eventKind: "realtime-error-observed",
+        result: "observed",
+        reason: "realtime-error",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
       const error = new Error(params?.message ?? "Codex realtime conversation failed");
@@ -1020,6 +1067,8 @@ export class CodexRealtimeClient implements LipSyncSource {
     } else if (message.method === "thread/realtime/closed" && !this.stopping) {
       this.writeWorkStatusDiagnostic({
         eventKind: "realtime-closed-observed",
+        result: "observed",
+        reason: "realtime-closed",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
       this.recordDiagnostic(
@@ -1036,6 +1085,8 @@ export class CodexRealtimeClient implements LipSyncSource {
     } else if (message.method === "yorishiro/realtime-bridge/closed" && !this.stopping) {
       this.writeWorkStatusDiagnostic({
         eventKind: "bridge-closed-observed",
+        result: "observed",
+        reason: "bridge-closed",
         activeCount: this.workStatusLedger?.getSnapshot().activeCount,
       });
       const error = new Error(params?.message ?? "Codex app-server connection closed");
