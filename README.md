@@ -85,6 +85,16 @@ Yorishiro's commands let you create and edit packs, run tutorials, and more — 
 
 Codex does not support custom `/` commands, so Yorishiro registers the same tools as `$yori-*` skills instead.
 
+### Voice support
+
+Yorishiro supports voice conversation through GPT Live when using Codex 0.145.0 or newer. Press the microphone button in the title bar to start, and press it again to stop. The normal Codex TUI stays visible: voice and text share the same thread, approvals, and tool flow. Voice inherits the current Codex CLI login: ChatGPT sign-in uses the subscription, while API-key authentication incurs metered API charges. Yorishiro keeps an “API billing” badge visible whenever API-key voice is connecting or active. Microphone access is requested only when you press the button. See [the realtime voice decision](docs/decisions/codex-realtime-voice.md) for architecture and limitations.
+
+<p align="center">
+  <img src="docs/assets/gpt-live-title-bar.png" alt="GPT Live microphone button in the Yorishiro title bar" width="220" />
+</p>
+
+Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live output voice globally (default: `sol`), and `realtimeVoiceByPersona` to override it per persona pack id. The values are read whenever a new voice session starts, so stop and restart an active voice conversation to apply a change. If the app-server explicitly rejects the selected voice as invalid or unsupported, Yorishiro retries with the next candidate (persona → global → default); other connection failures surface as errors. See [configuration](docs/configuration.md#codex-gpt-live-voice).
+
 ### Language
 
 Yorishiro starts with `language: "auto"` and detects the app language at launch. Japanese locales use Japanese UI, the Japanese default persona, Japanese global prompt guidance, and Japanese `/yori:*` (`$yori-*` in Codex) command prompts. Other locales use English. You can switch this from the settings screen or by editing `~/.yorishiro/config.json`.
@@ -158,16 +168,6 @@ For recovery paths, safe mode, and issue report details, see [`docs/troubleshoot
 ### Reflex layer
 
 The inhabitant constantly observes terminal output. Hooks and text flowing through the PTY are picked up by persona pack triggers, which react instantly with expressions and motions. These reactions bypass the LLM — the body moves before words form. Where the inhabitant's attention is focused appears as a soft glow on screen called Attention Aura.
-
-### GPT Live
-
-With Codex 0.145.0 or newer, press the microphone button in the title bar to start a GPT Live voice conversation. Press it again to stop. The normal Codex TUI stays visible: voice and text share the same thread, approvals, and tool flow. Voice inherits the current Codex CLI login: ChatGPT sign-in uses the subscription, while API-key authentication incurs metered API charges. Yorishiro keeps an “API billing” badge visible whenever API-key voice is connecting or active. Microphone access is requested only when you press the button. See [the realtime voice decision](docs/decisions/codex-realtime-voice.md) for architecture and limitations.
-
-<p align="center">
-  <img src="docs/assets/gpt-live-title-bar.png" alt="GPT Live microphone button in the Yorishiro title bar" width="220" />
-</p>
-
-Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live output voice globally (default: `sol`), and `realtimeVoiceByPersona` to override it per persona pack id. The values are read whenever a new voice session starts, so stop and restart an active voice conversation to apply a change. If the app-server explicitly rejects the selected voice as invalid or unsupported, Yorishiro retries with the next candidate (persona → global → default); other connection failures surface as errors. See [configuration](docs/configuration.md#codex-gpt-live-voice).
 
 ### Light Alert
 
