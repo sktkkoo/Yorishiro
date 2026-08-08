@@ -22,17 +22,17 @@ Codex session ごとに起動する `codex app-server --listen <endpoint>` の l
 
 Codex CLI 0.147.0 以降は `~/.codex/thread-writer-locks/` の writer lock を使う。Tauri managed state は process exit で Drop されるとは限らず、leak した app-server が lock を握り続けると、次回の `resume --last` が `-32600 already has an active writer` で失敗する（issue #109）。明示的 teardown と次回起動時 reaper の二層は、この故障を塞ぐための最小構成であり、どちらを欠いても leak 経路が残る。
 
-debug build を例外にしない理由は経験的で、実装当日に確認された。Rust hot reload で backend process が再起動すると PTY は必ず死に、その上で動く agent（TUI）も一緒に死ぬ。sidecar だけ残しても再 attach する経路がないため session の継続は得られず、残った orphan が writer lock を握って次の session の `resume --last` を塞ぐ——つまり issue #109 と同じ故障を dev loop 内で再現する。実際、debug でこの teardown / reaper をスキップする変更を入れた直後の dev iteration で `-32600` が再発し、手動 cleanup が必要になった。
+debug build を例外にしない理由は経験的で、実装当日に確認された。Rust hot reload で backend process が再起動すると、現行構成では旧 process が所有していた PTY との接続が切れ、新 process から再 attach できない。sidecar だけ残しても session の継続は得られず、残留 sidecar が writer lock を握って次の session の `resume --last` を塞ぐ——つまり issue #109 と同じ故障を dev loop 内で再現する。実際、debug でこの teardown / reaper をスキップする変更を入れた直後の dev iteration で `-32600` が再発し、手動 cleanup が必要になった。
 
 ## 検討したが却下した代替案
 
 ### debug build では teardown / reaper をスキップする（自己改修セッション保護）
 
-却下。Yorishiro 内の agent が Yorishiro 自身の Rust code を編集すると、自分の変更が引き起こす hot reload で自分のセッションが止まる。これを避けたい動機は正当だが、スキップは目的を達成しない。PTY は process 再起動で必ず死ぬため agent は保護されず、残るのは lock を握った orphan sidecar だけになる。導入当日の dev loop で issue #109 と同一の resume 失敗が再発したため、経験的にも棄却された。
+却下。Yorishiro 内の agent が Yorishiro 自身の Rust code を編集すると、自分の変更が引き起こす hot reload で自分のセッションが止まる。これを避けたい動機は正当だが、スキップは目的を達成しない。backend 再起動後に旧 PTY へ再 attach する経路がないため agent は保護されず、残るのは lock を握った残留 sidecar だけになる。導入当日の dev loop で issue #109 と同一の resume 失敗が再発したため、経験的にも棄却された。
 
 ### debug build で startup reaper だけ実行する（teardown はスキップ）
 
-却下。結果は一律動作とほぼ同じ（orphan は次回起動で数秒後に回収される）で、profile 分岐の複雑さに見合う利得がない。in-flight turn が次回起動までのわずかな間だけ orphan 内で走り続けるが、再 attach できない以上その成果を回収する手段がない。
+却下。結果は一律動作とほぼ同じ（残留 sidecar は次回起動で数秒後に整理される）で、profile 分岐の複雑さに見合う利得がない。in-flight turn が次回起動までのわずかな間だけ取り残された sidecar 内で走り続けるが、再 attach できない以上その成果を回収する手段がない。
 
 ### Tauri process の外に session supervisor を置く
 
@@ -43,7 +43,7 @@ debug build を例外にしない理由は経験的で、実装当日に確認�
 - app 終了は agent session 終了を意味する。app 終了後も作業を継続する正式な background mode ではない。
 - 自己改修 workflow（Yorishiro 内の agent が Yorishiro の Rust code を触る）では、hot reload のたびに agent session が終わる。継続性が必要になった時点で session supervisor を設計する。lifecycle の例外を増やす方向では解決しない。
 - reaper は「registry に記録した endpoint がコマンドラインに現れる codex app-server」以外を殺さない。Yorishiro 以外が起動した app-server や PID 再利用先には触れない。
-- 導入以前の build が leak させた orphan は registry に記録がなく回収できない。手動 cleanup（PPID=1 の `codex app-server --listen` を選んで kill）が一度だけ必要になる。
+- 導入以前の build が取り残した sidecar は registry に記録がなく整理できない。手動 cleanup（PPID=1 の `codex app-server --listen` を選んで kill）が一度だけ必要になる。
 
 ## 関連 reference
 
