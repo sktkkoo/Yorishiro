@@ -82,6 +82,7 @@ pub fn reap_stale_sidecars() {
         return;
     };
     reap_stale_at(&path, &SystemProbe);
+    reap_unrecorded_orphans_at(&path, &SystemProbe, &SystemOrphanScanner);
 }
 
 /// 3 相で reap する。kill は bounded wait（最長 2 秒）を含むため lock の外で
@@ -141,6 +142,102 @@ fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
     if reaped > 0 {
         eprintln!("[codex-sidecar] reaped {reaped} leaked app-server process(es)");
     }
+}
+
+/// 移行用 sweep が必要とする process 一覧と接続状態の観測。テストでは fake。
+pub(crate) trait OrphanScanProbe {
+    /// 全 process の (pid, ppid, command line)。
+    fn list_processes(&self) -> Vec<(u32, u32, String)>;
+    /// その port へ ESTABLISHED な TCP 接続が存在するか。
+    fn has_established_client(&self, port: u16) -> bool;
+}
+
+/// registry 導入前の build（v0.6.x 以前）が leak した sidecar の移行用 sweep。
+///
+/// 旧 build は spawn を記録しないため registry reap では回収できない。update
+/// では「旧 build が codex session を開いたまま終了 → 記録なしの orphan が
+/// 最新 thread の writer lock を握る → 新 build の `resume --last` が -32600」
+/// という経路が必ず成立するため、記録の代わりに以下の全条件で判定する：
+///
+/// 1. コマンドラインが `<codex binary> app-server --listen ws://127.0.0.1:<port>`
+///    そのもの（末尾まで一致。daemon subcommand や unix socket は対象外）
+/// 2. PPID = 1（spawn した親が既に死んでいる）
+/// 3. registry に記録がない（記録があるものは registry reap の管轄）
+/// 4. その listen port に ESTABLISHED な接続が 1 本もない
+///    （生きた client が付いた server は、誰が spawn したかに関わらず殺さない）
+fn reap_unrecorded_orphans_at(
+    path: &Path,
+    probe: &dyn ProcessProbe,
+    scanner: &dyn OrphanScanProbe,
+) {
+    let recorded: std::collections::HashSet<u32> = with_registry_lock(path, || read_entries(path))
+        .iter()
+        .map(|e| e.sidecar_pid)
+        .collect();
+    let targets = plan_unrecorded_reap(&scanner.list_processes(), &recorded, scanner);
+    if targets.is_empty() {
+        return;
+    }
+    for entry in &targets {
+        if still_matches(probe, entry) {
+            probe.terminate(entry.sidecar_pid);
+        }
+    }
+    wait_for_death_or_escalate(&targets, probe);
+    let reaped = targets
+        .iter()
+        .filter(|e| !probe.is_alive(e.sidecar_pid))
+        .count();
+    if reaped > 0 {
+        eprintln!(
+            "[codex-sidecar] migration: reaped {reaped} unrecorded orphan app-server process(es) left by a pre-registry build"
+        );
+    }
+}
+
+/// 条件 1〜4 を満たす orphan を、registry reap と同じ kill 経路に流せるよう
+/// `SidecarEntry` の形に合成して返す（owner は既に居ないので便宜上 1）。
+fn plan_unrecorded_reap(
+    processes: &[(u32, u32, String)],
+    recorded_pids: &std::collections::HashSet<u32>,
+    scanner: &dyn OrphanScanProbe,
+) -> Vec<SidecarEntry> {
+    let mut targets = Vec::new();
+    for (pid, ppid, command) in processes {
+        if *ppid != 1 || recorded_pids.contains(pid) {
+            continue;
+        }
+        let Some(port) = parse_sidecar_listen_port(command.trim()) else {
+            continue;
+        };
+        if scanner.has_established_client(port) {
+            continue;
+        }
+        targets.push(SidecarEntry {
+            owner_pid: 1,
+            sidecar_pid: *pid,
+            endpoint: format!("ws://127.0.0.1:{port}"),
+        });
+    }
+    targets
+}
+
+/// コマンドラインが Yorishiro 型 sidecar の形（`<binary> app-server --listen
+/// ws://127.0.0.1:<port>` で終端、binary は空白なしで "codex" を含む）なら
+/// port を返す。判定を狭く保つことが安全性の根拠なので、疑わしきは None。
+fn parse_sidecar_listen_port(command: &str) -> Option<u16> {
+    let marker = " app-server --listen ws://127.0.0.1:";
+    let idx = command.find(marker)?;
+    let binary = &command[..idx];
+    if binary.contains(char::is_whitespace) || !binary.contains("codex") {
+        return None;
+    }
+    let port_str = &command[idx + marker.len()..];
+    if port_str.is_empty() || !port_str.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let port: u32 = port_str.parse().ok()?;
+    u16::try_from(port).ok().filter(|p| *p > 0)
 }
 
 struct ReapPlan {
@@ -351,6 +448,62 @@ fn ps_field(pid: u32, field: &str) -> Option<String> {
         None
     } else {
         Some(trimmed.to_string())
+    }
+}
+
+/// 実 system に対する移行用 sweep の観測。ps で全 process、lsof で接続を読む。
+struct SystemOrphanScanner;
+
+#[cfg(unix)]
+impl OrphanScanProbe for SystemOrphanScanner {
+    fn list_processes(&self) -> Vec<(u32, u32, String)> {
+        let Ok(output) = std::process::Command::new("ps")
+            .args(["-axww", "-o", "pid=,ppid=,command="])
+            .output()
+        else {
+            return Vec::new();
+        };
+        if !output.status.success() {
+            return Vec::new();
+        }
+        let Ok(text) = String::from_utf8(output.stdout) else {
+            return Vec::new();
+        };
+        text.lines()
+            .filter_map(|line| {
+                let trimmed = line.trim_start();
+                let (pid_str, rest) = trimmed.split_once(char::is_whitespace)?;
+                let rest = rest.trim_start();
+                let (ppid_str, command) = rest.split_once(char::is_whitespace)?;
+                Some((
+                    pid_str.parse().ok()?,
+                    ppid_str.parse().ok()?,
+                    command.trim().to_string(),
+                ))
+            })
+            .collect()
+    }
+
+    fn has_established_client(&self, port: u16) -> bool {
+        let Ok(output) = std::process::Command::new("lsof")
+            .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:ESTABLISHED", "-t"])
+            .output()
+        else {
+            // 確認できないときは「client あり」に倒して殺さない。
+            return true;
+        };
+        !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+    }
+}
+
+#[cfg(not(unix))]
+impl OrphanScanProbe for SystemOrphanScanner {
+    fn list_processes(&self) -> Vec<(u32, u32, String)> {
+        Vec::new()
+    }
+
+    fn has_established_client(&self, _port: u16) -> bool {
+        true
     }
 }
 
@@ -735,6 +888,119 @@ mod tests {
         let remaining = read_entries(&path);
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].sidecar_pid, 556);
+    }
+
+    struct FakeScanner {
+        processes: Vec<(u32, u32, String)>,
+        established_ports: HashSet<u16>,
+    }
+
+    impl OrphanScanProbe for FakeScanner {
+        fn list_processes(&self) -> Vec<(u32, u32, String)> {
+            self.processes.clone()
+        }
+
+        fn has_established_client(&self, port: u16) -> bool {
+            self.established_ports.contains(&port)
+        }
+    }
+
+    #[test]
+    fn parses_only_exact_sidecar_command_shapes() {
+        assert_eq!(
+            parse_sidecar_listen_port(
+                "/Users/x/.local/bin/codex app-server --listen ws://127.0.0.1:50001"
+            ),
+            Some(50001)
+        );
+        // daemon subcommand・unix socket・追加引数・非 loopback・codex 以外の
+        // binary・空白入り binary はすべて対象外。
+        assert_eq!(
+            parse_sidecar_listen_port("codex app-server daemon run --port 50001"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port("codex app-server --listen unix:///tmp/x.sock"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port("codex app-server --listen ws://127.0.0.1:50001 --extra"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port("codex app-server --listen ws://0.0.0.0:50001"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port("/usr/bin/other app-server --listen ws://127.0.0.1:50001"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port("rg foo codex app-server --listen ws://127.0.0.1:50001"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port("codex app-server --listen ws://127.0.0.1:"),
+            None
+        );
+    }
+
+    #[test]
+    fn plan_unrecorded_targets_only_abandoned_unrecorded_clientless_sidecars() {
+        let sidecar = |pid: u32, ppid: u32, port: u16| (pid, ppid, sidecar_command(port));
+        let processes = vec![
+            sidecar(300, 1, 50001),            // 対象: 孤児・未記録・client なし
+            sidecar(301, 4242, 50002),         // 親が生きている → 対象外
+            sidecar(302, 1, 50003),            // registry に記録あり → 対象外
+            sidecar(303, 1, 50004),            // ESTABLISHED client あり → 対象外
+            (304, 1, "/usr/bin/vim x".into()), // 形が違う → 対象外
+        ];
+        let recorded = HashSet::from([302u32]);
+        let scanner = FakeScanner {
+            processes: processes.clone(),
+            established_ports: HashSet::from([50004u16]),
+        };
+
+        let targets = plan_unrecorded_reap(&processes, &recorded, &scanner);
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].sidecar_pid, 300);
+        assert_eq!(targets[0].endpoint, "ws://127.0.0.1:50001");
+    }
+
+    #[test]
+    fn migration_sweep_kills_pre_registry_orphan_end_to_end() {
+        let path = temp_registry("migration");
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_command(300, &sidecar_command(50001));
+        let scanner = FakeScanner {
+            processes: vec![(300, 1, sidecar_command(50001))],
+            established_ports: HashSet::new(),
+        };
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert_eq!(*probe.terminated.lock().unwrap(), vec![300]);
+    }
+
+    #[test]
+    fn migration_sweep_skips_orphan_when_identity_recheck_fails() {
+        // plan と signal の間に PID が別プロセスへ化けた場合、still_matches の
+        // 再確認で signal を送らない。
+        let path = temp_registry("migration-flip");
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_command(300, "/usr/bin/vim important.txt");
+        let scanner = FakeScanner {
+            processes: vec![(300, 1, sidecar_command(50001))],
+            established_ports: HashSet::new(),
+        };
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert!(probe.terminated.lock().unwrap().is_empty());
+        assert!(probe.force_killed.lock().unwrap().is_empty());
     }
 
     /// SystemProbe の実バインディング（signal 0 / ps 読み）を実 process で検証する。
