@@ -96,7 +96,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
 
-      # updater artifact（.app.tar.gz + .sig）は両アーキで同名（yorishiro.app.tar.gz）に
+      # updater artifact（.app.tar.gz + .sig）は両アーキで同名（Yorishiro.app.tar.gz）に
       # なるため、arch を含む名前にリネームしてから artifact 化する。この名前が
       # そのまま Release asset 名になり、latest.json の url が指す。
       - name: Stage updater artifacts
@@ -131,7 +131,7 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      # versioned dmg（yorishiro_<ver>_<arch>.dmg）に加えて、バージョンレスの安定名
+      # versioned dmg（Yorishiro_<ver>_<arch>.dmg）に加えて、バージョンレスの安定名
       # コピーを作る。README の `releases/latest/download/<固定名>` 直リンクは、
       # リリース間でファイル名が固定であることが必須なため。
       - name: Stage stable-named assets

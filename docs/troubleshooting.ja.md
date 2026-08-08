@@ -47,7 +47,7 @@ Safe mode はユーザー pack と `init.js` をスキップします。ユー�
 macOS:
 
 ```bash
-YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app
+YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app
 ```
 
 ソースから:

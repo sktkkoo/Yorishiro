@@ -60,7 +60,7 @@ brew install --cask sktkkoo/yorishiro/yorishiro
   <a href="https://github.com/sktkkoo/Yorishiro/releases/latest/download/Yorishiro-Intel.dmg"><img src="https://img.shields.io/badge/Intel-8B949E?style=for-the-badge&logo=apple&logoColor=white" alt="Intel版をダウンロード" /></a>
 </p>
 
-ダウンロードした`.dmg`を開き、`yorishiro.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
+ダウンロードした`.dmg`を開き、`Yorishiro.app`を`/Applications`にドラッグしてください。署名・公証（notarize）済みのため、特別な操作なしに起動できます。
 
 インストール後の更新はアプリ内で完結します。設定画面を開くと新しいバージョンを自動で確認し、「更新して再起動」を押すだけで署名検証つきの更新が適用されます。
 
