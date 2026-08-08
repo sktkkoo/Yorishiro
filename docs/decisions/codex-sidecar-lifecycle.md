@@ -42,8 +42,8 @@ debug build を例外にしない理由は経験的で、実装当日に確認�
 
 - app 終了は agent session 終了を意味する。app 終了後も作業を継続する正式な background mode ではない。
 - 自己改修 workflow（Yorishiro 内の agent が Yorishiro の Rust code を触る）では、hot reload のたびに agent session が終わる。継続性が必要になった時点で session supervisor を設計する。lifecycle の例外を増やす方向では解決しない。
-- reaper は「registry に記録した endpoint がコマンドラインに現れる codex app-server」以外を殺さない。Yorishiro 以外が起動した app-server や PID 再利用先には触れない。
-- 導入以前の build が取り残した sidecar は registry に記録がなく整理できない。手動 cleanup（PPID=1 の `codex app-server --listen` を選んで kill）が一度だけ必要になる。
+- registry reap は「registry に記録した endpoint がコマンドラインに現れる codex app-server」以外を殺さない。Yorishiro 以外が起動した app-server や PID 再利用先には触れない。
+- registry 導入前の build（v0.6.x 以前）が取り残した sidecar は記録がないため、移行用 sweep が別途整理する。対象は「コマンドラインが `<codex binary> app-server --listen ws://127.0.0.1:<port>` そのもの」「PPID=1」「registry に記録なし」「listen port に ESTABLISHED な接続なし」の全条件を満たす process のみ。update の再起動では旧 build が codex session を開いたまま終了するため、この経路がないと更新直後の `resume --last` が確実に -32600 で失敗する（v0.7.0 で実際に発生）。
 
 ## 関連 reference
 
