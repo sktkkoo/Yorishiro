@@ -357,6 +357,18 @@ impl CodexAppServerProcess {
                 "Failed to spawn Codex app-server ({binary}). Codex 0.145.0 or newer is required: {e}"
             )
         })?;
+        // app が Drop を経ずに死んだ場合の startup reaper 用（issue #109）。
+        // 以降どの失敗経路でも Self が Drop され、台帳 entry ごと回収される。
+        if let Ok(home) = crate::yorishiro_home_path() {
+            super::codex_sidecar_ledger::record_spawn(
+                &super::codex_sidecar_ledger::ledger_path_under(&home),
+                super::codex_sidecar_ledger::SidecarEntry {
+                    owner_pid: std::process::id(),
+                    sidecar_pid: child.id(),
+                    endpoint: endpoint.clone(),
+                },
+            );
+        }
         let mut process = Self {
             child,
             endpoint,
@@ -402,8 +414,15 @@ impl CodexAppServerProcess {
 impl Drop for CodexAppServerProcess {
     fn drop(&mut self) {
         self.tui_proxy.take();
+        let sidecar_pid = self.child.id();
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if let Ok(home) = crate::yorishiro_home_path() {
+            super::codex_sidecar_ledger::remove_sidecar(
+                &super::codex_sidecar_ledger::ledger_path_under(&home),
+                sidecar_pid,
+            );
+        }
     }
 }
 
