@@ -86,7 +86,7 @@ Yorishiroのコマンドを使うと、packの作成・編集・チュートリ�
 
 Codexはカスタムの`/`コマンドに対応していないため、Yorishiroは同じツールを`$yori-*`スキルとして登録します。
 
-### 音声対応
+### 音声会話
 
 Yorishiroでは、Codex 0.145.0以降を使用するとGPT Liveによる音声会話を利用できます。title barのマイクボタンを押すと開始し、もう一度押すと終了します。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
 
