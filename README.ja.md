@@ -249,6 +249,8 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)をMain Agentとして使用できます。設定画面または`~/.yorishiro/config.json`から選択してください。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
 
+agentによってコマンド記法が異なります。詳しくは[Yorishiroのコマンドとスキル](#yorishiroのコマンドとスキル)を参照してください。
+
 agent固有の連携は次のとおりです：
 
 | Agent | Agent固有の連携 |
