@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+## 0.7.0 - 2026-08-08
+
+- Added GPT Live voice conversations for Codex 0.145.0 and newer. Voice and text share the active Codex thread, the normal TUI remains visible, and microphone capture is controlled from the title bar.
+- Added global and per-persona GPT Live voice selection, with explicit fallback when a selected voice is rejected. Voice follows workspace and session changes and recovers across thread clearing and transient connection failures.
+- Added Agent State Expression: provider-grounded conversational cues coordinate facial expression and body motion through a centralized arbitration layer while preserving blinks, reflexes, speech ownership, and newer playback intents.
+- Voice Summary now acts as a fallback for GPT Live, and realtime playback ownership is generation-stamped to reject stale or reordered audio events without leaving lip sync or expression state behind.
+- Fixed the microphone indicator so it reflects actual capture state, with clearer active, connecting, and failure states.
+- Fixed leaked Codex app-server sidecars preventing later sessions from starting. Yorishiro now tracks sidecar ownership, tears sessions down on exit, and safely reaps verified orphans at startup.
+- Fixed macOS production signing so release bundles apply the required audio-input, network-client, JIT, and unsigned-executable-memory entitlements; local production bundles use ad-hoc signing for equivalent verification.
+- Added `Cmd+,` / `Ctrl+,` to toggle Settings. Fixed Bash `bind -x` commands being misreported as terminal runs (including Bash 3.x), and stopped Fish OSC escaping from expanding safe ASCII bytes. Thanks to @soren-achebe for the reports, diagnosis, and Bash fix suggestions.
+- Capitalized the macOS app bundle from `yorishiro.app` to `Yorishiro.app`, matching the product branding. Thanks to @tacomanator for the suggestion.
+- Documented the public development-language policy and promoted Codex and GPT Live throughout the English and Japanese project documentation.
+
 ## 0.6.2 - 2026-07-25
 
 - Speaking now activates the whole face. A speech reflex layer derives brow/eye engagement, phrase-boundary blinks, and prosodic brow flicks from the lip-sync audio signal, so Yori no longer talks with an idle face and a moving mouth. No emotion is inferred from the audio.

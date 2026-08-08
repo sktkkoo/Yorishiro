@@ -207,7 +207,7 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.6.2**
+**v0.7.0**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
@@ -221,6 +221,8 @@ What works today:
 - Motion size: scale Yori's idle motion intensity from Settings or via MCP
 - VRMA animation clip playback
 - Lip sync: voice playback with real-time mouth animation via Web Audio analysis
+- GPT Live voice conversations with Codex 0.145.0+, sharing the current thread with the visible TUI and supporting global or per-persona voice selection
+- Agent State Expression: grounded conversational cues from GPT Live drive coordinated facial expression and body motion without overriding reflexes
 - Microexpressions: subtle idle facial movements across brow, eye, and mouth regions
 - Speech expression: the face activates while speaking, and a single line can carry a mood for exactly as long as it lasts
 - Customization via six pack types (persona / scene / effect / ui / amenity / ambient-ui)

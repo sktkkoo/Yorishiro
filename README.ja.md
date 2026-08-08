@@ -208,7 +208,7 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Status
 
-**v0.6.2**
+**v0.7.0**
 
 実装フェーズの途中です。API・データ形状・pack仕様は今後変わります。
 
@@ -222,6 +222,8 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 - モーションサイズ: Yoriのアイドルモーションの強度をSettingsから、またはMCP経由で調整
 - VRMAアニメーションクリップの再生
 - リップシンク: Web Audio解析によるリアルタイムの口の動きと音声再生
+- Codex 0.145.0以降でのGPT Live音声会話——表示中のTUIと同じthreadを共有し、voiceを全体またはpersonaごとに選択可能
+- Agent State Expression: GPT Liveの会話に基づくcueから、反射を上書きせずに表情と身体動作を連携
 - マイクロエクスプレッション: 眉・目・口の微細なアイドル表情変化
 - 発話時の表情: 話しているあいだ顔全体が動き、ひとことの長さだけ表情（mood）を乗せられる
 - 6種類のpackによるカスタマイズ（persona/scene/effect/ui/amenity/ambient-ui）
