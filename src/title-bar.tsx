@@ -2,10 +2,11 @@ import { LoaderCircle, Mic, PanelLeftClose, PanelLeftOpen, Settings } from "luci
 import type { ReactNode } from "react";
 
 /**
- * GPT Live 音声会話ボタンの表示状態。realtime client の status をそのまま写す。
+ * GPT Live 音声会話ボタンの表示状態。会話状態は realtime client の status を写し、
+ * 赤丸だけは独立した MediaStreamTrack の capture liveness を写す。
  * スラッシュ付きマイク（MicOff）は「マイクのミュート」を意味する慣習アイコンの
- * ため、会話が生きている active 状態には使わない。ミュート状態が実装されるまで
- * MicOff はこのボタンに登場させないこと。
+ * ため、会話が生きている active 状態には使わない。ユーザー操作によるミュートが
+ * 実装されるまでは MicOff をこのボタンに登場させないこと。
  */
 export type VoiceControlState = "idle" | "connecting" | "active" | "error";
 
@@ -18,6 +19,8 @@ export interface TitleBarProps {
   readonly sidebarLabel: string;
   readonly voiceAvailable?: boolean;
   readonly voiceState?: VoiceControlState;
+  /** Browser-owned microphone capture liveness, independent of the conversation status. */
+  readonly voiceMicrophoneActive?: boolean;
   readonly voiceLabel?: string;
   readonly voiceBillingLabel?: string;
   readonly voiceError?: string;
@@ -34,6 +37,7 @@ export default function TitleBar({
   sidebarLabel,
   voiceAvailable = false,
   voiceState = "idle",
+  voiceMicrophoneActive = false,
   voiceLabel = "",
   voiceBillingLabel,
   voiceError,
@@ -72,6 +76,7 @@ export default function TitleBar({
             type="button"
             className="title-bar-button title-bar-voice-button"
             data-voice-state={voiceState}
+            data-microphone-active={voiceMicrophoneActive}
             onClick={onToggleVoice}
             aria-label={voiceLabel}
             aria-pressed={voiceState === "active"}
@@ -83,7 +88,7 @@ export default function TitleBar({
             ) : (
               <Mic size={15} strokeWidth={1.8} aria-hidden="true" />
             )}
-            {voiceState === "active" ? (
+            {voiceState === "active" && voiceMicrophoneActive ? (
               <span className="title-bar-voice-status-dot" aria-hidden="true" />
             ) : null}
           </button>

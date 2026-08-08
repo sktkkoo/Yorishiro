@@ -4544,6 +4544,7 @@ function App() {
         onOpenSettings={handleOpenSettings}
         voiceAvailable={voiceEntryAvailable}
         voiceState={codexRealtimeState.status}
+        voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
         voiceLabel={
           codexRealtimeState.status === "active"
             ? strings.gptLiveVoiceStop
