@@ -6,9 +6,7 @@ import {
   configActiveSceneForSelection,
   configPrimaryPersonaForSelection,
   creditsSections,
-  EXPERIMENTAL_AGENT_IDS,
   filterPersonaOptionsForLanguage,
-  localizedAgentOptions,
   type NewSessionChangeKind,
   packWorkbenchKey,
   resolveCloseTarget,
@@ -160,24 +158,6 @@ describe("terminal agent options", () => {
     }
     const optionIds = new Set<string>(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
     expect(optionIds.has("opencode")).toBe(false);
-  });
-
-  it("marks Codex as the only experimental settings option", () => {
-    expect(EXPERIMENTAL_AGENT_IDS.has("claude")).toBe(false);
-    expect(EXPERIMENTAL_AGENT_IDS.has("codex")).toBe(true);
-    // 全 experimental id は実在の agent option である（typo 検知）。
-    const optionIds = new Set<string>(TERMINAL_AGENT_OPTIONS.map((option) => option.value));
-    for (const id of EXPERIMENTAL_AGENT_IDS) {
-      expect(optionIds.has(id)).toBe(true);
-    }
-  });
-
-  it("appends a localized suffix only to experimental agent labels", () => {
-    const options = localizedAgentOptions("experimental");
-    const byId = new Map<string, string>(options.map((o) => [o.value, o.label]));
-    expect(byId.get("claude")).toBe("Claude Code");
-    expect(byId.get("codex")).toBe("Codex（experimental）");
-    expect(byId.has("opencode")).toBe(false);
   });
 
   it("resolves dialog labels from the options table and falls back to raw ids", () => {

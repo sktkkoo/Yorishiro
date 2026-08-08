@@ -75,11 +75,16 @@ npm run tauri dev
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
-### `/yori:*`コマンド
+### Yorishiroのコマンドとスキル
 
-Claude Code内で`/yori:help`、`/yori:create`などの`/yori:*`コマンドを入力すると、Yorishiro専用のコマンドが起動します。packの作成・編集・チュートリアルなどを対話的に行えます。
+Yorishiroのコマンドを使うと、packの作成・編集・チュートリアルなどを対話的に行えます。agentごとに次の記法を使います：
 
-Codexでは`$yori-help`、`$yori-create`のように`$yori-*`を使います（Codexはカスタムの`/`コマンドに対応していないため、Yorishiroは代わりに`$yori-*`スキルとして登録します）。
+| Agent | 例 |
+|---|---|
+| Claude Code | `/yori:help`、`/yori:create` |
+| Codex | `$yori-help`、`$yori-create` |
+
+Codexはカスタムの`/`コマンドに対応していないため、Yorishiroは同じツールを`$yori-*`スキルとして登録します。
 
 ### 言語
 
@@ -230,11 +235,11 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ---
 
-## Experimental
+## Agent support
 
-正式サポートはClaude Codeです。Codexはexperimental（実験的）な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
+YorishiroはClaude CodeとCodexをterminal agentとしてサポートしています。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
 
-### Codex support（実験的）
+### Codex support
 
 [Codex](https://github.com/openai/codex)をterminal agentとして使用できます。`~/.yorishiro/config.json`で切り替えます：
 
@@ -246,7 +251,11 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessが動作します。`/yori:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$yori-*`スキルとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのYorishiro reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
 
-Codex 0.145.0以降では、title barのマイクボタンからexperimentalなrealtime音声会話を開始できます。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
+Codex 0.145.0以降では、title barのマイクボタンを押すとGPT Liveの音声会話を開始し、もう一度押すと終了できます。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
+
+<p align="center">
+  <img src="docs/assets/gpt-live-title-bar.png" alt="Yorishiroのtitle barにあるGPT Liveのマイクボタン" width="220" />
+</p>
 
 ---
 

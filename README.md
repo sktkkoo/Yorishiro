@@ -74,11 +74,16 @@ On launch, the configured terminal agent starts inside the terminal and **Yori**
 
 The first launch runs a health check for the selected agent, user data directory, safe mode state, packs, and startup report. The same report is available later from the "Status" section in Settings.
 
-### `/yori:*` commands
+### Yorishiro commands and skills
 
-Type `/yori:help`, `/yori:create`, or another `/yori:*` command inside Claude Code to activate the Yorishiro commands. They let you create and edit packs, run tutorials, and more — all through conversation.
+Yorishiro's commands let you create and edit packs, run tutorials, and more — all through conversation. Use the syntax for your agent:
 
-In Codex, use `$yori-help`, `$yori-create`, etc. (Codex does not support custom `/` commands, so Yorishiro registers them as `$yori-*` skills instead.)
+| Agent | Examples |
+|---|---|
+| Claude Code | `/yori:help`, `/yori:create` |
+| Codex | `$yori-help`, `$yori-create` |
+
+Codex does not support custom `/` commands, so Yorishiro registers the same tools as `$yori-*` skills instead.
 
 ### Language
 
@@ -229,11 +234,11 @@ What works today:
 
 ---
 
-## Experimental
+## Agent support
 
-Claude Code is the primary, fully-supported agent. Codex is available as an **experimental** alternative — it is also marked *(experimental)* in the in-app Agent switcher (Settings). Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
+Yorishiro supports Claude Code and Codex as terminal agents. Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
 
-### Codex support (experimental)
+### Codex support
 
 [Codex](https://github.com/openai/codex) can be used as the terminal agent. Switch via `~/.yorishiro/config.json`:
 
@@ -245,7 +250,11 @@ Claude Code is the primary, fully-supported agent. Codex is available as an **ex
 
 Auto-launch, persona prompt overlay, PTY observation, and Yorishiro MCP access work. `/yori:*` commands are registered as `$yori-*` skills for Codex (Codex does not support custom `/` commands). Claude Code hooks are not treated as a cross-agent contract; Yorishiro reminders are prompt-based on Codex instead of Claude `UserPromptSubmit` hook output.
 
-With Codex 0.145.0 or newer, the microphone button in the title bar starts an experimental realtime voice conversation. The normal Codex TUI stays visible: voice and text share the same thread, approvals, and tool flow. Voice inherits the current Codex CLI login: ChatGPT sign-in uses the subscription, while API-key authentication incurs metered API charges. Yorishiro keeps an “API billing” badge visible whenever API-key voice is connecting or active. Microphone access is requested only when you press the button. See [the realtime voice decision](docs/decisions/codex-realtime-voice.md) for architecture and limitations.
+With Codex 0.145.0 or newer, press the microphone button in the title bar to start a GPT Live voice conversation. Press it again to stop. The normal Codex TUI stays visible: voice and text share the same thread, approvals, and tool flow. Voice inherits the current Codex CLI login: ChatGPT sign-in uses the subscription, while API-key authentication incurs metered API charges. Yorishiro keeps an “API billing” badge visible whenever API-key voice is connecting or active. Microphone access is requested only when you press the button. See [the realtime voice decision](docs/decisions/codex-realtime-voice.md) for architecture and limitations.
+
+<p align="center">
+  <img src="docs/assets/gpt-live-title-bar.png" alt="GPT Live microphone button in the Yorishiro title bar" width="220" />
+</p>
 
 Set `codexRealtimeVoice` in `~/.yorishiro/config.json` to choose the GPT Live output voice globally (default: `sol`), and `realtimeVoiceByPersona` to override it per persona pack id. The values are read whenever a new voice session starts, so stop and restart an active voice conversation to apply a change. If the app-server explicitly rejects the selected voice as invalid or unsupported, Yorishiro retries with the next candidate (persona → global → default); other connection failures surface as errors. See [configuration](docs/configuration.md#codex-gpt-live-voice).
 
