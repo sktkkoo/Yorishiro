@@ -160,6 +160,16 @@ persona・scene・terminal agentなどは、設定画面からも`config.json`�
 
 住人はターミナルの出力を常に観察しています。hooksやPTYに流れるテキストをpersona packのtriggerが拾い、表情やモーションとして即座に反応します。この反応はLLMを経由しない反射的なもので、熱いやかんに触って手を引っ込めるように、言葉より先に身体が動きます。住人の注意が向いている場所はAttention Auraとして画面上に淡く光ります。
 
+### GPT Live
+
+Codex 0.145.0以降では、title barのマイクボタンを押すとGPT Liveの音声会話を開始し、もう一度押すと終了できます。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
+
+<p align="center">
+  <img src="docs/assets/gpt-live-title-bar.png" alt="Yorishiroのtitle barにあるGPT Liveのマイクボタン" width="220" />
+</p>
+
+`~/.yorishiro/config.json`の`codexRealtimeVoice`でGPT Liveの出力voiceを全体設定（既定値：`sol`）し、`realtimeVoiceByPersona`でpersona pack idごとに上書きできます。設定は新しい音声会話を始めるたびに読み込まれるため、進行中の会話では一度終了してから開始し直してください。選択したvoiceをapp-serverが明示的に拒否した場合は、persona設定→全体設定→既定値の順に次の候補を試します。それ以外の接続失敗はエラーとして表示します。詳細は[設定](docs/configuration.md#codex-gpt-live-voice)を参照してください。
+
 ### Light Alert
 
 agentが入力や許可を求めて止まると、キャラクターのそばに明かりがつきます。通知音の代わりに、部屋の明かりが「あなたの番」を知らせます。設定の「Light Alert」でオフにできます。住人がMCP経由で同じ合図を送ることもできます。
@@ -237,25 +247,16 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ## Agent support
 
-YorishiroはClaude CodeとCodexをterminal agentとしてサポートしています。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)をMain Agentとして使用できます。設定画面または`~/.yorishiro/config.json`から選択してください。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
 
-### Codex support
+agent固有の連携は次のとおりです：
 
-[Codex](https://github.com/openai/codex)をterminal agentとして使用できます。`~/.yorishiro/config.json`で切り替えます：
+| Agent | Yorishiroの操作方法 | Agent固有の連携 |
+|---|---|---|
+| Claude Code | `/yori:*`コマンド | Claude Code hooks |
+| Codex | `$yori-*`スキル | Claude Code hooksに依存しないprompt-based reminder |
 
-```json
-{
-  "terminalAgent": "codex"
-}
-```
-
-自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessが動作します。`/yori:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$yori-*`スキルとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのYorishiro reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
-
-Codex 0.145.0以降では、title barのマイクボタンを押すとGPT Liveの音声会話を開始し、もう一度押すと終了できます。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
-
-<p align="center">
-  <img src="docs/assets/gpt-live-title-bar.png" alt="Yorishiroのtitle barにあるGPT Liveのマイクボタン" width="220" />
-</p>
+利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
 
 ---
 
