@@ -798,7 +798,7 @@ describe("CodexRealtimeClient", () => {
     expect(onRelease).not.toHaveBeenCalled();
   });
 
-  it("uses API-key auth and exposes API billing before requesting the microphone", async () => {
+  it("resolves API-key auth before requesting the microphone", async () => {
     bridge.accountType = "apiKey";
     const states: CodexRealtimeState[] = [];
     const client = new CodexRealtimeClient("main-session", (state) => states.push(state));

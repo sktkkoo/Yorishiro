@@ -4554,12 +4554,6 @@ function App() {
                 ? strings.gptLiveVoiceRetry
                 : strings.gptLiveVoiceStart
         }
-        voiceBillingLabel={
-          codexRealtimeState.billing === "api" &&
-          (codexRealtimeState.status === "connecting" || codexRealtimeState.status === "active")
-            ? strings.gptLiveVoiceApiBilling
-            : undefined
-        }
         voiceError={codexRealtimeState.error}
         onToggleVoice={() => void handleToggleVoice()}
         tabs={

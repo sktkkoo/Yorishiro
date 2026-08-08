@@ -367,9 +367,8 @@ leaseをinvalidateしない。fallbackへのrestore IPCは一時失敗に備え�
 - microphone は user がマイク button を押した時だけ要求し、終了時に全 track を stop する
 - 音声開始前に `account/read` を確認し、Codex CLI の現在の認証をそのまま使う。
   `account.type === "chatgpt"` なら ChatGPT subscription、`account.type === "apiKey"` なら
-  OpenAI API の従量課金で開始する。API key 認証時は microphone / Realtime の開始前から
-  title bar に「API従量課金」を表示し、active な間も常時表示する。認証方式が不明な場合は
-  開始しない
+  OpenAI API で開始する。認証方式は接続可否の内部判断にのみ使い、課金方式を断定する
+  label は UI に表示しない。認証方式が不明な場合は開始しない
 - realtime voice は Codex 側でも experimental。利用可否・voice・model は Codex account と
   upstream configuration に依存する
 - Codex 0.146.0 の実測では、`thread/realtime/start` を呼んだ bridge client は対象 thread へ

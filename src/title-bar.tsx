@@ -22,7 +22,6 @@ export interface TitleBarProps {
   /** Browser-owned microphone capture liveness, independent of the conversation status. */
   readonly voiceMicrophoneActive?: boolean;
   readonly voiceLabel?: string;
-  readonly voiceBillingLabel?: string;
   readonly voiceError?: string;
   readonly onToggleVoice?: () => void;
   readonly tabs?: ReactNode;
@@ -39,7 +38,6 @@ export default function TitleBar({
   voiceState = "idle",
   voiceMicrophoneActive = false,
   voiceLabel = "",
-  voiceBillingLabel,
   voiceError,
   onToggleVoice,
   tabs,
@@ -92,11 +90,6 @@ export default function TitleBar({
               <span className="title-bar-voice-status-dot" aria-hidden="true" />
             ) : null}
           </button>
-        ) : null}
-        {voiceAvailable && voiceBillingLabel ? (
-          <span className="title-bar-voice-billing" role="status" title={voiceBillingLabel}>
-            {voiceBillingLabel}
-          </span>
         ) : null}
       </div>
       {voiceError ? (

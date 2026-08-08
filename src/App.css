@@ -189,18 +189,6 @@ body,
   }
 }
 
-.title-bar-voice-billing {
-  padding: 2px 6px;
-  border: 1px solid rgba(245, 178, 74, 0.42);
-  border-radius: 999px;
-  background: rgba(245, 178, 74, 0.1);
-  color: #f4c36d;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
 .title-bar-voice-error {
   max-width: min(520px, 40vw);
   padding: 3px 8px;

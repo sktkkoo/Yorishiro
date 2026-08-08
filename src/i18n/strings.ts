@@ -42,7 +42,6 @@ export interface UiStrings {
   readonly gptLiveVoiceStop: string;
   readonly gptLiveVoiceConnecting: string;
   readonly gptLiveVoiceRetry: string;
-  readonly gptLiveVoiceApiBilling: string;
   readonly gptLiveRequiresCodex: string;
   readonly gptLiveSwitchBody: string;
   readonly gptLiveSetupBody: string;
@@ -169,7 +168,6 @@ const EN: UiStrings = {
   gptLiveVoiceStop: "Stop GPT Live voice conversation",
   gptLiveVoiceConnecting: "Connecting GPT Live voice conversation… (click to cancel)",
   gptLiveVoiceRetry: "Retry GPT Live voice conversation",
-  gptLiveVoiceApiBilling: "API billing",
   gptLiveRequiresCodex: "Voice conversation (GPT Live) currently requires Codex",
   gptLiveSwitchBody:
     "Your current Main Agent does not support voice conversation. Switch to Codex and start a voice conversation? Your current conversation and work state are preserved, and switching back to the original agent resumes where you left off.",
@@ -295,7 +293,6 @@ const JA: UiStrings = {
   gptLiveVoiceStop: "GPT Liveの音声会話を終了",
   gptLiveVoiceConnecting: "GPT Liveの音声会話に接続中…（クリックで中止）",
   gptLiveVoiceRetry: "GPT Liveの音声会話を再試行",
-  gptLiveVoiceApiBilling: "API従量課金",
   gptLiveRequiresCodex: "音声会話（GPT Live）の利用には、現在Codexが必要です",
   gptLiveSwitchBody:
     "現在のメインエージェントは音声会話に対応していません。Codexへ切り替えて、音声会話を始めますか？現在の会話と作業状態は保持され、元のエージェントへ戻すと続きから再開できます。",

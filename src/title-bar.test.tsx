@@ -201,35 +201,6 @@ describe("TitleBar", () => {
     expect(svg?.getAttribute("style") ?? "").not.toContain("animation");
   });
 
-  it("shows API billing only when the voice session uses API-key auth", () => {
-    const { rerender } = renderTitleBar({
-      voiceAvailable: true,
-      voiceState: "active",
-      voiceLabel: "Stop voice",
-      onToggleVoice: vi.fn(),
-    });
-
-    expect(screen.queryByText("API billing")).toBeNull();
-
-    rerender(
-      <TitleBar
-        sidebarOpen
-        settingsActive={false}
-        sidebarLabel="Sidebar"
-        settingsLabel="Settings"
-        voiceAvailable
-        voiceState="active"
-        voiceLabel="Stop voice"
-        voiceBillingLabel="API billing"
-        onToggleVoice={vi.fn()}
-        onToggleSidebar={vi.fn()}
-        onOpenSettings={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByRole("status").textContent).toBe("API billing");
-  });
-
   it("marks the empty tab area as a Tauri drag region while keeping controls interactive", () => {
     const { container } = renderTitleBar();
     const root = container.firstElementChild;
