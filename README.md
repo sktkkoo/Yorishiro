@@ -250,10 +250,10 @@ Use either [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Cod
 
 The agent-specific integrations are:
 
-| Agent | Yorishiro interface | Agent-specific behavior |
-|---|---|---|
-| Claude Code | `/yori:*` commands | Claude Code hooks |
-| Codex | `$yori-*` skills | Prompt-based reminders instead of relying on Claude Code hooks |
+| Agent | Agent-specific behavior |
+|---|---|
+| Claude Code | Claude Code hooks |
+| Codex | Prompt-based reminders instead of relying on Claude Code hooks |
 
 Capabilities differ per agent; see [`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md).
 

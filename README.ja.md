@@ -251,10 +251,10 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 agent固有の連携は次のとおりです：
 
-| Agent | Yorishiroの操作方法 | Agent固有の連携 |
-|---|---|---|
-| Claude Code | `/yori:*`コマンド | Claude Code hooks |
-| Codex | `$yori-*`スキル | Claude Code hooksに依存しないprompt-based reminder |
+| Agent | Agent固有の連携 |
+|---|---|
+| Claude Code | Claude Code hooks |
+| Codex | Claude Code hooksに依存しないprompt-based reminder |
 
 利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
 
