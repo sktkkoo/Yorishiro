@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -134,6 +134,7 @@ async fn proxy_connection(
     let (mut client_sink, mut client_stream) = client.split();
     let (mut upstream_sink, mut upstream_stream) = upstream.split();
     let mut thread_selection_requests = HashSet::new();
+    let mut resume_fallback_requests = HashMap::new();
 
     loop {
         tokio::select! {
@@ -142,6 +143,7 @@ async fn proxy_connection(
                 let message = message.map_err(|error| format!("TUI receive failed: {error}"))?;
                 if let Message::Text(text) = &message {
                     track_thread_selection_request(text.as_ref(), &mut thread_selection_requests);
+                    track_resume_fallback_request(text.as_ref(), &mut resume_fallback_requests);
                 }
                 upstream_sink.send(message).await
                     .map_err(|error| format!("upstream send failed: {error}"))?;
@@ -150,6 +152,19 @@ async fn proxy_connection(
                 let Some(message) = message else { break };
                 let message = message.map_err(|error| format!("upstream receive failed: {error}"))?;
                 if let Message::Text(text) = &message {
+                    if let Some(fallback) = take_active_writer_fallback_request(
+                        text.as_ref(),
+                        &mut resume_fallback_requests,
+                    ) {
+                        eprintln!(
+                            "[codex-tui-proxy] resume target has an active writer; forking it instead"
+                        );
+                        upstream_sink
+                            .send(Message::Text(fallback.to_string().into()))
+                            .await
+                            .map_err(|error| format!("upstream fallback send failed: {error}"))?;
+                        continue;
+                    }
                     if let Some(thread_id) = take_selected_thread_response(
                         text.as_ref(),
                         &mut thread_selection_requests,
@@ -193,6 +208,73 @@ fn track_thread_selection_request(raw: &str, pending: &mut HashSet<String>) {
     if let Some(key) = message.get("id").and_then(request_id_key) {
         pending.insert(key);
     }
+}
+
+/// Keep a `thread/fork` equivalent of each resume request until its response arrives.
+/// If Codex rejects the resume because another process still owns the thread writer
+/// lock, the proxy can retry the same selection as a fork without restarting the TUI.
+fn track_resume_fallback_request(raw: &str, pending: &mut HashMap<String, Value>) {
+    const FORK_COMPATIBLE_RESUME_FIELDS: &[&str] = &[
+        "approvalPolicy",
+        "approvalsReviewer",
+        "baseInstructions",
+        "config",
+        "cwd",
+        "developerInstructions",
+        "excludeTurns",
+        "model",
+        "modelProvider",
+        "path",
+        "permissions",
+        "runtimeWorkspaceRoots",
+        "sandbox",
+        "serviceTier",
+        "threadId",
+    ];
+
+    let Ok(mut message) = serde_json::from_str::<Value>(raw) else {
+        return;
+    };
+    if message.get("method").and_then(Value::as_str) != Some("thread/resume") {
+        return;
+    }
+    let Some(key) = message.get("id").and_then(request_id_key) else {
+        return;
+    };
+
+    message["method"] = Value::String("thread/fork".to_string());
+    if let Some(params) = message.get_mut("params").and_then(Value::as_object_mut) {
+        // Forward only fields accepted by both ThreadResumeParams and
+        // ThreadForkParams. A future resume-only field must not make the fallback
+        // fail with invalid params merely because the proxy did not know to drop it.
+        params.retain(|key, _| FORK_COMPATIBLE_RESUME_FIELDS.contains(&key.as_str()));
+    }
+    pending.insert(key, message);
+}
+
+fn take_active_writer_fallback_request(
+    raw: &str,
+    pending: &mut HashMap<String, Value>,
+) -> Option<Value> {
+    let message = serde_json::from_str::<Value>(raw).ok()?;
+    let object = message.as_object()?;
+    if object.contains_key("method") {
+        return None;
+    }
+    let has_result = object.contains_key("result");
+    let has_error = object.contains_key("error");
+    if has_result == has_error {
+        return None;
+    }
+    let key = message.get("id").and_then(request_id_key)?;
+    let fallback = pending.remove(&key)?;
+    let error = message.get("error")?;
+    let is_active_writer = error.get("code").and_then(Value::as_i64) == Some(-32600)
+        && error
+            .get("message")
+            .and_then(Value::as_str)
+            .is_some_and(|message| message.contains("already has an active writer"));
+    is_active_writer.then_some(fallback)
 }
 
 fn take_selected_thread_response(raw: &str, pending: &mut HashSet<String>) -> Option<String> {
@@ -302,6 +384,95 @@ mod tests {
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
     }
 
+    #[tokio::test]
+    async fn retries_active_writer_resume_as_fork_without_forwarding_the_error() {
+        let upstream_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("upstream listener");
+        let upstream_address = upstream_listener.local_addr().expect("upstream address");
+        let upstream_task = tokio::spawn(async move {
+            let (stream, _) = upstream_listener.accept().await.expect("upstream accept");
+            let mut socket = tokio_tungstenite::accept_async(stream)
+                .await
+                .expect("upstream handshake");
+
+            let resume = socket
+                .next()
+                .await
+                .expect("resume request")
+                .expect("valid resume request");
+            let Message::Text(resume) = resume else {
+                panic!("expected text resume request");
+            };
+            let resume: Value = serde_json::from_str(resume.as_ref()).expect("resume json");
+            assert_eq!(resume["method"], "thread/resume");
+
+            socket
+                .send(Message::Text(
+                    r#"{"id":7,"error":{"code":-32600,"message":"thread old already has an active writer"}}"#
+                        .into(),
+                ))
+                .await
+                .expect("active writer response");
+
+            let fork = socket
+                .next()
+                .await
+                .expect("fork request")
+                .expect("valid fork request");
+            let Message::Text(fork) = fork else {
+                panic!("expected text fork request");
+            };
+            let fork: Value = serde_json::from_str(fork.as_ref()).expect("fork json");
+            assert_eq!(fork["id"], 7);
+            assert_eq!(fork["method"], "thread/fork");
+            assert_eq!(fork["params"]["threadId"], "old");
+            assert_eq!(fork["params"]["cwd"], "/workspace");
+            assert!(fork["params"].get("history").is_none());
+            assert!(fork["params"].get("initialTurnsPage").is_none());
+            assert!(fork["params"].get("personality").is_none());
+
+            socket
+                .send(Message::Text(
+                    r#"{"id":7,"result":{"thread":{"id":"forked"}}}"#.into(),
+                ))
+                .await
+                .expect("fork response");
+        });
+
+        let proxy =
+            CodexTuiProxy::spawn(format!("ws://{upstream_address}")).expect("proxy should start");
+        let (mut client, _) = tokio_tungstenite::connect_async(proxy.endpoint())
+            .await
+            .expect("proxy handshake");
+        client
+            .send(Message::Text(
+                r#"{"method":"thread/resume","id":7,"params":{"threadId":"old","cwd":"/workspace","history":[],"initialTurnsPage":null,"personality":"friendly","futureResumeOnly":true}}"#
+                    .into(),
+            ))
+            .await
+            .expect("proxy request");
+        let response = client
+            .next()
+            .await
+            .expect("response")
+            .expect("valid response");
+        let Message::Text(response) = response else {
+            panic!("expected text response");
+        };
+        let response: Value = serde_json::from_str(response.as_ref()).expect("response json");
+        assert_eq!(response["result"]["thread"]["id"], "forked");
+
+        for _ in 0..20 {
+            if proxy.selected_thread_id().as_deref() == Some("forked") {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert_eq!(proxy.selected_thread_id().as_deref(), Some("forked"));
+        upstream_task.await.expect("upstream task");
+    }
+
     #[test]
     fn observes_only_successful_thread_selection_responses() {
         let mut pending = HashSet::new();
@@ -349,6 +520,41 @@ mod tests {
             None
         );
         assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn does_not_fallback_for_other_resume_failures() {
+        let mut pending = HashMap::new();
+        track_resume_fallback_request(
+            r#"{"method":"thread/resume","id":7,"params":{"threadId":"old"}}"#,
+            &mut pending,
+        );
+        assert_eq!(pending.len(), 1);
+        assert_eq!(
+            take_active_writer_fallback_request(
+                r#"{"id":7,"error":{"code":-32600,"message":"invalid thread"}}"#,
+                &mut pending,
+            ),
+            None
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn malformed_resume_response_does_not_trigger_fallback_or_consume_it() {
+        let mut pending = HashMap::new();
+        track_resume_fallback_request(
+            r#"{"method":"thread/resume","id":7,"params":{"threadId":"old"}}"#,
+            &mut pending,
+        );
+        assert_eq!(
+            take_active_writer_fallback_request(
+                r#"{"id":7,"result":{},"error":{"code":-32600,"message":"thread old already has an active writer"}}"#,
+                &mut pending,
+            ),
+            None
+        );
+        assert_eq!(pending.len(), 1);
     }
 
     #[test]
