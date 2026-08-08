@@ -143,21 +143,6 @@ export const TERMINAL_AGENT_OPTIONS = [
   { value: "codex", label: "Codex" },
 ] as const satisfies readonly SelectOption[];
 
-/**
- * 初回リリースで設定画面に出す experimental agent。OpenCode adapter は内部に残すが、
- * まだ管理しきれないため user-facing option には出さない。
- */
-export const EXPERIMENTAL_AGENT_IDS: ReadonlySet<string> = new Set(["codex"]);
-
-/** TERMINAL_AGENT_OPTIONS を localized 表示用に変換し、experimental agent に suffix を付ける。 */
-export function localizedAgentOptions(experimentalSuffix: string): readonly SelectOption[] {
-  return TERMINAL_AGENT_OPTIONS.map((opt) =>
-    EXPERIMENTAL_AGENT_IDS.has(opt.value)
-      ? { value: opt.value, label: `${opt.label}（${experimentalSuffix}）` }
-      : opt,
-  );
-}
-
 /** セッション再起動を伴う設定変更の種別。確認ダイアログの文言を分岐する。 */
 export type NewSessionChangeKind = "persona" | "agent" | "voice";
 
@@ -2926,7 +2911,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
             <Select
               value={agent}
               onChange={onAgentChange}
-              options={localizedAgentOptions(strings.experimentalAgentSuffix)}
+              options={TERMINAL_AGENT_OPTIONS}
               disabled={agentPinnedBy !== null}
             />
           </div>

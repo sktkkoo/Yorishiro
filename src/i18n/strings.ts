@@ -66,8 +66,6 @@ export interface UiStrings {
   readonly labelScene: string;
   readonly labelSound: string;
   readonly labelAgent: string;
-  /** Codex / OpenCode など experimental な agent option の label に付ける suffix。 */
-  readonly experimentalAgentSuffix: string;
   readonly labelPresence: string;
   readonly labelAura: string;
   readonly labelAttentionLight: string;
@@ -192,7 +190,6 @@ const EN: UiStrings = {
   labelScene: "Scene",
   labelSound: "Sound",
   labelAgent: "Main Agent",
-  experimentalAgentSuffix: "experimental",
   labelPresence: "Sidebar",
   labelAura: "Aura",
   labelAttentionLight: "Light Alert",
@@ -318,7 +315,6 @@ const JA: UiStrings = {
   labelScene: "Scene",
   labelSound: "Sound",
   labelAgent: "Main Agent",
-  experimentalAgentSuffix: "実験的",
   labelPresence: "Sidebar",
   labelAura: "Aura",
   labelAttentionLight: "Light Alert",

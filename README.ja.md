@@ -75,11 +75,26 @@ npm run tauri dev
 
 初回起動時には、選択中のagent、ユーザーデータディレクトリ、safe mode、pack、startup reportを確認するhealth checkが表示されます。同じ内容は後から設定画面の「Status」セクションでも確認できます。
 
-### `/yori:*`コマンド
+### Yorishiroのコマンドとスキル
 
-Claude Code内で`/yori:help`、`/yori:create`などの`/yori:*`コマンドを入力すると、Yorishiro専用のコマンドが起動します。packの作成・編集・チュートリアルなどを対話的に行えます。
+Yorishiroのコマンドを使うと、packの作成・編集・チュートリアルなどを対話的に行えます。agentごとに次の記法を使います：
 
-Codexでは`$yori-help`、`$yori-create`のように`$yori-*`を使います（Codexはカスタムの`/`コマンドに対応していないため、Yorishiroは代わりに`$yori-*`スキルとして登録します）。
+| Agent | 例 |
+|---|---|
+| Claude Code | `/yori:help`、`/yori:create` |
+| Codex | `$yori-help`、`$yori-create` |
+
+Codexはカスタムの`/`コマンドに対応していないため、Yorishiroは同じツールを`$yori-*`スキルとして登録します。
+
+### 音声会話
+
+Yorishiroでは、Codex 0.145.0以降を使用するとGPT Liveによる音声会話を利用できます。title barのマイクボタンを押すと開始し、もう一度押すと終了します。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
+
+<p align="center">
+  <img src="docs/assets/gpt-live-title-bar.png" alt="Yorishiroのtitle barにあるGPT Liveのマイクボタン" width="220" />
+</p>
+
+`~/.yorishiro/config.json`の`codexRealtimeVoice`でGPT Liveの出力voiceを全体設定（既定値：`sol`）し、`realtimeVoiceByPersona`でpersona pack idごとに上書きできます。設定は新しい音声会話を始めるたびに読み込まれるため、進行中の会話では一度終了してから開始し直してください。選択したvoiceをapp-serverが明示的に拒否した場合は、persona設定→全体設定→既定値の順に次の候補を試します。それ以外の接続失敗はエラーとして表示します。詳細は[設定](docs/configuration.md#codex-gpt-live-voice)を参照してください。
 
 ### 言語
 
@@ -230,23 +245,20 @@ packやinit.jsが変わるたびに、チェックポイントが自動で作ら
 
 ---
 
-## Experimental
+## Agent support
 
-正式サポートはClaude Codeです。Codexはexperimental（実験的）な代替として利用できます——アプリ内のAgent切り替え（設定画面）でも *（実験的）* と明記されます。利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code)または[Codex](https://github.com/openai/codex)をMain Agentとして使用できます。設定画面または`~/.yorishiro/config.json`から選択してください。どちらも自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessに対応しています。
 
-### Codex support（実験的）
+agentによってコマンド記法が異なります。詳しくは[Yorishiroのコマンドとスキル](#yorishiroのコマンドとスキル)を参照してください。
 
-[Codex](https://github.com/openai/codex)をterminal agentとして使用できます。`~/.yorishiro/config.json`で切り替えます：
+agent固有の連携は次のとおりです：
 
-```json
-{
-  "terminalAgent": "codex"
-}
-```
+| Agent | Agent固有の連携 |
+|---|---|
+| Claude Code | Claude Code hooks |
+| Codex | Claude Code hooksに依存しないprompt-based reminder |
 
-自動起動・persona prompt overlay・PTY observation・Yorishiro MCP accessが動作します。`/yori:*`コマンドは、Codexではカスタムの`/`コマンドに非対応のため`$yori-*`スキルとして登録されます。ただしClaude Code hooksはcross-agent contractとして扱いません。CodexのYorishiro reminderはClaudeの`UserPromptSubmit` hook出力ではなく、prompt overlayへの追記として渡します。
-
-Codex 0.145.0以降では、title barのマイクボタンからexperimentalなrealtime音声会話を開始できます。通常のCodex TUIはそのまま表示され、音声とテキストは同じthread・approval・tool flowを共有します。認証はCodex CLIの現在のログインを引き継ぎ、ChatGPTログインではsubscription、APIキー認証ではAPI従量課金を使います。APIキー認証時はtitle barに「API従量課金」を常時表示します。マイク権限はボタンを押したときだけ要求します。構成と制限は[realtime voiceの設計判断](docs/decisions/codex-realtime-voice.md)を参照してください。
+利用できる機能はagentごとに異なります。詳細は[`docs/decisions/agent-adapter.md`](docs/decisions/agent-adapter.md)を参照してください。
 
 ---
 
