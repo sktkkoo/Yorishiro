@@ -36,6 +36,11 @@ pub(crate) trait ProcessProbe {
     fn is_alive(&self, pid: u32) -> bool;
     fn parent_pid(&self, pid: u32) -> Option<u32>;
     fn command_line(&self, pid: u32) -> Option<String>;
+    /// PID reuse を検出するための process start identity。実 system では ps の
+    /// lstart。テスト fake は command がある限り安定値を返す。
+    fn start_time(&self, pid: u32) -> Option<String> {
+        self.command_line(pid).map(|_| format!("fake-start-{pid}"))
+    }
     fn terminate(&self, pid: u32);
     fn force_kill(&self, pid: u32);
 }
@@ -50,9 +55,9 @@ fn registry_path() -> Option<PathBuf> {
         .map(|home| registry_path_under(&home))
 }
 
-/// spawn 直後に呼ぶ。registry の失敗は spawn を止めない（session の可用性を
-/// 帳簿より優先する設計判断）が、false を返して caller に警告させる。
-/// 記録できなかった sidecar は crash 時に reap 不能になる。
+/// spawn 直後に呼ぶ。false の場合、caller は未記録 sidecar を即時停止して
+/// session 起動を失敗させる。provenance のない process を動かし続けると、crash
+/// 後に安全に reap できないため。
 #[must_use]
 pub fn record_spawn(path: &Path, entry: SidecarEntry) -> bool {
     with_registry_lock(path, || {
@@ -147,12 +152,35 @@ fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
 /// 移行用 sweep が必要とする process 一覧と接続状態の観測。テストでは fake。
 pub(crate) trait OrphanScanProbe {
     /// 全 process の (pid, ppid, command line)。
-    fn list_processes(&self) -> Vec<(u32, u32, String)>;
-    /// その port へ ESTABLISHED な TCP 接続が存在するか。
-    fn has_established_client(&self, port: u16) -> bool;
+    /// 観測自体に失敗した場合は None。空の一覧と区別し、失敗時に migration
+    /// 完了 marker を誤って書かないため。
+    fn list_processes(&self) -> Option<Vec<(u32, u32, String)>>;
+    /// その process 自身の socket に、当該 port で LISTEN 以外の TCP 状態
+    /// （ESTABLISHED / CLOSE_WAIT 等）が存在するか。pid でスコープすることで、
+    /// 無関係な process の同番 port 接続に reap を誤って見送らせない。
+    fn has_established_client(&self, pid: u32, port: u16) -> bool;
 }
 
-/// registry 導入前の build（v0.6.x 以前）が leak した sidecar の移行用 sweep。
+/// 移行 sweep 完了の marker。存在すれば以後の startup では sweep を走らせない。
+/// 「registry に記録のない process を条件推定で殺す」経路は、pre-registry
+/// build の残骸整理という一度きりの目的にだけ許す（常時掃除に格上げすると、
+/// user が意図して detach した clientless な codex app-server を定常的に
+/// 巻き込みうる）。client 検出で見送った候補や kill 失敗が残った回は marker を
+/// 書かず、次回 startup で再挑戦する。
+fn migration_marker_path(registry_path: &Path) -> PathBuf {
+    registry_path.with_file_name("codex-sidecars-migration-done")
+}
+
+fn recorded_sidecar_pids(path: &Path) -> std::collections::HashSet<u32> {
+    with_registry_lock(path, || read_entries(path))
+        .iter()
+        .map(|entry| entry.sidecar_pid)
+        .collect()
+}
+
+/// registry 導入前かつ sidecar 導入後の pre-release / source build が leak した
+/// sidecar の移行用 sweep。v0.6.2 以前の release build は sidecar 自体を spawn
+/// しないため対象外。
 ///
 /// 旧 build は spawn を記録しないため registry reap では回収できない。update
 /// では「旧 build が codex session を開いたまま終了 → 記録なしの orphan が
@@ -160,39 +188,92 @@ pub(crate) trait OrphanScanProbe {
 /// という経路が必ず成立するため、記録の代わりに以下の全条件で判定する：
 ///
 /// 1. コマンドラインが `<codex binary> app-server --listen ws://127.0.0.1:<port>`
-///    そのもの（末尾まで一致。daemon subcommand や unix socket は対象外）
+///    そのもの（末尾まで一致・binary basename は正確に "codex"。daemon
+///    subcommand や unix socket、別名 binary は対象外）
 /// 2. PPID = 1（spawn した親が既に死んでいる）
 /// 3. registry に記録がない（記録があるものは registry reap の管轄）
-/// 4. その listen port に ESTABLISHED な接続が 1 本もない
+/// 4. その process 自身の listen port に LISTEN 以外の TCP 状態がない
 ///    （生きた client が付いた server は、誰が spawn したかに関わらず殺さない）
+///
+/// plan 確定から signal までの間の PID 再利用・別 instance による record・
+/// client 接続に備え、TERM / KILL の送信直前に条件 1〜4 を丸ごと再検査する。
+/// なお process が自分の argv を偽装してこの形を名乗ることは可能だが、偽装
+/// できるのは自分のコマンドラインだけなので、それで殺せるのは偽装者自身に
+/// 限られる（ps 由来 identity の受け入れ済み限界）。
 fn reap_unrecorded_orphans_at(
     path: &Path,
     probe: &dyn ProcessProbe,
     scanner: &dyn OrphanScanProbe,
 ) {
-    let recorded: std::collections::HashSet<u32> = with_registry_lock(path, || read_entries(path))
-        .iter()
-        .map(|e| e.sidecar_pid)
-        .collect();
-    let targets = plan_unrecorded_reap(&scanner.list_processes(), &recorded, scanner);
-    if targets.is_empty() {
+    let marker = migration_marker_path(path);
+    if marker.exists() {
         return;
     }
-    for entry in &targets {
-        if still_matches(probe, entry) {
+    let recorded = recorded_sidecar_pids(path);
+    let Some(processes) = scanner.list_processes() else {
+        return;
+    };
+    // Unix の process table には少なくとも自 process が居る。成功扱いなのに
+    // 0 件なら ps format の非互換などを疑い、marker を残さず次回へ回す。
+    if processes.is_empty() {
+        return;
+    }
+    let plan = plan_unrecorded_reap(&processes, &recorded, scanner);
+
+    let mut signalled: Vec<(SidecarEntry, u16, String)> = Vec::new();
+    for (entry, port) in &plan.targets {
+        let Some(start_time) = probe.start_time(entry.sidecar_pid) else {
+            continue;
+        };
+        if migration_target_still_eligible(path, entry, *port, &start_time, probe, scanner) {
             probe.terminate(entry.sidecar_pid);
+            signalled.push((entry.clone(), *port, start_time));
         }
     }
-    wait_for_death_or_escalate(&targets, probe);
-    let reaped = targets
-        .iter()
-        .filter(|e| !probe.is_alive(e.sidecar_pid))
-        .count();
+
+    let mut survivors = 0usize;
+    let mut reaped = 0usize;
+    if !signalled.is_empty() {
+        wait_then_escalate_migration(path, &signalled, probe, scanner);
+        for (entry, _, _) in &signalled {
+            if probe.is_alive(entry.sidecar_pid) {
+                survivors += 1;
+            } else {
+                reaped += 1;
+            }
+        }
+    }
     if reaped > 0 {
         eprintln!(
             "[codex-sidecar] migration: reaped {reaped} unrecorded orphan app-server process(es) left by a pre-registry build"
         );
     }
+
+    // signal 前の再検査で候補を見送った場合も marker を書かない。特に plan 後に
+    // client が接続した候補は、次回 client が外れた時に再試行する必要がある。
+    if plan.pending_with_parent == 0
+        && plan.skipped_with_client == 0
+        && signalled.len() == plan.targets.len()
+        && survivors == 0
+    {
+        if let Err(e) = std::fs::write(&marker, b"") {
+            eprintln!(
+                "[codex-sidecar] migration marker write failed at {}: {e}",
+                marker.display()
+            );
+        }
+    }
+}
+
+struct MigrationPlan {
+    /// 条件 1〜4 を満たした kill 候補と、その listen port。
+    targets: Vec<(SidecarEntry, u16)>,
+    /// client 検出（条件 4）だけで見送った候補数。0 でない回は移行完了と
+    /// 見なさず、marker を書かない。
+    skipped_with_client: usize,
+    /// 形は一致する未記録 sidecar だが、まだ親が生きている候補数。複数 app
+    /// instance が並存する update 中かもしれないため、移行完了を保留する。
+    pending_with_parent: usize,
 }
 
 /// 条件 1〜4 を満たす orphan を、registry reap と同じ kill 経路に流せるよう
@@ -201,43 +282,138 @@ fn plan_unrecorded_reap(
     processes: &[(u32, u32, String)],
     recorded_pids: &std::collections::HashSet<u32>,
     scanner: &dyn OrphanScanProbe,
-) -> Vec<SidecarEntry> {
+) -> MigrationPlan {
     let mut targets = Vec::new();
+    let mut skipped_with_client = 0usize;
+    let mut pending_with_parent = 0usize;
     for (pid, ppid, command) in processes {
-        if *ppid != 1 || recorded_pids.contains(pid) {
+        if recorded_pids.contains(pid) {
             continue;
         }
         let Some(port) = parse_sidecar_listen_port(command.trim()) else {
             continue;
         };
-        if scanner.has_established_client(port) {
+        if *ppid != 1 {
+            pending_with_parent += 1;
             continue;
         }
-        targets.push(SidecarEntry {
-            owner_pid: 1,
-            sidecar_pid: *pid,
-            endpoint: format!("ws://127.0.0.1:{port}"),
-        });
+        if scanner.has_established_client(*pid, port) {
+            skipped_with_client += 1;
+            continue;
+        }
+        targets.push((
+            SidecarEntry {
+                owner_pid: 1,
+                sidecar_pid: *pid,
+                endpoint: format!("ws://127.0.0.1:{port}"),
+            },
+            port,
+        ));
     }
-    targets
+    MigrationPlan {
+        targets,
+        skipped_with_client,
+        pending_with_parent,
+    }
+}
+
+/// 移行 sweep の signal 直前再検査。plan snapshot からの経過中に起きうる
+/// PID 再利用（別プロセス化・新 sidecar 化）・別 instance による record・
+/// client 接続を、送信の直前にまとめて再確認する。registry reap の
+/// `still_matches` より厳格に、plan と同じ完全一致 parser で照合する。
+/// ps で読めない（判定不能）場合は殺さない側に倒す。
+fn migration_target_still_eligible(
+    path: &Path,
+    entry: &SidecarEntry,
+    port: u16,
+    expected_start_time: &str,
+    probe: &dyn ProcessProbe,
+    scanner: &dyn OrphanScanProbe,
+) -> bool {
+    if !migration_process_identity_matches(entry, port, expected_start_time, probe) {
+        return false;
+    }
+    if scanner.has_established_client(entry.sidecar_pid, port) {
+        return false;
+    }
+    // lsof は別 process なので、その実行中に対象が終了・PID reuse されうる。
+    // socket 観測後に最新 registry と process identity をもう一度確認する。
+    if recorded_sidecar_pids(path).contains(&entry.sidecar_pid) {
+        return false;
+    }
+    migration_process_identity_matches(entry, port, expected_start_time, probe)
+}
+
+fn migration_process_identity_matches(
+    entry: &SidecarEntry,
+    port: u16,
+    expected_start_time: &str,
+    probe: &dyn ProcessProbe,
+) -> bool {
+    if probe.start_time(entry.sidecar_pid).as_deref() != Some(expected_start_time) {
+        return false;
+    }
+    if probe.parent_pid(entry.sidecar_pid) != Some(1) {
+        return false;
+    }
+    probe
+        .command_line(entry.sidecar_pid)
+        .is_some_and(|command| parse_sidecar_listen_port(command.trim()) == Some(port))
+}
+
+/// TERM 済み対象の死亡を bounded に待ち、生き残りは条件を再々確認したうえで
+/// KILL に切り替える。
+fn wait_then_escalate_migration(
+    path: &Path,
+    signalled: &[(SidecarEntry, u16, String)],
+    probe: &dyn ProcessProbe,
+    scanner: &dyn OrphanScanProbe,
+) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while std::time::Instant::now() < deadline {
+        if signalled
+            .iter()
+            .all(|(entry, _, _)| !probe.is_alive(entry.sidecar_pid))
+        {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    for (entry, port, start_time) in signalled {
+        if probe.is_alive(entry.sidecar_pid)
+            && migration_target_still_eligible(path, entry, *port, start_time, probe, scanner)
+        {
+            probe.force_kill(entry.sidecar_pid);
+        }
+    }
 }
 
 /// コマンドラインが Yorishiro 型 sidecar の形（`<binary> app-server --listen
-/// ws://127.0.0.1:<port>` で終端、binary は空白なしで "codex" を含む）なら
-/// port を返す。判定を狭く保つことが安全性の根拠なので、疑わしきは None。
+/// ws://127.0.0.1:<port>` で終端）なら port を返す。binary は空白を含まず、
+/// basename が正確に "codex" であること——部分文字列一致では `/tmp/not-codex`
+/// のような別物や、user が意図して残した別名 binary を巻き込む。port の
+/// 先頭ゼロは自前 spawn（u16 の Display）からは決して出ない形なので拒否する
+/// （受理すると合成 endpoint と原文が食い違い、再検査と不整合になる）。
+/// 判定を狭く保つことが安全性の根拠なので、疑わしきは None。
 fn parse_sidecar_listen_port(command: &str) -> Option<u16> {
     let marker = " app-server --listen ws://127.0.0.1:";
     let idx = command.find(marker)?;
     let binary = &command[..idx];
-    if binary.contains(char::is_whitespace) || !binary.contains("codex") {
+    if binary.contains(char::is_whitespace) {
+        return None;
+    }
+    if binary.rsplit('/').next()? != "codex" {
         return None;
     }
     let port_str = &command[idx + marker.len()..];
-    if port_str.is_empty() || !port_str.bytes().all(|b| b.is_ascii_digit()) {
+    if port_str.is_empty()
+        || port_str.starts_with('0')
+        || !port_str.bytes().all(|b| b.is_ascii_digit())
+    {
         return None;
     }
     let port: u32 = port_str.parse().ok()?;
-    u16::try_from(port).ok().filter(|p| *p > 0)
+    u16::try_from(port).ok()
 }
 
 struct ReapPlan {
@@ -418,6 +594,10 @@ impl ProcessProbe for SystemProbe {
         ps_field(pid, "command=")
     }
 
+    fn start_time(&self, pid: u32) -> Option<String> {
+        ps_field(pid, "lstart=")
+    }
+
     fn terminate(&self, pid: u32) {
         if signalable(pid) {
             let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
@@ -456,53 +636,73 @@ struct SystemOrphanScanner;
 
 #[cfg(unix)]
 impl OrphanScanProbe for SystemOrphanScanner {
-    fn list_processes(&self) -> Vec<(u32, u32, String)> {
+    fn list_processes(&self) -> Option<Vec<(u32, u32, String)>> {
         let Ok(output) = std::process::Command::new("ps")
             .args(["-axww", "-o", "pid=,ppid=,command="])
             .output()
         else {
-            return Vec::new();
+            return None;
         };
         if !output.status.success() {
-            return Vec::new();
+            return None;
         }
-        let Ok(text) = String::from_utf8(output.stdout) else {
-            return Vec::new();
-        };
-        text.lines()
-            .filter_map(|line| {
-                let trimmed = line.trim_start();
-                let (pid_str, rest) = trimmed.split_once(char::is_whitespace)?;
-                let rest = rest.trim_start();
-                let (ppid_str, command) = rest.split_once(char::is_whitespace)?;
-                Some((
-                    pid_str.parse().ok()?,
-                    ppid_str.parse().ok()?,
-                    command.trim().to_string(),
-                ))
-            })
-            .collect()
+        // lossy: 1 行の非 UTF-8 で process table 全体を捨てない。化けた行は
+        // どのみち完全一致 parser を通らない。argv 内の改行で行が捏造されうる
+        // が、捏造 pid への signal は送信直前の per-pid 再検査（ps -p の実
+        // コマンドライン照合）が防ぐ。
+        Some(
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter_map(|line| {
+                    let trimmed = line.trim_start();
+                    let (pid_str, rest) = trimmed.split_once(char::is_whitespace)?;
+                    let rest = rest.trim_start();
+                    let (ppid_str, command) = rest.split_once(char::is_whitespace)?;
+                    Some((
+                        pid_str.parse().ok()?,
+                        ppid_str.parse().ok()?,
+                        command.trim().to_string(),
+                    ))
+                })
+                .collect(),
+        )
     }
 
-    fn has_established_client(&self, port: u16) -> bool {
+    fn has_established_client(&self, pid: u32, port: u16) -> bool {
+        // -a で pid と port を AND し、対象 process 自身の socket に限定する。
+        // 状態フィルタは使わず、LISTEN 以外の TCP 行（ESTABLISHED /
+        // CLOSE_WAIT / FIN_WAIT 等）があれば client ありと見なす。
         let Ok(output) = std::process::Command::new("lsof")
-            .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:ESTABLISHED", "-t"])
+            .args([
+                "-nP",
+                "-a",
+                "-p",
+                &pid.to_string(),
+                &format!("-iTCP:{port}"),
+            ])
             .output()
         else {
-            // 確認できないときは「client あり」に倒して殺さない。
+            // 実行できないときは「client あり」に倒して殺さない。
             return true;
         };
-        !String::from_utf8_lossy(&output.stdout).trim().is_empty()
+        // lsof は「該当なし」でも exit 1 を返し、権限エラー等と区別できない。
+        // stderr に何か出ていれば判定不能として client ありに倒す。
+        if !output.status.success() && !output.stderr.is_empty() {
+            return true;
+        }
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.contains("TCP") && !line.contains("(LISTEN)"))
     }
 }
 
 #[cfg(not(unix))]
 impl OrphanScanProbe for SystemOrphanScanner {
-    fn list_processes(&self) -> Vec<(u32, u32, String)> {
-        Vec::new()
+    fn list_processes(&self) -> Option<Vec<(u32, u32, String)>> {
+        None
     }
 
-    fn has_established_client(&self, _port: u16) -> bool {
+    fn has_established_client(&self, _pid: u32, _port: u16) -> bool {
         true
     }
 }
@@ -516,6 +716,9 @@ impl ProcessProbe for SystemProbe {
         None
     }
     fn command_line(&self, _pid: u32) -> Option<String> {
+        None
+    }
+    fn start_time(&self, _pid: u32) -> Option<String> {
         None
     }
     fn terminate(&self, _pid: u32) {}
@@ -892,16 +1095,43 @@ mod tests {
 
     struct FakeScanner {
         processes: Vec<(u32, u32, String)>,
-        established_ports: HashSet<u16>,
+        established_ports: Mutex<HashSet<u16>>,
+        /// (call 回数, この回数目以降 client ありにする port)。plan 後に client
+        /// が接続してくる window を再現する。
+        connect_after_calls: Option<(usize, u16)>,
+        client_checks: Mutex<usize>,
+    }
+
+    impl FakeScanner {
+        fn new(processes: Vec<(u32, u32, String)>) -> Self {
+            Self {
+                processes,
+                established_ports: Mutex::new(HashSet::new()),
+                connect_after_calls: None,
+                client_checks: Mutex::new(0),
+            }
+        }
+
+        fn with_client_on(self, port: u16) -> Self {
+            self.established_ports.lock().unwrap().insert(port);
+            self
+        }
     }
 
     impl OrphanScanProbe for FakeScanner {
-        fn list_processes(&self) -> Vec<(u32, u32, String)> {
-            self.processes.clone()
+        fn list_processes(&self) -> Option<Vec<(u32, u32, String)>> {
+            Some(self.processes.clone())
         }
 
-        fn has_established_client(&self, port: u16) -> bool {
-            self.established_ports.contains(&port)
+        fn has_established_client(&self, _pid: u32, port: u16) -> bool {
+            let mut checks = self.client_checks.lock().unwrap();
+            *checks += 1;
+            if let Some((after, flip_port)) = self.connect_after_calls {
+                if *checks > after && port == flip_port {
+                    return true;
+                }
+            }
+            self.established_ports.lock().unwrap().contains(&port)
         }
     }
 
@@ -943,6 +1173,22 @@ mod tests {
             parse_sidecar_listen_port("codex app-server --listen ws://127.0.0.1:"),
             None
         );
+        // basename は正確に "codex"。部分文字列一致や別名 binary は対象外。
+        assert_eq!(
+            parse_sidecar_listen_port("/tmp/not-codex app-server --listen ws://127.0.0.1:50001"),
+            None
+        );
+        assert_eq!(
+            parse_sidecar_listen_port(
+                "/usr/bin/codex-fugu app-server --listen ws://127.0.0.1:50001"
+            ),
+            None
+        );
+        // 先頭ゼロの port は自前 spawn から出ない形なので拒否。
+        assert_eq!(
+            parse_sidecar_listen_port("codex app-server --listen ws://127.0.0.1:050001"),
+            None
+        );
     }
 
     #[test]
@@ -952,20 +1198,20 @@ mod tests {
             sidecar(300, 1, 50001),            // 対象: 孤児・未記録・client なし
             sidecar(301, 4242, 50002),         // 親が生きている → 対象外
             sidecar(302, 1, 50003),            // registry に記録あり → 対象外
-            sidecar(303, 1, 50004),            // ESTABLISHED client あり → 対象外
+            sidecar(303, 1, 50004),            // client あり → 対象外（要 marker 保留）
             (304, 1, "/usr/bin/vim x".into()), // 形が違う → 対象外
         ];
         let recorded = HashSet::from([302u32]);
-        let scanner = FakeScanner {
-            processes: processes.clone(),
-            established_ports: HashSet::from([50004u16]),
-        };
+        let scanner = FakeScanner::new(processes.clone()).with_client_on(50004);
 
-        let targets = plan_unrecorded_reap(&processes, &recorded, &scanner);
+        let plan = plan_unrecorded_reap(&processes, &recorded, &scanner);
 
-        assert_eq!(targets.len(), 1);
-        assert_eq!(targets[0].sidecar_pid, 300);
-        assert_eq!(targets[0].endpoint, "ws://127.0.0.1:50001");
+        assert_eq!(plan.targets.len(), 1);
+        assert_eq!(plan.targets[0].0.sidecar_pid, 300);
+        assert_eq!(plan.targets[0].0.endpoint, "ws://127.0.0.1:50001");
+        assert_eq!(plan.targets[0].1, 50001);
+        assert_eq!(plan.skipped_with_client, 1);
+        assert_eq!(plan.pending_with_parent, 1);
     }
 
     #[test]
@@ -973,34 +1219,298 @@ mod tests {
         let path = temp_registry("migration");
         let probe = FakeProbe::new()
             .with_alive(&[300])
+            .with_parent(300, 1)
             .with_command(300, &sidecar_command(50001));
-        let scanner = FakeScanner {
-            processes: vec![(300, 1, sidecar_command(50001))],
-            established_ports: HashSet::new(),
-        };
+        let scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
 
         reap_unrecorded_orphans_at(&path, &probe, &scanner);
 
         assert_eq!(*probe.terminated.lock().unwrap(), vec![300]);
+        // クリーンに完了した回は marker が書かれ、以後の sweep は走らない。
+        assert!(migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_sweep_runs_only_once_after_clean_pass() {
+        let path = temp_registry("migration-once");
+        let clean = FakeProbe::new();
+        let harmless_process = vec![(999, 42, "/usr/bin/vim notes.txt".into())];
+        reap_unrecorded_orphans_at(&path, &clean, &FakeScanner::new(harmless_process));
+        assert!(migration_marker_path(&path).exists());
+
+        // marker がある限り、新たな候補が現れても sweep は走らない。
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_parent(300, 1)
+            .with_command(300, &sidecar_command(50001));
+        let scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+        assert!(probe.terminated.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn migration_marker_is_withheld_when_process_listing_fails() {
+        struct FailingScanner;
+        impl OrphanScanProbe for FailingScanner {
+            fn list_processes(&self) -> Option<Vec<(u32, u32, String)>> {
+                None
+            }
+
+            fn has_established_client(&self, _pid: u32, _port: u16) -> bool {
+                unreachable!("a failed process listing must stop the sweep")
+            }
+        }
+
+        let path = temp_registry("migration-scan-failure");
+        reap_unrecorded_orphans_at(&path, &FakeProbe::new(), &FailingScanner);
+
+        assert!(!migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_marker_is_withheld_while_candidates_are_skipped_for_clients() {
+        // client 付きで見送った候補が居る回は移行完了と見なさず、次回また試す。
+        let path = temp_registry("migration-retry");
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_parent(300, 1)
+            .with_command(300, &sidecar_command(50001));
+        let scanner =
+            FakeScanner::new(vec![(300, 1, sidecar_command(50001))]).with_client_on(50001);
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert!(probe.terminated.lock().unwrap().is_empty());
+        assert!(!migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_marker_is_withheld_while_pre_registry_parent_may_still_exit() {
+        // 複数 instance が並存する update では、新 build の初回 sweep 時点で
+        // 旧 build とその未記録 sidecar がまだ生きていることがある。ここで
+        // marker を書くと、旧 build 終了後に orphan 化しても二度と拾えない。
+        let path = temp_registry("migration-live-parent");
+        let scanner = FakeScanner::new(vec![(300, 4242, sidecar_command(50001))]);
+
+        reap_unrecorded_orphans_at(&path, &FakeProbe::new(), &scanner);
+
+        assert!(!migration_marker_path(&path).exists());
     }
 
     #[test]
     fn migration_sweep_skips_orphan_when_identity_recheck_fails() {
-        // plan と signal の間に PID が別プロセスへ化けた場合、still_matches の
-        // 再確認で signal を送らない。
+        // plan と signal の間に PID が別プロセスへ化けた場合、送信直前の
+        // 完全一致再検査で signal を送らない。
         let path = temp_registry("migration-flip");
         let probe = FakeProbe::new()
             .with_alive(&[300])
+            .with_parent(300, 1)
             .with_command(300, "/usr/bin/vim important.txt");
-        let scanner = FakeScanner {
-            processes: vec![(300, 1, sidecar_command(50001))],
-            established_ports: HashSet::new(),
-        };
+        let scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
 
         reap_unrecorded_orphans_at(&path, &probe, &scanner);
 
         assert!(probe.terminated.lock().unwrap().is_empty());
         assert!(probe.force_killed.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn migration_sweep_skips_orphan_reparented_between_plan_and_signal() {
+        // plan 時は PPID=1 だったが、signal 直前の再検査で親が付いていた
+        // （PID が新しい生きた sidecar に再利用された等）場合は送らない。
+        let path = temp_registry("migration-reparent");
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_parent(300, 4242)
+            .with_command(300, &sidecar_command(50001));
+        let scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert!(probe.terminated.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn migration_sweep_skips_orphan_when_client_connects_after_plan() {
+        // plan 時点では client なし、signal 直前の再検査までに接続された場合は
+        // 送らない。1 回目の client check（plan）は false、2 回目（再検査）から
+        // true になる scanner で window を再現する。
+        let path = temp_registry("migration-late-client");
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_parent(300, 1)
+            .with_command(300, &sidecar_command(50001));
+        let mut scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
+        scanner.connect_after_calls = Some((1, 50001));
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert!(probe.terminated.lock().unwrap().is_empty());
+        // client が外れた後に回収できるよう、完了扱いにはしない。
+        assert!(!migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_sweep_skips_pid_reused_during_socket_check() {
+        struct StartTimeFlipsAfterSocketCheck {
+            inner: FakeProbe,
+            start_checks: Mutex<usize>,
+        }
+        impl ProcessProbe for StartTimeFlipsAfterSocketCheck {
+            fn is_alive(&self, pid: u32) -> bool {
+                self.inner.is_alive(pid)
+            }
+            fn parent_pid(&self, pid: u32) -> Option<u32> {
+                self.inner.parent_pid(pid)
+            }
+            fn command_line(&self, pid: u32) -> Option<String> {
+                self.inner.command_line(pid)
+            }
+            fn start_time(&self, _pid: u32) -> Option<String> {
+                let mut checks = self.start_checks.lock().unwrap();
+                *checks += 1;
+                Some(if *checks >= 3 { "new" } else { "old" }.into())
+            }
+            fn terminate(&self, pid: u32) {
+                self.inner.terminate(pid);
+            }
+            fn force_kill(&self, pid: u32) {
+                self.inner.force_kill(pid);
+            }
+        }
+
+        let path = temp_registry("migration-pid-reuse-during-lsof");
+        let probe = StartTimeFlipsAfterSocketCheck {
+            inner: FakeProbe::new()
+                .with_alive(&[300])
+                .with_parent(300, 1)
+                .with_command(300, &sidecar_command(50001)),
+            start_checks: Mutex::new(0),
+        };
+        let scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert!(probe.inner.terminated.lock().unwrap().is_empty());
+        assert!(!migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_sweep_skips_orphan_recorded_between_snapshots() {
+        struct RecordsWhileListing {
+            path: PathBuf,
+        }
+        impl OrphanScanProbe for RecordsWhileListing {
+            fn list_processes(&self) -> Option<Vec<(u32, u32, String)>> {
+                // reap の最初の registry snapshot 後、process plan 前に別 instance
+                // が同じ PID を記録する window を実際の呼び出し順で再現する。
+                assert!(record_spawn(&self.path, entry(9999, 300, 50001)));
+                Some(vec![(300, 1, sidecar_command(50001))])
+            }
+
+            fn has_established_client(&self, _pid: u32, _port: u16) -> bool {
+                false
+            }
+        }
+
+        let path = temp_registry("migration-recorded");
+        let probe = FakeProbe::new()
+            .with_alive(&[300])
+            .with_parent(300, 1)
+            .with_command(300, &sidecar_command(50001));
+        let scanner = RecordsWhileListing { path: path.clone() };
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert!(probe.terminated.lock().unwrap().is_empty());
+        assert!(!migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_sweep_refreshes_registry_before_each_target_signal() {
+        struct RecordsSecondTarget {
+            inner: FakeProbe,
+            path: PathBuf,
+        }
+        impl ProcessProbe for RecordsSecondTarget {
+            fn is_alive(&self, pid: u32) -> bool {
+                self.inner.is_alive(pid)
+            }
+            fn parent_pid(&self, pid: u32) -> Option<u32> {
+                self.inner.parent_pid(pid)
+            }
+            fn command_line(&self, pid: u32) -> Option<String> {
+                self.inner.command_line(pid)
+            }
+            fn terminate(&self, pid: u32) {
+                self.inner.terminate(pid);
+                if pid == 300 {
+                    assert!(record_spawn(&self.path, entry(9999, 301, 50002)));
+                }
+            }
+            fn force_kill(&self, pid: u32) {
+                self.inner.force_kill(pid);
+            }
+        }
+
+        let path = temp_registry("migration-record-between-targets");
+        let probe = RecordsSecondTarget {
+            inner: FakeProbe::new()
+                .with_alive(&[300, 301])
+                .with_parent(300, 1)
+                .with_parent(301, 1)
+                .with_command(300, &sidecar_command(50001))
+                .with_command(301, &sidecar_command(50002)),
+            path: path.clone(),
+        };
+        let scanner = FakeScanner::new(vec![
+            (300, 1, sidecar_command(50001)),
+            (301, 1, sidecar_command(50002)),
+        ]);
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert_eq!(*probe.inner.terminated.lock().unwrap(), vec![300]);
+        assert!(probe.inner.is_alive(301));
+        assert!(!migration_marker_path(&path).exists());
+    }
+
+    #[test]
+    fn migration_escalation_rechecks_eligibility_before_sigkill() {
+        // TERM を無視する生き残りには、条件の再々確認を通った場合のみ KILL。
+        struct StubbornScanProbe(FakeProbe);
+        impl ProcessProbe for StubbornScanProbe {
+            fn is_alive(&self, pid: u32) -> bool {
+                self.0.alive.lock().unwrap().contains(&pid)
+            }
+            fn parent_pid(&self, pid: u32) -> Option<u32> {
+                self.0.parent_pid(pid)
+            }
+            fn command_line(&self, pid: u32) -> Option<String> {
+                self.0.command_line(pid)
+            }
+            fn terminate(&self, pid: u32) {
+                self.0.terminated.lock().unwrap().push(pid);
+            }
+            fn force_kill(&self, pid: u32) {
+                self.0.force_kill(pid);
+            }
+        }
+
+        let path = temp_registry("migration-escalate");
+        let probe = StubbornScanProbe(
+            FakeProbe::new()
+                .with_alive(&[300])
+                .with_parent(300, 1)
+                .with_command(300, &sidecar_command(50001)),
+        );
+        let scanner = FakeScanner::new(vec![(300, 1, sidecar_command(50001))]);
+
+        reap_unrecorded_orphans_at(&path, &probe, &scanner);
+
+        assert_eq!(*probe.0.terminated.lock().unwrap(), vec![300]);
+        assert_eq!(*probe.0.force_killed.lock().unwrap(), vec![300]);
+        assert!(migration_marker_path(&path).exists());
     }
 
     /// SystemProbe の実バインディング（signal 0 / ps 読み）を実 process で検証する。
@@ -1018,6 +1528,7 @@ mod tests {
         let pid = child.id();
         assert!(probe.is_alive(pid));
         assert_eq!(probe.parent_pid(pid), Some(me));
+        assert!(probe.start_time(pid).is_some());
         assert!(probe
             .command_line(pid)
             .is_some_and(|command| command.contains("sleep")));

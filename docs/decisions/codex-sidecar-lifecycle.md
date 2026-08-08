@@ -43,7 +43,8 @@ debug build を例外にしない理由は経験的で、実装当日に確認�
 - app 終了は agent session 終了を意味する。app 終了後も作業を継続する正式な background mode ではない。
 - 自己改修 workflow（Yorishiro 内の agent が Yorishiro の Rust code を触る）では、hot reload のたびに agent session が終わる。継続性が必要になった時点で session supervisor を設計する。lifecycle の例外を増やす方向では解決しない。
 - registry reap は「registry に記録した endpoint がコマンドラインに現れる codex app-server」以外を殺さない。Yorishiro 以外が起動した app-server や PID 再利用先には触れない。
-- registry 導入前の build（v0.6.x 以前）が取り残した sidecar は記録がないため、移行用 sweep が別途整理する。対象は「コマンドラインが `<codex binary> app-server --listen ws://127.0.0.1:<port>` そのもの」「PPID=1」「registry に記録なし」「listen port に ESTABLISHED な接続なし」の全条件を満たす process のみ。update の再起動では旧 build が codex session を開いたまま終了するため、この経路がないと更新直後の `resume --last` が確実に -32600 で失敗する（v0.7.0 で実際に発生）。
+- registry への spawn 記録に失敗した場合は、未記録 sidecar を動かし続けず、その場で停止して session 起動を失敗させる。短期の可用性より、crash 後に provenance のない process を残さないことを優先する。
+- registry 導入前かつ sidecar 導入後の pre-release / source build が取り残した sidecar は記録がないため、移行用 sweep が別途整理する（v0.6.2 以前の release build は sidecar 自体を spawn しないため対象外）。対象は「binary basename が正確に `codex` で、コマンドラインが `<codex binary> app-server --listen ws://127.0.0.1:<port>` そのもの」「PPID=1」「registry に記録なし」「その process 自身の listen socket に client 接続なし」の全条件を満たす process のみ。update の再起動では旧 build が codex session を開いたまま終了するため、この経路がないと更新直後の `resume --last` が確実に -32600 で失敗する（v0.7.0 で実際に発生）。条件推定による cleanup を常設しないため、全候補の回収を確認した clean pass 後に marker を書き、以後は実行しない。process 一覧を観測できない、client 付き候補がいる、または signal 前後の再検査で候補を安全に回収できない場合は marker を書かず、次回起動で再試行する。TERM / KILL 前には socket 観測の前後で process start time・PPID・command を照合し、候補ごとに最新 registry を再読する。最後の identity 照合と raw PID への signal の間に残る syscall 単位の窓は、macOS に pidfd 相当がないため受け入れる制約とする。
 
 ## 関連 reference
 

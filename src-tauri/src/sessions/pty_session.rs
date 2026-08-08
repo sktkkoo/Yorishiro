@@ -352,15 +352,15 @@ impl CodexAppServerProcess {
             command.current_dir(dir);
         }
 
-        let child = command.spawn().map_err(|e| {
+        let mut child = command.spawn().map_err(|e| {
             format!(
                 "Failed to spawn Codex app-server ({binary}). Codex 0.145.0 or newer is required: {e}"
             )
         })?;
         // app が Drop を経ずに死んだ場合の startup reaper 用（issue #109）。
-        // 以降どの失敗経路でも Self が Drop され、registry の entry ごと回収される。
-        // 記録失敗でも session は起動させる（可用性優先）が、その sidecar は
-        // crash 時に reap 不能になるため警告を残す。
+        // 記録成功後はどの失敗経路でも Self が Drop され、entry ごと回収される。
+        // registry に記録できない sidecar は crash 後に安全な provenance 判定が
+        // できない。未記録 orphan を新たに作らないよう、起動を成立させず即回収する。
         let recorded = crate::yorishiro_home_path().is_ok_and(|home| {
             super::codex_sidecar_registry::record_spawn(
                 &super::codex_sidecar_registry::registry_path_under(&home),
@@ -372,10 +372,12 @@ impl CodexAppServerProcess {
             )
         });
         if !recorded {
-            eprintln!(
-                "[codex-sidecar] failed to record sidecar pid {}; it cannot be reaped after a crash",
-                child.id()
-            );
+            let sidecar_pid = child.id();
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "Failed to record Codex app-server sidecar pid {sidecar_pid}; the process was stopped to avoid an untracked orphan"
+            ));
         }
         let mut process = Self {
             child,
