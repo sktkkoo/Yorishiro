@@ -2458,6 +2458,11 @@ pub fn run() {
             system_exec
         ])
         .setup(|app| {
+            // 前回 instance が leak した codex app-server sidecar を先に回収する。
+            // orphan が ~/.codex/thread-writer-locks の writer lock を握ったままだと
+            // 最初の Codex session の `resume --last` が -32600 で失敗する（issue #109）。
+            sessions::codex_sidecar_registry::reap_stale_sidecars();
+
             if let Err(e) = pty::ensure_reminder_script() {
                 eprintln!("[reminder] script 配置失敗: {e}");
             }
@@ -2497,6 +2502,11 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // 全 PTY session と codex app-server sidecar を明示的に teardown する。
+                // managed state の Drop は process exit では走らない（issue #109）。
+                let registry: State<'_, Arc<SessionRegistry>> = app.state();
+                registry.kill_all_pty_sessions();
+
                 // 終了時に cohabitation hours を保存
                 let start_state: State<'_, CohabitationStart> = app.state();
                 let start = start_state
