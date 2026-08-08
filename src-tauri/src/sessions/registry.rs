@@ -105,6 +105,21 @@ impl SessionRegistry {
         self.lock().pty_sessions.get(id).cloned()
     }
 
+    /// App 終了時の teardown。全 PtySession を drain して kill する。
+    /// Tauri managed state の Drop は process exit では走らないため、
+    /// `RunEvent::Exit` から明示的に呼ばないと codex app-server sidecar が
+    /// orphan として leak する（issue #109）。kill 中に reader thread が
+    /// registry を触れるよう、registry lock は drain 後すぐ手放す。
+    pub fn kill_all_pty_sessions(&self) {
+        let sessions: Vec<Arc<PtySession>> = {
+            let mut guard = self.lock();
+            guard.pty_sessions.drain().map(|(_, s)| s).collect()
+        };
+        for session in sessions {
+            let _ = session.kill();
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<SessionDescriptor> {
         self.lock().descriptors.get(id).cloned()
     }

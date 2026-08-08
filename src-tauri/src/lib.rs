@@ -2502,6 +2502,11 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // 全 PTY session と codex app-server sidecar を明示的に teardown する。
+                // managed state の Drop は process exit では走らない（issue #109）。
+                let registry: State<'_, Arc<SessionRegistry>> = app.state();
+                registry.kill_all_pty_sessions();
+
                 // 終了時に cohabitation hours を保存
                 let start_state: State<'_, CohabitationStart> = app.state();
                 let start = start_state
