@@ -158,7 +158,7 @@ export class AppErrorBoundary extends React.Component<
     const packsDir = homeDir ? `${homeDir}/packs/` : "~/.yorishiro/packs/";
     const safeModeCommand =
       navigator.platform.toLowerCase().includes("mac") || navigator.userAgent.includes("Mac")
-        ? "YORISHIRO_SAFE_MODE=1 open /Applications/yorishiro.app"
+        ? "YORISHIRO_SAFE_MODE=1 open /Applications/Yorishiro.app"
         : "YORISHIRO_SAFE_MODE=1 yorishiro";
     const issueUrl = "https://github.com/sktkkoo/Yorishiro/issues/new?template=crash_report.yml";
 

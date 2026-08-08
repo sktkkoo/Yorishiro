@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import process from "node:process";
 
-const appPath = process.argv[2] ?? "src-tauri/target/release/bundle/macos/yorishiro.app";
+const appPath = process.argv[2] ?? "src-tauri/target/release/bundle/macos/Yorishiro.app";
 
 if (process.platform !== "darwin") {
   console.error("macOS code signatures can only be verified on macOS.");

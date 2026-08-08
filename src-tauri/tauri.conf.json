@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "yorishiro",
+  "productName": "Yorishiro",
   "version": "0.6.2",
   "identifier": "dev.yorishiro.app",
   "build": {
