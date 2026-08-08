@@ -420,6 +420,7 @@ impl Drop for CodexAppServerProcess {
         if let Ok(home) = crate::yorishiro_home_path() {
             super::codex_sidecar_ledger::remove_sidecar(
                 &super::codex_sidecar_ledger::ledger_path_under(&home),
+                std::process::id(),
                 sidecar_pid,
             );
         }

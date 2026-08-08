@@ -61,10 +61,12 @@ pub fn record_spawn(path: &Path, entry: SidecarEntry) {
 }
 
 /// `CodexAppServerProcess` の Drop（正常 teardown）で呼ぶ。
-pub fn remove_sidecar(path: &Path, sidecar_pid: u32) {
+/// owner も一致した entry だけを消す。wait() 後に他 instance が同じ PID を
+/// 再利用して record した entry を巻き添えにしないため。
+pub fn remove_sidecar(path: &Path, owner_pid: u32, sidecar_pid: u32) {
     with_ledger_lock(path, || {
         let mut entries = read_entries(path);
-        entries.retain(|e| e.sidecar_pid != sidecar_pid);
+        entries.retain(|e| !(e.sidecar_pid == sidecar_pid && e.owner_pid == owner_pid));
         write_entries(path, &entries);
     });
 }
@@ -86,17 +88,26 @@ fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
             return;
         }
         let plan = plan_reap(entries, probe);
+        let mut keep = plan.keep;
         if !plan.kill.is_empty() {
             for entry in &plan.kill {
                 probe.terminate(entry.sidecar_pid);
             }
             wait_for_death_or_escalate(&plan.kill, probe);
-            eprintln!(
-                "[codex-sidecar] reaped {} leaked app-server process(es)",
-                plan.kill.len()
-            );
+            let mut reaped = 0usize;
+            for entry in plan.kill {
+                if probe.is_alive(entry.sidecar_pid) {
+                    // kill できなかった（EPERM 等）。台帳に残して次回 startup で再挑戦。
+                    keep.push(entry);
+                } else {
+                    reaped += 1;
+                }
+            }
+            if reaped > 0 {
+                eprintln!("[codex-sidecar] reaped {reaped} leaked app-server process(es)");
+            }
         }
-        write_entries(path, &plan.keep);
+        write_entries(path, &keep);
     });
 }
 
@@ -120,20 +131,35 @@ fn plan_reap(entries: Vec<SidecarEntry>, probe: &dyn ProcessProbe) -> ReapPlan {
             keep.push(entry);
             continue;
         }
-        if command_matches(
-            probe.command_line(entry.sidecar_pid).as_deref(),
-            &entry.endpoint,
-        ) {
-            kill.push(entry);
+        match probe.command_line(entry.sidecar_pid) {
+            // probe 失敗（ps が引けない等）は判定不能。台帳に残して
+            // 次回 startup で再判定する。reap 権を放棄しない。
+            None => keep.push(entry),
+            Some(command) if command_matches(&command, &entry.endpoint) => kill.push(entry),
+            // identity 不一致（PID 再利用で別プロセスになっている等）は
+            // 触らずに台帳から落とす。
+            Some(_) => {}
         }
-        // identity 不一致（PID 再利用で別プロセスになっている等）は
-        // 触らずに台帳から落とす。
     }
     ReapPlan { keep, kill }
 }
 
-fn command_matches(command: Option<&str>, endpoint: &str) -> bool {
-    command.is_some_and(|c| c.contains("codex") && c.contains("app-server") && c.contains(endpoint))
+/// コマンドラインが「台帳に記録した endpoint で listen する codex app-server」
+/// であることを確認する。`app-server --listen <endpoint>` の連続一致と直後の
+/// 語境界を要求し、endpoint がポート番号の前方一致で別プロセスに当たる事故
+/// （`:5000` vs `:50001`）や、endpoint をただ引数中に含むだけの無関係な
+/// プロセスへの誤爆を防ぐ。
+fn command_matches(command: &str, endpoint: &str) -> bool {
+    if !command.contains("codex") {
+        return false;
+    }
+    let needle = format!("app-server --listen {endpoint}");
+    command.match_indices(&needle).any(|(idx, matched)| {
+        command[idx + matched.len()..]
+            .chars()
+            .next()
+            .is_none_or(|ch| ch.is_whitespace())
+    })
 }
 
 /// TERM 送信後、writer lock が解放されるのを bounded に待つ。生き残りは KILL。
@@ -164,7 +190,11 @@ fn write_entries(path: &Path, entries: &[SidecarEntry]) {
     let Ok(raw) = serde_json::to_string_pretty(entries) else {
         return;
     };
-    if let Err(e) = std::fs::write(path, raw) {
+    // 書きかけの crash で台帳全体（= 将来の reap 権）を失わないよう
+    // tmp + rename で atomic に置き換える。
+    let tmp = path.with_extension("json.tmp");
+    let result = std::fs::write(&tmp, raw).and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(e) = result {
         eprintln!(
             "[codex-sidecar] ledger write failed at {}: {e}",
             path.display()
@@ -173,7 +203,9 @@ fn write_entries(path: &Path, entries: &[SidecarEntry]) {
 }
 
 /// 台帳の read-modify-write を複数 app instance 間で直列化する。
-/// lock 取得に失敗しても操作自体は実行する（best effort）。
+/// lock 取得に失敗しても操作自体は実行する（best effort）。app の起動・終了
+/// 経路から呼ばれるため、他 instance が lock を握ったまま固まっていても
+/// 無期限には待たず、bounded timeout で諦めて進む。
 fn with_ledger_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -187,7 +219,19 @@ fn with_ledger_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
     #[cfg(unix)]
     if let Some(ref file) = lock_file {
         use std::os::unix::io::AsRawFd;
-        let _ = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+        loop {
+            let acquired =
+                unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0;
+            if acquired {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                eprintln!("[codex-sidecar] ledger lock timed out; proceeding unlocked");
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
     }
     let result = f();
     #[cfg(unix)]
@@ -203,10 +247,17 @@ fn with_ledger_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
 /// waitpid は使えず、liveness は signal 0、系譜とコマンドラインは ps で読む。
 struct SystemProbe;
 
+/// signal を送ってよい PID か。0 / 1 / pid_t に収まらない値（負値へ化けて
+/// process group や全 process を指してしまう）を弾く。
+#[cfg(unix)]
+fn signalable(pid: u32) -> bool {
+    pid > 1 && pid <= i32::MAX as u32
+}
+
 #[cfg(unix)]
 impl ProcessProbe for SystemProbe {
     fn is_alive(&self, pid: u32) -> bool {
-        if pid == 0 {
+        if !signalable(pid) {
             return false;
         }
         let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
@@ -226,13 +277,13 @@ impl ProcessProbe for SystemProbe {
     }
 
     fn terminate(&self, pid: u32) {
-        if pid > 1 {
+        if signalable(pid) {
             let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
         }
     }
 
     fn force_kill(&self, pid: u32) {
-        if pid > 1 {
+        if signalable(pid) {
             let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) };
         }
     }
@@ -366,10 +417,48 @@ mod tests {
         record_spawn(&path, entry(100, 201, 50002));
         assert_eq!(read_entries(&path).len(), 2);
 
-        remove_sidecar(&path, 200);
+        remove_sidecar(&path, 100, 200);
         let remaining = read_entries(&path);
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].sidecar_pid, 201);
+    }
+
+    #[test]
+    fn remove_sidecar_ignores_entries_from_other_owners() {
+        // wait() 後の PID 再利用で、他 instance が record した entry を
+        // 自分の Drop が巻き添えにしないこと。
+        let path = temp_ledger("owner-scope");
+        record_spawn(&path, entry(999, 200, 50001));
+        remove_sidecar(&path, 100, 200);
+        assert_eq!(read_entries(&path).len(), 1);
+    }
+
+    #[test]
+    fn command_matches_requires_exact_listen_endpoint_token() {
+        let cmd = sidecar_command(50001);
+        assert!(command_matches(&cmd, "ws://127.0.0.1:50001"));
+        // ポート番号の前方一致では当たらない（:5000 vs :50001）
+        assert!(!command_matches(&cmd, "ws://127.0.0.1:5000"));
+        // endpoint を引数中に含むだけの無関係な command には当たらない
+        assert!(!command_matches(
+            "rg 'ws://127.0.0.1:50001' codex-app-server.log",
+            "ws://127.0.0.1:50001"
+        ));
+        // 後続引数があっても連続一致していれば当たる
+        assert!(command_matches(
+            &format!("{} --extra-flag", sidecar_command(50001)),
+            "ws://127.0.0.1:50001"
+        ));
+    }
+
+    #[test]
+    fn keeps_entry_for_retry_when_command_probe_fails() {
+        // sidecar は生きているが ps が引けない（一時障害）。誤殺も放棄もせず
+        // 台帳に残して次回 startup で再判定する。
+        let probe = FakeProbe::new().with_alive(&[200]).with_parent(200, 1);
+        let plan = plan_reap(vec![entry(100, 200, 50001)], &probe);
+        assert_eq!(plan.keep.len(), 1);
+        assert!(plan.kill.is_empty());
     }
 
     #[test]
