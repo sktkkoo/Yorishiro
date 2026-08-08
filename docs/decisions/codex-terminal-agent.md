@@ -24,6 +24,11 @@ Rust の PTY 層は `AgentKind` を受け取り、agent ごとに起動引数を
 - Claude Code: 既存 session があれば `-c`、hook settings、bundled plugin、MCP config、`--append-system-prompt`
 - Codex: process cwd、Yorishiro MCP config、`~/.agents/skills/` の Yorishiro user skills、persona prompt があれば `-c developer_instructions="<prompt>"`
 
+Codex の既存 thread はまず `resume --last` で同一 thread の継続を試す。別 process が
+writer lock を保持していて `-32600 already has an active writer` で拒否した場合だけ、
+TUI proxy が同じ選択 request を `thread/fork` として再送し、履歴を引き継いだ新しい
+thread で起動する。lock 競合以外の resume error は隠さず、そのまま user に返す。
+
 Hook server は現時点では Claude Code 専用。Codex でも Yorishiro MCP tools、`$yori-*` skills、PTY output / user input / idle の observation は動くが、Claude hook 由来の tool lifecycle event は入らない。
 
 Codex の Yorishiro entrypoint は `/yori:*` slash command ではなく `$yori-*` skill。起動準備時に `~/.agents/skills/yori*/` へ user skill として生成する。コマンドファイルは Claude Code の YAML frontmatter 形式から Codex の `yori-*/SKILL.md` 形式に自動変換される。生成ディレクトリには管理 marker を置き、次回生成時は Yorishiro 管理分だけを置き換える。
@@ -54,6 +59,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 
 - `terminalAgent` の切り替えは次の Terminal session 起動時に反映する。既存 PTY session へ注入し直さない。
 - Codex support の範囲は「自動起動 + persona prompt overlay + Yorishiro MCP + `$yori-*` skills + PTY observation」。Claude Code hook 由来の tool lifecycle event は対象外。
+- Codex の自動継続は resume-first / fork-on-active-writer とする。通常は同じ thread ID を継続し、別の正当な Codex client が利用中でもその process は停止せず、新しい thread ID へ分岐する。
 - Codex の Yorishiro MCP は `~/.codex/config.toml` を変更せず、起動時の `-c` config override で注入する。skills は `~/.agents/skills/` に生成するため、一度生成した後は Yorishiro 外の Codex からも見える。
 - PTY observation-only 制約は変わらない。agent が Claude でも Codex でも、persona / amenity から PTY に書き込む API は追加しない。
 
@@ -69,6 +75,7 @@ OpenClaw は OpenClaw-owned system prompt を組み立て、provider contributio
 
 ## 改訂履歴
 
+- 2026-08-08: Codex 0.147.0 の cross-process writer lock に合わせ、既存 thread は resume を優先し、active writer 競合時だけ fork する方針を追加。
 - 2026-07-11: Codex 0.144.1 の plugin discovery と namespace を実機確認し、`$yori-*` を `~/.agents/skills/` の user skills として生成する方式へ変更。旧 `yorishiro-local` plugin cache は生成時に削除する。
 - 2026-05-26: TerminalAgent trait + capability flag への refactor を [agent-adapter.md](agent-adapter.md) で実施。本 doc は 2-agent 時代の決定として保持し、capability flag (`lifecycle_hooks: false`) の宣言根拠として参照される。
 - 2026-05-28: Codex CLI は Yorishiro custom slash command を認識しないため、Codex entrypoint を `$yori-*` skills としてインストールする方針に修正。
