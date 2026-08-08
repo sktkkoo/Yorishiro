@@ -207,13 +207,14 @@ Three characteristics define this mechanism.
 
 ## Status
 
-**v0.7.0**
+**v0.7.1**
 
 Under active development. APIs, data shapes, and pack specs will change.
 
 What works today:
 
 - Launches Claude Code or Codex as the terminal — you work right there
+- Codex resumes the latest thread when available and safely forks its history when another client is actively using it
 - Session tabs: multiple shell sessions in the title bar, with per-tab status badges — running / awaiting input / failed / unread (`Cmd+T` / `Ctrl+Tab`)
 - Working folder switching from the sidebar — the app reopens in the chosen folder behind a fade
 - Yori, a VRM 3D character that breathes, blinks, shifts gaze, and idles with lifelike beats (bundled)

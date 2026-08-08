@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.7.1 - 2026-08-08
+
+- Fixed Codex startup after updating from pre-registry source or pre-release builds by safely reaping only narrowly verified, clientless orphan app-server sidecars. Process identity, connection state, and the latest sidecar registry are rechecked around signal delivery to avoid terminating active or unrelated Codex integrations.
+- Codex session startup remains resume-first. If another legitimate Codex client already owns the latest thread's writer lock, Yorishiro now keeps that client alive and forks the thread history instead of failing to launch. Other resume errors are still reported unchanged.
+- New Codex app-server sidecars now fail closed when their ownership record cannot be persisted, preventing another untracked orphan from being created.
+
 ## 0.7.0 - 2026-08-08
 
 - Added GPT Live voice conversations for Codex 0.145.0 and newer. Voice and text share the active Codex thread, the normal TUI remains visible, and microphone capture is controlled from the title bar.
