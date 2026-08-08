@@ -1,4 +1,4 @@
-//! Codex app-server sidecar の spawn registryと startup reaper。
+//! Codex app-server sidecar の spawn registry と startup reaper。
 //!
 //! sidecar は `CodexAppServerProcess` の Drop で殺されるが、app が force-quit /
 //! crash / SIGKILL で死ぬと Drop が走らず orphan (PPID=1) として残る。Codex
@@ -50,14 +50,17 @@ fn registry_path() -> Option<PathBuf> {
         .map(|home| registry_path_under(&home))
 }
 
-/// spawn 直後に呼ぶ。registry の失敗は spawn を止めない（best effort）。
-pub fn record_spawn(path: &Path, entry: SidecarEntry) {
+/// spawn 直後に呼ぶ。registry の失敗は spawn を止めない（session の可用性を
+/// 帳簿より優先する設計判断）が、false を返して caller に警告させる。
+/// 記録できなかった sidecar は crash 時に reap 不能になる。
+#[must_use]
+pub fn record_spawn(path: &Path, entry: SidecarEntry) -> bool {
     with_registry_lock(path, || {
         let mut entries = read_entries(path);
         entries.retain(|e| e.sidecar_pid != entry.sidecar_pid);
         entries.push(entry);
-        write_entries(path, &entries);
-    });
+        write_entries(path, &entries)
+    })
 }
 
 /// `CodexAppServerProcess` の Drop（正常 teardown）で呼ぶ。
@@ -81,34 +84,63 @@ pub fn reap_stale_sidecars() {
     reap_stale_at(&path, &SystemProbe);
 }
 
+/// 3 相で reap する。kill は bounded wait（最長 2 秒）を含むため lock の外で
+/// 行い、lock の保持は read-modify-write の間だけに抑える。lock を長く握ると、
+/// 並行 instance の record が lock timeout 経由で走り、こちらの書き戻しに
+/// 上書きされて entry を失う。
 fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
-    with_registry_lock(path, || {
+    // Phase 1: plan を確定し、drop 対象（死骸・identity 不一致）だけを先に
+    // 整理する。kill 対象は殺し終わるまで registry に残す。
+    let plan = with_registry_lock(path, || {
         let entries = read_entries(path);
         if entries.is_empty() && !path.exists() {
-            return;
+            return None;
         }
         let plan = plan_reap(entries, probe);
-        let mut keep = plan.keep;
-        if !plan.kill.is_empty() {
-            for entry in &plan.kill {
-                probe.terminate(entry.sidecar_pid);
-            }
-            wait_for_death_or_escalate(&plan.kill, probe);
-            let mut reaped = 0usize;
-            for entry in plan.kill {
-                if probe.is_alive(entry.sidecar_pid) {
-                    // kill できなかった（EPERM 等）。registry に残して次回 startup で再挑戦。
-                    keep.push(entry);
-                } else {
-                    reaped += 1;
-                }
-            }
-            if reaped > 0 {
-                eprintln!("[codex-sidecar] reaped {reaped} leaked app-server process(es)");
-            }
-        }
-        write_entries(path, &keep);
+        let mut retained = plan.keep.clone();
+        retained.extend(plan.kill.iter().cloned());
+        write_entries(path, &retained);
+        Some(plan)
     });
+    let Some(plan) = plan else {
+        return;
+    };
+    if plan.kill.is_empty() {
+        return;
+    }
+
+    // Phase 2: lock の外で kill。plan 確定からの時間経過で PID が別プロセスに
+    // 化けている可能性に備え、signal 直前に identity を再確認する（確認と
+    // signal の間の microsecond 窓は PID 指名 signal の限界として残る）。
+    for entry in &plan.kill {
+        if still_matches(probe, entry) {
+            probe.terminate(entry.sidecar_pid);
+        }
+    }
+    wait_for_death_or_escalate(&plan.kill, probe);
+
+    // Phase 3: 死亡を確認できた kill 対象だけを registry から除く。並行
+    // instance がその間に record した entry や生き残り（次回再挑戦）は残す。
+    let mut reaped = 0usize;
+    with_registry_lock(path, || {
+        let mut entries = read_entries(path);
+        entries.retain(|e| {
+            let was_target = plan
+                .kill
+                .iter()
+                .any(|k| k.owner_pid == e.owner_pid && k.sidecar_pid == e.sidecar_pid);
+            if was_target && !probe.is_alive(e.sidecar_pid) {
+                reaped += 1;
+                false
+            } else {
+                true
+            }
+        });
+        write_entries(path, &entries);
+    });
+    if reaped > 0 {
+        eprintln!("[codex-sidecar] reaped {reaped} leaked app-server process(es)");
+    }
 }
 
 struct ReapPlan {
@@ -137,7 +169,7 @@ fn plan_reap(entries: Vec<SidecarEntry>, probe: &dyn ProcessProbe) -> ReapPlan {
             None => keep.push(entry),
             Some(command) if command_matches(&command, &entry.endpoint) => kill.push(entry),
             // identity 不一致（PID 再利用で別プロセスになっている等）は
-            // 触らずにregistryから落とす。
+            // 触らずに registry から落とす。
             Some(_) => {}
         }
     }
@@ -162,7 +194,16 @@ fn command_matches(command: &str, endpoint: &str) -> bool {
     })
 }
 
-/// TERM 送信後、writer lock が解放されるのを bounded に待つ。生き残りは KILL。
+/// signal 直前の identity 再確認。TERM 猶予中に PID が別プロセスへ再利用される
+/// TOCTOU に対する防波堤。probe 失敗（None）は「確認できない＝触らない」。
+fn still_matches(probe: &dyn ProcessProbe, entry: &SidecarEntry) -> bool {
+    probe
+        .command_line(entry.sidecar_pid)
+        .is_some_and(|command| command_matches(&command, &entry.endpoint))
+}
+
+/// TERM 送信後、writer lock が解放されるのを bounded に待つ。生き残りは
+/// identity を再確認したうえで KILL。
 fn wait_for_death_or_escalate(targets: &[SidecarEntry], probe: &dyn ProcessProbe) {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
     while std::time::Instant::now() < deadline {
@@ -172,7 +213,7 @@ fn wait_for_death_or_escalate(targets: &[SidecarEntry], probe: &dyn ProcessProbe
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
     for entry in targets {
-        if probe.is_alive(entry.sidecar_pid) {
+        if probe.is_alive(entry.sidecar_pid) && still_matches(probe, entry) {
             probe.force_kill(entry.sidecar_pid);
         }
     }
@@ -186,19 +227,23 @@ fn read_entries(path: &Path) -> Vec<SidecarEntry> {
     serde_json::from_str(&raw).unwrap_or_default()
 }
 
-fn write_entries(path: &Path, entries: &[SidecarEntry]) {
+fn write_entries(path: &Path, entries: &[SidecarEntry]) -> bool {
     let Ok(raw) = serde_json::to_string_pretty(entries) else {
-        return;
+        return false;
     };
-    // 書きかけの crash でregistry全体（= 将来の reap 権）を失わないよう
+    // 書きかけの crash で registry 全体（= 将来の reap 権）を失わないよう
     // tmp + rename で atomic に置き換える。
     let tmp = path.with_extension("json.tmp");
     let result = std::fs::write(&tmp, raw).and_then(|()| std::fs::rename(&tmp, path));
-    if let Err(e) = result {
-        eprintln!(
-            "[codex-sidecar] registry write failed at {}: {e}",
-            path.display()
-        );
+    match result {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!(
+                "[codex-sidecar] registry write failed at {}: {e}",
+                path.display()
+            );
+            false
+        }
     }
 }
 
@@ -292,7 +337,9 @@ impl ProcessProbe for SystemProbe {
 #[cfg(unix)]
 fn ps_field(pid: u32, field: &str) -> Option<String> {
     let output = std::process::Command::new("ps")
-        .args(["-o", field, "-p", &pid.to_string()])
+        // -ww: command 列を表示幅で切り詰めさせない。切り詰められた command は
+        // identity 不一致と誤判定され、entry を失う（reap 不能化）。
+        .args(["-ww", "-o", field, "-p", &pid.to_string()])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -413,8 +460,8 @@ mod tests {
     #[test]
     fn record_and_remove_round_trip() {
         let path = temp_registry("round-trip");
-        record_spawn(&path, entry(100, 200, 50001));
-        record_spawn(&path, entry(100, 201, 50002));
+        assert!(record_spawn(&path, entry(100, 200, 50001)));
+        assert!(record_spawn(&path, entry(100, 201, 50002)));
         assert_eq!(read_entries(&path).len(), 2);
 
         remove_sidecar(&path, 100, 200);
@@ -428,7 +475,7 @@ mod tests {
         // wait() 後の PID 再利用で、他 instance が record した entry を
         // 自分の Drop が巻き添えにしないこと。
         let path = temp_registry("owner-scope");
-        record_spawn(&path, entry(999, 200, 50001));
+        assert!(record_spawn(&path, entry(999, 200, 50001)));
         remove_sidecar(&path, 100, 200);
         assert_eq!(read_entries(&path).len(), 1);
     }
@@ -464,8 +511,8 @@ mod tests {
     #[test]
     fn record_spawn_replaces_stale_entry_for_reused_sidecar_pid() {
         let path = temp_registry("pid-reuse");
-        record_spawn(&path, entry(100, 200, 50001));
-        record_spawn(&path, entry(101, 200, 50002));
+        assert!(record_spawn(&path, entry(100, 200, 50001)));
+        assert!(record_spawn(&path, entry(101, 200, 50002)));
         let entries = read_entries(&path);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].endpoint, "ws://127.0.0.1:50002");
@@ -550,8 +597,8 @@ mod tests {
     #[test]
     fn reap_terminates_stale_and_rewrites_registry() {
         let path = temp_registry("reap");
-        record_spawn(&path, entry(100, 200, 50001)); // owner 生存 → keep
-        record_spawn(&path, entry(999, 201, 50002)); // owner 死亡 → kill
+        assert!(record_spawn(&path, entry(100, 200, 50001))); // owner 生存 → keep
+        assert!(record_spawn(&path, entry(999, 201, 50002))); // owner 死亡 → kill
         let probe = FakeProbe::new()
             .with_alive(&[100, 200, 201])
             .with_parent(200, 100)
@@ -591,7 +638,7 @@ mod tests {
         }
 
         let path = temp_registry("escalate");
-        record_spawn(&path, entry(999, 201, 50002));
+        assert!(record_spawn(&path, entry(999, 201, 50002)));
         let probe = StubbornProbe(
             FakeProbe::new()
                 .with_alive(&[201])
@@ -604,6 +651,90 @@ mod tests {
         assert_eq!(*probe.0.terminated.lock().unwrap(), vec![201]);
         assert_eq!(*probe.0.force_killed.lock().unwrap(), vec![201]);
         assert!(read_entries(&path).is_empty());
+    }
+
+    #[test]
+    fn skips_signals_when_identity_changes_before_delivery() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        // plan 確定後・signal 送信前に PID が別プロセスへ再利用された TOCTOU。
+        // 再確認で不一致になったら TERM も KILL も送らない。
+        struct FlipProbe {
+            command_calls: AtomicUsize,
+            signalled: Mutex<Vec<u32>>,
+        }
+        impl ProcessProbe for FlipProbe {
+            fn is_alive(&self, pid: u32) -> bool {
+                pid == 200
+            }
+            fn parent_pid(&self, _pid: u32) -> Option<u32> {
+                Some(1)
+            }
+            fn command_line(&self, _pid: u32) -> Option<String> {
+                if self.command_calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Some(sidecar_command(50001))
+                } else {
+                    Some("/usr/bin/vim important.txt".to_string())
+                }
+            }
+            fn terminate(&self, pid: u32) {
+                self.signalled.lock().unwrap().push(pid);
+            }
+            fn force_kill(&self, pid: u32) {
+                self.signalled.lock().unwrap().push(pid);
+            }
+        }
+
+        let path = temp_registry("identity-flip");
+        assert!(record_spawn(&path, entry(999, 200, 50001)));
+        let probe = FlipProbe {
+            command_calls: AtomicUsize::new(0),
+            signalled: Mutex::new(Vec::new()),
+        };
+
+        reap_stale_at(&path, &probe);
+
+        assert!(probe.signalled.lock().unwrap().is_empty());
+        // entry は残り、次回 startup で再判定される。
+        assert_eq!(read_entries(&path).len(), 1);
+    }
+
+    #[test]
+    fn reap_preserves_entries_recorded_concurrently_during_kill() {
+        // Phase 2（lock 外の kill）中に並行 instance が record した entry を
+        // Phase 3 の書き戻しが上書きで消さないこと。
+        struct RecordingProbe {
+            path: PathBuf,
+            alive: Mutex<HashSet<u32>>,
+        }
+        impl ProcessProbe for RecordingProbe {
+            fn is_alive(&self, pid: u32) -> bool {
+                self.alive.lock().unwrap().contains(&pid)
+            }
+            fn parent_pid(&self, _pid: u32) -> Option<u32> {
+                Some(1)
+            }
+            fn command_line(&self, _pid: u32) -> Option<String> {
+                Some(sidecar_command(50001))
+            }
+            fn terminate(&self, pid: u32) {
+                assert!(record_spawn(&self.path, entry(555, 556, 50999)));
+                self.alive.lock().unwrap().remove(&pid);
+            }
+            fn force_kill(&self, _pid: u32) {}
+        }
+
+        let path = temp_registry("concurrent-record");
+        assert!(record_spawn(&path, entry(999, 200, 50001)));
+        let probe = RecordingProbe {
+            path: path.clone(),
+            alive: Mutex::new([200].into_iter().collect()),
+        };
+
+        reap_stale_at(&path, &probe);
+
+        let remaining = read_entries(&path);
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].sidecar_pid, 556);
     }
 
     /// SystemProbe の実バインディング（signal 0 / ps 読み）を実 process で検証する。

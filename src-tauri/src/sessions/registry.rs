@@ -35,6 +35,10 @@ struct RegistryInner {
     /// metadata-only session は entry を持たない。
     pty_sessions: HashMap<SessionId, Arc<PtySession>>,
     listeners: Vec<Listener>,
+    /// `kill_all_pty_sessions`（app 終了時 teardown）後に立つ。以降の
+    /// attach を拒否し、in-flight な spawn が drain 後に attach して
+    /// sidecar ごと leak するのを防ぐ（issue #109）。
+    closing: bool,
 }
 
 impl SessionRegistry {
@@ -47,6 +51,7 @@ impl SessionRegistry {
                 activities: HashMap::new(),
                 pty_sessions: HashMap::new(),
                 listeners: Vec::new(),
+                closing: false,
             }),
         }
     }
@@ -93,26 +98,37 @@ impl SessionRegistry {
 
     /// 既存 metadata に Arc<PtySession> を結ぶ。同 id への再 attach は新しい
     /// PtySession で上書きする（caller が事前に旧 session を kill する想定）。
+    /// app 終了 teardown 後（closing）は登録せず即 kill する。
     pub fn attach_pty(&self, id: &str, session: Arc<PtySession>) {
-        let mut guard = self.lock();
-        if !guard.descriptors.contains_key(id) {
-            return;
+        let closing = {
+            let mut guard = self.lock();
+            if !guard.descriptors.contains_key(id) {
+                return;
+            }
+            if !guard.closing {
+                guard.pty_sessions.insert(id.to_string(), session.clone());
+            }
+            guard.closing
+        };
+        if closing {
+            let _ = session.kill();
         }
-        guard.pty_sessions.insert(id.to_string(), session);
     }
 
     pub fn get_pty_session(&self, id: &str) -> Option<Arc<PtySession>> {
         self.lock().pty_sessions.get(id).cloned()
     }
 
-    /// App 終了時の teardown。全 PtySession を drain して kill する。
-    /// Tauri managed state の Drop は process exit では走らないため、
-    /// `RunEvent::Exit` から明示的に呼ばないと codex app-server sidecar が
-    /// orphan として leak する（issue #109）。kill 中に reader thread が
-    /// registry を触れるよう、registry lock は drain 後すぐ手放す。
+    /// App 終了時の teardown。全 PtySession を drain して kill し、以降の
+    /// attach を拒否する（closing）。Tauri managed state の Drop は process
+    /// exit では走らないため、`RunEvent::Exit` から明示的に呼ばないと codex
+    /// app-server sidecar が orphan として leak する（issue #109）。kill 中に
+    /// reader thread が registry を触れるよう、registry lock は drain 後すぐ
+    /// 手放す。
     pub fn kill_all_pty_sessions(&self) {
         let sessions: Vec<Arc<PtySession>> = {
             let mut guard = self.lock();
+            guard.closing = true;
             guard.pty_sessions.drain().map(|(_, s)| s).collect()
         };
         for session in sessions {
@@ -225,6 +241,31 @@ mod tests {
             display_cwd: None,
             started_at: 0,
         }
+    }
+
+    #[test]
+    fn kill_all_drains_attached_sessions() {
+        let reg = Arc::new(SessionRegistry::new());
+        reg.add(make_descriptor("a"));
+        let session = Arc::new(PtySession::new("a".to_string(), Arc::clone(&reg)));
+        reg.attach_pty("a", session);
+        assert!(reg.get_pty_session("a").is_some());
+
+        reg.kill_all_pty_sessions();
+        assert!(reg.get_pty_session("a").is_none());
+    }
+
+    #[test]
+    fn attach_after_kill_all_is_rejected() {
+        // app 終了 teardown 後に in-flight spawn が attach しても登録されない
+        // （sidecar leak 防止、issue #109）。
+        let reg = Arc::new(SessionRegistry::new());
+        reg.add(make_descriptor("a"));
+        reg.kill_all_pty_sessions();
+
+        let session = Arc::new(PtySession::new("a".to_string(), Arc::clone(&reg)));
+        reg.attach_pty("a", session);
+        assert!(reg.get_pty_session("a").is_none());
     }
 
     #[test]
