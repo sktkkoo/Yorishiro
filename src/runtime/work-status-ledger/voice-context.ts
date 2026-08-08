@@ -1,4 +1,5 @@
 import type { Disposable } from "@yorishiro/sdk";
+import type { WorkStatusEventV1, WorkStatusSnapshotV1 } from "./consumer-contract";
 import type { WorkStatusLedgerEvent, WorkStatusLedgerSnapshot } from "./types";
 
 const MAX_CONTEXT_ITEMS = 20;
@@ -46,6 +47,42 @@ export function formatWorkStatusEvent(
   return `${CONTEXT_POLICY}\n${JSON.stringify(payload)}`;
 }
 
+/** GPT Live adapter rendering for the provider/voice-neutral v1 contract. */
+export function formatWorkStatusContractSnapshot(
+  snapshot: WorkStatusSnapshotV1,
+  observedAt = Date.now(),
+): string {
+  const payload = {
+    kind: "work-status-snapshot",
+    schemaVersion: snapshot.schemaVersion,
+    epoch: snapshot.epoch,
+    seq: snapshot.seq,
+    observedAt,
+    activeCount: snapshot.activeCount,
+    ...(snapshot.omittedWorkCount ? { omittedOlderItems: snapshot.omittedWorkCount } : {}),
+    work: snapshot.works.map((work) => formatContractWork(work, observedAt)),
+  };
+  return `${CONTEXT_POLICY}\n${JSON.stringify(payload)}`;
+}
+
+/** GPT Live adapter rendering for one neutral contract event. */
+export function formatWorkStatusContractEvent(
+  event: WorkStatusEventV1,
+  observedAt = Date.now(),
+): string {
+  const payload = {
+    kind: event.kind,
+    schemaVersion: event.schemaVersion,
+    epoch: event.epoch,
+    seq: event.seq,
+    observedAt,
+    workId: event.work.id,
+    ...(event.kind === "work-updated" ? { previousStatus: event.previousStatus } : {}),
+    work: formatContractWork(event.work, observedAt),
+  };
+  return `${CONTEXT_POLICY}\n${JSON.stringify(payload)}`;
+}
+
 function formatWork(work: WorkStatusLedgerSnapshot["work"][number], observedAt: number) {
   const ageMs = Math.max(0, observedAt - work.updatedAt);
   return {
@@ -54,6 +91,20 @@ function formatWork(work: WorkStatusLedgerSnapshot["work"][number], observedAt: 
     summary: work.summary,
     note: work.note,
     approvalCount: work.pendingApprovals.length,
+    lastObservedAt: work.updatedAt,
+    observedAgeSeconds: Math.floor(ageMs / 1_000),
+    freshness: freshnessForAge(ageMs),
+  };
+}
+
+function formatContractWork(work: WorkStatusSnapshotV1["works"][number], observedAt: number) {
+  const ageMs = Math.max(0, observedAt - work.updatedAt);
+  return {
+    id: work.id,
+    status: work.status,
+    summary: work.summary,
+    note: work.note,
+    approvalCount: work.approvalCount,
     lastObservedAt: work.updatedAt,
     observedAgeSeconds: Math.floor(ageMs / 1_000),
     freshness: freshnessForAge(ageMs),

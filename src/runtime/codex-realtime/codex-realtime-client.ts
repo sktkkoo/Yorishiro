@@ -21,11 +21,13 @@ import {
   type CodexWorkStatusProtocolAdapter,
   getCodexWorkStatusProtocolAdapter,
 } from "../work-status-ledger/codex-protocol-adapter";
-import type { WorkLifecyclePort, WorkStatusLedgerSnapshot } from "../work-status-ledger/types";
+import { WorkStatusContractPublisher } from "../work-status-ledger/consumer-contract";
 import {
-  formatWorkStatusEvent,
-  formatWorkStatusSnapshot,
-  nextWorkStatusFreshnessDelay,
+  type GptLiveContextSource,
+  GptLiveWorkStatusConsumerAdapter,
+} from "../work-status-ledger/gpt-live-consumer-adapter";
+import type { WorkLifecyclePort } from "../work-status-ledger/types";
+import {
   summarizeWorkStatusFreshness,
   type WorkStatusVoiceContextSource,
 } from "../work-status-ledger/voice-context";
@@ -145,6 +147,22 @@ const REMOTE_SPEECH_SAMPLE_INTERVAL_MS = 33;
 const START_RETRY_BASE_DELAYS_MS = [500, 1_500] as const;
 const APP_VERSION = "0.6.2";
 
+function deliveryEventKind(source: GptLiveContextSource): WorkStatusDiagnosticEntry["eventKind"] {
+  return source === "event"
+    ? "context-event-delivered"
+    : source === "resync"
+      ? "context-resync-delivered"
+      : "freshness-refresh-delivered";
+}
+
+function deliveryReason(source: GptLiveContextSource): WorkStatusDiagnosticEntry["reason"] {
+  return source === "event"
+    ? "ledger-event"
+    : source === "resync"
+      ? "post-connect-resync"
+      : "freshness-boundary";
+}
+
 class StartAttemptCancelledError extends Error {
   constructor() {
     super("Codex realtime start attempt is no longer active");
@@ -196,8 +214,8 @@ export class CodexRealtimeClient implements LipSyncSource {
   private readonly getPreferredThreadId: () => string | null;
   private workStatusAdapter: CodexWorkStatusProtocolAdapter | null = null;
   private readonly workStatusLedger: (WorkLifecyclePort & WorkStatusVoiceContextSource) | null;
-  private workStatusSubscription: { dispose(): void } | null = null;
-  private workStatusFreshnessTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private workStatusContract: WorkStatusContractPublisher | null = null;
+  private workStatusConsumer: GptLiveWorkStatusConsumerAdapter | null = null;
   private workStatusReconcileRetryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private readonly getVoiceCandidates: () => Promise<ReadonlyArray<string>>;
   private readonly onVoiceFallback: ((fallback: CodexRealtimeVoiceFallback) => void) | null;
@@ -657,17 +675,12 @@ export class CodexRealtimeClient implements LipSyncSource {
 
     const candidates = await this.getVoiceCandidates();
     this.assertAttemptOwner(attempt, peer);
-    const initialWorkStatusSnapshot = this.workStatusLedger?.getSnapshot() ?? null;
+    const workStatusConsumer = this.createWorkStatusConsumer(threadId, attempt);
+    this.workStatusConsumer = workStatusConsumer;
+    const initialWorkStatusContext = workStatusConsumer?.prepareInitialContext() ?? null;
     const sessionInitialItems = [
       ...(initialItems ?? []),
-      ...(initialWorkStatusSnapshot
-        ? [
-            {
-              role: "developer" as const,
-              text: formatWorkStatusSnapshot(initialWorkStatusSnapshot),
-            },
-          ]
-        : []),
+      ...(initialWorkStatusContext ? [initialWorkStatusContext.item] : []),
     ];
 
     // Voice は audio 開始後に変更できないため、start の成否がこの session の voice を
@@ -733,9 +746,7 @@ export class CodexRealtimeClient implements LipSyncSource {
     // cannot delay SDP application or make a healthy voice session look like startup failure.
     await this.reconcileWorkStatus(threadId, attempt, peer);
     this.assertAttemptOwner(attempt, peer);
-    if (this.workStatusLedger) {
-      this.startWorkStatusContextUpdates(threadId, attempt, initialWorkStatusSnapshot);
-    }
+    workStatusConsumer?.connect();
   }
 
   private async reconcileWorkStatus(
@@ -802,117 +813,63 @@ export class CodexRealtimeClient implements LipSyncSource {
     }
   }
 
-  private startWorkStatusContextUpdates(
+  private createWorkStatusConsumer(
     threadId: string,
     attempt: number,
-    initialSnapshot: WorkStatusLedgerSnapshot | null,
-  ): void {
-    this.workStatusSubscription?.dispose();
+  ): GptLiveWorkStatusConsumerAdapter | null {
     const ledger = this.workStatusLedger;
-    this.workStatusSubscription =
-      ledger?.subscribeEvents((event) => {
+    if (!ledger) return null;
+    this.workStatusContract?.dispose();
+    const contract = new WorkStatusContractPublisher(ledger);
+    this.workStatusContract = contract;
+    return new GptLiveWorkStatusConsumerAdapter({
+      source: contract,
+      getLedgerSnapshot: () => ledger.getSnapshot(),
+      appendText: async (text) => {
         if (!this.isAttemptOwner(attempt) || this.threadId !== threadId) return;
+        await this.request("thread/realtime/appendText", {
+          threadId,
+          role: "developer",
+          text,
+        });
+      },
+      onEventObserved: (event) => {
+        if (!this.isAttemptOwner(attempt)) return;
         this.writeWorkStatusDiagnostic({
           eventKind: event.kind,
           result: "observed",
           reason: "ledger-event",
-          workId: event.workId,
+          workId: event.work.id,
           status: event.work.status,
           ...(event.kind === "work-updated" ? { previousStatus: event.previousStatus } : {}),
           activeCount: ledger.getSnapshot().activeCount,
         });
-        this.appendWorkStatusContext(threadId, formatWorkStatusEvent(event), attempt, "event");
-        this.scheduleWorkStatusFreshnessRefresh(threadId, attempt);
-      }) ?? null;
-    // initialItems の snapshot 採取後〜SDP確立までに実際の更新があった場合だけ
-    // 最新 snapshot を再同期する。同一 snapshot の無条件な追送は、音声開始直後の
-    // developer input として扱われ、自発的な進捗報告を誘発し得るため行わない。
-    if (ledger) {
-      const currentSnapshot = ledger.getSnapshot();
-      if (currentSnapshot !== initialSnapshot) {
-        this.appendWorkStatusContext(
-          threadId,
-          formatWorkStatusSnapshot(currentSnapshot),
-          attempt,
-          "resync",
-        );
-      }
-      this.scheduleWorkStatusFreshnessRefresh(threadId, attempt);
-    }
-  }
-
-  private appendWorkStatusContext(
-    threadId: string,
-    text: string,
-    attempt: number,
-    source: "event" | "resync" | "freshness",
-  ): void {
-    void this.request("thread/realtime/appendText", {
-      threadId,
-      role: "developer",
-      text,
-    })
-      .then(() => {
+      },
+      onDeliverySucceeded: (source) => {
         if (!this.isAttemptOwner(attempt)) return;
         this.writeWorkStatusDiagnostic({
-          eventKind:
-            source === "event"
-              ? "context-event-delivered"
-              : source === "resync"
-                ? "context-resync-delivered"
-                : "freshness-refresh-delivered",
+          eventKind: deliveryEventKind(source),
           route: "ledger-context",
           result: "delivered",
-          reason:
-            source === "event"
-              ? "ledger-event"
-              : source === "resync"
-                ? "post-connect-resync"
-                : "freshness-boundary",
-          activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+          reason: deliveryReason(source),
+          activeCount: ledger.getSnapshot().activeCount,
           ...(source === "freshness" ? this.currentFreshnessDiagnostic() : {}),
         });
-      })
-      .catch((error) => {
+      },
+      onDeliveryFailed: (source, error) => {
         // Status context is best-effort; voice and the work itself must keep running.
         if (this.isAttemptOwner(attempt)) {
           this.writeWorkStatusDiagnostic({
             eventKind: "context-delivery-failed",
             route: "ledger-context",
             result: "failed",
-            reason:
-              source === "event"
-                ? "ledger-event"
-                : source === "resync"
-                  ? "post-connect-resync"
-                  : "freshness-boundary",
-            activeCount: this.workStatusLedger?.getSnapshot().activeCount,
+            reason: deliveryReason(source),
+            activeCount: ledger.getSnapshot().activeCount,
           });
           console.warn("[codex-realtime] failed to append work status context", error);
         }
-      });
-  }
-
-  private scheduleWorkStatusFreshnessRefresh(threadId: string, attempt: number): void {
-    if (this.workStatusFreshnessTimer !== null) {
-      globalThis.clearTimeout(this.workStatusFreshnessTimer);
-      this.workStatusFreshnessTimer = null;
-    }
-    const ledger = this.workStatusLedger;
-    if (!ledger || !this.isAttemptOwner(attempt)) return;
-    const delay = nextWorkStatusFreshnessDelay(ledger.getSnapshot());
-    if (delay === null) return;
-    this.workStatusFreshnessTimer = globalThis.setTimeout(() => {
-      this.workStatusFreshnessTimer = null;
-      if (!this.isAttemptOwner(attempt) || this.threadId !== threadId) return;
-      this.appendWorkStatusContext(
-        threadId,
-        formatWorkStatusSnapshot(ledger.getSnapshot()),
-        attempt,
-        "freshness",
-      );
-      this.scheduleWorkStatusFreshnessRefresh(threadId, attempt);
-    }, delay);
+      },
+    });
   }
 
   private currentFreshnessDiagnostic(): {
@@ -1236,12 +1193,10 @@ export class CodexRealtimeClient implements LipSyncSource {
   }
 
   private disposeResources(finalMessage?: string): void {
-    this.workStatusSubscription?.dispose();
-    this.workStatusSubscription = null;
-    if (this.workStatusFreshnessTimer !== null) {
-      globalThis.clearTimeout(this.workStatusFreshnessTimer);
-      this.workStatusFreshnessTimer = null;
-    }
+    this.workStatusConsumer?.dispose();
+    this.workStatusConsumer = null;
+    this.workStatusContract?.dispose();
+    this.workStatusContract = null;
     if (this.workStatusReconcileRetryTimer !== null) {
       globalThis.clearTimeout(this.workStatusReconcileRetryTimer);
       this.workStatusReconcileRetryTimer = null;
