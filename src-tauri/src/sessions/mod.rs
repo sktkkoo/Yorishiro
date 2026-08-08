@@ -6,7 +6,7 @@
 //! Internal design-record: 2026-05-05-multi-pane-terminal.md.
 
 pub mod agent_adapter;
-pub mod codex_sidecar_ledger;
+pub mod codex_sidecar_registry;
 mod codex_tui_proxy;
 pub mod osc133;
 pub mod pty_session;

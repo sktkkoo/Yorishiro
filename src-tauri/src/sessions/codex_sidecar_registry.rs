@@ -1,4 +1,4 @@
-//! Codex app-server sidecar の spawn 台帳と startup reaper。
+//! Codex app-server sidecar の spawn registryと startup reaper。
 //!
 //! sidecar は `CodexAppServerProcess` の Drop で殺されるが、app が force-quit /
 //! crash / SIGKILL で死ぬと Drop が走らず orphan (PPID=1) として残る。Codex
@@ -7,10 +7,10 @@
 //! writer` で拒否され、Codex session の自動起動が失敗する（issue #109）。
 //!
 //! 対策は 2 層：
-//! - spawn 時に {owner_pid, sidecar_pid, endpoint} を台帳へ記録し、Drop で除去
+//! - spawn 時に {owner_pid, sidecar_pid, endpoint} を registry へ記録し、Drop で除去
 //! - 次回起動時に、owner が死んだ entry だけを reap する
 //!
-//! reap は「台帳に記録した endpoint がコマンドラインに現れる `codex app-server`
+//! reap は「registry に記録した endpoint がコマンドラインに現れる `codex app-server`
 //! プロセス」以外を絶対に殺さない。PID 再利用や、Yorishiro 以外が起動した
 //! app-server を巻き込まないための identity guard。owner の PID 再利用で
 //! owner が生きて見えるケースは、sidecar 側の PPID=1（親喪失）で検出する。
@@ -40,19 +40,19 @@ pub(crate) trait ProcessProbe {
     fn force_kill(&self, pid: u32);
 }
 
-pub fn ledger_path_under(yorishiro_home: &Path) -> PathBuf {
+pub fn registry_path_under(yorishiro_home: &Path) -> PathBuf {
     yorishiro_home.join("runtime").join("codex-sidecars.json")
 }
 
-fn ledger_path() -> Option<PathBuf> {
+fn registry_path() -> Option<PathBuf> {
     crate::yorishiro_home_path()
         .ok()
-        .map(|home| ledger_path_under(&home))
+        .map(|home| registry_path_under(&home))
 }
 
-/// spawn 直後に呼ぶ。台帳の失敗は spawn を止めない（best effort）。
+/// spawn 直後に呼ぶ。registry の失敗は spawn を止めない（best effort）。
 pub fn record_spawn(path: &Path, entry: SidecarEntry) {
-    with_ledger_lock(path, || {
+    with_registry_lock(path, || {
         let mut entries = read_entries(path);
         entries.retain(|e| e.sidecar_pid != entry.sidecar_pid);
         entries.push(entry);
@@ -64,7 +64,7 @@ pub fn record_spawn(path: &Path, entry: SidecarEntry) {
 /// owner も一致した entry だけを消す。wait() 後に他 instance が同じ PID を
 /// 再利用して record した entry を巻き添えにしないため。
 pub fn remove_sidecar(path: &Path, owner_pid: u32, sidecar_pid: u32) {
-    with_ledger_lock(path, || {
+    with_registry_lock(path, || {
         let mut entries = read_entries(path);
         entries.retain(|e| !(e.sidecar_pid == sidecar_pid && e.owner_pid == owner_pid));
         write_entries(path, &entries);
@@ -75,14 +75,14 @@ pub fn remove_sidecar(path: &Path, owner_pid: u32, sidecar_pid: u32) {
 /// 最初の Codex session が `resume --last` する前に完了している必要が
 /// あるため、同期実行を前提とする（stale entry がなければ即 return）。
 pub fn reap_stale_sidecars() {
-    let Some(path) = ledger_path() else {
+    let Some(path) = registry_path() else {
         return;
     };
     reap_stale_at(&path, &SystemProbe);
 }
 
 fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
-    with_ledger_lock(path, || {
+    with_registry_lock(path, || {
         let entries = read_entries(path);
         if entries.is_empty() && !path.exists() {
             return;
@@ -97,7 +97,7 @@ fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
             let mut reaped = 0usize;
             for entry in plan.kill {
                 if probe.is_alive(entry.sidecar_pid) {
-                    // kill できなかった（EPERM 等）。台帳に残して次回 startup で再挑戦。
+                    // kill できなかった（EPERM 等）。registry に残して次回 startup で再挑戦。
                     keep.push(entry);
                 } else {
                     reaped += 1;
@@ -112,7 +112,7 @@ fn reap_stale_at(path: &Path, probe: &dyn ProcessProbe) {
 }
 
 struct ReapPlan {
-    /// owner が生存中の entry。台帳に残す。
+    /// owner が生存中の entry。registry に残す。
     keep: Vec<SidecarEntry>,
     /// owner を失い、identity 照合も通った sidecar。kill 対象。
     kill: Vec<SidecarEntry>,
@@ -123,7 +123,7 @@ fn plan_reap(entries: Vec<SidecarEntry>, probe: &dyn ProcessProbe) -> ReapPlan {
     let mut kill = Vec::new();
     for entry in entries {
         if !probe.is_alive(entry.sidecar_pid) {
-            // sidecar は既に死んでいる。台帳の残骸なので落とすだけ。
+            // sidecar は既に死んでいる。registry の残骸なので落とすだけ。
             continue;
         }
         let orphaned = probe.parent_pid(entry.sidecar_pid) == Some(1);
@@ -132,19 +132,19 @@ fn plan_reap(entries: Vec<SidecarEntry>, probe: &dyn ProcessProbe) -> ReapPlan {
             continue;
         }
         match probe.command_line(entry.sidecar_pid) {
-            // probe 失敗（ps が引けない等）は判定不能。台帳に残して
+            // probe 失敗（ps が引けない等）は判定不能。registry に残して
             // 次回 startup で再判定する。reap 権を放棄しない。
             None => keep.push(entry),
             Some(command) if command_matches(&command, &entry.endpoint) => kill.push(entry),
             // identity 不一致（PID 再利用で別プロセスになっている等）は
-            // 触らずに台帳から落とす。
+            // 触らずにregistryから落とす。
             Some(_) => {}
         }
     }
     ReapPlan { keep, kill }
 }
 
-/// コマンドラインが「台帳に記録した endpoint で listen する codex app-server」
+/// コマンドラインが「registry に記録した endpoint で listen する codex app-server」
 /// であることを確認する。`app-server --listen <endpoint>` の連続一致と直後の
 /// 語境界を要求し、endpoint がポート番号の前方一致で別プロセスに当たる事故
 /// （`:5000` vs `:50001`）や、endpoint をただ引数中に含むだけの無関係な
@@ -182,7 +182,7 @@ fn read_entries(path: &Path) -> Vec<SidecarEntry> {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return Vec::new();
     };
-    // 壊れた台帳は空として扱い、次の write で作り直す。
+    // 壊れた registry は空として扱い、次の write で作り直す。
     serde_json::from_str(&raw).unwrap_or_default()
 }
 
@@ -190,23 +190,23 @@ fn write_entries(path: &Path, entries: &[SidecarEntry]) {
     let Ok(raw) = serde_json::to_string_pretty(entries) else {
         return;
     };
-    // 書きかけの crash で台帳全体（= 将来の reap 権）を失わないよう
+    // 書きかけの crash でregistry全体（= 将来の reap 権）を失わないよう
     // tmp + rename で atomic に置き換える。
     let tmp = path.with_extension("json.tmp");
     let result = std::fs::write(&tmp, raw).and_then(|()| std::fs::rename(&tmp, path));
     if let Err(e) = result {
         eprintln!(
-            "[codex-sidecar] ledger write failed at {}: {e}",
+            "[codex-sidecar] registry write failed at {}: {e}",
             path.display()
         );
     }
 }
 
-/// 台帳の read-modify-write を複数 app instance 間で直列化する。
+/// registry の read-modify-write を複数 app instance 間で直列化する。
 /// lock 取得に失敗しても操作自体は実行する（best effort）。app の起動・終了
 /// 経路から呼ばれるため、他 instance が lock を握ったまま固まっていても
 /// 無期限には待たず、bounded timeout で諦めて進む。
-fn with_ledger_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
+fn with_registry_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -227,7 +227,7 @@ fn with_ledger_lock<T>(path: &Path, f: impl FnOnce() -> T) -> T {
                 break;
             }
             if std::time::Instant::now() >= deadline {
-                eprintln!("[codex-sidecar] ledger lock timed out; proceeding unlocked");
+                eprintln!("[codex-sidecar] registry lock timed out; proceeding unlocked");
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(50));
@@ -336,14 +336,14 @@ mod tests {
         }
     }
 
-    fn temp_ledger(name: &str) -> PathBuf {
+    fn temp_registry(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "yorishiro-sidecar-ledger-test-{}-{}",
+            "yorishiro-sidecar-registry-test-{}-{}",
             std::process::id(),
             name
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        ledger_path_under(&dir)
+        registry_path_under(&dir)
     }
 
     struct FakeProbe {
@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn record_and_remove_round_trip() {
-        let path = temp_ledger("round-trip");
+        let path = temp_registry("round-trip");
         record_spawn(&path, entry(100, 200, 50001));
         record_spawn(&path, entry(100, 201, 50002));
         assert_eq!(read_entries(&path).len(), 2);
@@ -427,7 +427,7 @@ mod tests {
     fn remove_sidecar_ignores_entries_from_other_owners() {
         // wait() 後の PID 再利用で、他 instance が record した entry を
         // 自分の Drop が巻き添えにしないこと。
-        let path = temp_ledger("owner-scope");
+        let path = temp_registry("owner-scope");
         record_spawn(&path, entry(999, 200, 50001));
         remove_sidecar(&path, 100, 200);
         assert_eq!(read_entries(&path).len(), 1);
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn keeps_entry_for_retry_when_command_probe_fails() {
         // sidecar は生きているが ps が引けない（一時障害）。誤殺も放棄もせず
-        // 台帳に残して次回 startup で再判定する。
+        // registry に残して次回 startup で再判定する。
         let probe = FakeProbe::new().with_alive(&[200]).with_parent(200, 1);
         let plan = plan_reap(vec![entry(100, 200, 50001)], &probe);
         assert_eq!(plan.keep.len(), 1);
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn record_spawn_replaces_stale_entry_for_reused_sidecar_pid() {
-        let path = temp_ledger("pid-reuse");
+        let path = temp_registry("pid-reuse");
         record_spawn(&path, entry(100, 200, 50001));
         record_spawn(&path, entry(101, 200, 50002));
         let entries = read_entries(&path);
@@ -472,12 +472,12 @@ mod tests {
     }
 
     #[test]
-    fn corrupted_ledger_is_treated_as_empty() {
-        let path = temp_ledger("corrupted");
+    fn corrupted_registry_is_treated_as_empty() {
+        let path = temp_registry("corrupted");
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, "not json").unwrap();
         assert!(read_entries(&path).is_empty());
-        // reap は panic せず台帳を作り直す。
+        // reap は panic せず registry を作り直す。
         reap_stale_at(&path, &FakeProbe::new());
         assert_eq!(std::fs::read_to_string(&path).unwrap().trim(), "[]");
     }
@@ -518,7 +518,7 @@ mod tests {
     }
 
     #[test]
-    fn never_kills_process_whose_command_does_not_match_ledger_endpoint() {
+    fn never_kills_process_whose_command_does_not_match_registry_endpoint() {
         // sidecar PID が無関係の process に再利用されたケース。触らず落とすだけ。
         let probe = FakeProbe::new()
             .with_alive(&[200])
@@ -548,8 +548,8 @@ mod tests {
     }
 
     #[test]
-    fn reap_terminates_stale_and_rewrites_ledger() {
-        let path = temp_ledger("reap");
+    fn reap_terminates_stale_and_rewrites_registry() {
+        let path = temp_registry("reap");
         record_spawn(&path, entry(100, 200, 50001)); // owner 生存 → keep
         record_spawn(&path, entry(999, 201, 50002)); // owner 死亡 → kill
         let probe = FakeProbe::new()
@@ -590,7 +590,7 @@ mod tests {
             }
         }
 
-        let path = temp_ledger("escalate");
+        let path = temp_registry("escalate");
         record_spawn(&path, entry(999, 201, 50002));
         let probe = StubbornProbe(
             FakeProbe::new()

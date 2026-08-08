@@ -358,11 +358,11 @@ impl CodexAppServerProcess {
             )
         })?;
         // app が Drop を経ずに死んだ場合の startup reaper 用（issue #109）。
-        // 以降どの失敗経路でも Self が Drop され、台帳 entry ごと回収される。
+        // 以降どの失敗経路でも Self が Drop され、registry の entry ごと回収される。
         if let Ok(home) = crate::yorishiro_home_path() {
-            super::codex_sidecar_ledger::record_spawn(
-                &super::codex_sidecar_ledger::ledger_path_under(&home),
-                super::codex_sidecar_ledger::SidecarEntry {
+            super::codex_sidecar_registry::record_spawn(
+                &super::codex_sidecar_registry::registry_path_under(&home),
+                super::codex_sidecar_registry::SidecarEntry {
                     owner_pid: std::process::id(),
                     sidecar_pid: child.id(),
                     endpoint: endpoint.clone(),
@@ -418,8 +418,8 @@ impl Drop for CodexAppServerProcess {
         let _ = self.child.kill();
         let _ = self.child.wait();
         if let Ok(home) = crate::yorishiro_home_path() {
-            super::codex_sidecar_ledger::remove_sidecar(
-                &super::codex_sidecar_ledger::ledger_path_under(&home),
+            super::codex_sidecar_registry::remove_sidecar(
+                &super::codex_sidecar_registry::registry_path_under(&home),
                 std::process::id(),
                 sidecar_pid,
             );

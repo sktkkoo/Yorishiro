@@ -2461,7 +2461,7 @@ pub fn run() {
             // 前回 instance が leak した codex app-server sidecar を先に回収する。
             // orphan が ~/.codex/thread-writer-locks の writer lock を握ったままだと
             // 最初の Codex session の `resume --last` が -32600 で失敗する（issue #109）。
-            sessions::codex_sidecar_ledger::reap_stale_sidecars();
+            sessions::codex_sidecar_registry::reap_stale_sidecars();
 
             if let Err(e) = pty::ensure_reminder_script() {
                 eprintln!("[reminder] script 配置失敗: {e}");
