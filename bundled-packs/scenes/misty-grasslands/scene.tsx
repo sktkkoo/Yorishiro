@@ -101,9 +101,9 @@ const definition: ScenePackDefinition = {
 export default definition;
 
 if (import.meta.hot) {
-  import.meta.hot.accept(async (newModule) => {
-    if (!newModule?.default) return;
-    const { reregisterBundledScene } = await import("../hmr");
-    await reregisterBundledScene(newModule.default);
+  import.meta.hot.accept(() => {
+    // Keep the scene component and the hot-preserved R3F root on one module
+    // generation. A full reload is safer than swapping only the component.
+    window.location.reload();
   });
 }

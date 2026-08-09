@@ -10,7 +10,6 @@
  *   各 effect の主要パラメータを runtime 調整可能.
  */
 
-import { useFrame } from "@react-three/fiber";
 import {
   Bloom,
   ChromaticAberration,
@@ -22,6 +21,7 @@ import {
   Vignette,
 } from "@react-three/postprocessing";
 import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useFrame } from "@yorishiro/sdk/r3f";
 import {
   BlendFunction,
   type ChromaticAberrationEffect,

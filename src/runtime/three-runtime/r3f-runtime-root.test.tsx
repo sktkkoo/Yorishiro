@@ -243,6 +243,50 @@ describe("R3fRuntimeRoot", () => {
     expect(secondRender).not.toHaveBeenCalled();
   });
 
+  it("isolates a scene render failure and recovers when another scene is selected", () => {
+    const registry = getMockRegistry();
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const healthyRender = vi.fn();
+    const BrokenScene = () => {
+      throw new Error("scene render failed");
+    };
+    const HealthyScene = () => {
+      healthyRender();
+      useYorishiroControls("lights", () => ({
+        intensity: { value: 1.2, min: 0, max: 3 },
+      }));
+      return null;
+    };
+
+    try {
+      const { container } = render(<R3fRuntimeRoot />);
+
+      act(() => {
+        registry.__setActive(makeEntry("broken-scene", BrokenScene));
+      });
+
+      expect(container.querySelector("[name='yorishiro-scene-error-fill']")).not.toBeNull();
+      expect(getRuntimeLevaStore()).not.toBeNull();
+      expect(getActiveSceneLevaStore()).not.toBeNull();
+      expect(consoleError).toHaveBeenCalledWith(
+        "[r3f-runtime] scene 'broken-scene' crashed; using fallback lighting",
+        expect.any(Error),
+        expect.any(String),
+      );
+
+      act(() => {
+        registry.__setActive(makeEntry("healthy-scene", HealthyScene));
+      });
+
+      expect(healthyRender).toHaveBeenCalled();
+      expect(container.querySelector("[name='yorishiro-scene-error-fill']")).toBeNull();
+      expect(getActiveSceneLevaStore()?.get("lights.intensity")).toBe(1.2);
+      expect(getRuntimeLevaStore()).not.toBeNull();
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("mounts scene pack leva controls into the active scene store", () => {
     const registry = getMockRegistry();
     const SceneWithLights = () => {

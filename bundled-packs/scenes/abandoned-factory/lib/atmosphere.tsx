@@ -4,8 +4,8 @@
  * SDK controls で sizeMult / alpha / dust speed / godRays alpha をリアルタイム調整可能.
  */
 
-import { useFrame } from "@react-three/fiber";
 import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useFrame } from "@yorishiro/sdk/r3f";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";

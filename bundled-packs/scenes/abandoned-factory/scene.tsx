@@ -125,9 +125,9 @@ const definition: ScenePackDefinition = {
 export default definition;
 
 if (import.meta.hot) {
-  import.meta.hot.accept(async (newModule) => {
-    if (!newModule?.default) return;
-    const { reregisterBundledScene } = await import("../hmr");
-    await reregisterBundledScene(newModule.default);
+  import.meta.hot.accept(() => {
+    // ThreeRuntime survives HMR. Re-registering a component from a newly
+    // optimized R3F generation into that old root can split the R3F context.
+    window.location.reload();
   });
 }

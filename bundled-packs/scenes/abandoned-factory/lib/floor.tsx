@@ -7,7 +7,7 @@
  * の順に重ねる.
  */
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame } from "@yorishiro/sdk/r3f";
 import { useMemo, useRef } from "react";
 import type * as THREE from "three";
 import { FOG, PALETTE } from "./palette";

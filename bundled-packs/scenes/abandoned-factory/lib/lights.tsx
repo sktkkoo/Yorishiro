@@ -7,8 +7,8 @@
  * Spec §7.1–§7.4.
  */
 
-import { useFrame } from "@react-three/fiber";
 import { useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useFrame } from "@yorishiro/sdk/r3f";
 import { useRef } from "react";
 import type * as THREE from "three";
 import { useControlsBridge } from "../../../../src/runtime/ui-state-store";

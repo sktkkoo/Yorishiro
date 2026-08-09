@@ -5,7 +5,7 @@
  * sin sag で中央を垂らし、useFrame で微細な風揺れを付与.
  */
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame } from "@yorishiro/sdk/r3f";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
