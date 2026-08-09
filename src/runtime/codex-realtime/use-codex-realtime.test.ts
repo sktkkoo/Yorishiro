@@ -489,6 +489,31 @@ describe("useCodexRealtime", () => {
     expect(clients[1].start).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves voice intent while the same Main session is replaced and reconnects to its new thread", async () => {
+    const { result, rerender, clients, setTrackedThreadId } = setup([
+      Promise.resolve(),
+      Promise.resolve(),
+    ]);
+    await act(async () => {
+      await result.current.toggle();
+    });
+    act(() => clients[0].emit({ status: "active", billing: "subscription" }));
+
+    rerender({ sessionId: "main", available: false });
+    expect(clients[0].stop).toHaveBeenCalledTimes(1);
+    expect(clients).toHaveLength(1);
+
+    setTrackedThreadId("fresh-thread");
+    rerender({ sessionId: "main", available: true });
+    await act(async () => {
+      await vi.waitFor(() => expect(clients).toHaveLength(2));
+    });
+
+    expect(clients[1].sessionId).toBe("main");
+    expect(clients[1].preferredThreadIdAtStart).toBe("fresh-thread");
+    expect(clients[1].start).toHaveBeenCalledTimes(1);
+  });
+
   it("serializes fallback restore and the next voice claim when IPC completes out of order", async () => {
     let rustFallbackEnabled = true;
     let delayedRestore: ReturnType<typeof deferred> | null = null;

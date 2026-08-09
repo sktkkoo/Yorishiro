@@ -128,6 +128,11 @@ describe("changeStrings", () => {
     expect(getStrings("ja").defaultFolderName).toBe("~");
   });
 
+  it("keeps the fresh Main Agent conversation label concise", () => {
+    expect(getStrings("en").newConversation).toBe("New session");
+    expect(getStrings("ja").newConversation).toBe("新しいセッション");
+  });
+
   it("labels the bundled Yori VRM reset action in both languages", () => {
     expect(getStrings("en").resetVrmToYori).toBe("Return to Yori");
     expect(getStrings("ja").resetVrmToYori).toBe("Yori に戻す");

@@ -31,6 +31,7 @@ export interface UiStrings {
   readonly pomodoroPrompt: string;
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
+  readonly newConversation: string;
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
@@ -161,6 +162,7 @@ const EN: UiStrings = {
   pomodoroPrompt: "/yori:help I want to use Pomodoro",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "~",
+  newConversation: "New session",
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
@@ -286,6 +288,7 @@ const JA: UiStrings = {
   pomodoroPrompt: "/yori:help Pomodoro を使いたい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "~",
+  newConversation: "新しいセッション",
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",

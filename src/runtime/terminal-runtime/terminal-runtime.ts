@@ -107,8 +107,9 @@ export function hexToRgba(background: string, alpha: number): string {
  * TerminalRuntime implementation. See types.ts for the contract.
  *
  * Key design choices (internal design-record: 2026-04-17-terminal-runtime-singleton.md):
- *   - Channel は factory 内で 1 回だけ生成し、webview lifetime で不変。React の
- *     mount lifecycle とは完全に分離する。
+ *   - Channel は session_spawn / session_attach ごとに新しく生成する。Tauri の
+ *     Channel は invoke ごとに message index が 0 へ戻るため、同じ instance を
+ *     respawn で再利用すると 2 回目以降の出力を WebView が受信できない。
  *   - xterm container DOM は document.body 直下に imperative に append し、React
  *     の placeholder div の getBoundingClientRect() に ResizeObserver で追従。
  *   - updatePtyParams の差分検出で StrictMode double-mount や HMR 再実行による
@@ -122,7 +123,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   private readonly interruptNoticeElement: HTMLDivElement;
   private readonly regionCanvas: HTMLCanvasElement | null;
   private readonly regionCtx: CanvasRenderingContext2D | null;
-  private readonly channel: Channel<ArrayBuffer>;
+  private activeOutputChannel: Channel<ArrayBuffer> | null = null;
   private readonly perceptionRef: { current: Perception | null } = { current: null };
   private readonly textDecoder = new TextDecoder("utf-8", { fatal: false });
   private readonly commandRuns: TerminalCommandRunStore;
@@ -227,19 +228,6 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     if (regionCtx) {
       this.installRegionSelectionHandlers();
     }
-
-    // Channel は webview lifetime の単一 instance。factory が HMR survive するので
-    // この callback ID は terminal.tsx の編集で orphan にならない。
-    this.channel = new Channel<ArrayBuffer>();
-    this.channel.onmessage = (data: ArrayBuffer) => {
-      if (this.disposed) return;
-      const bytes = new Uint8Array(data);
-      if (this.attachLiveBuffer !== null) {
-        this.attachLiveBuffer.push(bytes);
-        return;
-      }
-      this.handlePtyBytes(bytes, { replay: false });
-    };
 
     // PTY exit listener（session の process が終了したら terminal に表示）
     void (async () => {
@@ -385,12 +373,14 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   /**
    * Session が close されるときに呼ぶ。xterm を dispose し、xterm container を
    * document.body から外し、ResizeObserver / RAF を停止する。Channel callback
-   * は新規メッセージが来てももう参照しないので残しておいて GC に任せる。
+   * は disposed / generation guard で新規メッセージを無視し、backend が channel
+   * を drop した後に Tauri 側の callback cleanup へ任せる。
    */
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     this.startGeneration++;
+    this.activeOutputChannel = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     window.removeEventListener("resize", this.handleViewportResize);
@@ -436,8 +426,8 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.startPty(params, { attachFirst: options.attachFirst === true });
   }
 
-  private startPty(params: PtyParams, opts: { attachFirst: boolean }): void {
-    if (this.disposed) return;
+  private startPty(params: PtyParams, opts: { attachFirst: boolean }): Promise<void> {
+    if (this.disposed) return Promise.resolve();
     const generation = ++this.startGeneration;
     // 前 generation の attach replay 用 buffer を新しい起動へ持ち越さない。
     this.attachLiveBuffer = null;
@@ -446,7 +436,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.commandRuns.clear();
     this.term.reset();
 
-    void (async () => {
+    return (async () => {
       try {
         if (this.isStaleStart(generation)) return;
         if (this.attachedContainer) {
@@ -455,11 +445,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         if (opts.attachFirst) {
           const liveBuffer: Uint8Array[] = [];
           this.attachLiveBuffer = liveBuffer;
+          const attachChannel = this.createOutputChannel(generation);
           try {
             const result = await sessionAttach({
               sessionId: this.sessionId,
               cwd: params.cwd,
-              onOutput: this.channel,
+              onOutput: attachChannel,
             });
             if (this.disposed && result.attached) {
               if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
@@ -489,13 +480,14 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         if (this.isStaleStart(generation)) return;
         const cols = Math.max(2, this.term.cols || 80);
         const rows = Math.max(1, this.term.rows || 24);
+        const spawnChannel = this.createOutputChannel(generation);
         await sessionSpawn({
           sessionId: this.sessionId,
           spec: params.spec,
           cols,
           rows,
           cwd: params.cwd,
-          onOutput: this.channel,
+          onOutput: spawnChannel,
         });
         if (this.disposed) {
           void sessionDestroy({ sessionId: this.sessionId });
@@ -507,6 +499,26 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
       }
     })();
+  }
+
+  /**
+   * Tauri Channel は 1 invoke 限定で使う。Rust 側 Channel の message index は
+   * deserialize ごとに 0 から始まるため、同じ JS Channel を次の invoke に渡すと
+   * JS 側の期待 index とずれて全出力が pending queue に残り続ける。
+   */
+  private createOutputChannel(generation: number): Channel<ArrayBuffer> {
+    const channel = new Channel<ArrayBuffer>();
+    channel.onmessage = (data: ArrayBuffer) => {
+      if (this.isStaleStart(generation) || this.activeOutputChannel !== channel) return;
+      const bytes = new Uint8Array(data);
+      if (this.attachLiveBuffer !== null) {
+        this.attachLiveBuffer.push(bytes);
+        return;
+      }
+      this.handlePtyBytes(bytes, { replay: false });
+    };
+    this.activeOutputChannel = channel;
+    return channel;
   }
 
   private resyncAttachedPtyDisplay(): void {
@@ -904,7 +916,12 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   forceRespawn(): void {
     if (this.disposed) return;
     if (!this.currentParams) return;
-    this.startPty(this.currentParams, { attachFirst: false });
+    void this.startPty(this.currentParams, { attachFirst: false });
+  }
+
+  forceRespawnWithParams(params: PtyParams): Promise<void> {
+    if (this.disposed) return Promise.resolve();
+    return this.startPty(params, { attachFirst: false });
   }
 
   private isStaleStart(generation: number): boolean {

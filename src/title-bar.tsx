@@ -70,6 +70,9 @@ export default function TitleBar({
           <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
         </button>
         {voiceAvailable ? (
+          <span className="title-bar-control-separator" aria-hidden="true" />
+        ) : null}
+        {voiceAvailable ? (
           <button
             type="button"
             className="title-bar-button title-bar-voice-button"

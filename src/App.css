@@ -139,6 +139,14 @@ body,
   color: #f0f0f0;
 }
 
+.title-bar-control-separator {
+  width: 1px;
+  height: 14px;
+  flex: 0 0 1px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 /*
  * GPT Live 音声会話ボタンの状態語彙。active は明るいアイコン＋送話中の赤い点、
  * connecting はアイコン形状（スピナー）、error は失敗の赤系
@@ -1122,6 +1130,7 @@ body,
 }
 
 .tab-indicator-tab,
+.tab-indicator-new-conversation,
 .tab-indicator-close,
 .tab-indicator-add {
   display: inline-flex;
@@ -1191,6 +1200,15 @@ body,
   opacity: 0;
 }
 
+.tab-indicator-new-conversation {
+  width: 22px;
+  height: 19px;
+  flex: 0 0 22px;
+  margin-left: 2px;
+  border-radius: 4px;
+  color: #b8b8b8;
+}
+
 .tab-indicator-add {
   width: 24px;
   height: 24px;
@@ -1202,9 +1220,7 @@ body,
 }
 
 .tab-indicator-item:hover,
-.tab-indicator-item:focus-within,
-.tab-indicator-add:hover,
-.tab-indicator-add:focus-visible {
+.tab-indicator-item:focus-within {
   background: rgba(255, 255, 255, 0.07);
   color: #f0f0f0;
   outline: none;
@@ -1215,6 +1231,28 @@ body,
   background: rgba(255, 255, 255, 0.1);
   opacity: 1;
   outline: none;
+}
+
+.tab-indicator-new-conversation svg,
+.tab-indicator-add svg {
+  opacity: 0.68;
+  transition: opacity 0.15s;
+}
+
+.tab-indicator-new-conversation:hover,
+.tab-indicator-new-conversation:focus-visible,
+.tab-indicator-add:hover,
+.tab-indicator-add:focus-visible {
+  background: transparent;
+  color: #f0f0f0;
+  outline: none;
+}
+
+.tab-indicator-new-conversation:hover svg,
+.tab-indicator-new-conversation:focus-visible svg,
+.tab-indicator-add:hover svg,
+.tab-indicator-add:focus-visible svg {
+  opacity: 1;
 }
 
 .tab-indicator-item.active {

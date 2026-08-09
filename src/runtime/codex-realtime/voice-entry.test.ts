@@ -70,9 +70,8 @@ describe("resolveVoiceEntryAction", () => {
 });
 
 describe("isVoiceEntryAvailable", () => {
-  it("keeps the entry visible for the Main Agent session regardless of harness", () => {
-    expect(isVoiceEntryAvailable("main", "main")).toBe(true);
-    expect(isVoiceEntryAvailable("shell-2", "main")).toBe(false);
+  it("keeps the Main Agent voice entry visible while a shell tab is selected", () => {
+    expect(isVoiceEntryAvailable()).toBe(true);
   });
 });
 

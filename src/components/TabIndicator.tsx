@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { Plus, SquarePen, X } from "lucide-react";
 import { deriveSessionStatusBadge, type SessionStatus } from "../runtime/session-status";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
@@ -20,6 +20,8 @@ interface TabIndicatorProps {
   readonly hookBadges?: ReadonlyMap<SessionId, TabIndicatorBadge>;
   /** タブ選択。未指定なら表示専用。 */
   readonly onSelectSession?: (sessionId: SessionId) => void;
+  readonly newConversationLabel?: string;
+  readonly onNewConversation?: () => void;
   readonly onAddSession?: () => void;
   readonly onCloseSession?: (sessionId: SessionId) => void;
 }
@@ -34,6 +36,8 @@ export default function TabIndicator({
   statuses,
   hookBadges,
   onSelectSession,
+  newConversationLabel = "New session",
+  onNewConversation,
   onAddSession,
   onCloseSession,
 }: TabIndicatorProps) {
@@ -86,6 +90,17 @@ export default function TabIndicator({
                   </span>
                 ) : null}
               </button>
+              {isMain && onNewConversation ? (
+                <button
+                  type="button"
+                  className="tab-indicator-new-conversation"
+                  aria-label={newConversationLabel}
+                  title={newConversationLabel}
+                  onClick={onNewConversation}
+                >
+                  <SquarePen size={14} strokeWidth={1.9} aria-hidden="true" />
+                </button>
+              ) : null}
               {!isMain && onCloseSession ? (
                 <button
                   type="button"

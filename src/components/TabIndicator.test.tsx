@@ -281,6 +281,35 @@ describe("TabIndicator", () => {
     expect(onSelectSession).toHaveBeenCalledWith("shell-1");
   });
 
+  it("starts a new conversation from the Main Agent tab action", () => {
+    const onNewConversation = vi.fn();
+    const onSelectSession = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state("shell-1")}
+        labels={
+          new Map([
+            ["default-session", "Main Agent"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        newConversationLabel="New session"
+        onNewConversation={onNewConversation}
+        onSelectSession={onSelectSession}
+      />,
+    );
+
+    const action = screen.getByRole("button", {
+      name: "New session",
+    });
+    fireEvent.click(action);
+
+    expect(action.closest(".tab-indicator-item")?.classList.contains("is-main")).toBe(true);
+    expect(onNewConversation).toHaveBeenCalledTimes(1);
+    expect(onSelectSession).not.toHaveBeenCalled();
+  });
+
   it("calls onAddSession from the add button", () => {
     const onAddSession = vi.fn();
 

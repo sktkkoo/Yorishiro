@@ -2446,6 +2446,12 @@ function App() {
   const pendingRealtimeStartRef = useRef(pendingRealtimeStart);
   const [defaultSpec, setDefaultSpec] = useState<SpawnSpec | null>(null);
   const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
+  const [mainFreshRequestSeq, setMainFreshRequestSeq] = useState(0);
+  const [mainSessionReplacing, setMainSessionReplacing] = useState(false);
+  const [voiceReconnectPending, setVoiceReconnectPending] = useState(false);
+  const mainFreshLatestSeqRef = useRef(0);
+  const mainFreshEnqueuedSeqRef = useRef(0);
+  const mainFreshSpawnQueueRef = useRef<Promise<void>>(Promise.resolve());
   // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
   const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
     undefined,
@@ -3640,12 +3646,11 @@ function App() {
   // ── Body ↔ PersonaReflexDispatcher wiring ──────────────────
 
   const bodyRef = useRef<Body | null>(null);
-  const codexVoiceAvailable =
-    terminalAgent === "codex" && tabState.activeSessionId === tabState.mainSessionId;
-  const voiceEntryAvailable = isVoiceEntryAvailable(
-    tabState.activeSessionId,
-    tabState.mainSessionId,
-  );
+  // GPT Live は Main Agent が所有する。表示中の terminal tab は接続寿命に影響させず、
+  // shell で手作業中も音声会話を継続する。Main の置換中だけ tracker/client を畳み、
+  // voice intent を保ったまま新 thread へ自動再接続する。
+  const codexVoiceAvailable = terminalAgent === "codex" && !mainSessionReplacing;
+  const voiceEntryAvailable = isVoiceEntryAvailable();
   const greetedRef = useRef(false);
   const inTurnRef = useRef(false);
   const applyRealtimeLipSyncSource = useCallback((source: LipSyncSource) => {
@@ -3657,10 +3662,11 @@ function App() {
   );
   const {
     state: codexRealtimeState,
+    stop: stopCodexRealtime,
     toggle: toggleCodexRealtime,
     getLipSyncSource: getCodexRealtimeLipSyncSource,
   } = useCodexRealtime({
-    sessionId: tabState.activeSessionId,
+    sessionId: tabState.mainSessionId,
     available: codexVoiceAvailable,
     fallbackLipSyncSource: voicePlayer,
     applyLipSyncSource: applyRealtimeLipSyncSource,
@@ -3743,7 +3749,19 @@ function App() {
     void toggleCodexRealtime();
   }, [codexRealtimeState.status, codexVoiceAvailable, toggleCodexRealtime]);
 
+  useEffect(() => {
+    if (mainSessionReplacing || !voiceReconnectPending || codexRealtimeState.status === "idle") {
+      return;
+    }
+    setVoiceReconnectPending(false);
+  }, [codexRealtimeState.status, mainSessionReplacing, voiceReconnectPending]);
+
   const handleToggleVoice = useCallback(async () => {
+    if (voiceReconnectPending) {
+      stopCodexRealtime();
+      setVoiceReconnectPending(false);
+      return;
+    }
     if (codexVoiceAvailable) {
       await toggleCodexRealtime();
       return;
@@ -3762,7 +3780,13 @@ function App() {
       mode: action.kind === "confirm-switch" ? "switch" : "setup",
       targetAgentId: action.agent?.id ?? null,
     });
-  }, [codexVoiceAvailable, terminalAgent, toggleCodexRealtime]);
+  }, [
+    codexVoiceAvailable,
+    stopCodexRealtime,
+    terminalAgent,
+    toggleCodexRealtime,
+    voiceReconnectPending,
+  ]);
 
   const handleBodyReady = useCallback(
     (body: Body | null) => {
@@ -4358,6 +4382,50 @@ function App() {
     return labels;
   }, [cwd, homeDir, tabManager, tabState.mainSessionId, tabState.sessions]);
 
+  const handleNewMainConversation = useCallback(() => {
+    const mainSessionId = tabManager.getState().mainSessionId;
+    tabManager.switchTo(mainSessionId);
+    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, mainSessionId);
+    setVoiceReconnectPending(
+      (pending) =>
+        pending ||
+        codexRealtimeState.status === "active" ||
+        codexRealtimeState.status === "connecting",
+    );
+    setMainSessionReplacing(true);
+    const requestSeq = mainFreshLatestSeqRef.current + 1;
+    mainFreshLatestSeqRef.current = requestSeq;
+    setMainFreshRequestSeq(requestSeq);
+  }, [codexRealtimeState.status, tabManager]);
+
+  useEffect(() => {
+    if (!canMountTerminals || mainFreshRequestSeq === 0) return;
+    if (mainFreshEnqueuedSeqRef.current >= mainFreshRequestSeq) return;
+    mainFreshEnqueuedSeqRef.current = mainFreshRequestSeq;
+
+    const requestSeq = mainFreshRequestSeq;
+    const mainSessionId = tabManager.getState().mainSessionId;
+    const sessionCwd = getSessionCwd(mainSessionId);
+    const params = {
+      spec: withAgentResumePolicy(getTerminalSpec(mainSessionId), false),
+      cwd: sessionCwd === undefined ? cwd : sessionCwd,
+    };
+    const spawn = mainFreshSpawnQueueRef.current
+      .catch(() => {})
+      .then(() => getTerminalRuntime(mainSessionId).forceRespawnWithParams(params));
+    mainFreshSpawnQueueRef.current = spawn;
+    void spawn.finally(() => {
+      if (mainFreshLatestSeqRef.current === requestSeq) {
+        setMainSessionReplacing(false);
+      }
+    });
+  }, [canMountTerminals, cwd, getSessionCwd, getTerminalSpec, mainFreshRequestSeq, tabManager]);
+
+  const titleBarVoiceState =
+    voiceReconnectPending && codexRealtimeState.status === "idle"
+      ? "connecting"
+      : codexRealtimeState.status;
+
   // ── Settings: close-requested listener ─────────────────────
 
   useEffect(() => {
@@ -4543,14 +4611,14 @@ function App() {
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
         voiceAvailable={voiceEntryAvailable}
-        voiceState={codexRealtimeState.status}
+        voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
         voiceLabel={
-          codexRealtimeState.status === "active"
+          titleBarVoiceState === "active"
             ? strings.gptLiveVoiceStop
-            : codexRealtimeState.status === "connecting"
+            : titleBarVoiceState === "connecting"
               ? strings.gptLiveVoiceConnecting
-              : codexRealtimeState.status === "error"
+              : titleBarVoiceState === "error"
                 ? strings.gptLiveVoiceRetry
                 : strings.gptLiveVoiceStart
         }
@@ -4563,6 +4631,8 @@ function App() {
             statuses={sessionStatusById}
             hookBadges={sessionHookBadges}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+            newConversationLabel={strings.newConversation}
+            onNewConversation={handleNewMainConversation}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}
           />

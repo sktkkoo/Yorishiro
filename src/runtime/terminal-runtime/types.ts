@@ -355,4 +355,11 @@ export interface TerminalRuntime {
 
   /** currentParams を無効化し updatePtyParams を再実行する。auto-respawn 用。 */
   forceRespawn(): void;
+
+  /**
+   * canonical な currentParams は保ったまま、1回だけ別 params で置き換え起動する。
+   * Main Agent の「新しいセッション」のように、通常は resume する session を今回だけ
+   * resume=false で fresh 起動するときに使う。
+   */
+  forceRespawnWithParams(params: PtyParams): Promise<void>;
 }
