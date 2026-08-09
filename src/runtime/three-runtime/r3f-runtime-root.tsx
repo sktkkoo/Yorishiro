@@ -20,7 +20,15 @@
 
 import { useFrame } from "@react-three/fiber";
 import { useCreateStore } from "leva";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ErrorInfo,
+  Component as ReactComponent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type * as THREE from "three";
 import {
   CameraControls,
@@ -149,9 +157,77 @@ function ActiveSceneControlsBoundary({ entry }: ActiveSceneControlsBoundaryProps
 
   return (
     <ControlStoreProvider store={sceneLevaStore}>
-      {Component ? <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} /> : null}
+      {Component ? (
+        <SceneComponentErrorBoundary sceneId={entry.id} component={Component}>
+          <Component vrmSlot={null} resolveAsset={resolveAsset} camera={camera} />
+        </SceneComponentErrorBoundary>
+      ) : null}
       <SceneLayerControls store={sceneLevaStore} />
     </ControlStoreProvider>
+  );
+}
+
+interface SceneComponentErrorBoundaryProps {
+  readonly sceneId: string;
+  readonly component: ScenePackEntry["component"];
+  readonly children: ReactNode;
+}
+
+interface SceneComponentErrorBoundaryState {
+  readonly failed: boolean;
+}
+
+/**
+ * A broken scene must not tear down the shared R3F root. The VRM is owned by
+ * ThreeRuntime outside this React tree, so keep it visible with neutral
+ * fallback lighting while preserving common controls and scene switching.
+ */
+class SceneComponentErrorBoundary extends ReactComponent<
+  SceneComponentErrorBoundaryProps,
+  SceneComponentErrorBoundaryState
+> {
+  state: SceneComponentErrorBoundaryState = { failed: false };
+
+  static getDerivedStateFromError(): SceneComponentErrorBoundaryState {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo): void {
+    console.error(
+      `[r3f-runtime] scene '${this.props.sceneId}' crashed; using fallback lighting`,
+      error,
+      info.componentStack,
+    );
+  }
+
+  componentDidUpdate(previousProps: SceneComponentErrorBoundaryProps): void {
+    if (this.state.failed && previousProps.component !== this.props.component) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render(): ReactNode {
+    if (this.state.failed) return <FailedSceneLighting />;
+    return this.props.children;
+  }
+}
+
+function FailedSceneLighting() {
+  return (
+    <>
+      <hemisphereLight
+        name="yorishiro-scene-error-fill"
+        color="#fff4ed"
+        groundColor="#30343a"
+        intensity={1.1}
+      />
+      <directionalLight
+        name="yorishiro-scene-error-key"
+        position={[-1.5, 2.5, 2]}
+        intensity={1.2}
+        color="#ffffff"
+      />
+    </>
   );
 }
 

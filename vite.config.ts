@@ -18,9 +18,29 @@ export default defineConfig(async () => ({
         replacement: new URL("./src/sdk/controls.ts", import.meta.url).pathname,
       },
       {
+        find: /^@yorishiro\/sdk\/r3f$/,
+        replacement: new URL("./src/sdk/r3f.ts", import.meta.url).pathname,
+      },
+      {
         find: /^leva$/,
         replacement: new URL("./src/runtime/leva.tsx", import.meta.url).pathname,
       },
+    ],
+    // Scene packs and the custom R3F host must always resolve the same module
+    // instances. This is especially important in dev, where Vite can otherwise
+    // keep an older optimized dependency generation alive across HMR updates.
+    dedupe: ["react", "react-dom", "@react-three/fiber", "three"],
+  },
+
+  // Discover the complete R3F graph before the WebView starts. A late
+  // postprocessing discovery can trigger dependency re-optimization while the
+  // hot-preserved ThreeRuntime still holds hooks from the previous generation.
+  optimizeDeps: {
+    include: [
+      "@react-three/fiber",
+      "@react-three/drei",
+      "@react-three/postprocessing",
+      "postprocessing",
     ],
   },
 

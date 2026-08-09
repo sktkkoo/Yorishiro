@@ -5,7 +5,7 @@
  * 高頻度 noise + scanline + sync drop で CRT モニタの砂嵐を表現.
  */
 
-import { useFrame } from "@react-three/fiber";
+import { useFrame } from "@yorishiro/sdk/r3f";
 import { useMemo, useRef } from "react";
 import type * as THREE from "three";
 import { CRT_POSITION } from "./lights";
