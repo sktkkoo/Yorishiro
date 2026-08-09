@@ -162,8 +162,7 @@ const EN: UiStrings = {
   pomodoroPrompt: "/yori:help I want to use Pomodoro",
   selectProjectFolder: "Select project folder",
   defaultFolderName: "~",
-  newConversation:
-    "Start a new Main Agent conversation (the current conversation stays in history)",
+  newConversation: "Start a new Main Agent conversation",
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
@@ -289,7 +288,7 @@ const JA: UiStrings = {
   pomodoroPrompt: "/yori:help Pomodoro を使いたい",
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "~",
-  newConversation: "Main Agentで新しい会話を始める（現在の会話は履歴に残ります）",
+  newConversation: "Main Agentで新しい会話を始める",
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
