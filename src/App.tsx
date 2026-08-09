@@ -4610,8 +4610,6 @@ function App() {
         settingsLabel={strings.settings}
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
-        newConversationLabel={strings.newConversation}
-        onNewConversation={handleNewMainConversation}
         voiceAvailable={voiceEntryAvailable}
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
@@ -4633,6 +4631,8 @@ function App() {
             statuses={sessionStatusById}
             hookBadges={sessionHookBadges}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
+            newConversationLabel={strings.newConversation}
+            onNewConversation={handleNewMainConversation}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}
           />

@@ -1,11 +1,4 @@
-import {
-  LoaderCircle,
-  MessageSquarePlus,
-  Mic,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings,
-} from "lucide-react";
+import { LoaderCircle, Mic, PanelLeftClose, PanelLeftOpen, Settings } from "lucide-react";
 import type { ReactNode } from "react";
 
 /**
@@ -31,8 +24,6 @@ export interface TitleBarProps {
   readonly voiceLabel?: string;
   readonly voiceError?: string;
   readonly onToggleVoice?: () => void;
-  readonly newConversationLabel?: string;
-  readonly onNewConversation?: () => void;
   readonly tabs?: ReactNode;
 }
 
@@ -49,8 +40,6 @@ export default function TitleBar({
   voiceLabel = "",
   voiceError,
   onToggleVoice,
-  newConversationLabel = "Start a new conversation",
-  onNewConversation,
   tabs,
 }: TitleBarProps) {
   const SidebarIcon = sidebarOpen ? PanelLeftClose : PanelLeftOpen;
@@ -80,19 +69,8 @@ export default function TitleBar({
         >
           <Settings size={15} strokeWidth={1.8} aria-hidden="true" />
         </button>
-        {onNewConversation || voiceAvailable ? (
+        {voiceAvailable ? (
           <span className="title-bar-control-separator" aria-hidden="true" />
-        ) : null}
-        {onNewConversation ? (
-          <button
-            type="button"
-            className="title-bar-button title-bar-new-conversation-button"
-            onClick={onNewConversation}
-            aria-label={newConversationLabel}
-            title={newConversationLabel}
-          >
-            <MessageSquarePlus size={15} strokeWidth={1.8} aria-hidden="true" />
-          </button>
         ) : null}
         {voiceAvailable ? (
           <button

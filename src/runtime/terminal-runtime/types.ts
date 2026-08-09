@@ -358,7 +358,7 @@ export interface TerminalRuntime {
 
   /**
    * canonical な currentParams は保ったまま、1回だけ別 params で置き換え起動する。
-   * Main Agent の「新しい会話」のように、通常は resume する session を今回だけ
+   * Main Agent の「新しいセッション」のように、通常は resume する session を今回だけ
    * resume=false で fresh 起動するときに使う。
    */
   forceRespawnWithParams(params: PtyParams): Promise<void>;

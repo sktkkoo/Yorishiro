@@ -129,8 +129,8 @@ describe("changeStrings", () => {
   });
 
   it("keeps the fresh Main Agent conversation label concise", () => {
-    expect(getStrings("en").newConversation).toBe("Start a new Main Agent conversation");
-    expect(getStrings("ja").newConversation).toBe("Main Agentで新しい会話を始める");
+    expect(getStrings("en").newConversation).toBe("New session");
+    expect(getStrings("ja").newConversation).toBe("新しいセッション");
   });
 
   it("labels the bundled Yori VRM reset action in both languages", () => {

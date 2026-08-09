@@ -42,19 +42,6 @@ describe("TitleBar", () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("starts a new Main Agent conversation from the fixed conversation controls", () => {
-    const onNewConversation = vi.fn();
-    renderTitleBar({
-      newConversationLabel: "Start a new conversation",
-      onNewConversation,
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Start a new conversation" }));
-
-    expect(onNewConversation).toHaveBeenCalledTimes(1);
-    expect(document.querySelector(".title-bar-control-separator")).toBeTruthy();
-  });
-
   it("reflects sidebarOpen through aria-pressed", () => {
     const { rerender } = renderTitleBar({ sidebarOpen: true });
     const sidebarButton = screen.getByRole("button", { name: "Sidebar" });
