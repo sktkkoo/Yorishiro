@@ -128,6 +128,13 @@ describe("changeStrings", () => {
     expect(getStrings("ja").defaultFolderName).toBe("~");
   });
 
+  it("describes a fresh Main Agent conversation without implying history deletion", () => {
+    expect(getStrings("en").newConversation).toContain("stays in history");
+    expect(getStrings("ja").newConversation).toContain("履歴に残ります");
+    expect(getStrings("en").newConversation).not.toMatch(/clear|delete/i);
+    expect(getStrings("ja").newConversation).not.toMatch(/クリア|削除/);
+  });
+
   it("labels the bundled Yori VRM reset action in both languages", () => {
     expect(getStrings("en").resetVrmToYori).toBe("Return to Yori");
     expect(getStrings("ja").resetVrmToYori).toBe("Yori に戻す");

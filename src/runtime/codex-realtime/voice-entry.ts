@@ -13,9 +13,12 @@ export interface ResolveVoiceEntryActionOptions {
   readonly resolveCommandPath: (command: string) => Promise<string | null>;
 }
 
-/** GPT Live discovery is shown for the Main Agent session, independent of its harness. */
-export function isVoiceEntryAvailable(activeSessionId: string, mainSessionId: string): boolean {
-  return activeSessionId === mainSessionId;
+/**
+ * GPT Live は Main Agent が所有するが、entry 自体は現在表示中の terminal tab に
+ * 依存しない。音声会話を続けながら shell tab で作業できるよう常に固定表示する。
+ */
+export function isVoiceEntryAvailable(): boolean {
+  return true;
 }
 
 /**

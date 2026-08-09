@@ -434,17 +434,62 @@ describe("TerminalRuntime", () => {
     expect(mockState.sessionRefreshTheme).toHaveBeenCalledWith({ sessionId: "shell-1" });
   });
 
+  it("one-shot params で fresh respawn しても canonical params は resume のまま保つ", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const canonical = {
+      spec: { kind: "agent" as const, agent: "codex", resume: true },
+      cwd: "/workspace",
+    };
+    const fresh = {
+      ...canonical,
+      spec: { ...canonical.spec, resume: false },
+    };
+
+    runtime.updatePtyParams(canonical);
+    await flushMicrotasks();
+    const firstChannel = mockState.channels[0];
+    await runtime.forceRespawnWithParams(fresh);
+    const freshChannel = mockState.channels[1];
+    runtime.updatePtyParams(canonical);
+    await flushMicrotasks();
+
+    expect(mockState.sessionSpawn).toHaveBeenCalledTimes(2);
+    expect(mockState.sessionSpawn.mock.calls[1]?.[0]).toMatchObject({
+      sessionId: "shell-1",
+      spec: { kind: "agent", agent: "codex", resume: false },
+      cwd: "/workspace",
+    });
+    expect(freshChannel).not.toBe(firstChannel);
+
+    firstChannel.onmessage?.(new Uint8Array([65]).buffer);
+    freshChannel.onmessage?.(new Uint8Array([66]).buffer);
+    expect(terminal.writes).toEqual([new Uint8Array([66])]);
+  });
+
+  it("attach-first が見つからない場合は spawn に新しい Channel を渡す", async () => {
+    mockState.sessionAttach.mockResolvedValueOnce({ attached: false, replay: [] });
+    const runtime = getTerminalRuntime("shell-1");
+
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null }, { attachFirst: true });
+    await flushMicrotasks();
+
+    expect(mockState.channels).toHaveLength(2);
+    expect(mockState.sessionAttach.mock.calls[0]?.[0].onOutput).toBe(mockState.channels[0]);
+    expect(mockState.sessionSpawn.mock.calls[0]?.[0].onOutput).toBe(mockState.channels[1]);
+  });
+
   it("attach-first の replay を live Channel より先に復元し perception には流さない", async () => {
     const attach = deferred<{ attached: boolean; replay: number[] }>();
     mockState.sessionAttach.mockReturnValueOnce(attach.promise);
     const runtime = getTerminalRuntime("shell-1");
     const terminal = mockState.terminals[0];
-    const channel = mockState.channels[0];
     const perception = { onCommandBlock: vi.fn(), onPtyOutput: vi.fn(), onUserInput: vi.fn() };
 
     runtime.setPerception(perception as unknown as Perception);
     runtime.updatePtyParams({ spec: shellSpec, cwd: null }, { attachFirst: true });
     await flushMicrotasks();
+    const channel = mockState.channels[0];
 
     channel.onmessage?.(new Uint8Array([66]).buffer);
     expect(terminal.writes).toHaveLength(0);
@@ -465,14 +510,14 @@ describe("TerminalRuntime", () => {
       .mockReturnValueOnce(secondAttach.promise);
     const runtime = getTerminalRuntime("shell-1");
     const terminal = mockState.terminals[0];
-    const channel = mockState.channels[0];
 
     runtime.updatePtyParams({ spec: shellSpec, cwd: "/old" }, { attachFirst: true });
     await flushMicrotasks();
     runtime.updatePtyParams({ spec: shellSpec, cwd: "/new" }, { attachFirst: true });
     await flushMicrotasks();
 
-    channel.onmessage?.(new Uint8Array([66]).buffer);
+    mockState.channels[0].onmessage?.(new Uint8Array([65]).buffer);
+    mockState.channels[1].onmessage?.(new Uint8Array([66]).buffer);
     firstAttach.resolve({ attached: true, replay: [65] });
     await flushMicrotasks();
     secondAttach.resolve({ attached: true, replay: [67] });
@@ -781,6 +826,7 @@ describe("TerminalRuntime", () => {
   it("ignores channel output after dispose", () => {
     const runtime = getTerminalRuntime("shell-1");
     const terminal = mockState.terminals[0];
+    runtime.updatePtyParams({ spec: shellSpec, cwd: null });
     const channel = mockState.channels[0];
 
     channel.onmessage?.(new Uint8Array([65]).buffer);

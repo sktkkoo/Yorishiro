@@ -139,6 +139,14 @@ body,
   color: #f0f0f0;
 }
 
+.title-bar-control-separator {
+  width: 1px;
+  height: 14px;
+  flex: 0 0 1px;
+  margin: 0 3px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 /*
  * GPT Live 音声会話ボタンの状態語彙。active は明るいアイコン＋送話中の赤い点、
  * connecting はアイコン形状（スピナー）、error は失敗の赤系
