@@ -45,7 +45,10 @@ impl TerminalAgent for CodexAgent {
             args.push(endpoint.to_string());
         }
 
-        if ctx.resume && self.has_existing_session(ctx.cwd) {
+        if let Some(session_id) = ctx.resume_session_id.filter(|id| !id.is_empty()) {
+            args.push("resume".to_string());
+            args.push(session_id.to_string());
+        } else if ctx.resume && self.has_existing_session(ctx.cwd) {
             args.push("resume".to_string());
             args.push("--last".to_string());
         }
@@ -186,6 +189,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume: true,
+            resume_session_id: None,
             realtime_endpoint: None,
         }
     }
@@ -204,6 +208,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume,
+            resume_session_id: None,
             realtime_endpoint: None,
         }
     }
@@ -311,6 +316,16 @@ mod tests {
             .args
             .iter()
             .any(|arg| arg == &codex_yorishiro_mcp_config_arg(18743)));
+    }
+
+    #[test]
+    fn codex_resumes_an_exact_session_id() {
+        let mut ctx = make_ctx_with_resume(None, None, None, false);
+        ctx.resume_session_id = Some("0198-exact-session-id");
+        let result = CODEX.build_launch_args(&ctx).expect("build_launch_args");
+
+        assert_eq!(&result.args[..2], ["resume", "0198-exact-session-id"]);
+        assert!(!result.args.iter().any(|arg| arg == "--last"));
     }
 
     #[test]

@@ -308,7 +308,7 @@ describe("TerminalRuntime", () => {
     mockState.sessionResize.mockReset();
     mockState.sessionResize.mockResolvedValue(undefined);
     mockState.sessionSpawn.mockReset();
-    mockState.sessionSpawn.mockResolvedValue(undefined);
+    mockState.sessionSpawn.mockResolvedValue({ replacedConfirmedSessionId: null });
     mockState.sessionWrite.mockReset();
     mockState.sessionWrite.mockResolvedValue(undefined);
   });
@@ -465,6 +465,72 @@ describe("TerminalRuntime", () => {
     firstChannel.onmessage?.(new Uint8Array([65]).buffer);
     freshChannel.onmessage?.(new Uint8Array([66]).buffer);
     expect(terminal.writes).toEqual([new Uint8Array([66])]);
+  });
+
+  it("one-shot respawn はbackendがatomicに捕捉した置換前session IDを返す", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    mockState.sessionSpawn.mockResolvedValueOnce({ replacedConfirmedSessionId: "A" });
+
+    await expect(
+      runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" }),
+    ).resolves.toEqual({ replacedConfirmedSessionId: "A" });
+  });
+
+  it("one-shot respawn の spawn 失敗を caller に返す", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const failure = new Error("spawn failed");
+    mockState.sessionSpawn.mockRejectedValueOnce(failure);
+
+    await expect(
+      runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/workspace" }),
+    ).rejects.toBe(failure);
+  });
+
+  it("competing respawn はspawn invokeを直列化し、最新startだけをbackend winnerにする", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const firstSpawn = deferred<void>();
+    let backendCwd: string | null = null;
+    mockState.sessionSpawn
+      .mockImplementationOnce(async (args) => {
+        await firstSpawn.promise;
+        backendCwd = args.cwd;
+        return { replacedConfirmedSessionId: null };
+      })
+      .mockImplementationOnce(async (args) => {
+        backendCwd = args.cwd;
+        return { replacedConfirmedSessionId: null };
+      });
+
+    const first = runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/first" });
+    await flushMicrotasks();
+    const second = runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/second" });
+    await flushMicrotasks();
+
+    // start2 はstart1のbackend side effectが完了するまでinvokeされない。
+    expect(mockState.sessionSpawn).toHaveBeenCalledTimes(1);
+    firstSpawn.resolve();
+
+    await expect(first).rejects.toThrow("PTY start was superseded");
+    await second;
+    expect(mockState.sessionSpawn).toHaveBeenCalledTimes(2);
+    expect(backendCwd).toBe("/second");
+  });
+
+  it("superseded one-shot spawn が失敗してもsuccessとしてresolveしない", async () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const firstSpawn = deferred<{ readonly replacedConfirmedSessionId: string | null }>();
+    mockState.sessionSpawn
+      .mockReturnValueOnce(firstSpawn.promise)
+      .mockResolvedValueOnce({ replacedConfirmedSessionId: null });
+
+    const first = runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/first" });
+    await flushMicrotasks();
+    const second = runtime.forceRespawnWithParams({ spec: shellSpec, cwd: "/second" });
+    const firstRejected = expect(first).rejects.toThrow("PTY start was superseded");
+    firstSpawn.reject(new Error("first spawn failed"));
+
+    await firstRejected;
+    await expect(second).resolves.toEqual({ replacedConfirmedSessionId: null });
   });
 
   it("attach-first が見つからない場合は spawn に新しい Channel を渡す", async () => {

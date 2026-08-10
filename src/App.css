@@ -191,6 +191,15 @@ body,
   color: #ffd2d2;
 }
 
+.title-bar-voice-button:disabled {
+  color: #737373;
+  cursor: default;
+}
+
+.title-bar-voice-button:disabled svg {
+  opacity: 0.34;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .title-bar-voice-button[data-voice-state="connecting"] svg {
     animation: none;
@@ -1125,11 +1134,17 @@ body,
 }
 
 .tab-indicator-item.is-main {
+  width: 210px;
+  min-width: 200px;
+  max-width: 210px;
+  flex-basis: 210px;
   background: rgba(255, 255, 255, 0.075);
   color: #d6d6d6;
 }
 
 .tab-indicator-tab,
+.tab-indicator-conversation-back,
+.tab-indicator-conversation-forward,
 .tab-indicator-new-conversation,
 .tab-indicator-close,
 .tab-indicator-add {
@@ -1200,6 +1215,8 @@ body,
   opacity: 0;
 }
 
+.tab-indicator-conversation-back,
+.tab-indicator-conversation-forward,
 .tab-indicator-new-conversation {
   width: 22px;
   height: 19px;
@@ -1207,6 +1224,28 @@ body,
   margin-left: 2px;
   border-radius: 4px;
   color: #b8b8b8;
+}
+
+.tab-indicator-conversation-navigation {
+  height: 19px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  margin-left: 2px;
+}
+
+.tab-indicator-conversation-navigation .tab-indicator-conversation-back,
+.tab-indicator-conversation-navigation .tab-indicator-conversation-forward {
+  width: 19px;
+  height: 19px;
+  flex-basis: 19px;
+  margin-left: 0;
+  border-radius: 4px;
+}
+
+.tab-indicator-new-conversation {
+  margin-left: 6px;
 }
 
 .tab-indicator-add {
@@ -1233,14 +1272,20 @@ body,
   outline: none;
 }
 
+.tab-indicator-conversation-back svg,
+.tab-indicator-conversation-forward svg,
 .tab-indicator-new-conversation svg,
 .tab-indicator-add svg {
   opacity: 0.68;
   transition: opacity 0.15s;
 }
 
-.tab-indicator-new-conversation:hover,
-.tab-indicator-new-conversation:focus-visible,
+.tab-indicator-conversation-back:hover:not(:disabled),
+.tab-indicator-conversation-back:focus-visible:not(:disabled),
+.tab-indicator-conversation-forward:hover:not(:disabled),
+.tab-indicator-conversation-forward:focus-visible:not(:disabled),
+.tab-indicator-new-conversation:hover:not(:disabled),
+.tab-indicator-new-conversation:focus-visible:not(:disabled),
 .tab-indicator-add:hover,
 .tab-indicator-add:focus-visible {
   background: transparent;
@@ -1248,11 +1293,46 @@ body,
   outline: none;
 }
 
-.tab-indicator-new-conversation:hover svg,
-.tab-indicator-new-conversation:focus-visible svg,
+.tab-indicator-conversation-back:hover:not(:disabled) svg,
+.tab-indicator-conversation-back:focus-visible:not(:disabled) svg,
+.tab-indicator-conversation-forward:hover:not(:disabled) svg,
+.tab-indicator-conversation-forward:focus-visible:not(:disabled) svg,
+.tab-indicator-new-conversation:hover:not(:disabled) svg,
+.tab-indicator-new-conversation:focus-visible:not(:disabled) svg,
 .tab-indicator-add:hover svg,
 .tab-indicator-add:focus-visible svg {
   opacity: 1;
+}
+
+.tab-indicator-conversation-navigation .tab-indicator-conversation-back:hover:not(:disabled),
+.tab-indicator-conversation-navigation .tab-indicator-conversation-forward:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.tab-indicator-conversation-navigation .tab-indicator-conversation-back:active:not(:disabled),
+.tab-indicator-conversation-navigation .tab-indicator-conversation-forward:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.tab-indicator-conversation-navigation
+  .tab-indicator-conversation-back:focus-visible:not(:disabled),
+.tab-indicator-conversation-navigation
+  .tab-indicator-conversation-forward:focus-visible:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(225, 225, 230, 0.44);
+}
+
+.tab-indicator-conversation-back:disabled,
+.tab-indicator-conversation-forward:disabled,
+.tab-indicator-new-conversation:disabled {
+  color: #737373;
+  cursor: default;
+}
+
+.tab-indicator-conversation-back:disabled svg,
+.tab-indicator-conversation-forward:disabled svg,
+.tab-indicator-new-conversation:disabled svg {
+  opacity: 0.34;
 }
 
 .tab-indicator-item.active {

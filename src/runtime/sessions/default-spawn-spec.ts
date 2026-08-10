@@ -33,5 +33,10 @@ export function withAgentRuntimeFields(
 
 export function withAgentResumePolicy(spec: SpawnSpec, resume: boolean): SpawnSpec {
   if (spec.kind !== "agent") return spec;
-  return { ...spec, resume };
+  return resume ? { ...spec, resume: true } : { ...spec, resume: false, resumeSessionId: null };
+}
+
+export function withAgentResumeSessionId(spec: SpawnSpec, sessionId: string): SpawnSpec {
+  if (spec.kind !== "agent") return spec;
+  return { ...spec, resume: true, resumeSessionId: sessionId };
 }

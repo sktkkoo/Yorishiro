@@ -41,6 +41,8 @@ export type SpawnSpec =
       readonly pluginDir?: string | null;
       /** false のとき agent 側の既存会話 resume を禁止して完全新規 session を起動する。 */
       readonly resume?: boolean;
+      /** provider 固有の会話 ID を指定して再開する。現在は Codex のみ対応。 */
+      readonly resumeSessionId?: string | null;
     }
   | {
       readonly kind: "shell";
@@ -77,12 +79,51 @@ export interface SessionSpawnArgs {
   readonly onOutput: Channel<ArrayBuffer>;
 }
 
+export interface SessionSpawnResult {
+  /** PTY replace直前にbackendで確認済みだったprovider session ID。 */
+  readonly replacedConfirmedSessionId: string | null;
+}
+
+export class SessionSpawnError extends Error {
+  readonly replacedConfirmedSessionId: string | null;
+
+  constructor(message: string, replacedConfirmedSessionId: string | null) {
+    super(message);
+    this.name = "SessionSpawnError";
+    this.replacedConfirmedSessionId = replacedConfirmedSessionId;
+  }
+}
+
+function normalizeSessionSpawnError(error: unknown): never {
+  if (typeof error === "object" && error !== null) {
+    const candidate = error as {
+      readonly message?: unknown;
+      readonly replacedConfirmedSessionId?: unknown;
+    };
+    if (typeof candidate.message === "string") {
+      throw new SessionSpawnError(
+        candidate.message,
+        typeof candidate.replacedConfirmedSessionId === "string"
+          ? candidate.replacedConfirmedSessionId
+          : null,
+      );
+    }
+  }
+  throw error;
+}
+
 /**
  * Session を新規 spawn する。session_id が省略されると default-session を
  * 作る（Phase B-1 互換）。複数 session を持つときは caller が stable な
  * session_id を渡す。
  */
-export const sessionSpawn = (args: SessionSpawnArgs): Promise<void> => call("session_spawn", args);
+export const sessionSpawn = async (args: SessionSpawnArgs): Promise<SessionSpawnResult> => {
+  try {
+    return await call<SessionSpawnResult>("session_spawn", args);
+  } catch (error) {
+    normalizeSessionSpawnError(error);
+  }
+};
 
 export interface SessionWriteArgs {
   readonly sessionId: string;
@@ -165,6 +206,20 @@ export const sessionRealtimeCapabilities = (args: {
 export const sessionRealtimeSelectedThread = (args: {
   readonly sessionId: string;
 }): Promise<string | null> => call("session_realtime_selected_thread", args);
+
+export interface SessionRealtimeSelectedThreadState {
+  readonly sessionId: string;
+  /** resume / fork、または最初の turn/start 済み。thread/start だけなら未確定。 */
+  readonly confirmed: boolean;
+  /** 同じ app-server process 内の top-level selection / turn-start revision。 */
+  readonly revision: number;
+}
+
+/** Codex TUI proxy が選択したthreadと、会話として確定済みかを返す。 */
+export const sessionRealtimeSelectedThreadState = (args: {
+  readonly sessionId: string;
+}): Promise<SessionRealtimeSelectedThreadState | null> =>
+  call("session_realtime_selected_thread_state", args);
 
 /** Rust host が所有する realtime connection へ JSON-RPC text を送る。 */
 export const sessionRealtimeSend = (args: {

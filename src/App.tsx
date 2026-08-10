@@ -30,9 +30,12 @@ import {
   prepareLocalizedPluginDir,
   ptyWrite,
   resolveCommandPath,
+  type SessionRealtimeSelectedThreadState,
+  SessionSpawnError,
   type SpawnSpec,
   sessionDestroy,
   sessionList,
+  sessionRealtimeSelectedThreadState,
   sessionRefreshTheme,
   snapshotCreate,
   snapshotList,
@@ -235,10 +238,38 @@ import {
   withSessionPersonaRecord,
 } from "./runtime/sessions";
 import {
+  type ActiveConversationEntry,
+  beginConversationTransition,
+  type ConversationEntryLaunch,
+  type ConversationNavigationAction,
+  type ConversationNavigationDirection,
+  type ConversationNavigationTrail,
+  type ConversationTransitionKind,
+  type ConversationTransitionLease,
+  canNavigateConversation,
+  conversationEntriesEqual,
+  conversationEntryLaunch,
+  conversationNavigationReducer,
+  conversationNavigationTarget,
+  createConversationTransitionGate,
+  currentConversationEntry,
+  EMPTY_CONVERSATION_NAVIGATION_TRAIL,
+  finishConversationTransition,
+  isConversationTransitionActive,
+  prepareConversationDraftForReplacement,
+  prepareFreshConversationRequest,
+} from "./runtime/sessions/conversation-navigation";
+import {
   spawnSpecFromDefaultProfile,
   withAgentResumePolicy,
+  withAgentResumeSessionId,
   withAgentRuntimeFields,
 } from "./runtime/sessions/default-spawn-spec";
+import {
+  readConversationSelectionWithin,
+  waitForConversationSelectionAfterSubmit,
+  waitForObservedSessionId,
+} from "./runtime/sessions/observed-session";
 import { getSurfaceRegistry, type SurfaceName } from "./runtime/surface-registry";
 import {
   getAgentToolRunStore,
@@ -2448,10 +2479,53 @@ function App() {
   const [mainSessionResumeEnabled, setMainSessionResumeEnabled] = useState(true);
   const [mainFreshRequestSeq, setMainFreshRequestSeq] = useState(0);
   const [mainSessionReplacing, setMainSessionReplacing] = useState(false);
+  const [mainConversationTrail, reactDispatchMainConversationTrail] = React.useReducer(
+    conversationNavigationReducer,
+    EMPTY_CONVERSATION_NAVIGATION_TRAIL,
+  );
   const [voiceReconnectPending, setVoiceReconnectPending] = useState(false);
+  const mainConversationTransitionGateRef = useRef(createConversationTransitionGate());
+  const mainConversationTrailRef = useRef<ConversationNavigationTrail>(
+    EMPTY_CONVERSATION_NAVIGATION_TRAIL,
+  );
+  const pendingFreshRollbackLaunchRef = useRef<ConversationEntryLaunch | null>(null);
+  const pendingFreshDraftLeaseRef = useRef("");
+  const pendingFreshTransitionLeaseRef = useRef<ConversationTransitionLease | null>(null);
+  const mainConversationGenerationRef = useRef(0);
+  const draftHydrationInFlightRef = useRef<Map<number, Promise<string | null>>>(new Map());
+  const confirmedObservationInFlightRef = useRef<Map<number, Promise<void>>>(new Map());
+  const mainConversationSubmitSequenceRef = useRef(0);
+  const latestMainConversationSelectionRef = useRef<{
+    readonly generation: number;
+    readonly selection: SessionRealtimeSelectedThreadState | null;
+  } | null>(null);
+  const mainDraftSequenceRef = useRef(0);
   const mainFreshLatestSeqRef = useRef(0);
   const mainFreshEnqueuedSeqRef = useRef(0);
   const mainFreshSpawnQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const dispatchMainConversationTrail = useCallback((action: ConversationNavigationAction) => {
+    mainConversationTrailRef.current = conversationNavigationReducer(
+      mainConversationTrailRef.current,
+      action,
+    );
+    reactDispatchMainConversationTrail(action);
+  }, []);
+  const beginMainConversationTransition = useCallback(
+    (kind: ConversationTransitionKind): ConversationTransitionLease | null => {
+      const lease = beginConversationTransition(mainConversationTransitionGateRef.current, kind);
+      if (lease !== null) setMainSessionReplacing(true);
+      return lease;
+    },
+    [],
+  );
+  const finishMainConversationTransition = useCallback(
+    (lease: ConversationTransitionLease): void => {
+      if (finishConversationTransition(mainConversationTransitionGateRef.current, lease)) {
+        setMainSessionReplacing(false);
+      }
+    },
+    [],
+  );
   // undefined = まだ未解決、null = 空（非注入）、string = 注入する内容。
   const [resolvedSystemPrompt, setResolvedSystemPrompt] = useState<string | null | undefined>(
     undefined,
@@ -3757,6 +3831,7 @@ function App() {
   }, [codexRealtimeState.status, mainSessionReplacing, voiceReconnectPending]);
 
   const handleToggleVoice = useCallback(async () => {
+    if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return;
     if (voiceReconnectPending) {
       stopCodexRealtime();
       setVoiceReconnectPending(false);
@@ -4382,44 +4457,563 @@ function App() {
     return labels;
   }, [cwd, homeDir, tabManager, tabState.mainSessionId, tabState.sessions]);
 
-  const handleNewMainConversation = useCallback(() => {
+  const readCurrentMainConversationSelection = useCallback(async () => {
+    if (terminalAgent !== "codex") return null;
     const mainSessionId = tabManager.getState().mainSessionId;
-    tabManager.switchTo(mainSessionId);
-    localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, mainSessionId);
-    setVoiceReconnectPending(
-      (pending) =>
-        pending ||
-        codexRealtimeState.status === "active" ||
-        codexRealtimeState.status === "connecting",
+    const generation = mainConversationGenerationRef.current;
+    try {
+      const selection = await sessionRealtimeSelectedThreadState({ sessionId: mainSessionId });
+      if (mainConversationGenerationRef.current === generation) {
+        latestMainConversationSelectionRef.current = { generation, selection };
+      }
+      return selection;
+    } catch (error) {
+      console.warn("[session-navigation] failed to read Codex thread state", error);
+      return null;
+    }
+  }, [tabManager, terminalAgent]);
+
+  const readConfirmedMainConversationId = useCallback(async (): Promise<string | null> => {
+    const selected = await readConversationSelectionWithin(
+      readCurrentMainConversationSelection,
+      250,
     );
-    setMainSessionReplacing(true);
-    const requestSeq = mainFreshLatestSeqRef.current + 1;
-    mainFreshLatestSeqRef.current = requestSeq;
-    setMainFreshRequestSeq(requestSeq);
-  }, [codexRealtimeState.status, tabManager]);
+    return selected?.confirmed === true && selected.sessionId.length > 0
+      ? selected.sessionId
+      : null;
+  }, [readCurrentMainConversationSelection]);
 
-  useEffect(() => {
-    if (!canMountTerminals || mainFreshRequestSeq === 0) return;
-    if (mainFreshEnqueuedSeqRef.current >= mainFreshRequestSeq) return;
-    mainFreshEnqueuedSeqRef.current = mainFreshRequestSeq;
+  const refreshCachedConversationSelectionImmediately = useCallback(async (): Promise<void> => {
+    await readConversationSelectionWithin(readCurrentMainConversationSelection, 40);
+  }, [readCurrentMainConversationSelection]);
 
-    const requestSeq = mainFreshRequestSeq;
+  const spawnFreshMainConversation = useCallback(async (): Promise<string | null> => {
     const mainSessionId = tabManager.getState().mainSessionId;
     const sessionCwd = getSessionCwd(mainSessionId);
     const params = {
       spec: withAgentResumePolicy(getTerminalSpec(mainSessionId), false),
       cwd: sessionCwd === undefined ? cwd : sessionCwd,
     };
-    const spawn = mainFreshSpawnQueueRef.current
-      .catch(() => {})
-      .then(() => getTerminalRuntime(mainSessionId).forceRespawnWithParams(params));
-    mainFreshSpawnQueueRef.current = spawn;
-    void spawn.finally(() => {
-      if (mainFreshLatestSeqRef.current === requestSeq) {
-        setMainSessionReplacing(false);
+    mainConversationGenerationRef.current += 1;
+    const result = await getTerminalRuntime(mainSessionId).forceRespawnWithParams(params);
+    return result?.replacedConfirmedSessionId ?? null;
+  }, [cwd, getSessionCwd, getTerminalSpec, tabManager]);
+
+  const resumeMainConversationExactly = useCallback(
+    async (sessionId: string): Promise<string> => {
+      const mainSessionId = tabManager.getState().mainSessionId;
+      const sessionCwd = getSessionCwd(mainSessionId);
+      const params = {
+        spec: withAgentResumeSessionId(getTerminalSpec(mainSessionId), sessionId),
+        cwd: sessionCwd === undefined ? cwd : sessionCwd,
+      };
+      const generation = mainConversationGenerationRef.current + 1;
+      mainConversationGenerationRef.current = generation;
+      await getTerminalRuntime(mainSessionId).forceRespawnWithParams(params);
+      const observedSessionId = await waitForObservedSessionId(
+        async () => {
+          const selected = await readConversationSelectionWithin(
+            readCurrentMainConversationSelection,
+            100,
+          );
+          return selected?.confirmed === true ? selected.sessionId : null;
+        },
+        {
+          timeoutMs: 2_000,
+          pollIntervalMs: 50,
+          shouldContinue: () => mainConversationGenerationRef.current === generation,
+        },
+      );
+      if (observedSessionId === null) {
+        throw new Error(`Timed out waiting for Codex session ${sessionId}`);
+      }
+      return observedSessionId;
+    },
+    [cwd, getSessionCwd, getTerminalSpec, readCurrentMainConversationSelection, tabManager],
+  );
+
+  const restoreMainConversationLaunch = useCallback(
+    async (launch: ConversationEntryLaunch): Promise<string | null> => {
+      if (launch.kind === "exact-resume") {
+        return resumeMainConversationExactly(launch.sessionId);
+      }
+      await spawnFreshMainConversation();
+      return null;
+    },
+    [resumeMainConversationExactly, spawnFreshMainConversation],
+  );
+
+  const restoreMainConversationEntry = useCallback(
+    async (entry: ActiveConversationEntry): Promise<string | null> => {
+      return restoreMainConversationLaunch(conversationEntryLaunch(entry));
+    },
+    [restoreMainConversationLaunch],
+  );
+
+  const tryHydrateActiveDraft = useCallback(
+    async (timeoutMs: number, coalesceByGeneration: boolean): Promise<string | null> => {
+      if (terminalAgent !== "codex") return null;
+      const trail = mainConversationTrailRef.current;
+      const entry = currentConversationEntry(trail);
+      if (entry?.kind !== "new-draft") return null;
+      const generation = mainConversationGenerationRef.current;
+      const hydrate = async (): Promise<string | null> => {
+        const readConfirmedSessionId =
+          timeoutMs === 0
+            ? async (): Promise<string | null> => {
+                const selected = await readConversationSelectionWithin(
+                  readCurrentMainConversationSelection,
+                  40,
+                );
+                return selected?.confirmed === true ? selected.sessionId : null;
+              }
+            : readConfirmedMainConversationId;
+        const observedSessionId = await waitForObservedSessionId(readConfirmedSessionId, {
+          timeoutMs,
+          pollIntervalMs: 50,
+          shouldContinue: () => {
+            if (mainConversationGenerationRef.current !== generation) return false;
+            if (
+              coalesceByGeneration &&
+              isConversationTransitionActive(mainConversationTransitionGateRef.current)
+            ) {
+              return false;
+            }
+            const current = currentConversationEntry(mainConversationTrailRef.current);
+            return current?.kind === "new-draft" && current.lease === entry.lease;
+          },
+        });
+        if (observedSessionId === null) return null;
+        const current = currentConversationEntry(mainConversationTrailRef.current);
+        if (current?.kind !== "new-draft" || current.lease !== entry.lease) return null;
+        dispatchMainConversationTrail({
+          type: "draft-hydrated",
+          draftLease: entry.lease,
+          sessionId: observedSessionId,
+        });
+        return observedSessionId;
+      };
+
+      if (!coalesceByGeneration) return hydrate();
+      const existing = draftHydrationInFlightRef.current.get(generation);
+      if (existing) return existing;
+      const operation = hydrate().finally(() => {
+        if (draftHydrationInFlightRef.current.get(generation) === operation) {
+          draftHydrationInFlightRef.current.delete(generation);
+        }
+      });
+      draftHydrationInFlightRef.current.set(generation, operation);
+      return operation;
+    },
+    [
+      dispatchMainConversationTrail,
+      readConfirmedMainConversationId,
+      readCurrentMainConversationSelection,
+      terminalAgent,
+    ],
+  );
+
+  const prepareActiveDraftForReplacement = useCallback(async (): Promise<void> => {
+    await prepareConversationDraftForReplacement({
+      getCurrentEntry: () => currentConversationEntry(mainConversationTrailRef.current),
+      // UI transitionでは長いprovider観測を待たない。現在値を一度だけ読み、
+      // 未確定なら置換を即座に中止してbackground hydrationへ任せる。
+      hydrate: () => tryHydrateActiveDraft(0, false),
+    });
+  }, [tryHydrateActiveDraft]);
+
+  const observeConversationSelectionAfterSubmit = useCallback(
+    async (baselineRevision: number | null, submitSequence: number): Promise<void> => {
+      const trail = mainConversationTrailRef.current;
+      if (trail.transient !== null) return;
+      const generation = mainConversationGenerationRef.current;
+      const existing = confirmedObservationInFlightRef.current.get(generation);
+      if (existing) return existing;
+      const modeledSessionId = trail.entries[trail.cursor]?.id ?? null;
+      const shouldContinue = (): boolean => {
+        if (mainConversationGenerationRef.current !== generation) return false;
+        if (isConversationTransitionActive(mainConversationTransitionGateRef.current)) return false;
+        const current = mainConversationTrailRef.current;
+        if (current.transient !== null) return false;
+        return (current.entries[current.cursor]?.id ?? null) === modeledSessionId;
+      };
+      const operation = (async () => {
+        const selection = await waitForConversationSelectionAfterSubmit({
+          readSelection: readCurrentMainConversationSelection,
+          baselineRevision,
+          modeledSessionId,
+          submitSequence,
+          getCurrentSubmitSequence: () => mainConversationSubmitSequenceRef.current,
+          shouldContinue,
+        });
+        if (selection === null || mainConversationGenerationRef.current !== generation) return;
+        const current = mainConversationTrailRef.current;
+        if (
+          current.transient !== null ||
+          (current.entries[current.cursor]?.id ?? null) !== modeledSessionId
+        ) {
+          return;
+        }
+        if (selection.confirmed) {
+          dispatchMainConversationTrail({
+            type: "confirmed-session-observed",
+            sessionId: selection.sessionId,
+          });
+        } else if (modeledSessionId !== null && selection.sessionId !== modeledSessionId) {
+          // provider-native `/new` も toolbar New と同じ ephemeral draft として表現する。
+          mainDraftSequenceRef.current += 1;
+          dispatchMainConversationTrail({
+            type: "fresh-session-succeeded",
+            draftLease: `native-draft-${mainDraftSequenceRef.current}`,
+          });
+        }
+      })().finally(() => {
+        if (confirmedObservationInFlightRef.current.get(generation) === operation) {
+          confirmedObservationInFlightRef.current.delete(generation);
+        }
+      });
+      confirmedObservationInFlightRef.current.set(generation, operation);
+      return operation;
+    },
+    [dispatchMainConversationTrail, readCurrentMainConversationSelection],
+  );
+
+  const reconcileCachedConversationSelectionBeforeTransition = useCallback((): void => {
+    const generation = mainConversationGenerationRef.current;
+    const cached = latestMainConversationSelectionRef.current;
+    const selection = cached?.generation === generation ? cached.selection : null;
+    if (selection === null) return;
+    const trail = mainConversationTrailRef.current;
+    if (trail.transient !== null) return;
+    const modeledSessionId = trail.entries[trail.cursor]?.id ?? null;
+    if (selection.confirmed) {
+      dispatchMainConversationTrail({
+        type: "confirmed-session-observed",
+        sessionId: selection.sessionId,
+      });
+    } else if (modeledSessionId !== null && selection.sessionId !== modeledSessionId) {
+      mainDraftSequenceRef.current += 1;
+      dispatchMainConversationTrail({
+        type: "fresh-session-succeeded",
+        draftLease: `native-draft-${mainDraftSequenceRef.current}`,
+      });
+    }
+  }, [dispatchMainConversationTrail]);
+
+  const reconcileReplacedConfirmedSession = useCallback(
+    (sessionId: string): void => {
+      if (sessionId.length === 0) return;
+      dispatchMainConversationTrail({ type: "outgoing-session-confirmed", sessionId });
+    },
+    [dispatchMainConversationTrail],
+  );
+
+  useEffect(() => {
+    if (terminalAgent !== "codex") dispatchMainConversationTrail({ type: "reset" });
+  }, [dispatchMainConversationTrail, terminalAgent]);
+
+  useEffect(() => {
+    if (
+      !canMountTerminals ||
+      terminalAgent !== "codex" ||
+      mainConversationTrail.entries.length > 0 ||
+      mainConversationTrail.transient !== null
+    ) {
+      return;
+    }
+    const generation = mainConversationGenerationRef.current;
+    let cancelled = false;
+    void waitForObservedSessionId(readConfirmedMainConversationId, {
+      timeoutMs: 15_000,
+      pollIntervalMs: 100,
+      shouldContinue: () =>
+        !cancelled &&
+        mainConversationGenerationRef.current === generation &&
+        !isConversationTransitionActive(mainConversationTransitionGateRef.current) &&
+        mainConversationTrailRef.current.entries.length === 0 &&
+        mainConversationTrailRef.current.transient === null,
+    }).then((sessionId) => {
+      if (!cancelled && sessionId) {
+        dispatchMainConversationTrail({ type: "confirmed-session-observed", sessionId });
       }
     });
-  }, [canMountTerminals, cwd, getSessionCwd, getTerminalSpec, mainFreshRequestSeq, tabManager]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    canMountTerminals,
+    dispatchMainConversationTrail,
+    mainConversationTrail.entries.length,
+    mainConversationTrail.transient,
+    readConfirmedMainConversationId,
+    terminalAgent,
+  ]);
+
+  const handleNewMainConversation = useCallback(async () => {
+    if (!canMountTerminals) return;
+    const transitionLease = beginMainConversationTransition("new");
+    if (transitionLease === null) return;
+    let handedOffToSpawnEffect = false;
+
+    try {
+      // provider ID が通常時のbackground観測で確認済みならexact rollbackを保持する。
+      // 未取得でもNew自体は止めず、履歴/rollbackなしのfresh draftへ即時degradeする。
+      mainDraftSequenceRef.current += 1;
+      const request = await prepareFreshConversationRequest({
+        draftLease: `draft-${mainDraftSequenceRef.current}`,
+        prepareActiveDraft: async () => {
+          await prepareActiveDraftForReplacement();
+          // background cacheを優先しつつ、click時のprovider stateを最大40msだけ拾う。
+          await refreshCachedConversationSelectionImmediately();
+        },
+        reconcileCachedSelection: reconcileCachedConversationSelectionBeforeTransition,
+        getTrail: () => mainConversationTrailRef.current,
+      });
+
+      const mainSessionId = tabManager.getState().mainSessionId;
+      tabManager.switchTo(mainSessionId);
+      localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, mainSessionId);
+      pendingFreshRollbackLaunchRef.current = request.rollbackLaunch;
+      pendingFreshDraftLeaseRef.current = request.draftLease;
+      pendingFreshTransitionLeaseRef.current = transitionLease;
+      setVoiceReconnectPending(
+        (pending) =>
+          pending ||
+          codexRealtimeState.status === "active" ||
+          codexRealtimeState.status === "connecting",
+      );
+      const requestSeq = mainFreshLatestSeqRef.current + 1;
+      mainFreshLatestSeqRef.current = requestSeq;
+      handedOffToSpawnEffect = true;
+      setMainFreshRequestSeq(requestSeq);
+    } catch (error) {
+      console.error("[session-navigation] failed to prepare a fresh Main Agent session", error);
+      dispatchMainConversationTrail({ type: "operation-failed" });
+    } finally {
+      if (!handedOffToSpawnEffect) finishMainConversationTransition(transitionLease);
+    }
+  }, [
+    beginMainConversationTransition,
+    canMountTerminals,
+    codexRealtimeState.status,
+    dispatchMainConversationTrail,
+    finishMainConversationTransition,
+    prepareActiveDraftForReplacement,
+    reconcileCachedConversationSelectionBeforeTransition,
+    refreshCachedConversationSelectionImmediately,
+    tabManager,
+  ]);
+
+  useEffect(() => {
+    if (!canMountTerminals || mainFreshRequestSeq === 0) return;
+    if (mainFreshEnqueuedSeqRef.current >= mainFreshRequestSeq) return;
+
+    const rollbackLaunch = pendingFreshRollbackLaunchRef.current;
+    const draftLease = pendingFreshDraftLeaseRef.current;
+    const transitionLease = pendingFreshTransitionLeaseRef.current;
+    if (transitionLease === null || transitionLease.kind !== "new") return;
+    mainFreshEnqueuedSeqRef.current = mainFreshRequestSeq;
+    const spawningAgent = terminalAgent;
+    const operation = mainFreshSpawnQueueRef.current
+      .catch(() => {})
+      .then(() => spawnFreshMainConversation())
+      .then((replacedConfirmedSessionId) => {
+        if (spawningAgent !== "codex") return;
+        // Rustのreplace境界で取得したoutgoing IDをsource of truthにする。
+        // click-time pollingがAを取り逃しても、Aを確定trailへ同期してからdraftを重ねる。
+        if (replacedConfirmedSessionId !== null) {
+          reconcileReplacedConfirmedSession(replacedConfirmedSessionId);
+        }
+        dispatchMainConversationTrail({
+          type: "fresh-session-succeeded",
+          draftLease,
+        });
+      });
+    mainFreshSpawnQueueRef.current = operation;
+    void operation
+      .catch(async (error) => {
+        console.error("[session-navigation] failed to start a fresh Main Agent session", error);
+        dispatchMainConversationTrail({ type: "operation-failed" });
+        const replacedConfirmedSessionId =
+          error instanceof SessionSpawnError ? error.replacedConfirmedSessionId : null;
+        const effectiveRollbackLaunch =
+          replacedConfirmedSessionId === null
+            ? rollbackLaunch
+            : ({
+                kind: "exact-resume",
+                sessionId: replacedConfirmedSessionId,
+              } satisfies ConversationEntryLaunch);
+        if (spawningAgent === "codex" && effectiveRollbackLaunch) {
+          try {
+            // State を非 commit のままにする場合、表示側も trail current へ戻して invariant を守る。
+            const actualSessionId = await restoreMainConversationLaunch(effectiveRollbackLaunch);
+            if (effectiveRollbackLaunch.kind === "exact-resume" && actualSessionId !== null) {
+              dispatchMainConversationTrail({
+                type: "current-session-replaced",
+                expectedSessionId: effectiveRollbackLaunch.sessionId,
+                actualSessionId,
+              });
+              // trailが未seed、またはtransientだった場合もactual runtimeへ同期する。
+              reconcileReplacedConfirmedSession(actualSessionId);
+            }
+          } catch (rollbackError) {
+            console.error(
+              "[session-navigation] failed to restore the prior Codex session",
+              rollbackError,
+            );
+            dispatchMainConversationTrail({ type: "reset" });
+          }
+        }
+      })
+      .finally(() => {
+        if (pendingFreshTransitionLeaseRef.current?.id === transitionLease.id) {
+          pendingFreshTransitionLeaseRef.current = null;
+        }
+        finishMainConversationTransition(transitionLease);
+      });
+  }, [
+    canMountTerminals,
+    dispatchMainConversationTrail,
+    finishMainConversationTransition,
+    mainFreshRequestSeq,
+    reconcileReplacedConfirmedSession,
+    restoreMainConversationLaunch,
+    spawnFreshMainConversation,
+    terminalAgent,
+  ]);
+
+  const handleMainConversationNavigation = useCallback(
+    async (direction: ConversationNavigationDirection) => {
+      if (terminalAgent !== "codex") return;
+      const transitionLease = beginMainConversationTransition(direction);
+      if (transitionLease === null) return;
+      let currentEntry: ActiveConversationEntry | null = null;
+
+      try {
+        await prepareActiveDraftForReplacement();
+        await refreshCachedConversationSelectionImmediately();
+        reconcileCachedConversationSelectionBeforeTransition();
+
+        const trail = mainConversationTrailRef.current;
+        currentEntry = currentConversationEntry(trail);
+        const targetEntry = conversationNavigationTarget(trail, direction);
+        if (!currentEntry || !targetEntry || conversationEntriesEqual(targetEntry, currentEntry)) {
+          return;
+        }
+
+        const mainSessionId = tabManager.getState().mainSessionId;
+        tabManager.switchTo(mainSessionId);
+        localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, mainSessionId);
+
+        setVoiceReconnectPending(
+          (pending) =>
+            pending ||
+            codexRealtimeState.status === "active" ||
+            codexRealtimeState.status === "connecting",
+        );
+
+        const launch = conversationEntryLaunch(targetEntry);
+        let actualSessionId: string | undefined;
+        if (launch.kind === "exact-resume") {
+          actualSessionId = await resumeMainConversationExactly(launch.sessionId);
+        } else {
+          await spawnFreshMainConversation();
+        }
+        dispatchMainConversationTrail({
+          type: "navigation-succeeded",
+          direction,
+          entry: targetEntry,
+          actualSessionId,
+        });
+      } catch (error) {
+        console.error(`[session-navigation] failed to navigate ${direction}`, error);
+        dispatchMainConversationTrail({ type: "operation-failed" });
+        if (currentEntry !== null) {
+          try {
+            const actualSessionId = await restoreMainConversationEntry(currentEntry);
+            if (currentEntry.kind === "session" && actualSessionId !== null) {
+              dispatchMainConversationTrail({
+                type: "current-session-replaced",
+                expectedSessionId: currentEntry.id,
+                actualSessionId,
+              });
+            }
+          } catch (rollbackError) {
+            console.error(
+              "[session-navigation] failed to restore the current Codex session",
+              rollbackError,
+            );
+            // 表示中 PTY と cursor の対応を復元できなければ、誤った ID への追加 navigation を止める。
+            dispatchMainConversationTrail({ type: "reset" });
+          }
+        }
+      } finally {
+        finishMainConversationTransition(transitionLease);
+      }
+    },
+    [
+      beginMainConversationTransition,
+      codexRealtimeState.status,
+      dispatchMainConversationTrail,
+      finishMainConversationTransition,
+      prepareActiveDraftForReplacement,
+      reconcileCachedConversationSelectionBeforeTransition,
+      refreshCachedConversationSelectionImmediately,
+      restoreMainConversationEntry,
+      resumeMainConversationExactly,
+      spawnFreshMainConversation,
+      tabManager,
+      terminalAgent,
+    ],
+  );
+
+  useEffect(() => {
+    if (!canMountTerminals || terminalAgent !== "codex") return;
+    const runtime = getTerminalRuntime(tabManager.getState().mainSessionId);
+    const subscription = runtime.subscribeUserInput((data) => {
+      if (!data || isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
+        return;
+      }
+      const entry = currentConversationEntry(mainConversationTrailRef.current);
+      if (entry === null) {
+        if (data.includes("\r") || data.includes("\n")) {
+          const generation = mainConversationGenerationRef.current;
+          const cached = latestMainConversationSelectionRef.current;
+          const baselineRevision =
+            cached?.generation === generation ? cached.selection?.revision : null;
+          mainConversationSubmitSequenceRef.current += 1;
+          void observeConversationSelectionAfterSubmit(
+            baselineRevision ?? null,
+            mainConversationSubmitSequenceRef.current,
+          );
+        }
+        return;
+      }
+      if (entry.kind !== "new-draft") {
+        if (data.includes("\r") || data.includes("\n")) {
+          const generation = mainConversationGenerationRef.current;
+          const cached = latestMainConversationSelectionRef.current;
+          const baselineRevision =
+            cached?.generation === generation ? cached.selection?.revision : null;
+          mainConversationSubmitSequenceRef.current += 1;
+          void observeConversationSelectionAfterSubmit(
+            baselineRevision ?? null,
+            mainConversationSubmitSequenceRef.current,
+          );
+        }
+        return;
+      }
+      if (!data.includes("\r") && !data.includes("\n")) return;
+      void tryHydrateActiveDraft(15_000, true);
+    });
+    return () => subscription.dispose();
+  }, [
+    canMountTerminals,
+    observeConversationSelectionAfterSubmit,
+    tabManager,
+    terminalAgent,
+    tryHydrateActiveDraft,
+  ]);
 
   const titleBarVoiceState =
     voiceReconnectPending && codexRealtimeState.status === "idle"
@@ -4611,6 +5205,7 @@ function App() {
         onToggleSidebar={handleToggleSidebar}
         onOpenSettings={handleOpenSettings}
         voiceAvailable={voiceEntryAvailable}
+        voiceDisabled={mainSessionReplacing}
         voiceState={titleBarVoiceState}
         voiceMicrophoneActive={codexRealtimeState.microphoneActive === true}
         voiceLabel={
@@ -4631,8 +5226,41 @@ function App() {
             statuses={sessionStatusById}
             hookBadges={sessionHookBadges}
             onSelectSession={(sessionId) => tabManager.switchTo(sessionId)}
-            newConversationLabel={strings.newConversation}
-            onNewConversation={handleNewMainConversation}
+            backConversationLabel={
+              mainSessionReplacing
+                ? strings.switchingConversation
+                : canNavigateConversation(mainConversationTrail, "back")
+                  ? strings.backConversation
+                  : strings.noBackConversation
+            }
+            backConversationDisabled={
+              mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "back")
+            }
+            onBackConversation={
+              terminalAgent === "codex"
+                ? () => void handleMainConversationNavigation("back")
+                : undefined
+            }
+            forwardConversationLabel={
+              mainSessionReplacing
+                ? strings.switchingConversation
+                : canNavigateConversation(mainConversationTrail, "forward")
+                  ? strings.forwardConversation
+                  : strings.noForwardConversation
+            }
+            forwardConversationDisabled={
+              mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "forward")
+            }
+            onForwardConversation={
+              terminalAgent === "codex"
+                ? () => void handleMainConversationNavigation("forward")
+                : undefined
+            }
+            newConversationLabel={
+              mainSessionReplacing ? strings.switchingConversation : strings.newConversation
+            }
+            newConversationDisabled={mainSessionReplacing}
+            onNewConversation={() => void handleNewMainConversation()}
             onAddSession={() => tabManager.openShell(cwd)}
             onCloseSession={(sessionId) => tabManager.close(sessionId)}
           />

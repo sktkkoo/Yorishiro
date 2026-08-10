@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::net::TcpListener;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -15,9 +15,19 @@ use tokio_tungstenite::tungstenite::{
 /// transcript や turn payload は保存しない。
 pub(super) struct CodexTuiProxy {
     endpoint: String,
-    selected_thread_id: Arc<Mutex<Option<String>>>,
+    selected_thread: Arc<Mutex<Option<SelectedThread>>>,
     shutdown: Option<oneshot::Sender<()>>,
     thread: Option<JoinHandle<()>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct SelectedThread {
+    pub(super) id: String,
+    /// resume / fork response、または最初の turn/start 済みなら true。
+    /// thread/start response だけなら未確定。
+    pub(super) confirmed: bool,
+    /// proxy が観測した top-level selection / turn-start ごとに増える。
+    pub(super) revision: u64,
 }
 
 impl CodexTuiProxy {
@@ -31,8 +41,8 @@ impl CodexTuiProxy {
             .set_nonblocking(true)
             .map_err(|error| format!("Codex TUI proxy nonblocking setup failed: {error}"))?;
         let endpoint = format!("ws://{address}");
-        let selected_thread_id = Arc::new(Mutex::new(None));
-        let task_selected_thread_id = Arc::clone(&selected_thread_id);
+        let selected_thread = Arc::new(Mutex::new(None));
+        let task_selected_thread = Arc::clone(&selected_thread);
         let (shutdown, mut shutdown_rx) = oneshot::channel();
 
         let thread = std::thread::Builder::new()
@@ -62,7 +72,7 @@ impl CodexTuiProxy {
                             accepted = listener.accept() => {
                                 let Ok((stream, _)) = accepted else { continue };
                                 let upstream = upstream_endpoint.clone();
-                                let selected = Arc::clone(&task_selected_thread_id);
+                                let selected = Arc::clone(&task_selected_thread);
                                 tokio::spawn(async move {
                                     if let Err(error) = proxy_connection(stream, upstream, selected).await {
                                         eprintln!("[codex-tui-proxy] connection ended: {error}");
@@ -77,7 +87,7 @@ impl CodexTuiProxy {
 
         Ok(Self {
             endpoint,
-            selected_thread_id,
+            selected_thread,
             shutdown: Some(shutdown),
             thread: Some(thread),
         })
@@ -88,7 +98,15 @@ impl CodexTuiProxy {
     }
 
     pub(super) fn selected_thread_id(&self) -> Option<String> {
-        self.selected_thread_id
+        self.selected_thread
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .map(|selected| selected.id.clone())
+    }
+
+    pub(super) fn selected_thread(&self) -> Option<SelectedThread> {
+        self.selected_thread
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone()
@@ -123,7 +141,7 @@ impl Callback for RejectBrowserOrigin {
 async fn proxy_connection(
     client_stream: tokio::net::TcpStream,
     upstream_endpoint: String,
-    selected_thread_id: Arc<Mutex<Option<String>>>,
+    selected_thread: Arc<Mutex<Option<SelectedThread>>>,
 ) -> Result<(), String> {
     let client = tokio_tungstenite::accept_hdr_async(client_stream, RejectBrowserOrigin)
         .await
@@ -133,8 +151,9 @@ async fn proxy_connection(
         .map_err(|error| format!("upstream connection failed: {error}"))?;
     let (mut client_sink, mut client_stream) = client.split();
     let (mut upstream_sink, mut upstream_stream) = upstream.split();
-    let mut thread_selection_requests = HashSet::new();
+    let mut thread_selection_requests = HashMap::new();
     let mut resume_fallback_requests = HashMap::new();
+    let mut turn_start_requests = HashMap::new();
 
     loop {
         tokio::select! {
@@ -144,6 +163,7 @@ async fn proxy_connection(
                 if let Message::Text(text) = &message {
                     track_thread_selection_request(text.as_ref(), &mut thread_selection_requests);
                     track_resume_fallback_request(text.as_ref(), &mut resume_fallback_requests);
+                    track_turn_start_request(text.as_ref(), &mut turn_start_requests);
                 }
                 upstream_sink.send(message).await
                     .map_err(|error| format!("upstream send failed: {error}"))?;
@@ -152,6 +172,12 @@ async fn proxy_connection(
                 let Some(message) = message else { break };
                 let message = message.map_err(|error| format!("upstream receive failed: {error}"))?;
                 if let Message::Text(text) = &message {
+                    if let Some(thread_id) = take_successful_turn_start_response(
+                        text.as_ref(),
+                        &mut turn_start_requests,
+                    ) {
+                        mark_selected_thread_confirmed(&thread_id, &selected_thread);
+                    }
                     if let Some(fallback) = take_active_writer_fallback_request(
                         text.as_ref(),
                         &mut resume_fallback_requests,
@@ -165,13 +191,17 @@ async fn proxy_connection(
                             .map_err(|error| format!("upstream fallback send failed: {error}"))?;
                         continue;
                     }
-                    if let Some(thread_id) = take_selected_thread_response(
+                    if let Some(mut selection) = take_selected_thread_response(
                         text.as_ref(),
                         &mut thread_selection_requests,
                     ) {
-                        *selected_thread_id
+                        let mut selected = selected_thread
                             .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(thread_id);
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        selection.revision = selected
+                            .as_ref()
+                            .map_or(1, |current| current.revision.saturating_add(1));
+                        *selected = Some(selection);
                     }
                 }
                 client_sink.send(message).await
@@ -186,27 +216,78 @@ fn request_id_key(value: &Value) -> Option<String> {
     serde_json::to_string(value).ok()
 }
 
-fn track_thread_selection_request(raw: &str, pending: &mut HashSet<String>) {
+fn track_thread_selection_request(raw: &str, pending: &mut HashMap<String, bool>) {
     let Ok(message) = serde_json::from_str::<Value>(raw) else {
         return;
     };
     let method = message.get("method").and_then(Value::as_str);
-    let selects_main_thread = match method {
-        Some("thread/start" | "thread/resume") => true,
-        Some("thread/fork") => {
-            message
-                .get("params")
-                .and_then(|params| params.get("excludeTurns"))
-                .and_then(Value::as_bool)
-                != Some(true)
-        }
-        _ => false,
+    let confirmed = match method {
+        Some("thread/start") => Some(false),
+        Some("thread/resume") => Some(true),
+        Some("thread/fork") => (message
+            .get("params")
+            .and_then(|params| params.get("excludeTurns"))
+            .and_then(Value::as_bool)
+            != Some(true))
+        .then_some(true),
+        _ => None,
     };
-    if !selects_main_thread {
+    if let (Some(key), Some(confirmed)) = (message.get("id").and_then(request_id_key), confirmed) {
+        pending.insert(key, confirmed);
+    }
+}
+
+fn track_turn_start_request(raw: &str, pending: &mut HashMap<String, String>) {
+    let Ok(message) = serde_json::from_str::<Value>(raw) else {
+        return;
+    };
+    if message.get("method").and_then(Value::as_str) != Some("turn/start") {
         return;
     }
+    let Some(thread_id) = message
+        .get("params")
+        .and_then(|params| params.get("threadId"))
+        .and_then(Value::as_str)
+    else {
+        return;
+    };
     if let Some(key) = message.get("id").and_then(request_id_key) {
-        pending.insert(key);
+        pending.insert(key, thread_id.to_string());
+    }
+}
+
+fn take_successful_turn_start_response(
+    raw: &str,
+    pending: &mut HashMap<String, String>,
+) -> Option<String> {
+    let message = serde_json::from_str::<Value>(raw).ok()?;
+    let object = message.as_object()?;
+    if object.contains_key("method") {
+        return None;
+    }
+    let has_result = object.contains_key("result");
+    let has_error = object.contains_key("error");
+    if has_result == has_error {
+        return None;
+    }
+    let key = message.get("id").and_then(request_id_key)?;
+    let thread_id = pending.remove(&key)?;
+    has_result.then_some(thread_id)
+}
+
+fn mark_selected_thread_confirmed(
+    thread_id: &str,
+    selected_thread: &Arc<Mutex<Option<SelectedThread>>>,
+) {
+    let mut selected = selected_thread
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(selected) = selected
+        .as_mut()
+        .filter(|selected| selected.id == thread_id)
+    {
+        selected.confirmed = true;
+        selected.revision = selected.revision.saturating_add(1);
     }
 }
 
@@ -277,7 +358,10 @@ fn take_active_writer_fallback_request(
     is_active_writer.then_some(fallback)
 }
 
-fn take_selected_thread_response(raw: &str, pending: &mut HashSet<String>) -> Option<String> {
+fn take_selected_thread_response(
+    raw: &str,
+    pending: &mut HashMap<String, bool>,
+) -> Option<SelectedThread> {
     let message = serde_json::from_str::<Value>(raw).ok()?;
     let object = message.as_object()?;
     if object.contains_key("method") {
@@ -289,16 +373,19 @@ fn take_selected_thread_response(raw: &str, pending: &mut HashSet<String>) -> Op
         return None;
     }
     let key = message.get("id").and_then(request_id_key)?;
-    if !pending.remove(&key) {
-        return None;
-    }
-    message
+    let confirmed = pending.remove(&key)?;
+    let id = message
         .get("result")?
         .get("thread")?
         .get("id")?
         .as_str()
-        .filter(|thread_id| !thread_id.is_empty())
-        .map(str::to_string)
+        .filter(|thread_id| !thread_id.is_empty())?;
+    Some(SelectedThread {
+        id: id.to_string(),
+        confirmed,
+        // proxy_connection が共有 state へ格納するとき単調 revision を割り当てる。
+        revision: 0,
+    })
 }
 
 #[cfg(test)]
@@ -359,6 +446,14 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(10)).await;
         }
         assert_eq!(proxy.selected_thread_id().as_deref(), Some("resumed"));
+        assert_eq!(
+            proxy.selected_thread(),
+            Some(SelectedThread {
+                id: "resumed".to_string(),
+                confirmed: true,
+                revision: 1,
+            })
+        );
         upstream_task.await.expect("upstream task");
     }
 
@@ -475,7 +570,7 @@ mod tests {
 
     #[test]
     fn observes_only_successful_thread_selection_responses() {
-        let mut pending = HashSet::new();
+        let mut pending = HashMap::new();
         track_thread_selection_request(
             r#"{"method":"thread/resume","id":7,"params":{"threadId":"old"}}"#,
             &mut pending,
@@ -485,14 +580,96 @@ mod tests {
                 r#"{"id":7,"result":{"thread":{"id":"resumed"}}}"#,
                 &mut pending,
             ),
-            Some("resumed".to_string())
+            Some(SelectedThread {
+                id: "resumed".to_string(),
+                confirmed: true,
+                revision: 0,
+            })
+        );
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn marks_thread_start_unconfirmed_until_the_provider_starts_a_turn() {
+        let mut pending = HashMap::new();
+        track_thread_selection_request(
+            r#"{"method":"thread/start","id":8,"params":{}}"#,
+            &mut pending,
+        );
+        assert_eq!(
+            take_selected_thread_response(
+                r#"{"id":8,"result":{"thread":{"id":"blank"}}}"#,
+                &mut pending,
+            ),
+            Some(SelectedThread {
+                id: "blank".to_string(),
+                confirmed: false,
+                revision: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn marks_started_thread_confirmed_when_its_first_turn_starts() {
+        let selected = Arc::new(Mutex::new(Some(SelectedThread {
+            id: "new-thread".to_string(),
+            confirmed: false,
+            revision: 1,
+        })));
+        let mut pending = HashMap::new();
+        track_turn_start_request(
+            r#"{"method":"turn/start","id":10,"params":{"threadId":"new-thread","input":[]}}"#,
+            &mut pending,
+        );
+        let thread_id = take_successful_turn_start_response(
+            r#"{"id":10,"result":{"turn":{"id":"turn-1"}}}"#,
+            &mut pending,
+        )
+        .expect("accepted turn");
+        mark_selected_thread_confirmed(&thread_id, &selected);
+        assert_eq!(
+            selected
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_ref()
+                .map(|selected| (selected.confirmed, selected.revision)),
+            Some((true, 2))
+        );
+    }
+
+    #[test]
+    fn rejected_turn_start_does_not_confirm_the_selected_thread() {
+        let selected = Arc::new(Mutex::new(Some(SelectedThread {
+            id: "new-thread".to_string(),
+            confirmed: false,
+            revision: 1,
+        })));
+        let mut pending = HashMap::new();
+        track_turn_start_request(
+            r#"{"method":"turn/start","id":10,"params":{"threadId":"new-thread","input":[]}}"#,
+            &mut pending,
+        );
+        assert_eq!(
+            take_successful_turn_start_response(
+                r#"{"id":10,"error":{"code":-32600,"message":"rejected"}}"#,
+                &mut pending,
+            ),
+            None
+        );
+        assert_eq!(
+            selected
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .as_ref()
+                .map(|selected| (selected.confirmed, selected.revision)),
+            Some((false, 1))
         );
         assert!(pending.is_empty());
     }
 
     #[test]
     fn ignores_unrelated_and_failed_responses() {
-        let mut pending = HashSet::new();
+        let mut pending = HashMap::new();
         track_thread_selection_request(
             r#"{"method":"thread/read","id":1,"params":{}}"#,
             &mut pending,
@@ -559,7 +736,7 @@ mod tests {
 
     #[test]
     fn server_request_id_collision_does_not_consume_pending_selection() {
-        let mut pending = HashSet::new();
+        let mut pending = HashMap::new();
         track_thread_selection_request(
             r#"{"method":"thread/resume","id":7,"params":{"threadId":"old"}}"#,
             &mut pending,
@@ -572,20 +749,24 @@ mod tests {
             ),
             None
         );
-        assert!(pending.contains("7"));
+        assert!(pending.contains_key("7"));
         assert_eq!(
             take_selected_thread_response(
                 r#"{"id":7,"result":{"thread":{"id":"resumed"}}}"#,
                 &mut pending,
             ),
-            Some("resumed".to_string())
+            Some(SelectedThread {
+                id: "resumed".to_string(),
+                confirmed: true,
+                revision: 0,
+            })
         );
         assert!(pending.is_empty());
     }
 
     #[test]
     fn malformed_response_does_not_consume_pending_selection() {
-        let mut pending = HashSet::new();
+        let mut pending = HashMap::new();
         track_thread_selection_request(
             r#"{"method":"thread/start","id":9,"params":{}}"#,
             &mut pending,
@@ -598,6 +779,6 @@ mod tests {
             ),
             None
         );
-        assert!(pending.contains("9"));
+        assert!(pending.contains_key("9"));
     }
 }

@@ -255,6 +255,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume: true,
+            resume_session_id: None,
             realtime_endpoint: None,
         }
     }
@@ -271,6 +272,7 @@ mod tests {
             mcp_port: 18743,
             hook_port: 19001,
             resume: true,
+            resume_session_id: None,
             realtime_endpoint: None,
         }
     }

@@ -18,6 +18,7 @@ export interface TitleBarProps {
   readonly settingsLabel: string;
   readonly sidebarLabel: string;
   readonly voiceAvailable?: boolean;
+  readonly voiceDisabled?: boolean;
   readonly voiceState?: VoiceControlState;
   /** Browser-owned microphone capture liveness, independent of the conversation status. */
   readonly voiceMicrophoneActive?: boolean;
@@ -35,6 +36,7 @@ export default function TitleBar({
   settingsLabel,
   sidebarLabel,
   voiceAvailable = false,
+  voiceDisabled = false,
   voiceState = "idle",
   voiceMicrophoneActive = false,
   voiceLabel = "",
@@ -79,6 +81,7 @@ export default function TitleBar({
             data-voice-state={voiceState}
             data-microphone-active={voiceMicrophoneActive}
             onClick={onToggleVoice}
+            disabled={voiceDisabled}
             aria-label={voiceLabel}
             aria-pressed={voiceState === "active"}
             aria-busy={voiceState === "connecting" || undefined}

@@ -69,6 +69,8 @@ pub struct LaunchContext<'a> {
     pub mcp_port: u16,
     pub hook_port: u16,
     pub resume: bool,
+    /// provider 固有の会話 ID を指定した exact resume。未指定時は従来の resume policy。
+    pub resume_session_id: Option<&'a str>,
     /// 同じ conversation を共有する agent app-server の WebSocket endpoint。
     pub realtime_endpoint: Option<&'a str>,
 }

@@ -133,6 +133,15 @@ describe("changeStrings", () => {
     expect(getStrings("ja").newConversation).toBe("新しいセッション");
   });
 
+  it("labels back/forward session navigation in both languages", () => {
+    expect(getStrings("en").backConversation).toBe("Back to previous session");
+    expect(getStrings("ja").backConversation).toBe("前のセッションに戻る");
+    expect(getStrings("en").forwardConversation).toBe("Forward to next session");
+    expect(getStrings("ja").forwardConversation).toBe("次のセッションに進む");
+    expect(getStrings("en").noBackConversation).toBe("No previous session");
+    expect(getStrings("en").noForwardConversation).toBe("No next session");
+  });
+
   it("labels the bundled Yori VRM reset action in both languages", () => {
     expect(getStrings("en").resetVrmToYori).toBe("Return to Yori");
     expect(getStrings("ja").resetVrmToYori).toBe("Yori に戻す");
