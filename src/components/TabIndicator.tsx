@@ -1,4 +1,4 @@
-import { Plus, SquarePen, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, SquarePen, X } from "lucide-react";
 import { deriveSessionStatusBadge, type SessionStatus } from "../runtime/session-status";
 import type { SessionTabState } from "../runtime/session-tabs/types";
 import type { SessionId } from "../runtime/sessions/types";
@@ -20,7 +20,14 @@ interface TabIndicatorProps {
   readonly hookBadges?: ReadonlyMap<SessionId, TabIndicatorBadge>;
   /** タブ選択。未指定なら表示専用。 */
   readonly onSelectSession?: (sessionId: SessionId) => void;
+  readonly backConversationLabel?: string;
+  readonly backConversationDisabled?: boolean;
+  readonly onBackConversation?: () => void;
+  readonly forwardConversationLabel?: string;
+  readonly forwardConversationDisabled?: boolean;
+  readonly onForwardConversation?: () => void;
   readonly newConversationLabel?: string;
+  readonly newConversationDisabled?: boolean;
   readonly onNewConversation?: () => void;
   readonly onAddSession?: () => void;
   readonly onCloseSession?: (sessionId: SessionId) => void;
@@ -36,7 +43,14 @@ export default function TabIndicator({
   statuses,
   hookBadges,
   onSelectSession,
+  backConversationLabel = "Back",
+  backConversationDisabled = false,
+  onBackConversation,
+  forwardConversationLabel = "Forward",
+  forwardConversationDisabled = false,
+  onForwardConversation,
   newConversationLabel = "New session",
+  newConversationDisabled = false,
   onNewConversation,
   onAddSession,
   onCloseSession,
@@ -90,12 +104,37 @@ export default function TabIndicator({
                   </span>
                 ) : null}
               </button>
+              {isMain && (onBackConversation || onForwardConversation) ? (
+                <span className="tab-indicator-conversation-navigation">
+                  <button
+                    type="button"
+                    className="tab-indicator-conversation-back"
+                    aria-label={backConversationLabel}
+                    title={backConversationLabel}
+                    disabled={backConversationDisabled}
+                    onClick={onBackConversation}
+                  >
+                    <ChevronLeft size={14} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="tab-indicator-conversation-forward"
+                    aria-label={forwardConversationLabel}
+                    title={forwardConversationLabel}
+                    disabled={forwardConversationDisabled}
+                    onClick={onForwardConversation}
+                  >
+                    <ChevronRight size={14} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </span>
+              ) : null}
               {isMain && onNewConversation ? (
                 <button
                   type="button"
                   className="tab-indicator-new-conversation"
                   aria-label={newConversationLabel}
                   title={newConversationLabel}
+                  disabled={newConversationDisabled}
                   onClick={onNewConversation}
                 >
                   <SquarePen size={14} strokeWidth={1.9} aria-hidden="true" />

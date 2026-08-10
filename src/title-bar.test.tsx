@@ -101,6 +101,22 @@ describe("TitleBar", () => {
     expect(onToggleVoice).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the GPT Live control visible but blocks it during a session transition", () => {
+    const onToggleVoice = vi.fn();
+    renderTitleBar({
+      voiceAvailable: true,
+      voiceDisabled: true,
+      voiceState: "idle",
+      voiceLabel: "Start voice",
+      onToggleVoice,
+    });
+
+    const button = screen.getByRole("button", { name: "Start voice" });
+    expect(button.getAttribute("disabled")).not.toBeNull();
+    fireEvent.click(button);
+    expect(onToggleVoice).not.toHaveBeenCalled();
+  });
+
   it("shows a plain unpressed mic while idle", () => {
     renderTitleBar({
       voiceAvailable: true,

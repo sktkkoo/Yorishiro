@@ -310,6 +310,79 @@ describe("TabIndicator", () => {
     expect(onSelectSession).not.toHaveBeenCalled();
   });
 
+  it("keeps New visible but blocks it while a conversation transition is busy", () => {
+    const onNewConversation = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state()}
+        labels={new Map([["default-session", "Main Agent"]])}
+        newConversationLabel="Switching conversation"
+        newConversationDisabled
+        onNewConversation={onNewConversation}
+      />,
+    );
+
+    const action = screen.getByRole("button", { name: "Switching conversation" });
+    expect(action.getAttribute("disabled")).not.toBeNull();
+    fireEvent.click(action);
+    expect(onNewConversation).not.toHaveBeenCalled();
+  });
+
+  it("navigates back and forward from separate Main Agent tab actions", () => {
+    const onBackConversation = vi.fn();
+    const onForwardConversation = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state("shell-1")}
+        labels={
+          new Map([
+            ["default-session", "Main Agent"],
+            ["shell-1", "shell-1"],
+          ])
+        }
+        backConversationLabel="Back to previous session"
+        onBackConversation={onBackConversation}
+        forwardConversationLabel="Forward to next session"
+        onForwardConversation={onForwardConversation}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to previous session" }));
+    fireEvent.click(screen.getByRole("button", { name: "Forward to next session" }));
+
+    expect(onBackConversation).toHaveBeenCalledTimes(1);
+    expect(onForwardConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps both navigation actions visible while unavailable", () => {
+    const onBackConversation = vi.fn();
+    const onForwardConversation = vi.fn();
+
+    render(
+      <TabIndicator
+        state={state()}
+        labels={new Map([["default-session", "Main Agent"]])}
+        backConversationLabel="No previous session"
+        backConversationDisabled
+        onBackConversation={onBackConversation}
+        forwardConversationLabel="No next session"
+        forwardConversationDisabled
+        onForwardConversation={onForwardConversation}
+      />,
+    );
+
+    const back = screen.getByRole("button", { name: "No previous session" });
+    const forward = screen.getByRole("button", { name: "No next session" });
+    expect(back.getAttribute("disabled")).not.toBeNull();
+    expect(forward.getAttribute("disabled")).not.toBeNull();
+    fireEvent.click(back);
+    fireEvent.click(forward);
+    expect(onBackConversation).not.toHaveBeenCalled();
+    expect(onForwardConversation).not.toHaveBeenCalled();
+  });
+
   it("calls onAddSession from the add button", () => {
     const onAddSession = vi.fn();
 

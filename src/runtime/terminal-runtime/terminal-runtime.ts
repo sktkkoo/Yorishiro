@@ -4,6 +4,7 @@ import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
 import type { Disposable, TerminalCellData } from "@yorishiro/sdk";
 import {
+  type SessionSpawnResult,
   type SpawnSpec,
   sessionAttach,
   sessionDestroy,
@@ -103,6 +104,13 @@ export function hexToRgba(background: string, alpha: number): string {
   return `rgba(20,22,25,${clampedAlpha})`;
 }
 
+class SupersededPtyStartError extends Error {
+  constructor() {
+    super("PTY start was superseded by a newer replacement");
+    this.name = "SupersededPtyStartError";
+  }
+}
+
 /**
  * TerminalRuntime implementation. See types.ts for the contract.
  *
@@ -164,6 +172,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   /** 直近 setTheme で明示された背景色。背景 alpha の色元・不透明化時の復帰先。 */
   private currentThemeBackground: string | undefined;
   private startGeneration = 0;
+  /**
+   * 同じ session id に対する session_spawn invoke を発行順に直列化する。
+   *
+   * JS generation guard だけでは、古い invoke が Rust 側で遅れて完了したときに
+   * 新しい PTY を backend から上書きできてしまう。invoke 自体を直列化し、各
+   * dequeue 時に generation を再確認することで、backend の最終 winner も常に
+   * 最新 start と一致させる。
+   */
+  private ptySpawnQueue: Promise<void> = Promise.resolve();
   private ptyExitUnlisten: (() => void) | null = null;
   private regionDrag: {
     readonly pointerId: number;
@@ -423,11 +440,17 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       return;
     }
     this.currentParams = params;
-    this.startPty(params, { attachFirst: options.attachFirst === true });
+    this.startPty(params, {
+      attachFirst: options.attachFirst === true,
+      rejectOnSpawnFailure: false,
+    });
   }
 
-  private startPty(params: PtyParams, opts: { attachFirst: boolean }): Promise<void> {
-    if (this.disposed) return Promise.resolve();
+  private startPty(
+    params: PtyParams,
+    opts: { attachFirst: boolean; rejectOnSpawnFailure: boolean },
+  ): Promise<SessionSpawnResult | null> {
+    if (this.disposed) return Promise.resolve(null);
     const generation = ++this.startGeneration;
     // 前 generation の attach replay 用 buffer を新しい起動へ持ち越さない。
     this.attachLiveBuffer = null;
@@ -437,8 +460,13 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     this.term.reset();
 
     return (async () => {
+      const stopIfStale = (): boolean => {
+        if (!this.isStaleStart(generation)) return false;
+        if (opts.rejectOnSpawnFailure) throw new SupersededPtyStartError();
+        return true;
+      };
       try {
-        if (this.isStaleStart(generation)) return;
+        if (stopIfStale()) return null;
         if (this.attachedContainer) {
           this.syncAttachedRect();
         }
@@ -455,9 +483,9 @@ class TerminalRuntimeImpl implements TerminalRuntime {
             if (this.disposed && result.attached) {
               if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
               void sessionDestroy({ sessionId: this.sessionId });
-              return;
+              return null;
             }
-            if (this.isStaleStart(generation)) return;
+            if (stopIfStale()) return null;
             const bufferedLive = this.attachLiveBuffer === liveBuffer ? liveBuffer : [];
             this.attachLiveBuffer = null;
             if (result.attached) {
@@ -466,10 +494,10 @@ class TerminalRuntimeImpl implements TerminalRuntime {
                 this.handlePtyBytes(liveBytes, { replay: false });
               }
               this.resyncAttachedPtyDisplay();
-              return;
+              return null;
             }
           } catch {
-            if (this.isStaleStart(generation)) return;
+            if (stopIfStale()) return null;
             if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
           }
           if (this.attachLiveBuffer === liveBuffer) this.attachLiveBuffer = null;
@@ -477,26 +505,43 @@ class TerminalRuntimeImpl implements TerminalRuntime {
         if (this.attachedContainer) {
           this.syncAttachedRect();
         }
-        if (this.isStaleStart(generation)) return;
+        if (stopIfStale()) return null;
         const cols = Math.max(2, this.term.cols || 80);
         const rows = Math.max(1, this.term.rows || 24);
         const spawnChannel = this.createOutputChannel(generation);
-        await sessionSpawn({
-          sessionId: this.sessionId,
-          spec: params.spec,
-          cols,
-          rows,
-          cwd: params.cwd,
-          onOutput: spawnChannel,
+        const spawnOperation = this.ptySpawnQueue.then(async () => {
+          if (stopIfStale()) return null;
+          return sessionSpawn({
+            sessionId: this.sessionId,
+            spec: params.spec,
+            cols,
+            rows,
+            cwd: params.cwd,
+            onOutput: spawnChannel,
+          });
         });
+        // 失敗した spawn が後続 start の dequeue を妨げないよう queue tail は
+        // fulfilled に戻す。caller には spawnOperation 自体の失敗を返す。
+        this.ptySpawnQueue = spawnOperation.then(
+          () => {},
+          () => {},
+        );
+        const spawnResult = await spawnOperation;
         if (this.disposed) {
           void sessionDestroy({ sessionId: this.sessionId });
+          if (opts.rejectOnSpawnFailure) throw new SupersededPtyStartError();
+          return null;
         }
+        if (stopIfStale()) return null;
+        return spawnResult;
       } catch (err) {
-        if (this.isStaleStart(generation)) return;
+        if (err instanceof SupersededPtyStartError) throw err;
+        if (stopIfStale()) return null;
         const label = describeSpec(params.spec);
         this.term.write(`\x1b[31mFailed to start ${label}: ${err}\x1b[0m\r\n`);
         this.term.write(`\x1b[90mMake sure ${label} is installed and in your PATH.\x1b[0m\r\n`);
+        if (opts.rejectOnSpawnFailure) throw err;
+        return null;
       }
     })();
   }
@@ -916,12 +961,15 @@ class TerminalRuntimeImpl implements TerminalRuntime {
   forceRespawn(): void {
     if (this.disposed) return;
     if (!this.currentParams) return;
-    void this.startPty(this.currentParams, { attachFirst: false });
+    void this.startPty(this.currentParams, {
+      attachFirst: false,
+      rejectOnSpawnFailure: false,
+    });
   }
 
-  forceRespawnWithParams(params: PtyParams): Promise<void> {
-    if (this.disposed) return Promise.resolve();
-    return this.startPty(params, { attachFirst: false });
+  forceRespawnWithParams(params: PtyParams): Promise<SessionSpawnResult | null> {
+    if (this.disposed) return Promise.resolve(null);
+    return this.startPty(params, { attachFirst: false, rejectOnSpawnFailure: true });
   }
 
   private isStaleStart(generation: number): boolean {

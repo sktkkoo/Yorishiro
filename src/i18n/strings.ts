@@ -32,6 +32,11 @@ export interface UiStrings {
   readonly selectProjectFolder: string;
   readonly defaultFolderName: string;
   readonly newConversation: string;
+  readonly backConversation: string;
+  readonly noBackConversation: string;
+  readonly forwardConversation: string;
+  readonly noForwardConversation: string;
+  readonly switchingConversation: string;
   readonly voiceFrequency: string;
   readonly voiceOn: string;
   readonly voiceOff: string;
@@ -163,6 +168,11 @@ const EN: UiStrings = {
   selectProjectFolder: "Select project folder",
   defaultFolderName: "~",
   newConversation: "New session",
+  backConversation: "Back to previous session",
+  noBackConversation: "No previous session",
+  forwardConversation: "Forward to next session",
+  noForwardConversation: "No next session",
+  switchingConversation: "Switching sessions…",
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",
@@ -289,6 +299,11 @@ const JA: UiStrings = {
   selectProjectFolder: "プロジェクトフォルダを選択",
   defaultFolderName: "~",
   newConversation: "新しいセッション",
+  backConversation: "前のセッションに戻る",
+  noBackConversation: "戻れるセッションはありません",
+  forwardConversation: "次のセッションに進む",
+  noForwardConversation: "進めるセッションはありません",
+  switchingConversation: "セッションを切り替え中…",
   voiceFrequency: "Voice Summary",
   voiceOn: "On",
   voiceOff: "Off",

@@ -57,6 +57,9 @@ pub enum SpawnSpec {
         /// false のとき agent adapter の既存会話 resume を禁止して完全新規 session を起動する。
         #[serde(default = "default_true")]
         resume: bool,
+        /// provider 固有の会話 ID を指定して再開する。現在は Codex adapter のみ使用する。
+        #[serde(default)]
+        resume_session_id: Option<String>,
     },
     Shell {
         /// Shell binary path を override したい場合のみ Some。None なら `$SHELL`、
@@ -254,6 +257,16 @@ pub struct CodexRealtimeCapabilities {
     pub persona_initial_items: bool,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CodexSelectedThread {
+    pub session_id: String,
+    /// resume / fork、または最初の turn/start 済みなら true。thread/start だけなら false。
+    pub confirmed: bool,
+    /// 同じ app-server process 内の top-level selection / turn-start revision。
+    pub revision: u64,
+}
+
 fn parse_codex_cli_version(output: &str) -> Option<String> {
     let version =
         output.split_whitespace().find(|part| {
@@ -400,6 +413,17 @@ impl CodexAppServerProcess {
             .and_then(CodexTuiProxy::selected_thread_id)
     }
 
+    fn selected_thread(&self) -> Option<CodexSelectedThread> {
+        self.tui_proxy
+            .as_ref()
+            .and_then(CodexTuiProxy::selected_thread)
+            .map(|selected| CodexSelectedThread {
+                session_id: selected.id,
+                confirmed: selected.confirmed,
+                revision: selected.revision,
+            })
+    }
+
     fn wait_until_ready(&mut self, address: SocketAddr) -> Result<(), String> {
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
@@ -528,6 +552,7 @@ impl PtySession {
                 system_prompt,
                 plugin_dir,
                 resume,
+                resume_session_id,
             } => {
                 let adapter = crate::sessions::agent_adapter::lookup(agent_id.as_str())
                     .ok_or_else(|| format!("Unknown agent id: {}", agent_id))?;
@@ -561,6 +586,7 @@ impl PtySession {
                     mcp_port: crate::mcp::server::resolve_port(),
                     hook_port: crate::pty::HOOK_SERVER_PORT,
                     resume: *resume,
+                    resume_session_id: resume_session_id.as_deref(),
                     realtime_endpoint: pending_app_server
                         .as_ref()
                         .and_then(CodexAppServerProcess::tui_endpoint),
@@ -766,6 +792,12 @@ impl PtySession {
         lock_or_recover(&self.codex_app_server)
             .as_ref()
             .and_then(CodexAppServerProcess::selected_thread_id)
+    }
+
+    pub fn realtime_selected_thread(&self) -> Option<CodexSelectedThread> {
+        lock_or_recover(&self.codex_app_server)
+            .as_ref()
+            .and_then(CodexAppServerProcess::selected_thread)
     }
 
     pub fn write_data(&self, data: &str) -> Result<(), String> {

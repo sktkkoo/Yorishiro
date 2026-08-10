@@ -1,6 +1,6 @@
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import type { Disposable, TerminalCellData } from "@yorishiro/sdk";
-import type { SpawnSpec } from "../../bindings/tauri-commands";
+import type { SessionSpawnResult, SpawnSpec } from "../../bindings/tauri-commands";
 import type { Perception } from "../../core/perception";
 import type { TerminalCommandRun } from "./command-run-store";
 import type { RegionPoint } from "./region-selection";
@@ -359,7 +359,8 @@ export interface TerminalRuntime {
   /**
    * canonical な currentParams は保ったまま、1回だけ別 params で置き換え起動する。
    * Main Agent の「新しいセッション」のように、通常は resume する session を今回だけ
-   * resume=false で fresh 起動するときに使う。
+   * resume=false で fresh 起動するときに使う。戻り値にはbackendがreplace直前に
+   * 保持していたprovider-confirmed session IDが含まれる。
    */
-  forceRespawnWithParams(params: PtyParams): Promise<void>;
+  forceRespawnWithParams(params: PtyParams): Promise<SessionSpawnResult | null>;
 }

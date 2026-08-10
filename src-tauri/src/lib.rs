@@ -913,6 +913,22 @@ fn prepare_localized_plugin_dir(app: AppHandle, language: String) -> Result<Stri
 /// 任意 session id で PTY を spawn する。session_id を省略した legacy 呼び出し
 /// （旧 single-pane flow）は default-session を作る。caller が明示的に id を
 /// 渡せば multi-pane で session を並列に持てる。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionSpawnResult {
+    /// replace 直前のbackendが保持していたprovider-confirmed session ID。
+    /// frontend pollingの成否に依存せず、NewのBack originを確実に保持するために返す。
+    replaced_confirmed_session_id: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionSpawnError {
+    message: String,
+    /// spawn失敗時も、既に置換されたsessionをcallerがexact restoreできるよう返す。
+    replaced_confirmed_session_id: Option<String>,
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 async fn session_spawn(
@@ -924,7 +940,7 @@ async fn session_spawn(
     rows: u16,
     cwd: Option<String>,
     on_output: Channel,
-) -> Result<(), String> {
+) -> Result<SessionSpawnResult, SessionSpawnError> {
     // Agent variant のときだけ Tauri resource path から plugin_dir を差し込む。
     // Claude Code では --plugin-dir、Codex では local marketplace root として使う。
     let final_spec = match spec {
@@ -934,6 +950,7 @@ async fn session_spawn(
             system_prompt,
             plugin_dir,
             resume,
+            resume_session_id,
             ..
         } => {
             let plugin_dir = plugin_dir.or_else(|| {
@@ -948,12 +965,27 @@ async fn session_spawn(
                 system_prompt,
                 plugin_dir,
                 resume,
+                resume_session_id,
             }
         }
         shell @ SpawnSpec::Shell { .. } => shell,
     };
     let id = session_id.unwrap_or_else(|| sessions::DEFAULT_SESSION_ID.to_string());
-    state.spawn(app, &id, cols, rows, cwd, &final_spec, on_output)
+    // 読み取りとreplaceの間にawaitを挟まない。frontend側も同sessionのspawn invokeを
+    // 直列化するため、これは実際に置換されるPTYのatomicなorigin snapshotになる。
+    let replaced_confirmed_session_id = state
+        .realtime_selected_thread(&id)
+        .filter(|selected| selected.confirmed)
+        .map(|selected| selected.session_id);
+    match state.spawn(app, &id, cols, rows, cwd, &final_spec, on_output) {
+        Ok(()) => Ok(SessionSpawnResult {
+            replaced_confirmed_session_id,
+        }),
+        Err(message) => Err(SessionSpawnError {
+            message,
+            replaced_confirmed_session_id,
+        }),
+    }
 }
 
 #[tauri::command]
@@ -1035,6 +1067,14 @@ async fn session_realtime_selected_thread(
     session_id: String,
 ) -> Result<Option<String>, String> {
     Ok(pty_state.realtime_selected_thread_id(&session_id))
+}
+
+#[tauri::command]
+async fn session_realtime_selected_thread_state(
+    pty_state: State<'_, PtyState>,
+    session_id: String,
+) -> Result<Option<crate::sessions::pty_session::CodexSelectedThread>, String> {
+    Ok(pty_state.realtime_selected_thread(&session_id))
 }
 
 #[tauri::command]
@@ -2416,6 +2456,7 @@ pub fn run() {
             session_realtime_connect,
             session_realtime_capabilities,
             session_realtime_selected_thread,
+            session_realtime_selected_thread_state,
             session_realtime_send,
             session_realtime_disconnect,
             session_list,
