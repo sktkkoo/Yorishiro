@@ -462,9 +462,15 @@ ambient-ui pack は常時表示のオーバーレイ UI。**multi-active**（複
   "version": "0.1.0",
   "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
-  "entry": "ambient-ui.js"
+  "entry": "ambient-ui.tsx"
 }
 ```
+
+実装は `~/.yorishiro/packs/my-overlay/ambient-ui.tsx` に置く。trusted local source として
+runtime transpile され、`react`、`react-dom/client`、`@yorishiro/sdk` の型と pack 内の relative
+`.tsx` / `.ts` / `.jsx` / `.js` を import できる。nested source の編集も owning entry を
+hot reload する。任意の npm import、raw Tauri API、pack 外 import は拒否される。
+`mount` から完全な disposer を返すこと。
 
 bundled の参考実装: `bundled-packs/ambient-ui/attention-aura/`
 

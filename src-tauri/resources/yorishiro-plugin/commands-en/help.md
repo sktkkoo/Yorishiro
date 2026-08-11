@@ -72,7 +72,7 @@ Required files:
 | File | Role |
 |---|---|
 | `manifest.json` | Shared declaration for id / type / version / entry |
-| `<kind>.js` / `scene.tsx` | Pack implementation. Scene packs may use the runtime-transpiled R3F `scene.tsx` format |
+| `<kind>.js` / `{scene,ui,ambient-ui}.tsx` | Pack implementation. Trusted local scene, UI, and ambient-UI packs may use runtime-transpiled TSX |
 | `persona.md` | Persona only. Canonical source for the character prompt |
 
 Common `manifest.json` fields:
@@ -87,7 +87,7 @@ Common `manifest.json` fields:
 }
 ```
 
-- Most user packs use `.js` entries. Trusted local scene packs may instead use `scene.tsx`, including host-bridged `@react-three/postprocessing` and `postprocessing` imports. Arbitrary npm imports are not supported.
+- Most user packs use `.js` entries. Trusted local scene packs may instead use `scene.tsx`, including host-bridged `@react-three/postprocessing` and `postprocessing` imports. Trusted local ambient UI may use `ambient-ui.tsx`; pack-local relative source imports hot-reload their owning TSX entry. Arbitrary npm imports, raw Tauri APIs, and imports outside the pack remain unsupported.
 - Bundled packs and user packs have different layouts. Bundled packs live under `bundled-packs/<kind_plural>/<id>/`; user packs are flat directories under `~/.yorishiro/packs/<id>/`.
 
 ---

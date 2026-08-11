@@ -2,7 +2,8 @@
  * @yorishiro/sdk/ambient-ui-pack
  *
  * Ambient UI Pack の定義型（5 つ目の pack kind、v2 で追加）。
- * packs/ambient-ui/<id>/ui.tsx では `satisfies AmbientUiPackDefinition` を
+ * local user pack は `~/.yorishiro/packs/<id>/ambient-ui.tsx`、bundled pack は
+ * `bundled-packs/ambient-ui/<id>/ui.tsx` で `satisfies AmbientUiPackDefinition` を
  * 使って export default する。
  *
  * Ambient UI は primary UI を上書きしない overlay layer に出る pack。

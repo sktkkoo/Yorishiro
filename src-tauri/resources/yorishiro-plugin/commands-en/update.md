@@ -71,7 +71,7 @@ Adapt first person and tone to the persona.
 
 For non-persona packs:
 
-1. Read `manifest.json` and the entry file (`scene.js`, `effect.js`, `ui.js`, or `ambient-ui.js`)
+1. Read `manifest.json` and the entry file (`scene.js` / `scene.tsx`, `effect.js`, `ui.js` / `ui.tsx`, or `ambient-ui.js` / `ambient-ui.tsx`)
 2. Edit according to the user's request
 3. Let hot reload apply it
 4. Use `pack_diagnose({ id: "<id>" })` to confirm status, manifest, and load errors

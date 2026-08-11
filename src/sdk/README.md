@@ -578,6 +578,65 @@ MCP `get_ui_state` / `set_ui_state` の両方から同じ値を読み書きで�
 
 ---
 
+## Ambient UI Pack の書き方
+
+local user ambient-ui pack は `~/.yorishiro/packs/<id>/` に次の形で置く。
+
+```
+~/.yorishiro/packs/my-overlay/
+├── manifest.json
+├── ambient-ui.tsx
+└── lib/
+    └── overlay.tsx
+```
+
+`manifest.json` の `type` は `ambient-ui`、`entry` は `ambient-ui.tsx` とする。
+
+```json
+{
+  "id": "my-overlay",
+  "type": "ambient-ui",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
+  "entry": "ambient-ui.tsx"
+}
+```
+
+```tsx
+import type { AmbientUiPackDefinition } from '@yorishiro/sdk';
+import ReactDOM from 'react-dom/client';
+import { Overlay } from './lib/overlay';
+
+export default {
+  id: 'my-overlay',
+  type: 'ambient-ui',
+  mount(ctx, container) {
+    const root = ReactDOM.createRoot(container);
+    root.render(<Overlay attention={ctx.attention} />);
+    return { dispose: () => root.unmount() };
+  },
+} satisfies AmbientUiPackDefinition;
+```
+
+`ambient-ui.tsx` は Yorishiro が runtime transpile する trusted local source である。
+`react`、`react/jsx-runtime`、`react-dom/client` は host bridge に解決され、host と同じ
+instance を共有する。SDK の型は `@yorishiro/sdk` から type import する。pack 内の
+`.tsx` / `.ts` / `.jsx` / `.js` へ相対 import
+して分割でき、nested source の保存・削除も owning TSX entry の hot reload を起動する。
+
+relative import は同じ pack directory 内に閉じる。任意の npm package、raw Tauri API、
+別 pack への relative import は許可されず、compile/load error は `pack_diagnose` と dev log
+に残る。hot reload に失敗した場合は直前の登録を維持する。safe mode 中は discovery と
+reload のどちらも user code を import しない。
+
+`mount` は同期的に `Disposable` を返し、`dispose` で React root、timer、RAF、listener を
+すべて解放する。Ambient UI に渡される attention API は read-only で、persona / system /
+raw Tauri API は持たない。bundled の参考実装は
+`bundled-packs/ambient-ui/attention-aura/ui.tsx`。
+
+---
+
 ## Asset 参照の規約
 
 ### Shared ref（共有 asset）

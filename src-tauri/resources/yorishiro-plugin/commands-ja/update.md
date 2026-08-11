@@ -69,7 +69,7 @@ AI は persona 作業が完了したら **必ず住人の声で案内する**（
 
 persona 以外の pack は比較的軽量に編集できる。
 
-1. 対象の `manifest.json` と entry file（`scene.js` / `effect.js` / `ui.js` / `ambient-ui.js`）を Read する
+1. 対象の `manifest.json` と entry file（`scene.js` / `scene.tsx`、`effect.js`、`ui.js` / `ui.tsx`、`ambient-ui.js` / `ambient-ui.tsx`）を Read する
 2. user の要望に合わせて修正し、Write する
 3. hot reload で即反映される（再起動不要）
 4. 編集後 `pack_diagnose({id: "<id>"})` で status / manifest / load error を確認する

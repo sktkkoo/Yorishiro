@@ -468,9 +468,15 @@ Ambient-UI packs are always-on overlays. They are **multi-active**. They can dra
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this overlay",
   "author": "Your name",
-  "entry": "ambient-ui.js"
+  "entry": "ambient-ui.tsx"
 }
 ```
+
+Create `~/.yorishiro/packs/my-overlay/ambient-ui.tsx` as the implementation. It is
+runtime-transpiled trusted local source and may import `react`, `react-dom/client`, types
+from `@yorishiro/sdk`, and pack-local relative `.tsx` / `.ts` / `.jsx` / `.js` files. Nested
+source edits hot-reload the owning entry. Arbitrary npm imports, raw Tauri APIs, and
+imports outside the pack are rejected. Return a complete disposer from `mount`.
 
 Reference: `bundled-packs/ambient-ui/attention-aura/`.
 

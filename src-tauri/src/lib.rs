@@ -1331,6 +1331,14 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("persona.d.ts", include_str!("../../src/sdk/persona.d.ts")),
     ("amenity.d.ts", include_str!("../../src/sdk/amenity.d.ts")),
     ("effect.d.ts", include_str!("../../src/sdk/effect.d.ts")),
+    (
+        "attention.d.ts",
+        include_str!("../../src/sdk/attention.d.ts"),
+    ),
+    (
+        "ambient-ui-pack.d.ts",
+        include_str!("../../src/sdk/ambient-ui-pack.d.ts"),
+    ),
     ("scene.d.ts", include_str!("../../src/sdk/scene.d.ts")),
     (
         "scene-pack.d.ts",
@@ -2591,6 +2599,8 @@ mod sdk_bundle_tests {
         assert!(bundle.contains("export interface PersonaDefinition"));
         assert!(bundle.contains("export interface EffectContext"));
         assert!(bundle.contains("export interface UiPackDefinition"));
+        assert!(bundle.contains("export interface AmbientUiPackDefinition"));
+        assert!(bundle.contains("export interface AttentionAPI"));
         assert!(!bundle.contains("from \"./reaction\""));
         assert!(!bundle.contains("from \"./context\""));
     }

@@ -281,7 +281,7 @@ JS / TS static scan は正規表現ではなく AST で行う。`import`, dynami
 | `persona.js` + `persona.md` | persona data JSON + `persona.md` | prompt / reflex mapping だけを schema 化 |
 | `effect.js` | effect recipe JSON | runtime primitive で表現できる演出だけ公開可能 |
 | `amenity.js` | 将来の `isolated-js` bundle | capability permission と RPC API に合わせる。MVP では公開しない |
-| `ui.js` / `ui.tsx` / `ambient-ui.js` | 原則変換不可 | 将来 isolated UI または curated trusted review が必要 |
+| `ui.js` / `ui.tsx` / `ambient-ui.js` / `ambient-ui.tsx` | 原則変換不可 | 将来 isolated UI または curated trusted review が必要 |
 
 `declarative` へ変換できないもの：
 
