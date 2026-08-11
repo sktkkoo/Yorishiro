@@ -263,7 +263,8 @@ function scanSourceFile(path, text, diagnostics) {
   if (CSS_URL_PATTERN.test(text)) {
     add(diagnostics, "error", "css-url", `${path} contains CSS url(...) usage`);
   }
-  if (text.includes("../") || text.includes("..\\")) {
+  const traversalScanText = maskContainedParentImports(path, text);
+  if (traversalScanText.includes("../") || traversalScanText.includes("..\\")) {
     add(diagnostics, "error", "path-traversal", `${path} contains parent-directory traversal`);
   }
   for (const [code, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
@@ -271,6 +272,47 @@ function scanSourceFile(path, text, diagnostics) {
       add(diagnostics, "error", code, `${path} contains ${code.replace("forbidden-", "")}`);
     }
   }
+}
+
+const STATIC_MODULE_SPECIFIER_PATTERN =
+  /\b(?:import|export)\s+(?:type\s+)?(?:(?:[^"'`;]|\n)*?\s+from\s+)?(["'])([^"']+)\1/g;
+const DYNAMIC_MODULE_SPECIFIER_PATTERN = /\bimport\s*\(\s*(["'])([^"']+)\1\s*\)/g;
+
+/**
+ * runtime TSX containmentと同じく、nested sourceからPack root内へ戻る`../` importは
+ * traversal diagnosticの対象外にする。import以外のasset/path文字列はmaskしない。
+ */
+function maskContainedParentImports(importerPath, text) {
+  const masked = [...text];
+  for (const pattern of [STATIC_MODULE_SPECIFIER_PATTERN, DYNAMIC_MODULE_SPECIFIER_PATTERN]) {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+      const specifier = match[2];
+      if (specifier === undefined || !specifier.startsWith("../")) continue;
+      if (resolvePackRelativeImport(importerPath, specifier) === null) continue;
+      const matchStart = match.index ?? 0;
+      const specifierOffset = match[0].indexOf(specifier);
+      for (let index = 0; index < specifier.length; index += 1) {
+        masked[matchStart + specifierOffset + index] = " ";
+      }
+    }
+  }
+  return masked.join("");
+}
+
+function resolvePackRelativeImport(importerPath, specifier) {
+  const parts = normalizeRelativePath(importerPath).split("/");
+  parts.pop();
+  for (const segment of specifier.replace(/\\/g, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (parts.length === 0) return null;
+      parts.pop();
+      continue;
+    }
+    parts.push(segment);
+  }
+  return parts.join("/");
 }
 
 function scanStyleFile(path, text, diagnostics) {

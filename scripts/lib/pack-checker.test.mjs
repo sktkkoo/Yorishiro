@@ -105,6 +105,65 @@ describe("checkPackFiles", () => {
     );
   });
 
+  it("allows a nested source import that remains inside the pack", () => {
+    const result = checkPackFiles({
+      packDirName: "my-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "my-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.tsx",
+          }),
+        ],
+        ["scene.tsx", 'import { view } from "./lib/view"; export default view;'],
+        ["lib/view.ts", 'export { theme as view } from "../theme";'],
+        ["theme.ts", "export const theme = {};"],
+      ]),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors.map((diagnostic) => diagnostic.code)).not.toContain("path-traversal");
+  });
+
+  it("still rejects relative imports and asset strings that escape the pack", () => {
+    const importResult = checkPackFiles({
+      packDirName: "bad-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "bad-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.tsx",
+          }),
+        ],
+        ["scene.tsx", 'import "../other-pack/scene"; export default {};'],
+      ]),
+    });
+    const assetResult = checkPackFiles({
+      packDirName: "bad-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "bad-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.tsx",
+          }),
+        ],
+        ["scene.tsx", 'export default { src: "../secret.png" };'],
+      ]),
+    });
+
+    expect(importResult.errors.map((diagnostic) => diagnostic.code)).toContain("path-traversal");
+    expect(assetResult.errors.map((diagnostic) => diagnostic.code)).toContain("path-traversal");
+  });
+
   it("rejects forbidden APIs hidden in HTML assets", () => {
     const result = checkPackFiles({
       packDirName: "my-scene",
