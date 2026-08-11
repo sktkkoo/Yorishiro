@@ -10,7 +10,7 @@
  * Internal design-record: 2026-04-18-user-layer-runtime.md「Phase 1-b」Section B4
  */
 
-import { SUPPORTED_PACK_KINDS } from "./supported-kinds";
+import { SUPPORTED_PACK_KINDS, TSX_ENTRY_KINDS } from "./supported-kinds";
 
 export interface YorishiroLayerEvent {
   readonly path: string;
@@ -48,7 +48,6 @@ export type WatcherAction =
   | { readonly type: "ignore"; readonly reason: string };
 
 const stripTrailingSlash = (p: string): string => (p.endsWith("/") ? p.slice(0, -1) : p);
-const TSX_ENTRY_KINDS = new Set(["ui", "scene", "ambient-ui"]);
 const PACK_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
 
 const isPackSourceFile = (path: string): boolean =>

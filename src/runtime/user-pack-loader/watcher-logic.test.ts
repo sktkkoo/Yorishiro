@@ -5,11 +5,57 @@
  * test できないので、ここでは pure な分解結果のみを verify する。
  */
 
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import {
+  DISCOVERED_ONLY_PACK_KINDS,
+  SUPPORTED_PACK_KINDS,
+  TSX_ENTRY_KINDS,
+} from "./supported-kinds";
 import type { YorishiroLayerEvent } from "./watcher-logic";
 import { mapEventToAction, parseLayerPath } from "./watcher-logic";
 
 const HOME = "/Users/sample/.yorishiro";
+
+function quotedValues(source: string): string[] {
+  return Array.from(source.matchAll(/"([a-z-]+)"/g), (match) => match[1]).sort();
+}
+
+describe("Rust discovery contract conformance", () => {
+  it("keeps discovery kinds and TSX entry mapping aligned with the TS runtime", async () => {
+    const rustSource = await readFile(
+      new URL("../../../src-tauri/src/lib.rs", import.meta.url),
+      "utf8",
+    );
+    const rustPackKinds = rustSource.match(/const PACK_KINDS: &\[&str\] = &\[([\s\S]*?)\];/)?.[1];
+    const rustEntryMapping = rustSource.match(
+      /fn entry_file_for_kind\([\s\S]*?\n}\n\nfn read_user_pack_manifest_summary/,
+    )?.[0];
+
+    expect(rustPackKinds, "Rust PACK_KINDS declaration").toBeDefined();
+    expect(rustEntryMapping, "Rust entry_file_for_kind declaration").toBeDefined();
+
+    const tsDiscoveryKinds = [...SUPPORTED_PACK_KINDS, ...DISCOVERED_ONLY_PACK_KINDS].sort();
+    expect(quotedValues(rustPackKinds ?? "")).toEqual(tsDiscoveryKinds);
+
+    const rustTsxKinds = Array.from(
+      (rustEntryMapping ?? "").matchAll(/kind == "([a-z-]+)"/g),
+      (match) => match[1],
+    ).sort();
+    expect(rustTsxKinds).toEqual([...TSX_ENTRY_KINDS].sort());
+
+    for (const kind of tsDiscoveryKinds) {
+      const expectedJs = SUPPORTED_PACK_KINDS.has(kind)
+        ? { type: "pack", id: "contract", kind }
+        : { type: "ignore" };
+      const expectedTsx = TSX_ENTRY_KINDS.has(kind)
+        ? { type: "pack", id: "contract", kind }
+        : { type: "ignore" };
+      expect(parseLayerPath(`${HOME}/packs/contract/${kind}.js`, HOME)).toEqual(expectedJs);
+      expect(parseLayerPath(`${HOME}/packs/contract/${kind}.tsx`, HOME)).toEqual(expectedTsx);
+    }
+  });
+});
 
 describe("parseLayerPath", () => {
   it("recognizes a supported pack kind inside packs/<id>/", () => {

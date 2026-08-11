@@ -20,3 +20,9 @@ export const SUPPORTED_PACK_KINDS: ReadonlySet<string> = new Set([
   "ambient-ui",
   "amenity",
 ]);
+
+/** Rust は discovery するが、現行 TS runtime に registrar がない kind。 */
+export const DISCOVERED_ONLY_PACK_KINDS: ReadonlySet<string> = new Set(["voice", "body"]);
+
+/** Rust / TS の双方が runtime-transpiled entry として認識する kind。 */
+export const TSX_ENTRY_KINDS: ReadonlySet<string> = new Set(["ui", "scene", "ambient-ui"]);
