@@ -123,6 +123,39 @@ describe("transpileUiTsxEntry", () => {
     }
   });
 
+  it("bundles an ambient-ui.tsx entry with a nested relative source", async () => {
+    const entryPath = "/Users/me/.yorishiro/packs/my-overlay/ambient-ui.tsx";
+    const sources = new Map([
+      [
+        entryPath,
+        'import { label } from "./lib/overlay"; export default { id: "my-overlay", type: "ambient-ui", label, mount() { return { dispose() {} }; } };',
+      ],
+      [
+        "/Users/me/.yorishiro/packs/my-overlay/lib/overlay.tsx",
+        'export const label = "ambient-ready";',
+      ],
+    ]);
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname;
+      const source = sources.get(path);
+      return source === undefined
+        ? new Response("not found", { status: 404 })
+        : new Response(source, { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const code = await transpileUiTsxEntry(entryPath, {
+        convertFileSrc: (path) => `https://asset.local${path}`,
+      });
+
+      expect(code).toContain("ambient-ready");
+      expect(code).toContain("my-overlay");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("compiles and loads the post-processing authoring surface through host bridges", async () => {
     const entryPath = "/Users/me/.yorishiro/packs/post-processing-room/scene.tsx";
     const source = `

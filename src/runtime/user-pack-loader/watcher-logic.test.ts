@@ -33,6 +33,11 @@ describe("parseLayerPath", () => {
       id: "my-room",
       kind: "scene",
     });
+    expect(parseLayerPath(`${HOME}/packs/my-overlay/ambient-ui.tsx`, HOME)).toEqual({
+      type: "pack",
+      id: "my-overlay",
+      kind: "ambient-ui",
+    });
     expect(parseLayerPath(`${HOME}/packs/my-ui/ui.js`, HOME)).toEqual({
       type: "pack",
       id: "my-ui",
@@ -48,16 +53,14 @@ describe("parseLayerPath", () => {
     expect(parseLayerPath("/tmp/elsewhere.js", HOME)).toEqual({ type: "ignore" });
   });
 
-  it("maps nested source files to their owner scene pack", () => {
+  it("maps nested source files to an owner-resolution trigger", () => {
     expect(parseLayerPath(`${HOME}/packs/my-room/lib/lights.tsx`, HOME)).toEqual({
-      type: "pack",
+      type: "pack-source",
       id: "my-room",
-      kind: "scene",
     });
     expect(parseLayerPath(`${HOME}/packs/my-room/lib/palette.ts`, HOME)).toEqual({
-      type: "pack",
+      type: "pack-source",
       id: "my-room",
-      kind: "scene",
     });
   });
 
@@ -129,6 +132,25 @@ describe("mapEventToAction", () => {
     });
   });
 
+  it("maps a modified ambient-ui.tsx file to reload-pack", () => {
+    expect(
+      mapEventToAction(
+        {
+          path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+          kind: "modified",
+          mtimeMs: 1700000000007,
+        },
+        HOME,
+      ),
+    ).toEqual({
+      type: "reload-pack",
+      id: "my-overlay",
+      kind: "ambient-ui",
+      entryPath: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      mtimeMs: 1700000000007,
+    });
+  });
+
   it("maps modified and removed scene.tsx files to scene actions", () => {
     expect(
       mapEventToAction(
@@ -155,17 +177,16 @@ describe("mapEventToAction", () => {
     });
   });
 
-  it("maps nested scene source changes to the owning scene.tsx reload", () => {
+  it("maps nested source changes to runtime owner resolution", () => {
     expect(
       mapEventToAction(
         { path: `${HOME}/packs/my-room/lib/lights.tsx`, kind: "modified", mtimeMs: 1700000000004 },
         HOME,
       ),
     ).toEqual({
-      type: "reload-pack",
+      type: "reload-pack-source",
       id: "my-room",
-      kind: "scene",
-      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      sourcePath: `${HOME}/packs/my-room/lib/lights.tsx`,
       mtimeMs: 1700000000004,
     });
 
@@ -175,10 +196,9 @@ describe("mapEventToAction", () => {
         HOME,
       ),
     ).toEqual({
-      type: "reload-pack",
+      type: "reload-pack-source",
       id: "my-room",
-      kind: "scene",
-      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      sourcePath: `${HOME}/packs/my-room/lib/scene.tsx`,
       mtimeMs: 1700000000006,
     });
 
@@ -188,10 +208,9 @@ describe("mapEventToAction", () => {
         HOME,
       ),
     ).toEqual({
-      type: "reload-pack",
+      type: "reload-pack-source",
       id: "my-room",
-      kind: "scene",
-      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      sourcePath: `${HOME}/packs/my-room/lib/lights.tsx`,
       mtimeMs: 1700000000005,
     });
   });
