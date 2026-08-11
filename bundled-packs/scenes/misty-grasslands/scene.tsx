@@ -12,8 +12,8 @@
  * Internal design-record: 2026-04-29-misty-grasslands-mirror-redesign.md
  */
 
+import { AttentionCueLight } from "@yorishiro/sdk/attention-cue";
 import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
-import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 
 // overcast morning の明るい拡散光（directional 1.5 + ambient 0.47）に対して

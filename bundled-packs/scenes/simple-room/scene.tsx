@@ -10,8 +10,8 @@
  * Internal design-record: specs/2026-04-18-scene-pack-compositor-design.md §2.3
  */
 
+import { AttentionCueLight } from "@yorishiro/sdk/attention-cue";
 import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
-import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
 import { Lights } from "./lib/lights";
 
 function SimpleRoomScene({ vrmSlot }: ScenePackComponentProps) {

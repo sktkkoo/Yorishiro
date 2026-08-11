@@ -557,18 +557,20 @@ MCP `get_ui_state` / `set_ui_state` の両方から同じ値を読み書きで�
    `AttentionCueLight` を明示的に mount する。mount している間、default は
    自動で退く（同じ光が二重に点灯することはない）。
    ```tsx
-   // bundled scene.tsx（bundled-packs/scenes/<id>/scene.tsx）からの相対 import 例。
-   // useControlsBridge と同じく src/ を直接参照する（@yorishiro/sdk に相当する
-   // 公開 alias はまだ無い）。
-   import { AttentionCueLight } from '../../../src/runtime/three-runtime/attention-cue-light';
+   import { AttentionCueLight } from '@yorishiro/sdk/attention-cue';
 
    <AttentionCueLight color="#ffb08a" intensityScale={1.8} position={[0, 1.9, 0.6]} />
    ```
    `position` を省略するとキャラの head 位置から自動配置される。明るい scene
    （directional / ambient が強い）では `intensityScale` を上げないと埋もれる。
 3. **完全に消したい**：光そのものを不要とする scene は `useClaimAttentionCue()`
-   だけを呼ぶ（描画は一切しない）。default が退くだけで、attention の通知手段を
-   scene から取り除きたい場合に使う。
+   だけを同じ `@yorishiro/sdk/attention-cue` から import して呼ぶ（描画は一切
+   しない）。default が退くだけで、attention の通知手段を scene から取り除きたい
+   場合に使う。
+
+`@yorishiro/sdk/attention-cue` は local trusted `scene.tsx` の host bridge に含まれる。
+runtime 内部の default component、claim registry、cue store は public contract ではなく、
+Pack から直接 import できない。
 
 ### Bundled scene の参考
 
