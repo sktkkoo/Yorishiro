@@ -29,13 +29,13 @@ Yorishiro の設定画面。`activeUi` を `"yorishiro-settings"` に一時 swap
 汎用性と安全性が明白な機能は public capability を使う：
 
 - ショートカット pre-fill は `ctx.app.insertFixedPrompt("shortcut")`（host 所有の固定プロンプトを key で指す SDK verb）経由。pack は文字列を渡さず、`src/bindings/tauri-commands` の直 import は持たない。任意テキストを terminal に書く API は意図的に存在しない（設計境界: `docs/decisions/input-prefill-boundary.md`）
-- app version は `ctx.app.getVersion()`、HTTPS link は `ctx.app.openExternal()`、snapshot 操作は確認 UX を host が所有する `ctx.history` を使う
+- app version は `ctx.app.getVersion()`、HTTPS link は `ctx.app.openExternal()`、snapshot 操作は確認 component と destructive command を host が所有する `ctx.history` を使う
 
 一方、以下は監査済み bundled exception のまま残す：
 
 - VRM file picker (`@tauri-apps/plugin-dialog` + `import_vrm`)
 - `localStorage["yorishiro:vrm"]` の magic string を直接読んでいる
-- updater / process relaunch、app 固有 i18n、snapshot 表示 helper、language/config policy helper、app component、bundled default scene manifest
+- updater / process relaunch、app 固有 i18n、snapshot 表示 helper、language/config policy helper、bundled default scene manifest
 
 これらを user Pack に公開するには permission declaration、host-side gate、approval UX の設計が必要。今回 raw Tauri passthrough は追加しない。terminal 入力については `insertFixedPrompt` の固定 key 集合が SDK 公開面であり、任意書き込み口は追加しない方針（`input-prefill-boundary.md`）。
 

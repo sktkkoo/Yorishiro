@@ -36,7 +36,7 @@ permission / isolation 設計が必要であり、この decision だけでは�
 | `@tauri-apps/api/core` の `import_vrm` | file import + host write | privileged のまま。picker、copy、VRM validation、保存先をまとめた host-mediated API が未設計 |
 | `@tauri-apps/plugin-dialog` | native file picker | privileged のまま。任意 file picker を UI Pack capability として開けない |
 | updater / process relaunch | network update、署名検証、app replace、再起動 | system-only。Pack API にしない |
-| `src/components/RestoreConfirmDialog` | app-level modal / reload UX | system component。Pack 向け component ABI にしない |
+| `src/components/RestoreConfirmDialog` | app-level modal / reload UX | settings からの直接 import を除去。`ctx.history.restore()` の host-owned confirmation として維持し、Pack 向け component ABI にしない |
 | `src/i18n/strings` | app 固有 settings / recovery 文言 | system content。汎用 SDK にしない |
 | `src/runtime/history/describe-snapshot` | app 固有の snapshot 表示文言 | system presentation。history 操作自体は `ctx.history` へ公開 |
 | `src/runtime/language/language` | app language の optimistic UI 解決 | system presentation helper。設定値の正本は `ctx.app.getConfig()` / `setLanguage()` |
