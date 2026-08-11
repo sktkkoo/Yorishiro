@@ -1333,6 +1333,10 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("context.d.ts", include_str!("../../src/sdk/context.d.ts")),
     ("history.d.ts", include_str!("../../src/sdk/history.d.ts")),
     ("persona.d.ts", include_str!("../../src/sdk/persona.d.ts")),
+    (
+        "amenity-service.d.ts",
+        include_str!("../../src/sdk/amenity-service.d.ts"),
+    ),
     ("amenity.d.ts", include_str!("../../src/sdk/amenity.d.ts")),
     ("effect.d.ts", include_str!("../../src/sdk/effect.d.ts")),
     (
@@ -1352,15 +1356,62 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("index.d.ts", include_str!("../../src/sdk/index.d.ts")),
 ];
 
-/// Detect `import ... from "./..."` and `export ... from "./..."` lines.
-/// Relative cross-file module references become unresolvable once all parts
-/// are flattened into a single d.ts, so they get stripped.
+/// Detect a complete `import ... from "./..."` or `export ... from "./..."`
+/// statement. Relative cross-file module references become unresolvable once
+/// all parts are flattened into a single d.ts, so they get stripped.
 fn is_cross_file_module_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     if !(trimmed.starts_with("import") || trimmed.starts_with("export")) {
         return false;
     }
     trimmed.contains("from \"./") || trimmed.contains("from './")
+}
+
+fn is_module_statement_start(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("import ")
+        || trimmed.starts_with("export *")
+        || trimmed.starts_with("export type {")
+        || trimmed.starts_with("export {")
+}
+
+fn append_flattened_sdk_part(out: &mut String, src: &str) {
+    let mut statement: Option<Vec<&str>> = None;
+
+    for line in src.lines() {
+        if let Some(lines) = statement.as_mut() {
+            lines.push(line);
+            if line.trim_end().ends_with(';') {
+                let lines = statement.take().unwrap_or_default();
+                let joined = lines.join("\n");
+                if !is_cross_file_module_line(&joined) {
+                    out.push_str(&joined);
+                    out.push('\n');
+                }
+            }
+            continue;
+        }
+
+        if is_module_statement_start(line) {
+            if line.trim_end().ends_with(';') {
+                if !is_cross_file_module_line(line) {
+                    out.push_str(line);
+                    out.push('\n');
+                }
+            } else {
+                statement = Some(vec![line]);
+            }
+            continue;
+        }
+
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if let Some(lines) = statement {
+        out.push_str(&lines.join("\n"));
+        out.push('\n');
+    }
 }
 
 fn build_bundled_sdk_dts() -> String {
@@ -1375,13 +1426,7 @@ fn build_bundled_sdk_dts() -> String {
     );
     for (name, src) in SDK_DTS_PARTS {
         out.push_str(&format!("// ---- {} ----\n\n", name));
-        for line in src.lines() {
-            if is_cross_file_module_line(line) {
-                continue;
-            }
-            out.push_str(line);
-            out.push('\n');
-        }
+        append_flattened_sdk_part(&mut out, src);
         out.push('\n');
     }
     out
@@ -2582,7 +2627,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod sdk_bundle_tests {
-    use super::{build_bundled_sdk_dts, is_cross_file_module_line};
+    use super::{append_flattened_sdk_part, build_bundled_sdk_dts, is_cross_file_module_line};
 
     #[test]
     fn drops_relative_import_and_export_lines() {
@@ -2599,6 +2644,17 @@ mod sdk_bundle_tests {
     }
 
     #[test]
+    fn drops_multiline_relative_re_exports_as_one_statement() {
+        let mut flattened = String::new();
+        append_flattened_sdk_part(
+            &mut flattened,
+            "export type {\n  AmenityHandle,\n  AmenityToolHandler,\n} from \"./amenity\";\nexport interface Kept {}",
+        );
+
+        assert_eq!(flattened, "export interface Kept {}\n");
+    }
+
+    #[test]
     fn bundle_contains_key_types_and_omits_cross_refs() {
         let bundle = build_bundled_sdk_dts();
         assert!(bundle.contains("export interface EffectDefinition"));
@@ -2607,8 +2663,11 @@ mod sdk_bundle_tests {
         assert!(bundle.contains("export interface UiPackDefinition"));
         assert!(bundle.contains("export interface AmbientUiPackDefinition"));
         assert!(bundle.contains("export interface AttentionAPI"));
+        assert!(bundle.contains("export interface AmenityServiceHandle"));
+        assert!(bundle.contains("export interface AmenityServicesAPI"));
         assert!(!bundle.contains("from \"./reaction\""));
         assert!(!bundle.contains("from \"./context\""));
+        assert!(!bundle.contains("from \"./amenity-service\""));
     }
 
     #[test]
