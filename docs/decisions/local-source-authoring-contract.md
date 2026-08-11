@@ -34,6 +34,30 @@ Bundled Packが利用している表現能力は、原則としてstable SDKま�
 ではない。system-owned settings UI、内部registry、raw Tauri API、Pack間の暗黙な
 mutable stateは明示的な例外であり、そのままlocal Packへ公開しない。
 
+### Public exposureの分類
+
+Bundled codeで使われた能力をlocal sourceへ露出するかは、次の三分類で判断する。
+importが存在すること、またはbuild時に解決できることだけではpublic API化の根拠に
+ならない。
+
+1. **Third-party host module bridge** — React / Three.js系のように、hostとPackで
+   package namespaceとmodule instanceを共有する必要があるdependency。これは
+   Yorishiro独自のsemantic SDKではなく、bridge対象packageのpublic APIを共有する
+   contractである。とくに`@react-three/postprocessing`と`postprocessing`は、installed
+   package namespaceからnamed exportを生成するcomplete dynamic shimを使う。package
+   更新時は新しい有効なnamed exportも自動的にbridgeへ入る方針とし、conformance test
+   でshimとinstalled packageの整合、およびPackが依存する代表symbolを確認する。
+   新しいpackage bridgeには同一instanceの必要性、WebViewでの安全性、bundle size、
+   version互換性を別途確認する。
+2. **Host-internal capability** — controls、attention cue、asset解決などYorishiroが
+   lifecycleやfailure semanticsを所有する能力。内部module namespaceは共有せず、
+   `@yorishiro/sdk/*`にsemanticなcurated minimum surfaceだけを公開する。bundled側の
+   private helperやrelative importが増えても、そのままSDK surfaceを拡張しない。
+3. **System-owned exception** — settings / updater UI、raw Tauri command、内部registry、
+   起動履歴、Pack間の暗黙なmutable stateなど、本体だけが所有する能力。これはpublic
+   parityの対象外である。local Packにも必要になった場合は例外をbridgeせず、権限・
+   version・failure modeを持つ最小のsemantic SDKとして別途設計する。
+
 ## 2. Local entryとsource extension
 
 Local Packのdirectoryはkind-firstではなくflatである。
