@@ -128,6 +128,7 @@ import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expressi
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
+import { createAmenityServices } from "./runtime/amenity-services";
 import {
   getAttentionLightCueStore,
   startAttentionLightCueBridge,
@@ -4216,6 +4217,7 @@ function App() {
   useEffect(() => {
     const ambientUiRegistry = getAmbientUiPackRegistry();
     const attention = getAttentionRuntime();
+    const amenities = createAmenityServices(getAmenityPackRegistry());
 
     // #ambient-layer を document.body 直下に生成する（v1 の zIndex: 20 を踏襲）
     const ambientLayer = document.createElement("div");
@@ -4251,7 +4253,7 @@ function App() {
         container.dataset.packId = id;
         ambientLayer.appendChild(container);
 
-        const ctx: AmbientUiContext = { attention };
+        const ctx: AmbientUiContext = { attention, amenities };
         const disposable = packEntry.pack.mount(ctx, container);
         mounted.set(id, { container, disposable });
       }

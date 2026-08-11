@@ -14,6 +14,7 @@
  */
 
 import type { AmenityContext } from "./context";
+import type { AmenityServiceHandle } from "./amenity-service";
 import type { Trigger } from "./reaction";
 
 // ─── AmenityHandle ───────────────────────────────────────
@@ -22,6 +23,11 @@ import type { Trigger } from "./reaction";
 export interface AmenityHandle {
   /** この amenity が提供する tool handler。key は tool 名。 */
   readonly tools: Readonly<Record<string, AmenityToolHandler>>;
+  /**
+   * Ambient UI 向けの opt-in public surface。
+   * tools は MCP / host routing 専用であり Ambient UI には公開されない。
+   */
+  readonly service?: AmenityServiceHandle;
   /** pack disable / アプリ終了時に呼ばれる後片付け。 */
   readonly dispose: () => void;
 }

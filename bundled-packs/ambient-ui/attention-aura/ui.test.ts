@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type {
   AmbientUiContext,
+  AmenityServicesAPI,
   AttentionAPI,
   AttentionSnapshot,
   AttentionTarget,
@@ -44,6 +45,8 @@ function makeFakeAttention(initial: AttentionSnapshot = { target: null }): FakeA
   };
 }
 
+const noAmenities = { get: () => null } satisfies AmenityServicesAPI;
+
 const sampleTarget: AttentionTarget = {
   kind: "mouse",
   source: "mouse",
@@ -73,7 +76,7 @@ describe("Aura component", () => {
 
   it("renders nothing initially when target is null and opacity is 0", () => {
     const fake = makeFakeAttention();
-    const ctx = { attention: fake.api } satisfies AmbientUiContext;
+    const ctx = { attention: fake.api, amenities: noAmenities } satisfies AmbientUiContext;
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -91,7 +94,7 @@ describe("Aura component", () => {
     const rafSpy = vi.spyOn(window, "requestAnimationFrame");
     try {
       const fake = makeFakeAttention();
-      const ctx = { attention: fake.api } satisfies AmbientUiContext;
+      const ctx = { attention: fake.api, amenities: noAmenities } satisfies AmbientUiContext;
 
       container = document.createElement("div");
       document.body.appendChild(container);
@@ -109,7 +112,7 @@ describe("Aura component", () => {
 
   it("renders overlay div when target snapshot is published", async () => {
     const fake = makeFakeAttention();
-    const ctx = { attention: fake.api } satisfies AmbientUiContext;
+    const ctx = { attention: fake.api, amenities: noAmenities } satisfies AmbientUiContext;
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -137,7 +140,7 @@ describe("Aura component", () => {
 
   it("dispose unmounts the React root cleanly", () => {
     const fake = makeFakeAttention({ target: sampleTarget });
-    const ctx = { attention: fake.api } satisfies AmbientUiContext;
+    const ctx = { attention: fake.api, amenities: noAmenities } satisfies AmbientUiContext;
 
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -169,7 +172,7 @@ describe("Aura component", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
 
     const fake = makeFakeAttention({ target: sampleTarget });
-    const ctx = { attention: fake.api } satisfies AmbientUiContext;
+    const ctx = { attention: fake.api, amenities: noAmenities } satisfies AmbientUiContext;
 
     container = document.createElement("div");
     document.body.appendChild(container);

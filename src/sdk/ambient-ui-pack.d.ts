@@ -28,16 +28,18 @@
  */
 
 import type { AttentionAPI } from "./attention";
+import type { AmenityServicesAPI } from "./amenity-service";
 import type { Disposable } from "./context";
 
 /**
  * Ambient UI pack の mount context。
  *
- * v2 MVP では `attention` のみ。Phase 2 で persona pack の auraAffinity を
- * 読む経路を追加するときに `getActivePersonaAffinity()` 等を生やす。
+ * `amenities` は active amenity が明示公開した service だけを解決する。
+ * registry / activation state mutation / MCP tool handle は公開しない。
  */
 export interface AmbientUiContext {
   readonly attention: AttentionAPI;
+  readonly amenities: AmenityServicesAPI;
 }
 
 /** Ambient UI pack の manifest。kind は文字列上は "ambient-ui"。 */
