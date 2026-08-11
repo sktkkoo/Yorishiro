@@ -91,6 +91,8 @@ Scene packs have two formats:
 
 You may split `scene.tsx` with pack-relative imports such as `./lib/lights.tsx`. Edits to source files inside the pack reload the owning `scene.tsx`.
 
+Trusted local `scene.tsx` packs may import post-processing components from `@react-three/postprocessing` and lower-level effects, enums, or types from `postprocessing`. These imports resolve to Yorishiro's host bridge, so the scene shares the host React, R3F, Three.js, and post-processing instances. Use `bundled-packs/scenes/abandoned-factory/lib/post-process.tsx` as the reference pipeline. This support does not allow arbitrary npm packages: unrelated bare imports remain rejected.
+
 Keep components to React + three.js rendering; do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes from the pack. The base camera is owned by Common controls, so scene packs should not set it directly. Design small camera breath / shake / sway changes as Scene-side modulations.
 
 ### Wiring Controls For R3F Scenes

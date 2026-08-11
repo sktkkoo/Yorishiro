@@ -339,12 +339,18 @@ bundled-packs/scenes/<pack-id>/
 └── README.md
 ```
 
-**user**（flat layout、`.js` 強制）：
+**user**（flat layout）：
 
 ```
 ~/.yorishiro/packs/<pack-id>/
 ├── manifest.json
-└── scene.js               # user が TS から transpile した JS
+└── scene.js               # declarative scene
+
+# R3F component を使う local trusted scene は代わりに：
+~/.yorishiro/packs/<pack-id>/
+├── manifest.json
+├── scene.tsx              # manifest.entry に指定
+└── lib/                   # pack 内の .ts/.tsx は相対 import 可
 ```
 
 > bundled と user で layout が**意図的に非対称**：bundled は本体の一部として種類別、user は flat。混同しない。詳細は `bundled-packs/README.md` および memory `feedback_user_pack_layout`。
@@ -471,6 +477,38 @@ R3F primitive の re-export entry。Scene pack が R3F component を export す�
 本 entry から import することで、Yorishiro 本体と同じ `@react-three/fiber` version を共有する。
 
 詳細: specs/2026-05-03-scene-pack-r3f-component.md §3.2
+
+### Local trusted `scene.tsx` の post-processing
+
+`~/.yorishiro/packs/<id>/scene.tsx` では、次の 2 module を host bridge 経由で import できる。
+
+- `@react-three/postprocessing` — `EffectComposer` / `EffectComposerContext` / `Bloom` / `Noise` / `Vignette` / `ChromaticAberration` / `Scanline` / `ToneMapping` など
+- `postprocessing` — `BlendFunction` / `Effect` / `EffectPass` / `ToneMappingMode` などの low-level API
+
+```tsx
+import { Bloom, EffectComposer, Noise, Vignette } from '@react-three/postprocessing';
+import { BlendFunction, type NoiseEffect } from 'postprocessing';
+
+function PostEffects() {
+  return (
+    <EffectComposer>
+      <Bloom intensity={0.8} blendFunction={BlendFunction.ADD} />
+      <Noise opacity={0.12} />
+      <Vignette darkness={0.45} />
+    </EffectComposer>
+  );
+}
+```
+
+これらは pack 側に dependency を bundle せず、host が保持する React / R3F / Three.js /
+post-processing の同一 instance に解決される。`import type` または named import 内の
+`type` modifier（上例の `NoiseEffect`）は transpile 時に消去され、runtime value にはならない。
+`Effect` や `BlendFunction` など runtime で使う symbol は通常の value import にする。
+
+この経路は任意の npm dependency を許可する仕組みではない。supported host import
+以外の bare import は引き続き reject され、pack 外へ出る relative import も使えない。
+実用例は [`abandoned-factory` の post-process pipeline](../../bundled-packs/scenes/abandoned-factory/lib/post-process.tsx)
+を参照。
 
 ### `@yorishiro/sdk/controls`
 

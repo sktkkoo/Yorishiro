@@ -1,5 +1,6 @@
 import * as ReactThreeDrei from "@react-three/drei";
 import * as ReactThreeFiber from "@react-three/fiber";
+import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   AmbientAudioAPI,
@@ -18,6 +19,7 @@ import type {
   UiThreeAPI,
 } from "@yorishiro/sdk";
 import { LevaPanel } from "leva";
+import * as Postprocessing from "postprocessing";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -684,6 +686,8 @@ declare global {
   var __YORISHIRO_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
   var __YORISHIRO_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
   var __YORISHIRO_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __YORISHIRO_REACT_THREE_POSTPROCESSING__: typeof ReactThreePostprocessing | undefined;
+  var __YORISHIRO_POSTPROCESSING__: typeof Postprocessing | undefined;
   var __YORISHIRO_THREE__: typeof THREE | undefined;
   var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
   var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
@@ -694,6 +698,8 @@ globalThis.__YORISHIRO_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__YORISHIRO_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 globalThis.__YORISHIRO_REACT_THREE_DREI__ = ReactThreeDrei;
 globalThis.__YORISHIRO_REACT_THREE_FIBER__ = ReactThreeFiber;
+globalThis.__YORISHIRO_REACT_THREE_POSTPROCESSING__ = ReactThreePostprocessing;
+globalThis.__YORISHIRO_POSTPROCESSING__ = Postprocessing;
 globalThis.__YORISHIRO_THREE__ = THREE;
 globalThis.__YORISHIRO_SDK_CONTROLS__ = YorishiroControls;
 globalThis.__YORISHIRO_SDK_R3F__ = YorishiroR3f;

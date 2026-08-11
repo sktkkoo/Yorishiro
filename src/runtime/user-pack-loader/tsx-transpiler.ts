@@ -9,8 +9,10 @@
 
 import type * as ReactThreeDrei from "@react-three/drei";
 import type * as ReactThreeFiber from "@react-three/fiber";
+import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import * as esbuild from "esbuild-wasm";
 import esbuildWasmUrl from "esbuild-wasm/esbuild.wasm?url";
+import * as Postprocessing from "postprocessing";
 import type * as React from "react";
 import type * as ReactJsxRuntime from "react/jsx-runtime";
 import type * as ReactDomClient from "react-dom/client";
@@ -27,6 +29,8 @@ const SUPPORTED_HOST_IMPORTS = new Set([
   "@yorishiro/sdk/r3f",
   "@react-three/drei",
   "@react-three/fiber",
+  "@react-three/postprocessing",
+  "postprocessing",
   "react",
   "react-dom/client",
   "react/jsx-runtime",
@@ -39,6 +43,8 @@ declare global {
   var __YORISHIRO_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
   var __YORISHIRO_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
   var __YORISHIRO_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __YORISHIRO_REACT_THREE_POSTPROCESSING__: typeof ReactThreePostprocessing | undefined;
+  var __YORISHIRO_POSTPROCESSING__: typeof Postprocessing | undefined;
   var __YORISHIRO_THREE__: typeof THREE | undefined;
   var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
   var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
@@ -278,6 +284,37 @@ export const {
 } = Controls;
 `;
 
+function isModuleExportIdentifier(name: string): boolean {
+  return /^[$A-Z_a-z][$\w]*$/.test(name) && name !== "default" && name !== "__esModule";
+}
+
+function createCompleteHostModuleShim(
+  globalName: string,
+  moduleName: string,
+  moduleExports: object,
+): string {
+  const names = Object.keys(moduleExports).filter(isModuleExportIdentifier).sort();
+  const exports = names.map((name) => `export const ${name} = HostModule.${name};`).join("\n");
+  return `
+const HostModule = globalThis.${globalName};
+if (!HostModule) throw new Error("Yorishiro ${moduleName} host bridge is not initialized");
+${exports}
+export default HostModule;
+`;
+}
+
+const reactThreePostprocessingShim = createCompleteHostModuleShim(
+  "__YORISHIRO_REACT_THREE_POSTPROCESSING__",
+  "@react-three/postprocessing",
+  ReactThreePostprocessing,
+);
+
+const postprocessingShim = createCompleteHostModuleShim(
+  "__YORISHIRO_POSTPROCESSING__",
+  "postprocessing",
+  Postprocessing,
+);
+
 const threeShim = `
 const THREE = globalThis.__YORISHIRO_THREE__;
 if (!THREE) throw new Error("Yorishiro Three.js host bridge is not initialized");
@@ -300,6 +337,12 @@ function extractNamedExports(shim: string): string[] {
 }
 
 export function tsxHostShimNamedExports(path: string): readonly string[] {
+  if (path === "@react-three/postprocessing") {
+    return Object.keys(ReactThreePostprocessing).filter(isModuleExportIdentifier).sort();
+  }
+  if (path === "postprocessing") {
+    return Object.keys(Postprocessing).filter(isModuleExportIdentifier).sort();
+  }
   if (path === "@react-three/drei") return extractNamedExports(dreiShim);
   if (path === "@yorishiro/sdk/r3f" || path === "@react-three/fiber") {
     return extractNamedExports(r3fShim);
@@ -360,6 +403,12 @@ function createPlan4MvpPlugin(
         }
         if (args.path === "@react-three/drei") {
           return { contents: dreiShim, loader: "js" };
+        }
+        if (args.path === "@react-three/postprocessing") {
+          return { contents: reactThreePostprocessingShim, loader: "js" };
+        }
+        if (args.path === "postprocessing") {
+          return { contents: postprocessingShim, loader: "js" };
         }
         if (args.path === "@yorishiro/sdk/r3f" || args.path === "@react-three/fiber") {
           return { contents: r3fShim, loader: "js" };

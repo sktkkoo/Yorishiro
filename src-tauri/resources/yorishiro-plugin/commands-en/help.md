@@ -72,7 +72,7 @@ Required files:
 | File | Role |
 |---|---|
 | `manifest.json` | Shared declaration for id / type / version / entry |
-| `<kind>.js` | Pack implementation: `persona.js`, `effect.js`, `scene.js`, `ui.js`, or `ambient-ui.js` |
+| `<kind>.js` / `scene.tsx` | Pack implementation. Scene packs may use the runtime-transpiled R3F `scene.tsx` format |
 | `persona.md` | Persona only. Canonical source for the character prompt |
 
 Common `manifest.json` fields:
@@ -87,7 +87,7 @@ Common `manifest.json` fields:
 }
 ```
 
-- User packs use `.js` entry files.
+- Most user packs use `.js` entries. Trusted local scene packs may instead use `scene.tsx`, including host-bridged `@react-three/postprocessing` and `postprocessing` imports. Arbitrary npm imports are not supported.
 - Bundled packs and user packs have different layouts. Bundled packs live under `bundled-packs/<kind_plural>/<id>/`; user packs are flat directories under `~/.yorishiro/packs/<id>/`.
 
 ---

@@ -72,7 +72,7 @@ Claude Code 使用時に、AI が `/yori:create` や `/yori:update` 経由で pa
 | ファイル | 役割 |
 |---|---|
 | `manifest.json` | id / type / version / entry の宣言（全 pack 共通） |
-| `<kind>.js` | pack 本体（persona.js / effect.js / scene.js / ui.js / ambient-ui.js） |
+| `<kind>.js` / `scene.tsx` | pack 本体。scene は runtime transpile される R3F `scene.tsx` も利用可能 |
 | `persona.md` | **persona のみ**。キャラクター人格の canonical source |
 
 `manifest.json` の共通 fields:
@@ -87,7 +87,7 @@ Claude Code 使用時に、AI が `/yori:create` や `/yori:update` 経由で pa
 }
 ```
 
-- user pack は `.js` のみ（TS から transpile する）
+- 多くの user pack は `.js` entry を使う。trusted local scene は `scene.tsx` も利用でき、`@react-three/postprocessing` / `postprocessing` は host bridge 経由で import できる。任意の npm import は利用できない
 - bundled pack とは layout が異なる（bundled は `bundled-packs/<kind_plural>/<id>/`、user は flat `~/.yorishiro/packs/<id>/`）
 
 ---

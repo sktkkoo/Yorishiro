@@ -91,6 +91,8 @@ scene pack には 2 つの形式がある：
 
 `scene.tsx` から pack 内の `./lib/*.tsx` 等へ相対 import して分割してよい。pack 内 source file の編集は owning `scene.tsx` の reload として扱われる。
 
+trusted local `scene.tsx` では、post-processing component を `@react-three/postprocessing` から、lower-level effect / enum / type を `postprocessing` から import できる。これらは Yorishiro の host bridge に解決されるため、host と同じ React / R3F / Three.js / post-processing instance を共有する。pipeline の参考実装は `bundled-packs/scenes/abandoned-factory/lib/post-process.tsx`。任意の npm package が使えるわけではなく、無関係な bare import は引き続き拒否される。
+
 component 内では React + three.js の描画に留め、`fetch` / `fs` / `system.exec` / Tauri API / Node builtin / PTY write は使わない。base camera は Common controls の所有なので scene から直接触らない。camera breath / shake / sway のような微小変調だけを Scene 側 controls として設計する。
 
 ### R3F scene の controls 結線
