@@ -17,6 +17,7 @@ import type * as React from "react";
 import type * as ReactJsxRuntime from "react/jsx-runtime";
 import type * as ReactDomClient from "react-dom/client";
 import type * as THREE from "three";
+import type * as YorishiroAttentionCue from "../../sdk/attention-cue";
 import type * as YorishiroControls from "../../sdk/controls";
 import type * as YorishiroR3f from "../../sdk/r3f";
 
@@ -25,6 +26,7 @@ const USER_SOURCE_NAMESPACE = "yorishiro-user-source";
 const UNSUPPORTED_NAMESPACE = "yorishiro-unsupported";
 const SUPPORTED_HOST_IMPORTS = new Set([
   "@yorishiro/sdk",
+  "@yorishiro/sdk/attention-cue",
   "@yorishiro/sdk/controls",
   "@yorishiro/sdk/r3f",
   "@react-three/drei",
@@ -46,6 +48,7 @@ declare global {
   var __YORISHIRO_REACT_THREE_POSTPROCESSING__: typeof ReactThreePostprocessing | undefined;
   var __YORISHIRO_POSTPROCESSING__: typeof Postprocessing | undefined;
   var __YORISHIRO_THREE__: typeof THREE | undefined;
+  var __YORISHIRO_SDK_ATTENTION_CUE__: typeof YorishiroAttentionCue | undefined;
   var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
   var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
 }
@@ -227,6 +230,15 @@ const sdkShim = `
 export {};
 `;
 
+const attentionCueShim = `
+const AttentionCue = globalThis.__YORISHIRO_SDK_ATTENTION_CUE__;
+if (!AttentionCue) throw new Error("Yorishiro attention cue host bridge is not initialized");
+export const {
+  AttentionCueLight,
+  useClaimAttentionCue,
+} = AttentionCue;
+`;
+
 const r3fShim = `
 const Fiber = globalThis.__YORISHIRO_REACT_THREE_FIBER__;
 const SdkR3F = globalThis.__YORISHIRO_SDK_R3F__;
@@ -344,6 +356,7 @@ export function tsxHostShimNamedExports(path: string): readonly string[] {
     return Object.keys(Postprocessing).filter(isModuleExportIdentifier).sort();
   }
   if (path === "@react-three/drei") return extractNamedExports(dreiShim);
+  if (path === "@yorishiro/sdk/attention-cue") return extractNamedExports(attentionCueShim);
   if (path === "@yorishiro/sdk/r3f" || path === "@react-three/fiber") {
     return extractNamedExports(r3fShim);
   }
@@ -409,6 +422,9 @@ function createPlan4MvpPlugin(
         }
         if (args.path === "postprocessing") {
           return { contents: postprocessingShim, loader: "js" };
+        }
+        if (args.path === "@yorishiro/sdk/attention-cue") {
+          return { contents: attentionCueShim, loader: "js" };
         }
         if (args.path === "@yorishiro/sdk/r3f" || args.path === "@react-three/fiber") {
           return { contents: r3fShim, loader: "js" };

@@ -331,6 +331,7 @@ import {
   startSessionAttentionProducer,
   startWorkspaceAttentionPresenceBridge,
 } from "./runtime/workspace-attention";
+import * as YorishiroAttentionCue from "./sdk/attention-cue";
 import * as YorishiroControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
@@ -689,6 +690,7 @@ declare global {
   var __YORISHIRO_REACT_THREE_POSTPROCESSING__: typeof ReactThreePostprocessing | undefined;
   var __YORISHIRO_POSTPROCESSING__: typeof Postprocessing | undefined;
   var __YORISHIRO_THREE__: typeof THREE | undefined;
+  var __YORISHIRO_SDK_ATTENTION_CUE__: typeof YorishiroAttentionCue | undefined;
   var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
   var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
 }
@@ -701,6 +703,7 @@ globalThis.__YORISHIRO_REACT_THREE_FIBER__ = ReactThreeFiber;
 globalThis.__YORISHIRO_REACT_THREE_POSTPROCESSING__ = ReactThreePostprocessing;
 globalThis.__YORISHIRO_POSTPROCESSING__ = Postprocessing;
 globalThis.__YORISHIRO_THREE__ = THREE;
+globalThis.__YORISHIRO_SDK_ATTENTION_CUE__ = YorishiroAttentionCue;
 globalThis.__YORISHIRO_SDK_CONTROLS__ = YorishiroControls;
 globalThis.__YORISHIRO_SDK_R3F__ = YorishiroR3f;
 

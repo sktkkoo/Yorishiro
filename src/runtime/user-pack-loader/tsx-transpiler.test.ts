@@ -1,6 +1,7 @@
 import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import * as Postprocessing from "postprocessing";
 import { describe, expect, it, vi } from "vitest";
+import * as YorishiroAttentionCue from "../../sdk/attention-cue";
 
 vi.mock("esbuild-wasm", async (importOriginal) => {
   const actual = await importOriginal<typeof import("esbuild-wasm")>();
@@ -54,6 +55,7 @@ describe("isSupportedTsxHostImport", () => {
     expect(isSupportedTsxHostImport("@react-three/fiber")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/drei")).toBe(true);
     expect(isSupportedTsxHostImport("three")).toBe(true);
+    expect(isSupportedTsxHostImport("@yorishiro/sdk/attention-cue")).toBe(true);
     expect(isSupportedTsxHostImport("@yorishiro/sdk/controls")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/postprocessing")).toBe(true);
     expect(isSupportedTsxHostImport("postprocessing")).toBe(true);
@@ -62,6 +64,7 @@ describe("isSupportedTsxHostImport", () => {
   it("keeps unrelated imports unsupported", () => {
     expect(isSupportedTsxHostImport("fs")).toBe(false);
     expect(isSupportedTsxHostImport("@tauri-apps/api/core")).toBe(false);
+    expect(isSupportedTsxHostImport("src/runtime/three-runtime/attention-cue-light")).toBe(false);
     expect(isSupportedTsxHostImport("./local-file")).toBe(false);
   });
 });
@@ -200,6 +203,32 @@ describe("transpileUiTsxEntry", () => {
     }
   });
 
+  it("compiles and loads the public attention cue surface through the host bridge", async () => {
+    const entryPath = "/Users/me/.yorishiro/packs/attention-room/scene.tsx";
+    const source = `
+      import { AttentionCueLight, useClaimAttentionCue } from "@yorishiro/sdk/attention-cue";
+      export { AttentionCueLight, useClaimAttentionCue };
+    `;
+    const originalFetch = globalThis.fetch;
+    const originalAttentionCue = globalThis.__YORISHIRO_SDK_ATTENTION_CUE__;
+    globalThis.fetch = (async () => new Response(source, { status: 200 })) as typeof fetch;
+    globalThis.__YORISHIRO_SDK_ATTENTION_CUE__ = YorishiroAttentionCue;
+
+    try {
+      const code = await transpileUiTsxEntry(entryPath, {
+        convertFileSrc: (path) => `https://asset.local${path}`,
+      });
+      const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
+      const loaded = await import(/* @vite-ignore */ moduleUrl);
+
+      expect(loaded.AttentionCueLight).toBe(YorishiroAttentionCue.AttentionCueLight);
+      expect(loaded.useClaimAttentionCue).toBe(YorishiroAttentionCue.useClaimAttentionCue);
+    } finally {
+      globalThis.fetch = originalFetch;
+      globalThis.__YORISHIRO_SDK_ATTENTION_CUE__ = originalAttentionCue;
+    }
+  });
+
   it("rejects an unrelated bare import through the runtime transpile path", async () => {
     const entryPath = "/Users/me/.yorishiro/packs/my-room/scene.tsx";
     const originalFetch = globalThis.fetch;
@@ -256,6 +285,13 @@ describe("tsxHostShimNamedExports", () => {
 
       expect(missing, `${path} shim exports missing from installed module`).toEqual([]);
     }
+  });
+
+  it("only exposes the stable attention cue contract", () => {
+    expect(tsxHostShimNamedExports("@yorishiro/sdk/attention-cue")).toEqual([
+      "AttentionCueLight",
+      "useClaimAttentionCue",
+    ]);
   });
 
   it("exposes the post-processing symbols used by local scene packs", () => {
