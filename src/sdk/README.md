@@ -19,9 +19,9 @@ Yorishiro の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
 | **UI Pack** | primary UI | Yorishiro の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
-| **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | renderer / attention | multi-active（複数同時 enable）。`ambient-ui-pack-registry` で管理 |
+| **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | attention / amenity services | multi-active（複数同時 enable）。host が lifecycle を管理 |
 
-- `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、`#ambient-layer` 内の自身の container に描画する。bundled 例: `attention-aura` (v2 attention のデフォルト visual)。
+- `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、必要なら `AmbientUiContext.amenities` から amenity が opt-in した service を使う。`#ambient-layer` 内の自身の container に描画する。
 
 **迷ったら**：
 
@@ -213,6 +213,12 @@ export default {
 `activate(ctx)` は `AmenityHandle`（`{ tools, dispose }`）を返す。
 `ctx.signal` は pack disable 時に abort される。`activate` 内で起動した非同期処理は
 この signal を監視して cleanup すること。`dispose()` は disable / 終了で必ず呼ばれる。
+
+Ambient UI に state / 操作を公開する amenity は、handle に任意の `service` を追加できる。
+`service.getState()` と `service.execute(command, params?)` は UI 向けの明示的な public contract。
+`tools` は MCP / host routing 専用であり、Ambient UI には渡らない。必要な command だけを
+別 namespace で実装し、未知の command は reject する。bundled の pomodoro は state と
+`"stop"` のみを service に公開する。
 
 ### 環境 event への反応
 
@@ -682,6 +688,12 @@ export default {
 } satisfies AmbientUiPackDefinition;
 ```
 
+active amenity が公開した UI 向け service は `ctx.amenities.get(id)` で解決する。inactive、
+未登録、または service を opt-in していない amenity では `null`。返る handle は
+`getState()` と `execute(command, params?)` だけを持ち、registry の列挙・enable/disable や
+MCP tool handlers には触れられない。handle は呼び出しごとに active service を再解決するため、
+長時間 cache しても disable 後の service を操作できない。
+
 `ambient-ui.tsx` は Yorishiro が runtime transpile する trusted local source である。
 `react`、`react/jsx-runtime`、`react-dom/client` は host bridge に解決され、host と同じ
 instance を共有する。SDK の型は `@yorishiro/sdk` から type import する。pack 内の
@@ -694,9 +706,11 @@ relative import は同じ pack directory 内に閉じる。任意の npm package
 reload のどちらも user code を import しない。
 
 `mount` は同期的に `Disposable` を返し、`dispose` で React root、timer、RAF、listener を
-すべて解放する。Ambient UI に渡される attention API は read-only で、persona / system /
-raw Tauri API は持たない。bundled の参考実装は
-`bundled-packs/ambient-ui/attention-aura/ui.tsx`。
+すべて解放する。Ambient UI に渡される attention API は read-only。amenity service は
+amenity 側が明示公開した state / command に限定され、persona / system / raw Tauri API や
+internal registry は持たない。bundled の参考実装は attention observation の
+`bundled-packs/ambient-ui/attention-aura/ui.tsx` と amenity service consumer の
+`bundled-packs/ambient-ui/pomodoro-ui/ui.tsx`。
 
 ---
 

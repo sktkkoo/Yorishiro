@@ -2,14 +2,18 @@
  * Pomodoro Timer ambient-ui — 画面右下に残り時間と操作ボタンを表示する。
  *
  * user が直接ポモドーロを操作する経路。MCP tool（住人用）と対称。
- * AmenityPackRegistry singleton から pomodoro handle の tools を呼ぶ。
+ * AmbientUiContext の public amenity service から state / command を使う。
  */
 
-import type { AmbientUiContext, AmbientUiPackDefinition, Disposable } from "@yorishiro/sdk";
+import type {
+  AmbientUiContext,
+  AmbientUiPackDefinition,
+  AmenityServicesAPI,
+  Disposable,
+} from "@yorishiro/sdk";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { getAmenityPackRegistry } from "../../../src/runtime/amenity-pack-registry";
 
 // ─── Types ───────────────────────────────────────────────
 
@@ -64,23 +68,55 @@ function phaseColor(phase: Phase): string {
   }
 }
 
+function parseStatus(value: unknown): PomodoroStatus | null {
+  if (value === null || typeof value !== "object") return null;
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.phase !== "idle" &&
+    candidate.phase !== "work" &&
+    candidate.phase !== "short-break" &&
+    candidate.phase !== "long-break"
+  ) {
+    return null;
+  }
+  if (
+    typeof candidate.round !== "number" ||
+    typeof candidate.totalRounds !== "number" ||
+    typeof candidate.remainingMs !== "number"
+  ) {
+    return null;
+  }
+  return {
+    phase: candidate.phase,
+    round: candidate.round,
+    totalRounds: candidate.totalRounds,
+    remainingMs: candidate.remainingMs,
+  };
+}
+
 // ─── Component ───────────────────────────────────────────
 
-function PomodoroUi(): React.JSX.Element | null {
+export function PomodoroUi({
+  amenities,
+}: {
+  amenities: AmenityServicesAPI;
+}): React.JSX.Element | null {
   const [status, setStatus] = useState<PomodoroStatus>(IDLE_STATUS);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const poll = useCallback(async () => {
-    const registry = getAmenityPackRegistry();
-    const handle = registry.getActiveHandle("pomodoro");
-    if (!handle) return;
+    const service = amenities.get("pomodoro");
+    if (service === null) {
+      setStatus(IDLE_STATUS);
+      return;
+    }
     try {
-      const result = (await handle.tools.pomodoro_status({})) as PomodoroStatus;
-      setStatus(result);
+      const result = parseStatus(await service.getState());
+      if (result !== null) setStatus(result);
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [amenities]);
 
   useEffect(() => {
     poll();
@@ -91,12 +127,11 @@ function PomodoroUi(): React.JSX.Element | null {
   }, [poll]);
 
   const handleStop = useCallback(async () => {
-    const registry = getAmenityPackRegistry();
-    const handle = registry.getActiveHandle("pomodoro");
-    if (!handle) return;
-    await handle.tools.pomodoro_stop({});
+    const service = amenities.get("pomodoro");
+    if (service === null) return;
+    await service.execute("stop");
     setStatus(IDLE_STATUS);
-  }, []);
+  }, [amenities]);
 
   if (status.phase === "idle") return null;
 
@@ -164,9 +199,9 @@ function PomodoroUi(): React.JSX.Element | null {
 const pomodoroUiPack = {
   type: "ambient-ui",
   id: "pomodoro-ui",
-  mount: (_ctx: AmbientUiContext, container: HTMLDivElement): Disposable => {
+  mount: (ctx: AmbientUiContext, container: HTMLDivElement): Disposable => {
     const root = ReactDOM.createRoot(container);
-    root.render(<PomodoroUi />);
+    root.render(<PomodoroUi amenities={ctx.amenities} />);
     return {
       dispose: () => queueMicrotask(() => root.unmount()),
     };

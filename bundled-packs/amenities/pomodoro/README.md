@@ -16,6 +16,13 @@ state machine（`idle → work → short-break → work → ... → long-break �
 default は work 25 分 / short break 5 分 / long break 15 分 / 4 rounds。
 最終 round の break が long break になり、終了で `idle` に戻る。
 
+## Ambient UI 向け public service
+
+`AmenityHandle.service` に timer state の `getState()` と `execute("stop")` だけを公開する。
+これは `AmbientUiContext.amenities` 経由で pomodoro-ui が使う opt-in surface であり、MCP tool
+handler や amenity registry は渡さない。`pomodoro_start` は UI service command としては公開せず、
+未知の command は reject する。
+
 ## emit する event
 
 フェーズ遷移ごとに synthetic event を emit する（trigger match 経由で persona reflex が反応する）。
