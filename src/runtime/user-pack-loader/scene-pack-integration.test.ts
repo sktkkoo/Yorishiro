@@ -111,6 +111,9 @@ describe("registerScenePack", () => {
       expect(scenePackEntries[0].id).toBe("test-scene");
       expect(scenePackEntries[0].origin).toBe("user");
       expect(scenePackEntries[0].component).toBeUndefined();
+      expect(scenePackEntries[0].resolveAsset?.("./assets/model.glb")).toBe(
+        "asset://localhost/p/test-scene/assets/model.glb",
+      );
       expect(packRegistry.has("test-scene", "scene")).toBe(true);
     } finally {
       restore();

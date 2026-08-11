@@ -27,11 +27,15 @@ export interface ScenePackEntry {
   readonly origin: PackOrigin;
 
   /**
+   * Host が所有する pack-scoped asset resolver。local component scene では
+   * loader が登録時に注入し、Pack code に filesystem/Tauri API を公開しない。
+   */
+  readonly resolveAsset?: (relativePath: string) => string;
+
+  /**
    * R3F-component scene pack の場合の component reference。
-   * Bundled pack のみ。User pack 由来の場合は loader が undefined を保つ
-   * （component field を含む user pack は loader が warn して捨てる）。
-   *
-   * Internal design-record: specs/2026-05-03-scene-pack-r3f-component.md §5.2
+   * Bundled / local user の双方で利用できる。local user component は runtime
+   * transpiler の host/containment contract を通ったものだけがここへ到達する。
    */
   readonly component?: ComponentType<ScenePackComponentProps>;
 }

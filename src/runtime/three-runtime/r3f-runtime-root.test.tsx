@@ -202,6 +202,31 @@ describe("R3fRuntimeRoot", () => {
     expect(props.resolveAsset("./assets/model.glb")).toBe("/resolved/model.glb");
   });
 
+  it("passes the host-injected asset resolver to a local user scene component", () => {
+    const renderedProps: ScenePackComponentProps[] = [];
+    const resolveAsset = vi.fn(
+      (path: string) => `asset://localhost/Users/me/.yorishiro/packs/local-room/${path}`,
+    );
+    const LocalComponent = (props: ScenePackComponentProps) => {
+      renderedProps.push(props);
+      return null;
+    };
+    getMockRegistry().__setActive({
+      ...makeEntry("local-room", LocalComponent),
+      origin: "user",
+      resolveAsset,
+    });
+
+    render(<R3fRuntimeRoot />);
+
+    const props = renderedProps[0];
+    if (props === undefined) throw new Error("LocalComponent が render されていない");
+    expect(props.resolveAsset("assets/model.glb")).toBe(
+      "asset://localhost/Users/me/.yorishiro/packs/local-room/assets/model.glb",
+    );
+    expect(resolveAsset).toHaveBeenCalledWith("assets/model.glb");
+  });
+
   it("re-renders when active entry changes", () => {
     const registry = getMockRegistry();
     const firstRender = vi.fn((props: ScenePackComponentProps) => {
