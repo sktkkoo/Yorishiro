@@ -24,7 +24,7 @@ import type * as YorishiroR3f from "../../sdk/r3f";
 const HOST_NAMESPACE = "yorishiro-host";
 const USER_SOURCE_NAMESPACE = "yorishiro-user-source";
 const UNSUPPORTED_NAMESPACE = "yorishiro-unsupported";
-const SUPPORTED_HOST_IMPORTS = new Set([
+export const LOCAL_TSX_HOST_IMPORTS = [
   "@yorishiro/sdk",
   "@yorishiro/sdk/attention-cue",
   "@yorishiro/sdk/controls",
@@ -37,7 +37,8 @@ const SUPPORTED_HOST_IMPORTS = new Set([
   "react-dom/client",
   "react/jsx-runtime",
   "three",
-]);
+] as const;
+const SUPPORTED_HOST_IMPORTS = new Set<string>(LOCAL_TSX_HOST_IMPORTS);
 
 declare global {
   var __YORISHIRO_REACT__: typeof React | undefined;
@@ -62,7 +63,7 @@ export interface TsxTranspilerOptions {
 }
 
 let initializePromise: Promise<void> | null = null;
-const RELATIVE_IMPORT_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
+export const LOCAL_TSX_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
 
 type SourceLoader = "tsx" | "ts" | "jsx" | "js";
 
@@ -124,6 +125,13 @@ function sourceLoaderForPath(path: string): SourceLoader | null {
   if (path.endsWith(".jsx")) return "jsx";
   if (path.endsWith(".js")) return "js";
   return null;
+}
+
+function explicitRelativeImportExtension(path: string): string | null {
+  const pathWithoutQuery = path.split("?", 1)[0] ?? path;
+  const basename = pathWithoutQuery.slice(pathWithoutQuery.lastIndexOf("/") + 1);
+  const dotIndex = basename.lastIndexOf(".");
+  return dotIndex <= 0 ? null : basename.slice(dotIndex).toLowerCase();
 }
 
 async function readUserSource(
@@ -394,6 +402,26 @@ function createPlan4MvpPlugin(
             pluginData: `relative import '${args.path}' escapes the pack directory`,
           };
         }
+        if (args.path.includes("?")) {
+          return {
+            path: args.path,
+            namespace: UNSUPPORTED_NAMESPACE,
+            pluginData: `query import '${args.path}' is unsupported in runtime-transpiled .tsx; Vite ?raw/?url loaders are unavailable`,
+          };
+        }
+        const extension = explicitRelativeImportExtension(args.path);
+        if (
+          extension !== null &&
+          !LOCAL_TSX_SOURCE_EXTENSIONS.includes(
+            extension as (typeof LOCAL_TSX_SOURCE_EXTENSIONS)[number],
+          )
+        ) {
+          return {
+            path: args.path,
+            namespace: UNSUPPORTED_NAMESPACE,
+            pluginData: `relative import '${args.path}' uses unsupported source extension '${extension}'; supported extensions: ${LOCAL_TSX_SOURCE_EXTENSIONS.join(", ")}`,
+          };
+        }
         return {
           path: resolved,
           namespace: USER_SOURCE_NAMESPACE,
@@ -440,7 +468,7 @@ function createPlan4MvpPlugin(
       build.onLoad({ filter: /.*/, namespace: USER_SOURCE_NAMESPACE }, async (args) => {
         const candidates =
           sourceLoaderForPath(args.path) === null
-            ? RELATIVE_IMPORT_EXTENSIONS.map((ext) => `${args.path}${ext}`)
+            ? LOCAL_TSX_SOURCE_EXTENSIONS.map((ext) => `${args.path}${ext}`)
             : [args.path];
         for (const sourcePath of candidates) {
           const loader = sourceLoaderForPath(sourcePath);

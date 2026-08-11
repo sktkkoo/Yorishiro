@@ -15,6 +15,8 @@ import {
   buildTsxEntryUrl,
   isSupportedTsxHostImport,
   isTsxEntryPath,
+  LOCAL_TSX_HOST_IMPORTS,
+  LOCAL_TSX_SOURCE_EXTENSIONS,
   resolveRelativeTsxImport,
   transpileUiTsxEntry,
   tsxHostShimNamedExports,
@@ -50,6 +52,11 @@ describe("buildTsxEntryUrl", () => {
 });
 
 describe("isSupportedTsxHostImport", () => {
+  it("keeps the exported authoring contract list in sync with the resolver", () => {
+    expect(LOCAL_TSX_HOST_IMPORTS.every((path) => isSupportedTsxHostImport(path))).toBe(true);
+    expect(LOCAL_TSX_SOURCE_EXTENSIONS).toEqual([".tsx", ".ts", ".jsx", ".js"]);
+  });
+
   it("allows host modules needed by scene.tsx R3F components", () => {
     expect(isSupportedTsxHostImport("@yorishiro/sdk/r3f")).toBe(true);
     expect(isSupportedTsxHostImport("@react-three/fiber")).toBe(true);
@@ -262,6 +269,29 @@ describe("transpileUiTsxEntry", () => {
           convertFileSrc: (path) => `https://asset.local${path}`,
         }),
       ).rejects.toThrow("relative import '../other-pack/scene' escapes the pack directory");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it.each([
+    ["JSON", "./data.json", "unsupported source extension '.json'"],
+    ["raw text", "./prompt.md?raw", "Vite ?raw/?url loaders are unavailable"],
+    ["asset", "./assets/model.glb", "unsupported source extension '.glb'"],
+  ])("reports an explicit diagnostic for unsupported %s imports", async (_kind, specifier, error) => {
+    const entryPath = "/Users/me/.yorishiro/packs/my-room/scene.tsx";
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(`import value from "${specifier}"; export default value;`, {
+        status: 200,
+      })) as typeof fetch;
+
+    try {
+      await expect(
+        transpileUiTsxEntry(entryPath, {
+          convertFileSrc: (path) => `https://asset.local${path}`,
+        }),
+      ).rejects.toThrow(error);
     } finally {
       globalThis.fetch = originalFetch;
     }
