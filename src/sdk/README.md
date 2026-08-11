@@ -2,6 +2,10 @@
 
 このドキュメントは Yorishiro Pack を書く creator（あるいはその依頼を受けた AI）が読むための API リファレンス。**Pack を書く前に必ず読む**。
 
+`~/.yorishiro/packs/`でlocal sourceを直接書く場合は、先に
+[`docs/decisions/local-source-authoring-contract.md`](../../docs/decisions/local-source-authoring-contract.md)
+を読む。Bundled PackのVite importをlocal Packへそのままコピーできるとは限らない。
+
 ---
 
 ## UGC の Pack 種別（6 種類）

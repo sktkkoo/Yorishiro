@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import * as Postprocessing from "postprocessing";
 import { describe, expect, it, vi } from "vitest";
@@ -73,6 +74,22 @@ describe("isSupportedTsxHostImport", () => {
     expect(isSupportedTsxHostImport("@tauri-apps/api/core")).toBe(false);
     expect(isSupportedTsxHostImport("src/runtime/three-runtime/attention-cue-light")).toBe(false);
     expect(isSupportedTsxHostImport("./local-file")).toBe(false);
+  });
+});
+
+describe("local source authoring contract", () => {
+  it("documents every runtime TSX host import and source extension", async () => {
+    const contract = await readFile(
+      new URL("../../../docs/decisions/local-source-authoring-contract.md", import.meta.url),
+      "utf8",
+    );
+
+    for (const path of LOCAL_TSX_HOST_IMPORTS) {
+      expect(contract).toContain(`\`${path}\``);
+    }
+    for (const extension of LOCAL_TSX_SOURCE_EXTENSIONS) {
+      expect(contract).toContain(`\`${extension}\``);
+    }
   });
 });
 

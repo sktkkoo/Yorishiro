@@ -85,7 +85,8 @@
 - [**pack-override-pattern.md**](pack-override-pattern.md) — user pack が bundled を override する semantic（dispose + 置換、reference 比較で listener fire）
 - [**bundled-pack-immutability.md**](bundled-pack-immutability.md) — bundled は本体の一部、全経路で編集不可、改変は user fork で
 - [**single-active-config-picks.md**](single-active-config-picks.md) — single-active な pack は config で user picks、pack 自薦の `defaultActive` は持たせない
-- [**user-pack-layout.md**](user-pack-layout.md) — user は flat layout (.js)、bundled は kind-first (.ts)、意図的に非対称
+- [**user-pack-layout.md**](user-pack-layout.md) — userはflat layout（通常`.js`、一部`.tsx`）、bundledはkind-first。意図的に非対称
+- [**local-source-authoring-contract.md**](local-source-authoring-contract.md) — bundled Vite buildとlocal runtime source compilerの対応範囲（entry/source extension、host module、asset/JSON/raw、Pack containment、diagnostics、version policy）
 - [**system-settings-privileged-boundary.md**](system-settings-privileged-boundary.md) — `yorishiro-settings` は system-owned bundled UI。監査済み internal/Tauri import だけを例外とし、通常 UI Pack は SDK surface に限定
 - [**scene-controls-api.md**](scene-controls-api.md) — Scene Pack の lighting / post effect / camera modulation は `useYorishiroControls`（`@yorishiro/sdk/controls`）経由で Scene panel に登録、base camera は Common panel。F2 は Common / Scene の 2 枚。Leva は adapter / debug UI に留める
 - [**scene-layer-override-semantics.md**](scene-layer-override-semantics.md) — Scene が layer 構造を握る、override は既存 layer への patch のみ（auto-create 廃止）。scene 切替で override は clear（共通管理 Camera のみ持ち越し）
