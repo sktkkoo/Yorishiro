@@ -20,7 +20,7 @@ import {
   ToneMapping,
   Vignette,
 } from "@react-three/postprocessing";
-import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { controlFolder, useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useFrame } from "@yorishiro/sdk/r3f";
 import {
   BlendFunction,
@@ -33,7 +33,6 @@ import {
 } from "postprocessing";
 import { useContext, useEffect, useMemo, useRef } from "react";
 import { Uniform, Vector2 } from "three";
-import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import {
   createGlitchState,
   DEFAULT_GLITCH_PARAMS,

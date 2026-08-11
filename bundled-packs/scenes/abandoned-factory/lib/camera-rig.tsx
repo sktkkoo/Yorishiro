@@ -8,11 +8,10 @@
  * SDK controls で振幅を runtime 調整可能.
  */
 
-import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { controlFolder, useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useFrame } from "@yorishiro/sdk/r3f";
 import { useRef } from "react";
 import * as THREE from "three";
-import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function CameraRig(): null {
   const baseFovRef = useRef<number | null>(null);

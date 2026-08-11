@@ -10,10 +10,9 @@
  * - specs/2026-05-03-scene-pack-r3f-component.md
  */
 
-import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { controlFolder, useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 import type { ScenePackComponentProps, ScenePackDefinition } from "@yorishiro/sdk/scene-pack";
 import { AttentionCueLight } from "../../../src/runtime/three-runtime/attention-cue-light";
-import { useControlsBridge } from "../../../src/runtime/ui-state-store";
 import { DustMotes } from "./lib/atmosphere";
 import { CameraBreath } from "./lib/camera-breath";
 import { Ceiling } from "./lib/ceiling";

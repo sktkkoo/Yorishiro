@@ -5,8 +5,7 @@
  * SDK controls で intensity / color を調整可能.
  */
 
-import { useYorishiroControls } from "@yorishiro/sdk/controls";
-import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
+import { useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 
 export function Lights() {
   const [controls, setControls] = useYorishiroControls("lights", () => ({
