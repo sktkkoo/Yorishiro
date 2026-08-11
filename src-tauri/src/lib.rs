@@ -1270,6 +1270,10 @@ struct UserPackManifestSummary {
     description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author: Option<String>,
+    #[serde(rename = "minClientVersion", skip_serializing_if = "Option::is_none")]
+    min_client_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<Vec<String>>,
     /// 能力ラダーの sandbox 宣言。Rust 側は素通しし、検証は TS（pack-execution-policy）が行う。
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox: Option<serde_json::Value>,
@@ -1541,6 +1545,8 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                         execution_class: m.execution_class.clone(),
                         description: m.description.clone(),
                         author: m.author.clone(),
+                        min_client_version: m.min_client_version.clone(),
+                        platform: m.platform.clone(),
                         sandbox: m.sandbox.clone(),
                     }),
                 });
@@ -2780,6 +2786,8 @@ mod user_pack_discovery_tests {
               "version": "0.1.0",
               "yorishiroVersion": "^0.1.0",
               "executionClass": "trusted-main-thread-js",
+              "minClientVersion": "0.7.0",
+              "platform": ["macos", "linux"],
               "entry": "effect.js"
             }"#,
         )
@@ -2796,6 +2804,11 @@ mod user_pack_discovery_tests {
         assert_eq!(
             manifest.execution_class.as_deref(),
             Some("trusted-main-thread-js")
+        );
+        assert_eq!(manifest.min_client_version.as_deref(), Some("0.7.0"));
+        assert_eq!(
+            manifest.platform.as_deref(),
+            Some(["macos".to_string(), "linux".to_string()].as_slice())
         );
 
         let _ = fs::remove_dir_all(&packs);

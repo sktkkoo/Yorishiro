@@ -104,6 +104,10 @@ export interface AmenityPackManifest {
   readonly type: "amenity";
   readonly version: string;
   readonly yorishiroVersion: string;
+  /** local Pack の import 前に検証する最小 app version（exact SemVer）。 */
+  readonly minClientVersion?: string;
+  /** local Pack の load を許可する platform。 */
+  readonly platform?: ReadonlyArray<"macos" | "windows" | "linux">;
   readonly entry: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";
