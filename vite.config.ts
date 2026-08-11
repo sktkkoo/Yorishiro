@@ -14,6 +14,10 @@ export default defineConfig(async () => ({
   resolve: {
     alias: [
       {
+        find: /^@yorishiro\/sdk\/attention-cue$/,
+        replacement: new URL("./src/sdk/attention-cue.ts", import.meta.url).pathname,
+      },
+      {
         find: /^@yorishiro\/sdk\/controls$/,
         replacement: new URL("./src/sdk/controls.ts", import.meta.url).pathname,
       },
