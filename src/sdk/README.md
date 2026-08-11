@@ -210,7 +210,7 @@ export default {
 
 ### lifecycle と cleanup
 
-`activate(ctx)` は `AmenityHandle`（`{ tools, dispose }`）を返す。
+`activate(ctx)` は `AmenityHandle`（`{ tools, service?, dispose }`）を返す。
 `ctx.signal` は pack disable 時に abort される。`activate` 内で起動した非同期処理は
 この signal を監視して cleanup すること。`dispose()` は disable / 終了で必ず呼ばれる。
 
@@ -219,6 +219,21 @@ Ambient UI に state / 操作を公開する amenity は、handle に任意の `
 `tools` は MCP / host routing 専用であり、Ambient UI には渡らない。必要な command だけを
 別 namespace で実装し、未知の command は reject する。bundled の pomodoro は state と
 `"stop"` のみを service に公開する。
+
+#### Amenity service の stability boundary
+
+通常の public API として SDK が安定保証する共通 envelope は次の4点だけ：
+
+- `ctx.amenities.get(id)` で service を解決できる
+- `service.getState()` が state snapshot を返す
+- `service.execute(command, params?)` が command を実行する
+- amenity が inactive、未登録、または service 非公開なら `get(id)` は `null` を返す
+
+各 amenity 固有の state shape、command 名、params / result shape は、その amenity の
+manifest version に属する contract であり、SDK 全体の共通 stable contract ではない。
+subscribe API、typed helper、community / isolated amenity の permission model も現時点の
+共通 contract には含めない。consumer は対象 amenity の docs と version を確認し、`unknown`
+の state / result を境界で検証する。
 
 ### 環境 event への反応
 
@@ -693,6 +708,9 @@ active amenity が公開した UI 向け service は `ctx.amenities.get(id)` で
 `getState()` と `execute(command, params?)` だけを持ち、registry の列挙・enable/disable や
 MCP tool handlers には触れられない。handle は呼び出しごとに active service を再解決するため、
 長時間 cache しても disable 後の service を操作できない。
+
+SDK 共通で安定保証されるのはこの resolver / `getState` / `execute` envelope と inactive 時の
+非利用可能性まで。state / command の具体的 shape は各 amenity の docs と version に従う。
 
 `ambient-ui.tsx` は Yorishiro が runtime transpile する trusted local source である。
 `react`、`react/jsx-runtime`、`react-dom/client` は host bridge に解決され、host と同じ

@@ -24,7 +24,8 @@ amenity → persona の正規 pattern」）。
 - mount 時に渡される public `AmbientUiContext.amenities` から `get("pomodoro")` で
   opt-in service handle を取得する。internal registry や global singleton は import しない。
 - 1 秒ごとに `service.getState()` を poll し、返ってきた `phase` / `round` /
-  `totalRounds` / `remainingMs` を表示に反映する。
+  `totalRounds` / `remainingMs` を runtime で検証してから表示に反映する。これは
+  pomodoro pack version 0.1.0 固有 contract の consumer であり、汎用 SDK shape ではない。
 - `phase === "idle"` の間は何も描画しない（`null` を返す）。
 - 表示は phase 色つきの dot、`WORK` / `BREAK` / `LONG BREAK` ラベル、`mm:ss` 形式の残り時間、
   `round/totalRounds` のカウンタ。

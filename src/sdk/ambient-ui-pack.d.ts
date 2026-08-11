@@ -36,6 +36,8 @@ import type { Disposable } from "./context";
  *
  * `amenities` は active amenity が明示公開した service だけを解決する。
  * registry / activation state mutation / MCP tool handle は公開しない。
+ * SDK が共通で保証するのは resolver と state / command envelope のみで、
+ * 固有 payload shape は対象 amenity の versioned contract に従う。
  */
 export interface AmbientUiContext {
   readonly attention: AttentionAPI;

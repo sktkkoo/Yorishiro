@@ -26,6 +26,8 @@ export interface AmenityHandle {
   /**
    * Ambient UI 向けの opt-in public surface。
    * tools は MCP / host routing 専用であり Ambient UI には公開されない。
+   * state / command の固有 shape はこの amenity の versioned contract であり、
+   * SDK 共通の stable envelope には含まれない。
    */
   readonly service?: AmenityServiceHandle;
   /** pack disable / アプリ終了時に呼ばれる後片付け。 */
