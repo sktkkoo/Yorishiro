@@ -42,9 +42,9 @@ permission / isolation 設計が必要であり、この decision だけでは�
 | `src/runtime/language/language` | app language の optimistic UI 解決 | system presentation helper。設定値の正本は `ctx.app.getConfig()` / `setLanguage()` |
 | `src/runtime/user-pack-loader/config` | bundled Yori persona と agent の app 規約 | system policy。Pack authoring API にしない |
 | bundled `simple-room/manifest.json` | null config の app default 表示 | bundled topology。Pack 間 import の一般契約にしない |
-| app version read | read-only app metadata | `ctx.app.getVersion()` へ公開 |
-| HTTPS URL open | external side effect | scheme / credential / length を host が検証する `ctx.app.openExternal()` へ公開。user gesture から呼ぶ authoring contract |
-| snapshot list/create/restore | reversible state management。restore は destructive | 既存 `HistoryAPI` を `ctx.history` として UI Pack にも公開。restore confirmation は host が所有 |
+| `@tauri-apps/api/app` の version read | read-only app metadata | settings の直接 import を除去し、`ctx.app.getVersion()` へ公開 |
+| `@tauri-apps/plugin-opener` の URL open | external side effect | settings の直接 import を除去。scheme / credential / length を host が検証する `ctx.app.openExternal()` へ公開し、user gesture から呼ぶ authoring contract とする |
+| `src/bindings/tauri-commands` の snapshot binding | reversible state management。restore は destructive | settings の直接 import を除去。既存 `HistoryAPI` を `ctx.history` として UI Pack にも公開し、restore confirmation は host が所有 |
 
 ### 3. 通常 UI Pack の authoring contract
 
