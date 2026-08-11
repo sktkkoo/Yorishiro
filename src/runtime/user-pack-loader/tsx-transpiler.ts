@@ -2,7 +2,7 @@
  * user pack TSX transpiler.
  *
  * `.tsx` entry を runtime で esbuild-wasm transpile し、React / JSX runtime は
- * host 側の shim に解決する。現在は ui.tsx と scene.tsx がこの経路を使う。
+ * host 側の shim に解決する。ui.tsx / scene.tsx / ambient-ui.tsx がこの経路を使う。
  * Relative imports は pack directory 内の source file に限定して inline bundle する。
  * Persistent `.build` output は follow-up。
  */

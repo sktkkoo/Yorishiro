@@ -36,7 +36,11 @@ import {
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
-import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
+import {
+  type EffectRegistrar,
+  type PersonaRegistrar,
+  userPackEntryFilename,
+} from "./user-pack-loader";
 import type { UserPackRegistry } from "./user-pack-registry";
 import { mapEventToAction, type WatcherAction, type YorishiroLayerEvent } from "./watcher-logic";
 
@@ -375,7 +379,7 @@ async function reloadPack(
           type: "ui",
           version: "0.0.0",
           yorishiroVersion: "*",
-          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+          entry: userPackEntryFilename(action.entryPath),
         },
         origin: "user",
         pack: {
@@ -399,7 +403,7 @@ async function reloadPack(
           type: "ambient-ui",
           version: "0.0.0",
           yorishiroVersion: "*",
-          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+          entry: userPackEntryFilename(action.entryPath),
         },
         pack: { mount: pack.mount },
       });

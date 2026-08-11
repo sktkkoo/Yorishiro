@@ -4,8 +4,8 @@
  * 起動時に一度だけ ~/.yorishiro/packs/ を scan し、見つかった entry を dynamic
  * import → validator で shape を確認 → 対応する registrar に register する。
  *
- * effect / persona / scene は Path A + BYOC 方針の `.js` entry。UI pack は
- * Plan 4 MVP で `ui.tsx` を runtime transpile できる。
+ * effect / persona / scene は Path A + BYOC 方針の `.js` entry。UI / scene /
+ * ambient-ui pack は trusted local source として `.tsx` を runtime transpile できる。
  *
  * Philosophy: docs/philosophy/PHILOSOPHY.md「生きた系」
  * Internal design-record: 2026-04-18-user-layer-runtime.md Section 「結論: Path A + BYOC」
@@ -171,6 +171,11 @@ export type LoadSingleResult =
     };
 
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+export const userPackEntryFilename = (entryPath: string): string => {
+  const normalized = entryPath.replace(/\\/g, "/");
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
+};
 
 const extractDefault = (mod: unknown): unknown => {
   if (mod === null || typeof mod !== "object") return undefined;
@@ -348,7 +353,7 @@ export async function loadSingleUserPack(
           type: "ui",
           version: "0.0.0",
           yorishiroVersion: "*",
-          entry: entry.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+          entry: userPackEntryFilename(entry.entryPath),
         },
         origin: "user",
         pack: {
@@ -370,7 +375,7 @@ export async function loadSingleUserPack(
           type: "ambient-ui",
           version: "0.0.0",
           yorishiroVersion: "*",
-          entry: entry.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+          entry: userPackEntryFilename(entry.entryPath),
         },
         pack: { mount: pack.mount },
       });

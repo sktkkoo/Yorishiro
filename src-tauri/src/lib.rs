@@ -1187,8 +1187,8 @@ async fn poll_hook_signals() -> Vec<String> {
 //   ~/.yorishiro/
 //   ├── init.js                         # 起動時 entry (~= init.el)
 //   ├── packs/
-//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui}
-//   │       <pack-id>/ui.tsx            # Plan 4 MVP: user UI pack source
+//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui, ambient-ui}
+//   │       <pack-id>/{ui,scene,ambient-ui}.tsx # trusted local runtime-transpiled source
 //   ├── config.json                     # 将来の宣言的設定
 //   ├── sdk.d.ts                        # Yorishiro が ship する IDE 用 type hint
 //   └── sdk-guide.md                    # Yorishiro が ship する pack 作者向け narrative ガイド
@@ -1473,7 +1473,7 @@ async fn ensure_yorishiro_dirs() -> Result<(), String> {
 /// Scan ~/.yorishiro/packs/ and return discovered packs.
 ///
 /// Convention: ~/.yorishiro/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
-/// UI / scene packs also support runtime-transpiled .tsx entries.
+/// UI / scene / ambient-ui packs also support runtime-transpiled .tsx entries.
 /// Multiple kind files in one pack directory produce multiple entries.
 /// Missing directory returns empty vec (not an error).
 #[tauri::command]
@@ -1487,7 +1487,7 @@ fn entry_file_for_kind(pack_dir: &Path, kind: &str) -> Option<PathBuf> {
     if js_entry.is_file() {
         return Some(js_entry);
     }
-    if kind == "ui" || kind == "scene" {
+    if kind == "ui" || kind == "scene" || kind == "ambient-ui" {
         let tsx_entry = pack_dir.join(format!("{}.tsx", kind));
         if tsx_entry.is_file() {
             return Some(tsx_entry);
@@ -2698,6 +2698,60 @@ mod user_pack_discovery_tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].kind, "scene");
         assert!(entries[0].entry_path.ends_with("/my-room/scene.js"));
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn discovers_ambient_ui_tsx_with_manifest_summary() {
+        let packs = fresh_packs_dir("ambient-ui-tsx");
+        let pack_dir = packs.join("my-overlay");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(
+            pack_dir.join("ambient-ui.tsx"),
+            "export default { type: 'ambient-ui' };\n",
+        )
+        .expect("write ambient-ui.tsx");
+        fs::write(
+            pack_dir.join("manifest.json"),
+            r#"{
+              "id": "my-overlay",
+              "type": "ambient-ui",
+              "version": "0.1.0",
+              "yorishiroVersion": "^0.1.0",
+              "executionClass": "trusted-main-thread-js",
+              "entry": "ambient-ui.tsx"
+            }"#,
+        )
+        .expect("write manifest");
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "my-overlay");
+        assert_eq!(entries[0].kind, "ambient-ui");
+        assert!(entries[0]
+            .entry_path
+            .ends_with("/my-overlay/ambient-ui.tsx"));
+        let manifest = entries[0].manifest.as_ref().expect("manifest summary");
+        assert_eq!(manifest.kind, "ambient-ui");
+        assert_eq!(manifest.entry, "ambient-ui.tsx");
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn prefers_ambient_ui_js_over_tsx_for_compatibility() {
+        let packs = fresh_packs_dir("ambient-ui-js-precedence");
+        let pack_dir = packs.join("my-overlay");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("ambient-ui.js"), "export default {};\n")
+            .expect("write ambient-ui.js");
+        fs::write(pack_dir.join("ambient-ui.tsx"), "export default {};\n")
+            .expect("write ambient-ui.tsx");
+
+        let entry = entry_file_for_kind(&pack_dir, "ambient-ui").expect("ambient-ui entry");
+        assert!(entry.ends_with("ambient-ui.js"));
 
         let _ = fs::remove_dir_all(&packs);
     }
