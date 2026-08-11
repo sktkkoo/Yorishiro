@@ -1,7 +1,9 @@
 import * as ReactThreeDrei from "@react-three/drei";
 import * as ReactThreeFiber from "@react-three/fiber";
 import * as ReactThreePostprocessing from "@react-three/postprocessing";
+import { getVersion } from "@tauri-apps/api/app";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AmbientAudioAPI,
   AmbientAudioState,
@@ -292,6 +294,7 @@ import {
 } from "./runtime/three-runtime/scene-pack-leva-store";
 import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
+import { validateUiPackExternalUrl } from "./runtime/ui-pack-external-url";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import {
   playStageTransition,
@@ -1112,6 +1115,19 @@ function App() {
     [resolveRestoreDialogTarget],
   );
 
+  // Shared by amenity and UI Pack contexts. The restore method always delegates
+  // confirmation to the host-owned app dialog before invoking the raw command.
+  const historyApi = useMemo(
+    () =>
+      createHistoryApi({
+        list: () => snapshotList(),
+        create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
+        restore: (seq) => snapshotRestore({ seq }),
+        confirmRestore: (seq, runRestore) => openRestoreDialog(seq, runRestore),
+      }),
+    [openRestoreDialog],
+  );
+
   const handleRestoreDialogClose = useCallback(() => {
     restoreDialogResolveRef.current?.(false);
     restoreDialogResolveRef.current = null;
@@ -1407,12 +1423,6 @@ function App() {
     // 住人 AI の MCP history_snapshot は Rust 完結で別 trigger "mcp:snapshot"
     // を打つ（P2b Task 4）。watcher 自動は "watcher-settled"、baseline は
     // "startup-baseline"。これで監査・UI でどの経路の snapshot か区別できる。
-    const historyApi = createHistoryApi({
-      list: () => snapshotList(),
-      create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
-      restore: (seq) => snapshotRestore({ seq }),
-      confirmRestore: (seq, runRestore) => openRestoreDialog(seq, runRestore),
-    });
     let ambientAudioLiveState: AmbientAudioState = { muted: false, volume: 1 };
     const ambientAudio: AmbientAudioAPI = {
       getState: () => ambientAudioLiveState,
@@ -3357,6 +3367,7 @@ function App() {
         time,
         tween,
         log: createLogAPI(logBridge, packId),
+        history: historyApi,
         signal,
         layout: {
           update: (layout: UiLayout) => {
@@ -3367,6 +3378,8 @@ function App() {
           },
         },
         app: {
+          getVersion,
+          openExternal: (url) => openUrl(validateUiPackExternalUrl(url)),
           setVrm: (path: string | null) => applyVrmPath(path),
           // host 所有の固定プロンプトのみ解決して pre-fill する（pack はバイトを
           // 選べない）。改行なし＝user が Enter するまで実行されない。
@@ -3722,6 +3735,7 @@ function App() {
     beginCurtainReload,
     switchMainAgent,
     setActiveSceneFromUserSelection,
+    historyApi,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);

@@ -19,6 +19,7 @@
 import type { VRM } from "@pixiv/three-vrm";
 import type * as THREE from "three";
 import type { CharacterAPI, Disposable, LogAPI, SpaceAPI, Time, TweenAPI } from "./context";
+import type { HistoryAPI } from "./history";
 import type { LayerRole, SceneSpec } from "./scene";
 
 export type AppLanguage = "auto" | "en" | "ja";
@@ -206,6 +207,17 @@ export type FixedTerminalPromptKey = "help" | "tutorial" | "shortcut" | "create-
  * 将来 app-level の他 state を expose する余地を残すため namespace を切る。
  */
 export interface UiAppAPI {
+  /** Read the version of the running Yorishiro app. */
+  getVersion(): Promise<string>;
+  /**
+   * Open an absolute HTTPS URL in the user's default browser.
+   *
+   * The host rejects other schemes, relative URLs, embedded credentials, and
+   * oversized values. Call this only from an explicit user gesture such as a
+   * link or button; opening a URL during mount or from a timer violates the
+   * UI Pack authoring contract.
+   */
+  openExternal(url: string): Promise<void>;
   /**
    * VRM body を切り替える。localStorage 永続化と App-level vrmPath state への
    * 反映を行う。`null` で custom VRM の選択を解除し、同梱 Yori に戻す。
@@ -318,6 +330,11 @@ export interface UiContext {
   readonly state: UiStateAPI;
   readonly time: Time;
   readonly log: LogAPI;
+  /**
+   * Pack rollback history. Restore always goes through host-owned confirmation
+   * UX; a UI Pack cannot invoke the raw destructive restore command.
+   */
+  readonly history: HistoryAPI;
   readonly signal: AbortSignal;
   readonly layout: UiLayoutAPI;
   /** App-level state への bridge（VRM 切替など）。 */

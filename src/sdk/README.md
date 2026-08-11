@@ -593,6 +593,44 @@ Pack から直接 import できない。
 
 ---
 
+## UI Pack の host capability
+
+UI Pack の `mount(ctx, container)` に渡される `ctx` では、app metadata、外部 link、
+rollback history を raw Tauri import なしで利用できる。
+
+```tsx
+export default {
+  id: 'about-panel',
+  type: 'ui',
+  layout: {},
+  mount(ctx, container) {
+    const link = document.createElement('button');
+    link.textContent = 'Project website';
+    link.addEventListener('click', () => {
+      void ctx.app.openExternal('https://example.com/project');
+    });
+    container.append(link);
+
+    void ctx.app.getVersion().then((version) => {
+      container.dataset.appVersion = version;
+    });
+
+    return { dispose: () => link.remove() };
+  },
+} satisfies UiPackDefinition;
+```
+
+- `ctx.app.getVersion()` — 実行中 app の version を read-only で返す。
+- `ctx.app.openExternal(url)` — absolute HTTPS URL のみ既定 browser で開く。credentials、
+  relative URL、custom scheme、oversized input は host が reject する。明示的な user gesture
+  からだけ呼び、mount / timer から自動で開かない。
+- `ctx.history.list()` / `snapshot(label?)` / `restore(seq)` — rollback history。
+  `restore` は destructive command を Pack に渡さず、host-owned confirmation UX を必ず経由する。
+
+Tauri API/plugin、`window.__TAURI_INTERNALS__`、`src/bindings/**` は supported authoring
+surface ではない。必要な capability が `ctx` に無ければ raw IPC へ迂回せず、host API と
+permission boundary を先に設計する。
+
 ## Ambient UI Pack の書き方
 
 local user ambient-ui pack は `~/.yorishiro/packs/<id>/` に次の形で置く。
