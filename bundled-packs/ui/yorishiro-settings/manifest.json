@@ -3,6 +3,7 @@
   "id": "yorishiro-settings",
   "name": "Yorishiro Settings",
   "type": "ui",
+  "executionClass": "trusted-main-thread-js",
   "version": "0.1.0",
   "yorishiroVersion": "^0.1.0",
   "author": "Yorishiro team",

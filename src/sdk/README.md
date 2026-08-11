@@ -28,6 +28,19 @@ Yorishiro の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 - 「操作パネルや layout を差し替えたい」→ UI Pack
 - 「注目状態などを overlay で常時可視化したい」→ Ambient UI Pack
 
+### Bundled settings は authoring sample ではない
+
+`bundled-packs/ui/yorishiro-settings` は app 更新、VRM import、復元 UI を所有する
+system-owned bundled UI であり、通常の UI Pack がコピーできる権限の見本ではない。
+通常の Pack は Tauri API/plugin、`window.__TAURI_INTERNALS__`、`src/bindings/**`、
+app component/runtime、別 bundled Pack の manifest を直接 import せず、
+`@yorishiro/sdk` と明示された host shim だけを supported surface として使う。
+
+settings に残る例外の完全な監査表と SDK 昇格基準は
+[`docs/decisions/system-settings-privileged-boundary.md`](../../docs/decisions/system-settings-privileged-boundary.md)
+を参照。local trusted Pack は現在同じ WebView realm で動くため、これは sandbox の説明ではなく
+authoring contract である。
+
 ---
 
 ## Persona Pack の書き方
