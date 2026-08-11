@@ -627,6 +627,12 @@ export default {
 - `ctx.history.list()` / `snapshot(label?)` / `restore(seq)` — rollback history。
   `restore` は destructive command を Pack に渡さず、host-owned confirmation UX を必ず経由する。
 
+`openExternal` の HTTPS / credential / length validation は、`ctx.app.openExternal()` という
+**supported authoring contract** の保証である。現状の local UI Pack は app と同じ WebView
+realm で実行されるため、これは sandbox や raw Tauri access の runtime enforcement ではない。
+local trusted code は技術的には Tauri opener / IPC へ直接到達でき、この SDK method の追加で
+その到達性や Tauri 側の既存 permission が狭まったとは扱わない。
+
 Tauri API/plugin、`window.__TAURI_INTERNALS__`、`src/bindings/**` は supported authoring
 surface ではない。必要な capability が `ctx` に無ければ raw IPC へ迂回せず、host API と
 permission boundary を先に設計する。

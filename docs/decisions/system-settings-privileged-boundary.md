@@ -59,6 +59,8 @@ permission / isolation 設計が必要であり、この decision だけでは�
 現状の local UI Pack は main WebView realm で動くため、これは runtime sandbox ではなく
 supported API contract である。community 配布や隔離済み UI Pack を有効にする前には、
 manifest permission、host-side gate、audit、rate limit、user approval を実装する必要がある。
+特に `openExternal` の HTTPS validator は `ctx.app` 経路だけの contract であり、same-realm
+code から raw Tauri opener / IPC へ到達できる現状の authority を狭めるものではない。
 
 ## なぜそう決めたか
 
@@ -69,6 +71,13 @@ external link、既に確認 UX を内蔵する history は host-mediated capabi
 
 ## 検討したが却下した代替案
 
+- **system-owned 例外の文書化だけで止め、汎用 API 昇格を見送る**: 変更量が最小で、
+  settings の raw import をそのまま例外化できる。しかし、app version は副作用のない
+  metadata read、external link は既存の HTTPS 2 件を同一 validator に集約でき、history は
+  amenity 向けに既に公開済みで restore confirmation も host が所有している。これらまで
+  settings 固有に留めると、通常 UI Pack が同じ用途で unsupported import を再発明し、特に
+  restore で raw destructive binding と app component を複製する誘因になる。そのため、この
+  3 件は supported contract に昇格し、updater / picker 等は例外のまま維持した。
 - **設定 Pack の直接 import をすべて禁止する**: updater / VRM import / app modal を先に
   public ABI 化することになり、不要な権限拡張になる。
 - **`system: true` のような manifest flag を追加する**: id や自己申告 field は authority の
@@ -84,6 +93,9 @@ external link、既に確認 UX を内蔵する history は host-mediated capabi
 - Tauri capability file や Rust command permission は、この例外文書を理由に変更しない。
 - settings の user fork parity は保証しない。必要な汎用機能は個別に host-mediated SDK へ昇格する。
 - 将来 updater / picker を公開する場合は permission manifest と approval UX を伴う新 decision を作る。
+- Tauri の `opener:default` 自体の narrow 化は今回実装しない。isolated/community UI を
+  有効にする前の follow-up とし、raw plugin を guest realm から外した上で、manifest permission、
+  user activation、URL policy、audit/rate limit を host capability RPC で強制する。
 
 ## 関連 reference
 
@@ -99,4 +111,5 @@ external link、既に確認 UX を内蔵する history は host-mediated capabi
 
 ## 改訂履歴
 
+- 2026-08-12: Fable review を反映。same-realm では SDK validation が sandbox/enforcement ではないこと、文書化だけの最小案を採らなかった理由、opener narrow 化の follow-up を明記。
 - 2026-08-12: 初版。settings の privileged/internal import を監査し、app version、制約付き HTTPS open、HistoryAPI を public UI Pack capability として切り出した。
