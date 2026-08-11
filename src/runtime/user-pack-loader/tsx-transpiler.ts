@@ -224,6 +224,7 @@ const ReactDomClient = globalThis.__YORISHIRO_REACT_DOM_CLIENT__;
 if (!ReactDomClient) throw new Error("Yorishiro React DOM client host bridge is not initialized");
 export const createRoot = ReactDomClient.createRoot;
 export const hydrateRoot = ReactDomClient.hydrateRoot;
+export default ReactDomClient;
 `;
 
 const jsxRuntimeShim = `

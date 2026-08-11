@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import * as Postprocessing from "postprocessing";
+import * as ReactDomClient from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import * as YorishiroAttentionCue from "../../sdk/attention-cue";
 
@@ -180,6 +181,30 @@ describe("transpileUiTsxEntry", () => {
       expect(code).toContain("my-overlay");
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("loads the bundled-reference default import from react-dom/client", async () => {
+    const entryPath = "/Users/me/.yorishiro/packs/my-overlay/ambient-ui.tsx";
+    const source = `
+      import ReactDOM from "react-dom/client";
+      export const createRoot = ReactDOM.createRoot;
+    `;
+    const originalFetch = globalThis.fetch;
+    const originalReactDomClient = globalThis.__YORISHIRO_REACT_DOM_CLIENT__;
+    globalThis.fetch = (async () => new Response(source, { status: 200 })) as typeof fetch;
+    globalThis.__YORISHIRO_REACT_DOM_CLIENT__ = ReactDomClient;
+
+    try {
+      const code = await transpileUiTsxEntry(entryPath, {
+        convertFileSrc: (path) => `https://asset.local${path}`,
+      });
+      const moduleUrl = `data:text/javascript;charset=utf-8,${encodeURIComponent(code)}`;
+      const loaded = await import(/* @vite-ignore */ moduleUrl);
+      expect(loaded.createRoot).toBe(ReactDomClient.createRoot);
+    } finally {
+      globalThis.fetch = originalFetch;
+      globalThis.__YORISHIRO_REACT_DOM_CLIENT__ = originalReactDomClient;
     }
   });
 
