@@ -176,6 +176,19 @@ describe("checkPackFiles", () => {
     expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-process");
   });
 
+  it.each([
+    "globalThis.process.stdout",
+    "window.process.stdout",
+    "(process).stdout",
+  ])("preserves forbidden process detection for %s", (expression) => {
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: systemExecPack({ source: `export default ${expression};` }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-process");
+  });
+
   it("still rejects process access inside a template expression", () => {
     const source = ["export default `", "$", "{process.stdout}`;"].join("");
     const result = checkPackFiles({

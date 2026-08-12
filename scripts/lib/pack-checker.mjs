@@ -313,8 +313,7 @@ function scanSourceSyntax(path, text, { allowSystemExec, diagnostics }) {
     if (
       !foundProcess &&
       ts.isPropertyAccessExpression(node) &&
-      ts.isIdentifier(node.expression) &&
-      node.expression.text === "process"
+      isProcessObjectExpression(node.expression)
     ) {
       foundProcess = true;
     }
@@ -331,6 +330,26 @@ function scanSourceSyntax(path, text, { allowSystemExec, diagnostics }) {
   if (foundSystemExec && !allowSystemExec) {
     add(diagnostics, "error", "forbidden-system-exec", `${path} contains system-exec`);
   }
+}
+
+function isProcessObjectExpression(node) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) return expression.text === "process";
+  return ts.isPropertyAccessExpression(expression) && expression.name.text === "process";
+}
+
+function unwrapExpression(node) {
+  let expression = node;
+  while (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isTypeAssertionExpression(expression) ||
+    ts.isNonNullExpression(expression) ||
+    ts.isSatisfiesExpression(expression)
+  ) {
+    expression = expression.expression;
+  }
+  return expression;
 }
 
 function isSystemExecPropertyAccess(node) {
