@@ -180,7 +180,7 @@ Pack boundaries are enforced at the type level.
 | **effect** | Almost everything except renderer, audio, and time | Effects are short-lived rendering units without persistent state |
 | **scene** | Handlers | Scene packs are declarative data |
 | **ui** | `ctx.system` / `ctx.character` / `ctx.voice` | UI packs handle rendering and state only |
-| **ambient-ui** | persona / system APIs | Ambient UI receives renderer and attention information only |
+| **ambient-ui** | persona/system APIs, Amenity registry / MCP tool handlers | Rendering, attention, and opt-in `ctx.amenities` services only |
 
 If a handler needs to trigger another reaction, announce a **synthetic event** with `ctx.emitEvent()`, then match it from a persona trigger.
 

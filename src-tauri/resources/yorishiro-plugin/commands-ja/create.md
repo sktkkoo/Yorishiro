@@ -40,7 +40,7 @@ AI がターミナルに「住む」ためのアプリ。サイドバーのキ�
 1. **まず具体例を一つ聞く** — 「どんな場面で」「何が起きたら」「どう反応してほしい」のような肌触りを一つ引き出してから動く
 2. **既存の pack を読む** — `bundled_example_read({id})` で bundled pack のソースを取得し、pattern と文体を踏襲する（`list_packs()` で利用可能な id を確認できる）
 3. **提案 → 確認 → 実装** の順で合意を取る。一気に書き下ろさない
-4. **境界を守る** — persona は system API 不可、amenity は local-trusted の system.exec ありだが motion-free、effect は最小 API のみ、scene は宣言または React+three.js の描画のみ、ui / ambient-ui は描画と state のみ。型で強制されるが、設計意図としても守る
+4. **境界を守る** — persona は system API 不可、amenity は local-trusted の system.exec ありだが motion-free、effect は最小 API のみ、scene は宣言または React+three.js の描画のみ、ui / ambient-ui は描画と state のみ。Ambient UI が Amenity の state / command を必要とする場合は `AmenityHandle.service` と `ctx.amenities` を使い、`globalThis` や内部 registry で Pack 間 bridge を作らない。型で強制されるが、設計意図としても守る
 5. **色は CSS 変数を使う** — UI / ambient-ui pack でハードコード色（`#eceff4`, `rgba(77, 217, 207, ...)` 等）を直書きしない。`var(--yorishiro-fg)`, `var(--yorishiro-accent)` 等の CSS 変数を使う。scene テーマが変わったときに全 UI が追従するため
 
 ## Hot reload と自己検証
@@ -472,11 +472,15 @@ runtime transpile され、`react`、`react-dom/client`、`@yorishiro/sdk` の�
 hot reload する。任意の npm import、raw Tauri API、pack 外 import は拒否される。
 `mount` から完全な disposer を返すこと。
 
-bundled の参考実装: `bundled-packs/ambient-ui/attention-aura/`
+bundled の参考実装: 単独 overlay は `attention-aura`、Amenity 連携は
+`pomodoro` + `pomodoro-ui`。packaged build では `bundled_example_read` で読む。
 
 ### 境界
 
-ambient-ui は **renderer と attention 情報のみ**。persona / system API は持たない。常時表示される性質上、パフォーマンスに注意すること。
+ambient-ui は renderer、attention、および active Amenity が明示公開した
+`ctx.amenities` serviceを使える。persona / system API、Amenity registry、MCP tool handlerは
+持たない。Amenity連携は `ctx.amenities.get(id)` → `getState()` / `execute()` だけを使い、
+consumer側で固有stateを検証する。常時表示される性質上、パフォーマンスに注意すること。
 
 **色は CSS 変数を使う**: UI pack と同じルール。ハードコード色を直書きせず `var(--yorishiro-*)` を使う。ただしエフェクト固有の色（パーティクル色等、scene テーマに依存しないもの）はハードコードで OK。
 

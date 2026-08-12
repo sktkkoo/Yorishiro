@@ -79,6 +79,14 @@ For non-persona packs:
 
 Scene colors, layer structure, effect parameters, UI layout, and ambient overlay tuning can usually be handled in this flow.
 
+When editing Amenity-to-Ambient-UI integration, use `AmenityHandle.service` on the
+Amenity side and `ctx.amenities.get(id)` on the Ambient UI side. Do not assume a
+common surface beyond `getState()` / `execute(command, params?)`, and validate
+Amenity-specific state in the consumer. If existing code uses `globalThis`, an
+internal registry, or MCP tool handlers as a cross-Pack bridge, read the bundled
+`pomodoro` + `pomodoro-ui` sources with `bundled_example_read` and migrate it to
+the public service path.
+
 ## Realtime Scene Parameter Tuning
 
 If the active scene exposes controls through SDK controls, tune values without editing files first. F2 opens two panels: Common (runtime-wide) and Scene (active scene pack). Values registered with `useYorishiroControls` appear in the Scene panel.

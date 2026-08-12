@@ -77,6 +77,13 @@ persona 以外の pack は比較的軽量に編集できる。
 
 scene の色・layer 構成、effect の parameter 調整、ui のレイアウト変更、ambient-ui の表示調整など、いずれもこのフローで完結する。
 
+Amenity と Ambient UI の連携を編集する場合は、Amenity 側の
+`AmenityHandle.service` と Ambient UI 側の `ctx.amenities.get(id)` を正式経路にする。
+`getState()` / `execute(command, params?)` 以外の共通 surface を仮定せず、固有 state は
+consumer 側で検証する。`globalThis`、内部 registry、MCP tool handler を Pack 間 bridge に
+使っている既存コードを見つけたら、bundled の `pomodoro` + `pomodoro-ui` を
+`bundled_example_read` で読み、この public service 経路へ移行する。
+
 ## Scene pack のパラメータをリアルタイム調整する
 
 scene pack が SDK controls 経由で F2 の **Scene panel** にパラメータを公開している場合、ファイル編集なしでリアルタイムに値を変えられる。F2 で開く panel は Common（runtime-wide）と Scene（active scene pack 固有）の 2 枚に分かれており、`useYorishiroControls` で登録された scene pack の値はすべて Scene panel に出る。

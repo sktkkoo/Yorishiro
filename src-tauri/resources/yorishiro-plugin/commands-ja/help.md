@@ -182,7 +182,7 @@ pack 種類ごとに使えない API が型レベルで強制されている。
 | **effect** | ほぼ全部（renderer + audio + time のみ） | state を持たない short-lived rendering 単位 |
 | **scene** | handler 無し（宣言のみ） | 純粋なデータ定義 |
 | **ui** | `ctx.system` / `ctx.character` / `ctx.voice` | 描画と state 管理のみ |
-| **ambient-ui** | persona / system API | renderer と attention 情報のみ |
+| **ambient-ui** | persona / system API、Amenity registry / MCP tool handler | renderer、attention、`ctx.amenities` の opt-in service のみ |
 
 - handler 内から新 reaction を起こしたい場合 → `ctx.emitEvent()` で **synthetic event** を announce、trigger match 経由で発火
 
