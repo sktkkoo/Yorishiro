@@ -22,6 +22,10 @@ vi.mock("./tsx-transpiler", () => ({
 
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import { createAmbientUiPackRegistry } from "../ambient-ui-pack-registry";
+import {
+  type AmbientUiRegistrationEvent,
+  reconcileAmbientUiRegistration,
+} from "./ambient-ui-activation";
 import { UserPackRegistry } from "./user-pack-registry";
 import { type StartPackWatcherDeps, startPackWatcher } from "./watcher";
 
@@ -45,12 +49,29 @@ function makeDeps(packReloadEnabled = true) {
   return { ambientRegister, deps, userPackLog };
 }
 
-function makeAmbientLifecycleDeps(selectedIds: ReadonlySet<string>) {
+function makeAmbientLifecycleDeps(
+  selectedIds: ReadonlySet<string>,
+  options: {
+    readonly disabledIds?: ReadonlySet<string>;
+    readonly readConfigText?: () => Promise<string>;
+    readonly isRuntimeSuppressed?: (id: string) => boolean;
+  } = {},
+) {
   const ambientUiPackRegistry = createAmbientUiPackRegistry();
   const packRegistry = new UserPackRegistry();
-  const onAmbientUiRegistered = vi.fn((id: string) => {
-    if (selectedIds.has(id)) ambientUiPackRegistry.enable(id);
-  });
+  const onAmbientUiRegistered = vi.fn((event: AmbientUiRegistrationEvent) =>
+    reconcileAmbientUiRegistration(event, {
+      registry: ambientUiPackRegistry,
+      readConfigText:
+        options.readConfigText ??
+        (async () =>
+          JSON.stringify({
+            activeAmbientUi: [...selectedIds],
+            disabledPacks: [...(options.disabledIds ?? [])],
+          })),
+      isRuntimeSuppressed: options.isRuntimeSuppressed,
+    }),
+  );
   const userPackLog = { write: vi.fn() };
   const deps = {
     effectPackRunner: { register: vi.fn() },
@@ -207,10 +228,10 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
     });
 
     await vi.waitFor(() => expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]));
-    expect(onAmbientUiRegistered).toHaveBeenCalledWith("my-overlay");
+    expect(onAmbientUiRegistered).toHaveBeenCalledWith({ id: "my-overlay", replaced: false });
   });
 
-  it("restores an active ambient-ui after its code is re-registered", async () => {
+  it("preserves an active ambient-ui while atomically replacing its code", async () => {
     const selectedIds = new Set(["my-overlay"]);
     const { ambientUiPackRegistry, deps, onAmbientUiRegistered, packRegistry } =
       makeAmbientLifecycleDeps(selectedIds);
@@ -230,15 +251,17 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
       mtimeMs: 1700000000500,
     });
 
-    await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledWith("my-overlay"));
+    await vi.waitFor(() =>
+      expect(onAmbientUiRegistered).toHaveBeenCalledWith({ id: "my-overlay", replaced: true }),
+    );
     expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
     expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
   });
 
-  it("keeps an inactive ambient-ui inactive after its code is re-registered", async () => {
-    const selectedIds = new Set<string>();
+  it("keeps a config-selected but runtime-suppressed ambient-ui inactive after reload", async () => {
+    const selectedIds = new Set(["my-overlay"]);
     const { ambientUiPackRegistry, deps, onAmbientUiRegistered, packRegistry } =
-      makeAmbientLifecycleDeps(selectedIds);
+      makeAmbientLifecycleDeps(selectedIds, { isRuntimeSuppressed: () => true });
     registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
     mocks.importTsx.mockResolvedValue({
       default: {
@@ -254,9 +277,173 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
       mtimeMs: 1700000000600,
     });
 
-    await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledWith("my-overlay"));
+    await vi.waitFor(() =>
+      expect(onAmbientUiRegistered).toHaveBeenCalledWith({ id: "my-overlay", replaced: true }),
+    );
     expect(ambientUiPackRegistry.getActiveSet()).toEqual([]);
     expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
+  });
+
+  it("keeps a disabled ambient-ui inactive without changing another overlay", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry } = makeAmbientLifecycleDeps(
+      new Set(["my-overlay", "other-overlay"]),
+      { disabledIds: new Set(["my-overlay"]) },
+    );
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "other-overlay");
+    ambientUiPackRegistry.enable("my-overlay");
+    ambientUiPackRegistry.enable("other-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "modified",
+      mtimeMs: 1700000000650,
+    });
+
+    await vi.waitFor(() => expect(ambientUiPackRegistry.getActiveSet()).toEqual(["other-overlay"]));
+    expect(
+      ambientUiPackRegistry
+        .listEntries()
+        .map((entry) => entry.id)
+        .sort(),
+    ).toEqual(["my-overlay", "other-overlay"]);
+  });
+
+  it("does not mutate active overlays when the activation config read fails", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(new Set(["my-overlay"]), {
+        readConfigText: async () => {
+          throw new Error("synthetic config read failure");
+        },
+      });
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "other-overlay");
+    ambientUiPackRegistry.enable("my-overlay");
+    ambientUiPackRegistry.enable("other-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "modified",
+      mtimeMs: 1700000000660,
+    });
+
+    await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledTimes(1));
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay", "other-overlay"]);
+  });
+
+  it("preserves the old registration on validation failure", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(new Set(["my-overlay"]));
+    const oldMount = vi.fn(() => ({ dispose: () => {} }));
+    const oldHandle = ambientUiPackRegistry.register({
+      id: "my-overlay",
+      origin: "user",
+      manifest: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        version: "0.0.0",
+        yorishiroVersion: "*",
+        entry: "ambient-ui.tsx",
+      },
+      pack: { mount: oldMount },
+    });
+    packRegistry.register("my-overlay", "ambient-ui", oldHandle);
+    ambientUiPackRegistry.enable("my-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: { id: "my-overlay", type: "ambient-ui" },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "modified",
+      mtimeMs: 1700000000670,
+    });
+
+    await vi.waitFor(() =>
+      expect(deps.userPackLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({ note: expect.stringContaining("reload failed") }),
+      ),
+    );
+    expect(ambientUiPackRegistry.listEntries()[0]?.pack.mount).toBe(oldMount);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
+    expect(onAmbientUiRegistered).not.toHaveBeenCalled();
+  });
+
+  it("rejects a module id mismatch and preserves the old registration", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(new Set(["my-overlay"]));
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    ambientUiPackRegistry.enable("my-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "renamed-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "modified",
+      mtimeMs: 1700000000680,
+    });
+
+    await vi.waitFor(() =>
+      expect(deps.userPackLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          note: expect.stringContaining("reload failed"),
+          data: expect.objectContaining({ error: expect.stringContaining("does not match") }),
+        }),
+      ),
+    );
+    expect(ambientUiPackRegistry.listEntries().map((entry) => entry.id)).toEqual(["my-overlay"]);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
+    expect(onAmbientUiRegistered).not.toHaveBeenCalled();
+  });
+
+  it("serializes an atomic remove then create sequence for the same pack", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(new Set(["my-overlay"]));
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    ambientUiPackRegistry.enable("my-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+    await startPackWatcher(deps);
+
+    mocks.channelHandler?.({
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "removed",
+      mtimeMs: 1700000000690,
+    });
+    mocks.channelHandler?.({
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "created",
+      mtimeMs: 1700000000691,
+    });
+
+    await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledTimes(1));
+    expect(onAmbientUiRegistered).toHaveBeenCalledWith({ id: "my-overlay", replaced: false });
+    expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
   });
 
   it("removes an ambient-ui without restoring active state", async () => {
