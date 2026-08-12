@@ -29,16 +29,32 @@ describe("reconcileAmbientUiRegistration", () => {
     expect(activeSet).toEqual(new Set(["new-overlay"]));
   });
 
-  it("keeps a selected replacement inactive when runtime state suppresses it", async () => {
+  it("keeps a selected replacement inactive when runtime state explicitly suppresses it", async () => {
     const { value, activeSet } = registry();
     const result = await reconcileAmbientUiRegistration(
       { id: "attention-aura", replaced: true },
-      { registry: value, readConfigText: async () => config(["attention-aura"]) },
+      {
+        registry: value,
+        readConfigText: async () => config(["attention-aura"]),
+        isRuntimeSuppressed: (id) => id === "attention-aura",
+      },
     );
 
-    expect(result).toEqual({ status: "unchanged" });
+    expect(result).toEqual({ status: "disabled" });
     expect(value.enable).not.toHaveBeenCalled();
     expect(activeSet.size).toBe(0);
+  });
+
+  it("activates a selected inactive replacement when no current suppression exists", async () => {
+    const { value, activeSet } = registry();
+    const result = await reconcileAmbientUiRegistration(
+      { id: "my-overlay", replaced: true },
+      { registry: value, readConfigText: async () => config(["my-overlay"]) },
+    );
+
+    expect(result).toEqual({ status: "enabled" });
+    expect(value.enable).toHaveBeenCalledWith("my-overlay");
+    expect(activeSet).toEqual(new Set(["my-overlay"]));
   });
 
   it("honors explicit host suppression for a newly re-created selected entry", async () => {
@@ -87,6 +103,29 @@ describe("reconcileAmbientUiRegistration", () => {
     expect(value.enable).not.toHaveBeenCalled();
     expect(value.disable).not.toHaveBeenCalled();
     expect(activeSet).toEqual(new Set(["my-overlay", "other-overlay"]));
+  });
+
+  it("converges from a prior config read failure on the next registration", async () => {
+    const { value, activeSet } = registry();
+    let attempt = 0;
+    const readConfigText = async () => {
+      attempt += 1;
+      if (attempt === 1) throw new Error("temporary read failure");
+      return config(["my-overlay"]);
+    };
+
+    const first = await reconcileAmbientUiRegistration(
+      { id: "my-overlay", replaced: true },
+      { registry: value, readConfigText },
+    );
+    const second = await reconcileAmbientUiRegistration(
+      { id: "my-overlay", replaced: true },
+      { registry: value, readConfigText },
+    );
+
+    expect(first.status).toBe("skipped");
+    expect(second).toEqual({ status: "enabled" });
+    expect(activeSet).toEqual(new Set(["my-overlay"]));
   });
 
   it.each([

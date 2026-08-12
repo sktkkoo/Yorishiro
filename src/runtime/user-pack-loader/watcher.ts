@@ -108,6 +108,9 @@ const extractDefault = (mod: unknown): unknown => {
   return (mod as { default?: unknown }).default;
 };
 
+/** Atomic-save の remove → create burst を同一 replacement とみなす猶予。 */
+const AMBIENT_UI_REMOVE_GRACE_MS = 100;
+
 /**
  * watcher を張って event loop を開始する。`Promise` が resolve した時点で Rust
  * 側 watcher は起動済みで、以降の event は Channel 経由で受け取る。
@@ -130,8 +133,8 @@ export async function startPackWatcher(deps: StartPackWatcherDeps): Promise<Pack
 
   const channel = new Channel<YorishiroLayerEvent>();
   const eventQueues = new Map<string, Promise<void>>();
-  channel.onmessage = (event) => {
-    const action = mapEventToAction(event, yorishiroHome);
+  const pendingAmbientUiRemovals = new Map<string, ReturnType<typeof setTimeout>>();
+  const enqueueEvent = (event: YorishiroLayerEvent, action: WatcherAction): void => {
     const queueKey =
       action.type === "reload-pack" ||
       action.type === "reload-pack-source" ||
@@ -160,6 +163,36 @@ export async function startPackWatcher(deps: StartPackWatcherDeps): Promise<Pack
       if (eventQueues.get(queueKey) === queued) eventQueues.delete(queueKey);
     });
     eventQueues.set(queueKey, queued);
+  };
+  channel.onmessage = (event) => {
+    const action = mapEventToAction(event, yorishiroHome);
+
+    if (
+      deps.packReloadEnabled !== false &&
+      action.type === "remove-pack" &&
+      action.kind === "ambient-ui"
+    ) {
+      const pending = pendingAmbientUiRemovals.get(action.id);
+      if (pending !== undefined) clearTimeout(pending);
+      // Atomic-save の create が来るまで旧 registration を残す。create 側の import /
+      // validation が失敗しても旧版を失わない。create が来なければ通常削除へ収束する。
+      const timeout = setTimeout(() => {
+        pendingAmbientUiRemovals.delete(action.id);
+        enqueueEvent(event, action);
+      }, AMBIENT_UI_REMOVE_GRACE_MS);
+      pendingAmbientUiRemovals.set(action.id, timeout);
+      return;
+    }
+
+    if (action.type === "reload-pack" && action.kind === "ambient-ui") {
+      const pending = pendingAmbientUiRemovals.get(action.id);
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        pendingAmbientUiRemovals.delete(action.id);
+      }
+    }
+
+    enqueueEvent(event, action);
   };
 
   try {

@@ -441,9 +441,100 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
     });
 
     await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledTimes(1));
-    expect(onAmbientUiRegistered).toHaveBeenCalledWith({ id: "my-overlay", replaced: false });
+    expect(onAmbientUiRegistered).toHaveBeenCalledWith({ id: "my-overlay", replaced: true });
     expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
     expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
+  });
+
+  it("preserves the old registration when atomic-save recreation fails to import", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(new Set(["my-overlay"]));
+    const oldMount = vi.fn(() => ({ dispose: () => {} }));
+    const oldHandle = ambientUiPackRegistry.register({
+      id: "my-overlay",
+      origin: "user",
+      manifest: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        version: "0.0.0",
+        yorishiroVersion: "*",
+        entry: "ambient-ui.tsx",
+      },
+      pack: { mount: oldMount },
+    });
+    packRegistry.register("my-overlay", "ambient-ui", oldHandle);
+    ambientUiPackRegistry.enable("my-overlay");
+    mocks.importTsx.mockRejectedValue(new Error("atomic-save compile failure"));
+    await startPackWatcher(deps);
+
+    mocks.channelHandler?.({
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "removed",
+      mtimeMs: 1700000000692,
+    });
+    mocks.channelHandler?.({
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "created",
+      mtimeMs: 1700000000693,
+    });
+
+    await vi.waitFor(() =>
+      expect(deps.userPackLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({
+          note: expect.stringContaining("dynamic import failed"),
+          data: expect.objectContaining({ error: "atomic-save compile failure" }),
+        }),
+      ),
+    );
+    expect(ambientUiPackRegistry.listEntries()[0]?.pack.mount).toBe(oldMount);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
+    expect(packRegistry.has("my-overlay", "ambient-ui")).toBe(true);
+    expect(onAmbientUiRegistered).not.toHaveBeenCalled();
+  });
+
+  it("preserves the old registration when atomic-save recreation fails validation", async () => {
+    const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(new Set(["my-overlay"]));
+    const oldMount = vi.fn(() => ({ dispose: () => {} }));
+    const oldHandle = ambientUiPackRegistry.register({
+      id: "my-overlay",
+      origin: "user",
+      manifest: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        version: "0.0.0",
+        yorishiroVersion: "*",
+        entry: "ambient-ui.tsx",
+      },
+      pack: { mount: oldMount },
+    });
+    packRegistry.register("my-overlay", "ambient-ui", oldHandle);
+    ambientUiPackRegistry.enable("my-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: { id: "my-overlay", type: "ambient-ui" },
+    });
+    await startPackWatcher(deps);
+
+    mocks.channelHandler?.({
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "removed",
+      mtimeMs: 1700000000694,
+    });
+    mocks.channelHandler?.({
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "created",
+      mtimeMs: 1700000000695,
+    });
+
+    await vi.waitFor(() =>
+      expect(deps.userPackLog.write).toHaveBeenCalledWith(
+        expect.objectContaining({ note: expect.stringContaining("reload failed") }),
+      ),
+    );
+    expect(ambientUiPackRegistry.listEntries()[0]?.pack.mount).toBe(oldMount);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
+    expect(packRegistry.has("my-overlay", "ambient-ui")).toBe(true);
+    expect(onAmbientUiRegistered).not.toHaveBeenCalled();
   });
 
   it("removes an ambient-ui without restoring active state", async () => {

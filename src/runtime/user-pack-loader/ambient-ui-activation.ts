@@ -3,9 +3,9 @@
  *
  * `activeAmbientUi` は user の永続 selection、registry の active set は Presence
  * 等の runtime suppression を反映した実効状態であり、同じものではない。
- * そのため既存 entry の reload では active set を config から作り直さず、対象
- * id が明示的に非選択 / disabled / runtime-suppressed の場合だけ disable する。
- * 新規 entry だけは、現在の config で選択済みなら enable する。
+ * active set 全体を config から作り直さず、対象 id だけを現在の selection / disabled /
+ * runtime suppression から導出する。registration history や直前の active 結果は
+ * suppression とみなさない。
  */
 
 import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
@@ -26,7 +26,7 @@ export interface ReconcileAmbientUiRegistrationDeps {
 }
 
 export type AmbientUiRegistrationReconcileResult =
-  | { readonly status: "enabled" | "disabled" | "unchanged" }
+  | { readonly status: "enabled" | "disabled" }
   | { readonly status: "skipped"; readonly reason: string };
 
 function parseCurrentConfig(text: string) {
@@ -70,10 +70,6 @@ export async function reconcileAmbientUiRegistration(
     deps.registry.disable(event.id);
     return { status: "disabled" };
   }
-
-  // register() preserves active membership on same-id replacement. Enabling an
-  // existing-but-inactive entry here would undo a runtime suppression.
-  if (event.replaced) return { status: "unchanged" };
 
   deps.registry.enable(event.id);
   return { status: "enabled" };
