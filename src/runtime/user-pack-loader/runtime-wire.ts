@@ -63,6 +63,8 @@ export interface LoadUserLayerDeps {
   readonly initScriptLog: SubsystemLog;
   readonly tweenManager?: TweenManager;
   readonly onInitChanged?: () => void;
+  /** ambient-ui の watcher 登録後に config 選択を active set へ再反映する hook。 */
+  readonly onAmbientUiRegistered?: (id: string) => void | Promise<void>;
   /**
    * init.js hot reload の成否を通知する。`ran` が true なら新 shortcut が有効に
    * なったので reload 待ち marker を外す、false ならエラー表示、等の用途。
@@ -208,6 +210,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     userPackLog: deps.userPackLog,
     initScriptLog: deps.initScriptLog,
     onInitChanged: deps.onInitChanged,
+    onAmbientUiRegistered: deps.onAmbientUiRegistered,
     executionEnvironment,
     packReloadEnabled: !safeMode,
     // safe mode は recovery 契約として user packs と init.js を実行しない。

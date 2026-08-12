@@ -1765,6 +1765,11 @@ function App() {
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
             createAmenityContext,
+            // watcher の再登録は旧 handle の dispose で active membership も外す。
+            // register 完了後に config を唯一の正として再同期し、選択済みだけを
+            // 即時 mount 対象へ戻す（inactive pack は有効化しない）。
+            onAmbientUiRegistered: () =>
+              resyncAmbientUiActiveSetFromConfig("ambient-ui-hot-reload"),
             // init.js は hot reload される。成功したら error marker を外し、
             // 失敗時だけ marker を付けて、前の init scope が維持されていることを可視化する。
             onInitReloaded: ({ ran, missing }) => {

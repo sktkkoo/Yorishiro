@@ -20,6 +20,8 @@ vi.mock("./tsx-transpiler", () => ({
   importUiTsxEntry: mocks.importTsx,
 }));
 
+import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
+import { createAmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import { UserPackRegistry } from "./user-pack-registry";
 import { type StartPackWatcherDeps, startPackWatcher } from "./watcher";
 
@@ -41,6 +43,48 @@ function makeDeps(packReloadEnabled = true) {
     packReloadEnabled,
   } as unknown as StartPackWatcherDeps;
   return { ambientRegister, deps, userPackLog };
+}
+
+function makeAmbientLifecycleDeps(selectedIds: ReadonlySet<string>) {
+  const ambientUiPackRegistry = createAmbientUiPackRegistry();
+  const packRegistry = new UserPackRegistry();
+  const onAmbientUiRegistered = vi.fn((id: string) => {
+    if (selectedIds.has(id)) ambientUiPackRegistry.enable(id);
+  });
+  const userPackLog = { write: vi.fn() };
+  const deps = {
+    effectPackRunner: { register: vi.fn() },
+    personaRegistry: { register: vi.fn() },
+    scenePackRegistry: {},
+    uiPackRegistry: {},
+    ambientUiPackRegistry,
+    amenityPackRegistry: {},
+    packRegistry,
+    userPackLog,
+    initScriptLog: { write: vi.fn() },
+    onAmbientUiRegistered,
+  } as unknown as StartPackWatcherDeps;
+  return { ambientUiPackRegistry, deps, onAmbientUiRegistered, packRegistry };
+}
+
+function registerExistingAmbientUi(
+  registry: AmbientUiPackRegistry,
+  packRegistry: UserPackRegistry,
+  id: string,
+): void {
+  const handle = registry.register({
+    id,
+    origin: "user",
+    manifest: {
+      id,
+      type: "ambient-ui",
+      version: "0.0.0",
+      yorishiroVersion: "*",
+      entry: "ambient-ui.tsx",
+    },
+    pack: { mount: () => ({ dispose: () => {} }) },
+  });
+  packRegistry.register(id, "ambient-ui", handle);
 }
 
 async function startAndEmit(deps: StartPackWatcherDeps, event: unknown): Promise<void> {
@@ -142,5 +186,94 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
       ),
     );
     expect(ambientRegister).not.toHaveBeenCalled();
+  });
+
+  it("activates a newly registered ambient-ui when config selects it", async () => {
+    const selectedIds = new Set(["my-overlay"]);
+    const { ambientUiPackRegistry, deps, onAmbientUiRegistered } =
+      makeAmbientLifecycleDeps(selectedIds);
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "created",
+      mtimeMs: 1700000000400,
+    });
+
+    await vi.waitFor(() => expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]));
+    expect(onAmbientUiRegistered).toHaveBeenCalledWith("my-overlay");
+  });
+
+  it("restores an active ambient-ui after its code is re-registered", async () => {
+    const selectedIds = new Set(["my-overlay"]);
+    const { ambientUiPackRegistry, deps, onAmbientUiRegistered, packRegistry } =
+      makeAmbientLifecycleDeps(selectedIds);
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    ambientUiPackRegistry.enable("my-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "modified",
+      mtimeMs: 1700000000500,
+    });
+
+    await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledWith("my-overlay"));
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
+    expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
+  });
+
+  it("keeps an inactive ambient-ui inactive after its code is re-registered", async () => {
+    const selectedIds = new Set<string>();
+    const { ambientUiPackRegistry, deps, onAmbientUiRegistered, packRegistry } =
+      makeAmbientLifecycleDeps(selectedIds);
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    mocks.importTsx.mockResolvedValue({
+      default: {
+        id: "my-overlay",
+        type: "ambient-ui",
+        mount: () => ({ dispose: () => {} }),
+      },
+    });
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "modified",
+      mtimeMs: 1700000000600,
+    });
+
+    await vi.waitFor(() => expect(onAmbientUiRegistered).toHaveBeenCalledWith("my-overlay"));
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual([]);
+    expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
+  });
+
+  it("removes an ambient-ui without restoring active state", async () => {
+    const selectedIds = new Set(["my-overlay"]);
+    const { ambientUiPackRegistry, deps, onAmbientUiRegistered, packRegistry } =
+      makeAmbientLifecycleDeps(selectedIds);
+    registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
+    ambientUiPackRegistry.enable("my-overlay");
+
+    await startAndEmit(deps, {
+      path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      kind: "removed",
+      mtimeMs: 1700000000700,
+    });
+
+    await vi.waitFor(() => expect(ambientUiPackRegistry.listEntries()).toEqual([]));
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual([]);
+    expect(onAmbientUiRegistered).not.toHaveBeenCalled();
   });
 });

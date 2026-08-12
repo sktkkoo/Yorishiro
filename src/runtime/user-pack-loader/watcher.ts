@@ -58,6 +58,12 @@ export interface StartPackWatcherDeps {
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
   readonly onInitChanged?: () => void;
+  /**
+   * ambient-ui の register が完了した直後に通知する。registry の dispose は
+   * active membership も外すため、呼び出し側は config の選択状態から active set
+   * を復元できる。削除時には呼ばない（削除済み entry を再有効化しないため）。
+   */
+  readonly onAmbientUiRegistered?: (id: string) => void | Promise<void>;
   readonly executionEnvironment?: PackExecutionEnvironment;
   /** safe mode では false。watch は維持するが user pack の import / register は行わない。 */
   readonly packReloadEnabled?: boolean;
@@ -468,6 +474,7 @@ async function reloadPack(
         pack: { mount: pack.mount },
       });
       deps.packRegistry.register(action.id, action.kind, handle);
+      await deps.onAmbientUiRegistered?.(pack.id);
       deps.userPackLog.write({
         phase: "reload",
         note: `re-registered ambient-ui '${pack.id}'`,
