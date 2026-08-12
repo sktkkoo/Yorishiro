@@ -25,6 +25,7 @@ import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import type { AmbientUiRegistrationEvent } from "./ambient-ui-activation";
 import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
 import type { InitScope } from "./init-scope";
 import { type LoadInitScriptDeps, reloadInitScript } from "./init-script";
@@ -59,11 +60,10 @@ export interface StartPackWatcherDeps {
   readonly initScriptLog: SubsystemLog;
   readonly onInitChanged?: () => void;
   /**
-   * ambient-ui の register が完了した直後に通知する。registry の dispose は
-   * active membership も外すため、呼び出し側は config の選択状態から active set
-   * を復元できる。削除時には呼ばない（削除済み entry を再有効化しないため）。
+   * ambient-ui の atomic register が完了した直後に対象 id だけを通知する。
+   * 削除 / import・validation failure 時には呼ばない。
    */
-  readonly onAmbientUiRegistered?: (id: string) => void | Promise<void>;
+  readonly onAmbientUiRegistered?: (event: AmbientUiRegistrationEvent) => void | Promise<void>;
   readonly executionEnvironment?: PackExecutionEnvironment;
   /** safe mode では false。watch は維持するが user pack の import / register は行わない。 */
   readonly packReloadEnabled?: boolean;
@@ -129,8 +129,37 @@ export async function startPackWatcher(deps: StartPackWatcherDeps): Promise<Pack
   }
 
   const channel = new Channel<YorishiroLayerEvent>();
+  const eventQueues = new Map<string, Promise<void>>();
   channel.onmessage = (event) => {
-    void handleLayerEvent(event, yorishiroHome, deps, { invoke, convertFileSrc });
+    const action = mapEventToAction(event, yorishiroHome);
+    const queueKey =
+      action.type === "reload-pack" ||
+      action.type === "reload-pack-source" ||
+      action.type === "remove-pack"
+        ? `pack:${action.id}`
+        : action.type === "init-changed"
+          ? "init"
+          : null;
+    if (queueKey === null) return;
+
+    // Editors using atomic save commonly emit remove -> create back-to-back. Serialize
+    // events per pack id so an older async import cannot win after a newer event.
+    const previous = eventQueues.get(queueKey) ?? Promise.resolve();
+    const run = previous
+      .catch(() => {})
+      .then(() => handleLayerEvent(event, yorishiroHome, deps, { invoke, convertFileSrc }))
+      .catch((err) => {
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `watch event failed for '${event.path}'`,
+          data: { error: errorMessage(err) },
+        });
+      });
+    let queued!: Promise<void>;
+    queued = run.finally(() => {
+      if (eventQueues.get(queueKey) === queued) eventQueues.delete(queueKey);
+    });
+    eventQueues.set(queueKey, queued);
   };
 
   try {
@@ -460,7 +489,15 @@ async function reloadPack(
       });
     } else if (action.kind === "ambient-ui") {
       const pack = validateAmbientUiPackDefinition(def);
-      deps.packRegistry.dispose(action.id, action.kind);
+      if (pack.id !== action.id) {
+        throw new Error(
+          `ambient-ui id '${pack.id}' does not match containing pack id '${action.id}'`,
+        );
+      }
+      const replaced = deps.packRegistry.has(action.id, action.kind);
+      // register(new) -> track(new) の順なら、UserPackRegistry が旧 handle を
+      // dispose しても AmbientUiPackRegistry の stale-handle guard が新 entry を守る。
+      // import / validation はここより前なので、それらの失敗時は旧版が残る。
       const handle = deps.ambientUiPackRegistry.register({
         id: pack.id,
         origin: "user",
@@ -474,7 +511,17 @@ async function reloadPack(
         pack: { mount: pack.mount },
       });
       deps.packRegistry.register(action.id, action.kind, handle);
-      await deps.onAmbientUiRegistered?.(pack.id);
+      try {
+        await deps.onAmbientUiRegistered?.({ id: pack.id, replaced });
+      } catch (err) {
+        // Activation reconciliation の failure で、正常に差し替えた registration
+        // まで failed 扱いにしない。active set は callback 側の責務で不変に保つ。
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `ambient-ui activation reconciliation failed for '${pack.id}'`,
+          data: { error: errorMessage(err) },
+        });
+      }
       deps.userPackLog.write({
         phase: "reload",
         note: `re-registered ambient-ui '${pack.id}'`,

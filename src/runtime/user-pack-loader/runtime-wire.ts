@@ -25,6 +25,7 @@ import type { AmbientUiPackRegistry } from "../ambient-ui-pack-registry";
 import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import type { AmbientUiRegistrationEvent } from "./ambient-ui-activation";
 import type { AmenityContextFactory } from "./amenity-activation";
 import { parseConfig } from "./config";
 import { InitScope } from "./init-scope";
@@ -63,8 +64,8 @@ export interface LoadUserLayerDeps {
   readonly initScriptLog: SubsystemLog;
   readonly tweenManager?: TweenManager;
   readonly onInitChanged?: () => void;
-  /** ambient-ui の watcher 登録後に config 選択を active set へ再反映する hook。 */
-  readonly onAmbientUiRegistered?: (id: string) => void | Promise<void>;
+  /** ambient-ui watcher の atomic registration 後に対象 id だけを reconcile する hook。 */
+  readonly onAmbientUiRegistered?: (event: AmbientUiRegistrationEvent) => void | Promise<void>;
   /**
    * init.js hot reload の成否を通知する。`ran` が true なら新 shortcut が有効に
    * なったので reload 待ち marker を外す、false ならエラー表示、等の用途。

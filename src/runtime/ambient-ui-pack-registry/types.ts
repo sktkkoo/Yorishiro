@@ -26,6 +26,7 @@ export interface AmbientUiPackRegistry {
    * entry を登録する。同 id の origin 違いは "user-over-bundled" で
    * override する semantic。同 id 同 origin の重複登録は同様に replace
    * (旧 entry は dispose せず entries map から落ちる、active 集合 membership は維持)。
+   * active entry の replace は subscriber へ同じ active 集合を再通知する。
    */
   register(entry: AmbientUiPackEntry): Disposable;
 
