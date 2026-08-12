@@ -209,6 +209,7 @@ export async function loadUserLayer(deps: LoadUserLayerDeps): Promise<LoadUserLa
     initScriptLog: deps.initScriptLog,
     onInitChanged: deps.onInitChanged,
     executionEnvironment,
+    packReloadEnabled: !safeMode,
     // safe mode は recovery 契約として user packs と init.js を実行しない。
     // watcher は diagnostics / snapshot 用に張るが、init.js 変更時も reload はせず
     // legacy の log/title marker に留める。

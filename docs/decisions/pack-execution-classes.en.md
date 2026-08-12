@@ -281,7 +281,7 @@ Conversion examples:
 | `persona.js` + `persona.md` | Persona data JSON + `persona.md` | Schema-ize only prompt / reflex mapping |
 | `effect.js` | Effect recipe JSON | Only effects expressible via runtime primitives are publishable |
 | `amenity.js` | Future `isolated-js` bundle | Aligned to capability permission and RPC API. Not published in MVP |
-| `ui.js` / `ui.tsx` / `ambient-ui.js` | Generally not convertible | Requires future isolated UI or curated trusted review |
+| `ui.js` / `ui.tsx` / `ambient-ui.js` / `ambient-ui.tsx` | Generally not convertible | Requires future isolated UI or curated trusted review |
 
 Items that cannot be converted to `declarative`:
 

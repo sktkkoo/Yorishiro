@@ -40,7 +40,7 @@ AI がターミナルに「住む」ためのアプリ。サイドバーのキ�
 1. **まず具体例を一つ聞く** — 「どんな場面で」「何が起きたら」「どう反応してほしい」のような肌触りを一つ引き出してから動く
 2. **既存の pack を読む** — `bundled_example_read({id})` で bundled pack のソースを取得し、pattern と文体を踏襲する（`list_packs()` で利用可能な id を確認できる）
 3. **提案 → 確認 → 実装** の順で合意を取る。一気に書き下ろさない
-4. **境界を守る** — persona は system API 不可、amenity は local-trusted の system.exec ありだが motion-free、effect は最小 API のみ、scene は宣言または React+three.js の描画のみ、ui / ambient-ui は描画と state のみ。型で強制されるが、設計意図としても守る
+4. **境界を守る** — persona は system API 不可、amenity は local-trusted の system.exec ありだが motion-free、effect は最小 API のみ、scene は宣言または React+three.js の描画のみ、ui / ambient-ui は描画と state のみ。Ambient UI が Amenity の state / command を必要とする場合は `AmenityHandle.service` と `ctx.amenities` を使い、`globalThis` や内部 registry で Pack 間 bridge を作らない。型で強制されるが、設計意図としても守る
 5. **色は CSS 変数を使う** — UI / ambient-ui pack でハードコード色（`#eceff4`, `rgba(77, 217, 207, ...)` 等）を直書きしない。`var(--yorishiro-fg)`, `var(--yorishiro-accent)` 等の CSS 変数を使う。scene テーマが変わったときに全 UI が追従するため
 
 ## Hot reload と自己検証
@@ -90,6 +90,8 @@ scene pack には 2 つの形式がある：
 - **R3F component（`scene.tsx`）**: lighting / 3D object を React component で描く。`useYorishiroControls` / `useControlsBridge` による controls 公開はこの形式でだけ使う。
 
 `scene.tsx` から pack 内の `./lib/*.tsx` 等へ相対 import して分割してよい。pack 内 source file の編集は owning `scene.tsx` の reload として扱われる。
+
+trusted local `scene.tsx` では、post-processing component を `@react-three/postprocessing` から、lower-level effect / enum / type を `postprocessing` から import できる。これらは Yorishiro の host bridge に解決されるため、host と同じ React / R3F / Three.js / post-processing instance を共有する。pipeline の参考実装は `bundled-packs/scenes/abandoned-factory/lib/post-process.tsx`。任意の npm package が使えるわけではなく、無関係な bare import は引き続き拒否される。
 
 component 内では React + three.js の描画に留め、`fetch` / `fs` / `system.exec` / Tauri API / Node builtin / PTY write は使わない。base camera は Common controls の所有なので scene から直接触らない。camera breath / shake / sway のような微小変調だけを Scene 側 controls として設計する。
 
@@ -460,15 +462,25 @@ ambient-ui pack は常時表示のオーバーレイ UI。**multi-active**（複
   "version": "0.1.0",
   "yorishiroVersion": "^0.1.0",
   "executionClass": "trusted-main-thread-js",
-  "entry": "ambient-ui.js"
+  "entry": "ambient-ui.tsx"
 }
 ```
 
-bundled の参考実装: `bundled-packs/ambient-ui/attention-aura/`
+実装は `~/.yorishiro/packs/my-overlay/ambient-ui.tsx` に置く。trusted local source として
+runtime transpile され、`react`、`react-dom/client`、`@yorishiro/sdk` の型と pack 内の relative
+`.tsx` / `.ts` / `.jsx` / `.js` を import できる。nested source の編集も owning entry を
+hot reload する。任意の npm import、raw Tauri API、pack 外 import は拒否される。
+`mount` から完全な disposer を返すこと。
+
+bundled の参考実装: 単独 overlay は `attention-aura`、Amenity 連携は
+`pomodoro` + `pomodoro-ui`。packaged build では `bundled_example_read` で読む。
 
 ### 境界
 
-ambient-ui は **renderer と attention 情報のみ**。persona / system API は持たない。常時表示される性質上、パフォーマンスに注意すること。
+ambient-ui は renderer、attention、および active Amenity が明示公開した
+`ctx.amenities` serviceを使える。persona / system API、Amenity registry、MCP tool handlerは
+持たない。Amenity連携は `ctx.amenities.get(id)` → `getState()` / `execute()` だけを使い、
+consumer側で固有stateを検証する。常時表示される性質上、パフォーマンスに注意すること。
 
 **色は CSS 変数を使う**: UI pack と同じルール。ハードコード色を直書きせず `var(--yorishiro-*)` を使う。ただしエフェクト固有の色（パーティクル色等、scene テーマに依存しないもの）はハードコードで OK。
 

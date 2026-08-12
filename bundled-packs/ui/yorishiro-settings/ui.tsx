@@ -8,14 +8,13 @@
  * Internal design-record: specs/2026-04-25-settings-screen-design.md
  */
 
-import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AppLanguage,
   Disposable,
   FixedTerminalPromptKey,
   ResolvedLanguage,
+  SnapshotEntry,
   UiAppPackDiagnoseResponse,
   UiAppPackStatusEntry,
   UiContext,
@@ -37,14 +36,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { snapshotList, snapshotRestore } from "../../../src/bindings/tauri-commands";
-import { RestoreConfirmDialog } from "../../../src/components/RestoreConfirmDialog";
-import {
-  changeStrings,
-  getStrings,
-  restoreConfirmStrings,
-  type UiStrings,
-} from "../../../src/i18n/strings";
+import { changeStrings, getStrings, type UiStrings } from "../../../src/i18n/strings";
 import { buildRestoreRows } from "../../../src/runtime/history/describe-snapshot";
 import { getBrowserLocales, resolveLanguage } from "../../../src/runtime/language/language";
 import { type AvailableUpdate, checkForUpdate } from "../../../src/runtime/updater/app-updater";
@@ -52,7 +44,6 @@ import {
   isBundledYoriPersonaId,
   localizedYoriPersonaId,
 } from "../../../src/runtime/user-pack-loader/config";
-import type { SnapshotEntry } from "../../../src/sdk/history";
 import simpleRoomManifest from "../../scenes/simple-room/manifest.json";
 import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 
@@ -77,12 +68,6 @@ const QUICK_ACTION_KEYS: ReadonlyArray<{
   { key: "create-pack", stringKey: "quickCreatePack" },
   { key: "pomodoro", stringKey: "quickPomodoro" },
 ];
-
-interface RestoreDialogTarget {
-  readonly seq: number;
-  readonly changeText: string;
-  readonly timeText: string;
-}
 
 export interface ResolveCloseTargetArgs {
   readonly saved: string | null;
@@ -1161,24 +1146,39 @@ function HealthDiagnostics({
  * 確認 → restore → reload で config/init.js も再適用する。
  */
 function SnapshotRestoreSection({
+  ctx,
   locale,
   strings,
 }: {
+  ctx: UiContext;
   locale: ResolvedLanguage;
   strings: UiStrings;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [snapshots, setSnapshots] = useState<ReadonlyArray<SnapshotEntry> | null>(null);
   const [loading, setLoading] = useState(false);
-  const [restoreTarget, setRestoreTarget] = useState<RestoreDialogTarget | null>(null);
+  const [restorePending, setRestorePending] = useState(false);
 
   const refresh = useCallback(() => {
     setLoading(true);
-    snapshotList()
+    ctx.history
+      .list()
       .then((next) => setSnapshots(next))
       .catch(() => setSnapshots([]))
       .finally(() => setLoading(false));
-  }, []);
+  }, [ctx.history]);
+
+  const restore = useCallback(
+    async (seq: number) => {
+      setRestorePending(true);
+      try {
+        await ctx.history.restore(seq);
+      } finally {
+        setRestorePending(false);
+      }
+    },
+    [ctx.history],
+  );
 
   useEffect(() => {
     if (open && snapshots === null) refresh();
@@ -1257,14 +1257,8 @@ function SnapshotRestoreSection({
         {row.isLatest ? null : (
           <button
             type="button"
-            disabled={restoreTarget !== null}
-            onClick={() =>
-              setRestoreTarget({
-                seq: row.seq,
-                changeText: row.changeText,
-                timeText: row.timeText,
-              })
-            }
+            disabled={restorePending}
+            onClick={() => void restore(row.seq)}
             style={{
               flexShrink: 0,
               border: `1px solid ${COLORS.borderSubtle}`,
@@ -1274,8 +1268,8 @@ function SnapshotRestoreSection({
               font: "inherit",
               fontSize: FONT.sizeXs,
               padding: `${SPACING.xs} ${SPACING.sm}`,
-              cursor: restoreTarget ? "default" : "pointer",
-              opacity: restoreTarget ? 0.5 : 1,
+              cursor: restorePending ? "default" : "pointer",
+              opacity: restorePending ? 0.5 : 1,
             }}
           >
             {strings.restoreButton}
@@ -1370,17 +1364,6 @@ function SnapshotRestoreSection({
           </div>
         </>
       )}
-      {restoreTarget ? (
-        <RestoreConfirmDialog
-          seq={restoreTarget.seq}
-          changeText={restoreTarget.changeText}
-          timeText={restoreTarget.timeText}
-          surface="themed"
-          strings={restoreConfirmStrings(strings)}
-          onClose={() => setRestoreTarget(null)}
-          onConfirm={() => snapshotRestore({ seq: restoreTarget.seq })}
-        />
-      ) : null}
     </section>
   );
 }
@@ -1910,12 +1893,19 @@ const CREDITS_RISE_KEYFRAMES = `
  * 版面で「ちゃんと手入れされている」ことを伝える（presence over spectacle）。
  * 読み込み時に section を控えめに rise させる以上の演出はしない。
  */
-function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
+function CreditsOverlay({
+  ctx,
+  onBack,
+}: {
+  ctx: UiContext;
+  onBack: () => void;
+}): React.JSX.Element {
   const [version, setVersion] = useState<string>("");
 
   useEffect(() => {
     let active = true;
-    getVersion()
+    ctx.app
+      .getVersion()
       .then((v) => {
         if (active) setVersion(v);
       })
@@ -1925,7 +1915,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, []);
+  }, [ctx.app]);
 
   const sections = creditsSections();
 
@@ -2035,7 +2025,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
             <button
               type="button"
               onClick={() => {
-                void openUrl(YORISHIRO_REPO_URL);
+                void ctx.app.openExternal(YORISHIRO_REPO_URL);
               }}
               style={{
                 background: "none",
@@ -2131,7 +2121,7 @@ function CreditsOverlay({ onBack }: { onBack: () => void }): React.JSX.Element {
           <button
             type="button"
             onClick={() => {
-              void openUrl(YORISHIRO_CREDITS_URL);
+              void ctx.app.openExternal(YORISHIRO_CREDITS_URL);
             }}
             style={{
               background: "none",
@@ -2938,7 +2928,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
 
-        <SnapshotRestoreSection locale={resolvedLanguage} strings={strings} />
+        <SnapshotRestoreSection ctx={ctx} locale={resolvedLanguage} strings={strings} />
 
         {/* 32px gap */}
         <div style={{ height: "32px" }} />
@@ -2946,7 +2936,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
         <PackWorkbench ctx={ctx} strings={strings} onClose={fireCloseRequest} />
       </main>
 
-      {creditsOpen && <CreditsOverlay onBack={() => setCreditsOpen(false)} />}
+      {creditsOpen && <CreditsOverlay ctx={ctx} onBack={() => setCreditsOpen(false)} />}
       {newSessionConfirmContent ? (
         <NewSessionConfirmDialog
           message={newSessionConfirmContent.message}

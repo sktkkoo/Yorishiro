@@ -14,6 +14,7 @@
 | TypeScript 側のどこに何があるか知りたい | [`../src/README.md`](../src/README.md) |
 | Rust 側のどこに何があるか知りたい | [`../src-tauri/README.md`](../src-tauri/README.md) |
 | Pack を書きたい | [`../src/sdk/README.md`](../src/sdk/README.md) |
+| Local TSX Packで使えるimport・asset・version制約を確認したい | [`decisions/local-source-authoring-contract.md`](decisions/local-source-authoring-contract.md) |
 | GitHub 等で共有された pack を手動導入したい | [`decisions/scene-execution-sandbox.md`](decisions/scene-execution-sandbox.md) |
 | 標準 hook / DispatchEvent の語彙を確認したい | [`catalogs/standard-hooks.md`](catalogs/standard-hooks.md) |
 | 過去に「なぜそう決めたか」を引きたい | [`decisions/README.md`](decisions/README.md) |

@@ -1187,8 +1187,8 @@ async fn poll_hook_signals() -> Vec<String> {
 //   ~/.yorishiro/
 //   ├── init.js                         # 起動時 entry (~= init.el)
 //   ├── packs/
-//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui}
-//   │       <pack-id>/ui.tsx            # Plan 4 MVP: user UI pack source
+//   │   └── <pack-id>/<kind>.js         # kind ∈ {effect, persona, voice, body, scene, ui, ambient-ui}
+//   │       <pack-id>/{ui,scene,ambient-ui}.tsx # trusted local runtime-transpiled source
 //   ├── config.json                     # 将来の宣言的設定
 //   ├── sdk.d.ts                        # Yorishiro が ship する IDE 用 type hint
 //   └── sdk-guide.md                    # Yorishiro が ship する pack 作者向け narrative ガイド
@@ -1270,6 +1270,10 @@ struct UserPackManifestSummary {
     description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     author: Option<String>,
+    #[serde(rename = "minClientVersion", skip_serializing_if = "Option::is_none")]
+    min_client_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<Vec<String>>,
     /// 能力ラダーの sandbox 宣言。Rust 側は素通しし、検証は TS（pack-execution-policy）が行う。
     #[serde(skip_serializing_if = "Option::is_none")]
     sandbox: Option<serde_json::Value>,
@@ -1329,8 +1333,20 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("context.d.ts", include_str!("../../src/sdk/context.d.ts")),
     ("history.d.ts", include_str!("../../src/sdk/history.d.ts")),
     ("persona.d.ts", include_str!("../../src/sdk/persona.d.ts")),
+    (
+        "amenity-service.d.ts",
+        include_str!("../../src/sdk/amenity-service.d.ts"),
+    ),
     ("amenity.d.ts", include_str!("../../src/sdk/amenity.d.ts")),
     ("effect.d.ts", include_str!("../../src/sdk/effect.d.ts")),
+    (
+        "attention.d.ts",
+        include_str!("../../src/sdk/attention.d.ts"),
+    ),
+    (
+        "ambient-ui-pack.d.ts",
+        include_str!("../../src/sdk/ambient-ui-pack.d.ts"),
+    ),
     ("scene.d.ts", include_str!("../../src/sdk/scene.d.ts")),
     (
         "scene-pack.d.ts",
@@ -1340,15 +1356,62 @@ const SDK_DTS_PARTS: &[(&str, &str)] = &[
     ("index.d.ts", include_str!("../../src/sdk/index.d.ts")),
 ];
 
-/// Detect `import ... from "./..."` and `export ... from "./..."` lines.
-/// Relative cross-file module references become unresolvable once all parts
-/// are flattened into a single d.ts, so they get stripped.
+/// Detect a complete `import ... from "./..."` or `export ... from "./..."`
+/// statement. Relative cross-file module references become unresolvable once
+/// all parts are flattened into a single d.ts, so they get stripped.
 fn is_cross_file_module_line(line: &str) -> bool {
     let trimmed = line.trim_start();
     if !(trimmed.starts_with("import") || trimmed.starts_with("export")) {
         return false;
     }
     trimmed.contains("from \"./") || trimmed.contains("from './")
+}
+
+fn is_module_statement_start(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("import ")
+        || trimmed.starts_with("export *")
+        || trimmed.starts_with("export type {")
+        || trimmed.starts_with("export {")
+}
+
+fn append_flattened_sdk_part(out: &mut String, src: &str) {
+    let mut statement: Option<Vec<&str>> = None;
+
+    for line in src.lines() {
+        if let Some(lines) = statement.as_mut() {
+            lines.push(line);
+            if line.trim_end().ends_with(';') {
+                let lines = statement.take().unwrap_or_default();
+                let joined = lines.join("\n");
+                if !is_cross_file_module_line(&joined) {
+                    out.push_str(&joined);
+                    out.push('\n');
+                }
+            }
+            continue;
+        }
+
+        if is_module_statement_start(line) {
+            if line.trim_end().ends_with(';') {
+                if !is_cross_file_module_line(line) {
+                    out.push_str(line);
+                    out.push('\n');
+                }
+            } else {
+                statement = Some(vec![line]);
+            }
+            continue;
+        }
+
+        out.push_str(line);
+        out.push('\n');
+    }
+
+    if let Some(lines) = statement {
+        out.push_str(&lines.join("\n"));
+        out.push('\n');
+    }
 }
 
 fn build_bundled_sdk_dts() -> String {
@@ -1363,13 +1426,7 @@ fn build_bundled_sdk_dts() -> String {
     );
     for (name, src) in SDK_DTS_PARTS {
         out.push_str(&format!("// ---- {} ----\n\n", name));
-        for line in src.lines() {
-            if is_cross_file_module_line(line) {
-                continue;
-            }
-            out.push_str(line);
-            out.push('\n');
-        }
+        append_flattened_sdk_part(&mut out, src);
         out.push('\n');
     }
     out
@@ -1473,7 +1530,7 @@ async fn ensure_yorishiro_dirs() -> Result<(), String> {
 /// Scan ~/.yorishiro/packs/ and return discovered packs.
 ///
 /// Convention: ~/.yorishiro/packs/<id>/<kind>.js where kind is one of PACK_KINDS.
-/// UI / scene packs also support runtime-transpiled .tsx entries.
+/// UI / scene / ambient-ui packs also support runtime-transpiled .tsx entries.
 /// Multiple kind files in one pack directory produce multiple entries.
 /// Missing directory returns empty vec (not an error).
 #[tauri::command]
@@ -1487,7 +1544,7 @@ fn entry_file_for_kind(pack_dir: &Path, kind: &str) -> Option<PathBuf> {
     if js_entry.is_file() {
         return Some(js_entry);
     }
-    if kind == "ui" || kind == "scene" {
+    if kind == "ui" || kind == "scene" || kind == "ambient-ui" {
         let tsx_entry = pack_dir.join(format!("{}.tsx", kind));
         if tsx_entry.is_file() {
             return Some(tsx_entry);
@@ -1533,6 +1590,8 @@ fn discover_user_pack_entries(packs_dir: &Path) -> Result<Vec<UserPackEntry>, St
                         execution_class: m.execution_class.clone(),
                         description: m.description.clone(),
                         author: m.author.clone(),
+                        min_client_version: m.min_client_version.clone(),
+                        platform: m.platform.clone(),
                         sandbox: m.sandbox.clone(),
                     }),
                 });
@@ -2568,7 +2627,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod sdk_bundle_tests {
-    use super::{build_bundled_sdk_dts, is_cross_file_module_line};
+    use super::{append_flattened_sdk_part, build_bundled_sdk_dts, is_cross_file_module_line};
 
     #[test]
     fn drops_relative_import_and_export_lines() {
@@ -2585,14 +2644,30 @@ mod sdk_bundle_tests {
     }
 
     #[test]
+    fn drops_multiline_relative_re_exports_as_one_statement() {
+        let mut flattened = String::new();
+        append_flattened_sdk_part(
+            &mut flattened,
+            "export type {\n  AmenityHandle,\n  AmenityToolHandler,\n} from \"./amenity\";\nexport interface Kept {}",
+        );
+
+        assert_eq!(flattened, "export interface Kept {}\n");
+    }
+
+    #[test]
     fn bundle_contains_key_types_and_omits_cross_refs() {
         let bundle = build_bundled_sdk_dts();
         assert!(bundle.contains("export interface EffectDefinition"));
         assert!(bundle.contains("export interface PersonaDefinition"));
         assert!(bundle.contains("export interface EffectContext"));
         assert!(bundle.contains("export interface UiPackDefinition"));
+        assert!(bundle.contains("export interface AmbientUiPackDefinition"));
+        assert!(bundle.contains("export interface AttentionAPI"));
+        assert!(bundle.contains("export interface AmenityServiceHandle"));
+        assert!(bundle.contains("export interface AmenityServicesAPI"));
         assert!(!bundle.contains("from \"./reaction\""));
         assert!(!bundle.contains("from \"./context\""));
+        assert!(!bundle.contains("from \"./amenity-service\""));
     }
 
     #[test]
@@ -2703,6 +2778,60 @@ mod user_pack_discovery_tests {
     }
 
     #[test]
+    fn discovers_ambient_ui_tsx_with_manifest_summary() {
+        let packs = fresh_packs_dir("ambient-ui-tsx");
+        let pack_dir = packs.join("my-overlay");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(
+            pack_dir.join("ambient-ui.tsx"),
+            "export default { type: 'ambient-ui' };\n",
+        )
+        .expect("write ambient-ui.tsx");
+        fs::write(
+            pack_dir.join("manifest.json"),
+            r#"{
+              "id": "my-overlay",
+              "type": "ambient-ui",
+              "version": "0.1.0",
+              "yorishiroVersion": "^0.1.0",
+              "executionClass": "trusted-main-thread-js",
+              "entry": "ambient-ui.tsx"
+            }"#,
+        )
+        .expect("write manifest");
+
+        let entries = discover_user_pack_entries(&packs).expect("discover ok");
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "my-overlay");
+        assert_eq!(entries[0].kind, "ambient-ui");
+        assert!(entries[0]
+            .entry_path
+            .ends_with("/my-overlay/ambient-ui.tsx"));
+        let manifest = entries[0].manifest.as_ref().expect("manifest summary");
+        assert_eq!(manifest.kind, "ambient-ui");
+        assert_eq!(manifest.entry, "ambient-ui.tsx");
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
+    fn prefers_ambient_ui_js_over_tsx_for_compatibility() {
+        let packs = fresh_packs_dir("ambient-ui-js-precedence");
+        let pack_dir = packs.join("my-overlay");
+        fs::create_dir_all(&pack_dir).expect("create pack dir");
+        fs::write(pack_dir.join("ambient-ui.js"), "export default {};\n")
+            .expect("write ambient-ui.js");
+        fs::write(pack_dir.join("ambient-ui.tsx"), "export default {};\n")
+            .expect("write ambient-ui.tsx");
+
+        let entry = entry_file_for_kind(&pack_dir, "ambient-ui").expect("ambient-ui entry");
+        assert!(entry.ends_with("ambient-ui.js"));
+
+        let _ = fs::remove_dir_all(&packs);
+    }
+
+    #[test]
     fn includes_manifest_execution_class_summary_when_present() {
         let packs = fresh_packs_dir("manifest-summary");
         let pack_dir = packs.join("my-effect");
@@ -2716,6 +2845,8 @@ mod user_pack_discovery_tests {
               "version": "0.1.0",
               "yorishiroVersion": "^0.1.0",
               "executionClass": "trusted-main-thread-js",
+              "minClientVersion": "0.7.0",
+              "platform": ["macos", "linux"],
               "entry": "effect.js"
             }"#,
         )
@@ -2732,6 +2863,11 @@ mod user_pack_discovery_tests {
         assert_eq!(
             manifest.execution_class.as_deref(),
             Some("trusted-main-thread-js")
+        );
+        assert_eq!(manifest.min_client_version.as_deref(), Some("0.7.0"));
+        assert_eq!(
+            manifest.platform.as_deref(),
+            Some(["macos".to_string(), "linux".to_string()].as_slice())
         );
 
         let _ = fs::remove_dir_all(&packs);

@@ -14,6 +14,10 @@ export default defineConfig(async () => ({
   resolve: {
     alias: [
       {
+        find: /^@yorishiro\/sdk\/attention-cue$/,
+        replacement: new URL("./src/sdk/attention-cue.ts", import.meta.url).pathname,
+      },
+      {
         find: /^@yorishiro\/sdk\/controls$/,
         replacement: new URL("./src/sdk/controls.ts", import.meta.url).pathname,
       },
@@ -29,7 +33,14 @@ export default defineConfig(async () => ({
     // Scene packs and the custom R3F host must always resolve the same module
     // instances. This is especially important in dev, where Vite can otherwise
     // keep an older optimized dependency generation alive across HMR updates.
-    dedupe: ["react", "react-dom", "@react-three/fiber", "three"],
+    dedupe: [
+      "react",
+      "react-dom",
+      "@react-three/fiber",
+      "@react-three/postprocessing",
+      "postprocessing",
+      "three",
+    ],
   },
 
   // Discover the complete R3F graph before the WebView starts. A late

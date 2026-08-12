@@ -1,6 +1,9 @@
 import * as ReactThreeDrei from "@react-three/drei";
 import * as ReactThreeFiber from "@react-three/fiber";
+import * as ReactThreePostprocessing from "@react-three/postprocessing";
+import { getVersion } from "@tauri-apps/api/app";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type {
   AmbientAudioAPI,
   AmbientAudioState,
@@ -18,6 +21,7 @@ import type {
   UiThreeAPI,
 } from "@yorishiro/sdk";
 import { LevaPanel } from "leva";
+import * as Postprocessing from "postprocessing";
 import * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
@@ -124,6 +128,7 @@ import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expressi
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
 import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
+import { createAmenityServices } from "./runtime/amenity-services";
 import {
   getAttentionLightCueStore,
   startAttentionLightCueBridge,
@@ -290,6 +295,7 @@ import {
 } from "./runtime/three-runtime/scene-pack-leva-store";
 import { getThreeRuntime } from "./runtime/three-runtime/three-runtime";
 import { getClaimState } from "./runtime/ui-claim-state";
+import { validateUiPackExternalUrl } from "./runtime/ui-pack-external-url";
 import { getUiRegistry, type UiPackEntry } from "./runtime/ui-pack-registry";
 import {
   playStageTransition,
@@ -329,6 +335,7 @@ import {
   startSessionAttentionProducer,
   startWorkspaceAttentionPresenceBridge,
 } from "./runtime/workspace-attention";
+import * as YorishiroAttentionCue from "./sdk/attention-cue";
 import * as YorishiroControls from "./sdk/controls";
 import type { PersonaDefinition } from "./sdk/persona";
 import type { PersonaPackManifest } from "./sdk/persona-pack";
@@ -684,7 +691,10 @@ declare global {
   var __YORISHIRO_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
   var __YORISHIRO_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
   var __YORISHIRO_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __YORISHIRO_REACT_THREE_POSTPROCESSING__: typeof ReactThreePostprocessing | undefined;
+  var __YORISHIRO_POSTPROCESSING__: typeof Postprocessing | undefined;
   var __YORISHIRO_THREE__: typeof THREE | undefined;
+  var __YORISHIRO_SDK_ATTENTION_CUE__: typeof YorishiroAttentionCue | undefined;
   var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
   var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
 }
@@ -694,7 +704,10 @@ globalThis.__YORISHIRO_REACT_DOM_CLIENT__ = ReactDomClient;
 globalThis.__YORISHIRO_REACT_JSX_RUNTIME__ = ReactJsxRuntime;
 globalThis.__YORISHIRO_REACT_THREE_DREI__ = ReactThreeDrei;
 globalThis.__YORISHIRO_REACT_THREE_FIBER__ = ReactThreeFiber;
+globalThis.__YORISHIRO_REACT_THREE_POSTPROCESSING__ = ReactThreePostprocessing;
+globalThis.__YORISHIRO_POSTPROCESSING__ = Postprocessing;
 globalThis.__YORISHIRO_THREE__ = THREE;
+globalThis.__YORISHIRO_SDK_ATTENTION_CUE__ = YorishiroAttentionCue;
 globalThis.__YORISHIRO_SDK_CONTROLS__ = YorishiroControls;
 globalThis.__YORISHIRO_SDK_R3F__ = YorishiroR3f;
 
@@ -1103,6 +1116,19 @@ function App() {
     [resolveRestoreDialogTarget],
   );
 
+  // Shared by amenity and UI Pack contexts. The restore method always delegates
+  // confirmation to the host-owned app dialog before invoking the raw command.
+  const historyApi = useMemo(
+    () =>
+      createHistoryApi({
+        list: () => snapshotList(),
+        create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
+        restore: (seq) => snapshotRestore({ seq }),
+        confirmRestore: (seq, runRestore) => openRestoreDialog(seq, runRestore),
+      }),
+    [openRestoreDialog],
+  );
+
   const handleRestoreDialogClose = useCallback(() => {
     restoreDialogResolveRef.current?.(false);
     restoreDialogResolveRef.current = null;
@@ -1398,12 +1424,6 @@ function App() {
     // 住人 AI の MCP history_snapshot は Rust 完結で別 trigger "mcp:snapshot"
     // を打つ（P2b Task 4）。watcher 自動は "watcher-settled"、baseline は
     // "startup-baseline"。これで監査・UI でどの経路の snapshot か区別できる。
-    const historyApi = createHistoryApi({
-      list: () => snapshotList(),
-      create: (label) => snapshotCreate({ trigger: "sdk:snapshot", label }),
-      restore: (seq) => snapshotRestore({ seq }),
-      confirmRestore: (seq, runRestore) => openRestoreDialog(seq, runRestore),
-    });
     let ambientAudioLiveState: AmbientAudioState = { muted: false, volume: 1 };
     const ambientAudio: AmbientAudioAPI = {
       getState: () => ambientAudioLiveState,
@@ -3348,6 +3368,7 @@ function App() {
         time,
         tween,
         log: createLogAPI(logBridge, packId),
+        history: historyApi,
         signal,
         layout: {
           update: (layout: UiLayout) => {
@@ -3358,6 +3379,8 @@ function App() {
           },
         },
         app: {
+          getVersion,
+          openExternal: (url) => openUrl(validateUiPackExternalUrl(url)),
           setVrm: (path: string | null) => applyVrmPath(path),
           // host 所有の固定プロンプトのみ解決して pre-fill する（pack はバイトを
           // 選べない）。改行なし＝user が Enter するまで実行されない。
@@ -3713,6 +3736,7 @@ function App() {
     beginCurtainReload,
     switchMainAgent,
     setActiveSceneFromUserSelection,
+    historyApi,
   ]);
 
   const bodyDevLog = useMemo(() => createSubsystemLog(devLog, "Body"), [devLog]);
@@ -4193,6 +4217,7 @@ function App() {
   useEffect(() => {
     const ambientUiRegistry = getAmbientUiPackRegistry();
     const attention = getAttentionRuntime();
+    const amenities = createAmenityServices(getAmenityPackRegistry());
 
     // #ambient-layer を document.body 直下に生成する（v1 の zIndex: 20 を踏襲）
     const ambientLayer = document.createElement("div");
@@ -4228,7 +4253,7 @@ function App() {
         container.dataset.packId = id;
         ambientLayer.appendChild(container);
 
-        const ctx: AmbientUiContext = { attention };
+        const ctx: AmbientUiContext = { attention, amenities };
         const disposable = packEntry.pack.mount(ctx, container);
         mounted.set(id, { container, disposable });
       }

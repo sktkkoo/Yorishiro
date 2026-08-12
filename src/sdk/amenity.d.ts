@@ -14,6 +14,7 @@
  */
 
 import type { AmenityContext } from "./context";
+import type { AmenityServiceHandle } from "./amenity-service";
 import type { Trigger } from "./reaction";
 
 // ─── AmenityHandle ───────────────────────────────────────
@@ -22,6 +23,13 @@ import type { Trigger } from "./reaction";
 export interface AmenityHandle {
   /** この amenity が提供する tool handler。key は tool 名。 */
   readonly tools: Readonly<Record<string, AmenityToolHandler>>;
+  /**
+   * Ambient UI 向けの opt-in public surface。
+   * tools は MCP / host routing 専用であり Ambient UI には公開されない。
+   * state / command の固有 shape はこの amenity の versioned contract であり、
+   * SDK 共通の stable envelope には含まれない。
+   */
+  readonly service?: AmenityServiceHandle;
   /** pack disable / アプリ終了時に呼ばれる後片付け。 */
   readonly dispose: () => void;
 }
@@ -104,6 +112,10 @@ export interface AmenityPackManifest {
   readonly type: "amenity";
   readonly version: string;
   readonly yorishiroVersion: string;
+  /** local Pack の import 前に検証する最小 app version（exact SemVer）。 */
+  readonly minClientVersion?: string;
+  /** local Pack の load を許可する platform。 */
+  readonly platform?: ReadonlyArray<"macos" | "windows" | "linux">;
   readonly entry: string;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";

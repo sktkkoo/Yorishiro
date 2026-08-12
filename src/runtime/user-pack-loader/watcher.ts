@@ -36,7 +36,12 @@ import {
 import { applyPersonaDefaults } from "./persona-defaults";
 import { injectPersonaPrompt } from "./persona-md-injection";
 import { registerScenePack } from "./scene-pack-integration";
-import type { EffectRegistrar, PersonaRegistrar } from "./user-pack-loader";
+import {
+  type EffectRegistrar,
+  type PersonaRegistrar,
+  type UserPackEntry,
+  userPackEntryFilename,
+} from "./user-pack-loader";
 import type { UserPackRegistry } from "./user-pack-registry";
 import { mapEventToAction, type WatcherAction, type YorishiroLayerEvent } from "./watcher-logic";
 
@@ -54,6 +59,8 @@ export interface StartPackWatcherDeps {
   readonly initScriptLog: SubsystemLog;
   readonly onInitChanged?: () => void;
   readonly executionEnvironment?: PackExecutionEnvironment;
+  /** safe mode では false。watch は維持するが user pack の import / register は行わない。 */
+  readonly packReloadEnabled?: boolean;
   /**
    * init.js hot reload 用の deps と、現在 active な init scope の holder。
    * 未指定なら従来通り「変更を log + onInitChanged のみ」（reload しない）。
@@ -150,6 +157,15 @@ async function handleLayerEvent(
 ): Promise<void> {
   const action = mapEventToAction(event, yorishiroHome);
 
+  if (
+    deps.packReloadEnabled === false &&
+    (action.type === "reload-pack" ||
+      action.type === "reload-pack-source" ||
+      action.type === "remove-pack")
+  ) {
+    return;
+  }
+
   switch (action.type) {
     case "ignore":
       return;
@@ -173,6 +189,54 @@ async function handleLayerEvent(
     case "reload-pack":
       await reloadPack(action, deps, tauri);
       return;
+
+    case "reload-pack-source":
+      await reloadPackSourceOwners(action, deps, tauri);
+      return;
+  }
+}
+
+async function reloadPackSourceOwners(
+  action: Extract<WatcherAction, { type: "reload-pack-source" }>,
+  deps: StartPackWatcherDeps,
+  tauri: TauriBindings,
+): Promise<void> {
+  let entries: UserPackEntry[];
+  try {
+    entries = await tauri.invoke<UserPackEntry[]>("list_user_packs");
+  } catch (err) {
+    deps.userPackLog.write({
+      phase: "reload",
+      note: `failed to resolve TSX owner for nested source in '${action.id}'`,
+      data: { sourcePath: action.sourcePath, error: errorMessage(err) },
+    });
+    return;
+  }
+
+  const owners = entries.filter(
+    (entry) => entry.id === action.id && entry.entryPath.endsWith(".tsx"),
+  );
+  if (owners.length === 0) {
+    deps.userPackLog.write({
+      phase: "reload",
+      note: `nested source changed for '${action.id}', but no runtime-transpiled TSX owner was found`,
+      data: { sourcePath: action.sourcePath },
+    });
+    return;
+  }
+
+  for (const owner of owners) {
+    await reloadPack(
+      {
+        type: "reload-pack",
+        id: owner.id,
+        kind: owner.kind,
+        entryPath: owner.entryPath,
+        mtimeMs: action.mtimeMs,
+      },
+      deps,
+      tauri,
+    );
   }
 }
 
@@ -375,7 +439,7 @@ async function reloadPack(
           type: "ui",
           version: "0.0.0",
           yorishiroVersion: "*",
-          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+          entry: userPackEntryFilename(action.entryPath),
         },
         origin: "user",
         pack: {
@@ -399,7 +463,7 @@ async function reloadPack(
           type: "ambient-ui",
           version: "0.0.0",
           yorishiroVersion: "*",
-          entry: action.entryPath.endsWith(".tsx") ? "ui.tsx" : "ui.js",
+          entry: userPackEntryFilename(action.entryPath),
         },
         pack: { mount: pack.mount },
       });

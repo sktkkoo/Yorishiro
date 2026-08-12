@@ -2,7 +2,8 @@
  * @yorishiro/sdk/ambient-ui-pack
  *
  * Ambient UI Pack の定義型（5 つ目の pack kind、v2 で追加）。
- * packs/ambient-ui/<id>/ui.tsx では `satisfies AmbientUiPackDefinition` を
+ * local user pack は `~/.yorishiro/packs/<id>/ambient-ui.tsx`、bundled pack は
+ * `bundled-packs/ambient-ui/<id>/ui.tsx` で `satisfies AmbientUiPackDefinition` を
  * 使って export default する。
  *
  * Ambient UI は primary UI を上書きしない overlay layer に出る pack。
@@ -27,16 +28,20 @@
  */
 
 import type { AttentionAPI } from "./attention";
+import type { AmenityServicesAPI } from "./amenity-service";
 import type { Disposable } from "./context";
 
 /**
  * Ambient UI pack の mount context。
  *
- * v2 MVP では `attention` のみ。Phase 2 で persona pack の auraAffinity を
- * 読む経路を追加するときに `getActivePersonaAffinity()` 等を生やす。
+ * `amenities` は active amenity が明示公開した service だけを解決する。
+ * registry / activation state mutation / MCP tool handle は公開しない。
+ * SDK が共通で保証するのは resolver と state / command envelope のみで、
+ * 固有 payload shape は対象 amenity の versioned contract に従う。
  */
 export interface AmbientUiContext {
   readonly attention: AttentionAPI;
+  readonly amenities: AmenityServicesAPI;
 }
 
 /** Ambient UI pack の manifest。kind は文字列上は "ambient-ui"。 */
@@ -47,6 +52,10 @@ export interface AmbientUiPackManifest {
   readonly type: "ambient-ui";
   readonly version: string;
   readonly yorishiroVersion: string;
+  /** local Pack の import 前に検証する最小 app version（exact SemVer）。 */
+  readonly minClientVersion?: string;
+  /** local Pack の load を許可する platform。 */
+  readonly platform?: ReadonlyArray<"macos" | "windows" | "linux">;
   readonly description?: string;
   readonly executionClass?: "declarative" | "isolated-js" | "trusted-main-thread-js";
   readonly artifact?: {

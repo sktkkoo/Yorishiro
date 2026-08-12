@@ -13,6 +13,7 @@ export {
   resolveSceneAssets,
   resolveUserAsset,
 } from "./asset-resolver";
+export { makeUserResolveAsset } from "./asset-resolver-pack";
 export {
   DEFAULT_BUNDLED_SCENE_ID,
   getSceneRegistry,

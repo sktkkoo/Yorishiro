@@ -16,6 +16,34 @@ state machine（`idle → work → short-break → work → ... → long-break �
 default は work 25 分 / short break 5 分 / long break 15 分 / 4 rounds。
 最終 round の break が long break になり、終了で `idle` に戻る。
 
+## Ambient UI 向け public service
+
+`AmenityHandle.service` に timer state の `getState()` と `execute("stop")` だけを公開する。
+これは `AmbientUiContext.amenities` 経由で pomodoro-ui が使う opt-in surface であり、MCP tool
+handler や amenity registry は渡さない。`pomodoro_start` は UI service command としては公開せず、
+未知の command は reject する。
+
+### Pomodoro service contract（version 0.1.0）
+
+この shape は汎用 SDK contract ではなく、pomodoro pack 固有の versioned contract。
+
+`getState()` は次を返す：
+
+| field | type | 説明 |
+|---|---|---|
+| `phase` | `"idle" \| "work" \| "short-break" \| "long-break"` | 現在の phase |
+| `round` | `number` | 現在の round。idle は `0` |
+| `totalRounds` | `number` | 設定 round 数。idle は `0` |
+| `remainingMs` | `number` | phase の残り時間（ms、0以上） |
+| `config.workMs` | `number` | work duration（ms） |
+| `config.shortBreakMs` | `number` | short break duration（ms） |
+| `config.longBreakMs` | `number` | long break duration（ms） |
+| `config.rounds` | `number` | session の総 round 数 |
+
+`execute("stop")` は params を必要とせず、`{ cancelled, phase, round }` を返す。
+進行中なら `cancelled: true` と停止前の phase / round、idle なら
+`{ cancelled: false, phase: "idle", round: 0 }`。`"stop"` 以外は reject する。
+
 ## emit する event
 
 フェーズ遷移ごとに synthetic event を emit する（trigger match 経由で persona reflex が反応する）。

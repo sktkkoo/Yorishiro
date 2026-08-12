@@ -7,11 +7,10 @@
  * Spec §7.1–§7.4.
  */
 
-import { useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useFrame } from "@yorishiro/sdk/r3f";
 import { useRef } from "react";
 import type * as THREE from "three";
-import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import { computeCrtFlicker, computeLanternFlicker, type FlickerParams } from "./flicker";
 import { PALETTE } from "./palette";
 

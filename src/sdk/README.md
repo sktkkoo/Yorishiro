@@ -2,6 +2,10 @@
 
 このドキュメントは Yorishiro Pack を書く creator（あるいはその依頼を受けた AI）が読むための API リファレンス。**Pack を書く前に必ず読む**。
 
+`~/.yorishiro/packs/`でlocal sourceを直接書く場合は、先に
+[`docs/decisions/local-source-authoring-contract.md`](../../docs/decisions/local-source-authoring-contract.md)
+を読む。Bundled PackのVite importをlocal Packへそのままコピーできるとは限らない。
+
 ---
 
 ## UGC の Pack 種別（6 種類）
@@ -15,9 +19,9 @@ Yorishiro の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 | **Effect Pack** | runtime-active（短命） | rendering 実装 | renderer / audio | 最小 API のみ、state を持たない |
 | **Scene Pack** | declarative | 住人の居る場（layer stack）の宣言 | **無し**（pure data） | single-active（同時に 1 つ）、active 選択は config で picks |
 | **UI Pack** | primary UI | Yorishiro の操作面を定義 | three / claim / scene / state / layout / app | single-active（同時に 1 つ）。本体 layout を変更できる |
-| **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | renderer / attention | multi-active（複数同時 enable）。`ambient-ui-pack-registry` で管理 |
+| **Ambient UI Pack** | overlay | primary UI を占有せず重ねる視覚 overlay（attention aura など） | attention / amenity services | multi-active（複数同時 enable）。host が lifecycle を管理 |
 
-- `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、`#ambient-layer` 内の自身の container に描画する。bundled 例: `attention-aura` (v2 attention のデフォルト visual)。
+- `ambient-ui`: overlay 系 pack。`AmbientUiContext.attention` で attention runtime を読み、必要なら `AmbientUiContext.amenities` から amenity が opt-in した service を使う。`#ambient-layer` 内の自身の container に描画する。
 
 **迷ったら**：
 
@@ -27,6 +31,19 @@ Yorishiro の UGC は 6 種類の Pack に分かれる。**どれを書きたい
 - 「背景・前景の layer 構成を変えて居場所を作りたい」→ Scene Pack
 - 「操作パネルや layout を差し替えたい」→ UI Pack
 - 「注目状態などを overlay で常時可視化したい」→ Ambient UI Pack
+
+### Bundled settings は authoring sample ではない
+
+`bundled-packs/ui/yorishiro-settings` は app 更新、VRM import、復元 UI を所有する
+system-owned bundled UI であり、通常の UI Pack がコピーできる権限の見本ではない。
+通常の Pack は Tauri API/plugin、`window.__TAURI_INTERNALS__`、`src/bindings/**`、
+app component/runtime、別 bundled Pack の manifest を直接 import せず、
+`@yorishiro/sdk` と明示された host shim だけを supported surface として使う。
+
+settings に残る例外の完全な監査表と SDK 昇格基準は
+[`docs/decisions/system-settings-privileged-boundary.md`](../../docs/decisions/system-settings-privileged-boundary.md)
+を参照。local trusted Pack は現在同じ WebView realm で動くため、これは sandbox の説明ではなく
+authoring contract である。
 
 ---
 
@@ -193,9 +210,30 @@ export default {
 
 ### lifecycle と cleanup
 
-`activate(ctx)` は `AmenityHandle`（`{ tools, dispose }`）を返す。
+`activate(ctx)` は `AmenityHandle`（`{ tools, service?, dispose }`）を返す。
 `ctx.signal` は pack disable 時に abort される。`activate` 内で起動した非同期処理は
 この signal を監視して cleanup すること。`dispose()` は disable / 終了で必ず呼ばれる。
+
+Ambient UI に state / 操作を公開する amenity は、handle に任意の `service` を追加できる。
+`service.getState()` と `service.execute(command, params?)` は UI 向けの明示的な public contract。
+`tools` は MCP / host routing 専用であり、Ambient UI には渡らない。必要な command だけを
+別 namespace で実装し、未知の command は reject する。bundled の pomodoro は state と
+`"stop"` のみを service に公開する。
+
+#### Amenity service の stability boundary
+
+通常の public API として SDK が安定保証する共通 envelope は次の4点だけ：
+
+- `ctx.amenities.get(id)` で service を解決できる
+- `service.getState()` が state snapshot を返す
+- `service.execute(command, params?)` が command を実行する
+- amenity が inactive、未登録、または service 非公開なら `get(id)` は `null` を返す
+
+各 amenity 固有の state shape、command 名、params / result shape は、その amenity の
+manifest version に属する contract であり、SDK 全体の共通 stable contract ではない。
+subscribe API、typed helper、community / isolated amenity の permission model も現時点の
+共通 contract には含めない。consumer は対象 amenity の docs と version を確認し、`unknown`
+の state / result を境界で検証する。
 
 ### 環境 event への反応
 
@@ -339,12 +377,18 @@ bundled-packs/scenes/<pack-id>/
 └── README.md
 ```
 
-**user**（flat layout、`.js` 強制）：
+**user**（flat layout）：
 
 ```
 ~/.yorishiro/packs/<pack-id>/
 ├── manifest.json
-└── scene.js               # user が TS から transpile した JS
+└── scene.js               # declarative scene
+
+# R3F component を使う local trusted scene は代わりに：
+~/.yorishiro/packs/<pack-id>/
+├── manifest.json
+├── scene.tsx              # manifest.entry に指定
+└── lib/                   # pack 内の .ts/.tsx は相対 import 可
 ```
 
 > bundled と user で layout が**意図的に非対称**：bundled は本体の一部として種類別、user は flat。混同しない。詳細は `bundled-packs/README.md` および memory `feedback_user_pack_layout`。
@@ -472,6 +516,38 @@ R3F primitive の re-export entry。Scene pack が R3F component を export す�
 
 詳細: specs/2026-05-03-scene-pack-r3f-component.md §3.2
 
+### Local trusted `scene.tsx` の post-processing
+
+`~/.yorishiro/packs/<id>/scene.tsx` では、次の 2 module を host bridge 経由で import できる。
+
+- `@react-three/postprocessing` — `EffectComposer` / `EffectComposerContext` / `Bloom` / `Noise` / `Vignette` / `ChromaticAberration` / `Scanline` / `ToneMapping` など
+- `postprocessing` — `BlendFunction` / `Effect` / `EffectPass` / `ToneMappingMode` などの low-level API
+
+```tsx
+import { Bloom, EffectComposer, Noise, Vignette } from '@react-three/postprocessing';
+import { BlendFunction, type NoiseEffect } from 'postprocessing';
+
+function PostEffects() {
+  return (
+    <EffectComposer>
+      <Bloom intensity={0.8} blendFunction={BlendFunction.ADD} />
+      <Noise opacity={0.12} />
+      <Vignette darkness={0.45} />
+    </EffectComposer>
+  );
+}
+```
+
+これらは pack 側に dependency を bundle せず、host が保持する React / R3F / Three.js /
+post-processing の同一 instance に解決される。`import type` または named import 内の
+`type` modifier（上例の `NoiseEffect`）は transpile 時に消去され、runtime value にはならない。
+`Effect` や `BlendFunction` など runtime で使う symbol は通常の value import にする。
+
+この経路は任意の npm dependency を許可する仕組みではない。supported host import
+以外の bare import は引き続き reject され、pack 外へ出る relative import も使えない。
+実用例は [`abandoned-factory` の post-process pipeline](../../bundled-packs/scenes/abandoned-factory/lib/post-process.tsx)
+を参照。
+
 ### `@yorishiro/sdk/controls`
 
 Scene pack が lighting / post effect などの runtime 調整値を公開するための entry。
@@ -519,24 +595,140 @@ MCP `get_ui_state` / `set_ui_state` の両方から同じ値を読み書きで�
    `AttentionCueLight` を明示的に mount する。mount している間、default は
    自動で退く（同じ光が二重に点灯することはない）。
    ```tsx
-   // bundled scene.tsx（bundled-packs/scenes/<id>/scene.tsx）からの相対 import 例。
-   // useControlsBridge と同じく src/ を直接参照する（@yorishiro/sdk に相当する
-   // 公開 alias はまだ無い）。
-   import { AttentionCueLight } from '../../../src/runtime/three-runtime/attention-cue-light';
+   import { AttentionCueLight } from '@yorishiro/sdk/attention-cue';
 
    <AttentionCueLight color="#ffb08a" intensityScale={1.8} position={[0, 1.9, 0.6]} />
    ```
    `position` を省略するとキャラの head 位置から自動配置される。明るい scene
    （directional / ambient が強い）では `intensityScale` を上げないと埋もれる。
 3. **完全に消したい**：光そのものを不要とする scene は `useClaimAttentionCue()`
-   だけを呼ぶ（描画は一切しない）。default が退くだけで、attention の通知手段を
-   scene から取り除きたい場合に使う。
+   だけを同じ `@yorishiro/sdk/attention-cue` から import して呼ぶ（描画は一切
+   しない）。default が退くだけで、attention の通知手段を scene から取り除きたい
+   場合に使う。
+
+`@yorishiro/sdk/attention-cue` は local trusted `scene.tsx` の host bridge に含まれる。
+runtime 内部の default component、claim registry、cue store は public contract ではなく、
+Pack から直接 import できない。
 
 ### Bundled scene の参考
 
 - `bundled-packs/scenes/simple-room/` — flagship reference（gradient のみ、3 層構成）
 - `bundled-packs/scenes/radiant-meadow/` — Three.js procedural renderer `radiant-meadow` を使う high-fidelity reference
 - 詳細な data model 解説：[`src/core/scene/README.md`](../core/scene/README.md)
+
+---
+
+## UI Pack の host capability
+
+UI Pack の `mount(ctx, container)` に渡される `ctx` では、app metadata、外部 link、
+rollback history を raw Tauri import なしで利用できる。
+
+```tsx
+export default {
+  id: 'about-panel',
+  type: 'ui',
+  layout: {},
+  mount(ctx, container) {
+    const link = document.createElement('button');
+    link.textContent = 'Project website';
+    link.addEventListener('click', () => {
+      void ctx.app.openExternal('https://example.com/project');
+    });
+    container.append(link);
+
+    void ctx.app.getVersion().then((version) => {
+      container.dataset.appVersion = version;
+    });
+
+    return { dispose: () => link.remove() };
+  },
+} satisfies UiPackDefinition;
+```
+
+- `ctx.app.getVersion()` — 実行中 app の version を read-only で返す。
+- `ctx.app.openExternal(url)` — absolute HTTPS URL のみ既定 browser で開く。credentials、
+  relative URL、custom scheme、oversized input は host が reject する。明示的な user gesture
+  からだけ呼び、mount / timer から自動で開かない。
+- `ctx.history.list()` / `snapshot(label?)` / `restore(seq)` — rollback history。
+  `restore` は destructive command を Pack に渡さず、host-owned confirmation UX を必ず経由する。
+
+`openExternal` の HTTPS / credential / length validation は、`ctx.app.openExternal()` という
+**supported authoring contract** の保証である。現状の local UI Pack は app と同じ WebView
+realm で実行されるため、これは sandbox や raw Tauri access の runtime enforcement ではない。
+local trusted code は技術的には Tauri opener / IPC へ直接到達でき、この SDK method の追加で
+その到達性や Tauri 側の既存 permission が狭まったとは扱わない。
+
+Tauri API/plugin、`window.__TAURI_INTERNALS__`、`src/bindings/**` は supported authoring
+surface ではない。必要な capability が `ctx` に無ければ raw IPC へ迂回せず、host API と
+permission boundary を先に設計する。
+
+## Ambient UI Pack の書き方
+
+local user ambient-ui pack は `~/.yorishiro/packs/<id>/` に次の形で置く。
+
+```
+~/.yorishiro/packs/my-overlay/
+├── manifest.json
+├── ambient-ui.tsx
+└── lib/
+    └── overlay.tsx
+```
+
+`manifest.json` の `type` は `ambient-ui`、`entry` は `ambient-ui.tsx` とする。
+
+```json
+{
+  "id": "my-overlay",
+  "type": "ambient-ui",
+  "version": "0.1.0",
+  "yorishiroVersion": "^0.1.0",
+  "executionClass": "trusted-main-thread-js",
+  "entry": "ambient-ui.tsx"
+}
+```
+
+```tsx
+import type { AmbientUiPackDefinition } from '@yorishiro/sdk';
+import ReactDOM from 'react-dom/client';
+import { Overlay } from './lib/overlay';
+
+export default {
+  id: 'my-overlay',
+  type: 'ambient-ui',
+  mount(ctx, container) {
+    const root = ReactDOM.createRoot(container);
+    root.render(<Overlay attention={ctx.attention} />);
+    return { dispose: () => root.unmount() };
+  },
+} satisfies AmbientUiPackDefinition;
+```
+
+active amenity が公開した UI 向け service は `ctx.amenities.get(id)` で解決する。inactive、
+未登録、または service を opt-in していない amenity では `null`。返る handle は
+`getState()` と `execute(command, params?)` だけを持ち、registry の列挙・enable/disable や
+MCP tool handlers には触れられない。handle は呼び出しごとに active service を再解決するため、
+長時間 cache しても disable 後の service を操作できない。
+
+SDK 共通で安定保証されるのはこの resolver / `getState` / `execute` envelope と inactive 時の
+非利用可能性まで。state / command の具体的 shape は各 amenity の docs と version に従う。
+
+`ambient-ui.tsx` は Yorishiro が runtime transpile する trusted local source である。
+`react`、`react/jsx-runtime`、`react-dom/client` は host bridge に解決され、host と同じ
+instance を共有する。SDK の型は `@yorishiro/sdk` から type import する。pack 内の
+`.tsx` / `.ts` / `.jsx` / `.js` へ相対 import
+して分割でき、nested source の保存・削除も owning TSX entry の hot reload を起動する。
+
+relative import は同じ pack directory 内に閉じる。任意の npm package、raw Tauri API、
+別 pack への relative import は許可されず、compile/load error は `pack_diagnose` と dev log
+に残る。hot reload に失敗した場合は直前の登録を維持する。safe mode 中は discovery と
+reload のどちらも user code を import しない。
+
+`mount` は同期的に `Disposable` を返し、`dispose` で React root、timer、RAF、listener を
+すべて解放する。Ambient UI に渡される attention API は read-only。amenity service は
+amenity 側が明示公開した state / command に限定され、persona / system / raw Tauri API や
+internal registry は持たない。bundled の参考実装は attention observation の
+`bundled-packs/ambient-ui/attention-aura/ui.tsx` と amenity service consumer の
+`bundled-packs/ambient-ui/pomodoro-ui/ui.tsx`。
 
 ---
 

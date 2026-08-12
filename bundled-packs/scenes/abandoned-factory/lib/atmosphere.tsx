@@ -4,11 +4,10 @@
  * SDK controls で sizeMult / alpha / dust speed / godRays alpha をリアルタイム調整可能.
  */
 
-import { controlFolder, useYorishiroControls } from "@yorishiro/sdk/controls";
+import { controlFolder, useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useFrame } from "@yorishiro/sdk/r3f";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 import { PALETTE } from "./palette";
 
 /* ---- 決定論的 LCG 乱数 ---- */

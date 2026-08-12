@@ -2,36 +2,43 @@
  * user pack TSX transpiler.
  *
  * `.tsx` entry を runtime で esbuild-wasm transpile し、React / JSX runtime は
- * host 側の shim に解決する。現在は ui.tsx と scene.tsx がこの経路を使う。
+ * host 側の shim に解決する。ui.tsx / scene.tsx / ambient-ui.tsx がこの経路を使う。
  * Relative imports は pack directory 内の source file に限定して inline bundle する。
  * Persistent `.build` output は follow-up。
  */
 
 import type * as ReactThreeDrei from "@react-three/drei";
 import type * as ReactThreeFiber from "@react-three/fiber";
+import * as ReactThreePostprocessing from "@react-three/postprocessing";
 import * as esbuild from "esbuild-wasm";
 import esbuildWasmUrl from "esbuild-wasm/esbuild.wasm?url";
+import * as Postprocessing from "postprocessing";
 import type * as React from "react";
 import type * as ReactJsxRuntime from "react/jsx-runtime";
 import type * as ReactDomClient from "react-dom/client";
 import type * as THREE from "three";
+import type * as YorishiroAttentionCue from "../../sdk/attention-cue";
 import type * as YorishiroControls from "../../sdk/controls";
 import type * as YorishiroR3f from "../../sdk/r3f";
 
 const HOST_NAMESPACE = "yorishiro-host";
 const USER_SOURCE_NAMESPACE = "yorishiro-user-source";
 const UNSUPPORTED_NAMESPACE = "yorishiro-unsupported";
-const SUPPORTED_HOST_IMPORTS = new Set([
+export const LOCAL_TSX_HOST_IMPORTS = [
   "@yorishiro/sdk",
+  "@yorishiro/sdk/attention-cue",
   "@yorishiro/sdk/controls",
   "@yorishiro/sdk/r3f",
   "@react-three/drei",
   "@react-three/fiber",
+  "@react-three/postprocessing",
+  "postprocessing",
   "react",
   "react-dom/client",
   "react/jsx-runtime",
   "three",
-]);
+] as const;
+const SUPPORTED_HOST_IMPORTS = new Set<string>(LOCAL_TSX_HOST_IMPORTS);
 
 declare global {
   var __YORISHIRO_REACT__: typeof React | undefined;
@@ -39,7 +46,10 @@ declare global {
   var __YORISHIRO_REACT_JSX_RUNTIME__: typeof ReactJsxRuntime | undefined;
   var __YORISHIRO_REACT_THREE_DREI__: typeof ReactThreeDrei | undefined;
   var __YORISHIRO_REACT_THREE_FIBER__: typeof ReactThreeFiber | undefined;
+  var __YORISHIRO_REACT_THREE_POSTPROCESSING__: typeof ReactThreePostprocessing | undefined;
+  var __YORISHIRO_POSTPROCESSING__: typeof Postprocessing | undefined;
   var __YORISHIRO_THREE__: typeof THREE | undefined;
+  var __YORISHIRO_SDK_ATTENTION_CUE__: typeof YorishiroAttentionCue | undefined;
   var __YORISHIRO_SDK_CONTROLS__: typeof YorishiroControls | undefined;
   var __YORISHIRO_SDK_R3F__: typeof YorishiroR3f | undefined;
 }
@@ -53,7 +63,7 @@ export interface TsxTranspilerOptions {
 }
 
 let initializePromise: Promise<void> | null = null;
-const RELATIVE_IMPORT_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
+export const LOCAL_TSX_SOURCE_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"] as const;
 
 type SourceLoader = "tsx" | "ts" | "jsx" | "js";
 
@@ -115,6 +125,13 @@ function sourceLoaderForPath(path: string): SourceLoader | null {
   if (path.endsWith(".jsx")) return "jsx";
   if (path.endsWith(".js")) return "js";
   return null;
+}
+
+function explicitRelativeImportExtension(path: string): string | null {
+  const pathWithoutQuery = path.split("?", 1)[0] ?? path;
+  const basename = pathWithoutQuery.slice(pathWithoutQuery.lastIndexOf("/") + 1);
+  const dotIndex = basename.lastIndexOf(".");
+  return dotIndex <= 0 ? null : basename.slice(dotIndex).toLowerCase();
 }
 
 async function readUserSource(
@@ -207,6 +224,7 @@ const ReactDomClient = globalThis.__YORISHIRO_REACT_DOM_CLIENT__;
 if (!ReactDomClient) throw new Error("Yorishiro React DOM client host bridge is not initialized");
 export const createRoot = ReactDomClient.createRoot;
 export const hydrateRoot = ReactDomClient.hydrateRoot;
+export default ReactDomClient;
 `;
 
 const jsxRuntimeShim = `
@@ -219,6 +237,15 @@ export const jsxs = Runtime.jsxs;
 
 const sdkShim = `
 export {};
+`;
+
+const attentionCueShim = `
+const AttentionCue = globalThis.__YORISHIRO_SDK_ATTENTION_CUE__;
+if (!AttentionCue) throw new Error("Yorishiro attention cue host bridge is not initialized");
+export const {
+  AttentionCueLight,
+  useClaimAttentionCue,
+} = AttentionCue;
 `;
 
 const r3fShim = `
@@ -278,6 +305,37 @@ export const {
 } = Controls;
 `;
 
+function isModuleExportIdentifier(name: string): boolean {
+  return /^[$A-Z_a-z][$\w]*$/.test(name) && name !== "default" && name !== "__esModule";
+}
+
+function createCompleteHostModuleShim(
+  globalName: string,
+  moduleName: string,
+  moduleExports: object,
+): string {
+  const names = Object.keys(moduleExports).filter(isModuleExportIdentifier).sort();
+  const exports = names.map((name) => `export const ${name} = HostModule.${name};`).join("\n");
+  return `
+const HostModule = globalThis.${globalName};
+if (!HostModule) throw new Error("Yorishiro ${moduleName} host bridge is not initialized");
+${exports}
+export default HostModule;
+`;
+}
+
+const reactThreePostprocessingShim = createCompleteHostModuleShim(
+  "__YORISHIRO_REACT_THREE_POSTPROCESSING__",
+  "@react-three/postprocessing",
+  ReactThreePostprocessing,
+);
+
+const postprocessingShim = createCompleteHostModuleShim(
+  "__YORISHIRO_POSTPROCESSING__",
+  "postprocessing",
+  Postprocessing,
+);
+
 const threeShim = `
 const THREE = globalThis.__YORISHIRO_THREE__;
 if (!THREE) throw new Error("Yorishiro Three.js host bridge is not initialized");
@@ -300,7 +358,14 @@ function extractNamedExports(shim: string): string[] {
 }
 
 export function tsxHostShimNamedExports(path: string): readonly string[] {
+  if (path === "@react-three/postprocessing") {
+    return Object.keys(ReactThreePostprocessing).filter(isModuleExportIdentifier).sort();
+  }
+  if (path === "postprocessing") {
+    return Object.keys(Postprocessing).filter(isModuleExportIdentifier).sort();
+  }
   if (path === "@react-three/drei") return extractNamedExports(dreiShim);
+  if (path === "@yorishiro/sdk/attention-cue") return extractNamedExports(attentionCueShim);
   if (path === "@yorishiro/sdk/r3f" || path === "@react-three/fiber") {
     return extractNamedExports(r3fShim);
   }
@@ -338,6 +403,26 @@ function createPlan4MvpPlugin(
             pluginData: `relative import '${args.path}' escapes the pack directory`,
           };
         }
+        if (args.path.includes("?")) {
+          return {
+            path: args.path,
+            namespace: UNSUPPORTED_NAMESPACE,
+            pluginData: `query import '${args.path}' is unsupported in runtime-transpiled .tsx; Vite ?raw/?url loaders are unavailable`,
+          };
+        }
+        const extension = explicitRelativeImportExtension(args.path);
+        if (
+          extension !== null &&
+          !LOCAL_TSX_SOURCE_EXTENSIONS.includes(
+            extension as (typeof LOCAL_TSX_SOURCE_EXTENSIONS)[number],
+          )
+        ) {
+          return {
+            path: args.path,
+            namespace: UNSUPPORTED_NAMESPACE,
+            pluginData: `relative import '${args.path}' uses unsupported source extension '${extension}'; supported extensions: ${LOCAL_TSX_SOURCE_EXTENSIONS.join(", ")}`,
+          };
+        }
         return {
           path: resolved,
           namespace: USER_SOURCE_NAMESPACE,
@@ -361,6 +446,15 @@ function createPlan4MvpPlugin(
         if (args.path === "@react-three/drei") {
           return { contents: dreiShim, loader: "js" };
         }
+        if (args.path === "@react-three/postprocessing") {
+          return { contents: reactThreePostprocessingShim, loader: "js" };
+        }
+        if (args.path === "postprocessing") {
+          return { contents: postprocessingShim, loader: "js" };
+        }
+        if (args.path === "@yorishiro/sdk/attention-cue") {
+          return { contents: attentionCueShim, loader: "js" };
+        }
         if (args.path === "@yorishiro/sdk/r3f" || args.path === "@react-three/fiber") {
           return { contents: r3fShim, loader: "js" };
         }
@@ -375,7 +469,7 @@ function createPlan4MvpPlugin(
       build.onLoad({ filter: /.*/, namespace: USER_SOURCE_NAMESPACE }, async (args) => {
         const candidates =
           sourceLoaderForPath(args.path) === null
-            ? RELATIVE_IMPORT_EXTENSIONS.map((ext) => `${args.path}${ext}`)
+            ? LOCAL_TSX_SOURCE_EXTENSIONS.map((ext) => `${args.path}${ext}`)
             : [args.path];
         for (const sourcePath of candidates) {
           const loader = sourceLoaderForPath(sourcePath);

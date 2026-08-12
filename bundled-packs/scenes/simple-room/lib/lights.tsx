@@ -6,11 +6,10 @@
  * 値は simple-room (Night) に合わせた。SDK controls で intensity / color / 位置等を調整可能。
  */
 
-import { useYorishiroControls } from "@yorishiro/sdk/controls";
+import { useControlsBridge, useYorishiroControls } from "@yorishiro/sdk/controls";
 import { useFrame } from "@yorishiro/sdk/r3f";
 import { useRef } from "react";
 import type { SpotLight as ThreeSpotLight } from "three";
-import { useControlsBridge } from "../../../../src/runtime/ui-state-store";
 
 export function Lights() {
   const lightRef = useRef<ThreeSpotLight>(null);

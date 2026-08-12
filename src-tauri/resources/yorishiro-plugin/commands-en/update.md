@@ -71,13 +71,21 @@ Adapt first person and tone to the persona.
 
 For non-persona packs:
 
-1. Read `manifest.json` and the entry file (`scene.js`, `effect.js`, `ui.js`, or `ambient-ui.js`)
+1. Read `manifest.json` and the entry file (`scene.js` / `scene.tsx`, `effect.js`, `ui.js` / `ui.tsx`, or `ambient-ui.js` / `ambient-ui.tsx`)
 2. Edit according to the user's request
 3. Let hot reload apply it
 4. Use `pack_diagnose({ id: "<id>" })` to confirm status, manifest, and load errors
 5. If the current workspace is a Yorishiro source checkout, run `npm run check:pack -- ~/.yorishiro/packs/<id>` and fix checker errors
 
 Scene colors, layer structure, effect parameters, UI layout, and ambient overlay tuning can usually be handled in this flow.
+
+When editing Amenity-to-Ambient-UI integration, use `AmenityHandle.service` on the
+Amenity side and `ctx.amenities.get(id)` on the Ambient UI side. Do not assume a
+common surface beyond `getState()` / `execute(command, params?)`, and validate
+Amenity-specific state in the consumer. If existing code uses `globalThis`, an
+internal registry, or MCP tool handlers as a cross-Pack bridge, read the bundled
+`pomodoro` + `pomodoro-ui` sources with `bundled_example_read` and migrate it to
+the public service path.
 
 ## Realtime Scene Parameter Tuning
 

@@ -21,15 +21,16 @@ amenity → persona の正規 pattern」）。
 
 ## state 連携
 
-- `getAmenityPackRegistry()` singleton から `getActiveHandle("pomodoro")` で pomodoro amenity の
-  handle を取得する。
-- 1 秒ごとに `handle.tools.pomodoro_status({})` を poll し、返ってきた `phase` / `round` /
-  `totalRounds` / `remainingMs` を表示に反映する。
+- mount 時に渡される public `AmbientUiContext.amenities` から `get("pomodoro")` で
+  opt-in service handle を取得する。internal registry や global singleton は import しない。
+- 1 秒ごとに `service.getState()` を poll し、返ってきた `phase` / `round` /
+  `totalRounds` / `remainingMs` を runtime で検証してから表示に反映する。これは
+  pomodoro pack version 0.1.0 固有 contract の consumer であり、汎用 SDK shape ではない。
 - `phase === "idle"` の間は何も描画しない（`null` を返す）。
 - 表示は phase 色つきの dot、`WORK` / `BREAK` / `LONG BREAK` ラベル、`mm:ss` 形式の残り時間、
   `round/totalRounds` のカウンタ。
-- **Stop ボタン**は `handle.tools.pomodoro_stop({})` を呼んでセッションを停止する。これは MCP tool
-  （住人 AI 用）と対称に、user に同じ操作を開いた経路。
+- **Stop ボタン**は UI 用に明示公開された `service.execute("stop")` を呼ぶ。MCP tool handle は
+  Ambient UI に公開されず、開始・状態取得を含む tool namespace 全体への権限拡大を避ける。
 
 ## 編集について
 

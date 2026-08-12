@@ -41,7 +41,7 @@ Yorishiro is an app where an AI "lives" in a terminal. The sidebar character obs
 2. **Read existing packs.** Follow existing patterns and tone. If cwd is the Yorishiro repo, read `bundled-packs/` directly; otherwise read bundled pack sources with the `bundled_example_read` MCP tool (ids from `list_packs`).
 3. **Propose, confirm, then implement.** Do not write a full pack before the user agrees.
 4. **Always include `description` and `author` in `manifest.json`.** `description` is 1-2 sentences in English explaining what the pack does. `author` is the creator's name. These appear in Settings > Packs and help the user decide whether to enable or disable the pack.
-5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative or React+three.js rendering only; ui / ambient-ui handle rendering and state only. Types enforce this, but treat it as a design rule too.
+5. **Respect pack boundaries.** Persona has no system API; amenity may use local-trusted `system.exec` but is motion-free; effect has only the minimal rendering API; scene is declarative or React+three.js rendering only; ui / ambient-ui handle rendering and state only. When Ambient UI needs an Amenity's state or commands, use `AmenityHandle.service` and `ctx.amenities`; never build a cross-Pack bridge with `globalThis` or an internal registry. Types enforce this, but treat it as a design rule too.
 6. **Use CSS variables for UI colors.** In ui / ambient-ui packs, do not hardcode colors such as `#eceff4` or `rgba(77, 217, 207, ...)`. Use `var(--yorishiro-fg)`, `var(--yorishiro-accent)`, and related variables so UI follows scene themes.
 
 ## Hot Reload and Self-Check
@@ -90,6 +90,8 @@ Scene packs have two formats:
 - **R3F component (`scene.tsx`)**: render lighting / 3D objects with a React component. Controls exposed through `useYorishiroControls` / `useControlsBridge` are available only in this format.
 
 You may split `scene.tsx` with pack-relative imports such as `./lib/lights.tsx`. Edits to source files inside the pack reload the owning `scene.tsx`.
+
+Trusted local `scene.tsx` packs may import post-processing components from `@react-three/postprocessing` and lower-level effects, enums, or types from `postprocessing`. These imports resolve to Yorishiro's host bridge, so the scene shares the host React, R3F, Three.js, and post-processing instances. Use `bundled-packs/scenes/abandoned-factory/lib/post-process.tsx` as the reference pipeline. This support does not allow arbitrary npm packages: unrelated bare imports remain rejected.
 
 Keep components to React + three.js rendering; do not use `fetch`, `fs`, `system.exec`, Tauri APIs, Node builtins, or PTY writes from the pack. The base camera is owned by Common controls, so scene packs should not set it directly. Design small camera breath / shake / sway changes as Scene-side modulations.
 
@@ -466,13 +468,24 @@ Ambient-UI packs are always-on overlays. They are **multi-active**. They can dra
   "executionClass": "trusted-main-thread-js",
   "description": "Short description of this overlay",
   "author": "Your name",
-  "entry": "ambient-ui.js"
+  "entry": "ambient-ui.tsx"
 }
 ```
 
-Reference: `bundled-packs/ambient-ui/attention-aura/`.
+Create `~/.yorishiro/packs/my-overlay/ambient-ui.tsx` as the implementation. It is
+runtime-transpiled trusted local source and may import `react`, `react-dom/client`, types
+from `@yorishiro/sdk`, and pack-local relative `.tsx` / `.ts` / `.jsx` / `.js` files. Nested
+source edits hot-reload the owning entry. Arbitrary npm imports, raw Tauri APIs, and
+imports outside the pack are rejected. Return a complete disposer from `mount`.
 
-Ambient-UI has renderer and attention information only. It does not have persona or system APIs. Because it is always visible, keep performance conservative.
+References: `attention-aura` for a standalone overlay and `pomodoro` + `pomodoro-ui`
+for Amenity integration. In a packaged build, read them with `bundled_example_read`.
+
+Ambient UI may use rendering, attention, and services explicitly exposed by active Amenities
+through `ctx.amenities`. It has no persona/system API, Amenity registry, or MCP tool handlers.
+For Amenity integration, use only `ctx.amenities.get(id)` followed by `getState()` / `execute()`,
+and validate the Amenity-specific state in the consumer. Because it is always visible, keep
+performance conservative.
 
 Use the same CSS variable rule as UI packs. Hardcoded colors are acceptable only for effect-specific colors that intentionally do not follow the scene theme.
 

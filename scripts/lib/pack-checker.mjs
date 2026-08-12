@@ -1,3 +1,5 @@
+import ts from "typescript";
+
 const SUPPORTED_PACK_TYPES = new Set([
   "effect",
   "persona",
@@ -37,10 +39,14 @@ const FORBIDDEN_SOURCE_PATTERNS = [
     "forbidden-node-child-process",
     /(?:from\s+["'](?:node:)?child_process["']|require\s*\(\s*["'](?:node:)?child_process["']\s*\))/,
   ],
-  ["forbidden-process", /\bprocess\./],
   ["forbidden-buffer", /\bBuffer\./],
-  ["forbidden-system-exec", /\bsystem\.exec\b/],
   ["forbidden-pty-write", /\b(?:ptyWrite|write_terminal_input|terminal_prefill)\b/],
+];
+// HTML is not parsed by the TypeScript source scanner. Preserve the prior
+// conservative detection for executable inline scripts and event handlers.
+const FORBIDDEN_HTML_PATTERNS = [
+  ["forbidden-process", /\bprocess\./],
+  ["forbidden-system-exec", /\bsystem\.exec\b/],
 ];
 const UNSAFE_URL_PATTERN = /\b(?:https?|javascript|data|file|blob):/i;
 const CSS_URL_PATTERN = /url\s*\(/i;
@@ -96,7 +102,7 @@ export function checkPackFiles({ files, packDirName, mode = "local-authoring" })
   if (manifest === null) return result(mode, diagnostics);
 
   validateManifest({ manifest, files, packDirName, mode, diagnostics });
-  scanTextFiles(files, diagnostics);
+  scanTextFiles({ files, manifest, mode, diagnostics });
 
   return result(mode, diagnostics);
 }
@@ -210,13 +216,16 @@ function validateEntry({ entry, executionClass, files, mode, diagnostics }) {
   }
 }
 
-function scanTextFiles(files, diagnostics) {
+function scanTextFiles({ files, manifest, mode, diagnostics }) {
   for (const [path, rawFile] of files) {
     const file = fileRecord(rawFile);
     if (file === undefined || file.kind !== "text") continue;
     if (path === "manifest.json") continue;
     if (isSourcePath(path)) {
-      scanSourceFile(path, file.text, diagnostics);
+      scanSourceFile(path, file.text, {
+        allowSystemExec: allowsLocalAmenitySystemExec({ manifest, mode }),
+        diagnostics,
+      });
       continue;
     }
     if (isStylePath(path)) {
@@ -256,14 +265,15 @@ function scanFileMetadata(files, diagnostics) {
   }
 }
 
-function scanSourceFile(path, text, diagnostics) {
+function scanSourceFile(path, text, { allowSystemExec, diagnostics }) {
   if (UNSAFE_URL_PATTERN.test(text)) {
     add(diagnostics, "error", "unsafe-url", `${path} contains http/data/file/blob URL usage`);
   }
   if (CSS_URL_PATTERN.test(text)) {
     add(diagnostics, "error", "css-url", `${path} contains CSS url(...) usage`);
   }
-  if (text.includes("../") || text.includes("..\\")) {
+  const traversalScanText = maskContainedParentImports(path, text);
+  if (traversalScanText.includes("../") || traversalScanText.includes("..\\")) {
     add(diagnostics, "error", "path-traversal", `${path} contains parent-directory traversal`);
   }
   for (const [code, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
@@ -271,6 +281,131 @@ function scanSourceFile(path, text, diagnostics) {
       add(diagnostics, "error", code, `${path} contains ${code.replace("forbidden-", "")}`);
     }
   }
+  scanSourceSyntax(path, text, { allowSystemExec, diagnostics });
+}
+
+function allowsLocalAmenitySystemExec({ manifest, mode }) {
+  return (
+    mode === "local-authoring" &&
+    manifest.type === "amenity" &&
+    manifest.executionClass === "trusted-main-thread-js"
+  );
+}
+
+/**
+ * Parse JS/TS source so comments and string/template literal contents are not
+ * mistaken for executable property access. The checker deliberately recognizes
+ * the same direct property shapes as the previous regexes (`process.*` and
+ * `system.exec` / `ctx.system.exec`) rather than attempting data-flow analysis.
+ */
+function scanSourceSyntax(path, text, { allowSystemExec, diagnostics }) {
+  const sourceFile = ts.createSourceFile(
+    path,
+    text,
+    ts.ScriptTarget.Latest,
+    false,
+    scriptKindForPath(path),
+  );
+  let foundProcess = false;
+  let foundSystemExec = false;
+
+  const visit = (node) => {
+    if (
+      !foundProcess &&
+      ts.isPropertyAccessExpression(node) &&
+      isProcessObjectExpression(node.expression)
+    ) {
+      foundProcess = true;
+    }
+    if (!foundSystemExec && isSystemExecPropertyAccess(node)) {
+      foundSystemExec = true;
+    }
+    if (!foundProcess || !foundSystemExec) ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  if (foundProcess) {
+    add(diagnostics, "error", "forbidden-process", `${path} contains process`);
+  }
+  if (foundSystemExec && !allowSystemExec) {
+    add(diagnostics, "error", "forbidden-system-exec", `${path} contains system-exec`);
+  }
+}
+
+function isProcessObjectExpression(node) {
+  const expression = unwrapExpression(node);
+  if (ts.isIdentifier(expression)) return expression.text === "process";
+  return ts.isPropertyAccessExpression(expression) && expression.name.text === "process";
+}
+
+function unwrapExpression(node) {
+  let expression = node;
+  while (
+    ts.isParenthesizedExpression(expression) ||
+    ts.isAsExpression(expression) ||
+    ts.isTypeAssertionExpression(expression) ||
+    ts.isNonNullExpression(expression) ||
+    ts.isSatisfiesExpression(expression)
+  ) {
+    expression = expression.expression;
+  }
+  return expression;
+}
+
+function isSystemExecPropertyAccess(node) {
+  if (!ts.isPropertyAccessExpression(node) || node.name.text !== "exec") return false;
+  const owner = node.expression;
+  if (ts.isIdentifier(owner)) return owner.text === "system";
+  return ts.isPropertyAccessExpression(owner) && owner.name.text === "system";
+}
+
+function scriptKindForPath(path) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (lower.endsWith(".ts")) return ts.ScriptKind.TS;
+  if (lower.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  return ts.ScriptKind.JS;
+}
+
+const STATIC_MODULE_SPECIFIER_PATTERN =
+  /\b(?:import|export)\s+(?:type\s+)?(?:(?:[^"'`;]|\n)*?\s+from\s+)?(["'])([^"']+)\1/g;
+const DYNAMIC_MODULE_SPECIFIER_PATTERN = /\bimport\s*\(\s*(["'])([^"']+)\1\s*\)/g;
+
+/**
+ * runtime TSX containmentと同じく、nested sourceからPack root内へ戻る`../` importは
+ * traversal diagnosticの対象外にする。import以外のasset/path文字列はmaskしない。
+ */
+function maskContainedParentImports(importerPath, text) {
+  const masked = [...text];
+  for (const pattern of [STATIC_MODULE_SPECIFIER_PATTERN, DYNAMIC_MODULE_SPECIFIER_PATTERN]) {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+      const specifier = match[2];
+      if (specifier === undefined || !specifier.startsWith("../")) continue;
+      if (resolvePackRelativeImport(importerPath, specifier) === null) continue;
+      const matchStart = match.index ?? 0;
+      const specifierOffset = match[0].indexOf(specifier);
+      for (let index = 0; index < specifier.length; index += 1) {
+        masked[matchStart + specifierOffset + index] = " ";
+      }
+    }
+  }
+  return masked.join("");
+}
+
+function resolvePackRelativeImport(importerPath, specifier) {
+  const parts = normalizeRelativePath(importerPath).split("/");
+  parts.pop();
+  for (const segment of specifier.replace(/\\/g, "/").split("/")) {
+    if (segment === "" || segment === ".") continue;
+    if (segment === "..") {
+      if (parts.length === 0) return null;
+      parts.pop();
+      continue;
+    }
+    parts.push(segment);
+  }
+  return parts.join("/");
 }
 
 function scanStyleFile(path, text, diagnostics) {
@@ -285,7 +420,7 @@ function scanStyleFile(path, text, diagnostics) {
   }
   // HTML can carry inline <script> / event-handler attributes, so style files are
   // still scanned for forbidden APIs (CSS has no realistic false positives here).
-  for (const [code, pattern] of FORBIDDEN_SOURCE_PATTERNS) {
+  for (const [code, pattern] of [...FORBIDDEN_SOURCE_PATTERNS, ...FORBIDDEN_HTML_PATTERNS]) {
     if (pattern.test(text)) {
       add(diagnostics, "error", code, `${path} contains ${code.replace("forbidden-", "")}`);
     }

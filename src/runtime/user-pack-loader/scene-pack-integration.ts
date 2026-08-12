@@ -18,7 +18,7 @@ import {
   validateScenePackManifest,
 } from "../../sdk/validators";
 import type { ScenePackRegistry } from "../scene-pack-registry";
-import { resolveSceneAssets } from "../scene-pack-registry";
+import { makeUserResolveAsset, resolveSceneAssets } from "../scene-pack-registry";
 import type { UserPackRegistry } from "./user-pack-registry";
 
 /**
@@ -152,6 +152,7 @@ export async function registerScenePack(ctx: SceneRegisterContext): Promise<Scen
     manifest,
     scene: resolved,
     origin: "user",
+    resolveAsset: makeUserResolveAsset(packDir, ctx.convertFileSrc),
     component: scenePackDef.component,
   });
   ctx.packRegistry.register(ctx.id, "scene", handle);

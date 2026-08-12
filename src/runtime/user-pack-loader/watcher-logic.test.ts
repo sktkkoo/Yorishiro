@@ -5,11 +5,57 @@
  * test できないので、ここでは pure な分解結果のみを verify する。
  */
 
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import {
+  DISCOVERED_ONLY_PACK_KINDS,
+  SUPPORTED_PACK_KINDS,
+  TSX_ENTRY_KINDS,
+} from "./supported-kinds";
 import type { YorishiroLayerEvent } from "./watcher-logic";
 import { mapEventToAction, parseLayerPath } from "./watcher-logic";
 
 const HOME = "/Users/sample/.yorishiro";
+
+function quotedValues(source: string): string[] {
+  return Array.from(source.matchAll(/"([a-z-]+)"/g), (match) => match[1]).sort();
+}
+
+describe("Rust discovery contract conformance", () => {
+  it("keeps discovery kinds and TSX entry mapping aligned with the TS runtime", async () => {
+    const rustSource = await readFile(
+      new URL("../../../src-tauri/src/lib.rs", import.meta.url),
+      "utf8",
+    );
+    const rustPackKinds = rustSource.match(/const PACK_KINDS: &\[&str\] = &\[([\s\S]*?)\];/)?.[1];
+    const rustEntryMapping = rustSource.match(
+      /fn entry_file_for_kind\([\s\S]*?\n}\n\nfn read_user_pack_manifest_summary/,
+    )?.[0];
+
+    expect(rustPackKinds, "Rust PACK_KINDS declaration").toBeDefined();
+    expect(rustEntryMapping, "Rust entry_file_for_kind declaration").toBeDefined();
+
+    const tsDiscoveryKinds = [...SUPPORTED_PACK_KINDS, ...DISCOVERED_ONLY_PACK_KINDS].sort();
+    expect(quotedValues(rustPackKinds ?? "")).toEqual(tsDiscoveryKinds);
+
+    const rustTsxKinds = Array.from(
+      (rustEntryMapping ?? "").matchAll(/kind == "([a-z-]+)"/g),
+      (match) => match[1],
+    ).sort();
+    expect(rustTsxKinds).toEqual([...TSX_ENTRY_KINDS].sort());
+
+    for (const kind of tsDiscoveryKinds) {
+      const expectedJs = SUPPORTED_PACK_KINDS.has(kind)
+        ? { type: "pack", id: "contract", kind }
+        : { type: "ignore" };
+      const expectedTsx = TSX_ENTRY_KINDS.has(kind)
+        ? { type: "pack", id: "contract", kind }
+        : { type: "ignore" };
+      expect(parseLayerPath(`${HOME}/packs/contract/${kind}.js`, HOME)).toEqual(expectedJs);
+      expect(parseLayerPath(`${HOME}/packs/contract/${kind}.tsx`, HOME)).toEqual(expectedTsx);
+    }
+  });
+});
 
 describe("parseLayerPath", () => {
   it("recognizes a supported pack kind inside packs/<id>/", () => {
@@ -33,6 +79,11 @@ describe("parseLayerPath", () => {
       id: "my-room",
       kind: "scene",
     });
+    expect(parseLayerPath(`${HOME}/packs/my-overlay/ambient-ui.tsx`, HOME)).toEqual({
+      type: "pack",
+      id: "my-overlay",
+      kind: "ambient-ui",
+    });
     expect(parseLayerPath(`${HOME}/packs/my-ui/ui.js`, HOME)).toEqual({
       type: "pack",
       id: "my-ui",
@@ -48,16 +99,14 @@ describe("parseLayerPath", () => {
     expect(parseLayerPath("/tmp/elsewhere.js", HOME)).toEqual({ type: "ignore" });
   });
 
-  it("maps nested source files to their owner scene pack", () => {
+  it("maps nested source files to an owner-resolution trigger", () => {
     expect(parseLayerPath(`${HOME}/packs/my-room/lib/lights.tsx`, HOME)).toEqual({
-      type: "pack",
+      type: "pack-source",
       id: "my-room",
-      kind: "scene",
     });
     expect(parseLayerPath(`${HOME}/packs/my-room/lib/palette.ts`, HOME)).toEqual({
-      type: "pack",
+      type: "pack-source",
       id: "my-room",
-      kind: "scene",
     });
   });
 
@@ -129,6 +178,25 @@ describe("mapEventToAction", () => {
     });
   });
 
+  it("maps a modified ambient-ui.tsx file to reload-pack", () => {
+    expect(
+      mapEventToAction(
+        {
+          path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+          kind: "modified",
+          mtimeMs: 1700000000007,
+        },
+        HOME,
+      ),
+    ).toEqual({
+      type: "reload-pack",
+      id: "my-overlay",
+      kind: "ambient-ui",
+      entryPath: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
+      mtimeMs: 1700000000007,
+    });
+  });
+
   it("maps modified and removed scene.tsx files to scene actions", () => {
     expect(
       mapEventToAction(
@@ -155,17 +223,16 @@ describe("mapEventToAction", () => {
     });
   });
 
-  it("maps nested scene source changes to the owning scene.tsx reload", () => {
+  it("maps nested source changes to runtime owner resolution", () => {
     expect(
       mapEventToAction(
         { path: `${HOME}/packs/my-room/lib/lights.tsx`, kind: "modified", mtimeMs: 1700000000004 },
         HOME,
       ),
     ).toEqual({
-      type: "reload-pack",
+      type: "reload-pack-source",
       id: "my-room",
-      kind: "scene",
-      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      sourcePath: `${HOME}/packs/my-room/lib/lights.tsx`,
       mtimeMs: 1700000000004,
     });
 
@@ -175,10 +242,9 @@ describe("mapEventToAction", () => {
         HOME,
       ),
     ).toEqual({
-      type: "reload-pack",
+      type: "reload-pack-source",
       id: "my-room",
-      kind: "scene",
-      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      sourcePath: `${HOME}/packs/my-room/lib/scene.tsx`,
       mtimeMs: 1700000000006,
     });
 
@@ -188,10 +254,9 @@ describe("mapEventToAction", () => {
         HOME,
       ),
     ).toEqual({
-      type: "reload-pack",
+      type: "reload-pack-source",
       id: "my-room",
-      kind: "scene",
-      entryPath: `${HOME}/packs/my-room/scene.tsx`,
+      sourcePath: `${HOME}/packs/my-room/lib/lights.tsx`,
       mtimeMs: 1700000000005,
     });
   });

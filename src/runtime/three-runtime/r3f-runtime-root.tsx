@@ -107,12 +107,13 @@ function ActiveSceneControlsBoundary({ entry }: ActiveSceneControlsBoundaryProps
   const sceneLevaStore = useCreateStore();
   const resolveAsset = useMemo(
     () =>
+      entry.resolveAsset ??
       makeResolveAsset({
         packId: entry.id,
         origin: entry.origin,
         bundledAssets: BUNDLED_ASSETS,
       }),
-    [entry.id, entry.origin],
+    [entry.id, entry.origin, entry.resolveAsset],
   );
 
   const camera = useMemo<ScenePackCameraAPI>(() => {

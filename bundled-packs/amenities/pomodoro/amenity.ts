@@ -239,6 +239,13 @@ export function createPomodoroAmenity(ctx: PomodoroActivateContext): AmenityHand
       pomodoro_stop: async () => timer.stop(),
       pomodoro_status: async () => timer.status(),
     },
+    service: {
+      getState: async () => timer.status(),
+      execute: async (command) => {
+        if (command === "stop") return timer.stop();
+        throw new Error(`unknown pomodoro service command '${command}'`);
+      },
+    },
     dispose: () => timer.dispose(),
   };
 }

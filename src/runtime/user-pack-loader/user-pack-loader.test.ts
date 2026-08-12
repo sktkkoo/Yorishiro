@@ -443,7 +443,11 @@ describe("loadUserPacks", () => {
     const ambientUiRegistry = makeFakeAmbientUiPackRegistry();
     const { subsystem } = makeDevLog();
     const entries: UserPackEntry[] = [
-      { id: "user-ambient", kind: "ambient-ui", entryPath: "/p/user-ambient/ui.js" },
+      {
+        id: "user-ambient",
+        kind: "ambient-ui",
+        entryPath: "/p/user-ambient/ambient-ui.tsx",
+      },
     ];
 
     const result = await loadUserPacks({
@@ -465,7 +469,7 @@ describe("loadUserPacks", () => {
     expect(ambientUiRegistry.entries[0]).toMatchObject({
       id: "user-ambient",
       origin: "user",
-      manifest: { id: "user-ambient", type: "ambient-ui", entry: "ui.js" },
+      manifest: { id: "user-ambient", type: "ambient-ui", entry: "ambient-ui.tsx" },
     });
   });
 
@@ -478,7 +482,7 @@ describe("loadUserPacks", () => {
     const ambientUiRegistry = makeFakeAmbientUiPackRegistry();
     const { subsystem } = makeDevLog();
     const entries: UserPackEntry[] = [
-      { id: "user-ambient", kind: "ambient-ui", entryPath: "/p/user-ambient/ui.js" },
+      { id: "user-ambient", kind: "ambient-ui", entryPath: "/p/user-ambient/ambient-ui.js" },
     ];
 
     await loadUserPacks({

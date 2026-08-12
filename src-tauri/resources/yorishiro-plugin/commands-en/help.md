@@ -72,7 +72,7 @@ Required files:
 | File | Role |
 |---|---|
 | `manifest.json` | Shared declaration for id / type / version / entry |
-| `<kind>.js` | Pack implementation: `persona.js`, `effect.js`, `scene.js`, `ui.js`, or `ambient-ui.js` |
+| `<kind>.js` / `{scene,ui,ambient-ui}.tsx` | Pack implementation. Trusted local scene, UI, and ambient-UI packs may use runtime-transpiled TSX |
 | `persona.md` | Persona only. Canonical source for the character prompt |
 
 Common `manifest.json` fields:
@@ -87,7 +87,7 @@ Common `manifest.json` fields:
 }
 ```
 
-- User packs use `.js` entry files.
+- Most user packs use `.js` entries. Trusted local scene packs may instead use `scene.tsx`, including host-bridged `@react-three/postprocessing` and `postprocessing` imports. Trusted local ambient UI may use `ambient-ui.tsx`; pack-local relative source imports hot-reload their owning TSX entry. Arbitrary npm imports, raw Tauri APIs, and imports outside the pack remain unsupported.
 - Bundled packs and user packs have different layouts. Bundled packs live under `bundled-packs/<kind_plural>/<id>/`; user packs are flat directories under `~/.yorishiro/packs/<id>/`.
 
 ---
@@ -180,7 +180,7 @@ Pack boundaries are enforced at the type level.
 | **effect** | Almost everything except renderer, audio, and time | Effects are short-lived rendering units without persistent state |
 | **scene** | Handlers | Scene packs are declarative data |
 | **ui** | `ctx.system` / `ctx.character` / `ctx.voice` | UI packs handle rendering and state only |
-| **ambient-ui** | persona / system APIs | Ambient UI receives renderer and attention information only |
+| **ambient-ui** | persona/system APIs, Amenity registry / MCP tool handlers | Rendering, attention, and opt-in `ctx.amenities` services only |
 
 If a handler needs to trigger another reaction, announce a **synthetic event** with `ctx.emitEvent()`, then match it from a persona trigger.
 

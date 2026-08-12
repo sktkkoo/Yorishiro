@@ -23,6 +23,7 @@ export type {
   AmenityToolHandler,
   AmenityToolMeta,
 } from "./amenity";
+export type { AmenityServiceHandle, AmenityServicesAPI } from "./amenity-service";
 export type {
   AmbientUiContext,
   AmbientUiPackDefinition,

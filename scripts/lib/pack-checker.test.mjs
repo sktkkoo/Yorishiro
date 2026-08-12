@@ -13,6 +13,24 @@ import {
 const files = (entries) => new Map(entries);
 
 describe("checkPackFiles", () => {
+  const systemExecPack = ({
+    type = "amenity",
+    executionClass = "trusted-main-thread-js",
+    source = "export default { activate: (ctx) => ctx.system.exec('date') };",
+  } = {}) =>
+    files([
+      [
+        "manifest.json",
+        JSON.stringify({
+          id: "exec-pack",
+          type,
+          executionClass,
+          entry: `${type}.js`,
+        }),
+      ],
+      [`${type}.js`, source],
+    ]);
+
   it("accepts local trusted authoring packs with a warning", () => {
     const result = checkPackFiles({
       packDirName: "my-effect",
@@ -61,6 +79,147 @@ describe("checkPackFiles", () => {
     );
   });
 
+  it("allows system.exec only for local trusted-main-thread amenity authoring", () => {
+    const result = checkPackFiles({
+      mode: "local-authoring",
+      packDirName: "exec-pack",
+      files: systemExecPack(),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).not.toContain(
+      "forbidden-system-exec",
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([
+    "persona",
+    "effect",
+    "scene",
+    "ui",
+    "ambient-ui",
+  ])("rejects system.exec for local %s packs", (type) => {
+    const result = checkPackFiles({
+      mode: "local-authoring",
+      packDirName: "exec-pack",
+      files: systemExecPack({ type }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-system-exec");
+  });
+
+  it("rejects system.exec for publish-candidate amenities", () => {
+    const result = checkPackFiles({
+      mode: "publish-candidate",
+      packDirName: "exec-pack",
+      files: systemExecPack(),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-system-exec");
+  });
+
+  it.each([
+    "isolated-js",
+    "declarative",
+  ])("rejects system.exec for local amenities with %s execution", (executionClass) => {
+    const result = checkPackFiles({
+      mode: "local-authoring",
+      packDirName: "exec-pack",
+      files: systemExecPack({ executionClass }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-system-exec");
+  });
+
+  it("ignores forbidden-looking process access inside strings and comments", () => {
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: systemExecPack({
+        source: `
+          const stdoutHint = "process.stdout";
+          const templateHint = \`process.stderr\`;
+          // process.exit(1)
+          /* process.env.SECRET */
+          export default { stdoutHint, templateHint };
+        `,
+      }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).not.toContain("forbidden-process");
+  });
+
+  it("ignores system.exec inside strings and comments", () => {
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: systemExecPack({
+        type: "scene",
+        source: `
+          const migrationHint = "use ctx.system.exec only from an amenity";
+          // ctx.system.exec("date")
+          /* system.exec("date") */
+          export default { migrationHint };
+        `,
+      }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).not.toContain(
+      "forbidden-system-exec",
+    );
+  });
+
+  it("still rejects executable process property access", () => {
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: systemExecPack({ source: "export default process.stdout;" }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-process");
+  });
+
+  it.each([
+    "globalThis.process.stdout",
+    "window.process.stdout",
+    "(process).stdout",
+  ])("preserves forbidden process detection for %s", (expression) => {
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: systemExecPack({ source: `export default ${expression};` }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-process");
+  });
+
+  it("still rejects process access inside a template expression", () => {
+    const source = ["export default `", "$", "{process.stdout}`;"].join("");
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: systemExecPack({ source }),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-process");
+  });
+
+  it("keeps conservative forbidden API scanning for HTML", () => {
+    const result = checkPackFiles({
+      packDirName: "exec-pack",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "exec-pack",
+            type: "amenity",
+            executionClass: "trusted-main-thread-js",
+            entry: "amenity.js",
+          }),
+        ],
+        ["amenity.js", "export default {};"],
+        ["panel.html", '<button onclick="process.exit(1)">Stop</button>'],
+      ]),
+    });
+
+    expect(result.errors.map((diagnostic) => diagnostic.code)).toContain("forbidden-process");
+  });
+
   it("rejects declarative packs with JS entries", () => {
     const result = checkPackFiles({
       packDirName: "my-scene",
@@ -103,6 +262,65 @@ describe("checkPackFiles", () => {
     expect(result.errors.map((diagnostic) => diagnostic.code)).toEqual(
       expect.arrayContaining(["unsafe-url", "forbidden-fetch"]),
     );
+  });
+
+  it("allows a nested source import that remains inside the pack", () => {
+    const result = checkPackFiles({
+      packDirName: "my-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "my-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.tsx",
+          }),
+        ],
+        ["scene.tsx", 'import { view } from "./lib/view"; export default view;'],
+        ["lib/view.ts", 'export { theme as view } from "../theme";'],
+        ["theme.ts", "export const theme = {};"],
+      ]),
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors.map((diagnostic) => diagnostic.code)).not.toContain("path-traversal");
+  });
+
+  it("still rejects relative imports and asset strings that escape the pack", () => {
+    const importResult = checkPackFiles({
+      packDirName: "bad-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "bad-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.tsx",
+          }),
+        ],
+        ["scene.tsx", 'import "../other-pack/scene"; export default {};'],
+      ]),
+    });
+    const assetResult = checkPackFiles({
+      packDirName: "bad-scene",
+      files: files([
+        [
+          "manifest.json",
+          JSON.stringify({
+            id: "bad-scene",
+            type: "scene",
+            executionClass: "trusted-main-thread-js",
+            entry: "scene.tsx",
+          }),
+        ],
+        ["scene.tsx", 'export default { src: "../secret.png" };'],
+      ]),
+    });
+
+    expect(importResult.errors.map((diagnostic) => diagnostic.code)).toContain("path-traversal");
+    expect(assetResult.errors.map((diagnostic) => diagnostic.code)).toContain("path-traversal");
   });
 
   it("rejects forbidden APIs hidden in HTML assets", () => {

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { makeResolveAsset } from "./asset-resolver-pack";
+import { makeResolveAsset, makeUserResolveAsset } from "./asset-resolver-pack";
 
 describe("makeResolveAsset", () => {
   const mockBundledAssets: Record<string, string> = {
@@ -52,12 +52,34 @@ describe("makeResolveAsset", () => {
     expect(resolve("./assets/missing.glb")).toBe("./assets/missing.glb");
   });
 
-  it("user origin: returns relative path as-is for now (deferred to user pack plan)", () => {
+  it("keeps the compatibility fallback for an old user entry without an injected resolver", () => {
     const resolve = makeResolveAsset({
       packId: "test-scene",
       origin: "user",
       bundledAssets: mockBundledAssets,
     });
     expect(resolve("./assets/foo.glb")).toBe("./assets/foo.glb");
+  });
+});
+
+describe("makeUserResolveAsset", () => {
+  it("resolves a pack-relative path through the host converter", () => {
+    const resolve = makeUserResolveAsset(
+      "/Users/me/.yorishiro/packs/my-room",
+      (path) => `asset://localhost${path}`,
+    );
+
+    expect(resolve("./assets/model.glb")).toBe(
+      "asset://localhost/Users/me/.yorishiro/packs/my-room/assets/model.glb",
+    );
+  });
+
+  it.each([
+    "../other-pack/model.glb",
+    "/tmp/model.glb",
+    "https://example.com/model.glb",
+  ])("rejects a path outside the pack boundary: %s", (path) => {
+    const resolve = makeUserResolveAsset("/packs/my-room", (value) => value);
+    expect(() => resolve(path)).toThrow("unsafe user pack asset path");
   });
 });

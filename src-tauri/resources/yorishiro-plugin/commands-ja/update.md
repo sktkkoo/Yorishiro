@@ -69,13 +69,20 @@ AI は persona 作業が完了したら **必ず住人の声で案内する**（
 
 persona 以外の pack は比較的軽量に編集できる。
 
-1. 対象の `manifest.json` と entry file（`scene.js` / `effect.js` / `ui.js` / `ambient-ui.js`）を Read する
+1. 対象の `manifest.json` と entry file（`scene.js` / `scene.tsx`、`effect.js`、`ui.js` / `ui.tsx`、`ambient-ui.js` / `ambient-ui.tsx`）を Read する
 2. user の要望に合わせて修正し、Write する
 3. hot reload で即反映される（再起動不要）
 4. 編集後 `pack_diagnose({id: "<id>"})` で status / manifest / load error を確認する
 5. 現在の workspace が Yorishiro source checkout なら `npm run check:pack -- ~/.yorishiro/packs/<id>` を実行し、checker error を修正する
 
 scene の色・layer 構成、effect の parameter 調整、ui のレイアウト変更、ambient-ui の表示調整など、いずれもこのフローで完結する。
+
+Amenity と Ambient UI の連携を編集する場合は、Amenity 側の
+`AmenityHandle.service` と Ambient UI 側の `ctx.amenities.get(id)` を正式経路にする。
+`getState()` / `execute(command, params?)` 以外の共通 surface を仮定せず、固有 state は
+consumer 側で検証する。`globalThis`、内部 registry、MCP tool handler を Pack 間 bridge に
+使っている既存コードを見つけたら、bundled の `pomodoro` + `pomodoro-ui` を
+`bundled_example_read` で読み、この public service 経路へ移行する。
 
 ## Scene pack のパラメータをリアルタイム調整する
 
