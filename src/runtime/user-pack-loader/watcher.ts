@@ -108,8 +108,12 @@ const extractDefault = (mod: unknown): unknown => {
   return (mod as { default?: unknown }).default;
 };
 
-/** Atomic-save の remove → create burst を同一 replacement とみなす猶予。 */
-const AMBIENT_UI_REMOVE_GRACE_MS = 100;
+/**
+ * Atomic-save の remove → create burst を同一 replacement とみなす猶予。
+ * Rust producer は 150ms 周期で pending events を drain するため、remove/create が
+ * 隣接 drain に分かれても十分吸収できるよう 3 周期超を確保する。
+ */
+const AMBIENT_UI_REMOVE_GRACE_MS = 500;
 
 /**
  * watcher を張って event loop を開始する。`Promise` が resolve した時点で Rust

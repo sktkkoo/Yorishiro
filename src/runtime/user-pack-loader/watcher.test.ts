@@ -114,6 +114,9 @@ async function startAndEmit(deps: StartPackWatcherDeps, event: unknown): Promise
   mocks.channelHandler?.(event);
 }
 
+const waitMs = async (ms: number): Promise<void> =>
+  await new Promise((resolve) => setTimeout(resolve, ms));
+
 describe("startPackWatcher ambient-ui TSX reload", () => {
   const originalFetch = globalThis.fetch;
 
@@ -415,7 +418,7 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
     expect(onAmbientUiRegistered).not.toHaveBeenCalled();
   });
 
-  it("serializes an atomic remove then create sequence for the same pack", async () => {
+  it("coalesces an atomic remove then successful create delayed beyond one Rust drain", async () => {
     const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
       makeAmbientLifecycleDeps(new Set(["my-overlay"]));
     registerExistingAmbientUi(ambientUiPackRegistry, packRegistry, "my-overlay");
@@ -434,6 +437,9 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
       kind: "removed",
       mtimeMs: 1700000000690,
     });
+    await waitMs(200);
+    expect(ambientUiPackRegistry.listEntries()).toHaveLength(1);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
     mocks.channelHandler?.({
       path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
       kind: "created",
@@ -446,7 +452,7 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
     expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
   });
 
-  it("preserves the old registration when atomic-save recreation fails to import", async () => {
+  it("preserves the old registration when delayed atomic-save recreation fails to import", async () => {
     const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
       makeAmbientLifecycleDeps(new Set(["my-overlay"]));
     const oldMount = vi.fn(() => ({ dispose: () => {} }));
@@ -472,6 +478,9 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
       kind: "removed",
       mtimeMs: 1700000000692,
     });
+    await waitMs(200);
+    expect(ambientUiPackRegistry.listEntries()[0]?.pack.mount).toBe(oldMount);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
     mocks.channelHandler?.({
       path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
       kind: "created",
@@ -492,7 +501,7 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
     expect(onAmbientUiRegistered).not.toHaveBeenCalled();
   });
 
-  it("preserves the old registration when atomic-save recreation fails validation", async () => {
+  it("preserves the old registration when delayed atomic-save recreation fails validation", async () => {
     const { ambientUiPackRegistry, deps, packRegistry, onAmbientUiRegistered } =
       makeAmbientLifecycleDeps(new Set(["my-overlay"]));
     const oldMount = vi.fn(() => ({ dispose: () => {} }));
@@ -520,6 +529,9 @@ describe("startPackWatcher ambient-ui TSX reload", () => {
       kind: "removed",
       mtimeMs: 1700000000694,
     });
+    await waitMs(200);
+    expect(ambientUiPackRegistry.listEntries()[0]?.pack.mount).toBe(oldMount);
+    expect(ambientUiPackRegistry.getActiveSet()).toEqual(["my-overlay"]);
     mocks.channelHandler?.({
       path: `${HOME}/packs/my-overlay/ambient-ui.tsx`,
       kind: "created",
