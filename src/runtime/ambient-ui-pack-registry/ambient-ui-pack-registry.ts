@@ -25,7 +25,11 @@ export class AmbientUiPackRegistryImpl implements AmbientUiPackRegistry {
   private readonly subscribers = new Set<InternalSubscriber>();
 
   register(entry: AmbientUiPackEntry) {
+    const replacedActiveEntry = this.entries.has(entry.id) && this.activeSet.has(entry.id);
     this.entries.set(entry.id, entry);
+    // active membership は維持したまま entry identity の変更を通知する。mount 側は
+    // identity を比較して対象 id だけを新実装へ差し替える。
+    if (replacedActiveEntry) this.publish();
     return {
       dispose: () => {
         const current = this.entries.get(entry.id);

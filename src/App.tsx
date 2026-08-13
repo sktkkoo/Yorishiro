@@ -126,7 +126,10 @@ import {
 import { useReloadCurtain } from "./reload-curtain";
 import { createBodyStateExpressionAdapter } from "./runtime/agent-state-expression";
 import { type AmbientAudioRuntime, initAmbientAudio } from "./runtime/ambient-audio";
-import { getAmbientUiPackRegistry } from "./runtime/ambient-ui-pack-registry";
+import {
+  type AmbientUiPackEntry,
+  getAmbientUiPackRegistry,
+} from "./runtime/ambient-ui-pack-registry";
 import { getAmenityPackRegistry } from "./runtime/amenity-pack-registry";
 import { createAmenityServices } from "./runtime/amenity-services";
 import {
@@ -302,7 +305,12 @@ import {
   type StageSurfaces,
 } from "./runtime/ui-pack-transition/stage-transition";
 import { getUiStateStore } from "./runtime/ui-state-store";
-import { loadUserLayer, reloadSingleUserPack, UserPackRegistry } from "./runtime/user-pack-loader";
+import {
+  loadUserLayer,
+  reconcileAmbientUiRegistration,
+  reloadSingleUserPack,
+  UserPackRegistry,
+} from "./runtime/user-pack-loader";
 import { createUserAmenityContextFactory } from "./runtime/user-pack-loader/amenity-activation";
 import {
   listCodexRealtimeVoiceCandidatesForPersona,
@@ -326,6 +334,7 @@ import {
   readLastStartupReport,
   readSessionPersonasText,
   readYorishiroConfigText,
+  readYorishiroConfigTextStrict,
   writeSessionPersonasText,
   writeYorishiroConfigText,
 } from "./runtime/user-pack-loader/yorishiro-io";
@@ -1765,6 +1774,21 @@ function App() {
             initScriptLog: createSubsystemLog(devLog, "InitScript"),
             tweenManager: getThreeRuntime().getTweenManager(),
             createAmenityContext,
+            onAmbientUiRegistered: async (event) => {
+              const reconciliation = await reconcileAmbientUiRegistration(event, {
+                registry: getAmbientUiPackRegistry(),
+                readConfigText: readYorishiroConfigTextStrict,
+                // Presence は aura だけを抑止する。pomodoro 等、他 overlay の
+                // selection/runtime state はこの判定に巻き込まない。
+                isRuntimeSuppressed: (id) =>
+                  id === "attention-aura" && getPresenceState().level === "closed",
+              });
+              appLog.write({
+                phase: "ambient-ui-hot-reload",
+                note: `reconciled ambient-ui '${event.id}' (${reconciliation.status})`,
+                data: reconciliation,
+              });
+            },
             // init.js は hot reload される。成功したら error marker を外し、
             // 失敗時だけ marker を付けて、前の init scope が維持されていることを可視化する。
             onInitReloaded: ({ ran, missing }) => {
@@ -4229,7 +4253,11 @@ function App() {
     ambientLayer.style.zIndex = "20";
     document.body.appendChild(ambientLayer);
 
-    type Mounted = { container: HTMLDivElement; disposable: Disposable };
+    type Mounted = {
+      container: HTMLDivElement;
+      disposable: Disposable;
+      packEntry: AmbientUiPackEntry;
+    };
     const mounted = new Map<string, Mounted>();
 
     const reconcile = (activeIds: ReadonlyArray<string>): void => {
@@ -4244,9 +4272,11 @@ function App() {
       }
 
       for (const id of activeIds) {
-        if (mounted.has(id)) continue;
         const packEntry = ambientUiRegistry.listEntries().find((e) => e.id === id);
         if (packEntry === undefined) continue;
+
+        const current = mounted.get(id);
+        if (current?.packEntry === packEntry) continue;
 
         const container = document.createElement("div");
         container.className = "ambient-ui-container";
@@ -4254,8 +4284,27 @@ function App() {
         ambientLayer.appendChild(container);
 
         const ctx: AmbientUiContext = { attention, amenities };
-        const disposable = packEntry.pack.mount(ctx, container);
-        mounted.set(id, { container, disposable });
+        let disposable: Disposable;
+        try {
+          // 新実装を mount できてから旧 mount を畳む。mount failure でも、動いて
+          // いた overlay を巻き添えにしない。
+          disposable = packEntry.pack.mount(ctx, container);
+        } catch (err) {
+          container.remove();
+          devLog.write({
+            subsystem: "AmbientUiPack",
+            phase: "mount",
+            note: `mount failed for '${id}'; preserving previous mount`,
+            data: { error: err instanceof Error ? err.message : String(err) },
+          });
+          continue;
+        }
+        if (current !== undefined) {
+          current.disposable.dispose();
+          current.container.remove();
+          mounted.delete(id);
+        }
+        mounted.set(id, { container, disposable, packEntry });
       }
     };
 
@@ -4271,7 +4320,7 @@ function App() {
       mounted.clear();
       ambientLayer.remove();
     };
-  }, []);
+  }, [devLog]);
 
   // terminal 非依存の attention producer（mouse / dev / focused-dom）。初回のみ起動。
   useEffect(() => {

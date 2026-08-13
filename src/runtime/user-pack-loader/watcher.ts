@@ -25,6 +25,7 @@ import type { AmenityPackRegistry } from "../amenity-pack-registry";
 import type { PersonaEntry } from "../persona-registry";
 import type { ScenePackRegistry } from "../scene-pack-registry";
 import type { UiPackRegistry } from "../ui-pack-registry";
+import type { AmbientUiRegistrationEvent } from "./ambient-ui-activation";
 import { type AmenityContextFactory, activateAndRegisterAmenity } from "./amenity-activation";
 import type { InitScope } from "./init-scope";
 import { type LoadInitScriptDeps, reloadInitScript } from "./init-script";
@@ -58,6 +59,11 @@ export interface StartPackWatcherDeps {
   readonly userPackLog: SubsystemLog;
   readonly initScriptLog: SubsystemLog;
   readonly onInitChanged?: () => void;
+  /**
+   * ambient-ui の atomic register が完了した直後に対象 id だけを通知する。
+   * 削除 / import・validation failure 時には呼ばない。
+   */
+  readonly onAmbientUiRegistered?: (event: AmbientUiRegistrationEvent) => void | Promise<void>;
   readonly executionEnvironment?: PackExecutionEnvironment;
   /** safe mode では false。watch は維持するが user pack の import / register は行わない。 */
   readonly packReloadEnabled?: boolean;
@@ -103,6 +109,13 @@ const extractDefault = (mod: unknown): unknown => {
 };
 
 /**
+ * Atomic-save の remove → create burst を同一 replacement とみなす猶予。
+ * Rust producer は 150ms 周期で pending events を drain するため、remove/create が
+ * 隣接 drain に分かれても十分吸収できるよう 3 周期超を確保する。
+ */
+const AMBIENT_UI_REMOVE_GRACE_MS = 500;
+
+/**
  * watcher を張って event loop を開始する。`Promise` が resolve した時点で Rust
  * 側 watcher は起動済みで、以降の event は Channel 経由で受け取る。
  *
@@ -123,8 +136,67 @@ export async function startPackWatcher(deps: StartPackWatcherDeps): Promise<Pack
   }
 
   const channel = new Channel<YorishiroLayerEvent>();
+  const eventQueues = new Map<string, Promise<void>>();
+  const pendingAmbientUiRemovals = new Map<string, ReturnType<typeof setTimeout>>();
+  const enqueueEvent = (event: YorishiroLayerEvent, action: WatcherAction): void => {
+    const queueKey =
+      action.type === "reload-pack" ||
+      action.type === "reload-pack-source" ||
+      action.type === "remove-pack"
+        ? `pack:${action.id}`
+        : action.type === "init-changed"
+          ? "init"
+          : null;
+    if (queueKey === null) return;
+
+    // Editors using atomic save commonly emit remove -> create back-to-back. Serialize
+    // events per pack id so an older async import cannot win after a newer event.
+    const previous = eventQueues.get(queueKey) ?? Promise.resolve();
+    const run = previous
+      .catch(() => {})
+      .then(() => handleLayerEvent(event, yorishiroHome, deps, { invoke, convertFileSrc }))
+      .catch((err) => {
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `watch event failed for '${event.path}'`,
+          data: { error: errorMessage(err) },
+        });
+      });
+    let queued!: Promise<void>;
+    queued = run.finally(() => {
+      if (eventQueues.get(queueKey) === queued) eventQueues.delete(queueKey);
+    });
+    eventQueues.set(queueKey, queued);
+  };
   channel.onmessage = (event) => {
-    void handleLayerEvent(event, yorishiroHome, deps, { invoke, convertFileSrc });
+    const action = mapEventToAction(event, yorishiroHome);
+
+    if (
+      deps.packReloadEnabled !== false &&
+      action.type === "remove-pack" &&
+      action.kind === "ambient-ui"
+    ) {
+      const pending = pendingAmbientUiRemovals.get(action.id);
+      if (pending !== undefined) clearTimeout(pending);
+      // Atomic-save の create が来るまで旧 registration を残す。create 側の import /
+      // validation が失敗しても旧版を失わない。create が来なければ通常削除へ収束する。
+      const timeout = setTimeout(() => {
+        pendingAmbientUiRemovals.delete(action.id);
+        enqueueEvent(event, action);
+      }, AMBIENT_UI_REMOVE_GRACE_MS);
+      pendingAmbientUiRemovals.set(action.id, timeout);
+      return;
+    }
+
+    if (action.type === "reload-pack" && action.kind === "ambient-ui") {
+      const pending = pendingAmbientUiRemovals.get(action.id);
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        pendingAmbientUiRemovals.delete(action.id);
+      }
+    }
+
+    enqueueEvent(event, action);
   };
 
   try {
@@ -454,7 +526,15 @@ async function reloadPack(
       });
     } else if (action.kind === "ambient-ui") {
       const pack = validateAmbientUiPackDefinition(def);
-      deps.packRegistry.dispose(action.id, action.kind);
+      if (pack.id !== action.id) {
+        throw new Error(
+          `ambient-ui id '${pack.id}' does not match containing pack id '${action.id}'`,
+        );
+      }
+      const replaced = deps.packRegistry.has(action.id, action.kind);
+      // register(new) -> track(new) の順なら、UserPackRegistry が旧 handle を
+      // dispose しても AmbientUiPackRegistry の stale-handle guard が新 entry を守る。
+      // import / validation はここより前なので、それらの失敗時は旧版が残る。
       const handle = deps.ambientUiPackRegistry.register({
         id: pack.id,
         origin: "user",
@@ -468,6 +548,17 @@ async function reloadPack(
         pack: { mount: pack.mount },
       });
       deps.packRegistry.register(action.id, action.kind, handle);
+      try {
+        await deps.onAmbientUiRegistered?.({ id: pack.id, replaced });
+      } catch (err) {
+        // Activation reconciliation の failure で、正常に差し替えた registration
+        // まで failed 扱いにしない。active set は callback 側の責務で不変に保つ。
+        deps.userPackLog.write({
+          phase: "reload",
+          note: `ambient-ui activation reconciliation failed for '${pack.id}'`,
+          data: { error: errorMessage(err) },
+        });
+      }
       deps.userPackLog.write({
         phase: "reload",
         note: `re-registered ambient-ui '${pack.id}'`,

@@ -7,6 +7,12 @@
  */
 
 export {
+  type AmbientUiRegistrationEvent,
+  type AmbientUiRegistrationReconcileResult,
+  type ReconcileAmbientUiRegistrationDeps,
+  reconcileAmbientUiRegistration,
+} from "./ambient-ui-activation";
+export {
   EMPTY_CONFIG,
   parseConfig,
   serializeConfig,
@@ -66,6 +72,7 @@ export {
   fetchSafeModeFlag,
   readLastStartupReport,
   readYorishiroConfigText,
+  readYorishiroConfigTextStrict,
   writeLastStartupReport,
   writeYorishiroConfigText,
 } from "./yorishiro-io";

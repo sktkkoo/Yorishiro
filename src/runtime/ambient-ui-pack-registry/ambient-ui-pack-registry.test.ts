@@ -114,4 +114,22 @@ describe("AmbientUiPackRegistry", () => {
     expect(registry.listEntries()[0].origin).toBe("user");
     expect(registry.getActiveSet()).toEqual(["attention-aura"]);
   });
+
+  it("notifies subscribers when an active entry is replaced without changing membership", () => {
+    const registry = createAmbientUiPackRegistry();
+    const first = entry({ id: "attention-aura", origin: "user" });
+    const second = entry({ id: "attention-aura", origin: "user" });
+    registry.register(first);
+    registry.enable("attention-aura");
+    const listener = vi.fn();
+    registry.subscribeActiveSet(listener);
+    listener.mockClear();
+
+    registry.register(second);
+
+    expect(listener).toHaveBeenCalledOnce();
+    expect(listener).toHaveBeenCalledWith(["attention-aura"]);
+    expect(registry.getActiveSet()).toEqual(["attention-aura"]);
+    expect(registry.listEntries()).toEqual([second]);
+  });
 });

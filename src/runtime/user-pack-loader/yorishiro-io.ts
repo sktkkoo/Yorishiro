@@ -20,6 +20,14 @@ export async function readYorishiroConfigText(): Promise<string> {
   }
 }
 
+/**
+ * config.json を lossless に読む。hot-reload reconciliation のように、一時的な
+ * I/O failure を default config と区別しなければならない経路で使う。
+ */
+export async function readYorishiroConfigTextStrict(): Promise<string> {
+  return await invoke<string>("read_yorishiro_file", { relativePath: "config.json" });
+}
+
 /** config.json を atomic に書く。 */
 export async function writeYorishiroConfigText(text: string): Promise<void> {
   await invoke("write_yorishiro_file_atomic", {
