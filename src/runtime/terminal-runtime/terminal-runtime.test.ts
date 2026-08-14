@@ -12,9 +12,11 @@ interface Deferred<T> {
 }
 
 interface MockBufferLine {
+  readonly isWrapped: boolean;
   translateToString(trimRight?: boolean): string;
   getCell(col: number): {
     getChars(): string;
+    getWidth(): number;
     isFgDefault(): boolean;
     getFgColor(): number;
   };
@@ -50,6 +52,8 @@ const mockState = vi.hoisted(() => {
       textarea: HTMLTextAreaElement;
       customKeyEventHandler?: (event: KeyboardEvent) => boolean;
       dataHandler?: (data: string) => void;
+      bufferLines: Map<number, string>;
+      wrappedLines: Set<number>;
     }>;
     dataHandlers: Array<(data: string) => void>;
     decorations: Array<{ element: HTMLElement; dispose: ReturnType<typeof vi.fn> }>;
@@ -62,6 +66,7 @@ const mockState = vi.hoisted(() => {
     scrollLinesCalls: number[];
     unlisten: ReturnType<typeof vi.fn>;
     listen: ReturnType<typeof vi.fn>;
+    openUrl: ReturnType<typeof vi.fn>;
     sessionAttach: ReturnType<typeof vi.fn>;
     sessionDestroy: ReturnType<typeof vi.fn>;
     sessionRefreshTheme: ReturnType<typeof vi.fn>;
@@ -81,6 +86,7 @@ const mockState = vi.hoisted(() => {
     scrollLinesCalls: [],
     unlisten: vi.fn(),
     listen: vi.fn(),
+    openUrl: vi.fn(),
     sessionAttach: vi.fn(),
     sessionDestroy: vi.fn(),
     sessionRefreshTheme: vi.fn(),
@@ -113,6 +119,10 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: mockState.listen,
 }));
 
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: mockState.openUrl,
+}));
+
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class MockFitAddon {
     fit(): void {
@@ -137,6 +147,7 @@ vi.mock("@xterm/xterm", () => ({
       [1, "$ npm test"],
       [2, "failed output"],
     ]);
+    wrappedLines = new Set<number>();
     private markerId = 0;
     parser = {
       registerOscHandler: (
@@ -163,11 +174,13 @@ vi.mock("@xterm/xterm", () => ({
             const text = this.bufferLines.get(lineIndex);
             if (text === undefined) return undefined;
             return {
+              isWrapped: this.wrappedLines.has(lineIndex),
               translateToString: () => text,
               getCell: (col: number) => {
                 const char = text[col] ?? " ";
                 return {
                   getChars: () => char,
+                  getWidth: () => 1,
                   isFgDefault: () => true,
                   getFgColor: () => 0,
                 };
@@ -272,6 +285,40 @@ function interruptNoticeElement(): HTMLElement {
   return el;
 }
 
+function setTerminalRect(container: HTMLElement): void {
+  container.getBoundingClientRect = () =>
+    ({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 800,
+      bottom: 480,
+      width: 800,
+      height: 480,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
+function terminalClick(options: {
+  readonly row: number;
+  readonly col: number;
+  readonly metaKey?: boolean;
+  readonly shiftKey?: boolean;
+  readonly altKey?: boolean;
+}): MouseEvent {
+  return new MouseEvent("click", {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    clientX: (options.col + 0.5) * 10,
+    clientY: (options.row + 0.5) * 20,
+    metaKey: options.metaKey,
+    shiftKey: options.shiftKey,
+    altKey: options.altKey,
+  });
+}
+
 describe("TerminalRuntime", () => {
   beforeEach(() => {
     _clearForTest();
@@ -299,6 +346,8 @@ describe("TerminalRuntime", () => {
         return Promise.resolve(mockState.unlisten);
       },
     );
+    mockState.openUrl.mockReset();
+    mockState.openUrl.mockResolvedValue(undefined);
     mockState.sessionAttach.mockReset();
     mockState.sessionAttach.mockResolvedValue({ attached: false, replay: [] });
     mockState.sessionDestroy.mockReset();
@@ -331,6 +380,96 @@ describe("TerminalRuntime", () => {
 
     expect(terminal.clearCalls).toBe(0);
     expect(terminal.writes.filter((write) => write === "\x1b[3J")).toHaveLength(2);
+  });
+
+  it("Cmd-click した HTTP(S) URL を Tauri opener で開く", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    const line = "Docs: https://example.com/path?q=one#intro).";
+    terminal.bufferLines.set(1, line);
+    const container = document.querySelector<HTMLElement>(".xterm-singleton-container");
+    expect(container).not.toBeNull();
+    if (!container) return;
+    setTerminalRect(container);
+
+    const clickedCol = line.indexOf("example") + 2;
+    const event = terminalClick({ metaKey: true, row: 1, col: clickedCol });
+    container.dispatchEvent(event);
+
+    expect(mockState.openUrl).toHaveBeenCalledOnce();
+    expect(mockState.openUrl).toHaveBeenCalledWith("https://example.com/path?q=one#intro");
+    expect(event.defaultPrevented).toBe(true);
+    expect(runtime.getTerminalReferences()).toEqual([]);
+  });
+
+  it("Cmd-click はクリック位置が URL 外なら opener も行参照も発火しない", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    terminal.bufferLines.set(1, "Docs: https://example.com/path");
+    const container = document.querySelector<HTMLElement>(".xterm-singleton-container");
+    expect(container).not.toBeNull();
+    if (!container) return;
+    setTerminalRect(container);
+
+    const event = terminalClick({ metaKey: true, row: 1, col: 2 });
+    container.dispatchEvent(event);
+
+    expect(mockState.openUrl).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+    expect(runtime.getTerminalReferences()).toEqual([]);
+  });
+
+  it("Cmd+Shift-click は URL 上でも opener ではなく既存の行参照を作る", () => {
+    const runtime = getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    terminal.bufferLines.set(1, "Docs: https://example.com/path");
+    const container = document.querySelector<HTMLElement>(".xterm-singleton-container");
+    expect(container).not.toBeNull();
+    if (!container) return;
+    setTerminalRect(container);
+
+    const event = terminalClick({ metaKey: true, shiftKey: true, row: 1, col: 15 });
+    container.dispatchEvent(event);
+
+    expect(mockState.openUrl).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(true);
+    expect(runtime.getLatestRegionContext()).toMatchObject({
+      text: "Docs: https://example.com/path",
+      gesture: "meta-shift-click",
+      range: { startRow: 1, endRow: 1, startCol: 0, endCol: 29 },
+    });
+    expect(runtime.getTerminalReferences()).toHaveLength(1);
+  });
+
+  it("Cmd-click は viewport 内で折り返された URL の全体を開く", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    terminal.bufferLines.set(1, `${" ".repeat(70)}https://ex`);
+    terminal.bufferLines.set(2, "ample.com/docs");
+    terminal.wrappedLines.add(2);
+    const container = document.querySelector<HTMLElement>(".xterm-singleton-container");
+    expect(container).not.toBeNull();
+    if (!container) return;
+    setTerminalRect(container);
+
+    container.dispatchEvent(terminalClick({ metaKey: true, row: 2, col: 4 }));
+
+    expect(mockState.openUrl).toHaveBeenCalledWith("https://example.com/docs");
+  });
+
+  it("通常 click と Option+Cmd-click は URL を開かない", () => {
+    getTerminalRuntime("shell-1");
+    const terminal = mockState.terminals[0];
+    terminal.bufferLines.set(1, "https://example.com");
+    const container = document.querySelector<HTMLElement>(".xterm-singleton-container");
+    expect(container).not.toBeNull();
+    if (!container) return;
+    setTerminalRect(container);
+
+    container.dispatchEvent(terminalClick({ row: 1, col: 4 }));
+    container.dispatchEvent(terminalClick({ metaKey: true, altKey: true, row: 1, col: 4 }));
+
+    expect(mockState.openUrl).not.toHaveBeenCalled();
   });
 
   it("region highlight cleanup does not cancel a pending IME commit", async () => {
@@ -383,6 +522,7 @@ describe("TerminalRuntime", () => {
           bubbles: true,
           cancelable: true,
           metaKey: true,
+          shiftKey: true,
           button: 0,
           clientX: 10,
           clientY: 25,

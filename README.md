@@ -231,7 +231,8 @@ What works today:
 - Reflex layer: PTY observation and instant reactions
 - Fireworks celebrate a successful `git push` by the inhabitant (bundled Yori persona)
 - Light Alert: a light comes on when the agent waits for your input or approval
-- Context sharing: Voice Summary and Terminal Reference Markers (Cmd+click / Option+Shift+drag)
+- Terminal links: Cmd+click a visible HTTP/HTTPS URL to open it in the default browser
+- Context sharing: Voice Summary and Terminal Reference Markers (Cmd+Shift+click / Option+Shift+drag)
 - Journal: long-term memory across sessions, with recall at session start
 - Restore: automatic checkpoints for packs / init.js / settings, with reversible rollback
 - `/yori:*` commands for interactive pack creation and editing

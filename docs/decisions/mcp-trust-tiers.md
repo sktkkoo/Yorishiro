@@ -127,7 +127,7 @@ self-referential MCP は user / 住人 / 外部の 3 surface が同じ tool 体�
 | Category | 例 | Tier 1 | Tier 2 | Tier 3 |
 |---|---|---|---|---|
 | **Read**（低機微 metadata） | `get_state`, `list_packs`, `list_personas`, `list_scenes` | ✅ | ✅ | ✅ default |
-| **Sensitive-read**（user 由来の生データ / command metadata） | terminal reference の解決（user が Cmd+click / Option+Shift+drag で指した端末テキスト、または host が user gesture で reference 化した command run）、`terminal_runs_recent` | ✅ | ✅（reference 解決は user gesture gated） | 明示 grant（default-open にしない） |
+| **Sensitive-read**（user 由来の生データ / command metadata） | terminal reference の解決（user が Cmd+Shift+click / Option+Shift+drag で指した端末テキスト、または host が user gesture で reference 化した command run）、`terminal_runs_recent` | ✅ | ✅（reference 解決は user gesture gated） | 明示 grant（default-open にしない） |
 | **Self-write**（住人の身体・環境） | `set_expression`, `dispatch_effect`, `set_camera`, `set_lighting` | ✅ | ✅ | capability gated |
 | **Runtime-active switch**（registry のみ、persist しない） | `ui.activate` | ✅ | ✅ approval-less | manifest gated |
 | **Yorishiro-write**（config） | `set_primary_persona`, `scene.activate`, `set_terminal_agent`, `set_vrm` | ✅ | ✅ | manifest gated, default reject |
@@ -149,7 +149,7 @@ terminal reference がある run だけに付くため、output text を読む�
 
 [`input-prefill-boundary.md`](input-prefill-boundary.md) (B) の write/read チャネル分離が実装で成立していることを確認した：
 
-- mapping 生成は `TerminalRuntime.addTerminalReference`（**private**）のみ。呼び出しは Cmd+click / Option+Shift+drag / host-owned command-run reference path だけで、public / SDK / MCP に追加経路は無い → pack/AI は mapping を作れない
+- mapping 生成は `TerminalRuntime.addTerminalReference`（**private**）のみ。呼び出しは Cmd+Shift+click / Option+Shift+drag / host-owned command-run reference path だけで、public / SDK / MCP に追加経路は無い → pack/AI は mapping を作れない
 - token は `Term${counter}` の host 採番、入力に入るのは固定形 `[#TermN] ` のみ（host が `session_write` で書く Tier 1、user gesture が gate）
 - 可変な実テキストは private Map に保持され、read 経路（`getTerminalReferences()` → MCP read handler の snapshot）でのみ surface
 
