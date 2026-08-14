@@ -10,7 +10,7 @@
 pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露出しない（[`critical-constraints.md`](critical-constraints.md) §1 維持）。代わりに 2 経路のみ：
 
 - **(A) 固定文字列 verb**：Yorishiro/bundled 所有の固定文字列テーブルを引く enumerated verb を SDK + MCP に対称公開。pack/AI は文字列を選べず verb 名を呼ぶだけ。
-- **(B) Terminal Reference Marker（既存機構）**：write 経路は固定形 token `[#TermN]`（host 採番、user の Cmd+click gesture でのみ mapping 生成）、可変内容は MCP read tool で AI が要求時に解決（observation channel）。
+- **(B) Terminal Reference Marker（既存機構）**：write 経路は固定形 token `[#TermN]`（host 採番、user の Cmd+Shift+click / Option+Shift+drag gesture でのみ mapping 生成）、可変内容は MCP read tool で AI が要求時に解決（observation channel）。
 
 これにより [`mcp-trust-tiers.md`](mcp-trust-tiers.md)「PTY 系 tool は L1+L2+L3+L4 が揃うまで全 tier 禁止」を精緻化：安全 subset（(A) 固定 verb / (B) 固定 token）は今出せる。任意 `terminal_prefill` / `write_terminal_input` は依然禁止。
 
@@ -21,7 +21,7 @@ pack/AI に「任意テキストを入力欄/PTY に書く」API は型ごと露
 - **固定文字列テーブルは host/bundled (Tier 1) 所有**。user pack は**既存エントリの参照のみ**、テーブルへの登録は不可。登録を許すと*登録時に pack がバイトを選ぶ*ので「呼び出し時は固定」でも実質任意注入になり leak が裏口から復活する。
 - (A) verb は**改行を付けず人間が Enter**（テーブルが reviewed でも cheap な多層防御、現状挙動と一致）。
 - **Symmetry**：(A) verb は SDK (`ctx.*`) と MCP tool に同じものを公開（CLAUDE.md「Symmetry principle」）。MCP 側も任意注入できず固定 verb だけ。
-- **(B)** は既存 Reference Marker 機構を維持。入力欄に入るのは固定形 token `[#TermN]` のみ、可変な実テキストは MCP の resolve tool（read）で AI が要求時に取得。pack/AI は mapping を作れず（user の Cmd+click gesture のみが生成）、capture 機構は host UI affordance であって pack 能力ではない。
+- **(B)** は既存 Reference Marker 機構を維持。入力欄に入るのは固定形 token `[#TermN]` のみ、可変な実テキストは MCP の resolve tool（read）で AI が要求時に取得。pack/AI は mapping を作れず（user の Cmd+Shift+click / Option+Shift+drag gesture だけが生成）、capture 機構は host UI affordance であって pack 能力ではない。
 
 ## なぜそう決めたか
 

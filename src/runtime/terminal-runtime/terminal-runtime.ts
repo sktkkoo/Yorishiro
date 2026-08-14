@@ -1,4 +1,5 @@
 import { Channel } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { FitAddon } from "@xterm/addon-fit";
 import type { ITheme as XTermTheme } from "@xterm/xterm";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -25,6 +26,7 @@ import {
 import { decodeOsc633Value } from "./osc633";
 import { extractRegionText, polygonBounds, type RegionPoint } from "./region-selection";
 import { detectTerminalProblems, type TerminalProblem } from "./terminal-problems";
+import { findHttpUrlAtTextOffset } from "./terminal-url";
 import type {
   InterruptProtectionMode,
   PtyParams,
@@ -242,6 +244,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     const regionCtx = this.createRegionCanvas();
     this.regionCanvas = regionCtx?.canvas ?? null;
     this.regionCtx = regionCtx?.context ?? null;
+    this.installTerminalClickHandler();
     if (regionCtx) {
       this.installRegionSelectionHandlers();
     }
@@ -1556,9 +1559,77 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     return { canvas, context };
   }
 
-  private handleMetaClick(event: MouseEvent): void {
+  private handleTerminalClick(event: MouseEvent): void {
     if (this.disposed) return;
-    if (!event.metaKey || event.altKey || event.shiftKey || event.button !== 0) return;
+    if (!event.metaKey || event.altKey || event.button !== 0) return;
+
+    if (event.shiftKey) {
+      this.handleMetaShiftClick(event);
+      return;
+    }
+
+    const url = this.findHttpUrlAtClick(event);
+    if (url === null) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    void openUrl(url).catch((error: unknown) => {
+      console.error("Failed to open terminal URL", error);
+    });
+  }
+
+  private findHttpUrlAtClick(event: MouseEvent): string | null {
+    const buffer = this.term.buffer.active;
+    if (!buffer) return null;
+
+    const containerRect = this.xtermContainer.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) return null;
+
+    const cellWidth = containerRect.width / this.term.cols;
+    const cellHeight = containerRect.height / this.term.rows;
+    const row = Math.floor((event.clientY - containerRect.top) / cellHeight);
+    const col = Math.floor((event.clientX - containerRect.left) / cellWidth);
+    if (row < 0 || row >= this.term.rows || col < 0 || col >= this.term.cols) return null;
+
+    const clickedBufferRow = buffer.viewportY + row;
+    let logicalStartRow = clickedBufferRow;
+    while (logicalStartRow > 0 && buffer.getLine(logicalStartRow)?.isWrapped) {
+      logicalStartRow--;
+    }
+
+    let text = "";
+    let clickedOffset: number | null = null;
+    for (let bufferRow = logicalStartRow; ; bufferRow++) {
+      const line = buffer.getLine(bufferRow);
+      if (!line || (bufferRow > logicalStartRow && !line.isWrapped)) break;
+
+      for (let cellCol = 0; cellCol < this.term.cols; cellCol++) {
+        const cell = line.getCell(cellCol);
+        const chars = cell?.getChars() ?? "";
+        const width = cell?.getWidth() ?? 1;
+
+        if (bufferRow === clickedBufferRow && cellCol === col) {
+          // A width-zero cell is the continuation half of a wide glyph, never a URL character.
+          if (width === 0) return null;
+          clickedOffset = text.length;
+        }
+
+        if (chars !== "") {
+          text += chars;
+        } else if (width > 0) {
+          text += " ";
+        }
+      }
+
+      if (!buffer.getLine(bufferRow + 1)?.isWrapped) break;
+    }
+
+    return clickedOffset === null ? null : findHttpUrlAtTextOffset(text, clickedOffset);
+  }
+
+  private handleMetaShiftClick(event: MouseEvent): void {
+    if (this.disposed) return;
+    if (!event.metaKey || event.altKey || !event.shiftKey || event.button !== 0) return;
 
     const buffer = this.term.buffer.active;
     if (!buffer) return;
@@ -1611,7 +1682,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
       sessionId: this.sessionId,
       text,
       capturedAt: Date.now(),
-      gesture: "meta-click",
+      gesture: "meta-shift-click",
       viewport: {
         viewportY: buffer.viewportY,
         rows: this.term.rows,
@@ -1638,16 +1709,19 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     }
   }
 
-  private installRegionSelectionHandlers(): void {
+  private installTerminalClickHandler(): void {
     this.xtermContainer.addEventListener(
       "click",
       (event) => {
-        // Cmd+click は 1 行 region context。通常クリックには terminal 側の追加 UI を出さない。
-        this.handleMetaClick(event);
+        // Cmd+click は URL の上だけ opener へ渡し、Cmd+Shift+click は行参照を作る。
+        // それ以外の click は xterm の選択・TUI mouse handling にそのまま任せる。
+        this.handleTerminalClick(event);
       },
       { capture: true },
     );
+  }
 
+  private installRegionSelectionHandlers(): void {
     this.xtermContainer.addEventListener(
       "pointerdown",
       (event) => {
@@ -1851,7 +1925,7 @@ class TerminalRuntimeImpl implements TerminalRuntime {
     ctx.restore();
   }
 
-  /** Command+click 用: 囲み線なしの fill のみハイライト。 */
+  /** Command+Shift+click 用: 囲み線なしの fill のみハイライト。 */
   private drawRegionHighlight(polygon: ReadonlyArray<RegionPoint>): void {
     if (!this.regionCtx) return;
     this.clearRegionCanvasNow();

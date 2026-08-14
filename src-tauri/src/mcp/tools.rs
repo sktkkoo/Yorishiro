@@ -747,9 +747,9 @@ impl Yorishiro {
         emit_to(&self.app_handle, "state.get", json!({})).await
     }
 
-    /// terminal_context_get: user が Command+click や Option+Shift+drag で指し示した terminal text を返す。
+    /// terminal_context_get: user が Command+Shift+click や Option+Shift+drag で指し示した terminal text を返す。
     #[tool(
-        description = "Return terminal text the user pointed at. Supports Cmd+click (line) and Option+Shift+drag (region). Response includes `context` (latest selection) and `references` (all [#TermN] markers in the current session). When the user's message contains [#Term1] etc., call this to resolve the referenced text."
+        description = "Return terminal text the user pointed at. Supports Cmd+Shift+click (line) and Option+Shift+drag (region). Response includes `context` (latest selection) and `references` (all [#TermN] markers in the current session). When the user's message contains [#Term1] etc., call this to resolve the referenced text."
     )]
     async fn terminal_context_get(
         &self,
@@ -1224,7 +1224,7 @@ const SERVER_INSTRUCTIONS: &str = concat!(
                 "## ツール選択ガイド\n",
                 "- 声に出す → voice_say。発話するかどうかは system prompt の Voice セクションに従う\n",
                 "- 現在の状態確認 → state_get\n",
-                "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
+                "- ユーザーが terminal 上で指し示したテキストを読む → terminal_context_get（Cmd+Shift+click で行、Option+Shift+drag で矩形。メッセージに [#TermN] マーカーがあればここで解決する）\n",
                 "- 直近の terminal command run metadata を読む → terminal_runs_recent（output text は返らない。referenceIds がある場合だけ terminal_context_get で user gesture 済み context を解決できる）\n",
                 "- 照明・カメラ等のパラメータ確認 → controls_get（scene pack 依存のパスを確認）\n",
                 "- 照明・カメラ等を変更 → controls_transition（controls_set / controls_set_many は使わず、必ず controls_transition を使う）\n",

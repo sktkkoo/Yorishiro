@@ -68,10 +68,14 @@ UI pack が terminal を fullscreen / hidden / fixed position にする layout �
 
 ## Terminal context selection
 
-Terminal 上で `Option+Shift+drag` すると、ドラッグした矩形範囲の表示テキストを Yorishiro が
-xterm.js buffer から抽出し、最新の「ユーザーが指し示した terminal context」として
-保持する。これは PTY へ入力を書き込む操作ではなく、住人の perception / MCP 経路に
-「ここを見て」という context を渡すための gesture。
+Terminal 上で表示中の HTTP/HTTPS URL を `Cmd+click` すると、Tauri opener 経由で OS の
+既定ブラウザに開く。クリック位置が URL の文字範囲内にある場合だけ発火し、HTTP/HTTPS
+以外の scheme は受け付けない。
+
+Terminal 上で `Cmd+Shift+click` するとその行全体、`Option+Shift+drag` するとドラッグした
+矩形範囲の表示テキストを Yorishiro が xterm.js buffer から抽出し、最新の「ユーザーが
+指し示した terminal context」として保持する。これは PTY へ入力を書き込む操作ではなく、
+住人の perception / MCP 経路に「ここを見て」という context を渡すための gesture。
 
 AI は MCP tool `terminal_context_get` で最新の選択範囲を読める。未選択または空選択の
 場合は `context: null` を返す。選択完了時には attention source

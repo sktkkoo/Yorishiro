@@ -52,7 +52,7 @@ export interface TerminalLineRect {
 
 /**
  * 参照マーカー付きの terminal text reference。
- * Command+click や Option+Shift+drag で capture → `[#Term<N>]` として入力欄に挿入される。
+ * Command+Shift+click や Option+Shift+drag で capture → `[#Term<N>]` として入力欄に挿入される。
  * `id` は MCP 向けの session-stamped opaque id（例: `session-1:Term1`）。
  */
 export interface TerminalReference {
@@ -75,7 +75,7 @@ export interface TerminalRegionContext {
   readonly sessionId: string;
   readonly text: string;
   readonly capturedAt: number;
-  readonly gesture: "option-shift-drag" | "meta-click" | "command-run-reference";
+  readonly gesture: "option-shift-drag" | "meta-shift-click" | "command-run-reference";
   /** command-run reference だけが持つ。MCP はこの id だけを metadata として見る。 */
   readonly commandRunId?: number;
   readonly viewport: {
@@ -280,20 +280,20 @@ export interface TerminalRuntime {
   readScreenTailText(maxLines?: number): string;
 
   /**
-   * Option+Shift+drag / Command+click で capture した最新 terminal context を返す。
+   * Option+Shift+drag / Command+Shift+click で capture した最新 terminal context を返す。
    * 未選択 / 空選択なら null。
    */
   getLatestRegionContext(): TerminalRegionContext | null;
 
   /**
-   * Option+Shift+drag / Command+click の terminal context 確定時に listener を呼ぶ。
+   * Option+Shift+drag / Command+Shift+click の terminal context 確定時に listener を呼ぶ。
    * attention producer / UI feedback 用。dispose で listener を外す。
    */
   subscribeRegionContext(listener: (context: TerminalRegionContext) => void): Disposable;
 
   /**
    * `[#Term<N>]` マーカー付きで蓄積された terminal text reference の一覧。
-   * Command+click や Option+Shift+drag で capture → 入力に marker 挿入される。
+   * Command+Shift+click や Option+Shift+drag で capture → 入力に marker 挿入される。
    */
   getTerminalReferences(): ReadonlyArray<TerminalReference>;
 
