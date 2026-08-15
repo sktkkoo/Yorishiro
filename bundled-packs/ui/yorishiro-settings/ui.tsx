@@ -25,7 +25,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   ChevronDown,
-  FolderOpen,
   Package,
   RefreshCw,
   RotateCcw,
@@ -50,7 +49,159 @@ import { COLORS, FONT, RADIUS, SPACING } from "./tokens";
 export const SETTINGS_PACK_ID = "yorishiro-settings";
 export const PREVIOUS_ACTIVE_UI_KEY = "previous-active-ui";
 const DEFAULT_VRM_NAME = "Yori";
+const YORI_VRM_ID = "builtin:yori";
 const DEFAULT_SCENE_ID = simpleRoomManifest.id;
+
+export type VrmMetaNormalized =
+  | "notSpecified"
+  | "unknown"
+  | "allowed"
+  | "disallowed"
+  | "onlyAuthor"
+  | "explicitlyLicensedPerson"
+  | "everyone"
+  | "personalNonProfit"
+  | "personalProfit"
+  | "corporation"
+  | "prohibited"
+  | "required"
+  | "unnecessary"
+  | "allowModification"
+  | "allowModificationRedistribution";
+
+export interface VrmMetaValue {
+  readonly normalized: VrmMetaNormalized;
+  readonly raw: string | null;
+}
+
+export interface VrmLicenseInfo {
+  readonly name: string | null;
+  readonly urls: readonly string[];
+  readonly thirdPartyLicenses: string | null;
+}
+
+export interface VrmAvatarMeta {
+  readonly specVersion: string;
+  readonly name: string | null;
+  readonly version: string | null;
+  readonly authors: readonly string[];
+  readonly contactInformation: string | null;
+  readonly references: readonly string[];
+  readonly license: VrmLicenseInfo;
+  readonly allowedUser: VrmMetaValue;
+  readonly avatarPermission: VrmMetaValue;
+  readonly violentUsage: VrmMetaValue;
+  readonly sexualUsage: VrmMetaValue;
+  readonly commercialUsage: VrmMetaValue;
+  readonly politicalOrReligiousUsage: VrmMetaValue;
+  readonly antisocialOrHateUsage: VrmMetaValue;
+  readonly redistribution: VrmMetaValue;
+  readonly modification: VrmMetaValue;
+  readonly creditNotation: VrmMetaValue;
+}
+
+export interface VrmAvatarEntry {
+  readonly id: string;
+  readonly fileName: string;
+  readonly path: string;
+  readonly size: number;
+  readonly modifiedMs: number | null;
+  readonly valid: boolean;
+  readonly invalidReason: string | null;
+  readonly meta: VrmAvatarMeta | null;
+}
+
+export interface VrmCandidate {
+  readonly id: string;
+  readonly kind: "yori" | "file" | "missing";
+  readonly label: string;
+  readonly path: string | null;
+  readonly active: boolean;
+  readonly valid: boolean;
+  readonly invalidReason: string | null;
+  readonly meta: VrmAvatarMeta | null;
+}
+
+export interface YoriVrmDetails {
+  readonly author: string;
+  readonly terms: readonly string[];
+}
+
+export function yoriVrmDetails(strings: UiStrings): YoriVrmDetails {
+  return {
+    author: strings.vrmYoriAuthor,
+    terms: [
+      strings.vrmYoriUseWithinApp,
+      strings.vrmYoriAvatarPerformance,
+      strings.vrmYoriStandaloneReuse,
+      strings.vrmYoriViolentExpression,
+      strings.vrmYoriSexualExpression,
+    ],
+  };
+}
+
+/** Yori を常に先頭に置き、保存済み absolute path が消えていても選択状態を失わない。 */
+export function resolveVrmCandidates(
+  entries: readonly VrmAvatarEntry[],
+  activePath: string | null,
+): readonly VrmCandidate[] {
+  const files: VrmCandidate[] = entries.map((entry) => ({
+    id: `file:${entry.id}`,
+    kind: "file",
+    label: entry.fileName,
+    path: entry.path,
+    active: activePath === entry.path,
+    valid: entry.valid && entry.meta !== null,
+    invalidReason: entry.invalidReason,
+    meta: entry.meta,
+  }));
+  const candidates: VrmCandidate[] = [
+    {
+      id: YORI_VRM_ID,
+      kind: "yori",
+      label: DEFAULT_VRM_NAME,
+      path: null,
+      active: activePath === null,
+      valid: true,
+      invalidReason: null,
+      meta: null,
+    },
+    ...files,
+  ];
+  if (activePath !== null && !files.some((candidate) => candidate.path === activePath)) {
+    candidates.push({
+      id: "missing:active",
+      kind: "missing",
+      label: activePath.split(/[\\/]/).pop() || activePath,
+      path: activePath,
+      active: true,
+      valid: false,
+      invalidReason: null,
+      meta: null,
+    });
+  }
+  return candidates;
+}
+
+export function activeVrmCandidateId(candidates: readonly VrmCandidate[]): string {
+  return candidates.find((candidate) => candidate.active)?.id ?? YORI_VRM_ID;
+}
+
+/** setVrm を呼ぶ唯一の選択適用境界。無効・missing 候補は拒否する。 */
+export function applyVrmCandidate(
+  candidate: VrmCandidate,
+  setVrm: (path: string | null) => void,
+): boolean {
+  if (candidate.kind === "yori") {
+    setVrm(null);
+    return true;
+  }
+  if (candidate.kind === "file" && candidate.valid && candidate.path !== null) {
+    setVrm(candidate.path);
+    return true;
+  }
+  return false;
+}
 
 /** 公開リポジトリ。Credits 画面の「View on GitHub」リンク先。 */
 const YORISHIRO_REPO_URL = "https://github.com/sktkkoo/Yorishiro";
@@ -2144,15 +2295,357 @@ function CreditsOverlay({
   );
 }
 
-function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
-  const [creditsOpen, setCreditsOpen] = useState(false);
-  const [vrmName, setVrmName] = useState<string>(() => {
-    const stored = localStorage.getItem("yorishiro:vrm");
-    return stored ? (stored.split("/").pop() ?? stored) : DEFAULT_VRM_NAME;
-  });
-  const [usesCustomVrm, setUsesCustomVrm] = useState(
-    () => localStorage.getItem("yorishiro:vrm") !== null,
+const VRM_META_STRING_KEYS = {
+  notSpecified: "vrmNotSpecified",
+  unknown: "vrmUnknown",
+  allowed: "vrmPermissionAllowed",
+  disallowed: "vrmPermissionDisallowed",
+  onlyAuthor: "vrmPermissionOnlyAuthor",
+  explicitlyLicensedPerson: "vrmPermissionExplicitlyLicensedPerson",
+  everyone: "vrmPermissionEveryone",
+  personalNonProfit: "vrmPermissionPersonalNonProfit",
+  personalProfit: "vrmPermissionPersonalProfit",
+  corporation: "vrmPermissionCorporation",
+  prohibited: "vrmPermissionProhibited",
+  required: "vrmPermissionRequired",
+  unnecessary: "vrmPermissionUnnecessary",
+  allowModification: "vrmPermissionAllowModification",
+  allowModificationRedistribution: "vrmPermissionAllowModificationRedistribution",
+} as const satisfies Record<VrmMetaNormalized, keyof UiStrings>;
+
+export function formatVrmMetaValue(value: VrmMetaValue, strings: UiStrings): string {
+  const localized = strings[VRM_META_STRING_KEYS[value.normalized]];
+  if (value.normalized === "unknown" && value.raw) return `${localized}: ${value.raw}`;
+  return localized;
+}
+
+function VrmDetailRow({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(120px, 0.38fr) 1fr",
+        gap: SPACING.sm,
+      }}
+    >
+      <div style={{ color: COLORS.fgDimmer }}>{label}</div>
+      <div style={{ minWidth: 0, overflowWrap: "anywhere", whiteSpace: "pre-wrap" }}>{value}</div>
+    </div>
   );
+}
+
+function VrmCatalog({
+  candidates,
+  selectedId,
+  onSelect,
+  onImport,
+  onApply,
+  onCancel,
+  importing,
+  strings,
+}: {
+  readonly candidates: readonly VrmCandidate[];
+  readonly selectedId: string;
+  readonly onSelect: (id: string) => void;
+  readonly onImport: () => void;
+  readonly onApply: () => void;
+  readonly onCancel: () => void;
+  readonly importing: boolean;
+  readonly strings: UiStrings;
+}): React.JSX.Element {
+  const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0];
+  const selectedIndex = Math.max(
+    0,
+    candidates.findIndex((candidate) => candidate.id === selected?.id),
+  );
+  const selectAt = (index: number, listbox?: HTMLElement) => {
+    const boundedIndex = Math.max(0, Math.min(index, candidates.length - 1));
+    const candidate = candidates[boundedIndex];
+    if (candidate) {
+      onSelect(candidate.id);
+      listbox?.querySelectorAll<HTMLElement>("[role='option']")[boundedIndex]?.focus();
+    }
+  };
+  const applyDisabled = !selected?.valid || selected.kind === "missing" || selected.active;
+  const disabledReason =
+    selected?.kind === "missing"
+      ? strings.vrmApplyDisabledMissing
+      : selected?.active
+        ? strings.vrmApplyDisabledActive
+        : applyDisabled
+          ? strings.vrmApplyDisabledInvalid
+          : null;
+  const usageRows: readonly [string, VrmMetaValue][] = selected?.meta
+    ? [
+        [strings.vrmAllowedUser, selected.meta.allowedUser],
+        [strings.vrmAvatarPermission, selected.meta.avatarPermission],
+        [strings.vrmViolentUsage, selected.meta.violentUsage],
+        [strings.vrmSexualUsage, selected.meta.sexualUsage],
+        [strings.vrmCommercialUsage, selected.meta.commercialUsage],
+        [strings.vrmPoliticalUsage, selected.meta.politicalOrReligiousUsage],
+        [strings.vrmAntisocialUsage, selected.meta.antisocialOrHateUsage],
+        [strings.vrmRedistribution, selected.meta.redistribution],
+        [strings.vrmModification, selected.meta.modification],
+        [strings.vrmCredit, selected.meta.creditNotation],
+      ]
+    : [];
+
+  return (
+    <section
+      aria-label={strings.vrmChooseAvatar}
+      style={{
+        gridColumn: "1 / -1",
+        marginTop: SPACING.sm,
+        padding: SPACING.md,
+        border: `1px solid ${COLORS.borderSubtle}`,
+        borderRadius: RADIUS.md,
+      }}
+    >
+      <style>{`@media (min-width: 720px) { .vrm-master-detail { grid-template-columns: 240px minmax(0, 1fr) !important; } }`}</style>
+      <p style={{ margin: `0 0 ${SPACING.md}`, color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
+        {strings.vrmCatalogIntro}
+      </p>
+      <div
+        className="vrm-master-detail"
+        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: SPACING.md }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <div
+            role="listbox"
+            aria-label={strings.vrmChooseAvatar}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                selectAt(selectedIndex + 1, event.currentTarget);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                selectAt(selectedIndex - 1, event.currentTarget);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                selectAt(0, event.currentTarget);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                selectAt(candidates.length - 1, event.currentTarget);
+              }
+            }}
+            style={{ display: "flex", flexDirection: "column", gap: SPACING.xs }}
+          >
+            {candidates.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                role="option"
+                aria-selected={candidate.id === selected?.id}
+                tabIndex={candidate.id === selected?.id ? 0 : -1}
+                onClick={() => onSelect(candidate.id)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: SPACING.xs,
+                  width: "100%",
+                  minWidth: 0,
+                  padding: `${SPACING.sm} ${SPACING.md}`,
+                  borderRadius: RADIUS.sm,
+                  border: `1px solid ${
+                    candidate.id === selected?.id ? COLORS.accentBorder : COLORS.borderSubtle
+                  }`,
+                  background: candidate.id === selected?.id ? COLORS.accentSoft : COLORS.bgInput,
+                  color: COLORS.fg,
+                  font: "inherit",
+                  textAlign: "left",
+                  cursor: "pointer",
+                }}
+              >
+                <span
+                  style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}
+                  title={candidate.label}
+                >
+                  {candidate.label}
+                </span>
+                {candidate.active ? (
+                  <span style={{ color: COLORS.accent, fontSize: FONT.sizeXs }}>
+                    {strings.vrmActive}
+                  </span>
+                ) : null}
+                {!candidate.valid ? (
+                  <span style={{ color: COLORS.statusError, fontSize: FONT.sizeXs }}>
+                    {strings.vrmInvalid}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={onImport}
+            disabled={importing}
+            style={{
+              width: "100%",
+              marginTop: SPACING.sm,
+              padding: `${SPACING.sm} ${SPACING.md}`,
+              borderRadius: RADIUS.sm,
+              border: `1px solid ${COLORS.borderSubtle}`,
+              background: "transparent",
+              color: COLORS.accent,
+              font: "inherit",
+              cursor: importing ? "wait" : "pointer",
+              opacity: importing ? 0.6 : 1,
+            }}
+          >
+            {importing ? strings.loading : strings.vrmImportNew}
+          </button>
+        </div>
+
+        <div style={{ minWidth: 0 }}>
+          <h2 aria-live="polite" style={{ margin: `0 0 ${SPACING.sm}`, fontSize: FONT.sizeM }}>
+            {strings.vrmDetails}: {selected?.label}
+          </h2>
+          {selected?.kind === "yori" ? (
+            <div style={{ color: COLORS.fgDim }}>
+              <p>{strings.vrmBundledDescription}</p>
+              <VrmDetailRow label={strings.vrmAuthors} value={yoriVrmDetails(strings).author} />
+              <h3 style={{ margin: `${SPACING.md} 0 ${SPACING.xs}`, fontSize: FONT.sizeS }}>
+                {strings.vrmUsageConditions}
+              </h3>
+              <ul style={{ margin: 0, paddingLeft: SPACING.xl }}>
+                {yoriVrmDetails(strings).terms.map((term) => (
+                  <li key={term} style={{ marginBottom: SPACING.xs }}>
+                    {term}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : selected?.kind === "missing" ? (
+            <div style={{ color: COLORS.statusError, overflowWrap: "anywhere" }}>
+              {strings.vrmMissingActive}
+              <br />
+              {selected.path}
+            </div>
+          ) : !selected?.valid || !selected.meta ? (
+            <div style={{ color: COLORS.statusError, overflowWrap: "anywhere" }}>
+              {selected?.invalidReason ?? strings.vrmApplyDisabledInvalid}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: SPACING.xs }}>
+              <VrmDetailRow label={strings.vrmSpec} value={selected.meta.specVersion} />
+              <VrmDetailRow
+                label={strings.vrmName}
+                value={selected.meta.name ?? strings.vrmNotSpecified}
+              />
+              <VrmDetailRow
+                label={strings.vrmVersion}
+                value={selected.meta.version ?? strings.vrmNotSpecified}
+              />
+              <VrmDetailRow
+                label={strings.vrmAuthors}
+                value={selected.meta.authors.join(", ") || strings.vrmNotSpecified}
+              />
+              <VrmDetailRow
+                label={strings.vrmContact}
+                value={selected.meta.contactInformation ?? strings.vrmNotSpecified}
+              />
+              <VrmDetailRow
+                label={strings.vrmReferences}
+                value={selected.meta.references.join("\n") || strings.vrmNotSpecified}
+              />
+              <h3 style={{ margin: `${SPACING.md} 0 ${SPACING.xs}`, fontSize: FONT.sizeS }}>
+                {strings.vrmLicenses}
+              </h3>
+              <VrmDetailRow
+                label={strings.vrmLicenseName}
+                value={selected.meta.license.name ?? strings.vrmNotSpecified}
+              />
+              <VrmDetailRow
+                label={strings.vrmLicenseUrls}
+                value={selected.meta.license.urls.join("\n") || strings.vrmNotSpecified}
+              />
+              <VrmDetailRow
+                label={strings.vrmThirdPartyLicenses}
+                value={selected.meta.license.thirdPartyLicenses ?? strings.vrmNotSpecified}
+              />
+              <h3 style={{ margin: `${SPACING.md} 0 ${SPACING.xs}`, fontSize: FONT.sizeS }}>
+                {strings.vrmUsageConditions}
+              </h3>
+              {usageRows.map(([label, value]) => (
+                <VrmDetailRow
+                  key={label}
+                  label={label}
+                  value={formatVrmMetaValue(value, strings)}
+                />
+              ))}
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: SPACING.sm,
+              marginTop: SPACING.lg,
+            }}
+          >
+            <button
+              type="button"
+              onClick={onApply}
+              disabled={applyDisabled}
+              aria-disabled={applyDisabled}
+              title={disabledReason ?? undefined}
+              style={{
+                padding: `${SPACING.sm} ${SPACING.md}`,
+                borderRadius: RADIUS.sm,
+                border: `1px solid ${COLORS.accentBorder}`,
+                background: COLORS.accentSoft,
+                color: COLORS.accent,
+                font: "inherit",
+                cursor: applyDisabled ? "not-allowed" : "pointer",
+                opacity: applyDisabled ? 0.5 : 1,
+              }}
+            >
+              {strings.vrmApply}
+            </button>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: COLORS.fgDim,
+                font: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              {strings.vrmCancel}
+            </button>
+          </div>
+          {disabledReason ? (
+            <div style={{ marginTop: SPACING.xs, color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+              {disabledReason}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const [activeVrmPath, setActiveVrmPath] = useState<string | null>(() =>
+    localStorage.getItem("yorishiro:vrm"),
+  );
+  const [vrmCatalogOpen, setVrmCatalogOpen] = useState(false);
+  const [vrmCatalog, setVrmCatalog] = useState<
+    | { readonly phase: "idle" | "loading" }
+    | { readonly phase: "ready"; readonly entries: readonly VrmAvatarEntry[] }
+    | { readonly phase: "error"; readonly reason: string }
+  >({ phase: "idle" });
+  const [selectedVrmId, setSelectedVrmId] = useState<string>(YORI_VRM_ID);
+  const [vrmImporting, setVrmImporting] = useState(false);
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
   const [agent, setAgent] = useState<string>("claude");
@@ -2193,6 +2686,10 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const scenes = ctx.app.listScenes();
   const sceneSelectValue = configLoaded ? resolveSceneSelectValue(scene) : "";
   const strings = getStrings(resolvedLanguage);
+  const vrmEntries = vrmCatalog.phase === "ready" ? vrmCatalog.entries : [];
+  const vrmCandidates = resolveVrmCandidates(vrmEntries, activeVrmPath);
+  const displayedVrmName =
+    vrmCandidates.find((candidate) => candidate.active)?.label ?? DEFAULT_VRM_NAME;
   const requestNewSessionChange = (change: PendingNewSessionChange) => {
     setPendingNewSessionChange(change);
   };
@@ -2204,6 +2701,30 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const newSessionConfirmContent = pendingNewSessionChange
     ? resolveNewSessionConfirm(strings, pendingNewSessionChange)
     : null;
+
+  const loadVrmCatalog = useCallback(async (preferredPath?: string | null) => {
+    setVrmCatalog({ phase: "loading" });
+    try {
+      const entries = await invoke<VrmAvatarEntry[]>("list_vrm_avatars");
+      setVrmCatalog({ phase: "ready", entries });
+      const activePath = localStorage.getItem("yorishiro:vrm");
+      const candidates = resolveVrmCandidates(entries, activePath);
+      const preferred =
+        preferredPath === undefined
+          ? candidates.find((candidate) => candidate.active)
+          : candidates.find((candidate) => candidate.path === preferredPath);
+      setSelectedVrmId(preferred?.id ?? activeVrmCandidateId(candidates));
+      return entries;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      setVrmCatalog({ phase: "error", reason });
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadVrmCatalog();
+  }, [loadVrmCatalog]);
 
   useEffect(() => {
     let aborted = false;
@@ -2421,7 +2942,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     });
   };
 
-  const onPickVrm = async () => {
+  const onImportVrm = async () => {
+    setVrmImporting(true);
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
@@ -2430,21 +2952,26 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       });
       if (!selected) return;
       const dest = await invoke<string>("import_vrm", { src: selected as string });
-      ctx.app.setVrm(dest);
-      setVrmName(dest.split("/").pop() ?? dest);
-      setUsesCustomVrm(true);
+      await loadVrmCatalog(dest);
+      setVrmCatalogOpen(true);
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       console.error("[yorishiro-settings] vrm load failed:", reason);
       ctx.emitEvent("yorishiro-settings:write-failed", { field: "vrm", reason });
+    } finally {
+      setVrmImporting(false);
     }
   };
 
-  /** custom VRM の選択だけを解除し、app に同梱された Yori へ戻す。import 済み file は残す。 */
-  const onResetVrm = () => {
-    ctx.app.setVrm(null);
-    setVrmName(DEFAULT_VRM_NAME);
-    setUsesCustomVrm(false);
+  const onApplyVrm = () => {
+    const selected = vrmCandidates.find((candidate) => candidate.id === selectedVrmId);
+    if (!selected || !applyVrmCandidate(selected, ctx.app.setVrm)) return;
+    setActiveVrmPath(selected.path);
+  };
+
+  /** inspection selection を active に戻す。import 済み file は削除しない。 */
+  const onCancelVrmSelection = () => {
+    setSelectedVrmId(activeVrmCandidateId(vrmCandidates));
   };
 
   /** 設定パネルを閉じる共通 helper。 */
@@ -2529,7 +3056,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           flex: 1,
           padding: `0 ${SPACING.xl} ${SPACING.xl}`,
           width: "100%",
-          maxWidth: "560px",
+          maxWidth: vrmCatalogOpen ? "960px" : "560px",
           overflowY: "auto",
         }}
       >
@@ -2672,7 +3199,8 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           >
             <button
               type="button"
-              onClick={onPickVrm}
+              onClick={() => setVrmCatalogOpen((open) => !open)}
+              aria-expanded={vrmCatalogOpen}
               style={{
                 position: "relative",
                 flex: 1,
@@ -2692,46 +3220,59 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
                 fontSize: FONT.sizeS,
                 textAlign: "left",
               }}
-              title={vrmName || undefined}
+              title={displayedVrmName}
             >
-              {vrmName}
-              <FolderOpen
+              {displayedVrmName}
+              <ChevronDown
                 size={12}
                 aria-hidden="true"
                 style={{
                   position: "absolute",
                   right: SPACING.sm,
                   top: "50%",
-                  transform: "translateY(-50%)",
+                  transform: `translateY(-50%) rotate(${vrmCatalogOpen ? "180deg" : "0deg"})`,
                   pointerEvents: "none",
                   color: COLORS.fgDimmer,
                 }}
               />
             </button>
-            {usesCustomVrm ? (
+          </div>
+
+          {vrmCatalogOpen && vrmCatalog.phase === "loading" ? (
+            <div style={{ gridColumn: "1 / -1", color: COLORS.fgDim }}>{strings.loading}</div>
+          ) : null}
+          {vrmCatalogOpen && vrmCatalog.phase === "error" ? (
+            <div style={{ gridColumn: "1 / -1", color: COLORS.statusError }}>
+              {strings.vrmLoadingFailed} {vrmCatalog.reason}
               <button
                 type="button"
-                onClick={onResetVrm}
-                title={strings.resetVrmToYori}
+                onClick={() => void loadVrmCatalog()}
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: SPACING.xs,
-                  flexShrink: 0,
+                  marginLeft: SPACING.sm,
                   border: "none",
                   background: "transparent",
-                  padding: `${SPACING.xs} 0`,
-                  color: COLORS.fgDimmer,
-                  cursor: "pointer",
+                  color: COLORS.accent,
                   font: "inherit",
-                  fontSize: FONT.sizeXs,
+                  textDecoration: "underline",
+                  cursor: "pointer",
                 }}
               >
-                <RotateCcw size={12} aria-hidden="true" />
-                {strings.resetVrmToYori}
+                {strings.vrmRetry}
               </button>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+          {vrmCatalogOpen && vrmCatalog.phase === "ready" ? (
+            <VrmCatalog
+              candidates={vrmCandidates}
+              selectedId={selectedVrmId}
+              onSelect={setSelectedVrmId}
+              onImport={() => void onImportVrm()}
+              onApply={onApplyVrm}
+              onCancel={onCancelVrmSelection}
+              importing={vrmImporting}
+              strings={strings}
+            />
+          ) : null}
 
           {/* Persona */}
           <div style={{ opacity: 0.7 }}>{strings.labelPersona}</div>

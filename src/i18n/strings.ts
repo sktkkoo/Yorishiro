@@ -22,7 +22,63 @@ export interface UiStrings {
   readonly motionLevelLively: string;
   readonly motionLevelOver: string;
   readonly selectVrmFile: string;
-  readonly resetVrmToYori: string;
+  readonly vrmChooseAvatar: string;
+  readonly vrmImportNew: string;
+  readonly vrmCatalogIntro: string;
+  readonly vrmActive: string;
+  readonly vrmInvalid: string;
+  readonly vrmMissingActive: string;
+  readonly vrmApply: string;
+  readonly vrmCancel: string;
+  readonly vrmApplyDisabledInvalid: string;
+  readonly vrmApplyDisabledMissing: string;
+  readonly vrmApplyDisabledActive: string;
+  readonly vrmRetry: string;
+  readonly vrmDetails: string;
+  readonly vrmSpec: string;
+  readonly vrmName: string;
+  readonly vrmVersion: string;
+  readonly vrmAuthors: string;
+  readonly vrmContact: string;
+  readonly vrmReferences: string;
+  readonly vrmLicenses: string;
+  readonly vrmLicenseName: string;
+  readonly vrmLicenseUrls: string;
+  readonly vrmThirdPartyLicenses: string;
+  readonly vrmUsageConditions: string;
+  readonly vrmAllowedUser: string;
+  readonly vrmAvatarPermission: string;
+  readonly vrmViolentUsage: string;
+  readonly vrmSexualUsage: string;
+  readonly vrmCommercialUsage: string;
+  readonly vrmPoliticalUsage: string;
+  readonly vrmAntisocialUsage: string;
+  readonly vrmRedistribution: string;
+  readonly vrmModification: string;
+  readonly vrmCredit: string;
+  readonly vrmNotSpecified: string;
+  readonly vrmUnknown: string;
+  readonly vrmPermissionAllowed: string;
+  readonly vrmPermissionDisallowed: string;
+  readonly vrmPermissionOnlyAuthor: string;
+  readonly vrmPermissionExplicitlyLicensedPerson: string;
+  readonly vrmPermissionEveryone: string;
+  readonly vrmPermissionPersonalNonProfit: string;
+  readonly vrmPermissionPersonalProfit: string;
+  readonly vrmPermissionCorporation: string;
+  readonly vrmPermissionProhibited: string;
+  readonly vrmPermissionRequired: string;
+  readonly vrmPermissionUnnecessary: string;
+  readonly vrmPermissionAllowModification: string;
+  readonly vrmPermissionAllowModificationRedistribution: string;
+  readonly vrmBundledDescription: string;
+  readonly vrmYoriAuthor: string;
+  readonly vrmYoriUseWithinApp: string;
+  readonly vrmYoriAvatarPerformance: string;
+  readonly vrmYoriStandaloneReuse: string;
+  readonly vrmYoriViolentExpression: string;
+  readonly vrmYoriSexualExpression: string;
+  readonly vrmLoadingFailed: string;
   readonly agentControlledByProfile: string;
   readonly helpPrompt: string;
   readonly tutorialPrompt: string;
@@ -158,7 +214,64 @@ const EN: UiStrings = {
   motionLevelLively: "Lively",
   motionLevelOver: "Over-the-top",
   selectVrmFile: "Select VRM file",
-  resetVrmToYori: "Return to Yori",
+  vrmChooseAvatar: "Choose avatar",
+  vrmImportNew: "Import new…",
+  vrmCatalogIntro:
+    "Review the creator and usage conditions before applying an avatar. Yorishiro provides the recorded terms but does not decide whether a use is legally permitted.",
+  vrmActive: "Active",
+  vrmInvalid: "Invalid",
+  vrmMissingActive: "The active VRM is missing from the avatar folder.",
+  vrmApply: "Apply avatar",
+  vrmCancel: "Cancel selection",
+  vrmApplyDisabledInvalid: "This file cannot be applied because it is invalid.",
+  vrmApplyDisabledMissing: "A missing avatar cannot be applied.",
+  vrmApplyDisabledActive: "This avatar is already active.",
+  vrmRetry: "Retry",
+  vrmDetails: "Avatar details",
+  vrmSpec: "VRM spec",
+  vrmName: "Name",
+  vrmVersion: "Version",
+  vrmAuthors: "Authors",
+  vrmContact: "Contact",
+  vrmReferences: "References",
+  vrmLicenses: "License information",
+  vrmLicenseName: "License name",
+  vrmLicenseUrls: "License / permission URLs",
+  vrmThirdPartyLicenses: "Third-party licenses",
+  vrmUsageConditions: "Usage conditions",
+  vrmAllowedUser: "Allowed user (VRM 0.x)",
+  vrmAvatarPermission: "Avatar permission (VRM 1.0)",
+  vrmViolentUsage: "Violent usage",
+  vrmSexualUsage: "Sexual usage",
+  vrmCommercialUsage: "Commercial usage",
+  vrmPoliticalUsage: "Political / religious usage",
+  vrmAntisocialUsage: "Antisocial / hate usage",
+  vrmRedistribution: "Redistribution",
+  vrmModification: "Modification",
+  vrmCredit: "Credit notation",
+  vrmNotSpecified: "Not specified",
+  vrmUnknown: "Unknown (not treated as permission)",
+  vrmPermissionAllowed: "Allowed",
+  vrmPermissionDisallowed: "Not allowed",
+  vrmPermissionOnlyAuthor: "Only the author",
+  vrmPermissionExplicitlyLicensedPerson: "Explicitly licensed persons only",
+  vrmPermissionEveryone: "Everyone",
+  vrmPermissionPersonalNonProfit: "Personal, non-profit use",
+  vrmPermissionPersonalProfit: "Personal commercial use",
+  vrmPermissionCorporation: "Corporate commercial use",
+  vrmPermissionProhibited: "Prohibited",
+  vrmPermissionRequired: "Required",
+  vrmPermissionUnnecessary: "Not required",
+  vrmPermissionAllowModification: "Modification allowed",
+  vrmPermissionAllowModificationRedistribution: "Modification and redistribution allowed",
+  vrmBundledDescription: "The avatar bundled with Yorishiro.",
+  vrmYoriAuthor: "LUCAS",
+  vrmYoriUseWithinApp: "Use within Yorishiro is permitted for everyone.",
+  vrmYoriAvatarPerformance: "Performing as the avatar is limited to explicitly licensed persons.",
+  vrmYoriStandaloneReuse: "Standalone redistribution or reuse of the model is prohibited.",
+  vrmYoriViolentExpression: "Violent expression is permitted.",
+  vrmYoriSexualExpression: "Sexual expression is prohibited.",
+  vrmLoadingFailed: "Could not load the avatar catalog.",
   agentControlledByProfile: "Launch agent is fixed by defaultProfile",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",
@@ -289,7 +402,64 @@ const JA: UiStrings = {
   motionLevelLively: "活発",
   motionLevelOver: "オーバー",
   selectVrmFile: "VRM ファイルを選択",
-  resetVrmToYori: "Yori に戻す",
+  vrmChooseAvatar: "アバターを選ぶ",
+  vrmImportNew: "新しく読み込む…",
+  vrmCatalogIntro:
+    "制作者と利用条件を確認してから、アバターを適用してください。Yorishiro は記録された条件を示しますが、法的な利用可否を判断しません。",
+  vrmActive: "使用中",
+  vrmInvalid: "無効",
+  vrmMissingActive: "使用中の VRM がアバターフォルダに見つかりません。",
+  vrmApply: "アバターを適用",
+  vrmCancel: "選択をキャンセル",
+  vrmApplyDisabledInvalid: "無効なファイルのため適用できません。",
+  vrmApplyDisabledMissing: "見つからないアバターは適用できません。",
+  vrmApplyDisabledActive: "このアバターは現在使用中です。",
+  vrmRetry: "再試行",
+  vrmDetails: "アバターの詳細",
+  vrmSpec: "VRM 仕様",
+  vrmName: "名前",
+  vrmVersion: "バージョン",
+  vrmAuthors: "制作者",
+  vrmContact: "連絡先",
+  vrmReferences: "参照情報",
+  vrmLicenses: "ライセンス情報",
+  vrmLicenseName: "ライセンス名",
+  vrmLicenseUrls: "ライセンス・許諾 URL",
+  vrmThirdPartyLicenses: "第三者ライセンス",
+  vrmUsageConditions: "利用条件",
+  vrmAllowedUser: "利用可能なユーザー（VRM 0.x）",
+  vrmAvatarPermission: "アバター利用権限（VRM 1.0）",
+  vrmViolentUsage: "暴力表現での利用",
+  vrmSexualUsage: "性的表現での利用",
+  vrmCommercialUsage: "商用利用",
+  vrmPoliticalUsage: "政治・宗教目的での利用",
+  vrmAntisocialUsage: "反社会・憎悪表現での利用",
+  vrmRedistribution: "再配布",
+  vrmModification: "改変",
+  vrmCredit: "クレジット表記",
+  vrmNotSpecified: "指定なし",
+  vrmUnknown: "不明（許可として扱いません）",
+  vrmPermissionAllowed: "許可",
+  vrmPermissionDisallowed: "不許可",
+  vrmPermissionOnlyAuthor: "作者本人のみ",
+  vrmPermissionExplicitlyLicensedPerson: "明示的に許諾された人のみ",
+  vrmPermissionEveryone: "全員",
+  vrmPermissionPersonalNonProfit: "個人・非営利利用",
+  vrmPermissionPersonalProfit: "個人の営利利用",
+  vrmPermissionCorporation: "法人の営利利用",
+  vrmPermissionProhibited: "禁止",
+  vrmPermissionRequired: "必須",
+  vrmPermissionUnnecessary: "不要",
+  vrmPermissionAllowModification: "改変を許可",
+  vrmPermissionAllowModificationRedistribution: "改変と再配布を許可",
+  vrmBundledDescription: "Yorishiro に同梱されたアバターです。",
+  vrmYoriAuthor: "LUCAS",
+  vrmYoriUseWithinApp: "Yorishiro 内での使用は、すべての人に許可されています。",
+  vrmYoriAvatarPerformance: "アバターとして演じることは、明示的に許諾された人に限られます。",
+  vrmYoriStandaloneReuse: "モデル単体の再配布・再利用は禁止されています。",
+  vrmYoriViolentExpression: "暴力表現での使用は許可されています。",
+  vrmYoriSexualExpression: "性的表現での使用は禁止されています。",
+  vrmLoadingFailed: "アバター一覧を読み込めませんでした。",
   agentControlledByProfile: "※ 起動 agent は defaultProfile で固定中",
   helpPrompt: "/yori:help",
   tutorialPrompt: "/yori:tutorial",

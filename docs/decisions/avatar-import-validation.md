@@ -1,11 +1,11 @@
 # Avatar (VRM) import の検証境界
 
 **Status**: active
-**Last updated**: 2026-06-11
+**Last updated**: 2026-08-15
 
 ## TL;DR
 
-`import_vrm` は source を (1) symlink・非 regular file を拒否、(2) GLB header（magic `glTF` / version 2 / 宣言長 == 実ファイルサイズ）を検証、(3) 検証済みの file handle をそのままコピー（path を再オープンしない）する。任意ファイルの吸い出しと検証後すり替え（TOCTOU）を塞ぐための境界で、symlink 経由 import と spec 違反 GLB を**意図的に**弾く。
+`import_vrm` は source を (1) symlink・非 regular file を拒否、(2) GLB header と最大 4 MiB の先頭 JSON chunk、VRM 0.x / 1.0 meta を検証、(3) 検証済みの file handle をそのまま temporary file へコピーして `sync_all` 後に同一 directory 内で rename する。任意ファイルの吸い出し、検証後すり替え（TOCTOU）、同名 avatar の上書きを塞ぐための境界である。
 
 ## 何を決めたか
 
@@ -13,7 +13,11 @@
 
 - **symlink 拒否 / regular file のみ**：`symlink_metadata` で種別を確認し、symlink と非 regular file（dir / device / fifo 等）を拒否する
 - **GLB content 検証**：先頭 12 byte を読み、magic == `glTF`、version == 2、宣言長 == 実ファイルサイズ を確認。拡張子だけ `.vrm` の偽装ファイルを弾く
+- **VRM metadata 検証**：先頭 chunk が JSON type で 4 MiB 以下であることを確認し、`extensions.VRM.meta` または `extensions.VRMC_vrm.meta` の object だけを読む。BIN、texture、thumbnail は読まない
 - **TOCTOU-safe copy**：検証で開いた file handle を rewind して `std::io::copy` でコピーする。`std::fs::copy(path, ...)` のように path を再オープンしない
+- **非上書き・atomic finalize**：同一 directory の `.tmp-<pid>-<nonce>.vrm` へ copy / `sync_all` した後、no-clobber rename で publish する。同名との競合時は検証済み temporary copy と既存 file を size + 固定長 buffer で完全比較し、同一なら既存 path を返す。内容が異なる場合だけ `name (2).vrm`、`name (3).vrm` と再試行し、失敗時は temporary を cleanup する
+
+`list_vrm_avatars` は `$APPDATA/avatars/` 直下の `.vrm` だけを決定的な basename 順で返す。symlink、非 regular file、破損 file は追跡・除外せず理由付き invalid row とし、temporary file と他拡張子は列挙しない。metadata の欠落は `NotSpecified`、未知 enum は `Unknown` として、許可扱いしない。raw enum も残し、アプリは法的判断を代行しない。
 
 ## なぜそう決めたか
 
@@ -33,10 +37,11 @@ symlink・非 regular file・非 GLB を拒否し、検証した handle を直�
 
 - **symlink 経由の VRM import は不可**。`~/Music/avatar.vrm` への symlink を選んでも弾かれる。UX より任意ファイル吸い出し防止を優先した意図的なトレードオフで、「symlink VRM が import できない」は仕様
 - **GLB spec 違反のファイルは弾かれる**。宣言長 != 実サイズ（trailing padding 等）の VRM は reject。主要 exporter（VRoid / UniVRM / Blender VRM）は spec 準拠で通る。bundled `Yori.vrm`（22.7 MB）は宣言長 == 実サイズで通ることを確認済み
+- **header だけ正しい generic GLB は import / probe できない**。2026-08-15 以降は parse 可能な VRM 0.x / 1.0 metadata object と 4 MiB 以下の JSON chunk を必須とする。これは利用条件をApply前に提示するための意図的な互換性変更であり、metadataを持たないGLBや極端に大きいJSONを「VRM」として受け入れる旧挙動には戻さない
 - 将来 symlink 許可や非準拠 GLB の受容が必要になったら、緩める前に「任意ファイル吸い出し経路が再び開く」ことを再評価する
 
 ## 関連 reference
 
-- `src-tauri/src/lib.rs` — `open_vrm_import_source` / `validate_vrm_glb_header` / `has_vrm_extension`
+- `src-tauri/src/lib.rs` — `open_vrm_import_source` / `read_vrm_meta` / `list_vrm_avatars_in_dir` / `import_vrm_into_dir`
 - [`voice-clip-resolution.md`](voice-clip-resolution.md) — pack-local ref の `.`/`..` 拒否（同じく asset 解決の security 境界）
 - `docs/security.md`「Current enforcement status」
