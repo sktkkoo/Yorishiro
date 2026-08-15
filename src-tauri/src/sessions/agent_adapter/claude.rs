@@ -32,6 +32,9 @@ impl TerminalAgent for ClaudeAgent {
     fn build_launch_args(&self, ctx: &LaunchContext<'_>) -> Result<LaunchArgs, String> {
         let mut args = Vec::new();
         let mut temp_files = Vec::new();
+        let mcp_endpoint = ctx
+            .mcp_endpoint
+            .ok_or_else(|| "Yorishiro MCP endpoint is unavailable".to_string())?;
 
         if ctx.resume && self.has_existing_session(ctx.cwd) {
             args.push("-c".to_string());
@@ -47,8 +50,9 @@ impl TerminalAgent for ClaudeAgent {
         temp_files.push(hooks_path);
 
         // Claude Code plugin 配下の .mcp.json は auto-discover されないため、
-        // 起動ごとに実 port を反映した config を session-scoped に生成する。
-        let mcp_config_json = claude_yorishiro_mcp_config_json(ctx.mcp_port);
+        // 起動ごとに、この Yorishiro process が所有する endpoint を反映した config を
+        // session-scoped に生成する。未起動時は別 instance へ fallback せず fail closed。
+        let mcp_config_json = claude_yorishiro_mcp_config_json(mcp_endpoint);
         let mcp_config_path = super::temp_config_path("mcp", "json");
         let mcp_config_path_arg = super::utf8_path_for_cli(&mcp_config_path, "Claude MCP config")?;
         std::fs::write(&mcp_config_path, &mcp_config_json)
@@ -86,12 +90,12 @@ impl TerminalAgent for ClaudeAgent {
     }
 }
 
-fn claude_yorishiro_mcp_config_json(port: u16) -> String {
+fn claude_yorishiro_mcp_config_json(endpoint: &str) -> String {
     serde_json::json!({
         "mcpServers": {
             "yorishiro": {
                 "type": "http",
-                "url": format!("http://127.0.0.1:{}/mcp", port),
+                "url": endpoint,
             }
         }
     })
@@ -214,12 +218,35 @@ mod tests {
 
     #[test]
     fn claude_yorishiro_mcp_config_json_points_to_streamable_http_server() {
-        let parsed: serde_json::Value =
-            serde_json::from_str(&claude_yorishiro_mcp_config_json(18744)).expect("valid json");
+        let parsed: serde_json::Value = serde_json::from_str(&claude_yorishiro_mcp_config_json(
+            "http://127.0.0.1:18744/instances/instance-a/mcp",
+        ))
+        .expect("valid json");
         assert_eq!(
             parsed["mcpServers"]["yorishiro"]["url"],
-            "http://127.0.0.1:18744/mcp"
+            "http://127.0.0.1:18744/instances/instance-a/mcp"
         );
         assert_eq!(parsed["mcpServers"]["yorishiro"]["type"], "http");
+    }
+
+    #[test]
+    fn claude_fails_closed_without_runtime_mcp_endpoint() {
+        let ctx = LaunchContext {
+            cwd: None,
+            system_prompt: None,
+            prompt_reminder: None,
+            plugin_dir: None,
+            mcp_endpoint: None,
+            hook_port: 19001,
+            resume: false,
+            resume_session_id: None,
+            realtime_endpoint: None,
+        };
+
+        let error = CLAUDE
+            .build_launch_args(&ctx)
+            .err()
+            .expect("missing endpoint must fail");
+        assert!(error.contains("MCP endpoint is unavailable"));
     }
 }

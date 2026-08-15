@@ -14,7 +14,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::pty::PtyExit;
 
@@ -556,6 +556,11 @@ impl PtySession {
             } => {
                 let adapter = crate::sessions::agent_adapter::lookup(agent_id.as_str())
                     .ok_or_else(|| format!("Unknown agent id: {}", agent_id))?;
+                let mcp_endpoint = if adapter.capabilities().mcp_injection {
+                    Some(app.state::<crate::mcp::McpServerStatus>().endpoint()?)
+                } else {
+                    None
+                };
                 let binary = resolve_agent_binary(adapter, command.as_deref());
                 let mut cmd = CommandBuilder::new(&binary);
                 apply_base_env(&mut cmd);
@@ -583,7 +588,7 @@ impl PtySession {
                     system_prompt: system_prompt.as_deref(),
                     prompt_reminder: prompt_reminder.as_deref(),
                     plugin_dir: plugin_dir.as_deref(),
-                    mcp_port: crate::mcp::server::resolve_port(),
+                    mcp_endpoint: mcp_endpoint.as_deref(),
                     hook_port: crate::pty::HOOK_SERVER_PORT,
                     resume: *resume,
                     resume_session_id: resume_session_id.as_deref(),

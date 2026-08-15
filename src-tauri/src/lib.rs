@@ -23,15 +23,6 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// `Option` は終了時に `take()` して二重 save を防ぐため。
 struct CohabitationStart(std::sync::Mutex<Option<std::time::Instant>>);
 
-#[derive(Clone, Default, serde::Serialize)]
-struct McpServerStatusSnapshot {
-    port: Option<u16>,
-    error: Option<String>,
-}
-
-#[derive(Default)]
-struct McpServerStatus(Mutex<McpServerStatusSnapshot>);
-
 static LOCALIZED_PLUGIN_DIR_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(test)]
@@ -1313,13 +1304,9 @@ fn list_supported_agents() -> Vec<sessions::agent_adapter::AgentDescriptor> {
 /// Return the MCP server startup result captured during Tauri setup.
 #[tauri::command]
 async fn mcp_server_status(
-    state: State<'_, McpServerStatus>,
-) -> Result<McpServerStatusSnapshot, String> {
-    state
-        .0
-        .lock()
-        .map(|status| status.clone())
-        .map_err(|_| "mcp status lock poisoned".to_string())
+    state: State<'_, mcp::McpServerStatus>,
+) -> Result<mcp::McpServerStatusSnapshot, String> {
+    state.snapshot()
 }
 
 /// SDK `.d.ts` ファイル一式。compile 時に bundle に含める。
@@ -2498,7 +2485,7 @@ pub fn run() {
         .manage(RealtimeBridgeState::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
-        .manage(McpServerStatus::default())
+        .manage(mcp::McpServerStatus::default())
         .invoke_handler(tauri::generate_handler![
             prepare_localized_plugin_dir,
             resolve_command_path,
@@ -2569,21 +2556,15 @@ pub fn run() {
             start_hook_server(app.handle().clone());
             let mcp_handle = app.handle().clone();
             match mcp::spawn_server(mcp_handle) {
-                Ok(port) => {
-                    if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
-                        *status = McpServerStatusSnapshot {
-                            port: Some(port),
-                            error: None,
-                        };
+                Ok(runtime) => {
+                    if let Err(error) = app.state::<mcp::McpServerStatus>().set_started(&runtime) {
+                        eprintln!("[yorishiro-mcp] status update failed: {error}");
                     }
-                    eprintln!("[yorishiro-mcp] listening on localhost:{}", port);
+                    eprintln!("[yorishiro-mcp] listening at {}", runtime.endpoint);
                 }
                 Err(err) => {
-                    if let Ok(mut status) = app.state::<McpServerStatus>().0.lock() {
-                        *status = McpServerStatusSnapshot {
-                            port: None,
-                            error: Some(err.clone()),
-                        };
+                    if let Err(error) = app.state::<mcp::McpServerStatus>().set_error(err.clone()) {
+                        eprintln!("[yorishiro-mcp] status update failed: {error}");
                     }
                     eprintln!("[yorishiro-mcp] startup skipped: {}", err);
                 }

@@ -58,7 +58,12 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
       readYorishiroConfigText(),
       readLastStartupReport().catch(() => ""),
       listSupportedAgents().catch(() => []),
-      mcpServerStatus().catch(() => ({ port: null, error: "Could not read MCP status." })),
+      mcpServerStatus().catch(() => ({
+        port: null,
+        endpoint: null,
+        instanceId: null,
+        error: "Could not read MCP status.",
+      })),
       deps.listPacks().catch(() => ({ packs: [] })),
     ]);
 
@@ -165,15 +170,17 @@ export async function collectHealthReport(deps: CollectHealthReportDeps): Promis
 
   items.push(
     healthItem(
-      "mcp-port",
-      "MCP port",
+      "mcp-endpoint",
+      "MCP endpoint",
       mcpStatus.error === null ? "ok" : "warning",
       mcpStatus.error === null
-        ? ` Yorishiro MCP is listening on localhost:${mcpStatus.port ?? expectedMcpPort}.`
+        ? ` Yorishiro MCP is listening at ${mcpStatus.endpoint ?? `http://127.0.0.1:${mcpStatus.port ?? expectedMcpPort}/mcp`} (instance ${mcpStatus.instanceId ?? "unknown"}).`
         : ` Yorishiro MCP did not start on localhost:${expectedMcpPort}: ${mcpStatus.error}`,
       mcpStatus.error === null
         ? undefined
-        : "Check whether another process is using the configured MCP port, then restart  Yorishiro.",
+        : config.mcpPort === null
+          ? "Restart Yorishiro and inspect the startup log."
+          : "Check whether another process is using the configured MCP port, then restart Yorishiro.",
     ),
   );
 

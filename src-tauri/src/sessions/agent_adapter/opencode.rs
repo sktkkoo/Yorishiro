@@ -36,6 +36,9 @@ impl TerminalAgent for OpencodeAgent {
         let mut env = Vec::new();
         let mut temp_files = Vec::new();
         let commands = opencode_yorishiro_commands(ctx.plugin_dir)?;
+        let mcp_endpoint = ctx
+            .mcp_endpoint
+            .ok_or_else(|| "Yorishiro MCP endpoint is unavailable".to_string())?;
 
         // OpenCode の runtime config は session-scoped 注入経路として env var に渡す。
         // project-local opencode.json との deep-merge は v2 scope。
@@ -44,7 +47,7 @@ impl TerminalAgent for OpencodeAgent {
             "mcp": {
                 "yorishiro": {
                     "type": "remote",
-                    "url": format!("http://127.0.0.1:{}/mcp", ctx.mcp_port),
+                    "url": mcp_endpoint,
                     "enabled": true,
                 }
             }
@@ -252,7 +255,7 @@ mod tests {
             system_prompt,
             prompt_reminder: None,
             plugin_dir,
-            mcp_port: 18743,
+            mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
             hook_port: 19001,
             resume: true,
             resume_session_id: None,
@@ -269,7 +272,7 @@ mod tests {
             system_prompt,
             prompt_reminder,
             plugin_dir: None,
-            mcp_port: 18743,
+            mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
             hook_port: 19001,
             resume: true,
             resume_session_id: None,
@@ -352,9 +355,24 @@ mod tests {
         let parsed: Value = serde_json::from_str(json_str).expect("valid json");
         let yorishiro_mcp = &parsed["mcp"]["yorishiro"];
         assert_eq!(yorishiro_mcp["type"], "remote");
-        assert_eq!(yorishiro_mcp["url"], "http://127.0.0.1:18743/mcp");
+        assert_eq!(
+            yorishiro_mcp["url"],
+            "http://127.0.0.1:18743/instances/test-instance/mcp"
+        );
         assert_eq!(yorishiro_mcp["enabled"], true);
         cleanup_temp_files(&result);
+    }
+
+    #[test]
+    fn opencode_fails_closed_without_runtime_mcp_endpoint() {
+        let mut ctx = make_ctx(None, None, None);
+        ctx.mcp_endpoint = None;
+
+        let error = OPENCODE
+            .build_launch_args(&ctx)
+            .err()
+            .expect("missing endpoint must fail");
+        assert!(error.contains("MCP endpoint is unavailable"));
     }
 
     #[test]

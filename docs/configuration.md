@@ -20,7 +20,6 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
   },
   "activeUi": "minimal-badge",
   "motionIntensity": 1.85,
-  "mcpPort": 18743,
   "disabledPacks": ["broken-pack"]
 }
 ```
@@ -40,7 +39,7 @@ Yorishiro は起動時に `~/.yorishiro/config.json` を読み、壊れている
 | `sceneByProject` | `{ [projectRoot: string]: string }` | `{}` | 正規化された project root ごとの active scene override。現在の project root に entry があれば `activeScene` より優先 |
 | `activeUi` | `string` or `null` | `null` | active UI pack の user pick。`null` なら UI pack なし |
 | `motionIntensity` | `number` (`0.0`–`3.0`) | `1.0` | idle procedural motion（呼吸 / sway / head drift / posture）の振幅ノブ。`1.0` は従来どおり、`0` 付近はほぼ静止、上端は opt-in のオーバーアクション |
-| `mcpPort` | `number` | `18743` | Rust MCP server の listen port |
+| `mcpPort` | `number` | auto（18743 preferred） | Rust MCP server の固定 listen port。未指定なら 18743 を試し、使用中の場合は instance ごとの空き port を自動選択する。指定時は自動 fallback せず、衝突するとその instance の agent 起動を fail closed にする |
 | `disabledPacks` | `string[]` | `[]` | rescue 用。指定 id の user pack を load しない |
 | `journalCallback` | `"normal"`, `"rare"`, or `"off"` | `"normal"` | journal callback（セッション開始時の記憶想起）の頻度ノブ。`rare` は日常の想起をせず節目と久しぶりの起動だけに絞り、`off` で無効化。Rust 側が config.json を直接読む |
 

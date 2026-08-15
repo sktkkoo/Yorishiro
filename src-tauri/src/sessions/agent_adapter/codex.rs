@@ -53,8 +53,11 @@ impl TerminalAgent for CodexAgent {
             args.push("--last".to_string());
         }
 
+        let mcp_endpoint = ctx
+            .mcp_endpoint
+            .ok_or_else(|| "Yorishiro MCP endpoint is unavailable".to_string())?;
         args.push("-c".to_string());
-        args.push(codex_yorishiro_mcp_config_arg(ctx.mcp_port));
+        args.push(codex_yorishiro_mcp_config_arg(mcp_endpoint));
 
         if let Some(prompt) =
             super::merge_system_prompt_and_reminder(ctx.system_prompt, ctx.prompt_reminder)
@@ -167,9 +170,8 @@ fn toml_basic_string(value: &str) -> String {
     out
 }
 
-fn codex_yorishiro_mcp_config_arg(port: u16) -> String {
-    let url = format!("http://127.0.0.1:{}/mcp", port);
-    format!("mcp_servers.yorishiro.url={}", toml_basic_string(&url))
+fn codex_yorishiro_mcp_config_arg(endpoint: &str) -> String {
+    format!("mcp_servers.yorishiro.url={}", toml_basic_string(endpoint))
 }
 
 #[cfg(test)]
@@ -186,7 +188,7 @@ mod tests {
             system_prompt,
             prompt_reminder,
             plugin_dir: None,
-            mcp_port: 18743,
+            mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
             hook_port: 19001,
             resume: true,
             resume_session_id: None,
@@ -205,7 +207,7 @@ mod tests {
             system_prompt,
             prompt_reminder,
             plugin_dir: None,
-            mcp_port: 18743,
+            mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
             hook_port: 19001,
             resume,
             resume_session_id: None,
@@ -290,9 +292,21 @@ mod tests {
     #[test]
     fn codex_yorishiro_mcp_config_arg_points_to_streamable_http_server() {
         assert_eq!(
-            codex_yorishiro_mcp_config_arg(18743),
-            "mcp_servers.yorishiro.url=\"http://127.0.0.1:18743/mcp\""
+            codex_yorishiro_mcp_config_arg("http://127.0.0.1:18743/instances/test-instance/mcp"),
+            "mcp_servers.yorishiro.url=\"http://127.0.0.1:18743/instances/test-instance/mcp\""
         );
+    }
+
+    #[test]
+    fn codex_fails_closed_without_runtime_mcp_endpoint() {
+        let mut ctx = make_ctx_with_resume(None, None, None, false);
+        ctx.mcp_endpoint = None;
+
+        let error = CODEX
+            .build_launch_args(&ctx)
+            .err()
+            .expect("missing endpoint must fail");
+        assert!(error.contains("MCP endpoint is unavailable"));
     }
 
     #[test]
@@ -312,10 +326,10 @@ mod tests {
 
         assert!(!result.args.iter().any(|arg| arg == "resume"));
         assert!(!result.args.iter().any(|arg| arg == "--last"));
-        assert!(result
-            .args
-            .iter()
-            .any(|arg| arg == &codex_yorishiro_mcp_config_arg(18743)));
+        assert!(result.args.iter().any(|arg| arg
+            == &codex_yorishiro_mcp_config_arg(
+                "http://127.0.0.1:18743/instances/test-instance/mcp"
+            )));
     }
 
     #[test]
