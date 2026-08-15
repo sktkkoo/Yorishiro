@@ -2810,7 +2810,7 @@ fn extract_vrm_thumbnail(file: &mut std::fs::File, file_size: u64) -> Result<Vec
     Ok(bytes)
 }
 
-fn open_vrm_thumbnail_source(avatars_dir: &Path, id: &str) -> Result<(std::fs::File, u64), String> {
+fn validate_vrm_avatar_id(id: &str) -> Result<(), String> {
     let id_path = Path::new(id);
     let is_single_normal_component = id_path.components().count() == 1
         && matches!(
@@ -2824,6 +2824,11 @@ fn open_vrm_thumbnail_source(avatars_dir: &Path, id: &str) -> Result<(std::fs::F
     {
         return Err("Invalid VRM avatar id".into());
     }
+    Ok(())
+}
+
+fn open_vrm_thumbnail_source(avatars_dir: &Path, id: &str) -> Result<(std::fs::File, u64), String> {
+    validate_vrm_avatar_id(id)?;
     let avatars_dir = avatars_dir
         .canonicalize()
         .map_err(|_| "Avatar directory is unavailable".to_string())?;
@@ -2846,6 +2851,29 @@ fn open_vrm_thumbnail_source(avatars_dir: &Path, id: &str) -> Result<(std::fs::F
         .map_err(|_| "VRM thumbnail source could not be inspected".to_string())?
         .len();
     Ok((file, file_size))
+}
+
+/// AppData/avatars 直下の catalog ID だけを削除する。symlink は追跡せず link 自体を削除し、
+/// directory は削除しない。並行操作で先に消えていた場合は idempotent な Ok(false) とする。
+fn remove_vrm_avatar_in_dir(avatars_dir: &Path, id: &str) -> Result<bool, String> {
+    validate_vrm_avatar_id(id)?;
+    let avatars_dir = match avatars_dir.canonicalize() {
+        Ok(path) => path,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err("Avatar directory is unavailable".into()),
+    };
+    let target = avatars_dir.join(id);
+    let metadata = match std::fs::symlink_metadata(&target) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err("VRM avatar could not be inspected".into()),
+    };
+    if metadata.is_dir() {
+        return Err("VRM avatar id refers to a directory".into());
+    }
+    std::fs::remove_file(&target)
+        .map_err(|error| format!("Failed to remove VRM avatar: {error}"))?;
+    Ok(true)
 }
 
 fn open_vrm_import_source(src_path: &Path) -> Result<(std::fs::File, String), String> {
@@ -3099,6 +3127,17 @@ async fn read_vrm_thumbnail(app: AppHandle, id: String) -> Result<tauri::ipc::Re
     Ok(tauri::ipc::Response::new(bytes))
 }
 
+/// Settings が表示した imported avatar を catalog から明示的に削除する。
+/// raw path は受け取らず、AppData/avatars 直下の検証済み basename だけを対象にする。
+#[tauri::command]
+async fn remove_vrm_avatar(app: AppHandle, id: String) -> Result<bool, String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get AppData: {e}"))?;
+    remove_vrm_avatar_in_dir(&app_data.join("avatars"), &id)
+}
+
 /// VRM file import: copy to $APPDATA/avatars/ and return the destination path.
 #[tauri::command]
 async fn import_vrm(app: AppHandle, src: String) -> Result<String, String> {
@@ -3138,7 +3177,8 @@ mod import_vrm_tests {
         extract_vrm_thumbnail, has_vrm_extension, import_vrm_into_dir,
         import_vrm_into_dir_with_limit, list_vrm_avatars_in_dir, open_vrm_import_source,
         open_vrm_thumbnail_source, probe_vrm_source, read_vrm_document, read_vrm_meta,
-        VrmMetaNormalized, GLB_BIN_CHUNK_TYPE, GLB_JSON_CHUNK_TYPE, MAX_VRM_JSON_CHUNK_BYTES,
+        remove_vrm_avatar_in_dir, VrmMetaNormalized, GLB_BIN_CHUNK_TYPE, GLB_JSON_CHUNK_TYPE,
+        MAX_VRM_JSON_CHUNK_BYTES,
     };
     use std::ffi::OsStr;
     use std::fs;
@@ -3472,6 +3512,51 @@ mod import_vrm_tests {
     }
 
     #[test]
+    fn removes_only_a_direct_catalog_file_and_is_idempotent() {
+        let dir = tmp_dir("remove-avatar");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir avatars");
+        fs::write(avatars.join("avatar.vrm"), vrm1_glb("Avatar")).expect("write avatar");
+
+        assert!(remove_vrm_avatar_in_dir(&avatars, "avatar.vrm").expect("remove"));
+        assert!(!avatars.join("avatar.vrm").exists());
+        assert!(!remove_vrm_avatar_in_dir(&avatars, "avatar.vrm").expect("remove again"));
+        for invalid in [
+            "../avatar.vrm",
+            "nested/avatar.vrm",
+            ".hidden.vrm",
+            "avatar.glb",
+        ] {
+            assert!(
+                remove_vrm_avatar_in_dir(&avatars, invalid).is_err(),
+                "invalid id should be rejected: {invalid}"
+            );
+        }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn removing_a_catalog_symlink_never_removes_its_target() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tmp_dir("remove-avatar-symlink");
+        let avatars = dir.join("avatars");
+        fs::create_dir_all(&avatars).expect("mkdir avatars");
+        let outside = dir.join("outside.vrm");
+        fs::write(&outside, vrm1_glb("Outside")).expect("write outside");
+        symlink(&outside, avatars.join("linked.vrm")).expect("create symlink");
+
+        assert!(remove_vrm_avatar_in_dir(&avatars, "linked.vrm").expect("remove link"));
+        assert!(
+            outside.exists(),
+            "the symlink target must survive catalog removal"
+        );
+        assert!(!avatars.join("linked.vrm").exists());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn missing_and_unknown_metadata_are_not_treated_as_allowed() {
         let bytes = glb_bytes(
             r#"{"extensions":{"VRMC_vrm":{"meta":{"name":"Avatar","commercialUsage":"futureValue"}}}}"#,
@@ -3690,6 +3775,7 @@ pub fn run() {
             import_vrm,
             list_vrm_avatars,
             read_vrm_thumbnail,
+            remove_vrm_avatar,
             probe_vrm,
             poll_hook_signals,
             user_home_dir,

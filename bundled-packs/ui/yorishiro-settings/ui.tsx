@@ -30,6 +30,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  Trash2,
   User,
   Volume2,
   VolumeX,
@@ -134,6 +135,11 @@ export interface VrmCandidate {
   readonly meta: VrmAvatarMeta | null;
   readonly thumbnail: VrmThumbnailRef | null;
 }
+
+type VrmCatalogNotice = {
+  readonly kind: "removed" | "missing";
+  readonly name: string;
+};
 
 export interface YoriVrmDetails {
   readonly author: string;
@@ -2847,11 +2853,15 @@ interface VrmChooserDialogProps {
   readonly loadError: string | null;
   readonly importError: string | null;
   readonly importNotice: boolean;
+  readonly catalogNotice: string | null;
+  readonly removeError: string | null;
   readonly importing: boolean;
+  readonly removing: boolean;
   readonly onSelect: (id: string) => void;
   readonly onImport: () => void;
   readonly onRetryLoad: () => void;
   readonly onRetryImport: () => void;
+  readonly onRemove: (candidate: VrmCandidate) => Promise<boolean>;
   readonly onApply: () => void;
   readonly onClose: () => void;
   readonly strings: UiStrings;
@@ -2865,23 +2875,36 @@ function VrmChooserDialog({
   loadError,
   importError,
   importNotice,
+  catalogNotice,
+  removeError,
   importing,
+  removing,
   onSelect,
   onImport,
   onRetryLoad,
   onRetryImport,
+  onRemove,
   onApply,
   onClose,
   strings,
 }: VrmChooserDialogProps): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const removeCancelRef = useRef<HTMLButtonElement>(null);
+  const removeConfirmRef = useRef<HTMLButtonElement>(null);
   const thumbnailCache = useVrmThumbnailCache();
   const [query, setQuery] = useState("");
+  const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const sorted = sortVrmCandidates(candidates);
   const visible = filterVrmCandidates(sorted, query);
   const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0];
   const selectedIndex = visible.findIndex((candidate) => candidate.id === selected?.id);
   const selectedName = selected ? vrmCandidateDisplayName(selected) : strings.vrmNoMatches;
+  const selectedCreators = selected
+    ? selected.kind === "yori"
+      ? strings.vrmYoriAuthor
+      : selected.meta?.authors.join(", ") || strings.vrmNotSpecified
+    : strings.vrmNotSpecified;
+  const removeTarget = candidates.find((candidate) => candidate.id === removeTargetId);
   const applyDisabled =
     phase !== "ready" || !selected?.valid || selected.kind === "missing" || selected.active;
   const disabledReason =
@@ -2921,7 +2944,18 @@ function VrmChooserDialog({
     return () => window.clearTimeout(timeout);
   }, [candidates.length]);
 
+  useEffect(() => {
+    if (!removeTarget) return;
+    const timeout = window.setTimeout(() => removeCancelRef.current?.focus(), 0);
+    return () => window.clearTimeout(timeout);
+  }, [removeTarget]);
+
   const onDialogKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (removeTarget && event.key === "Escape") {
+      event.preventDefault();
+      setRemoveTargetId(null);
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault();
       onClose();
@@ -3106,6 +3140,11 @@ function VrmChooserDialog({
                   {strings.vrmImportedNotApplied}
                 </div>
               ) : null}
+              {catalogNotice ? (
+                <div role="status" style={{ color: COLORS.fg, fontSize: FONT.sizeXs }}>
+                  {catalogNotice}
+                </div>
+              ) : null}
               {importError ? (
                 <div role="alert" style={{ color: COLORS.statusError, fontSize: FONT.sizeXs }}>
                   {strings.vrmImportFailed}
@@ -3125,6 +3164,11 @@ function VrmChooserDialog({
                   >
                     {strings.vrmRetry}
                   </button>
+                </div>
+              ) : null}
+              {removeError ? (
+                <div role="alert" style={{ color: COLORS.statusError, fontSize: FONT.sizeXs }}>
+                  {strings.vrmRemoveFailed} {removeError}
                 </div>
               ) : null}
             </div>
@@ -3186,11 +3230,7 @@ function VrmChooserDialog({
                 ) : null}
                 {visible.map((candidate) => {
                   const primary = vrmCandidateDisplayName(candidate);
-                  const author = candidate.meta?.authors[0];
-                  const secondary =
-                    primary !== candidate.label
-                      ? [candidate.label, author].filter(Boolean).join(" · ")
-                      : author;
+                  const secondary = primary !== candidate.label ? candidate.label : null;
                   const isSelected = candidate.id === selected?.id;
                   return (
                     <button
@@ -3314,25 +3354,78 @@ function VrmChooserDialog({
                 strings={strings}
               />
               <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: SPACING.sm }}>
-                  <h3 style={{ margin: 0, fontSize: FONT.sizeM }}>{selectedName}</h3>
-                  {selected?.active ? (
-                    <span style={{ color: COLORS.accent, fontSize: FONT.sizeXs }}>
-                      {strings.vrmActive}
-                    </span>
-                  ) : selected?.valid ? (
-                    <span style={{ color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
-                      {strings.vrmPending}
-                    </span>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: SPACING.sm,
+                  }}
+                >
+                  <div
+                    style={{ minWidth: 0, display: "flex", alignItems: "center", gap: SPACING.sm }}
+                  >
+                    <h3 style={{ margin: 0, fontSize: FONT.sizeM, overflowWrap: "anywhere" }}>
+                      {selectedName}
+                    </h3>
+                    {selected?.active ? (
+                      <span style={{ color: COLORS.accent, fontSize: FONT.sizeXs }}>
+                        {strings.vrmActive}
+                      </span>
+                    ) : selected?.valid ? (
+                      <span style={{ color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
+                        {strings.vrmPending}
+                      </span>
+                    ) : null}
+                  </div>
+                  {selected?.kind === "file" && !selected.active ? (
+                    <button
+                      type="button"
+                      onClick={() => setRemoveTargetId(selected.id)}
+                      disabled={removing}
+                      style={{
+                        minHeight: SIZE.targetMin,
+                        flex: "0 0 auto",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: SPACING.xs,
+                        padding: `0 ${SPACING.sm}`,
+                        border: `1px solid ${COLORS.borderSubtle}`,
+                        borderRadius: RADIUS.sm,
+                        background: "transparent",
+                        color: COLORS.fgDim,
+                        font: "inherit",
+                        fontSize: FONT.sizeXs,
+                        cursor: removing ? "wait" : "pointer",
+                      }}
+                    >
+                      <Trash2 size={13} aria-hidden="true" />
+                      {strings.vrmRemove}
+                    </button>
                   ) : null}
                 </div>
-                <div style={{ color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "baseline",
+                    gap: SPACING.xs,
+                    marginTop: "3px",
+                    fontSize: FONT.sizeS,
+                  }}
+                >
+                  <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>
+                    {strings.vrmCreator}
+                  </span>
+                  <span style={{ color: COLORS.fg, fontWeight: FONT.weightSemibold }}>
+                    {selectedCreators}
+                  </span>
+                </div>
+                <div style={{ marginTop: "2px", color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
                   {selected?.kind === "yori"
-                    ? `${strings.vrmBundledSource} · ${strings.vrmYoriAuthor}`
+                    ? strings.vrmBundledSource
                     : [
                         selected?.label,
                         selected?.meta?.specVersion && `VRM ${selected.meta.specVersion}`,
-                        selected?.meta?.authors[0],
                       ]
                         .filter(Boolean)
                         .join(" · ")}
@@ -3408,6 +3501,104 @@ function VrmChooserDialog({
           </button>
         </footer>
       </div>
+      {removeTarget ? (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 1,
+            display: "grid",
+            placeItems: "center",
+            padding: SPACING.md,
+            background: COLORS.overlayBackdrop,
+          }}
+        >
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="vrm-remove-title"
+            aria-describedby="vrm-remove-body"
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && !removing) {
+                event.preventDefault();
+                setRemoveTargetId(null);
+              } else if (event.key === "Tab") {
+                const first = removeCancelRef.current;
+                const last = removeConfirmRef.current;
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
+              }
+            }}
+            style={{
+              width: "min(92vw, 420px)",
+              padding: SPACING.lg,
+              border: `1px solid ${COLORS.borderMid}`,
+              borderRadius: RADIUS.lg,
+              background: COLORS.bgPanel,
+              boxShadow: "0 18px 52px rgba(0, 0, 0, 0.52)",
+            }}
+          >
+            <h3 id="vrm-remove-title" style={{ margin: 0, fontSize: FONT.sizeM }}>
+              {strings.vrmRemoveConfirmTitle}
+            </h3>
+            <p id="vrm-remove-body" style={{ margin: `${SPACING.sm} 0 ${SPACING.lg}` }}>
+              {strings.vrmRemoveConfirmBody.replace(
+                "{name}",
+                vrmCandidateDisplayName(removeTarget),
+              )}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: SPACING.sm }}>
+              <button
+                ref={removeCancelRef}
+                type="button"
+                onClick={() => setRemoveTargetId(null)}
+                disabled={removing}
+                style={{
+                  minWidth: "88px",
+                  minHeight: SIZE.targetMin,
+                  border: `1px solid ${COLORS.borderSubtle}`,
+                  borderRadius: RADIUS.sm,
+                  background: "transparent",
+                  color: COLORS.fg,
+                  font: "inherit",
+                  cursor: removing ? "default" : "pointer",
+                }}
+              >
+                {strings.vrmCancel}
+              </button>
+              <button
+                ref={removeConfirmRef}
+                type="button"
+                onClick={() => {
+                  void onRemove(removeTarget).then((removed) => {
+                    if (removed) setRemoveTargetId(null);
+                  });
+                }}
+                disabled={removing}
+                style={{
+                  minWidth: "88px",
+                  minHeight: SIZE.targetMin,
+                  border: `1px solid ${COLORS.statusError}`,
+                  borderRadius: RADIUS.sm,
+                  background: COLORS.statusError,
+                  color: COLORS.bgPanel,
+                  font: "inherit",
+                  fontWeight: FONT.weightSemibold,
+                  cursor: removing ? "wait" : "pointer",
+                  opacity: removing ? 0.6 : 1,
+                }}
+              >
+                {removing ? strings.loading : strings.vrmRemoveConfirm}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3429,6 +3620,9 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [vrmImporting, setVrmImporting] = useState(false);
   const [vrmImportError, setVrmImportError] = useState<string | null>(null);
   const [vrmImportNotice, setVrmImportNotice] = useState(false);
+  const [vrmCatalogNotice, setVrmCatalogNotice] = useState<VrmCatalogNotice | null>(null);
+  const [vrmRemoving, setVrmRemoving] = useState(false);
+  const [vrmRemoveError, setVrmRemoveError] = useState<string | null>(null);
   const lastVrmImportPath = useRef<string | null>(null);
   const [persona, setPersona] = useState<string | null>(null);
   const [scene, setScene] = useState<string | null>(null);
@@ -3470,6 +3664,12 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const scenes = ctx.app.listScenes();
   const sceneSelectValue = configLoaded ? resolveSceneSelectValue(scene) : "";
   const strings = getStrings(resolvedLanguage);
+  const vrmCatalogNoticeMessage = vrmCatalogNotice
+    ? (vrmCatalogNotice.kind === "removed"
+        ? strings.vrmRemoved
+        : strings.vrmMissingRemoved
+      ).replace("{name}", vrmCatalogNotice.name)
+    : null;
   const vrmEntries = vrmCatalog.phase === "ready" ? vrmCatalog.entries : vrmEntriesRef.current;
   const vrmCandidates = resolveVrmCandidates(vrmEntries, activeVrmPath);
   const displayedVrmName =
@@ -3486,26 +3686,38 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     ? resolveNewSessionConfirm(strings, pendingNewSessionChange)
     : null;
 
-  const loadVrmCatalog = useCallback(async (preferredPath?: string | null) => {
-    setVrmCatalog({ phase: "loading" });
-    try {
-      const entries = await invoke<VrmAvatarEntry[]>("list_vrm_avatars");
-      vrmEntriesRef.current = entries;
-      setVrmCatalog({ phase: "ready", entries });
-      const activePath = localStorage.getItem("yorishiro:vrm");
-      const candidates = resolveVrmCandidates(entries, activePath);
-      const preferred =
-        preferredPath === undefined
-          ? candidates.find((candidate) => candidate.active)
-          : candidates.find((candidate) => candidate.path === preferredPath);
-      setSelectedVrmId(preferred?.id ?? activeVrmCandidateId(candidates));
-      return entries;
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      setVrmCatalog({ phase: "error", reason });
-      return null;
-    }
-  }, []);
+  const loadVrmCatalog = useCallback(
+    async (preferredPath?: string | null) => {
+      setVrmCatalog({ phase: "loading" });
+      try {
+        const entries = await invoke<VrmAvatarEntry[]>("list_vrm_avatars");
+        vrmEntriesRef.current = entries;
+        setVrmCatalog({ phase: "ready", entries });
+        const activePath = localStorage.getItem("yorishiro:vrm");
+        const activeEntryExists =
+          activePath === null || entries.some((entry) => entry.path === activePath);
+        const resolvedActivePath = activeEntryExists ? activePath : null;
+        if (activePath !== null && !activeEntryExists) {
+          const missingName = activePath.split(/[\\/]/).pop() || activePath;
+          ctx.app.setVrm(null);
+          setActiveVrmPath(null);
+          setVrmCatalogNotice({ kind: "missing", name: missingName });
+        }
+        const candidates = resolveVrmCandidates(entries, resolvedActivePath);
+        const preferred =
+          preferredPath === undefined
+            ? candidates.find((candidate) => candidate.active)
+            : candidates.find((candidate) => candidate.path === preferredPath);
+        setSelectedVrmId(preferred?.id ?? activeVrmCandidateId(candidates));
+        return entries;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        setVrmCatalog({ phase: "error", reason });
+        return null;
+      }
+    },
+    [ctx.app],
+  );
 
   useEffect(() => {
     void loadVrmCatalog();
@@ -3762,10 +3974,38 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
     if (path) void importVrmPath(path);
   };
 
+  const onRemoveVrm = async (candidate: VrmCandidate): Promise<boolean> => {
+    if (candidate.kind !== "file" || candidate.active || candidate.sourceId === null) return false;
+    const ordered = sortVrmCandidates(vrmCandidates);
+    const index = ordered.findIndex((entry) => entry.id === candidate.id);
+    const fallback =
+      ordered.slice(index + 1).find((entry) => entry.id !== candidate.id) ??
+      [...ordered.slice(0, Math.max(index, 0))]
+        .reverse()
+        .find((entry) => entry.id !== candidate.id);
+    setVrmRemoving(true);
+    setVrmRemoveError(null);
+    try {
+      const removed = await invoke<boolean>("remove_vrm_avatar", { id: candidate.sourceId });
+      await loadVrmCatalog(fallback?.path ?? null);
+      const name = vrmCandidateDisplayName(candidate);
+      setVrmCatalogNotice({ kind: removed ? "removed" : "missing", name });
+      return true;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      setVrmRemoveError(reason);
+      ctx.emitEvent("yorishiro-settings:write-failed", { field: "vrm", reason });
+      return false;
+    } finally {
+      setVrmRemoving(false);
+    }
+  };
+
   const openVrmDialog = () => {
     setSelectedVrmId(activeVrmCandidateId(vrmCandidates));
     setVrmImportNotice(false);
     setVrmImportError(null);
+    setVrmRemoveError(null);
     setVrmCatalogOpen(true);
   };
 
@@ -4040,6 +4280,19 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
               {strings.vrmChange}
             </button>
           </div>
+          {vrmCatalogNoticeMessage ? (
+            <div
+              role="status"
+              style={{
+                gridColumn: "2",
+                marginTop: `-${SPACING.xs}`,
+                color: COLORS.fgDim,
+                fontSize: FONT.sizeXs,
+              }}
+            >
+              {vrmCatalogNoticeMessage}
+            </div>
+          ) : null}
 
           {/* Persona */}
           <div style={{ opacity: 0.7 }}>{strings.labelPersona}</div>
@@ -4254,7 +4507,10 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           loadError={vrmCatalog.phase === "error" ? vrmCatalog.reason : null}
           importError={vrmImportError}
           importNotice={vrmImportNotice}
+          catalogNotice={vrmCatalogNoticeMessage}
+          removeError={vrmRemoveError}
           importing={vrmImporting}
+          removing={vrmRemoving}
           onSelect={(id) => {
             setSelectedVrmId(id);
             setVrmImportNotice(false);
@@ -4262,6 +4518,7 @@ export function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           onImport={() => void onImportVrm()}
           onRetryLoad={() => void loadVrmCatalog()}
           onRetryImport={retryLastVrmImport}
+          onRemove={onRemoveVrm}
           onApply={onApplyVrm}
           onClose={closeVrmDialog}
           strings={strings}

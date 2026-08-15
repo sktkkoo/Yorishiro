@@ -151,6 +151,10 @@ describe("changeStrings", () => {
     expect(getStrings("ja").vrmApply).toBe("このアバターに切り替える");
     expect(getStrings("en").vrmDialogTitle).toBe("Change avatar");
     expect(getStrings("ja").vrmDialogTitle).toBe("アバターを変更");
+    expect(getStrings("en").vrmCreator).toBe("Creator");
+    expect(getStrings("ja").vrmCreator).toBe("作者");
+    expect(getStrings("en").vrmRemove).toBe("Remove from list…");
+    expect(getStrings("ja").vrmRemove).toBe("一覧から削除…");
   });
 });
 

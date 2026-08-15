@@ -41,6 +41,14 @@ export interface UiStrings {
   readonly vrmInvalid: string;
   readonly vrmMissingBadge: string;
   readonly vrmMissingActive: string;
+  readonly vrmMissingRemoved: string;
+  readonly vrmCreator: string;
+  readonly vrmRemove: string;
+  readonly vrmRemoveConfirmTitle: string;
+  readonly vrmRemoveConfirmBody: string;
+  readonly vrmRemoveConfirm: string;
+  readonly vrmRemoveFailed: string;
+  readonly vrmRemoved: string;
   readonly vrmApply: string;
   readonly vrmCancel: string;
   readonly vrmApplyDisabledInvalid: string;
@@ -258,6 +266,14 @@ const EN: UiStrings = {
   vrmInvalid: "Invalid",
   vrmMissingBadge: "Missing",
   vrmMissingActive: "The active VRM is missing from the avatar folder.",
+  vrmMissingRemoved: "{name} was not found and was removed from the list.",
+  vrmCreator: "Creator",
+  vrmRemove: "Remove from list…",
+  vrmRemoveConfirmTitle: "Remove avatar?",
+  vrmRemoveConfirmBody: "{name} and its imported file will be removed. This cannot be undone.",
+  vrmRemoveConfirm: "Remove",
+  vrmRemoveFailed: "Could not remove the avatar.",
+  vrmRemoved: "Removed {name} from the list.",
   vrmApply: "Switch to this avatar",
   vrmCancel: "Cancel",
   vrmApplyDisabledInvalid: "This file cannot be applied because it is invalid.",
@@ -470,6 +486,14 @@ const JA: UiStrings = {
   vrmInvalid: "無効",
   vrmMissingBadge: "見つかりません",
   vrmMissingActive: "使用中の VRM がアバターフォルダに見つかりません。",
+  vrmMissingRemoved: "{name} が見つからなかったため、一覧から削除しました。",
+  vrmCreator: "作者",
+  vrmRemove: "一覧から削除…",
+  vrmRemoveConfirmTitle: "アバターを削除しますか？",
+  vrmRemoveConfirmBody: "{name} と取り込み済みファイルを削除します。この操作は元に戻せません。",
+  vrmRemoveConfirm: "削除",
+  vrmRemoveFailed: "アバターを削除できませんでした。",
+  vrmRemoved: "{name} を一覧から削除しました。",
   vrmApply: "このアバターに切り替える",
   vrmCancel: "キャンセル",
   vrmApplyDisabledInvalid: "無効なファイルのため適用できません。",

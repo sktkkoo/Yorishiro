@@ -21,6 +21,8 @@
 
 `read_vrm_thumbnail` は catalog の basename ID だけを受ける。`$APPDATA/avatars` 直下の regular file に再制限し、外部/data URI と symlink を拒否する。埋め込み BIN の PNG/JPEG だけを最大 2 MiB・最大辺 2048px・宣言範囲内で読み、magic と画像 header を確認して raw bytes を返す。catalog response には画像 bytes を含めず、chooser が可視候補と選択中候補だけを遅延取得する。
 
+`remove_vrm_avatar` も raw path ではなく同じ catalog basename ID だけを受け、`$APPDATA/avatars` 直下の対象だけを `remove_file` する。directory は削除せず、symlink は追跡せず link 自体だけを削除する。UI は bundled Yori と使用中 avatar を削除対象にせず、imported avatar の選択後に不可逆な file 削除であることを確認する。保存済み active path が存在しない場合は、「見つからないため一覧から削除した」と通知し、stale localStorage 参照を Yori へ自動復帰する。実在するが破損・読取不能な file は自動削除せず invalid row として残し、利用者に判断させる。
+
 ## なぜそう決めたか
 
 コピー先 `$APPDATA/avatars/` は assetProtocol scope（`$APPDATA/**`）配下で、webview から asset 経由で読める。検証なしだと：
@@ -44,6 +46,6 @@ symlink・非 regular file・非 GLB を拒否し、検証した handle を直�
 
 ## 関連 reference
 
-- `src-tauri/src/lib.rs` — `open_vrm_import_source` / `read_vrm_document` / `read_vrm_thumbnail` / `list_vrm_avatars_in_dir` / `import_vrm_into_dir`
+- `src-tauri/src/lib.rs` — `open_vrm_import_source` / `read_vrm_document` / `read_vrm_thumbnail` / `remove_vrm_avatar_in_dir` / `list_vrm_avatars_in_dir` / `import_vrm_into_dir`
 - [`voice-clip-resolution.md`](voice-clip-resolution.md) — pack-local ref の `.`/`..` 拒否（同じく asset 解決の security 境界）
 - `docs/security.md`「Current enforcement status」

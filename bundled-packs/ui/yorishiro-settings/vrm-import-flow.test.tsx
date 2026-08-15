@@ -125,6 +125,8 @@ describe("VRM import settings handler", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     await screen.findByRole("dialog", { name: "Change avatar" });
     await screen.findByRole("option", { name: /active\.vrm/ });
+    expect(screen.getByText("Creator")).toBeTruthy();
+    expect(screen.getAllByText("Active Author").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("option", { name: "Yori" }));
     expect(screen.getAllByText("LUCAS").length).toBeGreaterThan(0);
     expect(
@@ -165,5 +167,57 @@ describe("VRM import settings handler", () => {
     fireEvent.click(screen.getByRole("option", { name: /active\.vrm/ }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("listbox", { name: "Choose avatar" })).toBeNull();
+  });
+
+  it("removes a selected imported avatar only after confirmation", async () => {
+    localStorage.setItem("yorishiro:vrm", activeEntry.path);
+    const setVrm = vi.fn();
+    let removed = false;
+    invokeMock.mockImplementation(async (command: string, args?: { id?: string }) => {
+      if (command === "list_vrm_avatars")
+        return removed ? [activeEntry] : [activeEntry, importedEntry];
+      if (command === "remove_vrm_avatar") {
+        expect(args?.id).toBe(importedEntry.id);
+        removed = true;
+        return true;
+      }
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<Panel ctx={settingsContext(setVrm)} />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    fireEvent.click(await screen.findByRole("option", { name: /imported\.vrm/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove from list…" }));
+
+    const confirmation = screen.getByRole("alertdialog", { name: "Remove avatar?" });
+    expect(confirmation.textContent).toContain("Imported and its imported file will be removed");
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith("remove_vrm_avatar", { id: importedEntry.id }),
+    );
+    await waitFor(() => expect(screen.queryByRole("option", { name: /imported\.vrm/ })).toBeNull());
+    expect(screen.getAllByText("Removed Imported from the list.").length).toBeGreaterThan(0);
+    expect(setVrm).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Remove from list…" })).toBeNull();
+  });
+
+  it("reports and clears a stale active path that is no longer in the catalog", async () => {
+    localStorage.setItem("yorishiro:vrm", "/app/avatars/moved-away.vrm");
+    const setVrm = vi.fn();
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_vrm_avatars") return [];
+      throw new Error(`unexpected command: ${command}`);
+    });
+
+    render(<Panel ctx={settingsContext(setVrm)} />);
+    await waitFor(() => expect(setVrm).toHaveBeenCalledWith(null));
+    expect(
+      screen.getByText("moved-away.vrm was not found and was removed from the list."),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    expect(
+      (await screen.findByRole("option", { name: /Yori/ })).getAttribute("aria-selected"),
+    ).toBe("true");
   });
 });
