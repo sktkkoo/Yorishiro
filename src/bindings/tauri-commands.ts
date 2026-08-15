@@ -292,6 +292,8 @@ export const listSupportedAgents = (): Promise<readonly AgentDescriptor[]> =>
 
 export interface McpServerStatus {
   readonly port: number | null;
+  readonly endpoint: string | null;
+  readonly instanceId: string | null;
   readonly error: string | null;
 }
 

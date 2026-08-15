@@ -26,7 +26,7 @@ src-tauri/src/
 │       └── opencode.rs — OpenCode adapter
 └── mcp/
     ├── mod.rs     — re-exports (4 lines)
-    ├── server.rs  — MCP HTTP server (port 18743 default) / spawn / round-trip
+    ├── server.rs  — MCP HTTP server (18743 preferred / per-instance endpoint) / spawn / round-trip
     ├── tools.rs   — MCP tool 実装 (pack diagnostics / pack enable-disable / state / controls / presence tools)
     └── types.rs   — DTO 定義（TS と shared shape の document 役割）
 ```
@@ -71,7 +71,7 @@ MCP:
 
 1. State 登録：`PtyState`、`WatcherState`
 2. Hook server 起動：127.0.0.1:**19001**（Claude Code → Yorishiro の signal 受け）
-3. MCP server spawn：`~/.yorishiro/config.json::mcpPort`、default **18743**（失敗しても crash せず stderr に log）
+3. MCP server spawn：`mcpPort` 指定時は固定、未指定時は **18743** preferred + 空き port fallback。runtime endpoint を instance 単位で保持（失敗しても app は crash せず、agent spawn は fail closed）
 4. Plugins setup：opener、dialog
 5. Tauri runloop へ
 

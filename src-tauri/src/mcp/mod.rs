@@ -12,4 +12,4 @@ pub mod server;
 pub mod tools;
 pub mod types;
 
-pub use server::spawn_server;
+pub use server::{spawn_server, McpServerStatus, McpServerStatusSnapshot};

@@ -66,7 +66,8 @@ pub struct LaunchContext<'a> {
     pub system_prompt: Option<&'a str>,
     pub prompt_reminder: Option<&'a str>,
     pub plugin_dir: Option<&'a Path>,
-    pub mcp_port: u16,
+    /// この process が実際に所有する instance-scoped MCP endpoint。
+    pub mcp_endpoint: Option<&'a str>,
     pub hook_port: u16,
     pub resume: bool,
     /// provider 固有の会話 ID を指定した exact resume。未指定時は従来の resume policy。

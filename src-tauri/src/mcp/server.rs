@@ -1,8 +1,9 @@
 //! Yorishiro MCP server の起動と lifecycle、および Rust → TS event channel の
 //! round-trip 管理。
 //!
-//! port は `~/.yorishiro/config.json` の mcpPort か default 18743。bind fail
-//! は log に書いて server 起動を skip、Yorishiro 本体は継続させる。
+//! port は `~/.yorishiro/config.json` の mcpPort が explicit なら固定。未指定なら
+//! default 18743 を試し、使用中なら OS 選択の空き port に退避する。embedded agent
+//! には、この process だけが持つ instance path を含む endpoint を渡す。
 //!
 //! rmcp 1.7.0 の `transport-streamable-http-server` feature を `axum` の
 //! Router に nest してもらい、`tokio::spawn` で background に流す。
@@ -16,6 +17,8 @@
 //! Internal design-record: 2026-04-18-phase-1c-rescue-and-mcp.md Section 4.5 / 4.6
 
 use std::collections::HashMap;
+use std::io::ErrorKind;
+use std::net::TcpListener;
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
@@ -29,6 +32,75 @@ use tokio::sync::oneshot;
 use crate::mcp::tools::Yorishiro;
 
 const DEFAULT_PORT: u16 = 18743;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct McpServerRuntime {
+    pub port: u16,
+    pub endpoint: String,
+    pub instance_id: String,
+}
+
+#[derive(Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerStatusSnapshot {
+    pub port: Option<u16>,
+    pub endpoint: Option<String>,
+    pub instance_id: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Default)]
+pub struct McpServerStatus(Mutex<McpServerStatusSnapshot>);
+
+impl McpServerStatus {
+    pub fn snapshot(&self) -> Result<McpServerStatusSnapshot, String> {
+        self.0
+            .lock()
+            .map(|status| status.clone())
+            .map_err(|_| "mcp status lock poisoned".to_string())
+    }
+
+    pub fn set_started(&self, runtime: &McpServerRuntime) -> Result<(), String> {
+        let mut status = self
+            .0
+            .lock()
+            .map_err(|_| "mcp status lock poisoned".to_string())?;
+        *status = McpServerStatusSnapshot {
+            port: Some(runtime.port),
+            endpoint: Some(runtime.endpoint.clone()),
+            instance_id: Some(runtime.instance_id.clone()),
+            error: None,
+        };
+        Ok(())
+    }
+
+    pub fn set_error(&self, error: String) -> Result<(), String> {
+        let mut status = self
+            .0
+            .lock()
+            .map_err(|_| "mcp status lock poisoned".to_string())?;
+        *status = McpServerStatusSnapshot {
+            port: None,
+            endpoint: None,
+            instance_id: None,
+            error: Some(error),
+        };
+        Ok(())
+    }
+
+    pub fn endpoint(&self) -> Result<String, String> {
+        let status = self
+            .0
+            .lock()
+            .map_err(|_| "mcp status lock poisoned".to_string())?;
+        status.endpoint.clone().ok_or_else(|| {
+            status.error.clone().map_or_else(
+                || "MCP server is not ready for this Yorishiro instance".to_string(),
+                |error| format!("MCP server is unavailable for this Yorishiro instance: {error}"),
+            )
+        })
+    }
+}
 
 /// Rust → TS event channel の timeout。5s 以内に response が来なければ諦める。
 const TOOL_EVENT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -80,10 +152,38 @@ fn read_configured_port() -> Option<u16> {
         .get("mcpPort")
         .and_then(|v| v.as_u64())
         .and_then(|n| u16::try_from(n).ok())
+        .filter(|port| *port != 0)
 }
 
-pub(crate) fn resolve_port() -> u16 {
-    read_configured_port().unwrap_or(DEFAULT_PORT)
+fn bind_listener_for_port(
+    configured_port: Option<u16>,
+    preferred_default_port: u16,
+) -> Result<TcpListener, String> {
+    let listener = if let Some(port) = configured_port {
+        TcpListener::bind(("127.0.0.1", port))
+            .map_err(|error| format!("configured MCP port {port} bind failed: {error}"))?
+    } else {
+        match TcpListener::bind(("127.0.0.1", preferred_default_port)) {
+            Ok(listener) => listener,
+            Err(error) if error.kind() == ErrorKind::AddrInUse => {
+                TcpListener::bind(("127.0.0.1", 0))
+                    .map_err(|error| format!("automatic MCP port bind failed: {error}"))?
+            }
+            Err(error) => {
+                return Err(format!(
+                    "default MCP port {preferred_default_port} bind failed: {error}"
+                ));
+            }
+        }
+    };
+    listener
+        .set_nonblocking(true)
+        .map_err(|error| format!("MCP listener nonblocking setup failed: {error}"))?;
+    Ok(listener)
+}
+
+fn instance_endpoint(port: u16, instance_id: &str) -> String {
+    format!("http://127.0.0.1:{port}/instances/{instance_id}/mcp")
 }
 
 /// Poisoned Mutex を recover しつつ guard を返す。pty.rs と同じ方針。
@@ -222,16 +322,17 @@ pub fn resolve_pending_response(request_id: &str, response: Value) -> Result<(),
     Ok(())
 }
 
-/// MCP server を spawn する。bind fail で panic せず Err を返す。
-/// 呼び出し元（lib.rs setup）が Err を dev-log に落として継続する。
-pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
-    let port = resolve_port();
-
-    // bind pre-check — rmcp 側の async bind 前に占有確認。ここで fail したら
-    // early return して Yorishiro 本体は継続させる。
-    let probe = std::net::TcpListener::bind(("127.0.0.1", port))
-        .map_err(|e| format!("port {} bind failed: {}", port, e))?;
-    drop(probe); // すぐ解放、rmcp 側で再 bind。
+/// MCP server を spawn する。listener はこの関数内で同期的に確保し、そのまま
+/// async runtime へ move するため、probe → drop → re-bind の race を作らない。
+pub fn spawn_server(app_handle: AppHandle) -> Result<McpServerRuntime, String> {
+    let listener = bind_listener_for_port(read_configured_port(), DEFAULT_PORT)?;
+    let port = listener
+        .local_addr()
+        .map_err(|error| format!("MCP listener address lookup failed: {error}"))?
+        .port();
+    let instance_id = uuid::Uuid::new_v4().to_string();
+    let endpoint = instance_endpoint(port, &instance_id);
+    let instance_path = format!("/instances/{instance_id}/mcp");
 
     // rmcp StreamableHttpService を axum Router に mount して tokio::spawn で
     // background に流す。factory closure は session ごとに Yorishiro 新規 instance
@@ -249,17 +350,21 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
         .into(),
         Default::default(),
     );
-    let router = axum::Router::new().nest_service("/mcp", service);
+    // /mcp は既存の手動 client 互換。embedded agent は instance path だけを使うため、
+    // 別 process の endpoint を誤って渡されても route が一致せず接続できない。
+    let router = axum::Router::new()
+        .nest_service("/mcp", service.clone())
+        .nest_service(&instance_path, service);
 
     // Tauri 2 の setup closure は tokio runtime context 内で動かないため、
     // `tokio::spawn` を直接呼ぶと "no reactor running" panic になる。
     // tauri の async_runtime::spawn は Tauri 本体の tokio runtime 上に task を
     // 流すため、setup の外側からでも安全に呼べる。
     tauri::async_runtime::spawn(async move {
-        let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
+        let listener = match tokio::net::TcpListener::from_std(listener) {
             Ok(l) => l,
             Err(e) => {
-                eprintln!("[yorishiro-mcp] bind failed after probe: {}", e);
+                eprintln!("[yorishiro-mcp] listener handoff failed: {}", e);
                 return;
             }
         };
@@ -268,7 +373,11 @@ pub fn spawn_server(app_handle: AppHandle) -> Result<u16, String> {
         }
     });
 
-    Ok(port)
+    Ok(McpServerRuntime {
+        port,
+        endpoint,
+        instance_id,
+    })
 }
 
 #[cfg(test)]
@@ -276,7 +385,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_port_falls_back_to_default_when_no_config() {
+    fn configured_port_is_none_when_no_config_exists() {
         let _guard = crate::TEST_HOME_ENV_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -292,10 +401,62 @@ mod tests {
                     .unwrap_or(0)
             )),
         );
-        assert_eq!(resolve_port(), DEFAULT_PORT);
-        if let Some(h) = orig {
-            std::env::set_var("HOME", h);
+        assert_eq!(read_configured_port(), None);
+        match orig {
+            Some(home) => std::env::set_var("HOME", home),
+            None => std::env::remove_var("HOME"),
         }
+    }
+
+    #[test]
+    fn unconfigured_listener_falls_back_when_preferred_port_is_occupied() {
+        let occupied = TcpListener::bind(("127.0.0.1", 0)).expect("bind occupied port");
+        let occupied_port = occupied.local_addr().expect("occupied address").port();
+
+        let listener =
+            bind_listener_for_port(None, occupied_port).expect("bind automatic fallback port");
+        let selected_port = listener.local_addr().expect("selected address").port();
+
+        assert_ne!(selected_port, occupied_port);
+    }
+
+    #[test]
+    fn configured_listener_fails_closed_when_port_is_occupied() {
+        let occupied = TcpListener::bind(("127.0.0.1", 0)).expect("bind occupied port");
+        let occupied_port = occupied.local_addr().expect("occupied address").port();
+
+        let error = bind_listener_for_port(Some(occupied_port), DEFAULT_PORT)
+            .expect_err("configured collision must fail");
+
+        assert!(error.contains("configured MCP port"));
+        assert!(error.contains(&occupied_port.to_string()));
+    }
+
+    #[test]
+    fn instance_endpoint_contains_runtime_identity() {
+        assert_eq!(
+            instance_endpoint(18744, "instance-a"),
+            "http://127.0.0.1:18744/instances/instance-a/mcp"
+        );
+        assert_ne!(
+            instance_endpoint(18744, "instance-a"),
+            instance_endpoint(18744, "instance-b")
+        );
+    }
+
+    #[test]
+    fn status_returns_only_the_started_runtime_endpoint() {
+        let status = McpServerStatus::default();
+        assert!(status.endpoint().is_err());
+
+        let runtime = McpServerRuntime {
+            port: 18744,
+            endpoint: instance_endpoint(18744, "instance-a"),
+            instance_id: "instance-a".to_string(),
+        };
+        status.set_started(&runtime).expect("store runtime status");
+
+        assert_eq!(status.endpoint(), Ok(runtime.endpoint));
     }
 
     #[test]

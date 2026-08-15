@@ -96,7 +96,7 @@ Source code 内で参照するときは：
 | `lib.rs` / `main.rs` | Tauri app entry / command 登録 / setup hook | [../src-tauri/README.md](../src-tauri/README.md) |
 | `pty.rs` | Legacy PTY facade / hook server (port 19001) | 同上 |
 | `sessions/` | Per-session PTY lifecycle / registry / shell wrapper / terminal agent adapter | 同上 |
-| `mcp/` | MCP 1.5 server (port 18743 default) / pack diagnostics + self-referential tools | 同上 |
+| `mcp/` | MCP 1.5 server (18743 preferred / per-instance endpoint) / pack diagnostics + self-referential tools | 同上 |
 | User layer commands | `~/.yorishiro/` の watch / atomic write / pack scan | 同上 |
 
 ### 3.4 Bundled packs
