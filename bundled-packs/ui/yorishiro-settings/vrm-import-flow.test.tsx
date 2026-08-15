@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { UiContext } from "@yorishiro/sdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -52,7 +52,10 @@ const importedEntry: VrmAvatarEntry = {
   id: "imported.vrm",
   fileName: "imported.vrm",
   path: "/app/avatars/imported.vrm",
-  meta: activeEntry.meta === null ? null : { ...activeEntry.meta, name: "Imported" },
+  meta:
+    activeEntry.meta === null
+      ? null
+      : { ...activeEntry.meta, specVersion: "1.1", name: "Imported" },
 };
 
 function settingsContext(setVrm: (path: string | null) => void): UiContext {
@@ -127,7 +130,12 @@ describe("VRM import settings handler", () => {
     await screen.findByRole("option", { name: /active\.vrm/ });
     expect(screen.getByText("Creator")).toBeTruthy();
     expect(screen.getAllByText("Active Author").length).toBeGreaterThan(0);
+    const activeRestrictions = screen.getByRole("group", { name: "Content restrictions" });
+    expect(activeRestrictions.querySelectorAll(":scope > div")).toHaveLength(1);
     fireEvent.click(screen.getByRole("option", { name: "Yori" }));
+    expect(
+      screen.getByRole("group", { name: "Content restrictions" }).querySelectorAll(":scope > div"),
+    ).toHaveLength(2);
     expect(screen.getAllByText("LUCAS").length).toBeGreaterThan(0);
     expect(
       screen.getAllByText("Standalone redistribution or reuse of the model is prohibited.").length,
@@ -140,6 +148,7 @@ describe("VRM import settings handler", () => {
     const importedOption = await screen.findByRole("option", { name: /imported\.vrm/ });
     expect(importedOption.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("Added to the list.")).toBeTruthy();
+    expect(screen.getAllByText("1.1").length).toBeGreaterThan(0);
     expect(setVrm).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
@@ -221,5 +230,39 @@ describe("VRM import settings handler", () => {
     expect(
       (await screen.findByRole("option", { name: /Yori/ })).getAttribute("aria-selected"),
     ).toBe("true");
+  });
+
+  it("renders large catalogs in progressive groups of twenty", async () => {
+    const entries = Array.from(
+      { length: 25 },
+      (_, index): VrmAvatarEntry => ({
+        ...activeEntry,
+        id: `avatar-${String(index).padStart(2, "0")}.vrm`,
+        fileName: `avatar-${String(index).padStart(2, "0")}.vrm`,
+        path: `/app/avatars/avatar-${String(index).padStart(2, "0")}.vrm`,
+        meta:
+          activeEntry.meta === null
+            ? null
+            : { ...activeEntry.meta, name: `Avatar ${String(index).padStart(2, "0")}` },
+      }),
+    );
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "list_vrm_avatars") return entries;
+      throw new Error(`unexpected command: ${command}`);
+    });
+    localStorage.setItem("yorishiro:vrm", entries[0]?.path ?? "");
+
+    render(<Panel ctx={settingsContext(vi.fn())} />);
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("list_vrm_avatars"));
+    fireEvent.click(screen.getByRole("button", { name: "Change…" }));
+    const list = screen.getByRole("listbox", { name: "Choose avatar" });
+    expect(within(list).getAllByRole("option")).toHaveLength(20);
+    Object.defineProperties(list, {
+      scrollHeight: { configurable: true, value: 1_000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, value: 650 },
+    });
+    fireEvent.scroll(list);
+    expect(within(list).getAllByRole("option")).toHaveLength(26);
   });
 });

@@ -2413,7 +2413,16 @@ function vrmSummaryMark(value: VrmMetaValue): "✓" | "×" | "—" | "•" {
   return "•";
 }
 
-function summarizeVrmRestrictions(meta: VrmAvatarMeta, strings: UiStrings): string {
+interface VrmRestrictionGroup {
+  readonly label: string;
+  readonly items: readonly string[];
+  readonly tone: string;
+}
+
+function summarizeVrmRestrictions(
+  meta: VrmAvatarMeta,
+  strings: UiStrings,
+): readonly VrmRestrictionGroup[] {
   const restrictions: readonly [string, VrmMetaValue][] = [
     [strings.vrmRestrictionViolence, meta.violentUsage],
     [strings.vrmRestrictionSexual, meta.sexualUsage],
@@ -2429,13 +2438,50 @@ function summarizeVrmRestrictions(meta: VrmAvatarMeta, strings: UiStrings): stri
   const unstated = restrictions
     .filter(([, value]) => value.normalized === "notSpecified" || value.normalized === "unknown")
     .map(([label]) => label);
-  return [
-    blocked.length ? `${strings.vrmRestrictionsBlocked}: ${blocked.join(", ")}` : null,
-    allowed.length ? `${strings.vrmRestrictionsAllowed}: ${allowed.join(", ")}` : null,
-    unstated.length ? `${strings.vrmRestrictionsUnstated}: ${unstated.join(", ")}` : null,
-  ]
-    .filter((value): value is string => value !== null)
-    .join(" · ");
+  const groups: VrmRestrictionGroup[] = [];
+  if (blocked.length) {
+    groups.push({
+      label: strings.vrmRestrictionsBlocked,
+      items: blocked,
+      tone: COLORS.statusError,
+    });
+  }
+  if (allowed.length) {
+    groups.push({ label: strings.vrmRestrictionsAllowed, items: allowed, tone: COLORS.fg });
+  }
+  if (unstated.length) {
+    groups.push({ label: strings.vrmRestrictionsUnstated, items: unstated, tone: COLORS.fgDimmer });
+  }
+  return groups;
+}
+
+function VrmRestrictionList({
+  groups,
+  strings,
+}: {
+  readonly groups: readonly VrmRestrictionGroup[];
+  readonly strings: UiStrings;
+}): React.JSX.Element {
+  return (
+    <fieldset
+      aria-label={strings.vrmContentRestrictions}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "3px",
+        margin: 0,
+        padding: 0,
+        border: 0,
+      }}
+    >
+      {groups.map((group) => (
+        <div key={group.label} style={{ color: group.tone }}>
+          <span style={{ fontWeight: FONT.weightSemibold }}>{group.label}</span>
+          <span>: {group.items.join(", ")}</span>
+        </div>
+      ))}
+    </fieldset>
+  );
 }
 
 function VrmSummaryRow({
@@ -2469,7 +2515,12 @@ function VrmSummaryRow({
 
 type VrmThumbnailCacheEntry =
   | { readonly phase: "loading"; readonly lastUsed: number }
-  | { readonly phase: "ready"; readonly url: string; readonly lastUsed: number }
+  | {
+      readonly phase: "ready";
+      readonly url: string;
+      readonly byteLength: number;
+      readonly lastUsed: number;
+    }
   | { readonly phase: "unavailable"; readonly lastUsed: number };
 
 interface VrmThumbnailQueueItem {
@@ -2492,11 +2543,18 @@ function useVrmThumbnailCache(): {
     const readyEntries = [...entries.current.entries()]
       .filter(([, entry]) => entry.phase === "ready")
       .sort((left, right) => left[1].lastUsed - right[1].lastUsed);
-    while (readyEntries.length > 48) {
+    let readyBytes = readyEntries.reduce(
+      (total, [, entry]) => total + (entry.phase === "ready" ? entry.byteLength : 0),
+      0,
+    );
+    while (readyEntries.length > 48 || readyBytes > 64 * 1024 * 1024) {
       const oldest = readyEntries.shift();
       if (!oldest) break;
       const entry = entries.current.get(oldest[0]);
-      if (entry?.phase === "ready") URL.revokeObjectURL(entry.url);
+      if (entry?.phase === "ready") {
+        readyBytes -= entry.byteLength;
+        URL.revokeObjectURL(entry.url);
+      }
       entries.current.delete(oldest[0]);
     }
   }, []);
@@ -2511,7 +2569,12 @@ function useVrmThumbnailCache(): {
           if (disposed.current) return;
           const bytes = payload instanceof ArrayBuffer ? payload : new Uint8Array(payload).buffer;
           const url = URL.createObjectURL(new Blob([bytes], { type: item.mimeType }));
-          entries.current.set(item.key, { phase: "ready", url, lastUsed: Date.now() });
+          entries.current.set(item.key, {
+            phase: "ready",
+            url,
+            byteLength: bytes.byteLength,
+            lastUsed: Date.now(),
+          });
           trim();
           setRevision((value) => value + 1);
         })
@@ -2710,7 +2773,23 @@ function VrmCandidateDetail({
           <VrmSummaryRow label={strings.vrmCredit} value={strings.vrmYoriAuthor} mark="•" />
           <VrmSummaryRow
             label={strings.vrmContentRestrictions}
-            value={`${strings.vrmRestrictionsBlocked}: ${strings.vrmRestrictionSexual} · ${strings.vrmRestrictionsAllowed}: ${strings.vrmRestrictionViolence}`}
+            value={
+              <VrmRestrictionList
+                strings={strings}
+                groups={[
+                  {
+                    label: strings.vrmRestrictionsBlocked,
+                    items: [strings.vrmRestrictionSexual],
+                    tone: COLORS.statusError,
+                  },
+                  {
+                    label: strings.vrmRestrictionsAllowed,
+                    items: [strings.vrmRestrictionViolence],
+                    tone: COLORS.fg,
+                  },
+                ]}
+              />
+            }
             mark="×"
           />
         </div>
@@ -2784,7 +2863,12 @@ function VrmCandidateDetail({
         />
         <VrmSummaryRow
           label={strings.vrmContentRestrictions}
-          value={summarizeVrmRestrictions(meta, strings)}
+          value={
+            <VrmRestrictionList
+              groups={summarizeVrmRestrictions(meta, strings)}
+              strings={strings}
+            />
+          }
           mark="•"
         />
       </div>
@@ -2893,10 +2977,17 @@ function VrmChooserDialog({
   const removeConfirmRef = useRef<HTMLButtonElement>(null);
   const thumbnailCache = useVrmThumbnailCache();
   const [query, setQuery] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(20);
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const sorted = sortVrmCandidates(candidates);
-  const visible = filterVrmCandidates(sorted, query);
+  const filtered = filterVrmCandidates(sorted, query);
   const selected = candidates.find((candidate) => candidate.id === selectedId) ?? candidates[0];
+  const filteredSelectedIndex = filtered.findIndex((candidate) => candidate.id === selected?.id);
+  const effectiveVisibleLimit = Math.max(
+    visibleLimit,
+    filteredSelectedIndex >= 0 ? Math.ceil((filteredSelectedIndex + 1) / 20) * 20 : 20,
+  );
+  const visible = filtered.slice(0, effectiveVisibleLimit);
   const selectedIndex = visible.findIndex((candidate) => candidate.id === selected?.id);
   const selectedName = selected ? vrmCandidateDisplayName(selected) : strings.vrmNoMatches;
   const selectedCreators = selected
@@ -3097,7 +3188,10 @@ function VrmChooserDialog({
                     data-vrm-search
                     type="search"
                     value={query}
-                    onChange={(event) => setQuery(event.target.value)}
+                    onChange={(event) => {
+                      setQuery(event.target.value);
+                      setVisibleLimit(20);
+                    }}
                     placeholder={strings.vrmSearchPlaceholder}
                     aria-label={strings.vrmSearchPlaceholder}
                     style={{
@@ -3198,6 +3292,15 @@ function VrmChooserDialog({
               <div
                 role="listbox"
                 aria-label={strings.vrmChooseAvatar}
+                onScroll={(event) => {
+                  const list = event.currentTarget;
+                  if (
+                    visible.length < filtered.length &&
+                    list.scrollHeight - list.scrollTop - list.clientHeight < 160
+                  ) {
+                    setVisibleLimit((current) => Math.min(filtered.length, current + 20));
+                  }
+                }}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowDown") {
                     event.preventDefault();
@@ -3416,6 +3519,20 @@ function VrmChooserDialog({
                     {selectedCreators}
                   </span>
                 </div>
+                {selected?.meta ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "baseline",
+                      gap: SPACING.xs,
+                      marginTop: "2px",
+                      fontSize: FONT.sizeS,
+                    }}
+                  >
+                    <span style={{ color: COLORS.fgDimmer, fontSize: FONT.sizeXs }}>VRM</span>
+                    <span style={{ color: COLORS.fg }}>{selected.meta.specVersion}</span>
+                  </div>
+                ) : null}
                 {selected?.kind === "yori" ? (
                   <div style={{ marginTop: "2px", color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
                     {strings.vrmBundledSource}

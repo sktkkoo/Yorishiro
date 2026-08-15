@@ -2266,7 +2266,7 @@ fn validate_vrm_glb_header(file: &mut std::fs::File, file_size: u64) -> Result<(
 }
 
 const MAX_VRM_JSON_CHUNK_BYTES: u32 = 4 * 1024 * 1024;
-const MAX_VRM_THUMBNAIL_BYTES: u32 = 2 * 1024 * 1024;
+const MAX_VRM_THUMBNAIL_BYTES: u32 = 8 * 1024 * 1024;
 const MAX_VRM_THUMBNAIL_SIDE_PX: u32 = 2_048;
 const MAX_VRM_META_TEXT_CHARS: usize = 2_048;
 const MAX_VRM_META_LIST_ITEMS: usize = 64;
@@ -2427,7 +2427,11 @@ fn missing_meta_value() -> VrmMetaValue {
     }
 }
 
-fn parse_vrm0_meta(meta: &serde_json::Value) -> VrmAvatarMeta {
+fn declared_vrm_spec_version(extension: &serde_json::Value, fallback: &str) -> String {
+    limited_meta_text(extension.get("specVersion")).unwrap_or_else(|| fallback.to_string())
+}
+
+fn parse_vrm0_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> VrmAvatarMeta {
     let allowed_user = meta_value(
         limited_meta_text(meta.get("allowedUserName")),
         &[
@@ -2456,7 +2460,7 @@ fn parse_vrm0_meta(meta: &serde_json::Value) -> VrmAvatarMeta {
     }
 
     VrmAvatarMeta {
-        spec_version: "0.x".into(),
+        spec_version: declared_vrm_spec_version(extension, "0.x"),
         name: limited_meta_text(meta.get("title")),
         version: limited_meta_text(meta.get("version")),
         authors: limited_meta_text(meta.get("author")).into_iter().collect(),
@@ -2480,7 +2484,7 @@ fn parse_vrm0_meta(meta: &serde_json::Value) -> VrmAvatarMeta {
     }
 }
 
-fn parse_vrm1_meta(meta: &serde_json::Value) -> VrmAvatarMeta {
+fn parse_vrm1_meta(extension: &serde_json::Value, meta: &serde_json::Value) -> VrmAvatarMeta {
     let enum_value = |key: &str, known: &[(&str, VrmMetaNormalized)]| {
         meta_value(limited_meta_text(meta.get(key)), known)
     };
@@ -2492,7 +2496,7 @@ fn parse_vrm1_meta(meta: &serde_json::Value) -> VrmAvatarMeta {
     }
 
     VrmAvatarMeta {
-        spec_version: "1.0".into(),
+        spec_version: declared_vrm_spec_version(extension, "1.x"),
         name: limited_meta_text(meta.get("name")),
         version: limited_meta_text(meta.get("version")),
         authors: limited_meta_list(meta.get("authors")),
@@ -2662,20 +2666,20 @@ fn read_vrm_document(
         .get("extensions")
         .and_then(serde_json::Value::as_object)
         .ok_or_else(|| "VRM extension metadata is missing".to_string())?;
-    let vrm1_meta = extensions
-        .get("VRMC_vrm")
-        .and_then(|value| value.get("meta"));
-    let vrm0_meta = extensions.get("VRM").and_then(|value| value.get("meta"));
+    let vrm1_extension = extensions.get("VRMC_vrm");
+    let vrm0_extension = extensions.get("VRM");
+    let vrm1_meta = vrm1_extension.and_then(|value| value.get("meta"));
+    let vrm0_meta = vrm0_extension.and_then(|value| value.get("meta"));
     let meta = if let Some(meta) = vrm1_meta {
         if !meta.is_object() {
             return Err("VRM 1.0 metadata must be an object".into());
         }
-        parse_vrm1_meta(meta)
+        parse_vrm1_meta(vrm1_extension.expect("VRM 1 extension exists"), meta)
     } else if let Some(meta) = vrm0_meta {
         if !meta.is_object() {
             return Err("VRM 0.x metadata must be an object".into());
         }
-        parse_vrm0_meta(meta)
+        parse_vrm0_meta(vrm0_extension.expect("VRM 0 extension exists"), meta)
     } else {
         return Err("VRM 0.x/1.0 metadata is missing".into());
     };
@@ -3218,7 +3222,7 @@ mod import_vrm_tests {
     fn vrm1_glb(name: &str) -> Vec<u8> {
         glb_bytes(
             &serde_json::json!({
-                "extensions": { "VRMC_vrm": { "meta": {
+                "extensions": { "VRMC_vrm": { "specVersion": "1.1", "meta": {
                     "name": name,
                     "version": "1.2",
                     "authors": ["Alice", "Bob"],
@@ -3386,7 +3390,7 @@ mod import_vrm_tests {
     #[test]
     fn parses_vrm0_metadata_and_preserves_raw_permissions() {
         let bytes = glb_bytes(
-            &serde_json::json!({"extensions":{"VRM":{"meta":{
+            &serde_json::json!({"extensions":{"VRM":{"specVersion":"0.7","meta":{
                 "title":"Old Avatar","version":"0.9","author":"Creator",
                 "contactInformation":"contact","reference":"https://example.test",
                 "allowedUserName":"ExplicitlyLicensedPerson","violentUssageName":"Disallow",
@@ -3400,7 +3404,7 @@ mod import_vrm_tests {
         fs::write(&path, &bytes).expect("write");
         let mut file = fs::File::open(&path).expect("open");
         let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
-        assert_eq!(meta.spec_version, "0.x");
+        assert_eq!(meta.spec_version, "0.7");
         assert_eq!(meta.name.as_deref(), Some("Old Avatar"));
         assert_eq!(meta.authors, ["Creator"]);
         assert_eq!(meta.commercial_usage.raw.as_deref(), Some("Disallow"));
@@ -3421,7 +3425,7 @@ mod import_vrm_tests {
         fs::write(&path, &bytes).expect("write");
         let mut file = fs::File::open(&path).expect("open");
         let meta = read_vrm_meta(&mut file, bytes.len() as u64).expect("parse");
-        assert_eq!(meta.spec_version, "1.0");
+        assert_eq!(meta.spec_version, "1.1");
         assert_eq!(meta.authors, ["Alice", "Bob"]);
         assert_eq!(meta.commercial_usage.raw.as_deref(), Some("personalProfit"));
         assert_eq!(
@@ -3453,6 +3457,25 @@ mod import_vrm_tests {
         assert_eq!(
             extract_vrm_thumbnail(&mut file, bytes.len() as u64).expect("extract"),
             image
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn accepts_embedded_thumbnail_larger_than_two_mib_within_the_eight_mib_limit() {
+        let mut image = png_header(2_048, 2_048);
+        image.resize(2 * 1024 * 1024 + 1, 0);
+        let bytes = vrm_thumbnail_glb(true, &image, "image/png");
+        let dir = tmp_dir("thumb-over-two-mib");
+        let path = dir.join("avatar.vrm");
+        fs::write(&path, &bytes).expect("write");
+        let mut file = fs::File::open(&path).expect("open");
+
+        assert_eq!(
+            extract_vrm_thumbnail(&mut file, bytes.len() as u64)
+                .expect("extract thumbnail")
+                .len(),
+            image.len()
         );
         let _ = fs::remove_dir_all(dir);
     }
