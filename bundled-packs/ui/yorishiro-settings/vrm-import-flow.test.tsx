@@ -190,9 +190,11 @@ describe("VRM import settings handler", () => {
     fireEvent.click(await screen.findByRole("option", { name: /imported\.vrm/ }));
     fireEvent.click(screen.getByRole("button", { name: "Remove from list…" }));
 
-    const confirmation = screen.getByRole("alertdialog", { name: "Remove avatar?" });
-    expect(confirmation.textContent).toContain("Imported and its imported file will be removed");
-    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    const confirmation = screen.getByRole("alertdialog", { name: "Remove from the list?" });
+    expect(confirmation.textContent).toContain(
+      "The original VRM file you selected will not be deleted",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Remove from list" }));
     await waitFor(() =>
       expect(invokeMock).toHaveBeenCalledWith("remove_vrm_avatar", { id: importedEntry.id }),
     );
