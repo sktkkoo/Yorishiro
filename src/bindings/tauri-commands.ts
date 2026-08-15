@@ -41,7 +41,7 @@ export type SpawnSpec =
       readonly pluginDir?: string | null;
       /** false のとき agent 側の既存会話 resume を禁止して完全新規 session を起動する。 */
       readonly resume?: boolean;
-      /** provider 固有の会話 ID を指定して再開する。現在は Codex のみ対応。 */
+      /** provider 固有の会話 ID を指定して再開する。Claude Code / Codex が対応。 */
       readonly resumeSessionId?: string | null;
     }
   | {
@@ -202,20 +202,20 @@ export const sessionRealtimeCapabilities = (args: {
   readonly sessionId: string;
 }): Promise<SessionRealtimeCapabilities> => call("session_realtime_capabilities", args);
 
-/** Codex TUI proxy が最後に確認した top-level thread selection。 */
+/** Agent observer が最後に確認した provider conversation selection。 */
 export const sessionRealtimeSelectedThread = (args: {
   readonly sessionId: string;
 }): Promise<string | null> => call("session_realtime_selected_thread", args);
 
 export interface SessionRealtimeSelectedThreadState {
   readonly sessionId: string;
-  /** resume / fork、または最初の turn/start 済み。thread/start だけなら未確定。 */
+  /** provider上で会話IDが確定済みならtrue。 */
   readonly confirmed: boolean;
   /** 同じ app-server process 内の top-level selection / turn-start revision。 */
   readonly revision: number;
 }
 
-/** Codex TUI proxy が選択したthreadと、会話として確定済みかを返す。 */
+/** Agent observer が選択した会話と、provider上で確定済みかを返す。 */
 export const sessionRealtimeSelectedThreadState = (args: {
   readonly sessionId: string;
 }): Promise<SessionRealtimeSelectedThreadState | null> =>

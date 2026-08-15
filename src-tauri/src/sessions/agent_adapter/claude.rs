@@ -36,18 +36,28 @@ impl TerminalAgent for ClaudeAgent {
             .mcp_endpoint
             .ok_or_else(|| "Yorishiro MCP endpoint is unavailable".to_string())?;
 
-        if ctx.resume && self.has_existing_session(ctx.cwd) {
-            args.push("-c".to_string());
-        }
+        args.extend(claude_resume_args(
+            ctx.resume,
+            ctx.resume_session_id,
+            self.has_existing_session(ctx.cwd),
+        ));
 
-        let hooks_json = crate::pty::build_hooks_json(ctx.hook_port);
-        let hooks_path = super::temp_config_path("hooks", "json");
-        let hooks_path_arg = super::utf8_path_for_cli(&hooks_path, "Claude hooks settings")?;
-        std::fs::write(&hooks_path, &hooks_json)
-            .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
-        args.push("--settings".to_string());
-        args.push(hooks_path_arg);
-        temp_files.push(hooks_path);
+        if ctx.hook_port != 0 && !ctx.hook_token.is_empty() {
+            let hooks_json = crate::pty::build_hooks_json(
+                ctx.hook_port,
+                ctx.host_session_id,
+                self.id(),
+                ctx.hook_token,
+                ctx.hook_launch_id,
+            );
+            let hooks_path = super::temp_config_path("hooks", "json");
+            let hooks_path_arg = super::utf8_path_for_cli(&hooks_path, "Claude hooks settings")?;
+            std::fs::write(&hooks_path, &hooks_json)
+                .map_err(|e| format!("Failed to write hooks settings: {}", e))?;
+            args.push("--settings".to_string());
+            args.push(hooks_path_arg);
+            temp_files.push(hooks_path);
+        }
 
         // Claude Code plugin 配下の .mcp.json は auto-discover されないため、
         // 起動ごとに、この Yorishiro process が所有する endpoint を反映した config を
@@ -88,6 +98,20 @@ impl TerminalAgent for ClaudeAgent {
     fn has_existing_session(&self, cwd: Option<&Path>) -> bool {
         has_existing_claude_session(cwd.and_then(|p| p.to_str()))
     }
+}
+
+fn claude_resume_args(
+    resume: bool,
+    resume_session_id: Option<&str>,
+    has_existing_session: bool,
+) -> Vec<String> {
+    if let Some(session_id) = resume_session_id.filter(|id| !id.is_empty()) {
+        return vec!["--resume".to_string(), session_id.to_string()];
+    }
+    if resume && has_existing_session {
+        return vec!["-c".to_string()];
+    }
+    Vec::new()
 }
 
 fn claude_yorishiro_mcp_config_json(endpoint: &str) -> String {
@@ -149,6 +173,23 @@ fn has_existing_claude_session(cwd: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_ctx() -> LaunchContext<'static> {
+        LaunchContext {
+            host_session_id: "default-session",
+            hook_launch_id: "launch-test",
+            cwd: None,
+            system_prompt: None,
+            prompt_reminder: None,
+            plugin_dir: None,
+            mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
+            hook_port: 19001,
+            hook_token: "test-token",
+            resume: false,
+            resume_session_id: None,
+            realtime_endpoint: None,
+        }
+    }
 
     #[test]
     fn encode_project_dir_name_basic() {
@@ -230,18 +271,56 @@ mod tests {
     }
 
     #[test]
+    fn exact_resume_id_takes_priority_over_continue_policy() {
+        assert_eq!(
+            claude_resume_args(true, Some("0198-exact-session-id"), true),
+            vec!["--resume", "0198-exact-session-id"]
+        );
+    }
+
+    #[test]
+    fn claude_launch_emits_exact_resume_without_continue_flag() {
+        let mut ctx = make_ctx();
+        ctx.resume = true;
+        ctx.resume_session_id = Some("0198-exact-session-id");
+        let result = CLAUDE
+            .build_launch_args(&ctx)
+            .expect("Claude exact resume args");
+        assert!(result
+            .args
+            .windows(2)
+            .any(|args| args == ["--resume", "0198-exact-session-id"]));
+        assert!(!result.args.iter().any(|arg| arg == "-c"));
+        for path in result.temp_files {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn continue_policy_uses_c_only_without_an_exact_id() {
+        assert_eq!(claude_resume_args(true, None, true), vec!["-c"]);
+        assert!(claude_resume_args(false, None, true).is_empty());
+    }
+
+    #[test]
+    fn hook_unavailable_omits_settings_but_keeps_claude_launch_available() {
+        let mut ctx = make_ctx();
+        ctx.hook_port = 0;
+        ctx.hook_token = "";
+        let result = CLAUDE
+            .build_launch_args(&ctx)
+            .expect("Claude launch should degrade safely");
+        assert!(!result.args.iter().any(|arg| arg == "--settings"));
+        assert!(result.args.iter().any(|arg| arg == "--mcp-config"));
+        for path in result.temp_files {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
     fn claude_fails_closed_without_runtime_mcp_endpoint() {
-        let ctx = LaunchContext {
-            cwd: None,
-            system_prompt: None,
-            prompt_reminder: None,
-            plugin_dir: None,
-            mcp_endpoint: None,
-            hook_port: 19001,
-            resume: false,
-            resume_session_id: None,
-            realtime_endpoint: None,
-        };
+        let mut ctx = make_ctx();
+        ctx.mcp_endpoint = None;
 
         let error = CLAUDE
             .build_launch_args(&ctx)

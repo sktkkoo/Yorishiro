@@ -11,12 +11,15 @@ import {
   conversationEntryLaunch,
   conversationNavigationReducer,
   conversationNavigationTarget,
+  conversationReplacementRollbackEntry,
+  conversationResumeObservationTimeoutMs,
   createConversationTransitionGate,
   currentConversationEntry,
   EMPTY_CONVERSATION_NAVIGATION_TRAIL,
   finishConversationTransition,
   prepareConversationDraftForReplacement,
   prepareFreshConversationRequest,
+  supportsConversationNavigation,
 } from "./conversation-navigation";
 import { readConversationSelectionWithin } from "./observed-session";
 
@@ -28,6 +31,20 @@ const confirmedTrail = (
   entries: ids.map(session),
   cursor,
   transient: null,
+});
+
+describe("supportsConversationNavigation", () => {
+  it("enables Claude Code and Codex without exposing controls for unsupported agents", () => {
+    expect(supportsConversationNavigation("claude")).toBe(true);
+    expect(supportsConversationNavigation("codex")).toBe(true);
+    expect(supportsConversationNavigation("opencode")).toBe(false);
+  });
+
+  it("gives Claude cold-start hooks more time without slowing Codex navigation", () => {
+    expect(conversationResumeObservationTimeoutMs("claude")).toBe(15_000);
+    expect(conversationResumeObservationTimeoutMs("codex")).toBe(2_000);
+    expect(conversationResumeObservationTimeoutMs("opencode")).toBe(2_000);
+  });
 });
 
 describe("conversationNavigationReducer", () => {
@@ -94,6 +111,41 @@ describe("conversationNavigationReducer", () => {
         sessionId: "B",
       }),
     ).toEqual(confirmedTrail(["A", "B"]));
+  });
+
+  it("preserves an atomically observed outgoing draft across a successful Back", () => {
+    const draftB = conversationNavigationReducer(confirmedTrail(["A"]), {
+      type: "fresh-session-succeeded",
+      draftLease: "draft-B",
+    });
+    const confirmedB = conversationNavigationReducer(draftB, {
+      type: "outgoing-session-confirmed",
+      sessionId: "B",
+    });
+    const atA = conversationNavigationReducer(confirmedB, {
+      type: "navigation-succeeded",
+      direction: "back",
+      entry: session("A"),
+      actualSessionId: "A",
+    });
+
+    expect(atA).toEqual(confirmedTrail(["A", "B"], 0));
+    expect(conversationNavigationTarget(atA, "forward")).toEqual(session("B"));
+  });
+
+  it("uses an atomic outgoing ID instead of a stale blank when navigation rollback is needed", () => {
+    const draft: ActiveConversationEntry = {
+      kind: "new-draft",
+      originCursor: 0,
+      lease: "draft-B",
+    };
+    const rollback = conversationReplacementRollbackEntry(draft, "B");
+    expect(rollback).toEqual(session("B"));
+    if (rollback === null) throw new Error("expected rollback entry");
+    expect(conversationEntryLaunch(rollback)).toEqual({
+      kind: "exact-resume",
+      sessionId: "B",
+    });
   });
 
   it("keeps New blank outside entries and leaves the confirmed cursor unchanged", () => {

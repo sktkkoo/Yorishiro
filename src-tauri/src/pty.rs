@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::sessions::{
     AttachResult, PtySession, SessionDescriptor, SessionKind, SessionRegistry, SpawnSpec,
@@ -31,7 +31,55 @@ pub fn drain_hook_signals() -> Vec<String> {
 
 // ─── Hook server ────────────────────────────────────────────────
 
-pub(crate) const HOOK_SERVER_PORT: u16 = 19001;
+#[derive(Clone, Debug)]
+pub struct HookServerEndpoint {
+    pub port: u16,
+    token: String,
+}
+
+impl HookServerEndpoint {
+    pub fn unavailable() -> Self {
+        Self {
+            port: 0,
+            token: String::new(),
+        }
+    }
+
+    pub fn is_available(&self) -> bool {
+        self.port != 0 && !self.token.is_empty()
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+}
+
+pub struct PendingHookServer {
+    listener: TcpListener,
+    endpoint: HookServerEndpoint,
+}
+
+impl PendingHookServer {
+    pub fn endpoint(&self) -> HookServerEndpoint {
+        self.endpoint.clone()
+    }
+}
+
+pub fn bind_hook_server() -> Result<PendingHookServer, String> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|error| format!("Failed to bind Claude hook server: {error}"))?;
+    let port = listener
+        .local_addr()
+        .map_err(|error| format!("Failed to inspect Claude hook server address: {error}"))?
+        .port();
+    Ok(PendingHookServer {
+        listener,
+        endpoint: HookServerEndpoint {
+            port,
+            token: uuid::Uuid::new_v4().to_string(),
+        },
+    })
+}
 
 fn sh_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
@@ -39,6 +87,36 @@ fn sh_single_quote(value: &str) -> String {
 
 fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn percent_encode_query_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            use std::fmt::Write as _;
+            let _ = write!(encoded, "%{byte:02X}");
+        }
+    }
+    encoded
+}
+
+fn scoped_hook_endpoint(
+    path: &str,
+    host_session_id: &str,
+    agent: &str,
+    token: &str,
+    hook_launch_id: &str,
+) -> String {
+    format!(
+        "{}?sessionId={}&agent={}&token={}&launch={}",
+        path,
+        percent_encode_query_component(host_session_id),
+        percent_encode_query_component(agent),
+        percent_encode_query_component(token),
+        percent_encode_query_component(hook_launch_id),
+    )
 }
 
 fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String {
@@ -53,8 +131,21 @@ fn build_hook_stdin_command(port: u16, endpoint: &str, windows: bool) -> String 
     }
 }
 
-pub(crate) fn build_hooks_json(port: u16) -> String {
+pub(crate) fn build_hooks_json(
+    port: u16,
+    host_session_id: &str,
+    agent: &str,
+    token: &str,
+    hook_launch_id: &str,
+) -> String {
     let windows = cfg!(windows);
+    let hook_command = |path: &str| {
+        build_hook_stdin_command(
+            port,
+            &scoped_hook_endpoint(path, host_session_id, agent, token, hook_launch_id),
+            windows,
+        )
+    };
 
     let reminder_script = build_reminder_script_path();
     let python = if windows { "python" } else { "python3" };
@@ -68,86 +159,86 @@ pub(crate) fn build_hooks_json(port: u16) -> String {
         "hooks": {
             "SessionStart": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/session-start", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/session-start") }]
             }],
             "UserPromptSubmit": [{
                 "matcher": "",
                 "hooks": [
-                    { "type": "command", "command": build_hook_stdin_command(port, "/hook/prompt", windows) },
+                    { "type": "command", "command": hook_command("/hook/prompt") },
                     { "type": "command", "command": reminder_cmd }
                 ]
             }],
             "PreToolUse": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/pre-tool-use", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/pre-tool-use") }]
             }],
             "PostToolUse": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-use", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/post-tool-use") }]
             }],
             "PostToolUseFailure": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-failure", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/post-tool-failure") }]
             }],
             "PostToolBatch": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-tool-batch", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/post-tool-batch") }]
             }],
             "Stop": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/stop", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/stop") }]
             }],
             "StopFailure": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/stop-failure", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/stop-failure") }]
             }],
             "Notification": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/notification", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/notification") }]
             }],
             "PermissionRequest": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/permission-request", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/permission-request") }]
             }],
             "PermissionDenied": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/permission-denied", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/permission-denied") }]
             }],
             "SubagentStart": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/subagent-start", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/subagent-start") }]
             }],
             "SubagentStop": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/subagent-stop", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/subagent-stop") }]
             }],
             "TaskCreated": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/task-created", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/task-created") }]
             }],
             "TaskCompleted": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/task-completed", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/task-completed") }]
             }],
             "PreCompact": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/pre-compact", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/pre-compact") }]
             }],
             "PostCompact": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/post-compact", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/post-compact") }]
             }],
             "Elicitation": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/elicitation", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/elicitation") }]
             }],
             "ElicitationResult": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/elicitation-result", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/elicitation-result") }]
             }],
             "SessionEnd": [{
                 "matcher": "",
-                "hooks": [{ "type": "command", "command": build_hook_stdin_command(port, "/hook/session-end", windows) }]
+                "hooks": [{ "type": "command", "command": hook_command("/hook/session-end") }]
             }],
         }
     })
@@ -214,22 +305,14 @@ print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "a
 /// Start a minimal HTTP server that receives hook signals from Claude Code.
 /// Emits each signal to the WebView immediately and also pushes it into
 /// `HOOK_SIGNAL_QUEUE` as polling fallback.
-pub fn start_hook_server(app: AppHandle) {
+pub fn start_hook_server(app: AppHandle, server: PendingHookServer) {
     std::thread::spawn(move || {
-        let listener = match TcpListener::bind(format!("127.0.0.1:{}", HOOK_SERVER_PORT)) {
-            Ok(l) => l,
-            Err(e) => {
-                eprintln!(
-                    "[hook-server] Failed to bind port {}: {}",
-                    HOOK_SERVER_PORT, e
-                );
-                return;
-            }
-        };
-        for stream in listener.incoming() {
+        let token = Arc::new(server.endpoint.token);
+        for stream in server.listener.incoming() {
             let Ok(stream) = stream else { continue };
             let app = app.clone();
-            std::thread::spawn(move || handle_hook_stream(app, stream));
+            let token = Arc::clone(&token);
+            std::thread::spawn(move || handle_hook_stream(app, stream, &token));
         }
     });
 }
@@ -253,6 +336,25 @@ fn query_param(query: Option<&str>, key: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn hook_token_matches(query: Option<&str>, expected_token: &str) -> bool {
+    !expected_token.is_empty() && query_param(query, "token").as_deref() == Some(expected_token)
+}
+
+fn claude_session_start_id<'a>(
+    path: &str,
+    agent: Option<&str>,
+    payload: &'a serde_json::Value,
+) -> Option<&'a str> {
+    if path != "/hook/session-start" || agent != Some("claude") {
+        return None;
+    }
+    payload
+        .get("session_id")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
 }
 
 fn percent_decode_query(value: &str) -> String {
@@ -285,7 +387,7 @@ fn percent_decode_query(value: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
+fn handle_hook_stream(app: AppHandle, mut stream: TcpStream, expected_token: &str) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut buf = Vec::new();
     let mut tmp = [0u8; 8192];
@@ -330,65 +432,84 @@ fn handle_hook_stream(app: AppHandle, mut stream: TcpStream) {
     let (path, query) = split_path_query(raw_path);
     let session_id = query_param(query, "sessionId");
     let agent = query_param(query, "agent");
+    let hook_launch_id = query_param(query, "launch");
+    let token_matches = hook_token_matches(query, expected_token);
+    if token_matches {
+        if let Some(body_start) = data.find("\r\n\r\n") {
+            let body = data[body_start + 4..].trim();
+            if !body.is_empty() {
+                let event_type = match path {
+                    "/hook/prompt" => Some("prompt"),
+                    "/hook/stop" => Some("stop"),
+                    "/hook/stop-failure" => Some("stop-failure"),
+                    "/hook/session-start" => Some("session-start"),
+                    "/hook/session-end" => Some("session-end"),
+                    "/hook/pre-tool-use" => Some("pre-tool-use"),
+                    "/hook/post-tool-use" => Some("post-tool-use"),
+                    "/hook/post-tool-failure" => Some("post-tool-failure"),
+                    "/hook/post-tool-batch" => Some("post-tool-batch"),
+                    "/hook/notification" => Some("notification"),
+                    "/hook/permission-request" => Some("permission-request"),
+                    "/hook/permission-denied" => Some("permission-denied"),
+                    "/hook/subagent-start" => Some("subagent-start"),
+                    "/hook/subagent-stop" => Some("subagent-stop"),
+                    "/hook/task-created" => Some("task-created"),
+                    "/hook/task-completed" => Some("task-completed"),
+                    "/hook/pre-compact" => Some("pre-compact"),
+                    "/hook/post-compact" => Some("post-compact"),
+                    "/hook/elicitation" => Some("elicitation"),
+                    "/hook/elicitation-result" => Some("elicitation-result"),
+                    "/hook" => None,
+                    _ => None,
+                };
 
-    if let Some(body_start) = data.find("\r\n\r\n") {
-        let body = data[body_start + 4..].trim();
-        if !body.is_empty() {
-            let event_type = match path {
-                "/hook/prompt" => Some("prompt"),
-                "/hook/stop" => Some("stop"),
-                "/hook/stop-failure" => Some("stop-failure"),
-                "/hook/session-start" => Some("session-start"),
-                "/hook/session-end" => Some("session-end"),
-                "/hook/pre-tool-use" => Some("pre-tool-use"),
-                "/hook/post-tool-use" => Some("post-tool-use"),
-                "/hook/post-tool-failure" => Some("post-tool-failure"),
-                "/hook/post-tool-batch" => Some("post-tool-batch"),
-                "/hook/notification" => Some("notification"),
-                "/hook/permission-request" => Some("permission-request"),
-                "/hook/permission-denied" => Some("permission-denied"),
-                "/hook/subagent-start" => Some("subagent-start"),
-                "/hook/subagent-stop" => Some("subagent-stop"),
-                "/hook/task-created" => Some("task-created"),
-                "/hook/task-completed" => Some("task-completed"),
-                "/hook/pre-compact" => Some("pre-compact"),
-                "/hook/post-compact" => Some("post-compact"),
-                "/hook/elicitation" => Some("elicitation"),
-                "/hook/elicitation-result" => Some("elicitation-result"),
-                "/hook" => None,
-                _ => None,
-            };
+                let parsed_body = serde_json::from_str::<serde_json::Value>(body);
+                let provider_session_id = parsed_body
+                    .as_ref()
+                    .ok()
+                    .and_then(|obj| claude_session_start_id(path, agent.as_deref(), obj));
+                // Hook acceptance and SessionStart recording share the same registry lock as
+                // PTY replacement detach/snapshot. A signal is therefore either included in the
+                // outgoing snapshot or rejected as stale; it cannot fall between both operations.
+                let launch_accepted = match (session_id.as_deref(), hook_launch_id.as_deref()) {
+                    (Some(session_id), Some(hook_launch_id)) => app
+                        .state::<PtyState>()
+                        .accept_hook_signal(session_id, hook_launch_id, provider_session_id),
+                    _ => false,
+                };
+                if launch_accepted {
+                    // 同一 signal を immediate event と polling fallback の両方で配るので、
+                    // monotonic な _yorishiro_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
+                    let seq = HOOK_SEQ.fetch_add(1, Ordering::Relaxed);
+                    let final_body = match parsed_body {
+                        Ok(mut obj) if obj.is_object() => {
+                            let map = obj.as_object_mut().expect("checked is_object");
+                            if let Some(event) = event_type {
+                                map.insert("event".to_string(), serde_json::json!(event));
+                            }
+                            if let Some(session_id) = &session_id {
+                                map.insert("sessionId".to_string(), serde_json::json!(session_id));
+                            }
+                            if let Some(agent) = &agent {
+                                map.insert("agent".to_string(), serde_json::json!(agent));
+                            }
+                            map.insert("_yorishiro_seq".to_string(), serde_json::json!(seq));
+                            obj.to_string()
+                        }
+                        _ => {
+                            // 非 JSON object の body は dedup 不能だが、現状の hook は全て
+                            // JSON object なので実害はない。raw のまま渡す。
+                            body.to_string()
+                        }
+                    };
 
-            // 同一 signal を immediate event と polling fallback の両方で配るので、
-            // monotonic な _yorishiro_seq を必ず載せて frontend が 1 回だけ処理できるようにする。
-            let seq = HOOK_SEQ.fetch_add(1, Ordering::Relaxed);
-            let final_body = match serde_json::from_str::<serde_json::Value>(body) {
-                Ok(mut obj) if obj.is_object() => {
-                    let map = obj.as_object_mut().expect("checked is_object");
-                    if let Some(event) = event_type {
-                        map.insert("event".to_string(), serde_json::json!(event));
+                    // Immediate path: WebView receives without waiting for polling.
+                    let _ = app.emit("hook-signal", final_body.clone());
+                    // Fallback path: frontend drains via poll_hook_signals if event delivery misses.
+                    if let Ok(mut q) = HOOK_SIGNAL_QUEUE.lock() {
+                        q.push(final_body);
                     }
-                    if let Some(session_id) = &session_id {
-                        map.insert("sessionId".to_string(), serde_json::json!(session_id));
-                    }
-                    if let Some(agent) = &agent {
-                        map.insert("agent".to_string(), serde_json::json!(agent));
-                    }
-                    map.insert("_yorishiro_seq".to_string(), serde_json::json!(seq));
-                    obj.to_string()
                 }
-                _ => {
-                    // 非 JSON object の body は dedup 不能だが、現状の hook は全て
-                    // JSON object なので実害はない。raw のまま渡す。
-                    body.to_string()
-                }
-            };
-
-            // Immediate path: WebView receives without waiting for polling.
-            let _ = app.emit("hook-signal", final_body.clone());
-            // Fallback path: frontend drains via poll_hook_signals if event delivery misses.
-            if let Ok(mut q) = HOOK_SIGNAL_QUEUE.lock() {
-                q.push(final_body);
             }
         }
     }
@@ -410,6 +531,11 @@ pub struct PtyExit {
 /// は削除し、`session_*` Tauri command に集約する。
 pub struct PtyState {
     registry: Arc<SessionRegistry>,
+}
+
+pub struct PtySpawnError {
+    pub message: String,
+    pub replaced_confirmed_session_id: Option<String>,
 }
 
 impl PtyState {
@@ -434,11 +560,22 @@ impl PtyState {
         cwd: Option<String>,
         spec: &SpawnSpec,
         on_output: Channel,
-    ) -> Result<(), String> {
-        // 既存同 id session があれば kill + remove して replace。
+    ) -> Result<Option<String>, PtySpawnError> {
+        // 既存同 id session はまずregistryからdetachし、同じlock境界でselectionを
+        // snapshotする。以後そのlaunchのhookはstaleとして拒否される。
         // suppress_exit で reader thread の pty-exit emit を抑制し、
         // JS 側の auto-respawn が誤発火しないようにする。
-        if let Some(existing) = self.session_or_default(session_id) {
+        let (existing, replaced_confirmed_session_id) = self
+            .registry
+            .detach_pty_with_selected_conversation(session_id)
+            .map(|(session, selection)| {
+                let confirmed_session_id = selection
+                    .filter(|selected| selected.confirmed)
+                    .map(|selected| selected.session_id);
+                (Some(session), confirmed_session_id)
+            })
+            .unwrap_or((None, None));
+        if let Some(existing) = existing {
             existing.suppress_exit();
             let _ = existing.kill();
         }
@@ -462,12 +599,17 @@ impl PtyState {
             session_id.to_string(),
             Arc::clone(&self.registry),
         ));
+        // SessionStart hook は child spawn 直後に届き得るため、spawn 前に registry へ
+        // publishする。spawn失敗時は下のremoveでrollbackする。
+        self.registry.attach_pty(session_id, Arc::clone(&session));
         if let Err(e) = session.spawn(app, cols, rows, cwd, spec, on_output) {
             self.registry.remove(session_id);
-            return Err(e);
+            return Err(PtySpawnError {
+                message: e,
+                replaced_confirmed_session_id,
+            });
         }
-        self.registry.attach_pty(session_id, session);
-        Ok(())
+        Ok(replaced_confirmed_session_id)
     }
 
     pub fn attach(
@@ -512,9 +654,19 @@ impl PtyState {
     pub fn realtime_selected_thread(
         &self,
         session_id: &str,
-    ) -> Option<crate::sessions::pty_session::CodexSelectedThread> {
+    ) -> Option<crate::sessions::pty_session::AgentSelectedConversation> {
         self.session_or_default(session_id)
             .and_then(|session| session.realtime_selected_thread())
+    }
+
+    pub fn accept_hook_signal(
+        &self,
+        session_id: &str,
+        hook_launch_id: &str,
+        provider_session_id: Option<&str>,
+    ) -> bool {
+        self.registry
+            .accept_hook_signal(session_id, hook_launch_id, provider_session_id)
     }
 
     pub fn write_data(&self, session_id: &str, data: &str) -> Result<(), String> {
@@ -574,7 +726,13 @@ mod tests {
 
     #[test]
     fn build_hooks_json_valid() {
-        let json = build_hooks_json(19001);
+        let json = build_hooks_json(
+            19001,
+            "main session",
+            "claude",
+            "instance-token",
+            "launch-token",
+        );
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("should be valid JSON");
         let hooks = parsed["hooks"].as_object().expect("should have hooks");
         assert!(hooks.contains_key("UserPromptSubmit"));
@@ -603,6 +761,9 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("/hook/notification"));
+        assert!(notification[0]["command"].as_str().unwrap().contains(
+            "sessionId=main%20session&agent=claude&token=instance-token&launch=launch-token"
+        ));
         assert!(hooks["PermissionRequest"][0]["hooks"][0]["command"]
             .as_str()
             .unwrap()
@@ -620,10 +781,16 @@ mod tests {
 
     #[test]
     fn hook_path_query_extracts_session_and_agent() {
-        let (path, query) = split_path_query("/hook/notification?sessionId=shell-1&agent=codex");
+        let (path, query) = split_path_query(
+            "/hook/notification?sessionId=shell-1&agent=codex&token=instance-token",
+        );
         assert_eq!(path, "/hook/notification");
         assert_eq!(query_param(query, "sessionId"), Some("shell-1".to_string()));
         assert_eq!(query_param(query, "agent"), Some("codex".to_string()));
+        assert_eq!(
+            query_param(query, "token"),
+            Some("instance-token".to_string())
+        );
     }
 
     #[test]
@@ -633,5 +800,53 @@ mod tests {
             query_param(query, "sessionId"),
             Some("shell:1 copy".to_string())
         );
+    }
+
+    #[test]
+    fn hook_token_rejects_missing_or_cross_instance_requests() {
+        assert!(!hook_token_matches(
+            Some("sessionId=main&agent=claude"),
+            "instance-a"
+        ));
+        assert!(!hook_token_matches(
+            Some("sessionId=main&agent=claude&token=instance-b"),
+            "instance-a"
+        ));
+        assert!(hook_token_matches(
+            Some("sessionId=main&agent=claude&token=instance-a"),
+            "instance-a"
+        ));
+    }
+
+    #[test]
+    fn claude_session_start_extracts_only_the_provider_conversation_id() {
+        let payload = serde_json::json!({
+            "session_id": " provider-session-id ",
+            "transcript_path": "/private/conversation.jsonl",
+        });
+        assert_eq!(
+            claude_session_start_id("/hook/session-start", Some("claude"), &payload),
+            Some("provider-session-id")
+        );
+        assert_eq!(
+            claude_session_start_id("/hook/prompt", Some("claude"), &payload),
+            None
+        );
+        assert_eq!(
+            claude_session_start_id("/hook/session-start", Some("codex"), &payload),
+            None
+        );
+    }
+
+    #[test]
+    fn hook_server_bind_uses_per_instance_dynamic_ports_and_tokens() {
+        let first = bind_hook_server().expect("first hook server");
+        let second = bind_hook_server().expect("second hook server");
+        let first_endpoint = first.endpoint();
+        let second_endpoint = second.endpoint();
+        assert!(first_endpoint.is_available());
+        assert!(second_endpoint.is_available());
+        assert_ne!(first_endpoint.port, second_endpoint.port);
+        assert_ne!(first_endpoint.token(), second_endpoint.token());
     }
 }

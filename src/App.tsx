@@ -259,6 +259,8 @@ import {
   conversationEntryLaunch,
   conversationNavigationReducer,
   conversationNavigationTarget,
+  conversationReplacementRollbackEntry,
+  conversationResumeObservationTimeoutMs,
   createConversationTransitionGate,
   currentConversationEntry,
   EMPTY_CONVERSATION_NAVIGATION_TRAIL,
@@ -266,6 +268,7 @@ import {
   isConversationTransitionActive,
   prepareConversationDraftForReplacement,
   prepareFreshConversationRequest,
+  supportsConversationNavigation,
 } from "./runtime/sessions/conversation-navigation";
 import {
   spawnSpecFromDefaultProfile,
@@ -4532,7 +4535,7 @@ function App() {
   }, [cwd, homeDir, tabManager, tabState.mainSessionId, tabState.sessions]);
 
   const readCurrentMainConversationSelection = useCallback(async () => {
-    if (terminalAgent !== "codex") return null;
+    if (!supportsConversationNavigation(terminalAgent)) return null;
     const mainSessionId = tabManager.getState().mainSessionId;
     const generation = mainConversationGenerationRef.current;
     try {
@@ -4542,7 +4545,7 @@ function App() {
       }
       return selection;
     } catch (error) {
-      console.warn("[session-navigation] failed to read Codex thread state", error);
+      console.warn("[session-navigation] failed to read provider conversation state", error);
       return null;
     }
   }, [tabManager, terminalAgent]);
@@ -4574,7 +4577,12 @@ function App() {
   }, [cwd, getSessionCwd, getTerminalSpec, tabManager]);
 
   const resumeMainConversationExactly = useCallback(
-    async (sessionId: string): Promise<string> => {
+    async (
+      sessionId: string,
+    ): Promise<{
+      readonly sessionId: string;
+      readonly replacedConfirmedSessionId: string | null;
+    }> => {
       const mainSessionId = tabManager.getState().mainSessionId;
       const sessionCwd = getSessionCwd(mainSessionId);
       const params = {
@@ -4583,7 +4591,8 @@ function App() {
       };
       const generation = mainConversationGenerationRef.current + 1;
       mainConversationGenerationRef.current = generation;
-      await getTerminalRuntime(mainSessionId).forceRespawnWithParams(params);
+      const spawnResult = await getTerminalRuntime(mainSessionId).forceRespawnWithParams(params);
+      const replacedConfirmedSessionId = spawnResult?.replacedConfirmedSessionId ?? null;
       const observedSessionId = await waitForObservedSessionId(
         async () => {
           const selected = await readConversationSelectionWithin(
@@ -4593,23 +4602,34 @@ function App() {
           return selected?.confirmed === true ? selected.sessionId : null;
         },
         {
-          timeoutMs: 2_000,
+          expectedSessionId: terminalAgent === "claude" ? sessionId : undefined,
+          timeoutMs: conversationResumeObservationTimeoutMs(terminalAgent),
           pollIntervalMs: 50,
           shouldContinue: () => mainConversationGenerationRef.current === generation,
         },
       );
       if (observedSessionId === null) {
-        throw new Error(`Timed out waiting for Codex session ${sessionId}`);
+        throw new SessionSpawnError(
+          `Timed out waiting for ${terminalAgent} session ${sessionId}`,
+          replacedConfirmedSessionId,
+        );
       }
-      return observedSessionId;
+      return { sessionId: observedSessionId, replacedConfirmedSessionId };
     },
-    [cwd, getSessionCwd, getTerminalSpec, readCurrentMainConversationSelection, tabManager],
+    [
+      cwd,
+      getSessionCwd,
+      getTerminalSpec,
+      readCurrentMainConversationSelection,
+      tabManager,
+      terminalAgent,
+    ],
   );
 
   const restoreMainConversationLaunch = useCallback(
     async (launch: ConversationEntryLaunch): Promise<string | null> => {
       if (launch.kind === "exact-resume") {
-        return resumeMainConversationExactly(launch.sessionId);
+        return (await resumeMainConversationExactly(launch.sessionId)).sessionId;
       }
       await spawnFreshMainConversation();
       return null;
@@ -4626,7 +4646,7 @@ function App() {
 
   const tryHydrateActiveDraft = useCallback(
     async (timeoutMs: number, coalesceByGeneration: boolean): Promise<string | null> => {
-      if (terminalAgent !== "codex") return null;
+      if (!supportsConversationNavigation(terminalAgent)) return null;
       const trail = mainConversationTrailRef.current;
       const entry = currentConversationEntry(trail);
       if (entry?.kind !== "new-draft") return null;
@@ -4783,13 +4803,15 @@ function App() {
   );
 
   useEffect(() => {
-    if (terminalAgent !== "codex") dispatchMainConversationTrail({ type: "reset" });
+    if (!supportsConversationNavigation(terminalAgent)) {
+      dispatchMainConversationTrail({ type: "reset" });
+    }
   }, [dispatchMainConversationTrail, terminalAgent]);
 
   useEffect(() => {
     if (
       !canMountTerminals ||
-      terminalAgent !== "codex" ||
+      !supportsConversationNavigation(terminalAgent) ||
       mainConversationTrail.entries.length > 0 ||
       mainConversationTrail.transient !== null
     ) {
@@ -4850,12 +4872,14 @@ function App() {
       pendingFreshRollbackLaunchRef.current = request.rollbackLaunch;
       pendingFreshDraftLeaseRef.current = request.draftLease;
       pendingFreshTransitionLeaseRef.current = transitionLease;
-      setVoiceReconnectPending(
-        (pending) =>
-          pending ||
-          codexRealtimeState.status === "active" ||
-          codexRealtimeState.status === "connecting",
-      );
+      if (terminalAgent === "codex") {
+        setVoiceReconnectPending(
+          (pending) =>
+            pending ||
+            codexRealtimeState.status === "active" ||
+            codexRealtimeState.status === "connecting",
+        );
+      }
       const requestSeq = mainFreshLatestSeqRef.current + 1;
       mainFreshLatestSeqRef.current = requestSeq;
       handedOffToSpawnEffect = true;
@@ -4876,6 +4900,7 @@ function App() {
     reconcileCachedConversationSelectionBeforeTransition,
     refreshCachedConversationSelectionImmediately,
     tabManager,
+    terminalAgent,
   ]);
 
   useEffect(() => {
@@ -4892,7 +4917,7 @@ function App() {
       .catch(() => {})
       .then(() => spawnFreshMainConversation())
       .then((replacedConfirmedSessionId) => {
-        if (spawningAgent !== "codex") return;
+        if (!supportsConversationNavigation(spawningAgent)) return;
         // Rustのreplace境界で取得したoutgoing IDをsource of truthにする。
         // click-time pollingがAを取り逃しても、Aを確定trailへ同期してからdraftを重ねる。
         if (replacedConfirmedSessionId !== null) {
@@ -4917,7 +4942,7 @@ function App() {
                 kind: "exact-resume",
                 sessionId: replacedConfirmedSessionId,
               } satisfies ConversationEntryLaunch);
-        if (spawningAgent === "codex" && effectiveRollbackLaunch) {
+        if (supportsConversationNavigation(spawningAgent) && effectiveRollbackLaunch) {
           try {
             // State を非 commit のままにする場合、表示側も trail current へ戻して invariant を守る。
             const actualSessionId = await restoreMainConversationLaunch(effectiveRollbackLaunch);
@@ -4932,7 +4957,7 @@ function App() {
             }
           } catch (rollbackError) {
             console.error(
-              "[session-navigation] failed to restore the prior Codex session",
+              "[session-navigation] failed to restore the prior agent session",
               rollbackError,
             );
             dispatchMainConversationTrail({ type: "reset" });
@@ -4958,7 +4983,7 @@ function App() {
 
   const handleMainConversationNavigation = useCallback(
     async (direction: ConversationNavigationDirection) => {
-      if (terminalAgent !== "codex") return;
+      if (!supportsConversationNavigation(terminalAgent)) return;
       const transitionLease = beginMainConversationTransition(direction);
       if (transitionLease === null) return;
       let currentEntry: ActiveConversationEntry | null = null;
@@ -4979,19 +5004,42 @@ function App() {
         tabManager.switchTo(mainSessionId);
         localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, mainSessionId);
 
-        setVoiceReconnectPending(
-          (pending) =>
-            pending ||
-            codexRealtimeState.status === "active" ||
-            codexRealtimeState.status === "connecting",
-        );
+        if (terminalAgent === "codex") {
+          setVoiceReconnectPending(
+            (pending) =>
+              pending ||
+              codexRealtimeState.status === "active" ||
+              codexRealtimeState.status === "connecting",
+          );
+        }
 
         const launch = conversationEntryLaunch(targetEntry);
         let actualSessionId: string | undefined;
+        let replacedConfirmedSessionId: string | null = null;
         if (launch.kind === "exact-resume") {
-          actualSessionId = await resumeMainConversationExactly(launch.sessionId);
+          const resumed = await resumeMainConversationExactly(launch.sessionId);
+          actualSessionId = resumed.sessionId;
+          replacedConfirmedSessionId = resumed.replacedConfirmedSessionId;
         } else {
-          await spawnFreshMainConversation();
+          replacedConfirmedSessionId = await spawnFreshMainConversation();
+        }
+        if (replacedConfirmedSessionId !== null) {
+          reconcileReplacedConfirmedSession(replacedConfirmedSessionId);
+          const reconciledTarget = conversationNavigationTarget(
+            mainConversationTrailRef.current,
+            direction,
+          );
+          if (
+            reconciledTarget === null ||
+            !conversationEntriesEqual(reconciledTarget, targetEntry)
+          ) {
+            // click-time modelより新しいprovider会話がreplace境界で判明した。
+            // 既に起動したtargetをcommitせず、catchでatomic outgoingへexact rollbackする。
+            throw new SessionSpawnError(
+              "The active conversation changed while navigation was starting",
+              replacedConfirmedSessionId,
+            );
+          }
         }
         dispatchMainConversationTrail({
           type: "navigation-succeeded",
@@ -5002,19 +5050,28 @@ function App() {
       } catch (error) {
         console.error(`[session-navigation] failed to navigate ${direction}`, error);
         dispatchMainConversationTrail({ type: "operation-failed" });
-        if (currentEntry !== null) {
+        const replacedConfirmedSessionId =
+          error instanceof SessionSpawnError ? error.replacedConfirmedSessionId : null;
+        if (replacedConfirmedSessionId !== null) {
+          reconcileReplacedConfirmedSession(replacedConfirmedSessionId);
+        }
+        const rollbackEntry = conversationReplacementRollbackEntry(
+          currentEntry,
+          replacedConfirmedSessionId,
+        );
+        if (rollbackEntry !== null) {
           try {
-            const actualSessionId = await restoreMainConversationEntry(currentEntry);
-            if (currentEntry.kind === "session" && actualSessionId !== null) {
+            const actualSessionId = await restoreMainConversationEntry(rollbackEntry);
+            if (rollbackEntry.kind === "session" && actualSessionId !== null) {
               dispatchMainConversationTrail({
                 type: "current-session-replaced",
-                expectedSessionId: currentEntry.id,
+                expectedSessionId: rollbackEntry.id,
                 actualSessionId,
               });
             }
           } catch (rollbackError) {
             console.error(
-              "[session-navigation] failed to restore the current Codex session",
+              "[session-navigation] failed to restore the current agent session",
               rollbackError,
             );
             // 表示中 PTY と cursor の対応を復元できなければ、誤った ID への追加 navigation を止める。
@@ -5031,6 +5088,7 @@ function App() {
       dispatchMainConversationTrail,
       finishMainConversationTransition,
       prepareActiveDraftForReplacement,
+      reconcileReplacedConfirmedSession,
       reconcileCachedConversationSelectionBeforeTransition,
       refreshCachedConversationSelectionImmediately,
       restoreMainConversationEntry,
@@ -5042,7 +5100,7 @@ function App() {
   );
 
   useEffect(() => {
-    if (!canMountTerminals || terminalAgent !== "codex") return;
+    if (!canMountTerminals || !supportsConversationNavigation(terminalAgent)) return;
     const runtime = getTerminalRuntime(tabManager.getState().mainSessionId);
     const subscription = runtime.subscribeUserInput((data) => {
       if (!data || isConversationTransitionActive(mainConversationTransitionGateRef.current)) {
@@ -5311,7 +5369,7 @@ function App() {
               mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "back")
             }
             onBackConversation={
-              terminalAgent === "codex"
+              supportsConversationNavigation(terminalAgent)
                 ? () => void handleMainConversationNavigation("back")
                 : undefined
             }
@@ -5326,7 +5384,7 @@ function App() {
               mainSessionReplacing || !canNavigateConversation(mainConversationTrail, "forward")
             }
             onForwardConversation={
-              terminalAgent === "codex"
+              supportsConversationNavigation(terminalAgent)
                 ? () => void handleMainConversationNavigation("forward")
                 : undefined
             }
