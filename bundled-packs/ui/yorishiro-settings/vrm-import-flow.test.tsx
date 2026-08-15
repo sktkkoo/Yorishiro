@@ -139,7 +139,7 @@ describe("VRM import settings handler", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add from file…" }));
     const importedOption = await screen.findByRole("option", { name: /imported\.vrm/ });
     expect(importedOption.getAttribute("aria-selected")).toBe("true");
-    expect(screen.getByText("Added. Not switched yet.")).toBeTruthy();
+    expect(screen.getByText("Added to the list.")).toBeTruthy();
     expect(setVrm).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));

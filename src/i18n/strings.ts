@@ -36,7 +36,6 @@ export interface UiStrings {
   readonly vrmThumbnailUnavailable: string;
   readonly vrmCatalogIntro: string;
   readonly vrmActive: string;
-  readonly vrmPending: string;
   readonly vrmPendingSwitch: string;
   readonly vrmInvalid: string;
   readonly vrmMissingBadge: string;
@@ -255,13 +254,12 @@ const EN: UiStrings = {
   vrmImportNew: "Add from file…",
   vrmSearchPlaceholder: "Search by name or author",
   vrmNoMatches: "No matching avatars",
-  vrmImportedNotApplied: "Added. Not switched yet.",
+  vrmImportedNotApplied: "Added to the list.",
   vrmImportFailed: "Could not add the VRM file.",
   vrmThumbnailAlt: "Thumbnail of {name}",
   vrmThumbnailUnavailable: "No thumbnail available",
   vrmCatalogIntro: '"Not stated" is not permission. The decision is yours.',
   vrmActive: "Active",
-  vrmPending: "Not switched yet",
   vrmPendingSwitch: "Switch {from} → {to}",
   vrmInvalid: "Invalid",
   vrmMissingBadge: "Missing",
@@ -476,13 +474,12 @@ const JA: UiStrings = {
   vrmImportNew: "ファイルを追加…",
   vrmSearchPlaceholder: "名前・制作者で検索",
   vrmNoMatches: "該当するアバターはありません",
-  vrmImportedNotApplied: "追加しました。まだ切り替えていません。",
+  vrmImportedNotApplied: "一覧に追加しました。",
   vrmImportFailed: "VRM ファイルを追加できませんでした。",
   vrmThumbnailAlt: "{name} のサムネイル",
   vrmThumbnailUnavailable: "サムネイルはありません",
   vrmCatalogIntro: "「記載なし」は許可を意味しません。最終的な判断は利用者が行います。",
   vrmActive: "使用中",
-  vrmPending: "切り替え前",
   vrmPendingSwitch: "{from} → {to} に切り替えます",
   vrmInvalid: "無効",
   vrmMissingBadge: "見つかりません",

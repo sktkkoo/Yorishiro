@@ -3372,10 +3372,6 @@ function VrmChooserDialog({
                       <span style={{ color: COLORS.accent, fontSize: FONT.sizeXs }}>
                         {strings.vrmActive}
                       </span>
-                    ) : selected?.valid ? (
-                      <span style={{ color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
-                        {strings.vrmPending}
-                      </span>
                     ) : null}
                   </div>
                   {selected?.kind === "file" && !selected.active ? (
@@ -3420,16 +3416,11 @@ function VrmChooserDialog({
                     {selectedCreators}
                   </span>
                 </div>
-                <div style={{ marginTop: "2px", color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
-                  {selected?.kind === "yori"
-                    ? strings.vrmBundledSource
-                    : [
-                        selected?.label,
-                        selected?.meta?.specVersion && `VRM ${selected.meta.specVersion}`,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                </div>
+                {selected?.kind === "yori" ? (
+                  <div style={{ marginTop: "2px", color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
+                    {strings.vrmBundledSource}
+                  </div>
+                ) : null}
               </div>
             </header>
             <div
