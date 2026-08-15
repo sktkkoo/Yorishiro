@@ -155,7 +155,7 @@ const EN: UiStrings = {
   muteAmbient: "Mute ambient sound",
   unmuteVoice: "Unmute voice",
   muteVoice: "Mute voice",
-  ambientVolume: "Ambience",
+  ambientVolume: "Ambient Sound",
   voiceVolume: "Voice",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "Calm",

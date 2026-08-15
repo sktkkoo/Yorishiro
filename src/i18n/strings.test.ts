@@ -118,7 +118,7 @@ describe("changeStrings", () => {
   });
 
   it("labels the independent voice volume control in both languages", () => {
-    expect(getStrings("en").ambientVolume).toBe("Ambience");
+    expect(getStrings("en").ambientVolume).toBe("Ambient Sound");
     expect(getStrings("en").voiceVolume).toBe("Voice");
     expect(getStrings("en").muteVoice).toBe("Mute voice");
     expect(getStrings("en").unmuteVoice).toBe("Unmute voice");
