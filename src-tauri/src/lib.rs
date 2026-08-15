@@ -962,19 +962,13 @@ async fn session_spawn(
         shell @ SpawnSpec::Shell { .. } => shell,
     };
     let id = session_id.unwrap_or_else(|| sessions::DEFAULT_SESSION_ID.to_string());
-    // 読み取りとreplaceの間にawaitを挟まない。frontend側も同sessionのspawn invokeを
-    // 直列化するため、これは実際に置換されるPTYのatomicなorigin snapshotになる。
-    let replaced_confirmed_session_id = state
-        .realtime_selected_thread(&id)
-        .filter(|selected| selected.confirmed)
-        .map(|selected| selected.session_id);
     match state.spawn(app, &id, cols, rows, cwd, &final_spec, on_output) {
-        Ok(()) => Ok(SessionSpawnResult {
+        Ok(replaced_confirmed_session_id) => Ok(SessionSpawnResult {
             replaced_confirmed_session_id,
         }),
-        Err(message) => Err(SessionSpawnError {
-            message,
-            replaced_confirmed_session_id,
+        Err(error) => Err(SessionSpawnError {
+            message: error.message,
+            replaced_confirmed_session_id: error.replaced_confirmed_session_id,
         }),
     }
 }
@@ -1064,7 +1058,7 @@ async fn session_realtime_selected_thread(
 async fn session_realtime_selected_thread_state(
     pty_state: State<'_, PtyState>,
     session_id: String,
-) -> Result<Option<crate::sessions::pty_session::CodexSelectedThread>, String> {
+) -> Result<Option<crate::sessions::pty_session::AgentSelectedConversation>, String> {
     Ok(pty_state.realtime_selected_thread(&session_id))
 }
 
@@ -2474,6 +2468,17 @@ pub fn run() {
     // も同じ registry に access できる。
     let registry = Arc::new(SessionRegistry::new());
     let pty_state = PtyState::new(Arc::clone(&registry));
+    let pending_hook_server = match pty::bind_hook_server() {
+        Ok(server) => Some(server),
+        Err(error) => {
+            eprintln!("[hook-server] startup unavailable: {error}");
+            None
+        }
+    };
+    let hook_server_endpoint = pending_hook_server
+        .as_ref()
+        .map(pty::PendingHookServer::endpoint)
+        .unwrap_or_else(pty::HookServerEndpoint::unavailable);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -2482,6 +2487,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(pty_state)
         .manage(registry)
+        .manage(hook_server_endpoint)
         .manage(RealtimeBridgeState::default())
         .manage(WatcherState::new())
         .manage(tts::TtsState::new())
@@ -2544,7 +2550,7 @@ pub fn run() {
             history::snapshot_prune,
             system_exec
         ])
-        .setup(|app| {
+        .setup(move |app| {
             // 前回 instance が leak した codex app-server sidecar を先に回収する。
             // orphan が ~/.codex/thread-writer-locks の writer lock を握ったままだと
             // 最初の Codex session の `resume --last` が -32600 で失敗する（issue #109）。
@@ -2553,7 +2559,13 @@ pub fn run() {
             if let Err(e) = pty::ensure_reminder_script() {
                 eprintln!("[reminder] script 配置失敗: {e}");
             }
-            start_hook_server(app.handle().clone());
+            if let Some(server) = pending_hook_server {
+                eprintln!(
+                    "[hook-server] listening at 127.0.0.1:{}",
+                    server.endpoint().port
+                );
+                start_hook_server(app.handle().clone(), server);
+            }
             let mcp_handle = app.handle().clone();
             match mcp::spawn_server(mcp_handle) {
                 Ok(runtime) => {

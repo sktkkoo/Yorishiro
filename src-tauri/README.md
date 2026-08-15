@@ -13,7 +13,7 @@ Yorishiro の **IO 境界層**。PTY / file system / hooks / MCP server。**設�
 src-tauri/src/
 ├── main.rs        — minimal entry, calls yorishiro_lib::run()
 ├── lib.rs         — Tauri app builder + #[tauri::command] 登録 + setup hook
-├── pty.rs         — Legacy PTY facade / hook server (port 19001)
+├── pty.rs         — Legacy PTY facade / per-instance dynamic-port hook server
 ├── sessions/
 │   ├── pty_session.rs — Per-session PTY resource lifecycle
 │   ├── registry.rs    — SessionDescriptor / lifecycle registry
@@ -70,7 +70,7 @@ MCP:
 ## Setup flow（lib.rs:run）
 
 1. State 登録：`PtyState`、`WatcherState`
-2. Hook server 起動：127.0.0.1:**19001**（Claude Code → Yorishiro の signal 受け）
+2. Hook server 起動：`127.0.0.1:0` で OS 割当 port を確保し、instance UUID token で別プロセスを分離する。各 agent launch にも UUID を付け、respawn 前 process から遅れて届く signal を拒否する。bind 失敗時は hooks unavailable として app / PTY 起動を継続し、hook 観測機能だけを degrade する
 3. MCP server spawn：`mcpPort` 指定時は固定、未指定時は **18743** preferred + 空き port fallback。runtime endpoint を instance 単位で保持（失敗しても app は crash せず、agent spawn は fail closed）
 4. Plugins setup：opener、dialog
 5. Tauri runloop へ

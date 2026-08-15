@@ -251,12 +251,15 @@ mod tests {
         plugin_dir: Option<&'a Path>,
     ) -> LaunchContext<'a> {
         LaunchContext {
+            host_session_id: "default-session",
+            hook_launch_id: "launch-test",
             cwd,
             system_prompt,
             prompt_reminder: None,
             plugin_dir,
             mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
             hook_port: 19001,
+            hook_token: "test-token",
             resume: true,
             resume_session_id: None,
             realtime_endpoint: None,
@@ -268,12 +271,15 @@ mod tests {
         prompt_reminder: Option<&'a str>,
     ) -> LaunchContext<'a> {
         LaunchContext {
+            host_session_id: "default-session",
+            hook_launch_id: "launch-test",
             cwd: None,
             system_prompt,
             prompt_reminder,
             plugin_dir: None,
             mcp_endpoint: Some("http://127.0.0.1:18743/instances/test-instance/mcp"),
             hook_port: 19001,
+            hook_token: "test-token",
             resume: true,
             resume_session_id: None,
             realtime_endpoint: None,

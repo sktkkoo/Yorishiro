@@ -62,6 +62,10 @@ pub struct CommandSyntax {
 
 /// Spawn 時に各 adapter に渡される context。
 pub struct LaunchContext<'a> {
+    /// Yorishiro が管理する PTY session id。provider hook を正しい tab へ関連付ける。
+    pub host_session_id: &'a str,
+    /// 同じhost sessionのrespawnを識別し、旧processからの遅延hookを拒否するtoken。
+    pub hook_launch_id: &'a str,
     pub cwd: Option<&'a Path>,
     pub system_prompt: Option<&'a str>,
     pub prompt_reminder: Option<&'a str>,
@@ -69,6 +73,8 @@ pub struct LaunchContext<'a> {
     /// この process が実際に所有する instance-scoped MCP endpoint。
     pub mcp_endpoint: Option<&'a str>,
     pub hook_port: u16,
+    /// per-instance hook server token。空ならhook integration unavailable。
+    pub hook_token: &'a str,
     pub resume: bool,
     /// provider 固有の会話 ID を指定した exact resume。未指定時は従来の resume policy。
     pub resume_session_id: Option<&'a str>,
