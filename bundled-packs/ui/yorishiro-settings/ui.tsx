@@ -126,6 +126,8 @@ export interface VrmThumbnailRef {
 export interface VrmCandidate {
   readonly id: string;
   readonly kind: "yori" | "file" | "missing";
+  /** Catalog grouping is deliberately independent of the source path. Future bundled avatars join Yori here. */
+  readonly catalogGroup: "bundled" | "imported" | "missing";
   readonly label: string;
   readonly path: string | null;
   readonly sourceId: string | null;
@@ -168,6 +170,7 @@ export function resolveVrmCandidates(
   const files: VrmCandidate[] = entries.map((entry) => ({
     id: `file:${entry.id}`,
     kind: "file",
+    catalogGroup: "imported",
     label: entry.fileName,
     path: entry.path,
     sourceId: entry.id,
@@ -182,6 +185,7 @@ export function resolveVrmCandidates(
     {
       id: YORI_VRM_ID,
       kind: "yori",
+      catalogGroup: "bundled",
       label: DEFAULT_VRM_NAME,
       path: null,
       sourceId: null,
@@ -198,6 +202,7 @@ export function resolveVrmCandidates(
     candidates.push({
       id: "missing:active",
       kind: "missing",
+      catalogGroup: "missing",
       label: activePath.split(/[\\/]/).pop() || activePath,
       path: activePath,
       sourceId: null,
@@ -2464,6 +2469,10 @@ export function vrmCandidateDisplayName(candidate: VrmCandidate): string {
 
 export function sortVrmCandidates(candidates: readonly VrmCandidate[]): readonly VrmCandidate[] {
   return [...candidates].sort((left, right) => {
+    const groupRank = { bundled: 0, imported: 1, missing: 2 } as const;
+    if (left.catalogGroup !== right.catalogGroup) {
+      return groupRank[left.catalogGroup] - groupRank[right.catalogGroup];
+    }
     if (left.active !== right.active) return left.active ? -1 : 1;
     if (left.valid !== right.valid) return left.valid ? -1 : 1;
     return vrmCandidateDisplayName(left).localeCompare(vrmCandidateDisplayName(right), undefined, {
@@ -3543,7 +3552,7 @@ function VrmChooserDialog({
                           aria-hidden="true"
                           style={{ color: COLORS.fgDim, fontSize: FONT.sizeXs }}
                         >
-                          {strings.vrmDefaultAvatar}
+                          {strings.vrmBundledAvatar}
                         </span>
                       ) : !candidate.valid ? (
                         <span style={{ color: COLORS.statusError, fontSize: FONT.sizeXs }}>
@@ -3658,7 +3667,7 @@ function VrmChooserDialog({
                 ) : null}
                 {selected?.kind === "yori" ? (
                   <div style={{ marginTop: "2px", color: COLORS.fgDim, fontSize: FONT.sizeXs }}>
-                    {strings.vrmDefaultAvatar}
+                    {strings.vrmBundledAvatar}
                   </div>
                 ) : null}
               </div>

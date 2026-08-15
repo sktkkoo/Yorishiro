@@ -60,9 +60,10 @@ const validVrmEntry = {
 } as const;
 
 describe("VRM catalog selection boundary", () => {
-  it("treats Yori as the default avatar with its build-extracted thumbnail", () => {
+  it("treats Yori as the first bundled avatar with its build-extracted thumbnail", () => {
     expect(resolveVrmCandidates([], null)[0]).toMatchObject({
       kind: "yori",
+      catalogGroup: "bundled",
       active: true,
       sourceId: null,
       thumbnail: null,
@@ -134,7 +135,7 @@ describe("VRM chooser discovery", () => {
     expect(filterVrmCandidates(candidates, "avatar")).toHaveLength(1);
   });
 
-  it("keeps the active avatar first and filters a 100-item catalog deterministically", () => {
+  it("keeps bundled avatars ahead of the active imported avatar and filters a 100-item catalog deterministically", () => {
     const entries = Array.from({ length: 100 }, (_, index) => ({
       ...validVrmEntry,
       id: `${index}.vrm`,
@@ -144,7 +145,8 @@ describe("VRM chooser discovery", () => {
     }));
     const candidates = resolveVrmCandidates(entries, entries[73]?.path ?? null);
     const sorted = sortVrmCandidates(candidates);
-    expect(sorted[0]?.path).toBe(entries[73]?.path);
+    expect(sorted[0]?.kind).toBe("yori");
+    expect(sorted[1]?.path).toBe(entries[73]?.path);
     expect(filterVrmCandidates(sorted, "Avatar 99")).toHaveLength(1);
   });
 });

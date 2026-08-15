@@ -148,7 +148,7 @@ describe("VRM import settings handler", () => {
     const activeRestrictions = screen.getByRole("group", { name: "Content restrictions" });
     expect(activeRestrictions.querySelectorAll(":scope > div")).toHaveLength(1);
     fireEvent.click(screen.getByRole("option", { name: "Yori" }));
-    expect(screen.getAllByText("Default avatar").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Bundled").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("group", { name: "Content restrictions" }).querySelectorAll(":scope > div"),
     ).toHaveLength(2);
