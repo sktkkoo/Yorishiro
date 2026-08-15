@@ -289,7 +289,7 @@ const JA: UiStrings = {
   unmuteVoice: "音声のミュートを解除",
   muteVoice: "音声をミュート",
   ambientVolume: "環境音",
-  voiceVolume: "声",
+  voiceVolume: "音声",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "控えめ",
   motionLevelNormal: "標準",

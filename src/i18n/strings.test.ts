@@ -123,7 +123,7 @@ describe("changeStrings", () => {
     expect(getStrings("en").muteVoice).toBe("Mute voice");
     expect(getStrings("en").unmuteVoice).toBe("Unmute voice");
     expect(getStrings("ja").ambientVolume).toBe("環境音");
-    expect(getStrings("ja").voiceVolume).toBe("声");
+    expect(getStrings("ja").voiceVolume).toBe("音声");
     expect(getStrings("ja").muteVoice).toBe("音声をミュート");
     expect(getStrings("ja").unmuteVoice).toBe("音声のミュートを解除");
   });
