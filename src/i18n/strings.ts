@@ -16,6 +16,7 @@ export interface UiStrings {
   readonly unmuteAmbient: string;
   readonly muteAmbient: string;
   readonly ambientVolume: string;
+  readonly voiceVolume: string;
   readonly motionIntensity: string;
   readonly motionLevelCalm: string;
   readonly motionLevelNormal: string;
@@ -152,6 +153,7 @@ const EN: UiStrings = {
   unmuteAmbient: "Unmute ambient sound",
   muteAmbient: "Mute ambient sound",
   ambientVolume: "Ambient volume",
+  voiceVolume: "Voice Volume",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "Calm",
   motionLevelNormal: "Normal",
@@ -283,6 +285,7 @@ const JA: UiStrings = {
   unmuteAmbient: "環境音をミュート解除",
   muteAmbient: "環境音をミュート",
   ambientVolume: "環境音ボリューム",
+  voiceVolume: "音声ボリューム",
   motionIntensity: "Motion Intensity",
   motionLevelCalm: "控えめ",
   motionLevelNormal: "標準",

@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ensureAudioContextRunning } from "../../core/voice/audio-context";
 import type { MouthValues } from "../../core/voice/mouth-values";
+import { getVoiceVolumeStore } from "../../core/voice/voice-volume-store";
 import {
   CodexRealtimeClient,
   type CodexRealtimePersonaApplication,
@@ -269,6 +270,7 @@ describe("CodexRealtimeClient", () => {
   });
 
   afterEach(() => {
+    getVoiceVolumeStore().set(1);
     vi.useRealTimers();
     vi.unstubAllGlobals();
     FakePeerConnection.latest = null;
@@ -1242,6 +1244,80 @@ describe("CodexRealtimeClient", () => {
         finalMessage: expect.stringContaining('"method":"thread/realtime/stop"'),
       }),
     );
+  });
+
+  it("applies hot voice volume after the analyser without disabling lip sync", async () => {
+    const source = { connect: vi.fn(), disconnect: vi.fn() };
+    const analyser = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      fftSize: 0,
+      smoothingTimeConstant: 0,
+      frequencyBinCount: 128,
+      getByteFrequencyData: vi.fn(),
+      getByteTimeDomainData: vi.fn(),
+    };
+    const gainParam = {
+      value: 1,
+      cancelScheduledValues: vi.fn(),
+      setValueAtTime: vi.fn((value: number) => {
+        gainParam.value = value;
+      }),
+    };
+    const outputGain = { connect: vi.fn(), disconnect: vi.fn(), gain: gainParam };
+    const audioContext = {
+      currentTime: 4,
+      destination: {},
+      createAnalyser: vi.fn(() => analyser),
+      createMediaStreamSource: vi.fn(() => source),
+      createGain: vi.fn(() => outputGain),
+    } as unknown as AudioContext;
+    const client = new CodexRealtimeClient("main-session");
+    await client.start();
+    vi.mocked(ensureAudioContextRunning).mockResolvedValue(audioContext);
+    const remoteTrack = new FakeAudioTrack();
+    const remoteStream = new FakeMediaStream([remoteTrack]);
+    const trackEvent = new Event("track");
+    Object.defineProperties(trackEvent, {
+      streams: { value: [remoteStream] },
+      track: { value: remoteTrack },
+    });
+
+    getVoiceVolumeStore().set(0.3);
+    FakePeerConnection.latest?.dispatchEvent(trackEvent);
+    await vi.waitFor(() => expect(audioContext.createGain).toHaveBeenCalledOnce());
+    expect(gainParam.value).toBe(0.3);
+    getVoiceVolumeStore().set(0);
+
+    expect(source.connect).toHaveBeenCalledWith(analyser);
+    expect(analyser.connect).toHaveBeenCalledWith(outputGain);
+    expect(outputGain.connect).toHaveBeenCalledWith(audioContext.destination);
+    expect(gainParam.setValueAtTime).toHaveBeenCalledWith(0, audioContext.currentTime);
+
+    client.stop();
+    expect(outputGain.disconnect).toHaveBeenCalledOnce();
+
+    gainParam.setValueAtTime.mockClear();
+    getVoiceVolumeStore().set(0.7);
+    expect(gainParam.setValueAtTime).not.toHaveBeenCalled();
+
+    await client.start();
+    const restartedTrack = new FakeAudioTrack();
+    const restartedStream = new FakeMediaStream([restartedTrack]);
+    const restartedTrackEvent = new Event("track");
+    Object.defineProperties(restartedTrackEvent, {
+      streams: { value: [restartedStream] },
+      track: { value: restartedTrack },
+    });
+    FakePeerConnection.latest?.dispatchEvent(restartedTrackEvent);
+    await vi.waitFor(() => expect(audioContext.createGain).toHaveBeenCalledTimes(2));
+
+    gainParam.setValueAtTime.mockClear();
+    getVoiceVolumeStore().set(0.5);
+    expect(gainParam.setValueAtTime).toHaveBeenCalledWith(0.5, audioContext.currentTime);
+
+    client.stop();
+    expect(outputGain.disconnect).toHaveBeenCalledTimes(2);
   });
 
   it("stops microphone tracks returned after stop invalidates the start attempt", async () => {

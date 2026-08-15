@@ -94,6 +94,10 @@ export interface ApplyConfigUpdateArgs<T> {
   readonly write: (value: T) => Promise<void>;
   readonly emitEvent: (name: string, payload?: unknown) => void;
   readonly field: string;
+  /** Rapid optimistic updates may only let the newest request roll UI state back. */
+  readonly shouldRollback?: () => boolean;
+  /** Read the persisted canonical value after a failed write. */
+  readonly readRollbackValue?: () => Promise<T>;
 }
 
 /**
@@ -114,7 +118,17 @@ export async function applyConfigUpdate<T>(args: ApplyConfigUpdateArgs<T>): Prom
     const reason = err instanceof Error ? err.message : String(err);
     console.error(`[yorishiro-settings] ${args.field} write failed:`, reason);
     args.emitEvent("yorishiro-settings:write-failed", { field: args.field, reason });
-    args.setLocal(args.prev);
+    if (args.shouldRollback?.() === false) return;
+    let rollbackValue = args.prev;
+    if (args.readRollbackValue) {
+      try {
+        rollbackValue = await args.readRollbackValue();
+      } catch {
+        // Keep the captured previous value if the canonical refresh also fails.
+      }
+    }
+    if (args.shouldRollback?.() === false) return;
+    args.setLocal(rollbackValue);
   }
 }
 
@@ -2162,6 +2176,9 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
   const [ambientMuted, setAmbientMuted] = useState<boolean | null>(null);
   // 環境音ボリューム（0.0-1.0）。config 読み込み前は null。
   const [ambientVolume, setAmbientVolume] = useState<number | null>(null);
+  // Voice Summary / voice clip / GPT Live 共通ボリューム（0.0-1.0）。
+  const [voiceVolume, setVoiceVolume] = useState<number | null>(null);
+  const voiceVolumeChangeSeq = useRef(0);
   // idle motion の大きさ（0.0-3.0）。config 読み込み前は null。
   const [motionIntensity, setMotionIntensity] = useState<number | null>(null);
   // activeAmbientUi（Aura toggle 等の状態管理用）。
@@ -2216,6 +2233,7 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       setAgentPinnedBy(cur.agentPinnedByProfile);
       setAmbientMuted(cur.ambientAudioMuted);
       setAmbientVolume(cur.ambientAudioVolume);
+      setVoiceVolume(cur.voiceVolume ?? 1);
       setMotionIntensity(cur.motionIntensity);
       setActiveAmbientUiLocal(cur.activeAmbientUi);
       setAttentionLightNotifications(cur.attentionLightNotifications);
@@ -2405,6 +2423,22 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
       write: (v) => ctx.app.setAmbientAudioVolume(v),
       emitEvent: (n, p) => ctx.emitEvent(n, p),
       field: "ambientAudioVolume",
+    });
+  };
+
+  const onVoiceVolumeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const next = Number.parseFloat(e.target.value);
+    if (voiceVolume === null) return;
+    const seq = ++voiceVolumeChangeSeq.current;
+    void applyConfigUpdate({
+      next,
+      prev: voiceVolume,
+      setLocal: setVoiceVolume,
+      write: (v) => ctx.app.setVoiceVolume(v),
+      emitEvent: (n, p) => ctx.emitEvent(n, p),
+      field: "voiceVolume",
+      shouldRollback: () => seq === voiceVolumeChangeSeq.current,
+      readRollbackValue: async () => (await ctx.app.getConfig()).voiceVolume,
     });
   };
 
@@ -2883,7 +2917,34 @@ function Panel({ ctx }: { ctx: UiContext }): React.JSX.Element {
           </div>
         </div>
 
-        {/* Voice Summary（Sound の直下）。再起動の告知は確認ダイアログが担う。 */}
+        <div style={{ ...gridStyle, marginTop: SPACING.md }}>
+          <div style={{ opacity: 0.7 }}>{strings.voiceVolume}</div>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={voiceVolume ?? 1}
+            onChange={onVoiceVolumeChange}
+            disabled={voiceVolume === null}
+            aria-label={strings.voiceVolume}
+            style={{
+              width: "100%",
+              minWidth: "220px",
+              maxWidth: "360px",
+              height: "4px",
+              appearance: "none",
+              WebkitAppearance: "none",
+              background: COLORS.borderSubtle,
+              borderRadius: "2px",
+              outline: "none",
+              cursor: voiceVolume === null ? "default" : "pointer",
+              accentColor: COLORS.accent,
+            }}
+          />
+        </div>
+
+        {/* Voice Summary。再起動の告知は確認ダイアログが担う。 */}
         <div style={{ ...gridStyle, marginTop: SPACING.md }}>
           <div style={{ opacity: 0.7 }}>{strings.voiceFrequency}</div>
           <div>

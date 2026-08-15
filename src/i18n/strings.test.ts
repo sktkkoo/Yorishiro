@@ -117,6 +117,11 @@ describe("changeStrings", () => {
     expect(getStrings("ja").motionLevelOver).toBe("オーバー");
   });
 
+  it("labels the independent voice volume control in both languages", () => {
+    expect(getStrings("en").voiceVolume).toBe("Voice Volume");
+    expect(getStrings("ja").voiceVolume).toBe("音声ボリューム");
+  });
+
   it("uses explicit settings section labels", () => {
     expect(getStrings("en").labelAgent).toBe("Main Agent");
     expect(getStrings("ja").labelAgent).toBe("Main Agent");

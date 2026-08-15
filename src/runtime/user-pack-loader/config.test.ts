@@ -54,6 +54,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -82,6 +83,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -110,6 +112,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -138,6 +141,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -166,6 +170,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -194,6 +199,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -227,6 +233,7 @@ describe("parseConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -284,6 +291,7 @@ describe("serializeConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -312,6 +320,7 @@ describe("serializeConfig", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -353,6 +362,7 @@ describe("serializeConfig", () => {
       terminalAgent: "codex",
       ambientAudioMuted: true,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -708,6 +718,30 @@ describe("motionIntensity", () => {
   });
 });
 
+describe("voiceVolume", () => {
+  it("defaults to 1.0 without requiring a config migration", () => {
+    expect(EMPTY_CONFIG.voiceVolume).toBe(1);
+    expect(parseConfig("{}").voiceVolume).toBe(1);
+    expect(JSON.parse(serializeConfig(EMPTY_CONFIG))).not.toHaveProperty("voiceVolume");
+  });
+
+  it("parses and clamps the persisted unit float", () => {
+    expect(parseConfig('{"voiceVolume": 0.35}').voiceVolume).toBe(0.35);
+    expect(parseConfig('{"voiceVolume": -1}').voiceVolume).toBe(0);
+    expect(parseConfig('{"voiceVolume": 2}').voiceVolume).toBe(1);
+    expect(parseConfig('{"voiceVolume": "quiet"}').voiceVolume).toBe(1);
+  });
+
+  it("persists non-default values including exact mute", () => {
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, voiceVolume: 0.4 }))).toEqual({
+      voiceVolume: 0.4,
+    });
+    expect(JSON.parse(serializeConfig({ ...EMPTY_CONFIG, voiceVolume: 0 }))).toEqual({
+      voiceVolume: 0,
+    });
+  });
+});
+
 describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
   it("adds an id to disabledPacks", () => {
     const next = withDisabledPackAdded(EMPTY_CONFIG, "bad");
@@ -735,6 +769,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
@@ -764,6 +799,7 @@ describe("withDisabledPackAdded / withDisabledPackRemoved", () => {
       terminalAgent: "claude",
       ambientAudioMuted: false,
       ambientAudioVolume: 1,
+      voiceVolume: 1,
       attentionLightNotifications: true,
       motionIntensity: 1,
       profiles: [],
